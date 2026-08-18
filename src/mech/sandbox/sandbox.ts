@@ -4,7 +4,13 @@ import { errText } from "../../platform/process/text.ts";
 import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
-import { ConnectionConfig, Sandbox, type CommandExecution, type Volume } from "@alibaba-group/opensandbox";
+import {
+  ConnectionConfig,
+  type ExecutionHandlers,
+  type RunCommandOpts,
+  Sandbox,
+  type Volume,
+} from "@alibaba-group/opensandbox";
 import type { Ctx } from "../../mech/ctx.ts";
 import { ROOT } from "../../platform/config/load.ts";
 import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
@@ -1128,6 +1134,36 @@ function runOpts(o: ExecOpts) {
  * session once, so a command that passes none lands where `run()` would have put
  * it.
  */
+/**
+ * What the session path needs of a container: an id and three commands.
+ *
+ * Narrower than `Sandbox` on purpose. A parameter that says `Sandbox` claims the
+ * files API, the vault and the metadata patcher are in scope, and a test then has
+ * to either build all of them or assert its way past the type — which is what
+ * `as never` was doing here, and what oxlint refused.
+ */
+export interface Runner {
+  id: string;
+  commands: {
+    run(cmd: string, opts?: RunCommandOpts, handlers?: ExecutionHandlers, signal?: AbortSignal): Promise<ExecLike>;
+    createSession(opts?: { workingDirectory?: string }): Promise<string>;
+    runInSession(
+      id: string,
+      cmd: string,
+      opts?: { workingDirectory?: string; timeoutSeconds?: number },
+      handlers?: ExecutionHandlers,
+      signal?: AbortSignal,
+    ): Promise<ExecLike>;
+  };
+}
+
+/** Only the two fields read off an execution: the code, and the two log streams. */
+export interface ExecLike {
+  /** `null` as well as absent: the SDK's own `Execution` uses null for "no code yet". */
+  exitCode?: number | null | undefined;
+  logs?: { stdout?: { text: string }[] | undefined; stderr?: { text: string }[] | undefined } | undefined;
+}
+
 interface Session {
   id: string;
   /** Where the session starts, asked once, so `cwd`-less commands match `run()`. */
@@ -1135,7 +1171,10 @@ interface Session {
 }
 const sessions = new Map<string, Session>();
 
-async function sessionFor(sb: Sandbox): Promise<Session | null> {
+/** Tests only: forget every session, so one case cannot inherit another's. */
+export const forgetSessions = (): void => sessions.clear();
+
+async function sessionFor(sb: Runner): Promise<Session | null> {
   const have = sessions.get(sb.id);
   if (have) return have;
   try {
@@ -1204,8 +1243,9 @@ export function unwrap(raw: string): { out: string; err: string } {
  * so a command with environment goes the one-shot way. Two callers need that: the
  * codex refresher and the login, both of which set `CODEX_HOME`.
  */
-async function runIn(sb: Sandbox, cmd: string, opts: ExecOpts): Promise<ExecOutcome> {
-  const shape = (e: CommandExecution, k: "stdout" | "stderr") => (e.logs?.[k] ?? []).map(oneLine).join("\n");
+/** Exported for the test that pins the fallback ladder; not part of the module's API. */
+export async function runIn(sb: Runner, cmd: string, opts: ExecOpts): Promise<ExecOutcome> {
+  const shape = (e: ExecLike, k: "stdout" | "stderr") => (e.logs?.[k] ?? []).map(oneLine).join("\n");
   const plain = async (): Promise<ExecOutcome> => {
     const e = await sb.commands.run(cmd, runOpts(opts), undefined, opts.signal);
     return { code: e.exitCode ?? -1, out: shape(e, "stdout"), err: shape(e, "stderr") };
@@ -1233,11 +1273,21 @@ async function runIn(sb: Sandbox, cmd: string, opts: ExecOpts): Promise<ExecOutc
     return await inSession(session);
   } catch {
     // A session dies with its container, and with its own shell. Forget it and try
-    // once through a fresh one; a second failure is the container's problem and
-    // belongs on the path that already reports it.
+    // once through a fresh one, then stop trying: `run()` is the behaviour that
+    // was here before sessions and it still works.
+    //
+    // The retry used to be the last word, and a second failure escaped — which
+    // `execIn` turns into `container unavailable`, reporting a working container as
+    // a dead one. Found by the test rather than in production, which is the only
+    // reason it is written this way round.
     sessions.delete(sb.id);
     const again = await sessionFor(sb);
-    return again ? await inSession(again) : await plain();
+    if (!again) return plain();
+    try {
+      return await inSession(again);
+    } catch {
+      return plain();
+    }
   }
 }
 

@@ -610,3 +610,99 @@ test("with no Scribe message the branch is still publishable", () => {
   expect(prTitle(h.ctx.db, 1)).toBe("orch: g1");
   expect(commitMessage(h.ctx.db, 1, "orch: g1")).toBe("orch: g1");
 });
+
+/** The body of a GraphQL reply, for one open PR, shaped like the query asks. */
+const graphBody = (
+  over: { comments?: Json[]; reviews?: Json[]; contexts?: Json[]; pr?: Record<string, Json> } = {},
+) => ({
+  data: {
+    repository: {
+      pullRequests: {
+        nodes: [
+          {
+            number: 5,
+            state: "OPEN",
+            merged: false,
+            mergeable: "MERGEABLE",
+            headRefOid: "deadbee",
+            comments: { nodes: over.comments ?? [] },
+            reviews: { nodes: over.reviews ?? [] },
+            commits: {
+              nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: over.contexts ?? [] } } } }],
+            },
+            ...over.pr,
+          },
+        ],
+      },
+    },
+  },
+});
+
+/** …and that body as an answer the fake client can hand back. */
+const graphReply = (over: Parameters<typeof graphBody>[0] = {}) => ok(graphBody(over));
+
+/**
+ * One request for every open PR, instead of five each.
+ *
+ * Measured against api.github.com: the query costs **1 point** and carries what
+ * the five REST calls did, including the check rollup — which is `/check-runs`
+ * and `/status` in one field. Five requests per PR on a 30-second tick is 6,000
+ * an hour for ten PRs against a 5,000 limit, survivable only because a 304 does
+ * not count against it.
+ */
+test("an open PR is polled with one GraphQL request and no REST detail calls", async () => {
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 5, pr_seen_at = 0 WHERE id = 1");
+  const calls: string[] = [];
+  const client = gh(
+    {
+      "POST /graphql": graphReply({
+        comments: [{ author: { login: "reviewer" }, body: "please rename this", createdAt: "2026-08-18T10:00:00Z" }],
+        contexts: [{ __typename: "CheckRun", name: "test", conclusion: "FAILURE" }],
+      }),
+    },
+    calls,
+  );
+
+  const fs = await pollPrs(h.ctx, client);
+
+  expect(fs).toHaveLength(1);
+  expect(fs[0]!.comments.map((c) => c.body)).toEqual(["please rename this"]);
+  // GraphQL's `FAILURE` needs no translation: `failedChecks` uppercases.
+  expect(fs[0]!.failingChecks).toEqual(["test"]);
+  expect(calls).toEqual(["POST /graphql"]);
+});
+
+/**
+ * A GraphQL failure is a 200 with an `errors` array, so the status cannot be the
+ * check — and the whole repository goes back to REST rather than losing a poll.
+ * This is the busiest GitHub path there is; a new query shape is not something to
+ * bet a fleet on.
+ */
+test("a GraphQL error sends that repository back to the REST path", async () => {
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 5, pr_seen_at = 0 WHERE id = 1");
+  const calls: string[] = [];
+  const client = gh(
+    {
+      // A *partial* response: GraphQL answers 200 with `data` filled in as far as
+      // it got and `errors` beside it. That is what the `errors` check is for —
+      // without it the partial data reads as a complete answer, and the PR silently
+      // loses whichever field failed. A reply with no `data` at all would fall back
+      // anyway, and would have proved nothing.
+      "POST /graphql": ok({
+        ...graphBody(),
+        errors: [{ message: "Something went wrong while executing your query" }],
+      }),
+      "GET /repos/me/x/pulls/5": pr(),
+      "GET /repos/me/x/commits/deadbee/check-runs": ok({ check_runs: [{ name: "test", conclusion: "failure" }] }),
+    },
+    calls,
+  );
+
+  const fs = await pollPrs(h.ctx, client);
+
+  expect(fs[0]!.failingChecks).toEqual(["test"]);
+  expect(calls).toContain("POST /graphql");
+  expect(calls).toContain("GET /repos/me/x/pulls/5");
+});

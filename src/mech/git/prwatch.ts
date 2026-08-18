@@ -515,6 +515,195 @@ export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
   });
 }
 
+/**
+ * One request for every open pull request in a repository, instead of five each.
+ *
+ * Measured against api.github.com: this query costs **1 point** and returns
+ * everything the five REST calls did — state, merged, mergeable, the head sha, the
+ * last twenty comments, the last twenty reviews, and the check rollup, which is
+ * both REST endpoints (`/check-runs` and `/status`) in one field. The REST path is
+ * five requests per PR: ten open PRs on a 30-second tick is 6,000 requests an
+ * hour against a 5,000 limit, survivable only because a 304 does not count. This
+ * is 120 points an hour out of 5,000, and it does not depend on nothing having
+ * changed.
+ *
+ * Through `gh.request`, not a second client. `plugin-throttling` already treats
+ * `/graphql` as its own limiter — GraphQL reports a rate limit inside a 200 body
+ * rather than as a status, and the plugin has a branch for exactly that — and
+ * `plugin-retry` and the Zod seam come along unchanged. A dependency would have
+ * bought a `.graphql` method and lost all three.
+ *
+ * `reviews` and `comments` take `last:`, so they arrive newest-last and are
+ * filtered against `pr_seen_at` here. That is what fixes the REST reviews
+ * endpoint having no `since` and returning oldest-first, which stopped waking the
+ * PM once a PR passed a hundred reviews.
+ */
+const GRAPH_QUERY = `query($owner:String!,$name:String!,$prs:Int!,$msgs:Int!,$checks:Int!){
+  repository(owner:$owner,name:$name){
+    pullRequests(states:[OPEN,MERGED,CLOSED],first:$prs,orderBy:{field:UPDATED_AT,direction:DESC}){
+      nodes{
+        number state merged mergeable headRefOid
+        comments(last:$msgs){ nodes{ author{login} body createdAt } }
+        reviews(last:$msgs){ nodes{ author{login} body submittedAt } }
+        commits(last:1){ nodes{ commit{ statusCheckRollup{
+          contexts(last:$checks){ nodes{
+            __typename
+            ... on CheckRun { name conclusion }
+            ... on StatusContext { context state }
+          } }
+        } } } }
+      }
+    }
+  }
+}`;
+
+const GraphActor = z.object({ login: z.string().optional() }).nullable().optional();
+const GraphContext = z.object({
+  __typename: z.string().optional(),
+  name: z.string().optional(),
+  conclusion: z.string().nullable().optional(),
+  context: z.string().optional(),
+  state: z.string().optional(),
+});
+const GraphPrNode = z.object({
+  number: z.number().int().positive(),
+  state: z.string().optional(),
+  merged: z.boolean().optional(),
+  mergeable: z.string().optional(),
+  headRefOid: z.string().optional(),
+  comments: z
+    .object({
+      nodes: z
+        .array(z.object({ author: GraphActor, body: z.string().optional(), createdAt: z.string().optional() }))
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+  reviews: z
+    .object({
+      nodes: z
+        .array(z.object({ author: GraphActor, body: z.string().optional(), submittedAt: z.string().optional() }))
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+  commits: z
+    .object({
+      nodes: z
+        .array(
+          z
+            .object({
+              commit: z.object({
+                statusCheckRollup: z
+                  .object({
+                    contexts: z
+                      .object({ nodes: z.array(GraphContext).nullable().optional() })
+                      .nullable()
+                      .optional(),
+                  })
+                  .nullable()
+                  .optional(),
+              }),
+            })
+            .nullable(),
+        )
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+});
+const GraphReply = z.object({
+  data: z
+    .object({
+      repository: z
+        .object({
+          pullRequests: z
+            .object({ nodes: z.array(GraphPrNode.nullable()).nullable().optional() })
+            .nullable()
+            .optional(),
+        })
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+  // A GraphQL failure is a 200 with this filled in, so the caller checks it rather
+  // than the status. Any error at all sends the repository back to REST.
+  errors: z
+    .array(z.object({ message: z.string().optional() }))
+    .nullable()
+    .optional(),
+});
+
+/** What one PR looks like once the query's shape is flattened. */
+interface Polled {
+  /** The same string `pullState` produces from REST, so one reader serves both. */
+  state: string;
+  mergeable: boolean | null;
+  details: PollDetails;
+}
+
+/** How many of each the query asks for. Node counts decide the point cost. */
+const GRAPH_PRS = 30;
+const GRAPH_MSGS = 20;
+const GRAPH_CHECKS = 100;
+
+/** One node of the query, flattened into the shape the REST readers already take. */
+function flattenGraphPr(pr: z.infer<typeof GraphPrNode>): Polled {
+  const contexts = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [];
+  return {
+    state: pr.merged ? "MERGED" : String(pr.state ?? "").toUpperCase(),
+    // `MERGEABLE` / `CONFLICTING` / `UNKNOWN`, where REST had a boolean and a
+    // second `mergeable_state` string. Unknown stays null, which is what a REST
+    // null meant: GitHub has not finished working it out.
+    mergeable: pr.mergeable === "MERGEABLE" ? true : pr.mergeable === "CONFLICTING" ? false : null,
+    details: {
+      issue: (pr.comments?.nodes ?? []).map((c) => ({
+        user: { login: c.author?.login },
+        body: c.body,
+        created_at: c.createdAt,
+      })),
+      reviews: (pr.reviews?.nodes ?? []).map((r) => ({
+        user: { login: r.author?.login },
+        body: r.body,
+        submitted_at: r.submittedAt,
+      })),
+      // One rollup, two REST endpoints. A `CheckRun` carries `name`/`conclusion`
+      // and a `StatusContext` carries `context`/`state`, which are the two shapes
+      // `failedChecks` already reads — and it uppercases, so GraphQL's `FAILURE`
+      // needs no translation.
+      checks: contexts
+        .filter((c) => c.__typename === "CheckRun")
+        .map((c) => ({ name: c.name, conclusion: c.conclusion })),
+      statuses: contexts
+        .filter((c) => c.__typename === "StatusContext")
+        .map((c) => ({ context: c.context, state: c.state })),
+    },
+  };
+}
+
+async function pollViaGraph(gh: Github, repo: string, signal?: AbortSignal): Promise<Map<number, Polled> | null> {
+  const [owner, name] = repo.split("/");
+  if (!owner || !name) return null;
+  const reply = await gh.request(
+    "POST",
+    "/graphql",
+    GraphReply,
+    { query: GRAPH_QUERY, variables: { owner, name, prs: GRAPH_PRS, msgs: GRAPH_MSGS, checks: GRAPH_CHECKS } },
+    signal,
+  );
+  // `errors` beside a partial `data` is GraphQL's own shape for "some of this
+  // failed", answered as 200 — so the status cannot be the check, and partial data
+  // must not read as a complete answer.
+  if (!reply.ok || reply.data.errors?.length) return null;
+  const nodes = reply.data.data?.repository?.pullRequests?.nodes;
+  if (!nodes) return null;
+  return new Map(nodes.filter((pr): pr is NonNullable<typeof pr> => !!pr).map((pr) => [pr.number, flattenGraphPr(pr)]));
+}
+
 async function pollPrsInner(db: DB, gh: Github): Promise<Feedback[]> {
   const groups = db
     .query<WatchedGroup, []>(
@@ -533,8 +722,44 @@ async function pollPrsInner(db: DB, gh: Github): Promise<Feedback[]> {
   // while making the failure of any one of them harder to attribute. The same
   // number the container fan-out uses, for the same reason — a ceiling somebody
   // chose beats a ceiling that happens to be the row count.
-  const results = await pMap(groups, (group) => pollPr(db, gh, group), { concurrency: PR_FANOUT });
+  // One GraphQL request per repository first. A repository whose query fails for
+  // any reason — an error in the body, a shape that does not parse, a PR outside
+  // the window the query asks for — falls through to the REST path below, which is
+  // what every poll did until now. The fallback is the point: this is the busiest
+  // GitHub path there is, and a new query shape is not a thing to bet a fleet on.
+  const repos = [...new Set(groups.map((g) => g.remote).filter((r): r is string => !!r))].map(parseRepo);
+  const graphed = new Map<string, Map<number, Polled>>();
+  await pMap(
+    repos.filter((r): r is string => !!r),
+    async (repo) => {
+      const one = await pollViaGraph(gh, repo).catch(() => null);
+      if (one) graphed.set(repo, one);
+    },
+    { concurrency: PR_FANOUT },
+  );
+
+  const results = await pMap(groups, (group) => pollOne(db, gh, group, graphed), { concurrency: PR_FANOUT });
   return results.filter((result): result is Feedback => result !== null);
+}
+
+/**
+ * The pre-fetched answer when there is one, and the five REST calls when there is
+ * not.
+ */
+async function pollOne(
+  db: DB,
+  gh: Github,
+  group: WatchedGroup,
+  graphed: Map<string, Map<number, Polled>>,
+): Promise<Feedback | null> {
+  const target = pollTarget(group);
+  if (!target) return null;
+  const have = graphed.get(target.repo)?.get(target.prNumber);
+  if (!have) return pollPr(db, gh, group);
+  const transition = transitionFeedback(group, target.prNumber, have.state);
+  if (transition) return transition;
+  if (group.status !== "PR_OPEN") return null;
+  return changedFeedback(db, group, target.prNumber, have.details, have.mergeable, undefined);
 }
 
 /**

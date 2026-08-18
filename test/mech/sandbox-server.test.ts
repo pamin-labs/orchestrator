@@ -2,7 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../../src/platform/persistence/database.ts";
-import { allowedHostPaths, coveredBy, restartServer, unwrap, wrapForSession } from "../../src/mech/sandbox/sandbox.ts";
+import {
+  allowedHostPaths,
+  coveredBy,
+  forgetSessions,
+  restartServer,
+  runIn,
+  unwrap,
+  wrapForSession,
+} from "../../src/mech/sandbox/sandbox.ts";
 import { preflight } from "../../src/mech/ops/preflight.ts";
 import { serverAction, serverBackoffMs, SERVER_RESTART_CAP } from "../../src/mech/ops/watchdog.ts";
 import { patchConfig, startPlan, waitUp } from "../../src/mech/sandbox/server.ts";
@@ -434,4 +442,86 @@ test("the session wrapper separates the streams the way run() does", () => {
   expect(unwrap(`a\nb\n${MARK}`)).toEqual({ out: "a\nb", err: "" });
   // No marker at all is the old merged behaviour, not a lost line.
   expect(unwrap("everything")).toEqual({ out: "everything", err: "" });
+});
+
+/**
+ * A fake container, with only the four things the session path touches.
+ *
+ * `logs.stdout` because a session puts everything there — including stderr, which
+ * is the whole reason the wrapper exists.
+ */
+function fakeSandbox(script: {
+  createSession?: () => Promise<string>;
+  runInSession?: (id: string, cmd: string) => Promise<{ exitCode: number; logs: { stdout: { text: string }[] } }>;
+  run?: (
+    cmd: string,
+  ) => Promise<{ exitCode: number; logs: { stdout: { text: string }[]; stderr: { text: string }[] } }>;
+}) {
+  const seen: string[] = [];
+  const sandbox = {
+    id: "sb-1",
+    commands: {
+      createSession: async () => {
+        seen.push("createSession");
+        return (await script.createSession?.()) ?? "sess-1";
+      },
+      runInSession: async (id: string, cmd: string) => {
+        seen.push(`runInSession ${cmd.slice(0, 12)}`);
+        return (await script.runInSession?.(id, cmd)) ?? { exitCode: 0, logs: { stdout: [{ text: "/home/app\n" }] } };
+      },
+      run: async (cmd: string) => {
+        seen.push("run");
+        return (await script.run?.(cmd)) ?? { exitCode: 0, logs: { stdout: [{ text: "one-shot" }], stderr: [] } };
+      },
+    },
+  };
+  return { sandbox, seen };
+}
+
+/**
+ * The ladder down from a session, which is what keeps this from being a risk.
+ *
+ * A session is 5ms against `run()`'s 1013ms, so it is the path everything takes —
+ * and every way it can be unavailable has to land on the behaviour that was there
+ * before. Three ways: the command needs environment, which `runInSession` cannot
+ * carry; the server will not open a session; and a session that existed has died
+ * with its shell or its container.
+ */
+test("a command with environment does not use a session", async () => {
+  forgetSessions();
+  const { sandbox, seen } = fakeSandbox({});
+  const out = await runIn(sandbox, "echo hi", { env: { CODEX_HOME: "/x" } });
+  expect(out.out).toBe("one-shot");
+  // Not even asked for: `runInSession` takes `workingDirectory` and
+  // `timeoutSeconds` and not `envs`, so a session could not carry it.
+  expect(seen).toEqual(["run"]);
+});
+
+test("a server that will not open a session falls back to the one-shot path", async () => {
+  forgetSessions();
+  const { sandbox, seen } = fakeSandbox({
+    createSession: () => Promise.reject(new Error("not supported")),
+  });
+  const out = await runIn(sandbox, "echo hi", {});
+  expect(out.out).toBe("one-shot");
+  expect(seen).toEqual(["createSession", "run"]);
+});
+
+test("a session that dies is rebuilt once, then given up on", async () => {
+  forgetSessions();
+  let opened = 0;
+  const { sandbox, seen } = fakeSandbox({
+    createSession: async () => `sess-${++opened}`,
+    runInSession: (_id, cmd) =>
+      // `pwd` is the probe that establishes the session's home; the command itself
+      // is what fails, every time, so the retry is exhausted and `run()` answers.
+      cmd === "pwd"
+        ? Promise.resolve({ exitCode: 0, logs: { stdout: [{ text: "/home/app\n" }] } })
+        : Promise.reject(new Error("session gone")),
+  });
+  const out = await runIn(sandbox, "echo hi", {});
+  expect(out.out).toBe("one-shot");
+  expect(opened).toBe(2);
+  expect(seen.filter((s) => s === "createSession")).toHaveLength(2);
+  expect(seen).toContain("run");
 });
