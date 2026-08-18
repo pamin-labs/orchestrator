@@ -87,22 +87,36 @@ export const postAuth = (async (ctx, _req, _p, b) => {
     return message("ok");
   }
 
-  let auth: RuntimeAuth;
-  // Read the sandbox server's key out of the server's own config rather than
-  // asking the boss to copy one across. The value never reaches the browser.
+  // Adopting is a different operation and returns here, rather than joining the
+  // path below through a shared variable. That separation is the fix, not a
+  // tidy-up: a secret read off disk must not be able to reach the probe at all,
+  // and a `!("adopt" in b)` guard further down does not achieve that — the two
+  // branches still meet in one binding, which is exactly what a taint analysis
+  // reports and, more to the point, what one refactor away from being true again.
+  //
+  // Nothing is sent. A key read out of the server's own config **is** the key
+  // that server is running with, so asking the server to confirm its own file
+  // returns no answer the file did not already give. It is stored bound to the
+  // address in that same file, so no later change to `sandbox.server` — a
+  // settings knob the panel rewrites at runtime — can send it elsewhere.
   if ("adopt" in b) {
     const found = serverKeyOnDisk();
     if (!found)
       return bad(
         "没找到沙盒服务器的配置。它是用 --config 启动的，把那个文件的路径放进 OPENSANDBOX_CONFIG，或者放在 ./sandbox.toml、~/.sandbox.toml。",
       );
-    // Bound to the address in the file it came out of, not to the settings knob.
-    // This is the pairing that makes the key unable to travel: it is the server
-    // whose own config this is, whatever `sandbox.server` is set to right now.
-    auth = { runtime: SANDBOX_KEY, mode: "api_key", secret: found.key, baseUrl: `http://${found.server}` };
-  } else {
-    auth = b;
+    saveAuth(ctx.db, {
+      runtime: SANDBOX_KEY,
+      mode: "api_key",
+      secret: found.key,
+      baseUrl: `http://${found.server}`,
+    });
+    await credentialChanged(ctx, SANDBOX_KEY);
+    return message("ok");
   }
+
+  // Only ever the request body from here down.
+  let auth: RuntimeAuth = b;
 
   // The sandbox key is ours, not a provider's, so it has no shape to check.
   if (auth.runtime !== SANDBOX_KEY) {
@@ -114,14 +128,7 @@ export const postAuth = (async (ctx, _req, _p, b) => {
   // generating one here and not telling the server made every turn, every gate
   // and every diff 401 — reported as "Authentication credentials are invalid",
   // which reads as a model problem. Refused rather than stored.
-  //
-  // Only a typed one. A key read out of the server's own config **is** the key
-  // that server is running with — asking it to confirm its own file adds no
-  // answer, and the question costs the one thing worth avoiding: a secret read
-  // from a file, put on the wire, to an address chosen by a settings knob. That
-  // is CodeQL's `js/file-access-to-http` on this line, and the way to satisfy it
-  // is not to send the value, which is also the smaller code.
-  if (auth.runtime === SANDBOX_KEY && !("adopt" in b)) {
+  if (auth.runtime === SANDBOX_KEY) {
     const server = ctx.config.sandbox?.server ?? "127.0.0.1:8080";
     const said = await sandboxKeyWorks(server, auth.secret);
     if (said === "invalid") return bad("沙盒服务器不认这个密钥。它自己的配置里写的是哪个，这里就得填哪个。");
