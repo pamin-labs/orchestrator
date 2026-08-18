@@ -15,6 +15,8 @@ import { Input, Meta, Textarea } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { Segment, Segments } from "../../ui/segment";
 import { Tip } from "../../ui/tooltip";
+import { Switch } from "../../ui/switch";
+import { notifyWanted, setNotifyWanted } from "../../shared/desktop-notify";
 import type { Json } from "../../../../src/contracts/json";
 import { allModels, cheapest, modelsByRuntime, type ModelSources } from "./models";
 
@@ -575,28 +577,60 @@ export function IndexModel({
 /** What each answer means, and where the reader has to go to change it. */
 const NOTIFY_SAID: Record<NotifyState, string> = {
   unsupported: "这个浏览器不支持",
-  granted: "已开。面板在后台也会弹，浏览器整个关掉才收不到——那时重新打开会补上。",
+  granted: "浏览器已放行。面板在后台也会弹，浏览器整个关掉才收不到——那时重新打开会补上。",
   denied: "被浏览器拒了。要开的话在地址栏左边的站点设置里改，然后刷新。",
   // The only state with anything left to press.
   ask: "",
 };
 
+/**
+ * Two rows, because they are two facts.
+ *
+ * The permission is the browser's — asked for once, and a page cannot take it
+ * back. The switch is the boss's, and it is the only one a settings pane can
+ * offer; without it "已开" was a dead end with no way to turn these off short of
+ * the browser's own site settings. Off falls back to a toast, which is what an
+ * ungranted permission already does.
+ */
 export function Permission() {
   const supported = typeof Notification !== "undefined";
   const [state, setState] = useState(supported ? Notification.permission : "denied");
+  const [want, setWant] = useState(notifyWanted);
   const said = NOTIFY_SAID[notifyState(supported, state)];
   return (
-    <Field aria-labelledby="notify-perm">
-      <FieldTitle id="notify-perm">桌面通知</FieldTitle>
-      <FieldContent>
-        {said ? (
-          <Meta>{said}</Meta>
-        ) : (
-          <Button size="sm" onClick={() => void Notification.requestPermission().then(setState)}>
-            允许通知
-          </Button>
-        )}
-      </FieldContent>
-    </Field>
+    <>
+      <Field aria-labelledby="notify-perm">
+        <FieldTitle id="notify-perm">浏览器许可</FieldTitle>
+        <FieldContent>
+          {said ? (
+            <Meta>{said}</Meta>
+          ) : (
+            <Button size="sm" onClick={() => void Notification.requestPermission().then(setState)}>
+              允许通知
+            </Button>
+          )}
+        </FieldContent>
+      </Field>
+      {/* Only once the browser has agreed. Before that the switch would be a
+          control over something that cannot happen, and the button above is the
+          one thing left to press. */}
+      {state === "granted" && (
+        <Field aria-labelledby="notify-want">
+          <FieldTitle id="notify-want">弹到桌面</FieldTitle>
+          <FieldContent className="flex-col items-start gap-1">
+            <Switch
+              aria-labelledby="notify-want"
+              checked={want === "on"}
+              onCheckedChange={(on) => {
+                const next = on ? "on" : "off";
+                setWant(next);
+                setNotifyWanted(next);
+              }}
+            />
+            <Meta>关掉之后仍然会在页面里提示，标签页标题也照样带计数——只是不再弹出窗口。</Meta>
+          </FieldContent>
+        </Field>
+      )}
+    </>
   );
 }

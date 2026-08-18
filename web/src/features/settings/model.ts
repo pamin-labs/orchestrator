@@ -16,6 +16,7 @@ import { z } from "zod";
 export const SectionSchema = z.enum([
   "cred",
   "github",
+  "host",
   "server",
   "timing",
   "skills",

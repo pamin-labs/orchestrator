@@ -17,6 +17,54 @@ import { cn } from "./cn";
  * waits on the boss.
  */
 
+/**
+ * Related rows under a name, inside a pane that holds more than one subject.
+ *
+ * A `<fieldset>` with a `<legend>`, not a div with a heading: the grouping is the
+ * accessible fact, and a screen reader announces the legend with every control it
+ * contains — the difference between hearing "开" and "通知：开".
+ *
+ * Structure and slots are shadcn's `field` registry item, read from it rather than
+ * guessed — the first version of this was hand-written and carried a `float-none`
+ * for a problem the flex `<fieldset>` already solves. The look is ours, as the
+ * note above says: `ui.md`'s scale, hairlines rather than cards.
+ *
+ * Only where a pane genuinely holds two subjects. A pane with one already has its
+ * name in `Head`, and a legend repeating it is a second heading for one thing.
+ */
+export function FieldSet({ className, ...rest }: React.ComponentProps<"fieldset">) {
+  return <fieldset data-slot="field-set" className={cn("flex w-full min-w-0 flex-col", className)} {...rest} />;
+}
+
+/**
+ * The group's name, at one of two weights.
+ *
+ * `legend` is a section inside a pane — `ui.md`'s 0.9375rem group-name step.
+ * `label` is a group of rows inside a section, which sits at the row scale so it
+ * does not compete with the section above it. Upstream's own two variants, kept
+ * because the second one is what a nested group needs and inventing it later
+ * would have meant a third size.
+ */
+export function FieldLegend({
+  className,
+  variant = "legend",
+  ...rest
+}: React.ComponentProps<"legend"> & { variant?: "legend" | "label" }) {
+  return (
+    <legend
+      data-slot="field-legend"
+      data-variant={variant}
+      className={cn(
+        "mb-1 w-full font-medium text-ink",
+        "data-[variant=legend]:text-[0.9375rem]",
+        "data-[variant=label]:text-[0.875rem]",
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
 export function FieldGroup({ className, ...rest }: React.ComponentProps<"div">) {
   return (
     <div

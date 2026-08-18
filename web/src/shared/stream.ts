@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { notifyWanted } from "./desktop-notify";
 import { z } from "zod";
 import { FrameSchema } from "../../../src/contracts/events.ts";
 
@@ -26,6 +27,17 @@ import { FrameSchema } from "../../../src/contracts/events.ts";
 const WireSchema = FrameSchema.and(z.object({ projectId: z.number().nullable().optional() }));
 const NotificationMetaSchema = z.object({ url: z.string().optional(), title: z.string().optional() });
 export type Wire = z.infer<typeof WireSchema>;
+
+/**
+ * Whether a desktop notification may be raised at all.
+ *
+ * Two facts, and both have to hold. The browser answers the first and a page
+ * cannot argue with it; only the boss answers the second, and until that switch
+ * existed the answer was stuck at yes — a granted permission had no way back
+ * except the browser's own site settings.
+ */
+const desktopAllowed = (): boolean =>
+  typeof Notification !== "undefined" && Notification.permission === "granted" && notifyWanted() === "on";
 
 /** One SSE payload, or null for anything this panel cannot use — a half-written
  *  line from a restarting server included. A stream that says something we do
@@ -196,7 +208,7 @@ export function notifyPlan(f: Notice, granted: boolean): NotifyPlan {
 }
 
 export function raise(f: Notice) {
-  const plan = notifyPlan(f, typeof Notification !== "undefined" && Notification.permission === "granted");
+  const plan = notifyPlan(f, desktopAllowed());
   if (plan.show === "none") return;
   if (plan.show === "toast") {
     toast(plan.body);

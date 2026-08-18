@@ -272,7 +272,20 @@ const PAIRED: Record<string, string> = { "indexModel.runtime": "indexModel.model
 
 type Write = (write: SettingWrite) => Promise<{ ok: boolean; text: string }>;
 
-export function Knobs({ section }: { section: KnobSection }) {
+export function Knobs({
+  section,
+  /**
+   * Skip this component's own title band.
+   *
+   * For a section rendered inside a `FieldSet` that already names it — otherwise
+   * the pane shows the name twice, once as a legend and once as a heading, which
+   * reads as two groups where there is one.
+   */
+  bare = false,
+}: {
+  section: KnobSection;
+  bare?: boolean;
+}) {
   const queries = useQueryClient();
   const [saved, setSaved] = useState<string | null>(null);
 
@@ -330,11 +343,15 @@ export function Knobs({ section }: { section: KnobSection }) {
     <div className="[--label:8.5rem]">
       {/* Where a save button would be. There is none: a field is written when it
           loses focus, and this says the write landed. */}
-      <Head title={spec.zh} note={spec.note}>
-        {/* Clear of the dialog's close button, which is absolutely positioned
-            over this band and was sitting on the last character of the time. */}
-        {saved && <Meta className="mr-7">已保存 {saved}</Meta>}
-      </Head>
+      {bare ? (
+        saved && <Meta className="mb-1 block">已保存 {saved}</Meta>
+      ) : (
+        <Head title={spec.zh} note={spec.note}>
+          {/* Clear of the dialog's close button, which is absolutely positioned
+              over this band and was sitting on the last character of the time. */}
+          {saved && <Meta className="mr-7">已保存 {saved}</Meta>}
+        </Head>
+      )}
       {knobs === null ? (
         <Meta className="block py-2">读取中…</Meta>
       ) : (

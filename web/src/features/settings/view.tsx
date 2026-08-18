@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
+  MonitorCog,
   Box,
   Coins,
   Gauge,
@@ -18,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { H2, Head, Meta, Pane } from "../../ui/bits";
-import { Field, FieldContent, FieldGroup, FieldTitle } from "../../ui/field";
+import { Field, FieldContent, FieldGroup, FieldLegend, FieldSet, FieldTitle } from "../../ui/field";
 import { Tip } from "../../ui/tooltip";
 import { api, mutate, readApi } from "../../shared/api";
 import { Knobs } from "../knobs/view";
@@ -86,11 +87,12 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   // because there is only GitHub, and the day there is a second one, renaming a
   // nav item is one string.
   { key: "github", zh: "GitHub", icon: GitBranch },
-  // Everything about the sandbox, in the order you need it: what the machine must
-  // have, the server that opens containers, and what a container is built with.
-  // 环境 used to be its own item and its own note said "沙盒要用的" — the checks are
-  // docker and uv, which is the sandbox's prerequisites and nothing else's.
-  //
+  // What this machine has, which is a different question from how a container is
+  // configured: docker and uv are facts about the host, read-only, and the answer
+  // to "why will nothing start". Folded into 沙盒 once and taken back out — that
+  // pane is about the server and its defaults, and a prerequisite is not a
+  // setting.
+  { key: "host", zh: "环境", icon: MonitorCog },
   // The server *and* what it is told to build, in one pane. These were two
   // sections, and the comment on the second one already said it belonged "under
   // 沙盒服务器, the same subject one level down" — while the rendering put five
@@ -421,12 +423,9 @@ function SettingsPanes({
       />
     ),
     github: <GithubSettings open={open} section={section} />,
+    host: <EnvPane checks={checks.filter((c) => !isCredential(c))} />,
     server: (
       <>
-        {/* Prerequisites first: a server that will not start is usually docker,
-            and the answer is above the thing that failed rather than in another
-            pane. */}
-        <EnvPane checks={checks.filter((c) => !isCredential(c))} />
         <SandboxServerSettings open={open} section={section} rows={rows} checks={checks} onSaved={onSaved} />
         {/* What a container is built with, for a project that says nothing. A
             project's own 沙盒 pane overrides these. */}
@@ -508,21 +507,29 @@ function Preferences() {
   return (
     <>
       <Head title="偏好" note="只在这台机器上，不跟着项目走" />
-      <FieldGroup>
-        {/* A toggle group has nothing a `<label>` can point at, so the
-            row names itself: `Field` is already `role="group"`, and
-            this is the one attribute that gives that group a name. */}
-        <Field aria-labelledby="pref-theme">
-          <FieldTitle id="pref-theme">主题</FieldTitle>
-          <FieldContent>
-            <ThemeChoice />
-          </FieldContent>
-        </Field>
-      </FieldGroup>
-      {/* Notifications were a nav item of their own for one knob and a browser
-          permission — and both are exactly what this pane is: local to this
-          machine, not carried by the project. */}
-      <Knobs section="notify" />
+      {/* Two subjects in one pane, so each says which it is. A `<fieldset>` with a
+          `<legend>` rather than a heading over a div: the grouping is the
+          accessible fact, and a reader hears 通知 with the switch inside it rather
+          than a bare 开. Notifications were their own nav item for one knob and a
+          browser permission — both of which are exactly what this pane is. */}
+      <FieldSet className="mb-6">
+        <FieldLegend>外观</FieldLegend>
+        <FieldGroup>
+          {/* A toggle group has nothing a `<label>` can point at, so the
+              row names itself: `Field` is already `role="group"`, and
+              this is the one attribute that gives that group a name. */}
+          <Field aria-labelledby="pref-theme">
+            <FieldTitle id="pref-theme">主题</FieldTitle>
+            <FieldContent>
+              <ThemeChoice />
+            </FieldContent>
+          </Field>
+        </FieldGroup>
+      </FieldSet>
+      <FieldSet>
+        <FieldLegend>通知</FieldLegend>
+        <Knobs section="notify" bare />
+      </FieldSet>
     </>
   );
 }
@@ -563,7 +570,7 @@ function SettingsNavigation({
   // the gear in the header, which is where they saw it before they clicked.
   const nags: Partial<Record<Section, boolean>> = {
     cred: needsCredentials(rows),
-    server: needsHostAttention(checks),
+    host: needsHostAttention(checks),
     gates: needsGates(project),
   };
 
