@@ -13,7 +13,7 @@ import {
 } from "../../src/mech/sandbox/sandbox.ts";
 import { CODEX_HOME } from "../../src/mech/sandbox/auth.ts";
 import { setDefaultImage } from "../../src/mech/sandbox/images.ts";
-import { cacheProjectSkills, cacheReportedSkills, projectSkills } from "../../src/mech/skills.ts";
+import { cacheProjectSkills, projectSkills } from "../../src/mech/skills.ts";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { httpsRemote } from "../../src/mech/git/checkout.ts";
@@ -249,41 +249,6 @@ test("the inventory survives the trip back out of the container", () => {
   // nameable forever.
   expect(cacheProjectSkills(db, 1, "yes\n")).toEqual([]);
   expect(projectSkills(db, 1)).toEqual([]);
-});
-
-test("a rescan writes each container's inventory against the project it works on", () => {
-  // The regression: `relinkSkills` ran `SKILL_SYNC` on every live container and
-  // threw the stdout away, so 重新扫描 refreshed this machine's skills and left a
-  // repository's at whatever some group last happened to say. A skill deleted
-  // from a checkout stayed on the settings page, and the one button that claims
-  // to correct that was the one thing that could not.
-  const db = open(":memory:");
-  fx.project.insert(db, { name: "one", repo_path: "o/one" });
-  fx.project.insert(db, { name: "two", repo_path: "o/two" });
-  fx.grp.insert(db, { project_id: 1, name: "g1", sandbox_id: "sb-1" });
-  fx.grp.insert(db, { project_id: 2, name: "g2", sandbox_id: "sb-2" });
-
-  const line = (n: string) =>
-    `${SKILL_LINE} .claude/skills/${n}/SKILL.md ${Buffer.from("---\n---\n").toString("base64")}`;
-  cacheReportedSkills(
-    db,
-    new Map([
-      ["sb-1", `${line("deploy")}\nyes\n`],
-      ["sb-2", `${line("lint")}\nyes\n`],
-      // A project container and the utility one are live too and answer the same
-      // exec. Neither has a checkout, so neither may write an empty inventory
-      // over a group's — which is what would silently empty the list.
-      ["sb-util", "yes\n"],
-    ]),
-  );
-
-  expect(projectSkills(db, 1).map((s) => s.name)).toEqual(["deploy"]);
-  expect(projectSkills(db, 2).map((s) => s.name)).toEqual(["lint"]);
-
-  // And the point of the fix: the next rescan is what removes it.
-  cacheReportedSkills(db, new Map([["sb-1", "yes\n"]]));
-  expect(projectSkills(db, 1)).toEqual([]);
-  expect(projectSkills(db, 2).map((s) => s.name)).toEqual(["lint"]);
 });
 
 test("a group's container is only ever built from an image we published or you built", () => {

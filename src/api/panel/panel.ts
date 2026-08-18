@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { relinkSkills } from "../../mech/sandbox/sandbox.ts";
+import { listProjectSkills, relinkSkills } from "../../mech/sandbox/sandbox.ts";
 import {
   listSkills,
   projectSkills,
@@ -9,7 +9,7 @@ import {
   restageSkills,
   setSkillOff,
   skillsOff,
-  cacheReportedSkills,
+  cacheProjectSkills,
 } from "../../mech/skills.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
@@ -125,8 +125,18 @@ export const getSkills = (async (ctx, _req, _params, { project: id }) => {
  * changes here is visible to every running container as soon as the next turn's CLI
  * process starts. No sandbox is rebuilt for a tick box.
  */
-/** No name is a rescan; a name plus `on` is a tick box. */
-export const SkillBody = z.object({ name: z.string().max(200).optional(), on: z.boolean().optional() });
+/**
+ * No name is a rescan; a name plus `on` is a tick box.
+ *
+ * `project` only matters to a rescan, and only because a repository's own skills
+ * are the half of the list this process cannot see for itself — it names whose
+ * containers to ask.
+ */
+export const SkillBody = z.object({
+  name: z.string().max(200).optional(),
+  on: z.boolean().optional(),
+  project: z.number().int().positive().optional(),
+});
 
 export const postSkill = (async (ctx, _req, _p, b) => {
   // No name is a rescan: the boss installed or removed a skill outside this
@@ -139,12 +149,20 @@ export const postSkill = (async (ctx, _req, _p, b) => {
   // container, because a standing agent's container has no checkout and so no
   // other moment that would ever redo them.
   //
-  // The same pass is where a repository's own skills come back. `restageSkills`
-  // above only ever sees this machine's, so before this the rescan answered for
-  // half the list and left the other half at whatever a container last said —
-  // a skill deleted from the checkout stayed on the page, and pressing the
-  // button that exists to correct that did nothing to it.
-  cacheReportedSkills(ctx.db, await relinkSkills());
+  await relinkSkills();
+  // And the other half. `restageSkills` above only ever sees this machine's, so
+  // until this the rescan answered for those and left a repository's at whatever
+  // some group last said on a checkout probe — a skill deleted from the checkout
+  // stayed listed, and the button that exists to correct exactly that was the
+  // one thing that could not.
+  //
+  // Silence is not an empty repository: `cacheProjectSkills` writes an empty
+  // list as a real answer, so a project with no container to ask must leave the
+  // cache alone rather than clear it.
+  if (b.project) {
+    const listed = await listProjectSkills(ctx, b.project);
+    if (listed !== null) cacheProjectSkills(ctx.db, b.project, listed);
+  }
   return json({ staged: staged.length, failed });
 }) satisfies Handler<z.infer<typeof SkillBody>>;
 

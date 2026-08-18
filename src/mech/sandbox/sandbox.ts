@@ -1113,37 +1113,45 @@ async function provision(sb: Sandbox): Promise<void> {
   await sb.commands.run(SKILL_SYNC).catch(() => {});
 }
 
+/** Re-link every live container's skills. What a tick of the skills list does. */
+export async function relinkSkills(): Promise<void> {
+  await pMap(live.values(), (sb) => sb.commands.run(SKILL_SYNC).catch(() => {}), { concurrency: EXEC_FANOUT });
+}
+
 /**
- * Re-link every live container's skills, and hand back what each checkout ships.
+ * Ask a project's own containers what its checkout ships, and build nothing.
  *
- * What a tick of the skills list does — and what 重新扫描 does, which is why the
- * output is no longer thrown away. This process can enumerate the boss's own
- * skills for itself, but a repository's own live inside a container behind
- * `owner/name`, so `projectSkills` serves them from a cache only `SKILL_SYNC`
- * can write. The rescan was already paying for that exec on every live
- * container and discarding its stdout, so a skill deleted from the repository
- * stayed on the settings page until some group happened to take its next turn,
- * with the one button that claims to fix exactly that having no effect on it.
+ * `projectSkills` serves a repository's skills from a cache only `SKILL_SYNC`
+ * can write, because `repo_path` is `owner/name` and the checkout exists only
+ * inside a container. That cache was refreshed on a turn's checkout probe and
+ * nowhere else, so 重新扫描 — the one control whose entire purpose is "something
+ * changed outside this process" — could not touch half of what it listed.
  *
- * `test -d`: `cacheProjectSkills` writes the empty list as a real answer —
- * that is how a removed skill stops being listed — so a container that has not
- * cloned yet must not be allowed to answer for a repository. Keyed by sandbox
- * id rather than resolved here because the mapping to a project is a database
- * question and this module owns containers.
+ * `reconnect`, not `ensureSandbox`: a settings click must never cost a
+ * `sandbox.create`, measured at ~34s p50. A container that has gone away
+ * answers null and the next group is tried; the first one with a checkout wins,
+ * so the usual cost after a restart is one reconnect. Serial for the same
+ * reason — the answer is the same from any of them, and a fan-out would pay for
+ * every container to agree.
+ *
+ * Null means nobody could answer, which is *not* the same as "this repository
+ * ships none" — `cacheProjectSkills` writes an empty list as a real answer, so
+ * the caller must not turn silence into one.
  */
-export async function relinkSkills(): Promise<Map<string, string>> {
-  const listed = new Map<string, string>();
-  await pMap(
-    [...live.entries()],
-    async ([id, sb]) => {
-      const out = stdoutText(
-        await sb.commands.run(`${SKILL_SYNC}; test -d ${WORK}/.git && echo yes`).catch(() => null),
-      );
-      if (out.includes("yes")) listed.set(id, out);
-    },
-    { concurrency: EXEC_FANOUT },
-  );
-  return listed;
+export async function listProjectSkills(ctx: Ctx, projectId: number): Promise<string | null> {
+  const groups = ctx.db
+    .query<{ id: number; sandbox_id: string }, [number]>(
+      "SELECT id, sandbox_id FROM grp WHERE project_id = ? AND sandbox_id IS NOT NULL ORDER BY id DESC",
+    )
+    .all(projectId);
+  for (const g of groups) {
+    const sb = await reconnect(ctx, { grp: g.id }, g.sandbox_id);
+    if (!sb) continue;
+    const probe = await sb.commands.run(`${SKILL_SYNC}; test -d ${WORK}/.git && echo yes`).catch(() => null);
+    const out = stdoutText(probe);
+    if (out.includes("yes")) return out;
+  }
+  return null;
 }
 
 /**

@@ -8,7 +8,7 @@ import { makeApp } from "../../src/composition/api.ts";
 import { askKind, brief } from "../../src/api/orch/escalation.ts";
 import { landGroup } from "../../src/api/panel/group.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
-import { listSkills } from "../../src/mech/skills.ts";
+import { cacheProjectSkills, listSkills, projectSkills } from "../../src/mech/skills.ts";
 import { landed } from "../../src/mech/flow/mergequeue.ts";
 import { sweepApproved } from "../../src/mech/flow/start.ts";
 import * as fx from "../support/factories.ts";
@@ -1163,6 +1163,22 @@ test("the blackboard is readable: notes by project, by group, and by kind", asyn
 
   const kind = NotesResponseSchema.parse(await (await get(app, "/api/v1/notes?project=1&kind=lesson")).json());
   expect(kind.notes.length).toBe(1);
+});
+
+test("a rescan that reaches no container leaves the repository's own skills alone", async () => {
+  // 重新扫描 refreshes both halves of the list: this machine's directories, which
+  // it can read, and the repository's own, which live in a container and reach
+  // this process only as text `SKILL_SYNC` printed. The second half is a cache,
+  // and `cacheProjectSkills` writes an empty inventory as a real answer — that
+  // is how a deleted skill stops being listed. So a rescan that could not ask
+  // anybody must not be allowed to speak for the repository: the group here has
+  // no `sandbox_id`, nothing answers, and the previous inventory has to survive.
+  const h = harness();
+  cacheProjectSkills(h.db, 1, `ORCHSKILL .claude/skills/deploy/SKILL.md ${btoa("---\n---\n")}`);
+  expect(projectSkills(h.db, 1).map((s) => s.name)).toEqual(["deploy"]);
+
+  expect((await post(h.app, "/api/v1/skills", { project: 1 })).status).toBe(200);
+  expect(projectSkills(h.db, 1).map((s) => s.name)).toEqual(["deploy"]);
 });
 
 test("skills are found through symlinks, and a block-scalar description is read", () => {

@@ -53,9 +53,12 @@ export function Skills({ projectId }: { projectId: number | null }) {
     setBusy(null);
   };
 
+  // The project goes with it: this page is machine-scope, but half of what it
+  // lists ships with the repository a project's containers hold, and the server
+  // has to be told whose to ask.
   const rescan = async () => {
     setBusy("*");
-    await mutate(api.skills.$post({ json: {} }));
+    await mutate(api.skills.$post({ json: projectId ? { project: projectId } : {} }));
     await load();
     setBusy(null);
   };
