@@ -356,31 +356,84 @@ function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
  * tick would be a worse version of the grepping it replaces. Twelve calls a tick
  * on the cheapest tier catches up over a few minutes and then costs nothing.
  */
-const indexedAt = new Map<number, string>();
+/**
+ * The indexer's memory, per database rather than per process.
+ *
+ * These were three module-level containers keyed by project id alone, which
+ * `AGENTS.md` invariant 11 forbids and which two tests proved: a second database
+ * with a project id 1 inherited the first one's verdict, so a pass could be
+ * skipped on the strength of a failure that happened somewhere else. One process
+ * with one database never noticed, which is why it survived.
+ *
+ * A `WeakMap` because the owner is the database: when it goes, so does this, with
+ * no sweep to write and nothing to forget to call.
+ */
+interface IndexMemory {
+  /** Content stamp of the last pass that finished clean, so an unchanged tree is free. */
+  at: Map<number, string>;
+  /** Projects already told about a container that will not open. */
+  warned: Set<number>;
+  /** Projects whose model answered nothing, against the credential stamp at the time. */
+  down: Map<number, number>;
+}
 
-/** Projects already warned about index or model failure; said once, not per tick. */
-const indexWarned = new Set<number>();
-const indexModelDown = new Set<number>();
+const memories = new WeakMap<DB, IndexMemory>();
+
+function memory(db: DB): IndexMemory {
+  const found = memories.get(db);
+  if (found) return found;
+  const fresh: IndexMemory = { at: new Map(), warned: new Set(), down: new Map() };
+  memories.set(db, fresh);
+  return fresh;
+}
+
+/** When the runtimes' credentials last changed. Rule 17b reads the same row. */
+const authStamp = (db: DB): number =>
+  db.query<{ at: number | null }, []>("SELECT max(updated_at) at FROM runtime_auth").get()?.at ?? 0;
+
+/**
+ * Whether a pass would be spending calls that cannot be answered.
+ *
+ * Exported so the skip is testable: "the flag now stops the work" was the whole
+ * of the fix, and the previous version of that claim — a flag that gated only the
+ * warning — held for months because nothing asserted it.
+ */
+export function indexPaused(db: DB, projectId: number): boolean {
+  return memory(db).down.get(projectId) === authStamp(db);
+}
+
+/**
+ * Which projects a pass should enter, which is the whole of the decision.
+ *
+ * Separate from the loop because it is the testable half: a project with no
+ * remote has nothing to mirror, and one whose model answered nothing has nothing
+ * to ask — and the second of those used to be decided *after* a container
+ * checkout had already been paid for.
+ */
+export function indexTargets(db: DB): IndexProject[] {
+  return db
+    .query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project")
+    .all()
+    .flatMap((p) => (p.remote && !indexPaused(db, p.id) ? [{ id: p.id, remote: p.remote }] : []));
+}
 
 async function refreshIndex(ctx: Ctx): Promise<void> {
   const askIn = ctx.askIn;
   if (!askIn) return;
-  const projects = ctx.db.query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project").all();
-  for (const project of projects) {
-    if (project.remote) await refreshProjectIndex(ctx, { id: project.id, remote: project.remote }, askIn);
-  }
+  for (const project of indexTargets(ctx.db)) await refreshProjectIndex(ctx, project, askIn);
 }
 
 type AskIn = NonNullable<Ctx["askIn"]>;
-type IndexProject = { id: number; remote: string };
+/** A project a pass can actually enter: it has somewhere to mirror from. */
+export type IndexProject = { id: number; remote: string };
 
 async function refreshProjectIndex(ctx: Ctx, project: IndexProject, askIn: AskIn): Promise<void> {
   const base = await baseRefFor(ctx, project.id);
   const heads = await indexHeads(ctx, project, base);
   if (!heads) return;
-  indexWarned.delete(project.id);
+  memory(ctx.db).warned.delete(project.id);
   const at = indexStamp(heads);
-  if (at && indexedAt.get(project.id) === at) return;
+  if (at && memory(ctx.db).at.get(project.id) === at) return;
   const result = await buildProjectIndex(ctx, project.id, heads, askIn);
   recordIndexResult(ctx, project.id, at, result);
 }
@@ -402,8 +455,9 @@ async function indexHeads(ctx: Ctx, project: IndexProject, base: string): Promis
 }
 
 function warnIndexOnce(ctx: Ctx, projectId: number, error: unknown): void {
-  if (indexWarned.has(projectId)) return;
-  indexWarned.add(projectId);
+  const warned = memory(ctx.db).warned;
+  if (warned.has(projectId)) return;
+  warned.add(projectId);
   ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
@@ -443,10 +497,10 @@ export function recordIndexResult(
   at: string,
   result: { calls: number; failed: number; files: number },
 ): void {
-  if (at && result.calls < 12 && result.failed === 0) indexedAt.set(projectId, at);
-  if (result.failed > 0 && result.failed === result.calls) return warnModelDownOnce(ctx, projectId, result.failed);
+  if (at && result.calls < 12 && result.failed === 0) memory(ctx.db).at.set(projectId, at);
+  if (result.failed > 0 && result.failed === result.calls) return warnModelDown(ctx, projectId, result.failed);
   if (!result.calls) return;
-  indexModelDown.delete(projectId);
+  memory(ctx.db).down.delete(projectId);
   ctx.bus.emit({
     author: "librarian",
     kind: "state_change",
@@ -470,9 +524,17 @@ export function chargedProject(db: DB, scope: Scope): number | undefined {
     ?.project_id;
 }
 
-function warnModelDownOnce(ctx: Ctx, projectId: number, failed: number): void {
-  if (indexModelDown.has(projectId)) return;
-  indexModelDown.add(projectId);
+/**
+ * Said once per credential state, and it stops the passes as well as the noise.
+ *
+ * Once *per state* rather than once ever: if the boss signs the index runtime in
+ * and it still fails, that is news and not a repeat.
+ */
+function warnModelDown(ctx: Ctx, projectId: number, failed: number): void {
+  const stamp = authStamp(ctx.db);
+  const down = memory(ctx.db).down;
+  if (down.get(projectId) === stamp) return;
+  down.set(projectId, stamp);
   ctx.bus.emit({
     author: "librarian",
     kind: "escalation",

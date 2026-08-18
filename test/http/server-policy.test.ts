@@ -4,6 +4,8 @@ import {
   chargedProject,
   heartbeat,
   recordIndexResult,
+  indexPaused,
+  indexTargets,
   reportRejection,
 } from "../../src/composition/server.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -190,4 +192,51 @@ test("a rejection is still reported when the record itself is what failed", () =
   ctx.db.close();
 
   expect(() => reportRejection(ctx, new Error("original"), "")).not.toThrow();
+});
+
+/**
+ * A model that cannot answer stops being asked, until the credentials move.
+ *
+ * `indexModelDown` was a `Set` that gated the *warning* and nothing else, so a
+ * project whose index runtime had no credential ran the pass again every tick.
+ * Measured on one machine before this: 2,835 calls in a day, every one an error
+ * at 21s each — sixteen hours of wall clock, plus a container checkout in front
+ * of each pass, against a CLI that could not authenticate. A stamp that moves is
+ * the only evidence the thing which failed might now work; nothing about the
+ * repository can make an unauthenticated CLI authenticate.
+ */
+test("an index model that answers nothing is not asked again until credentials change", () => {
+  const ctx = testContext();
+  const p = project(ctx.db);
+  // A remote, because a project without one is skipped for a different reason and
+  // the assertion below would hold without proving anything.
+  ctx.db.run("UPDATE project SET remote = ? WHERE id = ?", ["git@example.com:o/r.git", p]);
+  expect(indexPaused(ctx.db, p)).toBe(false);
+  // Non-empty first, or the assertion below would hold for the wrong reason.
+  expect(indexTargets(ctx.db).map((t) => t.id)).toEqual([p]);
+
+  recordIndexResult(ctx, p, "sha-1", { calls: 12, failed: 12, files: 30 });
+  expect(indexPaused(ctx.db, p)).toBe(true);
+  // And the pass is not entered — the flag gating only the warning is the bug.
+  expect(indexTargets(ctx.db).map((t) => t.id)).toEqual([]);
+
+  // Signing a runtime in moves the stamp, so it is worth one more attempt — and
+  // a failure after that is news rather than a repeat, so it is said again.
+  ctx.db.run("INSERT INTO runtime_auth (runtime, mode, secret, updated_at) VALUES (?, ?, ?, ?)", [
+    "codex",
+    "api_key",
+    "s",
+    Date.now(),
+  ]);
+  expect(indexPaused(ctx.db, p)).toBe(false);
+
+  recordIndexResult(ctx, p, "sha-2", { calls: 12, failed: 12, files: 30 });
+  expect(indexPaused(ctx.db, p)).toBe(true);
+  expect(ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE severity = 'blocker'").get()!.c).toBe(
+    2,
+  );
+
+  // A pass that worked clears it outright.
+  recordIndexResult(ctx, p, "sha-3", { calls: 4, failed: 0, files: 9 });
+  expect(indexPaused(ctx.db, p)).toBe(false);
 });

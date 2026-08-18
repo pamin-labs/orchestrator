@@ -93,6 +93,7 @@ const stage = (name: string, over: Partial<Report["stages"][number]> = {}) => ({
   p50: 1_000,
   p95: 1_000,
   errors: 0,
+  reason: null,
   ...over,
 });
 
@@ -274,7 +275,7 @@ test("the stage list carries both percentiles, formatted", async () => {
 test("a failed stage is counted and marked, not dropped", async () => {
   serve(
     report({
-      stages: [stage("stage.provider", { count: 3, errors: 2, totalMs: 4_800, p95: 4_800 })],
+      stages: [stage("stage.provider", { count: 3, errors: 2, reason: null, totalMs: 4_800, p95: 4_800 })],
       traces: [trace("a".repeat(32), { name: "trace.one" })],
     }),
   );

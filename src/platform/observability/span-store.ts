@@ -26,6 +26,8 @@ export interface SpanRow {
   startedAt: number;
   durationMs: number;
   status: "unset" | "ok" | "error";
+  /** Why it failed, when it did. `null` on success and on an unset status. */
+  statusMessage: string | null;
   attributes: Record<string, unknown>;
 }
 
@@ -92,6 +94,9 @@ function toSpanRow(span: ReadableSpan): SpanRow {
     startedAt: Math.round(hrTimeToMilliseconds(span.startTime)),
     durationMs: hrTimeToMilliseconds(span.duration),
     status: spanStatusName(span.status.code),
+    // Only when it failed: OTel allows a message on any status, and one on a
+    // successful span is a note nobody asked this table to keep.
+    statusMessage: span.status.code === SpanStatusCode.ERROR ? (span.status.message ?? null) : null,
     attributes: { ...span.attributes },
   };
 }
@@ -106,8 +111,8 @@ function toSpanRow(span: ReadableSpan): SpanRow {
 const INSERT = `
   INSERT OR IGNORE INTO span
     (trace_id, span_id, parent_span_id, name, kind, started_at, duration_ms, status,
-     attributes_json, project_id, grp_id, slice_id)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+     status_message, attributes_json, project_id, grp_id, slice_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 type InsertParams = [
   string,
@@ -118,6 +123,7 @@ type InsertParams = [
   number,
   number,
   string,
+  string | null,
   string,
   number | null,
   number | null,
@@ -134,6 +140,7 @@ function params(row: SpanRow): InsertParams {
     row.startedAt,
     row.durationMs,
     row.status,
+    row.statusMessage,
     JSON.stringify(row.attributes),
     scopeId(row.attributes, "project.id"),
     scopeId(row.attributes, "grp.id"),
@@ -166,6 +173,7 @@ interface SpanRecord {
   started_at: number;
   duration_ms: number;
   status: string;
+  status_message: string | null;
   attributes_json: string;
   project_id: number | null;
   grp_id: number | null;
@@ -181,6 +189,7 @@ function decode(row: SpanRecord): StoredSpan {
     kind: row.kind,
     startedAt: row.started_at,
     durationMs: row.duration_ms,
+    statusMessage: row.status_message,
     status: row.status === "ok" || row.status === "error" ? row.status : "unset",
     // Stored JSON is data on the way back in, so it is parsed against a schema
     // rather than asserted into shape — the same rule the write path follows.
@@ -287,6 +296,15 @@ export interface StageStat {
   p50: number;
   p95: number;
   errors: number;
+  /**
+   * Why the most recent failure failed, when there was one.
+   *
+   * A count answers "is this broken" and never "what do I do about it". The row
+   * that prompted this said `index.ask` had failed 2,835 times, and finding out
+   * that the reason was a missing credential took a query against the database —
+   * which is the trip this panel exists to save.
+   */
+  reason: string | null;
 }
 
 /**
@@ -302,15 +320,31 @@ export function stageStats(db: DB, scope: ReadScope, window: TimeWindow = recent
   const { where, params } = scopeSql(scope);
   // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds. `percentiles("duration_ms")` is a module template over a column name written here as a literal.
   return db
-    .query<{ name: string; count: number; total_ms: number; p50: number; p95: number; errors: number }, number[]>(
+    .query<
+      {
+        name: string;
+        count: number;
+        total_ms: number;
+        p50: number;
+        p95: number;
+        errors: number;
+        reason: string | null;
+      },
+      number[]
+    >(
+      // The reason is the *latest* failure rather than the commonest: a stage
+      // that has started working again should stop explaining how it used to
+      // break, and the newest message is the one a reader can still act on.
       `WITH ranked AS (
-         SELECT name, duration_ms, status,
+         SELECT name, duration_ms, status, started_at, status_message,
                 ROW_NUMBER() OVER (PARTITION BY name ORDER BY duration_ms) AS rn,
-                COUNT(*)     OVER (PARTITION BY name)                      AS n
+                COUNT(*)     OVER (PARTITION BY name)                      AS n,
+                ROW_NUMBER() OVER (PARTITION BY name, status = 'error' ORDER BY started_at DESC, span_id DESC) AS recent
          FROM span WHERE started_at >= ? AND started_at < ? AND ${where}
        )
        SELECT name, MAX(n) AS count, SUM(duration_ms) AS total_ms, ${percentiles("duration_ms")},
-              SUM(status = 'error') AS errors
+              SUM(status = 'error') AS errors,
+              MAX(CASE WHEN status = 'error' AND recent = 1 THEN status_message END) AS reason
        FROM ranked GROUP BY name ORDER BY total_ms DESC`,
     )
     .all(bounds.from, bounds.to, ...params)
@@ -321,6 +355,7 @@ export function stageStats(db: DB, scope: ReadScope, window: TimeWindow = recent
       p50: row.p50,
       p95: row.p95,
       errors: row.errors,
+      reason: row.reason,
     }));
 }
 

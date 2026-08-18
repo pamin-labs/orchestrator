@@ -9,6 +9,7 @@ import {
   SqliteSpanExporter,
   trimSpans,
   writeSpans,
+  stageStats,
   type SpanRow,
 } from "../../src/platform/observability/span-store.ts";
 import { endSpan, installTracerProvider, startTrace } from "../../src/platform/observability/traces.ts";
@@ -142,6 +143,7 @@ function insert(db: DB, spanId: string, startedAt: number): void {
       startedAt,
       durationMs: 1,
       status: "ok",
+      statusMessage: null,
       attributes: {},
     },
   ]);
@@ -188,6 +190,7 @@ test("re-ingesting the same span is a no-op rather than a duplicate", () => {
     startedAt: 1_800_000_000_000,
     durationMs: 12.5,
     status: "ok",
+    statusMessage: null,
     attributes: { "job.kind": "gate" },
   };
 
@@ -246,4 +249,52 @@ test("the heartbeat is what runs retention, not the write path", async () => {
   });
 
   expect(remaining(db)).not.toContain("0000000000000009");
+});
+
+/**
+ * Why a stage failed, which the table had nowhere to keep.
+ *
+ * The count answered "is this broken" and nothing answered "what do I do". One
+ * real case: `index.ask` had failed 2,835 times in a day at 21s each, and the
+ * reason — no credential for the index runtime — took a query against the
+ * database to find. It is the newest failure rather than the commonest, because a
+ * stage that recovered should stop explaining how it used to break.
+ */
+test("a stage carries its newest failure's reason, and a healthy one carries none", () => {
+  const db = openMemory();
+  const t0 = Date.now() - 60_000;
+  const fail = (spanId: string, at: number, message: string) =>
+    writeSpans(db, [
+      {
+        traceId: spanId.padStart(32, "0"),
+        spanId,
+        parentSpanId: null,
+        name: "index.ask",
+        kind: "internal",
+        startedAt: at,
+        durationMs: 21_000,
+        status: "error",
+        statusMessage: message,
+        attributes: {},
+      },
+    ]);
+  fail("1".repeat(16), t0, "exit 127");
+  fail("2".repeat(16), t0 + 1_000, "no credential for codex");
+  writeSpans(db, [
+    {
+      traceId: "9".repeat(32),
+      spanId: "9".repeat(16),
+      parentSpanId: null,
+      name: "git.ls_tree",
+      kind: "internal",
+      startedAt: t0,
+      durationMs: 10,
+      status: "ok",
+      statusMessage: null,
+      attributes: {},
+    },
+  ]);
+  const byName = new Map(stageStats(db, { kind: "system" }).map((s) => [s.name, s]));
+  expect(byName.get("index.ask")).toMatchObject({ errors: 2, reason: "no credential for codex" });
+  expect(byName.get("git.ls_tree")).toMatchObject({ errors: 0, reason: null });
 });

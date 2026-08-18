@@ -44,6 +44,7 @@ const stage = (over: Partial<Stage> & { name: string }): Stage => ({
   p50: 100,
   p95: 100,
   errors: 0,
+  reason: null,
   ...over,
 });
 
@@ -362,9 +363,9 @@ test("a prefix nobody has named becomes its own group, not a dumping ground", ()
 
 test("groups carry their own total, so a shut one still answers the question", () => {
   const rows = [
-    ...Array.from({ length: 24 }, (_, i) => ({ name: `watchdog.r${i}`, totalMs: 50, errors: 0 })),
-    { name: "sandbox.create", totalMs: 9_000, errors: 1 },
-    { name: "GET /api/v1/state", totalMs: 12, errors: 0 },
+    ...Array.from({ length: 24 }, (_, i) => ({ name: `watchdog.r${i}`, totalMs: 50, errors: 0, reason: null })),
+    { name: "sandbox.create", totalMs: 9_000, errors: 1, reason: null },
+    { name: "GET /api/v1/state", totalMs: 12, errors: 0, reason: null },
   ];
   const groups = groupByKind(rows);
 

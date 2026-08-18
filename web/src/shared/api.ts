@@ -102,6 +102,10 @@ const StageStatSchema = z.object({
   p50: z.number(),
   p95: z.number(),
   errors: z.number(),
+  // Nullable rather than optional: `exactOptionalPropertyTypes` is on, and a
+  // stage that has never failed carries an explicit "no reason" rather than a
+  // missing key the panel would have to distinguish from an old server.
+  reason: z.string().nullable(),
 });
 
 export const TelemetryReportSchema: z.ZodType<TelemetryReport> = z.object({

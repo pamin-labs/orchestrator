@@ -29,6 +29,7 @@ function span(over: Partial<SpanRow> & { attributes: Record<string, unknown> }):
     startedAt: NOW - 1_000,
     durationMs: 10,
     status: "ok",
+    statusMessage: null,
     ...over,
   };
 }
@@ -169,6 +170,7 @@ test("asking for a trace returns its spans, parents and all", async () => {
       parentSpanId: "1".repeat(16),
       name: "turn.provider",
       status: "error",
+      statusMessage: null,
       attributes: { "grp.id": 3 },
     }),
   ]);

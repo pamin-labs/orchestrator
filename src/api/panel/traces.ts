@@ -60,7 +60,12 @@ const OtlpSpan = z.object({
   startTimeUnixNano: UnixNano,
   endTimeUnixNano: UnixNano,
   attributes: z.array(KeyValue).optional(),
-  status: z.object({ code: z.number().int().min(0).max(2).optional() }).optional(),
+  // `message` is part of OTLP's `Status` and was not accepted here, so a
+  // collector that sent the reason had it stripped at the door. Bounded, because
+  // this is a trust boundary and the field is free text from another process.
+  status: z
+    .object({ code: z.number().int().min(0).max(2).optional(), message: z.string().max(2_000).optional() })
+    .optional(),
 });
 
 /**
@@ -118,6 +123,10 @@ function toRow(span: OtlpSpanValue): SpanRow {
     startedAt: Math.round(started),
     durationMs: Math.max(0, millis(span.endTimeUnixNano) - started),
     status: span.status?.code === 1 ? "ok" : span.status?.code === 2 ? "error" : "unset",
+    // OTLP carries the reason beside the code and it was being dropped on the
+    // floor here as well as in the table. Kept only for a failure, like the
+    // exporter does.
+    statusMessage: span.status?.code === 2 ? (span.status.message ?? null) : null,
     attributes: attributes(span.attributes),
   };
 }

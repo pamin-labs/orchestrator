@@ -44,6 +44,7 @@ function span(over: Partial<SpanRow> & { attributes: Record<string, unknown> }):
     startedAt: NOW - 60_000,
     durationMs: 10,
     status: "ok",
+    statusMessage: null,
     ...over,
   };
 }

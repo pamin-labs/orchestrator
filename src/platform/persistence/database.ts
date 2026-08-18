@@ -585,6 +585,14 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   `
   ALTER TABLE grp ADD COLUMN paused_from TEXT;
   `,
+  // 042 — why a span failed. `setStatus` takes a message and every error path in
+  // this repository passes one, and the table had nowhere to put it: the panel
+  // could say `index.ask` failed 2,835 times and never that the reason was a
+  // missing credential. Answering that took a query against the database, which
+  // is the thing 系统耗时 exists to make unnecessary.
+  `
+  ALTER TABLE span ADD COLUMN status_message TEXT;
+  `,
 ];
 
 export type DB = Database;

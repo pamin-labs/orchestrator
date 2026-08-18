@@ -462,7 +462,13 @@ function StageTable({
                             <span className="whitespace-nowrap font-mono text-[0.75rem] text-ink">{stage.name}</span>
                           )}
                           {stage.errors > 0 && (
-                            <span className="shrink-0 font-mono text-[0.625rem] text-bad">{stage.errors} 失败</span>
+                            /* The count says a stage is broken; the reason is the
+                               only half a reader can act on. Under a `Tip`
+                               because it is the newest failure's own words and
+                               can be long — the row stays a row. */
+                            <Tip label={stage.reason ?? "没有记下原因"}>
+                              <span className="shrink-0 font-mono text-[0.625rem] text-bad">{stage.errors} 失败</span>
+                            </Tip>
                           )}
                         </div>
                         <div className={cn(NUM, "text-ink")}>{duration(stage.p50)}</div>
