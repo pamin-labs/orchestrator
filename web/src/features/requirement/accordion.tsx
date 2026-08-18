@@ -32,6 +32,39 @@ export function Accordion({
   );
 }
 
+/**
+ * The same rows, any number of them open.
+ *
+ * A second component rather than a `type` prop, because Radix changes the shape
+ * of `value` with it — one string against an array — and a wrapper that took
+ * both would be a union every caller had to narrow. The `Item`, `Trigger` and
+ * `Body` below are shared, so the two differ only in how many can be open.
+ *
+ * Which to use is a question about the content, not a preference. One-at-a-time
+ * is right when the rows are alternatives and reading one means not reading the
+ * others: a requirement's slices, an escalation's questions. Many-at-a-time is
+ * right when the rows are *comparable* — 巡检规则 against 代码索引 — where the
+ * whole reason to open the second is to see it beside the first.
+ */
+export function MultiAccordion({
+  value,
+  onValueChange,
+  className,
+  children,
+}: {
+  /** `[]` = everything shut. */
+  value: string[];
+  onValueChange: (v: string[]) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <A.Root type="multiple" value={value} onValueChange={onValueChange} className={className}>
+      {children}
+    </A.Root>
+  );
+}
+
 export function AccordionItem({
   value,
   className,

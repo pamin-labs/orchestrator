@@ -152,9 +152,8 @@ const flameLabels = (view: { container: HTMLElement }) =>
  * Open one kind-group in the stage tree.
  *
  * The rows are shut by default and grouped by span-name prefix, so a stage is
- * not in the DOM until its group is. The accordion is single-open on purpose —
- * "the reader opens the one group that looks expensive" — so a test wanting two
- * stages at once has to want them from the same group.
+ * not in the DOM until its group is. Any number may be open at once: these rows
+ * are comparable, and the reason to open a second is to see it beside the first.
  */
 const openGroup = (view: { getByRole: (r: string, o: { name: RegExp }) => HTMLElement }, label: string) =>
   fireEvent.click(view.getByRole("button", { name: new RegExp(label) }));
@@ -168,6 +167,71 @@ test("a scope with nothing recorded says so and draws neither chart", async () =
   await waitFor(() => expect(view.getAllByText("这个需求还没跑出带追踪的活。")).toHaveLength(1));
   expect(frames(view)).toHaveLength(0);
   expect(view.queryAllByRole("button")).toHaveLength(0);
+});
+
+test("two kinds can be open at once, because the question is which is worse", async () => {
+  serve(
+    report({
+      stages: [stage("watchdog.a", { p95: 900 }), stage("index.b", { p95: 800 })],
+      traces: [trace("a".repeat(32), { name: "t" })],
+    }),
+  );
+  const view = show(<Telemetry scope={{ kind: "group", id: 3 }} />);
+  await waitFor(() => expect(view.getAllByText("巡检规则")).toHaveLength(1));
+
+  // Single-open was the original choice and it is wrong for these rows. A
+  // requirement's slices are alternatives — reading one means not reading the
+  // others — but 巡检规则 and 代码索引 are comparable, and the whole reason to
+  // open the second is to see it beside the first. Closing the first to do that
+  // is the one thing the control must not do.
+  openGroup(view, "巡检规则");
+  await waitFor(() => expect(view.getAllByText("watchdog.a")).toHaveLength(1));
+  openGroup(view, "代码索引");
+  await waitFor(() => expect(view.getAllByText("index.b")).toHaveLength(1));
+  expect(view.getAllByText("watchdog.a")).toHaveLength(1);
+});
+
+test("a width change re-lays out the flamegraph instead of rebuilding it", async () => {
+  // A controllable `ResizeObserver`, because happy-dom's does not fire and a
+  // `window.resize` event does not reach one. The first version of this test
+  // dispatched `resize` and passed against the bug it was written for, which is
+  // worse than not having it — so the observer is replaced by one whose
+  // callback this test can call.
+  const observers: { fire: () => void }[] = [];
+  const seen = globalThis.ResizeObserver;
+  class Controllable implements ResizeObserver {
+    constructor(private readonly callback: ResizeObserverCallback) {
+      observers.push({ fire: () => this.callback([], this) });
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = Controllable;
+
+  try {
+    serve(ONE_TRACE);
+    const view = show(<Telemetry scope={{ kind: "group", id: 3 }} />);
+    await waitFor(() => expect(frames(view).length).toBeGreaterThan(0));
+
+    // The node identity is the assertion. Opening 设置 locks body scroll, the
+    // scrollbar goes, the pane gains those pixels back and the observer fires —
+    // and while `width` was a dependency of the effect that *creates* the chart,
+    // that destroyed and rebuilt it, which is 「打开设置页面，前者会闪一下」.
+    // A re-layout keeps the same svg; a rebuild does not.
+    const before = view.container.querySelector("svg.d3-flame-graph");
+    expect(before).not.toBeNull();
+    SIZE.width = 700;
+    // Each observer fires itself, so the callback's second argument is the real
+    // instance. Constructing a fresh one here would register it mid-iteration
+    // and the loop would never end.
+    for (const observer of observers) observer.fire();
+    await waitFor(() => expect(frames(view).length).toBeGreaterThan(0));
+    expect(view.container.querySelector("svg.d3-flame-graph") === before).toBe(true);
+  } finally {
+    SIZE.width = 900;
+    globalThis.ResizeObserver = seen;
+  }
 });
 
 test("the stage list carries both percentiles, formatted", async () => {

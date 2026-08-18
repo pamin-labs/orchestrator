@@ -15,7 +15,7 @@ import { cn } from "../../ui/cn";
 import { Segment, Segments } from "../../ui/segment";
 import { ChevronRight } from "lucide-react";
 import { Tip } from "../../ui/tooltip";
-import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../requirement/accordion";
+import { AccordionBody, AccordionItem, AccordionTrigger, MultiAccordion } from "../requirement/accordion";
 import { Menu, MenuItem } from "../../ui/menu";
 import {
   fillBuckets,
@@ -422,8 +422,12 @@ function StageTable({
   onPick: (names: readonly string[]) => void;
   onExclude: (name: string) => void;
 }) {
-  // Shut by default: the reader opens the group that looks expensive.
-  const [openKind, setOpenKind] = useState("");
+  // Shut by default: the reader opens the group that looks expensive — and then
+  // the next one, which is why this is a set rather than a single value. These
+  // rows are comparable in a way a requirement's slices are not: the question
+  // 巡检规则 raises is "against what", and answering it by closing 巡检规则 is
+  // the one thing the control must not do.
+  const [openKinds, setOpenKinds] = useState<string[]>([]);
   // The stages below the distribution's own largest gap are the absence of an
   // answer rather than an answer, and `ui.md` gives absence a sentence rather
   // than equal billing.
@@ -465,7 +469,7 @@ function StageTable({
           dropped each of them into nothing. Radix owns the expand, the keyboard
           and the ARIA (CLAUDE.md 硬约束 4). */}
       <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: PANE_MAX_PX }}>
-        <Accordion value={openKind} onValueChange={setOpenKind}>
+        <MultiAccordion value={openKinds} onValueChange={setOpenKinds}>
           {groupByKind([...slow, ...(showRest ? fast : [])]).map((group) => (
             <AccordionItem key={group.key} value={group.key}>
               <AccordionTrigger
@@ -594,7 +598,7 @@ function StageTable({
               </AccordionBody>
             </AccordionItem>
           ))}
-        </Accordion>
+        </MultiAccordion>
       </div>
       {fast.length > 0 && (
         // The sentence was already the fold; making it the control is what turns
