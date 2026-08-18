@@ -1,74 +1,86 @@
-# 031 Local embeddings do not fit in this binary, so retrieval stays lexical
+# 031 Retrieval stays lexical, because the embedding cannot rank across languages
 
-**Status**: accepted, as a measured refusal.
-**Date**: 2026-08-19
+**Status**: accepted, as a measured refusal. **Amended 2026-08-19** — the first
+version of this refused on package size and was measuring the wrong thing.
+**Date**: 2026-08-18, amended 2026-08-19
 **Follows**: [020](020-retrieval-is-rented-and-multilingual.md), which reserved
 the seam — *"a field on this schema and a mode passed to `search`"* — and
 [021](021-stop-words-are-rented-and-merged-by-script.md).
 
-The plan was hybrid retrieval: BM25 over `terms()` plus a local embedding, so a
-Chinese question could reach an English symbol or an English summary. The reason
-is real — the corpus is split by language on purpose (`docs/journal/` is Chinese,
-ADRs and standards are English) and BM25 cannot cross that line. Local rather
-than hosted, because a remote embedding would send the boss's own requirements
-and acceptance criteria to a third party, which is a decision the boss makes and
-not a default.
+The gap is real. The corpus is split by language on purpose — journals in Chinese,
+ADRs and standards in English, code identifiers in English — and BM25 cannot cross
+that line. A Chinese question cannot reach an English symbol name. Local rather
+than hosted, because a remote embedding sends the boss's own requirements and
+acceptance criteria to a third party, and that is a decision rather than a default.
 
-Both candidates were installed and run before anything was written. Neither ships.
+## What the first version got wrong
 
-## `@huggingface/transformers` 4.2.0 — 384 MB
+It refused on size: `@huggingface/transformers` installs 384 MB, against a 160 MB
+release-archive budget. That number is real and it is the wrong number. It is the
+size of the **package**, and the package ships every ONNX Runtime variant —
+`onnxruntime-node` at 212 MB and `onnxruntime-web` at 131 MB, of which the web
+build alone carries four `.wasm` files between 13 and 26 MB.
+
+What ships is one runtime and one wasm:
 
 ```
-node_modules            384M
-  onnxruntime-node      212M
-  onnxruntime-web       131M
-  @huggingface           14M
+ort-wasm-simd-threaded.wasm   13 MB
+ort.wasm.mjs                 559 KB
 ```
 
-`scripts/performance-budget.ts` caps a release archive at **160 MB** and the
-compiled binary is 65 MB. The runtime alone is more than twice the whole budget,
-before any model weights. There is no configuration of this that fits.
+**13.5 MB**, and this repository already bundles a `.wasm` exactly this way — the
+tree-sitter grammars go in through `with { type: "file" }` because
+`Parser.init()` cannot find them inside a compiled binary. Size was never the
+obstacle, and *"measure the artefact, not the source"* is a rule this document
+broke while citing it elsewhere.
 
-## `@orama/plugin-embeddings` 3.1.18 — 69 MB, and it does not run
+## What the obstacle actually is
 
-Smaller, pure JavaScript, no native bindings — so on size alone it was the
-plausible one. It does not work as installed:
+Measured on this repository's own shape — five passages, three questions, the
+model's own required `query:` / `passage:` prefixes, `dtype: "q8"`:
 
-- It declares `@tensorflow-models/universal-sentence-encoder` and `@orama/orama`
-  and **no TensorFlow backend**. Loading the model throws
-  `No backend found in registry`.
-- Adding the current `@tensorflow/tfjs-backend-cpu` (a further 11 MB) trades that
-  for `tfjsCore.util.convertBackendValuesAndArrayBuffer is not a function` — the
-  backend is built against a newer core than the plugin's transitive pin.
+```
+Q: 沙盒是怎么启动的           small          base
+   中-沙盒  (right, zh)      0.899          0.882
+   中-迁移  (WRONG, zh)      0.845          0.825
+   英-沙盒  (right, en)      0.764          0.758
 
-Two further facts that would have mattered even if it had run:
+Q: 迁移编号在哪检查
+   中-迁移  (right, zh)      0.921          0.896
+   中-沙盒  (WRONG, zh)      0.856          0.849
+   英-迁移  (right, en)      0.827          0.837
+```
 
-- The weights are fetched from `storage.googleapis.com` and `tfhub.dev` at first
-  use. A retrieval layer that silently needs Google on a cold start is a new
-  external dependency in a product whose whole shape is about where things run.
-- Universal Sentence Encoder is English-first, and the case for embeddings here
-  *is* the Chinese half of the corpus. The measurement that would have decided it
-  could not be taken, because the model could not be loaded.
+**Within a language the ranking is correct. Across languages it is not:** an
+irrelevant passage in the question's own language outranks the relevant passage in
+the other one, on both questions and at both model tiers. `multilingual-e5-base`
+has more than twice the parameters of `small` and the gap does not close — it
+narrows on one question and widens on the other, which is noise rather than a
+trend. Language dominates topic in this family.
+
+That is exactly and only the case the feature existed for. Within-language recall
+is already BM25's, and BM25 does it without 13.5 MB, a 120 MB model download, and
+a vector column.
+
+The prefixes matter and are worth recording: without them every pair lands between
+0.75 and 0.87 and nothing is separable at all. The first run of this measurement
+omitted them and produced a verdict about the model that was really a verdict about
+how it had been called — the same mistake as the package-size number, one layer up.
 
 ## What this means
 
-Retrieval stays lexical: `terms()` over `Intl.Segmenter`, rented stop words,
-BM25. Cross-language recall stays a known gap — a Chinese question still cannot
-reach an English symbol name — and it is a stated gap rather than a silent one.
+Retrieval stays lexical: `terms()` over `Intl.Segmenter`, rented stop words, BM25.
+Cross-language recall stays a known gap, stated rather than silent.
 
-The seam ADR 020 reserved is untouched and costs nothing to keep: Orama's
-`mode: 'hybrid'` and a `vector[N]` schema field are in the installed version.
+The seam ADR 020 reserved is untouched and costs nothing to keep: `mode: 'hybrid'`
+and a `vector[N]` field are in the installed Orama.
 
-**Reopen when** any of these becomes true, and the first one is the likely one:
+**Reopen when a model ranks the relevant other-language passage above an
+irrelevant same-language one** on the table above. That is a runnable check rather
+than a judgement, and the corpus is five sentences. Candidates worth the download
+when one appears: `bge-m3`, which is built for exactly this and is far larger, or a
+hosted embedding — which needs the boss's own endpoint, and is a different
+decision because the corpus would leave the machine.
 
-- an embedding runtime for JavaScript exists that is tens of megabytes rather
-  than hundreds, or `onnxruntime-node` can be installed without the web build;
-- the product stops shipping as a single compiled binary, which is what makes
-  160 MB the number that matters;
-- the boss asks for hosted embeddings *explicitly*, which makes the corpus
-  leaving this machine a decision instead of a default. The seam is already
-  designed for it: `cfg.embedding: { mode, endpoint }` beside `cfg.indexModel`.
-
-Not measured and deliberately not guessed: whether a hosted embedding would
-actually fix cross-language recall on this corpus. That test needs the endpoint
-the boss would choose.
+Not measured and deliberately not guessed: whether a hosted embedding does better
+on this corpus. That test needs the endpoint the boss would choose.
