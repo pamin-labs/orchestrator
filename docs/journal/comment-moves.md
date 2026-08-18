@@ -2709,3 +2709,249 @@ silence, one layer down.
 each holding a turn that was only ever killed by the restart itself, and every
 one of them needed a human to say "go on then". […] spending its one retry on
 that would leave the group stopped after the connection came back.
+
+## src/mech/git/checkout.ts:46
+
+GitHub is the source (007 §6).
+
+## src/mech/git/checkout.ts:51
+
+this is the only request that runs on every path.
+
+## src/mech/git/checkout.ts:76
+
+The settings endpoint offers the remote's branch list and calls the box "a
+choice rather than a memory test"; the resolver was making it exactly a memory
+test.
+
+## src/mech/git/checkout.ts:229
+
+the repository's own skills are re-linked and re-listed on every turn for no
+extra round trip.
+
+## src/mech/git/checkout.ts:240
+
+`--progress` and streamed: git writes clone progress to stderr, and
+`--progress` is what keeps it on when stdout is not a terminal.
+
+## src/mech/git/checkout.ts:250
+
+[There used to be three.] The first was "on the host", because a group's
+commits lived there between turns — which was the entire reason the host held a
+checkout. They live on the remote now (`pushBranch`).
+
+## src/mech/git/checkout.ts:266
+
+Falls back to the old literal when nothing is connected — a checkout still has
+to work before GitHub does.
+
+## src/mech/git/checkout.ts:274
+
+A repo that ships both is left alone.
+
+## src/mech/git/checkout.ts:485
+
+It reads the project's own container instead […] a read per file is 125 round
+trips a tick.
+
+## src/mech/git/checkout.ts:493
+
+These are the two cadences that matter: `createCheckout` is once per
+requirement and calls itself the longest minute in a group's life, and
+`keepBranch` is once per *turn*, of which a requirement has dozens — so the
+second is very likely the larger bill and neither could be seen at all.
+
+[Reported failure rather than a throw] means a span that only errored on an
+exception would almost never error.
+
+## src/mech/git/checkout.ts:574
+
+[the two callers:] one is a turn that has already finished its work, the other
+a slice acceptance nobody awaits.
+
+## src/mech/sandbox/sandbox.ts:657
+
+Neither span opens on the warm path.
+
+## src/mech/sandbox/sandbox.ts:703
+
+Once per host path per process […] the fallback above has already said its
+piece.
+
+[the three:] one writes files under `CODEX_HOME`, one calls
+`credentialVault.create`, and the third is an `ls` whose only output is an
+upgrade message. Serially they were three round trips […] with a *diagnostic*
+in front of the credentials.
+
+## src/mech/sandbox/sandbox.ts:772
+
+One `ls` per host path per process, and only when that path holds something.
+
+## src/mech/sandbox/sandbox.ts:1000
+
+[it throws] with the paths in the message, because the SDK's error names
+`files/upload`.
+
+## src/mech/sandbox/sandbox.ts:1444
+
+Ten groups, the shipped default, is 2.5 hosts' worth of CPU asked for at
+once.
+
+## src/mech/sandbox/sandbox.ts:1463
+
+`execIn` had one and the nine delegations beside it did not, so `git clone` —
+which this module's own comment calls the longest minute in a group's life —
+did not exist in 系统耗时 at all.
+
+The scope is the identity, and it carries the project so the panel's project
+filter sees it.
+
+## src/mech/sandbox/sandbox.ts:1485
+
+[handed over,] which is immediately — the number would be the cost of
+constructing an iterator rather than of the turn it streams. […] a caller who
+breaks out early or throws, which is how a cancelled turn leaves.
+
+## src/platform/persistence/database.ts:12
+
+The function form exists for one case so far: rewriting the skill paths stored
+in old message bodies, where the old and new forms differ by the skill's name
+and SQLite has no regex.
+
+## src/platform/persistence/database.ts:330 (migration 017)
+
+sized for the browser (1, each lease is a real Chromium) […] Tags name the
+contended thing, and each tag gets its own pool size.
+
+## src/platform/persistence/database.ts:347 (migration 020)
+
+a table rather than a variable so the header is not blank after a restart and
+does not wait for the next turn to arrive.
+
+## src/platform/persistence/database.ts:374 (migration 023)
+
+Nothing displays them and nothing can.
+
+## src/platform/persistence/database.ts:396 (migration 026)
+
+a restarted orchestrator reconnects to the container that is still running […]
+a sandbox has two possible owners, a group or a project's standing roles.
+
+## src/platform/persistence/database.ts:424 (migration 028)
+
+storing one has to kill the running sandboxes. The fix that lasts is not a third
+call to the same helper but a fact on the row.
+
+## src/platform/persistence/database.ts:443 (migration 030)
+
+they belong to this machine rather than to a project, and the boss edits them in
+the panel.
+
+## src/platform/persistence/database.ts:466 (migration 033)
+
+The composer used to insert a path relative to the boss's home, which is a file
+the agent is told to read and cannot now that turns run in a container.
+
+## src/platform/persistence/database.ts:475 (migration 034)
+
+Every project now comes from GitHub (007 §2). […] the remote was recorded at
+registration and `parseRepo` reads the slug out of it. […] dropping the row
+deletes a project the boss chose.
+
+## src/platform/persistence/database.ts:497 (migration 036)
+
+the shape this project has been burned by (see `grp.worktree`, a column nothing
+wrote and four things read).
+
+## src/platform/persistence/database.ts:512 (migration 037)
+
+an existing PAUSED row is one whose cause was never recorded.
+
+## src/platform/persistence/database.ts:553 (migration 040)
+
+Three indexes: `trace_id` for a whole trace, `span_scope` for a group or slice,
+and `span_age` for the retention scan, which neither of the others can serve.
+
+## src/platform/persistence/database.ts:588 (migration 042)
+
+the panel could say `index.ask` failed 2,835 times and never that the reason was
+a missing credential. Answering that took a query against the database, which is
+the thing 系统耗时 exists to make unnecessary.
+
+## src/platform/persistence/database.ts:596 (migration 043)
+
+the settings endpoint's own comment calls that box "a choice rather than a
+memory test". Seen twice in one event feed, 29 seconds apart, both announcing
+the same reversion.
+
+## src/composition/server.ts:352
+
+These were three module-level containers keyed by project id alone, which
+`AGENTS.md` invariant 11 forbids and which two tests proved: a second database
+with a project id 1 inherited the first one's verdict, so a pass could be
+skipped on the strength of a failure that happened somewhere else. One process
+with one database never noticed, which is why it survived.
+
+## src/composition/server.ts:397
+
+"the flag now stops the work" was the whole of the fix, and the previous version
+of that claim — a flag that gated only the warning — held for months because
+nothing asserted it.
+
+## src/composition/server.ts:511
+
+nothing in the utility container asks a model — it has no agent in it, which is
+the entire reason it may hold real tokens.
+
+## src/composition/server.ts:575
+
+Best-effort: chmod is a no-op on Windows.
+
+## src/composition/server.ts:662
+
+Answering un-pauses it, and the watchdog re-queues the Auditor's turn, which
+passes again and retries the PR.
+
+## src/composition/server.ts:810
+
+otherwise the first boot on a clean machine always prints a failure that fixed
+itself two seconds later.
+
+## src/composition/server.ts:972
+
+An unhandled rejection is still a bug […] Installed once, like the signal
+handlers.
+
+## src/mech/ops/watchdog.ts:520
+
+Every group in a project asks the same repository for the same branch, so ten
+groups on one project made ten identical calls against one rate limit on every
+tick — and the answer they were racing to fetch was the same string.
+
+## src/mech/ops/watchdog.ts:829
+
+the mirror is `--filter=blob:none`, so reading through it is a network fetch per
+file, and this machine has no checkout at all. One exec for the whole corpus
+[…] the last declaration in a truncated file falls outside its `export_statement`
+and is lost, and no larger cap fixes it. […] (indexing off, or no container yet)
+
+## src/mech/ops/watchdog.ts:774
+
+`commands.run` is ~1s.
+
+## src/mech/ops/watchdog.ts:789
+
+Rate limited to five minutes inside.
+
+## src/mech/ops/watchdog.ts:1074
+
+an import, a refresh, a CLI […] this is the class of bug where forgetting looks
+healthy. The durable form is a fact about the row.
+
+## src/mech/ops/watchdog.ts:1117
+
+`renewSandbox` is a no-op for a scope with no container.
+
+## src/mech/ops/watchdog.ts:1140
+
+because N failed restarts is evidence that restarting is not the answer.
