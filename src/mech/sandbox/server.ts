@@ -1,5 +1,5 @@
 import { errText } from "../../platform/process/text.ts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { Ctx } from "../../mech/ctx.ts";
@@ -215,13 +215,23 @@ async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promi
   // sibling cache directory added later should not need this file edited again.
   const allowed = [...new Set([dirname(skills), "/var/tmp/orch-cache"])];
 
+  // Written beside the target and renamed onto it, rather than written in
+  // place. `rename` is atomic within a filesystem, which buys two things:
+  // a server starting while this runs can only ever open the old file or the
+  // new one, never the half of a truncated write; and two processes racing
+  // between the `existsSync` at the top of this function and here end with one
+  // whole config rather than two interleaved ones. CodeQL calls the second of
+  // those `js/file-system-race`, and it is right that the check does not hold
+  // until the write — the fix is to make the write not care.
+  const staged = `${path}.${process.pid}.tmp`;
   writeFileSync(
-    path,
+    staged,
     `# api_key / host / port / allowed_host_paths / egress set by orchestrator.\n` +
       `# Everything else is opensandbox-server's own example. Yours to edit — only written if absent.\n` +
       patchConfig(generated, { host, port, key, allowed }),
     { mode: 0o600 },
   );
+  renameSync(staged, path);
   return path;
 }
 

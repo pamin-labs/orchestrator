@@ -72,6 +72,15 @@ jobs:
           scan-type: fs
           scan-ref: .
           trivy-config: trivy.yaml
+          # Repeated as inputs even though `trivy.yaml` says both. The action
+          # exports its own defaults as `TRIVY_*` environment variables before
+          # reading the config file — the log shows it setting `TRIVY_SEVERITY`
+          # to every level — and an environment variable wins over the file. So
+          # the gate was scanning at the action's policy, not ours: 53 findings
+          # against 0, every one of them `affected` or `fix_deferred`, meaning
+          # no fix exists to apply. Passing them here makes the two agree.
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
           format: table
       - name: create filesystem SPDX SBOM
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
@@ -98,6 +107,10 @@ jobs:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orchestrator-agent:ci
           trivy-config: trivy.yaml
+          # Same as the filesystem scan above: the action's environment defaults
+          # override `trivy.yaml`, so the policy is stated where it is read.
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
           format: table
       - name: create container SPDX SBOM
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
