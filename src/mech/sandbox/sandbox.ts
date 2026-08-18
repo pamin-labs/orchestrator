@@ -4,7 +4,7 @@ import { errText } from "../../platform/process/text.ts";
 import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
-import { ConnectionConfig, Sandbox, type Volume } from "@alibaba-group/opensandbox";
+import { ConnectionConfig, Sandbox, type CommandExecution, type Volume } from "@alibaba-group/opensandbox";
 import type { Ctx } from "../../mech/ctx.ts";
 import { ROOT } from "../../platform/config/load.ts";
 import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
@@ -1109,11 +1109,140 @@ function runOpts(o: ExecOpts) {
  * ~1s of overhead per call (005), so this is for turns, gates and leases — not
  * for anything chatty. The files API is the cheap channel (1-5ms).
  */
+/**
+ * One bash session per container, because `run()` costs a second and this costs 5ms.
+ *
+ * Measured against a live server, five runs of the same `git rev-parse` in a real
+ * container: `run()` median **1013ms** (1013–1025, so it is a fixed interval and
+ * not the command), `createSession()` **1ms**, `runInSession()` median **5ms**.
+ * Two hundred times, and it is the same shell either way — the second is the
+ * server's own poll on the one-shot path.
+ *
+ * What that buys, from this branch's own spans: `sandbox.exec` ran 6,506 times in
+ * a day on one machine, so the fixed second alone was about **1.8 hours** of
+ * waiting. A cold checkout is nine serial execs; `keepBranch` is five a turn.
+ *
+ * The session's cwd is pinned on every call rather than inherited, because a
+ * session keeps it: `cd /work && …` inside a command would otherwise decide where
+ * the *next* command with no `cwd` of its own runs. The default is read from the
+ * session once, so a command that passes none lands where `run()` would have put
+ * it.
+ */
+interface Session {
+  id: string;
+  /** Where the session starts, asked once, so `cwd`-less commands match `run()`. */
+  home: string;
+}
+const sessions = new Map<string, Session>();
+
+async function sessionFor(sb: Sandbox): Promise<Session | null> {
+  const have = sessions.get(sb.id);
+  if (have) return have;
+  try {
+    const id = await sb.commands.createSession();
+    const pwd = await sb.commands.runInSession(id, "pwd");
+    const home = (pwd.logs?.stdout ?? []).map(oneLine).join("").trim();
+    if (!home) return null;
+    const made = { id, home };
+    sessions.set(sb.id, made);
+    return made;
+  } catch {
+    // A server too old for sessions, or one that refuses: `run()` still works and
+    // is what every call did until now.
+    return null;
+  }
+}
+
+/**
+ * `runInSession` merges stderr into stdout, and that difference is a bug generator.
+ *
+ * Measured in a live container: `run()` returns `{stdout: [], stderr: [line]}` for a
+ * failing `ls`, while `runInSession` returns `{stdout: [line], stderr: []}` — with
+ * `isError: false` on it, so the flag cannot tell them apart either. Swapping one
+ * for the other would have put git's warnings back into the NUL-delimited
+ * `STATUS_Z` output, which is precisely the defect `sandboxGit` was repaired for
+ * earlier on this branch: a `warning: unable to access …` line becoming a path and
+ * reaching `git clean -fd`.
+ *
+ * So stderr is redirected to a file and read back after a marker, in the same
+ * command. The exit code survives because the status is set by a subshell — a bare
+ * `exit` would end the session, and did, the first time this was written.
+ *
+ * Verified against a live container on all three shapes: a failure (stdout empty,
+ * stderr carried, exit 2), a success that writes to stderr (both, separated), and a
+ * plain success. The marker is long enough not to occur by accident and, if it
+ * somehow does not appear, the whole output is stdout — which is the old merged
+ * behaviour rather than a lost line.
+ */
+/**
+ * `\x01` on both sides, emitted by `printf` rather than passed as an argument.
+ *
+ * The first version used NUL, which a shell argument cannot carry at all — the
+ * byte would have been truncated before `printf` saw it, and the marker would
+ * never have matched. `printf` writes the control byte itself, so nothing but the
+ * escape travels through the command string.
+ */
+const ERR_MARK = "\u0001orch-stderr\u0001";
+const ERR_MARK_PRINTF = "\\001orch-stderr\\001";
+/** Exported for the live probe and its unit test; not part of the module's API. */
+export const wrapForSession = (cmd: string, file: string): string =>
+  `{ ${cmd} ; } 2>${file} ; __orch_rc=$? ; printf '${ERR_MARK_PRINTF}' ; cat ${file} ; rm -f ${file} ; ( exit $__orch_rc )`;
+
+/** Split what the session returned back into the two streams `run()` would have. */
+export function unwrap(raw: string): { out: string; err: string } {
+  const at = raw.indexOf(ERR_MARK);
+  if (at < 0) return { out: raw, err: "" };
+  // One trailing newline, because `run()` strips one per message and the marker
+  // arrives glued to the last line of stdout rather than after it.
+  return { out: raw.slice(0, at).replace(/\n$/, ""), err: raw.slice(at + ERR_MARK.length) };
+}
+
+/**
+ * Run one command, in the session when the session can carry it.
+ *
+ * `runInSession` takes `workingDirectory` and `timeoutSeconds` and **not `envs`**,
+ * so a command with environment goes the one-shot way. Two callers need that: the
+ * codex refresher and the login, both of which set `CODEX_HOME`.
+ */
+async function runIn(sb: Sandbox, cmd: string, opts: ExecOpts): Promise<ExecOutcome> {
+  const shape = (e: CommandExecution, k: "stdout" | "stderr") => (e.logs?.[k] ?? []).map(oneLine).join("\n");
+  const plain = async (): Promise<ExecOutcome> => {
+    const e = await sb.commands.run(cmd, runOpts(opts), undefined, opts.signal);
+    return { code: e.exitCode ?? -1, out: shape(e, "stdout"), err: shape(e, "stderr") };
+  };
+  if (opts.env) return plain();
+  const session = await sessionFor(sb);
+  if (!session) return plain();
+  const inSession = async (s: Session): Promise<ExecOutcome> => {
+    // Named for the session, not for the command: one session runs one command at
+    // a time, so the file cannot be in use by another of its own runs, and a
+    // per-command name would leave litter behind every failure.
+    const e = await sb.commands.runInSession(
+      s.id,
+      wrapForSession(cmd, `/tmp/orch-stderr-${s.id}`),
+      {
+        workingDirectory: opts.cwd ?? s.home,
+        ...(opts.timeoutMs ? { timeoutSeconds: Math.ceil(opts.timeoutMs / 1000) } : {}),
+      },
+      undefined,
+      opts.signal,
+    );
+    return { code: e.exitCode ?? -1, ...unwrap(shape(e, "stdout")) };
+  };
+  try {
+    return await inSession(session);
+  } catch {
+    // A session dies with its container, and with its own shell. Forget it and try
+    // once through a fresh one; a second failure is the container's problem and
+    // belongs on the path that already reports it.
+    sessions.delete(sb.id);
+    const again = await sessionFor(sb);
+    return again ? await inSession(again) : await plain();
+  }
+}
+
 async function realExec(ctx: Ctx, scope: Scope, cmd: string, opts: ExecOpts = {}): Promise<ExecOutcome> {
-  const sb = await ensureSandbox(ctx, scope);
-  const e = await sb.commands.run(cmd, runOpts(opts), undefined, opts.signal);
-  const text = (k: "stdout" | "stderr") => (e.logs?.[k] ?? []).map(oneLine).join("\n");
-  return { code: e.exitCode ?? -1, out: text("stdout"), err: text("stderr") };
+  return runIn(await ensureSandbox(ctx, scope), cmd, opts);
 }
 
 /**
@@ -1356,6 +1485,8 @@ async function realKill(ctx: Ctx, scope: Scope): Promise<void> {
   }
   await sb?.close().catch(() => {});
   live.delete(id);
+  // The session belonged to that container and does not outlive it.
+  sessions.delete(id);
   remember(ctx.db, scope, null);
 }
 

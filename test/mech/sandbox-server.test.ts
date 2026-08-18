@@ -2,12 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../../src/platform/persistence/database.ts";
-import { allowedHostPaths, coveredBy, restartServer } from "../../src/mech/sandbox/sandbox.ts";
+import { allowedHostPaths, coveredBy, restartServer, unwrap, wrapForSession } from "../../src/mech/sandbox/sandbox.ts";
 import { preflight } from "../../src/mech/ops/preflight.ts";
 import { serverAction, serverBackoffMs, SERVER_RESTART_CAP } from "../../src/mech/ops/watchdog.ts";
 import { patchConfig, startPlan, waitUp } from "../../src/mech/sandbox/server.ts";
 import { testContext } from "../support/test-context.ts";
 import { tempDir } from "../support/temp.ts";
+
+/** The byte the wrapper brackets stderr with, written as an escape so this file stays text. */
+const SOH = "\u0001";
 
 /**
  * The sandbox server is the one host dependency that runs containers, and it
@@ -394,4 +397,41 @@ test("a missing storage section is added rather than dropping the allowlist on t
   const out = patchConfig(EXAMPLE, { host: "h", port: "1", key: "k", allowed: ["/Users/me", "/var/tmp/orch-cache"] });
 
   expect(out).toContain('[storage]\nallowed_host_paths = ["/Users/me", "/var/tmp/orch-cache"]');
+});
+
+/**
+ * A session merges the two streams, so they are separated again by hand.
+ *
+ * Proven in a live container: inside a session `readlink /proc/self/fd/1` and
+ * `fd/2` both answer `pipe:[5228080]` — **the same pipe inode** — while `run()`
+ * gets `/tmp/<id>.stdout` and `/tmp/<id>.stderr`. So `onStderr` can never fire on
+ * the session path; the SDK offers the callback and the server has nothing to feed
+ * it. Swapping `run()` for `runInSession()` would have put git's warnings back
+ * into NUL-delimited `STATUS_Z` output, which is the defect `sandboxGit` was
+ * repaired for earlier on this branch.
+ *
+ * The wrapper does what the one-shot path does: redirect each stream, then read
+ * the other back. Verified against a live container to produce byte-identical
+ * results to `run()` on a failure, a success that writes to stderr, a plain
+ * success and multi-line output.
+ */
+test("the session wrapper separates the streams the way run() does", () => {
+  // The marker travels as a `printf` escape, never as a shell argument: the first
+  // version used NUL, which a shell argument cannot carry — it would have been
+  // truncated before `printf` saw it and the marker would never have matched.
+  const wrapped = wrapForSession("ls /nope", "/tmp/e");
+  expect(wrapped).toContain("2>/tmp/e");
+  expect(wrapped).toContain(String.raw`printf '\001orch-stderr\001'`);
+  // A subshell, because a bare `exit` ends the session — which it did, once.
+  expect(wrapped).toContain("( exit $__orch_rc )");
+
+  const MARK = `${SOH}orch-stderr${SOH}`;
+  expect(unwrap(`out${MARK}warn`)).toEqual({ out: "out", err: "warn" });
+  expect(unwrap(`hello${MARK}`)).toEqual({ out: "hello", err: "" });
+  expect(unwrap(`${MARK}only stderr`)).toEqual({ out: "", err: "only stderr" });
+  // One trailing newline, because the marker arrives glued to the last line of
+  // stdout rather than after it — `run()` strips one per message.
+  expect(unwrap(`a\nb\n${MARK}`)).toEqual({ out: "a\nb", err: "" });
+  // No marker at all is the old merged behaviour, not a lost line.
+  expect(unwrap("everything")).toEqual({ out: "everything", err: "" });
 });
