@@ -300,7 +300,7 @@ export function applyPrOutcome(ctx: Ctx, f: Feedback, url: string, notifier: Not
  */
 function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): void {
   const g = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grpId);
-  hold(ctx, grpId, { reason: "merge", settled: true, from: "PR_OPEN", leaveQueue: true });
+  hold(ctx.db, grpId, { reason: "merge", settled: true, from: "PR_OPEN", leaveQueue: true });
   raise(ctx.db, {
     grpId,
     brief: "PR 被关掉了，要不要重开",
@@ -434,7 +434,7 @@ async function refreshProjectIndex(ctx: Ctx, project: IndexProject, askIn: AskIn
   memory(ctx.db).warned.delete(project.id);
   const at = indexStamp(heads);
   if (at && memory(ctx.db).at.get(project.id) === at) return;
-  const result = await buildProjectIndex(ctx, project.id, heads, askIn);
+  const result = await buildProjectIndex(ctx.db, project.id, heads, askIn);
   recordIndexResult(ctx, project.id, at, result);
 }
 
@@ -469,17 +469,17 @@ function indexStamp(heads: Map<string, string>): string {
   return heads.size ? Bun.hash([...heads].map(([file, head]) => `${file}${head}`).join("\n")).toString(16) : "";
 }
 
-async function buildProjectIndex(ctx: Ctx, projectId: number, heads: Map<string, string>, askIn: AskIn) {
-  const excludes = indexExcludes(ctx.db, projectId);
+async function buildProjectIndex(db: DB, projectId: number, heads: Map<string, string>, askIn: AskIn) {
+  const excludes = indexExcludes(db, projectId);
   const files = [...heads.keys()].filter((file) => indexable(file, excludes));
-  const notes = noteLeaves(ctx.db, projectId);
+  const notes = noteLeaves(db, projectId);
   const result = await summarise(
     skeleton([...files, ...notes.ids]),
     (id) => (id.startsWith(NOTE_PREFIX) ? notes.read(id) : (heads.get(id) ?? null)),
     askIn({ project: projectId }),
-    { previous: loadTree(ctx.db, projectId) ?? {}, maxCalls: 12 },
+    { previous: loadTree(db, projectId) ?? {}, maxCalls: 12 },
   );
-  saveTree(ctx.db, projectId, result.tree);
+  saveTree(db, projectId, result.tree);
   return { calls: result.calls, failed: result.failed, files: files.length };
 }
 
@@ -672,7 +672,7 @@ export function start(overrides: Partial<Config> = {}): Started {
           // head of a strictly serial queue — and stop waiting on the boss.
           // Answering un-pauses it, and the watchdog re-queues the Auditor's turn,
           // which passes again and retries the PR. No mechanism only for this.
-          hold(ctx, grpId, { reason: "merge", settled: true, leaveQueue: true });
+          hold(ctx.db, grpId, { reason: "merge", settled: true, leaveQueue: true });
           raise(db, {
             grpId,
             question: `分支做完了但 PR 开不出来：${r.error}\n\n修好之后回答这条，这一组会自己重试。`,

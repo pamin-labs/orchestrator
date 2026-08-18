@@ -41,7 +41,7 @@ import { idempotency, idempotencyCaller, idempotencyStatus, JSON_BODY_LIMIT } fr
 export function orchRoutes(ctx: Ctx) {
   const app = new Hono<{ Variables: { agent: Caller } }>();
   app.use("*", async (c, next) => {
-    const agent = agentOf(ctx, c.req.raw);
+    const agent = agentOf(ctx.db, c.req.raw);
     if (!agent) return failure("unknown or missing agent token", 401);
     c.set("agent", agent);
     return next();

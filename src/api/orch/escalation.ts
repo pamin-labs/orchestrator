@@ -95,7 +95,7 @@ export const postAskBoss = (async (ctx, _req, a, _p, b) => {
   // A blocker is the one intent that stops the whole group: the answer changes
   // the premise everyone else is reasoning from.
   if (severity === "blocker" && a.grp_id) {
-    hold(ctx, a.grp_id, { reason: "escalation", from: "RUNNING" });
+    hold(ctx.db, a.grp_id, { reason: "escalation", from: "RUNNING" });
   }
   ctx.bus.emit({
     grpId: a.grp_id,
@@ -156,7 +156,7 @@ export const postTriage = (async (ctx, _req, a, _p, b) => {
   if (a.role !== "cos") return bad(`${a.role} does not triage the boss's feedback`);
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return message("not your group", 403);
+  if (!mayAct(ctx.db, a, gid)) return message("not your group", 403);
   triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as, b.note ?? "");
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof TriageBody>>;

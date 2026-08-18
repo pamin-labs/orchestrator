@@ -29,7 +29,7 @@ test("a group paused while its PR was open comes back to PR_OPEN", () => {
   const { ctx, id } = seeded();
   ctx.db.run("UPDATE grp SET status = 'PR_OPEN', merge_seq = 1 WHERE id = ?", [id]);
 
-  hold(ctx, id, { reason: "ratelimit", settled: true });
+  hold(ctx.db, id, { reason: "ratelimit", settled: true });
   expect(statusOf(ctx.db, id)).toBe("PAUSED");
 
   release(ctx, id);
@@ -39,7 +39,7 @@ test("a group paused while its PR was open comes back to PR_OPEN", () => {
 test("a group paused while running still comes back to RUNNING", () => {
   const { ctx, id } = seeded();
   ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ?", [id]);
-  hold(ctx, id, { reason: "ratelimit", settled: true });
+  hold(ctx.db, id, { reason: "ratelimit", settled: true });
   release(ctx, id);
   expect(statusOf(ctx.db, id)).toBe("RUNNING");
 });
@@ -51,7 +51,7 @@ test("a dissolved group is not brought back by a hold", () => {
   // refused the next group that wanted them, permanently.
   const { ctx, id } = seeded();
   ctx.db.run("UPDATE grp SET status = 'DISSOLVED', budget_tokens = 100, spent_tokens = 200 WHERE id = ?", [id]);
-  hold(ctx, id, { reason: "budget", settled: true });
+  hold(ctx.db, id, { reason: "budget", settled: true });
   expect(statusOf(ctx.db, id)).toBe("DISSOLVED");
 });
 

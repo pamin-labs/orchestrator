@@ -1,3 +1,4 @@
+import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { say } from "../../platform/text/lang.ts";
 import type { Config } from "../../platform/config/load.ts";
@@ -17,9 +18,9 @@ export interface TurnAgent {
 type TurnJob = Job<"agent_turn">;
 type TurnPayload = TurnJob["payload"];
 
-function escalationCard(ctx: Ctx, payload: TurnPayload): string | undefined {
+function escalationCard(db: DB, payload: TurnPayload): string | undefined {
   if (!payload.escalation) return;
-  const esc = ctx.db
+  const esc = db
     .query<{ id: number; question: string; severity: string; agent_id: number | null }, [number]>(
       "SELECT id, question, severity, agent_id FROM escalation WHERE id = ?",
     )
@@ -28,7 +29,7 @@ function escalationCard(ctx: Ctx, payload: TurnPayload): string | undefined {
   const asker =
     esc.agent_id === null
       ? "someone"
-      : (ctx.db.query<{ role: string }, [number]>("SELECT role FROM agent WHERE id = ?").get(esc.agent_id)?.role ??
+      : (db.query<{ role: string }, [number]>("SELECT role FROM agent WHERE id = ?").get(esc.agent_id)?.role ??
         "someone");
   return (
     `${asker} is blocked and asked (severity ${esc.severity}):\n${esc.question}\n\n` +
@@ -111,10 +112,10 @@ function scribeCard(ctx: Ctx, payload: TurnPayload): string | undefined {
   );
 }
 
-function digestCard(ctx: Ctx, payload: TurnPayload): string | undefined {
+function digestCard(db: DB, payload: TurnPayload): string | undefined {
   const digest = payload.digest;
   if (!digest) return;
-  const rows = ctx.db
+  const rows = db
     .query<{ seq: number; author: string; body: string }, [number, number, number]>(
       `SELECT seq, author, body FROM event
        WHERE channel_id = ? AND seq > ? AND seq <= ? AND kind IN ('say','boss_say','note','escalation')
@@ -149,12 +150,12 @@ function sedimentCard(payload: TurnPayload): string | undefined {
 
 function applyPayloadCards(ctx: Ctx, payload: TurnPayload, delta: Delta): void {
   for (const card of [
-    escalationCard(ctx, payload),
+    escalationCard(ctx.db, payload),
     mailCard(payload),
     boundaryCard(payload),
     auditCard(payload),
     scribeCard(ctx, payload),
-    digestCard(ctx, payload),
+    digestCard(ctx.db, payload),
     sedimentCard(payload),
     payload.idea ? `The boss wants: ${payload.idea}` : undefined,
   ]) {
@@ -165,7 +166,7 @@ function applyPayloadCards(ctx: Ctx, payload: TurnPayload, delta: Delta): void {
 }
 
 function applyWorkCard(ctx: Ctx, agent: TurnAgent, job: TurnJob, delta: Delta): void {
-  if (job.slice_id) return applySliceCard(ctx, agent, job.slice_id, delta);
+  if (job.slice_id) return applySliceCard(ctx.db, agent, job.slice_id, delta);
   if (!job.grp_id || job.payload.idea) return;
   // The slice list is the fallback for a turn with no stated reason. A payload
   // card is that reason — a lease result, a digest, a scribe brief — and none of
@@ -183,8 +184,8 @@ function applyWorkCard(ctx: Ctx, agent: TurnAgent, job: TurnJob, delta: Delta): 
   }
 }
 
-function applySliceCard(ctx: Ctx, agent: TurnAgent, sliceId: number, delta: Delta): void {
-  const slice = ctx.db
+function applySliceCard(db: DB, agent: TurnAgent, sliceId: number, delta: Delta): void {
+  const slice = db
     .query<{ seq: number; title: string; accept_spec: string; difficulty: string }, [number]>(
       "SELECT seq, title, accept_spec, difficulty FROM slice WHERE id = ?",
     )

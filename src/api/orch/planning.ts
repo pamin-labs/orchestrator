@@ -1,3 +1,4 @@
+import type { DB } from "../../platform/persistence/database.ts";
 import { z } from "zod";
 import { addNote } from "../../mech/util/rows.ts";
 import { SplitRequirements } from "../../contracts/orch.ts";
@@ -23,7 +24,7 @@ import { slug } from "../slug.ts";
 function actingGroup(ctx: Ctx, caller: Caller, ref: z.infer<typeof GroupRef> | null | undefined): number | Response {
   const groupId = resolveGroup(ctx, ref, caller.grp_id);
   if (!groupId) return bad("which group? pass its id or name");
-  return mayAct(ctx, caller, groupId) ? groupId : message("not your group", 403);
+  return mayAct(ctx.db, caller, groupId) ? groupId : message("not your group", 403);
 }
 
 /**
@@ -348,10 +349,10 @@ export const BlockedBody = z.object({
 type BlockedGroup = { project_id: number; name: string; owns_json: string };
 type PathOwner = { id: number; name: string; owns_json: string };
 
-function pathOwner(ctx: Ctx, projectId: number, blockedGroupId: number, path: string): PathOwner | null {
+function pathOwner(db: DB, projectId: number, blockedGroupId: number, path: string): PathOwner | null {
   return (
     // fallow-ignore-next-line security-sink -- `CLAIMING_SQL` is `sql(CLAIMING)` in `mech/flow/ownership.ts`: a module-level constant built once from `GRP_STATES`, a source literal tuple. No value on this path is an input. The ids are bound through `?`.
-    ctx.db
+    db
       .query<PathOwner, [number, number]>(
         `SELECT id, name, owns_json FROM grp WHERE project_id = ? AND id != ?
          AND status IN ${CLAIMING_SQL}`,
@@ -361,12 +362,12 @@ function pathOwner(ctx: Ctx, projectId: number, blockedGroupId: number, path: st
   );
 }
 
-function waitsOn(ctx: Ctx, start: number, target: number): boolean {
+function waitsOn(db: DB, start: number, target: number): boolean {
   let group: number | null = start;
   for (let hops = 0; group && hops < 32; hops++) {
     if (group === target) return true;
     group =
-      ctx.db.query<{ blocked_on: number | null }, [number]>("SELECT blocked_on FROM grp WHERE id = ?").get(group)
+      db.query<{ blocked_on: number | null }, [number]>("SELECT blocked_on FROM grp WHERE id = ?").get(group)
         ?.blocked_on ?? null;
   }
   return false;
@@ -444,12 +445,12 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
     return bad(`${path} is inside your own boundary — fix it`);
   }
 
-  const owner = pathOwner(ctx, me.project_id, gid, path);
+  const owner = pathOwner(ctx.db, me.project_id, gid, path);
 
   // Two groups each waiting on the other is two groups that never move again, and
   // nothing downstream would notice: both are PAUSED for a stated reason, and the
   // reason is each other.
-  if (owner && waitsOn(ctx, owner.id, gid)) {
+  if (owner && waitsOn(ctx.db, owner.id, gid)) {
     return bad(`${owner.name} is already waiting on you — one of you has to go first`);
   }
   const routed = ctx.db.transaction(() => {
@@ -457,7 +458,7 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
 
     // Stop, and say what it is waiting for. PAUSED rather than a spin: a group with
     // nothing it can legally do should not hold a concurrency slot.
-    hold(ctx, gid, { reason: "blocked", settled: true, on: destination.target });
+    hold(ctx.db, gid, { reason: "blocked", settled: true, on: destination.target });
     ctx.sched.cancelPending(gid, `blocked on ${path}`);
     ctx.bus.emit({
       grpId: gid,

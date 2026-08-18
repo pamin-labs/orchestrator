@@ -1,3 +1,4 @@
+import type { DB } from "../../platform/persistence/database.ts";
 import { errText } from "../../platform/process/text.ts";
 import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
@@ -408,11 +409,11 @@ const holder = (s: Scope) =>
       ? { table: "grp", id: s.grp }
       : { table: "project", id: s.project };
 
-function owner(ctx: Ctx, scope: Scope): { sandboxId: string | null; projectId: number | null } {
-  if (isUtil(scope)) return { sandboxId: utilSandbox(ctx.db).id, projectId: null };
+function owner(db: DB, scope: Scope): { sandboxId: string | null; projectId: number | null } {
+  if (isUtil(scope)) return { sandboxId: utilSandbox(db).id, projectId: null };
   const h = holder(scope);
   if (h.table === "grp") {
-    const row = ctx.db
+    const row = db
       .query<{ sandbox_id: string | null; project_id: number }, [number]>(
         "SELECT sandbox_id, project_id FROM grp WHERE id = ?",
       )
@@ -420,33 +421,33 @@ function owner(ctx: Ctx, scope: Scope): { sandboxId: string | null; projectId: n
     if (!row) throw new Error(`no group ${h.id}`);
     return { sandboxId: row.sandbox_id, projectId: row.project_id };
   }
-  const row = ctx.db
+  const row = db
     .query<{ sandbox_id: string | null }, [number]>("SELECT sandbox_id FROM project WHERE id = ?")
     .get(h.id);
   if (!row) throw new Error(`no project ${h.id}`);
   return { sandboxId: row.sandbox_id, projectId: h.id };
 }
 
-function remember(ctx: Ctx, scope: Scope, id: string | null): void {
+function remember(db: DB, scope: Scope, id: string | null): void {
   // The timestamp is what makes a stale binding visible. A sidecar is loaded
   // with the credentials that existed at this moment and never again, so a
   // sandbox older than the newest credential is one nobody has rebound.
   const at = id ? Date.now() : null;
   if (isUtil(scope)) {
-    writeSetting(ctx.db, UTIL_ID, id);
-    writeSetting(ctx.db, UTIL_AT, at === null ? null : String(at));
+    writeSetting(db, UTIL_ID, id);
+    writeSetting(db, UTIL_AT, at === null ? null : String(at));
     return;
   }
   const h = holder(scope);
-  ctx.db.run(`UPDATE ${h.table} SET sandbox_id = ?, sandbox_at = ? WHERE id = ?`, [id, at, h.id]);
+  db.run(`UPDATE ${h.table} SET sandbox_id = ?, sandbox_at = ? WHERE id = ?`, [id, at, h.id]);
 }
 
 /** The remote this scope's container may reach, for the read-only binding. */
-function remoteOf(ctx: Ctx, projectId: number | null): string | null {
+function remoteOf(db: DB, projectId: number | null): string | null {
   if (projectId == null) return null;
   return (
-    ctx.db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId)
-      ?.remote ?? null
+    db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId)?.remote ??
+    null
   );
 }
 
@@ -532,7 +533,7 @@ async function reconnect(ctx: Ctx, scope: Scope, sandboxId: string | null): Prom
         // A reconnect that burns its timeout and fails falls through to a fresh
         // `sandbox.create`, so without this span its cost was charged there.
         span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
-        remember(ctx, scope, null);
+        remember(ctx.db, scope, null);
         return null;
       } finally {
         span.end();
@@ -590,8 +591,8 @@ async function createMountedSandbox(
   }
 }
 
-async function writeLoginFiles(ctx: Ctx, sandbox: Sandbox): Promise<void> {
-  const files = filesFor(ctx.db);
+async function writeLoginFiles(db: DB, sandbox: Sandbox): Promise<void> {
+  const files = filesFor(db);
   if (!Object.keys(files).length) return;
   await sandbox.files.createDirectories([{ path: CODEX_HOME }]).catch(() => {});
   await writeInto(
@@ -607,7 +608,7 @@ async function installVaultCredentials(
   projectId: number | null,
 ): Promise<void> {
   const { credentials } = await vaultBindings(ctx.db, codexHomeIO(ctx), {
-    repo: isUtil(scope) ? null : remoteOf(ctx, projectId),
+    repo: isUtil(scope) ? null : remoteOf(ctx.db, projectId),
   });
   if (!credentials.length) return;
   await sandbox.credentialVault
@@ -668,7 +669,7 @@ export function sandboxScope(scope: Scope, projectId: number | null) {
  * point at different fixes. Neither span opens on the warm path.
  */
 async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
-  const { sandboxId, projectId } = owner(ctx, scope);
+  const { sandboxId, projectId } = owner(ctx.db, scope);
   const existing = await reconnect(ctx, scope, sandboxId);
   if (existing) return existing;
 
@@ -691,7 +692,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   );
   const sb = created.sandbox;
   live.set(sb.id, sb);
-  remember(ctx, scope, sb.id);
+  remember(ctx.db, scope, sb.id);
 
   await activeTracer().startActiveSpan("sandbox.init", { attributes }, async (span) => {
     try {
@@ -717,7 +718,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
         created.skillsMounted
           ? checkSkillsMount(ctx, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {})
           : undefined,
-        writeLoginFiles(ctx, sb),
+        writeLoginFiles(ctx.db, sb),
         installVaultCredentials(ctx, scope, sb, projectId),
       ]);
       // Remembered before restore so re-entry finds this sandbox instead of building another.
@@ -1000,7 +1001,7 @@ export async function listProjectSkills(ctx: Ctx, projectId: number): Promise<st
     .all(projectId);
   const scopes: Scope[] = [{ project: projectId }, ...groups.map((g) => ({ grp: g.id }))];
   for (const scope of scopes) {
-    const { sandboxId } = owner(ctx, scope);
+    const { sandboxId } = owner(ctx.db, scope);
     if (!sandboxId) continue;
     const sb = await reconnect(ctx, scope, sandboxId);
     if (!sb) continue;
@@ -1363,7 +1364,7 @@ async function realBind(ctx: Ctx, scope: Scope, creds: Credential[]): Promise<vo
  * anything, which is why a dissolved group kills rather than pauses.
  */
 async function realKill(ctx: Ctx, scope: Scope): Promise<void> {
-  const id = owner(ctx, scope).sandboxId;
+  const id = owner(ctx.db, scope).sandboxId;
   if (!id) return;
   const sb = live.get(id);
   try {
@@ -1374,12 +1375,12 @@ async function realKill(ctx: Ctx, scope: Scope): Promise<void> {
   }
   await sb?.close().catch(() => {});
   live.delete(id);
-  remember(ctx, scope, null);
+  remember(ctx.db, scope, null);
 }
 
 /** Push the expiry out. A group mid-turn must not be reaped by its own TTL. */
 async function realRenew(ctx: Ctx, scope: Scope): Promise<void> {
-  const { sandboxId, projectId } = owner(ctx, scope);
+  const { sandboxId, projectId } = owner(ctx.db, scope);
   if (!sandboxId) return;
   const sb = live.get(sandboxId);
   if (!sb) return;
@@ -1425,7 +1426,7 @@ export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpt
   // file names, which `docs/standards/observability.md` forbids on labels — so
   // the scope is what identifies it. The group's project, not just the group: a
   // span whose `project_id` is NULL is invisible to the panel's project scope.
-  const attributes = sandboxScope(scope, projectOf(ctx, scope));
+  const attributes = sandboxScope(scope, projectOf(ctx.db, scope));
   return activeTracer().startActiveSpan("sandbox.exec", { attributes }, async (span) => {
     try {
       const out = await driver(ctx).exec(ctx, scope, cmd, opts);
@@ -1445,12 +1446,12 @@ export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpt
 }
 
 /** Which project a scope belongs to, so a span can be filtered by one. */
-function projectOf(ctx: Ctx, scope: Scope): number | null {
+function projectOf(db: DB, scope: Scope): number | null {
   if ("project" in scope) return scope.project;
   if (!("grp" in scope)) return null;
   return (
-    ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(scope.grp)
-      ?.project_id ?? null
+    db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(scope.grp)?.project_id ??
+    null
   );
 }
 
@@ -1480,7 +1481,7 @@ export const EXEC_FANOUT = 4;
  * the identity, and it carries the project so the panel's project filter sees it.
  */
 function roundTrip<T>(name: string, ctx: Ctx, scope: Scope, run: () => Promise<T>): Promise<T> {
-  const attributes = sandboxScope(scope, projectOf(ctx, scope));
+  const attributes = sandboxScope(scope, projectOf(ctx.db, scope));
   return activeTracer().startActiveSpan(name, { attributes }, async (span) => {
     try {
       return await run();
@@ -1508,7 +1509,7 @@ export async function* execLines(
   cmd: string,
   opts?: ExecOpts,
 ): AsyncGenerator<string, { code: number; err: string }, void> {
-  const attributes = sandboxScope(scope, projectOf(ctx, scope));
+  const attributes = sandboxScope(scope, projectOf(ctx.db, scope));
   const span = activeTracer().startSpan("sandbox.exec_lines", { attributes });
   try {
     const outcome = yield* driver(ctx).lines(ctx, scope, cmd, opts);

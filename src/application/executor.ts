@@ -1,3 +1,4 @@
+import type { DB } from "../platform/persistence/database.ts";
 import { mkdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { imagePaths } from "../mech/util/attachment-text.ts";
@@ -111,7 +112,7 @@ export function makeExecutor(deps: ExecDeps): Executor {
 
 /** Find or hire the agent this job belongs to. */
 function resolveAgent(deps: ExecDeps, job: Job<"agent_turn">): AgentRow {
-  const assigned = assignedAgent(deps.ctx, job.agent_id);
+  const assigned = assignedAgent(deps.ctx.db, job.agent_id);
   if (assigned) return assigned;
   const roleName = job.payload.role ?? "engineer";
   // fallow-ignore-next-line security-sink -- `SELECT_AGENT_BASE` is a module-level column-list literal; the group id and the role name are bound through the `?` placeholders.
@@ -121,19 +122,19 @@ function resolveAgent(deps: ExecDeps, job: Job<"agent_turn">): AgentRow {
     )
     .get(job.grp_id, roleName);
   if (existing) return existing;
-  return hire(deps, job.grp_id, roleName, job.slice_id, payloadProjectId(deps.ctx, job));
+  return hire(deps, job.grp_id, roleName, job.slice_id, payloadProjectId(deps.ctx.db, job));
 }
 
-function assignedAgent(ctx: Ctx, agentId: number | null): AgentRow | null {
+function assignedAgent(db: DB, agentId: number | null): AgentRow | null {
   if (!agentId) return null;
-  return ctx.db.query<AgentRow, [number]>(SELECT_AGENT).get(agentId) ?? null;
+  return db.query<AgentRow, [number]>(SELECT_AGENT).get(agentId) ?? null;
 }
 
-function payloadProjectId(ctx: Ctx, job: Job<"agent_turn">): number | null {
+function payloadProjectId(db: DB, job: Job<"agent_turn">): number | null {
   if (job.payload.project_id) return job.payload.project_id;
   if (!job.payload.audit) return null;
   return (
-    ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.payload.audit)
+    db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.payload.audit)
       ?.project_id ?? null
   );
 }
@@ -285,9 +286,9 @@ async function buildPreparedTurn(deps: ExecDeps, job: Job<"agent_turn">): Promis
   const agent = resolveAgent(deps, job);
   const role = deps.roles.get(agent.role);
   if (!role) throw new Error(`no role definition for ${agent.role}`);
-  const group = turnGroup(deps.ctx, job.grp_id);
+  const group = turnGroup(deps.ctx.db, job.grp_id);
   const scope: Scope = job.grp_id ? { grp: job.grp_id } : { project: agent.project_id ?? 0 };
-  const stable = buildStableFor(deps, agent, role, group, turnRepoPath(deps.ctx, agent, group), job);
+  const stable = buildStableFor(deps, agent, role, group, turnRepoPath(deps.ctx.db, agent, group), job);
   const why = rotationReason(agent, deps.cfg, stable, job.payload.rotate === true);
   const rotate = why !== null && why !== "new";
   const sessionId = rotate || !agent.session_id ? crypto.randomUUID() : agent.session_id;
@@ -295,20 +296,20 @@ async function buildPreparedTurn(deps: ExecDeps, job: Job<"agent_turn">): Promis
   return { agent, role, group, scope, stable, delta, rotate, why, sessionId };
 }
 
-function turnGroup(ctx: Ctx, groupId: number | null): TurnGroup | null {
+function turnGroup(db: DB, groupId: number | null): TurnGroup | null {
   if (!groupId) return null;
   return (
-    ctx.db
+    db
       .query<TurnGroup, [number]>("SELECT id, name, project_id, branch, owns_json FROM grp WHERE id = ?")
       .get(groupId) ?? null
   );
 }
 
-function turnRepoPath(ctx: Ctx, agent: AgentRow, group: TurnGroup | null): string {
+function turnRepoPath(db: DB, agent: AgentRow, group: TurnGroup | null): string {
   if (!group && agent.grp_id) return WORK;
-  const projectId = group?.project_id ?? projectOfAgent(ctx.db, agent.id);
+  const projectId = group?.project_id ?? projectOfAgent(db, agent.id);
   return (
-    ctx.db.query<{ repo_path: string }, [number | null]>("SELECT repo_path FROM project WHERE id = ?").get(projectId)
+    db.query<{ repo_path: string }, [number | null]>("SELECT repo_path FROM project WHERE id = ?").get(projectId)
       ?.repo_path ?? WORK
   );
 }
@@ -347,7 +348,7 @@ async function checkpointTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: Prep
 
 async function takeCheckpoint(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<string | null> {
   if (!job.grp_id) {
-    markAgentRunning(deps.ctx, turn);
+    markAgentRunning(deps.ctx.db, turn);
     return null;
   }
   try {
@@ -359,23 +360,23 @@ async function takeCheckpoint(deps: ExecDeps, job: Job<"agent_turn">, turn: Prep
     sandboxGit(deps.ctx, turn.scope),
     WORK,
     WORK,
-    checkpointLabel(deps.ctx, job),
+    checkpointLabel(deps.ctx.db, job),
     gitTrailers(deps.ctx.db),
   );
-  if (before) recordCheckpoint(deps.ctx, job, before);
-  markAgentRunning(deps.ctx, turn);
+  if (before) recordCheckpoint(deps.ctx.db, job, before);
+  markAgentRunning(deps.ctx.db, turn);
   return before;
 }
 
-function recordCheckpoint(ctx: Ctx, job: Job<"agent_turn">, before: string): void {
+function recordCheckpoint(db: DB, job: Job<"agent_turn">, before: string): void {
   if (job.slice_id) {
-    ctx.db.run("UPDATE slice SET base_sha = coalesce(base_sha, ?) WHERE id = ?", [before, job.slice_id]);
+    db.run("UPDATE slice SET base_sha = coalesce(base_sha, ?) WHERE id = ?", [before, job.slice_id]);
   }
-  ctx.db.run("UPDATE job SET checkpoint_sha = ? WHERE id = ?", [before, job.id]);
+  db.run("UPDATE job SET checkpoint_sha = ? WHERE id = ?", [before, job.id]);
 }
 
-function markAgentRunning(ctx: Ctx, turn: PreparedTurn): void {
-  ctx.db.run(
+function markAgentRunning(db: DB, turn: PreparedTurn): void {
+  db.run(
     turn.rotate
       ? "UPDATE agent SET state = 'running', session_id = ?, session_tokens = 0 WHERE id = ?"
       : "UPDATE agent SET state = 'running', session_id = ? WHERE id = ?",
@@ -525,7 +526,7 @@ async function finishTurn(
   before: string | null,
   result: TurnResult,
 ): Promise<void> {
-  recordRuntimeSession(deps.ctx, turn, result);
+  recordRuntimeSession(deps.ctx.db, turn, result);
   await preserveTurnBranch(deps.ctx, job, turn.group);
   recordCost(deps, turn.agent, job, result, turn.stable.hash, turn.why);
   recordProgress(deps, turn.agent, job, result);
@@ -538,9 +539,9 @@ async function finishTurn(
   if (!result.ok) throw new Error(`turn failed (${result.terminalReason}): ${clip(result.text)}`);
 }
 
-function recordRuntimeSession(ctx: Ctx, turn: PreparedTurn, result: TurnResult): void {
+function recordRuntimeSession(db: DB, turn: PreparedTurn, result: TurnResult): void {
   if (result.sessionId && result.sessionId !== turn.sessionId) {
-    ctx.db.run("UPDATE agent SET session_id = ? WHERE id = ?", [result.sessionId, turn.agent.id]);
+    db.run("UPDATE agent SET session_id = ? WHERE id = ?", [result.sessionId, turn.agent.id]);
   }
 }
 
@@ -584,8 +585,8 @@ export const LOST_SESSION = /no rollout found for thread|No conversation found w
  * the Engineer's diff under `S2: qa`, and the one place a reviewer looks to find
  * out who wrote a line said the wrong name.
  */
-function checkpointLabel(ctx: Ctx, job: Job<"agent_turn">): string {
-  const prev = ctx.db
+function checkpointLabel(db: DB, job: Job<"agent_turn">): string {
+  const prev = db
     .query<{ payload_json: string | null; slice_id: number | null }, [number]>(
       `SELECT payload_json, slice_id FROM job WHERE grp_id = ? AND kind = 'agent_turn'
          AND state IN ('done', 'failed', 'cancelled') ORDER BY id DESC LIMIT 1`,
@@ -594,11 +595,11 @@ function checkpointLabel(ctx: Ctx, job: Job<"agent_turn">): string {
   const role = jsonOr(prev?.payload_json, AgentTurnPayloadSchema, {}).role ?? "agent";
   if (!prev?.slice_id) return `${role} turn`;
   const sliceId = prev.slice_id;
-  const seq = ctx.db.query<{ seq: number }, [number]>("SELECT seq FROM slice WHERE id = ?").get(sliceId)?.seq;
+  const seq = db.query<{ seq: number }, [number]>("SELECT seq FROM slice WHERE id = ?").get(sliceId)?.seq;
   // The task that turn had claimed. Not "not done": by the time this runs it
   // usually is done, which is what left every checkpoint labelled with the next
   // task instead of the one in the commit.
-  const task = ctx.db
+  const task = db
     .query<{ title: string }, [number]>(
       "SELECT title FROM task WHERE slice_id = ? ORDER BY (status = 'done') DESC, id DESC LIMIT 1",
     )
@@ -625,7 +626,7 @@ function buildStableFor(
 
   const projectId = projectOfAgent(ctx.db, agent.id);
 
-  const onboarding = noteBody(ctx, projectId, "onboarding");
+  const onboarding = noteBody(ctx.db, projectId, "onboarding");
   // Owned by `report.ts`, next to the eviction that decides which of them
   // survive. The comment that used to be here said those two queries have to
   // agree, and then wrote out its own predicate and its own literal 20.
@@ -937,7 +938,7 @@ function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnRes
   const { ctx } = deps;
   const runtime = agent.runtime ?? DEFAULT_PROVIDER;
   if (job.grp_id) {
-    hold(ctx, job.grp_id, { reason: `auth:${runtime}`, settled: true, from: "RUNNING" });
+    hold(ctx.db, job.grp_id, { reason: `auth:${runtime}`, settled: true, from: "RUNNING" });
   }
   if (
     raise(ctx.db, {
@@ -988,7 +989,7 @@ function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResul
     meta: rl,
   });
   if (job.grp_id) {
-    hold(ctx, job.grp_id, { reason: "ratelimit", settled: true, until: resetsMs });
+    hold(ctx.db, job.grp_id, { reason: "ratelimit", settled: true, until: resetsMs });
   }
 }
 
@@ -1192,9 +1193,9 @@ function leaseCwd(def: ResourceDef): string {
 }
 
 /** Newest note of a kind. `id DESC` for the same reason the lessons query has it. */
-function noteBody(ctx: Ctx, projectId: number | null, kind: string): string | null {
+function noteBody(db: DB, projectId: number | null, kind: string): string | null {
   return (
-    ctx.db
+    db
       .query<{ body: string }, [number | null, string]>(
         "SELECT body FROM note WHERE (project_id IS ? OR project_id IS NULL) AND kind = ? ORDER BY at DESC, id DESC LIMIT 1",
       )

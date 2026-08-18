@@ -1,3 +1,4 @@
+import type { DB } from "../../platform/persistence/database.ts";
 import { errText } from "../../platform/process/text.ts";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -411,10 +412,10 @@ export function setServerAddr(ctx: Ctx, addr: string): string | null {
 }
 
 /** The argv we started it with, for the panel's restart button. Ours only. */
-export function ourArgv(ctx: Ctx): string[] | null {
+export function ourArgv(db: DB): string[] | null {
   const live = runningServer();
-  if (!live || readSetting(ctx.db, PID_KEY) !== live.pid) return null;
-  const argv = jsonOr(readSetting(ctx.db, ARGV_KEY), z.array(z.string()), []);
+  if (!live || readSetting(db, PID_KEY) !== live.pid) return null;
+  const argv = jsonOr(readSetting(db, ARGV_KEY), z.array(z.string()), []);
   return argv.length ? argv : live.argv;
 }
 

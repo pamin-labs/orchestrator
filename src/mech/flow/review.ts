@@ -212,7 +212,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
         chain: "boss",
       });
       ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [sliceId]);
-      hold(ctx, slice.grp_id, { reason: "escalation", from: "RUNNING" });
+      hold(ctx.db, slice.grp_id, { reason: "escalation", from: "RUNNING" });
       ctx.bus.emit({
         grpId: slice.grp_id,
         author: "orchestrator",
@@ -600,7 +600,7 @@ function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string
   ctx.db.run("UPDATE grp SET pr_retries = ? WHERE id = ?", [n, grpId]);
   if (n <= cfg.gateRetries) return false;
 
-  hold(ctx, grpId, { reason: "escalation", settled: true });
+  hold(ctx.db, grpId, { reason: "escalation", settled: true });
   raise(ctx.db, {
     grpId,
     question: `整个分支被 ${from} 打回 ${n} 次了。多半是验收口径本身有问题，不是代码：\n${why}`,

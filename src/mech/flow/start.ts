@@ -1,3 +1,4 @@
+import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { say } from "../../platform/text/lang.ts";
 import { createCheckout, remoteFor } from "../git/checkout.ts";
@@ -13,8 +14,8 @@ import { errText } from "../../platform/process/text.ts";
 import { raise } from "./escalate.ts";
 
 /** `project.config_json.install`, or null. */
-function installFor(ctx: Ctx, projectId: number): string | null {
-  const v = projectConfig(ctx.db, projectId).install;
+function installFor(db: DB, projectId: number): string | null {
+  const v = projectConfig(db, projectId).install;
   return v?.trim() ? v : null;
 }
 
@@ -157,7 +158,7 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     },
   );
 
-  const known = installFor(ctx, grp.project_id);
+  const known = installFor(ctx.db, grp.project_id);
   if (known) {
     const dep = await runInstall(ctx, grpId, known);
     if (dep.ok) return;
@@ -308,7 +309,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         // nobody enumerates those, and the repo says which one it is. What
         // changed is where it runs: the agent installs inside its own sandbox,
         // so there is nothing left for the orchestrator to do on its behalf.
-        const known = installFor(ctx, grp.project_id);
+        const known = installFor(ctx.db, grp.project_id);
         if (known) {
           const dep = await runInstall(ctx, grpId, known);
           if (!dep.ok)

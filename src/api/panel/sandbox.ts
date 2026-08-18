@@ -150,7 +150,7 @@ export const getSandboxServer = (async (ctx) => {
     argv: live?.argv ?? [],
     // Ours only. Restarting a server we did not start takes down whatever else
     // on this machine was using it, and nothing here can see what that was.
-    restartable: !!ourArgv(ctx),
+    restartable: !!ourArgv(ctx.db),
     // The silent one: a mount of a path missing from `allowed_host_paths`
     // succeeds and delivers an empty directory.
     drift,
@@ -167,7 +167,7 @@ export const postSandboxServerRestart = (async (ctx) => {
   // server is one we started; this is the same rule enforced where it matters,
   // because a request can arrive from anywhere and "restart" here means killing
   // a machine-wide process that may be somebody's own.
-  const argv = ourArgv(ctx);
+  const argv = ourArgv(ctx.db);
   if (!argv) {
     return bad(
       "这个沙盒服务器不是我们起的，不会去动它 —— 它可能是你自己起的，配的是别的东西。要重启就自己重启，之后这里会认得它。",

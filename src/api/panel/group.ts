@@ -1,3 +1,4 @@
+import type { DB } from "../../platform/persistence/database.ts";
 import { dropSlices } from "../../platform/persistence/database.ts";
 import { addNote } from "../../mech/util/rows.ts";
 import { interrupt, park, pause, resume, unpark } from "../../mech/flow/intercept.ts";
@@ -21,9 +22,9 @@ import type { GrpState } from "../../contracts/states.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 
 /** What the boss first asked for, for this group. */
-function firstIdea(ctx: Ctx, groupId: number): string {
+function firstIdea(db: DB, groupId: number): string {
   return (
-    ctx.db
+    db
       .query<{ body: string }, [number]>(
         "SELECT body FROM event WHERE grp_id = ? AND kind = 'boss_say' ORDER BY seq LIMIT 1",
       )
@@ -76,7 +77,7 @@ export const postIdea = (async (ctx, _req, _p, b) => {
       { id: grp.id, name, idea: b.text },
       ...others
         .filter((o) => parseOwns(o.owns_json).length === 0)
-        .map((o) => ({ id: o.id, name: o.name, idea: firstIdea(ctx, o.id) })),
+        .map((o) => ({ id: o.id, name: o.name, idea: firstIdea(ctx.db, o.id) })),
     ];
     ctx.sched.enqueue("agent_turn", {
       grp_id: grp.id,
@@ -207,7 +208,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
         priority: 7,
         payload: {
           role: "architect",
-          boundary: undeclared.map((g) => ({ ...g, idea: firstIdea(ctx, g.id) })),
+          boundary: undeclared.map((g) => ({ ...g, idea: firstIdea(ctx.db, g.id) })),
         },
       });
       ctx.sched.tick();

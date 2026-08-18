@@ -1,3 +1,4 @@
+import type { DB } from "../../platform/persistence/database.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { errText, hours, minutes } from "../../platform/process/text.ts";
 import type { Ctx } from "../../mech/ctx.ts";
@@ -312,16 +313,16 @@ function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
  * manage it — the codex session sweep and the quota read. Both are best-effort
  * and neither cares which sandbox answers.
  */
-function liveScopes(ctx: Ctx): Scope[] {
+function liveScopes(db: DB): Scope[] {
   const out: Scope[] = [];
-  for (const g of ctx.db
+  for (const g of db
     .query<{ id: number }, []>(
       "SELECT id FROM grp WHERE sandbox_id IS NOT NULL AND status NOT IN ('DISSOLVED','PARKED')",
     )
     .all()) {
     out.push({ grp: g.id });
   }
-  for (const p of ctx.db.query<{ id: number }, []>("SELECT id FROM project WHERE sandbox_id IS NOT NULL").all()) {
+  for (const p of db.query<{ id: number }, []>("SELECT id FROM project WHERE sandbox_id IS NOT NULL").all()) {
     out.push({ project: p.id });
   }
   return out;
@@ -336,7 +337,7 @@ function liveScopes(ctx: Ctx): Scope[] {
  * nothing may depend on it.
  */
 export async function newestRollout(ctx: Ctx): Promise<string | null> {
-  for (const s of liveScopes(ctx)) {
+  for (const s of liveScopes(ctx.db)) {
     const r = await execIn(ctx, s, NEWEST_ROLLOUT).catch(() => null);
     if (r?.code === 0 && r.out.trim()) return r.out;
   }
@@ -719,7 +720,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           severity: "blocker",
           body: t("wd.budget_exhausted", { name: g.name, tokens: g.spent_tokens }),
         });
-        hold(ctx, g.id, { reason: "budget", settled: true });
+        hold(ctx.db, g.id, { reason: "budget", settled: true });
         // A notification says it stopped; it does not put a decision in front of
         // anyone. Without a row in the queue the group sat suspended, 继续 did
         // nothing the scheduler would honour, and the only visible state was a
@@ -779,7 +780,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // tick.
   await step({ id: "7d2b", name: "container_sessions_swept", every: HOURLY }, async () => {
     await pMap(
-      liveScopes(ctx),
+      liveScopes(ctx.db),
       (s) => execIn(ctx, s, `find ${CODEX_HOME}/sessions -type f -mtime +7 -delete 2>/dev/null || true`),
       // `stopOnError: false` is what `allSettled` meant here: one container that
       // refuses must not cancel the sweep of the other nine.

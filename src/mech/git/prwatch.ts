@@ -479,7 +479,7 @@ function pullState(pull: z.infer<typeof PullRest>): string {
   return pull.merged ? "MERGED" : String(pull.state ?? "").toUpperCase();
 }
 
-async function pollPr(ctx: Ctx, gh: Github, group: WatchedGroup): Promise<Feedback | null> {
+async function pollPr(db: DB, gh: Github, group: WatchedGroup): Promise<Feedback | null> {
   const target = pollTarget(group);
   if (!target) return null;
   const { repo, prNumber } = target;
@@ -499,7 +499,7 @@ async function pollPr(ctx: Ctx, gh: Github, group: WatchedGroup): Promise<Feedba
     new Date(Math.max(0, group.pr_seen_at)).toISOString(),
   );
   if (!details) return null;
-  return changedFeedback(ctx.db, group, prNumber, details, parsed.mergeable, parsed.mergeable_state);
+  return changedFeedback(db, group, prNumber, details, parsed.mergeable, parsed.mergeable_state);
 }
 
 export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
@@ -533,7 +533,7 @@ async function pollPrsInner(ctx: Ctx, gh: Github): Promise<Feedback[]> {
   // while making the failure of any one of them harder to attribute. The same
   // number the container fan-out uses, for the same reason — a ceiling somebody
   // chose beats a ceiling that happens to be the row count.
-  const results = await pMap(groups, (group) => pollPr(ctx, gh, group), { concurrency: PR_FANOUT });
+  const results = await pMap(groups, (group) => pollPr(ctx.db, gh, group), { concurrency: PR_FANOUT });
   return results.filter((result): result is Feedback => result !== null);
 }
 

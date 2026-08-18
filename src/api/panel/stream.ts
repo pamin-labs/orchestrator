@@ -1,3 +1,4 @@
+import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Frame, StoredEvent } from "../../contracts/events.ts";
 import type { SSEStreamingApi } from "hono/streaming";
@@ -25,7 +26,7 @@ function cursorFor(req: Request, since: number): number {
   return Math.max(since, header.success ? header.data : 0);
 }
 
-function projectResolver(ctx: Ctx): (grpId: number | null | undefined) => number | null {
+function projectResolver(db: DB): (grpId: number | null | undefined) => number | null {
   // grp -> project is immutable, so live tokens do not query once per token.
   const projects = new Map<number, number | null>();
   return (grpId) => {
@@ -33,8 +34,8 @@ function projectResolver(ctx: Ctx): (grpId: number | null | undefined) => number
     if (!projects.has(grpId)) {
       projects.set(
         grpId,
-        ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-          ?.project_id ?? null,
+        db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)?.project_id ??
+          null,
       );
     }
     return projects.get(grpId) ?? null;
@@ -42,7 +43,7 @@ function projectResolver(ctx: Ctx): (grpId: number | null | undefined) => number
 }
 
 function frameSender(ctx: Ctx, stream: SSEStreamingApi): (frame: Frame) => Promise<void> {
-  const projectOf = projectResolver(ctx);
+  const projectOf = projectResolver(ctx.db);
   return (frame) =>
     stream.writeSSE({
       data: JSON.stringify({

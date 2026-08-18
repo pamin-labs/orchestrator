@@ -1,7 +1,7 @@
+import type { DB } from "../../platform/persistence/database.ts";
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import type { Ctx } from "../../mech/ctx.ts";
 import { SandboxOverrideSchema, StoredProjectConfigSchema } from "../../contracts/config.ts";
 import { JsonObject, JsonValue, jsonOr } from "../../contracts/json.ts";
 import { runInstall } from "../../mech/flow/start.ts";
@@ -59,8 +59,8 @@ export const SetupBody = z.object({ cmd: InstallCommand.optional(), none: z.bool
  * `null` is "it needs nothing", which is an answer too: an absent key is only
  * ever "nobody has looked".
  */
-function rememberInstall(ctx: Ctx, projectId: number, cmd: string | null): void {
-  ctx.db.run("UPDATE project SET config_json = json_set(config_json, '$.install', ?) WHERE id = ?", [cmd, projectId]);
+function rememberInstall(db: DB, projectId: number, cmd: string | null): void {
+  db.run("UPDATE project SET config_json = json_set(config_json, '$.install', ?) WHERE id = ?", [cmd, projectId]);
 }
 
 export const postSetup = (async (ctx, _req, a, _p, b) => {
@@ -72,7 +72,7 @@ export const postSetup = (async (ctx, _req, a, _p, b) => {
   if (!a.grp_id || !projectId) return bad("this agent has no group");
 
   if (b.none) {
-    rememberInstall(ctx, projectId, null);
+    rememberInstall(ctx.db, projectId, null);
     ctx.bus.emit({ grpId: a.grp_id, author: a.role, kind: "state_change", body: "这个仓库不需要装什么" });
     return message("ok");
   }
@@ -83,7 +83,7 @@ export const postSetup = (async (ctx, _req, a, _p, b) => {
   // and an agent's own attempt is the one most likely to need watching.
   const r = await runInstall(ctx, a.grp_id, cmd);
   if (!r.ok) return bad(`install failed:\n${r.tail}`);
-  rememberInstall(ctx, projectId, cmd);
+  rememberInstall(ctx.db, projectId, cmd);
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof SetupBody>>;
 

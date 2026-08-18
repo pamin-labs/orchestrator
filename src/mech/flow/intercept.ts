@@ -1,3 +1,4 @@
+import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { addNote } from "../util/rows.ts";
 import { rebaseOntoBase, rollbackTo } from "../git/worktree.ts";
@@ -71,7 +72,7 @@ export interface Hold {
   leaveQueue?: boolean;
 }
 
-export function hold(ctx: Ctx, grpId: number, h: Hold): void {
+export function hold(db: DB, grpId: number, h: Hold): void {
   const sets = [
     `status = '${h.settled ? "PAUSED" : "PAUSING"}'`,
     // Where to resume to. `COALESCE` so the PAUSING → PAUSED step does not
@@ -96,7 +97,7 @@ export function hold(ctx: Ctx, grpId: number, h: Hold): void {
   // PAUSED — which is in `WRITING`, so the dead group's paths stayed claimed and
   // the next group that wanted them never started.
   const terminal = GRP_TERMINAL_STATES.map((state) => `'${state}'`).join(", ");
-  ctx.db.run(
+  db.run(
     `UPDATE grp SET ${sets.join(", ")} WHERE id = ? AND status NOT IN (${terminal})${
       h.from ? ` AND status = '${h.from}'` : ""
     }`,
@@ -142,8 +143,8 @@ export function release(
 
 /** L2. Returns the number of turns still in flight that we are waiting on. */
 export function pause(ctx: Ctx, grpId: number, reason: PauseReason = "boss"): number {
-  hold(ctx, grpId, { reason, from: "RUNNING" });
-  const inFlight = runningJobs(ctx, grpId).length;
+  hold(ctx.db, grpId, { reason, from: "RUNNING" });
+  const inFlight = runningJobs(ctx.db, grpId).length;
   ctx.bus.emit({
     grpId,
     author: "boss",
@@ -164,7 +165,7 @@ export function settlePausing(ctx: Ctx): number {
   const groups = ctx.db.query<{ id: number }, []>("SELECT id FROM grp WHERE status = 'PAUSING'").all();
   let settled = 0;
   for (const g of groups) {
-    if (runningJobs(ctx, g.id).length === 0) {
+    if (runningJobs(ctx.db, g.id).length === 0) {
       settle(ctx, g.id);
       settled++;
     }
@@ -211,7 +212,7 @@ export async function interrupt(
   grpId: number,
   mode: InterruptMode = "keep",
 ): Promise<{ killed: number; rolledBackTo?: string }> {
-  const jobs = runningJobs(ctx, grpId);
+  const jobs = runningJobs(ctx.db, grpId);
   let killed = 0;
   for (const j of jobs) {
     // A turn runs in the group's sandbox, not on this machine, so there is no
@@ -279,8 +280,8 @@ interface RunningJob {
   checkpoint_sha: string | null;
 }
 
-function runningJobs(ctx: Ctx, grpId: number): RunningJob[] {
-  return ctx.db
+function runningJobs(db: DB, grpId: number): RunningJob[] {
+  return db
     .query<RunningJob, [number]>(
       "SELECT id, pid, checkpoint_sha FROM job WHERE grp_id = ? AND state = 'running' AND kind = 'agent_turn'",
     )

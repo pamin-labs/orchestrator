@@ -45,7 +45,7 @@ export const postAudit = (async (ctx, _req, a, _p, b) => {
   // project — a pass here opens a PR, which is a host `git push`, and that is not
   // an action to leave addressable by any group id an agent cares to name.
   if (a.grp_id === gid) return bad("an auditor may not audit its own group");
-  if (!mayAct(ctx, a, gid)) return message("not your project", 403);
+  if (!mayAct(ctx.db, a, gid)) return message("not your project", 403);
 
   ctx.bus.emit({
     grpId: gid,
@@ -274,7 +274,7 @@ export const postSliceDecision = (async (ctx, _req, params, raw) => {
       )
       .get(sl.grp_id, id)!.c;
     if (ctx.config.autoAdvance && ahead > 0) {
-      hold(ctx, sl.grp_id, { reason: "escalation", from: "RUNNING" });
+      hold(ctx.db, sl.grp_id, { reason: "escalation", from: "RUNNING" });
       ctx.bus.emit({
         grpId: sl.grp_id,
         author: "orchestrator",

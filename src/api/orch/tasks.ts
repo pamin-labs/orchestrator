@@ -1,3 +1,4 @@
+import type { DB } from "../../platform/persistence/database.ts";
 import { z } from "zod";
 import { Id } from "../../contracts/fields.ts";
 import { jsonOr } from "../../contracts/json.ts";
@@ -157,9 +158,9 @@ type TaskCompletion = {
   seq: number | null;
 };
 
-function taskCompletion(ctx: Ctx, taskId: number, grpId: number): TaskCompletion | null {
+function taskCompletion(db: DB, taskId: number, grpId: number): TaskCompletion | null {
   return (
-    ctx.db
+    db
       .query<TaskCompletion, [number, number]>(
         `SELECT t.slice_id, s.status AS slice_status, s.accept_spec, s.seq,
                 (SELECT count(*) FROM task o
@@ -207,7 +208,7 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
   // A task belonging to a slice that has not started cannot be completed: the
   // writer works one slice at a time, and letting it close future tasks pushed
   // unstarted slices into review.
-  const completion = taskCompletion(ctx, b.task_id, a.grp_id);
+  const completion = taskCompletion(ctx.db, b.task_id, a.grp_id);
   if (completion?.slice_status && ["pending", "accepted"].includes(completion.slice_status)) {
     return bad(
       `task ${b.task_id} belongs to a slice that is not being worked (${completion.slice_status}). ` +

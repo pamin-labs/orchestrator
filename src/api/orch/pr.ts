@@ -39,7 +39,7 @@ export const postPr = (async (ctx, _req, a, _p, b) => {
   if (a.role !== "scribe") return bad(`${a.role} does not write pull request messages`);
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return message("not your project", 403);
+  if (!mayAct(ctx.db, a, gid)) return message("not your project", 403);
 
   const title = b.title.trim();
   const summary = b.body.trim();
