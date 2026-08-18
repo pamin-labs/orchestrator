@@ -22,7 +22,24 @@
 #
 # Deliberately not opensandbox/code-interpreter either — 7GB for a superset
 # nothing here uses (docs/adr/005).
-FROM oven/bun:1.3.14@sha256:50317d83cd5a5ae1d8b35b3379c69f57ce1a0dbf4def91f0965653d767851834
+# Pinned to the **manifest list**, not to one platform's manifest inside it.
+#
+# `sha256:50317d83…` was here, and that is the digest of the linux/amd64 image
+# specifically — `docker manifest inspect` on it answers with a single manifest
+# and no platform list. BuildKit still honours `--platform linux/arm64` against
+# it by emulating, and it still sets `TARGETARCH=arm64` while the container
+# underneath runs amd64 userspace. The Node install below therefore fetched an
+# arm64 tarball into an amd64 container: the binary landed in the right place,
+# at the right size, on PATH, and could not execute. `npm` went on working,
+# because it is a shebang script that fell through to the base image's
+# `node -> bun` shim, so the failure surfaced as bun complaining about a repl
+# three lines from its cause.
+#
+# `sha256:e10577f0…` is the OCI image index, which carries both platforms. It
+# is still an immutable pin — the index digest changes if any platform's image
+# changes — and it is the one `TARGETARCH` can be trusted against, which is why
+# Docker's own guidance is to pin the list rather than a member of it.
+FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4
 
 # `upgrade` before `install`, and it is not belt-and-braces. A base image is a
 # snapshot: `oven/bun:1.3.14` is pinned by digest, so every Debian package in it
@@ -54,6 +71,11 @@ RUN apt-get update \
 # Checksummed against the release's own `SHASUMS256.txt`, because a tarball
 # fetched over the network into an image that later holds credentials is exactly
 # the place an unverified download is worth refusing.
+# `TARGETARCH`, which BuildKit sets to the platform being built *for* — the
+# documented mechanism, and the one that stays correct under cross-compilation
+# where the builder and the target differ. It is only trustworthy because the
+# `FROM` above pins the manifest list; against a single-platform digest the two
+# disagree and the mismatch is silent.
 ARG NODE_VERSION=24.19.0
 ARG TARGETARCH
 RUN set -eux; \
