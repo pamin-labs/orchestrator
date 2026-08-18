@@ -55,6 +55,19 @@ type Frontmatter = {
   files: string[];
 };
 
+/**
+ * The journal file's frontmatter, serialised by the runtime rather than by hand.
+ *
+ * Concatenation had no escaping: a group named `auth: the sequel` produced
+ * `group: auth: the sequel`, which is not YAML, and a file named `a,b.ts` became
+ * two entries because the list was joined on commas. `files` is agent-supplied
+ * and unconstrained. The `2` is what makes this block style rather than one flow
+ * line — these files are committed and read by people.
+ */
+export function frontmatterBlock(frontmatter: Frontmatter): string {
+  return Bun.YAML.stringify(frontmatter, null, 2);
+}
+
 async function exportJournal(
   ctx: Ctx,
   caller: Caller,
@@ -69,9 +82,7 @@ async function exportJournal(
     .query<{ c: number }, [number]>("SELECT count(*) AS c FROM note WHERE grp_id = ?")
     .get(caller.grp_id)!.c;
   const path = join("docs", "journal", group.name, `${String(count + 1).padStart(3, "0")}-${kind}.md`);
-  const yaml = Object.entries(frontmatter)
-    .map(([key, value]) => `${key}: ${Array.isArray(value) ? `[${value.join(", ")}]` : value}`)
-    .join("\n");
+  const yaml = frontmatterBlock(frontmatter);
   await execIn(ctx, { grp: caller.grp_id }, `mkdir -p ${shq(`${WORK}/${dirname(path)}`)}`);
   await putFile(ctx, { grp: caller.grp_id }, `${WORK}/${path}`, `---\n${yaml}\n---\n${body}\n`);
   return path;

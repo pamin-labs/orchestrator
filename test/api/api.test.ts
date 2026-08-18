@@ -142,8 +142,10 @@ test("journal writes a note and exports journal/retro into the checkout", async 
   // Into the group's own checkout, which is inside its sandbox — so it merges
   // with the PR like any other file the group wrote.
   const written = sandbox.files.get("/work/docs/journal/g1/001-journal.md")!;
-  expect(written).toContain("kind: journal");
-  expect(written).toContain("files: [auth/mw.ts]");
+  // The frontmatter is asserted by parsing it, not by matching its text: it is
+  // serialised by `Bun.YAML.stringify` now, because concatenation had no escaping
+  // and a file name with a comma in it silently became two entries.
+  expect(Bun.YAML.parse(written.split("---")[1]!)).toMatchObject({ kind: "journal", files: ["auth/mw.ts"] });
   expect(written).toContain("Moved token check into middleware.");
 
   const note = db.query<{ kind: string; export_path: string }, []>("SELECT kind, export_path FROM note").get()!;
