@@ -1,4 +1,10 @@
+import type { InferResponseType } from "hono/client";
 import type { Json } from "../../../../src/contracts/json";
+import { api } from "../../shared/api";
+import type { ModelSources } from "./models";
+
+/** One settings row, as the endpoint hands it over. */
+export type Knob = InferResponseType<typeof api.settings.$get, 200>["settings"][number];
 import type { Shape } from "./units";
 
 /**
@@ -116,4 +122,33 @@ export function notifyState(supported: boolean, permission: string): NotifyState
   if (!supported) return "unsupported";
   if (permission === "granted") return "granted";
   return permission === "denied" ? "denied" : "ask";
+}
+
+/** The three difficulty labels the dispatcher hands out. Three knobs are keyed by them. */
+export const TIERS = ["trivial", "normal", "hard"] as const;
+/**
+ * Three tracks, one per tier.
+ *
+ * 难度 → 模型 needs a fourth column on the left for its runtime names; 每片
+ * token 上限 does not and carries none. The eye runs down the *page*, where
+ * every row's control starts at the same x, rather than across to the block
+ * above; both still read as the same three things, being labelled the same.
+ */
+export const TIERS_ONLY = "grid w-full grid-cols-3";
+export const TIER_GRID = `${TIERS_ONLY} grid-cols-[3.25rem_repeat(3,minmax(0,1fr))]`;
+
+export interface Editor {
+  id: string;
+  knob: Knob;
+  /** The second half of a `PAIRED` row, null when the row is single. */
+  mate: Knob | null;
+  /** Every model this config names, so a picker can offer them. */
+  src: ModelSources;
+  /** Which cell holds the bad value, `""` for the row itself, null for none. */
+  bad: string | null;
+  onWrite: (value: Json) => void;
+  onWriteMate: (value: Json) => void;
+  onRefuse: (why: string, at: string) => void;
+  /** Nothing changed, so nothing this row said about the last attempt still holds. */
+  onClear: () => void;
 }
