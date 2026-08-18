@@ -194,7 +194,16 @@ async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promi
     stdout: "pipe",
     stderr: "pipe",
   });
-  if (!existsSync(path)) {
+  // Read it rather than ask whether it exists and then read it. The two-step
+  // form is `js/file-system-race`: the answer to `existsSync` is already stale
+  // by the time the read runs, and the read is the thing that has to succeed
+  // anyway. One syscall, and its failure carries the same message — which is
+  // where the message belongs, since "the file is missing" and "the file is
+  // unreadable" are both `init-config` not having produced a usable config.
+  let generated: string;
+  try {
+    generated = readFileSync(path, "utf8");
+  } catch {
     throw new Error(
       `opensandbox-server init-config failed: ${(gen.stderr.toString() || gen.stdout.toString()).trim().slice(-300)}`,
     );
@@ -210,7 +219,7 @@ async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promi
     path,
     `# api_key / host / port / allowed_host_paths / egress set by orchestrator.\n` +
       `# Everything else is opensandbox-server's own example. Yours to edit — only written if absent.\n` +
-      patchConfig(readFileSync(path, "utf8"), { host, port, key, allowed }),
+      patchConfig(generated, { host, port, key, allowed }),
     { mode: 0o600 },
   );
   return path;
