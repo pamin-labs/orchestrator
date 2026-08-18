@@ -826,11 +826,26 @@ function useFlameChart({
     return () => observer.disconnect();
   }, []);
 
+  /**
+   * Whether there is a box to draw in yet — not how wide it is.
+   *
+   * The distinction is the whole of the fix below. A pixel width belongs in the
+   * effect that calls `.width().update()`; putting it in the *create* effect
+   * means every layout change destroys and rebuilds the chart, and layout
+   * changes for reasons that have nothing to do with this view. Opening 设置
+   * from 耗时 does it: Radix locks body scroll, the scrollbar goes, the pane
+   * gains its width back, the observer fires — and the flamegraph blinks.
+   */
+  const ready = width > 0;
+  /** The measurement at build time, read without becoming a reason to rebuild. */
+  const measured = useRef(width);
+  measured.current = width;
+
   useEffect(() => {
     const el = host.current;
-    if (!el || width === 0) return;
+    if (!el || !ready) return;
     const graph = flamegraph()
-      .width(width)
+      .width(measured.current)
       .cellHeight(CELL_PX)
       // Frames under a pixel are not drawn. This is what keeps a deep tree from
       // costing a node per invisible sliver, and it is the library's own answer
@@ -881,7 +896,12 @@ function useFlameChart({
     // 位置，下面 flamegraph 就会闪一下」. `self` and `width` stay, because both
     // are read when frames are laid out and neither can be changed on a live
     // chart.
-  }, [width, self]);
+    // `ready`, not `width`. Width changes travel through the `update()` effect
+    // below, which re-lays out the existing nodes at the new size; only the
+    // first non-zero measurement is a reason to build a chart at all. The size
+    // itself comes off a ref for that reason — a dependency would put the
+    // rebuild back, and the argument with the linter with it.
+  }, [ready, self]);
 
   // New data into the existing chart. `update` reuses the nodes, so the reader's
   // zoom and search survive a refresh and nothing re-enters — which is also what

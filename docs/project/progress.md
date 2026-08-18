@@ -347,6 +347,30 @@ M7 — executable engineering governance and versioned protocol.
    each was skipped; a dry run that published anything is the one failure mode
    that cannot be undone.
 5. Monitor the first merged CI and nightly stress runs; replay any property
-   failure from its reported seed and path. Add `codecov/patch` to the ruleset's
-   required checks once a pull request has actually reported it — requiring a
-   check that has never been posted is the bug this list used to describe.
+   failure from its reported seed and path.
+6. Add `codecov/patch` to the ruleset's required checks — **after this branch
+   merges, not before**, and the reason is more specific than "wait for a PR to
+   report it".
+
+   `pr-report.yml` is the workflow that uploads coverage, and it is triggered by
+   `workflow_run`. GitHub only dispatches those from the **default branch**, and
+   the file exists nowhere but this branch, so the API does not believe it
+   exists at all:
+
+   ```
+   $ gh run list --workflow pr-report.yml
+   HTTP 404: workflow pr-report.yml not found on the default branch
+   ```
+
+   So Codecov has never received an upload, and
+   `gh api repos/pamin-labs/orchestrator/commits/<sha>/status` returns an empty
+   `statuses` array on every commit of this branch. Requiring `codecov/patch`
+   today would leave every pull request pending forever on a context nothing
+   posts — the exact shape of the `check` bug this branch found in the ruleset,
+   reintroduced under a different name.
+
+   What to do once merged: open any pull request, confirm `codecov/patch`
+   appears in `/commits/<sha>/status`, then add it with the ruleset call in
+   `docs/operations/ci.md`. If it does not appear, the fault is upstream of the
+   ruleset — check that `pr-report.yml` ran at all and that its OIDC upload
+   succeeded — and the ruleset must not be touched until it does.
