@@ -481,7 +481,12 @@ async function networkReady(
   if (!net.changed) return net.online;
   const held = net.online ? 0 : holdForOffline(deps.ctx, now());
   const body = net.online ? t("net.back") : t("net.lost", { n: held });
-  deps.ctx.bus.emit({ author: "orchestrator", kind: "state_change", body });
+  // The finding is the only announcement. There was a `bus.emit` here as well,
+  // with the same sentence and no dedup, so the feed carried the line twice in
+  // the same second — once from `orchestrator` as a state change, once from
+  // `watchdog` as the finding. `emit` below keys on the rule and backs off for
+  // `REEMIT_MS`; the direct call did neither, and a standing outage re-announced
+  // itself on the transition into every retry.
   findings.push({
     rule: net.online ? "network_back" : "network_lost",
     grpId: null,

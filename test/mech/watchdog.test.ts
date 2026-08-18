@@ -1169,3 +1169,23 @@ test("groups sharing a project ask GitHub about their base once between them", a
     3,
   );
 });
+
+/**
+ * One sentence per network transition, not two.
+ *
+ * `networkReady` announced the change twice: a `bus.emit` from `orchestrator` as
+ * a state change, and the finding, which `emit` renders as a `watchdog`
+ * escalation. Same body, same second — visible in the feed as the identical line
+ * from two authors. The direct call had no dedup either, so it also re-announced
+ * a standing outage on every transition into a retry, while the finding path
+ * backs off for `REEMIT_MS`.
+ */
+test("losing the network is announced once, by the path that dedups", async () => {
+  const h = harness();
+  const offline = { online: false, changed: true };
+  const found = await runWatchdog({ ...h.deps, probe: async () => offline });
+
+  expect(found.filter((f) => f.rule === "network_lost")).toHaveLength(1);
+  const said = h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE body LIKE '%断网%'").get()!.c;
+  expect(said).toBe(1);
+});
