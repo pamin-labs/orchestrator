@@ -620,3 +620,20 @@ test("commits are authored by the connected account, so a DCO sign-off means som
   // belonged to nobody. A sign-off carrying that certified nothing.
   expect(await commitIdentity(dead)).toEqual(BOT);
 });
+
+test("an undocumented device-flow error is reported, not polled until the code expires", async () => {
+  // The switch handled four errors and had no default, so GitHub's documented
+  // `incorrect_client_credentials`, `unsupported_grant_type` and
+  // `device_flow_disabled` fell through to the loop. The dialog then span for the
+  // full `expiresIn` and reported "the code expired" — the wrong cause, quarter of
+  // an hour late.
+  const { fetchFn } = scripted([{ error: "device_flow_disabled", error_description: "Device flow is not enabled" }]);
+  // A clock that advances, so the pre-fix behaviour terminates instead of hanging.
+  let t = 0;
+  const now = () => {
+    t += 60_000;
+    return t;
+  };
+  const failed = await pollForToken(DEVICE, { fetchFn, sleep: async () => {}, now }).catch((e: unknown) => e);
+  expect(String(failed)).toContain("Device flow is not enabled");
+});

@@ -11,6 +11,7 @@ import { jsonOr } from "../../contracts/json.ts";
 import { clearRepositoryHold, holdRepository } from "./repository.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { errText } from "../../platform/process/text.ts";
+import { ATTR_HTTP_REQUEST_METHOD, ATTR_HTTP_ROUTE } from "@opentelemetry/semantic-conventions";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import type { Json } from "../../contracts/json.ts";
 import { recordCache, recordRetry } from "../../platform/observability/metrics.ts";
@@ -560,7 +561,11 @@ export const githubRoute = (path: string): string =>
 async function requestGithub<T>(state: GithubState, input: RequestInput<T>): Promise<GhResult<T>> {
   return activeTracer().startActiveSpan(
     "github.request",
-    { attributes: { "http.method": input.method, "http.route": githubRoute(input.path) } },
+    // The constants, not literals: this span and the HTTP server's landed in one
+    // table under two different keys for the same fact — `http.method` here has
+    // been deprecated in favour of `http.request.method` — so a GROUP BY over the
+    // span table split every route in half.
+    { attributes: { [ATTR_HTTP_REQUEST_METHOD]: input.method, [ATTR_HTTP_ROUTE]: githubRoute(input.path) } },
     async (span) => {
       try {
         const result = await requestGithubInner(state, input);
@@ -673,4 +678,47 @@ function message(text: string): string {
   if (!parsed) return text.slice(0, 300);
   const extra = (parsed.errors ?? []).flatMap((e) => (e.message ? [e.message] : [])).join("; ");
   return [parsed.message, extra].filter(Boolean).join(" — ").slice(0, 300) || text.slice(0, 300);
+}
+
+/** GitHub's maximum, and what every list call here asks for. */
+export const PER_PAGE = 100;
+/** A ceiling, so a runaway cursor cannot spend the whole rate limit. */
+const MAX_PAGES = 10;
+
+/**
+ * Every page of a list endpoint, or the first failure.
+ *
+ * A single `per_page=100` request reads as complete and is not: `/reviews` has no
+ * `since` and returns oldest-first, so past a hundred reviews the newest were
+ * simply never seen and the PM stopped being woken. `/check-runs` is worse — the
+ * failures it truncates are the ones a gate exists to report.
+ *
+ * Through `gh.request`, not `octokit.paginate`: the plugin drives the raw client
+ * and would bypass the response validation, the error buckets and the ETag cache
+ * that wrap every call here.
+ */
+export async function pages<T, R>(
+  gh: Github,
+  path: string,
+  schema: z.ZodType<R>,
+  pick: (page: R) => T[],
+  opts: { signal?: AbortSignal | undefined; limit?: number } = {},
+): Promise<GhResult<T[]>> {
+  const out: T[] = [];
+  const limit = opts.limit ?? MAX_PAGES;
+  for (let page = 1; page <= limit; page++) {
+    const sep = path.includes("?") ? "&" : "?";
+    const answer = await gh.request(
+      "GET",
+      `${path}${sep}per_page=${PER_PAGE}&page=${page}`,
+      schema,
+      undefined,
+      opts.signal,
+    );
+    if (!answer.ok) return answer;
+    const items = pick(answer.data);
+    out.push(...items);
+    if (items.length < PER_PAGE) break;
+  }
+  return { ok: true, status: 200, data: out };
 }

@@ -9,7 +9,7 @@ import type { DB } from "../../platform/persistence/database.ts";
 import { say } from "../../platform/text/lang.ts";
 import { squashWip } from "./worktree.ts";
 import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
-import type { Github } from "./github.ts";
+import { pages, type Github } from "./github.ts";
 import { parseRepo } from "../../contracts/repository.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { jsonOr } from "../../contracts/json.ts";
@@ -418,31 +418,27 @@ async function loadPollDetails(
   sha: string,
   since: string,
 ): Promise<PollDetails | null> {
+  // Paged, not a lone `per_page=100`. `/reviews` has no `since` and returns
+  // oldest-first, so on a long-lived PR the newest were never read and the PM
+  // stopped being woken; `/check-runs` truncated the failures a gate reports.
   const [issue, reviews, runs, statuses] = await Promise.all([
-    gh.request(
-      "GET",
-      `/repos/${repo}/issues/${prNumber}/comments?per_page=100&since=${since}`,
-      z.array(IssueCommentRest),
-    ),
-    gh.request("GET", `/repos/${repo}/pulls/${prNumber}/reviews?per_page=100`, z.array(ReviewRest)),
-    gh.request(
-      "GET",
-      `/repos/${repo}/commits/${sha}/check-runs?per_page=100`,
+    pages(gh, `/repos/${repo}/issues/${prNumber}/comments?since=${since}`, z.array(IssueCommentRest), (x) => x),
+    pages(gh, `/repos/${repo}/pulls/${prNumber}/reviews`, z.array(ReviewRest), (x) => x),
+    pages(
+      gh,
+      `/repos/${repo}/commits/${sha}/check-runs`,
       z.object({ check_runs: z.array(CheckRest).optional() }),
+      (x) => x.check_runs ?? [],
     ),
-    gh.request(
-      "GET",
-      `/repos/${repo}/commits/${sha}/status?per_page=100`,
+    pages(
+      gh,
+      `/repos/${repo}/commits/${sha}/status`,
       z.object({ statuses: z.array(StatusRest).optional() }),
+      (x) => x.statuses ?? [],
     ),
   ]);
   if (!issue.ok || !reviews.ok || !runs.ok || !statuses.ok) return null;
-  return {
-    issue: issue.data,
-    reviews: reviews.data,
-    checks: runs.data.check_runs ?? [],
-    statuses: statuses.data.statuses ?? [],
-  };
+  return { issue: issue.data, reviews: reviews.data, checks: runs.data, statuses: statuses.data };
 }
 
 function changedFeedback(

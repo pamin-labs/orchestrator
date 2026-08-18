@@ -23,7 +23,7 @@ import { z } from "zod";
  * decision 007 made against `@octokit/rest` for eight endpoints.
  */
 
-import type { GhResult, Github } from "./github.ts";
+import { pages as paginate, type GhResult, type Github } from "./github.ts";
 import { jsonOr } from "../../contracts/json.ts";
 
 const DEVICE_CODE_URL = "https://github.com/login/device/code";
@@ -146,7 +146,12 @@ export async function pollForToken(
         throw new Error("登录码过期了，重新点一次「连接 GitHub」");
       case "access_denied":
         throw new Error("在 GitHub 上拒绝了这次授权");
+      // A `default` as well as the exhaustive cases: GitHub documents errors this
+      // switch does not name — `device_flow_disabled`, `incorrect_client_credentials`
+      // — and falling through to the loop reported "the code expired" fifteen
+      // minutes later, naming the wrong cause.
       case undefined:
+      default:
         throw new Error(b.error_description || b.error || "GitHub 没给出 token");
     }
   }
@@ -185,7 +190,6 @@ export interface RepoRow {
  * end-of-list signal for these two endpoints. The cap is there so a bug in that
  * reasoning costs ten requests instead of the hour's whole budget.
  */
-const PER_PAGE = 100;
 
 /**
  * What GitHub actually sends back, in the fields read below.
@@ -218,23 +222,14 @@ const User = z.object({
 /** The key the list arrives under. It was a `pick` callback for two constants. */
 type ListKey = "installations" | "repositories";
 
-async function pages<T>(
+/** `github.ts`'s pager, with the key these two endpoints wrap their list in. */
+const pages = <T>(
   gh: Github,
   path: string,
   key: ListKey,
   schema: z.ZodType<Partial<Record<ListKey, T[] | undefined>>>,
   signal?: AbortSignal,
-): Promise<GhResult<T[]>> {
-  const out: T[] = [];
-  for (let page = 1; page <= 10; page++) {
-    const r = await gh.request("GET", `${path}?per_page=${PER_PAGE}&page=${page}`, schema, undefined, signal);
-    if (!r.ok) return r;
-    const items = r.data?.[key] ?? [];
-    out.push(...items);
-    if (items.length < PER_PAGE) break;
-  }
-  return { ok: true, status: 200, data: out };
-}
+): Promise<GhResult<T[]>> => paginate(gh, path, schema, (page) => page?.[key] ?? [], { signal });
 
 /**
  * Where this login can work — one entry per account the app is installed on.

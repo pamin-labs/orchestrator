@@ -217,7 +217,7 @@ test("the branch reaches the remote before GitHub is asked to open a PR", async 
     body: "b",
   });
   expect(r).toEqual({ number: 9 });
-  const push = calls.findIndex((c) => c.includes("push '--force-with-lease' 'origin'"));
+  const push = calls.findIndex((c) => c.includes("push '--force' 'origin'"));
   const create = calls.indexOf("POST /repos/me/x/pulls");
   expect(push).toBeGreaterThan(-1);
   // Order, not position: the squash and the bundle both run before the push.
