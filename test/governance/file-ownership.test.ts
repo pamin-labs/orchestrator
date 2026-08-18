@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import {
   canStart,
@@ -41,18 +41,22 @@ test("static prefix stops at a path boundary, but a literal path is itself", () 
   expect(staticPrefix("package.json")).toBe("package.json");
 });
 
-test("overlap is conservative — unsure means yes", () => {
-  expect(overlaps("src/auth/**", "src/auth/mw.ts")).toBe(true);
-  expect(overlaps("src/**", "src/ui/**")).toBe(true);
-  expect(overlaps("**/*.ts", "docs/**")).toBe(true);
-  expect(overlaps("src/auth/*.ts", "src/auth/*.test.ts")).toBe(true);
-
-  // Genuinely disjoint trees may run together.
-  expect(overlaps("src/auth/**", "src/ui/**")).toBe(false);
-  expect(overlaps("docs/**", "src/**")).toBe(false);
-  // `src/aut*` must not read as a prefix of `src/auth/`… but both live under
-  // src/, so this still overlaps, and that is the safe answer.
-  expect(overlaps("src/aut*", "src/authz/**")).toBe(true);
+/** A pair per case, so a failure names the two globs rather than a boolean. */
+describe("overlap is conservative — unsure means yes", () => {
+  test.each([
+    ["src/auth/**", "src/auth/mw.ts", true],
+    ["src/**", "src/ui/**", true],
+    ["**/*.ts", "docs/**", true],
+    ["src/auth/*.ts", "src/auth/*.test.ts", true],
+    // Genuinely disjoint trees may run together.
+    ["src/auth/**", "src/ui/**", false],
+    ["docs/**", "src/**", false],
+    // `src/aut*` must not read as a prefix of `src/auth/`… but both live under
+    // src/, so this still overlaps, and that is the safe answer.
+    ["src/aut*", "src/authz/**", true],
+  ])("%s vs %s overlaps: %p", (a, b, expected) => {
+    expect(overlaps(a, b)).toBe(expected);
+  });
 });
 
 test("the only group in a project needs no boundary", () => {
@@ -272,8 +276,11 @@ test("the revert actually runs, against the group's own checkout", async () => {
   const ran = sandbox.commands.join("\n");
   // The group's own checkout, inside its container. There is no `/work` here.
   expect(new Set(cwds)).toEqual(new Set(["/work"]));
-  expect(ran).toContain("'checkout' '--' 'web/stray.ts'");
+  // `??`, so `clean` is the command that can act on it. It is deliberately not
+  // passed to `checkout --`, which is all-or-nothing and would revert nothing at
+  // all if handed a path it cannot match.
   expect(ran).toContain("'clean' '-fd' '--' 'web/stray.ts'");
+  expect(ran).not.toContain("'checkout' '--' 'web/stray.ts'");
   // What it kept: the owned file is not in either repair command.
   expect(ran).not.toContain("src/auth/mw.ts");
   // Said out loud, or the agent watches its own work vanish.
@@ -366,4 +373,47 @@ test("a DRAFT group owns its paths for the boundary check, and blocks nobody's s
   expect(canStart(db, 1).ok).toBe(true);
   db.run("UPDATE grp SET status = 'RUNNING' WHERE id = 1");
   expect(canStart(db, 2).ok).toBe(false);
+});
+
+test("a partial rollback is not announced as a boundary that held", async () => {
+  // `git checkout -- <paths>` is all-or-nothing: measured against a real
+  // repository, a pathspec naming one untracked file makes git report
+  //   error: pathspec 'untracked.txt' did not match any file(s) known to git
+  // and revert *nothing* — the tracked file stays modified. `git clean -fd --`
+  // then removes only the untracked half. So the pair silently half-succeeded,
+  // `reverted` was non-empty, and the boss was told the boundary held while the
+  // out-of-bounds edit rode into the next checkpoint and the PR.
+  const db = seed([{ name: "g1", owns: ["src/auth/**"] }]);
+  let statuses = 0;
+  const sandbox = fakeSandbox((cmd) => {
+    if (cmd.includes("'status'")) {
+      // Second read-back: the tracked file survived, the untracked one is gone.
+      return { out: ++statuses === 1 ? " M README.md\0?? docs/plan.md\0" : " M README.md\0" };
+    }
+    // This checkout cannot restore the file — permissions, a lock, anything. The
+    // point is that a failure here must not read as success.
+    if (cmd.includes("'checkout'")) return { code: 1, out: "error: unable to unlink 'README.md'" };
+    return {};
+  });
+  const ctx = testContext({ db, sandbox });
+
+  await reconcileOwnership(
+    { ctx },
+    { role: "engineer" },
+    { grp_id: 1 },
+    { owns_json: JSON.stringify(["src/auth/**"]) },
+  );
+
+  const ran = sandbox.commands.join("\n");
+  // Tracked and untracked go to the command that can act on each.
+  expect(ran).toContain("'checkout' '--' 'README.md'");
+  expect(ran).not.toContain("'checkout' '--' 'README.md' 'docs/plan.md'");
+  expect(ran).toContain("'clean' '-fd' '--' 'docs/plan.md'");
+  // And what is still outside the group's paths is what gets said.
+  const said = ctx.bus
+    .since(0)
+    .map((e) => e.body)
+    .join(" ");
+  expect(said).toContain("could not roll back");
+  expect(said).toContain("README.md");
 });

@@ -23,7 +23,7 @@ import {
 import { runStandup } from "../mech/flow/standup.ts";
 import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { gitTrailers } from "../mech/git/ghlogin.ts";
-import { changedSince, checkpoint, porcelainPaths, STATUS_Z } from "../mech/git/worktree.ts";
+import { changedSince, checkpoint, porcelainEntries, porcelainPaths, STATUS_Z } from "../mech/git/worktree.ts";
 import { lessonsFor } from "../mech/knowledge/lessons.ts";
 import { LeaseArgsSchema, loadResource, type ResourceDef, resolveLease, runResource } from "../mech/lease.ts";
 import { gzipTurnLog, REEMIT_MS, recordTurnOutcome, runWatchdog } from "../mech/ops/watchdog.ts";
@@ -762,33 +762,43 @@ export async function reconcileOwnership(
     });
     return;
   }
-  const stray = outsideOwns(porcelainPaths(status.out), owns);
+  const entries = porcelainEntries(status.out);
+  const stray = outsideOwns(
+    entries.map((entry) => entry.path),
+    owns,
+  );
   if (!stray.length) return;
 
-  // Untracked files have nothing to check out, so they are removed instead — the
-  // pair is expected to disagree about which paths it can act on, which is why
-  // neither exit code alone is the test.
-  const [co, cl] = await Promise.all([
-    git(WORK, ["checkout", "--", ...stray], WORK),
-    git(WORK, ["clean", "-fd", "--", ...stray], WORK),
-  ]);
+  // Split by status code rather than handing both commands one pathspec.
+  // `git checkout --` is all-or-nothing: measured, a single untracked path in the
+  // list makes it report `did not match any file(s)` and revert nothing, while
+  // `clean` removes the untracked half — so the pair half-succeeded and the count
+  // below read as success. Sequential, because both write the index.
+  const untracked = new Set(entries.filter((entry) => entry.xy === "??").map((entry) => entry.path));
+  const modified = stray.filter((path) => !untracked.has(path));
+  const created = stray.filter((path) => untracked.has(path));
+  const co = modified.length ? await git(WORK, ["checkout", "--", ...modified], WORK) : null;
+  const cl = created.length ? await git(WORK, ["clean", "-fd", "--", ...created], WORK) : null;
   // What is actually gone, read back rather than assumed. This announcement used
   // to be made from the list of files we had *tried* to revert: when the pathspec
   // did not match — every non-ASCII and every spaced path, before `-z` — git
   // exited 1, changed nothing, and the boss was told the boundary had held.
   const after = await git(WORK, STATUS_Z, WORK);
-  const left = after.code === 0 ? new Set(outsideOwns(porcelainPaths(after.out), owns)) : new Set<string>();
+  // A status we could not read back is not evidence that anything was reverted.
+  const left = after.code === 0 ? new Set(outsideOwns(porcelainPaths(after.out), owns)) : new Set(stray);
   const reverted = stray.filter((p) => !left.has(p));
-  if (!reverted.length) {
+  // Anything still outside the group's paths, not "did we manage to remove one".
+  // A partial rollback used to reach the success announcement below.
+  if (left.size) {
     deps.ctx.bus.emit({
       grpId: job.grp_id,
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
       body:
-        `could not roll back ${stray.length} file(s) outside this group's paths ` +
-        `(${stray.slice(0, 5).join(", ")}): ${(co.out || cl.out || "git changed nothing").slice(0, 200)}`,
-      meta: { stray, owns },
+        `could not roll back ${left.size} file(s) outside this group's paths ` +
+        `(${[...left].slice(0, 5).join(", ")}): ${(co?.out || cl?.out || "git changed nothing").slice(0, 200)}`,
+      meta: { left: [...left], reverted, stray, owns },
     });
     return;
   }
