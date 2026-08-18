@@ -50,8 +50,21 @@ FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf100
 # snapshot's versions on purpose.
 RUN apt-get update \
  && apt-get upgrade -y \
- && apt-get install -y --no-install-recommends git ca-certificates curl xz-utils \
+ && apt-get install -y --no-install-recommends git ca-certificates curl xz-utils ripgrep \
  && rm -rf /var/lib/apt/lists/*
+
+# `ripgrep` is here because the alternative costs tokens, not seconds. GNU grep
+# does not read `.gitignore`, so a search runs into `node_modules/`, `dist/` and
+# `coverage/` — and `load.ts` records that tool results are 90% of a transcript,
+# so one search that finds the dependency tree can outweigh the whole 16k context
+# budget the retrieval layer exists to protect. Measured in this image: 1.2 MB to
+# download, 4.9 MB installed, and no dependency of its own.
+#
+# Not the copy codex vendors. There is a working ripgrep 15.2.0 inside
+# `@openai/codex/.../codex-path/rg`, but it is off `PATH`, its directory is named
+# for the architecture, and it belongs to a package that updates on its own
+# schedule. claude ships none at all — checked in a live container, which is the
+# only place that question has an answer.
 
 # Node from nodejs.org, not from apt, and the difference is a hundred CVEs.
 #

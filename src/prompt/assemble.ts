@@ -87,7 +87,7 @@ const ORCH_CONTRACT = `## Talking to the orchestrator
 
 Use Bash. Every command blocks and returns its result on stdout.
 
-  orch ctx query "<question>"          # ALWAYS FIRST, before grep/git/reading files.
+  orch ctx query "<question>"          # ALWAYS FIRST, before rg/git/reading files.
       # One call answers: every slice in this group with status and acceptance line;
       # the group's status, branch and PR; the last result of each gate; the questions
       # still unanswered; and where a thing lives — a summary tree of the repo that a
