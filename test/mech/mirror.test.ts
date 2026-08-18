@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
-import { listTree } from "../../src/mech/git/checkout.ts";
+import { listTree, pushBranch } from "../../src/mech/git/checkout.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
+import * as fx from "../support/factories.ts";
 
 /**
  * The bare mirror the repo map and the DRAFT path check are read from.
@@ -68,4 +69,35 @@ test("a mirror that cannot be reached is stale, not empty-because-broken", async
     return {};
   });
   expect((await listTree(ctx, "git@github.com:o/p.git", "main")).files).toEqual(["src/a.ts"]);
+});
+
+test("a work-in-progress branch is kept where prune cannot delete it", async () => {
+  // `ensureMirror` runs `fetch --prune origin '+refs/heads/*:refs/heads/*'`, and
+  // prune deletes by the *destination* of the refspec, not by "remote-tracking".
+  // Measured against a real bare clone: a local-only `refs/heads/orch/foo` is
+  // reported `- [deleted] (none) -> orch/foo` and is gone. `push()` calls
+  // `ensureMirror` a second time after the bundle landed, so the branch it was
+  // about to push was pruned first and the push failed with
+  // `src refspec ... does not match any` — every group's first push.
+  //
+  // So the bundle lands under `refs/orch/*`, which that refspec does not own,
+  // and `refs/heads/*` keeps mirroring the remote for `listTree`.
+  const cmds: string[] = [];
+  const sandbox = fakeSandbox((cmd) => {
+    cmds.push(cmd);
+    if (cmd.includes("test -d")) return { out: "yes" };
+    return {};
+  });
+  const ctx = testContext({ sandbox });
+  const p = fx.project.insert(ctx.db, { name: "p", remote: "git@github.com:o/p.git" });
+  const g = fx.grp.insert(ctx.db, { project_id: p.id, name: "g1" });
+  ctx.db.run("UPDATE grp SET branch = 'orch/g1' WHERE id = ?", [g.id]);
+
+  const r = await pushBranch(ctx, g.id);
+  expect(r.ok).toBe(true);
+
+  const fetched = cmds.find((c) => c.includes(".bundle") && c.includes("fetch"))!;
+  expect(fetched).toContain("refs/orch/orch/g1");
+  const pushed = cmds.find((c) => c.includes("push"))!;
+  expect(pushed).toContain("refs/orch/orch/g1:refs/heads/orch/g1");
 });

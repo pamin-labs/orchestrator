@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
-import { ensureCheckout } from "../../src/mech/git/checkout.ts";
+import { ensureCheckout, sandboxGit } from "../../src/mech/git/checkout.ts";
+import { porcelainPaths, STATUS_Z } from "../../src/mech/git/worktree.ts";
+import { WORK } from "../../src/mech/sandbox/sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
@@ -90,4 +92,21 @@ test("submodules are initialised in two steps, and only when there are any", asy
   const without = harness();
   await ensureCheckout(without.ctx, 1);
   expect(without.sandbox.commands.some((c) => c.includes("submodule"))).toBe(false);
+});
+
+test("a warning on stderr does not become a changed path", async () => {
+  // `sandboxGit` returned `out + err` with no separator, and `git status
+  // --porcelain -z` is one NUL-terminated blob — so a single stderr line, and
+  // `warning: unable to access '/root/.config/git/ignore'` is the common one
+  // inside a container, was glued onto the last record. `porcelainPaths` then
+  // sliced it at three characters and handed the remainder to
+  // `reconcileOwnership`, which feeds paths straight to `git checkout --` and
+  // `git clean -fd --`.
+  const sandbox = fakeSandbox((cmd) => {
+    if (!cmd.includes("'status'")) return {};
+    return { out: " M src/a.ts\0", err: "warning: unable to access '/root/.config/git/ignore'" };
+  });
+  const ctx = testContext({ sandbox });
+  const r = await sandboxGit(ctx, { grp: 1 })(WORK, STATUS_Z, WORK);
+  expect(porcelainPaths(r.out)).toEqual(["src/a.ts"]);
 });
