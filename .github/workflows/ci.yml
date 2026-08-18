@@ -22,6 +22,18 @@ on:
 permissions:
   contents: read
 
+# Three jobs, not nine, and the reason is the invoice rather than the clock.
+# Actions bills per job, rounded up to the minute: nine jobs whose real total is
+# 229s cost ten minutes, because a 4-second `pr-plan` and a 12-second
+# `quality-format` each bill a whole one. Grouping the work that shares a
+# checkout and an install turns ten billed minutes into about four for the same
+# checks — and the checks stay individually named as steps, so a failure still
+# says which one.
+#
+# What is NOT grouped: anything with a different failure meaning or a different
+# runtime shape. `security-container` builds an image and takes two minutes on
+# its own; CodeQL runs on GitHub's own analysis infrastructure.
+
 # A second push to the same PR makes the first run's answer irrelevant.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -31,8 +43,11 @@ env:
   BUN_VERSION: 1.3.14
 
 jobs:
-  quality-format:
-    name: quality-format
+  # Static checks: no test run, no coverage, nothing that needs a database.
+  # Four separate jobs before, each paying its own checkout, Bun install and
+  # billed minute for work measured in seconds.
+  quality:
+    name: quality
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -41,60 +56,55 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - run: bun run format:check
-      - run: git diff --exit-code
+      - name: format
+        run: bun run format:check
+      - name: types
+        run: bun run typecheck
+      - name: lint
+        run: bun run lint
+      - name: web bundle
+        run: bun run build:web
+      - name: size budgets
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/report"
+          printf '%s' "$PR_NUMBER" > "$RUNNER_TEMP/report/pr-number.txt"
+          bun run perf:budget | tee "$RUNNER_TEMP/report/budget.txt"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: report-budget
+          path: ${{ runner.temp }}/report
+          if-no-files-found: error
+          retention-days: 7
+      # Nothing above may leave the tree dirty — a formatter or a build that
+      # writes into the repository is a diff the author never saw.
+      - name: nothing was rewritten
+        run: git diff --exit-code
 
-  quality-types:
-    name: quality-types
+  # The suite, its coverage, and the audit that reads that coverage — one run of
+  # the tests instead of three.
+  #
+  # `test-main`, `test-coverage` and `quality-fallow` each ran the suite: 46s,
+  # 52s and 62s, and the last two ran the *same* command. The instrumented run
+  # is the strictly stronger one, so it is the one kept; `fallow audit` reads
+  # the map it produces, which is the pairing AGENTS.md asks for and the thing
+  # CI got wrong for weeks by running a bare `audit` with no coverage present.
+  test:
+    name: test
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-      - run: bun run typecheck
-
-  quality-oxlint:
-    name: quality-oxlint
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-      - run: bun run lint
-
-  quality-fallow:
-    name: quality-fallow
-    runs-on: ubuntu-24.04
-    # Measures its own coverage rather than taking another job's, and the extra
-    # twenty seconds buy something specific. Fallow's CRAP is cyclomatic
-    # complexity weighted by how much of a function is tested, so without an
-    # Istanbul map it falls back to an export-reference estimate and calls
-    # well-tested functions untested — this job used to run `fallow audit` with
-    # no `coverage/coverage-final.json` in the checkout at all, and every number
-    # it gated on was a guess.
-    #
-    # The first fix for that was `needs: test-coverage` plus an artifact
-    # download, and it was wrong for the reason this file already states above:
-    # a job that does not run reports **skipped**, and a required status check
-    # reads skipped as never posted and leaves the pull request pending. One
-    # failing test in `test-coverage` therefore took this gate off the board
-    # entirely. A red gate is information; an absent one is a stuck merge.
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
+          # `fallow audit --base` needs history to compare against.
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun run build:web
-      - run: bun run test:coverage
       - name: open report directory
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -102,6 +112,19 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/report"
           printf '%s' "$PR_NUMBER" > "$RUNNER_TEMP/report/pr-number.txt"
+      # `test:coverage:ci` and not the commands inlined here: a gate that
+      # assembles its own version of a project command drifts from the one a
+      # developer runs, and then only CI knows what is actually checked. It is
+      # `test:coverage` plus a JUnit file, which is the one thing CI needs and a
+      # laptop does not.
+      - name: tests with coverage
+        env:
+          JUNIT_OUT: ${{ runner.temp }}/report/junit.xml
+        run: |
+          set -euo pipefail
+          bun run test:coverage:ci
+          # `lcov.info` is what Codecov reads; the Istanbul map is what Fallow reads.
+          cp coverage/lcov.info coverage/coverage-final.json "$RUNNER_TEMP/report/"
       - name: audit repository structure
         run: |
           set +e
@@ -129,103 +152,21 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
-          name: report-fallow
-          path: ${{ runner.temp }}/report
-          if-no-files-found: error
-          retention-days: 7
-
-  test-main:
-    name: test-main
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-      - run: bun run build:web
-      - name: open report directory
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/report"
-          printf '%s' "$PR_NUMBER" > "$RUNNER_TEMP/report/pr-number.txt"
-      - run: bun test --parallel --reporter=junit --reporter-outfile="$RUNNER_TEMP/report/junit.xml"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
           name: report-tests
           path: ${{ runner.temp }}/report
           if-no-files-found: error
           retention-days: 7
 
-  test-coverage:
-    name: test-coverage
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-      - run: bun run build:web
-      - run: bun run test:coverage
-      - name: collect the coverage report
-        if: always()
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/report"
-          printf '%s' "$PR_NUMBER" > "$RUNNER_TEMP/report/pr-number.txt"
-          # `lcov.info` is what Codecov reads; the Istanbul map is what Fallow reads.
-          cp coverage/lcov.info coverage/coverage-final.json "$RUNNER_TEMP/report/"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: report-coverage
-          path: ${{ runner.temp }}/report
-          if-no-files-found: error
-          retention-days: 7
-
-  build-web:
-    name: build-web
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-      - run: bun run build:web
-      - name: check size budgets
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/report"
-          printf '%s' "$PR_NUMBER" > "$RUNNER_TEMP/report/pr-number.txt"
-          bun run perf:budget | tee "$RUNNER_TEMP/report/budget.txt"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: report-budget
-          path: ${{ runner.temp }}/report
-          if-no-files-found: error
-          retention-days: 7
-      - run: git diff --exit-code
-
-  dco:
-    name: dco
+  # Checks about the pull request itself rather than about the code in it. Both
+  # are metadata reads and finish in seconds; together they are one billed
+  # minute instead of two.
+  pr:
+    name: pr
     runs-on: ubuntu-24.04
     steps:
       - name: skip outside pull requests
         if: github.event_name != 'pull_request'
-        run: echo 'DCO applies to pull requests.'
+        run: echo 'These checks describe a pull request.'
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         if: github.event_name == 'pull_request'
         with:
@@ -248,11 +189,6 @@ jobs:
             fi
           done < <(git rev-list --no-merges "$BASE_SHA..$HEAD_SHA")
           test "$bad" = 0
-
-  pr-plan:
-    name: pr-plan
-    runs-on: ubuntu-24.04
-    steps:
       - name: verify engineering plan sections
         if: github.event_name == 'pull_request' && !endsWith(github.actor, '[bot]')
         env:

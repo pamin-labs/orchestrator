@@ -31,7 +31,8 @@
     "validate": "bun run format:check && bun run typecheck && bun run lint && bun run build:web && bun run perf:budget && bun run test",
     "test:stress": "bun run scripts/stress-tests.ts",
     "check": "bun run audit && bun run validate",
-    "preflight": "bun run scripts/preflight.ts"
+    "preflight": "bun run scripts/preflight.ts",
+    "test:coverage:ci": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun test --parallel --reporter=junit --reporter-outfile=\"$JUNIT_OUT\" && bun run test/support/coverage-report.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",

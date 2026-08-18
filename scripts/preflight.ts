@@ -71,15 +71,15 @@ async function signOff(): Promise<Outcome> {
 }
 
 const steps: Step[] = [
-  { name: "format", job: "quality-format", run: () => cmd("bun run format:check") },
-  { name: "types", job: "quality-types", run: () => cmd("bun run typecheck") },
-  { name: "lint", job: "quality-oxlint", run: () => cmd("bun run lint") },
-  { name: "web bundle", job: "build-web", run: () => cmd("bun run build:web") },
-  { name: "tests", job: "test-main", run: () => cmd("bun test --parallel") },
+  { name: "format", job: "quality", run: () => cmd("bun run format:check") },
+  { name: "types", job: "quality", run: () => cmd("bun run typecheck") },
+  { name: "lint", job: "quality", run: () => cmd("bun run lint") },
+  { name: "web bundle", job: "quality", run: () => cmd("bun run build:web") },
+  { name: "tests", job: "test", run: () => cmd("bun test --parallel") },
   // The audit reads CRAP from the coverage map, so the coverage run has to
   // happen first — `audit:crap` is the pair, and running plain `audit` here
   // would repeat the mistake CI made for weeks.
-  { name: "coverage + audit", job: "quality-fallow / test-coverage", run: () => cmd("bun run audit:crap") },
+  { name: "coverage + audit", job: "test", run: () => cmd("bun run audit:crap") },
   {
     name: "security candidates",
     job: "security-fallow",
@@ -90,7 +90,7 @@ const steps: Step[] = [
     job: "security-dependencies",
     run: () => cmd("bun audit --audit-level=high"),
   },
-  { name: "sign-off", job: "dco", run: signOff },
+  { name: "sign-off", job: "pr", run: signOff },
   {
     name: "workflow syntax",
     job: "workflow-static",

@@ -1,0 +1,29 @@
+# The checks a commit must have passed, in one place.
+#
+# This list used to live in three: `release.yml` hardcoded it, the branch
+# ruleset held its own copy, and `test/governance/workflows.test.ts` asserted a
+# third. Three copies of a gate is three chances for a gate to be quietly
+# narrower than somebody thinks — and this repository has already been bitten by
+# exactly that, with a ruleset requiring a context named `check` that no job has
+# ever produced, so every pull request sat pending while thirteen real checks
+# went unrequired.
+#
+# Two of the three read this file now. The ruleset is a GitHub setting and
+# cannot, so `docs/operations/ci.md` carries the command that pushes this list
+# into it, and the test below fails if the file and the workflows disagree.
+#
+# One name per line; `#` comments and blank lines ignored.
+
+# ci.yml — grouped to stop paying a rounded-up billed minute per job
+quality
+test
+pr
+
+# security.yml
+security-fallow
+security-dependencies
+security-container
+workflow-static
+
+# codeql.yml
+security-codeql

@@ -77,11 +77,11 @@ jobs:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
-          required=(
-            quality-format quality-types quality-oxlint quality-fallow
-            test-main test-coverage build-web dco pr-plan
-            security-codeql security-fallow security-dependencies security-container workflow-static
-          )
+          # Read from `.github/required-checks.txt` rather than repeated here.
+          # A release gate that keeps its own copy of the list is a release gate
+          # that can silently stop requiring something CI still runs.
+          mapfile -t required < <(grep -vE '^\s*(#|$)' .github/required-checks.txt)
+          test "${#required[@]}" -gt 0 || { echo '::error::required-checks.txt is empty'; exit 1; }
           runs=$(mktemp)
           gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_SHA/check-runs?per_page=100" > "$runs"
           failed=0

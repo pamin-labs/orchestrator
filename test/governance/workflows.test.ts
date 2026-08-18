@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { z } from "zod";
 
 const workflowNames = ["ci", "codeql", "security", "nightly", "release", "pr-report"] as const;
@@ -53,6 +54,20 @@ function expectDryRunOnlyJobs(workflow: Workflow, names: readonly string[]): voi
   for (const name of names) expect(workflow.jobs[name]?.if).toBe("${{ !inputs.dry_run }}");
 }
 
+/**
+ * The required-check list, from the file both the release gate and the ruleset
+ * are supposed to agree with.
+ *
+ * Asserting a hardcoded copy here would make this the fourth place the list
+ * lives, which is the problem rather than a check on it.
+ */
+function requiredChecks(): string[] {
+  return readFileSync(".github/required-checks.txt", "utf8")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"));
+}
+
 describe("workflow governance", () => {
   test("every action is immutable and Bun is exact", async () => {
     for (const name of workflowNames) {
@@ -79,17 +94,15 @@ describe("workflow governance", () => {
 
   test("CI exposes independent read-only required jobs", async () => {
     const ci = await load("ci");
-    expect(Object.keys(ci.jobs)).toEqual([
-      "quality-format",
-      "quality-types",
-      "quality-oxlint",
-      "quality-fallow",
-      "test-main",
-      "test-coverage",
-      "build-web",
-      "dco",
-      "pr-plan",
-    ]);
+    // Three jobs, and the count is the assertion. Actions bills per job rounded
+    // up to the minute, so nine jobs totalling 229s cost ten billed minutes —
+    // a 4-second `pr-plan` billed a whole one. Splitting these back apart is a
+    // cost regression that nothing else would notice.
+    expect(Object.keys(ci.jobs)).toEqual(["quality", "test", "pr"]);
+    // And every one of them is required. A job that runs but is not in the list
+    // is a check nobody has to pass — which is the same shape as the ruleset bug
+    // this repository already found, seen from the other side.
+    for (const job of Object.keys(ci.jobs)) expect(requiredChecks()).toContain(job);
     expect(ci.permissions).toEqual({ contents: "read" });
     expect(Object.values(ci.jobs).every((job) => job.permissions === undefined)).toBe(true);
     const ciText = await source("ci");
@@ -102,7 +115,7 @@ describe("workflow governance", () => {
     expect(ciText).not.toMatch(/audit:fix|format --write|git (add|commit|push)|create-github-app-token/);
     expect(ciText).not.toContain("bun run perf:bench");
 
-    const fallow = ci.jobs["quality-fallow"]!.steps.find((step) => step.name === "audit repository structure")?.run;
+    const fallow = ci.jobs["test"]!.steps.find((step) => step.name === "audit repository structure")?.run;
     expect(fallow?.match(/bun run audit/g)).toHaveLength(1);
     expect(fallow).toContain("--format json");
     expect(fallow).toContain("fallow report --from");
@@ -119,17 +132,25 @@ describe("workflow governance", () => {
     );
 
     const uploadNames = uploads.map((step) => step.with?.name).filter((name) => typeof name === "string");
-    expect(uploadNames.toSorted((a, b) => a.localeCompare(b))).toEqual([
-      "report-budget",
-      "report-coverage",
-      "report-fallow",
-      "report-tests",
-    ]);
+    // Two artifacts, not four, because there are two jobs producing evidence.
+    // `pr-report` downloads `report-*` with `merge-multiple`, so what it reads
+    // are the *file* names — `junit.xml`, `lcov.info`, `fallow-audit.json`,
+    // `budget.txt` — and those are unchanged.
+    expect(uploadNames.toSorted((a, b) => a.localeCompare(b))).toEqual(["report-budget", "report-tests"]);
     // A red job still has to hand its evidence over, or the comment reports nothing
     // exactly when the reader needs it most.
     for (const upload of uploads) expect(upload.if).toBe("always()");
-    expect(ciText).toContain("--reporter=junit");
-    expect(ciText).toContain("bun run test:coverage");
+    // The JUnit flag moved into `test:coverage:ci` when the test jobs merged —
+    // CI supplies the path and the script owns the reporter, so the workflow is
+    // asserted on what it still decides. Both halves have to be present or the
+    // report comment silently loses its test results.
+    expect(ciText).toContain("bun run test:coverage:ci");
+    expect(ciText).toContain("JUNIT_OUT");
+    // Read as text rather than parsed and asserted: `json()` is `any`, and a
+    // cast to make one line of this test typecheck is the sort of assertion the
+    // linter refuses everywhere else for good reason.
+    const scripts = await Bun.file("package.json").text();
+    expect(scripts).toMatch(/"test:coverage:ci":[^\n]*--reporter=junit/);
     expect(ciText).toContain('bun run perf:budget | tee "$RUNNER_TEMP/report/budget.txt"');
     // `workflow_run` carries no pull-request number, so every artifact carries one.
     expect(ciText.match(/report\/pr-number\.txt/g)).toHaveLength(uploads.length);
@@ -249,7 +270,7 @@ describe("workflow governance", () => {
     // `bun test`, not its flags. The property is the ordering — a suite that runs
     // before the bundle exists tests the previous build — and pinning the flag
     // string meant changing the runner's concurrency broke a guard about order.
-    assertBuildsFirst(ci, "test-main", "bun test");
+    assertBuildsFirst(ci, "test", "bun run test:coverage");
     assertBuildsFirst(nightly, "test-stress", "bun run test:stress");
   });
 
@@ -267,24 +288,12 @@ describe("workflow governance", () => {
     expect(sourceSelection).toContain("git/ref/tags/v$RELEASE_VERSION");
     expect(sourceSelection).toContain("releases/tags/v$RELEASE_VERSION");
     expect(sourceSelection).toContain("commits/v$RELEASE_VERSION");
-    for (const check of [
-      "quality-format",
-      "quality-types",
-      "quality-oxlint",
-      "quality-fallow",
-      "test-main",
-      "test-coverage",
-      "build-web",
-      "dco",
-      "pr-plan",
-      "security-codeql",
-      "security-fallow",
-      "security-dependencies",
-      "security-container",
-      "workflow-static",
-    ]) {
-      expect(checkGate).toContain(check);
-    }
+    // The gate reads the list rather than restating it, so what is asserted here
+    // is the *reading*. Restating the names would put a fourth copy of the list
+    // in the place testing that there is only one.
+    expect(checkGate).toContain(".github/required-checks.txt");
+    expect(checkGate).toContain("required-checks.txt is empty");
+    expect(requiredChecks().length).toBeGreaterThan(5);
     expect(checkGate).toContain("commits/$SOURCE_SHA/check-runs?per_page=100");
     expect(checkGate).toContain('"completed:success"');
     expect(release).toContain("ref: ${{ needs.checks.outputs.source-sha }}");

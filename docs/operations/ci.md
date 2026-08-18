@@ -3,6 +3,30 @@
 CI is read-only verification. It does not format, fix, commit, push, or rewrite
 a contributor branch.
 
+## The required-check list
+
+`.github/required-checks.txt` is the single source. `release.yml` reads it, and
+`test/governance/workflows.test.ts` fails if a `ci.yml` job is missing from it —
+a job that runs but is not required is a check nobody has to pass.
+
+The branch ruleset is a GitHub setting and cannot read a file, so it is pushed:
+
+```bash
+gh api -X PUT repos/pamin-labs/orchestrator/rulesets/20892179 \
+  --input <(gh api repos/pamin-labs/orchestrator/rulesets/20892179 | jq \
+    --slurpfile checks <(grep -vE '^\s*(#|$)' .github/required-checks.txt \
+      | jq -R '{context: .}' | jq -s .) \
+    '(.rules[] | select(.type == "required_status_checks")
+       | .parameters.required_status_checks) = $checks[0]')
+```
+
+Export the current ruleset before changing it — `docs/operations/snapshots/`
+holds the last one — because a wrong list here blocks every merge, and the
+failure mode is a pull request that waits forever on a context nothing posts.
+That is not hypothetical: this repository shipped a ruleset requiring a check
+named `check` that no job has ever produced.
+
+
 ## Required jobs
 
 ```text
