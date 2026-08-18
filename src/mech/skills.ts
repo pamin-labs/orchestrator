@@ -310,6 +310,25 @@ export function cacheProjectSkills(db: DB, projectId: number | null | undefined,
   return out;
 }
 
+/**
+ * Store what each live container just reported, against the project it works on.
+ *
+ * The rescan button's half of `cacheProjectSkills`. It is handed sandbox ids
+ * because the container layer has no reason to know about projects, and the
+ * join is one primary-key lookup — a sandbox id that belongs to no group is a
+ * project container or the utility one, and neither has a checkout to speak
+ * for, so it is skipped rather than allowed to write an empty list over a
+ * group's answer.
+ */
+export function cacheReportedSkills(db: DB, listed: Map<string, string>): void {
+  for (const [sandboxId, out] of listed) {
+    const owner = db
+      .query<{ project_id: number }, [string]>("SELECT project_id FROM grp WHERE sandbox_id = ?")
+      .get(sandboxId);
+    if (owner) cacheProjectSkills(db, owner.project_id, out);
+  }
+}
+
 /** A removed project should not leave its skills behind in `setting`. */
 export function forgetProjectSkills(db: DB, projectId: number): void {
   writeSetting(db, PROJECT_KEY(projectId), null);

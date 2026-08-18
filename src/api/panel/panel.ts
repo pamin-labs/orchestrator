@@ -9,6 +9,7 @@ import {
   restageSkills,
   setSkillOff,
   skillsOff,
+  cacheReportedSkills,
 } from "../../mech/skills.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
@@ -129,14 +130,21 @@ export const SkillBody = z.object({ name: z.string().max(200).optional(), on: z.
 
 export const postSkill = (async (ctx, _req, _p, b) => {
   // No name is a rescan: the boss installed or removed a skill outside this
-  // process, and the staged copy is the only thing that does not know yet.
+  // process, so both halves of the list are stale — the staged copy of this
+  // machine's, and the cached inventory of every checkout's.
   if (b.name) setSkillOff(ctx.db, b.name, b.on === false);
   const { staged, failed } = restageSkills(ctx.db, ctx.config.skillsDir);
   // The mount is a staging path now, not either CLI's own directory, so a
   // changed set is not visible until the links are rebuilt. Every live
   // container, because a standing agent's container has no checkout and so no
   // other moment that would ever redo them.
-  await relinkSkills();
+  //
+  // The same pass is where a repository's own skills come back. `restageSkills`
+  // above only ever sees this machine's, so before this the rescan answered for
+  // half the list and left the other half at whatever a container last said —
+  // a skill deleted from the checkout stayed on the page, and pressing the
+  // button that exists to correct that did nothing to it.
+  cacheReportedSkills(ctx.db, await relinkSkills());
   return json({ staged: staged.length, failed });
 }) satisfies Handler<z.infer<typeof SkillBody>>;
 

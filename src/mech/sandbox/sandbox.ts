@@ -1113,9 +1113,37 @@ async function provision(sb: Sandbox): Promise<void> {
   await sb.commands.run(SKILL_SYNC).catch(() => {});
 }
 
-/** Re-link every live container's skills. What a tick of the skills list does. */
-export async function relinkSkills(): Promise<void> {
-  await pMap(live.values(), (sb) => sb.commands.run(SKILL_SYNC).catch(() => {}), { concurrency: EXEC_FANOUT });
+/**
+ * Re-link every live container's skills, and hand back what each checkout ships.
+ *
+ * What a tick of the skills list does — and what 重新扫描 does, which is why the
+ * output is no longer thrown away. This process can enumerate the boss's own
+ * skills for itself, but a repository's own live inside a container behind
+ * `owner/name`, so `projectSkills` serves them from a cache only `SKILL_SYNC`
+ * can write. The rescan was already paying for that exec on every live
+ * container and discarding its stdout, so a skill deleted from the repository
+ * stayed on the settings page until some group happened to take its next turn,
+ * with the one button that claims to fix exactly that having no effect on it.
+ *
+ * `test -d`: `cacheProjectSkills` writes the empty list as a real answer —
+ * that is how a removed skill stops being listed — so a container that has not
+ * cloned yet must not be allowed to answer for a repository. Keyed by sandbox
+ * id rather than resolved here because the mapping to a project is a database
+ * question and this module owns containers.
+ */
+export async function relinkSkills(): Promise<Map<string, string>> {
+  const listed = new Map<string, string>();
+  await pMap(
+    [...live.entries()],
+    async ([id, sb]) => {
+      const out = stdoutText(
+        await sb.commands.run(`${SKILL_SYNC}; test -d ${WORK}/.git && echo yes`).catch(() => null),
+      );
+      if (out.includes("yes")) listed.set(id, out);
+    },
+    { concurrency: EXEC_FANOUT },
+  );
+  return listed;
 }
 
 /**
@@ -1285,6 +1313,16 @@ async function realExec(ctx: Ctx, scope: Scope, cmd: string, opts: ExecOpts = {}
  * joined with another "\\n" would double every blank line in a diff.
  */
 const oneLine = (m: { text: string }): string => m.text.replace(/\r?\n$/, "");
+
+/**
+ * One container's stdout as one string, from the shape the SDK hands back.
+ *
+ * Takes the null a failed exec becomes, because every caller has the same two
+ * cases and folding them here is what keeps the callers down to the line they
+ * actually care about.
+ */
+const stdoutText = (e: { logs?: { stdout?: { text: string }[] } } | null): string =>
+  (e?.logs?.stdout ?? []).map(oneLine).join("\n");
 
 /**
  * Reassemble lines from chunks that split anywhere.
