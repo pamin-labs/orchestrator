@@ -3,7 +3,6 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import { select } from "d3-selection";
 import flamegraph, { type FlameFrame, type FlameGraph } from "d3-flame-graph";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
-import { scalePoint } from "d3-scale";
 // `Report` and not `Telemetry`: the component exported at the foot of this file
 // is called `Telemetry`, and a type import of the same name shadows it, so the
 // one place that renders the component could not see it.
@@ -212,29 +211,6 @@ function wheelWindow(
 const Y_AXIS_PX = 40;
 const CHART_MARGIN = { top: 4, right: 4, bottom: 0, left: 0 } as const;
 const TREND_INSET = { left: Y_AXIS_PX + CHART_MARGIN.left, right: CHART_MARGIN.right };
-
-/**
- * The x scale, handed over rather than named.
- *
- * `recharts` resolves `scale="auto"` by *string*: `"scale".concat(type)` looked
- * up on its `d3-scale` namespace object. No bundler can follow that, so the
- * implementation of `scalePoint` survives tree-shaking only if something else
- * in the graph imports it statically — and until this file dropped the `Brush`,
- * that something was `recharts/es6/cartesian/Brush.js`, the only module in the
- * library that names it.
- *
- * Removing an unused control therefore deleted a function the *used* control
- * needs, and the bundle kept the export entry pointing at the deleted binding:
- * `scalePoint:()=>ij0` with no `ij0` anywhere. The lookup does
- * `typeof J[U] === "function"`, which reads the getter, so the whole view threw
- * `ij0 is not defined` on mount. The chart had been working by accident.
- *
- * Passing the instance makes the reference static, so it cannot be shaken out
- * and does not depend on which other components happen to be on the page.
- * `recharts` calls `.copy()` on whatever it is given, so one module-level scale
- * is shared safely.
- */
-const POINT_SCALE = scalePoint();
 
 /** The endpoint's own default window, so the first bucket is derived from the same number. */
 const DAY_MS = 24 * 3_600_000;
@@ -1082,10 +1058,7 @@ function Trend({
   // Dense, so an empty bucket in the middle draws as a break rather than being
   // smoothed over. A quiet ten minutes and ten minutes with no data are not the
   // same fact, and a line joined across the gap says they are.
-  const data = fillBuckets(trend, window, bucketMs).map((point) => ({
-    ...point,
-    label: trendLabel(point.at, windowMs, bucketMs),
-  }));
+  const data = fillBuckets(trend, window, bucketMs);
   return (
     <div
       // Not a control and not a paragraph. Clicking a chart drew the browser's
@@ -1108,14 +1081,42 @@ function Trend({
     >
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={CHART_MARGIN}>
+          {/* A number line, not a list of categories — and the change fixes two
+              things at once.
+
+              It is the axis this chart always wanted. A category axis gives every
+              bucket the same slot whether or not there is anything in it, so a
+              quiet hour and a busy hour are the same width and the shape of the
+              line is the shape of the *bucketing* rather than of time. On a real
+              axis the wheel's mapping is exact too: `wheelWindow` computes a
+              fraction of the plot, and only a linear axis makes that fraction the
+              same instant the pointer is over.
+
+              And it is what stops `scalePoint` from being needed at all.
+              `recharts` resolves a scale by string — `"scale" + type` looked up
+              on the `d3-scale` namespace — so a category axis depended on
+              something else in the graph importing `scalePoint` statically, which
+              until this file dropped its `Brush` was `recharts`' own Brush module.
+              A numeric axis resolves to `scaleLinear`, which the y axis beside it
+              already keeps alive. Handing the instance over instead was tried and
+              is worse: it bypasses the library's own category setup, and the axis
+              came back with no ticks and a curve starting a fifth of the way in. */}
           <XAxis
-            dataKey="label"
+            dataKey="at"
+            type="number"
+            // Pinned to the window rather than to the data. The extremes of a
+            // sparse series are not the edges of the window, so an axis fitted to
+            // the points would silently re-scale itself as buckets came and went.
+            domain={[window.from, window.to]}
+            tickFormatter={(at: number) => trendLabel(at, windowMs, bucketMs)}
             {...AXIS}
-            scale={POINT_SCALE}
             tickLine={false}
             axisLine={false}
-            interval="preserveStartEnd"
-            minTickGap={28}
+            // No `interval` here. That prop is a category-axis control — "which
+            // of these N slots get a label" — and on a number line it fights the
+            // library's own choice of round tick values. `minTickGap` is the one
+            // that still means something: keep them from colliding.
+            minTickGap={40}
           />
           <YAxis
             {...AXIS}
@@ -1124,7 +1125,9 @@ function Trend({
             width={Y_AXIS_PX}
             tickFormatter={(v: number) => duration(v)}
           />
-          <ChartTooltip format={duration} />
+          {/* The head line is the axis key, which is now an instant rather than a
+              printed label — so it is spelled the same way the ticks are. */}
+          <ChartTooltip format={duration} label={(at) => trendLabel(Number(at), windowMs, bucketMs)} />
           <Area type="monotone" dataKey="p50" name={P50_LABEL} stroke="var(--color-ink-3)" fill="var(--color-sunk)" />
           <Area type="monotone" dataKey="p95" name={P95_LABEL} stroke="var(--color-warn)" fill="transparent" />
         </AreaChart>

@@ -77,11 +77,18 @@ function scaleRecord(code: string): Record<string, string> {
  * resolves to a scale that is not here has to add a line, which is the moment
  * somebody notices the resolution is by string and cannot be tree-shaken.
  *
- * `point` is what an `AreaChart` with a category axis resolves to (`scale`
- * defaulting to `"auto"` picks it for Line/Area/Composed), and `linear` is what
- * its numeric y axis resolves to. `PieChart` has no axes.
+ * `linear` is what both of the trend's axes resolve to, the x axis included:
+ * it is `type="number"` over epoch milliseconds rather than a list of printed
+ * labels. `PieChart`, the only other chart here, has no axes.
+ *
+ * `scalePoint` is deliberately *not* on this list. A category x axis would
+ * resolve to it, and the reason the trend does not have one is partly this: its
+ * implementation reached the bundle only through `recharts`' own Brush module,
+ * so the chart worked for as long as an unrelated component happened to import
+ * it. If a category axis is ever added, this list is where that dependency has
+ * to be made explicit again.
  */
-const RESOLVED = ["scalePoint", "scaleLinear"] as const;
+const RESOLVED = ["scaleLinear"] as const;
 
 test("every scale this app's charts resolve by name is still in the bundle", async () => {
   const code = await bundle();
