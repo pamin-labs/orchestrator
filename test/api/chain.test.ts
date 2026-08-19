@@ -483,3 +483,55 @@ test("a stopped group's question goes straight to the boss", () => {
       .chain_state,
   ).toBe("boss");
 });
+
+test("an advisory on a stopped group waits for the group, it does not ring the boss", () => {
+  // The other half of the rule above, and the reason it is written as a rule.
+  // Lifting every escalation off a stopped group put five sandbox refusals — JSON
+  // blobs about a tool call — on the boss's phone as "things need you", and buried
+  // the one blocker that did. An advisory is "answer it if you can", so it stays in
+  // the chain and is read when the group runs again.
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'PAUSED' WHERE id = 1");
+  const id = h.ask("the sandbox refused `curl`", "advisory");
+  expect(route(h.deps, id)).toBe("pm");
+  expect(h.notified).toEqual([]);
+});
+
+test("an agent cannot answer as the boss by saying it is the boss", () => {
+  // `by` arrives in the request body. Reserved topics — spend, a merge to main, a
+  // credential — are refused for every level except the boss, so a level that can
+  // name itself boss has the whole reservation as a bypass.
+  const h = harness();
+  const id = h.ask("should we pay for more quota?");
+  const impersonated = answer(h.deps, { escId: id, by: "boss", answer: "yes", actorGrpId: 1 });
+  expect(impersonated.ok).toBe(false);
+  if (!impersonated.ok) expect(impersonated.error).toContain("through the panel");
+  // The panel itself has no acting group, and is still allowed.
+  expect(answer(h.deps, { escId: id, by: "boss", answer: "yes" }).ok).toBe(true);
+});
+
+test("routing an answered question again leaves it answered", () => {
+  // `route` is called from `abstain` and from the scheduler, and an answer can land
+  // between the two. Without the terminal check the level falls off the end of the
+  // chain and restarts at the PM, so a resolved question re-enters the queue and the
+  // group is asked something it has already been told.
+  const h = harness();
+  const id = h.ask("q");
+  expect(answer(h.deps, { escId: id, by: "pm", answer: "done" }).ok).toBe(true);
+  expect(route(h.deps, id)).toBe("closed");
+  expect(
+    h.db.query<{ chain_state: string }, [number]>("SELECT chain_state FROM escalation WHERE id = ?").get(id)!
+      .chain_state,
+  ).toBe("answered");
+  expect(h.notified).toEqual([]);
+});
+
+test("a retired PM is not a responder, so the question moves on instead of stalling", () => {
+  // A turn enqueued for a retired agent is never taken, and the question sits at
+  // chain_state='pm' with nothing running — the stall the chain exists to prevent,
+  // wearing the shape of a level that was answered.
+  const h = harness();
+  h.db.run("UPDATE agent SET state = 'retired' WHERE role = 'pm'");
+  const id = h.ask("who owns this file?");
+  expect(route(h.deps, id)).toBe("boss");
+});
