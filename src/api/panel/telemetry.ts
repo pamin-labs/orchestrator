@@ -87,14 +87,15 @@ function toScope(query: TelemetryQueryValue): ReadScope {
 }
 
 /**
- * How long a window gets, and why the default is not the whole of retention.
+ * How long a window gets: everything retention kept.
  *
- * A day is what a panel glanced at every twenty minutes is actually asking
- * about, and it keeps the project-scoped scan — which has only `span_age` to
- * lean on — proportional to a day of spans rather than a week of them. The
- * caller can ask for more, up to the seven days retention keeps.
+ * It said "the caller can ask for more, up to the seven days retention keeps",
+ * and retention is `SPAN_MAX_AGE_MS` — 24 hours. There was no more to ask for,
+ * and `windowMs` is already `.max(SPAN_MAX_AGE_MS)` above, so seven days was
+ * unreachable through a schema written in the same file. Read from the constant
+ * now rather than restated as a literal that happened to agree with it.
  */
-const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1_000;
+const DEFAULT_WINDOW_MS = SPAN_MAX_AGE_MS;
 const DEFAULT_BUCKET_MS = 60 * 60 * 1_000;
 
 /** How many recent traces the drill-in list offers. */
@@ -170,10 +171,10 @@ export interface TelemetryReport {
 /**
  * The aggregation is SQL, in `span-store.ts`, against indexes that exist for it.
  *
- * Nothing here pulls rows in to reduce them: 200k is the retention cap, so a
- * panel computing a p95 in-process would be slowest exactly when the fleet was
- * busiest. A scope naming a project that is gone is an empty report, not an
- * error: a span observes work rather than referring to it.
+ * Nothing here pulls rows in to reduce them: `SPAN_MAX_ROWS` is the retention
+ * cap, so a panel computing a p95 in-process would be slowest exactly when the
+ * fleet was busiest. A scope naming a project that is gone is an empty report,
+ * not an error: a span observes work rather than referring to it.
  */
 export const getTelemetry = (async (ctx, _req, _params, query) => {
   const scope = toScope(query);
