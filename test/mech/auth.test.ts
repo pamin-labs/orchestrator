@@ -421,7 +421,7 @@ test("a chatgpt login is judged by the expiry it carries, without a request", as
   const dead = await preflight({ db, sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" }, probe: () => false });
   const row = dead.find((c) => c.name === "credential:codex")!;
   expect(row.ok).toBe(false);
-  expect(row.detail).toContain("过期");
+  expect(row.detail).toContain("expired");
 });
 
 test("the codex device login shows a code with its link, and stores what the container wrote", async () => {
@@ -505,7 +505,7 @@ test("in a container, preflight stops answering questions about somebody else's 
   }
   // Said once rather than dropped silently: somebody reading this pane should
   // learn where those questions went, not wonder whether they are still asked.
-  expect(names(inside)).toContain("宿主环境");
+  expect(names(inside)).toContain("host-environment");
 
   // The one check that still means something is reachability — and its fix has
   // to stop telling a container to start a server it cannot start.

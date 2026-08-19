@@ -880,7 +880,13 @@ export function start(overrides: Partial<Config> = {}): Started {
     readinessWork = track(
       refreshRuntimeReadiness(runtime, () =>
         sandboxServer.then(() =>
-          preflight({ db, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir, cacheDirs: cfg.sandbox.cacheDirs }).then(
+          preflight({
+            db,
+            sandbox: cfg.sandbox,
+            skillsDir: cfg.skillsDir,
+            cacheDirs: cfg.sandbox.cacheDirs,
+            lang: cfg.language,
+          }).then(
             (checks) => {
               db.query<{ ok: number }, []>("SELECT 1 AS ok").get();
               return [{ name: "database", ok: true, detail: "migrated and queryable" }, ...checks];

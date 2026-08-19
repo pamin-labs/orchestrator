@@ -13,6 +13,7 @@ import {
 import { isStale, parseAuth } from "../sandbox/chatgpt.ts";
 import { decode } from "hono/jwt";
 import { z } from "zod";
+import { say } from "../../platform/text/lang.ts";
 
 /**
  * What has to be true before any agent can run, checked once. Every one of these
@@ -39,7 +40,7 @@ export interface Check {
  * `/v1/sandboxes` is the cheapest *authenticated* call — a list, no side effect.
  * An unauthenticated endpoint answers for a server that rejects every real call.
  */
-async function reachable(url: string, apiKey: string): Promise<{ ok: boolean; detail: string }> {
+async function reachable(url: string, apiKey: string, lang?: string): Promise<{ ok: boolean; detail: string }> {
   try {
     // fallow-ignore-next-line security-sink -- the one caller builds `url` from `cfg.sandbox.server`, the address the boss set for their own sandbox server, and `sandboxKeyFor` is what makes "the key stored for that same address" true rather than assumed: a stored key carries the address it was accepted by, and is withheld when the two disagree.
     const res = await fetch(`${url}/v1/sandboxes`, {
@@ -52,7 +53,7 @@ async function reachable(url: string, apiKey: string): Promise<{ ok: boolean; de
       const why = await res.text().catch(() => "");
       return {
         ok: false,
-        detail: why.includes("MISSING") ? "服务器开了鉴权，我们没带密钥" : "密钥不对，服务器不认",
+        detail: say(lang, why.includes("MISSING") ? "preflight.reachable.authRequired" : "preflight.reachable.keyRejected"),
       };
     }
     return { ok: false, detail: `HTTP ${res.status}` };
@@ -73,14 +74,15 @@ async function reachable(url: string, apiKey: string): Promise<{ ok: boolean; de
 const seen = new Map<string, { at: number; ok: boolean; detail: string }>();
 const CACHE_MS = 5 * 60_000;
 
-async function accepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+async function accepted(runtime: string, auth: RuntimeAuth, lang?: string): Promise<{ ok: boolean; detail: string }> {
   // Hashed, not a tail: a pasted auth.json ends in `"}}` no matter whose login
   // it is, so a tail collides and reports one credential's verdict for another.
-  const key = `${runtime}:${auth.mode}:${Bun.hash(auth.secret)}:${auth.baseUrl ?? ""}`;
+  // Language is part of the key: the cached detail text is written in it.
+  const key = `${runtime}:${auth.mode}:${Bun.hash(auth.secret)}:${auth.baseUrl ?? ""}:${lang ?? ""}`;
   const hit = seen.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return { ok: hit.ok, detail: hit.detail };
 
-  const out = await ask(runtime, auth);
+  const out = await ask(runtime, auth, lang);
   seen.set(key, { at: Date.now(), ...out });
   return out;
 }
@@ -94,23 +96,29 @@ async function accepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boole
  * container" a prerequisite for reporting that we cannot. **A check that needs
  * the thing it checks is not a check.**
  */
-async function ask(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
-  if (auth.mode === "chatgpt") return chatgptAccepted(auth);
-  if (runtime === "github") return githubAccepted(auth);
-  return modelAccepted(runtime, auth);
+async function ask(runtime: string, auth: RuntimeAuth, lang?: string): Promise<{ ok: boolean; detail: string }> {
+  if (auth.mode === "chatgpt") return chatgptAccepted(auth, lang);
+  if (runtime === "github") return githubAccepted(auth, lang);
+  return modelAccepted(runtime, auth, lang);
 }
 
-function chatgptAccepted(auth: RuntimeAuth): { ok: boolean; detail: string } {
+function chatgptAccepted(auth: RuntimeAuth, lang?: string): { ok: boolean; detail: string } {
   // The refresh token is what matters and it is not ours to test; the access
   // token carries its own expiry, and codex rotates it from the host.
   const exp = jwtExpiry(parseAuth(auth.secret)?.tokens?.access_token);
-  if (!exp) return { ok: true, detail: "存着" };
+  if (!exp) return { ok: true, detail: say(lang, "preflight.chatgpt.stored") };
   const days = Math.round((exp - Date.now()) / 86_400_000);
-  if (exp <= Date.now()) return { ok: false, detail: "过期了，重新登录一次" };
-  return { ok: true, detail: days >= 1 ? `还有 ${days} 天` : "快过期了" };
+  if (exp <= Date.now()) return { ok: false, detail: say(lang, "preflight.chatgpt.expired") };
+  return {
+    ok: true,
+    detail:
+      days >= 1
+        ? say(lang, "preflight.chatgpt.daysLeft", { days })
+        : say(lang, "preflight.chatgpt.expiringSoon"),
+  };
 }
 
-async function githubAccepted(auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+async function githubAccepted(auth: RuntimeAuth, lang?: string): Promise<{ ok: boolean; detail: string }> {
   // GitHub is not a model provider and has no `/v1/models`. A missing credential
   // otherwise surfaces only when the utility container tries to push a branch.
   try {
@@ -118,12 +126,13 @@ async function githubAccepted(auth: RuntimeAuth): Promise<{ ok: boolean; detail:
       headers: { authorization: `Bearer ${auth.secret}`, "user-agent": "orchestrator" },
       signal: AbortSignal.timeout(6000),
     });
-    if (response.ok) return { ok: true, detail: "能用" };
+    if (response.ok) return { ok: true, detail: say(lang, "preflight.works") };
     // GitHub deliberately uses 404 for resources a token cannot see.
-    if ([401, 403, 404].includes(response.status)) return { ok: false, detail: "GitHub 不认这个 token 了" };
-    return { ok: true, detail: `没验成（HTTP ${response.status}）` };
+    if ([401, 403, 404].includes(response.status))
+      return { ok: false, detail: say(lang, "preflight.github.tokenRejected") };
+    return { ok: true, detail: say(lang, "preflight.notVerified", { status: response.status }) };
   } catch {
-    return { ok: true, detail: "连不上，没验" };
+    return { ok: true, detail: say(lang, "preflight.unreachableNotVerified") };
   }
 }
 
@@ -158,19 +167,19 @@ export function modelProbe(runtime: string, auth: RuntimeAuth): { url: string; h
  * it is would send the boss to re-paste a token that was fine. Only 401 and 403
  * are the token; everything else is reported as unverified, which is what it is.
  */
-export function credentialVerdict(status: number): { ok: boolean; detail: string } {
-  if (status >= 200 && status < 300) return { ok: true, detail: "能用" };
-  if (status === 401 || status === 403) return { ok: false, detail: "对面不认这个凭据" };
-  return { ok: true, detail: `没验成（HTTP ${status}）` };
+export function credentialVerdict(status: number, lang?: string): { ok: boolean; detail: string } {
+  if (status >= 200 && status < 300) return { ok: true, detail: say(lang, "preflight.works") };
+  if (status === 401 || status === 403) return { ok: false, detail: say(lang, "preflight.credential.rejected") };
+  return { ok: true, detail: say(lang, "preflight.notVerified", { status }) };
 }
 
-async function modelAccepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+async function modelAccepted(runtime: string, auth: RuntimeAuth, lang?: string): Promise<{ ok: boolean; detail: string }> {
   const { url, headers } = modelProbe(runtime, auth);
   try {
     // fallow-ignore-next-line security-sink -- `modelProbe` builds the URL from the provider default or `runtime_auth.base_url`, and the secret it sends is the one stored in that same row; the gateway and the credential are set together by the boss and cannot be substituted for each other.
-    return credentialVerdict((await fetch(url, { headers, signal: AbortSignal.timeout(6000) })).status);
+    return credentialVerdict((await fetch(url, { headers, signal: AbortSignal.timeout(6000) })).status, lang);
   } catch {
-    return { ok: true, detail: "连不上，没验" };
+    return { ok: true, detail: say(lang, "preflight.unreachableNotVerified") };
   }
 }
 
@@ -213,6 +222,8 @@ export interface PreflightInput {
   probe?: (bin: string, argv?: string[]) => boolean;
   /** Injected in tests: the real one asks the provider whether it still works. */
   verify?: (runtime: string, auth: RuntimeAuth) => Promise<{ ok: boolean; detail: string }>;
+  /** `cfg.language`. Governs this diagnostic text (ADR 035, category 3); undefined reads as English. */
+  lang?: string;
 }
 
 /** Is this exact image:tag on this machine? */
@@ -261,18 +272,16 @@ const defaultProbe: Probe = (bin, argv = ["--version"]) => {
   }
 };
 
-function dockerCheck(docker: boolean, installed: boolean): Check {
+function dockerCheck(docker: boolean, installed: boolean, lang?: string): Check {
   return {
     name: "docker",
     ok: docker,
-    detail: docker ? "running" : installed ? "装了，但没启动（daemon 不理人）" : "not reachable",
-    fix: installed
-      ? "Docker 装了但没跑起来 —— 启动 Docker Desktop（或 colima start），等它变绿再回来。"
-      : "装 Docker（或 Colima / Podman，任何提供 docker socket 的都行）并启动。",
+    detail: docker ? "running" : installed ? say(lang, "preflight.docker.installedNotStarted") : "not reachable",
+    fix: say(lang, installed ? "preflight.docker.fixNotRunning" : "preflight.docker.fixNotInstalled"),
   };
 }
 
-function hostToolChecks(contained: boolean, probe: Probe): { checks: Check[]; docker: boolean } {
+function hostToolChecks(contained: boolean, probe: Probe, lang?: string): { checks: Check[]; docker: boolean } {
   if (contained) return { checks: [], docker: false };
   const docker = probe("docker", ["info"]);
   const installed = docker || probe("docker");
@@ -280,49 +289,49 @@ function hostToolChecks(contained: boolean, probe: Probe): { checks: Check[]; do
   return {
     docker,
     checks: [
-      dockerCheck(docker, installed),
+      dockerCheck(docker, installed, lang),
       {
         name: "uv / python",
         ok: uvx,
         detail: uvx ? "uvx available" : "no uvx on PATH",
-        fix: "brew install uv —— opensandbox-server 是个 Python 包，没有它就没东西可启动。",
+        fix: say(lang, "preflight.uv.fix"),
       },
     ],
   };
 }
 
-function sandboxServerCheck(input: PreflightInput, contained: boolean, server: { ok: boolean; detail: string }): Check {
+function sandboxServerCheck(
+  input: PreflightInput,
+  contained: boolean,
+  server: { ok: boolean; detail: string },
+): Check {
   return {
     name: "opensandbox-server",
     ok: server.ok,
     detail: server.detail,
     fix: contained
-      ? `这个 orchestrator 跑在容器里，起不了沙盒服务器，也不该起 —— 它要的是宿主的 docker。` +
-        `在宿主上跑 uvx opensandbox-server，然后用 ORCH_SANDBOX_SERVER 指过去` +
-        `（Docker Desktop 上是 host.docker.internal:8080，Linux 上用宿主 IP 或 --network host）。`
-      : `uvx opensandbox-server --config ~/.sandbox.toml，监听 ${input.sandbox.server}，[egress] mode 要是 "dns+nft"`,
+      ? say(input.lang, "preflight.sandboxServer.fixContained")
+      : say(input.lang, "preflight.sandboxServer.fixHost", { server: input.sandbox.server }),
   };
 }
 
-function hostEnvironmentCheck(contained: boolean): Check | null {
+function hostEnvironmentCheck(contained: boolean, lang?: string): Check | null {
   if (!contained) return null;
   return {
-    name: "宿主环境",
+    name: "host-environment",
     ok: true,
-    detail: "docker、uv、egress 镜像都归跑沙盒服务器的那台机器管，这儿看不到",
-    fix: "那台机器上要有：docker、uvx opensandbox-server、docker pull opensandbox/egress:v1.1.6。",
+    detail: say(lang, "preflight.hostEnvironment.detail"),
+    fix: say(lang, "preflight.hostEnvironment.fix"),
   };
 }
 
-function sandboxAuthCheck(serverOk: boolean, key: string): Check | null {
+function sandboxAuthCheck(serverOk: boolean, key: string, lang?: string): Check | null {
   if (!serverOk || key) return null;
   return {
-    name: "沙盒服务器鉴权",
+    name: "sandbox-auth",
     ok: false,
-    detail: "服务器没开鉴权，本机任何进程都能进容器",
-    fix:
-      `在服务器的 TOML 里写 [server] api_key = "…"，重启，然后设置 → 沙盒服务器 → 「从服务器读」。` +
-      `容器里有仓库、信箱令牌和 CLI 登录。`,
+    detail: say(lang, "preflight.sandboxAuth.detail"),
+    fix: say(lang, "preflight.sandboxAuth.fix"),
   };
 }
 
@@ -333,7 +342,7 @@ function egressDetail(good: string[], stale: string[]): string {
   return good.join(", ");
 }
 
-function egressCheck(contained: boolean, probe: Probe): Check | null {
+function egressCheck(contained: boolean, probe: Probe, lang?: string): Check | null {
   if (contained) return null;
   const egress = probe("docker") ? egressImages() : [];
   const good = egress.filter((tag) => newEnough(tag));
@@ -342,21 +351,22 @@ function egressCheck(contained: boolean, probe: Probe): Check | null {
     name: "egress sidecar",
     ok: good.length > 0,
     detail: egressDetail(good, stale),
-    fix: "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
+    fix: say(lang, "preflight.egress.fix"),
   };
 }
 
-function agentImageCheck(image: string, docker: boolean): Check | null {
+function agentImageCheck(image: string, docker: boolean, lang?: string): Check | null {
   if (hasRegistry(image) || (docker && localImages(image))) return null;
   return {
     name: "agent image",
     ok: false,
-    detail: `${image} 不在本机`,
-    fix: `docker build -f docker/agent.Dockerfile -t ${image} . —— 没有 registry 前缀的镜像只能本地构建。`,
+    detail: say(lang, "preflight.agentImage.detail", { image }),
+    fix: say(lang, "preflight.agentImage.fix", { image }),
   };
 }
 
 function skillsMountCheck(input: PreflightInput, contained: boolean): { check: Check; staged: string } {
+  const lang = input.lang;
   const staged = resolve(input.skillsDir ?? "/var/tmp/orch-cache/skills");
   const skills = existsSync(staged) ? readdirSync(staged).length : 0;
   return {
@@ -364,38 +374,36 @@ function skillsMountCheck(input: PreflightInput, contained: boolean): { check: C
     check: {
       name: "skills mount",
       ok: skills > 0,
-      detail: skills ? `${skills} staged at ${staged}` : "没有勾选的技能",
-      fix: contained
-        ? `${staged} 是这个容器里的路径，而挂载是沙盒服务器的 docker 做的 —— 它按自己看到的路径挂。` +
-          `两边要用同一个绝对路径（-v <宿主路径>:${staged}），并且写进沙盒服务器的 allowed_host_paths。` +
-          `不一致不会报错，只会挂个空目录。`
-        : `沙盒服务器的 allowed_host_paths 要包含 ${staged}，否则每个组开容器都会失败。技能在设置里勾。`,
+      detail: skills ? `${skills} staged at ${staged}` : say(lang, "preflight.skillsMount.none"),
+      fix: say(lang, contained ? "preflight.skillsMount.fixContained" : "preflight.skillsMount.fixHost", { staged }),
     },
   };
 }
 
 function allowedPathsCheck(input: PreflightInput, staged: string): Check {
+  const lang = input.lang;
   const allowed = allowedHostPaths();
   const wanted = [staged, ...Object.values(input.cacheDirs ?? {})].map((path) => hostPathForDaemon(resolve(path)));
   const missing = allowed ? wanted.filter((path) => !coveredBy(allowed.paths, path)) : [];
   const detail = !allowed
-    ? "找不到 opensandbox-server 的配置文件，没法核对"
+    ? say(lang, "preflight.allowedPaths.noConfig")
     : missing.length
-      ? `${allowed.config} 不含 ${missing.join(", ")}`
-      : `${allowed.config} 覆盖了要挂的 ${wanted.length} 个路径`;
+      ? say(lang, "preflight.allowedPaths.missing", { config: allowed.config, missing: missing.join(", ") })
+      : say(lang, "preflight.allowedPaths.covered", { config: allowed.config, n: wanted.length });
   const fix =
     allowed && missing.length
-      ? `把这一行写进 ${allowed.config} 的 [sandbox] 段，然后重启 opensandbox-server：\n` +
-        `      allowed_host_paths = [${[...allowed.paths, ...missing].map((path) => `"${path}"`).join(", ")}]`
+      ? say(lang, "preflight.allowedPaths.fix", {
+          config: allowed.config,
+          line: `allowed_host_paths = [${[...allowed.paths, ...missing].map((path) => `"${path}"`).join(", ")}]`,
+        })
       : undefined;
   return { name: "allowed_host_paths", ok: !allowed || missing.length === 0, detail, ...(fix ? { fix } : {}) };
 }
 
-function credentialFix(runtime: string): string {
-  if (runtime === "claude")
-    return "设置页 → Claude → 登录。在工具容器里跑官方的 claude setup-token，本机不用装；页面给的码贴回输入框就存下了。一年有效。";
-  if (runtime === "github") return "设置页里连一次 GitHub。分支是靠它推上去的 —— 没有它，每个切片都会在最后一步被拒。";
-  return "设置页 → codex → 登录，走官方的设备码流程，本机不用装 codex。也可以直接贴一个 API key。";
+function credentialFix(runtime: string, lang?: string): string {
+  if (runtime === "claude") return say(lang, "preflight.credentialFix.claude");
+  if (runtime === "github") return say(lang, "preflight.credentialFix.github");
+  return say(lang, "preflight.credentialFix.codex");
 }
 
 function credentialRuntimes(db: DB): string[] {
@@ -412,17 +420,19 @@ function credentialRuntimes(db: DB): string[] {
 }
 
 async function credentialCheck(input: PreflightInput, runtime: string): Promise<Check> {
+  const lang = input.lang;
   const auth = loadAuth(input.db, runtime);
-  const live = auth ? await (input.verify ?? accepted)(runtime, auth) : { ok: false, detail: "没配" };
+  const verify = input.verify ? input.verify : (r: string, a: RuntimeAuth) => accepted(r, a, lang);
+  const live = auth ? await verify(runtime, auth) : { ok: false, detail: say(lang, "preflight.credential.notConfigured") };
   return {
     name: `credential:${runtime}`,
     ok: live.ok,
     detail: auth ? `${auth.mode} · ${live.detail}` : live.detail,
-    fix: credentialFix(runtime),
+    fix: credentialFix(runtime, lang),
   };
 }
 
-function codexRefresherCheck(db: DB): Check | null {
+function codexRefresherCheck(db: DB, lang?: string): Check | null {
   const auth = loadAuth(db, "codex");
   if (auth?.mode !== "chatgpt") return null;
   const parsed = parseAuth(auth.secret);
@@ -430,10 +440,8 @@ function codexRefresherCheck(db: DB): Check | null {
   return {
     name: "codex-refresher",
     ok: !stale,
-    detail: stale
-      ? "这个 ChatGPT 登录已经旧到该续期了 —— 下一个容器起来时会自动续，续不上就要重新贴 auth.json"
-      : "登录还新，续期在工具容器里跑，本机不需要装 codex",
-    fix: "续期是在工具容器里跑真 codex 做的。如果一直续不上，去设置页重新贴一次 ~/.codex/auth.json，或者换成 API key —— API key 不需要续期。",
+    detail: say(lang, stale ? "preflight.codexRefresher.stale" : "preflight.codexRefresher.fresh"),
+    fix: say(lang, "preflight.codexRefresher.fix"),
   };
 }
 
@@ -456,12 +464,13 @@ async function preflightInner(input: PreflightInput): Promise<Check[]> {
   // Injectable so a test can assert both deployments without a container.
   const contained = input.contained ?? inContainer();
   const probe = input.probe ?? defaultProbe;
+  const lang = input.lang;
 
   // `docker info`, not `docker --version`: with the daemon down the binary still
   // exits 0, so `--version` reports "running" while every `ensureSandbox` fails.
   // Both are asked, because the answers send the boss to different places: not
   // installed at all is a download, installed but not started is one click.
-  const hostTools = hostToolChecks(contained, probe);
+  const hostTools = hostToolChecks(contained, probe, lang);
   const docker = hostTools.docker;
   out.push(...hostTools.checks);
 
@@ -469,19 +478,19 @@ async function preflightInner(input: PreflightInput): Promise<Check[]> {
   // the yaml. Checking a different key than the one the turns use is how a green
   // tick sat next to a fleet that could not open a single container.
   const key = sandboxKeyFor(input.db, input.sandbox.server, input.sandbox.apiKey);
-  const server = await reachable(`http://${input.sandbox.server}`, key);
+  const server = await reachable(`http://${input.sandbox.server}`, key, lang);
   out.push(sandboxServerCheck(input, contained, server));
 
   // One row instead of the three above, and only in a container. Said once
   // rather than dropped silently, so the pane shows where those questions went.
-  const hostEnvironment = hostEnvironmentCheck(contained);
+  const hostEnvironment = hostEnvironmentCheck(contained, lang);
   if (hostEnvironment) out.push(hostEnvironment);
 
   // Answering without a key is not a configuration detail: the containers hold
   // the checkout, the mailbox token and the CLI logins, so any process that can
   // reach loopback can exec into one. Only when reachable AND we sent no key — a
   // server that refuses us is already reported above.
-  const sandboxAuth = sandboxAuthCheck(server.ok, key);
+  const sandboxAuth = sandboxAuthCheck(server.ok, key, lang);
   if (sandboxAuth) out.push(sandboxAuth);
 
   // v1.1.4 — the version the example config ships — 403s every scoped package
@@ -490,14 +499,14 @@ async function preflightInner(input: PreflightInput): Promise<Check[]> {
   // probing, because probing means creating a sandbox on every boot (adr/005).
   // Which tag the sidecar runs is in the server's own TOML, not ours to read, so
   // this reports what is available and the fix line says to point at it.
-  const egress = egressCheck(contained, probe);
+  const egress = egressCheck(contained, probe, lang);
   if (egress) out.push(egress);
 
   // Reported only when it can fail: a published image is pulled by the sandbox
   // server on first build, and a row that is always green is a row nobody reads.
   // A tag with no registry in front of it has nowhere to be pulled from, and
   // fails every sandbox with a pull error that reads like a network problem.
-  const agentImage = agentImageCheck(input.sandbox.image, docker);
+  const agentImage = agentImageCheck(input.sandbox.image, docker, lang);
   if (agentImage) out.push(agentImage);
 
   // Says which path has to be in the server's `allowed_host_paths` rather than
@@ -522,7 +531,7 @@ async function preflightInner(input: PreflightInput): Promise<Check[]> {
   // (chatgpt.ts says why). The failure is silent and delayed: `renew` returns
   // null, the stored token is kept, and hours later every codex turn 401s looking
   // like an expired account. The other modes need nothing here.
-  const codexRefresher = codexRefresherCheck(input.db);
+  const codexRefresher = codexRefresherCheck(input.db, lang);
   if (codexRefresher) out.push(codexRefresher);
 
   return out;

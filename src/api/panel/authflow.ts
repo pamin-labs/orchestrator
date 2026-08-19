@@ -38,6 +38,7 @@ import {
 } from "../../mech/sandbox/login.ts";
 import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
 import { errText } from "../../platform/process/text.ts";
+import { say } from "../../platform/text/lang.ts";
 import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/login-flow.ts";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
@@ -91,10 +92,7 @@ export const postAuth = (async (ctx, _req, _p, b) => {
   // file, so no later change to `sandbox.server` can send it elsewhere.
   if ("adopt" in b) {
     const found = serverKeyOnDisk();
-    if (!found)
-      return bad(
-        "没找到沙盒服务器的配置。它是用 --config 启动的，把那个文件的路径放进 OPENSANDBOX_CONFIG，或者放在 ./sandbox.toml、~/.sandbox.toml。",
-      );
+    if (!found) return bad(say(ctx.config.language, "authflow.sandboxConfigMissing"));
     saveAuth(ctx.db, {
       runtime: SANDBOX_KEY,
       mode: "api_key",
@@ -119,7 +117,7 @@ export const postAuth = (async (ctx, _req, _p, b) => {
   if (auth.runtime === SANDBOX_KEY) {
     const server = ctx.config.sandbox?.server ?? "127.0.0.1:8080";
     const said = await sandboxKeyWorks(server, auth.secret);
-    if (said === "invalid") return bad("沙盒服务器不认这个密钥。它自己的配置里写的是哪个，这里就得填哪个。");
+    if (said === "invalid") return bad(say(ctx.config.language, "authflow.sandboxKeyInvalid"));
     // Stored with the address it was just accepted by, so moving the address
     // later cannot make this key follow it. `sandboxKeyFor` is the reader.
     auth = { ...auth, baseUrl: `http://${server}` };
@@ -219,9 +217,7 @@ export const postClaudeLogin = (async (ctx) => {
   const url = await printed(run, () => run.url, 150);
   if (!url) {
     run.cancel();
-    return bad(
-      "容器里的 claude 没打印出登录链接 —— 镜像里跑一下 `claude setup-token` 看看（它需要一个 pty，没有 pty 时它什么都不打印就退出 0）。",
-    );
+    return bad(say(ctx.config.language, "authflow.claudeNoLoginLink"));
   }
   claudeFlow = { url, expiresAt: startedAt + PASTE_TTL_MS };
   void run.done.then(async (r) => {
@@ -230,7 +226,9 @@ export const postClaudeLogin = (async (ctx) => {
     ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: r.ok ? "claude 登录好了" : `claude 登录没成：${r.detail}`,
+      body: r.ok
+        ? say(ctx.config.language, "authflow.claudeLoggedIn")
+        : say(ctx.config.language, "authflow.claudeLoginFailed", { detail: r.detail }),
     });
   });
   return json(claudeFlow);
@@ -241,8 +239,8 @@ export const CodeBody = z.object({ code: z.string().max(4000).default("") });
 
 export const postClaudeCode = (async (ctx, _req, _p, b) => {
   const code = b.code.trim();
-  if (!code) return bad("没有码");
-  if (!claudeFlow) return bad("没有在等码的登录 —— 先点登录");
+  if (!code) return bad(say(ctx.config.language, "authflow.noCode"));
+  if (!claudeFlow) return bad(say(ctx.config.language, "authflow.noPendingLogin"));
   await startClaudeLogin(ctx).submit(code);
   return message("ok");
 }) satisfies Handler<z.infer<typeof CodeBody>>;
@@ -287,10 +285,14 @@ export async function finishGithubLogin(ctx: Ctx, d: DeviceCode, fetchFn?: Devic
     saveAuth(ctx.db, { runtime: "github", mode: "api_key", secret: token });
     // Every running sandbox holds the old (absent) credential in its sidecar.
     await credentialChanged(ctx, "github");
-    ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "GitHub 连上了" });
+    ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: say(ctx.config.language, "authflow.githubConnected") });
   } catch (e) {
     ghError = errText(e);
-    ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `GitHub 没连上：${ghError}` });
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body: say(ctx.config.language, "authflow.githubConnectFailed", { detail: ghError }),
+    });
   } finally {
     ghFlow = null;
   }
@@ -315,7 +317,7 @@ export async function githubDeviceLogin(ctx: Ctx, fetchFn?: DeviceFlowFetcher): 
   } catch (e) {
     // `errText`, not `e?.message`: a thrown non-Error has no `message`, and the
     // object itself reaches the response body as "[object Object]".
-    return bad(errText(e) || "GitHub 没给出登录码");
+    return bad(errText(e) || say(ctx.config.language, "authflow.githubNoLoginCode"));
   }
   ghFlow = { userCode: d.userCode, verificationUri: d.verificationUri, expiresAt: Date.now() + d.expiresIn * 1000 };
   ghError = null;
@@ -337,7 +339,7 @@ export const postCodexDevice = (async (ctx) => {
   const both = await printed(run, () => (run.url && run.code ? { url: run.url, code: run.code } : null), 100);
   if (!both) {
     run.cancel();
-    return bad("容器里的 codex 没打印出登录码 —— 镜像里跑一下 `codex login --device-auth` 看看。");
+    return bad(say(ctx.config.language, "authflow.codexNoLoginCode"));
   }
   codexFlow = { code: both.code, url: both.url, expiresAt: startedAt + DEVICE_CODE_TTL_MS };
   void run.done.then((r) => {
@@ -345,7 +347,9 @@ export const postCodexDevice = (async (ctx) => {
     ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: r.ok ? "codex 登录好了" : `codex 登录没成：${r.detail}`,
+      body: r.ok
+        ? say(ctx.config.language, "authflow.codexLoggedIn")
+        : say(ctx.config.language, "authflow.codexLoginFailed", { detail: r.detail }),
     });
   });
   return json(codexFlow);
@@ -512,7 +516,7 @@ export const GithubReposQuery = z.object({ installation: z.coerce.number().int()
 
 export const getGithubRepos = (async (ctx, req, _params, { installation: asked = 0 }) => {
   if (!ctx.gh) return bad("this server has no GitHub client");
-  if (!loadAuth(ctx.db, "github")) return bad("还没连 GitHub，先去设置里连一下");
+  if (!loadAuth(ctx.db, "github")) return bad(say(ctx.config.language, "authflow.githubNotConnected"));
   // Both at once when the caller names an installation, which it does on every
   // open after the first. The first open of a session still has to learn the id
   // before it can ask.
