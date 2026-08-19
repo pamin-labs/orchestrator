@@ -273,6 +273,17 @@ M7 — executable engineering governance and versioned protocol.
 - The benchmark seeded `task.status = 'open'`, which is not in `TASK_STATES`
   (`pending | in_progress | done`). Migration 044's constraint trigger made it a hard
   failure; it had been meaningless data before that.
+- "Roles are configuration, not code" was a comment, not a fact: forty-odd role
+  names were hardcoded across the flow, so adding a Composer meant editing dozens
+  of call sites. `roles/*.yaml` now declares `capabilities:` and the flow asks for
+  one — `roleWith` resolves it and throws on nought or two, and the server checks
+  all ten at boot. The guard is a fixture role with no `qa` anywhere that must
+  still be dispatched by `handToQa` with no code change; it was shown failing
+  first (`Expected: "composer", Received: "qa"`).
+  Left as literals with reasons in the commit bodies: the `gates_json` "qa" key,
+  the escalation chain states in `src/contracts/states.ts`, and
+  `PLANNING_ROLES` in `scheduler.ts`, which is a DRAFT-freeze list rather than a
+  dispatch and fails safe for a role that is not in it.
 
 ## Blockers and deviations
 

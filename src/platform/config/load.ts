@@ -10,7 +10,10 @@ import { dirname, join, resolve } from "node:path";
  *
  * Adding a Composer, a Translator or an Artist is a new yaml file and nothing
  * else — the only thing that differs between an Engineer and a Composer is the
- * prompt, the model tier and the tool whitelist.
+ * prompt, the model tier and the tool whitelist. True because of `capabilities:`
+ * below and `roleWith`: the flow asks what a role does, never its name.
+ * `test/platform/role-capability.test.ts` is this paragraph as a test, and was
+ * shown failing before it was kept.
  */
 
 /**
