@@ -39,18 +39,14 @@ import { testContext } from "../support/test-context.ts";
 /**
  * The suite starts its own server, and skips only for a reason it detected.
  *
- * It used to probe 127.0.0.1:8080 and skip when nothing answered, which made
- * "nobody started a server" indistinguishable from "this machine cannot run
- * containers" — and the first of those is not a reason to skip the only test of
- * the real thing. `ensureServer` is the same call the orchestrator makes at boot:
- * it leaves a running server alone, starts one when there is none, and waits on
- * the port *and* the process so a config error is reported as itself rather than
- * as a timeout. Nothing here polls; that loop is `waitUp`'s.
+ * Probing 8080 and skipping when nothing answered made "nobody started a server"
+ * indistinguishable from "this machine cannot run containers", and only the
+ * second is a reason to skip the only test of the real thing. `ensureServer` is
+ * the same call the orchestrator makes at boot.
  *
- * On with `ORCH_LIVE_SANDBOX=1`, which nightly sets. Off by default because six
- * containers and 40s is not what an inner-loop `bun run test` should cost — and
- * that default cannot hide a skip, because the nightly job fails on one.
- *
+ * On with `ORCH_LIVE_SANDBOX=1`, which nightly sets and fails if anything skips.
+ */
+/*
  *   docker pull ghcr.io/pamin-labs/orch-agent:latest   # public, no login
  *   docker pull opensandbox/egress:v1.1.6              # v1.1.4 403s scoped fetches
  */
@@ -77,13 +73,11 @@ function dockerUp(): boolean {
 /**
  * A server, and the key to drive it with.
  *
- * The key is the part that made this skip on a machine where everything worked:
- * `ORCH_SANDBOX_API_KEY` is normally unset, the server on 8080 has one, and every
- * call came back 401. `serverKeyOnDisk` reads it out of the config of the server
- * that is actually running — the same way the panel's 「从服务器读」 does — and it
- * is seeded into the boot database so `ensureServer` does not generate a second
- * one that the existing config does not know about. When it does start a server
- * of its own, `sandboxKeyFor` reads back whatever key that one was given.
+ * The key is what made this skip on a machine where everything worked:
+ * `ORCH_SANDBOX_API_KEY` is normally unset, a server already on 8080 has one,
+ * and every call came back 401. `serverKeyOnDisk` reads it from that server's
+ * own config, seeded into the boot database so `ensureServer` does not generate
+ * a second key the running config has never heard of.
  */
 async function boot(): Promise<{ key: string; started: string | null } | { why: string }> {
   if (!ENABLED) return { why: "ORCH_LIVE_SANDBOX is not 1" };
