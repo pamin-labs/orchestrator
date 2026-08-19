@@ -1,7 +1,8 @@
 import type { DB } from "../platform/persistence/database.ts";
 import type { Bus } from "../platform/persistence/event-bus.ts";
 import type { Scheduler } from "../platform/scheduling/scheduler.ts";
-import type { Config } from "../platform/config/load.ts";
+import type { Capability, Config, Roles } from "../platform/config/load.ts";
+import { loadRoles, roleWith } from "../platform/config/load.ts";
 
 /**
  * The handle everything below the HTTP layer is given.
@@ -69,6 +70,14 @@ export interface Ctx {
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
   /**
+   * The roles this installation has, wired by the server.
+   *
+   * `roleFor` reads it to answer "who reviews a slice" without any call site
+   * naming a role. Optional so a unit test that never dispatches need not build
+   * one; the fallback is the installed `roles/`, which is what those tests mean.
+   */
+  roles?: Roles;
+  /**
    * The one config object, not a copy of the parts a handler was trusted with.
    *
    * It used to be a hand-written literal listing thirteen fields, which meant two
@@ -84,4 +93,9 @@ export interface Ctx {
    * exercise; a partial production state would only force fake fallbacks and casts.
    */
   config: Config;
+}
+
+/** The role that has this capability. Throws when no role, or more than one, declares it. */
+export function roleFor(ctx: Pick<Ctx, "roles">, cap: Capability): string {
+  return roleWith(ctx.roles ?? loadRoles(), cap);
 }

@@ -1,4 +1,7 @@
 name: pm
+# What the flow may ask this role for. The dispatch sites look up the capability,
+# never the name, so this line is what makes a role replaceable by a yaml file.
+capabilities: [lead_group]
 # codex: answers and plans, decides nothing. Its tools were already read-only.
 runtime: codex
 effort: medium

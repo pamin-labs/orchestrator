@@ -25,6 +25,29 @@ export type Effort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 /** Which provider a role gets when its yaml does not say. */
 export const DEFAULT_PROVIDER = "claude";
 
+/**
+ * What a role can be asked to do.
+ *
+ * The flow asks for a capability and never for a name: `handToQa` wants whoever
+ * reviews a slice, and which role that is belongs in yaml. So a new role is still
+ * one file — but a new *capability* is code, because something has to dispatch on
+ * it, and an entry here nothing dispatches is a promise the system cannot keep.
+ */
+const CAPABILITIES = [
+  "write_code",
+  "review_slice",
+  "audit_branch",
+  "plan_requirement",
+  "lead_group",
+  "write_pr_message",
+  "compress_context",
+  "bootstrap_env",
+  "cut_boundary",
+  "triage_boss_feedback",
+] as const;
+
+export type Capability = (typeof CAPABILITIES)[number];
+
 const RoleDefSchema = z.object({
   name: z.string().min(1),
   /**
@@ -51,8 +74,11 @@ const RoleDefSchema = z.object({
   allowedTools: z.array(z.string()).optional(),
   /** Which CLI runs this role's turns. A role is config, so this is too. */
   runtime: z.string().optional(),
+  /** What this role can be asked to do. The flow dispatches on these, not on `name`. */
+  capabilities: z.array(z.enum(CAPABILITIES)).optional(),
 });
 export type RoleDef = z.infer<typeof RoleDefSchema>;
+export type Roles = Map<string, RoleDef>;
 
 /**
  * Where skills can be staged such that a container actually sees them.
@@ -116,6 +142,10 @@ const DEFAULTS: Config = {
   gateRetries: 2,
   leaseTimeoutMs: 10_800_000,
   installTimeoutMs: 10_800_000,
+  // Measured against api.github.com: the whole query costs 1 point at these
+  // counts. Threads are the narrower window on purpose — a thread carries every
+  // reply, and the ones worth waking a group are the recent ones.
+  prPoll: { prs: 30, messages: 20, checks: 100, threads: 20, threadComments: 10 },
   // On by default: "approved" should buy a night of work. The slice still waits to
   // be accepted; only the next one stops waiting. The cost, stated: a wrong slice
   // is discovered later with the following slices built on top of it, and
@@ -243,6 +273,32 @@ export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
   const cfg = ConfigSchema.parse(fromEnv(withAbsoluteDataDir(merged)));
   const key = process.env[SANDBOX_API_KEY_ENV] || process.env[SANDBOX_API_KEY_ALT];
   return key ? { ...cfg, sandbox: { ...cfg.sandbox, apiKey: key } } : cfg;
+}
+
+/**
+ * Which role has this capability.
+ *
+ * Throws on none and on two. An unresolved role reaches a job payload as
+ * `undefined` and becomes a turn that never dispatches — a group that has simply
+ * stopped, with nothing on the boss's screen saying why. Two is worse: the answer
+ * would depend on `readdir` order, so it would be right until a file is renamed.
+ */
+export function roleWith(roles: Roles, cap: Capability): string {
+  const found = [...roles.values()].filter((r) => r.capabilities?.includes(cap));
+  if (found.length === 1) return found[0]!.name;
+  if (found.length === 0) throw new Error(`no role in roles/ declares the capability "${cap}"`);
+  // Sorted, so the message does not depend on the `readdir` order this branch
+  // exists to stop letting decide anything.
+  const who = found
+    .map((r) => r.name)
+    .sort()
+    .join(", ");
+  throw new Error(`capability "${cap}" is declared by ${who}; exactly one role may`);
+}
+
+/** Boot check: every capability the flow dispatches on resolves to exactly one role. */
+export function checkCapabilities(roles: Roles): void {
+  for (const cap of CAPABILITIES) roleWith(roles, cap);
 }
 
 export function loadRoles(dir = join(ROOT, "roles")): Map<string, RoleDef> {

@@ -1,4 +1,4 @@
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { addNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Config } from "../../platform/config/load.ts";
@@ -229,7 +229,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
     ctx.sched.enqueue("agent_turn", {
       grp_id: slice.grp_id,
       slice_id: sliceId,
-      payload: { role: "engineer", rejection: feedback, rotate: true },
+      payload: { role: roleFor(ctx, "write_code"), rejection: feedback, rotate: true },
     });
     ctx.bus.emit({
       grpId: slice.grp_id,
@@ -253,7 +253,7 @@ export function handToQa(deps: ReviewDeps, sliceId: number): void {
     ctx.sched.enqueue("agent_turn", {
       grp_id: slice.grp_id,
       slice_id: sliceId,
-      payload: { role: "qa", review: sliceId },
+      payload: { role: roleFor(ctx, "review_slice"), review: sliceId },
     });
   })();
   ctx.sched.tick();
@@ -279,8 +279,8 @@ export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void
     // context that is still true in the next slice, so throwing it away buys nothing.
     ctx.db.run(
       `UPDATE agent SET session_id = NULL, session_tokens = 0
-       WHERE grp_id = ? AND state != 'retired' AND role IN ('engineer','qa')`,
-      [slice.grp_id],
+       WHERE grp_id = ? AND state != 'retired' AND role IN (?, ?)`,
+      [slice.grp_id, roleFor(ctx, "write_code"), roleFor(ctx, "review_slice")],
     );
     ctx.bus.emit({
       grpId: slice.grp_id,
@@ -479,7 +479,7 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
       ctx.sched.enqueue("agent_turn", {
         grp_id: grpId,
         payload: {
-          role: "pm",
+          role: roleFor(ctx, "lead_group"),
           rejection:
             "Every slice is accepted, but this group has no retro. Write one now with " +
             "`orch journal add --kind retro`: what got reworked, which assumption was wrong, " +
@@ -517,7 +517,7 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
       if (branchRework(deps, grpId, "the branch gate", gateOut.feedback)) return false;
       ctx.sched.enqueue("agent_turn", {
         grp_id: grpId,
-        payload: { role: "engineer", rejection: gateOut.feedback, rotate: true },
+        payload: { role: roleFor(ctx, "write_code"), rejection: gateOut.feedback, rotate: true },
       });
       return true;
     })();
@@ -534,7 +534,7 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
     // make it review its own reasoning, and `orch audit` rightly refuses that.
     ctx.sched.enqueue("agent_turn", {
       grp_id: null,
-      payload: { role: "auditor", audit: grpId, audit_branch: grp.branch, audit_group: grp.name },
+      payload: { role: roleFor(ctx, "audit_branch"), audit: grpId, audit_branch: grp.branch, audit_group: grp.name },
     });
   })();
   ctx.sched.tick();
@@ -555,11 +555,11 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
       // state PR_OPEN's invariant repair looks for, and it publishes with the
       // record's own words rather than leaving finished work at the head of a
       // serial merge queue.
-      ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "scribe", scribe: grpId } });
+      ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: roleFor(ctx, "write_pr_message"), scribe: grpId } });
       const pos = position(ctx.db, grpId);
       ctx.bus.emit({
         grpId,
-        author: "auditor",
+        author: roleFor(ctx, "audit_branch"),
         kind: "state_change",
         body:
           pos && pos.position > 1
@@ -575,7 +575,7 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
     if (branchRework(deps, grpId, "the Auditor", note)) return false;
     ctx.sched.enqueue("agent_turn", {
       grp_id: grpId,
-      payload: { role: "pm", rejection: `The Auditor sent the branch back: ${note}`, rotate: true },
+      payload: { role: roleFor(ctx, "lead_group"), rejection: `The Auditor sent the branch back: ${note}`, rotate: true },
     });
     return true;
   })();
@@ -658,7 +658,7 @@ function queueNextSlice(ctx: Ctx, grpId: number): number | null {
   ctx.sched.enqueue("agent_turn", {
     grp_id: grpId,
     slice_id: next.id,
-    payload: { role: "engineer" },
+    payload: { role: roleFor(ctx, "write_code") },
   });
   return next.id;
 }

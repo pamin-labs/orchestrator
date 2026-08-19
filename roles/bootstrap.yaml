@@ -1,4 +1,7 @@
 name: bootstrap
+# What the flow may ask this role for. The dispatch sites look up the capability,
+# never the name, so this line is what makes a role replaceable by a yaml file.
+capabilities: [bootstrap_env]
 # codex: cheapest tier. Reads three files and runs one command.
 runtime: codex
 effort: low

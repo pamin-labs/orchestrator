@@ -9,7 +9,14 @@ import { joinQueue } from "../mech/flow/mergequeue.ts";
 import { bindSandboxKey } from "../mech/sandbox/auth.ts";
 import { Bus } from "../platform/persistence/event-bus.ts";
 import { consola } from "consola";
-import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from "../platform/config/load.ts";
+import {
+  checkCapabilities,
+  loadConfig,
+  loadRoles,
+  ROOT,
+  withAbsoluteDataDir,
+  type Config,
+} from "../platform/config/load.ts";
 import { applyOverrides } from "../platform/config/settings.ts";
 import { changed, checkConfig, checkRoles } from "../mech/ops/checkconfig.ts";
 import { open } from "../platform/persistence/database.ts";
@@ -623,6 +630,11 @@ export function start(overrides: Partial<Config> = {}): Started {
 
   const bus = new Bus(db);
   const roles = loadRoles();
+  // Before anything can dispatch. A capability no role declares reaches a job
+  // payload as an undefined role and becomes a turn that never runs; a capability
+  // two roles declare picks whichever `readdir` returned first. Both are silent at
+  // the point they are decided, so they are decided here, by name, at boot.
+  checkCapabilities(roles);
 
   // The executor needs the ctx that the scheduler lives in, so the scheduler is
   // created with a thunk that resolves once both exist.
@@ -724,6 +736,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   };
   exec = makeExecutor(execDeps);
   ctx.knownRoles = () => [...roles.keys()];
+  ctx.roles = roles;
   ctx.hire = (grpId, role, projectId) => {
     if (!roles.has(role)) return null;
     return hire(execDeps, grpId, role, null, projectId ?? null).id;
