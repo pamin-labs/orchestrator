@@ -347,6 +347,8 @@ const IssueCommentRest = z.object({
 const ReviewRest = z.object({
   user: z.object({ login: z.string().optional() }).nullable().optional(),
   body: z.string().optional(),
+  /** APPROVED / CHANGES_REQUESTED / COMMENTED / DISMISSED. Both transports carry it or they drift. */
+  state: z.string().optional(),
   submitted_at: z.string().optional(),
 });
 const CheckRest = z.object({ name: z.string().optional(), conclusion: z.string().nullable().optional() });
@@ -380,10 +382,29 @@ function transitionFeedback(group: WatchedGroup, prNumber: number, state: string
   return null;
 }
 
+/**
+ * A verdict is not a comment.
+ *
+ * `state` was never read, so an approval and a request for changes were the same
+ * string to everything downstream. And an approval usually carries no body at all,
+ * so the `body` filter below dropped it: the one event a PM waits for was the one
+ * event that never arrived.
+ */
+const VERDICTS: Record<string, string> = {
+  APPROVED: "approved this pull request",
+  CHANGES_REQUESTED: "requested changes",
+  DISMISSED: "had a review dismissed",
+};
+
+/** The verdict, then whatever was written under it. A `COMMENTED` review is only the body. */
+function reviewBody(review: Review): string {
+  return [VERDICTS[String(review.state ?? "").toUpperCase()] ?? "", review.body].filter(Boolean).join(": ");
+}
+
 function newComments(issue: IssueComment[], reviews: Review[], seenAt: number): Feedback["comments"] {
   return [
     ...issue.map((comment) => ({ author: comment.user?.login, body: comment.body, at: comment.created_at })),
-    ...reviews.map((review) => ({ author: review.user?.login, body: review.body, at: review.submitted_at })),
+    ...reviews.map((review) => ({ author: review.user?.login, body: reviewBody(review), at: review.submitted_at })),
   ]
     .map((comment) => ({
       author: comment.author ?? "?",
@@ -532,7 +553,7 @@ const GRAPH_QUERY = `query($owner:String!,$name:String!,$prs:Int!,$msgs:Int!,$ch
       nodes{
         number state merged mergeable headRefOid
         comments(last:$msgs){ nodes{ author{login} body createdAt } }
-        reviews(last:$msgs){ nodes{ author{login} body submittedAt } }
+        reviews(last:$msgs){ nodes{ author{login} body state submittedAt } }
         commits(last:1){ nodes{ commit{ statusCheckRollup{
           contexts(last:$checks){ nodes{
             __typename
@@ -571,7 +592,14 @@ const GraphPrNode = z.object({
   reviews: z
     .object({
       nodes: z
-        .array(z.object({ author: GraphActor, body: z.string().optional(), submittedAt: z.string().optional() }))
+        .array(
+          z.object({
+            author: GraphActor,
+            body: z.string().optional(),
+            state: z.string().optional(),
+            submittedAt: z.string().optional(),
+          }),
+        )
         .nullable()
         .optional(),
     })
@@ -657,6 +685,7 @@ function flattenGraphPr(pr: z.infer<typeof GraphPrNode>): Polled {
       reviews: (pr.reviews?.nodes ?? []).map((r) => ({
         user: { login: r.author?.login },
         body: r.body,
+        state: r.state,
         submitted_at: r.submittedAt,
       })),
       // One rollup, two REST endpoints. A `CheckRun` carries `name`/`conclusion`

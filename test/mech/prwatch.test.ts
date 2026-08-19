@@ -737,3 +737,42 @@ test("a GraphQL error sends that repository back to the REST path", async () => 
   expect(calls).toContain("POST /graphql");
   expect(calls).toContain("GET /repos/me/x/pulls/5");
 });
+
+test("a review with a verdict and no body is feedback, not silence", async () => {
+  // An approval carries no body, and the filter was on the body — so the one
+  // event a PM waits for was the one event that never arrived.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 7, pr_seen_at = 1000 WHERE id = 1");
+  const fs = await pollPrs(
+    h.ctx,
+    gh({
+      "GET /repos/me/x/pulls/7": pr(),
+      "GET /repos/me/x/pulls/7/reviews": ok([
+        { user: { login: "alice" }, state: "APPROVED", body: "", submitted_at: new Date(2000).toISOString() },
+      ]),
+    }),
+  );
+  expect(fs[0]!.comments.map((c) => c.body)).toEqual(["approved this pull request"]);
+});
+
+test("a request for changes reads differently from a comment saying the same words", async () => {
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 5, pr_seen_at = 0 WHERE id = 1");
+  const fs = await pollPrs(
+    h.ctx,
+    gh({
+      "POST /graphql": graphReply({
+        reviews: [
+          {
+            author: { login: "a" },
+            state: "CHANGES_REQUESTED",
+            body: "rename this",
+            submittedAt: "2026-08-18T10:00:00Z",
+          },
+          { author: { login: "b" }, state: "COMMENTED", body: "rename this", submittedAt: "2026-08-18T10:01:00Z" },
+        ],
+      }),
+    }),
+  );
+  expect(fs[0]!.comments.map((c) => c.body)).toEqual(["requested changes: rename this", "rename this"]);
+});
