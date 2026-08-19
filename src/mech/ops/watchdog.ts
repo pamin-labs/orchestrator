@@ -34,7 +34,7 @@ import {
 } from "../../platform/persistence/schema.ts";
 import { valueOr } from "../../contracts/json.ts";
 import { errText, hours, minutes } from "../../platform/process/text.ts";
-import { roleFor, type Ctx } from "../../mech/ctx.ts";
+import { answered, roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { say, type SayKey } from "../../platform/text/lang.ts";
 import { hold, interrupt, park, release, unpark } from "../flow/intercept.ts";
@@ -1400,9 +1400,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         })
         .where(eq(escalation.id, e.id));
       // Whatever asked is long gone, but a waiter left hanging keeps a job row alive.
-      const w = ctx.waiters.get(`escalation:${e.id}`);
-      ctx.waiters.delete(`escalation:${e.id}`);
-      w?.("stale: the group reached PR");
+      answered(ctx, e.id, "stale: the group reached PR");
       findings.push({
         rule: "stale_ask",
         grpId: e.grp_id,

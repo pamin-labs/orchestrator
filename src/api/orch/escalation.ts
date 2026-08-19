@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { roleFor, type Ctx } from "../../mech/ctx.ts";
+import { answered, awaitAnswer, roleFor, type Ctx } from "../../mech/ctx.ts";
 import {
   abstain,
   CHAIN,
@@ -91,6 +91,11 @@ export const postAskBoss = (async (ctx, _req, a, _p, b) => {
     kind: askKind(b.kind),
     chain: entryPoint(b.question),
   }))!;
+  // Before `route()`, not after: it can hand the question to a stand-in that
+  // answers within the same tick, and an answer with no waiter yet is dropped.
+  // The symptom was a request that never returned — an agent blocked forever on
+  // a question that had already been answered.
+  const answer = awaitAnswer(ctx, id);
 
   // The commit the question was asked at, so a stand-in's answer can be undone.
   if (a.grp_id) {
@@ -117,11 +122,9 @@ export const postAskBoss = (async (ctx, _req, a, _p, b) => {
 
   await route({ ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) }, id);
 
-  const answer = await new Promise<string>((resolve) => {
-    ctx.waiters.set(`escalation:${id}`, resolve);
-  });
+  const text = await answer;
   await ctx.db.update(agent).set({ state: "idle" }).where(eq(agent.id, a.id));
-  return message(answer);
+  return message(text);
 }) satisfies AgentHandler<z.infer<typeof AskBossBody>>;
 
 export const AnswerBody = z.object({
@@ -246,9 +249,7 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
     }
     return created;
   });
-  const w = ctx.waiters.get(`escalation:${id}`);
-  ctx.waiters.delete(`escalation:${id}`);
-  w?.(`the boss turned this into requirement ${name} (grp ${grp.id}); stop and wait for it`);
+  answered(ctx, id, `the boss turned this into requirement ${name} (grp ${grp.id}); stop and wait for it`);
   await ctx.sched.tick();
   return json({ grp_id: grp.id, name });
 }) satisfies Handler<z.infer<typeof RequirementBody>, z.infer<typeof IdParams>>;

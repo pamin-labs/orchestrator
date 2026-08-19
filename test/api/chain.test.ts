@@ -514,3 +514,23 @@ test("a retired PM is not a responder, so the question moves on instead of stall
   const id = await h.ask("who owns this file?");
   expect(await route(h.deps, id)).toBe("boss");
 });
+
+test("an answer that arrives before the question has finished filing still reaches the asker", async () => {
+  // The waiter used to be registered after `route()`, and `route()` can hand a
+  // question to a stand-in that answers inside the same tick. The answer then
+  // found nothing to resolve, `w?.(…)` dropped it, and the agent that asked
+  // waited for the rest of its life on a question already answered.
+  //
+  // Answering off the bus frame is the deterministic form of that race: the
+  // frame is emitted while the request is still filing, so under the old order
+  // this answer always lost.
+  const h = await harness();
+  const off = h.ctx.bus.subscribe((frame) => {
+    if (frame.type !== "event" || frame.kind !== "escalation") return;
+    off();
+    void h.post("/api/v1/escalations/1/answer", { answer: "middleware" });
+  });
+
+  const asked = await h.post("/orch/v1/ask-boss", { question: "middleware or handler?" }, "tok-eng");
+  expect(await asked.json()).toEqual({ message: "middleware" });
+}, 3_000);

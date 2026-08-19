@@ -18,7 +18,7 @@ export interface Ctx {
   db: DB;
   bus: Bus;
   sched: Scheduler;
-  /** Resolves a blocking `ask-boss` call. */
+  /** Resolves a blocking `ask-boss` call. Written through `awaitAnswer`/`answered`. */
   waiters: Map<string, (value: string) => void>;
   /**
    * Retrieval for `orch ctx query`. Absent in unit tests that never search.
@@ -107,4 +107,26 @@ export interface Ctx {
 /** The role that has this capability. Throws when no role, or more than one, declares it. */
 export function roleFor(ctx: Pick<Ctx, "roles">, cap: Capability): string {
   return roleWith(ctx.roles ?? loadRoles(), cap);
+}
+
+/**
+ * The two halves of a blocking `ask-boss`, so the key has one owner.
+ *
+ * `awaitAnswer` must be called before the escalation is visible to anything that
+ * can answer it: `route()` hands a question to a stand-in that can answer inside
+ * the same tick, and an answer arriving before the waiter exists is dropped by
+ * the `?.` below — the asking agent then blocks for the rest of its life.
+ */
+const waiterKey = (id: number): string => `escalation:${id}`;
+
+export const awaitAnswer = (ctx: Pick<Ctx, "waiters">, id: number): Promise<string> =>
+  new Promise<string>((resolve) => {
+    ctx.waiters.set(waiterKey(id), resolve);
+  });
+
+/** Hand the answer to whoever is blocked on it. Nobody waiting is normal: it may be a turn. */
+export function answered(ctx: Pick<Ctx, "waiters">, id: number, text: string): void {
+  const waiter = ctx.waiters.get(waiterKey(id));
+  ctx.waiters.delete(waiterKey(id));
+  waiter?.(text);
 }

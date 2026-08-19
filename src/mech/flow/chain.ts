@@ -1,5 +1,5 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
-import { roleFor, type Ctx } from "../../mech/ctx.ts";
+import { answered, roleFor, type Ctx } from "../../mech/ctx.ts";
 import { addNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { agent as agentTable, escalation, grp, note as noteTable } from "../../platform/persistence/schema.ts";
@@ -250,9 +250,7 @@ export async function answer(
     await release(ctx, esc.grp_id);
   }
 
-  const w = ctx.waiters.get(`escalation:${input.escId}`);
-  ctx.waiters.delete(`escalation:${input.escId}`);
-  w?.(input.answer);
+  answered(ctx, input.escId, input.answer);
   await ctx.sched.tick();
   return { ok: true };
 }

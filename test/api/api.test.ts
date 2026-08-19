@@ -126,9 +126,11 @@ const githubAnswer = (data: Json): Github => ({
  * `Bun.sleep(5)` was long enough while the database was in this process. Every
  * step of a handler is a round trip now, so a fixed wait is a bet on the day's
  * scheduling — and the failure it produces reads as a wrong status rather than
- * as a race.
+ * as a race. Under the 5s test timeout, not equal to it: at 5s the runner kills
+ * the test first and the only thing reported is "timed out", never the row that
+ * was actually read.
  */
-async function until<T>(read: () => Promise<T>, is: (value: T) => boolean, within = 5_000): Promise<T> {
+async function until<T>(read: () => Promise<T>, is: (value: T) => boolean, within = 4_000): Promise<T> {
   const deadline = Date.now() + within;
   for (;;) {
     const seen = await read();
@@ -251,15 +253,17 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
     ),
   ).toBe("PAUSING");
   expect((await first(db.select({ s: agent.state }).from(agent).where(eq(agent.id, 1))))?.s).toBe("blocked");
-  // The waiter is registered after the pause, so it needs its own wait.
-  expect(
-    await until(
-      async () => ctx.waiters.size,
-      (n) => n === 1,
-    ),
-  ).toBe(1);
+  // Registered before anything can answer, so by the time the group is pausing it
+  // is already there — waiting on it says nothing about the routing below.
+  expect(ctx.waiters.size).toBe(1);
   // The route still owns its fields and rollback checkpoint; `raise` only owns how
   // the row is filed, so moving the INSERT cannot silently drop either contract.
+  // `chain_state` is what the wait hangs on, because routing is the last thing the
+  // handler does before it blocks.
+  await until(
+    async () => (await first(db.select({ s: escalation.chain_state }).from(escalation)))?.s,
+    (s) => s === "boss",
+  );
   expect(
     await first(
       db
