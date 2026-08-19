@@ -1,3 +1,4 @@
+import { eq, sql } from "drizzle-orm";
 import { roleFor } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { rm } from "node:fs/promises";
@@ -21,6 +22,8 @@ import { ACTIVE_JOB_STATES, stateParam } from "../../contracts/states.ts";
 import { IdParams } from "../../contracts/fields.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp, project, resource } from "../../platform/persistence/schema.ts";
 
 /**
  * A repository this fleet works on: added, configured, and removed.
@@ -61,14 +64,19 @@ export const SetupBody = z.object({ cmd: InstallCommand.optional(), none: z.bool
  * ever "nobody has looked".
  */
 function rememberInstall(db: DB, projectId: number, cmd: string | null): void {
-  db.run("UPDATE project SET config_json = json_set(config_json, '$.install', ?) WHERE id = ?", [cmd, projectId]);
+  orm(db)
+    .update(project)
+    // Raw: `json_set` has no Drizzle operator, and the point of it is to leave the
+    // rest of `config_json` alone rather than read, merge and write it back.
+    .set({ config_json: sql`json_set(${project.config_json}, '$.install', ${cmd})` })
+    .where(eq(project.id, projectId))
+    .run();
 }
 
 export const postSetup = (async (ctx, _req, a, _p, b) => {
   if (a.role !== roleFor(ctx, "bootstrap_env")) return bad(`${a.role} does not set this project up`);
   const projectId = a.grp_id
-    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(a.grp_id)
-        ?.project_id
+    ? orm(ctx.db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, a.grp_id)).get()?.project_id
     : undefined;
   if (!a.grp_id || !projectId) return bad("this agent has no group");
 
@@ -118,16 +126,24 @@ export const postProject = (async (ctx, req, _p, b) => {
   const baseBranch = r.data.default_branch || null;
   const name = (b.name ?? "").trim() || repoPath.split("/")[1] || repoPath;
 
-  const dup = ctx.db.query<{ name: string }, [string]>("SELECT name FROM project WHERE repo_path = ?").get(repoPath);
+  const dup = orm(ctx.db).select({ name: project.name }).from(project).where(eq(project.repo_path, repoPath)).get();
   if (dup) return bad(`${repoPath} is already registered as "${dup.name}"`);
 
   const gates = b.gates ?? [];
-  const row = ctx.db
-    .query<{ id: number }, [string, string, string, string, string | null]>(
-      `INSERT INTO project (name, repo_path, remote, config_json, base_branch, created_at)
-       VALUES (?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
-    )
-    .get(name, repoPath, remote, JSON.stringify({ gates }), baseBranch)!;
+  const row = orm(ctx.db)
+    .insert(project)
+    .values({
+      name,
+      repo_path: repoPath,
+      remote,
+      config_json: JSON.stringify({ gates }),
+      base_branch: baseBranch,
+      // Raw: SQLite's clock, as the statement it replaces had. Every other row in
+      // this table was stamped that way and a mixed column is a mixed sort.
+      created_at: sql`unixepoch() * 1000`,
+    })
+    .returning({ id: project.id })
+    .get();
 
   // Said rather than silently guessed at: nothing was looked at, because there is
   // nothing to look at until a group clones (007 §2).
@@ -213,13 +229,13 @@ const PROJECT_ROWS: string[] = [
  */
 export const deleteProject = (async (ctx, _req, params) => {
   const id = params.id;
-  const p = ctx.db
-    .query<{ name: string; repo_path: string; remote: string | null }, [number]>(
-      "SELECT name, repo_path, remote FROM project WHERE id = ?",
-    )
-    .get(id);
+  const p = orm(ctx.db)
+    .select({ name: project.name, repo_path: project.repo_path, remote: project.remote })
+    .from(project)
+    .where(eq(project.id, id))
+    .get();
   if (!p) return message("no such project", 404);
-  const grps = ctx.db.query<{ id: number }, [number]>("SELECT id FROM grp WHERE project_id = ?").all(id);
+  const grps = orm(ctx.db).select({ id: grp.id }).from(grp).where(eq(grp.project_id, id)).all();
 
   // 1. Nothing new starts, and what is running is actually stopped.
   //
@@ -233,6 +249,9 @@ export const deleteProject = (async (ctx, _req, params) => {
   // Both scopes: a project's standing agents (Architect, CoS, Dispatcher) have
   // `grp_id` NULL and `project_id` set, so a `grp_id IN (…)` filter left every
   // one of their turns running against a project that was being erased.
+  // Raw, and the three statements below it too: `json_each` over a bound array,
+  // numbered parameters reused across subqueries, and a UNION. None has a builder
+  // form, and `PROJECT_ROWS` is a list of statement strings on purpose.
   const doomed = ctx.db
     .query<{ id: number }, [string, number]>(
       `SELECT id FROM job
@@ -298,7 +317,7 @@ export const deleteProject = (async (ctx, _req, params) => {
 
   // 4. Rows, in one transaction: a half-removed project is worse than either end.
   ctx.db.transaction(() => {
-    for (const sql of PROJECT_ROWS) ctx.db.run(sql, [id]);
+    for (const stmt of PROJECT_ROWS) ctx.db.run(stmt, [id]);
   })();
 
   // 5. State that outlives the row. `holds` is keyed by `owner/repo` and would
@@ -368,7 +387,7 @@ function mergeProjectConfig(raw: string, patch: StoredConfigPatch): Result<{ con
 
 export const patchProjectConfig = (async (ctx, _req, params, data) => {
   const id = params.id;
-  const row = ctx.db.query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?").get(id);
+  const row = orm(ctx.db).select({ config_json: project.config_json }).from(project).where(eq(project.id, id)).get();
   if (!row) return message("no such project", 404);
   const { baseBranch: nextBase, ...patch } = data;
   // `baseBranch` is a column, not a config_json key: it is read on every clone,
@@ -393,29 +412,39 @@ export const patchProjectConfig = (async (ctx, _req, params, data) => {
       // that flag `baseBranch` cannot tell a choice from a cached lookup, and it
       // overwrote both — so picking a branch here lasted until the next tick.
       // Emptying the box is the way back to following the remote's default.
-      ctx.db.run("UPDATE project SET base_branch = ?, base_branch_pinned = ? WHERE id = ?", [
-        want || null,
-        want ? 1 : 0,
-        id,
-      ]);
+      orm(ctx.db)
+        .update(project)
+        .set({ base_branch: want || null, base_branch_pinned: want ? 1 : 0 })
+        .where(eq(project.id, id))
+        .run();
     }
     if (changesConfig) {
-      ctx.db.run("UPDATE project SET config_json = ? WHERE id = ?", [JSON.stringify(config), id]);
+      orm(ctx.db)
+        .update(project)
+        .set({ config_json: JSON.stringify(config) })
+        .where(eq(project.id, id))
+        .run();
     }
   })();
   return json(config);
 }) satisfies Handler<z.infer<typeof ProjectConfigBody>, z.infer<typeof IdParams>>;
 
 export const getProjectConfig = (async (ctx, _req, params) => {
-  const row = ctx.db
-    .query<{ repo_path: string; base_branch: string | null; base_branch_pinned: number }, [number]>(
-      "SELECT repo_path, base_branch, base_branch_pinned FROM project WHERE id = ?",
-    )
-    .get(params.id);
+  const row = orm(ctx.db)
+    .select({
+      repo_path: project.repo_path,
+      base_branch: project.base_branch,
+      base_branch_pinned: project.base_branch_pinned,
+    })
+    .from(project)
+    .where(eq(project.id, params.id))
+    .get();
   if (!row) return message("no such project", 404);
   const config = projectConfig(ctx.db, params.id);
-  const resources = ctx.db
-    .query<{ name: string; template: string }, []>("SELECT name, template FROM resource ORDER BY name")
+  const resources = orm(ctx.db)
+    .select({ name: resource.name, template: resource.template })
+    .from(resource)
+    .orderBy(resource.name)
     .all();
   return json({
     repoPath: row.repo_path,
