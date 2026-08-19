@@ -37,6 +37,20 @@ test("the rule does not reach Latin, where single letters are stop words", () =>
 });
 
 /**
+ * Han only, which is narrower than the "not Latin" this first shipped as.
+ *
+ * The rule holds where a character is a morpheme. In an alphabet a single-letter
+ * stop word is a preposition that happens to be one letter, and `rus` has nine — so
+ * `тест`, the word this repository would be searched for most in Russian, was built
+ * entirely out of stop characters and deleted.
+ */
+test("an alphabetic word built from stop letters survives", () => {
+  for (const word of ["тест", "тестов", "система", "дом", "вода", "сова", "кот"]) {
+    expect(terms(word)).toEqual([word]);
+  }
+});
+
+/**
  * Deliberately under-inclusive: only what the rented list already covers, composed.
  *
  * 可以 and 没有 survive because 可 and 有 are not on it. Widening this by hand would
@@ -308,4 +322,51 @@ test("a note quoted in the where section is not quoted again below it", () => {
       queryWith(db, { grpId: null, projectId: p.id, question: "validation library", where, whereNotes: [note.id] }),
     ),
   ).toBe(1);
+});
+
+/**
+ * A query reaches a form of the word the note did not use.
+ *
+ * The index matched the exact surface form, so a boss searching `testing` missed a
+ * note saying `tests`, and Russian and Arabic — where inflection is the norm rather
+ * than the exception — could barely be searched at all.
+ */
+test("an inflected query finds the word it is a form of", () => {
+  const { hits } = indexed([
+    { kind: "journal", body: "the gate runs the tests before every merge" },
+    { kind: "journal", body: "тесты проверяют граничные случаи" },
+    { kind: "journal", body: "الاختبارات تغطي الحالات الحدية" },
+    { kind: "journal", body: "the deploy script copies the bundle" },
+  ]);
+  expect(hits("testing")[0]?.doc.body).toContain("tests");
+  expect(hits("тестов")[0]?.doc.body).toContain("тесты");
+  expect(hits("اختبار")[0]?.doc.body).toContain("الاختبارات");
+});
+
+/**
+ * Stemming is the index's, not `terms()`'.
+ *
+ * `repomap.ts` matches `terms(question)` against raw text with `includes`, where a
+ * stem is a substring: `use` becomes `us`, which hits `status`, `bus` and `cluster`.
+ * Both sides of *this* index go through one tokeniser, which is what makes it safe
+ * here and unsafe there.
+ */
+test("terms() itself does not stem", () => {
+  expect(terms("Should we use the middleware")).toEqual(["use", "middleware"]);
+});
+
+/**
+ * Scripts Snowball has no stemmer for are left alone rather than handed one.
+ *
+ * Chinese, Japanese and Korean do not inflect; Thai is agglutinative. The English
+ * stemmer returns each of these unchanged, which is what makes the dispatch safe
+ * even where it has nothing to offer.
+ */
+test("a script with no stemmer is indexed as it was written", () => {
+  const { hits } = indexed([
+    { kind: "journal", body: "沙盒容器是怎么创建的" },
+    { kind: "journal", body: "テストが浅すぎる" },
+  ]);
+  expect(hits("沙盒容器")[0]?.doc.body).toContain("沙盒");
+  expect(hits("テスト")[0]?.doc.body).toContain("テスト");
 });
