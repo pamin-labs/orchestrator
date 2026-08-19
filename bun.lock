@@ -20,6 +20,7 @@
         "@opentelemetry/sdk-trace-node": "^2.10.0",
         "@opentelemetry/semantic-conventions": "^1.43.0",
         "@orama/orama": "^3.1.18",
+        "@orama/stemmers": "^3.1.18",
         "@radix-ui/react-accordion": "^1.2.20",
         "@radix-ui/react-collapsible": "^1.1.20",
         "@radix-ui/react-context-menu": "^2.3.7",
@@ -241,6 +242,8 @@
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.43.0", "", {}, "sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg=="],
 
     "@orama/orama": ["@orama/orama@3.1.18", "", {}, "sha512-a61ljmRVVyG5MC/698C8/FfFDw5a8LOIvyOLW5fztgUXqUpc1jOfQzOitSCbge657OgXXThmY3Tk8fpiDb4UcA=="],
+
+    "@orama/stemmers": ["@orama/stemmers@3.1.18", "", {}, "sha512-xXs5fpiUvBs4jJZtnayJmUSomdxxiwwwvTbAzPHSyI6geLM7bxXHgpVlYz4JeMBycHX8bHF7j9m7F35BxhuZ8g=="],
 
     "@oxc-coverage-instrument/binding-darwin-arm64": ["@oxc-coverage-instrument/binding-darwin-arm64@0.12.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-jC55BAWyf/tmSoQYiiZYA6LLGP+HZCYbcYkQTGPbGMU/7P+Q2/7O8+DySIqGWwTUlzplbcRfOd/dSDnjYh+Ghg=="],
 

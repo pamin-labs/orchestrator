@@ -1,4 +1,7 @@
 import { create, insertMultiple, search } from "@orama/orama";
+import { stemmer as arabic } from "@orama/stemmers/arabic";
+import { stemmer as english } from "@orama/stemmers/english";
+import { stemmer as russian } from "@orama/stemmers/russian";
 import type { DB } from "../../platform/persistence/database.ts";
 import { type Doc, type Hit, KIND_WEIGHT } from "./ctx.ts";
 import { terms } from "./terms.ts";
@@ -68,6 +71,36 @@ const rowsAfter = (db: DB, afterId: number): Row[] =>
 
 type Index = ReturnType<typeof emptyIndex>;
 
+/**
+ * A stemmer per script, so a query reaches a form of the word it did not use.
+ *
+ * Retrieval matched the exact surface form: `testing` missed `tests`, `граничные`
+ * missed `граничных`. Snowball has none for Chinese, Japanese, Korean or Thai — the
+ * first three do not inflect and the fourth is agglutinative, so that is the right
+ * answer rather than a gap.
+ */
+/**
+ * Here rather than in `terms()`, and that is the whole of why it is safe: this is the
+ * index's own tokeniser, so a query and a document are stemmed by the same function.
+ * `repomap.ts` matches \`terms(question)\` against *raw* text with `includes`, where a
+ * stem is a substring — `use` becomes `us` and hits `status`, `bus` and `cluster`.
+ *
+ * Dispatched on the token's script, never on a configured language, because one note
+ * holds more than one. The English stemmer returns 测试, テスト, 테스트 and гранич
+ * unchanged, so a token only ever meets the stemmer built for it.
+ */
+const CYRILLIC = /[\p{Script=Cyrillic}]/u;
+const ARABIC = /[\p{Script=Arabic}]/u;
+const LATIN = /[\p{Script=Latin}]/u;
+
+function stemmed(raw: string): string[] {
+  return terms(raw).map((token) => {
+    if (CYRILLIC.test(token)) return russian(token);
+    if (ARABIC.test(token)) return arabic(token);
+    return LATIN.test(token) ? english(token) : token;
+  });
+}
+
 function emptyIndex() {
   return create({
     schema: { body: "string", kind: "string" },
@@ -75,7 +108,7 @@ function emptyIndex() {
       // Orama's own extension point. `language` and `normalizationCache` are
       // required by the interface and unused by a tokenizer that segments with
       // ICU rather than by stemming an English word list.
-      tokenizer: { language: "english", normalizationCache: new Map(), tokenize: (raw: string) => terms(raw) },
+      tokenizer: { language: "english", normalizationCache: new Map(), tokenize: (raw: string) => stemmed(raw) },
     },
   });
 }
