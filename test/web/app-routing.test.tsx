@@ -1,0 +1,103 @@
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { HttpResponse, http } from "msw";
+import { act, cleanup, render as mount, waitFor } from "../support/render.tsx";
+import { inFlight, mockHttp } from "../support/http.ts";
+import { WithQueries } from "./queries.tsx";
+import { TipRoot } from "../../web/src/ui/tooltip.tsx";
+import { App } from "../../web/src/app/app.tsx";
+import { emptyState } from "../../web/src/shared/api.ts";
+
+/**
+ * The back button, and the shortcuts, against the real component.
+ *
+ * Neither could be tested until `window` events fired at all: `dom.ts` handed the
+ * process Bun's dispatcher under happy-dom's `Event`, so a dispatched `popstate`
+ * reached nobody and a test asserting on it passed by asserting nothing happened.
+ */
+/**
+ * That is also why `app.tsx` sits in `fallow health --coverage-gaps`: its routing is
+ * four `window` listeners, and a listener nothing can reach is a listener nothing
+ * can cover.
+ */
+const STATE = {
+  ...emptyState(),
+  projects: [
+    { id: 1, name: "one", repo_path: "/tmp/one", remote: null, base_branch: "main" },
+    { id: 2, name: "two", repo_path: "/tmp/two", remote: null, base_branch: "main" },
+  ],
+};
+
+/**
+ * The stream, opened and never spoken on.
+ *
+ * `useOrch` opens an `EventSource` on mount and happy-dom has none. A real one would
+ * be a second source of state changes in a test about the first.
+ */
+class QuietSource extends EventTarget {
+  close() {}
+}
+
+// The catch-all goes last: MSW takes the first handler that matches, so `inFlight()`
+// in front of these would swallow both and the panel would render its empty state.
+mockHttp(
+  http.get("*/api/v1/state", () => HttpResponse.json(STATE)),
+  http.get("*/api/v1/cost", () => HttpResponse.json({ rows: [] })),
+  inFlight(),
+);
+
+beforeEach(() => {
+  (globalThis as { EventSource?: unknown }).EventSource = QuietSource;
+});
+
+afterEach(() => {
+  cleanup();
+  location.hash = "";
+  Reflect.deleteProperty(globalThis, "EventSource");
+});
+
+const panel = () =>
+  mount(
+    <WithQueries>
+      <TipRoot>
+        <App />
+      </TipRoot>
+    </WithQueries>,
+  );
+
+/**
+ * Going back re-reads the hash, rather than leaving the page where it was.
+ *
+ * The URL is the panel's whole navigation state, and the browser changes it without
+ * telling React. A `popstate` nothing listens to is a back button that moves the
+ * address bar and nothing else — which reads as the panel having frozen.
+ */
+test("the back button puts the panel back where the hash says", async () => {
+  location.hash = "#p=1&v=cost";
+  const view = panel();
+  await waitFor(() => expect(view.container.textContent).toBeTruthy());
+
+  // What the browser does on Back: the hash changes, then the event fires.
+  location.hash = "#p=2&v=owns";
+  act(() => void window.dispatchEvent(new Event("popstate")));
+
+  await waitFor(() => expect(location.hash).toBe("#p=2&v=owns"));
+  expect(view.container.textContent).toContain("two");
+});
+
+/**
+ * `hashchange` is the other half and not the same event.
+ *
+ * A hash typed into the address bar, or a link to `#p=2`, fires `hashchange` and not
+ * `popstate`. They are registered together in `app.tsx` for that reason, and a test
+ * that only drove one would leave the other free to be deleted.
+ */
+test("editing the hash directly moves the panel too", async () => {
+  location.hash = "#p=1&v=cost";
+  const view = panel();
+  await waitFor(() => expect(view.container.textContent).toBeTruthy());
+
+  location.hash = "#p=2&v=cost";
+  act(() => void window.dispatchEvent(new Event("hashchange")));
+
+  await waitFor(() => expect(view.container.textContent).toContain("two"));
+});
