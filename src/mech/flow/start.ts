@@ -1,5 +1,8 @@
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { agent, channel, escalation, grp as grpTable, project, resource } from "../../platform/persistence/schema.ts";
 import { say } from "../../platform/text/lang.ts";
 import { createCheckout, remoteFor } from "../git/checkout.ts";
 import { canStart } from "./ownership.ts";
@@ -49,16 +52,20 @@ function installFor(db: DB, projectId: number): string | null {
 export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
   ctx.db.transaction(() => {
     ctx.sched.cancelPending(grpId, "dropped");
-    ctx.db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL WHERE id = ?", [grpId]);
-    ctx.db.run("UPDATE agent SET state = 'retired', session_id = NULL, token = NULL WHERE grp_id = ?", [grpId]);
-    ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [grpId]);
+    orm(ctx.db).update(grpTable).set({ status: "DISSOLVED", merge_seq: null }).where(eq(grpTable.id, grpId)).run();
+    orm(ctx.db)
+      .update(agent)
+      .set({ state: "retired", session_id: null, token: null })
+      .where(eq(agent.grp_id, grpId))
+      .run();
+    orm(ctx.db).update(channel).set({ status: "archived" }).where(eq(channel.grp_id, grpId)).run();
     // Anything it had asked the boss dies with it, or the question outlives the
     // requirement and sits in 待办 forever.
-    ctx.db.run(
-      `UPDATE escalation SET chain_state = 'revoked', answered_at = unixepoch() * 1000
-       WHERE grp_id = ? AND answer IS NULL`,
-      [grpId],
-    );
+    orm(ctx.db)
+      .update(escalation)
+      .set({ chain_state: "revoked", answered_at: sql`unixepoch() * 1000` })
+      .where(and(eq(escalation.grp_id, grpId), isNull(escalation.answer)))
+      .run();
     ctx.bus.emit({
       grpId,
       author: "boss",
@@ -129,9 +136,11 @@ export async function runInstall(ctx: Ctx, grpId: number, cmd: string): Promise<
  * install streams, which is what makes a long one watchable.
  */
 export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
-  const grp = ctx.db
-    .query<{ project_id: number; branch: string | null }, [number]>("SELECT project_id, branch FROM grp WHERE id = ?")
-    .get(grpId);
+  const grp = orm(ctx.db)
+    .select({ project_id: grpTable.project_id, branch: grpTable.branch })
+    .from(grpTable)
+    .where(eq(grpTable.id, grpId))
+    .get();
   // No branch means the group has not started; `startGroup` owns that path and
   // is in the middle of it.
   if (!grp?.branch) return;
@@ -211,12 +220,20 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   const root: Root = { names, read: (n) => files[n] ?? null };
   const gates = detectGates(root);
 
-  const insRes = ctx.db.prepare(
-    `INSERT INTO resource (name, template, arg_schema_json, error_regex, concurrency, tags_json)
-     VALUES (?, ?, ?, ?, 1, ?)
-     ON CONFLICT (name) DO UPDATE SET template = excluded.template, error_regex = excluded.error_regex,
-       arg_schema_json = excluded.arg_schema_json, tags_json = excluded.tags_json`,
-  );
+  /**
+   * The upsert's conflict arm, named once and shared by both writers below.
+   * `excluded` is the row the insert tried to add; it is a SQLite pseudo-table
+   * with no Drizzle column of its own, so the four assignments stay `sql`.
+   */
+  const onNameConflict = {
+    target: resource.name,
+    set: {
+      template: sql`excluded.template`,
+      error_regex: sql`excluded.error_regex`,
+      arg_schema_json: sql`excluded.arg_schema_json`,
+      tags_json: sql`excluded.tags_json`,
+    },
+  };
   // `repo`: one gate at a time per repository, whatever the gate is.
   //
   // Concurrency is per resource, so build and typecheck ran side by side — and
@@ -224,7 +241,24 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   // our own templates and not the scripts a project ships, so the guarantee has
   // to be structural: gates of one repo do not overlap. Different repos still run
   // in parallel — the pool is keyed by project.
-  for (const g of gates) insRes.run(g.name, g.template, "{}", g.errorRegex, JSON.stringify(["repo"]));
+  // One statement per gate, as before, rather than a single multi-row insert:
+  // `ON CONFLICT DO UPDATE` refuses to touch the same row twice within one
+  // statement, so two gates sharing a name would become an error instead of an
+  // upsert applied twice.
+  for (const g of gates) {
+    orm(ctx.db)
+      .insert(resource)
+      .values({
+        name: g.name,
+        template: g.template,
+        arg_schema_json: "{}",
+        error_regex: g.errorRegex,
+        concurrency: 1,
+        tags_json: JSON.stringify(["repo"]),
+      })
+      .onConflictDoUpdate(onNameConflict)
+      .run();
+  }
 
   // A project that ships the runner gets the browser resource. Without it every
   // acceptance line of the form "the menu opens" is unverifiable by anyone in the
@@ -233,15 +267,22 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   // Chromium. A nested path, so it is asked for rather than read off the listing.
   const browse = await execIn(ctx, { grp: grpId }, `test -f ${shq(`${WORK}/scripts/browse.ts`)} && echo yes`);
   if (browse.out.trim() === "yes") {
-    insRes.run(
-      "browser",
-      "bun run scripts/browse.ts --steps {steps}",
-      // A step file, never a command: the Runner has real permissions, so the only
-      // thing an agent may hand it is data (docs/project/plan.md, hard constraint 2).
-      JSON.stringify({ steps: { type: "string", pattern: "^(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.json$", maxLength: 200 } }),
-      "FAIL:",
-      JSON.stringify(["browser"]),
-    );
+    orm(ctx.db)
+      .insert(resource)
+      .values({
+        name: "browser",
+        template: "bun run scripts/browse.ts --steps {steps}",
+        // A step file, never a command: the Runner has real permissions, so the only
+        // thing an agent may hand it is data (docs/project/plan.md, hard constraint 2).
+        arg_schema_json: JSON.stringify({
+          steps: { type: "string", pattern: "^(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.json$", maxLength: 200 },
+        }),
+        error_regex: "FAIL:",
+        concurrency: 1,
+        tags_json: JSON.stringify(["browser"]),
+      })
+      .onConflictDoUpdate(onNameConflict)
+      .run();
   }
 
   const next = {
@@ -251,7 +292,7 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
     install: detectInstall(root),
     shared: detectShared(root),
   };
-  ctx.db.run("UPDATE project SET config_json = ? WHERE id = ?", [JSON.stringify(next), projectId]);
+  orm(ctx.db).update(project).set({ config_json: JSON.stringify(next) }).where(eq(project.id, projectId)).run();
 
   if (!gates.length) {
     // Said plainly rather than letting the first slice fail with a puzzle. This
@@ -279,11 +320,11 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
 
 /** Sandbox, checkout, RUNNING, first slice. Returns an error message, or null. */
 export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null> {
-  const grp = ctx.db
-    .query<{ name: string; project_id: number; branch: string | null }, [number]>(
-      "SELECT name, project_id, branch FROM grp WHERE id = ?",
-    )
-    .get(grpId);
+  const grp = orm(ctx.db)
+    .select({ name: grpTable.name, project_id: grpTable.project_id, branch: grpTable.branch })
+    .from(grpTable)
+    .where(eq(grpTable.id, grpId))
+    .get();
   if (grp && !grp.branch) {
     {
       try {
@@ -292,7 +333,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         const branch = `orch/${grp.name}`;
         const base = await baseRefFor(ctx, grp.project_id);
         await createCheckout(ctx, { grp: grpId }, { remote, branch, base, projectId: grp.project_id });
-        ctx.db.run("UPDATE grp SET branch = ? WHERE id = ?", [branch, grpId]);
+        orm(ctx.db).update(grpTable).set({ branch }).where(eq(grpTable.id, grpId)).run();
         ctx.bus.emit({
           grpId,
           author: "orchestrator",
@@ -335,7 +376,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
     }
   }
 
-  ctx.db.run("UPDATE grp SET status = 'RUNNING', approved_at = NULL WHERE id = ?", [grpId]);
+  orm(ctx.db).update(grpTable).set({ status: "RUNNING", approved_at: null }).where(eq(grpTable.id, grpId)).run();
   ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config.language, "group.approved") });
   // Approving a plan that then sits still is the most confusing failure there is:
   // it looks like the system ignored you.
@@ -353,8 +394,10 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
  * Returns the ids that started.
  */
 export async function sweepApproved(ctx: Ctx): Promise<number[]> {
-  const waiting = ctx.db
-    .query<{ id: number }, []>("SELECT id FROM grp WHERE status = 'DRAFT' AND approved_at IS NOT NULL")
+  const waiting = orm(ctx.db)
+    .select({ id: grpTable.id })
+    .from(grpTable)
+    .where(and(eq(grpTable.status, "DRAFT"), isNotNull(grpTable.approved_at)))
     .all();
   const started: number[] = [];
   for (const g of waiting) {
@@ -368,7 +411,7 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
     // permanent — a full disk, a branch name already taken, no write permission —
     // and this runs on the watchdog tick, so leaving the intent set retried it
     // every thirty seconds forever, returning an error to nobody.
-    ctx.db.run("UPDATE grp SET approved_at = NULL WHERE id = ?", [g.id]);
+    orm(ctx.db).update(grpTable).set({ approved_at: null }).where(eq(grpTable.id, g.id)).run();
     raise(ctx.db, {
       grpId: g.id,
       brief: "批准没能落地",
