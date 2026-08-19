@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -67,11 +68,12 @@ const boom = (status: number, message: string, bucket: "boss" | "agent" | "trans
  * dropped. Anything not in the table answers empty rather than undefined, which
  * is what a PR with no comments and no checks actually looks like.
  */
-const gh = (script: Record<string, GhResult<Json>>, calls: string[] = []): Github => ({
+const gh = (script: Record<string, GhResult<Json>>, calls: string[] = [], bodies: Json[] = []): Github => ({
   remaining: () => 4999,
-  async request(method, path, schema) {
+  async request(method, path, schema, body) {
     const key = `${method} ${path.split("?")[0]}`;
     calls.push(key);
+    if (body !== undefined) bodies.push(body);
     const answer =
       script[key] ??
       (key.endsWith("/comments") || key.endsWith("/reviews")
@@ -302,7 +304,7 @@ test("only new comments and failing checks come back", async () => {
   const fs = await pollPrs(h.ctx, gh(payload));
   expect(fs.length).toBe(1);
   expect(fs[0]!.comments.map((c) => c.author)).toEqual(["bob"]);
-  expect(fs[0]!.failingChecks).toEqual(["ci"]);
+  expect(fs[0]!.failingChecks.map((c) => c.name)).toEqual(["ci"]);
 
   // The cursor advanced and the failing set is unchanged, so a PR that stays red
   // with nothing new said does not wake the PM every 30 seconds.
@@ -319,7 +321,7 @@ test("only new comments and failing checks come back", async () => {
       "GET /repos/me/x/commits/deadbee/status": ok({ statuses: [{ context: "lint", state: "failure" }] }),
     }),
   );
-  expect(third[0]!.failingChecks.sort()).toEqual(["ci", "lint"]);
+  expect(third[0]!.failingChecks.map((c) => c.name).sort()).toEqual(["ci", "lint"]);
 });
 
 test("feedback from a deleted GitHub user is still delivered", async () => {
@@ -428,7 +430,7 @@ test("feedback hands the group to the PM without taking it out of PR_OPEN", () =
     grpId: 1,
     prNumber: 7,
     comments: [{ author: "bob", body: "needs a test", at: 2000 }],
-    failingChecks: ["ci"],
+    failingChecks: [{ name: "ci" }],
   });
   // Deliberately still PR_OPEN: it is already in DISPATCHABLE_GRP_STATES, so the
   // turn runs either way, and leaving it there is what keeps the PR being polled.
@@ -644,7 +646,7 @@ test("with no Scribe message the branch is still publishable", () => {
 
 /** The body of a GraphQL reply, for one open PR, shaped like the query asks. */
 const graphBody = (
-  over: { comments?: Json[]; reviews?: Json[]; contexts?: Json[]; pr?: Record<string, Json> } = {},
+  over: { comments?: Json[]; reviews?: Json[]; threads?: Json[]; contexts?: Json[]; pr?: Record<string, Json> } = {},
 ) => ({
   data: {
     repository: {
@@ -658,6 +660,7 @@ const graphBody = (
             headRefOid: "deadbee",
             comments: { nodes: over.comments ?? [] },
             reviews: { nodes: over.reviews ?? [] },
+            reviewThreads: { nodes: over.threads ?? [] },
             commits: {
               nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: over.contexts ?? [] } } } }],
             },
@@ -700,7 +703,7 @@ test("an open PR is polled with one GraphQL request and no REST detail calls", a
   expect(fs).toHaveLength(1);
   expect(fs[0]!.comments.map((c) => c.body)).toEqual(["please rename this"]);
   // GraphQL's `FAILURE` needs no translation: `failedChecks` uppercases.
-  expect(fs[0]!.failingChecks).toEqual(["test"]);
+  expect(fs[0]!.failingChecks.map((c) => c.name)).toEqual(["test"]);
   expect(calls).toEqual(["POST /graphql"]);
 });
 
@@ -733,7 +736,7 @@ test("a GraphQL error sends that repository back to the REST path", async () => 
 
   const fs = await pollPrs(h.ctx, client);
 
-  expect(fs[0]!.failingChecks).toEqual(["test"]);
+  expect(fs[0]!.failingChecks.map((c) => c.name)).toEqual(["test"]);
   expect(calls).toContain("POST /graphql");
   expect(calls).toContain("GET /repos/me/x/pulls/5");
 });
@@ -775,4 +778,145 @@ test("a request for changes reads differently from a comment saying the same wor
     }),
   );
   expect(fs[0]!.comments.map((c) => c.body)).toEqual(["requested changes: rename this", "rename this"]);
+});
+
+/** One line-level thread, with the two flags that decide whether it is still work. */
+const thread = (over: Record<string, Json> = {}): Json => ({
+  id: "T1",
+  isResolved: false,
+  isOutdated: false,
+  path: "src/mech/git/prwatch.ts",
+  line: 42,
+  comments: {
+    nodes: [{ author: { login: "reviewer" }, body: "this needs a guard", createdAt: "2026-08-18T10:00:00Z" }],
+  },
+  ...over,
+});
+
+test("an unresolved review thread arrives with the file and the line it is about", async () => {
+  // Nothing asked GitHub for these at all, so a review filed entirely as
+  // line-level comments — which is how a review is normally filed — reached the
+  // group as an empty poll.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 5, pr_seen_at = 0 WHERE id = 1");
+  const fs = await pollPrs(h.ctx, gh({ "POST /graphql": graphReply({ threads: [thread()] }) }));
+
+  expect(fs[0]!.threads).toEqual([
+    {
+      path: "src/mech/git/prwatch.ts",
+      line: 42,
+      comments: [{ author: "reviewer", body: "this needs a guard", at: Date.parse("2026-08-18T10:00:00Z") }],
+    },
+  ]);
+  // And the PM is told where, not just what.
+  dispatchFeedback(h.ctx, fs[0]!);
+  const job = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job").get()!;
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json)).rejection).toContain("src/mech/git/prwatch.ts:42");
+});
+
+test("a settled thread is not raised again, whichever way it was settled", async () => {
+  // Resolved and outdated are the two ways a thread stops being work. Re-raising
+  // either wakes a group every 30 seconds over something already dealt with.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 5, pr_seen_at = 0 WHERE id = 1");
+  const settled = await pollPrs(
+    h.ctx,
+    gh({
+      "POST /graphql": graphReply({
+        threads: [thread({ id: "T1", isResolved: true }), thread({ id: "T2", isOutdated: true, line: null })],
+      }),
+    }),
+  );
+  expect(settled).toEqual([]);
+
+  // And the cursor moves past a thread that was open, so the same thread is not
+  // news on the next tick.
+  const first = await pollPrs(h.ctx, gh({ "POST /graphql": graphReply({ threads: [thread()] }) }));
+  expect(first).toHaveLength(1);
+  const again = await pollPrs(h.ctx, gh({ "POST /graphql": graphReply({ threads: [thread()] }) }));
+  expect(again).toEqual([]);
+});
+
+/** The GraphQL request body, which is the only place the query text is visible. */
+const GraphRequest = z.object({
+  query: z.string(),
+  variables: z.object({
+    prs: z.number(),
+    messages: z.number(),
+    checks: z.number(),
+    threads: z.number(),
+    threadComments: z.number(),
+  }),
+});
+
+test("how much of a PR one poll reads is a setting, not five numbers in the source", async () => {
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 5 WHERE id = 1");
+  // Moved off the defaults first: a literal that happens to equal a default is
+  // indistinguishable from a setting until the setting changes.
+  h.ctx.config.prPoll = { prs: 3, messages: 7, checks: 11, threads: 13, threadComments: 17 };
+  const bodies: Json[] = [];
+  await pollPrs(h.ctx, gh({ "POST /graphql": graphReply() }, [], bodies));
+
+  const sent = GraphRequest.parse(bodies[0]);
+  // The thread selection itself, because a fake client answers a fixture whatever
+  // it was asked for: without this, deleting the field from the query is green.
+  expect(sent.query).toContain("reviewThreads(last:$threads)");
+  expect(sent.variables).toEqual(h.ctx.config.prPoll);
+});
+
+test("a failing check arrives with what it said, not just that it is red", async () => {
+  // `failing checks: build` is a fact with no next step in it. The check's own
+  // `output` is the step, and it costs nothing: the rollup already had it.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 5 WHERE id = 1");
+  const fs = await pollPrs(
+    h.ctx,
+    gh({
+      "POST /graphql": graphReply({
+        contexts: [
+          {
+            __typename: "CheckRun",
+            name: "build",
+            conclusion: "FAILURE",
+            detailsUrl: "https://github.com/me/x/runs/1",
+            output: { title: "tsc failed", summary: "2 errors in src/mech/git/prwatch.ts" },
+          },
+          // The older Status API has no output; it must still be reported by name.
+          { __typename: "StatusContext", context: "legacy", state: "FAILURE" },
+        ],
+      }),
+    }),
+  );
+
+  expect(fs[0]!.failingChecks).toEqual([
+    {
+      name: "build",
+      summary: "tsc failed: 2 errors in src/mech/git/prwatch.ts",
+      url: "https://github.com/me/x/runs/1",
+    },
+    { name: "legacy", summary: undefined, url: undefined },
+  ]);
+
+  dispatchFeedback(h.ctx, fs[0]!);
+  const job = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job").get()!;
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json)).rejection).toContain(
+    "build: tsc failed: 2 errors in src/mech/git/prwatch.ts — https://github.com/me/x/runs/1",
+  );
+});
+
+test("a check that keeps failing with a new summary is not news twice", async () => {
+  // The signature is the names. A summary carrying a duration or a run number
+  // would otherwise wake the group every 30 seconds over the same red build.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 5 WHERE id = 1");
+  const red = (summary: string) =>
+    gh({
+      "POST /graphql": graphReply({
+        contexts: [{ __typename: "CheckRun", name: "build", conclusion: "FAILURE", output: { summary } }],
+      }),
+    });
+
+  expect(await pollPrs(h.ctx, red("failed in 41s"))).toHaveLength(1);
+  expect(await pollPrs(h.ctx, red("failed in 39s"))).toEqual([]);
 });

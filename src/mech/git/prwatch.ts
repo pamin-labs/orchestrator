@@ -2,7 +2,7 @@ import type { SQLQueryBindings } from "bun:sqlite";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT } from "../../platform/config/load.ts";
+import { type Config, ROOT } from "../../platform/config/load.ts";
 import { gitTrailers } from "./ghlogin.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
@@ -306,7 +306,23 @@ export interface Feedback {
   grpId: number;
   prNumber: number;
   comments: Array<{ author: string; body: string; at: number }>;
-  failingChecks: string[];
+  /**
+   * Unresolved line-level review threads: which file, which line, what was said.
+   *
+   * The thread is the unit because resolution is a property of the thread, not of
+   * any one comment in it. Optional because only GraphQL can answer it — see
+   * `loadPollDetails`.
+   */
+  threads?: Array<{ path: string; line: number | null; comments: Feedback["comments"] }>;
+  /**
+   * Which checks are failing, and enough of what they said to act on.
+   *
+   * The name alone was all the PM got — "failing checks: build" is a fact with no
+   * next step in it. `summary` is the check's own `output`, truncated; `url` is
+   * where the rest of it is. Neither is in the change signature: a summary that
+   * carries a duration or a timestamp would otherwise be news on every tick.
+   */
+  failingChecks: Array<{ name: string; summary?: string | undefined; url?: string | undefined }>;
   /** GitHub says it is in main. The group winds itself up; nobody clicks anything. */
   merged?: boolean;
   /** Closed without merging. The group stops and leaves the queue rather than block it. */
@@ -351,7 +367,16 @@ const ReviewRest = z.object({
   state: z.string().optional(),
   submitted_at: z.string().optional(),
 });
-const CheckRest = z.object({ name: z.string().optional(), conclusion: z.string().nullable().optional() });
+const CheckRest = z.object({
+  name: z.string().optional(),
+  conclusion: z.string().nullable().optional(),
+  details_url: z.string().optional(),
+  /** What the gate itself wrote. Both transports carry it or REST and GraphQL drift. */
+  output: z
+    .object({ title: z.string().nullable().optional(), summary: z.string().nullable().optional() })
+    .nullable()
+    .optional(),
+});
 const StatusRest = z.object({ context: z.string().optional(), state: z.string().optional() });
 
 /**
@@ -401,11 +426,9 @@ function reviewBody(review: Review): string {
   return [VERDICTS[String(review.state ?? "").toUpperCase()] ?? "", review.body].filter(Boolean).join(": ");
 }
 
-function newComments(issue: IssueComment[], reviews: Review[], seenAt: number): Feedback["comments"] {
-  return [
-    ...issue.map((comment) => ({ author: comment.user?.login, body: comment.body, at: comment.created_at })),
-    ...reviews.map((review) => ({ author: review.user?.login, body: reviewBody(review), at: review.submitted_at })),
-  ]
+/** Normalised, truncated, and only what was said after the cursor. Both readers below. */
+function saidSince(said: Thread["comments"], seenAt: number): Feedback["comments"] {
+  return said
     .map((comment) => ({
       author: comment.author ?? "?",
       body: String(comment.body ?? "").slice(0, 1000),
@@ -414,18 +437,73 @@ function newComments(issue: IssueComment[], reviews: Review[], seenAt: number): 
     .filter((comment) => comment.body && comment.at > seenAt);
 }
 
-function failedChecks(checks: Check[], statuses: Status[]): string[] {
+function newComments(issue: IssueComment[], reviews: Review[], seenAt: number): Feedback["comments"] {
+  return saidSince(
+    [
+      ...issue.map((comment) => ({ author: comment.user?.login, body: comment.body, at: comment.created_at })),
+      ...reviews.map((review) => ({ author: review.user?.login, body: reviewBody(review), at: review.submitted_at })),
+    ],
+    seenAt,
+  );
+}
+
+/**
+ * Threads still open, carrying only what was said since the cursor.
+ *
+ * A resolved or outdated thread is dropped rather than re-raised: it was already
+ * dealt with, and waking a group with it is how a PR that is finished keeps
+ * costing turns.
+ */
+function newThreads(threads: Thread[], seenAt: number): NonNullable<Feedback["threads"]> {
+  return threads
+    .filter((thread) => !thread.resolved)
+    .map((thread) => ({
+      path: thread.path,
+      line: thread.line,
+      comments: saidSince(thread.comments, seenAt),
+    }))
+    .filter((thread) => thread.comments.length > 0);
+}
+
+/** The check's own words: its title, its summary, or nothing if it wrote neither. */
+function evidence(check: Check): string | undefined {
+  return [check.output?.title, check.output?.summary].filter(Boolean).join(": ").slice(0, 300) || undefined;
+}
+
+function failedChecks(checks: Check[], statuses: Status[]): Feedback["failingChecks"] {
   return [
-    ...checks.map((check) => ({ name: check.name, result: check.conclusion })),
-    ...statuses.map((status) => ({ name: status.context, result: status.state })),
+    ...checks.map((check) => ({
+      name: check.name,
+      result: check.conclusion,
+      summary: evidence(check),
+      url: check.details_url,
+    })),
+    // The older Status API has no `output`; it carries a one-line `description`,
+    // and reading that would be a second shape for the same idea. Names only here.
+    ...statuses.map((status) => ({
+      name: status.context,
+      result: status.state,
+      summary: undefined,
+      url: undefined,
+    })),
   ]
     .filter((check) => ["FAILURE", "ERROR", "TIMED_OUT"].includes(String(check.result ?? "").toUpperCase()))
-    .map((check) => String(check.name ?? "check"));
+    .map((check) => ({ name: String(check.name ?? "check"), summary: check.summary, url: check.url }));
+}
+
+/** One line-level thread as the poll reads it, before the cursor is applied. */
+interface Thread {
+  path: string;
+  line: number | null;
+  /** Outdated counts as resolved: the lines it was filed against are no longer there. */
+  resolved: boolean;
+  comments: Array<{ author?: string | undefined; body?: string | undefined; at?: string | undefined }>;
 }
 
 interface PollDetails {
   issue: IssueComment[];
   reviews: Review[];
+  threads: Thread[];
   checks: Check[];
   statuses: Status[];
 }
@@ -457,7 +535,12 @@ async function loadPollDetails(
     ),
   ]);
   if (!issue.ok || !reviews.ok || !runs.ok || !statuses.ok) return null;
-  return { issue: issue.data, reviews: reviews.data, checks: runs.data, statuses: statuses.data };
+  // No threads on this path, deliberately. `/pulls/{n}/comments` carries the
+  // review comments but nothing about resolution — REST has no thread at all —
+  // and an unresolved-only rule cannot be built out of an answer that never says
+  // which ones are resolved. Re-raising settled threads every tick is worse than
+  // the fallback being quieter than GraphQL, which is what an empty list is.
+  return { issue: issue.data, reviews: reviews.data, threads: [], checks: runs.data, statuses: statuses.data };
 }
 
 function changedFeedback(
@@ -469,18 +552,24 @@ function changedFeedback(
   mergeableState: string | undefined,
 ): Feedback | null {
   const comments = newComments(details.issue, details.reviews, group.pr_seen_at);
+  const threads = newThreads(details.threads, group.pr_seen_at);
   const failingChecks = failedChecks(details.checks, details.statuses);
   const conflicting = mergeable === false || mergeableState === "dirty";
-  const signature = [...failingChecks, ...(conflicting ? ["merge conflict"] : [])].sort().join(",");
+  const names = failingChecks.map((check) => check.name);
+  const signature = [...names, ...(conflicting ? ["merge conflict"] : [])].sort().join(",");
   const checksChanged = signature !== (group.pr_checks_sig ?? "");
-  if (comments.length === 0 && !checksChanged) return null;
+  if (comments.length === 0 && threads.length === 0 && !checksChanged) return null;
 
-  const newest = comments.reduce((value, comment) => Math.max(value, comment.at), group.pr_seen_at);
+  // Thread comments move the cursor too, or the same open thread is news on every
+  // tick for as long as it stays open.
+  const said = [...comments, ...threads.flatMap((thread) => thread.comments)];
+  const newest = said.reduce((value, comment) => Math.max(value, comment.at), group.pr_seen_at);
   db.run("UPDATE grp SET pr_seen_at = ?, pr_checks_sig = ? WHERE id = ?", [newest, signature, group.id]);
   return {
     grpId: group.id,
     prNumber,
     comments,
+    threads,
     failingChecks: checksChanged ? failingChecks : [],
     conflicting,
   };
@@ -525,7 +614,7 @@ export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
   // whether the cost is one slow route or the number of groups.
   return activeTracer().startActiveSpan("pr.poll", async (span) => {
     try {
-      return await pollPrsInner(ctx.db, gh);
+      return await pollPrsInner(ctx.db, gh, ctx.config.prPoll);
     } finally {
       span.end();
     }
@@ -547,17 +636,21 @@ export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
  * endpoint having no `since` and returning oldest-first, which stopped waking the
  * PM once a PR passed a hundred reviews.
  */
-const GRAPH_QUERY = `query($owner:String!,$name:String!,$prs:Int!,$msgs:Int!,$checks:Int!){
+const GRAPH_QUERY = `query($owner:String!,$name:String!,$prs:Int!,$messages:Int!,$checks:Int!,$threads:Int!,$threadComments:Int!){
   repository(owner:$owner,name:$name){
     pullRequests(states:[OPEN,MERGED,CLOSED],first:$prs,orderBy:{field:UPDATED_AT,direction:DESC}){
       nodes{
         number state merged mergeable headRefOid
-        comments(last:$msgs){ nodes{ author{login} body createdAt } }
-        reviews(last:$msgs){ nodes{ author{login} body state submittedAt } }
+        comments(last:$messages){ nodes{ author{login} body createdAt } }
+        reviews(last:$messages){ nodes{ author{login} body state submittedAt } }
+        reviewThreads(last:$threads){ nodes{
+          id isResolved isOutdated path line
+          comments(first:$threadComments){ nodes{ author{login} body createdAt } }
+        } }
         commits(last:1){ nodes{ commit{ statusCheckRollup{
           contexts(last:$checks){ nodes{
             __typename
-            ... on CheckRun { name conclusion }
+            ... on CheckRun { name conclusion detailsUrl output{ title summary } }
             ... on StatusContext { context state }
           } }
         } } } }
@@ -571,8 +664,30 @@ const GraphContext = z.object({
   __typename: z.string().optional(),
   name: z.string().optional(),
   conclusion: z.string().nullable().optional(),
+  detailsUrl: z.string().optional(),
+  output: z
+    .object({ title: z.string().nullable().optional(), summary: z.string().nullable().optional() })
+    .nullable()
+    .optional(),
   context: z.string().optional(),
   state: z.string().optional(),
+});
+const GraphThread = z.object({
+  id: z.string().optional(),
+  isResolved: z.boolean().optional(),
+  isOutdated: z.boolean().optional(),
+  path: z.string().optional(),
+  /** Null once the diff has moved under the thread, which GitHub reports separately as outdated. */
+  line: z.number().nullable().optional(),
+  comments: z
+    .object({
+      nodes: z
+        .array(z.object({ author: GraphActor, body: z.string().optional(), createdAt: z.string().optional() }))
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
 });
 const GraphPrNode = z.object({
   number: z.number().int().positive(),
@@ -603,6 +718,10 @@ const GraphPrNode = z.object({
         .nullable()
         .optional(),
     })
+    .nullable()
+    .optional(),
+  reviewThreads: z
+    .object({ nodes: z.array(GraphThread).nullable().optional() })
     .nullable()
     .optional(),
   commits: z
@@ -662,10 +781,22 @@ interface Polled {
   details: PollDetails;
 }
 
-/** How many of each the query asks for. Node counts decide the point cost. */
-const GRAPH_PRS = 30;
-const GRAPH_MSGS = 20;
-const GRAPH_CHECKS = 100;
+/** How many of each the query asks for; the numbers are `prPoll` in the settings. */
+type PollCounts = Config["prPoll"];
+
+/** The threads a PR node carries, in the shape `newThreads` filters. */
+function graphThreads(pr: z.infer<typeof GraphPrNode>): Thread[] {
+  return (pr.reviewThreads?.nodes ?? []).map((thread) => ({
+    path: thread.path ?? "",
+    line: thread.line ?? null,
+    resolved: !!(thread.isResolved || thread.isOutdated),
+    comments: (thread.comments?.nodes ?? []).map((c) => ({
+      author: c.author?.login,
+      body: c.body,
+      at: c.createdAt,
+    })),
+  }));
+}
 
 /** One node of the query, flattened into the shape the REST readers already take. */
 function flattenGraphPr(pr: z.infer<typeof GraphPrNode>): Polled {
@@ -688,13 +819,14 @@ function flattenGraphPr(pr: z.infer<typeof GraphPrNode>): Polled {
         state: r.state,
         submitted_at: r.submittedAt,
       })),
+      threads: graphThreads(pr),
       // One rollup, two REST endpoints. A `CheckRun` carries `name`/`conclusion`
       // and a `StatusContext` carries `context`/`state`, which are the two shapes
       // `failedChecks` already reads — and it uppercases, so GraphQL's `FAILURE`
       // needs no translation.
       checks: contexts
         .filter((c) => c.__typename === "CheckRun")
-        .map((c) => ({ name: c.name, conclusion: c.conclusion })),
+        .map((c) => ({ name: c.name, conclusion: c.conclusion, details_url: c.detailsUrl, output: c.output })),
       statuses: contexts
         .filter((c) => c.__typename === "StatusContext")
         .map((c) => ({ context: c.context, state: c.state })),
@@ -702,14 +834,30 @@ function flattenGraphPr(pr: z.infer<typeof GraphPrNode>): Polled {
   };
 }
 
-async function pollViaGraph(gh: Github, repo: string, signal?: AbortSignal): Promise<Map<number, Polled> | null> {
+async function pollViaGraph(
+  gh: Github,
+  repo: string,
+  counts: PollCounts,
+  signal?: AbortSignal,
+): Promise<Map<number, Polled> | null> {
   const [owner, name] = repo.split("/");
   if (!owner || !name) return null;
   const reply = await gh.request(
     "POST",
     "/graphql",
     GraphReply,
-    { query: GRAPH_QUERY, variables: { owner, name, prs: GRAPH_PRS, msgs: GRAPH_MSGS, checks: GRAPH_CHECKS } },
+    {
+      query: GRAPH_QUERY,
+      variables: {
+        owner,
+        name,
+        prs: counts.prs,
+        messages: counts.messages,
+        checks: counts.checks,
+        threads: counts.threads,
+        threadComments: counts.threadComments,
+      },
+    },
     signal,
   );
   // `errors` beside a partial `data` is GraphQL's own shape for "some of this
@@ -721,7 +869,7 @@ async function pollViaGraph(gh: Github, repo: string, signal?: AbortSignal): Pro
   return new Map(nodes.filter((pr): pr is NonNullable<typeof pr> => !!pr).map((pr) => [pr.number, flattenGraphPr(pr)]));
 }
 
-async function pollPrsInner(db: DB, gh: Github): Promise<Feedback[]> {
+async function pollPrsInner(db: DB, gh: Github, counts: PollCounts): Promise<Feedback[]> {
   const groups = db
     .query<WatchedGroup, []>(
       `SELECT g.id, g.status, g.pr_number, g.pr_seen_at, g.pr_checks_sig, p.remote
@@ -749,7 +897,7 @@ async function pollPrsInner(db: DB, gh: Github): Promise<Feedback[]> {
   await pMap(
     repos.filter((r): r is string => !!r),
     async (repo) => {
-      const one = await pollViaGraph(gh, repo).catch(() => null);
+      const one = await pollViaGraph(gh, repo, counts).catch(() => null);
       if (one) graphed.set(repo, one);
     },
     { concurrency: PR_FANOUT },
@@ -792,7 +940,18 @@ const PR_FANOUT = 4;
 export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
   const lines = [
     ...f.comments.map((c) => `${c.author}: ${c.body}`),
-    ...(f.failingChecks.length ? [`failing checks: ${f.failingChecks.join(", ")}`] : []),
+    // The file and the line first: a review thread is an instruction about one
+    // place in the diff, and without them the PM is told to fix something it
+    // cannot find.
+    ...(f.threads ?? []).map(
+      (t) => `${t.path}:${t.line ?? "?"} — ${t.comments.map((c) => `${c.author}: ${c.body}`).join(" / ")}`,
+    ),
+    ...(f.failingChecks.length ? [`failing checks: ${f.failingChecks.map((c) => c.name).join(", ")}`] : []),
+    // What the gate said, under the list of names. "failing checks: build" told
+    // the PM a fact with no next step in it, and the summary is the step.
+    ...f.failingChecks
+      .filter((c) => c.summary || c.url)
+      .map((c) => `${c.name}: ${[c.summary, c.url].filter(Boolean).join(" — ")}`),
     ...(f.conflicting ? ["the branch no longer merges cleanly into main"] : []),
   ].join("\n");
 
@@ -802,7 +961,7 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
     kind: "say",
     intent: "request",
     body: `PR #${f.prNumber} has feedback:\n${lines}`.slice(0, 2000),
-    meta: { pr: f.prNumber, comments: f.comments.length, failingChecks: f.failingChecks },
+    meta: { pr: f.prNumber, comments: f.comments.length, failingChecks: f.failingChecks.map((c) => c.name) },
   });
   // Deliberately not moved out of PR_OPEN. That flip made the group deaf to
   // everything said next: `pollPr` returns null for any other status, and nothing
