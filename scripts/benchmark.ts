@@ -267,27 +267,30 @@ bench.add("watchdog tick", async () => void (await runWatchdog(watchdogDeps)), {
 /**
  * The 系统耗时 report, at the volume one idle day produces.
  *
- * Five queries over the whole table, synchronous, so while it computes it blocks
- * every request and the SSE heartbeat. `system` scope because its predicate
+ * Five queries over the whole table. `system` scope because its predicate
  * (`project_id IS NULL AND grp_id IS NULL`) is the one no index can seek — indexes
  * were measured and do not help here, the sorting does. 739ms when this budget was
  * added, 281ms once the trace list and the stage table stopped sorting the whole
- * window; and the ceiling sits above what a loaded machine measures rather than a quiet one.
+ * window, **176ms** on PostgreSQL; the ceiling sits above what a loaded machine
+ * measures rather than a quiet one.
  */
-seedSpans(SPAN_ROWS);
+await seedSpans(SPAN_ROWS);
 const telemetryWindow = recentWindow(undefined, SPAN_CLOCK);
 const telemetryScope = { kind: "system" } as const;
 limits.set("telemetry report", 600);
 bench.add(
   "telemetry report",
-  () => {
-    spanExtent(db, telemetryScope);
-    stageStats(db, telemetryScope, telemetryWindow);
-    traceList(db, telemetryScope, 20, telemetryWindow);
-    trend(db, telemetryScope, 3_600_000, telemetryWindow);
-    foldedStacks(db, telemetryScope, telemetryWindow);
+  // Awaited, every one. Unawaited these returned in 67µs against a 600ms budget —
+  // the cost of building five promises — so the guard could not have gone red for
+  // any regression at all. The panel awaits them in sequence; so does this.
+  async () => {
+    await spanExtent(db, telemetryScope);
+    await stageStats(db, telemetryScope, telemetryWindow);
+    await traceList(db, telemetryScope, 20, telemetryWindow);
+    await trend(db, telemetryScope, 3_600_000, telemetryWindow);
+    await foldedStacks(db, telemetryScope, telemetryWindow);
   },
-  { async: false },
+  { async: true },
 );
 
 await bench.run();
@@ -302,10 +305,6 @@ const exceeded = bench.tasks.flatMap((task) => {
   console.log(`${task.name}: mean ${mean.toPrecision(3)}ms / ${limit}ms budget`);
   return mean > limit ? [`${task.name} (${mean.toPrecision(3)}ms > ${limit}ms)`] : [];
 });
-
-// Not closed: `PGlite.close()` sets `process.exitCode = 99` — it is real
-// Postgres and its shutdown is a real `exit(99)` — which would fail this job
-// with nothing wrong. The instance dies with the process.
 
 if (exceeded.length > 0) {
   throw new Error(`mean exceeded the significant-regression budget: ${exceeded.join(", ")}`);
