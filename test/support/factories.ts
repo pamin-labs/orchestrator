@@ -1,401 +1,181 @@
-import { Factory, type DeepPartial } from "fishery";
+import { Factory } from "fishery";
+import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import type { PgInsertValue, PgTable } from "drizzle-orm/pg-core";
 import type { DB } from "../../src/platform/persistence/database.ts";
+import * as schema from "../../src/platform/persistence/schema.ts";
 
 /**
- * Row builders for the schema in `platform/persistence/database.ts`.
+ * Row builders for `platform/persistence/schema.ts`.
  *
  * The suite used to spell out 380 `INSERT INTO` column lists by hand — `project`
  * alone in four shapes — so a new NOT NULL column meant editing 68 call sites and
  * a new test copied whichever shape it landed next to. A default here must be a
- * value the schema accepts; a value a test is deliberately exercising still belongs
- * at that test's call site.
+ * value the schema accepts; a value a test is deliberately exercising still
+ * belongs at that test's call site.
  */
+
 /**
- * `insert` rather than Fishery's `create`: `create` is async by contract and
- * `bun:sqlite` is not. Sequences, traits (`.params()`) and deep overrides are
- * Fishery's; the foreign keys a row cannot exist without are filled by `parents`
- * below, because those need the database and Fishery's associations are resolved
- * at build time.
+ * Fishery's own `create`, at last.
+ *
+ * This file used to carry an `insert()` of its own, a hand-built `INSERT` string
+ * and a `table()` helper, for one reason: `create` is async by contract and
+ * `bun:sqlite` was not. Postgres is, so the workaround buys nothing and the three
+ * pieces are gone. The database arrives as a transient parameter, which is what
+ * Fishery documents for a dependency `build` must not touch — `build()` still
+ * returns a plain object and writes nothing.
  */
+type Transient = { db: DB };
 
-/** What SQLite accepts as a bound parameter in this schema. */
-type Cell = string | number | null;
+/**
+ * The columns a row cannot exist without, made on demand.
+ *
+ * Fishery's associations are resolved at build time and these need the database,
+ * so they run in `onCreate` instead — and only when the caller did not supply the
+ * key itself, which is what keeps a test that cares about the parent in control
+ * of it.
+ */
+type Make = (db: DB) => Promise<unknown>;
+type Parents<T> = { [K in keyof T]?: (db: DB) => Promise<T[K]> };
 
-/** How to produce a row this one references and cannot be inserted without. */
-type Parents = Record<string, (db: DB) => Cell>;
+type Insert<T extends PgTable> = InferInsertModel<T>;
+type Select<T extends PgTable> = InferSelectModel<T>;
 
-class TableFactory<T extends Record<string, Cell | undefined>, S = T & { id: number }> extends Factory<T> {
-  /** Assigned by `table`. `Factory.clone` copies it, so traits keep it. */
-  table = "";
-  parents: Parents = {};
-
-  /** Build a row, fill the keys it cannot exist without, and store it. */
-  insert(db: DB, params?: DeepPartial<T>): S {
-    const row: Record<string, Cell | undefined> = { ...this.build(params) };
-    for (const [column, make] of Object.entries(this.parents)) row[column] ??= make(db);
-    const columns: string[] = [];
-    const values: Cell[] = [];
-    for (const [column, value] of Object.entries(row)) {
-      if (value === undefined) continue;
-      columns.push(column);
-      values.push(value);
-    }
-    const sql = `INSERT INTO ${this.table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")}) RETURNING *`;
-    const stored = db.query<S, Cell[]>(sql).get(...values);
-    if (!stored) throw new Error(`insert into ${this.table} returned no row`);
-    return stored;
-  }
+function rows<T extends PgTable>(
+  table: T,
+  defaults: (opts: { sequence: number }) => Partial<Insert<T>>,
+  parents: Parents<Insert<T>> = {},
+): Factory<Insert<T>, Transient, Select<T>> {
+  return Factory.define<Insert<T>, Transient, Select<T>>(({ sequence, transientParams, onCreate }) => {
+    onCreate(async (row) => {
+      const db = transientParams.db;
+      if (!db) throw new Error("a factory's create() needs a database: pass { transient: { db } }, or use on(db)");
+      const filled: Record<string, unknown> = { ...row };
+      // `Record<string, Make>` rather than `Object.entries`: entries on a mapped
+      // type widens the value to `Function`, which is not callable under lint.
+      const makers: Record<string, Make | undefined> = parents;
+      for (const [column, make] of Object.entries(makers)) {
+        if (!make) continue;
+        if (filled[column] === undefined || filled[column] === null) filled[column] = await make(db);
+      }
+      // `values()` wants the table's own insert shape and `filled` is assembled
+      // key by key, which no inference can follow. The generic is what makes it
+      // opaque here; every caller below still gets the real column types.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `filled` is assembled key by key from this table's own defaults and parents; no inference can follow that
+      const values = filled as PgInsertValue<T>;
+      // `returning()` types its rows through `Assume<T, PgTable>["$inferSelect"]`,
+      // which TypeScript cannot prove is `InferSelectModel<T>` while T is still a
+      // parameter. It is the same table either way; the generic is what hides it.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `returning()` on this table returns this table's row; only the generic obscures it
+      const returned = (await db.insert(table).values(values).returning()) as Select<T>[];
+      const first = returned[0];
+      if (!first) throw new Error("insert returned no row");
+      return first;
+    });
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Fishery's generator returns the whole row; the missing keys arrive from a test's own params, which is the point of a factory
+    return defaults({ sequence }) as Insert<T>;
+  });
 }
 
-function table<T extends Record<string, Cell | undefined>, S = T & { id: number }>(
-  name: string,
-  generator: (opts: { sequence: number }) => T,
-  parents: Parents = {},
-): TableFactory<T, S> {
-  // `new` rather than Fishery's `define`. `define` is the documented entry point
-  // for a Factory subclass, but its five type parameters assume the subclass
-  // widens `Factory<T, I, C, P>`; this one narrows `C` to the stored row while
-  // extending `Factory<T>`, and the call does not type-check. The constructor is
-  // public and the generic is written out here, so nothing is lost but the sugar.
-  const factory = new TableFactory<T, S>(generator);
-  factory.table = name;
-  factory.parents = parents;
-  return factory;
+/**
+ * Every factory bound to one database, so a test names it once.
+ *
+ * `transient()` is Fishery's, and it returns a clone — the module-level factories
+ * keep no database, which is what lets two test files run in one process without
+ * seeing each other's.
+ */
+export function on(db: DB) {
+  return {
+    project: project.transient({ db }),
+    grp: grp.transient({ db }),
+    runningGrp: runningGrp.transient({ db }),
+    agent: agent.transient({ db }),
+    slice: slice.transient({ db }),
+    acceptedSlice: acceptedSlice.transient({ db }),
+    task: task.transient({ db }),
+    job: job.transient({ db }),
+    event: event.transient({ db }),
+    note: note.transient({ db }),
+    resource: resource.transient({ db }),
+    lease: lease.transient({ db }),
+    member: member.transient({ db }),
+    cursor: cursor.transient({ db }),
+    escalation: escalation.transient({ db }),
+    channel: channel.transient({ db }),
+    setting: setting.transient({ db }),
+    idempotencyRequest: idempotencyRequest.transient({ db }),
+    usageSnapshot: usageSnapshot.transient({ db }),
+    runtimeAuth: runtimeAuth.transient({ db }),
+  };
 }
 
-type ProjectRow = {
-  id?: number;
-  name: string;
-  repo_path: string;
-  remote?: string | null;
-  config_json?: string;
-  base_branch?: string | null;
-  sandbox_id?: string | null;
-  sandbox_at?: number | null;
-  created_at: number;
-};
-
-type GrpRow = {
-  id?: number;
-  project_id?: number | null;
-  name: string;
-  branch?: string | null;
-  status?: string;
-  owns_json?: string;
-  budget_tokens?: number | null;
-  spent_tokens?: number;
-  created_at: number;
-  paused_at?: number | null;
-  pause_reason?: string | null;
-  merge_seq?: number | null;
-  merge_seq_at?: number | null;
-  pr_number?: number | null;
-  pr_seen_at?: number;
-  pr_checks_sig?: string | null;
-  pr_retries?: number;
-  pr_title?: string | null;
-  pr_summary?: string | null;
-  rl_resets_at?: number | null;
-  approved_at?: number | null;
-  blocked_on?: number | null;
-  shared_grant?: string | null;
-  rebase_seen?: string | null;
-  rebase_seen_at?: number | null;
-  sandbox_id?: string | null;
-  sandbox_at?: number | null;
-};
-
-type AgentRow = {
-  id?: number;
-  project_id?: number | null;
-  grp_id?: number | null;
-  role: string;
-  model: string;
-  session_id?: string | null;
-  session_tokens?: number;
-  total_tokens?: number;
-  cwd?: string | null;
-  activity?: string | null;
-  state?: string;
-  created_at: number;
-  token?: string | null;
-  stable_hash?: string | null;
-  idle_turns?: number;
-  loop_file?: string | null;
-  loop_count?: number;
-  context_window?: number | null;
-  runtime?: string;
-};
-
-type SliceRow = {
-  id?: number;
-  grp_id?: number | null;
-  seq: number;
-  title: string;
-  accept_spec: string;
-  difficulty?: string;
-  status?: string;
-  gates_json?: string;
-  budget_tokens?: number | null;
-  spent_tokens?: number;
-  depends_on?: number | null;
-  created_at: number;
-  base_sha?: string | null;
-  retries?: number;
-  awaiting_at?: number | null;
-};
-
-type TaskRow = {
-  id?: number;
-  grp_id?: number | null;
-  slice_id?: number | null;
-  title: string;
-  status?: string;
-  owner_agent_id?: number | null;
-  depends_on_json?: string;
-  claim_json?: string | null;
-  created_at: number;
-};
-
-type JobRow = {
-  id?: number;
-  kind: string;
-  grp_id?: number | null;
-  agent_id?: number | null;
-  slice_id?: number | null;
-  payload_json?: string;
-  priority?: number;
-  state?: string;
-  pid?: number | null;
-  error?: string | null;
-  enqueued_at: number;
-  started_at?: number | null;
-  ended_at?: number | null;
-  checkpoint_sha?: string | null;
-  correlation_id?: string | null;
-  trace_id?: string | null;
-  parent_span_id?: string | null;
-};
-
-type EventRow = {
-  seq?: number;
-  channel_id?: number | null;
-  grp_id?: number | null;
-  author: string;
-  kind: string;
-  intent?: string | null;
-  severity?: string | null;
-  body?: string;
-  target?: string | null;
-  meta_json?: string;
-  at: number;
-  correlation_id?: string | null;
-  trace_id?: string | null;
-  span_id?: string | null;
-};
-
-type NoteRow = {
-  id?: number;
-  project_id?: number | null;
-  grp_id?: number | null;
-  slice_id?: number | null;
-  task_id?: number | null;
-  kind: string;
-  lang?: string;
-  body: string;
-  frontmatter_json?: string;
-  export_path?: string | null;
-  supersedes?: number | null;
-  at: number;
-};
-
-type ResourceRow = {
-  name: string;
-  concurrency?: number;
-  template: string;
-  arg_schema_json?: string;
-  error_regex?: string | null;
-  cwd?: string | null;
-  tags_json?: string;
-};
-
-type LeaseRow = {
-  id?: number;
-  resource?: string;
-  grp_id?: number | null;
-  agent_id?: number | null;
-  args_json?: string;
-  resolved_cmd?: string | null;
-  state?: string;
-  exit_code?: number | null;
-  log_path?: string | null;
-  result_digest?: string | null;
-  enqueued_at: number;
-  started_at?: number | null;
-  ended_at?: number | null;
-  head_sha?: string | null;
-};
-
-type EscalationRow = {
-  id?: number;
-  grp_id?: number | null;
-  agent_id?: number | null;
-  severity?: string;
-  question: string;
-  chain_state?: string;
-  answered_by?: string | null;
-  answer?: string | null;
-  ref_note_id?: number | null;
-  checkpoint_sha?: string | null;
-  created_at: number;
-  answered_at?: number | null;
-  brief?: string | null;
-  kind?: string | null;
-};
-
-type MemberRow = {
-  channel_id?: number;
-  agent_id?: number;
-  mode?: string;
-};
-
-type CursorRow = {
-  agent_id?: number;
-  channel_id?: number;
-  last_seq?: number;
-};
-
-type ChannelRow = {
-  id?: number;
-  project_id?: number | null;
-  grp_id?: number | null;
-  kind: string;
-  status?: string;
-  created_at: number;
-};
-
-type SettingRow = { k: string; v: string };
-
-type IdempotencyRequestRow = {
-  caller: string;
-  route: string;
-  key: string;
-  payload_hash: string;
-  state: string;
-  status?: number | null;
-  body?: string | null;
-  content_type?: string | null;
-  created_at: number;
-  updated_at: number;
-};
-
-type UsageSnapshotRow = { runtime: string; json: string; at: number; hold_until?: number | null };
-
-type RuntimeAuthRow = {
-  runtime: string;
-  mode: string;
-  secret: string;
-  base_url?: string | null;
-  updated_at: number;
-};
-
-export const project = table<ProjectRow>("project", ({ sequence }) => ({
+export const project = rows(schema.project, ({ sequence }) => ({
   name: `p${sequence}`,
   repo_path: "/tmp/p",
   created_at: 0,
 }));
 
-export const grp = table<GrpRow>("grp", ({ sequence }) => ({ name: `g${sequence}`, status: "DRAFT", created_at: 0 }), {
-  project_id: (db) => project.insert(db).id,
+const channel = rows(schema.channel, () => ({ kind: "group", created_at: 0 }));
+
+const agent = rows(schema.agent, () => ({ role: "engineer", model: "m", created_at: 0 }));
+
+const grp = rows(schema.grp, ({ sequence }) => ({ name: `g${sequence}`, status: "DRAFT" as const, created_at: 0 }), {
+  project_id: async (db) => (await project.create({}, { transient: { db } })).id,
 });
 
-export const agent = table<AgentRow>("agent", () => ({
-  role: "engineer",
-  model: "m",
-  created_at: 0,
-}));
-
-export const slice = table<SliceRow>(
-  "slice",
+const slice = rows(
+  schema.slice,
   ({ sequence }) => ({ seq: sequence, title: `S${sequence}`, accept_spec: "x", created_at: 0 }),
-  { grp_id: (db) => grp.insert(db).id },
+  { grp_id: async (db) => (await grp.create({}, { transient: { db } })).id },
 );
 
-export const task = table<TaskRow>("task", ({ sequence }) => ({ title: `t${sequence}`, created_at: 0 }), {
-  grp_id: (db) => grp.insert(db).id,
+const task = rows(schema.task, ({ sequence }) => ({ title: `t${sequence}`, created_at: 0 }), {
+  grp_id: async (db) => (await grp.create({}, { transient: { db } })).id,
 });
 
-export const job = table<JobRow>("job", () => ({ kind: "agent_turn", enqueued_at: 0 }));
+const job = rows(schema.job, () => ({ kind: "agent_turn", enqueued_at: 0 }));
 
-export const event = table<EventRow, EventRow & { seq: number }>("event", () => ({
-  author: "x",
-  kind: "say",
-  at: 0,
-}));
+export const event = rows(schema.event, () => ({ author: "x", kind: "say", at: 0 }));
 
-export const note = table<NoteRow>("note", () => ({
-  kind: "fact",
-  lang: "zh",
-  body: "n",
-  at: 0,
-}));
+const note = rows(schema.note, () => ({ kind: "fact", lang: "zh", body: "n", at: 0 }));
 
-export const resource = table<ResourceRow, ResourceRow>("resource", ({ sequence }) => ({
-  name: `res${sequence}`,
-  template: "true",
-}));
+const resource = rows(schema.resource, ({ sequence }) => ({ name: `res${sequence}`, template: "true" }));
 
-export const lease = table<LeaseRow>("lease", () => ({ enqueued_at: 0 }), {
-  resource: (db) => resource.insert(db).name,
+const lease = rows(schema.lease, () => ({ enqueued_at: 0 }), {
+  resource: async (db) => (await resource.create({}, { transient: { db } })).name,
 });
 
-export const member = table<MemberRow, MemberRow>("member", () => ({}), {
-  channel_id: (db) => channel.insert(db).id,
-  agent_id: (db) => agent.insert(db).id,
+const member = rows(schema.member, () => ({}), {
+  channel_id: async (db) => (await channel.create({}, { transient: { db } })).id,
+  agent_id: async (db) => (await agent.create({}, { transient: { db } })).id,
 });
 
-export const cursor = table<CursorRow, CursorRow>("cursor", () => ({}), {
-  agent_id: (db) => agent.insert(db).id,
-  channel_id: (db) => channel.insert(db).id,
+const cursor = rows(schema.cursor, () => ({}), {
+  agent_id: async (db) => (await agent.create({}, { transient: { db } })).id,
+  channel_id: async (db) => (await channel.create({}, { transient: { db } })).id,
 });
 
-export const escalation = table<EscalationRow>("escalation", () => ({
+const escalation = rows(schema.escalation, () => ({
   severity: "advisory",
   question: "q",
-  chain_state: "pm",
+  chain_state: "pm" as const,
   created_at: 0,
 }));
 
-export const channel = table<ChannelRow>("channel", () => ({
-  kind: "group",
+const setting = rows(schema.setting, ({ sequence }) => ({ k: `k${sequence}`, v: "{}" }));
+
+const idempotencyRequest = rows(schema.idempotency_request, ({ sequence }) => ({
+  caller: "boss",
+  route: "/write",
+  key: `key-${sequence}`,
+  payload_hash: "hash",
+  state: "in_progress",
   created_at: 0,
+  updated_at: 0,
 }));
 
-export const setting = table<SettingRow, SettingRow>("setting", ({ sequence }) => ({
-  k: `k${sequence}`,
-  v: "{}",
-}));
+const usageSnapshot = rows(schema.usage_snapshot, () => ({ runtime: "claude", json: {}, at: 0 }));
 
-export const idempotencyRequest = table<IdempotencyRequestRow, IdempotencyRequestRow>(
-  "idempotency_request",
-  ({ sequence }) => ({
-    caller: "boss",
-    route: "/write",
-    key: `key-${sequence}`,
-    payload_hash: "hash",
-    state: "in_progress",
-    created_at: 0,
-    updated_at: 0,
-  }),
-);
-
-export const usageSnapshot = table<UsageSnapshotRow, UsageSnapshotRow>("usage_snapshot", () => ({
-  runtime: "claude",
-  json: "{}",
-  at: 0,
-}));
-
-export const runtimeAuth = table<RuntimeAuthRow, RuntimeAuthRow>("runtime_auth", () => ({
+const runtimeAuth = rows(schema.runtime_auth, () => ({
   runtime: "claude",
   mode: "token",
   secret: "s",
@@ -403,5 +183,5 @@ export const runtimeAuth = table<RuntimeAuthRow, RuntimeAuthRow>("runtime_auth",
 }));
 
 /** The states tests re-create by hand often enough to name. */
-export const runningGrp = grp.params({ status: "RUNNING" });
-export const acceptedSlice = slice.params({ status: "accepted" });
+const runningGrp = grp.params({ status: "RUNNING" });
+const acceptedSlice = slice.params({ status: "accepted" });
