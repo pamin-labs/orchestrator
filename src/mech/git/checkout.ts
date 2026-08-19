@@ -69,7 +69,7 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
   const found = (r?.ok && r.data?.default_branch) || null;
   // Nothing to compare against: keep what is stored rather than resetting a
   // project that develops on `develop` to `main` because the network blinked.
-  if (!found) return row.base_branch ?? "main";
+  if (!found) return row.base_branch ?? ctx.config.baseBranchFallbacks[0] ?? "main";
   // A branch the boss picked in settings is an answer, not a cache of GitHub's.
   // This used to overwrite it every call — and this runs on the heartbeat, so a
   // choice survived about thirty seconds.

@@ -59,6 +59,30 @@ export const projectOfGrp = (db: DB, grpId: number | null | undefined): number |
     : (orm(db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)).get()?.project_id ?? null);
 
 /**
+ * The branch a group's work is measured against, as stored.
+ *
+ * For prose an agent reads, not for a git command: `baseBranch` asks GitHub and
+ * `baseRefFor` verifies the ref exists, and neither belongs in a sentence. A
+ * project on `develop` was being told to `git rebase origin/main` in four places
+ * because the fallback was written into the string.
+ */
+export function baseBranchOf(db: DB, grpId: number | null | undefined, fallbacks: readonly string[]): string {
+  // `.min(1)` on the schema, so the first entry exists — but `noUncheckedIndexedAccess`
+  // does not know that, and an `as string` at each of the four call sites would be
+  // four assertions standing in for one check.
+  const fallback = fallbacks[0] ?? "main";
+  if (grpId == null) return fallback;
+  return (
+    orm(db)
+      .select({ base_branch: project.base_branch })
+      .from(grp)
+      .innerJoin(project, eq(project.id, grp.project_id))
+      .where(eq(grp.id, grpId))
+      .get()?.base_branch ?? fallback
+  );
+}
+
+/**
  * A note of which a project keeps exactly one: the repo map, the page index.
  *
  * Newest-wins with the old row deleted, rather than an upsert, because `note` has no

@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, like, ne, or, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { dropSlices } from "../../platform/persistence/database.ts";
-import { addNote } from "../../mech/util/rows.ts";
+import { addNote, baseBranchOf } from "../../mech/util/rows.ts";
 import { interrupt, park, pause, resume, unpark } from "../../mech/flow/intercept.ts";
 import { dropGroup, startGroup, sweepApproved } from "../../mech/flow/start.ts";
 import { openPr, prBody, prTitle } from "../../mech/git/prwatch.ts";
@@ -281,11 +281,16 @@ export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
     },
   });
   for (const id of stale) {
+    // Named from the project rather than written into the sentence: a group on
+    // `develop` was being told to rebase onto a branch its repository has not got.
+    const base = baseBranchOf(ctx.db, id, ctx.config.baseBranchFallbacks);
     ctx.sched.enqueue("agent_turn", {
       grp_id: id,
       payload: {
         role: roleFor(ctx, "write_code"),
-        rejection: "main moved: `git fetch origin main` and `git rebase origin/main` before doing anything else.",
+        rejection:
+          `${base} moved: \`git fetch origin ${base}\` and \`git rebase origin/${base}\` ` +
+          `before doing anything else.`,
         rotate: true,
       },
     });

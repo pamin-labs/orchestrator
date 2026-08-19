@@ -224,6 +224,16 @@ export const ConfigSchema = z.object({
    */
   indexModel: ModelRef,
   /**
+   * The branch names to try when nothing else has answered.
+   *
+   * A project's own `base_branch` wins, then GitHub's `default_branch`; this is
+   * the last resort, for a repository whose remote cannot be reached. It was
+   * `["main", "master"]` in `gitops.ts` and `?? "main"` in three more places, so
+   * a fleet whose repositories all develop on `develop` had four literals to
+   * argue with and no way to say so once.
+   */
+  baseBranchFallbacks: z.array(z.string().min(1)).min(1),
+  /**
    * How long a machine-generated event is kept.
    *
    * The conversation — `say`, `boss_say`, `note`, `escalation` — is never dropped:

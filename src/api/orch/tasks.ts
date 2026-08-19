@@ -19,6 +19,7 @@ import {
 import { recordGate } from "../../mech/gate.ts";
 import { validateSelfReview } from "../../mech/util/validate.ts";
 import type { SliceState, TaskState } from "../../contracts/states.ts";
+import { baseBranchOf } from "../../mech/util/rows.ts";
 
 /**
  * The task card and the two verbs that move it.
@@ -95,6 +96,9 @@ export const getTasks = (async (ctx, req, a) => {
   // earlier commit. `--already-done` is the exit and it exists; it only gets used if
   // it is named here, next to the card, for the same reason the note above exists.
   const reopened = rows.filter((r) => r.status === "pending" && r.claim_json);
+  // The project's own base. `main` was in the string, so a group on `develop` was
+  // told to diff against a branch its repository has not got.
+  const base = baseBranchOf(ctx.db, grp, ctx.config.baseBranchFallbacks);
   const redo = reopened.length
     ? "\n" +
       reopened
@@ -104,8 +108,8 @@ export const getTasks = (async (ctx, req, a) => {
           return `task ${r.id} was delivered once already${files ? `, touching ${files}` : ""}`;
         })
         .join("\n") +
-      "\nCheck the branch before you rewrite anything — `git log origin/main..HEAD` and " +
-      "`git diff origin/main...HEAD`. If the work is still there and still right, claim the card " +
+      `\nCheck the branch before you rewrite anything — \`git log origin/${base}..HEAD\` and ` +
+      `\`git diff origin/${base}...HEAD\`. If the work is still there and still right, claim the card ` +
       'and close it with `--already-done "<what is on the branch>"` instead of doing it twice.'
     : "";
   if (rows.length === 0) return message(`no tasks are open in this group right now${gated}`);

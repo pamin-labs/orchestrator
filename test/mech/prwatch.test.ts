@@ -927,3 +927,20 @@ test("a check that keeps failing with a new summary is not news twice", async ()
   expect(await pollPrs(h.ctx, red("failed in 41s"))).toHaveLength(1);
   expect(await pollPrs(h.ctx, red("failed in 39s"))).toEqual([]);
 });
+
+test("a project that develops on develop is not told to rebase onto main", () => {
+  // `main` was written into four agent-facing strings — the rebase instruction
+  // here, the boss's "main moved" button, the reopened-card advice and the
+  // scribe's diff range. A group whose repository has no `main` was told to fetch
+  // one, and the failure lands inside an agent's turn as a git error it cannot
+  // act on rather than anywhere the boss looks.
+  const h = harness();
+  h.db.run("UPDATE project SET base_branch = 'develop' WHERE id = 1");
+  dispatchFeedback(h.ctx, { grpId: 1, prNumber: 7, comments: [], failingChecks: [], conflicting: true });
+
+  const payload = AgentTurnPayloadSchema.parse(
+    JSON.parse(h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job").get()!.payload_json),
+  );
+  expect(payload.rejection).toContain("git rebase origin/develop");
+  expect(payload.rejection).not.toContain("origin/main");
+});

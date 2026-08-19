@@ -17,6 +17,7 @@ import { jsonOr } from "../../contracts/json.ts";
 import pMap from "p-map";
 import { z } from "zod";
 import type { GrpState } from "../../contracts/states.ts";
+import { baseBranchOf } from "../util/rows.ts";
 
 const GateResults = z.record(z.string(), z.string());
 const PullNumber = z.object({ number: z.number().int().positive() });
@@ -86,7 +87,13 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   // string, so `git log` in the merged repository carried `## Slices (3, all
   // accepted)`, a gate table and `Opened by orchestrator` — a description
   // written for a review page, pasted into the one place that outlives it.
-  const sq = await squashWip(sandbox, WORK, commitMessage(ctx.db, grpId, input.title), gitTrailers(ctx.db));
+  const sq = await squashWip(
+    sandbox,
+    WORK,
+    commitMessage(ctx.db, grpId, input.title),
+    ctx.config.baseBranchFallbacks,
+    gitTrailers(ctx.db),
+  );
   ctx.bus.emit({
     grpId,
     author: "orchestrator",
@@ -1057,6 +1064,9 @@ const PR_FANOUT = 4;
 
 /** Hand PR feedback to the PM: replying to a review needs judgement, polling does not. */
 export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
+  // Named from the project. `main` was written into the rebase instruction below,
+  // so a group on `develop` was told to fetch a branch its repository has not got.
+  const base = baseBranchOf(ctx.db, f.grpId, ctx.config.baseBranchFallbacks);
   const lines = [
     ...f.comments.map((c) => `${c.author}: ${c.body}`),
     // The file and the line first: a review thread is an instruction about one
@@ -1113,12 +1123,12 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
           // longer holds is a design question the Architect owns.
           conflict: true,
           rejection:
-            `PR #${f.prNumber} no longer merges into main. Rebase onto it before anything else:\n` +
-            `\`git fetch origin main\` then \`git rebase origin/main\`, resolve every conflict, re-run the ` +
+            `PR #${f.prNumber} no longer merges into ${base}. Rebase onto it before anything else:\n` +
+            `\`git fetch origin ${base}\` then \`git rebase origin/${base}\`, resolve every conflict, re-run the ` +
             `gates, and stop there — the orchestrator takes the branch from your checkout and pushes it, ` +
-            `so do not look for a way to push. Keep both sides' intent — main moved for a reason and so ` +
+            `so do not look for a way to push. Keep both sides' intent — ${base} moved for a reason and so ` +
             `did this branch.\n\n` +
-            `If main removed or reshaped something this slice was built on, STOP — do not invent a way to ` +
+            `If ${base} removed or reshaped something this slice was built on, STOP — do not invent a way to ` +
             `keep compiling. Say which premise is gone with \`orch ask-boss\`; that reaches the Architect, ` +
             `who decides whether this slice still makes sense. Guessing produces code that builds and is ` +
             `pointed the wrong way, which nothing downstream can catch.\n${lines}`,

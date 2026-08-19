@@ -105,7 +105,10 @@ function scribeCard(ctx: Ctx, payload: TurnPayload): string | undefined {
     .innerJoin(project, eq(project.id, grp.project_id))
     .where(eq(grp.id, groupId))
     .get()?.base_branch;
-  const ref = `origin/${base ?? "main"}`;
+  // The project's own base, then the configured fallback. `main` was written here,
+  // so a project that develops on `develop` was told to diff against a branch its
+  // repository does not have.
+  const ref = `origin/${base ?? ctx.config.baseBranchFallbacks[0] ?? "main"}`;
   return (
     `This branch passed its audit and is about to be published. Write what it says in a log.\n\n` +
     `Read it first — you are in the group's own checkout:\n` +

@@ -174,6 +174,9 @@ const DEFAULTS: Config = {
   // about Friday still has its evidence, and bounded so an installation that has
   // run for a year is not replaying a year to every reconnecting tab.
   eventRetentionMs: 7 * 24 * 60 * 60 * 1_000,
+  // In order. `main` first because it is what GitHub creates today, `master`
+  // because it is what everything created before 2020 still has.
+  baseBranchFallbacks: ["main", "master"],
   // Local, and the smaller of the two ADR 031 measured — they ranked the same and
   // the gap it cares about did not close with the larger one. Nothing reads this
   // yet; `bun run embedding:check` does.

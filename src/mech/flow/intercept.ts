@@ -340,7 +340,7 @@ export function park(ctx: Ctx, grpId: number, reason: string): void {
 
 /** Wake a parked group. Rebasing on the way back in avoids a stale baseline. */
 export async function unpark(ctx: Ctx, grpId: number): Promise<void> {
-  const r = await rebaseOntoBase(sandboxGit(ctx, { grp: grpId }), WORK);
+  const r = await rebaseOntoBase(sandboxGit(ctx, { grp: grpId }), WORK, ctx.config.baseBranchFallbacks);
   if (r.code !== 0) {
     // A conflicting rebase is the boss's call, not something to paper over.
     ctx.bus.emit({
