@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { errText } from "../../src/platform/process/text.ts";
 import type { Caller } from "../../src/http/agent-auth.ts";
 import { postLease } from "../../src/api/orch/lease.ts";
 import { postDraft } from "../../src/api/orch/planning.ts";
@@ -82,7 +83,16 @@ test("dropping a group is one transaction", () => {
   ctx.sched.enqueue("agent_turn", { grp_id: 1 });
   ctx.db.run("CREATE TRIGGER fail_channel BEFORE UPDATE ON channel BEGIN SELECT RAISE(ABORT, 'channel failure'); END");
 
-  expect(() => dropGroup(ctx, 1, "duplicate")).toThrow("channel failure");
+  // Through `errText`, not the raw message: rc.4 wraps a driver error in a
+  // `DrizzleQueryError` whose own message names the statement and not the
+  // reason, and puts the reason on `cause`. What has to hold is that the reason
+  // reaches whoever is told, however the library chooses to nest it.
+  expect(() => dropGroup(ctx, 1, "duplicate")).toThrow();
+  try {
+    dropGroup(ctx, 1, "duplicate");
+  } catch (e) {
+    expect(errText(e)).toContain("channel failure");
+  }
   expect(ctx.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("RUNNING");
   expect(ctx.db.query<{ state: string }, []>("SELECT state FROM agent").get()!.state).toBe("idle");
   expect(ctx.db.query<{ status: string }, []>("SELECT status FROM channel").get()!.status).toBe("open");

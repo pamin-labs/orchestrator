@@ -1,6 +1,5 @@
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { DB } from "./database.ts";
-import * as schema from "./schema.ts";
 
 /**
  * Drizzle over the handle that is already open, never a second connection.
@@ -13,7 +12,10 @@ import * as schema from "./schema.ts";
  */
 const cache = new WeakMap<DB, ReturnType<typeof build>>();
 
-const build = (db: DB) => drizzle({ client: db, schema });
+// No `relations`: v1 takes them for the `db.query.*` builder, which nothing here
+// uses — every call site names its tables. Passing the module as `schema` was
+// the v0 spelling and rc.1 removed it.
+const build = (db: DB) => drizzle({ client: db });
 
 /**
  * Cached per handle. Construction is cheap but not free, and a module that built

@@ -978,7 +978,7 @@ export async function agentCli(): Promise<string> {
     define: { __ORCH_VERSION__: JSON.stringify(VERSION) },
   });
   const [output] = built.outputs;
-  if (!built.success || !output) throw new Error(`cannot build the agent CLI: ${built.logs.join("; ")}`);
+  if (!built.success || !output) throw new Error(`cannot build the agent CLI: ${built.logs.map(String).join("; ")}`);
   return await output.text();
 }
 

@@ -19,3 +19,23 @@ test("a caught value that is not an Error still comes back as a string, and boun
   expect(long.length).toBe(300);
   expect(long).toEndWith("…");
 });
+
+/**
+ * The reason, not only the operation that hit it.
+ *
+ * A library wrapper's own message is often the boilerplate half:
+ * `DrizzleQueryError` says "Failed query: update …" and hangs the constraint
+ * violation off `cause`. Reading `.message` alone showed the boss which
+ * statement failed and never why, which is the half that is actionable.
+ */
+test("a wrapped error still says what actually went wrong", () => {
+  const wrapped = new Error("Failed query: update", { cause: new Error("channel failure") });
+  expect(errText(wrapped)).toBe("Failed query: update: channel failure");
+  // Bounded: a cause chain is a linked list the library controls, and one that
+  // loops would otherwise hang here rather than in the library.
+  const loop = new Error("a");
+  loop.cause = loop;
+  expect(errText(loop)).toBe("a: a: a: a");
+  // A cause that is not an Error is not a message; it is skipped, not stringified.
+  expect(errText(new Error("plain", { cause: "context" }))).toBe("plain");
+});

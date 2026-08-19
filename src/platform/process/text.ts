@@ -21,7 +21,22 @@ export function clip(s: string, n = 200, collapse = false): string {
  * is why every one of them has that `?? e`.
  */
 export function errText<T>(e: T, n = 300): string {
-  return clip(e instanceof Error ? e.message : String(e), n);
+  return clip(e instanceof Error ? withCauses(e) : String(e), n);
+}
+
+/**
+ * The message, then what caused it.
+ *
+ * A wrapper's own message is often the boilerplate half: `DrizzleQueryError`
+ * says "Failed query: update …" and puts the constraint violation on `cause`, so
+ * an error shown to the boss named the statement and never the reason. Joined
+ * rather than replaced — the wrapper says which operation, the cause says what
+ * happened. Bounded, because a cause chain is a linked list a library controls.
+ */
+function withCauses(e: Error): string {
+  const chain = [e.message];
+  for (let c = e.cause; c instanceof Error && chain.length < 4; c = c.cause) chain.push(c.message);
+  return chain.join(": ");
 }
 
 /**
