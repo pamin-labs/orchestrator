@@ -10,15 +10,19 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Baseline
 
-- Branch: `refactor/api-split-and-settings`
-- SHA: the commit containing this entry
-- TypeScript, Oxlint, Biome, and Fallow audit: pass, the audit clean across all
-  424 changed files
-- Tests: 1124 pass, 6 environment skips, 0 fail
-- Coverage: 76.31% of statements, 67.25% of branches, 69.31% of functions,
-  78.97% of lines
-- Fallow complexity: **zero** functions over threshold across 5,226 analysed,
-  against real coverage rather than the export-reference estimate
+- Branch: `refactor/api-split-and-settings` merged to `main` as #7; work continues
+  on branches cut from it
+- TypeScript, Oxlint, Biome, and Fallow audit: pass
+- Tests: 1620 pass, 6 environment skips, 0 fail
+- Coverage: 81.96% of statements, 72.40% of branches, 77.21% of functions
+- Untested exports: 1 of 6,966 analysed (`missingBinaries`, which returns nothing
+  and is pinned as the deployment claim it expresses). Untested files: 3, all
+  entry points — the two declared in `.fallowrc.json` and `web/src/app/main.tsx`,
+  which `bundle-boots` builds and boots rather than imports
+- Fallow complexity: zero functions over threshold, against real coverage rather
+  than the export-reference estimate
+- Block comments over eight lines: zero, enforced by
+  `test/governance/comment-blocks.test.ts`
 - Test time is not recorded as a target. The same suite measures differently per
   machine, and a threshold on it would be a coin flip in CI
 
@@ -461,100 +465,63 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Next executable items
 
-1. Turn on secret scanning and push protection. Both are repository settings, so
-   no file can enable them. Push protection is the one that matters most on a
-   public repository: secret scanning tells you a credential leaked, push
-   protection stops the push that would have leaked it.
+1. **Run the release workflow in dry-run mode.** Not done, and the record said
+   otherwise: the last `release.yml` dispatch (`31919450396`, 2026-08-16) was a
+   *real* release — `v0.1.2` is in tags and in releases, and the only skipped step
+   in the run was `take the tag back`, which is the rollback that runs on failure.
+   So the six publish gates at `release.yml` lines 279, 294, 305, 357, 473, 496 and
+   539 have never been observed skipping.
 
-   Where: Settings → Code security, or
-   `gh api -X PATCH repos/pamin-labs/orchestrator -F security_and_analysis[secret_scanning][status]=enabled`
-   and the same for `secret_scanning_push_protection`. Expect two new things
-   afterwards: a scanning alert surface under Security, and a push that contains
-   a recognised credential pattern being refused at the remote with the rule
-   named — which is the behaviour worth confirming once deliberately, on a
-   throwaway branch with a fake key, rather than discovering under pressure.
-2. When the database moves to Drizzle — decided, and on the **v1 RC line** rather
-   than `latest`, which has not moved since 2026-03-27 while v1 removes the
-   `_journal.json` every "bundle the migrations into the binary" recipe reads —
-   move `test/support/factories.ts` to Fishery's documented `onCreate` + async
-   `create()` with the database passed as a transient parameter, and drop the
-   project-owned `insert`.
+   The entry is the `dry_run` input at `release.yml:10`, ticked. What only a hosted
+   run exercises: the multi-platform image build on x64 **and** arm64, Trivy against
+   the built image, SBOM generation, and provenance attestation.
 
-   Budget the async conversion rather than the ORM. Measured in `src/`: 297
-   `.query<>()`, 269 `.get()`, 132 `.all()`, 163 `db.run()` — about 564 call sites
-   that become `await`, plus 675 in `test/`, and it spreads, because a function
-   holding one becomes async and so does everything calling it. `openMemory()`'s
-   190× snapshot has no Postgres equivalent across its 283 call sites;
-   `pgsql-test` and `pglite-test` (both published 2026-08-18) replace it with
-   per-test transaction rollback — except `test/governance/transaction-boundaries.test.ts`,
-   whose subject *is* the transaction and which therefore cannot run inside one.
-   The `--compile` objection does not survive: with Postgres external, migration
-   is a compose step and the binary never migrates. It is written
-   synchronously today because `bun:sqlite` is synchronous, which is a stated
-   deviation rather than an oversight. Deferred deliberately: the conversion is
-   423 call sites across 59 files, it is the same edit whether it happens now or
-   at the switch, and it buys nothing until the driver is async. `no-floating-promises`
-   is already an error, so a forgotten `await` fails lint rather than shipping.
-3. Run the six environment-gated OpenSandbox integration tests. They are the six
-   `live(...)` cases in `test/live/sandbox-live.test.ts` at lines 95, 143, 181,
-   229, 273 and 351:
-   - a sandbox is a boundary: it gets a checkout, runs its gates, and cannot
-     touch this machine
-   - an agent reaches the orchestrator through the mailbox, with no route to
-     this machine
-   - the utility container takes a commit out of a group and into its mirror
-   - a credential bound to one path is not injected on another
-   - every skill reaches both CLIs, and the ones the boss ticked stay read-only
-   - one line out of a container is still one line by the time it is read
+   Read the completed run's log for those six steps and confirm each was skipped. A
+   dry run that published anything is the one failure mode that cannot be undone,
+   and the version would have to be bumped before another attempt.
 
-   The skip lifts on its own: `serverUp()` at `:55` probes `cfg.sandbox.server`
-   over HTTP with `cfg.sandbox.apiKey`, and `:88` picks `test` or `test.skip`
-   from the answer. So the requirement is an opensandbox-server the settings
-   page can already reach, plus `ORCH_SANDBOX_API_KEY` matching it — there is no
-   flag to set and nothing to edit. `bun test test/live/` prints the reason on
-   the skip path, naming the address it tried.
+2. **Add `codecov/patch` to the ruleset's required checks**, once it has been seen
+   posting. `pr-report.yml` is on `main` now and runs, so the 404 that blocked this
+   is gone — but Codecov has still never uploaded, because `pr-report` uploads only
+   after the `test` job passes and `test` was failing on every Dependabot pull
+   request (fixed: the pinning guard asserted six literal SHAs).
 
-   Done when `bun test` reports 0 skips rather than 6. Keep the run's output:
-   these are the only tests that exercise the boundary against a real container,
-   so the log is the evidence that the boundary held, not a formality.
-4. Run the release workflow in dry-run mode on GitHub-hosted Linux. The entry is
-   the `dry_run` input at `.github/workflows/release.yml:10`, so it is a manual
-   dispatch with that box ticked. What only a hosted run can exercise: the
-   multi-platform image build on x64 **and** arm64, Trivy against the built
-   image, SBOM generation, and provenance attestation — none of which a local
-   run reaches.
-
-   The thing to re-verify rather than assume is that a dry run writes nothing
-   external. `release.yml` gates the tag push, the GitHub release, the registry
-   tag and the `latest` alias on `!inputs.dry_run` (lines 279, 294, 305, 357,
-   473, 496, 539). Read the completed run's log for those six steps and confirm
-   each was skipped; a dry run that published anything is the one failure mode
-   that cannot be undone.
-5. Monitor the first merged CI and nightly stress runs; replay any property
-   failure from its reported seed and path.
-6. Add `codecov/patch` to the ruleset's required checks — **after this branch
-   merges, not before**, and the reason is more specific than "wait for a PR to
-   report it".
-
-   `pr-report.yml` is the workflow that uploads coverage, and it is triggered by
-   `workflow_run`. GitHub only dispatches those from the **default branch**, and
-   the file exists nowhere but this branch, so the API does not believe it
-   exists at all:
-
-   ```
-   $ gh run list --workflow pr-report.yml
-   HTTP 404: workflow pr-report.yml not found on the default branch
-   ```
-
-   So Codecov has never received an upload, and
    `gh api repos/pamin-labs/orchestrator/commits/<sha>/status` returns an empty
-   `statuses` array on every commit of this branch. Requiring `codecov/patch`
-   today would leave every pull request pending forever on a context nothing
-   posts — the exact shape of the `check` bug this branch found in the ruleset,
-   reintroduced under a different name.
+   `statuses` array on #8 today. Confirm `codecov/patch` appears there on the next
+   green pull request, then add it with the ruleset call in `docs/operations/ci.md`.
+   Requiring it before it posts leaves every pull request pending forever on a
+   context nothing writes — the `check` bug this repository already found once.
 
-   What to do once merged: open any pull request, confirm `codecov/patch`
-   appears in `/commits/<sha>/status`, then add it with the ruleset call in
-   `docs/operations/ci.md`. If it does not appear, the fault is upstream of the
-   ruleset — check that `pr-report.yml` ran at all and that its OIDC upload
-   succeeded — and the ruleset must not be touched until it does.
+3. **Run the six environment-gated OpenSandbox integration tests.** They are the
+   `live(...)` cases in `test/live/sandbox-live.test.ts`, and the skip lifts on its
+   own: `serverUp()` probes `cfg.sandbox.server` with `cfg.sandbox.apiKey`, and the
+   answer picks `test` or `test.skip`. Today it reports `cannot drive
+   opensandbox-server on 127.0.0.1:8080` — something is listening there that this
+   process has no key for.
+
+   Done when `bun test` reports 0 skips rather than 6. Keep the output: these are
+   the only tests that exercise the boundary against a real container, so the log is
+   the evidence that it held.
+
+4. **Move `test/support/factories.ts` to Fishery's `onCreate` + async `create()`
+   when the database moves to Drizzle** — deferred deliberately, not forgotten.
+
+   `insert` is project-owned because `bun:sqlite` is synchronous and Fishery's
+   `create` is async by contract. Converting buys nothing until the driver is: the
+   measured cost is about 564 `await` sites in `src/` plus 675 in `test/`, and it
+   spreads, because a function holding one becomes async and so does every caller.
+   It is the same edit whether it happens now or at the switch.
+
+   The rest of that decision — the v1 RC line, `pgsql-test` replacing
+   `openMemory()`'s 283 call sites, and `transaction-boundaries.test.ts` being the
+   one file that cannot run inside a transaction — is unchanged.
+
+5. **Monitor the nightly stress run** and replay any property failure from its
+   reported seed and path. CI, security and CodeQL are green on `main` after #7.
+
+## Done since this list was written
+
+- Secret scanning and push protection are both `enabled` on the repository.
+  `secret_scanning_non_provider_patterns` and `secret_scanning_validity_checks`
+  remain off: they are paid features, not oversights.
+- The first merged CI, security and CodeQL runs on `main` all passed.
