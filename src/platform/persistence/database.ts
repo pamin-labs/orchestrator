@@ -4,6 +4,7 @@ import { parseRepo } from "../../contracts/repository.ts";
 import {
   ESCALATION_STATES,
   GRP_STATES,
+  GRP_TERMINAL_STATES,
   JOB_STATES,
   LEASE_STATES,
   SLICE_STATES,
@@ -602,6 +603,21 @@ function stateConstraints(db: DB): void {
       );
     }
   }
+  // A terminal state is terminal, which fourteen `UPDATE grp SET status`
+  // statements had no way to know — eight name only the row. A group dissolved
+  // while a turn is in flight is revived by whatever lands after it, and the
+  // revived group holds its paths in `ownership.ts` with nobody left to release
+  // them, so the next group needing those paths never starts.
+  //
+  // `RAISE(IGNORE)` skips the row and returns, which is what `AND status <> …`
+  // would have done at each site. `ABORT` would turn a silently-wrong write into
+  // a thrown error inside a turn with no reason to expect one.
+  const terminal = GRP_TERMINAL_STATES.map((state) => `'${state}'`).join(", ");
+  db.run(
+    `CREATE TRIGGER grp_status_terminal BEFORE UPDATE OF status ON grp
+       WHEN OLD.status IN (${terminal}) AND NEW.status <> OLD.status
+       BEGIN SELECT RAISE(IGNORE); END`,
+  );
 }
 
 export type DB = Database;
