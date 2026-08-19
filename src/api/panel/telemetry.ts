@@ -64,7 +64,7 @@ export const TelemetryQuery = z
     trace: TraceId.optional(),
   })
   .refine((q) => (q.scope === "system") !== (q.id !== undefined), {
-    message: "group and project scopes need an id; system takes none",
+    error: "group and project scopes need an id; system takes none",
     path: ["id"],
   });
 
