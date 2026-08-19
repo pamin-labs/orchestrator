@@ -24,6 +24,31 @@ type ValidatedEventInput = Omit<StoredEvent, "seq" | "at">;
 /** An unset optional field is stored as NULL, never as placeholder text. */
 const orNull = <T>(v: T | null | undefined): T | null => v ?? null;
 
+/**
+ * What the event table keeps forever, and what it does not.
+ *
+ * The conversation is the durable record: `say`, `boss_say`, `note` and
+ * `escalation` are what the boss wrote, what an agent answered, and the unread
+ * cursor's own vocabulary — deleting one moves an agent's cursor past a message
+ * nobody read. Everything else is machine chatter about work already finished.
+ */
+const KEPT_FOREVER = ["say", "boss_say", "note", "escalation"] as const;
+
+/**
+ * The chatter is read inside a day and never again.
+ *
+ * `tool_summary` feeds 成本's hourly chart, which asks for the last 24 hours;
+ * `state_change` is the largest kind by emitters and nothing reads it back at
+ * all. There was no `DELETE FROM event` anywhere but project deletion, so both
+ * accumulated for the life of the installation — and a stale SSE cursor replays
+ * every row of it.
+ */
+export function trimEvents(db: DB, olderThanMs: number, now = Date.now()): number {
+  const kept = KEPT_FOREVER.map(() => "?").join(", ");
+  return db.run(`DELETE FROM event WHERE at < ? AND kind NOT IN (${kept})`, [now - olderThanMs, ...KEPT_FOREVER])
+    .changes;
+}
+
 export class Bus {
   private sinks = new Set<(frame: Frame) => void>();
   /**

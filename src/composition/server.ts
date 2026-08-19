@@ -7,7 +7,7 @@ import { landGroup } from "../api/panel/group.ts";
 import { roleFor, type Ctx } from "../mech/ctx.ts";
 import { joinQueue } from "../mech/flow/mergequeue.ts";
 import { bindSandboxKey } from "../mech/sandbox/auth.ts";
-import { Bus } from "../platform/persistence/event-bus.ts";
+import { Bus, trimEvents } from "../platform/persistence/event-bus.ts";
 import { consola } from "consola";
 import {
   checkCapabilities,
@@ -26,7 +26,7 @@ import { startMailbox } from "../mech/sandbox/mailbox.ts";
 import { baseRefFor, createCheckout, treeHeads } from "../mech/git/checkout.ts";
 import { preflight, report, type Check } from "../mech/ops/preflight.ts";
 import { restageSkills } from "../mech/skills.ts";
-import { ensureServer } from "../mech/sandbox/server.ts";
+import { ensureServer, type ServerState } from "../mech/sandbox/server.ts";
 import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "../mech/ops/notify.ts";
 import { dispatchFeedback, type Feedback, openPr, pollPrs, prBody, prTitle } from "../mech/git/prwatch.ts";
 import { type Github, makeGithub } from "../mech/git/github.ts";
@@ -200,6 +200,10 @@ export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }
   // a reason to run housekeeping, and this is already the process's periodic
   // driver — a timer of its own would be a second thing to arm and shut down.
   trimSpans(db);
+  // The same for events, which had no retention at all: the only `DELETE FROM
+  // event` in the tree was project deletion, so an installation kept every
+  // `state_change` it had ever emitted and a stale SSE cursor replayed all of them.
+  trimEvents(db, ctx.config.eventRetentionMs);
 
   // Everything waiting on the boss, as one message. The CoS is meant to do this
   // in its own words; this is the backstop for when it does not run at all.
@@ -420,6 +424,65 @@ export const INDEX_THROW_BACKOFF_MS = 5 * 60_000;
  */
 export function navigatorEnabled(indexModel: { model: string }): boolean {
   return indexModel.model.trim().length > 0;
+}
+
+/**
+ * What boot says about the sandbox server it found.
+ *
+ * Four states and only one of them is ours to act on. `stuck` is the one worth
+ * being careful with: a server that is up and undrivable may be somebody else's,
+ * and "we cannot drive it" is not evidence that nobody can — so it raises a
+ * question rather than restarting a process this installation did not start.
+ */
+/**
+ * Which of four things a request is, before any of them is done.
+ *
+ * `/metrics` is the only one with a rule behind it rather than a path: ADR 012
+ * keeps it on loopback, and the `PrometheusExporter` was left unused precisely
+ * because it opens a port on every interface and would walk around this. The
+ * address is a thunk because asking for it is only free when it is needed.
+ */
+export function routeRequest(path: string, peer: () => string | undefined): "index" | "app" | "refuse" | "file" {
+  if (INDEX_PATHS.has(path)) return "index";
+  if (path === "/metrics") {
+    const ip = peer();
+    return ip && !LOOPBACK_ADDRESSES.has(ip) ? "refuse" : "app";
+  }
+  return isApplicationPath(path) ? "app" : "file";
+}
+
+export function reportServerState(ctx: Ctx, st: ServerState): void {
+  if (st.kind === "started") {
+    consola.success(`opensandbox-server started (pid ${st.pid}, ${st.config})`);
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body: `沙盒服务器起好了（我们起的，pid ${st.pid}）`,
+    });
+    return;
+  }
+  if (st.kind === "theirs") {
+    consola.info(`opensandbox-server already running (pid ${st.pid}) — using it, not touching it`);
+    return;
+  }
+  if (st.kind === "down") {
+    consola.warn(`opensandbox-server: ${st.why}`);
+    return;
+  }
+  // `ours` is a server this orchestrator started and is still driving. The chain
+  // this replaced had no branch for it and fell out silently, which was right by
+  // accident: a reconnect to our own process is not news.
+  if (st.kind === "ours") return;
+  consola.warn(`opensandbox-server running (pid ${st.pid}) but not drivable: ${st.why}`);
+  ctx.bus.emit({
+    author: "orchestrator",
+    kind: "escalation",
+    intent: "inform",
+    severity: "blocker",
+    body:
+      `沙盒服务器在跑（pid ${st.pid}），但我们驱动不了：${st.why}\n` +
+      `没敢自动重启它 —— 这个进程可能是你自己起的，配的是别的东西。设置 → 沙盒服务器 那里有按钮。`,
+  });
 }
 
 export function indexThrew(ctx: Ctx, error: unknown, now = Date.now()): void {
@@ -791,21 +854,14 @@ export function start(overrides: Partial<Config> = {}): Started {
     idleTimeout: 0, // `ask-boss` holds a request open until the boss answers
     async fetch(req, bunServer) {
       const path = new URL(req.url).pathname;
-      if (INDEX_PATHS.has(path)) {
+      const route = routeRequest(path, () => bunServer.requestIP(req)?.address);
+      if (route === "index") {
         return new Response(Bun.file(join(webDir, "index.html")), {
           headers: { "content-type": "text/html; charset=utf-8", "cache-control": NO_CACHE },
         });
       }
-      if (path === "/metrics") {
-        const ip = bunServer.requestIP(req)?.address;
-        if (ip && !LOOPBACK_ADDRESSES.has(ip)) {
-          return new Response("not found", { status: 404 });
-        }
-        return app(req);
-      }
-      if (isApplicationPath(path)) {
-        return app(req);
-      }
+      if (route === "app") return app(req);
+      if (route === "refuse") return new Response("not found", { status: 404 });
 
       const file = Bun.file(join(webDir, path.replace(/^\/+/, "")));
       if (await file.exists()) return new Response(file, { headers: { "cache-control": NO_CACHE } });
@@ -878,33 +934,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   // itself two seconds later.
   const sandboxServer = track(
     ensureServer(ctx)
-      .then((st) => {
-        if (st.kind === "started") {
-          consola.success(`opensandbox-server started (pid ${st.pid}, ${st.config})`);
-          ctx.bus.emit({
-            author: "orchestrator",
-            kind: "state_change",
-            body: `沙盒服务器起好了（我们起的，pid ${st.pid}）`,
-          });
-        } else if (st.kind === "theirs") {
-          consola.info(`opensandbox-server already running (pid ${st.pid}) — using it, not touching it`);
-        } else if (st.kind === "stuck") {
-          consola.warn(`opensandbox-server running (pid ${st.pid}) but not drivable: ${st.why}`);
-          ctx.bus.emit({
-            author: "orchestrator",
-            kind: "escalation",
-            intent: "inform",
-            severity: "blocker",
-            // Never restarted for them: this process may be someone else's, and
-            // "we cannot drive it" is not evidence that nobody can.
-            body:
-              `沙盒服务器在跑（pid ${st.pid}），但我们驱动不了：${st.why}\n` +
-              `没敢自动重启它 —— 这个进程可能是你自己起的，配的是别的东西。设置 → 沙盒服务器 那里有按钮。`,
-          });
-        } else if (st.kind === "down") {
-          consola.warn(`opensandbox-server: ${st.why}`);
-        }
-      })
+      .then((st) => reportServerState(ctx, st))
       .catch((e: unknown) => consola.error(`ensureServer: ${errText(e)}`)),
   );
 

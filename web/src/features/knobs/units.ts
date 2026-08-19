@@ -38,6 +38,7 @@ export const KNOB_SHAPE: Record<string, Shape> = {
   installTimeoutMs: "ms",
   parkAfterPausedMs: "ms",
   watchdogIntervalMs: "ms",
+  eventRetentionMs: "ms",
   "sandbox.ttlSeconds": "seconds",
   sessionRotateFraction: "percent",
   ctxBudgetChars: "count",

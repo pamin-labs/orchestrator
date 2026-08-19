@@ -151,6 +151,17 @@ export const ConfigSchema = z.object({
   feedbackSedimentThreshold: count,
   ctxBudgetChars: count,
   /**
+   * How far and how wide a model may walk the PageIndex tree.
+   *
+   * `depth` is the number of **serial** model calls one `orch ctx query` can make
+   * — two per question at depth 3, each with its own 60s timeout — so it is the
+   * single knob on the most frequent model spend in the system. `width` caps how
+   * many ids the model may name at a level, which decides how much of the tree one
+   * call sees rather than how many calls there are. Both were literals inside the
+   * walk, where the boss could not reach them.
+   */
+  pageindex: z.object({ depth: count, width: count }).strict(),
+  /**
    * Forward every notification to a URL, as JSON. Empty means nobody but the panel.
    *
    * One field rather than an integration per service. Whatever is on the other
@@ -212,6 +223,14 @@ export const ConfigSchema = z.object({
    * off the expensive subscription.
    */
   indexModel: ModelRef,
+  /**
+   * How long a machine-generated event is kept.
+   *
+   * The conversation — `say`, `boss_say`, `note`, `escalation` — is never dropped:
+   * it is the record, and the unread cursor walks it. This bounds the rest, which
+   * is read inside a day (成本's chart asks for 24 hours) and then never again.
+   */
+  eventRetentionMs: count,
   /**
    * How many SSE frames may wait on one slow browser before frames are dropped.
    *

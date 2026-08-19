@@ -139,6 +139,11 @@ const DEFAULTS: Config = {
   unreadDigestThreshold: 30,
   feedbackSedimentThreshold: 3,
   ctxBudgetChars: 16_000,
+  // Today's literals, unchanged: this is about making them settable, not about
+  // retuning them. Depth 3 answered every question the walk was measured on in
+  // two calls; a fourth level is a third serial call on every query that reaches
+  // it, which is what makes this the expensive number of the two.
+  pageindex: { depth: 3, width: 4 },
   notifyWebhook: "",
   parkAfterPausedMs: 7_200_000,
   watchdogIntervalMs: 30_000,
@@ -165,6 +170,10 @@ const DEFAULTS: Config = {
   // Deep enough that a browser catching up after a tab wakes never drops, and
   // shallow enough that a dead socket cannot hold a turn's worth of tokens.
   streamBacklog: 256,
+  // A week, against 成本's 24-hour window: enough that a question asked on Monday
+  // about Friday still has its evidence, and bounded so an installation that has
+  // run for a year is not replaying a year to every reconnecting tab.
+  eventRetentionMs: 7 * 24 * 60 * 60 * 1_000,
   // Local, and the smaller of the two ADR 031 measured — they ranked the same and
   // the gap it cares about did not close with the larger one. Nothing reads this
   // yet; `bun run embedding:check` does.
