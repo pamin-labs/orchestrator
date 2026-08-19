@@ -309,25 +309,17 @@ export async function githubAccount(gh: Github, signal?: AbortSignal): Promise<s
 /**
  * Who a commit should be authored by, from the connected account.
  *
- * The identity was a literal — `orch agent <agent@orch.local>` — which is fine
- * until a repository enforces DCO: the sign-off line has to match the author,
- * and a made-up address is not an identity anybody can be said to have signed
- * as. The connected login is one, and it is already here.
- *
- * The `noreply` address is GitHub's own form, and the right one to use: it is
- * what the web UI commits as, it is accepted by DCO checks, and it does not
- * publish an address the account holder may not want in a commit log. The `id`
- * prefix is required — `login@users.noreply.github.com` without it is the legacy
- * form and no longer routes.
+ * GitHub's own `noreply` form, and the `id` prefix is **required** —
+ * `login@users.noreply.github.com` without it is the legacy form and no longer
+ * routes. DCO checks the sign-off against the author, so both come from here.
  */
 /**
  * Our GitHub App's bot account, which is a real user on github.com.
  *
- * `orch agent <agent@orch.local>` was made up: the address routes nowhere and
- * the name belongs to nobody, so a `Signed-off-by` line carrying it certifies
- * nothing and a reviewer clicking the author gets a 404. This is the account the
- * App already commits as — id resolved from `/users/orchestrator-agentic-app[bot]`,
- * in GitHub's own noreply form, the same shape `claude[bot]` uses.
+ * The account the App already commits as — id resolved from
+ * `/users/orchestrator-agentic-app[bot]`, the same shape `claude[bot]` uses. A
+ * made-up address routes nowhere, so a `Signed-off-by` carrying it certifies
+ * nothing.
  *
  * It is the fallback and the co-author, never a substitute for a connected
  * human: a bot signing off on a human's behalf is the one thing DCO exists to

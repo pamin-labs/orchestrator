@@ -1116,32 +1116,15 @@ function runOpts(o: ExecOpts) {
  * for anything chatty. The files API is the cheap channel (1-5ms).
  */
 /**
- * One bash session per container, because `run()` costs a second and this costs 5ms.
+ * One bash session per container: `run()` costs a second, `runInSession` costs 5ms.
+ * The numbers, the fallback ladder and why snapshots were refused are in ADR 032.
  *
- * Measured against a live server, five runs of the same `git rev-parse` in a real
- * container: `run()` median **1013ms** (1013–1025, so it is a fixed interval and
- * not the command), `createSession()` **1ms**, `runInSession()` median **5ms**.
- * Two hundred times, and it is the same shell either way — the second is the
- * server's own poll on the one-shot path.
- *
- * What that buys, from this branch's own spans: `sandbox.exec` ran 6,506 times in
- * a day on one machine, so the fixed second alone was about **1.8 hours** of
- * waiting. A cold checkout is nine serial execs; `keepBranch` is five a turn.
- *
- * The session's cwd is pinned on every call rather than inherited, because a
- * session keeps it: `cd /work && …` inside a command would otherwise decide where
- * the *next* command with no `cwd` of its own runs. The default is read from the
- * session once, so a command that passes none lands where `run()` would have put
- * it.
+ * **The cwd is pinned on every call**, never inherited. A session keeps its cwd, so
+ * a `cd /work && …` inside one command would otherwise decide where the *next*
+ * command with no `cwd` of its own runs.
  */
-/**
- * What the session path needs of a container: an id and three commands.
- *
- * Narrower than `Sandbox` on purpose. A parameter that says `Sandbox` claims the
- * files API, the vault and the metadata patcher are in scope, and a test then has
- * to either build all of them or assert its way past the type — which is what
- * `as never` was doing here, and what oxlint refused.
- */
+/** What the session path needs of a container: an id and three commands. Narrower
+ *  than `Sandbox`, so a test can call it without building the files API. */
 export interface Runner {
   id: string;
   commands: {
@@ -1193,33 +1176,16 @@ async function sessionFor(sb: Runner): Promise<Session | null> {
 }
 
 /**
- * `runInSession` merges stderr into stdout, and that difference is a bug generator.
+ * A session's stdout and stderr are the same pipe — `readlink /proc/self/fd/{1,2}`
+ * answers with one inode — so each command redirects its own stderr to a file and
+ * reads it back after a marker. Taking the merged stream instead would put git's
+ * warnings back into NUL-delimited `STATUS_Z` output, which is the defect
+ * `sandboxGit` was repaired for. Evidence and the verification in ADR 032.
  *
- * Measured in a live container: `run()` returns `{stdout: [], stderr: [line]}` for a
- * failing `ls`, while `runInSession` returns `{stdout: [line], stderr: []}` — with
- * `isError: false` on it, so the flag cannot tell them apart either. Swapping one
- * for the other would have put git's warnings back into the NUL-delimited
- * `STATUS_Z` output, which is precisely the defect `sandboxGit` was repaired for
- * earlier on this branch: a `warning: unable to access …` line becoming a path and
- * reaching `git clean -fd`.
- *
- * So stderr is redirected to a file and read back after a marker, in the same
- * command. The exit code survives because the status is set by a subshell — a bare
- * `exit` would end the session, and did, the first time this was written.
- *
- * Verified against a live container on all three shapes: a failure (stdout empty,
- * stderr carried, exit 2), a success that writes to stderr (both, separated), and a
- * plain success. The marker is long enough not to occur by accident and, if it
- * somehow does not appear, the whole output is stdout — which is the old merged
- * behaviour rather than a lost line.
- */
-/**
- * `\x01` on both sides, emitted by `printf` rather than passed as an argument.
- *
- * The first version used NUL, which a shell argument cannot carry at all — the
- * byte would have been truncated before `printf` saw it, and the marker would
- * never have matched. `printf` writes the control byte itself, so nothing but the
- * escape travels through the command string.
+ * The status is set by a **subshell**: a bare `exit` ends the session. The marker
+ * is emitted by `printf`, not passed as an argument, because a shell argument
+ * cannot carry the control byte at all. If it somehow fails to appear the whole
+ * output is stdout, which is the merged behaviour rather than a lost line.
  */
 const ERR_MARK = "\u0001orch-stderr\u0001";
 const ERR_MARK_PRINTF = "\\001orch-stderr\\001";
@@ -1275,11 +1241,6 @@ export async function runIn(sb: Runner, cmd: string, opts: ExecOpts): Promise<Ex
     // A session dies with its container, and with its own shell. Forget it and try
     // once through a fresh one, then stop trying: `run()` is the behaviour that
     // was here before sessions and it still works.
-    //
-    // The retry used to be the last word, and a second failure escaped — which
-    // `execIn` turns into `container unavailable`, reporting a working container as
-    // a dead one. Found by the test rather than in production, which is the only
-    // reason it is written this way round.
     sessions.delete(sb.id);
     const again = await sessionFor(sb);
     if (!again) return plain();
@@ -1582,8 +1543,6 @@ export const REAL: SandboxDriver = {
  * socket. So that is an exit code with the reason in `err`, not a rejection.
  */
 export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts): Promise<ExecOutcome> {
-  // The span is here for the same reason the guard is: about thirty call sites
-  // converge on this one function, and the thirty-first would not have got one.
   // The command itself is never an attribute — it carries repository paths and
   // file names, which `docs/standards/observability.md` forbids on labels — so
   // the scope is what identifies it. The group's project, not just the group: a
