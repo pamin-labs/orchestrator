@@ -246,15 +246,17 @@ bench.add("watchdog tick", async () => void (await runWatchdog(watchdogDeps)), {
 /**
  * The 系统耗时 report, at the volume one idle day produces.
  *
- * The slowest thing the panel does and the only one with no budget: five
- * window-function queries over the whole table, synchronous, so while it computes it
- * blocks every request and the SSE heartbeat. `system` scope because its predicate
- * (`project_id IS NULL AND grp_id IS NULL`) is the one no index can seek.
+ * Five queries over the whole table, synchronous, so while it computes it blocks
+ * every request and the SSE heartbeat. `system` scope because its predicate
+ * (`project_id IS NULL AND grp_id IS NULL`) is the one no index can seek — indexes
+ * were measured and do not help here, the sorting does. 739ms when this budget was
+ * added, 281ms once the trace list and the stage table stopped sorting the whole
+ * window; and the ceiling sits above what a loaded machine measures rather than a quiet one.
  */
 seedSpans(SPAN_ROWS);
 const telemetryWindow = recentWindow(undefined, SPAN_CLOCK);
 const telemetryScope = { kind: "system" } as const;
-limits.set("telemetry report", 1_200);
+limits.set("telemetry report", 600);
 bench.add(
   "telemetry report",
   () => {
