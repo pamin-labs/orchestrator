@@ -59,8 +59,7 @@ test("the explicit query cursor is honored", async () => {
 });
 
 /** A frame the writer only has to hand to `send`; its content is not the subject. */
-const frame = (seq: number): Frame =>
-  ({ type: "event", seq, author: "boss", kind: "say", body: "x", at: seq });
+const frame = (seq: number): Frame => ({ type: "event", seq, author: "boss", kind: "say", body: "x", at: seq });
 
 test("a browser that stops reading drops frames instead of growing without bound", async () => {
   // The chain was `writes = writes.then(() => send(frame))`, fed by one
