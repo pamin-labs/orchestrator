@@ -383,6 +383,25 @@ M7 — executable engineering governance and versioned protocol.
   budgeted are the price of **Postgres**, not of the ORM. ADR 037 charges them to
   that decision, where they belong.
 
+- 系统耗时 opened in 266ms and no longer blocks the process to do it. The five
+  queries are synchronous, so while one computed, every other API request and the
+  SSE heartbeat waited behind it on the one thread — a reloading tab was enough to
+  stall the fleet. Cached per scope and window under the heartbeat that writes the
+  spans: **3621ms cold → 0.28ms on a hit**, measured over 90,000 rows. Two traps
+  the guards caught: a module-level cache answers one database's question with
+  another's numbers, and rounding the window's end *down* drops the spans written
+  since — a wrong report rather than a stale one.
+- `main` was written into eight places, four of them strings an agent reads. A
+  group whose repository has no `main` was told to `git fetch origin main`, and
+  that fails inside the turn as a git error it cannot act on, nowhere the boss
+  looks. `baseBranchFallbacks` is the list; the project's own `base_branch` and
+  GitHub's `default_branch` still win over it.
+- Every watchdog threshold was a literal while `watchdogIntervalMs` beside them was
+  settable, so the panel could change how often the rules ran and nothing about
+  what they decided. Grouped as `watchdog.*`. Also settles a misreading: the 5–30s
+  clamp on `readinessPeriodMs` is a *derived* self-check period, not the boss's
+  interval being overridden — the watchdog timer reads it unclamped.
+
 ## Blockers and deviations
 
 - **`ensureMirror` fetches unconditionally**, so every project with a remote pays a
