@@ -266,7 +266,7 @@ test("the heartbeat is what runs retention, not the write path", async () => {
 test("a stage carries its newest failure's reason, and a healthy one carries none", () => {
   const db = openMemory();
   const t0 = Date.now() - 60_000;
-  const fail = (spanId: string, at: number, message: string) =>
+  const fail = (spanId: string, at: number, message: string | null) =>
     writeSpans(db, [
       {
         traceId: spanId.padStart(32, "0"),
@@ -300,6 +300,14 @@ test("a stage carries its newest failure's reason, and a healthy one carries non
   const byName = new Map(stageStats(db, { kind: "system" }).map((s) => [s.name, s]));
   expect(byName.get("index.ask")).toMatchObject({ errors: 2, reason: "no credential for codex" });
   expect(byName.get("git.ls_tree")).toMatchObject({ errors: 0, reason: null });
+
+  // A newer failure with nothing to say hides the older explanation rather than
+  // falling back to it: `setStatus` takes an optional message, so "it failed and
+  // said nothing" is a state the store can be in, and answering it with a reason
+  // from before the last two failures is the stale-explanation bug again.
+  fail("3".repeat(16), t0 + 2_000, null);
+  const after = new Map(stageStats(db, { kind: "system" }).map((s) => [s.name, s]));
+  expect(after.get("index.ask")).toMatchObject({ errors: 3, reason: null });
 });
 
 /**

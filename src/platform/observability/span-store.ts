@@ -318,33 +318,18 @@ export interface StageStat {
 export function stageStats(db: DB, scope: ReadScope, window: TimeWindow = recentWindow()): StageStat[] {
   const bounds = clamp(window);
   const { where, params } = scopeSql(scope);
+  const reasons = latestReasons(db, bounds, where, params);
   // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds. `percentiles("duration_ms")` is a module template over a column name written here as a literal.
   return db
-    .query<
-      {
-        name: string;
-        count: number;
-        total_ms: number;
-        p50: number;
-        p95: number;
-        errors: number;
-        reason: string | null;
-      },
-      number[]
-    >(
-      // The reason is the *latest* failure rather than the commonest: a stage
-      // that has started working again should stop explaining how it used to
-      // break, and the newest message is the one a reader can still act on.
+    .query<{ name: string; count: number; total_ms: number; p50: number; p95: number; errors: number }, number[]>(
       `WITH ranked AS (
-         SELECT name, duration_ms, status, started_at, status_message,
+         SELECT name, duration_ms, status,
                 ROW_NUMBER() OVER (PARTITION BY name ORDER BY duration_ms) AS rn,
-                COUNT(*)     OVER (PARTITION BY name)                      AS n,
-                ROW_NUMBER() OVER (PARTITION BY name, status = 'error' ORDER BY started_at DESC, span_id DESC) AS recent
+                COUNT(*)     OVER (PARTITION BY name)                      AS n
          FROM span WHERE started_at >= ? AND started_at < ? AND ${where}
        )
        SELECT name, MAX(n) AS count, SUM(duration_ms) AS total_ms, ${percentiles("duration_ms")},
-              SUM(status = 'error') AS errors,
-              MAX(CASE WHEN status = 'error' AND recent = 1 THEN status_message END) AS reason
+              SUM(status = 'error') AS errors
        FROM ranked GROUP BY name ORDER BY total_ms DESC`,
     )
     .all(bounds.from, bounds.to, ...params)
@@ -355,8 +340,39 @@ export function stageStats(db: DB, scope: ReadScope, window: TimeWindow = recent
       p50: row.p50,
       p95: row.p95,
       errors: row.errors,
-      reason: row.reason,
+      // Absent from the map is a stage that never failed, and a stored `null` is
+      // a failure that carried no message. Both read as "nothing to explain".
+      reason: reasons.get(row.name) ?? null,
     }));
+}
+
+/**
+ * Why each failing stage failed last, by name — the *latest* failure rather than
+ * the commonest, because a stage that has started working again should stop
+ * explaining how it used to break.
+ *
+ * Its own query because it was a third window function, over the same rows as the
+ * other two and partitioned and ordered differently from both, so the sort it
+ * needed was a full one to produce at most one message per stage. Here it ranks
+ * the error rows only — a fiftieth of the table on the day this was measured.
+ */
+function latestReasons(
+  db: DB,
+  bounds: TimeWindow,
+  where: string,
+  params: readonly number[],
+): Map<string, string | null> {
+  // fallow-ignore-next-line security-sink -- `where` reaches this only from `scopeSql`, whose three source literals are chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds.
+  const rows = db
+    .query<{ name: string; status_message: string | null }, number[]>(
+      `SELECT name, status_message FROM (
+         SELECT name, status_message,
+                ROW_NUMBER() OVER (PARTITION BY name ORDER BY started_at DESC, span_id DESC) AS rn
+         FROM span WHERE started_at >= ? AND started_at < ? AND ${where} AND status = 'error'
+       ) WHERE rn = 1`,
+    )
+    .all(bounds.from, bounds.to, ...params);
+  return new Map(rows.map((row) => [row.name, row.status_message]));
 }
 
 /** One slice of a requirement, and what its turns cost. */
