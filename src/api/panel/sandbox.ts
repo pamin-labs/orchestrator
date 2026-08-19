@@ -1,3 +1,4 @@
+import { count, eq, isNotNull } from "drizzle-orm";
 import {
   allowedImage,
   remoteInClear,
@@ -23,7 +24,8 @@ import { preflight } from "../../mech/ops/preflight.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
-import type { GrpState } from "../../contracts/states.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp as grps, job } from "../../platform/persistence/schema.ts";
 
 /**
  * What this machine can and cannot do, and the sidecar that decides it.
@@ -44,20 +46,19 @@ import type { GrpState } from "../../contracts/states.ts";
 export const SandboxQuery = z.object({ grp: z.coerce.number().int().positive() });
 
 export const getSandbox = (async (ctx, _req, _params, { grp: grpId }) => {
-  const grp = ctx.db
-    .query<
-      {
-        id: number;
-        name: string;
-        status: GrpState;
-        project_id: number;
-        sandbox_id: string | null;
-        sandbox_at: number | null;
-        branch: string | null;
-      },
-      [number]
-    >("SELECT id, name, status, project_id, sandbox_id, sandbox_at, branch FROM grp WHERE id = ?")
-    .get(grpId);
+  const grp = orm(ctx.db)
+    .select({
+      id: grps.id,
+      name: grps.name,
+      status: grps.status,
+      project_id: grps.project_id,
+      sandbox_id: grps.sandbox_id,
+      sandbox_at: grps.sandbox_at,
+      branch: grps.branch,
+    })
+    .from(grps)
+    .where(eq(grps.id, grpId))
+    .get();
   if (!grp) return message("no such group", 404);
   const spec = specFor(ctx, grp.project_id);
   return json({
@@ -132,7 +133,6 @@ export const postImage = (async (ctx, _req, _p, b) => {
  */
 export const getSandboxServer = (async (ctx) => {
   const live = runningServer();
-  const count = (sql: string) => ctx.db.query<{ c: number }, []>(sql).get()!.c;
   // Inspect, never ensure. Which of the cases this is decides which button the
   // panel may show — and a GET that starts a process is a page that changes the
   // machine by being looked at.
@@ -157,8 +157,8 @@ export const getSandboxServer = (async (ctx) => {
     // Its own last words, when there are any. Shown rather than summarised: the
     // reason a start fails is almost always in here verbatim.
     log: state.kind === "down" ? serverLogTail(ctx, 8) : "",
-    containers: count("SELECT count(*) AS c FROM grp WHERE sandbox_id IS NOT NULL"),
-    runningTurns: count("SELECT count(*) AS c FROM job WHERE state = 'running'"),
+    containers: orm(ctx.db).select({ c: count() }).from(grps).where(isNotNull(grps.sandbox_id)).get()!.c,
+    runningTurns: orm(ctx.db).select({ c: count() }).from(job).where(eq(job.state, "running")).get()!.c,
   });
 }) satisfies Handler;
 

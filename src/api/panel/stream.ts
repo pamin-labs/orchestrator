@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import type { Bus } from "../../platform/persistence/event-bus.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
@@ -5,6 +6,8 @@ import type { Frame, StoredEvent } from "../../contracts/events.ts";
 import type { SSEStreamingApi } from "hono/streaming";
 import { z } from "zod";
 import { recordDroppedFrames } from "../../platform/observability/metrics.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp } from "../../platform/persistence/schema.ts";
 
 /**
  * One SSE stream, everything the panel draws off it.
@@ -36,8 +39,7 @@ function projectResolver(db: DB): (grpId: number | null | undefined) => number |
     if (!projects.has(grpId)) {
       projects.set(
         grpId,
-        db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)?.project_id ??
-          null,
+        orm(db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)).get()?.project_id ?? null,
       );
     }
     return projects.get(grpId) ?? null;

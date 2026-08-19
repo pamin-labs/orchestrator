@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { basename, dirname, join, resolve } from "node:path";
 import { addNote } from "../../mech/util/rows.ts";
 import { existsSync, statSync } from "node:fs";
@@ -8,6 +9,8 @@ import type { Ctx } from "../../mech/ctx.ts";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp } from "../../platform/persistence/schema.ts";
 
 export const AttachmentNameParams = z.object({ name: z.string().min(1) });
 
@@ -204,8 +207,7 @@ export const getAttachment = (async (ctx, _req, params) => {
  */
 export function bossFact(ctx: Ctx, grpId: number | null, body: string): void {
   const projectId = grpId
-    ? (ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-        ?.project_id ?? null)
+    ? (orm(ctx.db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)).get()?.project_id ?? null)
     : null;
   addNote(ctx.db, { projectId, grpId, kind: "fact", lang: ctx.config.language, body });
   sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold);

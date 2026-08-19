@@ -38,6 +38,16 @@ export const JOB_STATES = ["pending", "running", "done", "failed", "cancelled"] 
  */
 export const LEASE_STATES = ["queued", "running", "done", "failed"] as const;
 
+/**
+ * A lease that has not finished, so it is still the one an agent is parked on.
+ *
+ * `finishLease` guards its UPDATE on these two, which is what makes it the single
+ * resolver: a second finish for the same lease changes no rows and resolves no
+ * waiter twice. It was written into the SQL, where nothing checked it against
+ * this list.
+ */
+export const ACTIVE_LEASE_STATES = ["queued", "running"] as const satisfies readonly LeaseState[];
+
 /** `pm | architect | cos | boss` are in-flight; the last two are terminal. */
 export const ESCALATION_STATES = ["pm", "architect", "cos", "boss", "answered", "revoked"] as const;
 

@@ -1,3 +1,4 @@
+import { and, desc, eq, notInArray, or, sql } from "drizzle-orm";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -17,6 +18,8 @@ import { bad, json } from "../../http/respond.ts";
 import { expandHome } from "./attach.ts";
 import { errText } from "../../platform/process/text.ts";
 import type { PanelNote } from "../../contracts/notes.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp, note as notes, project } from "../../platform/persistence/schema.ts";
 
 /**
  * Three read-mostly panels: the blackboard, the skill tick boxes, and the
@@ -43,42 +46,43 @@ export const NotesQuery = z.object({
 });
 
 export const getNotes = (async (ctx, _req, _params, query) => {
-  const { project, group, kind } = query;
-  const where: string[] = [];
-  // What this actually binds: two `Number()`s and a `kind` string. `any[]` let a
-  // fourth push of anything at all through, on a query whose bindings are the
-  // only thing between a query string and the table.
-  const args: (string | number)[] = [];
-  if (group) {
-    where.push("n.grp_id = ?");
-    args.push(group);
-  } else if (project) {
-    // Project scope includes the standing notes (onboarding, lessons) that belong
-    // to no group, which is exactly where they matter.
-    where.push("(n.project_id = ? OR g.project_id = ?)");
-    args.push(project, project);
-  }
-  if (kind) {
-    where.push("n.kind = ?");
-    args.push(kind);
-  }
-  // The draft card is a note too, and it already has its own screen.
-  where.push("coalesce(json_extract(n.frontmatter_json, '$.draft_card'), 0) != 1");
-  // Nor are the index's own rows notes: `pageindex` is a serialised tree and
-  // `map` is a rendered directory listing, both stored here because `note` was
-  // the table that already existed. Neither is anything the boss reads.
-  where.push("n.kind NOT IN ('pageindex', 'map')");
-
-  // fallow-ignore-next-line security-sink -- every element of `where` is pushed as a source literal a few lines above, and each one carries `?` for its value; the values themselves travel in `args` and are bound by `.all(...args)`. The interpolation joins clauses, never data.
-  const rows = ctx.db
-    .query<PanelNote, (string | number)[]>(
-      `SELECT n.id, n.grp_id AS grpId, n.kind, n.body, n.at, n.export_path AS exportPath,
-              n.frontmatter_json AS frontmatter, g.name AS "group"
-       FROM note n LEFT JOIN grp g ON g.id = n.grp_id
-       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-       ORDER BY n.at DESC, n.id DESC LIMIT 300`,
+  const { project: projectId, group, kind } = query;
+  const scope = group
+    ? eq(notes.grp_id, group)
+    : // Project scope includes the standing notes (onboarding, lessons) that belong
+      // to no group, which is exactly where they matter.
+      projectId
+      ? or(eq(notes.project_id, projectId), eq(grp.project_id, projectId))
+      : undefined;
+  const rows: PanelNote[] = orm(ctx.db)
+    .select({
+      id: notes.id,
+      grpId: notes.grp_id,
+      kind: notes.kind,
+      body: notes.body,
+      at: notes.at,
+      exportPath: notes.export_path,
+      frontmatter: notes.frontmatter_json,
+      group: grp.name,
+    })
+    .from(notes)
+    .leftJoin(grp, eq(grp.id, notes.grp_id))
+    .where(
+      and(
+        scope,
+        kind ? eq(notes.kind, kind) : undefined,
+        // The draft card is a note too, and it already has its own screen.
+        // Raw: `json_extract` has no Drizzle operator, and the column is text.
+        sql`coalesce(json_extract(${notes.frontmatter_json}, '$.draft_card'), 0) != 1`,
+        // Nor are the index's own rows notes: `pageindex` is a serialised tree and
+        // `map` is a rendered directory listing, both stored here because `note` was
+        // the table that already existed. Neither is anything the boss reads.
+        notInArray(notes.kind, ["pageindex", "map"]),
+      ),
     )
-    .all(...args);
+    .orderBy(desc(notes.at), desc(notes.id))
+    .limit(300)
+    .all();
   return json({ notes: rows });
 }) satisfies Handler<z.infer<typeof NotesQuery>>;
 
@@ -101,7 +105,7 @@ export const SkillsQuery = z.object({ project: z.coerce.number().int().positive(
 
 export const getSkills = (async (ctx, _req, _params, { project: id }) => {
   const repo = id
-    ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(id)?.repo_path
+    ? orm(ctx.db).select({ repo_path: project.repo_path }).from(project).where(eq(project.id, id)).get()?.repo_path
     : undefined;
   if (id !== undefined) projectSkillsPending(ctx, id, repo);
   const off = new Set(skillsOff(ctx.db));
@@ -178,8 +182,9 @@ export const getDirs = (async (ctx, _req, _params, query) => {
     return bad(`${path}: ${errText(e)}`);
   }
   const taken = new Set(
-    ctx.db
-      .query<{ repo_path: string }, []>("SELECT repo_path FROM project")
+    orm(ctx.db)
+      .select({ repo_path: project.repo_path })
+      .from(project)
       .all()
       .map((r) => r.repo_path),
   );

@@ -6,6 +6,10 @@ import { sandboxGit } from "../mech/git/checkout.ts";
 import { LeaseArgsSchema, loadResource, type ResourceDef, resolveLease, runResource } from "../mech/lease.ts";
 import { resourceExec, type Scope, WORK } from "../mech/sandbox/sandbox.ts";
 import { errText } from "../platform/process/text.ts";
+import { and, eq, inArray } from "drizzle-orm";
+import { orm } from "../platform/persistence/orm.ts";
+import { lease as leases } from "../platform/persistence/schema.ts";
+import { ACTIVE_LEASE_STATES } from "../contracts/states.ts";
 import type { Job } from "../platform/scheduling/scheduler.ts";
 import type { ExecDeps } from "./executor.ts";
 
@@ -46,11 +50,16 @@ export async function runLease(deps: ExecDeps, job: Job<"lease">): Promise<void>
 async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Promise<void> {
   const { ctx, cfg } = deps;
   const leaseId = leaseIdIn;
-  const lease = ctx.db
-    .query<{ id: number; resource: string; args_json: string; grp_id: number | null }, [number]>(
-      "SELECT id, resource, args_json, grp_id FROM lease WHERE id = ?",
-    )
-    .get(leaseId);
+  // Still unfinished, or there is nothing to run. `finishLease` guards its own
+  // UPDATE the same way, but that only stops the second *result* being written —
+  // the command itself would already have run again, and a gate is not free and
+  // not always idempotent. A replayed job after a restart is the ordinary way
+  // here, not a contrived one.
+  const lease = orm(ctx.db)
+    .select({ id: leases.id, resource: leases.resource, args_json: leases.args_json, grp_id: leases.grp_id })
+    .from(leases)
+    .where(and(eq(leases.id, leaseId), inArray(leases.state, [...ACTIVE_LEASE_STATES])))
+    .get();
   if (!lease) return;
 
   const def = loadResource(ctx.db, lease.resource);
@@ -108,18 +117,27 @@ async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Prom
 function finishLease(deps: ExecDeps, leaseId: number, code: number, digest: string, logPath: string | undefined): void {
   const { ctx } = deps;
   ctx.db.transaction(() => {
-    const lease = ctx.db
-      .query<{ grp_id: number | null; agent_id: number | null }, [number]>(
-        "SELECT grp_id, agent_id FROM lease WHERE id = ?",
-      )
-      .get(leaseId);
+    const lease = orm(ctx.db)
+      .select({ grp_id: leases.grp_id, agent_id: leases.agent_id })
+      .from(leases)
+      .where(eq(leases.id, leaseId))
+      .get();
     if (!lease) return;
-    const finished = ctx.db.run(
-      `UPDATE lease SET state = ?, exit_code = ?, result_digest = ?, log_path = ?,
-       ended_at = unixepoch() * 1000 WHERE id = ? AND state IN ('queued', 'running')`,
-      [code === 0 ? "done" : "failed", code, digest, logPath ?? null, leaseId],
-    );
-    if (finished.changes === 0) return;
+    // The state guard is what makes this the single resolver: a second finish for
+    // the same lease changes no rows, so no waiter is resolved twice.
+    const finished = orm(ctx.db)
+      .update(leases)
+      .set({
+        state: code === 0 ? "done" : "failed",
+        exit_code: code,
+        result_digest: digest,
+        log_path: logPath ?? null,
+        ended_at: Date.now(),
+      })
+      .where(and(eq(leases.id, leaseId), inArray(leases.state, [...ACTIVE_LEASE_STATES])))
+      .returning({ id: leases.id })
+      .all();
+    if (finished.length === 0) return;
     ctx.bus.emit({
       grpId: lease.grp_id,
       author: "runner",

@@ -264,6 +264,33 @@ test("a lease runs its template and durably wakes the waiting agent", async () =
   expectDurableLeaseWake(db, agent.id, "exit 0");
 });
 
+test("a lease that finishes twice wakes its agent once", async () => {
+  // The UPDATE is guarded on the lease still being queued or running, and that
+  // guard is what makes `finishLease` the single resolver: it is the only thing
+  // that resolves `waiters.get("lease:N")`, and the agent's own `orch lease` call
+  // has no deadline. A second finish that changed rows would enqueue a second
+  // wake turn for work that ran once.
+  const { db, ctx, sched } = harness(async () => ok());
+  const agent = hire(harnessDeps(ctx), 1, "engineer");
+  db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [agent.id]);
+  fx.resource.insert(db, { name: "echo", template: "echo ok" });
+  const lease = fx.lease.insert(db, { resource: "echo", grp_id: 1, agent_id: agent.id });
+
+  sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
+  await sched.drain();
+  // Again, against a lease that is already `done`. The job is what a restart
+  // replays, so this is the ordinary case rather than a contrived one.
+  sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
+  await sched.drain();
+
+  const wakes = db
+    .query<{ c: number }, [number]>(
+      "SELECT count(*) AS c FROM job WHERE kind = 'agent_turn' AND agent_id = ? AND payload_json LIKE '%runner%'",
+    )
+    .get(agent.id)!.c;
+  expect(wakes).toBe(1);
+});
+
 test("finishLease rollback never fans a result whose wake job was not committed", async () => {
   const { db, ctx, sched } = harness(async () => ok());
   const agent = hire(harnessDeps(ctx), 1, "engineer");
