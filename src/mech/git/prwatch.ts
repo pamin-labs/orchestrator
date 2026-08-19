@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Config, ROOT } from "../../platform/config/load.ts";
 import { gitTrailers } from "./ghlogin.ts";
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { say } from "../../platform/text/lang.ts";
 import { squashWip } from "./gitops.ts";
@@ -978,7 +978,7 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
     grp_id: f.grpId,
     payload: f.conflicting
       ? {
-          role: "engineer",
+          role: roleFor(ctx, "write_code"),
           rotate: true,
           // The fork in the road, stated, because no check here can tell the two
           // apart: a textual clash is this turn's work, and a premise that no
@@ -995,7 +995,7 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
             `who decides whether this slice still makes sense. Guessing produces code that builds and is ` +
             `pointed the wrong way, which nothing downstream can catch.\n${lines}`,
         }
-      : { role: "pm", rejection: `PR #${f.prNumber} feedback:\n${lines}` },
+      : { role: roleFor(ctx, "lead_group"), rejection: `PR #${f.prNumber} feedback:\n${lines}` },
   });
   ctx.sched.tick();
 }
