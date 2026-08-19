@@ -1,6 +1,16 @@
+import { and, asc, count, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { addNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import {
+  agent,
+  event,
+  grp as grpTable,
+  note as noteTable,
+  slice as sliceTable,
+  task,
+} from "../../platform/persistence/schema.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { say } from "../../platform/text/lang.ts";
 import { jsonOr } from "../../contracts/json.ts";
@@ -12,7 +22,6 @@ import { pushBranch, sandboxGit } from "../git/checkout.ts";
 import { joinQueue, position } from "./mergequeue.ts";
 import { hold } from "./intercept.ts";
 import { raise } from "./escalate.ts";
-import type { SliceState } from "../../contracts/states.ts";
 import { z } from "zod";
 
 /**
@@ -43,11 +52,20 @@ interface SliceRow {
 
 function loadSlice(db: DB, sliceId: number): SliceRow | null {
   return (
-    db
-      .query<SliceRow, [number]>(
-        "SELECT id, grp_id, seq, title, accept_spec, difficulty, base_sha, retries FROM slice WHERE id = ?",
-      )
-      .get(sliceId) ?? null
+    orm(db)
+      .select({
+        id: sliceTable.id,
+        grp_id: sliceTable.grp_id,
+        seq: sliceTable.seq,
+        title: sliceTable.title,
+        accept_spec: sliceTable.accept_spec,
+        difficulty: sliceTable.difficulty,
+        base_sha: sliceTable.base_sha,
+        retries: sliceTable.retries,
+      })
+      .from(sliceTable)
+      .where(eq(sliceTable.id, sliceId))
+      .get() ?? null
   );
 }
 
@@ -65,16 +83,18 @@ export async function runDeterministicReview(
   const slice = loadSlice(ctx.db, sliceId);
   if (!slice) return { pass: false, feedback: "slice disappeared" };
 
-  const grp = ctx.db
-    .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
-    .get(slice.grp_id);
+  const grp = orm(ctx.db)
+    .select({ project_id: grpTable.project_id })
+    .from(grpTable)
+    .where(eq(grpTable.id, slice.grp_id))
+    .get();
 
   // --- reconcile: what was claimed against what git shows for THIS slice
-  const storedClaims = ctx.db
-    .query<{ claim_json: string | null }, [number]>(
-      "SELECT claim_json FROM task WHERE slice_id = ? AND status = 'done'",
-    )
-    .all(sliceId)
+  const storedClaims = orm(ctx.db)
+    .select({ claim_json: task.claim_json })
+    .from(task)
+    .where(and(eq(task.slice_id, sliceId), eq(task.status, "done")))
+    .all()
     .map((r) => jsonOr(r.claim_json, z.json(), null));
   const claims = z.array(TaskClaimSchema).safeParse(storedClaims);
   if (!claims.success) {
@@ -177,7 +197,11 @@ export async function runDeterministicReview(
  * rewriting.
  */
 export function reopenTasks(db: DB, sliceId: number): void {
-  db.run("UPDATE task SET status = 'pending', owner_agent_id = NULL WHERE slice_id = ? AND status = 'done'", [sliceId]);
+  orm(db)
+    .update(task)
+    .set({ status: "pending", owner_agent_id: null })
+    .where(and(eq(task.slice_id, sliceId), eq(task.status, "done")))
+    .run();
 }
 
 /**
@@ -194,7 +218,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
 
   const shouldTick = ctx.db.transaction(() => {
     const retries = slice.retries + 1;
-    ctx.db.run("UPDATE slice SET retries = ?, status = 'running' WHERE id = ?", [retries, sliceId]);
+    orm(ctx.db).update(sliceTable).set({ retries, status: "running" }).where(eq(sliceTable.id, sliceId)).run();
     reopenTasks(ctx.db, sliceId);
 
     if (retries > cfg.gateRetries) {
@@ -212,7 +236,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
         kind: "spec",
         chain: "boss",
       });
-      ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [sliceId]);
+      orm(ctx.db).update(sliceTable).set({ status: "rejected" }).where(eq(sliceTable.id, sliceId)).run();
       hold(ctx.db, slice.grp_id, { reason: "escalation", from: "RUNNING" });
       ctx.bus.emit({
         grpId: slice.grp_id,
@@ -249,7 +273,7 @@ export function handToQa(deps: ReviewDeps, sliceId: number): void {
   const slice = loadSlice(ctx.db, sliceId);
   if (!slice) return;
   ctx.db.transaction(() => {
-    ctx.db.run("UPDATE slice SET status = 'qa' WHERE id = ?", [sliceId]);
+    orm(ctx.db).update(sliceTable).set({ status: "qa" }).where(eq(sliceTable.id, sliceId)).run();
     ctx.sched.enqueue("agent_turn", {
       grp_id: slice.grp_id,
       slice_id: sliceId,
@@ -266,7 +290,11 @@ export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void
   if (!slice) return;
   ctx.db.transaction(() => {
     recordGate(ctx.db, sliceId, "qa", "pass");
-    ctx.db.run("UPDATE slice SET status = 'awaiting_boss', awaiting_at = unixepoch() * 1000 WHERE id = ?", [sliceId]);
+    orm(ctx.db)
+      .update(sliceTable)
+      .set({ status: "awaiting_boss", awaiting_at: sql`unixepoch() * 1000` })
+      .where(eq(sliceTable.id, sliceId))
+      .run();
 
     // Retire the sessions that carried this slice. A slice is a natural semantic
     // break, so the handoff is cheap, and a session that keeps growing costs more on
@@ -277,11 +305,17 @@ export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void
     // started on a cold prefix and cache creation came to 45.5M tokens, which bills
     // like ~570M cached reads. The PM, Dispatcher and Auditor carry group-level
     // context that is still true in the next slice, so throwing it away buys nothing.
-    ctx.db.run(
-      `UPDATE agent SET session_id = NULL, session_tokens = 0
-       WHERE grp_id = ? AND state != 'retired' AND role IN (?, ?)`,
-      [slice.grp_id, roleFor(ctx, "write_code"), roleFor(ctx, "review_slice")],
-    );
+    orm(ctx.db)
+      .update(agent)
+      .set({ session_id: null, session_tokens: 0 })
+      .where(
+        and(
+          eq(agent.grp_id, slice.grp_id),
+          ne(agent.state, "retired"),
+          inArray(agent.role, [roleFor(ctx, "write_code"), roleFor(ctx, "review_slice")]),
+        ),
+      )
+      .run();
     ctx.bus.emit({
       grpId: slice.grp_id,
       author: "orchestrator",
@@ -331,11 +365,11 @@ export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void
  */
 export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string): void {
   const sl = ctx.db.transaction(() => {
-    const slice = ctx.db
-      .query<{ grp_id: number; seq: number; title: string }, [number]>(
-        "SELECT grp_id, seq, title FROM slice WHERE id = ?",
-      )
-      .get(sliceId);
+    const slice = orm(ctx.db)
+      .select({ grp_id: sliceTable.grp_id, seq: sliceTable.seq, title: sliceTable.title })
+      .from(sliceTable)
+      .where(eq(sliceTable.id, sliceId))
+      .get();
     if (!slice) return null;
 
     // Where it is accepted *from* matters. A `pending` slice has never run, so
@@ -343,19 +377,26 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
     // group, and — if it was the last one open — sends a branch that does not
     // contain it to review. `accepted` is excluded so a second call is not a second
     // carry-over.
-    const moved = ctx.db.run(
-      "UPDATE slice SET status = 'accepted' WHERE id = ? AND status NOT IN ('pending', 'accepted')",
-      [sliceId],
-    ).changes;
+    // `.returning().all().length`, not `.run().changes`: the bun-sqlite driver
+    // types a builder's `run()` as `void`. The count is the guard — it is how a
+    // second acceptance is told from the first.
+    const moved = orm(ctx.db)
+      .update(sliceTable)
+      .set({ status: "accepted" })
+      .where(and(eq(sliceTable.id, sliceId), notInArray(sliceTable.status, ["pending", "accepted"])))
+      .returning({ id: sliceTable.id })
+      .all().length;
     if (!moved) return null;
     carryOver(ctx.db, sliceId, slice.grp_id);
     queueNextSlice(ctx, slice.grp_id);
 
     // The last acceptance starts PR-level review. Nothing an agent does can trigger
     // it: "satisfied" is the boss's call, or a policy the boss switched on.
-    const open = ctx.db
-      .query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'")
-      .get(slice.grp_id)!.c;
+    const open = orm(ctx.db)
+      .select({ c: count() })
+      .from(sliceTable)
+      .where(and(eq(sliceTable.grp_id, slice.grp_id), ne(sliceTable.status, "accepted")))
+      .get()!.c;
     if (open === 0) ctx.sched.enqueue("reconcile", { grp_id: slice.grp_id, priority: 5 });
     ctx.bus.emit({
       grpId: slice.grp_id,
@@ -423,26 +464,34 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
  */
 function carryOver(db: DB, sliceId: number, grpId: number): void {
   const files = new Set<string>();
-  for (const e of db
-    .query<{ meta_json: string }, [number]>(
-      "SELECT meta_json FROM event WHERE kind = 'commit' AND json_extract(meta_json, '$.slice_id') = ?",
+  for (const e of orm(db)
+    .select({ meta_json: event.meta_json })
+    .from(event)
+    .where(
+      and(
+        eq(event.kind, "commit"),
+        // `json_extract` has no builder: the slice id lives inside the event's
+        // JSON blob, not in a column of its own.
+        sql`json_extract(${event.meta_json}, '$.slice_id') = ${sliceId}`,
+      ),
     )
-    .all(sliceId)) {
+    .all()) {
     for (const f of jsonOr(e.meta_json, z.object({ files: z.array(z.string()).default([]) }), { files: [] }).files) {
       files.add(f);
     }
   }
-  const decisions = db
-    .query<{ body: string }, [number]>(
-      "SELECT body FROM note WHERE slice_id = ? AND kind IN ('decision','journal') ORDER BY id",
-    )
-    .all(sliceId)
+  const decisions = orm(db)
+    .select({ body: noteTable.body })
+    .from(noteTable)
+    .where(and(eq(noteTable.slice_id, sliceId), inArray(noteTable.kind, ["decision", "journal"])))
+    .orderBy(asc(noteTable.id))
+    .all()
     .map((n) => n.body.split("\n")[0]!.slice(0, 160));
-  const sl = db
-    .query<{ seq: number; title: string; gates_json: string }, [number]>(
-      "SELECT seq, title, gates_json FROM slice WHERE id = ?",
-    )
-    .get(sliceId);
+  const sl = orm(db)
+    .select({ seq: sliceTable.seq, title: sliceTable.title, gates_json: sliceTable.gates_json })
+    .from(sliceTable)
+    .where(eq(sliceTable.id, sliceId))
+    .get();
   if (!sl) return;
 
   const body =
@@ -462,18 +511,20 @@ function carryOver(db: DB, sliceId: number, grpId: number): void {
  */
 export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void> {
   const { ctx, cfg } = deps;
-  const grp = ctx.db
-    .query<{ project_id: number; branch: string | null; name: string }, [number]>(
-      "SELECT project_id, branch, name FROM grp WHERE id = ?",
-    )
-    .get(grpId);
+  const grp = orm(ctx.db)
+    .select({ project_id: grpTable.project_id, branch: grpTable.branch, name: grpTable.name })
+    .from(grpTable)
+    .where(eq(grpTable.id, grpId))
+    .get();
   if (!grp) return;
 
   // A group cannot be wound up without a retro. It is the only long-term memory
   // the system has, and "later" means never once the branch is merged.
-  const retro = ctx.db
-    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM note WHERE grp_id = ? AND kind = 'retro'")
-    .get(grpId)!.c;
+  const retro = orm(ctx.db)
+    .select({ c: count() })
+    .from(noteTable)
+    .where(and(eq(noteTable.grp_id, grpId), eq(noteTable.kind, "retro")))
+    .get()!.c;
   if (retro === 0) {
     ctx.db.transaction(() => {
       ctx.sched.enqueue("agent_turn", {
@@ -529,7 +580,7 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
   // Through, so the count starts again: the next rejection is about the next
   // branch, not this one.
   ctx.db.transaction(() => {
-    ctx.db.run("UPDATE grp SET status = 'PR_OPEN', pr_retries = 0 WHERE id = ?", [grpId]);
+    orm(ctx.db).update(grpTable).set({ status: "PR_OPEN", pr_retries: 0 }).where(eq(grpTable.id, grpId)).run();
     // grp_id null on purpose: hiring the Auditor into the group it audits would
     // make it review its own reasoning, and `orch audit` rightly refuses that.
     ctx.sched.enqueue("agent_turn", {
@@ -574,7 +625,7 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
     return;
   }
   const shouldTick = ctx.db.transaction(() => {
-    ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ?", [grpId]);
+    orm(ctx.db).update(grpTable).set({ status: "RUNNING" }).where(eq(grpTable.id, grpId)).run();
     if (branchRework(deps, grpId, "the Auditor", note)) return false;
     ctx.sched.enqueue("agent_turn", {
       grp_id: grpId,
@@ -603,9 +654,9 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
 function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string): boolean {
   const { ctx, cfg } = deps;
   const n =
-    (ctx.db.query<{ pr_retries: number }, [number]>("SELECT pr_retries FROM grp WHERE id = ?").get(grpId)?.pr_retries ??
-      0) + 1;
-  ctx.db.run("UPDATE grp SET pr_retries = ? WHERE id = ?", [n, grpId]);
+    (orm(ctx.db).select({ pr_retries: grpTable.pr_retries }).from(grpTable).where(eq(grpTable.id, grpId)).get()
+      ?.pr_retries ?? 0) + 1;
+  orm(ctx.db).update(grpTable).set({ pr_retries: n }).where(eq(grpTable.id, grpId)).run();
   if (n <= cfg.gateRetries) return false;
 
   hold(ctx.db, grpId, { reason: "escalation", settled: true });
@@ -637,31 +688,38 @@ function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string
 function queueNextSlice(ctx: Ctx, grpId: number): number | null {
   // A slice sitting on the boss is not occupying the writer. Counting it as busy
   // is correct only when acceptance is what starts the next one.
-  const idle = ctx.config.autoAdvance ? "('pending','accepted','awaiting_boss')" : "('pending','accepted')";
-  // fallow-ignore-next-line security-sink -- `idle` is one of the two source literals on the line above, chosen by the `autoAdvance` boolean; `grpId` is bound through the `?`.
-  const busy = ctx.db
-    .query<{ c: number }, [number]>(`SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status NOT IN ${idle}`)
-    .get(grpId)!.c;
+  // A list of states rather than a parenthesised SQL literal, so the values are
+  // bound and the `security-sink` suppression this query used to need is gone.
+  const idle = ctx.config.autoAdvance ? ["pending", "accepted", "awaiting_boss"] : ["pending", "accepted"];
+  const busy = orm(ctx.db)
+    .select({ c: count() })
+    .from(sliceTable)
+    .where(and(eq(sliceTable.grp_id, grpId), notInArray(sliceTable.status, idle)))
+    .get()!.c;
   // One slice at a time per group: the group has one writer, so a second
   // in-flight slice would just queue behind the first anyway — and its review
   // would race the first one's.
   if (busy > 0) return null;
 
-  const next = ctx.db
-    .query<{ id: number; seq: number; depends_on: number | null }, [number]>(
-      "SELECT id, seq, depends_on FROM slice WHERE grp_id = ? AND status = 'pending' ORDER BY seq LIMIT 1",
-    )
-    .get(grpId);
+  const next = orm(ctx.db)
+    .select({ id: sliceTable.id, seq: sliceTable.seq, depends_on: sliceTable.depends_on })
+    .from(sliceTable)
+    .where(and(eq(sliceTable.grp_id, grpId), eq(sliceTable.status, "pending")))
+    .orderBy(asc(sliceTable.seq))
+    .limit(1)
+    .get();
   if (!next) return null;
 
   if (next.depends_on) {
-    const dep = ctx.db
-      .query<{ status: SliceState }, [number]>("SELECT status FROM slice WHERE id = ?")
-      .get(next.depends_on);
+    const dep = orm(ctx.db)
+      .select({ status: sliceTable.status })
+      .from(sliceTable)
+      .where(eq(sliceTable.id, next.depends_on))
+      .get();
     if (dep && dep.status !== "accepted") return null;
   }
 
-  ctx.db.run("UPDATE slice SET status = 'running' WHERE id = ?", [next.id]);
+  orm(ctx.db).update(sliceTable).set({ status: "running" }).where(eq(sliceTable.id, next.id)).run();
   ctx.sched.enqueue("agent_turn", {
     grp_id: grpId,
     slice_id: next.id,
