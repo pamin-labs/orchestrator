@@ -1,7 +1,10 @@
 # 037 Drizzle on the v1 line, and the driver stays synchronous
 
-**Status**: accepted
+**Status**: superseded in part by [038](038-postgres-and-what-it-cost.md)
 **Date**: 2026-08-19
+
+The v1 line still holds, and so does the measurement below. The driver does
+not: 038 records the boss choosing to pay the async conversion this one priced.
 
 The schema is 46 hand-written migrations and hand-written row types with no
 compile-time connection between them. That has already been paid for once:

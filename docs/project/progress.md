@@ -416,6 +416,15 @@ M7 — executable engineering governance and versioned protocol.
   stray and arrived as a failure in the *next* test. `lock_timeout` under
   `deadlock_timeout` makes the truncater always lose, so nothing but it is ever
   cancelled. Eight consecutive full runs green afterwards, 1701 tests in ~27s.
+- The six live OpenSandbox tests pass, 6/6 under `ORCH_LIVE_SANDBOX=1`. Running
+  them found four things, three of them real: the agent CLI was provisioned as
+  source no container can run (677ddac); a blank line does not survive the session
+  transport, so every diff-hunk gap was closed up — `printf 'a\n\n\nb\n'` returns
+  `["a", "b"]` from `runInSession` and `["a", "\n", "\n", "b"]` from `run`; and
+  `VERSION` read package.json from module scope, so every `orch` verb inside a
+  container died at import with `ENOENT: /package.json`. The fourth was the suite's
+  own — it asserted `refs/heads/` where `keepBranch` deliberately writes
+  `refs/orch/`. Nightly should be green.
 
 ## Blockers and deviations
 
@@ -503,18 +512,7 @@ M7 — executable engineering governance and versioned protocol.
    Requiring it before it posts leaves every pull request pending forever on a
    context nothing writes — the `check` bug this repository already found once.
 
-3. **Run the six environment-gated OpenSandbox integration tests.** They are the
-   `live(...)` cases in `test/live/sandbox-live.test.ts`, and the skip lifts on its
-   own: `serverUp()` probes `cfg.sandbox.server` with `cfg.sandbox.apiKey`, and the
-   answer picks `test` or `test.skip`. Today it reports `cannot drive
-   opensandbox-server on 127.0.0.1:8080` — something is listening there that this
-   process has no key for.
-
-   Done when `bun test` reports 0 skips rather than 6. Keep the output: these are
-   the only tests that exercise the boundary against a real container, so the log is
-   the evidence that it held.
-
-4. **Monitor the nightly stress run** and replay any property failure from its
+3. **Monitor the nightly stress run** and replay any property failure from its
    reported seed and path. CI, security and CodeQL are green on `main` after #7.
 
 ## Done since this list was written
