@@ -385,6 +385,20 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Blockers and deviations
 
+- **`ensureMirror` fetches unconditionally**, so every project with a remote pays a
+  network round trip to GitHub on every tick — 30 seconds — plus the two execs
+  around it. Its own comment at `src/mech/git/checkout.ts:357` says the callers
+  (`keepBranch`, `pushBranch`, `listTree`) apply no freshness check at all. Found
+  while gating the repo-map rebuild and deliberately not fixed there: it is shared
+  by three callers and belongs to its own change.
+- **The `pageindex` config keys are recorded in the wrong commit.** They belong to
+  `55ee9e2`; they were swept into `5234fd6` (event retention) by a `git add` on
+  `config.ts`/`load.ts` that took another agent's unstaged hunks with them. The
+  tree is correct and complete — only the attribution is wrong. Not rewritten:
+  the commit is pushed with thirteen on top of it, and rewriting shared history to
+  fix a wrong label costs more than the label does. This is exactly the failure
+  `AGENTS.md` names when it says to stage owned files by name.
+
 - The `main` branch ruleset required a status check named `check` that no
   workflow defined, so it could never report while none of the fourteen quality
   jobs that do run was required. Fixed: the fourteen real job names are required
