@@ -405,6 +405,17 @@ M7 — executable engineering governance and versioned protocol.
   what they decided. Grouped as `watchdog.*`. Also settles a misreading: the 5–30s
   clamp on `readinessPeriodMs` is a *derived* self-check period, not the boss's
   interval being overridden — the watchdog timer reads it unclamped.
+- A blocking `orch ask-boss` registered its waiter after `route()`, and `route()`
+  can hand the question to a stand-in that answers inside the same tick. All three
+  answering paths end in `w?.(answer)`, so an answer arriving first was discarded
+  without a trace and the agent blocked forever on a question already answered.
+  Surfaced as one full run in three timing out. The key has one owner now —
+  `awaitAnswer`/`answered` — so a fourth answering path cannot reintroduce it.
+- `openMemory`'s `TRUNCATE` and a previous test's still-settling query were left to
+  the deadlock detector, which picks the victim itself: the abort landed on the
+  stray and arrived as a failure in the *next* test. `lock_timeout` under
+  `deadlock_timeout` makes the truncater always lose, so nothing but it is ever
+  cancelled. Eight consecutive full runs green afterwards, 1701 tests in ~27s.
 
 ## Blockers and deviations
 
@@ -503,23 +514,14 @@ M7 — executable engineering governance and versioned protocol.
    the only tests that exercise the boundary against a real container, so the log is
    the evidence that it held.
 
-4. **Move `test/support/factories.ts` to Fishery's `onCreate` + async `create()`
-   when the database moves to Drizzle** — deferred deliberately, not forgotten.
-
-   `insert` is project-owned because `bun:sqlite` is synchronous and Fishery's
-   `create` is async by contract. Converting buys nothing until the driver is: the
-   measured cost is about 564 `await` sites in `src/` plus 675 in `test/`, and it
-   spreads, because a function holding one becomes async and so does every caller.
-   It is the same edit whether it happens now or at the switch.
-
-   The rest of that decision — the v1 RC line, `pgsql-test` replacing
-   `openMemory()`'s 283 call sites, and `transaction-boundaries.test.ts` being the
-   one file that cannot run inside a transaction — is unchanged.
-
-5. **Monitor the nightly stress run** and replay any property failure from its
+4. **Monitor the nightly stress run** and replay any property failure from its
    reported seed and path. CI, security and CodeQL are green on `main` after #7.
 
 ## Done since this list was written
+- `test/support/factories.ts` is on Fishery's `onCreate` with the database as a
+  transient — 407 lines to 172. It was deferred until the driver moved, and the
+  driver has moved: `TableFactory.insert`, the string-built `INSERT`, and the five
+  bare `INSERT INTO`s in test files are all gone.
 
 - Secret scanning and push protection are both `enabled` on the repository.
   `secret_scanning_non_provider_patterns` and `secret_scanning_validity_checks`
