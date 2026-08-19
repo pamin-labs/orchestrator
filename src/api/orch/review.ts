@@ -1,3 +1,4 @@
+import { and, asc, count, eq, gt, ne, sql } from "drizzle-orm";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
@@ -14,6 +15,8 @@ import { mayAct, resolveGroup } from "./access.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { bossFact } from "../panel/attach.ts";
 import { GateName, gatesFor } from "../../mech/gate.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { event, grp, slice as slices } from "../../platform/persistence/schema.ts";
 import { hold } from "../../mech/flow/intercept.ts";
 
 /**
@@ -76,11 +79,11 @@ export const postReview = (async (ctx, _req, a, _p, b) => {
   if (a.role !== roleFor(ctx, "review_slice") && a.role !== roleFor(ctx, "audit_branch"))
     return bad(`${a.role} does not file review verdicts`);
 
-  const slice = ctx.db
-    .query<{ id: number; grp_id: number; seq: number; accept_spec: string }, [number]>(
-      "SELECT id, grp_id, seq, accept_spec FROM slice WHERE id = ?",
-    )
-    .get(b.slice_id);
+  const slice = orm(ctx.db)
+    .select({ id: slices.id, grp_id: slices.grp_id, seq: slices.seq, accept_spec: slices.accept_spec })
+    .from(slices)
+    .where(eq(slices.id, b.slice_id))
+    .get();
   if (!slice) return bad(`no slice ${b.slice_id}`);
   if (slice.grp_id !== a.grp_id) return bad("that slice belongs to another group");
 
@@ -174,28 +177,34 @@ function gateLogs(ctx: Ctx, projectId: number, sliceId: number): Array<{ name: s
  */
 export const getEvidence = (async (ctx, _req, params) => {
   const id = params.id;
-  const sl = ctx.db
-    .query<
-      { grp_id: number; seq: number; title: string; accept_spec: string; base_sha: string | null; retries: number },
-      [number]
-    >("SELECT grp_id, seq, title, accept_spec, base_sha, retries FROM slice WHERE id = ?")
-    .get(id);
+  const sl = orm(ctx.db)
+    .select({
+      grp_id: slices.grp_id,
+      seq: slices.seq,
+      title: slices.title,
+      accept_spec: slices.accept_spec,
+      base_sha: slices.base_sha,
+      retries: slices.retries,
+    })
+    .from(slices)
+    .where(eq(slices.id, id))
+    .get();
   if (!sl) return message("no such slice", 404);
 
   // One lookup for both halves: the diff base and the gate list are the same
   // project's answers, and asking twice is two places for them to disagree.
   const projectId =
-    ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(sl.grp_id)
-      ?.project_id ?? 0;
+    orm(ctx.db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, sl.grp_id)).get()?.project_id ?? 0;
   // Both reviewers file through the same route, so this is QA's verdict on a
   // slice and the Auditor's on a branch, in the order they were given.
-  const verdicts = ctx.db
-    .query<{ author: string; body: string; at: number }, [number]>(
-      `SELECT author, body, at FROM event
-       WHERE kind = 'gate_result' AND json_extract(meta_json, '$.slice_id') = ?
-       ORDER BY seq`,
-    )
-    .all(id);
+  const verdicts = orm(ctx.db)
+    .select({ author: event.author, body: event.body, at: event.at })
+    .from(event)
+    // Raw on the right: `json_extract` has no Drizzle operator. The slice id lives
+    // in `meta_json`, so this is the only way to ask which slice an event is about.
+    .where(and(eq(event.kind, "gate_result"), sql`json_extract(${event.meta_json}, '$.slice_id') = ${id}`))
+    .orderBy(asc(event.seq))
+    .all();
 
   return json({
     ...sl,
@@ -245,18 +254,18 @@ export const postSliceDecision = (async (ctx, _req, params, raw) => {
   const b = { feedback: raw.feedback ? withAttachments(raw.feedback, raw.attachments) : raw.feedback };
   const id = params.id;
   const accept = params.decision === "accept";
-  const sl = ctx.db
-    .query<{ grp_id: number; seq: number; title: string }, [number]>(
-      "SELECT grp_id, seq, title FROM slice WHERE id = ?",
-    )
-    .get(id);
+  const sl = orm(ctx.db)
+    .select({ grp_id: slices.grp_id, seq: slices.seq, title: slices.title })
+    .from(slices)
+    .where(eq(slices.id, id))
+    .get();
   if (!sl) return message("no such slice", 404);
 
   // One acceptance path, whoever accepted: see acceptSlice.
   if (accept) acceptSlice(ctx, id, "boss");
 
   if (!accept) {
-    ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [id]);
+    orm(ctx.db).update(slices).set({ status: "rejected" }).where(eq(slices.id, id)).run();
     ctx.bus.emit({
       grpId: sl.grp_id,
       author: "boss",
@@ -274,11 +283,19 @@ export const postSliceDecision = (async (ctx, _req, params, raw) => {
     // With autoAdvance on, later slices were built on the one just rejected. Fixing
     // it underneath work that assumed it is how two problems become four, so the
     // group stops and says so instead.
-    const ahead = ctx.db
-      .query<{ c: number }, [number, number]>(
-        "SELECT count(*) AS c FROM slice WHERE grp_id = ? AND seq > (SELECT seq FROM slice WHERE id = ?) AND status != 'pending'",
+    const ahead = orm(ctx.db)
+      .select({ c: count() })
+      .from(slices)
+      .where(
+        and(
+          eq(slices.grp_id, sl.grp_id),
+          // Raw on the right: a scalar subquery, which the builder has no operand
+          // form for. Not correlated — it reads the rejected slice's own `seq`.
+          gt(slices.seq, sql`(select seq from slice where id = ${id})`),
+          ne(slices.status, "pending"),
+        ),
       )
-      .get(sl.grp_id, id)!.c;
+      .get()!.c;
     if (ctx.config.autoAdvance && ahead > 0) {
       hold(ctx.db, sl.grp_id, { reason: "escalation", from: "RUNNING" });
       ctx.bus.emit({

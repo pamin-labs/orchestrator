@@ -1,3 +1,4 @@
+import { and, count, eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { z } from "zod";
 import { Id } from "../../contracts/fields.ts";
@@ -6,6 +7,8 @@ import type { Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { slice, task } from "../../platform/persistence/schema.ts";
 import {
   AlreadyDoneClaimSchema,
   ChangedFilesClaimSchema,
@@ -35,6 +38,8 @@ export const getTasks = (async (ctx, req, a) => {
   // Only the slice being worked, plus anything not tied to a slice. Showing the
   // whole plan's tasks let the writer mark future slices done, which pushed
   // slices that had never started into review.
+  // Raw: the `owner` column is a scalar subquery correlated on `t.owner_agent_id`,
+  // and the slice filter is correlated on `t.grp_id`. Neither has a builder form.
   const rows = ctx.db
     .query<
       {
@@ -69,14 +74,14 @@ export const getTasks = (async (ctx, req, a) => {
   // escalation, a suspended group and 12 minutes of the boss's queue — for a state
   // that was correct the whole time. Prompt wording cannot fix this; the answer has
   // to be where the question is asked.
-  const later = ctx.db
-    .query<{ seq: number; n: number }, [number]>(
-      `SELECT s.seq AS seq, count(t.id) AS n
-       FROM slice s JOIN task t ON t.slice_id = s.id
-       WHERE s.grp_id = ? AND s.status = 'pending'
-       GROUP BY s.id ORDER BY s.seq`,
-    )
-    .all(grp);
+  const later = orm(ctx.db)
+    .select({ seq: slice.seq, n: count(task.id) })
+    .from(slice)
+    .innerJoin(task, eq(task.slice_id, slice.id))
+    .where(and(eq(slice.grp_id, grp), eq(slice.status, "pending")))
+    .groupBy(slice.id)
+    .orderBy(slice.seq)
+    .all();
   const gated = later.length
     ? `\n${later.map((l) => `S${l.seq}: ${l.n} cards, not yet open`).join("\n")}\n` +
       "Later slices open one at a time, after the slice before them is accepted. " +
@@ -129,6 +134,7 @@ export const postTaskClaim = (async (ctx, _req, a, _p, b) => {
   // and starts another — leaves its own cards locked to a session that no longer
   // exists. Nothing could ever unlock them, which is how a live group ends up with
   // work it is not allowed to touch.
+  // Raw: the slice guard's subquery is correlated on `task.slice_id`.
   const r = ctx.db.run(
     `UPDATE task SET owner_agent_id = ?, status = 'in_progress'
      WHERE id = ? AND grp_id = ? AND (owner_agent_id IS NULL
@@ -158,6 +164,8 @@ type TaskCompletion = {
   seq: number | null;
 };
 
+// Raw: `open` counts the slice's other tasks through a subquery correlated on
+// both `t.slice_id` and `t.id`, which the builder has no form for.
 function taskCompletion(db: DB, taskId: number, grpId: number): TaskCompletion | null {
   return (
     db
@@ -187,7 +195,7 @@ function advanceCompletedSlice(ctx: Ctx, caller: Caller, completion: TaskComplet
   const sliceId = completion.slice_id;
   const note = review?.trim();
   if (note) recordGate(ctx.db, sliceId, "self", "pass");
-  ctx.db.run("UPDATE slice SET status = 'gate' WHERE id = ?", [sliceId]);
+  orm(ctx.db).update(slice).set({ status: "gate" }).where(eq(slice.id, sliceId)).run();
   // Deterministic gate work should not wait behind model turns.
   ctx.sched.enqueue("gate", { grp_id: caller.grp_id, slice_id: sliceId, priority: 5 });
   if (note) {
@@ -240,6 +248,9 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
   // group's current writer is the only one who can finish it. Same reason as claim.
   const claim: TaskClaim = "already_done" in b ? { already_done: b.already_done } : b.claim;
   const advanced = ctx.db.transaction(() => {
+    // Raw: this asks how many rows it changed, and the bun-sqlite driver types
+    // Drizzle's `run()` as `void` — the count exists at runtime and not in the
+    // type, so reading it through the builder needs a cast this does not want.
     const done = ctx.db.run(
       `UPDATE task SET status = 'done', claim_json = ?, owner_agent_id = ?
        WHERE id = ? AND grp_id = ? AND (owner_agent_id IS NULL OR owner_agent_id = ?
