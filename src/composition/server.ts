@@ -689,8 +689,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   const missing = missingBinaries();
   if (missing.length) {
     throw new Error(
-      `not on PATH: ${missing.join(", ")}. The host runs git itself — the branch goes out ` +
-        `as a bundle and the PR is pushed from here — so nothing would work. Install it first.`,
+      `not on PATH: ${missing.join(", ")}. Install it first; nothing this process does would work without it.`,
     );
   }
   mkdirSync(cfg.dataDir, { recursive: true });
