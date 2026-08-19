@@ -1,6 +1,6 @@
 import { and, asc, count, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
-import { addNote } from "../util/rows.ts";
+import { addNote, projectOfGrp } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { orm } from "../../platform/persistence/orm.ts";
 import {
@@ -84,11 +84,7 @@ export async function runDeterministicReview(
   const slice = loadSlice(ctx.db, sliceId);
   if (!slice) return { pass: false, feedback: "slice disappeared" };
 
-  const grp = orm(ctx.db)
-    .select({ project_id: grpTable.project_id })
-    .from(grpTable)
-    .where(eq(grpTable.id, slice.grp_id))
-    .get();
+  const projectId = projectOfGrp(ctx.db, slice.grp_id);
 
   // --- reconcile: what was claimed against what git shows for THIS slice
   const storedClaims = orm(ctx.db)
@@ -147,7 +143,7 @@ export async function runDeterministicReview(
   // --- gate: exit codes, no opinions
   const out = await runGates({
     db: ctx.db,
-    projectId: grp!.project_id,
+    projectId: projectId!,
     cwd: WORK,
     dataDir: cfg.dataDir,
     sliceId,

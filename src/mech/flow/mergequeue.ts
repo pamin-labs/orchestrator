@@ -1,5 +1,6 @@
 import { and, asc, eq, isNotNull, max, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { projectOfGrp } from "../util/rows.ts";
 import { orm } from "../../platform/persistence/orm.ts";
 import { agent, channel, grp } from "../../platform/persistence/schema.ts";
 
@@ -78,9 +79,9 @@ export function position(db: DB, grpId: number): { position: number; total: numb
  * into a conflict later.
  */
 export function landed(db: DB, grpId: number): number[] {
-  const me = orm(db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)).get();
   // Read before the write, as it was: this group has to leave the queue before
   // `queue()` below is asked who is still in it.
+  const projectId = projectOfGrp(db, grpId);
   orm(db).update(grp).set({ status: "DISSOLVED", merge_seq: null, merge_seq_at: null }).where(eq(grp.id, grpId)).run();
 
   // Wind the group up: sessions are worthless now, but the channel and every
@@ -89,6 +90,6 @@ export function landed(db: DB, grpId: number): number[] {
   orm(db).update(agent).set({ state: "retired", session_id: null, token: null }).where(eq(agent.grp_id, grpId)).run();
   orm(db).update(channel).set({ status: "archived" }).where(eq(channel.grp_id, grpId)).run();
 
-  if (!me) return [];
-  return queue(db, me.project_id).map((e) => e.grpId);
+  if (projectId === null) return [];
+  return queue(db, projectId).map((e) => e.grpId);
 }
