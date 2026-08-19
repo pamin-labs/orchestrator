@@ -1,3 +1,4 @@
+import { and, asc, desc, eq, inArray, isNull, like, ne, or, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { dropSlices } from "../../platform/persistence/database.ts";
 import { addNote } from "../../mech/util/rows.ts";
@@ -6,7 +7,7 @@ import { dropGroup, startGroup, sweepApproved } from "../../mech/flow/start.ts";
 import { openPr, prBody, prTitle } from "../../mech/git/prwatch.ts";
 import { joinQueue, landed } from "../../mech/flow/mergequeue.ts";
 import { validateDraftCard } from "../../mech/util/validate.ts";
-import { canStart, CLAIMING_SQL, parseOwns } from "../../mech/flow/ownership.ts";
+import { canStart, CLAIMING, parseOwns } from "../../mech/flow/ownership.ts";
 import { killSandbox } from "../../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { z } from "zod";
@@ -18,17 +19,20 @@ import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { slug } from "../slug.ts";
 import { say } from "../../platform/text/lang.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
-import type { GrpState } from "../../contracts/states.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { escalation, event, grp as grps, note, project, slice, task } from "../../platform/persistence/schema.ts";
 
 /** What the boss first asked for, for this group. */
 function firstIdea(db: DB, groupId: number): string {
   return (
-    db
-      .query<{ body: string }, [number]>(
-        "SELECT body FROM event WHERE grp_id = ? AND kind = 'boss_say' ORDER BY seq LIMIT 1",
-      )
-      .get(groupId)?.body ?? ""
+    orm(db)
+      .select({ body: event.body })
+      .from(event)
+      .where(and(eq(event.grp_id, groupId), eq(event.kind, "boss_say")))
+      .orderBy(asc(event.seq))
+      .limit(1)
+      .get()?.body ?? ""
   );
 }
 
@@ -61,13 +65,13 @@ export const postIdea = (async (ctx, _req, _p, b) => {
   // With another group already holding paths, the boundary has to be cut before
   // anyone plans work inside it — otherwise the plan is written against paths the
   // group turns out not to own.
-  // fallow-ignore-next-line security-sink -- `CLAIMING_SQL` is `sql(CLAIMING)` in `mech/flow/ownership.ts`: a module-level constant built once from `GRP_STATES`, a source literal tuple. No value on this path is an input. The ids are bound through `?`.
-  const others = ctx.db
-    .query<{ id: number; name: string; owns_json: string }, [number, number]>(
-      `SELECT id, name, owns_json FROM grp WHERE project_id = ? AND id != ?
-         AND status IN ${CLAIMING_SQL}`,
-    )
-    .all(b.project_id, grp.id);
+  const others = orm(ctx.db)
+    .select({ id: grps.id, name: grps.name, owns_json: grps.owns_json })
+    .from(grps)
+    // `CLAIMING` bound as parameters, which is what the suppression this replaces
+    // spent four lines explaining `CLAIMING_SQL` already was.
+    .where(and(eq(grps.project_id, b.project_id), ne(grps.id, grp.id), inArray(grps.status, CLAIMING)))
+    .all();
   if (others.length > 0) {
     // Every undeclared active group, not just the new one. The first group in a
     // project needs no boundary — but the moment a second appears, an undeclared
@@ -114,8 +118,8 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
   if (!approve) {
     const fact = withAttachments(`boss sent the DRAFT back: ${b.reason ?? ""}`, b.attachments);
     const projectId =
-      ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-        ?.project_id ?? null;
+      orm(ctx.db).select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, grpId)).get()?.project_id ??
+      null;
     // Back to PLANNING, which is what the group actually is now. Left in DRAFT it
     // still counted as a decision waiting on the boss, still showed the rejected
     // card, and 批准开工 still worked on it — one stray click approves the very
@@ -127,7 +131,11 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
     const why = withAttachments(b.reason ?? "respec", b.attachments);
     ctx.db.transaction(() => {
       addNote(ctx.db, { projectId, grpId, kind: "fact", lang: ctx.config.language, body: fact });
-      ctx.db.run("UPDATE grp SET status = 'PLANNING', approved_at = NULL WHERE id = ? AND status = 'DRAFT'", [grpId]);
+      orm(ctx.db)
+        .update(grps)
+        .set({ status: "PLANNING", approved_at: null })
+        .where(and(eq(grps.id, grpId), eq(grps.status, "DRAFT")))
+        .run();
       ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: why });
       ctx.sched.enqueue("agent_turn", {
         grp_id: grpId,
@@ -141,12 +149,16 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
 
   // The boss usually approves what the Dispatcher filed; an edited card in the
   // request body is the "改完批准" path.
-  const filed = ctx.db
-    .query<{ body: string }, [number]>(
-      `SELECT body FROM note WHERE grp_id = ? AND json_extract(frontmatter_json, '$.draft_card') = 1
-       ORDER BY at DESC, id DESC LIMIT 1`,
-    )
-    .get(grpId)?.body;
+  const filed = orm(ctx.db)
+    .select({ body: note.body })
+    .from(note)
+    // Raw on the right: `json_extract` has no Drizzle operator.
+    .where(and(eq(note.grp_id, grpId), sql`json_extract(${note.frontmatter_json}, '$.draft_card') = 1`))
+    // Both keys: `at` is a millisecond clock, and a card shares one with whatever
+    // the same request wrote beside it.
+    .orderBy(desc(note.at), desc(note.id))
+    .limit(1)
+    .get()?.body;
   const card = b.card ?? filed;
 
   if (card) {
@@ -163,26 +175,32 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
     // that reviewers run on a CLI with no tool whitelist: the whitelist used to be
     // what bounded how much of the repo a review could read, and this is what
     // replaces it. The boss can raise any of them from the requirement page.
-    const ins = ctx.db.query<{ id: number }, [number, number, string, string, string, number | null]>(
-      `INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, budget_tokens, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
-    );
     // One task per slice, up front. Without something to claim the writer
     // improvises an id, `task done` never lands, and the whole review pipeline
     // silently never fires — which is exactly what the live run showed.
-    const insTask = ctx.db.prepare(
-      "INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (?, ?, ?, unixepoch() * 1000)",
-    );
+    //
+    // Both statements were prepared once outside the loop. A card carries a
+    // handful of slices, so building them per row costs nothing measurable and
+    // reads as what it is.
     v.slices.forEach((sl, i) => {
-      const row = ins.get(
-        grpId,
-        i + 1,
-        sl.title,
-        sl.accept,
-        sl.difficulty,
-        ctx.config.sliceBudgetTokens?.[sl.difficulty] ?? ctx.config.sliceBudgetTokens?.normal ?? null,
-      )!;
-      insTask.run(grpId, row.id, sl.title);
+      const row = orm(ctx.db)
+        .insert(slice)
+        .values({
+          grp_id: grpId,
+          seq: i + 1,
+          title: sl.title,
+          accept_spec: sl.accept,
+          difficulty: sl.difficulty,
+          budget_tokens: ctx.config.sliceBudgetTokens?.[sl.difficulty] ?? ctx.config.sliceBudgetTokens?.normal ?? null,
+          // Raw: SQLite's clock, as both statements had.
+          created_at: sql`unixepoch() * 1000`,
+        })
+        .returning({ id: slice.id })
+        .get();
+      orm(ctx.db)
+        .insert(task)
+        .values({ grp_id: grpId, slice_id: row.id, title: sl.title, created_at: sql`unixepoch() * 1000` })
+        .run();
     });
   }
   // Boundaries before work. Two groups discovering at merge time that they were
@@ -196,18 +214,24 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
     // A refusal used to end here, and the click was gone: the group sat in DRAFT
     // with nothing recording that the boss had said yes, and nobody re-ran it when
     // the group holding the paths merged. One click has to be final.
-    ctx.db.run("UPDATE grp SET approved_at = unixepoch() * 1000 WHERE id = ?", [grpId]);
+    orm(ctx.db).update(grps).set({ approved_at: sql`unixepoch() * 1000` }).where(eq(grps.id, grpId)).run();
     // Put the Architect back on it — the boundary is its job, and it was observed
     // cutting one group's paths and forgetting the other's.
-    // fallow-ignore-next-line security-sink -- `CLAIMING_SQL` is `sql(CLAIMING)` in `mech/flow/ownership.ts`: a module-level constant built once from `GRP_STATES`, a source literal tuple. No value on this path is an input. The ids are bound through `?`.
-    const undeclared = ctx.db
-      .query<{ id: number; name: string }, [number]>(
-        `SELECT id, name FROM grp
-         WHERE project_id = (SELECT project_id FROM grp WHERE id = ?)
-           AND status IN ${CLAIMING_SQL}
-           AND (owns_json IS NULL OR owns_json = '[]')`,
+    const undeclared = orm(ctx.db)
+      .select({ id: grps.id, name: grps.name })
+      .from(grps)
+      .where(
+        and(
+          // Raw on the right: a scalar subquery against the same table, which the
+          // builder has no operand form for.
+          eq(grps.project_id, sql`(select project_id from grp where id = ${grpId})`),
+          inArray(grps.status, CLAIMING),
+          // `owns_json` is NOT NULL, so the `IS NULL` half has never matched. Kept
+          // because removing a branch is not what this change is for.
+          or(isNull(grps.owns_json), eq(grps.owns_json, "[]")),
+        ),
       )
-      .all(grpId);
+      .all();
     if (undeclared.length) {
       ctx.sched.enqueue("agent_turn", {
         grp_id: grpId,
@@ -304,9 +328,11 @@ function changeBudget(ctx: Ctx, grpId: number, tokens: number | null | undefined
   // route out of it: 继续 un-paused a group the scheduler refused to admit,
   // so the next tick suspended it again. A limit needs a way to be raised.
   const t = normalizeBudget(tokens);
-  const spent = ctx.db
-    .query<{ spent_tokens: number; status: GrpState }, [number]>("SELECT spent_tokens, status FROM grp WHERE id = ?")
-    .get(grpId);
+  const spent = orm(ctx.db)
+    .select({ spent_tokens: grps.spent_tokens, status: grps.status })
+    .from(grps)
+    .where(eq(grps.id, grpId))
+    .get();
   if (!spent) return message("no such group", 404);
   const error = budgetError(t, spent.spent_tokens);
   if (error) return error;
@@ -330,7 +356,7 @@ function budgetError(tokens: number | null, spent: number): Response | null {
 
 function recordBudget(ctx: Ctx, grpId: number, tokens: number | null): void {
   const description = tokens === null ? "budget cap lifted" : `budget raised to ${tokens} tokens`;
-  ctx.db.run("UPDATE grp SET budget_tokens = ? WHERE id = ?", [tokens, grpId]);
+  orm(ctx.db).update(grps).set({ budget_tokens: tokens }).where(eq(grps.id, grpId)).run();
   ctx.bus.emit({
     grpId,
     author: "boss",
@@ -339,21 +365,35 @@ function recordBudget(ctx: Ctx, grpId: number, tokens: number | null): void {
   });
   // Raising the cap is the answer to the question the watchdog asked, so it
   // also closes it: a stale "out of budget" row in 等你 is worse than none.
-  ctx.db.run(
-    `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = ?, answered_at = unixepoch() * 1000
-     WHERE grp_id = ? AND chain_state = 'boss' AND answer IS NULL AND question LIKE 'budget:%'`,
-    [tokens === null ? "cap lifted" : `raised to ${tokens}`, grpId],
-  );
+  orm(ctx.db)
+    .update(escalation)
+    .set({
+      chain_state: "answered",
+      answered_by: "boss",
+      answer: tokens === null ? "cap lifted" : `raised to ${tokens}`,
+      // Raw: SQLite's clock, as the statement it replaces had.
+      answered_at: sql`unixepoch() * 1000`,
+    })
+    // `isNull`: an unanswered row is what this closes, and `= NULL` matches none.
+    .where(
+      and(
+        eq(escalation.grp_id, grpId),
+        eq(escalation.chain_state, "boss"),
+        isNull(escalation.answer),
+        like(escalation.question, "budget:%"),
+      ),
+    )
+    .run();
 }
 
 function resumeGroup(ctx: Ctx, grpId: number): Response {
   // Un-pausing an over-budget group is a no-op the boss cannot see: the
   // scheduler refuses to admit it, so it sits in RUNNING doing nothing.
-  const g = ctx.db
-    .query<{ budget_tokens: number | null; spent_tokens: number }, [number]>(
-      "SELECT budget_tokens, spent_tokens FROM grp WHERE id = ?",
-    )
-    .get(grpId);
+  const g = orm(ctx.db)
+    .select({ budget_tokens: grps.budget_tokens, spent_tokens: grps.spent_tokens })
+    .from(grps)
+    .where(eq(grps.id, grpId))
+    .get();
   if (g?.budget_tokens != null && g.spent_tokens >= g.budget_tokens) {
     return bad(
       `out of budget (${g.spent_tokens}/${g.budget_tokens} tokens). Raise the cap first, ` +
@@ -370,14 +410,15 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
   // been force-pushed or deleted, and sometimes the boss simply wants a clean
   // one — without this the group is stuck holding a pr_number that openPr
   // treats as "already done", so it could never get another.
-  const g = ctx.db
-    .query<{ name: string; repo: string; pr_number: number | null }, [number]>(
-      "SELECT g.name, p.repo_path AS repo, g.pr_number FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
-    )
-    .get(grpId);
+  const g = orm(ctx.db)
+    .select({ name: grps.name, repo: project.repo_path, pr_number: grps.pr_number })
+    .from(grps)
+    .innerJoin(project, eq(project.id, grps.project_id))
+    .where(eq(grps.id, grpId))
+    .get();
   if (!g) return message("no such group", 404);
   if (!ctx.gh) return bad("no GitHub client on this server");
-  ctx.db.run("UPDATE grp SET pr_number = NULL WHERE id = ?", [grpId]);
+  orm(ctx.db).update(grps).set({ pr_number: null }).where(eq(grps.id, grpId)).run();
   const r = await openPr({
     ctx,
     gh: ctx.gh,
@@ -388,16 +429,20 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
   if ("error" in r) {
     // Put the old number back: a group with no PR and no way to open one is
     // worse off than one whose PR is closed.
-    ctx.db.run("UPDATE grp SET pr_number = ? WHERE id = ?", [g.pr_number, grpId]);
+    orm(ctx.db).update(grps).set({ pr_number: g.pr_number }).where(eq(grps.id, grpId)).run();
     return bad(r.error);
   }
-  ctx.db.run("UPDATE grp SET status = 'PR_OPEN', paused_at = NULL, pause_reason = NULL WHERE id = ?", [grpId]);
+  orm(ctx.db)
+    .update(grps)
+    .set({ status: "PR_OPEN", paused_at: null, pause_reason: null })
+    .where(eq(grps.id, grpId))
+    .run();
   joinQueue(ctx.db, grpId);
-  ctx.db.run(
-    `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = ?
-     WHERE grp_id = ? AND answer IS NULL AND question LIKE 'PR #%被关掉了%'`,
-    [`opened #${r.number} instead`, grpId],
-  );
+  orm(ctx.db)
+    .update(escalation)
+    .set({ chain_state: "answered", answered_by: "boss", answer: `opened #${r.number} instead` })
+    .where(and(eq(escalation.grp_id, grpId), isNull(escalation.answer), like(escalation.question, "PR #%被关掉了%")))
+    .run();
   ctx.bus.emit({
     grpId,
     author: "boss",
@@ -413,9 +458,7 @@ async function dropRequirement(ctx: Ctx, grpId: number, why: string | undefined)
   // else already fixed, had no way off the board: 退回重拆 sends it back to the
   // Dispatcher, which writes another card for work nobody wants. The paths it
   // held stayed held, so a group waiting on them waited forever.
-  const g = ctx.db
-    .query<{ status: GrpState; name: string }, [number]>("SELECT status, name FROM grp WHERE id = ?")
-    .get(grpId);
+  const g = orm(ctx.db).select({ status: grps.status, name: grps.name }).from(grps).where(eq(grps.id, grpId)).get();
   if (!g) return message("no such group", 404);
   if (g.status === "DISSOLVED") return message("ok");
   dropGroup(ctx, grpId, why ?? "");
