@@ -1,4 +1,7 @@
+import { and, isNotNull, notInArray } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp, project } from "../../platform/persistence/schema.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { errText, hours, minutes } from "../../platform/process/text.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
@@ -313,16 +316,24 @@ function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
  * manage it — the codex session sweep and the quota read. Both are best-effort
  * and neither cares which sandbox answers.
  */
+/**
+ * A group whose container is not ours to touch: over, or deliberately set down.
+ *
+ * Written out inside the query before, so the two states that mean "leave it
+ * alone" were a string nothing checked against the lifecycle vocabulary.
+ */
+const UNREACHABLE_GRP_STATES = ["DISSOLVED", "PARKED"] as const satisfies readonly GrpState[];
+
 function liveScopes(db: DB): Scope[] {
   const out: Scope[] = [];
-  for (const g of db
-    .query<{ id: number }, []>(
-      "SELECT id FROM grp WHERE sandbox_id IS NOT NULL AND status NOT IN ('DISSOLVED','PARKED')",
-    )
+  for (const g of orm(db)
+    .select({ id: grp.id })
+    .from(grp)
+    .where(and(isNotNull(grp.sandbox_id), notInArray(grp.status, [...UNREACHABLE_GRP_STATES])))
     .all()) {
     out.push({ grp: g.id });
   }
-  for (const p of db.query<{ id: number }, []>("SELECT id FROM project WHERE sandbox_id IS NOT NULL").all()) {
+  for (const p of orm(db).select({ id: project.id }).from(project).where(isNotNull(project.sandbox_id)).all()) {
     out.push({ project: p.id });
   }
   return out;
