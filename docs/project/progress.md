@@ -493,32 +493,33 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Next executable items
 
-1. **Run the release workflow in dry-run mode.** Not done, and the record said
-   otherwise: the last `release.yml` dispatch (`31919450396`, 2026-08-16) was a
-   *real* release — `v0.1.2` is in tags and in releases, and the only skipped step
-   in the run was `take the tag back`, which is the rollback that runs on failure.
-   So the six publish gates at `release.yml` lines 279, 294, 305, 357, 473, 496 and
-   539 have never been observed skipping.
+1. **Run the release workflow in dry-run mode — blocked on a version bump, not on
+   effort.** `checks` refuses before anything builds: it requires
+   `inputs.version` to equal `main`'s `package.json` version *and* `v<version>` to
+   be unpublished. `main` is `0.1.2` and `v0.1.2` is published, so every dispatch
+   dies on "already published and immutable releases are not re-cut". Bump
+   `package.json` on `main` to the next version first; which version, and whether
+   now is the time to cut one, is the boss's call.
 
-   The entry is the `dry_run` input at `release.yml:10`, ticked. What only a hosted
-   run exercises: the multi-platform image build on x64 **and** arm64, Trivy against
+   Then dispatch with `dry_run` ticked (`release.yml:10`, default true) and confirm
+   `image-push`, `manifest`, `publish` and `promote-latest` are all skipped. What
+   only a hosted run exercises: the image build on x64 **and** arm64, Trivy against
    the built image, SBOM generation, and provenance attestation.
 
-   Read the completed run's log for those six steps and confirm each was skipped. A
-   dry run that published anything is the one failure mode that cannot be undone,
-   and the version would have to be bumped before another attempt.
+   The publication half no longer depends on that run to be trustworthy. A test
+   walks every step in `release.yml` for a publishing verb — `docker push`,
+   `gh release create`, `imagetools create`, a registry login, either attest action,
+   `push: true` — and fails unless it sits under `!inputs.dry_run`. Naming the four
+   guarded jobs was a list a fifth job walks past, and a passing dry run only ever
+   proves that *today's* steps were guarded.
 
-2. **Add `codecov/patch` to the ruleset's required checks**, once it has been seen
-   posting. `pr-report.yml` is on `main` now and runs, so the 404 that blocked this
-   is gone — but Codecov has still never uploaded, because `pr-report` uploads only
-   after the `test` job passes and `test` was failing on every Dependabot pull
-   request (fixed: the pinning guard asserted six literal SHAs).
-
-   `gh api repos/pamin-labs/orchestrator/commits/<sha>/status` returns an empty
-   `statuses` array on #8 today. Confirm `codecov/patch` appears there on the next
-   green pull request, then add it with the ruleset call in `docs/operations/ci.md`.
-   Requiring it before it posts leaves every pull request pending forever on a
-   context nothing writes — the `check` bug this repository already found once.
+2. **`codecov/patch` is in the ruleset. Done**, and the blocker was a misreading:
+   `commits/<sha>/status` returns an empty array because Codecov posts a **check
+   run**, not a commit status. It had been uploading all along. Verified live on #9
+   with enforcement active. It is deliberately *not* in
+   `.github/required-checks.txt` — `release.yml` reads that to gate on the release
+   sha's check runs, and no `main` commit ever carries `codecov/patch`, so it lives
+   in `.github/merge-only-checks.txt`, read by the ruleset command alone.
 
 3. **Monitor the nightly stress run** and replay any property failure from its
    reported seed and path. CI, security and CodeQL are green on `main` after #7.

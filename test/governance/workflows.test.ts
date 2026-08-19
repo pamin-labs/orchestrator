@@ -449,6 +449,36 @@ describe("workflow governance", () => {
       "${{ !inputs.dry_run }}",
     );
     expectDryRunOnlyJobs(workflow, ["image-push", "manifest", "publish", "promote-latest"]);
+
+    // And nothing outside those four publishes. Naming the four is a list that a
+    // fifth job walks past; this asks the question the dry run is actually for —
+    // "does a step that writes to a registry, a release or an attestation store
+    // sit anywhere a dry run still reaches it?" A dry run that published once is
+    // the one failure here that cannot be taken back, and the run itself cannot
+    // be used to check this, because a passing dry run proves only that today's
+    // steps are guarded.
+    const PUBLISHES = [
+      "docker push",
+      "gh release create",
+      "imagetools create",
+      "docker/login-action",
+      "actions/attest-build-provenance",
+      "actions/attest-sbom",
+      "push: true",
+    ];
+    for (const [name, job] of Object.entries(workflow.jobs)) {
+      const body = job.steps.map((step) => `${step.uses ?? ""} ${step.run ?? ""} ${JSON.stringify(step.with ?? {})}`);
+      const guardedStep = (i: number) => job.steps[i]?.if === "${{ !inputs.dry_run }}";
+      body.forEach((text, i) => {
+        const verb = PUBLISHES.find((p) => text.includes(p));
+        if (!verb) return;
+        expect({ job: name, verb, guarded: job.if === "${{ !inputs.dry_run }}" || guardedStep(i) }).toEqual({
+          job: name,
+          verb,
+          guarded: true,
+        });
+      });
+    }
     expect(release).toContain('has("buildx.build.provenance")');
     expect(release).toContain("docker image inspect --format '{{.Id}}'");
     expect(release).toContain("trivy-config: trivy.yaml");
