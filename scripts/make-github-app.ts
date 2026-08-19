@@ -66,7 +66,9 @@ const page = `<!doctype html><meta charset="utf-8"><title>创建 GitHub App</tit
 const html = { "content-type": "text/html; charset=utf-8" };
 
 let resolve: (code: string) => void;
-const got = new Promise<string>((r) => (resolve = r));
+const got = new Promise<string>((r) => {
+  resolve = r;
+});
 
 const server = Bun.serve({
   port: PORT,
@@ -92,12 +94,15 @@ const server = Bun.serve({
 const url = `http://127.0.0.1:${PORT}/`;
 console.log(`\n打开 ${url} —— 浏览器起不来的话自己贴过去\n`);
 // Their Chrome, with their session. `open` falls back to the default browser.
-Bun.spawn(["open", "-a", "Google Chrome", url], { stderr: "ignore" }).exited.then((code) => {
+// Not awaited on purpose — the server below is what this waits on, and a browser
+// that never opens is a URL the reader pastes by hand. `void` says so out loud.
+void Bun.spawn(["open", "-a", "Google Chrome", url], { stderr: "ignore" }).exited.then((code) => {
   if (code !== 0) Bun.spawn(["open", url], { stderr: "ignore" });
 });
 
 const code = await got;
-server.stop();
+// Awaited: `stop()` returns a promise, and the socket is still bound until it settles.
+await server.stop();
 
 // The code is single-use and short-lived: this is the only chance to read the
 // private key, so it is written before anything else can fail.

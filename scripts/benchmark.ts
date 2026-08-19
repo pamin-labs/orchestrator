@@ -1,8 +1,6 @@
 import { Bench } from "tinybench";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
-import { join } from "node:path";
-import { ROOT } from "../src/platform/config/load.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
 import { snapshot } from "../src/api/panel/snapshot.ts";
 import { reconcile } from "../src/mech/flow/reconcile.ts";

@@ -25,7 +25,7 @@
     "test:coverage": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun test --parallel && bun run test/support/coverage-report.ts",
     "typecheck": "tsc -b --pretty false",
     "typecheck:clean": "tsc -b --clean && tsc -b --pretty false",
-    "lint": "oxlint src web/src test",
+    "lint": "oxlint src web/src test scripts",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "audit": "fallow audit",
