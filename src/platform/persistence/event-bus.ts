@@ -1,4 +1,7 @@
+import { and, lt, notInArray } from "drizzle-orm";
 import type { DB } from "./database.ts";
+import { orm } from "./orm.ts";
+import { event } from "./schema.ts";
 import {
   EventInputSchema,
   type EventInput,
@@ -44,9 +47,13 @@ const KEPT_FOREVER = ["say", "boss_say", "note", "escalation"] as const;
  * every row of it.
  */
 export function trimEvents(db: DB, olderThanMs: number, now = Date.now()): number {
-  const kept = KEPT_FOREVER.map(() => "?").join(", ");
-  return db.run(`DELETE FROM event WHERE at < ? AND kind NOT IN (${kept})`, [now - olderThanMs, ...KEPT_FOREVER])
-    .changes;
+  // `.returning()` rather than a row count: the query builder's `.run()` is typed
+  // `void` on this driver, so `.changes` does not exist to read.
+  return orm(db)
+    .delete(event)
+    .where(and(lt(event.at, now - olderThanMs), notInArray(event.kind, [...KEPT_FOREVER])))
+    .returning({ seq: event.seq })
+    .all().length;
 }
 
 export class Bus {

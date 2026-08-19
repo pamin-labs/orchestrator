@@ -1,4 +1,6 @@
 import { writeSetting, type DB } from "../persistence/database.ts";
+import { orm } from "../persistence/orm.ts";
+import { setting } from "../persistence/schema.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "./load.ts";
 import {
   ConfigSchema,
@@ -56,7 +58,7 @@ export function refuse(path: string, value: Json): string | null {
 
 function read(db: DB): SettingWrite[] {
   const out: SettingWrite[] = [];
-  for (const r of db.query<{ k: string; v: string }, []>("SELECT k, v FROM setting").all()) {
+  for (const r of orm(db).select({ k: setting.k, v: setting.v }).from(setting).all()) {
     if (!r.k.startsWith(PREFIX)) continue;
     try {
       const value: unknown = JSON.parse(r.v);
