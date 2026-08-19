@@ -4,19 +4,18 @@ import { ESCALATION_STATES, GRP_STATES, SLICE_STATES, TASK_STATES } from "./stat
 /**
  * What the panel is sent, declared once.
  *
- * These shapes existed twice: as `db.query<Row>` type parameters here and as
- * hand-written interfaces in `web/src/lib/api.ts`. Neither was checked against
- * anything. `db.query<T>` is an unchecked cast — SQLite hands back whatever the
- * SELECT produced and TypeScript believes the annotation — so a migration that
- * renames a column produces `undefined` on the other side of the wire with no
- * error anywhere, and the browser's copy of the shape would still have said the
- * field was a `string`.
- *
- * So: zod is the declaration, `z.infer` is the type on both sides, and
- * `test/snapshot-shape.test.ts` runs a real snapshot through `.parse()`. The
- * parse is in a test rather than in the route because this is our own payload —
- * paying to validate it on every poll would buy nothing the test does not, and
- * the snapshot is re-read on every state change.
+ * These shapes existed twice — as `db.query<Row>` parameters here and as
+ * hand-written interfaces in the browser. Neither was checked: `db.query<T>` is an
+ * unchecked cast, so a migration that renames a column produces `undefined` on the
+ * other side of the wire with no error anywhere, and the browser's copy would
+ * still have said the field was a `string`.
+ */
+/**
+ * So zod is the declaration, `z.infer` is the type on both sides, and
+ * `snapshot-shape.test.ts` runs a real snapshot through `.parse()`. The parse is in
+ * a test rather than the route because this is our own payload: validating it on
+ * every poll would buy nothing the test does not, and the snapshot is re-read on
+ * every state change.
  */
 
 export const Project = z.object({

@@ -18,11 +18,8 @@ import { FrameSchema } from "../../../src/contracts/events.ts";
  * The server's own union, not a hand-written copy and not `any` — which is what
  * this was, on the one function that turns the wire into everything the timeline
  * renders. `stream.ts` adds `projectId` to every frame on the way out, including
- * the stored ones whose own type has no such field, so that is the one thing
- * stated here rather than imported.
- *
- * `import type` is erased at build time; no server code reaches the browser
- * bundle. Same rule as `State` above.
+ * stored ones whose own type has no such field, so that is the one thing stated
+ * here rather than imported.
  */
 const WireSchema = FrameSchema.and(z.object({ projectId: z.number().nullable().optional() }));
 const NotificationMetaSchema = z.object({ url: z.string().optional(), title: z.string().optional() });
@@ -160,15 +157,15 @@ export function groupedRows(shown: PanelFrame[]): { f: PanelFrame; showHeader: b
 /**
  * A `notify` frame, as a real system notification.
  *
- * The server decides *what* is worth interrupting for — rules, tiers, dedupe and
- * a backoff, all in `notify.ts` — and this is only the last step. Which is why
- * it raises nothing on any other frame: "everything the boss might want to know"
- * is how a notification becomes noise, and the rules upstream exist precisely to
- * avoid that.
- *
+ * The server decides *what* is worth interrupting for — rules, tiers, dedupe and a
+ * backoff, all in `notify.ts` — and this is only the last step. Which is why it
+ * raises nothing on any other frame: "everything the boss might want to know" is how
+ * a notification becomes noise, and the rules upstream exist to avoid that.
+ */
+/**
  * Replayed frames are skipped by age. The stream replays from a cursor so a
- * reconnecting page can rebuild its timeline, and without this every reconnect
- * would re-announce the last day of alerts.
+ * reconnecting page can rebuild its timeline, and without this every reconnect would
+ * re-announce the last day of alerts.
  */
 export interface Notice {
   body: string;

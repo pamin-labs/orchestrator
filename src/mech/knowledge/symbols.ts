@@ -13,13 +13,14 @@ import { activeTracer } from "../../platform/observability/traces.ts";
  *
  * This used to be one regex over `export function|const|class|…`, which is JS/TS
  * syntax, so a Go file entered the repo map and came back out with a path and no
- * names. Orchestrator indexes *the boss's* repositories, not this one, so "the
- * source is simply invisible" was the normal case rather than the exotic one.
- *
+ * names. Orchestrator indexes *the boss's* repositories, so that was the normal case
+ * rather than the exotic one.
+ */
+/**
  * Real grammars rather than more regexes, because the regex was not merely
- * incomplete — it matched `export function` inside a string or a comment, and it
- * could not tell `func (s *Server) Listen()` from `func NewServer()`. Six
- * languages of that, hand-written, is the thing tree-sitter is.
+ * incomplete — it matched `export function` inside a string or a comment, and could
+ * not tell `func (s *Server) Listen()` from `func NewServer()`. Six languages of
+ * that, hand-written, is the thing tree-sitter is.
  */
 
 /**
@@ -86,11 +87,11 @@ let runtime: Promise<void> | undefined;
  * `Parser.init()` with no arguments is what the README shows, and it works under
  * `bun run` and fails inside `bun build --compile`: Emscripten resolves its own
  * `web-tree-sitter.wasm` as a sibling of the script, and a compiled binary has no
- * siblings — `ENOENT /$bunfs/root/web-tree-sitter.wasm`. Handing over the bytes
- * through the documented `wasmBinary` module option is what makes the compiled
- * artefact work, and it is measured in `test/mech/symbols.test.ts` rather than
+ * siblings. Handing over the bytes through the documented `wasmBinary` option is
+ * what makes the compiled artefact work — measured in `symbols.test.ts` rather than
  * reasoned about, because the source and the artefact disagreed here.
- *
+ */
+/**
  * A rejection is cached along with everything else. Neither wasm can be missing
  * unless the binary was built wrong, and retrying a packaging fault once per file
  * per tick would bury the one line that says what happened.

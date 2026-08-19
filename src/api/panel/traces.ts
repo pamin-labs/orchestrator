@@ -2,24 +2,20 @@
  * OTLP/HTTP trace ingest, on the panel's own protocol root.
  *
  * `POST /api/v1/traces` is not a spelling choice. An OTLP client appends
- * `/v1/traces` to whatever endpoint it is configured with, so
- * `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:7777/api` lands exactly here —
- * and a bare `/v1/traces` would land nowhere useful: `isApplicationPath` in
- * `composition/server.ts` recognises only `/healthz`, `/readyz`, `/api/v1/*` and
- * `/orch/v1/*`, so it would fall through to the static file branch and 404. The
- * shutdown gate, the CSRF rule and the JSON body limit are all mounted on those
- * two prefixes too, which is the difference between this route and an
- * unauthenticated POST with no size limit.
+ * `/v1/traces` to its configured endpoint, so `…/api` lands exactly here — and a
+ * bare `/v1/traces` would fall through to the static branch and 404, because
+ * `isApplicationPath` recognises only `/healthz`, `/readyz`, `/api/v1/*` and
+ * `/orch/v1/*`.
+ */
+/**
+ * Trust boundary: whatever `/api/v1/*` already is — loopback by default, CSRF on
+ * writes, the shared 1MiB body limit, and the shutdown gate. No agent token,
+ * because an agent cannot reach this process at all; sandboxed turns go through
+ * the file mailbox. A second, different rule on one route inside the panel root
+ * would be the inconsistency, not the protection.
  *
- * Trust boundary: whatever `/api/v1/*` already is. The server binds `127.0.0.1`
- * by default and cross-site browser writes are refused; there is no agent token
- * here because an agent cannot reach this process directly at all — sandboxed
- * turns go through the file mailbox. A second, different rule on one route
- * inside the panel root would be the inconsistency, not the protection.
- *
- * Size: the shared `JSON_BODY_LIMIT` of 1MiB, inherited and not raised. An OTLP
- * batch is at most 512 spans, so that is about 2KiB a span; a client that trips
- * it gets a 413 and should send smaller batches.
+ * An OTLP batch is at most 512 spans, so 1MiB is about 2KiB a span; a client that
+ * trips it gets a 413 and should send smaller batches.
  */
 
 import { z } from "zod";

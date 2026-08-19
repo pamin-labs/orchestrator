@@ -14,14 +14,12 @@ afterEach(cleanup);
 /**
  * The settings page draws, from the paths the server actually offers.
  *
- * Nothing rendered `Knobs` before this — every knob test covered the pure
- * helpers beside it — so the switch that picks an editor per path was at 0%
- * while carrying the blast radius of the whole dialog. It is a `switch` with a
- * `default: null`, which is the shape that fails by drawing *nothing*: a path
- * added to a section without a case, or with the wrong one, is an empty row.
+ * Nothing rendered `Knobs` before this, so the switch that picks an editor per path
+ * was at 0% while carrying the blast radius of the whole dialog. It is a `switch`
+ * with `default: null`, which fails by drawing *nothing*.
  *
  * The rows come from `settablePaths()` rather than a fixture, so a schema change
- * arrives here as a real row instead of as a fixture nobody updated.
+ * arrives as a real row instead of a fixture nobody updated.
  */
 // `TipRoot` as well as the query client, because every knob label carries a Tip
 // and Radix's tooltip refuses to render outside its provider. `app.tsx` mounts

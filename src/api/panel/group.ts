@@ -267,15 +267,12 @@ export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
 /**
  * The nine things the boss's row of buttons can do.
  *
- * This list used to live in the route's regular expression, where an unknown
- * action was a 404 — the path did not exist, so neither did the answer. That was
- * doing routing and validation with one mechanism, and it made the two failures
- * indistinguishable: a typo and a removed feature both came back "not found".
+ * This list used to live in the route's regular expression, where an unknown action
+ * was a 404 — routing and validation done by one mechanism, so a typo and a removed
+ * feature both came back "not found".
  *
- * `landed` is the one that matters. It was a button asking the boss to confirm a
- * merge, and one mis-click archived a group whose PR was still open — GitHub is
- * the only source for that, and `pollPrs` already asks it. Naming it here means
- * the refusal can say so.
+ * `landed` is the one that matters: one mis-click archived a group whose PR was
+ * still open, and GitHub is the only source for that.
  */
 export const GroupAction = IdParams.extend({
   action: z.enum(["pause", "resume", "park", "wake", "interrupt", "budget", "drop", "newpr", "rebuild"]),

@@ -31,18 +31,18 @@ function installFor(db: DB, projectId: number): string | null {
 /**
  * Wind a group up without merging it: it should not be done.
  *
- * The boss's 不做了, and the CoS triaging a complaint as `reject` — one path, or
+ * The boss's 不做了 and the CoS triaging a complaint as `reject` are one path, or
  * the two disagree about what "dropped" means. Rejecting used to only cancel the
  * queue, so the group kept its ACTIVE status and went on holding its paths against
  * every other group forever.
+ */
+/**
+ * No retro turn: a group being dropped has nobody who wants its output, and the
+ * reason is the sentence just written to its blackboard — spending an Opus turn to
+ * restate that teaches the agents that retros are paperwork. The worktree and
+ * every event stay; archiving must never mean deleting.
  *
- * No retro turn. A group that is being dropped has, by definition, nobody who
- * wants its output, and the reason it is being dropped is the sentence that was
- * just written to its blackboard — spending an Opus turn to restate that teaches
- * the agents that retros are paperwork. The worktree and every event stay:
- * archiving must never mean deleting.
- *
- * `owns` is deliberately left alone. `canStart` only counts ACTIVE groups, so
+ * `owns` is deliberately left alone. `canStart` counts only ACTIVE groups, so
  * DISSOLVED already releases the paths, and blanking the column would erase what
  * this group was allowed to touch from the record.
  */
@@ -113,20 +113,20 @@ export async function runInstall(ctx: Ctx, grpId: number, cmd: string): Promise<
 /**
  * Put back what a fresh container does not have.
  *
- * A sandbox is where the work lives — the clone and everything installed into
- * it — and it is replaceable: the TTL reaps an idle one, a credential change
- * kills it, the server it runs on restarts. `ensureSandbox` already builds
- * another, and until now that was the whole story, so the next turn woke up in
- * an empty container with no checkout and no dependencies and reported that the
+ * A sandbox holds the work — the clone and everything installed into it — and is
+ * replaceable: the TTL reaps an idle one, a credential change kills it, its server
+ * restarts. `ensureSandbox` already builds another, and until now that was the
+ * whole story, so the next turn woke in an empty container and reported that the
  * repository was broken.
+ */
+/**
+ * Called from `ensureSandbox` rather than from each of its callers: a caller that
+ * has to remember to restore is a caller that will not, and the ones that matter
+ * are three levels down inside a turn.
  *
- * Called from `ensureSandbox` rather than from each of its callers: a caller
- * that has to remember to restore is a caller that will not, and the ones that
- * matter are three levels down inside a turn.
- *
- * Inline rather than queued, because the turn that triggered the rebuild cannot
- * do anything useful until this finishes. `createCheckout` is idempotent, and
- * the install streams, which is what makes a long one watchable.
+ * Inline rather than queued, because the turn that triggered the rebuild cannot do
+ * anything useful until it finishes. `createCheckout` is idempotent, and the
+ * install streams, which is what makes a long one watchable.
  */
 export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
   const grp = ctx.db
@@ -178,18 +178,18 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
 /**
  * What the repository turns out to be, read once, from the first clone.
  *
- * This used to run when the project was registered, against a checkout on the
- * host. There is no such checkout any more (007 §2) and there never will be
- * again, so it runs here instead: the first group's container is the first
- * moment the repository exists anywhere we can read it.
- *
+ * This used to run at registration against a checkout on the host. There is no such
+ * checkout any more (ADR 007) and never will be, so it runs here: the first group's
+ * container is the first moment the repository exists anywhere we can read it.
+ */
+/**
  * Once per project, marked by `config.detected` rather than by "are there gates
- * yet" — a project where detection genuinely finds nothing must not re-run it
- * for every group forever, and must not grow duplicate resource rows.
+ * yet" — a project where detection genuinely finds nothing must not re-run forever
+ * or grow duplicate resource rows.
  *
- * Everything it writes is a guess in a place the boss can correct: the gate
- * names, the install command and the shared paths land in project config, which
- * is `detect.ts`'s own stated rule.
+ * Everything it writes is a guess in a place the boss can correct: gate names, the
+ * install command and the shared paths all land in project config, which is
+ * `detect.ts`'s own stated rule.
  */
 export async function detectProject(ctx: Ctx, grpId: number, projectId: number): Promise<void> {
   const cfg = projectConfig(ctx.db, projectId);

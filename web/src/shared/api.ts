@@ -11,14 +11,15 @@ import { displayJson, readJsonResponse, TextResponseSchema } from "../../../src/
  * The payload types, from the server that produces them.
  *
  * These were seventy-two lines of hand-written interfaces re-describing shapes
- * `snapshot()` and `costReport()` already declare — two copies of one truth,
- * neither checked against the other, and the browser's copy was the one that
- * would keep claiming a field was a `string` after a migration renamed the
- * column out from under it.
- *
+ * `snapshot()` and `costReport()` already declare — two copies of one truth, neither
+ * checked against the other, and the browser's copy was the one that would keep
+ * claiming a field was a `string` after a migration renamed the column out from
+ * under it.
+ */
+/**
  * Hono RPC supplies route, param, query and request-body types. Zod still parses
- * responses at runtime: a compile-time contract cannot validate bytes returned
- * by an older or broken server.
+ * responses at runtime: a compile-time contract cannot validate bytes returned by an
+ * older or broken server.
  */
 import { CostReportSchema, type CostReport } from "../../../src/contracts/cost.ts";
 import {
@@ -83,17 +84,16 @@ export type Evidence = z.infer<typeof EvidenceSchema>;
  * Where a scope's wall clock went — the one read that is not on the RPC client.
  *
  * `/telemetry` is registered outside the chain that produces `ApiType`, because
- * one more route in that inferred type is what tips `hc<ApiType>` over the
- * length TypeScript will serialise; `src/http/routes/panel.ts` says so at the
- * registration. So the URL and the query are built here by hand, in one place,
- * rather than in each of the three views that read it.
- *
+ * one more route in that inferred type is what tips `hc<ApiType>` past the length
+ * TypeScript will serialise. So the URL and the query are built by hand here, in
+ * one place, rather than in each of the three views that read it.
+ */
+/**
  * The response contract survives that: `TelemetryReport` is imported type-only
- * from the route module — which is what the `web` boundary allows from
- * `public-rpc` — and the schema below is annotated with it, so a field the
- * server renames stops compiling here rather than parsing to `undefined` at
- * runtime. Zod still parses the bytes, for the same reason it does everywhere
- * else: a compile-time contract cannot validate what an older server sent.
+ * from the route module — what the `web` boundary allows from `public-rpc` — and
+ * the schema below is annotated with it, so a field the server renames stops
+ * compiling here rather than parsing to `undefined` at runtime. Zod still parses
+ * the bytes: a compile-time contract cannot validate what an older server sent.
  */
 const StageStatSchema = z.object({
   name: z.string(),
@@ -311,19 +311,19 @@ const ORCH = ["orch"];
 /**
  * The two reads the whole panel is built on, plus the stream that invalidates them.
  *
- * The project scope used to be a ref. Every SSE event called `refresh()` with no
- * argument, which swapped 成本 from this project to every project the moment
- * anything happened — while the page still said 这个项目累计 — so a `lastProject`
- * ref was added to remember it. It is a query key now: the scope is *in* the
- * identity of the cached answer, so there is no version of this where a reply
- * for one project can land under another's heading.
- *
- * The heartbeat and the `visibilitychange` listener are gone the same way.
- * `refetchInterval` already pauses when the tab is hidden and `refetchOnWindowFocus`
- * re-reads on the way back — which is exactly what the hand-written pair did, and
- * was the reason it existed: subscription usage moves on the watchdog's clock and
- * writes no bus frame, so on a quiet system the header showed a reading from
- * however long ago the last unrelated event happened to be.
+ * The project scope used to be a ref, because every SSE event called `refresh()`
+ * with no argument and swapped 成本 from this project to every project while the
+ * page still said 这个项目累计. It is a query key now: the scope is *in* the identity
+ * of the cached answer, so there is no version of this where a reply for one
+ * project lands under another's heading.
+ */
+/**
+ * The heartbeat and the `visibilitychange` listener went the same way.
+ * `refetchInterval` already pauses on a hidden tab and `refetchOnWindowFocus`
+ * re-reads on the way back — which is what the hand-written pair did, and why it
+ * existed: subscription usage moves on the watchdog's clock and writes no bus
+ * frame, so on a quiet system the header showed a reading from however long ago
+ * the last unrelated event was.
  */
 export function useOrch() {
   const queries = useQueryClient();

@@ -79,16 +79,15 @@ test("with no GitHub client at all the picker is empty rather than throwing", as
 /**
  * A branch the boss picked survives the heartbeat.
  *
- * `baseBranch` asks GitHub for `default_branch` on every call — deliberately,
- * since a 304 is free — and wrote the answer over `base_branch` unconditionally.
- * So a branch chosen in settings was reverted within one tick, and the endpoint
- * offering that box calls it "a choice rather than a memory test". Observed on a
- * live instance: the boss set `refactor/api-split-and-settings`, the feed
- * announced a reversion to `main` twice, 29 seconds apart, and the stored value
- * was `main`.
- *
- * The pin is what tells a choice from a cached lookup. Emptying the box clears
- * it, which is how you go back to following the remote.
+ * `baseBranch` asks GitHub for `default_branch` on every call — deliberately, since
+ * a 304 is free — and wrote the answer over `base_branch` unconditionally. So a
+ * branch chosen in settings was reverted within one tick: observed live, the boss
+ * set `refactor/api-split-and-settings`, the feed announced a reversion to `main`
+ * twice 29 seconds apart, and the stored value was `main`.
+ */
+/**
+ * The pin is what tells a choice from a cached lookup. Emptying the box clears it,
+ * which is how you go back to following the remote.
  */
 test("a pinned base branch is not overwritten by the remote's default", async () => {
   const { ctx } = project("me/x", () => json({ full_name: "me/x", default_branch: "main" }));
@@ -104,13 +103,12 @@ test("a pinned base branch is not overwritten by the remote's default", async ()
 /**
  * Two callers on one tick announce the drift once between them.
  *
- * `baseBranch` runs from the heartbeat's index pass and from watchdog rule 7e,
- * and both read the row before either writes — so each saw the old value, each
- * wrote, and each announced it. That is the duplicate the live feed showed: the
- * identical sentence twice, 29 seconds apart, for one change.
+ * `baseBranch` runs from the heartbeat's index pass and from watchdog rule 7e, and
+ * both read the row before either writes — so each saw the old value, each wrote,
+ * and each announced it. That is the duplicate the live feed showed.
  *
- * Sequential calls never reproduced it, because the second one reads the value
- * the first wrote. The concurrency is the test.
+ * Sequential calls never reproduced it, because the second reads what the first
+ * wrote. The concurrency is the test.
  */
 test("two callers racing on one tick announce the change once", async () => {
   const { ctx } = project("me/x", () => json({ full_name: "me/x", default_branch: "main" }));

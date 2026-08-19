@@ -581,12 +581,11 @@ const LOCAL_EMBEDDINGS = ["Xenova/multilingual-e5-small", "Xenova/multilingual-e
  * Local or remote, and which model — one row, because they are one decision.
  *
  * Two rows would invite `mode: remote` with a local model id, which fails at the
- * first call to an endpoint that has never heard of `Xenova/…`. The same argument
- * as `IndexModel` above, and the same shape.
+ * first call to an endpoint that has never heard of `Xenova/…`. Same argument as
+ * `IndexModel` above, same shape.
  *
- * The endpoint and the credential stay their own rows: they are only read when
- * the mode is remote, and hiding them when it is local would make a configured
- * endpoint disappear the moment somebody switched back to compare.
+ * Endpoint and credential stay their own rows: hiding them under `local` would make
+ * a configured endpoint disappear the moment somebody switched back to compare.
  */
 export function Embedding({
   mode,

@@ -12,22 +12,20 @@ import { z } from "zod";
 /**
  * How much of the claude subscription's windows is gone.
  *
- * The CLI's own stream will not say. 267 real `rate_limit_event` frames in this
- * repo's logs carry a status, a type and a reset time — never a percentage — so
- * "am I about to run out tonight" was unanswerable from the turn stream alone.
- * codex volunteers both windows in every `token_count`, which is why only this
- * side needs a poller.
+ * The CLI's own stream will not say: 267 real `rate_limit_event` frames in this
+ * repo's logs carry a status, a type and a reset time — never a percentage. codex
+ * volunteers both windows in every `token_count`, which is why only this side
+ * needs a poller.
+ */
+/**
+ * The endpoint is the one every community monitor uses and is undocumented, so
+ * everything here degrades rather than fails: no credential, an expired token, a
+ * changed response all fall back to the status and reset time the stream does
+ * give. Nothing may depend on this working, and upstream says it barely does —
+ * anthropics/claude-code#31637 and #31021 report it 429ing for hours.
  *
- * The endpoint is the one every community monitor uses and is not documented by
- * Anthropic. Everything here therefore degrades rather than fails: no credential,
- * an expired token, a changed response — the header falls back to the status and
- * reset time the stream does give us. Nothing in the orchestrator may depend on
- * this working, and upstream says it barely does: anthropics/claude-code#31637
- * and #31021 report it 429ing so hard that polling it at any interval is
- * unusable, for hours at a time.
- *
- * The credential is the one on the settings page. Nothing here reads a host CLI
- * session — see `usageToken`.
+ * The credential is the one on the settings page; nothing here reads a host CLI
+ * session (see `usageToken`).
  */
 
 const ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
@@ -36,17 +34,17 @@ const BETA = "oauth-2025-04-20";
 /**
  * Ten minutes, which is as often as this endpoint will actually answer.
  *
- * It was one minute, on the reasoning that the windows move in hours and a
- * minute-fresh number costs one request. What that ignores is the endpoint's own
- * budget: it answers a 30-60s poller with 429 and then keeps answering 429, which
- * is the failure mode every community monitor hits
- * (anthropics/claude-code#31637, #31021, #30930). Live here the row sat on
- * `"error":"rate_limited"` with numbers 8 minutes old and no way out, because the
- * retry after the backoff was itself too soon.
- *
- * The boss's own `/status` in the CLI spends from the same budget, so polling
- * hard also makes their check fail. Ten minutes inside a five-hour window is a
- * 3% error at worst.
+ * It was one minute, reasoning that the windows move in hours and a minute-fresh
+ * number costs one request. That ignores the endpoint's own budget: it answers a
+ * 30–60s poller with 429 and then keeps answering 429 (anthropics/claude-code#31637,
+ * #31021, #30930). Live here the row sat on `"error":"rate_limited"` with numbers
+ * eight minutes old and no way out, because the retry after the backoff was itself
+ * too soon.
+ */
+/**
+ * The boss's own `/status` in the CLI spends from the same budget, so polling hard
+ * also makes their check fail. Ten minutes inside a five-hour window is a 3% error
+ * at worst.
  */
 export const POLL_EVERY_MS = 10 * 60_000;
 
@@ -114,16 +112,16 @@ export function toRateLimit(value: unknown): RateLimitInfo | null {
 /**
  * The token the usage call is made with: the one on the settings page.
  *
- * This used to read the *host's* own Claude Code login — the macOS keychain
- * entry, falling back to `~/.claude/.credentials.json` — which contradicted the
- * check three lines below it. `subscriptionAccount` gates on `runtime_auth`,
- * whose own comment says a bar sourced from "whatever this host happens to be
- * logged into" would be about an account the fleet never touches; and then the
- * number came from exactly that. Two different accounts, one label.
- *
- * It was also the last place anything reached into a host CLI session, and the
- * only platform-specific one in the file — `security` is macOS, the file
- * fallback is Linux, and Windows had neither.
+ * This used to read the *host's* own Claude Code login — the macOS keychain entry,
+ * falling back to `~/.claude/.credentials.json` — which contradicted the check three
+ * lines below it. `subscriptionAccount` gates on `runtime_auth`, whose own comment
+ * says a bar sourced from "whatever this host happens to be logged into" would be
+ * about an account the fleet never touches. Two different accounts, one label.
+ */
+/**
+ * It was also the last place anything reached into a host CLI session, and the only
+ * platform-specific one in the file — `security` is macOS, the file fallback is
+ * Linux, and Windows had neither.
  */
 function usageToken(db: DB): string | null {
   const a = loadAuth(db, "claude");
@@ -144,19 +142,19 @@ type UsageRead = { rl: RateLimitInfo } | { error: string };
  * Asked from the utility container, with a decoy, like everything else.
  *
  * This was a host `fetch` carrying the **real** token out of `runtime_auth`, and
- * it was the last place a real model credential left this machine without going
- * through the sidecar. The vault's whole premise is that a real value only
- * appears on the wire when the sidecar substitutes it — so an exception here did
- * not weaken the rule, it made the rule untrue, and nobody reading the rule
- * would have found it.
+ * the last place a real model credential left this machine without going through
+ * the sidecar. The vault's premise is that a real value appears on the wire only
+ * when the sidecar substitutes it, so an exception here did not weaken the rule —
+ * it made the rule untrue, where nobody reading the rule would find it.
+ */
+/**
+ * Injection *replaces* an Authorization header the client already set, so curl has
+ * to send something: the same decoy every container holds. The utility container,
+ * not a group's — this is a subscription-wide reading and nothing an agent asked
+ * for.
  *
- * Injection *replaces* an Authorization header the client already set (005), so
- * curl has to send something: it sends the same decoy every container holds, and
- * the sidecar swaps in the real token on the way out. The utility container, not
- * a group's — this is a subscription-wide reading and nothing an agent asked for.
- *
- * `-w` puts the status on its own last line, because curl's body and its exit
- * code cannot tell 429 from 500 and 429 is the one worth naming.
+ * `-w` puts the status on its own last line, because curl's body and exit code
+ * cannot tell 429 from 500 and 429 is the one worth naming.
  */
 async function fetchClaudeUsage(ctx: Ctx): Promise<UsageRead> {
   const auth = `Authorization: Bearer ${decoy("claude", "oauth_token")}`;
@@ -245,24 +243,22 @@ function stamp(db: DB, now: number, read: UsageRead): void {
 /**
  * codex's quota, which is not in the stream.
  *
- * `codex exec --json` emits thread.started, turn.started, item.* and
- * turn.completed and nothing else — checked against six real turn logs from this
- * repo. `token_count`, which carries `rate_limits`, is a TUI event. But codex
- * writes a rollout file per session under $CODEX_HOME/sessions, and that file has
- * the same `rate_limits` object in it.
- *
- * **Where those files are moved with the turns.** Since 005 a turn runs in a
- * container and `CODEX_HOME` is `/root/.codex` *inside it*, so the host's
- * `<dataDir>/codex-home/sessions` holds only the weekly refresh nudge's own
- * rollout — the quota it reports is the account's, and correct, but as of
- * whenever the nudge last ran. The fleet's own sessions, the fresh ones, are in
- * the sandboxes. So the sandbox is asked first and the host is the fallback.
- *
- * The shape is not the one the TUI streams: windows come back as
+ * `codex exec --json` emits thread/turn/item events and nothing else — checked
+ * against six real turn logs. `token_count`, which carries `rate_limits`, is a
+ * TUI event. But codex writes a rollout file per session under
+ * `$CODEX_HOME/sessions` with the same object in it.
+ */
+/**
+ * **Those files moved with the turns.** Since ADR 005 a turn runs in a container
+ * and `CODEX_HOME` is `/root/.codex` *inside it*, so the host copy holds only the
+ * weekly nudge's own rollout — correct for the account, but as of whenever the
+ * nudge last ran. So the sandbox is asked first and the host is the fallback.
+ */
+/**
+ * The shape is not the one the TUI streams: windows arrive as
  * `{used_percent, window_minutes, resets_at}` with `resets_at` absolute, and an
- * account may report only one of them — this one has a single 10080-minute
- * window and a null secondary. So the window is identified by its length rather
- * than by which slot it arrived in.
+ * account may report only one of them. So a window is identified by its length
+ * rather than by which slot it arrived in.
  */
 export function rateLimitsIn(text: string, now: number): RateLimitInfo | null {
   // A rollout is `.jsonl` — one object per line — so the line is the object and

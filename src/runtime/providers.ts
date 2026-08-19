@@ -6,14 +6,12 @@ import { runCodexTurn as runCodex } from "./codex.ts";
 /**
  * The registry of agent CLIs.
  *
- * A role picks its provider by name (`runtime:` in roles/*.yaml), and everything
- * downstream — the model table in config, the effort word, the executor — reads
- * this map rather than testing for a particular CLI. Adding a third is a file
- * next to claude.ts and one line here; no union type to widen, no `if` to find.
+ * A role picks its provider by name, and everything downstream — the model table,
+ * the effort word, the executor — reads this map rather than testing for a
+ * particular CLI. Adding a third is a file next to `claude.ts` and one line here.
  *
  * A provider owns exactly two things that differ between CLIs: how to run a turn,
- * and how hard its models can be asked to think. Everything else about a role
- * (prompt, tools, model id, budget) is already configuration.
+ * and how hard its models can be asked to think.
  */
 export interface Provider {
   name: string;

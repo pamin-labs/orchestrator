@@ -11,14 +11,15 @@ import { testContext } from "../support/test-context.ts";
  * Three ways a checkout goes wrong quietly, and one way it goes wrong loudly.
  *
  * A shallow clone is faster and truncates history, which `rebaseOntoBase` and
- * `merge-base --is-ancestor` both need — and a future reader with a slow clone
- * in front of them reaches for `--depth=1` first.
- *
- * `ensureCheckout` had four early returns before it could ever throw. When one
- * fired the group ran a whole turn against an empty `/work`: status RUNNING, an
- * agent on the roster, no error anywhere. There are three now — "the host has no
- * git" stopped being a way this can fail when the remote stopped being read out
- * of a host checkout (007 step 5).
+ * `merge-base --is-ancestor` both need — and a future reader with a slow clone in
+ * front of them reaches for `--depth=1` first.
+ */
+/**
+ * `ensureCheckout` had four early returns before it could ever throw, and when one
+ * fired the group ran a whole turn against an empty `/work`: RUNNING, an agent on
+ * the roster, no error anywhere. There are three now — "the host has no git" stopped
+ * being a way this can fail when the remote stopped being read out of a host
+ * checkout.
  */
 function harness(opts: { project?: boolean; grp?: boolean; remote?: boolean; modules?: boolean } = {}) {
   const db: DB = openMemory();

@@ -11,16 +11,16 @@ import { Workspace } from "../../web/src/features/workspace/view.tsx";
  * What a pane shows after the scope it was reading for has been left.
  *
  * Every one of these panes was `useState` filled from a bare `.then()` in an
- * effect, with no ignore flag and no `AbortController`. They are all the same
- * defect and they all read the same way to whoever hit one: the boss moves to
- * the next project, requirement or group, the abandoned request comes back, and
- * its answer is written into a pane whose heading now names something else. The
- * panel offers no clue — the data is real, it is just filed under the wrong
+ * effect, with no ignore flag and no `AbortController`. They are one defect and
+ * they read the same way to whoever hit one: the boss moves to the next project,
+ * the abandoned request comes back, and its answer is written into a pane whose
+ * heading now names something else. The data is real, just filed under the wrong
  * thing, which is worse than an error.
- *
- * The order below is what produces it and is the reason a hand-rolled ignore
- * flag would not be enough on its own: the scope on screen answers *first*, so
- * what the reader sees is settled, and the stale reply arrives after.
+ */
+/**
+ * The order below is what produces it, and is why a hand-rolled ignore flag would
+ * not be enough on its own: the scope on screen answers *first*, so what the reader
+ * sees is settled, and the stale reply arrives after.
  */
 
 /** A network whose replies are released by the test, one URL substring at a time. */

@@ -1,15 +1,12 @@
 /**
  * Every state a first-class entity can rest in.
  *
- * Written down here, and nowhere else, so that `invariants.ts` can be checked
- * against it: a state with no invariant row is a state nobody is driving, which
- * is how a group ends up RUNNING forever with an empty queue and no error. The
- * check is a test, so adding a state to this file fails the build until the table
- * says who pushes it.
+ * Written here and nowhere else, so `invariants.ts` can be checked against it: a
+ * state with no invariant row is a state nobody is driving, which is how a group
+ * ends up RUNNING forever with an empty queue and no error. Adding a state fails the
+ * build until the table says who pushes it.
  *
- * "Resting" is the operative word. These are states the system can sit in between
- * turns — the question each one has to answer is: if the transition out of here
- * never fires, who notices?
+ * If the transition out of a state never fires, who notices?
  */
 
 export const GRP_STATES = [

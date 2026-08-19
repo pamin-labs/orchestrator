@@ -22,12 +22,10 @@ export interface ReconcileInput {
    * Claimed paths that are neither in the branch point's tree nor in the worktree.
    *
    * A scratch file the Engineer created and then deleted leaves nothing behind:
-   * never committed, so it is not in the diff, and gone, so it is not untracked
-   * either. Reporting that deletion honestly was scored as a phantom claim, and a
-   * correct branch went back twice on it. Git cannot tell that case from an
-   * invented path — neither ever existed as far as it is concerned — so neither
-   * can we, and neither is a delivery. They are dropped from the claim rather than
-   * failing it; if nothing real is left, the checks below still catch it.
+   * never committed, so not in the diff, and gone, so not untracked either.
+   * Reporting that deletion honestly was scored as a phantom claim and a correct
+   * branch went back twice on it. Git cannot tell that from an invented path, so
+   * neither can we, and neither is a delivery.
    */
   absent?: string[];
 }

@@ -93,14 +93,12 @@ const SkillsResponseSchema: z.ZodType<InferResponseType<typeof api.skills.$get, 
 /**
  * The skill list, fetched once per project for the life of the page.
  *
- * Without a project this returns the user-level ones. A box that takes a
- * screenshot and a box that takes an idea are the same box (that is why there is
- * one component), and half of them silently had no `/` because whoever wired them
- * up did not have a project id to hand.
+ * Without a project this returns the user-level ones. A box that takes a screenshot
+ * and a box that takes an idea are the same box, and half of them silently had no
+ * `/` because whoever wired them up had no project id to hand.
  *
  * Cached at module scope because composers mount constantly — every reseed is a
- * remount — and the list changes when a file lands on disk, not between two
- * clicks.
+ * remount — and the list changes when a file lands on disk, not between two clicks.
  */
 /**
  * The key both readers of this list share: this composer and the settings pane.
@@ -247,15 +245,15 @@ function useAutoGrow(box: RefObject<HTMLTextAreaElement | null>, text: string, r
  *
  * Not slash commands: agents run with `--disable-slash-commands` (the catalogue is
  * ~46k cached tokens of prefix on every turn) and without the boss's user-level
- * setup (~195k on a trivial turn). Instead the orchestrator reads the SKILL.md
- * itself, on the host, and appends its text to that one turn — so a `~/.claude`
- * skill reaches an agent that cannot see the file, and a skill used once is paid
- * for once.
- *
- * The first read is the module cache, synchronously, so a composer that remounts
- * (every 填进输入框 does) starts with the list it had. Without it the 插技能 button
- * popped in a beat after the other two on every open — the fetch is fast, but
- * "fast" is exactly the timing that reads as a flicker.
+ * setup (~195k on a trivial turn). The orchestrator reads the SKILL.md itself, on
+ * the host, and appends its text to that one turn — so a `~/.claude` skill reaches
+ * an agent that cannot see the file, and a skill used once is paid for once.
+ */
+/**
+ * The first read is the module cache, synchronously, so a composer that remounts —
+ * every 填进输入框 does — starts with the list it had. Without it the 插技能 button
+ * popped in a beat after the other two on every open: the fetch is fast, but "fast"
+ * is exactly the timing that reads as a flicker.
  */
 function useSkills(projectId?: number) {
   const { data = null } = useQuery({
@@ -310,11 +308,9 @@ function Send({
  * There were four of these: the idea dialog with attachments and paste, a bare
  * textarea for talking to the group, and two one-line inputs for "why I am sending
  * this back". A screenshot is exactly as useful attached to "这里不对" as to a new
- * idea, and the reasons the boss gives are the highest-value text in the system —
- * they become blackboard facts the whole group reasons from. One component, so
- * every one of them gets files, paste, ⌘Enter and the same failure messages.
- *
- * Files are uploaded on drop and referenced by path; contents never enter a prompt.
+ * idea, and the reasons the boss gives become blackboard facts the whole group
+ * reasons from. One component, so every one of them gets files, paste, ⌘Enter and
+ * the same failure messages.
  */
 export function Composer({
   placeholder,

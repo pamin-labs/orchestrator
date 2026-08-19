@@ -8,18 +8,17 @@ import { testContext } from "../support/test-context.ts";
 /**
  * Work that outlives the thing that started it must not fail out loud.
  *
- * Accepting a slice starts two pieces of detached work — the push to the remote,
- * and whatever the scheduler dispatches — and neither is awaited, because the
- * boss's button cannot wait on GitHub. Both end in a database write, and by the
- * time they land the row they wanted may be gone: a dropped group, a shutdown,
- * a test whose harness has moved on.
- *
- * An escape from a detached chain is an unhandled rejection, and an unhandled
- * rejection surfaces against **whatever is running when it lands** — which is
- * how one of these presented: a test that failed one run in three, in a file it
- * had nothing to do with, and passed every time it was run on its own. The cost
- * of that is not the failure, it is that a flaky test gets read as noise and is
- * no longer there when the behaviour it guards actually breaks.
+ * Accepting a slice starts two pieces of detached work — the push, and whatever the
+ * scheduler dispatches — and neither is awaited, because the boss's button cannot
+ * wait on GitHub. Both end in a database write, and by then the row they wanted may
+ * be gone: a dropped group, a shutdown, a harness that has moved on.
+ */
+/**
+ * An escape from a detached chain is an unhandled rejection, and one surfaces
+ * against **whatever is running when it lands** — which is how one of these
+ * presented: a test failing one run in three, in a file it had nothing to do with,
+ * passing every time it ran alone. The cost is not the failure; it is that a flaky
+ * test gets read as noise and is no longer there when its subject breaks.
  */
 test("detached work whose record is gone does not surface against an unrelated caller", async () => {
   const seen: string[] = [];

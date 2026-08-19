@@ -1,17 +1,17 @@
 /**
  * Work out a project's gates from what the repository root looks like.
  *
- * A project with no gates fails every slice by design, so leaving this to the
- * boss means the first thing the system does on a new project is refuse to work
- * and look broken. Detection is best-effort and always visible: whatever it
- * guesses is written into project config, where it can be corrected.
- *
+ * A project with no gates fails every slice by design, so leaving this to the boss
+ * means the first thing the system does on a new project is refuse to work and look
+ * broken. Detection is best-effort and always visible: whatever it guesses is
+ * written into project config, where it can be corrected.
+ */
+/**
  * No filesystem in here. The repository this reads is a clone inside a group's
- * container (007 §2) — there is no host checkout to point at any more — so the
- * caller gathers a listing and a few files however it can reach them, and this
- * stays a pure function of that. The fixture tests are the reason: they are the
- * only thing covering these rules, and they now need neither a temp directory
- * nor a container.
+ * container — there is no host checkout to point at any more — so the caller
+ * gathers a listing and a few files however it can reach them, and this stays a
+ * pure function of that. The fixture tests are the reason: they are the only thing
+ * covering these rules, and they need neither a temp directory nor a container.
  */
 
 /** A repository root: what is in it, and the contents of the few files that matter. */

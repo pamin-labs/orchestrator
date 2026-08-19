@@ -5,12 +5,11 @@ import { startTheme } from "../../web/src/ui/theme.tsx";
  * The page comes up in the right theme, and stays right without a reload.
  *
  * `ThemeChoice` — the control — is reached by the settings render tests. What
- * `startTheme` does is the half that runs when nobody opens settings, and every
- * one of its three jobs fails silently: an unread preference is a page in the
- * wrong theme, an unheard OS change is a page that goes light at sunset and stays
- * light until reload, and a hotkey that does not fire is a shortcut nobody
- * reports because they assume they mistyped it.
- *
+ * `startTheme` does is the half that runs when nobody opens settings, and each of
+ * its jobs fails silently: an unread preference is a page in the wrong theme, and an
+ * unheard OS change is a page that goes light at sunset and stays light until reload.
+ */
+/**
  * `data-theme` is always resolved to a concrete light or dark — "system" is the
  * stored preference, never the attribute — which is the property the stylesheet's
  * single dark block depends on.

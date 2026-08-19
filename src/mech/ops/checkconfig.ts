@@ -9,16 +9,16 @@ import type { z } from "zod";
 /**
  * Does the yaml say what it thinks it says?
  *
- * `loadConfig` is `{ ...DEFAULTS, ...parsed }` and nothing else, which fails
- * three ways and all of them silently: a misspelled key does nothing, a wrong
- * type is carried to whoever reads it, and a partial nested block replaces the
- * whole default block — write `sandbox:` with two of its eight fields and the
- * other six become `undefined`, surfacing an hour later as a container that will
- * not start. Config errors have to be reported where they were made.
- *
- * The rules come from `DEFAULTS`, not from a second table beside it: the default
- * value's type is the expected type, and its presence is the list of legal keys.
- * A table would be 28 lines that drift from the 28 they describe.
+ * `loadConfig` is `{ ...DEFAULTS, ...parsed }` and nothing else, which fails three
+ * ways and all of them silently: a misspelled key does nothing, a wrong type is
+ * carried to whoever reads it, and a partial nested block replaces the whole default
+ * block — write `sandbox:` with two of its eight fields and the other six become
+ * `undefined`, surfacing an hour later as a container that will not start.
+ */
+/**
+ * The rules come from `DEFAULTS`, not a second table beside it: the default value's
+ * type is the expected type, and its presence is the list of legal keys. A table
+ * would be 28 lines that drift from the 28 they describe.
  */
 
 export type Level = "fatal" | "warn" | "info";
@@ -63,16 +63,16 @@ function invalidValue(schema: ReturnType<typeof schemaAt>, value: Json, key: str
 /**
  * Check the yaml against `ConfigSchema`, key by key.
  *
- * Key by key rather than one `ConfigSchema.parse(parsed)`, and for two reasons a
- * whole-document parse cannot give: the yaml is a *partial* override, so absent
- * keys are correct and `.parse` would demand them; and an unknown key deserves
- * the "did you mean" that made this checker worth having — zod can say a key is
- * unrecognised but not which real key it looks like.
- *
- * What is no longer here is the type table. `kind()`, `POSITIVE` and `UNIONS`
- * were a second opinion about what a legal config is, and the panel had a third
- * — which is how `maxGroups: 0` came to be refused in the file and accepted over
- * HTTP.
+ * Key by key rather than one `ConfigSchema.parse(parsed)`, for two reasons a
+ * whole-document parse cannot give: the yaml is a *partial* override, so absent keys
+ * are correct and `.parse` would demand them; and an unknown key deserves the "did
+ * you mean" that made this checker worth having — zod can say a key is unrecognised
+ * but not which real key it looks like.
+ */
+/**
+ * What is no longer here is the type table. `kind()`, `POSITIVE` and `UNIONS` were a
+ * second opinion about what a legal config is, and the panel had a third — which is
+ * how `maxGroups: 0` came to be refused in the file and accepted over HTTP.
  */
 function walk(parsed: JsonMap, at: string, out: Finding[]): void {
   const siblings = keysUnder(at);

@@ -4,14 +4,12 @@ import { cn } from "../../ui/cn";
 /**
  * Command palette for switching between things of one kind.
  *
- * Tabs were the first attempt and they stop working somewhere around a dozen
- * projects. A filterable list scales, and the keyboard route means switching
- * never costs a trip to the mouse.
+ * Tabs were the first attempt and they stop working around a dozen projects. A
+ * filterable list scales, and the keyboard route means switching never costs a trip
+ * to the mouse.
  *
- * Controlled, and generic over what it lists: the trigger is whatever the caller
- * wants it to be — the breadcrumb itself, in practice, because a name in a
- * breadcrumb that switches is the shortest possible route to "show me the other
- * one", and a separate 切换 control next to it is one word explaining another.
+ * Controlled, and generic over what it lists: the trigger is the breadcrumb itself,
+ * because a name that switches is the shortest route to "show me the other one".
  */
 
 export interface SwitchItem {

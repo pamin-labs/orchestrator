@@ -21,15 +21,15 @@ export const AttachmentNameParams = z.object({ name: z.string().min(1) });
 /**
  * Words plus the files that came with them.
  *
- * Paths, never contents: an image inlined into a prompt costs thousands of tokens
- * on every turn that carries it, a path costs a dozen and the agent opens it once
- * when it needs to. Shared by every route the boss can attach to — an idea, a
- * sent-back card, a rejected slice, a remark to the group.
- *
- * The image tag is ASCII and fixed because it is read back by machine: codex has
- * no file tool that opens an image, so those paths have to leave here and come
- * back as `-i` flags (imagePaths below). The wording no longer names a tool —
- * `Read` exists on one of the two CLIs.
+ * Paths, never contents: an image inlined into a prompt costs thousands of tokens on
+ * every turn that carries it, a path costs a dozen and the agent opens it once.
+ * Shared by every route the boss can attach to.
+ */
+/**
+ * The image tag is ASCII and fixed because it is read back by machine: codex has no
+ * file tool that opens an image, so those paths have to leave here and come back as
+ * `-i` flags. The wording no longer names a tool — `Read` exists on one of the two
+ * CLIs.
  */
 /**
  * `~` as the person typing it means it.
@@ -157,15 +157,12 @@ export const postAttachLocal = (async (ctx, _req, _p, b) => {
 /**
  * Hand one attachment back to the panel.
  *
- * The files were written to `data/attachments` and referenced by absolute path
- * from the first version, which is what an agent needs — but the panel is a
- * browser, and a browser cannot open a path. So the boss's own screenshot,
- * attached to the question the boss is being asked, rendered as a line of text
- * naming a file they could not see.
+ * The files were written to `data/attachments` and referenced by absolute path,
+ * which is what an agent needs — but a browser cannot open a path. So the boss's own
+ * screenshot rendered as a line of text naming a file they could not see.
  *
- * Basename only: the stored name is already sanitised on the way in, and taking
- * only the last segment means a path that arrives with `..` in it resolves to a
- * file that does not exist rather than to one outside the directory.
+ * Basename only: a path arriving with `..` then resolves to a file that does not
+ * exist rather than to one outside the directory.
  */
 export const getAttachment = (async (ctx, _req, params) => {
   const name = basename(params.name);

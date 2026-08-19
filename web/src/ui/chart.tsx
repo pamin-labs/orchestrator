@@ -3,15 +3,14 @@ import { Tooltip } from "recharts";
 /**
  * The two things every chart on this page shares: its axes' ink, and its hover card.
  *
- * Both were written twice — once in 成本's burn chart and once in 耗时's trend —
- * and the copies differed only in which formatter they called. That is the whole
- * of the variation, so it is a parameter, and everything else (the unset content
- * style, the rule-coloured cursor, the suppressed outline, the card's own type
- * scale) is stated once. Two hover cards drifting apart is exactly the kind of
- * thing nobody notices until the panel has two visual vocabularies.
- *
- * Colours are `var(--color-…)` rather than resolved values, so both charts
- * follow the theme switch with no JavaScript. The accent is deliberately absent:
+ * Both were written twice — in 成本's burn chart and in 耗时's trend — and differed
+ * only in which formatter they called. That is the whole variation, so it is a
+ * parameter and everything else is stated once. Two hover cards drifting apart is
+ * the kind of thing nobody notices until the panel has two visual vocabularies.
+ */
+/**
+ * Colours are `var(--color-…)` rather than resolved values, so both charts follow
+ * the theme switch with no JavaScript. The accent is deliberately absent:
  * `docs/design/ui.md` reserves it for "needs you", and a chart that borrows it
  * teaches the eye to ignore it.
  */

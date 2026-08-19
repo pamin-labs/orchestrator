@@ -9,20 +9,15 @@ import addFormats from "ajv-formats";
  *
  * `codecov.yml` and `.github/dependabot.yml` are read by services, not by this
  * repository, and both fail silently: Codecov ignores a file it cannot parse,
- * which quietly removes the coverage gate, and Dependabot simply stops opening
- * updates. Neither produces an error anyone sees. actionlint covers workflow
- * syntax and does not look at these.
- *
- * The schemas are the published ones from SchemaStore, vendored under
- * `test/fixtures/schemas/` so the suite never touches the network. Refresh with:
- *
- *   curl -sL https://json.schemastore.org/codecov.json \
- *     -o test/fixtures/schemas/codecov.json
- *   curl -sL https://json.schemastore.org/dependabot-2.0.json \
- *     -o test/fixtures/schemas/dependabot-2.0.json
- *
- * A schema update that starts rejecting our file is the signal to read the
- * changelog, not to edit the schema.
+ * quietly removing the coverage gate, and Dependabot simply stops opening
+ * updates. actionlint covers workflow syntax and does not look at these.
+ */
+/**
+ * The schemas are SchemaStore's, vendored under `test/fixtures/schemas/` so the
+ * suite never touches the network. Refresh with `curl -sL
+ * https://json.schemastore.org/{codecov,dependabot-2.0}.json` into that
+ * directory. A schema update that starts rejecting our file is the signal to read
+ * the changelog, not to edit the schema.
  */
 
 /** Enough shape to know a schema file is a schema, without describing JSON Schema. */

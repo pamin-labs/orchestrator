@@ -8,20 +8,19 @@ import { terms } from "./terms.ts";
 /**
  * One index of the repo, shared by every group.
  *
- * Seven groups were each grepping the same repository to answer the same
- * question — where does X live — and every one of those rounds re-reads the whole
- * transcript, which is where the token bill actually is. The map is built once per
- * project, kept in a note, and handed out by `orch ctx query`.
- *
+ * Seven groups were each grepping the same repository for the same answer, and
+ * every one of those rounds re-reads the whole transcript, which is where the
+ * token bill is. The map is built once per project, kept in a note, and handed out
+ * by `orch ctx query`.
+ */
+/**
  * PageIndex-shaped: a tree with a path at every node, navigated by the question
- * rather than embedded and cosine-matched. That choice is not a preference — the
- * nodes here are file paths and exported names, which are exactly the words an
- * agent's question already contains, so lexical navigation hits and an embedding
- * would only add an API call and an index to keep fresh.
+ * rather than embedded and cosine-matched. Not a preference — the nodes are file
+ * paths and exported names, exactly the words a question already contains, so
+ * lexical navigation hits and an embedding would add an API call and an index.
  *
- * ponytail: node summaries are the file's exported names, not prose. A sentence
- * per file would be better and costs a model pass over the repo; do that when a
- * question turns out to need "what does this do" rather than "where is this".
+ * ponytail: node summaries are exported names, not prose. A sentence per file costs
+ * a model pass; do that when a question needs "what does this do".
  */
 
 /** How many names a single file contributes to the map. */
@@ -30,23 +29,18 @@ const MAX_SYMBOLS = 12;
 /**
  * What belongs in an index of a repository — by exclusion, not by allow-list.
  *
- * Both indexes used to carry their own extension allow-list. This one named
- * eighteen languages while the symbol regex it fed parsed JS/TS syntax only, so a
- * Go file entered the map and never got a symbol; PageIndex's named seven and, on
- * this repo, its whole effect was to exclude eight files (a lockfile and seven
- * things an agent would reasonably ask about). Point either at a Go, Python or
- * Rust project and the source was simply invisible — `symbols.ts` is the half of
- * that this file no longer gets wrong.
- *
- * An allow-list of source extensions cannot be finished — documentation alone is
- * md, txt, mdx, rmd, rst, adoc — while the set of things that are *not* text a
+ * An allow-list of source extensions cannot be finished (documentation alone is
+ * md, txt, mdx, rmd, rst, adoc) while the set of things that are *not* text a
  * model can summarise is stable and language-independent. `git ls-files` has
- * already excluded build output and everything gitignored, so what is left to
+ * already dropped build output and everything gitignored, so what is left to
  * remove is binaries, lockfiles and vendored trees.
- *
- * Whatever this still gets wrong is correctable per project rather than guessed
- * at again: `project.config_json.index.exclude`, the same arrangement
- * `detect.ts` uses for gates.
+ */
+/**
+ * Both indexes used to carry their own list, and both were wrong in the same
+ * direction: point either at a Go, Python or Rust project and the source was
+ * simply invisible. Whatever this still gets wrong is correctable per project
+ * rather than guessed at again — `project.config_json.index.exclude`, the same
+ * arrangement `detect.ts` uses for gates.
  */
 const BINARY =
   /\.(png|jpe?g|gif|bmp|ico|webp|avif|svgz|tiff?|pdf|zip|gz|tgz|bz2|xz|7z|rar|jar|war|class|so|dylib|dll|exe|bin|o|a|wasm|woff2?|ttf|otf|eot|mp[34]|m4a|wav|ogg|mov|mp4|avi|mkv|db|sqlite3?|pyc|pack|idx)$/i;
@@ -106,22 +100,20 @@ const MapNodeSchema = z.object({
 });
 
 /**
- * Tracked files only: build output and node_modules are noise, and git already knows.
+ * Tracked files only: build output and node_modules are noise, and git knows.
  *
- * `read` is how the file's text arrives, and it is a parameter because there is
- * no answer this module can work out for itself. It used to be
- * `readFileSync(join(repoPath, rel))` — and since 007 made `repo_path` an
- * `owner/name` rather than a directory, that path has not existed on this
- * machine. Every read threw, every throw was caught, and the map has been
- * **paths with no symbols** ever since, while still rendering as a map and still
- * being written only when it "changed". A caller now has to say where the text
- * comes from, and one that has none says so by passing nothing.
- *
+ * `read` is a parameter because there is no answer this module can work out for
+ * itself. It used to be `readFileSync(join(repoPath, rel))` — and since ADR 007
+ * made `repo_path` an `owner/name` rather than a directory, that path has not
+ * existed on this machine. Every read threw, every throw was caught, and the map
+ * has been **paths with no symbols** ever since, while still rendering as a map.
+ */
+/**
  * Async because parsing is: a tree-sitter grammar is a WebAssembly module and
  * there is no synchronous way to instantiate one. The cost is one-time and
  * per-process — 6ms for the runtime, then 0.6ms (Go) to 3.6ms (TypeScript) per
- * grammar, cached in `symbols.ts` — so a rebuild pays it on the first tick and
- * never again, rather than once per file as a naive call would.
+ * grammar, cached in `symbols.ts` — so a rebuild pays it on the first tick rather
+ * than once per file.
  */
 export async function buildMap(
   repoPath: string,

@@ -1,31 +1,8 @@
 /**
  * The read side of the `span` table: where a scope's wall clock went.
  *
- * Spans have been stored and scoped since ADR 014 and nothing read them back,
- * which made the storage half of that decision unfalsifiable — a boss asking
- * where a requirement's nine minutes went still had no collector to ask, and now
- * also had a table nothing queried. This is the answer to that question, and it
- * is one route rather than three.
- *
- * **One endpoint, three scopes.** A requirement, a project and the host ask the
- * same question of the same columns; the only thing that differs is a predicate.
- * Three routes would be that predicate written three times, drifting apart the
- * first time a percentile definition changed — and the panel would still need
- * one shape to render, so the divergence would be invisible until a number was
- * wrong. The scope is a parameter because it is data, not a destination.
- *
- * **The aggregation is SQL.** Percentiles, bucketing and the scope filter run in
- * `span-store.ts` against indexes that exist for them. Nothing here pulls rows
- * into the process to reduce them: 200k rows is the retention cap, and a panel
- * that read them all to compute a p95 would be slowest exactly when the fleet
- * was busiest and the answer mattered most.
- *
- * Trust boundary: `/api/v1/*`, the same as every other panel read — loopback by
- * default, CSRF on writes, and no agent reaches this process directly at all.
- * The scope id is a positive integer and nothing else; it is interpolated
- * nowhere, only bound. A scope naming a project that does not exist is not an
- * error, it is an empty report, because a span is an observation of work rather
- * than a reference to it and the row it described may have been deleted.
+ * ADR 014 stored spans and nothing read them back, which left its storage half
+ * unfalsifiable — a table nothing queried, and a boss still with no way to ask.
  */
 
 import { z } from "zod";
@@ -94,6 +71,14 @@ export const TelemetryQuery = z
 export type TelemetryQueryValue = z.infer<typeof TelemetryQuery>;
 
 /** The validated query as the scope the store understands. */
+/**
+ * One endpoint, three scopes, because the scope is data and not a destination.
+ *
+ * Requirement, project and host ask the same question of the same columns and
+ * differ only by a predicate. Three routes would be that predicate written three
+ * times, drifting apart the first time a percentile definition changed — and
+ * invisibly, since the panel renders one shape either way.
+ */
 function toScope(query: TelemetryQueryValue): ReadScope {
   // `id` is present for both non-system scopes by the refinement above; the
   // fallback keeps this total without a non-null assertion the compiler would
@@ -134,21 +119,15 @@ export interface WaterfallSpan {
 }
 
 /**
- * The report.
- *
- * All four pieces in one response because all four are drawn at once and a panel
- * that fetched them separately would render three of them against one window and
- * the fourth against another — a p95 next to a trend computed over a different
- * span of time is two answers to one question. The trace is `null` unless one
- * was asked for; the drill-in is a second call with the same scope, so the
- * aggregate behind it stays put while the reader moves between traces.
- *
- * Written as a named interface rather than inferred from the handler because
- * `ApiType` serialises every route's response into one type for the browser
- * client, and an anonymous nested literal here was enough to push that past what
- * TypeScript will serialise at all (TS7056, on `hc<ApiType>` in
- * `web/src/shared/api.ts`). A name costs nothing and keeps the client's type
- * legible instead of merely large.
+ * The report: four pieces in one response, because all four are drawn at once
+ * and fetching them separately renders three against one window and the fourth
+ * against another — a p95 beside a trend over a different span of time is two
+ * answers to one question.
+ */
+/**
+ * A named interface, not inferred: `ApiType` serialises every route's response
+ * into one type for the browser client, and an anonymous nested literal here was
+ * enough to push that past TS7056 on `hc<ApiType>`.
  */
 export interface TelemetryReport {
   scope: TelemetryQueryValue["scope"];
@@ -188,6 +167,14 @@ export interface TelemetryReport {
   trace: { traceId: string; spans: WaterfallSpan[] } | null;
 }
 
+/**
+ * The aggregation is SQL, in `span-store.ts`, against indexes that exist for it.
+ *
+ * Nothing here pulls rows in to reduce them: 200k is the retention cap, so a
+ * panel computing a p95 in-process would be slowest exactly when the fleet was
+ * busiest. A scope naming a project that is gone is an empty report, not an
+ * error: a span observes work rather than referring to it.
+ */
 export const getTelemetry = (async (ctx, _req, _params, query) => {
   const scope = toScope(query);
   const windowMs = query.windowMs ?? DEFAULT_WINDOW_MS;

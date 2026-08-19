@@ -16,17 +16,16 @@ const defaultView = (evidence?: Evidence | null) => (evidence?.verdicts.some(fai
 /**
  * One slice's evidence, identified by the slice it belongs to.
  *
- * This was `useState` filled from a bare `.then()` in an effect — no ignore
- * flag, no `AbortController` — so clicking one slice and then a faster one left
- * the first read in flight, and when it returned it wrote its `accept_spec`, its
- * diff and its verdicts into the panel already showing the second. The slice id
- * is part of the query key now, which is the whole of the fix: a reply is filed
- * under the slice that asked for it, and the component reads the entry for the
- * slice on screen, so there is no version of this where the two can meet.
- *
- * The key is not under the `["orch"]` prefix the stream invalidates. Evidence is
- * read when a slice is opened, exactly as before; putting it in that prefix
- * would re-read a diff on every `state_change` frame in the system.
+ * This was `useState` filled from a bare `.then()` in an effect — no ignore flag,
+ * no `AbortController` — so clicking one slice then a faster one left the first
+ * read in flight, and it wrote its `accept_spec`, its diff and its verdicts into
+ * the panel already showing the second. The slice id is part of the query key now,
+ * which is the whole fix: a reply is filed under the slice that asked for it.
+ */
+/**
+ * The key is deliberately not under the `["orch"]` prefix the stream invalidates.
+ * Evidence is read when a slice is opened, exactly as before; putting it in that
+ * prefix would re-read a diff on every `state_change` frame in the system.
  */
 export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?: React.ReactNode }) {
   const { data: evidence } = useQuery({

@@ -11,15 +11,14 @@ import {
 } from "../../contracts/states.ts";
 
 /**
- * Retrieval for `orch ctx query`.
+ * Retrieval for \`orch ctx query\`.
  *
- * No embeddings, deliberately: this has to answer in milliseconds inside a turn,
- * and the corpus is one project's notes, not a library. What it does instead is
- * the part naive keyword scoring gets wrong — rare words count for more than
- * common ones, and a long note stops winning merely by containing many words.
+ * No embeddings, deliberately: this answers in milliseconds inside a turn, and the
+ * corpus is one project's notes. What it does instead is the part naive keyword
+ * scoring gets wrong — rare words count for more, and a long note stops winning
+ * merely by containing many.
  *
- * The hard budget matters more than the ranking. An unbounded answer costs more
- * than the file the agent was about to read, which defeats the point.
+ * The hard budget matters more than the ranking.
  */
 
 export interface Doc {

@@ -3,15 +3,12 @@ import type { Bus } from "../../platform/persistence/event-bus.ts";
 /**
  * The last few hundred lines a group's container printed, in memory.
  *
- * Live frames already carry this to a panel that is open — and that was the whole
- * story, so a boss who opened the 工作区 tab thirty seconds into a two-minute
- * clone saw an empty box and a spinner. Whatever happened before the panel
- * existed had nowhere to be.
+ * Live frames already carry this to a panel that is open, and that was the whole
+ * story — so a boss opening the 工作区 tab thirty seconds into a two-minute clone saw
+ * an empty box and a spinner.
  *
- * In memory, capped, and gone on restart, on purpose. This is the machine
- * talking to itself while it sets up: worth watching, worth scrolling back
- * through, not worth a table. What survives is the outcome line the caller
- * already writes to the record.
+ * Capped and gone on restart, on purpose: this is the machine talking to itself
+ * while it sets up. What survives is the outcome line the caller already writes.
  */
 
 const CAP = 500;

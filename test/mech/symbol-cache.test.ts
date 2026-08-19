@@ -8,18 +8,17 @@ import { buildMap } from "../../src/mech/knowledge/repomap.ts";
 /**
  * A grammar is loaded once per process, not once per project and not once per file.
  *
- * The number matters because of where the caller is. The watchdog's index rule
- * runs every tick, against every project, over every tracked file: at 6ms for the
- * runtime plus 0.6–3.6ms per grammar, a load keyed on the project — or worse on
- * the file — would replace a correctness bug with a performance one.
- *
- * Asserted as a *delta* rather than a total, and the first version of this test
- * is why. It counted loads and expected exactly two, which passed on its own and
- * failed the moment it ran in the same process as `symbols.test.ts`: `--isolate`,
- * which `--parallel` implies, gives each file a fresh module graph, and plain
- * `bun test a.ts b.ts` does not. A cache is a claim about the *second* call, so
- * measuring the second call directly is true under both — and it does not quietly
- * become vacuous depending on which command ran it.
+ * The number matters because of where the caller is: the watchdog's index rule runs
+ * every tick, against every project, over every tracked file — at 6ms for the
+ * runtime plus 0.6–3.6ms per grammar, a load keyed on the project would replace a
+ * correctness bug with a performance one.
+ */
+/**
+ * Asserted as a *delta* rather than a total, and the first version is why. It
+ * expected exactly two loads, which passed alone and failed the moment it shared a
+ * process with `symbols.test.ts`. A cache is a claim about the *second* call, so
+ * measuring that directly is true under both `--isolate` and plain `bun test a b`,
+ * and does not quietly become vacuous depending on which command ran it.
  */
 test("a second project loads no grammar the first one already loaded", async () => {
   const db = openMemory();

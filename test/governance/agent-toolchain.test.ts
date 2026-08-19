@@ -6,14 +6,12 @@ import { ROOT } from "../../src/platform/config/load.ts";
 /**
  * A tool a prompt tells an agent to run has to exist in the image it runs in.
  *
- * These are two files nobody edits together: the instructions live in
- * `prompt/assemble.ts` and the roles, and the toolchain lives in a Dockerfile.
- * An agent that runs `rg` in an image without it does not fail usefully — it gets
- * `command not found`, burns the turn, and the transcript reads as the model
- * being confused rather than as a missing package.
+ * Two files nobody edits together: the instructions live in `prompt/assemble.ts` and
+ * the roles, the toolchain lives in a Dockerfile. An agent that runs `rg` in an
+ * image without it does not fail usefully — it gets `command not found`, burns the
+ * turn, and the transcript reads as the model being confused.
  *
- * Only the names worth the check: `git` and `rg` are the two the prompts name as
- * commands to type. Shell builtins and `orch` itself are not packages.
+ * Only the names worth the check: `git` and `rg`, the two the prompts name.
  */
 const CHECKED = ["rg", "git"] as const;
 
@@ -72,13 +70,13 @@ test("the prompts do not send an agent to a search that ignores .gitignore", () 
  * The local check used to need `brew install actionlint shellcheck`, which is a
  * check that silently does not run for whoever skipped it — and it looks green,
  * because a skipped step is not a failed one. It runs from the pinned image now,
- * which this project can assume: a container runtime is already required, since
- * the agents live in one.
- *
- * Two files naming the version is the cost of that, so this is the guard: a
- * bumped CI pin and a stale local one would mean contributors and CI disagree
- * about what a valid workflow is, which is exactly the disagreement running it
- * locally exists to prevent.
+ * which this project can assume: a container runtime is already required, since the
+ * agents live in one.
+ */
+/**
+ * Two files naming the version is the cost, so this is the guard: a bumped CI pin
+ * and a stale local one would mean contributors and CI disagree about what a valid
+ * workflow is, which is the disagreement running it locally exists to prevent.
  */
 test("the actionlint version preflight runs is the one CI runs", () => {
   const pinned = (text: string, re: RegExp): string | null => re.exec(text)?.[1] ?? null;

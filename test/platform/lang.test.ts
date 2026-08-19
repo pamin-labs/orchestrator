@@ -4,13 +4,12 @@ import { SAY_KEYS, say } from "../../src/platform/text/lang.ts";
 /**
  * The two tables and the keys callers may name.
  *
- * `EN` used to be annotated `Record<string, string>`, which made
- * `keyof typeof EN` mean `string` — so `say`'s `key` parameter checked nothing,
- * in any caller, ever. That matters because `say` answers an unknown key with
- * `String(key)`: it does not throw and does not log, it puts the literal
- * `wd.stalledd` into the boss's feed where the sentence explaining why a group
- * stopped was supposed to be. The annotation is gone and the union is real, so
- * a typo is a compile error — this file covers what a type cannot.
+ * `EN` used to be annotated `Record<string, string>`, which made `keyof typeof EN`
+ * mean `string` — so `say`'s `key` parameter checked nothing, in any caller, ever.
+ * And `say` answers an unknown key with `String(key)`: it does not throw and does
+ * not log, it puts the literal `wd.stalledd` into the boss's feed.
+ *
+ * The annotation is gone and the union is real; this file covers what a type cannot.
  */
 
 test("both languages answer every key, with the arguments filled in", () => {

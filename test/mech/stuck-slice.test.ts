@@ -18,12 +18,13 @@ import * as fx from "../support/factories.ts";
  * A slice sent back for a retry kept its tasks `done`, and `done` is the one state
  * the writer cannot act on — `task list` showed a finished card, `task claim` said
  * the slice was not being worked, `task done` said the task was not its. No legal
- * move, so every turn ended the only way it could: a question to the boss. Four
- * groups stopped outright, and each read as RUNNING with an engineer on it.
- *
- * The other end is the same card claimed by an agent that no longer exists.
- * Ownership was a row id, so rehiring a group's writer locked its own work away
- * from it permanently.
+ * move, so every turn ended by asking the boss. Four groups stopped outright, each
+ * reading as RUNNING with an engineer on it.
+ */
+/**
+ * The other end is the same card claimed by an agent that no longer exists. Ownership
+ * was a row id, so rehiring a group's writer locked its own work away from it
+ * permanently.
  */
 
 function harness() {

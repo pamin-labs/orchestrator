@@ -3,14 +3,12 @@ import type { PanelFrame } from "../../shared/stream";
 /**
  * What a sandbox rebuild looks like from the frame buffer.
  *
- * Pulled out of the pane because it is the part that can be wrong: which run is
- * the current one, whether the clone finished, whether the whole thing failed.
- * The pane is then a rendering of this and nothing else, and this is checkable
- * without mounting React (`test/bootstrap-pane.test.ts`).
+ * Pulled out of the pane because it is the part that can be wrong: which run is the
+ * current one, whether the clone finished, whether the whole thing failed. The pane
+ * is then a rendering of this and nothing else, checkable without mounting React.
  *
- * Live frames only. They never reach the database, so this state is gone on
- * reload and the outcome line in the record is what remains — the pane must not
- * be a second copy of something already stored.
+ * Live frames only. They never reach the database, so this state is gone on reload
+ * and the outcome line in the record is what remains.
  */
 export interface Bootstrap {
   /** Still going: show it. */

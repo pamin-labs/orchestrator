@@ -12,16 +12,17 @@ import type { ExecDeps } from "./executor.ts";
 /**
  * The lease job, which shares nothing with a turn but the executor's dispatch.
  *
- * Different kind, different lifecycle, different failure model: a turn is an
- * agent thinking and can be cancelled mid-flight, while a lease is one command
- * whose result has to reach a durable row whatever happens to the process. It sat
- * at the bottom of `executor.ts` because that is where the dispatch is, which is
- * not a reason for it to be in the same file.
- *
- * Here rather than `mech/lease.ts`, which the plan named: that module is the
- * resource definition and the command runner, and it lives in `mechanisms` —
- * a zone Fallow forbids from importing `application`, where `ExecDeps` is. The
- * job wrapper belongs on this side of that line; the command it runs does not.
+ * Different kind, lifecycle and failure model: a turn is an agent thinking and can
+ * be cancelled mid-flight, while a lease is one command whose result has to reach a
+ * durable row whatever happens to the process. It sat at the bottom of
+ * `executor.ts` because that is where the dispatch is, which is not a reason to
+ * share a file.
+ */
+/**
+ * Here rather than `mech/lease.ts`: that module is the resource definition and the
+ * command runner, and it lives in a zone Fallow forbids from importing
+ * `application`, where `ExecDeps` is. The job wrapper belongs on this side of that
+ * line; the command it runs does not.
  */
 
 // -------------------------------------------------------------------- leases

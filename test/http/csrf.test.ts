@@ -4,16 +4,14 @@ import { makeApp } from "../../src/composition/api.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
- * `/api/v1/*` is the boss's own surface and it takes no token: the caller is a
- * browser on 127.0.0.1 and the port was the whole story. It stops the network and
- * not a web page — a POST with the default `text/plain` is a simple request, no
- * preflight, delivered. The reply is unreadable to the attacker and every side
- * effect still lands: credentials wiped, a DRAFT approved, a group dropped.
+ * `/api/v1/*` is the boss's own surface and takes no token: the caller is a browser
+ * on 127.0.0.1. That stops the network and not a web page — a POST with the default
+ * `text/plain` is a simple request, no preflight, delivered. The reply is unreadable
+ * to the attacker and every side effect still lands.
  *
- * The rule is `hono/csrf` now, so these go through `makeApp` rather than calling
- * a predicate. That is the point of the test: what a route sees is the whole
- * middleware stack in the order `makeApp` registers it, and a check exported as
- * a function stays green while nothing calls it.
+ * The rule is `hono/csrf` now, so these go through `makeApp` rather than calling a
+ * predicate: what a route sees is the whole middleware stack in registration order,
+ * and a check exported as a function stays green while nothing calls it.
  */
 const app = makeApp(testContext());
 const ErrorResponse = z.object({ error: z.string() });

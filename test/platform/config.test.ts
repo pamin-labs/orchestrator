@@ -227,10 +227,9 @@ test("the config type and the config schema are one declaration", () => {
  * A sandbox address is a host and a port, not the rest of a URL.
  *
  * Every reader interpolates this into `http://${server}/v1/...`, so an unchecked
- * string is not an address — it is the whole URL after the scheme.
- * `evil.example/x?` turns a probe carrying the sandbox API key into a request to
- * somebody else's path; `user:pw@host` turns it into one carrying credentials.
- * CodeQL called the shape `js/file-access-to-http`.
+ * string is the whole URL after the scheme. `evil.example/x?` turns a probe carrying
+ * the sandbox API key into a request to somebody else's path; `user:pw@host` turns
+ * it into one carrying credentials. CodeQL called the shape `js/file-access-to-http`.
  *
  * One case per address, because the address is the whole content of the failure.
  */
@@ -254,16 +253,15 @@ describe("a sandbox address is a host and a port, not the rest of a URL", () => 
 /**
  * A remote embedding is refused unless it says where and with whose credential.
  *
- * ADR 031 refused embeddings on a measurement and left half of that measurement
- * unrunnable: whether a *hosted* embedding ranks across languages is "not
- * measured and deliberately not guessed", because the test needs the endpoint the
- * boss would choose. This is that endpoint, and the reason it is validated here
- * rather than at the call site is that there is no call site yet — a config that
- * says `mode: remote` and nothing else would sit valid until the day something
- * reads it.
- *
- * The credential is a *name* in `runtime_auth`, never a key. A key here is a key
- * in shell history and in every backup of the config file.
+ * ADR 031 left half its own measurement unrunnable — whether a *hosted* embedding
+ * ranks across languages needs the endpoint the boss would choose — and this is that
+ * endpoint. Validated here rather than at the call site because there is no call
+ * site yet: a config saying `mode: remote` and nothing else would sit valid until
+ * the day something reads it.
+ */
+/**
+ * The credential is a *name* in `runtime_auth`, never a key. A key here is a key in
+ * shell history and in every backup of the config file.
  */
 test("a remote embedding needs an endpoint and a credential name; local needs neither", () => {
   const local = { mode: "local", model: "Xenova/multilingual-e5-small", endpoint: "", credential: "" };

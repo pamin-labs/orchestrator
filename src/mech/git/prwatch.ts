@@ -26,12 +26,11 @@ const PackageVersion = z.object({ version: z.string() });
  * The PR as a feedback channel.
  *
  * Deliberately not an agent: "has anything been said since we last looked" is a
- * comparison of timestamps, and paying a model to make it would be paying for
- * arithmetic. What needs judgement is the reply, and that goes to the PM.
+ * comparison of timestamps, and paying a model for arithmetic. What needs judgement
+ * is the reply, and that goes to the PM.
  *
- * GitHub is reached over REST rather than by shelling out to `gh` (007): one
- * fewer host binary, one fewer separate login, and the failure buckets in
- * `github.ts` instead of an exit code.
+ * REST rather than shelling out to `gh`: one fewer host binary, one fewer login, and
+ * the failure buckets in `github.ts` instead of an exit code.
  */
 
 /**
@@ -144,15 +143,12 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
 /**
  * The PR description, built from the record rather than asked for.
  *
- * It used to be one hardcoded sentence — "Opened by the orchestrator after the
- * audit passed" — which reads as an agent that could not be bothered, and it
- * throws away everything the reviewer needs: what was asked for, what each slice
- * promised, which gates ran, why the decisions went the way they did. All of it
- * is already in the database by the time a PR opens, so asking a model to write
- * it would be paying for a SELECT — and a prompt that can be forgotten.
+ * It used to be one hardcoded sentence, which reads as an agent that could not be
+ * bothered and throws away what the reviewer needs: what was asked for, what each
+ * slice promised, which gates ran. All of it is already in the database by the time
+ * a PR opens, so asking a model would be paying for a SELECT.
  *
- * Labels are English (PR bodies always are); the quoted material stays in the
- * language it was written in.
+ * Labels are English; quoted material stays in its own language.
  */
 /** Ours, for the line every pull request carries. */
 const PROJECT_URL = "https://github.com/pamin-labs/orchestrator";
@@ -517,22 +513,14 @@ export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
 
 /**
  * One request for every open pull request in a repository, instead of five each.
+ * The measured point cost and the REST comparison are in the commit that added it.
  *
- * Measured against api.github.com: this query costs **1 point** and returns
- * everything the five REST calls did — state, merged, mergeable, the head sha, the
- * last twenty comments, the last twenty reviews, and the check rollup, which is
- * both REST endpoints (`/check-runs` and `/status`) in one field. The REST path is
- * five requests per PR: ten open PRs on a 30-second tick is 6,000 requests an
- * hour against a 5,000 limit, survivable only because a 304 does not count. This
- * is 120 points an hour out of 5,000, and it does not depend on nothing having
- * changed.
- *
- * Through `gh.request`, not a second client. `plugin-throttling` already treats
+ * Through `gh.request`, not a second client: `plugin-throttling` already treats
  * `/graphql` as its own limiter — GraphQL reports a rate limit inside a 200 body
- * rather than as a status, and the plugin has a branch for exactly that — and
- * `plugin-retry` and the Zod seam come along unchanged. A dependency would have
- * bought a `.graphql` method and lost all three.
- *
+ * rather than as a status — so `plugin-retry` and the Zod seam come along
+ * unchanged. A dependency would have bought a `.graphql` method and lost all three.
+ */
+/**
  * `reviews` and `comments` take `last:`, so they arrive newest-last and are
  * filtered against `pr_seen_at` here. That is what fixes the REST reviews
  * endpoint having no `since` and returning oldest-first, which stopped waking the

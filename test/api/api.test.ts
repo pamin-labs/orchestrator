@@ -1666,15 +1666,16 @@ test("every dynamic route declares its path shape", () => {
 /**
  * The GitHub pane's two reads happen at once.
  *
- * They were serial, and the second used the first only as a truthiness gate —
- * never its data. So opening that pane cost two round trips to api.github.com
- * before it drew anything: measured at 1.2s against a live server, while every
- * other settings endpoint answered in 16–160ms.
- *
- * Asserted by the *overlap*, not by a duration: a test that says "faster than
- * 500ms" fails on a loaded machine and passes on a fast one for the wrong reason.
- * Each stub holds until it has seen the other arrive, so the assertion is that
- * both were in flight together — which a serial version can never satisfy.
+ * They were serial, and the second used the first only as a truthiness gate — never
+ * its data. So opening that pane cost two round trips to api.github.com before it
+ * drew anything: 1.2s against a live server, while every other settings endpoint
+ * answered in 16–160ms.
+ */
+/**
+ * Asserted by the *overlap*, not a duration: "faster than 500ms" fails on a loaded
+ * machine and passes on a fast one for the wrong reason. Each stub holds until it
+ * has seen the other arrive, so the assertion is that both were in flight together —
+ * which a serial version can never satisfy.
  */
 test("the account and the installation list are asked for concurrently", async () => {
   const db = openMemory();
@@ -1719,14 +1720,11 @@ test("the account and the installation list are asked for concurrently", async (
 /**
  * The pane's second open asks GitHub nothing.
  *
- * GitHub's own guidance is to not call `/user` on every page load and to learn
- * about revocation from a 401 on real work — which ADR 029 already routes to the
- * boss. This route was asking twice per open regardless: 1.2s against a live
- * server, every time, for an account that changes when the boss changes it.
+ * GitHub's own guidance is to not call `/user` on every page load and to learn about
+ * revocation from a 401 on real work, which ADR 029 already routes to the boss. This
+ * route asked twice per open regardless: 1.2s against a live server, every time.
  *
- * `fresh=1` is the way back to asking, for the case the TTL exists to cover: the
- * app being installed on another org, which happens on github.com and nothing
- * here would otherwise hear about.
+ * `fresh=1` is the way back to asking, for the case the TTL exists to cover.
  */
 test("the connection is read once and served from the snapshot after that", async () => {
   const db = openMemory();

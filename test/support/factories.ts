@@ -2,20 +2,20 @@ import { Factory, type DeepPartial } from "fishery";
 import type { DB } from "../../src/platform/persistence/database.ts";
 
 /**
- * Row builders for the schema in `src/platform/persistence/database.ts`.
+ * Row builders for the schema in `platform/persistence/database.ts`.
  *
- * Every table a test inserts into is written out once, here. Before this file
- * the suite spelled out 380 `INSERT INTO` column lists by hand — `project`
- * alone in four different shapes — so a new NOT NULL column meant editing 68
- * call sites, and a new test copied whichever shape it happened to land next
- * to. A default here must be a value the schema accepts; a value a test is
- * deliberately exercising still belongs at that test's call site.
- *
- * `insert` rather than Fishery's `create`: `create` is async by contract, and
+ * The suite used to spell out 380 `INSERT INTO` column lists by hand — `project`
+ * alone in four shapes — so a new NOT NULL column meant editing 68 call sites and
+ * a new test copied whichever shape it landed next to. A default here must be a
+ * value the schema accepts; a value a test is deliberately exercising still belongs
+ * at that test's call site.
+ */
+/**
+ * `insert` rather than Fishery's `create`: `create` is async by contract and
  * `bun:sqlite` is not. Sequences, traits (`.params()`) and deep overrides are
- * Fishery's; the foreign keys a row cannot exist without are filled by
- * `parents` below, because those need the database and Fishery's associations
- * are resolved at build time.
+ * Fishery's; the foreign keys a row cannot exist without are filled by `parents`
+ * below, because those need the database and Fishery's associations are resolved
+ * at build time.
  */
 
 /** What SQLite accepts as a bound parameter in this schema. */

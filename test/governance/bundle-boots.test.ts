@@ -11,24 +11,18 @@ import { emptyState } from "../../web/src/shared/api.ts";
 /**
  * The bundle the browser is actually served, booted.
  *
- * Every other web test imports `web/src/**` directly, which means none of them
- * runs the artefact. That gap is not theoretical: `recharts` resolves a scale by
- * building `"scale" + type` and looking it up on its `d3-scale` namespace, and a
- * lookup like that is invisible to a bundler — so tree-shaking removed
- * `scalePoint`'s implementation while its export getter survived, and 耗时 died
- * on mount with `ij0 is not defined`. The source was correct. The bundle was
- * not, and 1,300 passing tests said nothing about it.
- *
- * So this one boots a real build: the entry point evaluates, React mounts, and
- * the view the crash was in renders. It is slow by the standards of this suite
- * and it is the only test that can see this class of defect at all.
- *
+ * Every other web test imports `web/src/**` directly, so none runs the artefact.
+ * That gap let tree-shaking remove a `scalePoint` implementation while its export
+ * getter survived, and 耗时 died on mount with `ij0 is not defined` — the source
+ * correct, the bundle not, and 1,300 passing tests silent (`096cb8b`).
+ */
+/**
  * It **builds its own bundle** rather than reading `web/dist/main.js`. Asserting
  * on the checked-out artefact made the suite depend on `build:web` having run,
- * which `test-main` does not do — so in CI the file was absent, and because this
- * file installs process-global fakes, its failure took eighteen tests in the
- * same worker down with it. A test that needs a bundle should produce one, and
- * a test that reaches for a global owes it back.
+ * which `test-main` does not — so in CI the file was absent, and because this
+ * file installs process-global fakes its failure took eighteen tests in the same
+ * worker with it. A test that needs a bundle should produce one, and a test that
+ * reaches for a global owes it back.
  */
 
 /** The same entry point `build:web` uses; anything else boots a different bundle. */

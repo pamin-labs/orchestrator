@@ -2,16 +2,15 @@
  * Which models to offer, taken from the config's own answer.
  *
  * There is no endpoint that lists an account's models: neither CLI has a list
- * command, and the credentials we hold are the CLIs' own OAuth tokens rather
- * than API keys we could ask `/v1/models` with. Inventing a hardcoded table
- * would be a fourth place that goes stale — `difficultyModel` already names
- * three models per runtime, `indexModel` names one, and `contextWindow` names
- * every model anyone has had to size a window for.
- *
- * So the picker offers what this config already knows and refuses nothing: a
- * model id typed here that appears nowhere yet is exactly how the first one gets
- * added, and a list that could not accept it would be a list you have to edit
- * the yaml to get around.
+ * command, and the credentials we hold are the CLIs' OAuth tokens rather than API
+ * keys we could ask `/v1/models` with. A hardcoded table would be a fourth place
+ * that goes stale — `difficultyModel`, `indexModel` and `contextWindow` already
+ * name models between them.
+ */
+/**
+ * So the picker offers what this config already knows and refuses nothing: a model
+ * id that appears nowhere yet is exactly how the first one gets added, and a list
+ * that could not accept it would be a list you edit the yaml to get around.
  */
 
 /** `claude-opus-5` → `claude`, `gpt-5.6-luna` → `gpt`. */

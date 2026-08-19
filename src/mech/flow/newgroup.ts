@@ -5,20 +5,20 @@ import { addNote } from "../util/rows.ts";
  * Starting a requirement: the five writes that have to happen together.
  *
  * A row, its channel, the idea on the blackboard, and the same idea on the
- * timeline. Four places did this by hand and had already drifted: one set
- * `owns_json` and `shared_grant`, one passed the channel id to the emit and the
- * others did not, one wrote a different author. None of those was a decision —
- * they are the order the four were written in.
+ * timeline. Four places did this by hand and had already drifted — one set
+ * `owns_json`, one passed the channel id to the emit, one wrote a different
+ * author. None of those was a decision; they are the order the four were written
+ * in.
+ */
+/**
+ * Queueing the planning turn is deliberately **not** here. It looks like the fifth
+ * write and is not: `postIdea` may have to put an Architect turn ahead of the
+ * Dispatcher to cut a boundary first, and folding the enqueue in reversed that
+ * order — caught by the test that watches which role runs first.
  *
- * Queueing the planning turn is deliberately **not** here. It looked like the
- * fifth write and it is not: `postIdea` may have to put an Architect turn ahead
- * of the Dispatcher to cut a boundary first, and folding the enqueue in reversed
- * that order — caught by the test that watches which role runs first. What the
- * four callers share is making the group; what they do next is theirs.
- *
- * `boss_say` even when an agent is the one asking, because that is the kind
- * every planner reads as "this is the requirement". A second shape for the same
- * thing would be a second thing for a role prompt to remember.
+ * `boss_say` even when an agent is asking, because that is the kind every planner
+ * reads as "this is the requirement". A second shape for the same thing would be a
+ * second thing for a role prompt to remember.
  */
 export interface NewGroup {
   projectId: number;

@@ -129,14 +129,12 @@ async function send(request: Promise<Response>): Promise<ProtocolResponse> {
 /**
  * What was piped in, or nothing when there is a terminal on the other end.
  *
- * `Bun.stdin.text()` on a tty waits for a human to type and then press ctrl-D.
- * Four commands read stdin — `task done`, `task split`, `journal add`, `pr` — so
- * running any of them at a prompt without the input they expect hung with no
- * output at all, and the usage message that would have said what was missing was
- * on the far side of the wait.
+ * `Bun.stdin.text()` on a tty waits for a human to type and press ctrl-D. Four
+ * commands read stdin, so running any of them at a prompt without the input they
+ * expect hung with no output at all — and the usage message that would have said
+ * what was missing was on the far side of the wait.
  *
- * A tty means nothing was piped, which is exactly the case the callers already
- * handle: they turn an empty read into the usage error naming the flag.
+ * A tty means nothing was piped, which is the case the callers already handle.
  */
 async function readStdin(): Promise<string> {
   return process.stdin.isTTY ? "" : await Bun.stdin.text();

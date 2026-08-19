@@ -3,31 +3,15 @@ import { expect, test } from "bun:test";
 /**
  * Every export the browser bundle names has something behind it.
  *
- * This guards a failure mode that neither the compiler nor the linter can see,
- * because it is created by the bundler and only exists in its output.
- *
- * `recharts` resolves an axis scale by *string*: it builds `"scale" + type` and
- * looks it up on the `d3-scale` namespace object, guarded by
- * `typeof J[name] === "function"`. No bundler can follow a lookup like that, so
- * the implementations survive tree-shaking only when something else in the
- * graph imports them statically. For `scalePoint` that something was
- * `recharts/es6/cartesian/Brush.js` — and deleting an unused `<Brush>` from one
- * component therefore removed a function a *used* component needs.
- *
- * The shape it left behind is the thing worth detecting, and it is general
- * rather than specific to that library: the export record kept its entry,
- *
- *     Q7(yF, { ..., scalePoint: () => ij0, ... })
- *
- * while no `var ij0` was emitted anywhere. Reading the property throws
- * `ij0 is not defined`, and the whole view died on mount with a minified name
- * for its only clue. Nothing before this test would have caught it: TypeScript
- * type-checks source, Oxlint lints source, and the render tests import modules
- * directly rather than through the bundle.
- *
- * So the assertion is on the artefact the browser actually loads, and it is
- * about the class rather than the instance — any dangling alias fails it,
- * whichever library and whichever gesture happens to remove the last reference.
+ * A failure neither the compiler nor the linter can see, because the bundler
+ * creates it: the export record keeps an entry — `scalePoint: () => ij0` — while no
+ * `var ij0` is emitted, so reading the property throws and the view dies on mount
+ * with a minified name for its only clue (`096cb8b`).
+ */
+/**
+ * So the assertion is on the artefact the browser loads, and on the class rather
+ * than that instance: any dangling alias fails it, whichever library and whichever
+ * gesture removed the last reference.
  */
 
 /** The same entry point and flags `build:web` uses; anything else tests a different bundle. */
@@ -47,14 +31,11 @@ async function bundle(): Promise<string> {
  * The scale record, and why the assertion is scoped to it rather than to the bundle.
  *
  * A dangling alias is only a *fault* where something reads the property, and a
- * whole-bundle sweep finds 219 of them: an export record entry nobody touches
- * is exactly what a tree-shaken re-export is supposed to look like. What makes
- * this record different is that `recharts` enumerates it by computed name, so
- * every entry in it is live whether or not any code mentions it — which turns
- * the ordinary case into the failing one.
+ * whole-bundle sweep finds 219 of them: an untouched export record entry is exactly
+ * what a tree-shaken re-export should look like. What makes this record different is
+ * that `recharts` enumerates it by computed name, so every entry is live.
  *
- * Scoped by finding the object literal that holds `scaleLinear`, since that is
- * the one `d3-scale` namespace the library reaches into.
+ * Scoped by finding the object literal holding `scaleLinear`.
  */
 function scaleRecord(code: string): Record<string, string> {
   const anchor = code.indexOf("scaleLinear:()=>");
@@ -68,25 +49,21 @@ function scaleRecord(code: string): Record<string, string> {
 }
 
 /**
- * The scales this app's charts can actually ask for.
+ * The scales this app's charts can actually ask for — a checked list, not "all of
+ * them".
  *
- * A checked list rather than "all of them", and the difference is the point:
- * `d3-scale` exports about thirty and we render two chart types, so demanding
- * the whole record would be demanding that twenty-seven dead scales be bundled
- * to make a test pass. The list is the guard — a new chart type whose axis
- * resolves to a scale that is not here has to add a line, which is the moment
- * somebody notices the resolution is by string and cannot be tree-shaken.
- *
- * `linear` is what both of the trend's axes resolve to, the x axis included:
- * it is `type="number"` over epoch milliseconds rather than a list of printed
- * labels. `PieChart`, the only other chart here, has no axes.
- *
- * `scalePoint` is deliberately *not* on this list. A category x axis would
- * resolve to it, and the reason the trend does not have one is partly this: its
- * implementation reached the bundle only through `recharts`' own Brush module,
- * so the chart worked for as long as an unrelated component happened to import
- * it. If a category axis is ever added, this list is where that dependency has
- * to be made explicit again.
+ * `d3-scale` exports about thirty and we render two chart types, so demanding the
+ * whole record would demand that twenty-seven dead scales be bundled to pass a
+ * test. The list is the guard: a new chart whose axis resolves to a scale that is
+ * not here has to add a line, which is the moment somebody notices the resolution
+ * is by string and cannot be tree-shaken.
+ */
+/**
+ * `scalePoint` is deliberately *not* here. A category x axis would resolve to it,
+ * and part of why the trend has none is that its implementation reached the
+ * bundle only through recharts' own Brush module — so the chart worked for as long
+ * as an unrelated component happened to import it. `linear` is what both trend
+ * axes resolve to, x included: `type="number"` over epoch milliseconds.
  */
 const RESOLVED = ["scaleLinear"] as const;
 

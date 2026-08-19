@@ -3,30 +3,24 @@ import { readFileSync } from "node:fs";
 import { dirname, join, normalize } from "node:path";
 
 /**
- * The panel's own import graph, read off the source.
+ * The panel's own import graph, read off the source: two shapes that were both in
+ * the tree and neither of which is visible from any single file.
  *
- * Two shapes are checked here, both of which were in the tree and neither of
- * which is visible from any single file.
+ * A **cycle between features** — `requirement/view` → `telemetry/view` →
+ * `requirement/accordion` — costs the ability to read one feature without the
+ * other, and no file-level check sees it. The giveaway was the accordion: a
+ * generic Radix wrapper filed under a domain, which is how a shared control ends
+ * up owned by the first feature that needed it.
+ */
+/**
+ * A **model importing a view**: `navigation/model.ts` reached into a 700-line
+ * component for a Zod enum, so parsing a URL hash pulled in every Radix primitive
+ * that component imports. Type-only edges are allowed — `import type` is erased
+ * before it reaches a bundle.
  *
- * The first is a cycle between features. `requirement/view` imported
- * `telemetry/view`, and `telemetry/view` imported `requirement/accordion` —
- * no module imported itself, so a file-level check saw nothing, and the bundler
- * and the compiler were both happy. What it cost is the ability to read one
- * feature without the other: neither directory can be moved, deleted or
- * understood on its own, and the pair evaluates in whichever order the entry
- * point happened to reach them. The accordion was the giveaway — a generic Radix
- * wrapper filed under a domain, which is how a shared control ends up owned by
- * the first feature that needed it.
- *
- * The second is a model importing a view. `navigation/model.ts` needed a Zod
- * enum and reached into a 700-line React component to get it, so parsing a URL
- * hash pulled in every Radix primitive that component imports. Type-only edges
- * are allowed: `import type` is erased before it reaches a bundle, so it costs
- * layering clarity rather than a module graph.
- *
- * Regex over the source rather than a bundler pass: these are the project's own
- * relative imports, all written as string literals, and the alternative is a
- * second module resolver to maintain beside Bun's.
+ * Regex over the source, not a bundler pass: these are the project's own relative
+ * imports, all string literals, and the alternative is a second module resolver
+ * to maintain beside Bun's.
  */
 const ROOT = new URL("../../web/src/", import.meta.url).pathname;
 

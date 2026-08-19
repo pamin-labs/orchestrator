@@ -16,16 +16,16 @@ import { endSpan, shutdownTracing, type Trace } from "./traces.ts";
 /**
  * What this process counts about itself, rendered for Prometheus.
  *
- * Separate from `traces.ts` because the failure modes differ: these are numbers
- * held in this process and read on request, so nothing here can be lost to a
- * collector being down. What they share is the observation call — an HTTP
- * request produces both a counter and a span — so `observeHttp` sits here and
- * hands the span off.
- *
- * `/metrics` is loopback-only (ADR 012, gated in `composition/server.ts`), so
- * this module renders text for that existing route and never listens anywhere.
- * `PrometheusExporter` is deliberately not used: it starts its own server on
- * every interface and would walk around that gate.
+ * Separate from `traces.ts` because the failure modes differ: these are numbers held
+ * in this process and read on request, so nothing here can be lost to a collector
+ * being down. What they share is the observation call — an HTTP request produces
+ * both a counter and a span — so `observeHttp` sits here and hands the span off.
+ */
+/**
+ * `/metrics` is loopback-only (ADR 012), so this module renders text for that
+ * existing route and never listens anywhere. `PrometheusExporter` is deliberately
+ * not used: it starts its own server on every interface and would walk around that
+ * gate.
  */
 
 /**
@@ -162,15 +162,12 @@ function routeLabel(path: string): string {
 /**
  * What a span is about, when it is about anything.
  *
- * Every field is optional and stays optional: a `/healthz` request, the
- * retention trim and the watchdog belong to no project, and the `span` table's
- * scope columns are nullable for exactly that reason. An absent id is written as
- * NULL rather than guessed — a wrong one aggregates somebody else's time into a
- * group.
+ * Every field is optional and stays optional: a `/healthz` request, the retention
+ * trim and the watchdog belong to no project. An absent id is written as NULL rather
+ * than guessed — a wrong one aggregates somebody else's time into a group.
  *
- * Kept out of metric labels deliberately. These are unbounded identifiers, and
- * `docs/standards/data.md` puts them out of bounds for a label set; the span is
- * where an unbounded dimension belongs.
+ * Kept out of metric labels deliberately: these are unbounded identifiers, and a
+ * span is where an unbounded dimension belongs.
  */
 export interface SpanScope {
   projectId?: number | null;
@@ -240,16 +237,14 @@ export async function prometheus(db: DB): Promise<string> {
 }
 
 /**
- * Stops the event-loop sampler, which otherwise keeps the process alive, and
- * gives the span processor a last chance to flush.
+ * Stops the event-loop sampler, which otherwise keeps the process alive, and gives
+ * the span processor a last chance to flush.
  *
- * The meter provider is deliberately never shut down. It is pull-only: no
- * timer, no connection, no buffered data, so shutting it down releases nothing
- * and only makes the reader permanently dead. Since this is called by the
- * server's shutdown path *and* by any test that drives a real shutdown, and one
- * Bun process runs every test file, a shut-down reader turns every later
- * `/metrics` scrape into "MetricReader is shutdown". Shutdown here is
- * recoverable by construction rather than a one-way door.
+ * The meter provider is deliberately never shut down. It is pull-only — no timer, no
+ * connection, no buffered data — so shutting it down releases nothing and only makes
+ * the reader permanently dead. This is called by the server's shutdown path *and* by
+ * any test that drives a real shutdown, and one Bun process runs every test file, so
+ * a shut-down reader turns every later scrape into "MetricReader is shutdown".
  */
 export function closeTelemetry(): void {
   loop.disable();

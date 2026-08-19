@@ -200,12 +200,11 @@ test("a rejection is still reported when the record itself is what failed", () =
  * A model that cannot answer stops being asked, until the credentials move.
  *
  * `indexModelDown` was a `Set` that gated the *warning* and nothing else, so a
- * project whose index runtime had no credential ran the pass again every tick.
- * Measured on one machine before this: 2,835 calls in a day, every one an error
- * at 21s each — sixteen hours of wall clock, plus a container checkout in front
- * of each pass, against a CLI that could not authenticate. A stamp that moves is
- * the only evidence the thing which failed might now work; nothing about the
- * repository can make an unauthenticated CLI authenticate.
+ * project whose index runtime had no credential ran the pass again every tick:
+ * 2,835 calls in a day, every one an error at 21s each — sixteen hours of wall
+ * clock, plus a container checkout in front of each pass.
+ *
+ * A stamp that moves is the only evidence the thing which failed might now work.
  */
 test("an index model that answers nothing is not asked again until credentials change", () => {
   const ctx = testContext();
@@ -246,15 +245,14 @@ test("an index model that answers nothing is not asked again until credentials c
 /**
  * A pass that *threw* is not a pass whose calls failed.
  *
- * `recordIndexResult` arms the credential pause, and a throw never reaches it —
- * the catch is at the tick, above everything. So this path retried every thirty
- * seconds forever, paying for a checkout and a `treeHeads` each time, and emitted
- * a fresh event on every one because `bus.emit` has no dedup. Seen live as
- * `could not write /tmp/orch-prompt-….txt into the container: socket closed`,
- * repeating in the feed.
- *
- * A throw is not a credential problem, so it does not wait on a credential: it
- * backs off, and it says the reason once per distinct reason.
+ * `recordIndexResult` arms the credential pause, and a throw never reaches it — the
+ * catch is at the tick, above everything. So this path retried every thirty seconds
+ * forever, paying for a checkout and a `treeHeads` each time, and emitted a fresh
+ * event on every one because `bus.emit` has no dedup.
+ */
+/**
+ * A throw is not a credential problem, so it does not wait on a credential: it backs
+ * off, and says the reason once per distinct reason.
  */
 test("an index pass that throws backs off and says the reason once", () => {
   const ctx = testContext();

@@ -24,28 +24,23 @@ const git = testGit;
 /**
  * How long real git is allowed to take.
  *
- * Every test in this file drives an actual repository — init, commit, rebase,
- * squash — against a temporary directory, and that is deliberate: this plumbing
- * is easy to fake wrong. What it costs is I/O, and I/O on a shared CI runner is
- * not the I/O on a developer's machine. `wip checkpoints are squashed` runs in
- * 0.6s here and hit the 5s default on a GitHub runner, failing a job over a
- * slow disk rather than over anything in the code.
+ * What it costs is I/O, and I/O on a shared CI runner is not the I/O on a
+ * developer's machine — `wip checkpoints are squashed` runs in 0.6s here and hit
+ * the 5s default on a GitHub runner, failing a job over a slow disk.
  *
- * Generous rather than tuned, because the number is a ceiling on a hang, not a
- * performance assertion — a real hang still fails, thirty seconds later.
+ * Generous rather than tuned: a ceiling on a hang, not a performance assertion.
  */
 const GIT_IO = 30_000;
 
 /**
- * A real origin and a real clone of it on `orch/g1` — a group's checkout, as it
- * is in a sandbox.
+ * A real origin and a real clone of it on `orch/g1` — a group's checkout.
  *
- * Real git, because this plumbing is easy to fake wrong: every helper below takes
- * a git runner rather than assuming one, which is what makes the temp directory
- * here and the container in production interchangeable. What is *not* repeated is
- * building the same repository fourteen times to get fourteen identical ones —
- * `gitFixture` builds the pair once for the file and hands out a private copy,
- * measured at 0.6ms against 112ms of `init`/`config`/`commit`/`clone`.
+ * Real git, because this plumbing is easy to fake wrong: every helper below takes a
+ * git runner rather than assuming one, which makes the temp directory here and the
+ * container in production interchangeable.
+ *
+ * `gitFixture` builds the pair once for the file and hands out a private copy —
+ * 0.6ms against 112ms of `init`/`config`/`commit`/`clone`.
  */
 async function checkout(): Promise<{ dir: string; wt: { worktree: string; branch: string } }> {
   const { origin, work } = await gitFixture("orch-wt-");

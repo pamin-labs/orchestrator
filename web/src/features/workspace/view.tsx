@@ -15,20 +15,18 @@ import { ask } from "../../ui/confirm";
  * What this group's container is, and what it is saying right now.
  *
  * The clone and the install are the first two minutes of a requirement and the
- * longest thing that happens before any work — and until this existed they were
- * two grey dashes and a spinner. A boss watching a group that has not started
- * yet has exactly one question, "is it stuck", and the answer is in the output
- * neither pane was showing.
+ * longest thing before any work — and until this existed they were two grey dashes
+ * and a spinner. A boss watching a group that has not started has one question,
+ * "is it stuck", and the answer was in output neither pane showed.
+ */
+/**
+ * A tab on the requirement rather than a sixth peer view: a container belongs to one
+ * group, so a top-level 工作区 would open with a list of groups to pick from, asking
+ * the boss to re-find what they were just reading. The `Bootstrap` strip is the other
+ * half — it interrupts while a rebuild runs, this is where you go to look.
  *
- * A tab on the requirement rather than a sixth peer view: a container belongs to
- * one group, so a top-level 工作区 had to open with a list of groups to pick from
- * — asking the boss to re-find the requirement they had just been reading. The
- * `Bootstrap` strip at the top of the same page is the other half and not a
- * duplicate: it interrupts while a rebuild runs, this is where you go to look.
- *
- * The log is in memory on the server, capped and gone on restart (`sandboxlog.ts`)
- * — said on the panel rather than implied, because the outcome that matters is
- * already a line in 记录 and this must not read as a second copy of it.
+ * The log is in memory, capped and gone on restart — said on the panel rather than
+ * implied, because the outcome that matters is already a line in 记录.
  */
 
 const LineSchema = z.object({ at: z.number(), kind: z.enum(["cmd", "out", "end"]), text: z.string() });

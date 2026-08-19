@@ -40,13 +40,11 @@ const QUEUE = {
  * Count what the collector refuses.
  *
  * The processor's own queue-full drops are logged through `diag` but are not
- * reachable as a number through the public `sdk-trace-base` surface, so this
- * covers the loss path an operator can act on: batches that were sent and
- * rejected.
+ * reachable as a number through the public `sdk-trace-base` surface, so this covers
+ * the loss path an operator can act on: batches that were sent and rejected.
  *
- * On `code`, which `ExportResult` declares required, rather than on the optional
- * `error` — an exporter that fails without attaching one would otherwise drop
- * silently.
+ * On `code`, which `ExportResult` declares required, rather than the optional
+ * `error` — an exporter that fails without attaching one would drop silently.
  */
 function counting(inner: SpanExporter): SpanExporter {
   return {
@@ -65,16 +63,17 @@ function counting(inner: SpanExporter): SpanExporter {
 /**
  * Install the provider this process traces through.
  *
- * Both destinations are batched through the same `BatchSpanProcessor` and the
- * same bounds, because the reason for them is the same in both cases: export is
- * a side channel, and the work being traced must not wait on it or slow down
- * with it. SQLite is faster than an HTTP collector, which changes how often the
- * queue fills, not whether `onEnd` should be writing to a file at all.
- *
+ * Both destinations are batched through the same `BatchSpanProcessor` and the same
+ * bounds, because the reason is the same in both cases: export is a side channel,
+ * and the work being traced must not wait on it or slow down with it. SQLite being
+ * faster than an HTTP collector changes how often the queue fills, not whether
+ * `onEnd` should be writing to a file at all.
+ */
+/**
  * The SQLite one is unconditional: the panel is the one consumer that is always
  * present, and a boss asking where a requirement's time went has no collector to
- * ask. The OTLP one is added beside it only when an endpoint is configured, so
- * with no endpoint nothing is sent and no socket is opened.
+ * ask. The OTLP one is added beside it only when an endpoint is configured, so with
+ * no endpoint nothing is sent and no socket is opened.
  */
 export function configureTracing(db: DB): void {
   const spanProcessors: SpanProcessor[] = [new BatchSpanProcessor(new SqliteSpanExporter(db), QUEUE)];

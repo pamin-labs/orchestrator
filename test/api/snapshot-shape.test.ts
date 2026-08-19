@@ -13,16 +13,17 @@ import * as fx from "../support/factories.ts";
 /**
  * The panel payload is what the SQL actually produced.
  *
- * `db.query<Row>` is an unchecked cast: SQLite returns whatever the SELECT
- * named and TypeScript believes the annotation. So a migration that renames a
- * column, or a SELECT that drops one, produces `undefined` on the browser's side
- * of the wire and nothing anywhere errors — the type still says `string`, the
- * page renders "undefined", and the first person to notice is the boss.
- *
- * This runs the real query against a real database and parses the result. It is
- * a test rather than a check inside the route because this is our own payload:
- * validating it on every poll would cost real time on a page that re-reads it on
- * every state change, and would catch nothing this does not.
+ * `db.query<Row>` is an unchecked cast: SQLite returns whatever the SELECT named and
+ * TypeScript believes the annotation. So a migration that renames a column, or a
+ * SELECT that drops one, produces `undefined` on the browser's side of the wire and
+ * nothing errors — the type still says `string`, the page renders "undefined", and
+ * the first person to notice is the boss.
+ */
+/**
+ * This runs the real query against a real database and parses the result. A test
+ * rather than a check inside the route because this is our own payload: validating
+ * it on every poll would cost real time on a page that re-reads it on every state
+ * change, and would catch nothing this does not.
  */
 test("every row the panel is sent matches the shape it is declared as", () => {
   const db = openMemory();

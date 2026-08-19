@@ -11,14 +11,15 @@ import { tempDir } from "../support/temp.ts";
  * The bind mount that succeeds and delivers nothing.
  *
  * Measured on this machine: `/var/tmp/orch-cache/skills` holds 179 skills,
- * `docker run -v` on that exact path sees 0, and inside the container the mount
- * shows as an overlay with `lowerdir=/` rather than the host directory. macOS
- * runs docker in a VM and `/var/tmp` there is the VM's, not the Mac's.
- *
- * Nothing errors on that path. `skillMounts` returns two correct mounts,
- * creation succeeds, the degrade path never fires, and preflight reports "179
- * staged" because it counts them on the host — the one place they definitely
- * are. So this count, taken from inside, is the only thing that can tell.
+ * `docker run -v` on that exact path sees 0, and inside the container the mount shows
+ * as an overlay with `lowerdir=/` rather than the host directory. macOS runs docker
+ * in a VM and `/var/tmp` there is the VM's, not the Mac's.
+ */
+/**
+ * Nothing errors on that path. `skillMounts` returns two correct mounts, creation
+ * succeeds, the degrade path never fires, and preflight reports "179 staged" because
+ * it counts them on the host — the one place they definitely are. So this count,
+ * taken from inside, is the only thing that can tell.
  */
 
 /** A distinct staging directory per test: the check runs once per host path. */

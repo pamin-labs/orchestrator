@@ -3,18 +3,19 @@ import { cn } from "./cn";
 /**
  * shadcn's Field family, on our tokens.
  *
- * A settings page is a list of label-and-value pairs, and the hand-rolled
- * version of that is a grid of `<span>` and `<input>` — which looks right and is
- * not: the label is not associated with the control, so clicking it does not
- * focus and a screen reader reads two unrelated things. 硬约束 4, one more time.
- *
+ * A settings page is a list of label-and-value pairs, and the hand-rolled version
+ * is a grid of `<span>` and `<input>` — which looks right and is not: the label is
+ * not associated with the control, so clicking it does not focus and a screen
+ * reader reads two unrelated things.
+ */
+/**
  * `horizontal` is the shape this project wants: a fixed label column, values
  * aligned down the page, a hairline between rows. `vertical` exists for the one
- * case where a value is a block (a pasted auth.json) rather than a line.
+ * case where a value is a block rather than a line.
  *
- * Deliberately not shadcn's own styling. The look is ours (docs/design/ui.md): hairlines
- * rather than cards, `sunk` for machine output, the accent reserved for what
- * waits on the boss.
+ * Deliberately not shadcn's own styling — the look is ours (`docs/design/ui.md`):
+ * hairlines rather than cards, `sunk` for machine output, the accent reserved for
+ * what waits on the boss.
  */
 
 /**
@@ -23,13 +24,13 @@ import { cn } from "./cn";
  * A `<fieldset>` with a `<legend>`, not a div with a heading: the grouping is the
  * accessible fact, and a screen reader announces the legend with every control it
  * contains — the difference between hearing "开" and "通知：开".
- *
+ */
+/**
  * Structure and slots are shadcn's `field` registry item, read from it rather than
- * guessed — the first version of this was hand-written and carried a `float-none`
- * for a problem the flex `<fieldset>` already solves. The look is ours, as the
- * note above says: `ui.md`'s scale, hairlines rather than cards.
+ * guessed — the hand-written first version carried a `float-none` for a problem the
+ * flex `<fieldset>` already solves.
  *
- * Only where a pane genuinely holds two subjects. A pane with one already has its
+ * Only where a pane genuinely holds two subjects: a pane with one already has its
  * name in `Head`, and a legend repeating it is a second heading for one thing.
  */
 export function FieldSet({ className, ...rest }: React.ComponentProps<"fieldset">) {

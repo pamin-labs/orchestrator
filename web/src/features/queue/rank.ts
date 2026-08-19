@@ -4,13 +4,14 @@ import { K } from "../../shared/format";
 /**
  * Why one thing on the boss's list outranks another.
  *
- * "Everything here needs me" is true — that is the entry condition for the list — so
- * ordering has to come from what ignoring each one *costs*, and it has to be legible.
- * A score the boss cannot interrogate is worse than sorting by age: it moves rows
- * around for reasons nobody can check, and the first time it is wrong the whole order
- * stops being trusted.
- *
- * So every point is a named reason, and the row shows the reason rather than the
+ * "Everything here needs me" is true — that is the entry condition — so ordering has
+ * to come from what ignoring each one *costs*, and it has to be legible. A score the
+ * boss cannot interrogate is worse than sorting by age: it moves rows around for
+ * reasons nobody can check, and the first time it is wrong the whole order stops
+ * being trusted.
+ */
+/**
+ * So every point is a named reason and the row shows the reason rather than the
  * number. The weights are ordinary judgement, and they are all recoverable state:
  * nothing here is a model's opinion.
  */
@@ -65,18 +66,19 @@ export function rank(reasons: (Reason | null | false | undefined)[]): Ranked {
 }
 
 /**
- * Group the boss's list by requirement. Every requirement, including the ones
- * with a single item.
+ * Group the boss's list by requirement — every requirement, singletons included.
  *
- * Grouping matters at scale: three items on one requirement means one trip
- * instead of three context switches. Singletons were left flat on the theory
- * that a header per row is noise — but then the list is two shapes, the name
- * lives inline on some rows and above others, and with five requirements open
- * the boss cannot see where one stops and the next begins.
- *
- * Not by agent. The boss acts on requirements, slices, cards and questions; an agent is
- * *who is waiting*, which belongs on the row as context and is not a thing to navigate
- * to. Grouping by it would sort the list by a dimension none of the buttons operate on.
+ * Grouping matters at scale: three items on one requirement is one trip instead of
+ * three context switches. Singletons were left flat on the theory that a header per
+ * row is noise, but then the list is two shapes — the name inline on some rows and
+ * above others — and with five requirements open the boss cannot see where one
+ * stops and the next begins.
+ */
+/**
+ * Not by agent. The boss acts on requirements, slices, cards and questions; an agent
+ * is *who is waiting*, which belongs on the row as context and is not a thing to
+ * navigate to. Grouping by it would sort the list by a dimension none of the
+ * buttons operate on.
  */
 export function byRequirement<T extends { grpId: number | null; points: number }>(items: T[]) {
   const grouped = groupByRequirement(items.filter((item) => item.grpId != null));

@@ -31,14 +31,12 @@ const IMMEDIATE_RULES = new Set([
 /**
  * Findings the boss can actually do something about.
  *
- * A notification is a claim that the reader has to act. Most watchdog rules are
- * the opposite: the system noticed something and already handled it — "main 动到
- * 了 549e8bc，已经让它先 rebase" needs nothing from anybody, and it arrived under a
- * heading that said "5 things need you". Two of those in a row and the heading
- * stops meaning anything, which costs the notifications that were real.
+ * A notification claims the reader has to act. Most watchdog rules are the opposite:
+ * the system noticed something and already handled it, arriving under a heading
+ * saying "5 things need you". Two of those and the heading stops meaning anything,
+ * which costs the notifications that were real.
  *
- * So: the boss's own queue (approve, accept, answer, merge), plus money running
- * out. Everything else is in the timeline, where looking is voluntary.
+ * So: the boss's own queue, plus money running out.
  */
 const BOSS_RULES = new Set([
   "blocker",
@@ -171,22 +169,18 @@ export class Notifier {
 /**
  * Delivery: the page tells you, and optionally a webhook.
  *
- * This used to be `terminal-notifier` when it was installed and `osascript`
- * otherwise. Both are macOS-only, and windows-x64 is a shipped target — so the
- * one path that was supposed to reach the boss did not exist on a platform we
- * publish. It was also ugly, which is the reason it was raised.
- *
+ * This was `terminal-notifier` or `osascript`, both macOS-only — so the one path
+ * meant to reach the boss did not exist on windows-x64, which is a shipped target.
+ */
+/**
  * The panel is already open on the machine the server runs on; that is the whole
  * deployment. So the server pushes a frame and the page raises a real system
- * notification through the browser: no dependency, no install, and the same code
- * on all five targets. The page does not have to be in front — a background tab
- * keeps its EventSource and raises the notification anyway, which is the case
- * `terminal-notifier` was actually covering. A browser that is *closed* misses
- * it, and the replay from a cursor puts the queue back on screen when it opens.
+ * notification through the browser: no dependency, no install, same code on all five
+ * targets. A background tab keeps its EventSource and raises it anyway, which is the
+ * case `terminal-notifier` was actually covering.
  *
- * Web Push would cover the closed browser too. It is not here on purpose: a
- * service worker, VAPID keys, a subscription table and a round trip through
- * FCM, so that a phone can buzz about a fleet running on a machine at home.
+ * Web Push would cover the closed browser too. Not here on purpose: a service
+ * worker, VAPID keys, a subscription table and a round trip through FCM.
  */
 export function busDeliver(bus: Bus, webhook?: string) {
   return async (title: string, body: string, url?: string): Promise<void> => {

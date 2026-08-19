@@ -4,13 +4,11 @@ import type { Caller } from "./agent-auth.ts";
 /**
  * What a route handler is, and deliberately not what Hono thinks one is.
  *
- * A handler takes the things it needs — the fleet, the request, the path
- * parameters, the validated body — and returns a `Response`. It never sees a
- * framework context, which means every one of them can be called from a test
- * with four ordinary arguments and no server.
+ * A handler takes what it needs — the fleet, the request, the path parameters, the
+ * validated body — and returns a `Response`. It never sees a framework context, so
+ * every one can be called from a test with four ordinary arguments and no server.
  *
- * `http/routes/*` connects this shape to Hono next to the Zod middleware that
- * produces `params` and `data`.
+ * `http/routes/*` connects this shape to Hono, beside the Zod middleware.
  */
 export type Handler<D = undefined, P = Record<string, string>> = (
   ctx: Ctx,

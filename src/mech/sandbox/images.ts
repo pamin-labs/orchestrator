@@ -8,12 +8,12 @@ import { z } from "zod";
 /**
  * What the image field may be set to, as two lists rather than a text box.
  *
- * Typing an image name is the shape of field that fails four steps later: a
- * typo is not rejected here, it is a container that will not create, on a group
- * that has already been dispatched. And the set of legal answers is small and
- * knowable — `allowedImage` accepts exactly two families — so the panel can just
- * show them.
- *
+ * Typing an image name is the shape of field that fails four steps later: a typo is
+ * not rejected here, it is a container that will not create, on a group already
+ * dispatched. The set of legal answers is small and knowable — `allowedImage`
+ * accepts exactly two families — so the panel can just show them.
+ */
+/**
  * Both sides are best-effort and say which kind of empty they are. "No published
  * versions" and "could not reach the registry" send a reader to different places,
  * and collapsing them into one blank list is the failure mode this project keeps
@@ -122,15 +122,15 @@ export async function imageChoices(): Promise<ImageChoices> {
 /**
  * The image every project gets unless it says otherwise.
  *
- * In `setting` rather than in the yaml, for the same reason the sandbox key is:
- * the yaml is committed, so anybody self-hosting loses their edit on the next
- * pull — and this is a fact about one machine's docker, not about the project.
- * The yaml value stays as the fallback, which is what a fresh install runs on.
- *
+ * In `setting` rather than the yaml, for the same reason the sandbox key is: the
+ * yaml is committed, so anybody self-hosting loses their edit on the next pull — and
+ * this is a fact about one machine's docker. The yaml value stays as the fallback,
+ * which is what a fresh install runs on.
+ */
+/**
  * Refused if the boundary would refuse it. Storing an image no container can be
- * built from turns one wrong keystroke in the settings dialog into a fleet that
- * will not start, and the message would be about a container rather than about
- * this field.
+ * built from turns one wrong keystroke into a fleet that will not start, and the
+ * message would be about a container rather than about this field.
  */
 const DEFAULT_IMAGE_PATH = "sandbox.image";
 

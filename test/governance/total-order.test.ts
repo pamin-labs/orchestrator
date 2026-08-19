@@ -5,28 +5,17 @@ import { Glob } from "bun";
  * No query is ordered by a clock alone.
  *
  * A millisecond is not an ordering key. Two rows written in the same one — a
- * parent span and the child it opens, a loop that files four lessons, a card
- * and the objection that answers it — compare equal, and which one SQLite
- * returns first is up to the storage engine. The consequences seen on this
- * branch, in one week:
- *
- *   - `lateObjections` used `e.at > max(n.at)` and dropped an objection filed
- *     in the card's own millisecond, which is the exact failure that clause
- *     exists to prevent.
- *   - `checkout-spans` ordered two spans by `started_at` and failed one run in
- *     ten with them transposed, taking a CI job down with it.
- *   - `prwatch` read `rows[0]` from a list ordered by `at` and asserted on it.
- *
- * The first was a product defect and the other two were tests. All three had
- * the same shape, so this guards the shape rather than the three instances: a
- * sort whose last key is a timestamp needs a tiebreak that is a total order —
- * `id`, `seq`, `rowid`, `span_id` — or a stated reason it does not.
- *
+ * parent span and the child it opens, a card and the objection answering it —
+ * compare equal, and which SQLite returns first is the storage engine's choice.
+ * Three defects on this branch in one week had that one shape, so this guards the
+ * shape: a sort whose last key is a timestamp needs a tiebreak that is a total
+ * order — `id`, `seq`, `rowid`, `span_id` — or a stated reason it does not.
+ */
+/**
  * **Not solved with a fake clock**, deliberately. Freezing time would stop the
  * tests colliding, which is the same as stopping them from finding the product
- * defect: same-millisecond writes happen in production whether or not a test
- * can produce one. The answer is a query that does not care, not a test that
- * cannot notice.
+ * defect: same-millisecond writes happen in production whether or not a test can
+ * produce one. The answer is a query that does not care.
  */
 
 /** Columns that carry a wall-clock reading, and therefore do not order anything on their own. */

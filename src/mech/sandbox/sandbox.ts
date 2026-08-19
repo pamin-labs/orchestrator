@@ -1178,14 +1178,12 @@ async function sessionFor(sb: Runner): Promise<Session | null> {
 /**
  * A session's stdout and stderr are the same pipe — `readlink /proc/self/fd/{1,2}`
  * answers with one inode — so each command redirects its own stderr to a file and
- * reads it back after a marker. Taking the merged stream instead would put git's
- * warnings back into NUL-delimited `STATUS_Z` output, which is the defect
- * `sandboxGit` was repaired for. Evidence and the verification in ADR 032.
+ * reads it back after a marker. Taking the merged stream would put git's warnings
+ * back into NUL-delimited `STATUS_Z` output. Evidence in ADR 032.
  *
- * The status is set by a **subshell**: a bare `exit` ends the session. The marker
- * is emitted by `printf`, not passed as an argument, because a shell argument
- * cannot carry the control byte at all. If it somehow fails to appear the whole
- * output is stdout, which is the merged behaviour rather than a lost line.
+ * The status is set by a **subshell**: a bare `exit` ends the session. The marker is
+ * emitted by `printf` because a shell argument cannot carry the control byte; if it
+ * fails to appear the whole output is stdout, which is the old merged behaviour.
  */
 const ERR_MARK = "\u0001orch-stderr\u0001";
 const ERR_MARK_PRINTF = "\\001orch-stderr\\001";

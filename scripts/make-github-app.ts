@@ -1,17 +1,18 @@
 /**
  * Register the GitHub App, from the boss's own browser, once.
  *
- * The alternative was driving a headless browser, which would have meant a
- * GitHub password and a 2FA code typed into a browser this process controls.
- * GitHub's App Manifest flow exists for exactly this: we describe the app, the
- * boss clicks Create in the session they are already logged into, and GitHub
- * hands back the identifiers. No credential ever passes through here.
- *
+ * The alternative was driving a headless browser, which would have meant a GitHub
+ * password and a 2FA code typed into a browser this process controls. GitHub's App
+ * Manifest flow exists for exactly this: we describe the app, the boss clicks Create
+ * in the session they are already logged into, and GitHub hands back the
+ * identifiers. No credential ever passes through here.
+ */
+/**
  *   bun run scripts/make-github-app.ts [name] [--org <login>]
  *
- * What it cannot do, and says so at the end: two switches are not expressible in
- * a manifest and have to be ticked by hand afterwards. Both fail in ways that
- * look like something else, which is why they are printed rather than assumed.
+ * What it cannot do, and says so at the end: two switches are not expressible in a
+ * manifest and have to be ticked by hand afterwards. Both fail in ways that look
+ * like something else, which is why they are printed rather than assumed.
  */
 import { z } from "zod";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
@@ -108,16 +109,16 @@ const res = await fetch(`https://api.github.com/app-manifests/${code}/conversion
 /**
  * GitHub's answer, parsed rather than asserted.
  *
- * It was `as { ... }`, which is a claim about a network response and not a
- * check on one — and `slug` from that response went straight into a file path.
- * A slug containing a separator escapes `data/` through `join`'s own
- * normalisation, and the file being written is a private key. CodeQL called it
- * `js/http-to-file-access`; the fix is to make the value incapable of being a
- * path fragment rather than to explain that GitHub would not send one.
- *
- * The character class is GitHub's own: an App slug is lowercase alphanumerics
- * and hyphens. Anything else fails here, loudly, before a key is written
- * anywhere.
+ * It was `as { ... }`, which is a claim about a network response and not a check on
+ * one — and `slug` from that response went straight into a file path. A slug
+ * containing a separator escapes `data/` through `join`'s own normalisation, and
+ * the file being written is a private key. CodeQL called it `js/http-to-file-access`.
+ */
+/**
+ * The fix is to make the value incapable of being a path fragment rather than to
+ * explain that GitHub would not send one. The character class is GitHub's own: an
+ * App slug is lowercase alphanumerics and hyphens, and anything else fails loudly
+ * before a key is written anywhere.
  */
 const AppSchema = z.object({
   id: z.number(),

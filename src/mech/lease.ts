@@ -8,17 +8,16 @@ import { jsonOr } from "../contracts/json.ts";
 
 /**
  * A lease runs in the group's own sandbox, so this is no longer the host's only
- * opening — it is the agent's only interface. The reason inverted, the rules did
- * not (hard constraint 2). Two structural defences, not one:
+ * opening — it is the agent's only interface. The reason inverted, the rules did not.
  *
- *  1. A resource is a *template* from config. An agent picks a name and passes
- *     args; it can never supply a command.
- *  2. The template is tokenised into argv once and spawned WITHOUT a shell, so
- *     shell metacharacters in an arg are inert. Injection is not filtered, it
- *     is impossible.
- *
- * Arg schemas still exist — not to stop injection, but to stop a valid-looking
- * arg from pointing somewhere it should not (path traversal, unknown target).
+ * Two structural defences, not one. A resource is a *template* from config: an agent
+ * picks a name and passes args, and can never supply a command. And the template is
+ * tokenised into argv once and spawned WITHOUT a shell, so shell metacharacters in
+ * an arg are inert — injection is not filtered, it is impossible.
+ */
+/**
+ * Arg schemas still exist, not to stop injection but to stop a valid-looking arg
+ * from pointing somewhere it should not: path traversal, an unknown target.
  */
 
 const ArgSpecSchema = z.discriminatedUnion("type", [
@@ -67,17 +66,16 @@ export interface ResolvedCommand {
 /**
  * The resource row as a `ResourceDef`.
  *
- * There were three of these — `gate.ts`, `api/orch/lease.ts`, `executor.ts` —
- * and they did not agree on what a broken column means. `arg_schema_json` was
- * defaulted to `{}` in two and parsed unguarded in the third, which is the one
- * reached by `POST /orch/v1/lease`: a malformed row there threw out of the handler
- * and reached the agent as a 500 with a JSON syntax error in it, where the other
- * two would have refused the call politely. `tags_json` was read by exactly one
- * of the three, and nothing read the result.
- *
- * `{}` rather than a throw, everywhere, because an empty schema is a boundary
- * that refuses every argument (硬约束 2) — the safe end of the failure, and the
- * one the two majority copies already picked.
+ * There were three of these — `gate.ts`, `api/orch/lease.ts`, `executor.ts` — and
+ * they did not agree on what a broken column means. `arg_schema_json` was defaulted
+ * to `{}` in two and parsed unguarded in the third, which is the one reached by
+ * `POST /orch/v1/lease`: a malformed row there threw out of the handler and reached
+ * the agent as a 500 with a JSON syntax error in it.
+ */
+/**
+ * `{}` rather than a throw, everywhere, because an empty schema is a boundary that
+ * refuses every argument — the safe end of the failure, and the one the two
+ * majority copies already picked.
  */
 export function loadResource(db: DB, name: string): ResourceDef | null {
   const r = db
@@ -197,14 +195,12 @@ export function resolveLease(def: ResourceDef, args: LeaseArgs): Result<Resolved
 /**
  * One argument, as a zod schema built from the resource's own spec.
  *
- * The spec is data — the boss writes it into the `resource` table — so the
- * schema is built per call rather than declared. What that buys over the hand
- * written checks it replaces is not brevity, it is that coercion and refusal are
- * one decision: `int` used to accept anything `Number()` liked, so `"3 "`, `""`
- * and `true` all became integers on the way to a command line.
+ * The spec is data — the boss writes it into the `resource` table — so the schema is
+ * built per call rather than declared. What that buys is not brevity: coercion and
+ * refusal become one decision, where `int` used to accept anything `Number()` liked,
+ * so `"3 "`, `""` and `true` all became integers on the way to a command line.
  *
- * The messages are kept verbatim. An agent reads them and has to correct itself
- * from them, so "must be one of: a, b" beats zod's "Invalid option".
+ * The messages are verbatim: an agent has to correct itself from them.
  */
 function argSchema(name: string, spec: ArgSpec): z.ZodType<string> {
   switch (spec.type) {

@@ -32,12 +32,11 @@ function traced(handler: Parameters<typeof fakeSandbox>[0]) {
  * The spans that were written, by name — deliberately not in time order.
  *
  * `ORDER BY started_at` is not a total order: a parent and the child it opens
- * immediately can share a millisecond, and which one SQLite returns first is
- * then whatever the storage engine feels like. That made this file fail about
- * one run in ten with the two rows transposed, and the transposition meant
- * nothing — the assertions are about *which* spans exist and what status each
- * carries, not about their sequence. Nesting has its own helper below, and it
- * reads parent ids rather than guessing from a clock.
+ * immediately can share a millisecond, and which SQLite returns first is then the
+ * storage engine's choice. That failed this file about one run in ten with the two
+ * rows transposed, and the transposition meant nothing.
+ *
+ * Nesting has its own helper below, which reads parent ids rather than a clock.
  */
 const spans = (db: DB) =>
   db.query<{ name: string; status: string }, []>("SELECT name, status FROM span ORDER BY name").all();

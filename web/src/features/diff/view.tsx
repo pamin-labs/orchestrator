@@ -11,35 +11,10 @@ import { cn } from "../../ui/cn";
 /**
  * The diff, as the one thing the boss actually reads before accepting.
  *
- * It used to be the raw unified diff in one `<pre>`: `diff --git` and `index`
- * lines rendered as grey noise, every changed line coloured red or green as
- * *text*, no line numbers, no file boundaries, cut at 120 lines wherever that
- * landed. Reading it was work — which is the failure mode PRODUCT.md names,
- * because accepting is one of the three things the boss is here to do.
- *
- * Four decisions, each aimed at one reason it was tiring:
- *
- * 1. **Side by side.** Old on the left, new on the right, aligned. A unified diff
- *    makes the reader reconstruct the pairing themselves; that reconstruction is
- *    the tiring part, and it is arithmetic a computer should do.
- * 2. **Tint the row, not the ink.** Coloured body text on paper is hard to read
- *    for more than a few lines. The row gets a wash and the code stays in normal
- *    ink, so + and − are legible at a glance and still readable close up.
- * 3. **Word-level marks.** A one-character change used to look like a whole line
- *    rewritten. The changed span inside a paired line is marked; everything else
- *    stays quiet.
- * 4. **Line numbers on both sides, and a file list.** QA's verdict says
- *    `requirement.tsx:177`, and there was no way to find line 177.
- *
- * Parsing is `parse-diff` and the intra-line pass is `diff` — both are small,
- * dependency-free and battle-tested. What is deliberately NOT a library is the
- * rendering: diff2html and friends bring their own stylesheet and a syntax
- * highlighter, and this page has its own design language and fetches nothing at
- * runtime (test/smoke.test.ts enforces that).
- *
- * ponytail: no syntax highlighting. It is a whole tokenizer or a big dependency,
- * and the thing being read is a change, not a program. Add it if reading the
- * change turns out to need the language.
+ * Parsing is `parse-diff` with an intra-line pass by `diff`; the rendering is
+ * ours. Which four decisions that rendering makes, and why a diff viewer was
+ * refused, is ADR 033 — including the syntax highlighting that is deliberately
+ * absent and what would reopen it.
  */
 
 interface Dir {

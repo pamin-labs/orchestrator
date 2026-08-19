@@ -5,22 +5,17 @@ import { z } from "zod";
 /**
  * Connect GitHub once, from the settings page, the way GitHub Desktop does.
  *
- * **Device flow, against a GitHub App.** A code on screen, a browser tab,
- * nothing pasted and no `gh` binary. The token exchange needs `client_id`,
- * `device_code` and `grant_type` and *no client secret* — which is the entire
- * reason this is the flow an open-source project can ship. The client id is not
- * a secret and lives in `config/default.yaml`.
- *
- * No `scope` parameter: a GitHub App has no OAuth scopes. What the token may do
- * is declared on the app and chosen when it is installed, so sending one would
- * be ignored at best.
- *
- * Plain `fetch`, not `@octokit/auth-oauth-device`: that library's shape is
- * "block until the human comes back, calling `onVerification` on the way", and
- * what the panel needs is the opposite — hand the code to the browser now, poll
- * in the background, store the token whenever it lands. Its one real asset is
- * the `slow_down` backoff, which is the four lines below. Same call as
- * decision 007 made against `@octokit/rest` for eight endpoints.
+ * **Device flow against a GitHub App.** The token exchange needs `client_id`,
+ * `device_code` and `grant_type` and *no client secret*, which is the entire
+ * reason this is the flow an open-source project can ship. No `scope` either: a
+ * GitHub App has none — what the token may do is declared on the app and chosen
+ * when it is installed.
+ */
+/**
+ * Plain `fetch`, not `@octokit/auth-oauth-device`: that library blocks until the
+ * human comes back, and the panel needs the opposite — hand the code to the
+ * browser now, poll in the background, store the token whenever it lands. Its one
+ * real asset is the `slow_down` backoff, which is the four lines below.
  */
 
 import type { GhResult, Github } from "./github.ts";
@@ -35,14 +30,12 @@ const Identity = z.object({ name: z.string(), email: z.string() });
 /**
  * The app every install of this orchestrator connects through.
  *
- * Constants, not configuration. A client id is not a secret — the device flow
- * has none at all, which is the whole reason this design ships in an open
- * repository — and there is exactly one app: everyone using this connects
- * through it. A knob that must never be turned is an invitation to turn it, and
+ * Constants, not configuration. A client id is not a secret — the device flow has
+ * none at all, which is why this design ships in an open repository — and there is
+ * exactly one app. A knob that must never be turned is an invitation to turn it, and
  * the panel section that turned it dropped the stored token when touched.
  *
- * Someone running their own fork edits these two lines, which is the same act as
- * editing the yaml and one fewer place for the two to disagree.
+ * A fork edits these two lines, which is one fewer place to disagree than the yaml.
  */
 export const CLIENT_ID = "Iv23liUP6a00TszuLZvc";
 export const APP_SLUG = "orchestrator-agentic-app";
@@ -318,12 +311,10 @@ export async function githubAccount(gh: Github, signal?: AbortSignal): Promise<s
  *
  * The account the App already commits as — id resolved from
  * `/users/orchestrator-agentic-app[bot]`, the same shape `claude[bot]` uses. A
- * made-up address routes nowhere, so a `Signed-off-by` carrying it certifies
- * nothing.
+ * made-up address routes nowhere, so a `Signed-off-by` carrying it certifies nothing.
  *
- * It is the fallback and the co-author, never a substitute for a connected
- * human: a bot signing off on a human's behalf is the one thing DCO exists to
- * prevent.
+ * The fallback and the co-author, never a substitute for a connected human: a bot
+ * signing off on a human's behalf is the one thing DCO exists to prevent.
  */
 export const BOT = {
   name: `${APP_SLUG}[bot]`,
@@ -352,15 +343,15 @@ export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: s
  * **signoff** — a repository enforcing DCO refuses a pull request whose commits
  * lack `Signed-off-by`, and it refuses at the last step of a slice that already
  * passed every gate. Off only for a repository that would reject the trailer.
+ */
+/**
+ * **coauthor** — not an attribution flourish: a diff written by an agent should say
+ * so in the record, not only in the pull request body, because the body is where a
+ * reader looks once and the commit is where they look a year later. Off for anyone
+ * who would rather their history not carry it.
  *
- * **coauthor** — `Co-Authored-By: orchestrator-agentic-app[bot]`. Not an attribution
- * flourish: a diff written by an agent should say so in the record, not only in
- * the pull request body, because the body is where a reader looks once and the
- * commit is where they look a year later. Off for anyone who would rather their
- * history not carry it.
- *
- * Settings rather than yaml: they are decisions about a repository's
- * conventions, and the person making them is looking at the settings page.
+ * Settings rather than yaml: they are decisions about a repository's conventions,
+ * and the person making them is looking at the settings page.
  */
 const TRAILERS_KEY = "git_trailers";
 

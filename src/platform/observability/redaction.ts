@@ -3,20 +3,19 @@
  *
  * `claude setup-token` prints the token it just minted, and the login streams the
  * CLI's output to the panel so the boss can see the link — so the token went on
- * screen, in full, and on a failure it went into the `event` table with the last
- * 300 characters of output. Migration 035 in db.ts already promised a stored
- * credential reaches no event, prompt or log; it
- * was a promise with nothing enforcing it (硬约束 3).
+ * screen in full, and on a failure into the `event` table with the last 300
+ * characters of output. Migration 035 already promised this; it was a promise
+ * with nothing enforcing it.
+ */
+/**
+ * Two passes, in GitHub Actions' order and for its reason: Actions masks by *value*,
+ * not by shape, because the runner knows what the secrets are and a value match
+ * cannot be fooled by a format change. Every stored credential is registered here,
+ * and the patterns are the backstop for the one window a value pass cannot cover — a
+ * credential printed but not yet saved, which is the leak that started this.
  *
- * Two passes, in GitHub Actions' order and for its reason. Actions masks by
- * *value* (`::add-mask::`), not by shape, because the runner already knows what
- * the secrets are and a value match cannot be fooled by a format change. So do
- * we: every stored credential is registered here. The patterns are the backstop
- * for the one window where a value pass cannot help — a credential that has been
- * printed but not yet saved, which is exactly the leak that started this.
- *
- * No dependency: pino's redact takes object paths rather than values, and
- * gitleaks / detect-secrets scan repositories rather than filter a stream.
+ * No dependency: pino's redact takes object paths rather than values, and gitleaks
+ * scans repositories rather than filtering a stream.
  */
 
 const MASK = "「凭据已抹掉」";

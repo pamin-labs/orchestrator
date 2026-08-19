@@ -13,15 +13,14 @@ import { tempDir } from "../support/temp.ts";
  * A gate whose container cannot be opened must fail, not disappear.
  *
  * A terminal lease durably queues a result turn for its waiting agent. So when
- * `execIn` rejected —
- * `ensureSandbox` rethrows, `commands.run` is a socket — `runLease` unwound
- * before finishing, and the agent that asked for the gate waited forever while
- * its `orch` polled a reply nobody would write. The group reads RUNNING the
- * whole time.
- *
- * Every way in is ordinary: a TTL reap, Docker restarting, the sandbox hold
- * expiring mid-gate. Here it is a server address with nothing behind it, which
- * is the same thing from the caller's side and needs no live server to produce.
+ * `execIn` rejected, `runLease` unwound before finishing, and the agent that asked
+ * for the gate waited forever while its `orch` polled a reply nobody would write —
+ * with the group reading RUNNING the whole time.
+ */
+/**
+ * Every way in is ordinary: a TTL reap, Docker restarting, the sandbox hold expiring
+ * mid-gate. Here it is a server address with nothing behind it, which is the same
+ * thing from the caller's side and needs no live server to produce.
  */
 function stranded() {
   const db = openMemory();

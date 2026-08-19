@@ -5,13 +5,11 @@ import { cn } from "./cn";
  * On or off, applied the moment it moves.
  *
  * A switch rather than a checkbox because nothing here is submitted: a checkbox
- * promises a form and an OK button, and this pane has neither. Radix rather than
- * a styled `<div>` (CLAUDE.md 硬约束 4) — the thumb is ours, the `role="switch"`,
- * the space and enter keys, the focus ring and the disabled semantics are not
- * things to reinvent per settings row.
+ * promises a form and an OK button. Radix rather than a styled `<div>` — the thumb
+ * is ours; `role="switch"`, the space and enter keys, the focus ring and the
+ * disabled semantics are not things to reinvent per row.
  *
- * The label is the caller's, and it should be a `<label htmlFor>` pointing at
- * `id`: the whole surface being clickable is what makes a 20px target usable.
+ * The label is the caller's and should be a `<label htmlFor>` pointing at `id`.
  */
 export function Switch({
   id,

@@ -1,15 +1,15 @@
 /**
  * The strings the orchestrator itself says to the boss.
  *
- * `output.language` governs journals, channel messages, questions and status text
- * (docs/project/plan.md §11); code, commit messages, branch names, PR title/body and error
- * messages stay English. The rule was being kept by the agents — their role prompts
- * carry it — and broken by us: every `bus.emit` body the orchestrator wrote was
- * English, so a Chinese panel's own event feed read "perf-rewrite is at 102% of its
- * budget".
- *
+ * `output.language` governs journals, channel messages, questions and status text;
+ * code, commits, branch names, PR bodies and error messages stay English. The rule
+ * was being kept by the agents — their role prompts carry it — and broken by us:
+ * every `bus.emit` body the orchestrator wrote was English, so a Chinese panel's
+ * own feed read "perf-rewrite is at 102% of its budget".
+ */
+/**
  * Feedback that goes back to an *agent* stays English on purpose: it lands in a
- * prompt, next to code and gate output, and translating it would only make the model
+ * prompt beside code and gate output, and translating it would only make the model
  * translate it back.
  *
  * ponytail: a flat table and a formatter. No i18n library for one language pair and

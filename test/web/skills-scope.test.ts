@@ -3,15 +3,14 @@ import { skillsQuery } from "../../web/src/features/composer/model.ts";
 import { SkillsQuery } from "../../src/api/panel/panel.ts";
 
 /**
- * 技能 is machine-scope: the staged directory is mounted into every group of
- * every project, so the list exists before any project does.
+ * 技能 is machine-scope: the staged directory is mounted into every group of every
+ * project, so the list exists before any project does.
  *
- * Both callers built the query as `String(projectId ?? "")`, which sends
- * `project=` rather than nothing. Opening the section with no project selected
- * answered "Too small: expected number to be >0" and rendered no skills at all.
+ * Both callers built the query as `String(projectId ?? "")`, which sends `project=`
+ * rather than nothing. Opening the section with no project selected answered "Too
+ * small: expected number to be >0" and rendered no skills at all.
  *
- * Two halves, and the schema half alone does not fix it — which is why both are
- * asserted here.
+ * Two halves, and the schema half alone does not fix it.
  */
 
 test("no project means the parameter is absent, not blank", () => {

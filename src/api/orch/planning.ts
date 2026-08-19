@@ -122,21 +122,20 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
 /**
  * One idea, several requirements.
  *
- * The boss types into one box, and what lands there is often not one thing: a dozen
- * questions and three unrelated asks in one paragraph. Until this existed the shape
- * of the system forced all of it into ONE requirement — one DRAFT card with one 目标
- * line and at most five slices, one branch, one Engineer working serially, and one PR
- * at the end. The Dispatcher's only options were to drop most of it or to write a 目标
- * that was not true ("多项改进"), and `checkSplit` would not object, because four
- * unrelated slices genuinely do have four different acceptance criteria.
+ * What lands in the box is often not one thing. Until this existed the shape of
+ * the system forced all of it into ONE requirement — one DRAFT card, one 目标 line,
+ * one branch, one Engineer working serially, one PR. The Dispatcher could drop
+ * most of it or write a 目标 that was not true, and `checkSplit` would not object,
+ * because four unrelated slices genuinely do have four acceptance criteria.
+ */
+/**
+ * A requirement is the unit of a PR and of acceptance, so unrelated work must be
+ * unrelated requirements: separate branches, boundaries, separately mergeable and
+ * rejectable. Splitting **is** decomposition, which makes it the Dispatcher's job
+ * — so it gets a verb rather than a prompt telling it to cope.
  *
- * A requirement is the unit of a PR and of acceptance (docs/project/plan.md §7), so unrelated work
- * must be unrelated requirements: separate branches, separate boundaries, separately
- * mergeable, separately rejectable. Splitting IS decomposition, which makes it the
- * Dispatcher's job — so it gets a verb rather than a prompt telling it to cope.
- *
- * Only before work exists. After a card is approved there is a branch and a checkout,
- * and re-cutting then is `respec`, not a split.
+ * Only before work exists: after a card is approved there is a branch and a
+ * checkout, and re-cutting then is `respec`.
  */
 const MAX_SPLIT = 6;
 
@@ -228,18 +227,18 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
 /**
  * "This is already done." The one thing a planner could not say.
  *
- * A requirement that is a duplicate, or that someone fixed between the boss
- * typing it and the Dispatcher reading the code, has no exit: the Dispatcher digs
- * in, slices it, and files a card for work that does not need doing. The only
- * thing standing between that and a group burning a day on it is the boss's 20
- * seconds on the DRAFT card — docs/project/plan.md §13's risk ①, and the one judgement in the
- * system with no deterministic line under it.
- *
- * This is not the agent dissolving the group. It cannot be: "there is nothing to
- * do here" is the single most attractive thing a tired model can conclude, and no
+ * A requirement that is a duplicate, or that someone fixed between the boss typing
+ * it and the Dispatcher reading the code, has no exit: the Dispatcher digs in,
+ * slices it, and files a card for work that does not need doing. The only thing
+ * between that and a group burning a day is the boss's twenty seconds on the DRAFT
+ * card — the one judgement in the system with no deterministic line under it.
+ */
+/**
+ * This is not the agent dissolving the group, and it cannot be: "there is nothing
+ * to do here" is the most attractive thing a tired model can conclude, and no
  * prompt survives being the cheap way out. So it is a proposal, it costs evidence
- * the server checks itself — a commit that is really in the repo, or a group that
- * really exists — and the boss presses the button.
+ * the server checks itself — a commit really in the repo, a group that really
+ * exists — and the boss presses the button.
  */
 export const DropBody = z.object({
   group_id: GroupRef.optional(),
@@ -322,23 +321,21 @@ export const postDrop = (async (ctx, _req, a, _p, b) => {
 /**
  * "I am blocked by something I am not allowed to touch."
  *
- * The gap this closes, seen whole: pm-ai-agent's gate failed on a missing line in
- * `tsconfig.json`. The file is not in its `owns`, so the sandbox refused the write.
- * It could not open a requirement for it — there was no verb. It could not hand it
- * to whoever owns it — `orch mail` is a message, and a message creates no work. So
- * it rewrote its own code three times, hit the retry ceiling, escalated, and
- * stopped. The boss got a blocker with no button on it, and four other groups sat
- * red on the same line.
- *
+ * Seen whole: a gate failed on a missing line in `tsconfig.json`, which the group
+ * does not own, so the sandbox refused the write. There was no verb for opening a
+ * requirement about it, and `orch mail` is a message that creates no work — so the
+ * agent rewrote its own code three times, hit the retry ceiling, escalated, and
+ * stopped. The boss got a blocker with no button on it.
+ */
+/**
  * The evidence is the path itself: the server checks the file exists and is
  * genuinely outside this group's boundary. "I cannot reach it" is a fact about the
- * repository, not a claim about how hard the work is — which is the difference
- * between this and a way out of difficult work.
+ * repository, not a claim about how hard the work is — which is what separates
+ * this from a way out of difficult work.
  *
  * Where it goes is decided here, not by the agent: a live group that owns the path
- * gets it as an addition, and if nobody owns it, it becomes a requirement the boss
- * approves like any other. Either way the caller records what it is waiting on and
- * stops, and the watchdog starts it again when that lands.
+ * gets it as an addition; if nobody owns it, it becomes a requirement the boss
+ * approves like any other.
  */
 export const BlockedBody = z.object({
   group_id: GroupRef.optional(),

@@ -9,16 +9,17 @@ import { cn } from "./cn";
 /**
  * A message, and the files that came with it.
  *
- * Screenshots are how the boss says most of what they say — a bug is a picture
- * far more often than a paragraph — and they were rendering as
- * `- /Users/…/1755-0-Screenshot.png (image)` under the words they belonged to.
- *
- * Laid out as a row of tiles rather than full-width images: an attachment is
- * evidence beside the text, not the subject of the page, and one 3000px-wide
- * screenshot at full width pushes the question that came with it off the screen.
- * Uniform height, natural width, wrapping — so three narrow crops and one wide
- * one still read as one row of four things. Click opens the full size; that is
- * the whole viewer, because the browser already has one.
+ * Screenshots are how the boss says most of what they say — a bug is a picture far
+ * more often than a paragraph — and they were rendering as a file path under the
+ * words they belonged to.
+ */
+/**
+ * A row of tiles rather than full-width images: an attachment is evidence beside
+ * the text, not the subject of the page, and one 3000px-wide screenshot at full
+ * width pushes the question that came with it off the screen. Uniform height,
+ * natural width, wrapping — so three narrow crops and one wide one still read as
+ * one row of four things. Click opens the full size; that is the whole viewer,
+ * because the browser already has one.
  */
 export function WithAttachments({ body, className }: { body: string; className?: string }) {
   const { text, files } = splitAttachments(body);

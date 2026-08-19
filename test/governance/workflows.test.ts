@@ -555,23 +555,17 @@ describe("workflow governance", () => {
 /**
  * Every job runs on a standard runner, which is the only reason CI is free.
  *
- * This repository is public, and GitHub does not charge public repositories for
- * standard GitHub-hosted runners — including the arm64 ones, since August 2025.
- * The billing API shows it per line: 808 minutes in a month, `grossAmount` $4.85,
- * `discountAmount` $4.85, **`netAmount` $0.00**. The discount cancels the charge
- * item by item, which is what "free for public repositories" looks like; it is
- * not an allowance being drawn down.
- *
- * **Larger runners are charged even for public repositories.** They are named by
- * their size — `ubuntu-latest-4-cores`, `-8-cores`, `-16-cores`, and the same for
- * Windows — so one label somebody adds for a slow job turns a free pipeline into
- * a metered one, and nothing about the run says so. That is a property worth
- * asserting rather than a thing to remember, because the feedback arrives on an
- * invoice a month later.
- *
- * Self-hosted runners would also be free, but they are not what this repository
- * uses and adding one is a decision, not a default. The list is explicit for the
- * same reason the DOM preload's is.
+ * GitHub does not charge public repositories for standard hosted runners,
+ * arm64 included. The billing API shows it per line: 808 minutes, `grossAmount`
+ * $4.85, `discountAmount` $4.85, **`netAmount` $0.00** — the discount cancels the
+ * charge item by item, which is not an allowance being drawn down.
+ */
+/**
+ * **Larger runners are charged even for public repositories**, and they are named
+ * by their size (`ubuntu-latest-4-cores` and friends) — so one label added for a
+ * slow job turns a free pipeline into a metered one, with the feedback arriving
+ * on an invoice a month later. Self-hosted would also be free, but adding one is
+ * a decision rather than a default, so the list is explicit.
  */
 const STANDARD_RUNNERS = new Set([
   "ubuntu-24.04",

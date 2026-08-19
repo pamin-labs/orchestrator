@@ -1,22 +1,19 @@
 /**
- * ADR 031's reopen condition, as a command.
+ * ADR 031's reopen condition, as a command: `bun run embedding:check`.
  *
- * That decision refused embeddings on a measurement: within a language the
- * ranking is right, across languages an *irrelevant same-language* passage
- * outranks the *relevant other-language* one — which is exactly and only the case
- * the feature existed for. It reopens "when a model ranks the relevant
- * other-language passage above an irrelevant same-language one", and says that is
- * "a runnable check rather than a judgement". It was not runnable. This is it.
- *
+ * That decision refused embeddings on a measurement — across languages an
+ * *irrelevant same-language* passage outranks the *relevant other-language* one,
+ * which is exactly and only the case the feature existed for — and said reopening
+ * was "a runnable check rather than a judgement". It was not runnable.
+ */
+/**
  * It also closes the half the ADR left open on purpose: whether a *hosted*
  * embedding does better was "not measured and deliberately not guessed", because
  * the test needs the endpoint the boss would choose. Configure one under
  * `embedding` and this runs against it.
  *
- *   bun run embedding:check
- *
- * Five sentences and three questions, which is the whole corpus — small enough
- * that the verdict is readable rather than a number to trust.
+ * Five sentences and three questions — the whole corpus, small enough that the
+ * verdict is readable rather than a number to trust.
  */
 import type { EmbeddingRef } from "../src/contracts/config.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
@@ -24,15 +21,14 @@ import { open } from "../src/platform/persistence/database.ts";
 import { loadAuth } from "../src/mech/sandbox/auth.ts";
 
 /**
- * The corpus, in the shape the failure has: the same two topics in both
- * languages, so a question in one language can be scored against the right
- * passage in the other and the wrong passage in its own.
+ * The corpus, in the shape the failure has: the same two topics in both languages,
+ * so a question in one can be scored against the right passage in the other and the
+ * wrong passage in its own.
  *
  * `query:` and `passage:` are the e5 family's required prefixes and are not
- * decoration — ADR 031 records that omitting them puts every pair between 0.75
- * and 0.87 and separates nothing, which produced a verdict about the model that
- * was really a verdict about how it had been called. A model that does not want
- * them is given them anyway; the point is to reproduce the recorded numbers.
+ * decoration — ADR 031 records that omitting them puts every pair between 0.75 and
+ * 0.87 and separates nothing, producing a verdict about the model that was really
+ * about how it had been called.
  */
 const PASSAGES = [
   {

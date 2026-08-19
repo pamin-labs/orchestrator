@@ -4,16 +4,16 @@ import { cn } from "./cn";
 /**
  * One of several, chosen — where a tab strip would be the second one on the page.
  *
- * The evidence panel needs exactly what tabs do: pick a view, show one at a time.
- * But it sits inside a page that already has tabs, and a tab strip under a tab
- * strip stops reading as navigation — the eye cannot tell which level it is on.
- * Radix's ToggleGroup is the same behaviour at a different rank: roving focus,
- * arrow keys, one pressed item, `aria-pressed` rather than `role="tab"`. Smaller,
- * enclosed, obviously subordinate.
- *
- * Never build this by hand (CLAUDE.md 硬约束 4). Written once by hand it has no
- * arrow keys and no pressed state for a screen reader, and that is exactly the
- * kind of thing nobody notices is missing.
+ * The evidence panel needs what tabs do: pick a view, show one at a time. But it
+ * sits inside a page that already has tabs, and a tab strip under a tab strip stops
+ * reading as navigation — the eye cannot tell which level it is on. Radix's
+ * ToggleGroup is the same behaviour at a different rank: roving focus, arrow keys,
+ * one pressed item, `aria-pressed` rather than `role="tab"`.
+ */
+/**
+ * Never build this by hand. Written once by hand it has no arrow keys and no
+ * pressed state for a screen reader, which is exactly the kind of thing nobody
+ * notices is missing.
  */
 export function Segments({
   value,

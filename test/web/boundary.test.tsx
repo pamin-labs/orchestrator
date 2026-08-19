@@ -6,10 +6,9 @@ import { Boundary } from "../../web/src/app/boundary.tsx";
  * The error boundary catches, and says so where somebody can read it.
  *
  * It had no test, which for a boundary is the same as having no boundary: the
- * failure it exists for — a view throwing during render — is the one that cannot
- * be reproduced by using the panel, so nothing else would ever exercise it.
- * `boundary.tsx` records what it was written for: the server gained a field, an
- * older build read it as undefined, and the whole panel went blank.
+ * failure it exists for cannot be reproduced by using the panel, so nothing else
+ * would ever exercise it. `boundary.tsx` records what it was written for — a field
+ * the server gained, an older build reading it as undefined, the whole panel blank.
  *
  * React logs the caught error to the console; that noise is the boundary working.
  */

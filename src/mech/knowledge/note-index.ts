@@ -4,34 +4,14 @@ import { type Doc, type Hit, KIND_WEIGHT } from "./ctx.ts";
 import { terms } from "./terms.ts";
 
 /**
- * The retrieval index for `orch ctx query`, and why it is a library now.
+ * The retrieval index for `orch ctx query`. Orama, not a hand-written BM25 and
+ * not SQLite FTS5 — the numbers and the FTS5 argument are ADR 020.
  *
- * What this replaces scored in JavaScript: every query pulled the four hundred
- * most recent notes out of SQLite, re-tokenised all of them — 696,000 characters
- * measured — and ran a hand-written BM25 over the result, at 33.4ms a query. The
- * `LIMIT 400` was not a product decision; it was the ceiling that cost imposed,
- * and it meant nothing written earlier than those four hundred notes could be
- * found at all.
- *
- * Orama owns the scoring now. Measured on this corpus shape: 0.32ms a query at
- * four hundred documents, 1.4ms at two thousand — so the limit goes, and older
- * notes become findable rather than merely stored.
- *
- * **Not SQLite FTS5**, which was the other candidate and is otherwise the
- * cleaner fit: its index lives inside the database and needs no state here at
- * all. It loses on one property that mattered more — it is SQLite's. This index
- * does not live in the database, so replacing the database does not replace the
- * search.
- *
- * **`Intl.Segmenter` goes in through Orama's documented `components.tokenizer`
- * seam**, not around it. That is what makes the index multilingual: the same
- * breaker that made Korean, Russian, Thai, Arabic and Greek searchable in the
- * first place is the one Orama indexes with.
- *
- * The shape is chosen with vector search in mind. Orama does vectors and hybrid
- * ranking natively, so bringing an embedding model and a reranker later is a
- * field added to this schema and a mode passed to `search` — not a second
- * retrieval system beside this one.
+ * Two things that constrain edits here. `Intl.Segmenter` goes in through Orama's
+ * documented `components.tokenizer` seam rather than around it, because that is
+ * what makes the index multilingual — Orama's own tokenizer has no CJK. And the
+ * schema is shaped for vectors: adding an embedding later is a field here and a
+ * mode passed to `search`, never a second retrieval system beside this one.
  */
 
 /**

@@ -6,15 +6,16 @@ import { tempDir } from "./temp.ts";
 /**
  * Real git, on a real directory, for the tests that need one.
  *
- * `worktree.ts` is our workflow rather than git plumbing — checkpoint, squash,
- * rebase, the diff bases — and the cheapest honest way to check it is against a
- * repository that actually exists. Production has no host runner since 007 step
- * 6: every caller passes `sandboxGit` and the code runs in the group's
- * container. This is the fixture that stands in for it, and it lives in `test/`
- * so nothing can wire it into the server by accident.
- *
- * No lock: one host checkout with three concurrent writers is what `gitlock.ts`
- * existed for, and a test file drives one repository from one place.
+ * `gitops.ts` is our workflow rather than git plumbing — checkpoint, squash, rebase,
+ * the diff bases — and the cheapest honest way to check it is against a repository
+ * that actually exists. Production has no host runner: every caller passes
+ * `sandboxGit` and the code runs in the group's container.
+ */
+/**
+ * This is the fixture standing in for that, and it lives in `test/` so nothing can
+ * wire it into the server by accident. No lock: one host checkout with three
+ * concurrent writers is what `gitlock.ts` existed for, and a test file drives one
+ * repository from one place.
  */
 export const testGit: GitRunner = async (argv, cwd) => {
   // `cwd` decides where this runs, and nothing else does. The runner used to take
@@ -37,18 +38,17 @@ export interface GitFixture {
 /**
  * The pair, built once per module and copied per test.
  *
- * Replaying the same nine commands per test is what made `worktree.test.ts` 31%
- * of the suite: measured at 112ms of `git init`/`config`/`commit`/`clone` for
- * every one of them, against 0.6ms to copy the finished pair. Git is not being
- * faked — every helper under test still drives the real binary against a real
- * repository. What is skipped is *building* a repository fourteen times to get
- * fourteen identical ones.
- *
- * Copied, never shared: a test that commits, rebases or rolls back is working in
- * its own directory, and the template is only ever read after the one build. The
- * clone's remote is `../origin` rather than an absolute path, so the copy's
- * `fetch` reaches the copy's own origin — an absolute one would point every test
- * at the template and let the first `git commit` there leak into all the others.
+ * Replaying the same nine commands per test is what made `worktree.test.ts` 31% of
+ * the suite: 112ms of `git init`/`config`/`commit`/`clone` each, against 0.6ms to
+ * copy the finished pair. Git is not faked — every helper under test still drives
+ * the real binary against a real repository. What is skipped is *building* one
+ * fourteen times to get fourteen identical ones.
+ */
+/**
+ * Copied, never shared: a test that commits, rebases or rolls back works in its own
+ * directory. The clone's remote is `../origin` rather than an absolute path, so a
+ * copy's `fetch` reaches its own origin — an absolute one would point every test at
+ * the template and let the first `git commit` leak into all of them.
  */
 let template: Promise<string> | undefined;
 

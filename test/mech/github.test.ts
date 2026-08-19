@@ -11,21 +11,19 @@ import { server, mockHttp } from "../support/http.ts";
 /**
  * The REST client, without the network — but with everything under it.
  *
- * These used to substitute `fetch` outright, which meant the half of this file
- * worth testing was never reached: the retry budget, the `doNotRetry` list, the
- * backoff, the conditional request and the two rate-limit callbacks all belong
- * to `@octokit/core` and its plugins, and a stub that returns a `Response`
- * decides those itself. MSW intercepts below `fetch`, so each request here goes
- * through the real Octokit path and the real platform `fetch`; only GitHub's
- * answer is written by the test.
- *
- * `onUnhandledRequest: "error"` (see `test/support/http.ts`) is what makes that
- * safe: a URL nobody wrote a handler for fails rather than reaching github.com.
+ * These used to substitute `fetch` outright, which meant the half worth testing
+ * was never reached: the retry budget, the `doNotRetry` list, the backoff, the
+ * conditional request and the two rate-limit callbacks all belong to
+ * `@octokit/core` and its plugins, and a stub returning a `Response` decides those
+ * itself. MSW intercepts below `fetch`, so each request goes through the real path.
+ */
+/**
+ * `onUnhandledRequest: "error"` is what makes that safe: a URL nobody wrote a
+ * handler for fails rather than reaching github.com.
  *
  * `makeGithub(db)` with no second argument is deliberate — the default is the
- * global `fetch`, which is the one production uses and the one MSW intercepts.
- * The one test below that still injects a fetcher does so because its subject is
- * that seam.
+ * global `fetch`, which is what production uses and what MSW intercepts. The one
+ * test that still injects a fetcher does so because its subject is that seam.
  */
 
 mockHttp();

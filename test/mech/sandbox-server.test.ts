@@ -412,16 +412,15 @@ test("a missing storage section is added rather than dropping the allowlist on t
  *
  * Proven in a live container: inside a session `readlink /proc/self/fd/1` and
  * `fd/2` both answer `pipe:[5228080]` — **the same pipe inode** — while `run()`
- * gets `/tmp/<id>.stdout` and `/tmp/<id>.stderr`. So `onStderr` can never fire on
- * the session path; the SDK offers the callback and the server has nothing to feed
- * it. Swapping `run()` for `runInSession()` would have put git's warnings back
- * into NUL-delimited `STATUS_Z` output, which is the defect `sandboxGit` was
- * repaired for earlier on this branch.
- *
- * The wrapper does what the one-shot path does: redirect each stream, then read
- * the other back. Verified against a live container to produce byte-identical
- * results to `run()` on a failure, a success that writes to stderr, a plain
- * success and multi-line output.
+ * gets `/tmp/<id>.stdout` and `.stderr`. So `onStderr` can never fire on the
+ * session path: the SDK offers the callback and the server has nothing to feed it.
+ */
+/**
+ * Swapping `run()` for `runInSession()` would have put git's warnings back into
+ * NUL-delimited `STATUS_Z` output, which is the defect `sandboxGit` was repaired
+ * for. The wrapper does what the one-shot path does — redirect each stream, read
+ * the other back — verified byte-identical to `run()` on a failure, a success that
+ * writes to stderr, a plain success and multi-line output.
  */
 test("the session wrapper separates the streams the way run() does", () => {
   // The marker travels as a `printf` escape, never as a shell argument: the first

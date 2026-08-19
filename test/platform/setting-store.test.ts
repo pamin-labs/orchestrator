@@ -4,16 +4,17 @@ import { openMemory, readSetting, writeSetting } from "../../src/platform/persis
 /**
  * The `setting` table's one reader and one writer.
  *
- * Nineteen call sites across six files wrote this SQL by hand before, and two of
- * them had independently arrived at the same "null removes it" rule. Collapsing
- * them is only safe if the pair keeps the distinction every one of those readers
- * depends on: a key that was never written is *absent*, not empty and not zero.
- *
- * That is not hypothetical. Converting the watchdog's cadence check to this
- * reader turned `undefined` into `null`, `Number(null)` is 0 where
- * `Number(undefined)` is NaN, and a rule that had never run read as one that ran
- * at the epoch — so its first hourly sweep waited an hour. The suite caught it;
- * these tests keep it caught at the layer where it started.
+ * Nineteen call sites across six files wrote this SQL by hand before, and two had
+ * independently arrived at the same "null removes it" rule. Collapsing them is only
+ * safe if the pair keeps the distinction every reader depends on: a key never
+ * written is *absent*, not empty and not zero.
+ */
+/**
+ * Not hypothetical. Converting the watchdog's cadence check to this reader turned
+ * `undefined` into `null`, and `Number(null)` is 0 where `Number(undefined)` is NaN
+ * — so a rule that had never run read as one that ran at the epoch, and its first
+ * hourly sweep waited an hour. These tests keep it caught at the layer where it
+ * started.
  */
 
 test("a key that was never written is absent, and absent does not survive Number()", () => {

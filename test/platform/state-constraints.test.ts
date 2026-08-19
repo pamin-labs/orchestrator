@@ -13,14 +13,12 @@ import * as fx from "../support/factories.ts";
 /**
  * A state column holds a state, and the database is what says so.
  *
- * `states.ts` is the lifecycle vocabulary and the type system enforces it —
- * everywhere the type is present. It is absent at exactly the boundary that
- * matters: a string reaching a `db.run` is a string, and the four transition bugs
- * this branch fixed were all a legal-looking value written where the state machine
- * had no edge. Those were found by reading; nothing would have stopped them.
+ * `states.ts` is the lifecycle vocabulary and the type system enforces it, everywhere
+ * the type is present. It is absent at the boundary that matters: a string reaching
+ * a `db.run` is a string, and the four transition bugs this branch fixed were all a
+ * legal-*looking* value written where the machine had no edge.
  *
- * The constraint is generated from the same constants the types come from, so a
- * new state is admitted by adding it there and nowhere else.
+ * Generated from the same constants the types come from.
  */
 const COLUMNS = [
   ["grp", "status", GRP_STATES],

@@ -9,14 +9,14 @@ import { EvidencePanel } from "../../web/src/features/evidence/view.tsx";
  * Two slices read in a row, answered out of order.
  *
  * The panel used to hold the evidence in `useState` and fill it from a bare
- * `.then()` in an effect with no ignore flag and no `AbortController`. Clicking
- * one slice and then a faster one left the first request in flight; when it came
- * back it wrote its `accept_spec`, its diff and its verdicts into a panel already
- * showing the second slice — a reading attributed to the wrong work, under the
- * heading of the work the boss was actually looking at.
- *
- * The order below is the one that produced it: the second request resolves
- * first, so what the panel shows is settled, and *then* the first reply lands.
+ * `.then()` in an effect, with no ignore flag and no `AbortController`. Clicking one
+ * slice then a faster one left the first request in flight; when it came back it
+ * wrote its `accept_spec`, its diff and its verdicts into a panel already showing
+ * the second — a reading attributed to the wrong work.
+ */
+/**
+ * The order below is the one that produced it: the second request resolves first, so
+ * what the panel shows is settled, and *then* the first reply lands.
  */
 const evidence = (patch: Partial<Evidence> = {}): Evidence => ({
   grp_id: 1,

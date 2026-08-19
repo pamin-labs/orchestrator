@@ -45,18 +45,18 @@ test("what belongs in an index is decided by exclusion, not by an extension list
 });
 
 /**
- * A project can correct what detection got wrong.
+ * A project can correct what detection got wrong — the same arrangement `detect.ts`
+ * uses for gates: best-effort, written where the boss can edit it.
+ */
+/**
+ * The correction failed open, and silently. The hand-written glob compiled `**` to
+ * `.*` between the two literal slashes around it, so a leading `**` followed by a
+ * slash demanded a directory: the exclude matched `src/gen/a.ts` and let `a.ts` and
+ * `docs/a.md` — the files the boss was pointing at — straight into the index, while
+ * the config still read as if they were out.
  *
- * Same arrangement detect.ts uses for gates: best-effort, written where the boss
- * can edit it, rather than a guess nobody can override.
- *
- * The correction failed open, and silently. The hand-written glob compiled `**`
- * to `.*` between the two literal slashes around it, so a leading `**` followed
- * by a slash demanded a directory: the exclude matched `src/gen/a.ts` and let
- * `a.ts` and `docs/a.md` —
- * the files the boss was pointing at — straight into the index, while the config
- * still read as if they were out. A case per glob, so a regression names the
- * pattern that stopped matching rather than a bare `expected false`.
+ * A case per glob, so a regression names the pattern that stopped matching rather
+ * than printing a bare `expected false`.
  */
 describe("a project can correct what detection got wrong", () => {
   test.each([

@@ -190,13 +190,12 @@ function jwtExpiry(token?: string): number | null {
 /**
  * Is the orchestrator itself inside a container?
  *
- * Three checks — docker, uv, the sidecar image — are about the machine running
- * the sandbox server, which in a container is somebody else's. Asked anyway they
- * answer "broken" about a working deployment, and print fixes for a host this
- * process cannot see.
+ * Three checks — docker, uv, the sidecar image — are about the machine running the
+ * sandbox server, which in a container is somebody else's. Asked anyway they answer
+ * "broken" about a working deployment, and print fixes for a host this process
+ * cannot see.
  *
- * `ORCH_IN_CONTAINER` is set by our own Dockerfile; `/.dockerenv` is the fallback
- * for anyone who builds their own image.
+ * `ORCH_IN_CONTAINER` is our own Dockerfile's; `/.dockerenv` is the fallback.
  */
 const inContainer = (): boolean => process.env.ORCH_IN_CONTAINER === "1" || existsSync("/.dockerenv");
 

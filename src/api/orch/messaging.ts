@@ -104,15 +104,12 @@ export const postMail = (async (ctx, _req, a, _p, b) => {
 /**
  * The boss says something, and it reaches someone.
  *
- * docs/project/plan.md §7 makes this the whole feedback loop: dissatisfaction that only gets
- * heard as "change one line" is how a wrong decomposition never gets corrected.
- * The panel had no way to say anything at all — every route into the blackboard
- * needed an agent token, so the boss could approve and reject but never explain.
+ * The whole feedback loop: dissatisfaction only heard as "change one line" is how a
+ * wrong decomposition never gets corrected. The panel had no way to say anything at
+ * all — every route into the blackboard needed an agent token.
  *
- * `triage` decides what the words mean: patch keeps going, respec sends the whole
- * requirement back to the Dispatcher, reject dissolves it. The CoS normally makes
- * that call; the boss saying it directly is the same call, made by the one person
- * whose opinion it is.
+ * `triage` decides what the words mean: patch keeps going, respec sends the
+ * requirement back, reject dissolves it.
  */
 export const SayBody = z.object({
   group_id: GroupRef.optional(),

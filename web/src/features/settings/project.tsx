@@ -40,18 +40,18 @@ export function ProjectPane({
 }
 
 /**
- * The one irreversible thing in this dialog, and the only place in the panel
- * that deletes rather than archives.
+ * The one irreversible thing in this dialog, and the only place in the panel that
+ * deletes rather than archives.
  *
- * 不做了 winds a requirement up and keeps every event, because what a group did
- * is the record. Removing a project is the boss saying they do not want the
- * record either — a different act, so it lives on its own page, behind its own
- * confirm, in the danger colour, and never next to a switch somebody flips while
- * working.
- *
- * The confirm carries what it costs (硬约束 5): how many requirements go with
- * it, and — the one thing a boss would be right to fear — that nothing on GitHub
- * is touched. The branches and PRs stay exactly where they are.
+ * 不做了 winds a requirement up and keeps every event, because what a group did is
+ * the record. Removing a project is the boss saying they do not want the record
+ * either — a different act, so it lives on its own page, behind its own confirm, in
+ * the danger colour, and never next to a switch somebody flips while working.
+ */
+/**
+ * The confirm carries what it costs: how many requirements go with it, and — the
+ * one thing a boss would be right to fear — that nothing on GitHub is touched. The
+ * branches and PRs stay exactly where they are.
  */
 function Remove({
   projectId,

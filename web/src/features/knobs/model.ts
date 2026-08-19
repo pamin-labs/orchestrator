@@ -10,13 +10,11 @@ import type { Shape } from "./units";
 /**
  * What a settings row works out before it draws a control.
  *
- * The page is forty rows of "which editor does this value get, is this one still
- * the shipped default, and which of the six boxes on this row is the one being
- * complained about". All of it was inline in a component that fetches its own
- * rows, so none of it could be asked a question without a browser — and the two
- * rules that actually cost money if they go wrong (a value typed back to its
- * default is not an override; a refusal belongs on the cell, not on the row)
- * were the least reachable of the lot.
+ * The page is forty rows of "which editor does this value get, is this one still the
+ * shipped default, and which of the six boxes on this row is being complained
+ * about". All of it was inline in a component that fetches its own rows, so none of
+ * it could be asked a question without a browser — and the two rules that cost money
+ * when they go wrong were the least reachable of the lot.
  */
 
 /** A row whose value is a table rather than a line: the block sits under nothing. */

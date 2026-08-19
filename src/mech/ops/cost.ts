@@ -7,15 +7,15 @@ import { z } from "zod";
  * Where the tokens went.
  *
  * Tokens, not dollars, and every ordering here says so. On a subscription the
- * dollar figure is notional — claude's CLI reports what the same turn would have
- * cost at API rates, codex reports nothing at all, and neither is what the month
- * costs. The real currencies are the token count and the quota percentage in the
- * header, so ranking by `usd` put every codex role at the bottom of the table
- * with a $0 that reads as free work.
- *
+ * dollar figure is notional — claude's CLI reports what the turn would have cost at
+ * API rates, codex reports nothing — and neither is what the month costs. So
+ * ranking by `usd` put every codex role at the bottom with a $0 that reads as free
+ * work.
+ */
+/**
  * Four dimensions, each answering a question the boss actually has: which
  * requirement was expensive, which role is expensive, whether the difficulty tags
- * are honest, and — since the work now runs across two accounts — which account is
+ * are honest, and — since the work runs across two accounts — which account is
  * being spent.
  */
 
@@ -64,19 +64,17 @@ const TOK = `json_extract(meta_json, '$.usage.input') + json_extract(meta_json, 
 /**
  * "This project, or all of them" as a bound parameter instead of a clause.
  *
- * Seven queries here take the same optional filter, and it used to be assembled
- * as a string per call: two different statement texts per query depending on the
- * argument, and seven places where a reader had to check what was being pasted
- * into the SQL. `?1 IS NULL` says the same thing in the statement itself, so
- * every query below is a constant string prepared once and cached once, and the
- * id only ever arrives as a parameter.
- *
- * Written out at each site rather than pasted in from a constant, because a
- * constant would put these back to being assembled templates — the thing being
- * removed. The clause is shorter than the note explaining it.
- *
- * The OR costs the planner an index on `project_id`. These are per-project
- * aggregates on a single boss's database, read when a panel opens.
+ * Seven queries take the same optional filter, and it used to be assembled as a
+ * string per call — two statement texts per query, and seven places a reader had
+ * to check what was being pasted into SQL. `?1 IS NULL` says it in the statement,
+ * so every query below is a constant prepared and cached once and the id only ever
+ * arrives as a parameter.
+ */
+/**
+ * Written out at each site rather than pasted from a constant, because a constant
+ * puts these back to being assembled templates — the thing being removed. The OR
+ * costs the planner an index on `project_id`; these are per-project aggregates on
+ * one boss's database, read when a panel opens.
  */
 type ProjectArg = [number | null];
 
@@ -189,15 +187,14 @@ export function recentCacheRatio(db: DB, limit = 50): number | null {
 }
 
 /**
- * How many of the recent turns started a session instead of resuming one, and
- * which trigger did it.
+ * How many of the recent turns started a session instead of resuming one, and which
+ * trigger did it.
  *
- * The companion to the ratio above, and the reason it is a separate number: a
- * low cache ratio can mean the prompt assembly broke or it can mean nobody is
- * resuming anything, and those have different fixes. Measured on this repo's own
- * logs before it existed, 10 of 13 claude jobs opened cold — roughly 17k tokens
- * of prefix rebuilt each time — and there was no way to tell whether the cause
- * was a moving prefix, the rotation ceiling, or send-backs asking for it.
+ * A separate number from the ratio above because a low cache ratio can mean the
+ * prompt assembly broke or that nobody is resuming anything, and those have
+ * different fixes. Measured on this repo before it existed: 10 of 13 claude jobs
+ * opened cold, roughly 17k of prefix rebuilt each time, with no way to tell whether
+ * the cause was a moving prefix, the rotation ceiling, or send-backs.
  */
 function recentRotations(db: DB, limit = 50): { turns: number; byReason: Record<string, number> } {
   const rows = db

@@ -1,13 +1,12 @@
 /**
  * Every github.com URL this panel builds out of stored text.
  *
- * Two callers assemble one, from two different columns, and both are assembling a
- * link the boss will click to leave the panel: a link that points at the wrong
- * repository is worse than no link. They lived apart — one in `lib/utils.ts`, one
- * private to `select.ts` — and the name segment here was `(.+?)`, which matches
- * slashes, so a remote of `github.com/o/n/../../x` produced the repository
- * `o/n/../../x`. The fix was applied to one of them; being one file is what makes
- * the next such fix reach both.
+ * Two callers assemble one, from two different columns, and both are building a link
+ * the boss will click to leave the panel — one pointing at the wrong repository is
+ * worse than no link. They lived apart, and the name segment here was `(.+?)`, which
+ * matches slashes, so `github.com/o/n/../../x` produced the repository `o/n/../../x`.
+ *
+ * The fix was applied to one of them; being one file is what makes the next reach both.
  */
 
 /**

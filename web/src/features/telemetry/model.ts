@@ -412,10 +412,10 @@ export const bucketFor = (windowMs: number): number =>
  * Only one of the two was ever wired: the window picked the bucket, and pinning a
  * bucket left the window where it was. Pin one wider than the window and the whole
  * window collapses into a single bucket — one point, and a line needs two, so the
- * chart went blank at exactly the moment the reader made a choice about it. Pin
- * one much finer and the same window spreads every run into its own bucket with
- * gaps either side, which draws nothing for a different reason.
- *
+ * chart went blank at exactly the moment the reader made a choice about it. Pin one
+ * much finer and every run gets its own bucket with gaps either side.
+ */
+/**
  * Exact inverse of `bucketFor`, so pinning the width the window already implied
  * changes nothing: `bucketFor(windowFor(b)) === b` for every width offered.
  */
@@ -443,12 +443,10 @@ export function trendScale(
  * Whether the series can actually draw a line, which is not the same as having
  * points in it.
  *
- * An area is drawn between *adjacent* non-null points, so with `connectNulls` off
- * a sporadic fleet could put ten runs in the window, pass a "two or more points"
- * test, and still render an empty box, because no two of them were neighbours.
- * Measured on ten runs over a day: at every width from a minute to an hour there
- * were ten points and zero adjacent pairs. Kept as the regression that says why
- * the chart joins across nulls rather than as a live precondition.
+ * An area is drawn between *adjacent* non-null points, so with `connectNulls` off a
+ * sporadic fleet could put ten runs in the window, pass a "two or more points" test,
+ * and still render an empty box. Measured on ten runs over a day: at every width
+ * from a minute to an hour, ten points and zero adjacent pairs.
  */
 export const adjacentPairs = (points: readonly { p50: number | null }[]): number => {
   let pairs = 0;

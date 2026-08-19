@@ -33,16 +33,14 @@ export const overBudget = (g: Group): boolean => g.budget_tokens != null && g.sp
 export const isDraft = (g: Group): boolean => g.status === "DRAFT" || g.status === "PLANNING";
 
 /**
- * The LAST slice that has actually produced something — work moves down the
- * list, so the newest one carrying evidence is where it has got to. Two states
- * are excluded and only two: `pending` has not started, and `running` with no
- * gate mark yet is a slice that was handed out and has written nothing, so
- * opening it puts an empty panel in front of the boss.
+ * The LAST slice that has actually produced something — work moves down the list, so
+ * the newest one carrying evidence is where it has got to. Two states are excluded
+ * and only two: `pending` has not started, and `running` with no gate mark yet was
+ * handed out and has written nothing.
  *
- * `accepted` is NOT excluded. A finished requirement is all accepted slices,
- * and excluding them left the page blank under a green row — the diff you just
- * approved is the thing you go back to look at. Nothing worked on at all:
- * everything stays shut rather than opening something with nothing under it.
+ * `accepted` is NOT excluded. A finished requirement is all accepted slices, and
+ * excluding them left the page blank under a green row — the diff you just approved
+ * is the thing you go back to look at.
  */
 const workedSlice = (slices: Slice[]): Slice | undefined =>
   slices.findLast((s) => s.status !== "pending" && (s.status !== "running" || Object.keys(gates(s)).length > 0));

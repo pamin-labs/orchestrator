@@ -3,17 +3,18 @@ import { z } from "zod";
 /**
  * What a legal config is, in one place.
  *
- * There were two answers to that question and they disagreed. `checkconfig.ts`
- * walked `DEFAULTS` at boot with its own `kind()` plus a `POSITIVE` set and a
- * `UNIONS` table; `settings.ts` walked the same defaults for the panel and
- * checked `typeof` only. The panel was the weaker one, and the gap was not
- * cosmetic: `POST /api/v1/settings {path: "maxGroups", value: 0}` was accepted, and
- * the scheduler's admission test is `busyGroups.size >= maxGroups()` — so zero
- * means no group turn is ever dispatched again. Silently, and the override is
- * persisted, so a restart does not clear it.
+ * There were two answers and they disagreed. `checkconfig.ts` walked `DEFAULTS` at
+ * boot with its own `kind()`, a `POSITIVE` set and a `UNIONS` table; `settings.ts`
+ * walked the same defaults for the panel and checked `typeof` only.
+ */
+/**
+ * The panel was the weaker one and the gap was not cosmetic: `{path: "maxGroups",
+ * value: 0}` was accepted, and the scheduler's admission test is
+ * `busyGroups.size >= maxGroups()` — so zero means no group turn is ever dispatched
+ * again, silently, and the override is persisted so a restart does not clear it.
  *
- * One schema, consumed by both. A bound that exists here cannot be missing from
- * one of the two doors.
+ * One schema, consumed by both. A bound that exists here cannot be missing from one
+ * of the two doors.
  */
 
 /** A positive whole number of milliseconds, tokens, slots, rounds. */
@@ -27,17 +28,13 @@ const ModelRef = z.object({ runtime: z.string().min(1), model: z.string() });
 /**
  * Where an embedding would come from, if one is ever used.
  *
- * ADR 031 refused embeddings on a measurement, not on principle: within a
- * language the ranking is right, across languages an irrelevant same-language
- * passage outranks the relevant other-language one — which is the only case the
- * feature existed for. Its reopen condition is a runnable check on five
- * sentences, and half of it *cannot be run* without this: whether a hosted
- * embedding does better is "not measured and deliberately not guessed", because
- * the test needs the endpoint the boss would choose.
- *
- * So this is the knob that makes the refusal falsifiable. `bun run
- * embedding:check` is the other half.
- *
+ * ADR 031 refused embeddings on a measurement, not on principle, and half its
+ * reopen check *cannot be run* without this: whether a hosted embedding does
+ * better is "not measured and deliberately not guessed", because the test needs
+ * the endpoint the boss would choose. So this is the knob that makes the refusal
+ * falsifiable; `bun run embedding:check` is the other half.
+ */
+/**
  * **`local` is the default and remote is a decision.** A hosted embedding sends
  * every passage it ranks, and the corpus is the boss's own requirements and
  * acceptance criteria. `docs/standards/security.md` carries the boundary.
@@ -161,13 +158,12 @@ export const ConfigSchema = z.object({
   /**
    * Wall clock for installing a project's dependencies.
    *
-   * The same class of thing as a lease, so the same order of magnitude. It was
-   * 15 minutes, which is fine for this repo and wrong for the projects that
-   * need the headroom: a monorepo's pnpm install, pip building numpy from
-   * source, dotnet restore on a large solution. Too short fails as "this
-   * project is broken" rather than as "that took longer than allowed", and the
-   * group is blocked either way — so the default is generous and the install is
-   * streamed, which is what makes a long one watchable instead of silent.
+   * The same class of thing as a lease, so the same order of magnitude. It was 15
+   * minutes, fine for this repo and wrong for the projects that need the headroom:
+   * a monorepo's pnpm install, pip building numpy from source. Too short fails as
+   * "this project is broken" rather than "that took longer than allowed".
+   *
+   * So the default is generous and the install streams.
    */
   installTimeoutMs: count,
   /** Start the next slice when QA passes, without waiting for the boss to accept. */
@@ -196,14 +192,12 @@ export const ConfigSchema = z.object({
   /**
    * model -> context window, and a `default` for anything unlisted.
    *
-   * The rotation ceiling was the literal 200_000 for every model, which is only
-   * true of the cheapest one. Read off real turn logs: haiku-4-5 reports 200k,
-   * sonnet-5 and opus-5 report 1M, and codex's token_count reports 272k for the
-   * gpt-5.6 family. So the strong models were rotating at 120k of a 1M window —
-   * five times too early, and a rotation throws the cached prefix away.
+   * The rotation ceiling was the literal 200_000 for every model, true only of the
+   * cheapest. Read off real turn logs: haiku-4-5 reports 200k, sonnet-5 and opus-5
+   * report 1M, codex reports 272k. So the strong models rotated at 120k of a 1M
+   * window — five times too early, throwing the cached prefix away each time.
    *
-   * Both CLIs report their real window during a turn, and that value wins over
-   * this table; this is what the first turn of a session has to go on.
+   * Both CLIs report their real window during a turn, and that wins over this table.
    */
   contextWindow: z.record(z.string(), count),
   /**
@@ -217,16 +211,16 @@ export const ConfigSchema = z.object({
     /**
      * `host` or `host:port`, and nothing else.
      *
-     * Every reader interpolates this into a URL — `http://${server}/v1/...` —
-     * so an unchecked string is not an address, it is the whole of the URL
-     * after the scheme. `evil.example/x?` turns a probe carrying the sandbox
-     * API key into a request to somebody else's path, and `user:pw@host` turns
-     * it into one carrying credentials. CodeQL called that
+     * Every reader interpolates this into a URL, so an unchecked string is not an
+     * address — it is the whole of the URL after the scheme. `evil.example/x?` turns
+     * a probe carrying the sandbox API key into a request to somebody else's path,
+     * and `user:pw@host` turns it into one carrying credentials. CodeQL called that
      * `js/file-access-to-http` and was right about the shape of it.
-     *
-     * Checked here rather than at the four call sites, because the four are not
-     * the point: the fifth is. A value that cannot be a URL fragment cannot be
-     * misused as one by a reader added next month.
+     */
+    /**
+     * Checked here rather than at the four call sites, because the four are not the
+     * point: the fifth is. A value that cannot be a URL fragment cannot be misused
+     * as one by a reader added next month.
      */
     server: z
       .string()
@@ -241,23 +235,16 @@ export const ConfigSchema = z.object({
   /**
    * Where the ticked skills are staged for the sandboxes to mount.
    *
-   * Not under `dataDir`: the sandbox server only mounts host paths on its own
-   * `allowed_host_paths` allowlist, and a repo checkout is never on it. Its
-   * default list is `/var/tmp/orch-cache`, which is where this pointed.
-   *
+   * Not under `dataDir`: the sandbox server mounts only host paths on its own
+   * `allowed_host_paths` allowlist, whose default is `/var/tmp/orch-cache`.
+   */
+  /**
    * **Under `$HOME` on macOS, and that is not cosmetic.** Docker there runs in a
-   * VM, and `/var/tmp` inside the VM is the VM's own — so binding it *succeeds*
-   * and hands the container an empty directory. Measured: 179 skills on the host,
-   * `ls` inside the container returns 0, and the mount reports
-   * `lowerdir=/`. Every agent on this machine had been running with no skills at
-   * all since 006, and nothing could say so — `skillMounts` returned two correct
-   * mounts, creation succeeded, and preflight counted the files on the host,
-   * which is the one place they certainly are.
+   * VM, so `/var/tmp` inside the VM is the VM's own — binding it *succeeds* and
+   * hands the container an empty directory. Measured: 179 skills on the host, `ls`
+   * inside returns 0, and every agent had run with no skills since ADR 006.
    *
-   * Changing it means the sandbox server's `allowed_host_paths` has to name the
-   * new path too. That failure is loud (creation is refused and the message names
-   * the path), which is the whole reason this is worth moving: a path the runtime
-   * cannot reach fails silently, a path the server has not allowed does not.
+   * Changing it means the server's `allowed_host_paths` must name the new path.
    */
   skillsDir: z.string().min(1),
 });

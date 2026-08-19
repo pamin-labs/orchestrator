@@ -31,23 +31,20 @@ import {
 /**
  * One row per state, and the row has to say who pushes it.
  *
- * Every rule in `watchdog.ts` was bought with an incident: six groups on a stale
- * base, six behind a bad `--settings` path, a group whose every slice was accepted
- * and which then had nobody left to hand the branch to. They have one shape —
- * a transition that exactly one code path fires, and when that path does not fire,
- * the state is final and *looks healthy*: RUNNING, an agent listed, no error
- * anywhere the boss looks.
+ * Every rule in `watchdog.ts` was bought with an incident, and they share one
+ * shape: a transition exactly one code path fires, which when it does not fire
+ * leaves the state final and *looking healthy* — RUNNING, an agent listed, no
+ * error anywhere the boss looks.
+ */
+/**
+ * As a table derived from the state machine, "we found another one" becomes "the
+ * table has an empty cell": `invariants.test.ts` asserts every state in
+ * `contracts/states.ts` has a row, so adding a state fails the build until someone
+ * fills it in. The repairs themselves are two lines each.
  *
- * Writing them as a table derived from the state machine turns "we found another
- * one" into "the table has an empty cell". `test/invariants.test.ts` asserts every
- * state in `contracts/states.ts` has a row, so adding a state fails the build until someone
- * fills it in. That is the whole point of this file; the repairs themselves are
- * two lines each.
- *
- * What does NOT belong here: the watchdog's *detectors* — turn timeout, no
+ * What does **not** belong here: the watchdog's *detectors* — timeout, no
  * progress, circling, budget, env_suspect. Those answer "is this healthy", which
- * is a different question from "is anybody driving this". Keeping them apart is
- * what stops this table from becoming a second dumping ground.
+ * is a different question from "is anybody driving this".
  */
 
 interface Invariant<S extends string> {
@@ -281,16 +278,14 @@ const JOB_INVARIANTS = rows<JobState>(
 );
 
 /**
- * The utility container (007 step 4).
+ * The utility container.
  *
- * It is the only container bound for GitHub writes, so when it is not there,
- * every branch stops reaching the remote — and that failure has the shape this
- * table exists for: the groups keep working, keep committing, keep looking
- * healthy, and nothing on the boss's screen is red. What makes it survivable is
- * that its absence is *cheap and self-correcting* — `ensureSandbox` builds one
- * on the next call — and that the two ways it can fail to come back are both
- * already reported: the sandbox hold when no container can be opened at all, and
- * `credential:github` in preflight when there is nothing to bind.
+ * The only container bound for GitHub writes, so when it is absent every branch
+ * stops reaching the remote — and that has the shape this table exists for: groups
+ * keep working, keep committing, keep looking healthy.
+ *
+ * Survivable because its absence is cheap and self-correcting (`ensureSandbox`
+ * builds one on the next call) and both ways it fails to return are reported.
  */
 const UTIL_INVARIANTS = rows<UtilState>(
   {
@@ -310,15 +305,14 @@ const UTIL_INVARIANTS = rows<UtilState>(
 );
 
 /**
- * A project's GitHub reachability (007 §6).
+ * A project's GitHub reachability.
  *
- * The hold exists because an expired token makes every group fail at the same
- * moment, each reporting a different error, and retrying is the one thing that
- * cannot help. It then has the deadlock this table is for: a held project runs no
- * turns, so it makes no GitHub calls, so nothing would ever clear it. The clock
- * is what breaks that, and the repair below is for the other half — the hold is
- * in memory and the question is in the database, so a restart leaves a 待办 item
- * behind nothing, which the boss cannot clear by fixing anything.
+ * The hold exists because an expired token makes every group fail at once, each
+ * reporting a different error, and retrying cannot help. It then has the deadlock
+ * this table is for: a held project runs no turns, so it makes no GitHub calls, so
+ * nothing would ever clear it — the clock is what breaks that.
+ *
+ * The repair below is the other half: the hold is in memory, the question is not.
  */
 const PROJECT_INVARIANTS = rows<ProjectState>(
   { state: "reachable", must: "GitHub answers for this project's owner/repo", driver: null },
@@ -425,15 +419,12 @@ const ESCALATION_INVARIANTS = rows<EscalationState>(
 /**
  * Every table, not two of them.
  *
- * This ran GRP and SLICE and skipped the other six, so `PROJECT.repo_held`'s
- * repair — written, reviewed, tested by `uncovered()` for existing — had never
- * executed once. That is the failure this whole file is against, arrived at from
- * the other side: not a state with nobody driving it, but a driver nobody calls,
- * and both look exactly like a healthy system.
+ * This ran GRP and SLICE and skipped the other six, so `PROJECT.repo_held`'s repair
+ * — written, reviewed, covered by `uncovered()` — had never executed once. That is
+ * this file's own failure from the other side: not a state with nobody driving it,
+ * but a driver nobody calls, and both look like a healthy system.
  *
- * `uncovered()` checks that every state has a row. Nothing checked that every
- * row runs, which is why `test/invariants.test.ts` now asserts this list against
- * the tables the module exports.
+ * `uncovered()` checks every state has a row; nothing checked that every row runs.
  */
 export const INVARIANT_TABLES = {
   grp: GRP_INVARIANTS,

@@ -94,12 +94,11 @@ export const Pane = ({ children, className }: { children: React.ReactNode; class
  * Long prose, cut to a few lines until asked for the rest.
  *
  * Everything an agent writes to the boss is a paragraph: a QA verdict names every
- * file it checked, a watchdog escalation quotes three of them verbatim. The
- * decision is usually made by line three and the rest is there to check the
- * reasoning against, so it is one click away rather than half a screen.
+ * file it checked, a watchdog escalation quotes three verbatim. The decision is
+ * usually made by line three and the rest is there to check the reasoning against.
  *
- * The toggle only appears when the text is actually longer than the clamp —
- * otherwise every two-word question grows a 展开 that does nothing.
+ * The toggle appears only when the text is actually longer than the clamp, or every
+ * two-word question grows a 展开 that does nothing.
  */
 export function Clamp({ lines = 2, children }: { lines?: number; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);

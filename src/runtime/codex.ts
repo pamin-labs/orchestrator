@@ -9,18 +9,17 @@ import { z } from "zod";
 /**
  * `codex exec --json` behind the same interface as the claude adapter.
  *
- * Same shape on purpose: a role is configuration, so which CLI runs a turn should
- * be a config choice too, not a fork in the orchestrator. Event names differ, and
- * they were read off a real run rather than guessed:
+ * Same shape on purpose: a role is configuration, so which CLI runs a turn is a
+ * config choice rather than a fork in the orchestrator.
+ */
+/**
+ * Event names differ and were read off a real run rather than guessed:
+ * `thread.started` carries the `thread_id` that `codex exec resume` wants,
+ * `item.completed` carries `item.type`, `turn.completed` carries `usage`, and
+ * `turn.failed` carries `error.message`.
  *
- *   thread.started   { thread_id }              <- the id `codex exec resume` wants
- *   turn.started
- *   item.completed   { item: { type, ... } }    <- agent_message | command_execution | error | …
- *   turn.completed   { usage: { input_tokens, cached_input_tokens, output_tokens, … } }
- *   turn.failed      { error: { message } }
- *
- * It also prints a non-JSON banner ("Reading prompt from stdin…"), so the parser
- * has to tolerate junk lines rather than assume clean JSONL.
+ * It also prints a non-JSON banner, so the parser tolerates junk lines rather than
+ * assuming clean JSONL.
  */
 
 function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
@@ -131,22 +130,19 @@ type Line = z.infer<typeof LineSchema>;
 /**
  * What one codex turn cost, in the shape the rest of the system bills in.
  *
- * `input_tokens` here is the whole prompt, cached part included — the opposite
- * of claude, whose `input_tokens` counts only what the cache missed. Reporting
- * codex's total under the same name made one number wrong in three places:
- * `cacheRatio` read 0.39 where the real hit rate was 0.92, `total`
- * double-counted every cached token so a codex slice hit its budget at half its
- * real spend, and the rotation ceiling (`input + cacheCreate` against 0.6 of a
- * 272k window) was cleared by a single 438k turn — so every codex agent started
- * a new session every turn and re-read the repo to find out where it was.
- * Measured: 438k input vs 402k cacheRead per job, 15 of 18 live codex agents
- * sitting above the ceiling.
- *
- * Exported because that subtraction is the difference between the two runtimes
- * and it was written down once. `pageindex.ts` had a second copy that took the
- * two shapes as a pair of key names — which is exactly the part that is *not*
- * shared — and so billed the indexer, the most frequent model call in the
- * system, for its cached tokens twice.
+ * `input_tokens` here is the whole prompt, cached part included — the opposite of
+ * claude, whose `input_tokens` counts only what the cache missed. Reporting
+ * codex's total under the same name made one number wrong in three places: the
+ * cache ratio, the budget (double-counting cached tokens), and the rotation
+ * ceiling, which a single 438k turn cleared — so every codex agent started a new
+ * session every turn and re-read the repo to find out where it was.
+ */
+/**
+ * Exported because that subtraction is the difference between the two runtimes and
+ * it is written down once. `pageindex.ts` had a second copy that took the two
+ * shapes as a pair of key names — exactly the part that is *not* shared — and so
+ * billed the indexer, the most frequent model call in the system, twice for its
+ * cached tokens.
  */
 export function codexUsage(u: z.infer<typeof UsageSchema> = {}): Usage {
   return {

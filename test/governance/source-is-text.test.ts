@@ -5,14 +5,13 @@ import { join } from "node:path";
 /**
  * Every source file is text, or its diff is unreadable.
  *
- * `src/mech/github.ts` shipped in `231bd96` with a raw NUL byte in a string
- * literal — the ETag cache key was written `` `${token}<NUL>${url}` `` instead of
- * the escape. It ran correctly, and a NUL is arguably the better separator. What
- * broke was everything that reads the file as text: git calls it binary, so
- * `git diff`, `git blame` and `git log -p` all answer "Binary files differ" and
- * nothing else. The whole `gh` → REST rewrite landed with a reviewable commit
- * message and an unreviewable diff.
- *
+ * `github.ts` shipped in `231bd96` with a raw NUL byte in a string literal — the
+ * ETag cache key written with the byte instead of the escape. It ran correctly, and
+ * a NUL is arguably the better separator. What broke was everything that reads the
+ * file as text: git calls it binary, so `diff`, `blame` and `log -p` all answer
+ * "Binary files differ", and the whole REST rewrite landed with an unreviewable diff.
+ */
+/**
  * That gap is invisible by construction — the code works, the tests pass, and the
  * only symptom is a review that shows nothing. So it gets an `if`.
  */

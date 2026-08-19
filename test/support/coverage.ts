@@ -6,38 +6,14 @@ import type { instrument as oxcInstrumentFn } from "oxc-coverage-instrument";
 
 /**
  * Coverage for `bun test`, by instrumenting the source rather than asking the
- * runtime for it.
- *
- * Bun's own `--coverage` cannot answer the questions we need. Its lcov carries
- * `FNF`/`FNH` totals but no `FN`/`FNDA` records and no `BRDA`, so it cannot say
- * *which* function or branch went untested — and Fallow's CRAP score is
- * cyclomatic complexity against per-function coverage, so without those records
- * every CRAP number in the audit is an estimate. `NODE_V8_COVERAGE` is ignored
- * by Bun, which also rules out the c8 / v8-to-istanbul route.
- *
- * Instrumenting at load time sidesteps the runtime entirely: the source is
- * rewritten before Bun loads it, the counters land in `globalThis.__coverage__`,
- * and what comes out is a standard Istanbul coverage map that Fallow reads
- * directly.
- *
- * The rewriter is `oxc-coverage-instrument`, not `babel-plugin-istanbul`, and
- * the reason is what it unlocks rather than the single-process saving. Measured
- * on this suite: instrumentation costs 3s of CPU single-process either way, but
- * under `--parallel` — which implies `--isolate`, so every test file
- * re-instruments what it imports — babel cost **387s of CPU and 71s of wall
- * clock**, against 5s and 8s for oxc. That is the difference between a coverage
- * run that can be parallel and one that cannot, and the run being single-process
- * was most of its cost.
- *
- *   babel, single-process:  12.3s
- *   oxc,   single-process:  11.0s
- *   oxc,   parallel:         9.2s
- *
- * The two agree on the answer: 78.66% statements against 78.63%, 2271 covered
- * functions against 2269 — the difference is test isolation, not measurement.
- *
- * Loaded only by `bun run test:coverage`. Instrumentation costs real time, and
- * the default `bun test` is kept fast on purpose.
+ * runtime for it. Why not Bun's own `--coverage`, and why `oxc-coverage-instrument`
+ * rather than babel — with the numbers — is ADR 015.
+ */
+/**
+ * The rewrite happens at load time, so counters land in `globalThis.__coverage__`
+ * and what comes out is a standard Istanbul map. Loaded only by
+ * `bun run test:coverage`: instrumentation costs real time and the default
+ * `bun test` is kept fast on purpose.
  */
 
 const COVERAGE_DIR = process.env.COVERAGE_DIR ?? "coverage";
@@ -46,17 +22,16 @@ const root = process.cwd();
 /**
  * The switch is an environment variable because there is nowhere else to put it.
  *
- * This file is imported as the first line of `test/support/setup.ts`, which is
- * the only position early enough to instrument what the resets there import —
- * a plugin registered after a module has loaded does not reach it. So the
- * question is whether the *loading* can be made conditional instead, and it
- * cannot. Measured against Bun 1.3.14:
- *
- *   - `bunfig.toml`'s `preload` runs **before** a command-line `--preload`, so
- *     `bun test --preload ./test/support/coverage.ts` registers the plugin
- *     after `setup.ts` has already loaded.
- *   - `bun test` has no `--config`/`-c`: passing one is read as a test-file
- *     filter and matches nothing.
+ * This file is imported as the first line of `setup.ts`, the only position early
+ * enough to instrument what the resets there import — a plugin registered after a
+ * module has loaded does not reach it. So the question is whether the *loading*
+ * can be conditional instead, and it cannot.
+ */
+/**
+ * Measured against Bun 1.3.14: `bunfig.toml`'s `preload` runs **before** a
+ * command-line `--preload`, so `bun test --preload ./test/support/coverage.ts`
+ * registers the plugin after `setup.ts` has loaded; and `bun test` has no
+ * `--config`, which is read as a test-file filter and matches nothing.
  *
  * The preload list is therefore static, and a static list can only be made
  * conditional from inside the thing it loads.
@@ -87,15 +62,16 @@ function instrument(source: string, path: string, _jsx: boolean): string {
 /**
  * The rewriter itself, loaded only when it is going to be used.
  *
- * A static `import` here is paid by every one of the 149 test files — twice
- * over under `--parallel`, which implies `--isolate` and so re-evaluates the
- * module graph per file — for a plugin the default run never registers. The
- * `require`, not `await import`. Measured against Bun 1.3.14: a preload's
- * top-level `await` does not hold back the module it was preloading for, so
- * under `--parallel` the plugin would register after the source it exists to
- * instrument had already been loaded — the exact failure `bunfig.toml`'s comment
- * describes, reached from the other direction. `require` keeps registration on
- * the synchronous path, where the ordering the preload buys us still holds.
+ * A static `import` here is paid by every one of the 149 test files — twice over
+ * under `--parallel`, which implies `--isolate` and re-evaluates the module graph
+ * per file — for a plugin the default run never registers.
+ */
+/**
+ * `require`, not `await import`. Measured against Bun 1.3.14: a preload's top-level
+ * `await` does not hold back the module it was preloading for, so under `--parallel`
+ * the plugin would register after the source it exists to instrument had already
+ * loaded. `require` keeps registration on the synchronous path, where the ordering
+ * the preload buys still holds.
  */
 let oxcInstrument: typeof oxcInstrumentFn;
 

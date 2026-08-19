@@ -207,18 +207,17 @@ test("unmatched request paths cannot create unbounded metrics labels", async () 
 });
 
 /**
- * The self-check's period, which is not the watchdog's despite being derived
- * from it.
+ * The self-check's period, which is not the watchdog's despite being derived from it.
  *
  * The clamp is the policy: below five seconds the three `spawnSync` calls to the
- * docker daemon block the event loop more often than they report anything, and
- * above thirty a machine that has lost its sandbox server takes half a minute to
- * say so on a page somebody is watching.
- *
- * The re-arm around it is deliberately not tested here. It is four lines
- * identical to the watchdog timer's, and reaching it needs a live server and a
- * manipulated clock — a timing dependency in a suite that already has one flake
- * being hunted. The part with a decision in it is this function.
+ * docker daemon block the event loop more often than they report anything, and above
+ * thirty a machine that has lost its sandbox server takes half a minute to say so on
+ * a page somebody is watching.
+ */
+/**
+ * The re-arm around it is deliberately not tested here: four lines identical to the
+ * watchdog timer's, and reaching it needs a live server and a manipulated clock. The
+ * part with a decision in it is this function.
  */
 test("the self-check period follows the watchdog's interval, within bounds", () => {
   expect(readinessPeriodMs(15_000)).toBe(15_000);

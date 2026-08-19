@@ -1,22 +1,19 @@
 /**
  * Refreshing a ChatGPT-account login, on the host, once.
  *
- * codex's own answer to CI is "put auth.json on the runner and let codex
- * refresh it", with a warning attached: *do not share the same file across
- * concurrent jobs or multiple machines*. A fleet is exactly that — ten groups,
- * ten sandboxes, one login — so every sandbox refreshing its own copy means
- * they invalidate each other and the boss is asked to log in again.
- *
- * So the orchestrator is the one runner. It holds the file and the sandboxes get
- * decoys, with the sidecar injecting the real access token on the way out — the
- * same arrangement as every other credential.
- *
- * The renewal itself is done by codex, not by us. Posting the refresh token to
- * `auth.openai.com` with the CLI's own client id would work — the endpoint and
- * id are both in the shipped binary — but that is our code presenting itself as
- * the official client, which is exactly the shape the subscription terms are
- * about. One throwaway `codex exec` makes the real client refresh its own
- * token, costs a few hundred tokens, and is needed roughly once a week.
+ * codex's own answer to CI is "put auth.json on the runner and let codex refresh
+ * it", warning: *do not share the same file across concurrent jobs or machines*.
+ * A fleet is exactly that, so every sandbox refreshing its own copy means they
+ * invalidate each other and the boss is asked to log in again. The orchestrator
+ * is therefore the one runner; sandboxes get decoys and the sidecar injects the
+ * real token, as with every other credential.
+ */
+/**
+ * The renewal is done by codex, not by us. Posting the refresh token to
+ * `auth.openai.com` with the CLI's own client id would work — both are in the
+ * shipped binary — but that is our code presenting itself as the official client,
+ * which is the shape the subscription terms are about. One throwaway `codex exec`
+ * makes the real client refresh its own token, roughly once a week.
  */
 
 import { jsonOr } from "../../contracts/json.ts";
@@ -93,17 +90,18 @@ export interface CodexHomeIO {
 /**
  * Make codex renew its own login, and hand back the file it wrote.
  *
- * A real call is what triggers the refresh — `codex login status` reports the
- * login without touching it — so this spends the smallest turn it can. Returns
- * null when nothing was renewed, and the caller keeps what it had: a blocked
- * network must not throw away a working login.
- *
- * **The file is the answer, not the exit code.** The nudge can fail on its way
- * out — in the utility container the sidecar replaces the Authorization header
- * with the token we already had, so the API call after a successful refresh can
- * still 401 — and discarding a refreshed `auth.json` because the errand that
- * caused it came back non-zero would throw away the one thing this exists for.
- * Refresh happens at `auth.openai.com`, which nothing binds.
+ * A real call is what triggers the refresh — `codex login status` reports the login
+ * without touching it — so this spends the smallest turn it can. Returns null when
+ * nothing was renewed, and the caller keeps what it had: a blocked network must not
+ * throw away a working login.
+ */
+/**
+ * **The file is the answer, not the exit code.** The nudge can fail on its way out
+ * — in the utility container the sidecar replaces the Authorization header with the
+ * token we already had, so the API call after a successful refresh can still 401 —
+ * and discarding a refreshed `auth.json` because the errand came back non-zero
+ * would throw away the one thing this exists for. Refresh happens at
+ * `auth.openai.com`, which nothing binds.
  */
 export async function renew(io: CodexHomeIO): Promise<CodexAuth | null> {
   const before = await readAuth(io);

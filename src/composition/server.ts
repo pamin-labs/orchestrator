@@ -388,17 +388,16 @@ const authStamp = (db: DB): number =>
 /**
  * An index pass that *threw*, which is not the same as one whose calls failed.
  *
- * `recordIndexResult` is what arms the credential pause, and a throw never
- * reaches it — so this path retried every thirty seconds forever, each time
- * paying for a checkout and a `treeHeads` before failing, and each time emitting
- * a fresh event because `bus.emit` has no dedup. Seen live as
- * `could not write /tmp/orch-prompt-….txt into the container: socket closed`,
- * repeating.
- *
- * A throw is not a credential problem, so it does not wait on a credential: it
- * backs off for a few ticks and says the reason once per distinct reason. A
- * socket that recovers is picked up by the next attempt; one that does not stops
- * costing a container round trip per tick.
+ * `recordIndexResult` is what arms the credential pause, and a throw never reaches
+ * it — so this path retried every thirty seconds forever, each time paying for a
+ * checkout and a `treeHeads` before failing, and each time emitting a fresh event
+ * because `bus.emit` has no dedup.
+ */
+/**
+ * A throw is not a credential problem, so it does not wait on a credential: it backs
+ * off for a few ticks and says the reason once per distinct reason. A socket that
+ * recovers is picked up by the next attempt; one that does not stops costing a
+ * container round trip per tick.
  */
 export const INDEX_THROW_BACKOFF_MS = 5 * 60_000;
 

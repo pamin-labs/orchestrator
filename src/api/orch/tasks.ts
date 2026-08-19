@@ -223,12 +223,13 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
    * The Engineer's role prompt already told it a content-free self-review would be
    * rejected, and nothing rejected anything — `validateSelfReview` existed, had a
    * test, and no caller. A prompt that promises a check nobody runs is worse than no
-   * check: it reads as done. docs/project/plan.md §7 is explicit that self-review needs a
-   * deterministic anchor (the acceptance criteria and the agent's own diff lines) or
-   * it is self-congratulation.
-   *
-   * Demanded only on the task that closes the slice: that is where the work is
-   * finished, and asking per task would make it a formality four times over.
+   * check: it reads as done.
+   */
+  /**
+   * A self-review needs a deterministic anchor — the acceptance criteria and the
+   * agent's own diff lines — or it is self-congratulation. Demanded only on the task
+   * that closes the slice: that is where the work is finished, and asking per task
+   * would make it a formality four times over.
    */
   const invalidReview = reviewError(b.task_id, completion, b.review);
   if (invalidReview) return bad(invalidReview);

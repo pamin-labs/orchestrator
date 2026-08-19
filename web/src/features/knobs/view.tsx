@@ -53,13 +53,11 @@ import type { InferResponseType } from "hono/client";
  * The operating knobs, as rows.
  *
  * Every number here is a measurement someone paid for, so each row carries its
- * reason as a `?`. The server sends value, default and whether it was
- * overridden; the labels and the reasons live here, because they are copy.
+ * reason as a `?`. The server sends value, default and whether it was overridden;
+ * the labels and the reasons live here, because they are copy.
  *
- * A value is shown in the unit it means (`units.ts`, held exact by
- * `test/knob-units.test.ts`), a table-shaped value gets a table rather than a
- * line of JSON, and a refusal is drawn where the value is. No save button: a
- * field is written when it loses focus.
+ * A value is shown in the unit it means, a table-shaped value gets a table rather
+ * than a line of JSON, and a refusal is drawn where the value is.
  */
 
 const RawKnobSchema = z.object({

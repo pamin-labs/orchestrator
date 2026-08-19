@@ -250,17 +250,13 @@ function legacySlices(rawSlices: string[]): Result<{ slices: DraftSlice[] }> {
 }
 
 /**
- * The DRAFT card blocks the boss, so it must be readable in 20 seconds.
- * Rejecting a long card and making the Dispatcher rewrite is cheaper than
- * training the boss to skim.
+ * The DRAFT card blocks the boss, so it must be readable in 20 seconds. Rejecting a
+ * long card and making the Dispatcher rewrite is cheaper than training the boss to
+ * skim.
  *
- * Expected shape:
- *   ## 目标      one line
- *   ## 不做      one line
- *   ## 验收      2-3 executable list items
- *   ## 切片      a table of | 切片 | 难度 | 验收 |, 1-5 body rows
- *   ## 风险      <=2 list items
- *   ## 反对      Architect's objection, <=2 lines, or 无
+ * Expected: `## 目标` and `## 不做` one line each, `## 验收` 2–3 executable list
+ * items, `## 切片` a table of `| 切片 | 难度 | 验收 |` with 1–5 body rows, `## 风险` at
+ * most 2 items, and `## 反对` the Architect's objection in at most 2 lines, or 无.
  */
 export function validateDraftCard(text: string): Result<DraftOk> {
   const card = draftMarkdown(text) ?? draftLegacy(text);

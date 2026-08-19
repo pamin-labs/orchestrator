@@ -6,16 +6,16 @@ import { UTIL, isUtil, utilSandbox } from "../../src/mech/sandbox/sandbox.ts";
 /**
  * The third kind of container, and the one rule that pays for it.
  *
- * 005 said "the container is the boundary". 007 narrows it by a word: **a
- * container that runs an agent** is the boundary. One with no agent in it is a
- * peer of the server, so it may hold the real GitHub login — and every container
- * that does run an agent must then be unable to write to the remote, or the
- * split has bought nothing.
- *
- * That second half is not a property of the token, which can write: it is a
- * property of the binding. Which makes it exactly the kind of thing that is true
- * until somebody edits one line of `auth.ts`, and exactly why it is asserted
- * here rather than described in a comment.
+ * ADR 005 said "the container is the boundary". ADR 007 narrows it by a word: **a
+ * container that runs an agent** is the boundary. One with no agent in it is a peer
+ * of the server, so it may hold the real GitHub login — and every container that
+ * does run an agent must then be unable to write to the remote, or the split has
+ * bought nothing.
+ */
+/**
+ * That second half is not a property of the token, which can write: it is a property
+ * of the binding. Which makes it the kind of thing that is true until somebody edits
+ * one line of `auth.ts`, and exactly why it is asserted here rather than described.
  */
 
 function withGithub() {

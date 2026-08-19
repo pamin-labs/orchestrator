@@ -38,13 +38,11 @@ bench.addEventListener("warning", (event) => {
  * Budgets are checked against the mean, not a tail percentile.
  *
  * These catch a significant regression in work the nightly job repeats, not a
- * user-facing latency tail: an added query or an added pass over the rows moves
- * the whole distribution. A tail percentile over a sixteen-sample task is close
- * to its maximum, so a budget there would be a budget on whichever GC pause the
- * run happened to catch.
+ * user-facing latency tail: an added query or an added pass moves the whole
+ * distribution. A tail percentile over a sixteen-sample task is close to its
+ * maximum, so a budget there would be a budget on whichever GC pause it caught.
  *
- * Each limit is the old whole-batch budget divided by the batch it covered, so
- * the headroom is unchanged and only the unit moved to one call.
+ * Each limit is the old whole-batch budget divided by the batch it covered.
  */
 const limits = new Map<string, number>();
 

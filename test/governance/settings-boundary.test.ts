@@ -112,19 +112,18 @@ test("project controls own panes while the settings shell owns project scope", (
 /**
  * A setting has one control, in one pane.
  *
- * `sandbox.server` and `sandbox.image` had two each: a generic knob row in the
- * 沙盒默认值 section *and* a purpose-built row in 沙盒服务器 — an address row that
- * validates, and an image row that lists what the registry actually holds.
- * Neither section knew about the other, and the panes were five apart in the
- * sidebar, so which control a reader found was down to which pane they opened.
- * The report that arrived was "the image dropdown disappeared": it had not, they
- * were on the knob.
- *
- * Derived rather than listed, so it holds for the next one too. `putSetting` is
- * the only way a setting is stored, and there are exactly two kinds of caller:
- * the generic endpoint, whose path comes from the request, and a route that names
- * one path — which is what having a purpose-built control means. Those paths must
- * not also be knob rows.
+ * `sandbox.server` and `sandbox.image` had two each: a generic knob row in 沙盒默认值
+ * *and* a purpose-built row in 沙盒服务器. Neither section knew about the other and
+ * the panes were five apart in the sidebar, so which control a reader found was
+ * down to which pane they opened. The report that arrived was "the image dropdown
+ * disappeared": it had not, they were on the knob.
+ */
+/**
+ * Derived rather than listed, so it holds for the next one. `putSetting` is the
+ * only way a setting is stored and there are exactly two kinds of caller: the
+ * generic endpoint, whose path comes from the request, and a route that names one
+ * path — which is what having a purpose-built control means. Those paths must not
+ * also be knob rows.
  */
 const settingPaths = (): string[] => {
   const out: string[] = [];

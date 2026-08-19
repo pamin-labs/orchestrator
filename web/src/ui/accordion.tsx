@@ -4,11 +4,9 @@ import { cn } from "./cn";
 /**
  * One row open at a time, the rest one line each.
  *
- * Hand-rolled first (a `<button>` and a boolean) and it was wrong in the ways
- * hand-rolled disclosure is always wrong: no `aria-expanded`/`aria-controls`
- * pair, no arrow-key or Home/End movement between the rows, no `data-state` for
- * the styling to hang off. CLAUDE.md 硬约束 4 — behaviour comes from Radix, the
- * look is ours.
+ * Hand-rolled first (a `<button>` and a boolean) and wrong in the ways hand-rolled
+ * disclosure always is: no `aria-expanded`/`aria-controls` pair, no arrow-key
+ * movement between rows, no `data-state` for the styling to hang off.
  *
  * `collapsible` because closing the open one is a real thing to want: with three
  * slices the boss reads one and shuts it to see the shape of the rest.
@@ -35,16 +33,16 @@ export function Accordion({
 /**
  * The same rows, any number of them open.
  *
- * A second component rather than a `type` prop, because Radix changes the shape
- * of `value` with it — one string against an array — and a wrapper that took
- * both would be a union every caller had to narrow. The `Item`, `Trigger` and
- * `Body` below are shared, so the two differ only in how many can be open.
- *
- * Which to use is a question about the content, not a preference. One-at-a-time
- * is right when the rows are alternatives and reading one means not reading the
- * others: a requirement's slices, an escalation's questions. Many-at-a-time is
- * right when the rows are *comparable* — 巡检规则 against 代码索引 — where the
- * whole reason to open the second is to see it beside the first.
+ * A second component rather than a `type` prop, because Radix changes the shape of
+ * `value` with it — one string against an array — and a wrapper taking both would
+ * be a union every caller had to narrow. `Item`, `Trigger` and `Body` are shared,
+ * so the two differ only in how many can be open.
+ */
+/**
+ * Which to use is a question about the content, not a preference. One-at-a-time is
+ * right when the rows are alternatives and reading one means not reading the
+ * others. Many-at-a-time is right when the rows are *comparable* — 巡检规则 against
+ * 代码索引 — where the whole reason to open the second is to see it beside the first.
  */
 export function MultiAccordion({
   value,

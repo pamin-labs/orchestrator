@@ -31,13 +31,14 @@ import { testContext } from "../support/test-context.ts";
  * The whole boundary, against a real container.
  *
  * Everything else in the suite runs against a fake driver, which proves the
- * orchestrator's half and nothing about OpenSandbox's. This proves the seam:
- * a sandbox is created, provisioned, given a checkout, runs commands in it, and
+ * orchestrator's half and nothing about OpenSandbox's. This proves the seam: a
+ * sandbox is created, provisioned, given a checkout, runs commands in it, and
  * cannot reach this machine.
- *
- * Skipped unless a server is up, because it needs one — and it says so rather
- * than passing quietly, since a green suite that silently skipped the only test
- * of the real thing is the failure this whole design exists to avoid.
+ */
+/**
+ * Skipped unless a server is up, and it says so rather than passing quietly — a
+ * green suite that silently skipped the only test of the real thing is the failure
+ * this whole design exists to avoid.
  *
  *   uvx opensandbox-server --config <toml>   # [egress] mode = "dns+nft", image >= v1.1.6
  *   docker build -f docker/agent.Dockerfile -t orch/agent:1 .

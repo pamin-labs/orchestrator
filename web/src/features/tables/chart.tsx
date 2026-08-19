@@ -5,15 +5,16 @@ import { AXIS, CHART_CARD, ChartTooltip } from "../../ui/chart";
 /**
  * The two charts 成本 earns, and nothing else.
  *
- * A chart has to answer something a sorted list cannot. Two things here do: how
- * fast it is burning right now, which is a shape over time, and how a whole
- * splits when there are only two or three parts, which the eye reads faster as an
- * arc than as three numbers it has to divide. The ranked lists stay lists —
- * exact, comparable, and openable.
- *
+ * A chart has to answer something a sorted list cannot. Two things here do: how fast
+ * it is burning right now, which is a shape over time, and how a whole splits when
+ * there are only two or three parts, which the eye reads faster as an arc than as
+ * three numbers it has to divide. The ranked lists stay lists — exact, comparable,
+ * openable.
+ */
+/**
  * Colours come from the token set as `var(--color-…)`, so both charts follow the
- * theme switch with no JS. The accent is never used: docs/design/ui.md reserves it for
- * "needs you", and a chart that borrows it teaches the eye to ignore it.
+ * theme switch with no JS. The accent is never used: `docs/design/ui.md` reserves it
+ * for "needs you", and a chart that borrows it teaches the eye to ignore it.
  */
 
 /** Hourly burn, stacked by which subscription paid for it. */
@@ -68,12 +69,11 @@ export function BurnChart({ data }: { data: { hour: string; claude: number; code
  * A whole and its two or three parts.
  *
  * The ring was right; the colours were not. ink / ink-2 / ink-3 are three steps of
- * one warm near-black, which is legible as text and nearly identical as fill —
- * and when one account carries 99%, the other arc is a few pixels of a grey you
- * cannot tell from its neighbour. The ramp below steps by half the distance to
- * the paper each time, so adjacent segments differ at a glance. Still no hue: the
- * accent belongs to "needs you" and green/red/amber belong to gates, and a chart
- * that borrows either teaches the eye to stop trusting them.
+ * one warm near-black — legible as text, nearly identical as fill — so when one
+ * account carries 99% the other arc is a few pixels of an indistinguishable grey.
+ * The ramp below steps by half the distance to the paper each time.
+ *
+ * Still no hue: the accent belongs to "needs you" and green/red/amber to gates.
  */
 const RAMP = [
   "var(--color-ink)",

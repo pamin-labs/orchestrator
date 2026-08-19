@@ -5,18 +5,18 @@ import { z } from "zod";
 /**
  * Light / dark / follow the system.
  *
- * Three states, not two: "follow the system" is the one most people want and the
- * one a bare toggle cannot express — it silently pins whatever the machine
- * happened to be when you first clicked. The stored value is the preference; the
- * `data-theme` attribute is always resolved to a concrete light or dark, which is
- * why the stylesheet needs one dark block instead of three.
- *
- * The control lives in settings, not in the header. It was an icon in the top
- * right that cycled through three states one click at a time — a permanent
- * control for a thing set once, and a cycle button cannot show what the other two
- * options are. Applying the stored theme is separate from showing the control
- * (`startTheme`, called at boot), because the page has to come up in the right
- * theme whether or not anyone opens settings.
+ * Three states, not two: "follow the system" is what most people want and what a
+ * bare toggle cannot express — it silently pins whatever the machine happened to
+ * be when you first clicked. The stored value is the preference; `data-theme` is
+ * always resolved to a concrete light or dark, which is why the stylesheet needs
+ * one dark block instead of three.
+ */
+/**
+ * The control lives in settings, not the header: it was an icon that cycled three
+ * states one click at a time — a permanent control for a thing set once, and a
+ * cycle button cannot show what the other two options are. Applying the stored
+ * theme is separate (`startTheme`, at boot), because the page has to come up right
+ * whether or not anyone opens settings.
  */
 const PrefSchema = z.enum(["system", "light", "dark"]);
 type Pref = z.infer<typeof PrefSchema>;

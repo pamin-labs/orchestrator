@@ -17,13 +17,13 @@ import { foldQueueItems, queueClusters, queueItems, type QueueCluster, type Queu
  *
  * It can reach zero, and that matters: "都处理完了" is achievable, where a board always
  * looks half empty and trains the reader to ignore it.
- *
+ */
+/**
  * Two earlier versions were wrong in opposite directions. The first tinted all five
  * rows in the accent, so the accent stopped meaning anything. The second split them
- * into 停着不动 / 可以稍后 — true, but only two levels, and "everything in this list is
- * important" is exactly right: the question is never whether an item matters, it is
- * which one to open first. So each row carries the reason it sits where it does, and
- * rows on the same requirement cluster — one trip instead of three context switches.
+ * into two levels, which is true but misses the point: the question is never whether
+ * an item matters, it is which one to open first. So each row carries the reason it
+ * sits where it does, and rows on the same requirement cluster.
  */
 export function Queue({
   st,
@@ -85,13 +85,11 @@ function Paged({ blocks }: { blocks: { node: React.ReactNode }[] }) {
  * One requirement and everything waiting on it, in the shape 进行中 already uses.
  *
  * Identity on the left, the things themselves as cards in a track, the way out on
- * the right. That page reads well because the eye lands on one fixed column of
- * names and then scans a row of discrete objects; the queue was a table of text
- * columns instead, so the two halves of the same tab were two different pages.
+ * the right. That page reads well because the eye lands on one fixed column of names
+ * and then scans a row of discrete objects; the queue was a table of text columns.
  *
- * Severity lives on the card, because that is the thing it belongs to: a card
- * with a red edge is a group stopped behind that one question. Counting them is
- * how the boss decides which requirement to open.
+ * Severity lives on the card: one with a red edge is a group stopped behind that
+ * question.
  */
 function Cluster({
   st,

@@ -3,16 +3,16 @@
  *
  * Replaces `job.pid`. A turn no longer runs on this machine — it runs inside the
  * group's sandbox, and what the orchestrator holds is the stream, not a process.
- * There is nothing to `process.kill`, so "is it still going" and "stop it" both
- * become questions about this map.
- *
- * Ceiling: the map is memory, so after a restart every in-flight turn looks
- * orphaned — which is the useful answer, because nobody is reading its output
- * any more. The command itself keeps running inside the sandbox until its own
- * timeout and its writes land in the checkout the requeued turn will see. Same
- * shape as a duplicated turn, which the reconcile already handles.
- * `ponytail: an exec id in the job row would let a restart re-attach instead;
- * worth it only if restarts mid-turn stop being rare.`
+ * There is nothing to `process.kill`, so "is it still going" and "stop it" are both
+ * questions about this map.
+ */
+/**
+ * ponytail: the map is memory, so after a restart every in-flight turn looks
+ * orphaned — the useful answer, because nobody is reading its output any more. The
+ * command keeps running in the sandbox until its own timeout and its writes land in
+ * the checkout the requeued turn will see, which is the same shape as a duplicated
+ * turn and already handled by reconcile. An exec id in the job row would let a
+ * restart re-attach; worth it only if restarts mid-turn stop being rare.
  */
 const live = new Map<number, Set<() => void>>();
 

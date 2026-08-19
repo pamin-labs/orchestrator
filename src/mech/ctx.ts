@@ -6,14 +6,12 @@ import type { Config } from "../platform/config/load.ts";
 /**
  * The handle everything below the HTTP layer is given.
  *
- * It lives here rather than next to the routes because eighteen files under
- * `src/mech/**` want this type and nothing else from `api.ts` — and importing it
- * from there made every one of them depend on the whole route table, fourteen
- * two-file import cycles between `api.ts` and the mechanisms it calls.
+ * Here rather than next to the routes because eighteen files under `src/mech/**`
+ * want this type and nothing else from `api.ts` — importing it from there made every
+ * one of them depend on the whole route table, in fourteen two-file cycles.
  *
- * Taking the whole `Ctx` where one field would do is the other half of that
- * problem. A function that needs the database should say `db: DB`; several here
- * used to take this interface for a single `db` call and joined the cycle for it.
+ * Taking the whole `Ctx` where one field would do is the other half: a function that
+ * needs the database should say `db: DB`.
  */
 export interface Ctx {
   db: DB;
@@ -73,14 +71,14 @@ export interface Ctx {
   /**
    * The one config object, not a copy of the parts a handler was trusted with.
    *
-   * It used to be a hand-written literal in `server.ts` listing thirteen fields,
-   * which meant two objects that could disagree — and they did: `ctx.config`
-   * never carried `maxTurnsPerJob`, `turnTimeoutMs`, `sessionRotateFraction`,
-   * `gateRetries`, `difficultyModel` or `contextWindow` at all. Copying was
-   * meant to stop a handler reaching for whatever it liked; what it actually
-   * produced was a key that typechecked, read back as undefined, and silently
-   * fell through to a default.
-   *
+   * It used to be a hand-written literal listing thirteen fields, which meant two
+   * objects that could disagree — and they did: `ctx.config` never carried
+   * `maxTurnsPerJob`, `turnTimeoutMs`, `sessionRotateFraction`, `gateRetries`,
+   * `difficultyModel` or `contextWindow` at all. Copying was meant to stop a
+   * handler reaching for whatever it liked; what it produced was a key that
+   * typechecked, read back undefined, and fell through to a default.
+   */
+  /**
    * Complete because `loadConfig()` validates and fills every field before a
    * context exists. Tests use that same legal value and override only what they
    * exercise; a partial production state would only force fake fallbacks and casts.

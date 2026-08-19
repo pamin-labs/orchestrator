@@ -9,16 +9,17 @@ import { jsonOr } from "../../contracts/json.ts";
 /**
  * A project's `config_json`, parsed, `{}` when there is none or it is broken.
  *
- * Six functions asked this and each wrote out the same four things: the SELECT,
- * the `?? "{}"`, the try, and the catch returning its own empty. One of them
- * said so — `installFor`'s docstring read "Same reader shape as `gatesFor`" —
- * which is the note you leave when copying is the only option on offer.
- *
- * Broken JSON is `{}` on purpose and always was: this column is edited by the
- * panel and by agents, and a project whose config lost a brace should run with
- * defaults rather than take its gates, its excludes and its sandbox down with
- * it. `patchProjectConfig` is the one caller that must not silently discard a
- * bad value, and it is the one that does not come through here.
+ * Six functions asked this and each wrote out the same four things: the SELECT, the
+ * `?? "{}"`, the try, and the catch returning its own empty. One of them said so —
+ * `installFor`'s docstring read "Same reader shape as `gatesFor`" — which is the
+ * note you leave when copying is the only option on offer.
+ */
+/**
+ * Broken JSON is `{}` on purpose and always was: this column is edited by the panel
+ * and by agents, and a project whose config lost a brace should run with defaults
+ * rather than take its gates, its excludes and its sandbox down with it.
+ * `patchProjectConfig` is the one caller that must not silently discard a bad value,
+ * and it is the one that does not come through here.
  */
 const ReadProjectConfigSchema = StoredProjectConfigSchema.extend({
   detected: StoredProjectConfigSchema.shape.detected.catch(undefined),
@@ -47,27 +48,22 @@ export const projectOfAgent = (db: DB, agentId: number | null | undefined): numb
 /**
  * A note of which a project keeps exactly one: the repo map, the page index.
  *
- * Newest-wins with the old row deleted, rather than an upsert, because `note` has
- * no unique key to conflict on — kind is not unique per project for any other
- * kind, and adding one for these two would constrain the table for the sake of
- * two writers.
+ * Newest-wins with the old row deleted, rather than an upsert, because `note` has no
+ * unique key to conflict on — and adding one would constrain the table for the sake
+ * of two writers.
  *
- * Returns whether anything changed. Both callers use that: an unchanged map must
- * not bump the row's `at`, or every consumer that watches "when did this last
- * move" sees movement on every tick.
+ * Returns whether anything changed. Both callers use that: an unchanged map must not
+ * bump the row's `at`, or every consumer watching for movement sees it every tick.
  */
 /**
  * The one place a note is written.
  *
- * Ten call sites spelled this `INSERT` out by hand in six different column
- * combinations, which is the same shape the `setting` table was in before it got
- * a writer: nothing wrong with any one of them, and a change to how notes are
- * stored is a change in ten places. It also meant every reader had to know which
- * of the nine columns a given writer bothered to fill.
+ * Ten call sites spelled this `INSERT` out by hand in six column combinations — the
+ * same shape the `setting` table was in before it got a writer. It also meant every
+ * reader had to know which of the nine columns a given writer bothered to fill.
  *
- * `at` defaults to now. Only the report path passes one, and it passes the same
- * clock — stated as a parameter rather than left as an inconsistency between
- * `Date.now()` here and `unixepoch() * 1000` there.
+ * `at` defaults to now; only the report path passes one, and it passes the same
+ * clock.
  */
 export interface NewNote {
   kind: string;

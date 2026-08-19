@@ -1,15 +1,16 @@
 /**
  * Token counts, in the unit that fits.
  *
- * Stopped at k, so a real project's total printed as "1834k" — which is both wrong
- * as a unit and unreadable as a number. A long-running project passes a billion
- * cached tokens, so B is not hypothetical.
- *
- * The tiers were hand-written, and the tier was chosen before the rounding: 999500
+ * Stopped at k, so a real project's total printed as "1834k" — wrong as a unit and
+ * unreadable as a number. A long-running project passes a billion cached tokens, so
+ * B is not hypothetical.
+ */
+/**
+ * The tiers were hand-written and the tier was chosen before the rounding: 999500
  * printed as "1000k" and 999999999 as "1000M" — a quantity in a unit that does not
- * exist, on the one panel the boss reads spend from. 1200 printed as "1k", a fifth
- * of it gone. `Intl` picks the tier from the rounded value, so neither can happen,
- * and it is the same call `toLocaleString` already makes elsewhere on this page.
+ * exist, on the one panel the boss reads spend from — while 1200 printed as "1k", a
+ * fifth of it gone. `Intl` picks the tier from the rounded value, so neither can
+ * happen.
  */
 const COMPACT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 export const K = (v?: number | null) => {

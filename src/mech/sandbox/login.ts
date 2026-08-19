@@ -8,15 +8,15 @@ import { shq } from "../../platform/process/shell.ts";
 /**
  * Logging in without leaving the panel.
  *
- * Both CLIs already do this properly — print a URL, wait for the browser, hand
- * back a credential — so the panel runs the CLI rather than reimplementing two
- * OAuth flows against undocumented client ids. The boss clicks a button, clicks
- * a link, and the token lands in the settings page by itself.
- *
+ * Both CLIs already do this properly — print a URL, wait for the browser, hand back
+ * a credential — so the panel runs the CLI rather than reimplementing two OAuth
+ * flows against undocumented client ids.
+ */
+/**
  * In the **utility container**, all of it. Both flows produce a real long-lived
- * credential, and that container is the one with no agent, no mailbox and no
- * `orch` in it — which is the entire reason it is allowed to hold one. The host
- * runs the server and nothing else; the browser is still the boss's.
+ * credential, and that container is the one with no agent, no mailbox and no `orch`
+ * in it — which is the entire reason it is allowed to hold one. The host runs the
+ * server and nothing else; the browser is still the boss's.
  */
 
 /**
@@ -102,12 +102,14 @@ async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
  *
  * `codex login` proper starts a listener on `http://localhost:1455` and registers
  * that exact redirect with the provider — probed — so no proxied endpoint can
- * ever satisfy it, and altering `redirect_uri` is forging a redirect. codex
- * answers this itself on the next line of its own output: `--device-auth`, which
- * prints a URL and a one-time code and polls. Same shape the panel already runs
- * for GitHub, and the real CLI still does the whole exchange — so the objection
- * that kept this on the host, our code impersonating the official client, does
- * not apply.
+ * satisfy it, and altering `redirect_uri` is forging a redirect. codex answers this
+ * on the next line of its own output: `--device-auth`, which prints a URL and a
+ * one-time code and polls.
+ */
+/**
+ * Same shape the panel already runs for GitHub, and the real CLI still does the
+ * whole exchange — so the objection that kept this on the host, our code
+ * impersonating the official client, does not apply.
  *
  * In the **utility container**: this writes a real refresh token, and that is the
  * one credential no container with an agent in it may see.
@@ -133,31 +135,18 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
 /**
  * A terminal, so a terminal program will talk.
  *
- * `claude setup-token` is a TUI. Run without one it prints **nothing** and exits
- * 0 — measured, twice, in `orch/agent:1`:
+ * `claude setup-token` is a TUI: without a pty it prints nothing and exits 0, which
+ * gave the panel a login button that succeeded instantly and stored nothing.
+ */
+/**
+ * Two details are load-bearing. **The window size is set explicitly** — a parentless
+ * pty defaults to 80 columns and the CLI wraps its URL across five lines mid-token,
+ * and the link handed to the boss has to be one string; this is also why `script
+ * -qec`, in the image and tried first, does not work. **Stdin is a file this process
+ * appends to**, because the sandbox SDK has no channel into a running command.
  *
- *   claude setup-token < /dev/null   ->  (no output)   [exited with code 0]
- *
- * which is the worst possible shape: the panel had a "log in" button that
- * succeeded instantly and stored nothing, and the only way to tell was that no
- * credential appeared. Under a pty the same command prints its URL and then
- * waits at `Paste code here if prompted >`.
- *
- * Two details are not incidental. **The window size** is set explicitly, because
- * a pty with no parent defaults to 80 columns and the CLI wraps its URL across
- * five lines mid-token — the link the boss is handed has to be one string.
- * **Stdin** comes from a file this process appends to, because the sandbox SDK
- * has no channel into a running command: `select` on the master fd plus
- * `readline` on a file we `putFile` into is the whole mechanism by which the
- * pasted code gets in.
- *
- * `script -qec` is in the image and does the pty part, and it was the first
- * thing tried; it ignores `COLUMNS`, so the URL still arrived wrapped.
- *
- * **This runs the real CLI and nothing else.** No client id of ours, no URL we
- * built, no call to a token endpoint — `claude setup-token` performs the entire
- * OAuth exchange itself, exactly as it does in a terminal. A pty is a terminal;
- * that is the only thing being supplied.
+ * This runs the real CLI and nothing else. A pty is a terminal; that is all that is
+ * supplied.
  */
 const PTY_PATH = "/opt/orch/pty.py";
 const PTY_RUNNER = `import fcntl, os, pty, select, struct, sys, termios
@@ -208,17 +197,18 @@ const PASTE_RE = /paste code/i;
 /**
  * Sign in to a Claude account, from the utility container.
  *
- * The last thing that needed a binary on the boss's own machine. It is here for
- * the same reason the ChatGPT refresh is: what it produces is a real long-lived
- * credential, and the utility container is the one with no agent, no mailbox and
- * no `orch` in it — which is the entire reason it may hold one.
+ * The last thing that needed a binary on the boss's own machine. Here for the same
+ * reason the ChatGPT refresh is: what it produces is a real long-lived credential,
+ * and the utility container is the one with no agent, no mailbox and no `orch` in
+ * it — which is the entire reason it may hold one.
+ */
+/**
+ * `setup-token` mints a *separate* token rather than touching whatever session the
+ * container happens to hold, so running it here disturbs nothing.
  *
- * `setup-token` mints a *separate* token rather than touching whatever session
- * the container happens to hold, so running it here does not disturb anything.
- *
- * Two halves, minutes apart, same shape as the GitHub and codex flows: the URL
- * comes back from `start`, and `submit` carries the code the boss pastes from
- * the page — which is what the CLI is sitting at a prompt waiting for.
+ * Two halves, minutes apart, the same shape as the GitHub and codex flows: the URL
+ * comes back from `start`, and `submit` carries the code the boss pastes — which is
+ * what the CLI is sitting at a prompt waiting for.
  */
 let claudeLogin: (LoginRun & { submit: (code: string) => Promise<void> }) | null = null;
 

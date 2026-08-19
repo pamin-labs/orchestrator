@@ -18,16 +18,16 @@ export const GroupRef = z.union([z.number().int().positive(), z.string().min(1)]
 /**
  * A row id, which arrives as a string whenever `orch` is the caller.
  *
- * Command-line flags are strings, so somebody had to convert. That somebody was
- * each call site in `orch/cli.ts`: `flags.slice ? Number(flags.slice) : undefined`
- * written out at `:248` and `:350`, and *not* written at `:237` — so
- * `orch mail x --in-reply-to 5` came back "in_reply_to: Invalid input: expected
- * number, received string" and no agent could tell what it was meant to send
- * instead. A rule that lives in every caller is a rule one caller will miss.
- *
- * Explicit union rather than `z.coerce.number()`, for the reason 硬约束 8 names:
- * coerce runs `Number()` on whatever it is handed, and a bare `--slice` parses
- * to `true`, which `Number()` turns into the perfectly plausible id 1.
+ * Command-line flags are strings, so somebody had to convert — and that somebody was
+ * each call site in `orch/cli.ts`, two of which did and one of which did not. So
+ * `orch mail x --in-reply-to 5` came back "expected number, received string" and no
+ * agent could tell what it was meant to send instead. A rule that lives in every
+ * caller is a rule one caller will miss.
+ */
+/**
+ * Explicit union rather than `z.coerce.number()`: coerce runs `Number()` on whatever
+ * it is handed, and a bare `--slice` parses to `true`, which `Number()` turns into
+ * the perfectly plausible id 1.
  */
 export const Id = z
   .union([z.number(), z.string().regex(/^\d+$/, "must be a whole number").transform(Number)])

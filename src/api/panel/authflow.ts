@@ -391,19 +391,21 @@ export const GithubLoginQuery = z.object({ fresh: z.coerce.boolean().optional() 
 /**
  * What the panel knows about the connection, kept rather than re-asked.
  *
- * GitHub's own *Best practices for creating a GitHub App* says it directly:
- * **"Rather than calling the `/user` endpoint on every page load, you should
- * handle token validation more strategically"**, store the account by its `id`
- * (which never changes), and learn about revocation from the
- * `github_app_authorization` webhook or from a 401 on a call you actually needed.
- *
- * This route was doing the thing that advises against — two requests to
+ * GitHub's *Best practices for creating a GitHub App* says it directly: **"Rather
+ * than calling the `/user` endpoint on every page load, you should handle token
+ * validation more strategically"** — store the account by its `id`, and learn
+ * about revocation from the `github_app_authorization` webhook or a 401 on a call
+ * you actually needed.
+ */
+/**
+ * This route was doing the thing that advises against: two requests to
  * api.github.com every time the pane opened, measured at **1.2s** against a live
- * server while every other settings endpoint answered in 16–160ms. The comment
- * defending it named a real failure: a stored name that keeps saying 已连接 for a
- * token revoked last week. But this is not where that is caught. ADR 029 already
- * routes a 401 from real work to the boss, holds the project and says so once,
- * and a settings pane nobody has opened cannot notice anything at all.
+ * server while every other settings endpoint answered in 16–160ms.
+ *
+ * The comment defending it named a real failure — a stored name still saying 已连接
+ * for a token revoked last week — but this is not where that is caught. ADR 029
+ * routes a 401 from real work to the boss, holds the project and says so once, and
+ * a settings pane nobody has opened cannot notice anything at all.
  */
 const SNAPSHOT_KEY = "github_connection";
 

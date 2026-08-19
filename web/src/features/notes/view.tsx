@@ -17,14 +17,15 @@ import { NotesResponseSchema, type PanelNote as Note } from "../../../../src/con
 /**
  * The blackboard's static half.
  *
- * docs/project/plan.md §7: the journal is where "做了啥 + 为啥 + 风险" lives, the retro is the only
- * thing a dissolved group leaves behind, and the lesson list is the single mechanism
- * by which the twentieth group is smarter than the first. All of it was written,
+ * The journal is where "做了啥 + 为啥 + 风险" lives, the retro is the only thing a
+ * dissolved group leaves behind, and the lesson list is the single mechanism by
+ * which the twentieth group is smarter than the first. All of it was written,
  * exported to the repo, injected into prompts — and unreadable from the panel, which
  * made the system's memory something only the agents could see.
- *
- * Newest first, ≤6 lines each by construction (`orch journal add` refuses more), so
- * the whole body is shown rather than truncated: a 6-line note with a "more" link
+ */
+/**
+ * Newest first, and ≤6 lines each by construction (`orch journal add` refuses more),
+ * so the whole body is shown rather than truncated: a 6-line note with a "more" link
  * would be a click to see two extra lines.
  */
 const KINDS: [string, string][] = [

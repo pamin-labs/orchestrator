@@ -80,15 +80,16 @@ export function claimsShared(owns: string[], shared: string[]): string[] {
 /**
  * Which of these repo-relative paths the group had no business writing.
  *
- * Checked after the turn, against `git status`, and the offending files are
- * rolled back. There is no earlier clock left: a deny-list used to stop the write
- * before it happened, but the container knows nothing about which group owns
- * which file, so this is the only mechanism (decision 005, §Ceiling).
- *
- * A group that declared nothing owns nothing in particular and is not policed
- * here. Build outputs are exempt: the gate writes them on every run, for every
- * group, and it has to be able to produce the thing it then checks. So are the
- * files the orchestrator itself puts in the worktree.
+ * Checked after the turn, against `git status`, and the offending files are rolled
+ * back. There is no earlier clock left: a deny-list used to stop the write before it
+ * happened, but the container knows nothing about which group owns which file, so
+ * this is the only mechanism.
+ */
+/**
+ * A group that declared nothing owns nothing in particular and is not policed here.
+ * Build outputs are exempt — the gate writes them on every run, for every group, and
+ * it has to be able to produce the thing it then checks — and so are the files the
+ * orchestrator itself puts in the worktree.
  */
 export function outsideOwns(changed: string[], owns: string[]): string[] {
   if (!owns.length) return [];
@@ -99,16 +100,16 @@ export function outsideOwns(changed: string[], owns: string[]): string[] {
 /**
  * Does this glob cover this concrete path? `src/a/**`, `src/*`, `src/a/b.ts`.
  *
- * `Bun.Glob` rather than a hand-written matcher, because the hand-written one
- * was wrong in the direction that hurts. It only understood a trailing `/*` and
- * treated everything else as a prefix, so `src/a/**\/*.ts` covered `src/a/b.js`
- * and `src/*.ts` covered `src/deep/nested/x.ts` — and this function's answer is
- * what decides whether a file another group owns gets rolled back after a turn.
- * Saying yes too easily means the stray write stays.
- *
- * One rule is ours and stays: a wildcard-free entry is a directory claim.
- * Agents declare `owns: ["src/mech"]` and mean everything under it, where a
- * glob library means that one path.
+ * `Bun.Glob` rather than a hand-written matcher, because the hand-written one was
+ * wrong in the direction that hurts: it understood only a trailing `/*` and treated
+ * everything else as a prefix. This function's answer decides whether a file another
+ * group owns gets rolled back after a turn, and saying yes too easily means the
+ * stray write stays.
+ */
+/**
+ * One rule is ours and stays: a wildcard-free entry is a directory claim. Agents
+ * declare `owns: ["src/mech"]` and mean everything under it, where a glob library
+ * means that one path.
  */
 function covers(glob: string, path: string): boolean {
   if (glob === path) return true;
@@ -125,29 +126,23 @@ export interface StartCheck {
 }
 
 /**
- * Two questions, which four call sites had been answering with four ad-hoc
- * string lists and three different answers.
+ * Two questions, which four call sites had been answering with four ad-hoc string
+ * lists and three different answers.
  *
  * "Who could be writing a file right now" is not "who has spoken for these
- * paths", and conflating them breaks in both directions. `canStart` wants the
- * first: a group only holds a worktree from RUNNING onward (`watchdog.ts` only
- * keeps sandboxes for RUNNING and PR_OPEN), and refusing a start because some
- * *unstarted* group claimed the same paths deadlocks both — neither can begin
- * until the other dissolves, and `sweepApproved` retries that silently forever.
- * Two groups still never run overlapping: the sweep is sequential, so whichever
- * starts second sees the first as RUNNING.
- *
- * The boundary questions want the second: "somebody already claimed this, cut a
- * boundary before planning inside it" and `orch blocked`'s "who owns this path"
- * are both about the claim, which exists from birth — `newGroup` inserts a group
- * as PLANNING with `owns_json` already populated. Those three sites had drifted
- * apart by one state each: two of them missed DRAFT, so a requirement waiting on
- * the boss's approval owned its paths as far as the panel was concerned and
- * owned nothing as far as `orch blocked` was concerned.
+ * paths". `canStart` wants the first: a group holds a worktree only from RUNNING
+ * onward, and refusing a start because an *unstarted* group claimed the same
+ * paths deadlocks both — neither can begin until the other dissolves, and
+ * `sweepApproved` retries that silently forever.
+ */
+/**
+ * The boundary questions want the second, which exists from birth: `newGroup`
+ * inserts a group as PLANNING with `owns_json` already populated. Those three
+ * sites had drifted apart by one state each — two missed DRAFT, so a requirement
+ * awaiting approval owned its paths to the panel and nothing to `orch blocked`.
  *
  * Derived from `GRP_STATES` so a new state joins by existing. Interpolated into
- * SQL because these are compile-time constants from an `as const` array;
- * nothing user-supplied reaches the string.
+ * SQL because these are compile-time constants from an `as const` array.
  */
 const sql = (states: readonly string[]) => `(${states.map((s) => `'${s}'`).join(", ")})`;
 
@@ -253,14 +248,15 @@ const BUILD_OUTPUTS = ["web/dist"];
 /**
  * Written by the orchestrator into every checkout, not by the agent in it.
  *
- * AGENTS.md / CLAUDE.md: whichever of the two the project does not ship is a
- * symlink we create, so a turn on either runtime reads the project's
- * instructions. Only the link is ours — an agent editing the real file is a
- * normal change and reconcile still sees it, because the link is what gets
- * skipped, not the target.
- * The reconcile exists to catch what an agent wrote outside its boundary, and this
- * is ours — without the exemption it was reverted after every turn, recreated
- * before the next one, and escalated to the boss each time. Observed live, once
- * per turn, forever.
+ * Whichever of AGENTS.md / CLAUDE.md the project does not ship is a symlink we
+ * create, so a turn on either runtime reads the project's instructions. Only the
+ * link is ours — an agent editing the real file is a normal change and reconcile
+ * still sees it, because the link is what gets skipped, not the target.
+ */
+/**
+ * Reconcile exists to catch what an agent wrote outside its boundary, and this is
+ * ours — without the exemption it was reverted after every turn, recreated before
+ * the next one, and escalated to the boss each time. Observed live, once per turn,
+ * forever.
  */
 const HARNESS_FILES = ["AGENTS.md", "CLAUDE.md"];

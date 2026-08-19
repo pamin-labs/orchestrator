@@ -18,14 +18,11 @@ export function stressFiles(): string[] {
  * Serial and randomised, deliberately, where `bun run test` is `--parallel`.
  *
  * `--parallel` implies `--isolate`, which gives every file a fresh global — and
- * cross-file order dependence is exactly what this job exists to find. Running
- * the stress pass the same way as CI would test the configuration that cannot
- * have the bug. One shared process, shuffled, ten times over is the harder case.
+ * cross-file order dependence is what this job exists to find. Running it the way CI
+ * runs would test the configuration that cannot have the bug.
  *
- * Concurrency is Bun's default rather than the `--max-concurrency 4` this used to
- * pass, which had no recorded reason and was backwards for the job: interleaving
- * is what a stress pass hunts, so capping it at a fifth of the default narrowed
- * the space being searched.
+ * Concurrency is Bun's default rather than `--max-concurrency 4`, which was
+ * backwards: interleaving is what a stress pass hunts.
  */
 export function stressArgs(env: Readonly<Record<string, string | undefined>>): string[] {
   const rawSeed = env.BUN_TEST_SEED;

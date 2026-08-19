@@ -5,19 +5,14 @@ import { loadAuth, saveAuth, vaultBindings } from "../../src/mech/sandbox/auth.t
 import { REFRESH_HOME, type CodexHomeIO } from "../../src/mech/sandbox/chatgpt.ts";
 
 /**
- * The one credential that is renewed rather than stored, and the row that owns
- * it.
+ * The one credential that is renewed rather than stored, and the row that owns it.
  *
- * A ChatGPT login is a refresh token plus a short-lived access token, and this
- * is the only writer of either. The rules it has to keep are all invisible when
- * they break:
- *
- *   one writer      a second one replaced the real refresh token with a decoy
- *                   and the whole fleet 401'd, presenting as an expired account
- *   never throw it  a blocked network must keep the login it already has
- *     away
- *   never inside    only the access token is bound at the sidecar; the refresh
- *                   token stays on this side of the boundary
+ * A ChatGPT login is a refresh token plus a short-lived access token, and this is
+ * the only writer of either. Three rules, all invisible when they break: **one
+ * writer** — a second replaced the real refresh token with a decoy and the fleet
+ * 401'd, presenting as an expired account; **never throw it away** — a blocked
+ * network must keep the login it has; and **never inside** — only the access token
+ * is bound at the sidecar.
  */
 
 const REFRESH_TOKEN = "rt-do-not-leak-9f2c";

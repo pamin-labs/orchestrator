@@ -11,12 +11,11 @@ export type Dedupe = { prefix: string; scope: "global" } | { prefix: string; sco
  * Filing a question for a human, in one place.
  *
  * Nine sites wrote this INSERT with four column lists, and three guarded it with
- * three subtly different predicates. `raise` owns both pieces. Dedupe scope is
- * explicit because the row that records which group hit a bad credential is
- * still one account-wide warning, while a budget warning belongs to one group.
+ * three subtly different predicates. Dedupe scope is explicit because the row
+ * recording which group hit a bad credential is one account-wide warning, while a
+ * budget warning belongs to one group.
  *
- * The bus message stays at the call site: every caller says something different,
- * and a generic message here would announce each question twice.
+ * The bus message stays at the call site, or each question is announced twice.
  */
 export interface EscalationRequest {
   grpId?: number | null;

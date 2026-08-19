@@ -36,16 +36,16 @@ export function Tip({ label, children }: { label: React.ReactNode; children: Rea
  * The same job as `Tip` at the length where hovering stops working.
  *
  * The reason a setting's default is what it is runs to five or six lines — a
- * measurement someone paid for, and the thing that decides whether the number
- * gets changed back. A tooltip is the wrong container for that: it needs the
- * pointer parked on the trigger, so it closes the moment the reader moves toward
- * the field they came to edit, and it never opens at all on touch. A popover is
- * clicked open, stays open while the value is being typed, closes on Escape or
- * on a click outside, and is reachable from the keyboard.
- *
- * Radix Popover, already in the tree for the combobox. Both live in this file
- * because they are one decision with a threshold: a phrase hovers, a paragraph
- * is clicked.
+ * measurement someone paid for, and the thing that decides whether the number gets
+ * changed back. A tooltip is the wrong container: it needs the pointer parked on
+ * the trigger, so it closes the moment the reader moves toward the field they came
+ * to edit, and it never opens at all on touch.
+ */
+/**
+ * A popover is clicked open, stays open while the value is being typed, closes on
+ * Escape or an outside click, and is reachable from the keyboard. Radix Popover,
+ * already in the tree for the combobox. Both live in this file because they are one
+ * decision with a threshold: a phrase hovers, a paragraph is clicked.
  */
 export function Help({ children }: { children: React.ReactNode }) {
   return (

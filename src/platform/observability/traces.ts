@@ -1,15 +1,15 @@
 /**
  * W3C trace context, and the OpenTelemetry span that carries it off the machine.
  *
- * The SDK owns id generation, batching, retry and export; this module owns only
- * the shape the rest of the process passes around. A `Trace` is what goes into
- * `requestContext` for structured logging and into the `job` table's
- * `trace_id`/`parent_span_id`, so a job's span rejoins the trace of the request
- * that enqueued it.
- *
- * The provider is deliberately not the global one from `@opentelemetry/api`.
- * Composition installs an exporting provider at boot; tests install their own
- * with an `InMemorySpanExporter`. Nothing here reaches for a process registry.
+ * The SDK owns id generation, batching, retry and export; this module owns only the
+ * shape the rest of the process passes around. A `Trace` goes into `requestContext`
+ * for structured logging and into the `job` table's `trace_id`/`parent_span_id`, so
+ * a job's span rejoins the trace of the request that enqueued it.
+ */
+/**
+ * The provider is deliberately not the global one from `@opentelemetry/api`:
+ * composition installs an exporting provider at boot, tests install their own with
+ * an `InMemorySpanExporter`, and nothing here reaches for a process registry.
  */
 
 import {
@@ -30,15 +30,15 @@ import { NodeTracerProvider, type BasicTracerProvider } from "@opentelemetry/sdk
 /**
  * Without this, nothing nests.
  *
- * `startActiveSpan` parents a span to whatever is active in the *ambient*
- * context, and the API's default context manager is a no-op that returns
- * `ROOT_CONTEXT` every time — so every span the executor opens would come out a
- * root of its own and a trace would be a pile of unrelated spans. Measured
- * before this line existed: a child opened inside `startActiveSpan` reported no
- * parent at all.
- *
- * It is an `AsyncLocalStorage`, not a registry that reaches the network, and
- * `requestContext` in this same directory already keeps one. Installed at import
+ * `startActiveSpan` parents a span to whatever is active in the *ambient* context,
+ * and the API's default context manager is a no-op returning `ROOT_CONTEXT` every
+ * time — so every span the executor opens would come out a root of its own and a
+ * trace would be a pile of unrelated spans. Measured before this line existed: a
+ * child opened inside `startActiveSpan` reported no parent at all.
+ */
+/**
+ * An `AsyncLocalStorage`, not a registry that reaches the network, and
+ * `requestContext` in this same directory already keeps one. Installed at import,
  * because a span opened before composition ran must still nest correctly.
  */
 contextApi.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());

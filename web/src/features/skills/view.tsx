@@ -13,15 +13,17 @@ import { skillsKey } from "../composer/view";
 /**
  * Which of the boss's skills the agents can see.
  *
- * A ticked skill is copied into the one directory every sandbox mounts read-only,
- * so an agent finds and invokes it by itself. That reach is not free: every ticked
+ * A ticked skill is copied into the one directory every sandbox mounts read-only, so
+ * an agent finds and invokes it by itself. That reach is not free: every ticked
  * skill's name and description sit in the cached prefix of EVERY turn of EVERY
  * agent, which is why the count and the estimate are stated above the list rather
- * than discovered on the bill. Unticking one does not hide it from the boss — a
- * skill named in a requirement is still injected into that single turn.
- *
- * Project skills have no tick box: they live in the checkout the CLI already runs
- * in, so they are visible whatever this page says.
+ * than discovered on the bill.
+ */
+/**
+ * Unticking one does not hide it from the boss — a skill named in a requirement is
+ * still injected into that single turn. Project skills have no tick box at all: they
+ * live in the checkout the CLI already runs in, so they are visible whatever this
+ * page says.
  */
 
 export function Skills({ projectId }: { projectId: number | null }) {

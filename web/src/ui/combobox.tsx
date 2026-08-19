@@ -5,21 +5,22 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "./cn";
 
 /**
- * One control for a value that comes from a list.
+ * One control for a value that comes from a list: type to filter, click or Enter
+ * to commit.
  *
- * Type to filter, click or Enter to commit. The first attempt at the
- * base-branch field was a text box **and** a menu beside it: two widgets for one
- * value, where the box could not say what the valid answers were and the menu
+ * The base-branch field was a text box **and** a menu beside it — two widgets for
+ * one value, where the box could not say what the valid answers were and the menu
  * could not be typed into. Having both was the bug, not either half.
- *
+ */
+/**
  * **The list is the authority when there is one.** A base branch that does not
- * exist is not a value, it is a group that fails at clone time four steps later,
- * so text that matches nothing is refused and the field snaps back. When the
- * list is *empty* — no GitHub credential, rate limited, the API down — there is
- * nothing to check against, and refusing everything would mean an unreachable
- * API silently locks a settings field. Then, and only then, text is taken as
- * typed.
- *
+ * exist is a group that fails at clone time four steps later, so text matching
+ * nothing is refused and the field snaps back. When the list is *empty* — no
+ * credential, rate limited, API down — refusing everything would let an
+ * unreachable API silently lock a settings field, so then and only then text is
+ * taken as typed.
+ */
+/**
  * shadcn's current combobox is Base UI. This is Radix Popover plus the `cmdk`
  * already here, which is the same composition one library earlier: seven Radix
  * packages are in this tree, and a second primitive library for one control is a

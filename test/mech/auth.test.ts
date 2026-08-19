@@ -558,13 +558,13 @@ test("a key stored before the address travelled with it is bound at startup, onc
  * What "the host is offline" is actually asking.
  *
  * `runtime_auth` holds more than model providers: `sandbox` is the local server,
- * with a `base_url` of `http://127.0.0.1:8080`. The `base_url` branch ran before
- * the check for a bound runtime, so that row put **127.0.0.1** into the probe
- * list — and with no provider configured it was the only entry. Since any one
- * host answering is enough, "is the internet up" was decided by whether anything
- * listens on localhost **443**. Nothing does; it failed in 5ms every tick and the
- * panel announced 宿主断网了 on a machine that was online.
- *
+ * with a `base_url` of `http://127.0.0.1:8080`. That branch ran before the check
+ * for a bound runtime, so the row put **127.0.0.1** into the probe list — and with
+ * no provider configured it was the only entry. Since any one host answering is
+ * enough, "is the internet up" was decided by whether anything listens on localhost
+ * **443**. Nothing does; the panel announced 宿主断网了 on a machine that was online.
+ */
+/**
  * The origin, not the hostname, for the reason this list is derived rather than
  * configured: a self-hosted gateway on `http://gw.internal:8443` was being probed
  * at `https://gw.internal:443`.

@@ -3,22 +3,20 @@ import { z } from "zod";
 /**
  * Whether desktop notifications are wanted, which is not whether they are allowed.
  *
- * The panel had only a 允许通知 button: once the browser had granted permission
- * there was no way back, because a page cannot revoke its own permission — that
- * lives in browser settings, several clicks away and under a hostname rather than
- * a product name. So "can I turn these off" had no answer here at all.
+ * The panel had only a 允许通知 button and no way back, because a page cannot
+ * revoke its own permission — that lives in browser settings, under a hostname
+ * rather than a product name. Two facts, kept apart: the permission is the
+ * browser's, this is the boss's, and it is the one a settings pane can offer.
+ */
+/**
+ * Off falls back to a toast, which is what an ungranted permission already does;
+ * the tab title keeps the count either way. Local to this machine, like the theme
+ * and for the same reason.
  *
- * Two facts, kept apart. The permission is the browser's and read from it; this is
- * the boss's, and it is the one a settings pane can offer. Off falls back to a
- * toast, which is what an ungranted permission already does — the tab title keeps
- * the count either way, so nothing is lost, it just stops leaving the window.
- *
- * Local to this machine, like the theme and for the same reason: the answer is
- * about this browser on this desk, not about the project.
- *
- * In `shared/`, not beside `ThemeChoice` in `ui/`: that file is a control, this is
- * a preference the stream reducer also reads — and `ui/` importing `shared/` while
- * `shared/` imported `ui/` is the cycle `module-graph.test.ts` caught.
+ * In `shared/` rather than beside `ThemeChoice` in `ui/`: that file is a control,
+ * this is a preference the stream reducer also reads — and `ui/` importing
+ * `shared/` while `shared/` imported `ui/` is the cycle `module-graph.test.ts`
+ * caught.
  */
 const KEY = "orch.desktop-notify";
 const WantSchema = z.enum(["on", "off"]);

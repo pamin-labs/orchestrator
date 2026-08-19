@@ -9,14 +9,12 @@ import { Queue } from "../queue/view";
 /**
  * Every project at once, plus what wants the boss across all of them.
  *
- * "谁在等我" does not care which project it is in, so the queue spans them and each
- * row names its own. Entering a project is a deliberate step. No timeline here:
- * cross-project chatter is noise while deciding.
+ * "谁在等我" does not care which project it is in, so the queue spans them and each row
+ * names its own. No timeline here: cross-project chatter is noise while deciding.
  *
  * The rows are held to a measure. Three short facts stretched across a 76rem shell
- * put 个需求 and tokens — the two least important things on the page — at the far
- * right edge, which is the strongest position a row has, and left the eye no reason
- * to land on the name.
+ * put 个需求 and tokens at the far right edge — the strongest position a row has — and
+ * left the eye no reason to land on the name.
  */
 export function Home({
   st,

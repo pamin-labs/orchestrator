@@ -164,16 +164,17 @@ export async function runDeterministicReview(
 /**
  * Give the writer back a card it is allowed to work on.
  *
- * A slice going back for a retry kept its tasks `done`, and `done` is the one
- * state the writer cannot act on: `task list` showed a finished card, `task claim`
- * said the slice was not being worked, `task done` said the task was not its. No
- * legal move — so the turn ended the only way it could, by asking the boss. Six
- * groups reached the same dead end, four of them stopping the group outright.
- *
+ * A slice going back for a retry kept its tasks `done`, and `done` is the one state
+ * the writer cannot act on: `task list` showed a finished card, `task claim` said
+ * the slice was not being worked, `task done` said the task was not its. No legal
+ * move — so the turn ended the only way it could, by asking the boss. Six groups
+ * reached the same dead end, four stopping outright.
+ */
+/**
  * `claim_json` stays. `reconcile` only reads it off `done` rows, so it is inert
- * here, and on a reopened card it is the record of what the last attempt already
- * put on the branch — which is what `getTasks` shows the writer so it checks
- * before rewriting.
+ * here, and on a reopened card it is the record of what the last attempt already put
+ * on the branch — which is what `getTasks` shows the writer so it checks before
+ * rewriting.
  */
 export function reopenTasks(db: DB, sliceId: number): void {
   db.run("UPDATE task SET status = 'pending', owner_agent_id = NULL WHERE slice_id = ? AND status = 'done'", [sliceId]);
@@ -410,10 +411,11 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
  * What the next slice would otherwise rediscover.
  *
  * The second slice of a group re-greps what the first one already worked out —
- * which files matter, what the gate says, what was decided — because the only
- * thing carried across was a journal capped at six lines. Every one of those
- * rounds re-reads the whole transcript, which is where the token bill is.
- *
+ * which files matter, what the gate says, what was decided — because the only thing
+ * carried across was a journal capped at six lines, and every one of those rounds
+ * re-reads the whole transcript.
+ */
+/**
  * Derived, not asked for: the files are the commits this slice made, the gates are
  * recorded verdicts, the decisions are notes it wrote. A prompt asking an agent to
  * "summarise for the next slice" would be a model call producing what a SELECT
@@ -587,8 +589,7 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
  * A slice that keeps failing gives up after `gateRetries` and asks the boss. The
  * branch had no counter at all: a red branch gate sent the Engineer round, a
  * rejected audit sent the PM round, and neither loop had an end — the same money
- * spent forever on the same disagreement, with nothing on the boss's screen saying
- * so. docs/project/plan.md's rule is two rounds, then escalate.
+ * spent forever on one disagreement, with nothing on the boss's screen.
  *
  * Returns true when the caller should stop rather than send it round again.
  */

@@ -5,14 +5,12 @@ import { scrub } from "./redaction.ts";
 /**
  * One structured log line.
  *
- * An error is logged by its stack when it has one, because the message alone
- * names the failure without saying where it happened. Everything goes through
- * `scrub` first: a token that reaches stdout is in the operator's shell history
- * and their log shipper, and neither forgets.
+ * An error is logged by its stack when it has one, because the message alone names
+ * the failure without saying where. Everything goes through `scrub` first: a token
+ * that reaches stdout is in the operator's shell history and their log shipper.
  *
- * The correlation fields are spread conditionally rather than written as
- * `job_id: undefined`, so a line about a request that belongs to no job does not
- * carry a key claiming otherwise.
+ * Correlation fields are spread conditionally rather than written as `undefined`, so
+ * a line about a request belonging to no job carries no key claiming otherwise.
  */
 export function logLine(
   entry: { date: Date; type: string; args: unknown[] },

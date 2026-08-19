@@ -56,17 +56,16 @@ const GATE_ROW = "grid grid-cols-[1.25rem_1.5rem_7rem_minmax(0,1fr)] items-basel
 /**
  * Which checks run before a slice can be accepted, and in what order.
  *
- * The list used to render in the catalogue's alphabetical order while labelling
- * each row with its position in the run order, so the screen read 4, 1, 3, 2. The
- * order is the whole point of the section, so it is the order of the rows: the
- * ones that run are on top, numbered, draggable; the ones that do not are under a
- * rule, unnumbered. Position, number and the 关掉的 heading say the same thing
- * three ways, which is what makes it unmistakable without inventing a checkbox.
- *
- * Reordering is the platform's own drag and drop. Radix has no drag primitive and
+ * The list used to render alphabetically while labelling each row with its position
+ * in the run order, so the screen read 4, 1, 3, 2. The order is the whole point of
+ * the section, so it is the order of the rows: the ones that run on top, numbered,
+ * draggable; the ones that do not under a rule, unnumbered. Position, number and
+ * the 关掉的 heading say the same thing three ways.
+ */
+/**
+ * Reordering is the platform's own drag and drop. Radix has no drag primitive, and
  * a library for one list is a dependency for a hundred lines we would not read;
- * `Alt` plus an arrow key does the same thing for the keyboard, which native drag
- * does not cover on its own.
+ * `Alt` plus an arrow key covers the keyboard, which native drag does not.
  */
 export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch) => void }) {
   const [drag, setDrag] = useState<string | null>(null);
@@ -234,16 +233,16 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
 /**
  * The domains this project's containers may not reach.
  *
- * A space-separated text box was the wrong shape twice over. It cannot show what
- * is in the list — `api.openai.com registry.npmjs.org internal.corp` is one
- * string the eye has to parse — and it cannot say that one entry is wrong, so a
- * pasted `https://evil.example.com/x` was stored verbatim and matched nothing.
- * Egress rules that silently match nothing are the worst kind: the pane says the
- * domain is blocked and it is not.
- *
- * One chip per domain, each removable, and what is typed is reduced to a host
- * before it lands. Nothing bigger: shadcn has no tag input, and this is an
- * `<input>`, a list, and two keys.
+ * A space-separated text box was the wrong shape twice: it cannot show what is in
+ * the list — one string the eye has to parse — and it cannot say that one entry is
+ * wrong, so a pasted `https://evil.example.com/x` was stored verbatim and matched
+ * nothing. Egress rules that silently match nothing are the worst kind: the pane
+ * says the domain is blocked and it is not.
+ */
+/**
+ * One chip per domain, each removable, and what is typed is reduced to a host before
+ * it lands. Nothing bigger: shadcn has no tag input, and this is an `<input>`, a
+ * list, and two keys.
  */
 function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; onSave: (v: string[]) => void }) {
   const [draft, setDraft] = useState("");
@@ -327,18 +326,18 @@ export const ImageChoicesSchema = z
  * Which image a group's container is made from — picked, never typed.
  *
  * A typed image name is the shape of field that fails four steps later: the typo
- * is not caught here, it is a container that will not create, on a group that
- * has already been dispatched and told the boss it started. And the set of legal
- * answers is small and knowable — the sandbox refuses anything that is not ours
- * or built here — so both lists can just be shown.
+ * is not caught here, it is a container that will not create, on a group that has
+ * already been dispatched and told the boss it started. The set of legal answers
+ * is small and knowable — the sandbox refuses anything not ours or built here — so
+ * both lists are simply shown.
+ */
+/**
+ * 远程 first, because the published image is the answer for everybody not
+ * developing this project: pulled on first use, needing nothing on this machine.
+ * 本地 is the other half of that rule, and is exactly what a bare tag means.
  *
- * 远程 first because it is the answer for everybody who is not developing this
- * project: the published image is pulled on first use and needs nothing on this
- * machine. 本地 is the other half of that rule, and it is exactly what a bare
- * tag means.
- *
- * Empty lists say which kind of empty they are. "Nothing published yet" and
- * "could not reach ghcr.io" send a reader to different places.
+ * Empty lists say which kind of empty they are: "nothing published yet" and "could
+ * not reach ghcr.io" send a reader to different places.
  */
 /**
  * What an empty box means, once we know what "empty" is allowed to fall back to.

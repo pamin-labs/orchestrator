@@ -25,14 +25,11 @@ export type InterruptMode = "keep" | "rollback";
  * Why a group stopped, so that starting it again can be about that reason.
  *
  * `paused_at` recorded when and never why, and eight sites wrote it for eight
- * causes. The bulk resume in `credentialChanged` therefore matched every PAUSED
- * row in the database: a boss who paused a group by hand and then signed into
- * GitHub watched it start again, and rate-limited groups came back with
- * `rl_resets_at` still set — which watchdog rule 6 only clears for rows it finds
- * still PAUSED, so nothing ever cleared it.
+ * causes. The bulk resume in `credentialChanged` therefore matched every PAUSED row:
+ * a boss who paused by hand and then signed into GitHub watched the group restart.
  *
- * `auth` carries its runtime (`auth:claude`), because a claude token going bad
- * is not a reason to restart a group that stopped on codex.
+ * `auth` carries its runtime: a claude token going bad is not a reason to restart a
+ * group that stopped on codex.
  */
 export type PauseReason =
   | "boss"
@@ -47,16 +44,16 @@ export type PauseReason =
 /**
  * Why a group stopped, and the columns that reason owns.
  *
- * Thirteen sites wrote this UPDATE by hand and each had to remember three
- * separate things: the status, the timestamp every watchdog timer keys on, and
- * now the reason every scoped resume keys on. 硬约束 7 is here because of the
- * first one — three callers wrote PAUSING with no `paused_at` and their groups
- * became invisible to the park timer, the nudge and the unpark at once, while
- * looking perfectly healthy. A field you have to remember is a field somebody
- * will not.
- *
- * No bus emit: every caller says its own sentence, in its own words, and a
- * generic "paused" underneath each of them would be the same event twice.
+ * Thirteen sites wrote this UPDATE by hand and each had to remember three things:
+ * the status, the timestamp every watchdog timer keys on, and the reason every
+ * scoped resume keys on. Three callers wrote PAUSING with no `paused_at` and their
+ * groups became invisible to the park timer, the nudge and the unpark at once, while
+ * looking perfectly healthy. A field you have to remember is a field somebody will
+ * not.
+ */
+/**
+ * No bus emit: every caller says its own sentence, in its own words, and a generic
+ * "paused" underneath each of them would be the same event twice.
  */
 export interface Hold {
   reason: PauseReason;
@@ -108,20 +105,18 @@ export function hold(db: DB, grpId: number, h: Hold): void {
 /**
  * Start it again, and clear everything the stop was about.
  *
- * `rl_resets_at` and `blocked_on` are always cleared, not sometimes: two of the
- * four resume sites cleared one of them and two cleared neither, and a RUNNING
- * group carrying a reset time or a `blocked_on` is a row that says two things at
- * once. Nothing wants to resume and keep them — the group is either waiting or
- * it is not.
+ * `rl_resets_at` and `blocked_on` are always cleared, not sometimes: two of the four
+ * resume sites cleared one and two cleared neither, and a RUNNING group carrying
+ * either says two things at once.
  *
- * `only` scopes it to one cause. Without that the one bulk resume in the tree
- * matched every PAUSED row there was, so signing into GitHub restarted a group
- * the boss had paused by hand.
- *
+ * `only` scopes it to one cause. Without it the bulk resume matched every PAUSED
+ * row, so signing into GitHub restarted a group paused by hand.
+ */
+/**
  * `from` defaults to the two paused states, and PARKED is deliberately not among
  * them: a parked group has had its session dropped and its base may have moved
- * under it, so it comes back through `unpark`, which rebases first. Answering
- * its question must not skip that.
+ * under it, so it comes back through `unpark`, which rebases first. Answering its
+ * question must not skip that.
  */
 const STOPPED = ["PAUSED", "PAUSING"] as const;
 

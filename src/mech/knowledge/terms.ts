@@ -26,14 +26,11 @@ import {
  * Words worth scoring, in whatever language the writing is in.
  *
  * `Intl.Segmenter` is ICU's word breaker, already in the runtime, and it segments
- * every script this corpus mixes. No locale is passed on purpose: a single note
- * holds more than one language, and ICU's default breaking handles the mix better
- * than any one tag. A one-letter Latin token carries no signal; a one-character
- * Han token is often a whole word, which is why the length rule reads the script
- * rather than the count.
- *
- * Its own file because three callers need it — the Orama tokenizer, the repo map,
- * and the query itself — and `ctx.ts` already imports `repomap.ts`.
+ * every script this corpus mixes. No locale is passed on purpose: a single note holds
+ * more than one language, and ICU's default breaking handles the mix better than any
+ * one tag. A one-letter Latin token carries no signal; a one-character Han token is
+ * often a whole word, which is why the length rule reads the script rather than the
+ * count.
  */
 const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "word" });
 const SINGLE_LETTER = /^[\p{Script=Latin}\p{N}_]$/u;

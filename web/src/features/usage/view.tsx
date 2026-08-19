@@ -8,15 +8,15 @@ import { Tip } from "../../ui/tooltip";
  * How much of each subscription is left, in the header.
  *
  * A deliberate exception to the rule the header keeps: it carries what the boss
- * acts on, and spend went to 成本 because it is merely true. This is not that.
- * Work runs overnight against two accounts, and "the weekly window is at 90%" is
- * the one usage fact that changes what you start next.
- *
- * One number per account, not four. The first version put both windows inline
- * with a meter between each label and its percentage — `claude 5h ▬ 8% 周 ▬ 66%
- * codex 周 0%` — which is eleven elements of chrome to say one thing. The number
- * that matters is whichever window is closest to full, because that is the one
- * that will stop the work; the other is a hover away.
+ * acts on, and spend went to 成本 because it is merely true. This is not that. Work
+ * runs overnight against two accounts, and "the weekly window is at 90%" is the one
+ * usage fact that changes what you start next.
+ */
+/**
+ * One number per account, not four. The first version put both windows inline with a
+ * meter between each label and its percentage — eleven elements of chrome to say
+ * one thing. The number that matters is whichever window is closest to full,
+ * because that is the one that will stop the work; the other is a hover away.
  */
 export function UsageBar({ usage }: { usage: Usage[] }) {
   // No window and no error means an account with nothing to run out of — API-key

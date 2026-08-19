@@ -9,12 +9,10 @@ afterEach(cleanup);
  *
  * Split across two rows it invites `remote` with `Xenova/multilingual-e5-small`
  * still in the box, which fails at the first call to an endpoint that has never
- * heard of that name — and fails there rather than here, an hour later, as an
- * HTTP error about a model.
+ * heard of that name — an hour later, as an HTTP error about a model.
  *
  * The suggestions are the point of the local half: ADR 031 measured two of these
- * names and named the third, and none of them is a string anybody types
- * correctly from memory.
+ * names and named the third, and none is a string anybody types from memory.
  */
 const row = (mode: string) => {
   const writes: Record<string, string> = {};

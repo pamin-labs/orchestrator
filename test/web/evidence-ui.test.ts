@@ -25,13 +25,12 @@ const evidence = (patch: Partial<Evidence> = {}): Evidence => ({
 /**
  * One panel at a time; they all share the page.
  *
- * The evidence is seeded into the query cache rather than passed as a prop. It
- * used to arrive through an `initialEvidence` prop that no caller in the panel
- * ever set — a branch in production code whose only reason to exist was this
- * file, and which meant these renders never went down the path the panel
- * actually takes. Seeding the cache under the key the component reads exercises
- * that path with no network. A panel handed nothing has a read in flight, which
- * is the state it comes up in.
+ * The evidence is seeded into the query cache rather than passed as a prop. It used
+ * to arrive through an `initialEvidence` prop no caller in the panel ever set — a
+ * branch in production code whose only reason to exist was this file, and which
+ * meant these renders never took the path the panel actually takes.
+ *
+ * A panel handed nothing has a read in flight, which is the state it comes up in.
  */
 const render = (seed?: Evidence) => {
   cleanup();

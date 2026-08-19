@@ -3,13 +3,12 @@ import type { Agent } from "./api";
 /**
  * What the agent is doing, in the fewest words that are still true.
  *
- * The raw string is `command_execution: orch ctx query "…"`. Stripping the tool
- * name was the first pass and it was not enough: a wall of shell is a wall the
- * boss reads command by command, and the question being asked of this page is
- * "who is stuck", which needs one glance per row. So the command is classified
- * into what it is *for* — 查索引 / 跑测试 / 改文件 — and the arguments follow as
- * detail. The verbs are a closed set, and anything unmatched keeps its command
- * verbatim rather than being labelled 其他: a wrong category is worse than none.
+ * The raw string is `command_execution: orch ctx query "…"`. Stripping the tool name
+ * was not enough: a wall of shell is read command by command, and the question this
+ * page answers is "who is stuck", which needs one glance per row. So a command is
+ * classified into what it is *for* — 查索引 / 跑测试 / 改文件 — with arguments as detail.
+ *
+ * Anything unmatched keeps its command verbatim: a wrong category is worse than none.
  */
 const VERBS: [RegExp, string][] = [
   [/^orch ctx query/, "查索引"],

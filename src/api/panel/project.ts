@@ -158,14 +158,12 @@ export const postProject = (async (ctx, req, _p, b) => {
 /**
  * Rows to clear for one project, in an order SQLite will accept.
  *
- * Nothing declares `ON DELETE CASCADE` (`PRAGMA foreign_key_list` says NO ACTION
- * on every one), so the order is the whole correctness of this: children before
- * parents, and the two that are easy to miss are `escalation` → `note` and
- * `note` → `task`, which put those three in an order that reads backwards.
+ * Nothing declares `ON DELETE CASCADE`, so the order is the whole correctness of
+ * this: children before parents, and the two easy to miss are `escalation` → `note`
+ * and `note` → `task`.
  *
- * Written as a list rather than one long function because the next table with a
- * `grp_id` has to appear here, and a list makes that a one-line change with a
- * visible place to put it.
+ * A list rather than one long function, because the next table with a `grp_id` has
+ * to appear here and a list makes that a one-line change.
  */
 const G = "SELECT id FROM grp WHERE project_id = ?1";
 
@@ -197,24 +195,20 @@ const PROJECT_ROWS: string[] = [
 /**
  * Remove a project: everything of ours, nothing of GitHub's.
  *
- * **This is the one place in this codebase where deleting is right, and it
- * contradicts the rule everywhere else.** `dropGroup`'s comment — "archiving
- * must never mean deleting" — is correct for a group: what a group did is the
- * record, and a dropped one keeps every event. A project being removed is the
- * boss saying they do not want the record either. Two different acts, and the
- * panel must never let one be mistaken for the other: 不做了 archives, this
- * erases.
- *
- * **The remote is never touched.** No branch is deleted, no PR is closed, no
- * GitHub call that writes anything is made from here — the only GitHub state
- * this drops is a hold in our own memory. Removing a project removes our copy
- * of the work; a boss who found their branches gone from GitHub afterwards
+ * **The one place in this codebase where deleting is right**, against the rule
+ * everywhere else. `dropGroup` is correct that archiving must never mean
+ * deleting — what a group did is the record. A project being removed is the boss
+ * saying they do not want the record either. 不做了 archives; this erases, and the
+ * panel must never let one be mistaken for the other.
+ */
+/**
+ * **The remote is never touched.** No branch deleted, no PR closed, no GitHub
+ * call that writes anything — a boss who found their branches gone afterwards
  * would have been robbed by a cleanup button.
  *
- * Order matters twice over: containers before rows, because a killed row takes
- * the sandbox id with it and an unnamed container lives until its TTL; and jobs
- * before containers, so nothing starts a turn against a project that is going
- * away.
+ * Order matters twice: containers before rows, because a killed row takes the
+ * sandbox id with it and an unnamed container lives out its TTL; and jobs before
+ * containers, so nothing starts a turn against a project that is going away.
  */
 export const deleteProject = (async (ctx, _req, params) => {
   const id = params.id;

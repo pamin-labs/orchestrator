@@ -5,13 +5,12 @@ import { transportMetadata } from "../../src/orch/cli.ts";
 /**
  * The usage errors are the CLI's contract with the agents that read them.
  *
- * An agent inside a sandbox has no documentation and no operator; the string it
- * gets back when it calls a command wrongly is the whole of what it knows. Every
- * message here names the flag and shows the shape, which is why they are worth
- * pinning: a message that says only "invalid arguments" costs a turn, and the
- * lease it was in the middle of.
+ * An agent inside a sandbox has no documentation and no operator; the string it gets
+ * back when it calls a command wrongly is the whole of what it knows. Every message
+ * here names the flag and shows the shape — a message saying only "invalid
+ * arguments" costs a turn, and the lease it was in the middle of.
  *
- * These paths return before any request is made, so nothing here needs a server.
+ * These paths return before any request, so nothing here needs a server.
  */
 
 async function usage(argv: string[]): Promise<{ code: number; message: string }> {

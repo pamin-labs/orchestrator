@@ -55,20 +55,19 @@ const EMPTY_PREFLIGHT = { checks: [] as HostCheck[] };
 /**
  * Everything that is configured rather than worked on, in one dialog.
  *
- * It was two pages for four versions and every one of them had the same disease:
- * a view is 76rem wide and this is a dozen fields, so the grid was mostly white
- * and the two scopes — this server, this repository — looked identical because
- * they were built from the same three components. A dialog sizes itself, so the
- * density is designed rather than left to whatever the window is; and one left
- * rail can hold both scopes as two groups, which is the thing neither page could
- * say about itself.
+ * It was two pages for four versions, each with the same disease: a view is 76rem
+ * wide and this is a dozen fields, so the grid was mostly white, and the two
+ * scopes looked identical because they were built from the same three components.
+ * A dialog sizes itself, so the density is designed; and one left rail can hold
+ * both scopes as two groups, which is what neither page could say about itself.
+ */
+/**
+ * `docs/design/ui.md` bans modal-as-first-thought. This is the fifth thought, and
+ * settings is the one surface nobody is ever *in*: you come to fix something and
+ * go back to the work, which is what closing a dialog does and what navigating
+ * back from a view does not.
  *
- * docs/design/ui.md bans modal-as-first-thought. This is the fifth thought, and settings
- * is the one surface here nobody is ever *in*: you come to fix something and go
- * back to the work, which is exactly what closing a dialog does and what
- * navigating back from a view does not.
- *
- * Behaviour is Radix (硬约束 4): focus trap, Esc, restored focus, aria wiring.
+ * Behaviour is Radix: focus trap, Esc, restored focus, aria wiring.
  */
 
 /** Host facts only. The credential rows are the 账号 section, said once. */
@@ -291,18 +290,17 @@ function SettingsContent({
 /**
  * Three reads, three keys, and the project is *in* one of them.
  *
- * This was one `load()` closing over `projectId`, fired from an effect on
- * `[open, projectId]` with nothing to say which call a reply belonged to. Two
- * quick project switches and the slower reply won: this dialog rendered one
- * project's 闸门 and another's base branch, with no error anywhere. `shared/api.ts`
- * had already been bitten by exactly this and grown a `lastProject` ref to
- * remember the scope by hand. A key does not have to remember — a reply for
- * project 3 cannot be written into project 7's entry, so the bug has no shape.
- *
- * `refetchInterval` on the credential read is the login poll. A CLI login lands
- * in another window and stores the credential the moment it exits; the only
- * missing piece is the panel noticing, and two seconds is well inside the time
- * it takes to click through an OAuth screen.
+ * This was one `load()` closing over `projectId`, fired from an effect with
+ * nothing to say which call a reply belonged to. Two quick project switches and
+ * the slower reply won: one project's 闸门 beside another's base branch, no error
+ * anywhere. A key does not have to remember — a reply for project 3 cannot be
+ * written into project 7's entry, so the bug has no shape.
+ */
+/**
+ * `refetchInterval` on the credential read is the login poll. A CLI login lands in
+ * another window and stores the credential the moment it exits; the only missing
+ * piece is the panel noticing, and two seconds is well inside the time it takes to
+ * click through an OAuth screen.
  */
 function useSettingsData(open: boolean, projectId: number | null, signin: Signin | null) {
   const { data: authData = EMPTY_AUTH } = useQuery({
@@ -328,14 +326,12 @@ function useSettingsData(open: boolean, projectId: number | null, signin: Signin
 /**
  * Ends a login in flight, on either outcome.
  *
- * Landed: a login that has arrived is a row with a newer `updatedAt` than the
- * one we started from — the panel polled on a timer alone before, so the
- * credential arrived, the row updated, and both buttons stayed
- * "等你在浏览器里批准…" for the rest of the five minutes.
+ * Landed: a login that has arrived is a row with a newer `updatedAt` than the one we
+ * started from — the panel polled on a timer alone before, so the credential
+ * arrived, the row updated, and both buttons stayed 等你在浏览器里批准… for five minutes.
  *
- * Timed out: on its own clock rather than folded into the landed check, because
- * that one only runs when the answer *changes* — and a login that never
- * completes is precisely the case where the answer never changes.
+ * Timed out: on its own clock rather than folded into the landed check, because that
+ * one runs only when the answer *changes*.
  */
 function useSigninEnd(authData: AuthResponse, signin: Signin | null, setSignin: (s: Signin | null) => void) {
   useEffect(() => {

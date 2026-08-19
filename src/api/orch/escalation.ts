@@ -164,15 +164,12 @@ export const postTriage = (async (ctx, _req, a, _p, b) => {
 /**
  * This question is not a question. It is a piece of work.
  *
- * The commonest thing on the boss's queue is a blocker that no answer resolves:
- * a config file is wrong, a shared fixture is broken, four groups are red on one
- * line. Answering it means typing the fix into a chat box for an agent that is not
- * allowed to apply it; the honest response is "somebody has to go and do this".
- * There was no way to say that, so these sat in 待办 until the boss did the work
- * by hand — which is the one outcome the whole system exists to avoid.
+ * The commonest thing on the boss's queue is a blocker no answer resolves: a config
+ * file is wrong, a shared fixture is broken, four groups are red on one line.
+ * Answering means typing the fix into a chat box for an agent not allowed to apply
+ * it, so these sat in 待办 until the boss did the work by hand.
  *
- * `orch blocked` is the same move made by an agent. This is it made by the boss,
- * on anything already in the queue, including the findings agents cannot act on.
+ * `orch blocked` is the same move made by an agent.
  */
 /** A question the boss turns into a requirement of its own. */
 export const RequirementBody = z.object({
@@ -265,20 +262,19 @@ export const postAnswer = (async (ctx, _req, params, b) => {
 /**
  * A first draft of the answer, from the cheapest model there is.
  *
- * Answering is one of the boss's three approval points, and most of what reaches
- * it is not a judgement call — it is a question whose answer is already in the
- * blackboard, asked by an agent that could not find it. Writing that answer out
- * by hand is the boss doing retrieval, which is the one job this system has.
+ * Most of what reaches the boss is not a judgement call — it is a question whose
+ * answer is already on the blackboard, asked by an agent that could not find it.
+ * Writing that out by hand is the boss doing retrieval, which is the one job this
+ * system has. So: the same context the agent had, and one cheap call.
+ */
+/**
+ * A draft in a box, never the answer: nothing is sent until the boss sends it, and
+ * it lands in the composer where it can be rewritten. Generated on open rather
+ * than stored, because the blackboard moves while a question waits and a stored
+ * draft is a stale one.
  *
- * So: same context the agent had — the group's journal, its decisions, its
- * slices — and one cheap call. It is a draft in a box, never the answer: nothing
- * is sent until the boss sends it, and it lands in the composer where it can be
- * rewritten. Generated on open rather than stored, because a stored draft is a
- * stale one — the blackboard moves while the question waits, and by the time the
- * boss looks, the reason for the answer may have changed.
- *
- * No draft is a fine outcome. If the model is unreachable or says nothing useful
- * this returns nothing and the composer is the composer.
+ * No draft is a fine outcome — unreachable model, nothing useful to say, and the
+ * composer is just the composer.
  */
 type AnswerDraftRow = {
   grp_id: number | null;

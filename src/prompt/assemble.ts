@@ -1,18 +1,17 @@
 /**
- * The ONLY place a turn's input is assembled. See docs/project/plan.md §7 token economics #1.
+ * The ONLY place a turn's input is assembled.
  *
- * The rule: everything that varies per turn goes in `prompt` (a fresh user
- * message, appended at the end). Everything else is `stable` and must be
- * byte-identical for the whole life of a session.
- *
- * Getting this wrong does not break anything visibly — the agent still works,
- * the tests still pass, and every turn silently re-reads the entire prompt at
- * full price instead of 0.1x. That is why the invariant lives in one function
- * with a hash, and why `test/cache-position.test.ts` guards it.
- *
- * Corollary that is easy to miss: when the stable half legitimately changes
- * (lessons list updated, role prompt edited, model re-tiered), we must ROTATE
- * the session rather than mutate it. `needsRotation()` decides.
+ * The rule: everything that varies per turn goes in `prompt` (a fresh user message
+ * appended at the end). Everything else is `stable` and must be byte-identical for
+ * the whole life of a session. Getting it wrong breaks nothing visibly — the agent
+ * works, the tests pass, and every turn silently re-reads the entire prompt at full
+ * price instead of 0.1x, which is why it lives in one function with a hash.
+ */
+/**
+ * The corollary that is easy to miss: when the stable half legitimately changes —
+ * lessons updated, role prompt edited, model re-tiered — the session must be
+ * ROTATED rather than mutated. `needsRotation()` decides, and
+ * `cache-position.test.ts` guards it.
  */
 
 /** The half that must never change within a session. */

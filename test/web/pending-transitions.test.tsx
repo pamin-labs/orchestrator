@@ -8,17 +8,16 @@ import { ServerPane, type ServerInfo } from "../../web/src/features/settings/env
 /**
  * That `isPending` really does span the `await`.
  *
- * Eleven buttons in this panel stopped keeping their own `busy` boolean and now
- * read `useTransition`'s, on the strength of one claim about React 19: that a
- * `startTransition` handed an async function stays pending until that function
- * returns, rather than until it is first suspended. If that claim is wrong, all
- * eleven un-disable themselves the instant the request leaves — the button is
- * pressable again while the write it started is still in flight, which on this
- * particular button means a second sandbox server.
- *
- * So it is measured here rather than reasoned about, against the real component
- * and a request the test holds open. `docs/standards/testing.md` asks for this
- * for exactly the class of claim it is: something a library does at runtime.
+ * Eleven buttons stopped keeping their own `busy` boolean on the strength of one
+ * claim about React 19: that a `startTransition` handed an async function stays
+ * pending until that function returns, rather than until it is first suspended. If
+ * the claim is wrong, all eleven un-disable the instant the request leaves — and on
+ * one of them that means a second sandbox server.
+ */
+/**
+ * So it is measured here rather than reasoned about, against the real component and
+ * a request the test holds open. `docs/standards/testing.md` asks for exactly this
+ * for exactly this class of claim: something a library does at runtime.
  */
 const server = (over: Partial<ServerInfo> = {}): ServerInfo => ({
   running: false,

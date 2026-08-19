@@ -2,20 +2,20 @@
 /**
  * Everything CI will check, run here first.
  *
- * CI minutes are money and a red check costs a round trip, so the default
- * should be that a pull request is opened already knowing the answer. That only
- * works if there is one command, and if that command is honest about what it
- * could not run: a preflight that quietly skips the container scan is worse
- * than none, because it promises a green run it never tested.
+ * CI minutes are money and a red check costs a round trip, so a pull request
+ * should open already knowing the answer. That needs one command, and it needs
+ * that command to be honest about what it could not run: a preflight that quietly
+ * skips the container scan is worse than none, because it promises a green run it
+ * never tested.
+ */
+/**
+ * So every step reports passed, failed, or **skipped with the reason**, and the
+ * exit code is non-zero only if something failed. Steps needing a binary this
+ * repository does not vendor say so and name what CI will do instead.
  *
- * So every step reports one of three outcomes — passed, failed, or *skipped
- * with the reason* — and the exit code is non-zero if anything failed. Steps
- * needing a binary this repository does not vendor (actionlint, shellcheck,
- * trivy, docker) say so and name what CI will do with them instead.
- *
- * Not a replacement for CI: `security-codeql` runs on GitHub's infrastructure
- * and has no local equivalent, and `pr-plan` reads a pull request body that
- * does not exist until there is a pull request. Both are named at the end.
+ * Not a replacement for CI: `security-codeql` runs on GitHub's infrastructure, and
+ * `pr-plan` reads a pull request body that does not exist yet. Both are named at
+ * the end of every run.
  */
 import { $ } from "bun";
 

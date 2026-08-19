@@ -13,18 +13,17 @@ import { z } from "zod";
 /**
  * PageIndex over this repo: a summary tree, navigated by reasoning.
  *
- * The method is VectifyAI's (github.com/VectifyAI/PageIndex): build a
- * table-of-contents tree where every node carries an LLM-written summary, then
- * retrieve by letting a model walk that tree — expand what looks relevant, ignore
- * the rest — instead of embedding chunks and taking a cosine top-k. Their
- * implementation is Python and takes PDFs page by page; the method is what
- * transfers, so this is that method over `git ls-files`.
- *
- * Why it is worth a model call per query here. Seven groups were each grepping
- * the same repository to find the same file, and a grep round is not cheap: every
- * round re-reads the whole transcript, and turns above 60 rounds ate 59% of the
- * measured cache-read bill. One haiku call that answers "it is in
- * src/mech/notify.ts, here is why" removes several of those rounds.
+ * The method is VectifyAI's (github.com/VectifyAI/PageIndex) — a table-of-contents
+ * tree whose nodes carry LLM-written summaries, retrieved by letting a model walk
+ * it rather than embedding chunks and taking a cosine top-k. Their implementation
+ * is Python and takes PDFs page by page; the method is what transfers, so this is
+ * that method over `git ls-files`.
+ */
+/**
+ * Why a model call per query is worth it: seven groups were each grepping the same
+ * repository for the same file, and a grep round re-reads the whole transcript —
+ * turns above 60 rounds ate 59% of the measured cache-read bill. One haiku call
+ * answering "it is in `src/mech/notify.ts`, here is why" removes several rounds.
  *
  * Both LLM steps degrade to the lexical map rather than failing: no key, a timeout
  * or a malformed answer must not take retrieval down with it.
@@ -240,17 +239,17 @@ export function render(tree: Tree, ids: string[]): string {
 /**
  * A real one-shot model call, cheapest tier, no tools.
  *
- * Not a role and not a turn: nothing here needs the blackboard, a session, or a
- * sandbox — it reads one file head and answers one line. Going through the turn
- * machinery would buy a session, a stable prefix and a cost row for a call that
- * costs less than the bookkeeping.
- *
- * It is also the most frequent model call in the system — one per `orch ctx
- * query` plus one per changed file when the index is rebuilt — and it is pure
- * summarisation, so which subscription pays for it is a config choice like any
- * other role's. `-s read-only` costs nothing here: this prompt never runs a
- * command, and codex's sandbox governs the commands the model asks for, not
- * codex's own API traffic.
+ * Not a role and not a turn: nothing here needs the blackboard, a session or a
+ * sandbox — it reads one file head and answers one line. The turn machinery would
+ * buy a session, a stable prefix and a cost row for a call that costs less than the
+ * bookkeeping.
+ */
+/**
+ * It is also the most frequent model call in the system — one per `orch ctx query`
+ * plus one per changed file on a rebuild — and it is pure summarisation, so which
+ * subscription pays is a config choice like any role's. `-s read-only` costs
+ * nothing here: this prompt never runs a command, and codex's sandbox governs the
+ * commands the model asks for, not codex's own API traffic.
  */
 export type AskUsage = Usage;
 
@@ -379,19 +378,19 @@ const CodexReply = z.looseObject({
  * Charge an index call to the project's `indexer`.
  *
  * A row, not a role: `costReport` reads `agent.total_tokens` and the turn events,
- * so writing both is the whole of making this spend visible — no panel change, no
- * new table. It is deliberately not folded into the Librarian, whose turns carry
- * a full cached prefix and a session; putting one-shot calls in the same row
- * would make "librarian took 4M" a number nobody can act on.
- *
- * And it is not made into a real role either. Retrieval is on the critical path
- * of every agent's turn (`assemble.ts` says ALWAYS FIRST), while the scheduler
- * runs one in-flight `agent_turn` per slot with every standing agent sharing slot
- * 0 — so a turn asking a question would wait for a slot it is itself holding.
+ * so writing both is the whole of making this spend visible. Deliberately not
+ * folded into the Librarian, whose turns carry a full cached prefix and a session
+ * — one-shot calls in the same row would make "librarian took 4M" a number nobody
+ * can act on.
+ */
+/**
+ * Not a real role either. Retrieval is on the critical path of every turn, while
+ * the scheduler runs one in-flight `agent_turn` per slot with every standing agent
+ * sharing slot 0 — so a turn asking a question would wait for a slot it is itself
+ * holding.
  *
  * Inert by construction: watchdog rule 2 needs `idle_turns >= 3` and rule 3 needs
- * a `loop_file`, and nothing here writes either; the scheduler only ever looks at
- * agents a job points to.
+ * a `loop_file`, and nothing here writes either.
  */
 export function chargeIndex(ctx: Ctx, projectId: number, spec: { runtime?: string; model: string }, u: AskUsage): void {
   const runtime = spec.runtime ?? "claude";

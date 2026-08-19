@@ -16,18 +16,17 @@ import { JsonObject, JsonValue, type Json } from "../../contracts/json.ts";
 /**
  * Settings the boss changes in the panel, layered over the file.
  *
- * `config/default.yaml` is where the fleet is *installed* — which interface to
- * listen on, which port, where the database lives. Everything else is an
- * operating decision the boss makes while watching the thing run, and editing a
- * yaml inside an unpacked release to make it is the wrong shape twice over: the
- * release is not a config directory, and a restart to change a concurrency limit
- * costs more than the change.
- *
- * So the file supplies defaults and this supplies overrides, which is the
- * arrangement `sandbox_image` and `sandbox_server_addr` have already been using.
- * The keys are dotted paths into `Config` (`maxGroups`, `sandbox.memory`) and
- * `DEFAULTS` is the authority on which exist and what type each one is — one
- * table, so a key cannot be settable without also being real.
+ * `config/default.yaml` is where the fleet is *installed* — interface, port, where
+ * the database lives. Everything else is an operating decision made while watching
+ * the thing run, and editing a yaml inside an unpacked release to make it is the
+ * wrong shape twice: the release is not a config directory, and a restart to change
+ * a concurrency limit costs more than the change.
+ */
+/**
+ * So the file supplies defaults and this supplies overrides, which is what
+ * `sandbox_image` and `sandbox_server_addr` were already doing. The keys are dotted
+ * paths into `Config`, and `DEFAULTS` is the authority on which exist and what type
+ * each is — one table, so a key cannot be settable without also being real.
  */
 const PREFIX = "cfg.";
 

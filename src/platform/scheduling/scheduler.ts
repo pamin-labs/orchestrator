@@ -539,15 +539,12 @@ export class Scheduler {
   /**
    * Every group and slice this tick's queue names, in two queries.
    *
-   * These were read one row at a time inside the admission check, so the query
-   * count grew with the depth of the queue while the number of *distinct* groups
-   * did not — twenty jobs on three groups asked twenty times. Idea taken from
-   * pg-boss's `ignoreGroups`, which decides the blocked set once per fetch rather
-   * than per job.
+   * These were read one row at a time inside the admission check, so the query count
+   * grew with the depth of the queue while the number of *distinct* groups did not.
+   * Idea taken from pg-boss's `ignoreGroups`.
    *
-   * Held only for the length of one `eligible()` call. A cache that outlived the
-   * tick would be a second copy of the group table, and the admission check exists
-   * precisely because those rows move.
+   * Held only for one `eligible()` call: a cache outliving the tick would be a
+   * second copy of the group table, and the check exists because those rows move.
    */
   private loadAdmission(pending: readonly Job[]): void {
     const grpIds = [...new Set(pending.map((j) => j.grp_id).filter((id): id is number => id !== null))];

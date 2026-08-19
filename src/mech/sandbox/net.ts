@@ -4,21 +4,21 @@ import { probeHosts } from "./auth.ts";
 /**
  * Is this machine still able to reach the providers?
  *
- * A laptop closes, a train goes into a tunnel, a VPN drops. Every turn in flight
- * then spends its wall clock retrying, hits `turnTimeoutMs`, and the watchdog
- * interrupts its group into PAUSED — a state nothing takes a group out of on its
+ * A laptop closes, a train enters a tunnel, a VPN drops. Every turn in flight then
+ * spends its wall clock retrying, hits `turnTimeoutMs`, and the watchdog
+ * interrupts its group into PAUSED — which nothing takes a group out of on its
  * own, so coming back online leaves a fleet of paused groups and a park timer
- * quietly filing them away. The work is not lost, but nobody is pushing it, which
- * is exactly the failure class `invariants.ts` exists for.
- *
- * The answer is the same shape the scheduler already has twice: a global
- * admission gate. A held job is simply not picked up — no process, no retry loop,
- * no quota spent proving the wall is still there — and it lifts by itself.
+ * quietly filing them away.
+ */
+/**
+ * The answer is the shape the scheduler already has twice: a global admission
+ * gate. A held job is not picked up — no process, no retry loop, no quota spent
+ * proving the wall is still there — and it lifts by itself.
  *
  * What counts as online is deliberately weak: **any HTTP response at all**, 401
- * and 403 included. A refused credential is not a network problem, and treating
- * it as one would stop the fleet over a bad token. Only a transport-level throw
- * is offline. `preflight.ts` draws the same line for the same reason.
+ * and 403 included. A refused credential is not a network problem, and treating it
+ * as one would stop the fleet over a bad token. Only a transport-level throw is
+ * offline; `preflight.ts` draws the same line.
  */
 
 interface NetState {
@@ -41,16 +41,14 @@ export function resetNet(): void {
 const TIMEOUT_MS = 2000;
 
 /**
- * How often the probe actually goes out, while things are working.
+ * How often the probe goes out while things are working.
  *
- * The watchdog ticks every 30s, and probing on each one is 5760 unauthenticated
- * requests a day to the providers to learn something a turn would have told us
- * anyway. Once every five minutes is 288, and the worst case it buys is a
- * five-minute window where turns are dispatched into a network that is already
- * gone — which costs one failed turn each, and those are re-queued.
- *
- * While offline it probes every tick, because the only thing that matters then is
- * noticing the moment it comes back.
+ * The watchdog ticks every 30s, and probing on each is 5760 unauthenticated requests
+ * a day to learn what a turn would have told us anyway. Once every five minutes is
+ * 288, and the worst case it buys is a five-minute window where turns are dispatched
+ * into a network already gone — one failed turn each, and those are re-queued.
+ * While offline it probes every tick: noticing the moment it returns is all that
+ * matters then.
  */
 export const PROBE_EVERY_MS = 5 * 60_000;
 

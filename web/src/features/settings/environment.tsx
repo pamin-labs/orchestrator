@@ -90,29 +90,20 @@ const SERVER_STATE: Record<ServerInfo["state"], { zh: string; ok: boolean }> = {
 /**
  * Is the container server up, is its config still right, and how we reach it.
  *
- * One component, because it was two and the seam was visible: a status section
- * closed with its own rule, the key's field group opened with another one four
- * pixels below it, and a counter was threaded between them so that changing the
- * key made the status re-ask instead of going on saying 在跑，直接用 over a key
- * the server has never heard of. Merged, the re-ask is a function call and the
- * two settings share one field table.
+ * One component rather than two, so changing the key re-asks the status by calling
+ * a function instead of threading a counter across a visible seam. Ordered as the
+ * eye needs it: which of five states this is and the one button for it, then why,
+ * then the thing that fails silently, then the two plain settings.
+ */
+/**
+ * `allowed_host_paths` is the most valuable thing here and is not a control: when
+ * the allowlist stops covering the staged skills directory nothing fails loudly —
+ * every container mounts an empty directory and the agents lack the skills the boss
+ * ticked. Preflight builds the line to paste, so it is selectable rather than
+ * described.
  *
- * The order is what the eye needs in the order it needs it: which of five states
- * this is and the one button for it, why if why adds anything, then the only
- * thing on this pane that fails silently, then the two values that are merely
- * settings. It read as five equal blocks before, and a status line has to win.
- *
- * `allowed_host_paths` is the most valuable thing on the pane and it is not a
- * control: when the allowlist stops covering the staged skills directory nothing
- * fails loudly — every container mounts an empty directory instead, and the
- * agents simply do not have the skills the boss ticked. Preflight builds the
- * exact line to paste, so it is rendered selectable rather than described.
- *
- * The key is read rather than invented: it is what stands between a local port
- * and "create a container", and a key made up on this side is one the server has
- * never heard of — which this panel cannot restart the server to teach it. 从服务器读
- * takes it out of the server's own config, server-side, so the value never
- * reaches the browser.
+ * The key is read from the server's own config, server-side, and never reaches the
+ * browser: a key made up here is one the server has never heard of.
  */
 export function ServerPane(props: {
   current?: AuthRow;

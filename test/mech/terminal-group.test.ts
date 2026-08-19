@@ -6,21 +6,21 @@ import * as fx from "../support/factories.ts";
 /**
  * A dissolved group stays dissolved, whoever writes to it.
  *
- * `GRP_TERMINAL_STATES` says "nothing may move it", and until now that was a
- * sentence rather than a property: fourteen statements in `src/` write
- * `grp.status`, and eight of them name only the row. A group dissolved while a
- * turn was in flight is revived by whatever lands afterwards — a late audit
- * verdict writes `RUNNING`, a merge-queue reconcile writes `PR_OPEN`.
+ * `GRP_TERMINAL_STATES` says "nothing may move it", and that was a sentence rather
+ * than a property: fourteen statements in `src/` write `grp.status` and eight name
+ * only the row, so a group dissolved while a turn is in flight is revived by
+ * whatever lands afterwards — a late audit verdict writes `RUNNING`, a merge
+ * reconcile writes `PR_OPEN`.
+ */
+/**
+ * The revived group is worse than a wrong label: `RUNNING` is a writing state in
+ * `ownership.ts`, so its paths stay claimed with nobody left to release them and
+ * the next group needing them never starts.
  *
- * The revived group is worse than a wrong label. `PAUSED` and `RUNNING` are both
- * writing states in `ownership.ts`, so its paths stay claimed with nobody left to
- * release them, and the next group that needs those paths never starts. The
- * symptom is a group that does not begin, several steps from the cause.
- *
- * The guard is `RAISE(IGNORE)` rather than `ABORT`: it skips the row and returns,
- * which is exactly what `AND status <> 'DISSOLVED'` would have done at each of the
- * fourteen sites. An abort would turn a silently-wrong write into a thrown error
- * inside a turn that has no reason to expect one.
+ * `RAISE(IGNORE)` rather than `ABORT`: it skips the row and returns, which is what
+ * `AND status <> 'DISSOLVED'` would have done at each of the fourteen sites. An
+ * abort would turn a silently-wrong write into a thrown error inside a turn that
+ * has no reason to expect one.
  */
 test("no write moves a group out of DISSOLVED", () => {
   const db = openMemory();

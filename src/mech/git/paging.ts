@@ -18,13 +18,11 @@ const MAX_PAGES = 10;
  * Every page of a list endpoint, or the first failure.
  *
  * A single `per_page=100` request reads as complete and is not: `/reviews` has no
- * `since` and returns oldest-first, so past a hundred reviews the newest were
- * simply never seen and the PM stopped being woken. `/check-runs` is worse — the
- * failures it truncates are the ones a gate exists to report.
+ * `since` and returns oldest-first, so past a hundred reviews the newest were never
+ * seen and the PM stopped being woken. `/check-runs` is worse — what it truncates is
+ * the failures a gate exists to report.
  *
- * Through `gh.request`, not `octokit.paginate`: the plugin drives the raw client
- * and would bypass the response validation, the error buckets and the ETag cache
- * that wrap every call here.
+ * `gh.request`, not `octokit.paginate`: the plugin drives the raw client.
  */
 export async function pages<T, R>(
   gh: Github,

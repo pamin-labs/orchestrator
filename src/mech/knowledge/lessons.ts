@@ -5,18 +5,18 @@ import { say } from "../../platform/text/lang.ts";
 /**
  * The boss's repeated complaints become a project rule.
  *
- * docs/project/plan.md §7③: without this, dissatisfaction produces N isolated facts and never
- * changes how the agents behave — you say "tests are too shallow" three times to three
- * different groups and the fourth group writes shallow tests too, because a fact
- * attached to one group is invisible to the next. A `lesson` is not: it is injected
- * into every later group's prompt, which is the only mechanism by which the twentieth
- * group is smarter than the first.
- *
- * Two stages on purpose. A deterministic prefilter decides *when* to look — the same
- * content words appearing in three separate complaints — and only then does the CoS
- * spend a turn writing the rule. Asking a model on every complaint would be paying for
- * judgement that is nearly always "no"; deciding the wording with an `if` would
- * produce a rule nobody can read.
+ * Without this, dissatisfaction produces N isolated facts and never changes how the
+ * agents behave: say "tests are too shallow" to three groups and the fourth writes
+ * shallow tests too, because a fact attached to one group is invisible to the next.
+ * A `lesson` is injected into every later group's prompt, which is the only
+ * mechanism by which the twentieth group is smarter than the first.
+ */
+/**
+ * Two stages on purpose. A deterministic prefilter decides *when* to look — the
+ * same content words in three separate complaints — and only then does the CoS
+ * spend a turn writing the rule. Asking a model on every complaint pays for
+ * judgement that is nearly always "no"; deciding the wording with an `if` produces
+ * a rule nobody can read.
  */
 
 /** Words that carry no topic. Deliberately short: over-filtering hides the signal. */

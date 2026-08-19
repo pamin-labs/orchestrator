@@ -3,16 +3,15 @@
  *
  * `turnTimeoutMs` is 1200000 and means twenty minutes; `leaseTimeoutMs` is
  * 10800000 and means three hours. Printed raw they are two seven-digit strings
- * that differ in the middle, and the only way to tell one from the other is to
- * count zeros — on a page whose whole job is letting someone change one of them
- * without opening the source. Same for token caps: 8000000 is 8M, and at that
- * width a cap and a typo look identical.
- *
- * So the page shows `20 分钟` and `8M` and stores 1200000 and 8000000. Every
- * function here is exact in both directions for every value the config ships —
- * `read(show(x)) === x` — and `test/knob-units.test.ts` is that sentence as a
- * check, because a rounding bug here is the silent kind: the field reads right
- * and the fleet runs on a different number.
+ * differing in the middle, and telling them apart means counting zeros — on a page
+ * whose job is letting someone change one without opening the source. Same for
+ * token caps: at that width a cap and a typo look identical.
+ */
+/**
+ * So the page shows `20 分钟` and `8M`. Every function here is exact in both
+ * directions for every value the config ships — `read(show(x)) === x` — and
+ * `knob-units.test.ts` is that sentence as a check, because a rounding bug here is
+ * the silent kind: the field reads right and the fleet runs on a different number.
  */
 
 export type Shape =

@@ -14,15 +14,15 @@ export type MailboxSandbox = {
 /**
  * The host end of the agent's only way out.
  *
- * An agent's `orch` writes a request file inside its sandbox; this reads it,
- * replays it against the orchestrator's own HTTP server, and writes the answer
- * back. Every route, every token check and every blocking wait keeps working
- * unchanged — the transport moved, the interface did not.
- *
- * Why not just let the sandbox reach 127.0.0.1: `host.docker.internal` is a
- * Docker Desktop invention and has no equivalent on Linux, so relying on it
- * would quietly make this macOS-only. The files API is the same everywhere and
- * costs 1-5ms a call (docs/adr/005).
+ * An agent's `orch` writes a request file inside its sandbox; this reads it, replays
+ * it against the orchestrator's own HTTP server, and writes the answer back. Every
+ * route, token check and blocking wait keeps working unchanged — the transport
+ * moved, the interface did not.
+ */
+/**
+ * Why not let the sandbox reach 127.0.0.1: `host.docker.internal` is a Docker
+ * Desktop invention with no equivalent on Linux, so relying on it would quietly make
+ * this macOS-only. The files API is the same everywhere and costs 1–5ms a call.
  */
 
 /** Enough to make a request; anything else is the orchestrator's business. */
@@ -133,12 +133,12 @@ export function normalise(base: string, path: string): string | null {
  * Every path out of `serve` writes one, or the agent blocks forever.
  *
  * Which is why the write is retried rather than dropped. It used to end in
- * `.catch(() => {})` directly under that sentence — the comment was right and
- * the code disagreed with it, and the disagreement is the whole failure: the
- * agent's `orch` polls for this file with no deadline, so one reset socket on
- * the upload is an agent waiting for a turn's worth of clock on a reply that was
- * thrown away.
- *
+ * `.catch(() => {})` directly under that sentence — the comment was right and the
+ * code disagreed with it, and the disagreement is the whole failure: the agent's
+ * `orch` polls for this file with no deadline, so one reset socket on the upload is
+ * an agent waiting a turn's worth of clock on a reply that was thrown away.
+ */
+/**
  * `writeInto` gives it the one retry a local socket is worth. If that fails too
  * there is nothing left to write the answer with, so it is logged rather than
  * swallowed — the turn's own clock is what ends it from there.

@@ -318,12 +318,12 @@ type Act = <A extends unknown[]>(handler: (...args: A) => Promise<CommandRespons
  * This is the only description of the CLI. An agent in a sandbox has no manual —
  * `orch` and `orch <command> --help` are what it reads instead — so a flag added
  * without a description here is a flag nothing can discover.
- *
- * Each handler's parameters are commander's action arguments in order —
- * positionals, then the options object — which is why `bind` can hand them over
- * untouched. A `[-]` positional is the "body on stdin" marker the role prompts
- * already type; it is declared so it parses, and named `_dash` where a handler
- * has to step over it.
+ */
+/**
+ * Each handler's parameters are commander's action arguments in order — positionals,
+ * then the options object — which is why `bind` can hand them over untouched. A
+ * `[-]` positional is the "body on stdin" marker the role prompts already type; it
+ * is declared so it parses, and named `_dash` where a handler steps over it.
  */
 function buildProgram(api: DispatchContext, act: Act, out: string[], err: string[]): Command {
   const bind = <A extends unknown[]>(handler: (api: DispatchContext, ...args: A) => Promise<CommandResponse>) =>
@@ -485,15 +485,16 @@ function buildProgram(api: DispatchContext, act: Act, out: string[], err: string
 /**
  * Commander's own refusals, turned into an exit result.
  *
- * The message is the point of them: `--clam` comes back as "unknown option
- * '--clam' (Did you mean --claim?)" instead of being accepted silently, which is
- * what left `--claim` undefined and sent the command to read a claim off a
- * terminal that was never going to produce one.
- *
+ * The message is the point: `--clam` comes back as "unknown option '--clam' (Did you
+ * mean --claim?)" instead of being accepted silently, which is what left `--claim`
+ * undefined and sent the command to read a claim off a terminal that was never going
+ * to produce one.
+ */
+/**
  * Commander has already written the text by the time it throws — errors through
  * `writeErr`, help and `--version` through `writeOut` — so this only picks the
- * stream and the code. `error.message` is never the better source; on a help
- * throw it is the literal string "(outputHelp)".
+ * stream and the code. `error.message` is never the better source; on a help throw
+ * it is the literal string "(outputHelp)".
  */
 function commanderExit(error: unknown, out: string[], err: string[]): ExitResult {
   if (!(error instanceof CommanderError)) throw error;

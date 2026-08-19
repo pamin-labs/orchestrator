@@ -7,16 +7,17 @@ afterEach(cleanup);
 /**
  * `ask()` always settles, which is the only thing its callers depend on.
  *
- * `AskCard` — the markup — is covered by `diff-confirm-render`. What was not is
- * the plumbing around it: a module-level handle the host installs, and a promise
- * created in one component and resolved from another. A caller that `await`s a
- * question which never settles does not fail, it stops, holding whatever it was
- * doing open — and the failure surfaces as a button that did nothing.
- *
- * The three ways a question can end are three different resolutions and they are
- * easy to get wrong in the same direction: `null` for dismissal, `true` for a
- * plain confirmation, the typed string when there is a field. A confirmation that
- * resolved `true` on dismissal would delete on Escape.
+ * `AskCard` — the markup — is covered by `diff-confirm-render`. What was not is the
+ * plumbing: a module-level handle the host installs, and a promise created in one
+ * component and resolved from another. A caller that `await`s a question which never
+ * settles does not fail, it stops, and the failure surfaces as a button that did
+ * nothing.
+ */
+/**
+ * The three ways a question can end are three resolutions, easy to get wrong in the
+ * same direction: `null` for dismissal, `true` for a plain confirmation, the typed
+ * string when there is a field. A confirmation that resolved `true` on dismissal
+ * would delete on Escape.
  */
 const press = (view: ReturnType<typeof render>, name: string) =>
   fireEvent.click(view.getAllByRole("button", { name })[0]!);

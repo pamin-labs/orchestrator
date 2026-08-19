@@ -56,15 +56,15 @@ const alsoHidden = 2;
  * Every language the map can read, and what "a symbol" means in each.
  *
  * The whole extractor used to be one regex over `export function|const|class|…`,
- * which is JS/TS syntax. A Go file entered the map and came back out with a path
- * and no names, and since Orchestrator indexes the boss's repositories rather
- * than this one, that was the normal case. The rows below are the languages the
- * comment in `repomap.ts` named as invisible, plus the two that already worked.
- *
- * JS/TS lists exported names only and the others list top-level ones, because
- * that is the cut each language gives you: a Go or Rust or Python module has no
- * `export` keyword, and a JS module's private helpers would push its public
- * names past the cap.
+ * which is JS/TS syntax. A Go file entered the map and came back out with a path and
+ * no names — and since Orchestrator indexes the boss's repositories rather than this
+ * one, that was the normal case.
+ */
+/**
+ * JS/TS lists exported names only and the others list top-level ones, because that
+ * is the cut each language gives you: a Go or Rust or Python module has no `export`
+ * keyword, and a JS module's private helpers would push its public names past the
+ * cap.
  */
 test.each([
   [

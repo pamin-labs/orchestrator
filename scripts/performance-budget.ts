@@ -3,15 +3,12 @@ import { existsSync, statSync } from "node:fs";
 /**
  * The release archive, and nothing else.
  *
- * `web/dist/main.js` and `app.css` were capped here too, at 1,900,000 and 65,536
- * bytes. Both are gone, and the reasoning is in
- * `docs/adr/019-no-web-bundle-budget.md`: the panel is served over loopback to
- * one person, so the size of its JavaScript is not a product constraint, and a
- * ceiling nobody derived — 1.9MB against an actual 1.65MB — reported nothing
- * until something exceeded it by multiples.
+ * `web/dist/main.js` and `app.css` were capped here too. Both are gone, and the
+ * reasoning is ADR 019: the panel is served over loopback to one person, so the size
+ * of its JavaScript is not a product constraint, and a ceiling nobody derived
+ * reported nothing until something exceeded it by multiples.
  *
- * The archive is different in kind. It is downloaded and unpacked on somebody
- * else's machine, so its size is a cost a user pays.
+ * The archive is unpacked on somebody else's machine.
  */
 const MAX_ARCHIVE_BYTES = 160 * 1024 * 1024;
 

@@ -119,16 +119,16 @@ export const postImage = (async (ctx, _req, _p, b) => {
 /**
  * The process that hands out containers, and what a restart of it would cost.
  *
- * Whether it is *healthy* is preflight's answer and stays preflight's answer —
- * two things saying "is it up" that can disagree is worse than one that is
- * occasionally stale. This is only what preflight cannot know: the pid, the
- * argv it was started with, and therefore whether there is anything to restart
- * it *with*. `runningServer` learns the argv by seeing the process, so an
- * orchestrator that booted while the server was already down has never seen one
- * and the button has to be dead rather than hopeful.
- *
- * The two counts are the evidence for that button (硬约束 5): a restart kills
- * every container and every turn inside them.
+ * Whether it is *healthy* is preflight's answer and stays preflight's — two things
+ * saying "is it up" that can disagree is worse than one that is occasionally stale.
+ * This is only what preflight cannot know: the pid, the argv it was started with,
+ * and therefore whether there is anything to restart it *with*.
+ */
+/**
+ * `runningServer` learns the argv by seeing the process, so an orchestrator that
+ * booted while the server was already down has never seen one and the button has to
+ * be dead rather than hopeful. The two counts are the evidence for that button: a
+ * restart kills every container and every turn inside them.
  */
 export const getSandboxServer = (async (ctx) => {
   const live = runningServer();
