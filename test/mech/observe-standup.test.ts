@@ -39,6 +39,7 @@ test("a line about a request carries what correlates it, and claims nothing it l
     requestId: "req-1",
     traceId: "trace-1",
     spanId: "span-1",
+    traceFlags: 1,
     method: "POST",
     path: "/api/v1/groups",
   };

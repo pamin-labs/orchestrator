@@ -568,6 +568,15 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // existing SQLite table means rebuilding it, and these tables carry the foreign
   // keys `drop-slices.test.ts` covers.
   stateConstraints,
+
+  // 045 — the sampling decision travels with the job. `startChildTrace` rebuilt a
+  // job's parent context with the SAMPLED flag written out, so a job enqueued by a
+  // request the sampler had dropped came back sampled, and every span under it with
+  // it. NULL for rows written before this, which were all sampled because nothing
+  // in this process has ever configured a sampler.
+  `
+  ALTER TABLE job ADD COLUMN trace_flags INTEGER;
+  `,
 ];
 
 /**

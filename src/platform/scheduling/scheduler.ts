@@ -71,6 +71,7 @@ export interface StoredJob {
   correlation_id?: string | null;
   trace_id?: string | null;
   parent_span_id?: string | null;
+  trace_flags?: number | null;
 }
 
 type RunningJob = StoredJob & { started_at: number | null };
@@ -103,6 +104,9 @@ function enqueueTrace<K extends JobKind>(fields: EnqueueFields<K>) {
     correlationId: first(fields.correlationId, context?.requestId) ?? crypto.randomUUID(),
     traceId: first(fields.traceId, context?.traceId) ?? crypto.randomUUID().replaceAll("-", ""),
     parentSpanId: first(fields.parentSpanId, context?.spanId) ?? null,
+    // Null when there is no ambient request: `startChildTrace` reads that as sampled,
+    // which is what a job with no parent to inherit from should be.
+    traceFlags: context?.traceFlags ?? null,
   };
 }
 
@@ -274,12 +278,24 @@ export class Scheduler {
     const row = this.db
       .query<
         { id: number },
-        [string, number | null, number | null, number | null, string, number, number, string, string, string | null]
+        [
+          string,
+          number | null,
+          number | null,
+          number | null,
+          string,
+          number,
+          number,
+          string,
+          string,
+          string | null,
+          number | null,
+        ]
       >(
         `INSERT INTO job
            (kind, grp_id, agent_id, slice_id, payload_json, priority, enqueued_at,
-            correlation_id, trace_id, parent_span_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+            correlation_id, trace_id, parent_span_id, trace_flags)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       )
       .get(
         kind,
@@ -292,6 +308,7 @@ export class Scheduler {
         trace.correlationId,
         trace.traceId,
         trace.parentSpanId,
+        trace.traceFlags,
       )!;
     return row.id;
   }
@@ -596,7 +613,7 @@ export class Scheduler {
     ]);
     if (claimed.changes === 0) return; // someone else took it
 
-    const trace = startChildTrace(job.trace_id, job.parent_span_id);
+    const trace = startChildTrace(job.trace_id, job.parent_span_id, job.trace_flags);
     const lifecycle = new AbortController();
     const cancel = () => lifecycle.abort(new Error(`job ${job.id} cancelled`));
     track(job.id, cancel);
@@ -604,6 +621,7 @@ export class Scheduler {
       requestId: job.correlation_id ?? crypto.randomUUID(),
       traceId: trace.traceId,
       spanId: trace.spanId,
+      traceFlags: trace.span.spanContext().traceFlags,
       method: "JOB",
       path: `job:${job.kind}`,
       jobId: job.id,

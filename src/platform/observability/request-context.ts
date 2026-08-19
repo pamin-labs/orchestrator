@@ -4,6 +4,13 @@ interface RequestContext {
   requestId: string;
   traceId: string;
   spanId: string;
+  /**
+   * The W3C sampling flags of the span above, so work enqueued under it inherits the
+   * decision instead of assuming one. `startChildTrace` used to build its parent with
+   * `TraceFlags.SAMPLED` written out, which is the same defect the outgoing header
+   * had: a trace the caller dropped, reported as kept.
+   */
+  traceFlags: number;
   method: string;
   path: string;
   jobId?: number;

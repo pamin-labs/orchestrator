@@ -76,6 +76,7 @@ test("HTTP correlation survives the durable queue and becomes the event's parent
         requestId: "request-correlation",
         traceId: "a".repeat(32),
         spanId: "b".repeat(16),
+        traceFlags: 1,
         method: "POST",
         path: "/api/v1/ideas",
       },
@@ -122,7 +123,14 @@ test("a job enqueued off-request still carries a trace, and explicit ids win ove
     // Explicit ids beat both the defaults and the ambient request: a resubmitted
     // job keeps the trace it was born with.
     const on = requestContext.run(
-      { requestId: "request-correlation", traceId: "a".repeat(32), spanId: "b".repeat(16), method: "POST", path: "/x" },
+      {
+        requestId: "request-correlation",
+        traceId: "a".repeat(32),
+        spanId: "b".repeat(16),
+        traceFlags: 1,
+        method: "POST",
+        path: "/x",
+      },
       () =>
         scheduler.enqueue("agent_turn", {
           grp_id: group,
@@ -673,4 +681,37 @@ test("staging a batch still dispatches it in priority order", () => {
   s.enqueue("agent_turn", { grp_id: idAt(ids, 1), priority: 10 });
   s.tick();
   expect(order[0]).toBe(idAt(ids, 1));
+});
+
+/**
+ * The sampling decision travels with the job.
+ *
+ * `startChildTrace` rebuilt a job's parent context with `TraceFlags.SAMPLED` written
+ * out, because the row carried the trace id and the span id and nothing else — so a
+ * job enqueued by a request the sampler had dropped came back sampled, and every span
+ * under it with it. The same defect the outgoing header had, one layer in.
+ *
+ * A job with no ambient request records nothing and reads as sampled.
+ */
+test("a job records the sampling decision of the request that enqueued it", () => {
+  const db = openMemory();
+  const group = seed(db, 1)[0]!;
+  const scheduler = new Scheduler(db, async () => {});
+
+  const dropped = requestContext.run(
+    {
+      requestId: "r",
+      traceId: "a".repeat(32),
+      spanId: "b".repeat(16),
+      traceFlags: 0,
+      method: "POST",
+      path: "/x",
+    },
+    () => scheduler.enqueue("agent_turn", { grp_id: group }),
+  );
+  const own = scheduler.enqueue("agent_turn", { grp_id: group });
+
+  const flags = (id: number) =>
+    db.query<{ trace_flags: number | null }, [number]>("SELECT trace_flags FROM job WHERE id = ?").get(id)?.trace_flags;
+  expect({ dropped: flags(dropped), noRequest: flags(own) }).toEqual({ dropped: 0, noRequest: null });
 });

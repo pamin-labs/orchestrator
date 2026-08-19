@@ -91,6 +91,7 @@ export function makeApp(ctx: Ctx, runtime: RuntimeStatus = runtimeStatus()): (re
         requestId: id,
         traceId: trace.traceId,
         spanId: trace.spanId,
+        traceFlags: trace.span.spanContext().traceFlags,
         method: c.req.method,
         path,
         signal: c.req.raw.signal,
