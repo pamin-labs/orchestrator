@@ -139,6 +139,12 @@ test("repeated options accumulate instead of overwriting", async () => {
   const journal = await run(["journal", "add", "--file", "a.ts", "--file", "b.ts"], "note");
   expect(body(journal.sent)).toMatchObject({ files: ["a.ts", "b.ts"], body: "note" });
 
+  // The overturned decision travels as an id, because prose saying "this replaces the
+  // earlier gate order" is invisible to the index and the earlier one keeps being
+  // answered with. A flag is a string on the wire; `Id` is what turns it into one.
+  const reversal = await run(["journal", "add", "--kind", "decision", "--supersedes", "12"], "new order");
+  expect(body(reversal.sent)).toMatchObject({ kind: "decision", supersedes: "12" });
+
   const paths = await run(["owns", "grp", "--path", "src/**", "--path", "test/**"]);
   expect(body(paths.sent)).toEqual({ group_id: "grp", paths: ["src/**", "test/**"] });
 });

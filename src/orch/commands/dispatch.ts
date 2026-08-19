@@ -107,7 +107,7 @@ async function mail(
 
 async function journalAdd(
   api: DispatchContext,
-  opts: { kind?: string; file: string[]; slice?: string },
+  opts: { kind?: string; file: string[]; slice?: string; supersedes?: string },
 ): Promise<CommandResponse> {
   return api.send(
     api.orch.journal.$post({
@@ -116,6 +116,7 @@ async function journalAdd(
         body: await api.readStdin(),
         files: opts.file,
         slice_id: opts.slice,
+        supersedes: opts.supersedes,
       },
     }),
   );
@@ -388,6 +389,7 @@ function buildProgram(api: DispatchContext, act: Act, out: string[], err: string
     .command("add")
     .description("append an entry; the body is read from stdin")
     .option("--kind <kind>", "decision|journal|retro|risk|fact", "journal")
+    .option("--supersedes <id>", "the decision this one overturns; it stops being retrieved")
     .option("--file <path>", "a file the entry is about, repeatable", collect, [])
     .option("--slice <n>", "the slice this belongs to")
     .action(bind(journalAdd));

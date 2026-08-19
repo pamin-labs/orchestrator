@@ -205,6 +205,7 @@ type NoteRow = {
   body: string;
   frontmatter_json?: string;
   export_path?: string | null;
+  supersedes?: number | null;
   at: number;
 };
 

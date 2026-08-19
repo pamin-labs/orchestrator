@@ -577,6 +577,14 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   `
   ALTER TABLE job ADD COLUMN trace_flags INTEGER;
   `,
+
+  // 046 — which decision this one overturns. `KIND_WEIGHT` gives `decision` the
+  // highest weight there is, so a reversed one comes back ranked above everything
+  // with nothing in the answer saying it no longer holds. The edge is what lets
+  // retrieval skip it; without it the blackboard is a flat pile that only grows.
+  `
+  ALTER TABLE note ADD COLUMN supersedes INTEGER REFERENCES note(id);
+  `,
 ];
 
 /**

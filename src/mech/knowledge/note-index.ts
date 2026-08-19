@@ -65,6 +65,10 @@ const rowsAfter = (db: DB, afterId: number): Row[] =>
               grp_id AS grpId, project_id AS projectId
          FROM note
         WHERE kind NOT IN ('pageindex', 'map') AND id > ?
+          -- What a later note overturned is not an answer. Filtered at the source
+          -- rather than after scoring, because a superseded decision carries the
+          -- highest weight in the table and would win on its way out.
+          AND id NOT IN (SELECT supersedes FROM note WHERE supersedes IS NOT NULL)
         ORDER BY id`,
     )
     .all(afterId);

@@ -75,6 +75,8 @@ export interface NewNote {
   /** Already serialised: callers build their own shape and `JSON.stringify` it. */
   frontmatterJson?: string;
   exportPath?: string | null;
+  /** The note this one overturns. Retrieval stops answering with what it points at. */
+  supersedes?: number | null;
   at?: number;
 }
 
@@ -83,8 +85,8 @@ const DEFAULT_NOTE_LANG = "zh";
 
 export function addNote(db: DB, note: NewNote): void {
   db.run(
-    `INSERT INTO note (project_id, grp_id, slice_id, kind, lang, body, frontmatter_json, export_path, at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO note (project_id, grp_id, slice_id, kind, lang, body, frontmatter_json, export_path, supersedes, at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       note.projectId ?? null,
       note.grpId ?? null,
@@ -98,6 +100,7 @@ export function addNote(db: DB, note: NewNote): void {
       note.body,
       note.frontmatterJson ?? "{}",
       note.exportPath ?? null,
+      note.supersedes ?? null,
       note.at ?? Date.now(),
     ],
   );

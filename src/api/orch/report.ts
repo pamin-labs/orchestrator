@@ -44,6 +44,14 @@ export const JournalBody = z.object({
   body: Prose(),
   files: z.array(z.string()).max(200).optional(),
   slice_id: Id.optional(),
+  /**
+   * The decision this one overturns, if it overturns one.
+   *
+   * An id rather than prose, because the point is that retrieval can act on it: a
+   * sentence saying "this replaces the earlier gate order" is invisible to the
+   * index, and the earlier one keeps being answered with.
+   */
+  supersedes: Id.optional(),
 });
 
 type JournalGroup = { name: string; project_id: number };
@@ -129,6 +137,7 @@ export const postJournal = (async (ctx, _req, a, _p, b) => {
     body: v.body,
     frontmatterJson: JSON.stringify(frontmatter),
     exportPath,
+    ...(b.supersedes === undefined ? {} : { supersedes: b.supersedes }),
   });
   // The lessons list is capped where it is written, not where it is read: an
   // ever-growing list becomes the very context cost it exists to prevent.

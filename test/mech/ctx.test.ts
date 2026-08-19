@@ -370,3 +370,33 @@ test("a script with no stemmer is indexed as it was written", () => {
   expect(hits("沙盒容器")[0]?.doc.body).toContain("沙盒");
   expect(hits("テスト")[0]?.doc.body).toContain("テスト");
 });
+
+/**
+ * A decision that was overturned stops being retrieved.
+ *
+ * `KIND_WEIGHT` gives `decision` the highest weight there is, 1.6, because what was
+ * settled and why is the most valuable thing to recall. That is exactly what makes a
+ * superseded one harmful: a few months and a few hundred decisions in, an agent asks
+ * the blackboard and gets the reversed one back, ranked above everything, with
+ * nothing in the answer saying it no longer holds.
+ */
+test("a superseded decision is not what the blackboard answers with", () => {
+  const db = openMemory();
+  const p = fx.project.insert(db, { name: "p" });
+  const old = fx.note.insert(db, {
+    project_id: p.id,
+    kind: "decision",
+    body: "gate order is typecheck then lint then test",
+    at: 0,
+  });
+  fx.note.insert(db, {
+    project_id: p.id,
+    kind: "decision",
+    body: "gate order is lint then typecheck then test",
+    at: 1,
+    supersedes: old.id,
+  });
+
+  const hits = makeNoteIndex(db).search("gate order", { grpId: null, projectId: p.id }, 2);
+  expect(hits.map((h) => h.doc.body)).toEqual(["gate order is lint then typecheck then test"]);
+});
