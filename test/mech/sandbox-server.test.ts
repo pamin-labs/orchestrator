@@ -441,6 +441,16 @@ test("the session wrapper separates the streams the way run() does", () => {
   expect(unwrap(`a\nb\n${MARK}`)).toEqual({ out: "a\nb", err: "" });
   // No marker at all is the old merged behaviour, not a lost line.
   expect(unwrap("everything")).toEqual({ out: "everything", err: "" });
+
+  // A blank line does not survive this transport as itself — measured against the
+  // running server, `printf 'a\n\n\nb\n'` arrives as `["a", "b"]` — so the
+  // wrapper spells it and `unwrap` reads it back. A whole line, never a substring:
+  // output that merely contains the marker keeps it.
+  const BLANK = `${SOH}blank${SOH}`;
+  expect(wrapped).toContain(String.raw`sed 's/^$/\x01blank\x01/'`);
+  expect(wrapped).toContain("command -v sed");
+  expect(unwrap(`a\n${BLANK}\n${BLANK}\nb${MARK}`)).toEqual({ out: "a\n\n\nb", err: "" });
+  expect(unwrap(`x${BLANK}y${MARK}`)).toEqual({ out: `x${BLANK}y`, err: "" });
 });
 
 /**

@@ -1222,17 +1222,44 @@ async function sessionFor(sb: Runner): Promise<Session | null> {
  */
 const ERR_MARK = "\u0001orch-stderr\u0001";
 const ERR_MARK_PRINTF = "\\001orch-stderr\\001";
+
+/**
+ * A blank line, spelled so the session transport will carry it.
+ *
+ * Measured: `run()` delivers a blank line as a `"\n"` message, and the session
+ * endpoint emits no message for it at all — `printf 'a\n\n\nb\n'` arrives as
+ * `["a", "b"]`. Every gap in a diff hunk and every paragraph break in an agent's
+ * output was being closed up. The server decides that, so the only place to fix
+ * it is before the line reaches it.
+ */
+const BLANK_MARK = "\u0001blank\u0001";
+const BLANK_MARK_SED = "\\x01blank\\x01";
 /** Exported for the live probe and its unit test; not part of the module's API. */
 export const wrapForSession = (cmd: string, file: string): string =>
-  `{ ${cmd} ; } 2>${file} ; __orch_rc=$? ; printf '${ERR_MARK_PRINTF}' ; cat ${file} ; rm -f ${file} ; ( exit $__orch_rc )`;
+  // stdout via a file and `sed`, not straight through: a blank line does not
+  // survive this transport otherwise. `|| cat` rather than a pipe, so an image
+  // without `sed` loses the blank lines again instead of losing the output — and
+  // a pipe would hand `$?` to `sed` rather than to the command.
+  `{ ${cmd} ; } >${file}.out 2>${file} ; __orch_rc=$? ; ` +
+  `{ command -v sed >/dev/null 2>&1 && sed 's/^$/${BLANK_MARK_SED}/' ${file}.out || cat ${file}.out ; } ; ` +
+  `printf '${ERR_MARK_PRINTF}' ; cat ${file} ; rm -f ${file} ${file}.out ; ( exit $__orch_rc )`;
+
+/** Undo what the wrapper spelled a blank line as. A line, never a substring. */
+const blanks = (out: string): string =>
+  out.includes(BLANK_MARK)
+    ? out
+        .split("\n")
+        .map((line) => (line === BLANK_MARK ? "" : line))
+        .join("\n")
+    : out;
 
 /** Split what the session returned back into the two streams `run()` would have. */
 export function unwrap(raw: string): { out: string; err: string } {
   const at = raw.indexOf(ERR_MARK);
-  if (at < 0) return { out: raw, err: "" };
+  if (at < 0) return { out: blanks(raw), err: "" };
   // One trailing newline, because `run()` strips one per message and the marker
   // arrives glued to the last line of stdout rather than after it.
-  return { out: raw.slice(0, at).replace(/\n$/, ""), err: raw.slice(at + ERR_MARK.length) };
+  return { out: blanks(raw.slice(0, at).replace(/\n$/, "")), err: raw.slice(at + ERR_MARK.length) };
 }
 
 /**
