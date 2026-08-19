@@ -1,24 +1,29 @@
-import type { DB } from "../../db.ts";
-import type { Ctx } from "../../ctx.ts";
+import { jsonOr } from "../../contracts/json.ts";
+import { saveSingletonNote, singletonNote } from "../util/rows.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
-import { promptPath } from "../../runtime/claude.ts";
-import { shq } from "../util/shq.ts";
+import { claudeUsage, promptPath, UsageSchema, type Usage } from "../../runtime/claude.ts";
+import { codexUsage } from "../../runtime/codex.ts";
+import { shq } from "../../platform/process/shell.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { activeTracer } from "../../platform/observability/traces.ts";
+import { z } from "zod";
 
 /**
  * PageIndex over this repo: a summary tree, navigated by reasoning.
  *
- * The method is VectifyAI's (github.com/VectifyAI/PageIndex): build a
- * table-of-contents tree where every node carries an LLM-written summary, then
- * retrieve by letting a model walk that tree — expand what looks relevant, ignore
- * the rest — instead of embedding chunks and taking a cosine top-k. Their
- * implementation is Python and takes PDFs page by page; the method is what
- * transfers, so this is that method over `git ls-files`.
- *
- * Why it is worth a model call per query here. Seven groups were each grepping
- * the same repository to find the same file, and a grep round is not cheap: every
- * round re-reads the whole transcript, and turns above 60 rounds ate 59% of the
- * measured cache-read bill. One haiku call that answers "it is in
- * src/mech/notify.ts, here is why" removes several of those rounds.
+ * The method is VectifyAI's (github.com/VectifyAI/PageIndex) — a table-of-contents
+ * tree whose nodes carry LLM-written summaries, retrieved by letting a model walk
+ * it rather than embedding chunks and taking a cosine top-k. Their implementation
+ * is Python and takes PDFs page by page; the method is what transfers, so this is
+ * that method over `git ls-files`.
+ */
+/**
+ * Why a model call per query is worth it: seven groups were each grepping the same
+ * repository for the same file, and a grep round re-reads the whole transcript —
+ * turns above 60 rounds ate 59% of the measured cache-read bill. One haiku call
+ * answering "it is in `src/mech/notify.ts`, here is why" removes several rounds.
  *
  * Both LLM steps degrade to the lexical map rather than failing: no key, a timeout
  * or a malformed answer must not take retrieval down with it.
@@ -36,6 +41,15 @@ export interface Node {
 }
 
 export type Tree = Record<string, Node>;
+
+const NodeSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["dir", "file"]),
+  summary: z.string(),
+  sig: z.string(),
+  children: z.array(z.string()),
+});
+const TreeSchema = z.record(z.string(), NodeSchema);
 
 /** One prompt in, one text out. Injected so tests never spawn a model. */
 export type Ask = (prompt: string) => Promise<string>;
@@ -92,78 +106,66 @@ export async function summarise(
   opts: { maxCalls?: number; previous?: Tree } = {},
 ): Promise<{ tree: Tree; calls: number; failed: number }> {
   const prev = opts.previous ?? {};
-  let calls = 0;
-  let failed = 0;
-  const budget = opts.maxCalls ?? 40;
+  const state = { calls: 0, failed: 0, budget: opts.maxCalls ?? 40 };
 
   const files = Object.values(tree).filter((n) => n.kind === "file");
-  for (const n of files) {
-    const head = read(n.id)?.slice(0, HEAD_CHARS);
+  for (const node of files) {
+    const head = read(node.id)?.slice(0, HEAD_CHARS);
     if (!head) continue;
-    const sig = sigOf(head);
-    const old = prev[n.id];
-    if (old && old.sig === sig) {
-      n.sig = sig;
-      n.summary = old.summary;
-      continue;
-    }
-    if (calls >= budget) continue; // Next tick takes the rest; a partial tree still works.
-    calls++;
-    const summary = oneLine(
-      await ask(
-        (n.id.startsWith(NOTE_PREFIX)
-          ? `One line, under 20 words: what does this note establish? Name the decision or fact, not the format.\n\n`
-          : `One line, under 20 words: what is ${n.id} for? Name the thing it owns, not its language.\n\n`) +
-          `----\n${head}\n----`,
-      ),
-    );
-    // The signature is written only on an answer.
-    //
-    // It used to be stamped before the call and kept whatever came back, `""`
-    // included, so that a broken model would not be retried every thirty seconds
-    // forever. That traded a retry loop for something worse: on a machine where
-    // the ask could not work at all, every node got an empty summary *and* a
-    // signature, the next tick matched it, and the index was permanently empty
-    // while reporting itself built. Cost is bounded by `maxCalls` per tick
-    // already; nothing needs a failure cached as if it were a success.
-    if (!summary) {
-      failed++;
-      continue;
-    }
-    n.sig = sig;
-    n.summary = summary;
+    await summariseNode(node, head, filePrompt(node.id, head), prev, ask, state);
   }
 
-  // The root is never shown in a menu — search starts from its children — so a
-  // summary of "the whole repo" would be a model call nobody reads.
   const dirs = Object.values(tree)
     .filter((n) => n.kind === "dir" && n.id !== "/")
     .sort((a, b) => b.id.split("/").length - a.id.split("/").length);
-  for (const d of dirs) {
-    const kids = d.children.map((c) => `${c}: ${tree[c]?.summary ?? ""}`).join("\n");
-    const sig = sigOf(kids);
-    const old = prev[d.id];
-    if (old && old.sig === sig) {
-      d.sig = sig;
-      d.summary = old.summary;
-      continue;
-    }
-    if (calls >= budget) continue;
-    calls++;
-    const summary = oneLine(
-      await ask(`One line, under 20 words: what does ${d.id} hold, as a whole?\n\n${kids.slice(0, 4000)}`),
+  for (const node of dirs) {
+    const children = node.children.map((id) => `${id}: ${tree[id]?.summary ?? ""}`).join("\n");
+    await summariseNode(
+      node,
+      children,
+      `One line in English, under 20 words: what does ${node.id} hold, as a whole?\n\n${children.slice(0, 4000)}`,
+      prev,
+      ask,
+      state,
     );
-    if (!summary) {
-      failed++;
-      continue;
-    }
-    d.sig = sig;
-    d.summary = summary;
   }
-  return { tree, calls, failed };
+  return { tree, calls: state.calls, failed: state.failed };
 }
 
-const oneLine = (s: string) => s.trim().split("\n").filter(Boolean).pop()?.slice(0, 160) ?? "";
+function filePrompt(id: string, head: string): string {
+  const instruction = id.startsWith(NOTE_PREFIX)
+    ? "One line in English, under 20 words: what does this note establish? Name the decision or fact, not the format."
+    : `One line in English, under 20 words: what is ${id} for? Name the thing it owns, not its language.`;
+  return `${instruction}\n\n----\n${head}\n----`;
+}
+
+async function summariseNode(
+  node: Node,
+  content: string,
+  prompt: string,
+  previous: Tree,
+  ask: Ask,
+  state: { calls: number; failed: number; budget: number },
+): Promise<void> {
+  const sig = sigOf(content);
+  const old = previous[node.id];
+  if (old?.sig === sig) {
+    node.sig = sig;
+    node.summary = old.summary;
+    return;
+  }
+  if (state.calls >= state.budget) return;
+  state.calls++;
+  const summary = oneLine(await ask(prompt));
+  if (!summary) {
+    state.failed++;
+    return;
+  }
+  node.sig = sig;
+  node.summary = summary;
+}
+
+const oneLine = (s: string) => s.trim().split("\n").findLast(Boolean)?.slice(0, 160) ?? "";
 
 /**
  * Retrieval: the model walks the tree.
@@ -186,36 +188,48 @@ export async function search(
   const opened: string[] = [];
 
   for (let level = 0; level < depth && frontier.length; level++) {
-    const menu = frontier
-      .map((id) => `${id} — ${tree[id]?.summary || (tree[id]?.kind === "dir" ? "(directory)" : "(file)")}`)
-      .join("\n");
+    const candidates = frontier;
+    const menu = candidates.map((id) => menuLine(tree, id)).join("\n");
     const answer = await ask(
       `Question: ${question}\n\n` +
         `Which of these are worth opening to answer it? Reply with at most ${width} ids, one per line, ` +
         `nothing else. Reply NONE if none of them are relevant.\n\n${menu}`,
     );
-    const picked = answer
-      .split("\n")
-      .map((l) => l.trim().replace(/^[-*\d.\s]+/, ""))
-      .filter((l) => frontier.includes(l))
-      .slice(0, width);
+    const picked = pickedIds(answer, candidates, width);
     // The model declining is an answer: nothing here is relevant, and handing back
     // the frontier anyway would turn "no" into a top-k guess, which is the failure
     // mode this method exists to avoid.
     if (picked.length === 0) return opened;
 
-    const next: string[] = [];
-    for (const id of picked) {
-      const n = tree[id];
-      if (!n) continue;
-      if (n.kind === "file") opened.push(id);
-      else next.push(...n.children);
-    }
-    frontier = next;
+    frontier = openNodes(tree, picked, opened);
   }
   // Ran out of depth with directories still open: where to look is still an answer.
   if (opened.length === 0) return frontier.slice(0, width);
   return opened;
+}
+
+function menuLine(tree: Tree, id: string): string {
+  const node = tree[id];
+  return `${id} — ${node?.summary || (node?.kind === "dir" ? "(directory)" : "(file)")}`;
+}
+
+function pickedIds(answer: string, candidates: string[], width: number): string[] {
+  return answer
+    .split("\n")
+    .map((line) => line.trim().replace(/^[-*\d.\s]+/, ""))
+    .filter((line) => candidates.includes(line))
+    .slice(0, width);
+}
+
+function openNodes(tree: Tree, picked: string[], opened: string[]): string[] {
+  const next: string[] = [];
+  for (const id of picked) {
+    const node = tree[id];
+    if (!node) continue;
+    if (node.kind === "file") opened.push(id);
+    else next.push(...node.children);
+  }
+  return next;
 }
 
 export function render(tree: Tree, ids: string[]): string {
@@ -225,24 +239,19 @@ export function render(tree: Tree, ids: string[]): string {
 /**
  * A real one-shot model call, cheapest tier, no tools.
  *
- * Not a role and not a turn: nothing here needs the blackboard, a session, or a
- * sandbox — it reads one file head and answers one line. Going through the turn
- * machinery would buy a session, a stable prefix and a cost row for a call that
- * costs less than the bookkeeping.
- *
- * It is also the most frequent model call in the system — one per `orch ctx
- * query` plus one per changed file when the index is rebuilt — and it is pure
- * summarisation, so which subscription pays for it is a config choice like any
- * other role's. `-s read-only` costs nothing here: this prompt never runs a
- * command, and codex's sandbox governs the commands the model asks for, not
- * codex's own API traffic.
+ * Not a role and not a turn: nothing here needs the blackboard, a session or a
+ * sandbox — it reads one file head and answers one line. The turn machinery would
+ * buy a session, a stable prefix and a cost row for a call that costs less than the
+ * bookkeeping.
  */
-export interface AskUsage {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheCreate: number;
-}
+/**
+ * It is also the most frequent model call in the system — one per `orch ctx query`
+ * plus one per changed file on a rebuild — and it is pure summarisation, so which
+ * subscription pays is a config choice like any role's. `-s read-only` costs
+ * nothing here: this prompt never runs a command, and codex's sandbox governs the
+ * commands the model asks for, not codex's own API traffic.
+ */
+export type AskUsage = Usage;
 
 export function modelAsk(
   ctx: Ctx,
@@ -276,33 +285,44 @@ export function modelAsk(
       // nothing, and this was the reason the index was invisible in every cost
       // total while being the most frequent model call there is.
       ["claude", "-p", "--output-format", "json", "--model", spec.model];
-  return async (prompt) => {
-    const file = promptPath();
-    await putFile(ctx, scope, file, prompt);
-    const cmd = `${argv.map(shq).join(" ")} < ${file}; rc=$?; rm -f ${file}; exit $rc`;
-    const r = await execIn(ctx, scope, cmd, { cwd: WORK, timeoutMs }).catch(() => null);
-    if (!r || r.code !== 0) return "";
-    const { text, usage } = codex ? readCodex(r.out) : readClaude(r.out);
-    if (usage) onUsage?.(usage);
-    return text;
-  };
+  return async (prompt) =>
+    // The same sentence the `onUsage` comment above makes, about the other half
+    // of the bill: this is the most frequent model call in the system and it
+    // appeared in no report. `onUsage` fixed the money; this fixes the clock.
+    // Up to twelve of these per project on every heartbeat, each a full model
+    // round trip inside a container, and the panel had no row for any of them.
+    activeTracer().startActiveSpan("index.ask", { attributes: { "model.name": spec.model } }, async (span) => {
+      try {
+        const file = promptPath();
+        await putFile(ctx, scope, file, prompt);
+        const cmd = `${argv.map(shq).join(" ")} < ${file}; rc=$?; rm -f ${file}; exit $rc`;
+        const r = await execIn(ctx, scope, cmd, { cwd: WORK, timeoutMs }).catch(() => null);
+        if (!r || r.code !== 0) {
+          // The empty string is both a legitimate answer and the failure value,
+          // and `summarise` counts it as `failed` without being able to tell
+          // which. The span can tell, so it says.
+          span.setStatus({ code: SpanStatusCode.ERROR, message: r ? `exit ${r.code}` : "exec threw" });
+          return "";
+        }
+        const { text, usage } = codex ? readCodex(r.out) : readClaude(r.out);
+        if (usage) onUsage?.(usage);
+        return text;
+      } finally {
+        span.end();
+      }
+    });
 }
 
-const usageOf = (u: Record<string, any> | undefined, cacheReadKey: string, cacheCreateKey: string): AskUsage => ({
-  input: Number(u?.input_tokens ?? 0),
-  output: Number(u?.output_tokens ?? 0),
-  cacheRead: Number(u?.[cacheReadKey] ?? 0),
-  cacheCreate: Number(u?.[cacheCreateKey] ?? 0),
-});
-
 /** `claude -p --output-format json`: one object, with the answer and the bill. */
-function readClaude(out: string): { text: string; usage?: AskUsage } {
+export function readClaude(out: string): { text: string; usage?: AskUsage } {
   try {
-    const o = JSON.parse(out) as { result?: string; is_error?: boolean; usage?: Record<string, any> };
+    const parsed = ClaudeReply.safeParse(JSON.parse(out));
+    if (!parsed.success) return { text: "" };
+    const o = parsed.data;
     if (o.is_error) return { text: "" };
     return {
       text: typeof o.result === "string" ? o.result : "",
-      usage: usageOf(o.usage, "cache_read_input_tokens", "cache_creation_input_tokens"),
+      usage: claudeUsage(o.usage),
     };
   } catch {
     // Not JSON: the CLI reports some of its own failures as plain text on stdout
@@ -311,60 +331,68 @@ function readClaude(out: string): { text: string; usage?: AskUsage } {
   }
 }
 
-/** `codex exec --json`: a stream, whose `turn.completed` carries the usage. */
-function readCodex(out: string): { text: string; usage?: AskUsage } {
+/**
+ * `codex exec --json`: one noisy stream, reduced once.
+ *
+ * Message and usage can arrive in either order. Keep the last valid record of
+ * each independently; an empty final message must not erase an answer already
+ * seen, and a banner or malformed line must not take retrieval down.
+ */
+export function readCodex(out: string): { text: string; usage?: AskUsage } {
+  let text = "";
   let usage: AskUsage | undefined;
   for (const line of out.split("\n")) {
     if (!line.startsWith("{")) continue;
     try {
-      const l = JSON.parse(line) as { type?: string; usage?: Record<string, any> };
-      if (l.type === "turn.completed" && l.usage) {
-        usage = usageOf(l.usage, "cached_input_tokens", "cache_write_input_tokens");
-      }
-    } catch {}
-  }
-  return { text: lastAgentMessage(out), usage };
-}
-
-/** `codex exec --json` prints a banner and a stream; the answer is the last agent_message. */
-function lastAgentMessage(out: string): string {
-  let text = "";
-  for (const line of out.split("\n")) {
-    if (!line.startsWith("{")) continue;
-    try {
-      const l = JSON.parse(line) as { type?: string; item?: { type?: string; text?: string } };
-      if (l.type === "item.completed" && l.item?.type === "agent_message" && l.item.text) {
+      const parsed = CodexReply.safeParse(JSON.parse(line));
+      if (!parsed.success) continue;
+      const l = parsed.data;
+      if (
+        l.type === "item.completed" &&
+        l.item?.type === "agent_message" &&
+        typeof l.item.text === "string" &&
+        l.item.text.trim()
+      ) {
         text = l.item.text;
       }
+      if (l.type === "turn.completed" && l.usage && typeof l.usage === "object" && !Array.isArray(l.usage)) {
+        usage = codexUsage(l.usage);
+      }
     } catch {}
   }
-  return text;
+  return { text, ...(usage ? { usage } : {}) };
 }
+
+const ClaudeReply = z.looseObject({
+  result: z.string().optional(),
+  is_error: z.boolean().optional(),
+  usage: UsageSchema.optional(),
+});
+const CodexReply = z.looseObject({
+  type: z.string().optional(),
+  item: z.object({ type: z.string().optional(), text: z.string().optional() }).optional(),
+  usage: z.record(z.string(), z.number()).optional(),
+});
 
 /**
  * Charge an index call to the project's `indexer`.
  *
  * A row, not a role: `costReport` reads `agent.total_tokens` and the turn events,
- * so writing both is the whole of making this spend visible — no panel change, no
- * new table. It is deliberately not folded into the Librarian, whose turns carry
- * a full cached prefix and a session; putting one-shot calls in the same row
- * would make "librarian took 4M" a number nobody can act on.
- *
- * And it is not made into a real role either. Retrieval is on the critical path
- * of every agent's turn (`assemble.ts` says ALWAYS FIRST), while the scheduler
- * runs one in-flight `agent_turn` per slot with every standing agent sharing slot
- * 0 — so a turn asking a question would wait for a slot it is itself holding.
+ * so writing both is the whole of making this spend visible. Deliberately not
+ * folded into the Librarian, whose turns carry a full cached prefix and a session
+ * — one-shot calls in the same row would make "librarian took 4M" a number nobody
+ * can act on.
+ */
+/**
+ * Not a real role either. Retrieval is on the critical path of every turn, while
+ * the scheduler runs one in-flight `agent_turn` per slot with every standing agent
+ * sharing slot 0 — so a turn asking a question would wait for a slot it is itself
+ * holding.
  *
  * Inert by construction: watchdog rule 2 needs `idle_turns >= 3` and rule 3 needs
- * a `loop_file`, and nothing here writes either; the scheduler only ever looks at
- * agents a job points to.
+ * a `loop_file`, and nothing here writes either.
  */
-export function chargeIndex(
-  ctx: Ctx,
-  projectId: number,
-  spec: { runtime?: string; model: string },
-  u: AskUsage,
-): void {
+export function chargeIndex(ctx: Ctx, projectId: number, spec: { runtime?: string; model: string }, u: AskUsage): void {
   const runtime = spec.runtime ?? "claude";
   const total = u.input + u.output + u.cacheRead + u.cacheCreate;
   if (total === 0) return;
@@ -424,31 +452,9 @@ export function noteLeaves(db: DB, projectId: number | null): { ids: string[]; r
 // ------------------------------------------------------------------ storage
 
 export function saveTree(db: DB, projectId: number, tree: Tree): void {
-  const body = JSON.stringify(tree);
-  const prev = db
-    .query<{ id: number; body: string }, [number]>(
-      "SELECT id, body FROM note WHERE project_id = ? AND kind = 'pageindex' ORDER BY id DESC LIMIT 1",
-    )
-    .get(projectId);
-  if (prev?.body === body) return;
-  if (prev) db.run("DELETE FROM note WHERE id = ?", [prev.id]);
-  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (?, 'pageindex', ?, unixepoch() * 1000)", [
-    projectId,
-    body,
-  ]);
+  saveSingletonNote(db, projectId, "pageindex", JSON.stringify(tree));
 }
 
 export function loadTree(db: DB, projectId: number | null): Tree | null {
-  if (!projectId) return null;
-  const row = db
-    .query<{ body: string }, [number]>(
-      "SELECT body FROM note WHERE project_id = ? AND kind = 'pageindex' ORDER BY id DESC LIMIT 1",
-    )
-    .get(projectId);
-  if (!row) return null;
-  try {
-    return JSON.parse(row.body) as Tree;
-  } catch {
-    return null;
-  }
+  return jsonOr(singletonNote(db, projectId, "pageindex"), TreeSchema.nullable(), null);
 }

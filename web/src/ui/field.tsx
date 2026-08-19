@@ -1,21 +1,70 @@
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * shadcn's Field family, on our tokens.
  *
- * A settings page is a list of label-and-value pairs, and the hand-rolled
- * version of that is a grid of `<span>` and `<input>` — which looks right and is
- * not: the label is not associated with the control, so clicking it does not
- * focus and a screen reader reads two unrelated things. 硬约束 4, one more time.
- *
+ * A settings page is a list of label-and-value pairs, and the hand-rolled version
+ * is a grid of `<span>` and `<input>` — which looks right and is not: the label is
+ * not associated with the control, so clicking it does not focus and a screen
+ * reader reads two unrelated things.
+ */
+/**
  * `horizontal` is the shape this project wants: a fixed label column, values
  * aligned down the page, a hairline between rows. `vertical` exists for the one
- * case where a value is a block (a pasted auth.json) rather than a line.
+ * case where a value is a block rather than a line.
  *
- * Deliberately not shadcn's own styling. The look is ours (DESIGN.md): hairlines
- * rather than cards, `sunk` for machine output, the accent reserved for what
- * waits on the boss.
+ * Deliberately not shadcn's own styling — the look is ours (`docs/design/ui.md`):
+ * hairlines rather than cards, `sunk` for machine output, the accent reserved for
+ * what waits on the boss.
  */
+
+/**
+ * Related rows under a name, inside a pane that holds more than one subject.
+ *
+ * A `<fieldset>` with a `<legend>`, not a div with a heading: the grouping is the
+ * accessible fact, and a screen reader announces the legend with every control it
+ * contains — the difference between hearing "开" and "通知：开".
+ */
+/**
+ * Structure and slots are shadcn's `field` registry item, read from it rather than
+ * guessed — the hand-written first version carried a `float-none` for a problem the
+ * flex `<fieldset>` already solves.
+ *
+ * Only where a pane genuinely holds two subjects: a pane with one already has its
+ * name in `Head`, and a legend repeating it is a second heading for one thing.
+ */
+export function FieldSet({ className, ...rest }: React.ComponentProps<"fieldset">) {
+  return <fieldset data-slot="field-set" className={cn("flex w-full min-w-0 flex-col", className)} {...rest} />;
+}
+
+/**
+ * The group's name, at one of two weights.
+ *
+ * `legend` is a section inside a pane — `ui.md`'s 0.9375rem group-name step.
+ * `label` is a group of rows inside a section, which sits at the row scale so it
+ * does not compete with the section above it. Upstream's own two variants, kept
+ * because the second one is what a nested group needs and inventing it later
+ * would have meant a third size.
+ */
+export function FieldLegend({
+  className,
+  variant = "legend",
+  ...rest
+}: React.ComponentProps<"legend"> & { variant?: "legend" | "label" }) {
+  return (
+    <legend
+      data-slot="field-legend"
+      data-variant={variant}
+      className={cn(
+        "mb-1 w-full font-medium text-ink",
+        "data-[variant=legend]:text-[0.9375rem]",
+        "data-[variant=label]:text-[0.875rem]",
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
 
 export function FieldGroup({ className, ...rest }: React.ComponentProps<"div">) {
   return (
@@ -53,7 +102,9 @@ export function Field({
           ? "grid grid-cols-[var(--label,10rem)_minmax(0,1fr)] items-baseline"
           : "flex flex-col gap-y-1.5",
         // A value the boss has to act on, said by the label's ink rather than by
-        // a badge next to it.
+        // a badge next to it. The control that holds the bad value marks itself
+        // (`aria-invalid`), because a row can carry four of them and the row-wide
+        // rule would light all four.
         "data-[invalid=true]:[&_[data-slot=field-label]]:text-accent",
         className,
       )}
@@ -62,9 +113,10 @@ export function Field({
   );
 }
 
-export function FieldLabel({ className, ...rest }: React.ComponentProps<"label">) {
+export function FieldLabel({ className, htmlFor, ...rest }: React.ComponentProps<"label"> & { htmlFor: string }) {
   return (
     <label
+      htmlFor={htmlFor}
       data-slot="field-label"
       className={cn("flex items-baseline gap-2 text-[0.8125rem] text-ink", className)}
       {...rest}
@@ -85,9 +137,7 @@ export function FieldTitle({ className, ...rest }: React.ComponentProps<"div">) 
 
 /** The value side. Anything wider than one control goes in here. */
 export function FieldContent({ className, ...rest }: React.ComponentProps<"div">) {
-  return (
-    <div data-slot="field-content" className={cn("flex min-w-0 items-center gap-2", className)} {...rest} />
-  );
+  return <div data-slot="field-content" className={cn("flex min-w-0 items-center gap-2", className)} {...rest} />;
 }
 
 /**
@@ -98,11 +148,5 @@ export function FieldContent({ className, ...rest }: React.ComponentProps<"div">
  * two-boxes-around-one-thing rule.
  */
 export function InputGroup({ className, ...rest }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="input-group"
-      className={cn("flex min-w-0 flex-1 items-center gap-2", className)}
-      {...rest}
-    />
-  );
+  return <div data-slot="input-group" className={cn("flex min-w-0 flex-1 items-center gap-2", className)} {...rest} />;
 }

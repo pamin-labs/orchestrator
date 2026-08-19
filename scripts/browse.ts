@@ -2,31 +2,23 @@
  * The one thing no role could do: open the page and click it.
  *
  * Every front-end slice carries an acceptance line like "the menu opens and shows
- * 不做了". Nothing in the fleet could check that — there is no browser in any
- * sandbox — so QA passed slices on a code reading, the Auditor refused the branch
- * for missing evidence, and the boss was asked to click by hand. Three groups sat
- * on that at once.
+ * 不做了", and there is no browser in any sandbox — so QA passed on a code
+ * reading, the Auditor refused the branch for missing evidence, and the boss was
+ * asked to click by hand. Three groups sat on that at once.
+ */
+/**
+ * A *step file*, not a script: `orch lease` never accepts a free command, and
+ * that rule did not soften when the container became the boundary. The steps are
+ * data — `{"goto"}`, `{"click"}`, `{"expect"}`, `{"shot"}`, `{"api"}`.
  *
- * Run as a lease, inside the group's own sandbox, against the checkout at /work.
- * It still takes a *step file* rather than a script — `orch lease` never accepts a
- * free command (PLAN.md, hard constraint 2), and that rule did not soften when the
- * container became the boundary; `orch` is now the only interface there is. The
- * steps are data:
- *
- *   [{"api": "/api/ideas", "body": {"project_id": 1, "text": "…"}},
- *    {"goto": "#p=1&v=req&g=1"},
- *    {"click": "text=更多"},
- *    {"expect": "不做了"},
- *    {"shot": "menu.png"}]
- *
- * The server under test is the one in *this worktree*, on a random port, against a
- * throwaway database — so a check can seed whatever state it needs and no check can
+ * The server under test is the one in *this worktree*, on a random port, against
+ * a throwaway database, so a check can seed whatever state it needs and none can
  * touch the real one.
  */
 import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { start } from "../src/server.ts";
+import { start } from "../src/composition/server.ts";
 
 interface Step {
   api?: string;
@@ -97,6 +89,7 @@ try {
     const label = `step ${i + 1}`;
     try {
       if (s.api) {
+        // fallow-ignore-next-line security-sink -- the origin is `srv.url`, the throwaway server this script just started on a random local port; `s.api` only ever contributes a path to it.
         const r = await fetch(`${srv.url}${s.api}`, {
           method: "POST",
           headers: { "content-type": "application/json" },

@@ -1,24 +1,55 @@
-import type { DB } from "../../db.ts";
-import { say } from "../../lang.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import { Octokit } from "@octokit/core";
+import QuickLRU from "quick-lru";
+import { retry } from "@octokit/plugin-retry";
+import { throttling } from "@octokit/plugin-throttling";
+import { z } from "zod";
+import { say } from "../../platform/text/lang.ts";
 import { loadAuth } from "../sandbox/auth.ts";
+import { raise } from "../flow/escalate.ts";
+import { jsonOr } from "../../contracts/json.ts";
+import { clearRepositoryHold, holdRepository } from "./repository.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { errText } from "../../platform/process/text.ts";
+import { ATTR_HTTP_REQUEST_METHOD, ATTR_HTTP_ROUTE } from "@opentelemetry/semantic-conventions";
+import { activeTracer } from "../../platform/observability/traces.ts";
+import type { Json } from "../../contracts/json.ts";
+import { recordCache, recordRetry } from "../../platform/observability/metrics.ts";
+import { currentRequestId, requestContext } from "../../platform/observability/request-context.ts";
 
 /**
- * GitHub, as eight endpoints of ordinary JSON.
+ * GitHub, as eight endpoints of ordinary JSON — over somebody else's transport.
  *
- * Not `@octokit/rest`: what we ask GitHub is PR create / edit / view, checks,
- * comments, reviews, `/user` and one repo read. A whole SDK for that is a
- * dependency to answer a `fetch`. Not `gh` either — the point of 007 is that a
- * host with docker, the image and a pasted token can run, and every shelled-out
- * binary is one more thing that has to be installed and separately logged in.
- *
- * The credential is the one in `runtime_auth`, never a host CLI's login. That
- * distinction is what `test/one-model-path.test.ts` guards: two accounts behind
- * one label is how the fleet spent a night 401ing on a token the panel could not
- * see.
+ * The *shapes* are ours: every body is Zod-checked at the door and callers switch
+ * on `GhResult`, not an SDK's type. The plumbing is `@octokit/core`'s. The
+ * credential is the one in `runtime_auth`, read per request rather than handed to
+ * Octokit's `auth`: it can be rotated live, and it is half the ETag cache key.
  */
 
 const API = "https://api.github.com";
 const TIMEOUT_MS = 15_000;
+/**
+ * ETags kept, before the least recently used is dropped.
+ *
+ * No `maxAge`: a stale ETag costs one conditional request and never a wrong
+ * answer, so time is the wrong axis to evict on. Entries are a URL and a hash.
+ */
+const CACHE_ENTRIES = 500;
+/**
+ * Two retries, so three attempts, and reads only.
+ *
+ * `@octokit/plugin-retry` waits `retryAfterBaseValue * attempt²`. Its `doNotRetry`
+ * default leaves 429 and the 5xx family, and a transport throw arrives as a
+ * synthetic 500.
+ */
+const RETRIES = 2;
+const RETRY_BASE_MS = 50;
+const GithubKit = Octokit.plugin(retry, throttling);
+const JsonValue = z.json();
+const ErrorBody = z.object({
+  message: z.string().optional(),
+  errors: z.array(z.object({ message: z.string().optional() })).optional(),
+});
 
 /**
  * Who can do something about it. Three buckets because they need three
@@ -33,6 +64,18 @@ export interface GhFail {
   /** 0 for a transport-level throw, which has no status. */
   status: number;
   message: string;
+  operation?: string;
+  target?: string;
+  retryable?: boolean;
+  correlationId?: string;
+  /**
+   * Seconds GitHub asked us to wait, when it said so.
+   *
+   * Present only on a rate limit — the `retry-after` header, or the
+   * `x-ratelimit-reset` clock. A scheduler should prefer it over its own backoff:
+   * it is the only number in the exchange that GitHub actually chose.
+   */
+  retryAfter?: number;
 }
 export interface GhOk<T> {
   ok: true;
@@ -42,13 +85,19 @@ export interface GhOk<T> {
 export type GhResult<T> = GhOk<T> | GhFail;
 
 /** Only the shape this uses, so a test stub is a `new Response(...)`. */
-export type Fetcher = (
+export type GithubFetcher = (
   url: string,
   init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal },
 ) => Promise<Response>;
 
 export interface Github {
-  request<T>(method: string, path: string, body?: unknown): Promise<GhResult<T>>;
+  request<T>(
+    method: string,
+    path: string,
+    schema: z.ZodType<T>,
+    body?: Json,
+    signal?: AbortSignal,
+  ): Promise<GhResult<T>>;
   /** `x-ratelimit-remaining` from the last answer; null before the first one. */
   remaining(): number | null;
 }
@@ -56,13 +105,10 @@ export interface Github {
 /**
  * 404 is not "deleted".
  *
- * GitHub answers **404, not 403**, for a private repository a token cannot see —
- * deliberately, so existence does not leak. So "repo deleted", "org revoked
- * third-party access", "user removed from the org" and "token lost its scope"
- * arrive as the same response, and nothing here can tell them apart. Saying
- * "deleted" when it was an org policy change sends the boss to the wrong page,
- * so this says what is true — the login cannot reach it — and lists what to
- * check.
+ * GitHub answers **404, not 403**, for a private repository a token cannot see, so
+ * existence does not leak — and "repo deleted", "org revoked access", "user
+ * removed from the org" and "token lost its scope" arrive identically. So this
+ * says what is true, that the login cannot reach it, and lists what to check.
  */
 function unreachable(what: string): string {
   return (
@@ -77,11 +123,10 @@ function unreachable(what: string): string {
 /**
  * Which bucket an HTTP answer falls in.
  *
- * The agent bucket is mostly not errors at all — a merge conflict, a red check
- * and a review comment are 200s whose *body* says so, and `prwatch` reads them
- * there. What lands here is 422: GitHub understood the request and refused its
- * content ("No commits between…", "A pull request already exists"), which is a
- * fact about the branch rather than about the login.
+ * The agent bucket is mostly not errors at all — a merge conflict, a red check and
+ * a review comment are 200s whose *body* says so, and `prwatch` reads them there.
+ * What lands here is 422: GitHub understood the request and refused its content,
+ * which is a fact about the branch rather than about the login.
  */
 export function classify(status: number, message: string): Bucket {
   if (status === 0) return "transient"; // network throw
@@ -92,79 +137,6 @@ export function classify(status: number, message: string): Bucket {
   if (status === 403 && /rate limit|secondary|abuse detection/i.test(message)) return "transient";
   if (status === 401 || status === 403 || status === 404) return "boss";
   return "agent";
-}
-
-/** `owner/repo` out of any remote URL git will accept. Null if it is not GitHub. */
-export function parseRepo(remote: string): string | null {
-  const m = /github\.com[:/]+([^/]+)\/(.+?)(?:\.git)?\/?$/i.exec(remote.trim());
-  return m ? `${m[1]}/${m[2]}` : null;
-}
-
-/**
- * The fifth admission gate (007 §6), and the thing the `boss` bucket is for.
- *
- * An expired GitHub token has the signature this codebase has been burned by
- * four times: every group fails at the same moment and each reports a different
- * error — clone failed, push rejected, PR create failed. Retrying is the one
- * thing that cannot help, so the project's turns are simply not dispatched,
- * exactly the way `providerHeld` holds for model quota. Held work costs nothing:
- * no process, no retry loop, no quota spent proving the wall is still there.
- *
- * **Per repository, not global.** One project's dead credential must not stop a
- * project whose credential is fine. In memory, like `net.ts`'s, because a hold
- * is a fact about right now — a restart re-learns it from the first failure.
- */
-const holds = new Map<string, number>();
-
-/**
- * How long before one turn is let through to find out whether it is fixed.
- *
- * Held is not a terminal state, and it must not need anyone to leave it: a
- * project held forever because nothing ever calls GitHub again is precisely the
- * failure this gate exists to prevent. So the hold lapses by clock the way
- * `providerHeld` does, one turn re-tests, and a success clears it for real. If
- * it is still broken that turn fails once and re-holds — one failed turn per ten
- * minutes per project, against a fleet that would otherwise fail every group
- * every tick.
- */
-export const REPO_HOLD_MS = 10 * 60_000;
-
-/** Is this project locked out of GitHub right now? The scheduler's question. */
-export function repoHeld(db: DB, projectId: number, now = Date.now()): boolean {
-  const slug = slugOf(db, projectId);
-  if (!slug) return false;
-  const until = holds.get(slug);
-  if (until === undefined) return false;
-  if (until <= now) {
-    holds.delete(slug);
-    return false;
-  }
-  return true;
-}
-
-/** Tests only: put the module back to its starting state. */
-export function resetRepoHolds(): void {
-  holds.clear();
-}
-
-/**
- * The credential changed, so nothing we learned from the old one still holds.
- *
- * A boss who reconnects GitHub and then watches nothing happen for ten minutes
- * has been told the fix did not work. Called from `saveAuth` for every runtime
- * and a no-op for the rest, so the caller needs no `if`. The open escalation
- * needs no separate sweep: the next successful call revokes it, and the next
- * call is one tick away once turns dispatch again.
- */
-export function forgetHolds(runtime: string): void {
-  if (runtime === "github") holds.clear();
-}
-
-function slugOf(db: DB, projectId: number): string | null {
-  const p = db
-    .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
-    .get(projectId);
-  return p?.remote ? parseRepo(p.remote) : null;
 }
 
 /** `owner/repo` out of an API path, for the endpoints that name one. */
@@ -180,29 +152,22 @@ function slugInPath(path: string): string | null {
  * restart and so answering it is what re-arms the warning.
  */
 function holdRepo(db: DB, lang: string | undefined, slug: string, why: string, now: number): void {
-  holds.set(slug, now + REPO_HOLD_MS);
-  const open = db
-    .query<{ id: number }, [string]>(
-      // `chain_state` matters as much as `answer`: `clearEscalation` revokes
-      // rather than answers, so without it a project that recovered once could
-      // never file a second warning.
-      `SELECT id FROM escalation
-       WHERE answer IS NULL AND chain_state NOT IN ('answered', 'revoked') AND question LIKE ?`,
-    )
-    .get(`GitHub ${slug}:%`);
-  if (open) return;
-  db.run(
-    `INSERT INTO escalation (grp_id, severity, question, chain_state, kind, created_at)
-     VALUES (NULL, 'blocker', ?, 'boss', 'env', ?)`,
-    // `chain_state = 'boss'` directly rather than through `route()`: no agent can
-    // answer "the login stopped working", and this escalation belongs to a
-    // project rather than to a group, so there is no PM to hand it to.
-    //
+  holdRepository(slug, now);
+  // `chain_state` matters as much as `answer`, and `raise` states it once for
+  // every caller: `clearEscalation` revokes rather than answers, so a guard that
+  // looks at `answer` alone treats a revoked question as still open — and a
+  // project that recovered once could never file a second warning.
+  raise(db, {
     // `why` goes in verbatim. It is the message built below, which deliberately
     // does not guess which of the four causes it was — and a wrapper that
     // "helpfully" summarised it as "token expired" would put the guess back.
-    [`GitHub ${slug}: ${why}\n\n${say(lang, "repo.held", { repo: slug })}`, now],
-  );
+    question: `GitHub ${slug}: ${why}\n\n${say(lang, "repo.held", { repo: slug })}`,
+    brief: "GitHub 连不上了",
+    kind: "env",
+    // No agent can repair a project credential, and there is no group PM here.
+    chain: "boss",
+    dedupe: { prefix: `GitHub ${slug}:`, scope: "global" },
+  });
 }
 
 /**
@@ -213,16 +178,395 @@ function holdRepo(db: DB, lang: string | undefined, slug: string, why: string, n
  * it, and `dropGroup` already uses `revoked` for a question the world made moot.
  */
 export function clearEscalation(db: DB, slug: string): void {
+  const prefix = `GitHub ${slug}:`;
   db.run(
     `UPDATE escalation SET chain_state = 'revoked', answered_at = unixepoch() * 1000
-     WHERE answer IS NULL AND chain_state != 'revoked' AND question LIKE ?`,
-    [`GitHub ${slug}:%`],
+     WHERE answer IS NULL AND chain_state != 'revoked'
+       AND substr(question, 1, length(?)) = ?`,
+    [prefix, prefix],
   );
+}
+
+type CacheEntry = { etag: string; data: Json };
+/**
+ * One HTTP answer, however Octokit chose to deliver it — return or throw.
+ *
+ * Deliberately a TypeScript type and not a Zod schema: this is not the trust
+ * boundary, it is the shape of a library's own object. The boundary is the *body*,
+ * and `data` stays `unknown` all the way to `decoded`, where `z.json()` and the
+ * caller's endpoint schema are what let it into business code.
+ */
+type Answer = { status: number; headers: Record<string, unknown>; data: unknown };
+
+/**
+ * What we learned about one request while it was in flight.
+ *
+ * Keyed by the deadline signal, because **Octokit hands the plugins a copy of our
+ * request options, not our object** — anything a plugin writes onto
+ * `options.request` lands on the clone and is lost. The signal is a fresh object
+ * per call that the copy passes through by reference. A `WeakMap` per client.
+ */
+type Progress = { attempts: number; retryAfter?: number };
+type Notes = WeakMap<AbortSignal, Progress>;
+
+function noteOf(notes: Notes, signal: AbortSignal): Progress {
+  const existing = notes.get(signal);
+  if (existing) return existing;
+  const fresh: Progress = { attempts: 0 };
+  notes.set(signal, fresh);
+  return fresh;
+}
+type GithubState = {
+  db: DB;
+  kit: InstanceType<typeof GithubKit>;
+  notes: Notes;
+  lang: string | undefined;
+  cache: QuickLRU<string, CacheEntry>;
+  remaining: number | null;
+};
+type RequestInput<T> = {
+  method: string;
+  path: string;
+  schema: z.ZodType<T>;
+  body: Json | undefined;
+  callerSignal: AbortSignal | undefined;
+};
+
+function failure(method: string, path: string, bucket: Bucket, status: number, message: string): GhFail {
+  return {
+    ok: false,
+    bucket,
+    status,
+    message,
+    operation: `${method} GitHub API`,
+    target: path,
+    retryable: bucket === "transient",
+    correlationId: currentRequestId(),
+  };
+}
+
+function requestHeaders(token: string, hit: CacheEntry | undefined): Record<string, string> {
+  return {
+    // `@octokit/core` ignores an instance-level `headers` option — it reads only
+    // `userAgent` and `timeZone` — so the two constants live here with the two
+    // per-request ones. Content type and user agent are Octokit's to send.
+    accept: "application/vnd.github+json",
+    authorization: `Bearer ${token}`,
+    "x-github-api-version": "2022-11-28",
+    ...(hit ? { "if-none-match": hit.etag } : {}),
+  };
+}
+
+/**
+ * The one rejection `@octokit/request` rethrows instead of wrapping.
+ *
+ * Everything else a fetch throws becomes a `RequestError` with a synthetic 500,
+ * which the retry plugin treats as a retryable server error — so a cancellation
+ * dressed as anything but this is swallowed by the retry loop and charged another
+ * attempt. A real `fetch` names an abort this way; the bridge says it for a stub.
+ */
+function abortError(signal: AbortSignal): Error {
+  const error = new Error(String(signal.reason), { cause: signal.reason });
+  error.name = "AbortError";
+  return error;
+}
+
+/**
+ * Our fetch, in the shape Octokit calls it.
+ *
+ * The abort check happens before the call as well as after, because the retry
+ * plugin schedules its backoff on Bottleneck, which knows nothing about
+ * AbortSignal. The wait itself is not interruptible, so cancellation is noticed up
+ * to one backoff late rather than never.
+ */
+function bridge(fetchFn: GithubFetcher, notes: Notes): GithubFetcher {
+  return async (url, init) => {
+    if (init.signal?.aborted) throw abortError(init.signal);
+    // Counted here rather than read off the retry plugin's tally, which it
+    // writes onto Octokit's copy of the options where we cannot see it. One
+    // call per attempt, so everything past the first is a retry.
+    if (init.signal) noteOf(notes, init.signal).attempts += 1;
+    try {
+      return await fetchFn(url, init);
+    } catch (error) {
+      if (init.signal?.aborted) throw abortError(init.signal);
+      throw error;
+    }
+  };
+}
+
+/**
+ * The HTTP answer inside a thrown `RequestError`, if there is one.
+ *
+ * Octokit throws for 304 and for every status past 399, so the non-2xx paths this
+ * file cares about arrive here rather than as a return value. Read by shape rather
+ * than `instanceof`: a second copy of the class is a version coincidence waiting
+ * to happen. No answer means the request never got one — a transport throw.
+ */
+function answerOf(error: unknown): Answer | null {
+  if (!(error instanceof Error) || !("response" in error)) return null;
+  const response = error.response;
+  if (typeof response !== "object" || response === null) return null;
+  if (!("status" in response) || typeof response.status !== "number") return null;
+  const headers = "headers" in response ? response.headers : null;
+  return {
+    status: response.status,
+    headers: typeof headers === "object" && headers !== null ? { ...headers } : {},
+    data: "data" in response ? response.data : undefined,
+  };
+}
+
+function header(answer: Answer, name: string): string | null {
+  const value = answer.headers[name];
+  return typeof value === "string" ? value : null;
+}
+
+function observeResponse(state: GithubState, path: string, answer: Answer): void {
+  const left = header(answer, "x-ratelimit-remaining");
+  if (left !== null) state.remaining = Number(left);
+  const slug = slugInPath(path);
+  if (!slug) return;
+  const ok = answer.status >= 200 && answer.status < 300;
+  if (!ok && answer.status !== 304) return;
+  if (clearRepositoryHold(slug)) clearEscalation(state.db, slug);
+}
+
+function cachedResult<T>(input: RequestInput<T>, answer: Answer, hit: CacheEntry | undefined): GhResult<T> | null {
+  if (answer.status !== 304 || !hit) return null;
+  const cached = input.schema.safeParse(hit.data);
+  return cached.success
+    ? { ok: true, status: 304, data: cached.data }
+    : failure(input.method, input.path, "transient", 304, `GitHub cached invalid JSON for ${input.path}`);
+}
+
+/**
+ * The body as text, which is what `classify` and `message` read.
+ *
+ * Octokit hands back a decoded body, and both of those want the raw words GitHub
+ * used — "secondary rate limit" decides a bucket.
+ */
+function bodyText(data: unknown): string {
+  if (typeof data === "string") return data;
+  if (data === undefined || data === null) return "";
+  try {
+    return JSON.stringify(data) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function httpFailure(state: GithubState, input: RequestInput<unknown>, answer: Answer): GhFail {
+  const text = bodyText(answer.data);
+  const bucket = classify(answer.status, text);
+  const why =
+    answer.status === 404 ? unreachable(input.path) : `GitHub ${answer.status} on ${input.path}: ${message(text)}`;
+  const slug = slugInPath(input.path);
+  if (bucket === "boss" && slug) holdRepo(state.db, state.lang, slug, why, Date.now());
+  return failure(input.method, input.path, bucket, answer.status, why);
+}
+
+type Decoded<T> = GhFail | (GhOk<T> & { raw: Json });
+
+/**
+ * Octokit decodes by `content-type`; this endpoint set is JSON either way.
+ *
+ * A body that arrives as text — an error page, a proxy in the middle, a stub that
+ * did not bother with the header — is still read as JSON and still judged by the
+ * schema. A `content-type` is not the thing that makes an answer valid.
+ */
+function jsonBody(data: unknown): Json {
+  if (data === undefined || data === "") return null;
+  return JsonValue.parse(typeof data === "string" ? JSON.parse(data) : data);
+}
+
+function decoded<T>(input: RequestInput<T>, answer: Answer): Decoded<T> {
+  let data: Json;
+  try {
+    data = jsonBody(answer.data);
+  } catch {
+    return failure(
+      input.method,
+      input.path,
+      "transient",
+      answer.status,
+      `GitHub sent ${input.path} as something that is not JSON`,
+    );
+  }
+  const parsed = input.schema.safeParse(data);
+  return parsed.success
+    ? { ok: true, status: answer.status, data: parsed.data, raw: data }
+    : failure(input.method, input.path, "transient", answer.status, `GitHub sent invalid JSON for ${input.path}`);
+}
+
+function storeCache(state: GithubState, input: RequestInput<unknown>, answer: Answer, key: string, data: Json): void {
+  const etag = header(answer, "etag");
+  if (input.method !== "GET" || !etag) return;
+  // `QuickLRU`, not `clear()` on overflow: every `since=` cursor is a distinct
+  // single-use URL while a pull request's URL is re-read on every tick, so a size
+  // check throws the hot entries out with the cold ones. An LRU tells them apart.
+  state.cache.set(key, { etag, data });
+}
+
+function finish<T>(
+  state: GithubState,
+  input: RequestInput<T>,
+  answer: Answer,
+  key: string,
+  hit: CacheEntry | undefined,
+): GhResult<T> {
+  observeResponse(state, input.path, answer);
+  const cached = cachedResult(input, answer, hit);
+  if (cached) return cached;
+  if (answer.status >= 400) return httpFailure(state, input, answer);
+  const value = decoded(input, answer);
+  if (!value.ok) return value;
+  storeCache(state, input, answer, key, value.raw);
+  return { ok: true, status: value.status, data: value.data };
+}
+
+/**
+ * The options object we hand Octokit.
+ *
+ * `retries` is `0 | undefined` on purpose, not `number`. A non-zero per-request
+ * value bypasses the retry plugin's `doNotRetry` list entirely — measured: 404, 401
+ * and 422 each retried three times — because Bottleneck reads the count off this
+ * object without asking whether the status was retryable. Reads use the instance's.
+ */
+type RequestOptions = { signal: AbortSignal; retries?: 0 };
+
+/**
+ * One request, retries and all, as either an answer or the throw that stopped it.
+ *
+ * Writes carry `retries: 0` rather than a different plugin: retrying a PR
+ * creation is how you get two of them. The read budget stays on the instance —
+ * see `RequestOptions` for why it cannot be raised per request.
+ */
+async function send(
+  state: GithubState,
+  input: RequestInput<unknown>,
+  token: string,
+  hit: CacheEntry | undefined,
+  signal: AbortSignal,
+): Promise<({ answer: Answer } | { error: unknown }) & { retryAfter?: number }> {
+  const options: RequestOptions = { signal };
+  if (input.method !== "GET") options.retries = 0;
+  const progress = noteOf(state.notes, signal);
+  try {
+    const response = await state.kit.request(`${input.method} ${input.path}`, {
+      headers: requestHeaders(token, hit),
+      ...(input.body === undefined ? {} : { data: input.body }),
+      request: options,
+    });
+    return { answer: { status: response.status, headers: { ...response.headers }, data: response.data } };
+  } catch (error) {
+    const answer = answerOf(error);
+    const waited = progress.retryAfter === undefined ? {} : { retryAfter: progress.retryAfter };
+    return { ...(answer ? { answer } : { error }), ...waited };
+  } finally {
+    // Every attempt past the first was a retry.
+    for (let i = 1; i < progress.attempts; i++) recordRetry("github");
+  }
+}
+
+/** The cache identity: the URL Octokit will build, and the login that asked. */
+function cacheLookup(
+  state: GithubState,
+  input: RequestInput<unknown>,
+  token: string,
+): { key: string; hit: CacheEntry | undefined } {
+  const url = input.path.startsWith("http") ? input.path : API + input.path;
+  const key = `${token}\0${url}`;
+  if (input.method !== "GET") return { key, hit: undefined };
+  const hit = state.cache.get(key);
+  recordCache("github-etag", !!hit, state.cache.size);
+  return { key, hit };
+}
+
+/**
+ * Keep GitHub's own wait, and decline to sleep on it.
+ *
+ * Returning `false` tells the plugin not to retry in band. The number is filed
+ * against the request's signal because the `options` here are Octokit's copy —
+ * writing onto them would be writing into a discarded object.
+ */
+function noteRetryAfter(notes: Notes, options: { request?: unknown }, retryAfter: number): false {
+  const request = options.request;
+  const signal = typeof request === "object" && request !== null && "signal" in request ? request.signal : null;
+  if (signal instanceof AbortSignal) noteOf(notes, signal).retryAfter = retryAfter;
+  return false;
+}
+
+/** The original throw, not Octokit's wrapper: `@octokit/request` keeps it as
+ *  `cause`, and it is the half that says what actually happened. */
+function transportMessage(thrown: unknown): string {
+  const cause = thrown instanceof Error && thrown.cause !== undefined ? thrown.cause : thrown;
+  return String(cause).slice(0, 200);
+}
+
+/**
+ * A GitHub path as a bounded label.
+ *
+ * The raw path carries the repository name and the query string carries cursors,
+ * both forbidden on labels by `docs/standards/observability.md` and neither
+ * bounded. Owner, repository and every number become placeholders, which leaves
+ * about a dozen distinct templates for the whole product.
+ */
+export const githubRoute = (path: string): string =>
+  path
+    .split("?")[0]!
+    .replace(/^\/repos\/[^/]+\/[^/]+/, "/repos/{owner}/{repo}")
+    .replace(/\/\d+(?=\/|$)/g, "/{n}");
+
+async function requestGithub<T>(state: GithubState, input: RequestInput<T>): Promise<GhResult<T>> {
+  return activeTracer().startActiveSpan(
+    "github.request",
+    // The constants, not literals: this span and the HTTP server's landed in one
+    // table under two different keys for the same fact — `http.method` here has
+    // been deprecated in favour of `http.request.method` — so a GROUP BY over the
+    // span table split every route in half.
+    { attributes: { [ATTR_HTTP_REQUEST_METHOD]: input.method, [ATTR_HTTP_ROUTE]: githubRoute(input.path) } },
+    async (span) => {
+      try {
+        const result = await requestGithubInner(state, input);
+        // `requestGithub` reports failure by returning a `GhResult`, so a span that
+        // errored only on a throw would stay green through a 500, a refused
+        // credential and a rate limit alike.
+        if (!result.ok) span.setStatus({ code: SpanStatusCode.ERROR, message: `${result.status} ${result.bucket}` });
+        return result;
+      } catch (e) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+        throw e;
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+
+async function requestGithubInner<T>(state: GithubState, input: RequestInput<T>): Promise<GhResult<T>> {
+  const callerSignal = input.callerSignal ?? requestContext.getStore()?.signal;
+  const activeSignal = callerSignal
+    ? AbortSignal.any([callerSignal, AbortSignal.timeout(TIMEOUT_MS)])
+    : AbortSignal.timeout(TIMEOUT_MS);
+  if (callerSignal?.aborted) throw callerSignal.reason;
+
+  const token = loadAuth(state.db, "github")?.secret;
+  if (!token) return failure(input.method, input.path, "boss", 0, "no GitHub credential: connect GitHub in settings");
+  const { key, hit } = cacheLookup(state, input, token);
+  const sent = await send(state, input, token, hit, activeSignal);
+  if (callerSignal?.aborted) throw callerSignal.reason;
+  if (!("answer" in sent)) {
+    return failure(input.method, input.path, "transient", 0, transportMessage(sent.error));
+  }
+  const result = finish(state, { ...input, callerSignal }, sent.answer, key, hit);
+  // GitHub's own wait, when the throttling plugin found one, so a scheduler can
+  // retry on its number rather than guessing at one.
+  return result.ok || sent.retryAfter === undefined ? result : { ...result, retryAfter: sent.retryAfter };
 }
 
 export function makeGithub(
   db: DB,
-  fetchFn: Fetcher = fetch as unknown as Fetcher,
+  fetchFn: GithubFetcher = fetch,
   /** `output.language`, for the one sentence the boss reads. */
   lang?: string,
 ): Github {
@@ -230,93 +574,57 @@ export function makeGithub(
    * ETags, keyed by token as well as URL.
    *
    * A 304 does **not** count against the primary rate limit, and `pollPrs` runs
-   * every tick against every open PR — without this a quiet fleet spends its
-   * 5000/hour re-reading answers it already has. Keyed by the token because a
-   * rotated login must not reuse the previous one's cached bodies.
+   * every tick against every open PR. Keyed by the token because a rotated login
+   * must not reuse the previous one's cached bodies. Octokit has no
+   * conditional-request plugin, so the cache identity stays ours.
    */
-  const cache = new Map<string, { etag: string; data: unknown }>();
-  let remaining: number | null = null;
+  const notes: Notes = new WeakMap();
+  const kit = new GithubKit({
+    baseUrl: API,
+    userAgent: "orchestrator",
+    request: { fetch: bridge(fetchFn, notes) },
+    retry: { retries: RETRIES, retryAfterBaseValue: RETRY_BASE_MS },
+    throttle: {
+      /**
+       * A fresh limiter per client, which is what stops one client's pacing from
+       * queueing behind another's.
+       *
+       * `@octokit/plugin-throttling` reaches its limiters as
+       * `state.write.key(state.id)`, and a `Bottleneck.Group` mints a separate
+       * limiter per key — so the id is what isolates, not who owns the group.
+       */
+      id: crypto.randomUUID(),
+      // Never wait in band. The plugin's own answer to a rate limit is to sleep the
+      // caller for `retry-after` seconds and try again, which inside an agent turn
+      // holds a container open doing nothing; saying no returns promptly with a
+      // `transient` bucket and the scheduler retries the turn later. What the
+      // callback is really for is `retryAfter`, GitHub's own number, which reaches
+      // the caller on `GhFail`.
+      onRateLimit: (retryAfter, options) => noteRetryAfter(notes, options, retryAfter),
+      onSecondaryRateLimit: (retryAfter, options) => noteRetryAfter(notes, options, retryAfter),
+    },
+  });
+  const state: GithubState = { db, kit, notes, lang, cache: new QuickLRU({ maxSize: CACHE_ENTRIES }), remaining: null };
 
   return {
-    remaining: () => remaining,
+    remaining: () => state.remaining,
 
-    async request<T>(method: string, path: string, body?: unknown): Promise<GhResult<T>> {
-      const token = loadAuth(db, "github")?.secret;
-      if (!token) {
-        return { ok: false, bucket: "boss", status: 0, message: "no GitHub credential: connect GitHub in settings" };
-      }
-      const url = path.startsWith("http") ? path : API + path;
-      const key = `${token}\0${url}`;
-      const hit = method === "GET" ? cache.get(key) : undefined;
-
-      const headers: Record<string, string> = {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${token}`,
-        "x-github-api-version": "2022-11-28",
-        "user-agent": "orchestrator",
-      };
-      if (hit) headers["if-none-match"] = hit.etag;
-      if (body !== undefined) headers["content-type"] = "application/json";
-
-      let res: Response;
-      try {
-        res = await fetchFn(url, {
-          method,
-          headers,
-          body: body === undefined ? undefined : JSON.stringify(body),
-          signal: AbortSignal.timeout(TIMEOUT_MS),
-        });
-      } catch (e) {
-        return { ok: false, bucket: "transient", status: 0, message: String(e).slice(0, 200) };
-      }
-
-      const left = res.headers.get("x-ratelimit-remaining");
-      if (left !== null) remaining = Number(left);
-
-      const slug = slugInPath(path);
-      // Reaching it again is the only proof that matters, and it is free. A 304
-      // counts: GitHub answered it, which is the whole question.
-      if (slug && (res.ok || res.status === 304) && holds.delete(slug)) clearEscalation(db, slug);
-
-      if (res.status === 304 && hit) return { ok: true, status: 304, data: hit.data as T };
-
-      const text = await res.text().catch(() => "");
-      if (!res.ok) {
-        const bucket = classify(res.status, text);
-        const why = res.status === 404 ? unreachable(path) : `GitHub ${res.status} on ${path}: ${message(text)}`;
-        // Only `boss` holds. A 502 or a secondary rate limit is `transient` and
-        // backoff is what it is for — holding a project for a blip would stop a
-        // fleet over something that fixes itself in seconds.
-        if (bucket === "boss" && slug) holdRepo(db, lang, slug, why, Date.now());
-        return { ok: false, status: res.status, bucket, message: why };
-      }
-
-      let data: unknown = null;
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch {
-        return { ok: false, status: res.status, bucket: "transient", message: `GitHub sent ${path} as something that is not JSON` };
-      }
-
-      const etag = res.headers.get("etag");
-      if (method === "GET" && etag) {
-        // ponytail: unbounded otherwise — every `since=` cursor is its own URL.
-        // Entries are small and a restart clears it; a real LRU when it matters.
-        if (cache.size > 500) cache.clear();
-        cache.set(key, { etag, data });
-      }
-      return { ok: true, status: res.status, data: data as T };
+    async request<T>(
+      method: string,
+      path: string,
+      schema: z.ZodType<T>,
+      body?: Json,
+      signal?: AbortSignal,
+    ): Promise<GhResult<T>> {
+      return requestGithub(state, { method, path, schema, body, callerSignal: signal });
     },
   };
 }
 
 /** GitHub's own words, when it left any. */
 function message(text: string): string {
-  try {
-    const j = JSON.parse(text) as { message?: string; errors?: Array<{ message?: string }> };
-    const extra = (j.errors ?? []).map((e) => e.message).filter(Boolean).join("; ");
-    return [j.message, extra].filter(Boolean).join(" — ").slice(0, 300) || text.slice(0, 300);
-  } catch {
-    return text.slice(0, 300);
-  }
+  const parsed = jsonOr(text, ErrorBody.nullable(), null);
+  if (!parsed) return text.slice(0, 300);
+  const extra = (parsed.errors ?? []).flatMap((e) => (e.message ? [e.message] : [])).join("; ");
+  return [parsed.message, extra].filter(Boolean).join(" — ").slice(0, 300) || text.slice(0, 300);
 }

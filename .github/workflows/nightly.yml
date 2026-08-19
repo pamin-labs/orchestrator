@@ -1,0 +1,61 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: '43 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: 1.3.14
+  TRIVY_VERSION: v0.74.0
+
+jobs:
+  test-stress:
+    name: test-stress
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun run build:web
+      - run: bun run perf:bench
+      - env:
+          FC_NUM_RUNS: '1000'
+        run: bun run test:stress
+
+  security-full:
+    name: security-full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun audit
+      - run: bun run audit
+      - name: inventory all security candidates
+        run: |
+          bunx fallow security --surface --format json --quiet --output-file "$RUNNER_TEMP/fallow-security.json"
+          bunx fallow report --from "$RUNNER_TEMP/fallow-security.json" --format github-summary >> "$GITHUB_STEP_SUMMARY"
+      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: fs
+          scan-ref: .
+          trivy-config: trivy.yaml
+          format: table

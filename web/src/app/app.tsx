@@ -1,0 +1,460 @@
+import { PanelRight, SlidersHorizontal } from "lucide-react";
+import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
+import { Group, Panel, Separator } from "react-resizable-panels";
+import { Toaster } from "sonner";
+import { countWaiting, STATUS_ZH } from "../shared/select";
+import { useOrch } from "../shared/api";
+import { cn } from "../ui/cn";
+import { Pane } from "../ui/bits";
+import { Boundary } from "./boundary";
+import { Button } from "../ui/button";
+import { Card, CardBody, CardTitle } from "../ui/card";
+import { AskHost } from "../ui/confirm";
+import { Switcher } from "../features/navigation/switcher";
+import { Tip, TipRoot } from "../ui/tooltip";
+import { UsageBar } from "../features/usage/view";
+import { Home } from "../features/home/view";
+import { NewRequirement } from "../features/requirement/newreq";
+import { Notes } from "../features/notes/view";
+import { FirstProject, Picker } from "../features/picker/view";
+import { Progress } from "../features/progress/view";
+import { Queue } from "../features/queue/view";
+import { Requirement } from "../features/requirement/view";
+import { SettingsDialog } from "../features/settings/view";
+import { CostView, Desk, Owns } from "../features/tables/view";
+import { Telemetry } from "../features/telemetry/view";
+import { Timeline } from "../features/timeline/view";
+import {
+  backgroundView,
+  bodyClass,
+  choose,
+  connectionText,
+  contentKey,
+  contentSlot,
+  findById,
+  idOrZero,
+  itemName,
+  isHome,
+  navigationShortcut,
+  orEmpty,
+  parseSelection,
+  projectForGroup,
+  projectItem,
+  projectNameProps,
+  readSide,
+  repairMissingGroup,
+  requirementItem,
+  resolveNavigation,
+  scrollClass,
+  selectionHash,
+  settingsClass,
+  settingsInitial,
+  showNewRequirement,
+  showRequirementCrumb,
+  showSide,
+  sideClass,
+  sideText,
+  type Selection,
+  type Shortcut,
+  VIEWS,
+  viewActive,
+  viewClass,
+  waitingProject,
+} from "../features/navigation/model";
+
+type UiKey = "adding" | "pickProject" | "pickReq" | "picking" | "side";
+
+function useUi() {
+  const [ui, setUi] = useState(() => ({
+    adding: false,
+    pickProject: false,
+    pickReq: false,
+    picking: false,
+    side: readSide(localStorage),
+  }));
+  const setter =
+    (key: UiKey): Dispatch<SetStateAction<boolean>> =>
+    (next) =>
+      setUi((current) => ({ ...current, [key]: typeof next === "function" ? next(current[key]) : next }));
+  return {
+    ui,
+    setAdding: setter("adding"),
+    setPickProject: setter("pickProject"),
+    setPickReq: setter("pickReq"),
+    setPicking: setter("picking"),
+    setSide: setter("side"),
+  };
+}
+
+function Crumb({
+  children,
+  dim,
+  onClick,
+  className,
+}: {
+  children: ReactNode;
+  dim?: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "cursor-pointer truncate font-display text-[1rem] font-semibold transition-colors hover:text-ink",
+        choose(!!dim, "text-ink-2", "text-ink"),
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function App() {
+  const { state: st, cost, frames, live, refresh } = useOrch();
+  const [sel, setSel] = useState<Selection>(() => parseSelection(location.hash));
+  const { ui, setAdding, setPickProject, setPickReq, setPicking, setSide } = useUi();
+  const [behind, setBehind] = useState<Selection["view"]>("progress");
+  const go = (patch: Partial<Selection>) => setSel((current) => ({ ...current, ...patch }));
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("orch.side", ui.side ? "1" : "0");
+    } catch {}
+  }, [ui.side]);
+  useEffect(() => {
+    const view = backgroundView({ view: sel.view, g: sel.g });
+    if (view) setBehind(view);
+  }, [sel.view, sel.g]);
+  useEffect(() => {
+    const next = selectionHash(sel);
+    if (next === location.hash) return;
+    if (!location.hash) history.replaceState(null, "", next);
+    else history.pushState(null, "", next);
+  }, [sel]);
+  useEffect(() => {
+    if (sel.p) refresh(sel.p);
+  }, [refresh, sel.p]);
+  useEffect(() => {
+    const handlers: Record<Shortcut, () => void> = {
+      "toggle-side": () => setSide((value) => !value),
+      settings: () => go({ view: "settings" }),
+      "project-picker": () => setPickProject((value) => !value),
+      "requirement-picker": () => setPickReq((value) => !value),
+    };
+    const onKey = (event: KeyboardEvent) => {
+      const action = navigationShortcut(event, { view: sel.view, g: sel.g });
+      if (!action) return;
+      event.preventDefault();
+      handlers[action]();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sel.view, sel.g, setSide, setPickProject, setPickReq]);
+  useEffect(() => {
+    const repair = repairMissingGroup(
+      sel.g,
+      st.groups.map((group) => group.id),
+    );
+    if (repair) go(repair);
+  }, [sel.g, st.groups]);
+  useEffect(() => {
+    const onNavigation = () => setSel(parseSelection(location.hash));
+    window.addEventListener("popstate", onNavigation);
+    window.addEventListener("hashchange", onNavigation);
+    return () => {
+      window.removeEventListener("popstate", onNavigation);
+      window.removeEventListener("hashchange", onNavigation);
+    };
+  }, []);
+
+  const { section, view } = resolveNavigation(sel, behind);
+  const project = findById(sel.p, st.projects);
+  const home = isHome(view, !!project);
+  const groups = st.groups.filter((group) => group.project_id === sel.p);
+  const delivered = orEmpty(st.archived).some((archived) => archived.project_id === sel.p);
+  const waiting = countWaiting(st, waitingProject(home, sel.p));
+  const timeline = showSide(ui.side, home, st.projects.length);
+  const openGroup = findById(sel.g, st.groups);
+  const slot = contentSlot(st.projects.length, home, view, groups.length, delivered, !!openGroup);
+
+  useEffect(() => {
+    document.title = choose(waiting > 0, `(${waiting}) orchestrator`, "orchestrator");
+  }, [waiting]);
+
+  const openRequirement = (id: number) => {
+    const group = findById(id, st.groups);
+    go({ p: projectForGroup(group, sel.p), view: "req", g: id, t: null });
+  };
+  const added = (id: number) => {
+    refresh();
+    go({ p: id, view: "progress", g: null, t: null });
+  };
+  const content: Record<typeof slot, () => ReactNode> = {
+    first: () => <FirstProject onAdded={added} onSettings={() => go({ view: "github" })} />,
+    home: () => (
+      <Home
+        st={st}
+        onEnter={(id) => go({ p: id, view: "progress", g: null })}
+        onOpen={openRequirement}
+        onNew={(id) => {
+          go({ p: id });
+          setAdding(true);
+        }}
+        onAdd={() => setPicking(true)}
+        refresh={refresh}
+      />
+    ),
+    progress: () => (
+      <Progress
+        st={st}
+        projectId={idOrZero(sel.p)}
+        onOpen={openRequirement}
+        maxGroups={st.limits?.maxGroups}
+        tab={sel.t}
+        onTab={(tab) => go({ t: tab })}
+        queue={<Queue st={st} projectId={sel.p} onOpen={openRequirement} refresh={refresh} />}
+      />
+    ),
+    empty: () => (
+      <Card className="max-w-[40rem]">
+        <CardBody>
+          <CardTitle>还没有需求</CardTitle>
+          <div className="mt-1 text-[0.75rem] text-ink-3">写一句话，拆成计划卡再回来给你批。</div>
+          <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-rule-soft pt-3 text-[0.75rem]">
+            <dt className="text-ink-3">仓库</dt>
+            <dd className="truncate font-mono text-[0.6875rem]">{project?.repo_path}</dd>
+            <dt className="text-ink-3">从这个分支开</dt>
+            <dd className="font-mono text-[0.6875rem]">{project?.base_branch || "问 GitHub 要"}</dd>
+            <dt className="text-ink-3">闸门 / 安装命令</dt>
+            <dd className="text-ink-2">第一个组克隆完才猜得出来，到时候填进设置</dd>
+          </dl>
+          <div className="mt-3 flex items-center gap-2">
+            <Button variant="go" onClick={() => setAdding(true)}>
+              ＋ 新需求
+            </Button>
+            <Button variant="quiet" onClick={() => go({ view: "sandbox" })}>
+              改基线分支
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+    ),
+    req: () => {
+      if (!openGroup) return null;
+      return (
+        <Requirement
+          st={st}
+          g={openGroup}
+          frames={frames}
+          refresh={refresh}
+          open
+          tab={sel.t}
+          onTab={(tab) => go({ t: tab })}
+        />
+      );
+    },
+    missing: () => <div className="text-[0.8125rem] text-ink-3">这个需求已经归档或不存在了。</div>,
+    desk: () => <Desk st={st} frames={frames} projectId={idOrZero(sel.p)} />,
+    notes: () => <Notes projectId={idOrZero(sel.p)} tab={sel.t} onTab={(tab) => go({ t: tab })} />,
+    owns: () => <Owns st={st} projectId={idOrZero(sel.p)} />,
+    // No `windowMs`. It asked for a week, on a comment claiming retention kept
+    // seven days — retention is one, and the endpoint caps the parameter at
+    // exactly that, so every project read came back
+    // `Too big: expected number to be <=86400000` and the page said 「这个项目还
+    // 没跑过任何活」 over a table full of rows. Letting the endpoint choose its
+    // own default is also the only version that stays correct when retention
+    // moves, which is the reason the number should not have been here at all.
+    time: () => (
+      <Pane>
+        <Telemetry scope={{ kind: "project", id: idOrZero(sel.p) }} trend empty="这个项目还没跑过任何活。" />
+      </Pane>
+    ),
+    cost: () => <CostView cost={cost} />,
+  };
+
+  return (
+    <TipRoot>
+      <Toaster position="bottom-right" theme="system" />
+      <AskHost />
+      <Picker open={ui.picking} onOpenChange={setPicking} onAdded={added} onSettings={() => go({ view: "github" })} />
+      <Switcher
+        open={ui.pickProject}
+        onOpenChange={setPickProject}
+        label="切换项目"
+        placeholder="项目名…"
+        empty="没有匹配的项目"
+        items={st.projects.map((item) => projectItem(item, countWaiting(st, item.id)))}
+        onPick={(id) => go({ p: id, g: null, view: "board" })}
+      />
+      <Switcher
+        open={ui.pickReq}
+        onOpenChange={setPickReq}
+        label="切换需求"
+        placeholder="需求名…"
+        empty="这个项目没有别的需求"
+        items={groups.map((group) => requirementItem(group, STATUS_ZH[group.status] ?? group.status))}
+        onPick={(id) => go({ view: "req", g: id })}
+      />
+      {choose(
+        !!sel.p,
+        <NewRequirement open={ui.adding} onOpenChange={setAdding} projectId={idOrZero(sel.p)} onDone={refresh} />,
+        null,
+      )}
+      <SettingsDialog
+        open={!!section}
+        onOpenChange={(open) => {
+          if (!open) go({ view: behind, s: null });
+        }}
+        initial={settingsInitial(sel.s, section)}
+        onSection={(next) => go({ s: next })}
+        projectId={sel.p}
+        {...projectNameProps(project)}
+        groupCount={groups.length}
+        onRemoved={() => {
+          go({ p: null, g: null, view: "board" });
+          refresh(null);
+        }}
+      />
+      <div className="grid h-dvh grid-rows-[auto_minmax(0,1fr)]">
+        <header className="z-10 flex h-14 items-center gap-5 border-b border-rule bg-rail px-6">
+          <button
+            type="button"
+            className="cursor-pointer font-display text-[1.0625rem] font-semibold"
+            onClick={() => go({ view: "home", p: null, g: null })}
+          >
+            orchestrator
+          </button>
+          {choose(
+            !home,
+            <span className="flex min-w-0 shrink items-baseline gap-2 text-[0.8125rem]">
+              <span className="text-ink-3">/</span>
+              <Crumb dim={view === "req"} onClick={() => setPickProject(true)}>
+                {itemName(project)}
+              </Crumb>
+              {choose(
+                showRequirementCrumb(view, !!openGroup),
+                <>
+                  <span className="text-ink-3">/</span>
+                  <Crumb className="max-w-[18rem]" onClick={() => setPickReq(true)}>
+                    {itemName(openGroup)}
+                  </Crumb>
+                </>,
+                null,
+              )}
+              <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">⌘K</span>
+            </span>,
+            null,
+          )}
+          {choose(
+            !home,
+            <span className="flex min-w-0 gap-4 overflow-x-auto border-l border-rule pl-5">
+              {VIEWS.map(([key, label]) => (
+                <button
+                  type="button"
+                  key={key}
+                  onClick={() => go({ view: key, g: null, t: null })}
+                  className={cn(
+                    "-mb-px cursor-pointer whitespace-nowrap border-b-2 py-1 text-[0.8125rem] transition-colors",
+                    viewClass(viewActive(view, key)),
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </span>,
+            null,
+          )}
+          <span className="grow" />
+          <UsageBar usage={st.usage} />
+          {choose(
+            live !== "live",
+            <span className="flex items-center gap-1.5 rounded-md bg-sunk px-2 py-0.5 font-mono text-[0.6875rem] text-warn">
+              <i className="breathe size-1.5 rounded-full bg-warn" />
+              {connectionText(live)}
+            </span>,
+            null,
+          )}
+          {choose(
+            waiting > 0,
+            <Button
+              variant="go"
+              size="sm"
+              onClick={() => go(choose(!!sel.p, { view: "board", g: null }, { view: "home", p: null, g: null }))}
+            >
+              待办 {waiting}
+            </Button>,
+            <span className="font-mono text-[0.6875rem] text-ink-3">无待办</span>,
+          )}
+          {choose(
+            showNewRequirement(sel.p, st.projects.length),
+            <Button size="sm" className="ml-1" onClick={() => setAdding(true)}>
+              ＋ 新需求
+            </Button>,
+            null,
+          )}
+          <span className="ml-2 flex items-center gap-1 border-l border-rule pl-3">
+            {choose(
+              !home,
+              <Tip label={`${sideText(ui.side)} ⌘B`}>
+                <button
+                  type="button"
+                  onClick={() => setSide((value) => !value)}
+                  aria-label="事件流"
+                  className={cn(
+                    "grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
+                    sideClass(ui.side),
+                  )}
+                >
+                  <PanelRight size={14} strokeWidth={1.75} />
+                </button>
+              </Tip>,
+              null,
+            )}
+            <Tip label="设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S">
+              <button
+                type="button"
+                onClick={() => go({ view: "github" })}
+                aria-label="设置"
+                className={cn(
+                  "relative grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
+                  settingsClass(!!section),
+                )}
+              >
+                <SlidersHorizontal size={14} strokeWidth={1.75} />
+                {choose(
+                  !st.ready,
+                  <i className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-accent" aria-hidden />,
+                  null,
+                )}
+              </button>
+            </Tip>
+          </span>
+        </header>
+        <Group orientation="horizontal" className={cn("h-full min-h-0", bodyClass(timeline))}>
+          <Panel className="min-w-0 overflow-hidden" defaultSize="100%">
+            <div className={cn("flex h-full max-w-[76rem] flex-col px-6 pt-5", scrollClass(view))}>
+              <Boundary key={contentKey(view, sel.p, sel.g)}>{content[slot]()}</Boundary>
+            </div>
+          </Panel>
+          {choose(
+            timeline,
+            <>
+              <Separator className="w-px shrink-0 cursor-col-resize bg-rule transition-colors hover:bg-accent data-[state=dragging]:bg-accent max-[64rem]:hidden" />
+              <Panel defaultSize="20rem" minSize="14rem" maxSize="40rem" className="min-w-0">
+                <aside className="h-full overflow-auto">
+                  <div className="px-4 pb-24 pt-4">
+                    <Timeline st={st} frames={frames} grpId={sel.g} projectId={sel.p} />
+                  </div>
+                </aside>
+              </Panel>
+            </>,
+            null,
+          )}
+        </Group>
+      </div>
+    </TipRoot>
+  );
+}

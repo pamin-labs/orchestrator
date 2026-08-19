@@ -1,4 +1,4 @@
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 
 /**
  * Strictly serial merge order.
@@ -23,8 +23,7 @@ export function joinQueue(db: DB, grpId: number): number {
     .get(grpId);
   if (existing?.merge_seq != null) return existing.merge_seq;
 
-  const next =
-    (db.query<{ m: number | null }, []>("SELECT max(merge_seq) AS m FROM grp").get()?.m ?? 0) + 1;
+  const next = (db.query<{ m: number | null }, []>("SELECT max(merge_seq) AS m FROM grp").get()?.m ?? 0) + 1;
   db.run("UPDATE grp SET merge_seq = ?, merge_seq_at = unixepoch() * 1000 WHERE id = ?", [next, grpId]);
   return next;
 }
@@ -67,9 +66,7 @@ export function position(db: DB, grpId: number): { position: number; total: numb
  * into a conflict later.
  */
 export function landed(db: DB, grpId: number): number[] {
-  const me = db
-    .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
-    .get(grpId);
+  const me = db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId);
   db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL, merge_seq_at = NULL WHERE id = ?", [grpId]);
 
   // Wind the group up: sessions are worthless now, but the channel and every

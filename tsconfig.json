@@ -1,17 +1,8 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "types": ["bun-types"],
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "verbatimModuleSyntax": true,
-    "jsx": "react-jsx",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"]
-  },
-  "include": ["src", "test", "web/src"]
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.src.json" },
+    { "path": "./web/tsconfig.json" },
+    { "path": "./tsconfig.test.json" }
+  ]
 }

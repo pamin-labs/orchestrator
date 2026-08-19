@@ -1,25 +1,26 @@
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import type { CostReport } from "../../contracts/cost.ts";
+import { jsonOr } from "../../contracts/json.ts";
+import { z } from "zod";
 
 /**
  * Where the tokens went.
  *
  * Tokens, not dollars, and every ordering here says so. On a subscription the
- * dollar figure is notional — claude's CLI reports what the same turn would have
- * cost at API rates, codex reports nothing at all, and neither is what the month
- * costs. The real currencies are the token count and the quota percentage in the
- * header, so ranking by `usd` put every codex role at the bottom of the table
- * with a $0 that reads as free work.
- *
+ * dollar figure is notional — claude's CLI reports what the turn would have cost at
+ * API rates, codex reports nothing — and neither is what the month costs. So
+ * ranking by `usd` put every codex role at the bottom with a $0 that reads as free
+ * work.
+ */
+/**
  * Four dimensions, each answering a question the boss actually has: which
  * requirement was expensive, which role is expensive, whether the difficulty tags
- * are honest, and — since the work now runs across two accounts — which account is
+ * are honest, and — since the work runs across two accounts — which account is
  * being spent.
  */
 
-export interface CostRow {
-  label: string;
-  tokens: number;
-}
+const CostRowSchema = z.object({ label: z.string(), tokens: z.number() });
+type CostRow = z.infer<typeof CostRowSchema>;
 
 /**
  * One agent's spend, with what it was spending it on.
@@ -29,52 +30,22 @@ export interface CostRow {
  * know which model it took them on. `grpId` NULL means standing — paid for across
  * the project rather than by one requirement.
  */
-export interface HourRow {
+const HourRowSchema = z.object({
   /** Local hour, `MM-DD HH`. Formatted here so the panel does not re-derive a timezone. */
-  hour: string;
-  claude: number;
-  codex: number;
-}
+  hour: z.string(),
+  claude: z.number(),
+  codex: z.number(),
+});
+type HourRow = z.infer<typeof HourRowSchema>;
 
-export interface AgentCost extends CostRow {
-  id: number;
-  grpId: number | null;
-  role: string;
-  model: string;
-  runtime: string;
-}
-
-export interface CostReport {
-  /** Requirements that finished, for a per-requirement average worth quoting. */
-  delivered: { count: number; tokens: number };
-  byGroup: (CostRow & { grpId: number })[];
-  /**
-   * Every agent's spend with its group, so the panel can nest what is nested:
-   * project, then requirement, then the people in it. An agent is either standing
-   * (`grp_id` NULL, paid for across the project) or hired into one group. Four flat
-   * tables said all of that was the same shape, which is a lie about the data
-   * model.
-   */
-  agents: AgentCost[];
-  byRole: CostRow[];
-  byDifficulty: CostRow[];
-  /** Which subscription paid. The axis that appeared the day roles split across two. */
-  byRuntime: CostRow[];
-  /**
-   * The last 24 hours, per hour, split by provider.
-   *
-   * The only question on this page that a number cannot answer: how fast is it
-   * burning right now, and which of the two accounts is carrying it. Hourly
-   * because that is the resolution the work has — 300 to 700 turns an hour on a
-   * busy night. 48 hours was two screens of chart to answer a question about now.
-   */
-  byHour: HourRow[];
-  total: CostRow;
-  /** Cache hit ratio across recorded turns; the only visible sign caching works. */
-  cacheRatio: number | null;
-  /** Of those same turns, how many opened a cold session, and what triggered it. */
-  rotations: { turns: number; byReason: Record<string, number> };
-}
+const AgentCostSchema = CostRowSchema.extend({
+  id: z.number(),
+  grpId: z.number().nullable(),
+  role: z.string(),
+  model: z.string(),
+  runtime: z.string(),
+});
+type AgentCost = z.infer<typeof AgentCostSchema>;
 
 /** The four counters a turn reports, summed. Written once; the CASE needs it twice. */
 /**
@@ -90,55 +61,71 @@ const RUNTIME = `coalesce(json_extract(meta_json, '$.runtime'),
 const TOK = `json_extract(meta_json, '$.usage.input') + json_extract(meta_json, '$.usage.output')
            + json_extract(meta_json, '$.usage.cacheRead') + json_extract(meta_json, '$.usage.cacheCreate')`;
 
+/**
+ * "This project, or all of them" as a bound parameter instead of a clause.
+ *
+ * Seven queries take the same optional filter, and it used to be assembled as a
+ * string per call — two statement texts per query, and seven places a reader had
+ * to check what was being pasted into SQL. `?1 IS NULL` says it in the statement,
+ * so every query below is a constant prepared and cached once and the id only ever
+ * arrives as a parameter.
+ */
+/**
+ * Written out at each site rather than pasted from a constant, because a constant
+ * puts these back to being assembled templates — the thing being removed. The OR
+ * costs the planner an index on `project_id`; these are per-project aggregates on
+ * one boss's database, read when a panel opens.
+ */
+type ProjectArg = [number | null];
+
 export function costReport(db: DB, projectId?: number): CostReport {
-  const where = projectId ? "WHERE project_id = ?" : "";
-  const args = projectId ? [projectId] : [];
+  const of: ProjectArg = [projectId ?? null];
 
   const byGroup = db
-    .query<CostRow & { grpId: number }, any[]>(
+    .query<CostRow & { grpId: number }, ProjectArg>(
       `SELECT id AS grpId, name AS label, spent_tokens AS tokens FROM grp
-       ${where} ORDER BY spent_tokens DESC LIMIT 50`,
+       WHERE (?1 IS NULL OR project_id = ?1) ORDER BY spent_tokens DESC LIMIT 50`,
     )
-    .all(...args);
+    .all(...of);
 
   const agents = db
-    .query<AgentCost, any[]>(
+    .query<AgentCost, ProjectArg>(
       `SELECT id, grp_id AS grpId, role, role AS label, model, runtime, total_tokens AS tokens
-       FROM agent ${where} ORDER BY tokens DESC`,
+       FROM agent WHERE (?1 IS NULL OR project_id = ?1) ORDER BY tokens DESC`,
     )
-    .all(...args);
+    .all(...of);
 
   const byRole = db
-    .query<CostRow, any[]>(
+    .query<CostRow, ProjectArg>(
       `SELECT role AS label, sum(total_tokens) AS tokens FROM agent
-       ${where} GROUP BY role ORDER BY tokens DESC`,
+       WHERE (?1 IS NULL OR project_id = ?1) GROUP BY role ORDER BY tokens DESC`,
     )
-    .all(...args);
+    .all(...of);
 
   // The project filter was missing here, so one project's cost panel showed every
   // project's difficulty mix — and the difficulty tag is the cost knob the whole
   // panel exists to inform.
   const byDifficulty = db
-    .query<CostRow, any[]>(
+    .query<CostRow, ProjectArg>(
       `SELECT s.difficulty AS label, sum(s.spent_tokens) AS tokens
        FROM slice s JOIN grp g ON g.id = s.grp_id
-       ${projectId ? "WHERE g.project_id = ?" : ""}
+       WHERE (?1 IS NULL OR g.project_id = ?1)
        GROUP BY s.difficulty ORDER BY tokens DESC`,
     )
-    .all(...args);
+    .all(...of);
 
   const byRuntime = db
-    .query<CostRow, any[]>(
+    .query<CostRow, ProjectArg>(
       `SELECT runtime AS label, sum(total_tokens) AS tokens FROM agent
-       ${where} GROUP BY runtime ORDER BY tokens DESC`,
+       WHERE (?1 IS NULL OR project_id = ?1) GROUP BY runtime ORDER BY tokens DESC`,
     )
-    .all(...args);
+    .all(...of);
 
   // From the turn events rather than a new table: recordCost already emits one per
   // turn with the usage and the model, and the model prefix is what says which
   // account paid — the event row has no agent to join back to.
   const byHour = db
-    .query<HourRow, any[]>(
+    .query<HourRow, number[]>(
       `SELECT strftime('%m-%d %H', at / 1000, 'unixepoch', 'localtime') AS hour,
               coalesce(sum(CASE WHEN ${RUNTIME} = 'codex' THEN 0 ELSE ${TOK} END), 0) AS claude,
               coalesce(sum(CASE WHEN ${RUNTIME} = 'codex' THEN ${TOK} ELSE 0 END), 0) AS codex
@@ -150,19 +137,19 @@ export function costReport(db: DB, projectId?: number): CostReport {
     .all();
 
   const total = db
-    .query<CostRow, any[]>(
-      `SELECT 'total' AS label, coalesce(sum(spent_tokens), 0) AS tokens FROM grp ${where}`,
+    .query<CostRow, ProjectArg>(
+      `SELECT 'total' AS label, coalesce(sum(spent_tokens), 0) AS tokens FROM grp WHERE (?1 IS NULL OR project_id = ?1)`,
     )
-    .get(...args)!;
+    .get(...of)!;
 
   // What a finished requirement costs is the number to compare against doing it by
-  // hand — PLAN.md §13 risk ② turns on exactly this ratio.
+  // hand — docs/project/plan.md §13 risk ② turns on exactly this ratio.
   const delivered = db
-    .query<{ count: number; tokens: number }, any[]>(
+    .query<{ count: number; tokens: number }, ProjectArg>(
       `SELECT count(*) AS count, coalesce(sum(spent_tokens), 0) AS tokens FROM grp
-       WHERE status = 'DISSOLVED' ${projectId ? "AND project_id = ?" : ""}`,
+       WHERE status = 'DISSOLVED' AND (?1 IS NULL OR project_id = ?1)`,
     )
-    .get(...args)!;
+    .get(...of)!;
 
   return {
     delivered,
@@ -192,27 +179,24 @@ export function recentCacheRatio(db: DB, limit = 50): number | null {
     .all(limit);
   const vals: number[] = [];
   for (const r of rows) {
-    try {
-      const v = JSON.parse(r.meta_json)?.cacheRatio;
-      if (typeof v === "number") vals.push(v);
-    } catch {}
+    const v = jsonOr(r.meta_json, z.object({ cacheRatio: z.number().optional() }), {}).cacheRatio;
+    if (v !== undefined) vals.push(v);
   }
   if (vals.length === 0) return null;
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
 /**
- * How many of the recent turns started a session instead of resuming one, and
- * which trigger did it.
+ * How many of the recent turns started a session instead of resuming one, and which
+ * trigger did it.
  *
- * The companion to the ratio above, and the reason it is a separate number: a
- * low cache ratio can mean the prompt assembly broke or it can mean nobody is
- * resuming anything, and those have different fixes. Measured on this repo's own
- * logs before it existed, 10 of 13 claude jobs opened cold — roughly 17k tokens
- * of prefix rebuilt each time — and there was no way to tell whether the cause
- * was a moving prefix, the rotation ceiling, or send-backs asking for it.
+ * A separate number from the ratio above because a low cache ratio can mean the
+ * prompt assembly broke or that nobody is resuming anything, and those have
+ * different fixes. Measured on this repo before it existed: 10 of 13 claude jobs
+ * opened cold, roughly 17k of prefix rebuilt each time, with no way to tell whether
+ * the cause was a moving prefix, the rotation ceiling, or send-backs.
  */
-export function recentRotations(db: DB, limit = 50): { turns: number; byReason: Record<string, number> } {
+function recentRotations(db: DB, limit = 50): { turns: number; byReason: Record<string, number> } {
   const rows = db
     .query<{ why: string | null }, [number]>(
       `SELECT json_extract(meta_json, '$.rotate') AS why FROM event

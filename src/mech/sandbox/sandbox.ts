@@ -1,110 +1,64 @@
+import type { Bus } from "../../platform/persistence/event-bus.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import { errText } from "../../platform/process/text.ts";
 import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
-import { ConnectionConfig, Sandbox, type Volume } from "@alibaba-group/opensandbox";
-import type { Ctx } from "../../ctx.ts";
-import { ROOT } from "../../config.ts";
-import type { ResourceExec } from "./lease.ts";
-import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";
-import { defaultImage } from "./images.ts";
+import {
+  ConnectionConfig,
+  type ExecutionHandlers,
+  type RunCommandOpts,
+  Sandbox,
+  type Volume,
+} from "@alibaba-group/opensandbox";
+import type { Ctx } from "../../mech/ctx.ts";
+import { ROOT } from "../../platform/config/load.ts";
+import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
+import type { SandboxSpec } from "../../contracts/config.ts";
+import type { ResourceExec } from "../lease.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import pMap from "p-map";
+import { scopeAttributes } from "../../platform/observability/metrics.ts";
+import { requestContext } from "../../platform/observability/request-context.ts";
+import { activeTracer } from "../../platform/observability/traces.ts";
+import { CODEX_HOME, filesFor, sandboxKeyFor, vaultBindings } from "./auth.ts";
 import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
-import { shq } from "../util/shq.ts";
+import { shq } from "../../platform/process/shell.ts";
 import type { TurnRunner } from "../../runtime/claude.ts";
+import { projectConfig } from "../util/rows.ts";
 
 /**
  * One sandbox per group. The boundary.
  *
  * Everything an agent runs — its turn, its gates, its leases, its git — runs in
- * here, and nothing in here can reach the host. That is the whole point:
- * decision 001 measured that the host sandbox is deny-only, so "only this
- * checkout is writable" was never expressible and every path nobody thought to
- * deny stayed writable. A container inverts it. The host offers a finite set of
- * actions through `orch` and nothing else, which is hard constraint 2 turned
- * from the sandbox's only gap into its only interface.
- *
- * This file is the only place that knows OpenSandbox exists. See
- * docs/decisions/005 for what was measured, including the several places where
- * the observed behaviour contradicts that project's docs.
+ * here, and nothing in here can reach the host. The host offers a finite set of
+ * actions through `orch` and nothing else, which is hard constraint 2. This file
+ * is the only place that knows OpenSandbox exists; see docs/adr/005.
  */
 
 /** Reconnecting on every call would build a new undici pool each time. */
 const live = new Map<string, Sandbox>();
 
-export interface SandboxSpec {
-  image: string;
-  /** Kubernetes-style quantities, e.g. "4" and "8Gi". */
-  cpu: string;
-  memory: string;
-  ttlSeconds: number;
-  /**
-   * Domains the group may NOT reach. Everything else is open.
-   *
-   * A blocklist rather than an allowlist because the allowlist is the thing that
-   * cannot be enumerated — every registry, every docs site, every package a
-   * project happens to need. Measured (005): credential injection still works
-   * under `defaultAction: allow`, contradicting the vault docs, so open egress
-   * costs nothing in credential safety. The real tokens are never in here.
-   */
-  denyDomains: string[];
-  /**
-   * Host directories shared by every sandbox of this project, by mount path.
-   *
-   * For package-manager caches, and only those. Measured on this repo, a second
-   * group's `bun install`: 2.9s cold against 1.2s with the cache shared — small
-   * here because the repo is small, and the whole point on a monorepo where the
-   * install is minutes.
-   *
-   * Off by default, and the reason is this repo's own worst outage: every
-   * worktree shared one `node_modules` through a symlink, two gates installed at
-   * once, and the group read `Failed to link jiti: EEXIST` as its own build
-   * being broken. A package cache is not that — bun's and npm's are
-   * content-addressed and built for concurrent readers — but the shape is close
-   * enough that it should be something a project turns on deliberately.
-   *
-   * The sandbox server must also list the host path under `allowed_host_paths`,
-   * or creation fails outright.
-   */
-  cacheDirs: Record<string, string>;
-}
-
 /**
  * Which images a group's container may be made from.
  *
- * Two sources, and nothing else:
- *
- *   ghcr.io/pamin-labs/…   what this project publishes
- *   no registry prefix     what you built here, e.g. `orch/agent:1`
- *
- * The second is what makes local development and debugging work — a locally
- * built tag has no registry in front of it and can never have been pulled from
- * one, so allowing it does not open the door the first rule closes.
- *
- * The reason for the rule at all: this image is where an agent runs, and an
- * agent runs with your code in front of it. Pointing the fleet at somebody
- * else's image hands over the whole boundary — and it is invisible, because a
- * container built from a hostile image behaves exactly like one that is not.
- * Everything else in this file assumes the image is ours; this is the line that
- * makes the assumption true.
- *
- * Refused rather than corrected. A project that names an image we will not run
- * is a project whose owner meant something, and quietly substituting a different
- * one is worse than saying no.
+ * Two sources: `ghcr.io/pamin-labs/…`, and anything with no registry prefix — a
+ * locally built tag can never have been pulled from a registry, so allowing it
+ * does not open the door the first rule closes. Everything else here assumes the
+ * image is ours; this is the line that makes that true. Refused, not corrected.
  */
 /** The one namespace this project publishes to. One home, so the allowlist and
  *  the panel's version list can never disagree about what "ours" means. */
 export const PUBLISHED_REPO = "pamin-labs/orch-agent";
+// fallow-ignore-next-line security-sink -- `PUBLISHED_REPO` is the module constant one line above; the image reference being checked is the `test` argument, never the pattern.
 const PUBLISHED = new RegExp(`^ghcr\\.io/${PUBLISHED_REPO.split("/")[0]}/`, "i");
 
 /**
  * Does this reference name a registry to pull from?
  *
- * A registry is a `.` or a `:` in the first path segment, or a literal
- * `localhost`. Docker's own rule, and the reason `orch/agent:1` is local while
- * `evil.example.com/orch/agent:1` is not.
- *
- * Two callers, one rule: this decides both what may run (below) and whether
- * preflight is allowed to say "not on this machine" is fine — the sandbox server
- * pulls what it can pull, and nothing can pull a bare tag.
+ * A registry is a `.` or a `:` in the first path segment, or a literal `localhost`
+ * — Docker's own rule, and the reason `orch/agent:1` is local. Two callers, one
+ * rule: what may run, and whether preflight may say "not on this machine" is fine.
  */
 export function hasRegistry(ref: string): boolean {
   const image = ref.trim();
@@ -122,19 +76,10 @@ export function allowedImage(ref: string): boolean {
 /**
  * A host path, as the daemon that performs the mount will read it.
  *
- * On Windows this is not the path this process would use. `opensandbox-server`
- * is Linux-only — its egress mode is `dns+nft` — so on a Windows machine it runs
- * under WSL, next to the Docker Desktop daemon, and the path it is handed is
- * resolved in *that* filesystem. `C:\orch\skills` is not a path it has; the
- * same directory is `/mnt/c/orch/skills` there.
- *
- * Left untranslated, nothing errors: the server rejects it for not starting with
- * `/`, or accepts it and mounts an empty directory. Both end with every skill
- * the boss ticked silently absent, which is this project's oldest failure shape.
- *
- * Only drive-letter paths are touched. A path that is already absolute-POSIX is
- * somebody who has thought about this, and a UNC path (`\\wsl$\...`) is one the
- * daemon cannot use either way.
+ * `opensandbox-server` is Linux-only, so on Windows it runs under WSL and the
+ * path it is handed is resolved in *that* filesystem: `C:\orch\skills` is
+ * `/mnt/c/orch/skills` there. Left untranslated nothing errors — the server
+ * rejects it, or mounts an empty directory. Only drive-letter paths are touched.
  */
 export function hostPathForDaemon(path: string, os: string = platform()): string {
   if (os !== "win32") return path;
@@ -148,42 +93,15 @@ function defaultCpu(): string {
   return String(Math.max(2, Math.floor(cpus().length / 4)));
 }
 
-/** Only reached by unit tests that build a Ctx without a config block. */
-const DEFAULTS = {
-  server: "127.0.0.1:8080",
-  apiKey: "",
-  image: "ghcr.io/pamin-labs/orch-agent:latest",
-  cpu: "",
-  memory: "8Gi",
-  ttlSeconds: 86400,
-  denyDomains: [] as string[],
-  cacheDirs: {} as Record<string, string>,
-};
-
 /** Config, then the project's override. Adding a knob is a yaml key. */
 export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
-  const base = ctx.config.sandbox ?? DEFAULTS;
-  let over: Partial<SandboxSpec> = {};
-  if (projectId) {
-    const row = ctx.db
-      .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
-      .get(projectId);
-    try {
-      over = JSON.parse(row?.config_json ?? "{}").sandbox ?? {};
-    } catch {
-      over = {};
-    }
-  }
-  // `||`, not `??`: an empty string is how the yaml says "you decide", and it is
-  // never a usable value for any of these.
-  //
-  // The image is the one key a project may not freely set. `patchProjectConfig`
-  // merges arbitrary keys into `config_json`, so refusing it only in the panel
-  // would be a check a request can walk around; this is where every container is
-  // actually built, which makes it the only place the rule holds.
-  // Three layers, narrowest first: this project, this machine's default, the
-  // yaml a fresh install ships with.
-  const fallback = defaultImage(ctx.db, base.image);
+  const base = ctx.config.sandbox;
+  const over = projectConfig(ctx.db, projectId).sandbox ?? {};
+  // `||`, not `??`: an empty string is how the yaml says "you decide". The image is
+  // the one key a project may not freely set — `patchProjectConfig` merges arbitrary
+  // keys into `config_json`, so refusing it only in the panel would be a check a
+  // request can walk around, and this is where every container is actually built.
+  const fallback = base.image;
   const image = over.image || fallback;
   return {
     image: allowedImage(image) ? image : fallback,
@@ -198,18 +116,10 @@ export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
 /**
  * The key the sandbox server is actually running with, read from its own config.
  *
- * Generating one here and asking the boss to copy it into the server's file is
- * how a whole night went: the panel had a key, the server had another, and every
- * turn, gate and diff came back 401 as "Authentication credentials are invalid",
- * which reads as a model problem. The server owns this value. We are its client,
- * so we read it.
- *
- * Where a running server was pointed is not ours to know — it takes `--config`
- * and may be started from anywhere — so this looks in the three places one is
- * conventionally found, in the order the server itself would.
- *
- * A regex rather than a TOML parser: one key, one line, and a dependency for
- * that is a dependency for that.
+ * The server owns this value; we are its client, so we read it rather than
+ * generating one and asking the boss to copy it across. Where a running server
+ * was pointed is not ours to know — it takes `--config` and may be started from
+ * anywhere — so this looks in the three places one is conventionally found.
  */
 function configPaths(home = homedir()): string[] {
   return [
@@ -223,21 +133,42 @@ function configPaths(home = homedir()): string[] {
   ].filter((p): p is string => !!p);
 }
 
-export function serverKeyOnDisk(home = homedir()): { key: string; path: string } | null {
+export function serverKeyOnDisk(home = homedir()): { key: string; path: string; server: string } | null {
   for (const path of configPaths(home)) {
     const key = keyInConfig(path);
-    if (key) return { key, path };
+    // The address comes out of the same file as the key, so the two cannot be
+    // paired wrongly by anything that happens later. `cfg.sandbox.server` is a
+    // settings knob; this is the server whose file this key was read from.
+    if (key) return { key, path, server: addrInConfig(path) };
   }
   return null;
 }
 
 /**
+ * `host:port` out of one server config, defaulted the way the server defaults.
+ *
+ * Same regex-not-a-parser trade as `keyInConfig`, and the same `^[ \t]*` guard:
+ * the example config ships both lines commented out, and taking a commented
+ * value would name an address the server is not listening on.
+ */
+export function addrInConfig(path: string): string {
+  let text = "";
+  try {
+    text = readFileSync(path, "utf8");
+  } catch {
+    return "127.0.0.1:8080";
+  }
+  const host = /^[ \t]*host[ \t]*=[ \t]*"([^"]+)"/m.exec(text)?.[1] ?? "127.0.0.1";
+  const port = /^[ \t]*port[ \t]*=[ \t]*(\d{1,5})/m.exec(text)?.[1] ?? "8080";
+  return `${host.includes(":") ? `[${host}]` : host}:${port}`;
+}
+
+/**
  * `api_key` out of one config file, or null.
  *
- * A regex rather than a TOML parser: one key, one line, and a dependency for
- * that is a dependency for that. The `^\s*` matters — the example config ships
- * the line commented out, and taking that would store a value the server is not
- * using and lock the fleet out just as thoroughly as a generated one.
+ * A regex rather than a TOML parser: one key, one line. The `^\s*` matters — the
+ * example config ships the line commented out, and taking that would lock the
+ * fleet out just as thoroughly as a generated key would.
  */
 export function keyInConfig(path: string): string | null {
   try {
@@ -250,45 +181,52 @@ export function keyInConfig(path: string): string | null {
 /**
  * The opensandbox-server process that is running right now, if there is one.
  *
- * Three questions have three different answers and only this one separates
- * them: **absent** (restart it), **present but refusing** (a restart makes a
- * restart loop), and **present, healthy, and holding stale config** (needs a
- * restart, and nothing else notices). `preflight`'s `reachable()` answers the
- * middle one over HTTP; this answers the first.
- *
- * ponytail: shells out to `ps`, splits argv on whitespace, and resolves a
- * relative `--config` against the process's own working directory (`/proc` on
- * Linux, `lsof` on macOS). A path with a space in it comes back wrong — the fix
- * is the server publishing its own config path over its API, not a shell parser
- * here.
+ * Three states, three different answers: **absent** (restart it), **present but
+ * refusing** (a restart makes a restart loop), and **present, healthy, holding
+ * stale config** (needs a restart, and nothing else notices). `preflight`'s
+ * `reachable()` answers the middle one over HTTP; this answers the first.
  */
+// ponytail: shells out to `ps`, splits argv on whitespace, and resolves a relative
+// `--config` against the process's own working directory (`/proc` on Linux, `lsof`
+// on macOS). A path with a space in it comes back wrong — the fix is the server
+// publishing its own config path over its API, not a shell parser here.
+
 /**
  * Is this `ps` line the server, or a process talking about it.
  *
- * Measured the hard way: a shell whose argv contained
- * `pkill -f opensandbox-server` was matched as the server itself, so the caller
- * reported "already running" and never started one — on a machine with no server
- * at all. Anything that names it as an *argument* (pkill, grep, an editor, a
- * terminal title) is about the server, not the server.
- *
- * Pulled out so it can be checked without a machine in a particular state, which
- * is the only reason that bug survived: reproducing it needed a specific process
- * to exist at a specific moment.
+ * Anything that names it as an *argument* (pkill, grep, an editor, a terminal
+ * title) is about the server, not the server. Pulled out so it can be checked
+ * without a machine in a particular state, which is why that bug survived so long.
  */
 export function isServerLine(l: string): boolean {
   if (!/(^|\/|\s)opensandbox-server(\s|$)/.test(l)) return false;
   return !/\b(ps|grep|pkill|pgrep|kill|killall|tail|less|vim|nano|echo|which)\b/.test(l);
 }
 
+/**
+ * Is this pid still there — without asking `ps`.
+ *
+ * POSIX signal 0 delivers nothing and only reports whether the process exists.
+ * `EPERM` counts as alive — it is there and belongs to somebody else. The known
+ * limit is pid reuse, which is why this answers "still", not "which".
+ */
+export function pidAlive(pid: string): boolean {
+  const n = Number(pid);
+  if (!Number.isSafeInteger(n) || n <= 0) return false;
+  try {
+    process.kill(n, 0);
+    return true;
+  } catch (e) {
+    // `EPERM` rather than `ESRCH`: it exists and is somebody else's.
+    return typeof e === "object" && e !== null && "code" in e && e.code === "EPERM";
+  }
+}
+
 export function runningServer(): { pid: string; argv: string[]; config: string | null } | null {
   try {
     const ps = Bun.spawnSync(["ps", "-Ao", "pid=,args="], { stdout: "pipe" }).stdout.toString();
     // The name has to appear as a program being run, not merely somewhere on a
-    // command line. Measured the hard way: a shell whose argv contained
-    // `pkill -f opensandbox-server` was matched as the server itself, and the
-    // caller then reported "already running" and never started one. Anything
-    // that mentions it as an *argument* — pkill, grep, kill, an editor, a
-    // terminal title — is a process talking about the server, not the server.
+    // command line — see `isServerLine`.
     const line = ps.split("\n").find(isServerLine);
     if (!line) return null;
     const parts = line.trim().split(/\s+/);
@@ -308,14 +246,9 @@ export function runningServer(): { pid: string; argv: string[]; config: string |
 /**
  * The host paths this server will actually mount, and the file that says so.
  *
- * The silent one of the three. A mount of a path missing from this list fails
- * creation outright, which is loud — but the config being *out of step with
- * ours* is not: the process is healthy, nothing errors, and the only symptom is
- * an empty directory inside every container. That is the incident this exists
- * for, and it is why the answer is not "restart" but "add this line".
- *
- * Same regex-not-a-parser trade as `keyInConfig`, and the same `^[ \t]*` for the
- * same reason: the example config ships the line commented out.
+ * The silent one of the three. A missing path fails creation outright, which is
+ * loud — but a config *out of step with ours* is not: the process is healthy,
+ * nothing errors, and every container gets an empty directory. Answer: add a line.
  */
 export function allowedHostPaths(home = homedir()): { paths: string[]; config: string } | null {
   for (const path of configPaths(home)) {
@@ -333,34 +266,61 @@ export function allowedHostPaths(home = homedir()): { paths: string[]; config: s
 export const coveredBy = (allowed: string[], want: string): boolean =>
   allowed.some((a) => want === a.replace(/\/+$/, "") || want.startsWith(a.replace(/\/+$/, "") + "/"));
 
+export type RestartOps = {
+  running: typeof runningServer;
+  kill: (pid: number, signal: "SIGTERM" | "SIGKILL") => void;
+  sleep: (ms: number) => Promise<void>;
+  start: (argv: string[], log?: string) => void;
+};
+
+const restartOps: RestartOps = {
+  running: runningServer,
+  kill: (pid, signal) => void process.kill(pid, signal),
+  sleep: Bun.sleep,
+  start: (argv, log) => {
+    const out = log ? Bun.file(log) : "ignore";
+    Bun.spawn(argv, { stdout: out, stderr: out, stdin: "ignore" }).unref();
+  },
+};
+
+async function waitForServerExit(ops: RestartOps): Promise<boolean> {
+  for (let i = 0; i < 50; i++) {
+    if (!ops.running()) return true;
+    await ops.sleep(100);
+  }
+  return !ops.running();
+}
+
 /**
  * Restart the server the way it was started.
  *
  * Only ever from an argv we have **seen**, never one we composed: how the boss
- * runs it (`uvx`, a venv, a wrapper, extra flags) is theirs, and inventing a
- * command line would start a second, differently-configured server beside the
- * one that is wedged.
- *
- * Everything it was running dies with it — every container, and with them every
- * turn in flight. That is why the deliberate one is a button with hard
- * constraint 5's evidence beside it, and the automatic one below is narrow.
+ * runs it is theirs, and inventing a command line would start a second,
+ * differently-configured server beside the wedged one. Everything it was running
+ * dies with it, turns in flight included.
  */
-export async function restartServer(argv: string[], log?: string): Promise<string | null> {
+export async function restartServer(
+  argv: string[],
+  log?: string,
+  ops: RestartOps = restartOps,
+): Promise<string | null> {
   if (!argv.length) return "nothing recorded about how this server was started";
-  const live = runningServer();
+  const live = ops.running();
   if (live) {
     try {
-      process.kill(Number(live.pid), "SIGTERM");
+      ops.kill(Number(live.pid), "SIGTERM");
     } catch (e) {
-      return `could not stop pid ${live.pid}: ${(e as Error)?.message ?? e}`;
+      return `could not stop pid ${live.pid}: ${errText(e)}`;
     }
     // It has containers to let go of. SIGKILL after, or a wedged process never
     // releases the port and the restart lands on an address already in use.
-    for (let i = 0; i < 50 && runningServer(); i++) await new Promise((r) => setTimeout(r, 100));
-    if (runningServer()) {
+    if (!(await waitForServerExit(ops))) {
       try {
-        process.kill(Number(live.pid), "SIGKILL");
-      } catch {}
+        ops.kill(Number(live.pid), "SIGKILL");
+      } catch (e) {
+        return `could not force-stop pid ${live.pid}: ${errText(e)}`;
+      }
+      if (!(await waitForServerExit(ops))) return `pid ${live.pid} is still running after SIGKILL`;
     }
   }
   try {
@@ -368,13 +328,25 @@ export async function restartServer(argv: string[], log?: string): Promise<strin
     // does: a server that comes back up and immediately dies on its config
     // leaves nothing behind otherwise, and the only report left is our own
     // failed probe — which describes the symptom and none of the causes.
-    const out = log ? Bun.file(log) : "ignore";
-    Bun.spawn(argv, { stdout: out, stderr: out, stdin: "ignore" }).unref();
+    ops.start(argv, log);
     return null;
   } catch (e) {
-    return `could not start ${argv[0]}: ${(e as Error)?.message ?? e}`;
+    return `could not start ${argv[0]}: ${errText(e)}`;
   }
 }
+
+/**
+ * `lsof -Fn` prints one tagged field per line; `n` is the name we asked for.
+ *
+ * Tagged rather than columnar precisely so this is a `startsWith` and not a
+ * split: a cwd may contain spaces, and every column-counting parse of `lsof`
+ * truncates the first path that does.
+ */
+export const lsofCwd = (out: string): string | null =>
+  out
+    .split("\n")
+    .find((l) => l.startsWith("n"))
+    ?.slice(1) ?? null;
 
 function processCwd(pid: string): string | null {
   try {
@@ -384,8 +356,7 @@ function processCwd(pid: string): string | null {
     // Not Linux, or not permitted.
   }
   try {
-    const out = Bun.spawnSync(["lsof", "-a", "-d", "cwd", "-p", pid, "-Fn"], { stdout: "pipe" }).stdout.toString();
-    return out.split("\n").find((l) => l.startsWith("n"))?.slice(1) ?? null;
+    return lsofCwd(Bun.spawnSync(["lsof", "-a", "-d", "cwd", "-p", pid, "-Fn"], { stdout: "pipe" }).stdout.toString());
   } catch {
     return null;
   }
@@ -395,13 +366,14 @@ function connection(ctx: Ctx): ConnectionConfig {
   const { protocol, authority } = splitAddr(serverAddr(ctx));
   const [host, port] = authority.split(":");
   // Set from the panel first, then the environment, then the yaml. The yaml is
-  // committed, so a key that lives there is a key that leaks; the panel writes
-  // it to the same store every other credential uses.
-  const key = loadAuth(ctx.db, SANDBOX_KEY)?.secret || (ctx.config.sandbox ?? DEFAULTS).apiKey;
+  // committed, so a key that lives there is a key that leaks. Resolved against the
+  // address it is about to be sent to: a stored key travels with the address it
+  // was stored for, and `sandbox.server` is a knob the panel can move under it.
+  const key = sandboxKeyFor(ctx.db, authority, ctx.config.sandbox.apiKey);
   return new ConnectionConfig({
     domain: `${host}:${port ?? 8080}`,
     protocol,
-    apiKey: key || undefined,
+    ...(key ? { apiKey: key } : {}),
     // The SDK default is 30s, which an image pull blows straight through.
     requestTimeoutSeconds: 600,
   });
@@ -410,18 +382,10 @@ function connection(ctx: Ctx): ConnectionConfig {
 /**
  * Who owns a sandbox.
  *
- * A group is the usual answer. Standing roles — Architect, CoS, Dispatcher —
- * have no group and still must not run on the host, so they share one per
- * project.
- *
- * `util` is the third, and it is not a sandbox in the 005 sense. 007 narrows
- * that decision by one word: **the boundary is a container that runs an agent**.
- * This one runs none, checks out no working tree, and executes nothing that came
- * out of a repository — it is a peer of the server that happens not to occupy
- * the host's PATH. So it is the only container bound for GitHub *writes*, while
- * every group's binding is scoped to the two request paths a fetch uses
- * (`readOnlyGitPaths`). One per orchestrator, not per project: what it holds is
- * the login, and there is one of those.
+ * A group is the usual answer; standing roles have no group and share one per
+ * project. `util` runs no agent, checks out no working tree and executes nothing
+ * from a repository, so it is the only container bound for GitHub *writes* — a
+ * group's binding is scoped to the paths a fetch uses (`readOnlyGitPaths`).
  */
 export type Scope = { grp: number } | { project: number } | { util: true };
 
@@ -434,18 +398,21 @@ const UTIL_ID = "util_sandbox_id";
 const UTIL_AT = "util_sandbox_at";
 
 export function utilSandbox(db: Ctx["db"]): { id: string | null; at: number } {
-  const get = (k: string) => db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(k)?.v ?? null;
-  return { id: get(UTIL_ID), at: Number(get(UTIL_AT) ?? 0) };
+  return { id: readSetting(db, UTIL_ID), at: Number(readSetting(db, UTIL_AT) ?? 0) };
 }
 
 const holder = (s: Scope) =>
-  isUtil(s) ? { table: "setting", id: 0 } : "grp" in s ? { table: "grp", id: s.grp } : { table: "project", id: s.project };
+  isUtil(s)
+    ? { table: "setting", id: 0 }
+    : "grp" in s
+      ? { table: "grp", id: s.grp }
+      : { table: "project", id: s.project };
 
-function owner(ctx: Ctx, scope: Scope): { sandboxId: string | null; projectId: number | null } {
-  if (isUtil(scope)) return { sandboxId: utilSandbox(ctx.db).id, projectId: null };
+function owner(db: DB, scope: Scope): { sandboxId: string | null; projectId: number | null } {
+  if (isUtil(scope)) return { sandboxId: utilSandbox(db).id, projectId: null };
   const h = holder(scope);
   if (h.table === "grp") {
-    const row = ctx.db
+    const row = db
       .query<{ sandbox_id: string | null; project_id: number }, [number]>(
         "SELECT sandbox_id, project_id FROM grp WHERE id = ?",
       )
@@ -453,37 +420,33 @@ function owner(ctx: Ctx, scope: Scope): { sandboxId: string | null; projectId: n
     if (!row) throw new Error(`no group ${h.id}`);
     return { sandboxId: row.sandbox_id, projectId: row.project_id };
   }
-  const row = ctx.db
+  const row = db
     .query<{ sandbox_id: string | null }, [number]>("SELECT sandbox_id FROM project WHERE id = ?")
     .get(h.id);
   if (!row) throw new Error(`no project ${h.id}`);
   return { sandboxId: row.sandbox_id, projectId: h.id };
 }
 
-function remember(ctx: Ctx, scope: Scope, id: string | null): void {
+function remember(db: DB, scope: Scope, id: string | null): void {
   // The timestamp is what makes a stale binding visible. A sidecar is loaded
   // with the credentials that existed at this moment and never again, so a
   // sandbox older than the newest credential is one nobody has rebound.
   const at = id ? Date.now() : null;
   if (isUtil(scope)) {
-    const put = (k: string, v: string | null) =>
-      v === null
-        ? ctx.db.run("DELETE FROM setting WHERE k = ?", [k])
-        : ctx.db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [k, v]);
-    put(UTIL_ID, id);
-    put(UTIL_AT, at === null ? null : String(at));
+    writeSetting(db, UTIL_ID, id);
+    writeSetting(db, UTIL_AT, at === null ? null : String(at));
     return;
   }
   const h = holder(scope);
-  ctx.db.run(`UPDATE ${h.table} SET sandbox_id = ?, sandbox_at = ? WHERE id = ?`, [id, at, h.id]);
+  db.run(`UPDATE ${h.table} SET sandbox_id = ?, sandbox_at = ? WHERE id = ?`, [id, at, h.id]);
 }
 
 /** The remote this scope's container may reach, for the read-only binding. */
-function remoteOf(ctx: Ctx, projectId: number | null): string | null {
+function remoteOf(db: DB, projectId: number | null): string | null {
   if (projectId == null) return null;
   return (
-    ctx.db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId)
-      ?.remote ?? null
+    db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId)?.remote ??
+    null
   );
 }
 
@@ -491,24 +454,16 @@ function remoteOf(ctx: Ctx, projectId: number | null): string | null {
  * The scope's sandbox, created on first use and reconnected after a restart.
  *
  * The id column is the durable half; the Sandbox object is not. A restarted
- * orchestrator reconnects to a sandbox that is still running its TTL out, which
- * is what keeps a turn's session — and therefore its cached prefix — alive
- * across a restart.
+ * orchestrator reconnects to a sandbox still running its TTL out, which is what
+ * keeps a turn's session — and its cached prefix — alive across a restart.
  */
 /**
  * Nothing can open a container right now.
  *
- * docker not running, `opensandbox-server` down, the key rejected. Preflight
- * reports all three — and only as a console warning, so the fleet still finds
- * out the expensive way: every group dispatches, `ensureSandbox` throws, the
- * turn fails, the watchdog requeues it once and then files a blocker. Ten
- * groups, ten blockers, one fact.
- *
- * So it is a hold, the same shape as the rate-limit and offline ones: the first
- * group discovers the wall and the rest are simply not dispatched. Short,
- * because the alternative to re-probing is staying down after docker comes
- * back, and because a failure that was actually about one project's config
- * should not hold everyone for long.
+ * docker not running, `opensandbox-server` down, the key rejected. A hold, the
+ * same shape as the rate-limit and offline ones: the first group discovers the
+ * wall and the rest are simply not dispatched. Short, because the alternative to
+ * re-probing is staying down after docker comes back.
  */
 const HOLD_MS = 60_000;
 let downUntil = 0;
@@ -522,7 +477,7 @@ export function resetSandboxHold(): void {
   saidDown = false;
 }
 
-function markDown(ctx: Ctx, e: unknown, now = Date.now()): void {
+function markDown<T>(ctx: Ctx, e: T, now = Date.now()): void {
   downUntil = now + HOLD_MS;
   if (saidDown) return;
   saidDown = true;
@@ -534,14 +489,14 @@ function markDown(ctx: Ctx, e: unknown, now = Date.now()): void {
     intent: "inform",
     severity: "blocker",
     body:
-      `开不了容器，所有 turn 先挂起：${String((e as Error)?.message ?? e).slice(0, 200)}\n` +
+      `开不了容器，所有 turn 先挂起：${errText(e, 200)}\n` +
       `多半是 docker 没起或者 opensandbox-server 没在跑 —— 设置页的自检那一栏会说是哪个。好了自动继续。`,
   });
 }
 
-function markUp(ctx: Ctx): void {
+function markUp(bus: Bus): void {
   if (saidDown) {
-    ctx.bus?.emit({ author: "orchestrator", kind: "state_change", body: "容器又能开了，挂起的活自动继续" });
+    bus?.emit({ author: "orchestrator", kind: "state_change", body: "容器又能开了，挂起的活自动继续" });
   }
   downUntil = 0;
   saidDown = false;
@@ -550,7 +505,7 @@ function markUp(ctx: Ctx): void {
 export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   try {
     const sb = await openSandbox(ctx, scope);
-    markUp(ctx);
+    markUp(ctx.bus);
     return sb;
   } catch (e) {
     markDown(ctx, e);
@@ -558,68 +513,69 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   }
 }
 
-async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
-  const { sandboxId, projectId } = owner(ctx, scope);
+async function reconnect(ctx: Ctx, scope: Scope, sandboxId: string | null): Promise<Sandbox | null> {
+  if (!sandboxId) return null;
+  const cached = live.get(sandboxId);
+  // Deliberately above the span: a cached handle is not a round trip, and a span
+  // that fires on the hit would bury the one that fires on the miss.
+  if (cached) return cached;
+  return activeTracer().startActiveSpan(
+    "sandbox.reconnect",
+    { attributes: sandboxScope(scope, "project" in scope ? scope.project : null) },
+    async (span) => {
+      try {
+        const sandbox = await Sandbox.connect({ connectionConfig: connection(ctx), sandboxId });
+        live.set(sandboxId, sandbox);
+        return sandbox;
+      } catch (e) {
+        // A reconnect that burns its timeout and fails falls through to a fresh
+        // `sandbox.create`, so without this span its cost was charged there.
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+        remember(ctx.db, scope, null);
+        return null;
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
 
-  if (sandboxId) {
-    const cached = live.get(sandboxId);
-    if (cached) return cached;
-    try {
-      const sb = await Sandbox.connect({ connectionConfig: connection(ctx), sandboxId });
-      live.set(sandboxId, sb);
-      return sb;
-    } catch {
-      // Expired or killed. Fall through and make a new one rather than wedging
-      // the owner on a sandbox id that will never answer again.
-      remember(ctx, scope, null);
-    }
-  }
-
-  const spec = specFor(ctx, projectId);
-  const cacheVolumes = Object.entries(spec.cacheDirs).map(([mountPath, hostPath], i) => ({
-    name: `cache-${i}`,
+function cacheVolumes(spec: SandboxSpec): Volume[] {
+  return Object.entries(spec.cacheDirs).map(([mountPath, hostPath], index) => ({
+    name: `cache-${index}`,
     host: { path: hostPathForDaemon(hostPath) },
     mountPath,
   }));
-  const make = (volumes: Volume[]) =>
-    Sandbox.create({
-      connectionConfig: connection(ctx),
-      image: spec.image,
-      timeoutSeconds: spec.ttlSeconds,
-      resource: { cpu: spec.cpu, memory: spec.memory },
-      // Required for credential injection; without it the tokens would have to be
-      // real inside the sandbox, and the failure mode is a 401 rather than an
-      // obvious "vault off". Preflight asserts the server side of this.
-      credentialProxy: { enabled: true },
-      networkPolicy: {
-        defaultAction: "allow",
-        egress: spec.denyDomains.map((target) => ({ action: "deny" as const, target })),
-      },
-      volumes,
-      // `grp-1`, not `grp:1`: metadata values must be alphanumeric plus `-_.`, and
-      // a colon is a 400 at creation — which fails the group, not the label.
-      metadata: { owner: isUtil(scope) ? "util" : `${holder(scope).table}-${holder(scope).id}` },
-    });
+}
 
-  // The boss's own skills, staged into one dereferenced directory on the host
-  // (`stageSkills`) and mounted where each CLI looks for them, so the agent finds
-  // and invokes a skill by itself instead of waiting to be handed one. Read-only:
-  // what the boss ticks is the whole contract, and a group editing the set every
-  // other group mounts is not part of it.
-  // Not the utility container: nothing in there reads a skill, because nothing
-  // in there is an agent.
-  const skills = isUtil(scope) ? [] : skillMounts(ctx);
-  let sb: Sandbox;
-  let skillsMounted = skills.length > 0;
+function createSandbox(ctx: Ctx, scope: Scope, spec: SandboxSpec, volumes: Volume[]) {
+  const ownerName = isUtil(scope) ? "util" : `${holder(scope).table}-${holder(scope).id}`;
+  return Sandbox.create({
+    connectionConfig: connection(ctx),
+    image: spec.image,
+    timeoutSeconds: spec.ttlSeconds,
+    resource: { cpu: spec.cpu, memory: spec.memory },
+    credentialProxy: { enabled: true },
+    networkPolicy: {
+      defaultAction: "allow",
+      egress: spec.denyDomains.map((target) => ({ action: "deny" as const, target })),
+    },
+    volumes,
+    metadata: { owner: ownerName },
+  });
+}
+
+async function createMountedSandbox(
+  ctx: Ctx,
+  scope: Scope,
+  spec: SandboxSpec,
+  cached: Volume[],
+  skills: Volume[],
+): Promise<{ sandbox: Sandbox; skillsMounted: boolean }> {
   try {
-    sb = await make([...cacheVolumes, ...skills]);
-  } catch (e) {
-    // The server mounts host paths only from its own `allowed_host_paths`, and a
-    // path missing from it fails creation outright — which would take every
-    // group down for a feature no group needs to run. So: one retry without the
-    // skills, said out loud with the exact path to allow. Not a silent fallback
-    // (005) — the fleet keeps working and the boss is told what is switched off.
-    if (!skills.length || !isPathNotAllowed(e)) throw e;
+    return { sandbox: await createSandbox(ctx, scope, spec, [...cached, ...skills]), skillsMounted: skills.length > 0 };
+  } catch (error) {
+    if (!skills.length || !isPathNotAllowed(error)) throw error;
     ctx.bus?.emit({
       grpId: "grp" in scope ? scope.grp : null,
       author: "orchestrator",
@@ -629,88 +585,141 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
         `技能没挂进沙盒：opensandbox-server 的 allowed_host_paths 不含 ${skills[0]!.host?.path}。` +
         `加上它再重开这个组的容器；在那之前 agent 只能用你在输入框里点名的技能。`,
     });
-    skillsMounted = false;
-    sb = await make(cacheVolumes);
+    return { sandbox: await createSandbox(ctx, scope, spec, cached), skillsMounted: false };
   }
-  live.set(sb.id, sb);
-  remember(ctx, scope, sb.id);
-  // The utility container gets no mailbox and no `orch`: nothing in it is an
-  // agent, so the one interface an agent is allowed would be surface with no
-  // user — in the container that holds the real tokens.
-  if (!isUtil(scope)) await provision(sb);
-  // Mounted is not the same as readable. Once per host path per process, and
-  // only when a mount was actually accepted — the fallback above has already
-  // said its piece, and "mounted but empty" would be a false description of a
-  // container that was built without the mount at all.
-  if (skillsMounted) {
-    await checkSkillsMount(ctx, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {});
-  }
-  // Remembered before this line, so the restore below re-enters here and finds
-  // the sandbox it is restoring into rather than building a second one.
-  // A credential the CLI can only read from a file. See `filesFor` for why codex
-  // is the exception to everything else here.
-  const files = filesFor(ctx.db);
-  if (Object.keys(files).length) {
-    await sb.files.createDirectories([{ path: CODEX_HOME }]).catch(() => {});
-    await writeInto(
-      sb,
-      Object.entries(files).map(([path, data]) => ({ path, data, mode: 600 })),
-    ).catch(() => {});
-  }
-  // The real tokens go to the sidecar, never inside. Bound at creation because
-  // `resume` rebuilds the sidecar with an empty vault, and a sandbox with no
-  // vault answers 401 rather than saying the vault is missing.
-  //
-  // `repo` is what makes a group container's GitHub binding read-only: with it,
-  // the token is injected on the two paths a fetch uses and on nothing else, so
-  // `git push` inside a group leaves with the decoy and GitHub refuses it. The
-  // utility container passes nothing and keeps the whole token.
+}
+
+async function writeLoginFiles(db: DB, sandbox: Sandbox): Promise<void> {
+  const files = filesFor(db);
+  if (!Object.keys(files).length) return;
+  await sandbox.files.createDirectories([{ path: CODEX_HOME }]).catch(() => {});
+  await writeInto(
+    sandbox,
+    Object.entries(files).map(([path, data]) => ({ path, data, mode: 600 })),
+  ).catch(() => {});
+}
+
+async function installVaultCredentials(
+  ctx: Ctx,
+  scope: Scope,
+  sandbox: Sandbox,
+  projectId: number | null,
+): Promise<void> {
   const { credentials } = await vaultBindings(ctx.db, codexHomeIO(ctx), {
-    repo: isUtil(scope) ? null : remoteOf(ctx, projectId),
+    repo: isUtil(scope) ? null : remoteOf(ctx.db, projectId),
   });
-  if (credentials.length) {
-    await sb.credentialVault
-      .create({
-        credentials: credentials.map((c) => ({ name: c.name, source: { type: "inline" as const, value: c.value } })),
-        bindings: credentials.map((c) => ({ name: c.name, match: matchFor(c), auth: authFor(c) })),
-      })
-      .catch((e: unknown) => {
-        // Said here, because nothing else can say it. This used to claim
-        // preflight would report it: preflight runs at boot, and this is a call
-        // against a container that did not exist then — it never had a chance.
-        //
-        // What follows from a silent miss is deterministic and points at the
-        // wrong person. No bindings means the decoys stay decoys, every model
-        // call 401s, `isAuthFailure` matches, and `handleAuthFailure` pauses the
-        // group telling the boss to re-mint a token — so they replace a
-        // credential that was never the problem and the new one fails the same
-        // way. The group staying alive is right; not naming it is not.
-        ctx.bus?.emit({
-          grpId: "grp" in scope ? scope.grp : null,
-          author: "orchestrator",
-          kind: "state_change",
-          severity: "blocker",
-          body:
-            `这个容器的凭据没绑上，里面的假值会原样发出去 —— 接下来每次模型调用都会 401，` +
-            `而那不是 token 的问题，重新登录也没用。原因：${(e as Error)?.message ?? e}`.slice(0, 400),
-        });
-      });
-  }
-  // A container this fresh has no clone and nothing installed. Imported here
-  // rather than at the top because `start.ts` reads this module too, and the
-  // cycle only resolves if neither side needs the other while it is loading.
-  if ("grp" in scope) {
-    const { restoreWorkspace } = await import("../flow/start.ts");
-    await restoreWorkspace(ctx, scope.grp).catch((e: unknown) => {
-      ctx.bus.emit({
-        grpId: scope.grp,
+  if (!credentials.length) return;
+  await sandbox.credentialVault
+    .create({
+      credentials: credentials.map((credential) => ({
+        name: credential.name,
+        source: { type: "inline" as const, value: credential.value },
+      })),
+      bindings: credentials.map((credential) => ({
+        name: credential.name,
+        match: matchFor(credential),
+        auth: authFor(credential),
+      })),
+    })
+    .catch((error: unknown) => {
+      ctx.bus?.emit({
+        grpId: "grp" in scope ? scope.grp : null,
         author: "orchestrator",
         kind: "state_change",
-        severity: "warn",
-        body: `沙盒重建了，但工作区没装回去：${(e as Error)?.message ?? e}`,
+        severity: "blocker",
+        body:
+          `这个容器的凭据没绑上，里面的假值会原样发出去 —— 接下来每次模型调用都会 401，` +
+          `而那不是 token 的问题，重新登录也没用。原因：${errText(error, 400)}`,
       });
     });
-  }
+}
+
+async function restoreGroupWorkspace(ctx: Ctx, scope: Scope): Promise<void> {
+  if (!("grp" in scope) || !ctx.restoreWorkspace) return;
+  await ctx.restoreWorkspace(scope.grp).catch((error: unknown) => {
+    ctx.bus.emit({
+      grpId: scope.grp,
+      author: "orchestrator",
+      kind: "state_change",
+      severity: "warn",
+      body: `沙盒重建了，但工作区没装回去：${errText(error)}`,
+    });
+  });
+}
+
+/**
+ * What a sandbox span is about.
+ *
+ * A group's container is scoped to the group and its project; a project-scoped
+ * one names only the project; the utility container belongs to neither and
+ * writes NULL to all three columns rather than being filed under something.
+ */
+export function sandboxScope(scope: Scope, projectId: number | null) {
+  return scopeAttributes({ grpId: "grp" in scope ? scope.grp : null, projectId });
+}
+
+/**
+ * Two spans, because these are two different four-minute problems.
+ *
+ * Building the container is the image, the daemon and the mounts; initialising it
+ * is provisioning, credentials and the workspace. Split, the answer is "four
+ * minutes building" or "four minutes filling", which point at different fixes.
+ */
+async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
+  const { sandboxId, projectId } = owner(ctx.db, scope);
+  const existing = await reconnect(ctx, scope, sandboxId);
+  if (existing) return existing;
+
+  const attributes = sandboxScope(scope, projectId);
+  const spec = specFor(ctx, projectId);
+  const skills = isUtil(scope) ? [] : skillMounts(ctx);
+  const created = await activeTracer().startActiveSpan(
+    "sandbox.create",
+    { attributes: { ...attributes, "sandbox.image": spec.image } },
+    async (span) => {
+      try {
+        return await createMountedSandbox(ctx, scope, spec, cacheVolumes(spec), skills);
+      } catch (error) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
+  );
+  const sb = created.sandbox;
+  live.set(sb.id, sb);
+  remember(ctx.db, scope, sb.id);
+
+  await activeTracer().startActiveSpan("sandbox.init", { attributes }, async (span) => {
+    try {
+      // The utility container gets no mailbox and no `orch`: nothing in it is an
+      // agent, so the one interface an agent is allowed would be surface with no
+      // user — in the container that holds the real tokens.
+      if (!isUtil(scope)) await provision(sb);
+      // Mounted is not the same as readable — but only when a mount was actually
+      // accepted, since "mounted but empty" would falsely describe a container built
+      // without the mount at all. The three share no state and each owns its own
+      // failure, so they go together rather than as three round trips on the path a
+      // requirement waits on. `Promise.all` and not a floating promise: the sandbox
+      // is usable the moment this returns, and a check still in flight would report
+      // on a container the next step has already changed.
+      await Promise.all([
+        created.skillsMounted
+          ? checkSkillsMount(ctx.bus, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {})
+          : undefined,
+        writeLoginFiles(ctx.db, sb),
+        installVaultCredentials(ctx, scope, sb, projectId),
+      ]);
+      // Remembered before restore so re-entry finds this sandbox instead of building another.
+      await restoreGroupWorkspace(ctx, scope);
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
   return sb;
 }
 
@@ -726,28 +735,19 @@ export const FILE_MODE = 644;
 const EXEC_MODE = 755;
 
 /** The one creation failure worth degrading for rather than failing the group. */
-function isPathNotAllowed(e: unknown): boolean {
+function isPathNotAllowed<T>(e: T): boolean {
   return /not under any allowed prefix|allowed_host_paths/i.test(String(e));
 }
 
 /**
  * The refresher's hands, inside the utility container.
  *
- * 007 step 7: the ChatGPT login was the last thing that needed a binary on the
- * boss's own machine, and codex is already in the agent image because turns run
- * `codex exec`. So the weekly renewal runs where every other credential already
- * lives, and a host with docker and a pasted token needs nothing else.
- *
- * **The utility container, never a group's.** This is the real refresh token —
- * the one credential 007 deliberately kept off every agent — and the utility
- * container is the one with no agent, no mailbox and no `orch` in it, which is
- * the entire reason it may hold real credentials.
- *
- * Lives here rather than in `chatgpt.ts` because that file must not import this
- * one: `sandbox.ts` -> `auth.ts` -> `chatgpt.ts` already, and reaching back
- * closes the cycle.
+ * **Never a group's.** This is the real refresh token — the one credential 007
+ * kept off every agent — and the utility container has no agent, no mailbox and
+ * no `orch` in it. Lives here rather than in `chatgpt.ts`: that file must not
+ * import this one, or `sandbox.ts` -> `auth.ts` -> `chatgpt.ts` closes a cycle.
  */
-export function codexHomeIO(ctx: Ctx): CodexHomeIO {
+function codexHomeIO(ctx: Ctx): CodexHomeIO {
   return {
     read: (path) => getFile(ctx, UTIL, path),
     write: (path, data) => putFile(ctx, UTIL, path, data),
@@ -768,25 +768,19 @@ export const WORK = "/work";
 /** Host paths already checked this process; every sandbox mounts the same one. */
 const mountChecked = new Set<string>();
 
+/** Only what the check reads, so it can be driven without a container. */
+export interface Counter {
+  commands: { run(cmd: string): Promise<{ logs?: { stdout?: { text: string }[] } }> };
+}
+
 /**
  * Did the skills mount actually bring the skills.
  *
  * A bind mount of a host path the container runtime cannot reach does not fail —
- * it succeeds and delivers an **empty directory**. Measured on this machine:
- * `/var/tmp/orch-cache/skills` holds 179 skills, `docker run -v` on that exact
- * path sees 0, and inside the container the mount shows as an overlay with
- * `lowerdir=/` rather than the host directory. macOS runs docker in a VM, and
- * `/var/tmp` there is the VM's, not the Mac's; a path under `$HOME` binds fine.
- *
- * So every agent ran with no skills at all, `skillMounts` returned two correct
- * mounts, creation succeeded, the degrade path never fired, and preflight
- * reported "179 staged" — because it counts them on the host, which is the one
- * place they definitely are. Nothing anywhere was wrong.
- *
- * One `ls` per host path per process, and only when the host directory has
- * something in it: a boss who has ticked no skills gets no noise.
+ * it succeeds and delivers an **empty directory**. macOS runs docker in a VM, so
+ * `/var/tmp` there is the VM's; a path under `$HOME` binds fine.
  */
-async function checkSkillsMount(ctx: Ctx, sb: Sandbox, hostPath: string, at: string): Promise<void> {
+export async function checkSkillsMount(bus: Bus, sb: Counter, hostPath: string, at: string): Promise<void> {
   if (mountChecked.has(hostPath)) return;
   mountChecked.add(hostPath);
   let onHost = 0;
@@ -797,9 +791,19 @@ async function checkSkillsMount(ctx: Ctx, sb: Sandbox, hostPath: string, at: str
   }
   if (!onHost) return;
   const e = await sb.commands.run(`ls ${shq(at)} | wc -l`).catch(() => null);
-  const inside = Number((e?.logs?.stdout ?? []).map((m) => m.text).join("").trim());
+  // A container that could not answer is not a container with an empty mount.
+  // `Number("")` is 0, so folding the two together raised this blocker — naming
+  // a mount problem, with a fix about `allowed_host_paths` — every time the exec
+  // itself failed, which on the create path is the likelier of the two.
+  if (!e) return;
+  const inside = Number(
+    (e.logs?.stdout ?? [])
+      .map((m) => m.text)
+      .join("")
+      .trim(),
+  );
   if (!Number.isFinite(inside) || inside > 0) return;
-  ctx.bus?.emit({
+  bus?.emit({
     author: "orchestrator",
     kind: "state_change",
     severity: "blocker",
@@ -815,32 +819,20 @@ async function checkSkillsMount(ctx: Ctx, sb: Sandbox, hostPath: string, at: str
 /**
  * Where the boss's staged skills land inside a container.
  *
- * **Not** either CLI's own skills directory, and that is the whole change. It
- * used to be mounted straight onto both of them, read-only — which worked for
- * the boss's own skills and made the repository's own undeliverable, because a
- * read-only mount is not a directory anything can add to. The one previous
- * attempt at repo skills linked into it and got `EROFS`, swallowed by a
- * `; true`, so the feature reported success and delivered nothing.
- *
- * So the mount is a staging path nothing reads directly, and `SKILL_SYNC` builds
- * each CLI's real directory out of symlinks into it. That directory is ordinary
- * container filesystem, so a repository's skills can join it.
+ * **Not** either CLI's own skills directory: a read-only mount straight onto them
+ * is not a directory anything can add to, so a repository's own skills were
+ * undeliverable. This is a staging path nothing reads directly, and `SKILL_SYNC`
+ * builds each CLI's real directory from symlinks into it — ordinary filesystem.
  */
 export const STAGED_SKILLS = "/opt/orch/skills";
 
 /**
  * How `SKILL_SYNC` reports a repository's own skills back out.
  *
- * The linking has to happen in the container and the *listing* has to reach the
- * host, or the settings page cannot show a repo's skills and `/name` cannot
- * resolve one — which is the half that has been missing since `repo_path`
- * became `owner/name` and the checkout stopped existing on this machine.
- *
- * One line per skill, on the same exec that was already probing the checkout, so
- * the inventory costs no extra round trip. The head of the file rides along
- * base64'd because the description lives in YAML frontmatter and
- * `frontmatterDescription` already knows how to read it — parsing a block scalar
- * in `sh` is the version of this that is wrong in a way nobody notices.
+ * The linking happens in the container and the *listing* has to reach the host,
+ * or the settings page cannot show a repo's skills and `/name` cannot resolve one.
+ * One line per skill, on the exec already probing the checkout; the head of the
+ * file rides along base64'd, because `frontmatterDescription` reads YAML.
  */
 export const SKILL_LINE = "ORCHSKILL";
 
@@ -855,7 +847,7 @@ export function skillMounts(ctx: Ctx): Volume[] {
   // filesystem path, rejects anything not starting with `/`, and rejects
   // anything outside `allowed_host_paths` — which is why this is not under
   // `dataDir`. A repo checkout is never on that list.
-  const path = resolve(ctx.config?.skillsDir ?? "/var/tmp/orch-cache/skills");
+  const path = resolve(ctx.config.skillsDir);
   if (!existsSync(path)) return [];
   return [{ name: "skills", host: { path: hostPathForDaemon(path) }, mountPath: STAGED_SKILLS, readOnly: true }];
 }
@@ -863,37 +855,10 @@ export function skillMounts(ctx: Ctx): Volume[] {
 /**
  * Both CLIs' skill directories, rebuilt from what is on disk right now.
  *
- * Measured against the two binaries in `orch/agent:1` (`claude 2.1.232`,
- * `codex-cli 0.147.0`), by counting the paths each one actually contains:
- *
- *   claude   .claude/skills 93   .codex/skills 0   .agents/skills 0
- *   codex    .codex/skills  3    .claude/skills 0  .agents/skills 0
- *
- * and codex's three are all one sentence — *"I will place it in
- * `$CODEX_HOME/skills` (or `~/.codex/skills` when `CODEX_HOME` is unset)"*. So
  * **codex has no project-local skills directory at all**, and claude's is
- * `.claude/skills` under its working directory. The delivery matrix that leaves:
- *
- *   repo ships .claude/skills   claude: native   codex: nothing
- *   repo ships .codex/skills    claude: nothing  codex: nothing
- *   repo ships .agents/skills   claude: nothing  codex: nothing
- *
- * Two of the three conventions reached nobody, and the third reached one of two
- * runtimes. The old comment in `skills.ts` had `.codex/skills` down as codex's
- * project path; it is its home path, and that one word is the whole reason this
- * looked delivered.
- *
- * Symlinks rather than copies: codex has a `skills_watcher`, both directories on
- * a real machine are already symlink farms, and a link costs nothing to redo —
- * which is what makes running this on every turn affordable.
- *
- * `.claude/skills` is deliberately **not** linked into claude's own directory:
- * claude already reads it from the checkout, and a second entry would bill the
- * same skill's name and description twice on every turn of that session.
- *
- * Never fails its caller. It is folded into the checkout probe, and a container
- * whose skills did not link is a container that should still run its turn — the
- * old `; true` was wrong because it hid a real error, not because it degraded.
+ * `.claude/skills` under its working directory, so a repo's `.codex/skills` and
+ * `.agents/skills` reach nobody unless linked here. Symlinks, not copies — that is
+ * what makes this affordable every turn. Never fails its caller.
  */
 export const SKILL_SYNC = `{
 mkdir -p /root/.claude/skills ${CODEX_HOME}/skills
@@ -921,52 +886,46 @@ done
  * Not `Authorization: Bearer`. The server checks this header and nothing else
  * (`middleware/auth.py`), so sending the wrong one is indistinguishable from
  * holding the wrong key — 401 both ways, and the message says the key was
- * rejected when it was never presented. Exported so the two probes that need it
- * cannot drift apart.
+ * rejected when it was never presented. Exported so the two probes cannot drift.
  */
 export const SANDBOX_API_KEY_HEADER = "OPEN-SANDBOX-API-KEY";
-
-/** Where the panel stores an address that overrides the yaml. */
-export const SANDBOX_ADDR = "sandbox_server_addr";
 
 /**
  * Split an address into scheme and authority.
  *
- * The server does not have to be on this machine. A Tailscale peer or a cloud
- * box works — the SDK only ever speaks HTTP to it — so the address accepts a
- * hostname and, now, a scheme.
- *
- * `https` matters for exactly one of those two: over Tailscale the transport is
- * already WireGuard and plain HTTP is fine, but over the open internet the
- * api_key and every container payload would cross it in the clear. So the scheme
- * is honoured rather than assumed, and `remoteInClear` below is what says so.
+ * The server does not have to be on this machine — the SDK only ever speaks HTTP
+ * to it. `https` matters for one case: over Tailscale the transport is already
+ * WireGuard, but over the open internet the api_key and every container payload
+ * would cross in the clear, so the scheme is honoured rather than assumed.
  */
 export function splitAddr(addr: string): { protocol: "http" | "https"; authority: string } {
   const m = /^(https?):\/\/(.+)$/i.exec(addr.trim());
-  return m
-    ? { protocol: m[1]!.toLowerCase() as "http" | "https", authority: m[2]!.replace(/\/+$/, "") }
-    : { protocol: "http", authority: addr.trim() };
+  if (!m) return { protocol: "http", authority: addr.trim() };
+  const protocol = m[1]?.toLowerCase();
+  return { protocol: protocol === "https" ? "https" : "http", authority: m[2]!.replace(/\/+$/, "") };
 }
 
 /**
  * Reachable only from this machine, or from a network that encrypts itself.
  *
- * Loopback is obvious. The Tailscale range (100.64.0.0/10, the CGNAT block it
- * uses) and `*.ts.net` are treated as safe because that transport is WireGuard —
- * which is the whole reason plain HTTP to a peer is not a mistake. Everything
- * else on plain HTTP is a real exposure and is reported, never blocked: it may
- * be a private VLAN we cannot see from here, and refusing it outright would be
- * this side deciding something it does not know.
+ * The Tailscale range (100.64.0.0/10, the CGNAT block it uses) and `*.ts.net` are
+ * safe because that transport is WireGuard. Everything else on plain HTTP is a
+ * real exposure and is reported, never blocked: it may be a private VLAN we cannot
+ * see from here, and refusing it would be this side deciding what it cannot know.
  */
 export function remoteInClear(addr: string): boolean {
   const { protocol, authority } = splitAddr(addr);
   if (protocol === "https") return false;
-  const host = authority.replace(/:\d+$/, "").toLowerCase();
+  // The platform's parser, not a `:\d+$` strip: it lowercases, removes the port,
+  // and keeps an IPv6 literal inside its brackets. Stripping by hand turned
+  // `[::1]:8080` into `[::1` and reported loopback as an exposure. An authority
+  // it cannot parse is one we cannot vouch for.
+  const host = URL.parse(`http://${authority}`)?.hostname;
+  if (!host) return true;
   if (host === "localhost" || host.endsWith(".localhost")) return false;
-  if (host.startsWith("127.") || host === "::1" || host === "[::1]") return false;
+  if (host.startsWith("127.") || host === "[::1]") return false;
   if (host.endsWith(".ts.net")) return false;
-  const cg = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.exec(host);
-  return !cg;
+  return !/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host);
 }
 
 /**
@@ -977,8 +936,10 @@ export function remoteInClear(addr: string): boolean {
  * a different address. A yaml-only knob makes the second one an edit-and-restart.
  */
 export function serverAddr(ctx: Ctx): string {
-  const set = ctx.db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(SANDBOX_ADDR)?.v;
-  return (set || ctx.config?.sandbox?.server || DEFAULTS.server).trim();
+  // One place. The `sandbox_server_addr` row this used to consult first is
+  // `cfg.sandbox.server` since migration 039, so the config already carries
+  // whatever the panel set.
+  return ctx.config.sandbox.server.trim();
 }
 
 /** The agent's only way out: a request is a file here, the answer is another. */
@@ -1004,43 +965,51 @@ async function provision(sb: Sandbox): Promise<void> {
     { path: "/opt/orch/cli.ts", data: cli, mode: FILE_MODE },
     { path: "/usr/local/bin/orch", data: '#!/bin/sh\nexec bun run /opt/orch/cli.ts "$@"\n', mode: EXEC_MODE },
   ]);
-  // The boss's own skills, before the first turn. A group's container gets this
-  // again on every checkout probe (that is where a repository's own join in);
-  // a project's container has no checkout and this is the only time it runs,
-  // which is why re-running it is also what a skill being ticked triggers.
+  // The boss's own skills, before the first turn. Every container with a checkout
+  // gets this again on that checkout's probe, which is where a repository's own
+  // join in; re-running it is also what ticking a skill triggers.
   await sb.commands.run(SKILL_SYNC).catch(() => {});
 }
 
 /** Re-link every live container's skills. What a tick of the skills list does. */
 export async function relinkSkills(): Promise<void> {
-  await Promise.all([...live.values()].map((sb) => sb.commands.run(SKILL_SYNC).catch(() => {})));
+  await pMap(live.values(), (sb) => sb.commands.run(SKILL_SYNC).catch(() => {}), { concurrency: EXEC_FANOUT });
+}
+
+/**
+ * Ask a project's own containers what its checkout ships, and build nothing.
+ *
+ * **The project's own container first, not as a fallback**: a project that has
+ * landed everything has no groups at all, and the indexer clones into the project
+ * container. `reconnect`, not `ensureSandbox` — a settings click must never cost a
+ * `sandbox.create`. Null means nobody answered, *not* "this repository ships none".
+ */
+export async function listProjectSkills(ctx: Ctx, projectId: number): Promise<string | null> {
+  const groups = ctx.db
+    .query<{ id: number }, [number]>("SELECT id FROM grp WHERE project_id = ? ORDER BY id DESC")
+    .all(projectId);
+  const scopes: Scope[] = [{ project: projectId }, ...groups.map((g) => ({ grp: g.id }))];
+  for (const scope of scopes) {
+    const { sandboxId } = owner(ctx.db, scope);
+    if (!sandboxId) continue;
+    const sb = await reconnect(ctx, scope, sandboxId);
+    if (!sb) continue;
+    const probe = await sb.commands.run(`${SKILL_SYNC}; test -d ${WORK}/.git && echo yes`).catch(() => null);
+    const out = stdoutText(probe);
+    if (out.includes("yes")) return out;
+  }
+  return null;
 }
 
 /**
  * Every upload into a container, with one retry.
  *
- * The upload is an HTTP POST to a port on this same machine, and it resets. Live,
- * from the boss's terminal:
- *
- *   error: The socket connection was closed unexpectedly.
- *     path: "http://127.0.0.1:51394/proxy/44772/files/upload", code: "ECONNRESET"
- *
- * No stack, because nothing was awaiting it — and bun treats an unhandled
- * rejection as fatal, so one flaky local socket to one container took the whole
- * fleet down. The backstop in `server.ts` is what stops that being fatal; this is
- * what stops it happening.
- *
- * One retry, which is what a reset local socket is worth: the far end is a
- * container on this machine, not a network, so a reset is the transport hiccuping
- * rather than anything being wrong with the request. A second failure is not a
- * flake, so it throws — with the paths in the message, because the SDK's error
- * carries a URL that says `files/upload` and nothing about which file.
- *
- * Every caller that writes into a container goes through here. Fixing it at the
- * four call sites instead would leave the fifth one somebody adds next month.
+ * The upload is an HTTP POST to a port on this same machine, and it resets. One
+ * retry is what that is worth: the far end is a container here, not a network. A
+ * second failure is not a flake, so it throws. Every caller comes through here.
  */
 export async function writeInto(
-  sb: Sandbox,
+  sb: { files: Pick<Sandbox["files"], "writeFiles"> },
   files: Parameters<Sandbox["files"]["writeFiles"]>[0],
 ): Promise<void> {
   try {
@@ -1050,7 +1019,7 @@ export async function writeInto(
       await sb.files.writeFiles(files);
     } catch (e) {
       const where = files.map((f) => f.path).join(", ");
-      throw new Error(`could not write ${where} into the container: ${(e as Error)?.message ?? e}`);
+      throw new Error(`could not write ${where} into the container: ${errText(e)}`, { cause: e });
     }
   }
 }
@@ -1058,14 +1027,18 @@ export async function writeInto(
 /**
  * Everything the rest of the system does to a sandbox.
  *
- * Injected on `Ctx` the same way `git`, `gh` and `ask` are, and for the same
- * reason: a unit test has no container to talk to, and the alternative — every
- * one of these swallowing its own connection error — is how a silent failure
- * gets to look exactly like success (docs/decisions/001).
+ * Injected on `Ctx` the same way `git`, `gh` and `ask` are: a unit test has no
+ * container to talk to, and the alternative — each of these swallowing its own
+ * connection error — is how a silent failure looks like success (docs/adr/001).
  */
 export interface SandboxDriver {
   exec(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts): Promise<ExecOutcome>;
-  lines(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts): AsyncGenerator<string, { code: number; err: string }, void>;
+  lines(
+    ctx: Ctx,
+    scope: Scope,
+    cmd: string,
+    opts?: ExecOpts,
+  ): AsyncGenerator<string, { code: number; err: string }, void>;
   put(ctx: Ctx, scope: Scope, path: string, data: string): Promise<void>;
   get(ctx: Ctx, scope: Scope, path: string): Promise<string | null>;
   getBytes(ctx: Ctx, scope: Scope, path: string): Promise<Uint8Array | null>;
@@ -1084,13 +1057,10 @@ export interface Credential {
   /**
    * Request paths this credential may be injected on. Absent means all of them.
    *
-   * Read from the sidecar's own matcher rather than assumed: a pattern ending in
-   * `*` is a **prefix**, anything else is compared for equality, and the query
-   * string is cut off before the comparison. So a leading wildcard matches
-   * nothing at all, and a trailing one — the shape the upstream guide suggests,
-   * `/owner/repo.git` plus a star — is useless here, because a prefix does not
-   * stop at `/` and would readmit `git-receive-pack`.
-   * The path filter is ANDed with the host one and evaluated before it.
+   * Read from the sidecar's own matcher: a pattern ending in `*` is a **prefix**,
+   * anything else is compared for equality, and the query string is cut off first.
+   * So a leading wildcard matches nothing, and a trailing one would readmit
+   * `git-receive-pack`. ANDed with the host match, and evaluated before it.
    */
   paths?: string[];
 }
@@ -1104,8 +1074,8 @@ const matchFor = (c: Credential) => ({
 
 const authFor = (c: Credential) =>
   c.header
-    ? ({ type: "apiKey" as const, name: c.header, credential: c.name })
-    : ({ type: "bearer" as const, credential: c.name });
+    ? { type: "apiKey" as const, name: c.header, credential: c.name }
+    : { type: "bearer" as const, credential: c.name };
 
 const driver = (ctx: Ctx): SandboxDriver => ctx.sandbox ?? REAL;
 
@@ -1117,11 +1087,10 @@ export interface ExecOpts {
   /**
    * Stderr, a line at a time, for callers that are watching rather than parsing.
    *
-   * `execLines` yields stdout only, because the agent adapters parse every
-   * yielded line as NDJSON. But `git clone --progress` and every package manager
-   * print their progress on stderr — so the two commands that take minutes were
-   * the two that said nothing until they finished, which is precisely the case
-   * the log exists for. Opt-in, so the NDJSON readers are untouched.
+   * `execLines` yields stdout only, because the agent adapters parse every yielded
+   * line as NDJSON. But `git clone --progress` and every package manager print
+   * progress on stderr, so the two commands that take minutes were the two that
+   * said nothing until they finished. Opt-in, so the NDJSON readers are untouched.
    */
   onStderr?: (line: string) => void;
 }
@@ -1134,9 +1103,9 @@ export interface ExecOutcome {
 
 function runOpts(o: ExecOpts) {
   return {
-    workingDirectory: o.cwd,
-    timeoutSeconds: o.timeoutMs ? Math.ceil(o.timeoutMs / 1000) : undefined,
-    envs: o.env,
+    ...(o.cwd === undefined ? {} : { workingDirectory: o.cwd }),
+    ...(o.timeoutMs ? { timeoutSeconds: Math.ceil(o.timeoutMs / 1000) } : {}),
+    ...(o.env ? { envs: o.env } : {}),
   };
 }
 
@@ -1146,38 +1115,164 @@ function runOpts(o: ExecOpts) {
  * ~1s of overhead per call (005), so this is for turns, gates and leases — not
  * for anything chatty. The files API is the cheap channel (1-5ms).
  */
+/**
+ * One bash session per container: `run()` costs a second, `runInSession` costs 5ms.
+ * The numbers, the fallback ladder and why snapshots were refused are in ADR 032.
+ *
+ * **The cwd is pinned on every call**, never inherited. A session keeps its cwd, so
+ * a `cd /work && …` inside one command would otherwise decide where the *next*
+ * command with no `cwd` of its own runs.
+ */
+/** What the session path needs of a container: an id and three commands. Narrower
+ *  than `Sandbox`, so a test can call it without building the files API. */
+export interface Runner {
+  id: string;
+  commands: {
+    run(cmd: string, opts?: RunCommandOpts, handlers?: ExecutionHandlers, signal?: AbortSignal): Promise<ExecLike>;
+    createSession(opts?: { workingDirectory?: string }): Promise<string>;
+    runInSession(
+      id: string,
+      cmd: string,
+      opts?: { workingDirectory?: string; timeoutSeconds?: number },
+      handlers?: ExecutionHandlers,
+      signal?: AbortSignal,
+    ): Promise<ExecLike>;
+  };
+}
+
+/** Only the two fields read off an execution: the code, and the two log streams. */
+export interface ExecLike {
+  /** `null` as well as absent: the SDK's own `Execution` uses null for "no code yet". */
+  exitCode?: number | null | undefined;
+  logs?: { stdout?: { text: string }[] | undefined; stderr?: { text: string }[] | undefined } | undefined;
+}
+
+interface Session {
+  id: string;
+  /** Where the session starts, asked once, so `cwd`-less commands match `run()`. */
+  home: string;
+}
+const sessions = new Map<string, Session>();
+
+/** Tests only: forget every session, so one case cannot inherit another's. */
+export const forgetSessions = (): void => sessions.clear();
+
+async function sessionFor(sb: Runner): Promise<Session | null> {
+  const have = sessions.get(sb.id);
+  if (have) return have;
+  try {
+    const id = await sb.commands.createSession();
+    const pwd = await sb.commands.runInSession(id, "pwd");
+    const home = (pwd.logs?.stdout ?? []).map(oneLine).join("").trim();
+    if (!home) return null;
+    const made = { id, home };
+    sessions.set(sb.id, made);
+    return made;
+  } catch {
+    // A server too old for sessions, or one that refuses: `run()` still works and
+    // is what every call did until now.
+    return null;
+  }
+}
+
+/**
+ * A session's stdout and stderr are the same pipe — `readlink /proc/self/fd/{1,2}`
+ * answers with one inode — so each command redirects its own stderr to a file and
+ * reads it back after a marker. Taking the merged stream would put git's warnings
+ * back into NUL-delimited `STATUS_Z` output. Evidence in ADR 032.
+ *
+ * The status is set by a **subshell**: a bare `exit` ends the session. The marker is
+ * emitted by `printf` because a shell argument cannot carry the control byte; if it
+ * fails to appear the whole output is stdout, which is the old merged behaviour.
+ */
+const ERR_MARK = "\u0001orch-stderr\u0001";
+const ERR_MARK_PRINTF = "\\001orch-stderr\\001";
+/** Exported for the live probe and its unit test; not part of the module's API. */
+export const wrapForSession = (cmd: string, file: string): string =>
+  `{ ${cmd} ; } 2>${file} ; __orch_rc=$? ; printf '${ERR_MARK_PRINTF}' ; cat ${file} ; rm -f ${file} ; ( exit $__orch_rc )`;
+
+/** Split what the session returned back into the two streams `run()` would have. */
+export function unwrap(raw: string): { out: string; err: string } {
+  const at = raw.indexOf(ERR_MARK);
+  if (at < 0) return { out: raw, err: "" };
+  // One trailing newline, because `run()` strips one per message and the marker
+  // arrives glued to the last line of stdout rather than after it.
+  return { out: raw.slice(0, at).replace(/\n$/, ""), err: raw.slice(at + ERR_MARK.length) };
+}
+
+/**
+ * Run one command, in the session when the session can carry it.
+ *
+ * `runInSession` takes `workingDirectory` and `timeoutSeconds` and **not `envs`**,
+ * so a command with environment goes the one-shot way. Two callers need that: the
+ * codex refresher and the login, both of which set `CODEX_HOME`.
+ */
+/** Exported for the test that pins the fallback ladder; not part of the module's API. */
+export async function runIn(sb: Runner, cmd: string, opts: ExecOpts): Promise<ExecOutcome> {
+  const shape = (e: ExecLike, k: "stdout" | "stderr") => (e.logs?.[k] ?? []).map(oneLine).join("\n");
+  const plain = async (): Promise<ExecOutcome> => {
+    const e = await sb.commands.run(cmd, runOpts(opts), undefined, opts.signal);
+    return { code: e.exitCode ?? -1, out: shape(e, "stdout"), err: shape(e, "stderr") };
+  };
+  if (opts.env) return plain();
+  const session = await sessionFor(sb);
+  if (!session) return plain();
+  const inSession = async (s: Session): Promise<ExecOutcome> => {
+    // Named for the session, not for the command: one session runs one command at
+    // a time, so the file cannot be in use by another of its own runs, and a
+    // per-command name would leave litter behind every failure.
+    const e = await sb.commands.runInSession(
+      s.id,
+      wrapForSession(cmd, `/tmp/orch-stderr-${s.id}`),
+      {
+        workingDirectory: opts.cwd ?? s.home,
+        ...(opts.timeoutMs ? { timeoutSeconds: Math.ceil(opts.timeoutMs / 1000) } : {}),
+      },
+      undefined,
+      opts.signal,
+    );
+    return { code: e.exitCode ?? -1, ...unwrap(shape(e, "stdout")) };
+  };
+  try {
+    return await inSession(session);
+  } catch {
+    // A session dies with its container, and with its own shell. Forget it and try
+    // once through a fresh one, then stop trying: `run()` is the behaviour that
+    // was here before sessions and it still works.
+    sessions.delete(sb.id);
+    const again = await sessionFor(sb);
+    if (!again) return plain();
+    try {
+      return await inSession(again);
+    } catch {
+      return plain();
+    }
+  }
+}
+
 async function realExec(ctx: Ctx, scope: Scope, cmd: string, opts: ExecOpts = {}): Promise<ExecOutcome> {
-  const sb = await ensureSandbox(ctx, scope);
-  const e = await sb.commands.run(cmd, runOpts(opts), undefined, opts.signal);
-  const text = (k: "stdout" | "stderr") => (e.logs?.[k] ?? []).map(oneLine).join("\n");
-  return { code: e.exitCode ?? -1, out: text("stdout"), err: text("stderr") };
+  return runIn(await ensureSandbox(ctx, scope), cmd, opts);
 }
 
 /**
  * One log message is one line, and its newline is gone. Put it back.
  *
- * Measured against the running server, twice, because the consequence is
- * enormous and the shape is not documented anywhere:
- *
- *   printf 'a\\nbb\\nccc\\n'   ->  ["a", "bb", "ccc"]      three messages, no "\\n"
- *   printf 'a\\nb'             ->  ["a", "b"]              a partial last line is not marked
- *   printf 'a\\n\\n\\nb\\n'      ->  ["a", "\\n", "\\n", "b"]  a blank line arrives AS "\\n"
- *   printf '1%%\\r42%%\\rdone\\n' ->  ["1%", "42%", "done"]   a CR splits too, and is eaten
- *   300 KB with no newline    ->  one message                a long line is never split
- *
- * `join("")` therefore ran every line together. `git status --porcelain` came
- * back as one string, `ls` came back as one string, and **every caller that
- * splits `out` on newlines was reading a single line** — which does not throw,
- * does not warn, and mostly yields "nothing matched". That is the shape this
- * codebase keeps paying for: a wrong answer that looks like an empty one. It
- * surfaced because a skills inventory of two lines came back as one.
- *
- * The last row is what makes `join("\\n")` safe rather than a guess: the server
- * splits on line boundaries and nothing else, so one message is never half a
- * line. The blank-line row is why each message is stripped first — a bare "\\n"
- * joined with another "\\n" would double every blank line in a diff.
+ * Measured against the running server: it splits on line boundaries and on CR,
+ * strips the terminator, never splits a long line, and delivers a blank line as the
+ * two-character newline string. So joining on newlines is safe, and each message is
+ * stripped first — or every blank line doubles.
  */
 const oneLine = (m: { text: string }): string => m.text.replace(/\r?\n$/, "");
+
+/**
+ * One container's stdout as one string, from the shape the SDK hands back.
+ *
+ * Takes the null a failed exec becomes, because every caller has the same two
+ * cases and folding them here is what keeps the callers down to the line they
+ * actually care about.
+ */
+const stdoutText = (e: { logs?: { stdout?: { text: string }[] } } | null): string =>
+  (e?.logs?.stdout ?? []).map(oneLine).join("\n");
 
 /**
  * Reassemble lines from chunks that split anywhere.
@@ -1204,6 +1299,50 @@ export function lineSplitter(): { push: (chunk: string) => string[]; rest: () =>
 }
 
 /**
+ * Callbacks on one side, an async generator on the other, one promise between.
+ *
+ * The SDK delivers output by calling a handler; the turn adapters consume it by
+ * iterating. The bridge is where a stream quietly stops being one — so it is
+ * separate, and checked. `Promise.withResolvers()` replaces a nullable `let` that
+ * every producer had to remember to null-check before calling.
+ */
+export function lineQueue(): {
+  push(lines: string[]): void;
+  end(): void;
+  drain(): AsyncGenerator<string, void, void>;
+} {
+  const queue: string[] = [];
+  let gate = Promise.withResolvers<void>();
+  let done = false;
+  return {
+    push(lines) {
+      queue.push(...lines);
+      gate.resolve();
+    },
+    end() {
+      done = true;
+      gate.resolve();
+    },
+    async *drain() {
+      for (;;) {
+        if (queue.length) {
+          yield queue.shift()!;
+          continue;
+        }
+        // Everything already pushed is delivered before the end is honoured: a
+        // command that prints its last line and exits in the same tick would
+        // otherwise lose that line.
+        if (done) return;
+        await gate.promise;
+        // Re-arm *after* the await, so a line pushed while the consumer was busy
+        // has already resolved the gate it is about to wait on — no lost wakeup.
+        gate = Promise.withResolvers<void>();
+      }
+    },
+  };
+}
+
+/**
  * Run a command and hand back its stdout a line at a time.
  *
  * Both agent CLIs emit NDJSON on stdout and the adapters parse it as it
@@ -1218,9 +1357,7 @@ async function* realLines(
   opts: ExecOpts = {},
 ): AsyncGenerator<string, { code: number; err: string }, void> {
   const sb = await ensureSandbox(ctx, scope);
-  const queue: string[] = [];
-  let notify: (() => void) | null = null;
-  let done = false;
+  const q = lineQueue();
   const split = lineSplitter();
   const errSplit = lineSplitter();
   let stderr = "";
@@ -1234,16 +1371,11 @@ async function* realLines(
         // Handlers only: accumulating a whole turn's NDJSON in the Execution
         // object as well would double the memory for no reader.
         skipAccumulation: true,
-        // `+ "\n"` on both, for the reason in `oneLine`: the server hands over
-        // one line per message with the terminator removed, so a splitter fed
-        // the raw text holds **everything** in its buffer and emits it once, at
-        // the end, as a single run-on line. For an NDJSON turn that is every
-        // object of the turn concatenated into one unparseable string — the
-        // stream stops being a stream and the live timeline goes quiet.
-        onStdout: (m) => {
-          queue.push(...split.push(`${oneLine(m)}\n`));
-          notify?.();
-        },
+        // `+ "\n"` on both, for the reason in `oneLine`: the server hands over one
+        // line per message with the terminator removed, so a splitter fed the raw
+        // text holds **everything** and emits it once, at the end, as one run-on
+        // line — for an NDJSON turn, the whole stream as one unparseable string.
+        onStdout: (m) => q.push(split.push(`${oneLine(m)}\n`)),
         onStderr: (m) => {
           stderr += `${oneLine(m)}\n`;
           // git writes progress with `\r`, not `\n`, so a clone is one very long
@@ -1256,22 +1388,12 @@ async function* realLines(
     .then((e) => {
       code = e.exitCode ?? -1;
     })
-    .catch((e) => {
+    .catch((e: unknown) => {
       stderr += String(e);
     })
-    .finally(() => {
-      done = true;
-      notify?.();
-    });
+    .finally(() => q.end());
 
-  while (true) {
-    while (queue.length) yield queue.shift()!;
-    if (done) break;
-    await new Promise<void>((r) => {
-      notify = r;
-    });
-    notify = null;
-  }
+  yield* q.drain();
   await finished;
   const tail = split.rest();
   if (tail) yield tail;
@@ -1287,7 +1409,13 @@ async function* realLines(
  */
 export function resourceExec(ctx: Ctx, scope: Scope): ResourceExec {
   return async (argv, o) => {
-    const r = await execIn(ctx, scope, argv.map(shq).join(" "), { cwd: o.cwd, timeoutMs: o.timeoutMs });
+    const signal = requestContext.getStore()?.signal;
+    const r = await execIn(ctx, scope, argv.map(shq).join(" "), {
+      cwd: o.cwd,
+      ...(o.timeoutMs === undefined ? {} : { timeoutMs: o.timeoutMs }),
+      ...(signal ? { signal } : {}),
+    });
+    if (signal?.aborted) throw signal.reason;
     return { code: r.code, out: r.out + r.err };
   };
 }
@@ -1333,11 +1461,10 @@ async function realGet(ctx: Ctx, scope: Scope, path: string): Promise<string | n
 /**
  * Bind the real credentials to the sidecar.
  *
- * The sandbox's environment holds format-plausible fakes; the sidecar swaps in
- * the real value on the way out. Measured (005): injection REPLACES an
- * `Authorization` header the CLI already set, so the fake never reaches the
- * wire, and `claude` does not validate its token locally — a synthetic one
- * comes back as a server-side 401, which is exactly what makes this work.
+ * The sandbox's environment holds format-plausible fakes; the sidecar swaps in the
+ * real value on the way out. Measured (005): injection REPLACES an `Authorization`
+ * header the CLI already set, and `claude` does not validate its token locally —
+ * a synthetic one comes back as a server-side 401, which is what makes this work.
  */
 async function realBind(ctx: Ctx, scope: Scope, creds: Credential[]): Promise<void> {
   if (!creds.length) return;
@@ -1356,7 +1483,7 @@ async function realBind(ctx: Ctx, scope: Scope, creds: Credential[]): Promise<vo
  * anything, which is why a dissolved group kills rather than pauses.
  */
 async function realKill(ctx: Ctx, scope: Scope): Promise<void> {
-  const id = owner(ctx, scope).sandboxId;
+  const id = owner(ctx.db, scope).sandboxId;
   if (!id) return;
   const sb = live.get(id);
   try {
@@ -1367,12 +1494,14 @@ async function realKill(ctx: Ctx, scope: Scope): Promise<void> {
   }
   await sb?.close().catch(() => {});
   live.delete(id);
-  remember(ctx, scope, null);
+  // The session belonged to that container and does not outlive it.
+  sessions.delete(id);
+  remember(ctx.db, scope, null);
 }
 
 /** Push the expiry out. A group mid-turn must not be reaped by its own TTL. */
 async function realRenew(ctx: Ctx, scope: Scope): Promise<void> {
-  const { sandboxId, projectId } = owner(ctx, scope);
+  const { sandboxId, projectId } = owner(ctx.db, scope);
   if (!sandboxId) return;
   const sb = live.get(sandboxId);
   if (!sb) return;
@@ -1406,42 +1535,115 @@ export const REAL: SandboxDriver = {
 /**
  * `sh -c` a command in a container. **This never rejects.**
  *
- * Every caller reads `.code` — `sandboxGit`, `resourceExec`, and through the
- * first, every helper in `worktree.ts`. None of them is in a try/catch, because
- * a command that fails is a code, and that is the contract this function's shape
- * promises. Two things underneath it break that promise: `ensureSandbox`
- * rethrows when no container can be opened, and `commands.run` is a socket.
- *
- * The consequence was not a wrong answer, it was a **stopped agent**. A lease
- * whose exec rejected skipped `finishLease`, which is the only thing that
- * resolves `ctx.waiters.get('lease:N')` — so the route awaited a promise with no
- * timeout while the agent's `orch` polled a reply that would never be written.
- * The guard for exactly this (`126: the gate could not run`) could not fire,
- * because reaching it required a return. Every way to get there is ordinary: a
- * TTL reap, Docker restarting, the 60s hold expiring mid-gate.
- *
- * So a container that cannot be reached is an exit code with the reason in
- * `err`, which is what every caller already knows how to handle. The hold is
- * still set by `ensureSandbox` on its way through, so the fleet still stops
- * dispatching — this only changes what the call already in flight gets back.
- *
- * Here rather than in `realExec`, so the fake driver's failures land the same way.
+ * Every caller reads `.code` and none is in a try/catch, because a command that
+ * fails is a code — the contract this shape promises. Two things underneath break
+ * it: `ensureSandbox` rethrows when no container opens, and `commands.run` is a
+ * socket. So that is an exit code with the reason in `err`, not a rejection.
  */
 export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts): Promise<ExecOutcome> {
-  try {
-    return await driver(ctx).exec(ctx, scope, cmd, opts);
-  } catch (e) {
-    return { code: EXEC_UNAVAILABLE, out: "", err: `container unavailable: ${(e as Error)?.message ?? e}` };
-  }
+  // The command itself is never an attribute — it carries repository paths and
+  // file names, which `docs/standards/observability.md` forbids on labels — so
+  // the scope is what identifies it. The group's project, not just the group: a
+  // span whose `project_id` is NULL is invisible to the panel's project scope.
+  const attributes = sandboxScope(scope, projectOf(ctx.db, scope));
+  return activeTracer().startActiveSpan("sandbox.exec", { attributes }, async (span) => {
+    try {
+      const out = await driver(ctx).exec(ctx, scope, cmd, opts);
+      // This function is documented as never rejecting, so a span that errored
+      // only on a throw could never error at all. An unreachable container has to
+      // look like a failure in the panel as well as to the caller.
+      if (out.code === EXEC_UNAVAILABLE) span.setStatus({ code: SpanStatusCode.ERROR, message: out.err });
+      return out;
+    } catch (e) {
+      const err = `container unavailable: ${errText(e)}`;
+      span.setStatus({ code: SpanStatusCode.ERROR, message: err });
+      return { code: EXEC_UNAVAILABLE, out: "", err };
+    } finally {
+      span.end();
+    }
+  });
+}
+
+/** Which project a scope belongs to, so a span can be filtered by one. */
+function projectOf(db: DB, scope: Scope): number | null {
+  if ("project" in scope) return scope.project;
+  if (!("grp" in scope)) return null;
+  return (
+    db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(scope.grp)?.project_id ??
+    null
+  );
 }
 
 /** `sh`'s "found it, could not run it". The lease guard already speaks it. */
 export const EXEC_UNAVAILABLE = 126;
-export const execLines = (ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts) => driver(ctx).lines(ctx, scope, cmd, opts);
-export const putFile = (ctx: Ctx, scope: Scope, path: string, data: string) => driver(ctx).put(ctx, scope, path, data);
-export const getFile = (ctx: Ctx, scope: Scope, path: string) => driver(ctx).get(ctx, scope, path);
-export const getBytes = (ctx: Ctx, scope: Scope, path: string) => driver(ctx).getBytes(ctx, scope, path);
-export const putBytes = (ctx: Ctx, scope: Scope, path: string, data: Uint8Array) => driver(ctx).putBytes(ctx, scope, path, data);
-export const bindCredentials = (ctx: Ctx, scope: Scope, creds: Credential[]) => driver(ctx).bind(ctx, scope, creds);
-export const killSandbox = (ctx: Ctx, scope: Scope) => driver(ctx).kill(ctx, scope);
-export const renewSandbox = (ctx: Ctx, scope: Scope) => driver(ctx).renew(ctx, scope);
+
+/**
+ * How many containers may be reached at once when something fans out over them.
+ *
+ * Four, derived rather than picked: `cfg.sandbox.cpu` left empty means a quarter of
+ * the host's cores, and that cap is **per container** — so N execs in a fan-out
+ * contend on the host, where N caps sum. Four is one host's worth.
+ */
+export const EXEC_FANOUT = 4;
+/**
+ * A container round trip, with the span every one of them owes.
+ *
+ * The delegations beside `execIn` are one-line passthroughs, which is exactly why
+ * the span belongs here rather than at each caller: the tenth gets it by being
+ * written in this shape. Never the path or the command as an attribute — both
+ * carry repository and file names, which observability.md keeps off labels.
+ */
+function roundTrip<T>(name: string, ctx: Ctx, scope: Scope, run: () => Promise<T>): Promise<T> {
+  const attributes = sandboxScope(scope, projectOf(ctx.db, scope));
+  return activeTracer().startActiveSpan(name, { attributes }, async (span) => {
+    try {
+      return await run();
+    } catch (e) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+      throw e;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+/**
+ * The streaming exec, which is a generator and so cannot use `roundTrip`.
+ *
+ * A promise wrapper would end the span when the generator was *handed over*, so it
+ * is ended in a `finally` around the loop instead — which also covers a caller who
+ * breaks out early or throws.
+ */
+export async function* execLines(
+  ctx: Ctx,
+  scope: Scope,
+  cmd: string,
+  opts?: ExecOpts,
+): AsyncGenerator<string, { code: number; err: string }, void> {
+  const attributes = sandboxScope(scope, projectOf(ctx.db, scope));
+  const span = activeTracer().startSpan("sandbox.exec_lines", { attributes });
+  try {
+    const outcome = yield* driver(ctx).lines(ctx, scope, cmd, opts);
+    if (outcome.code === EXEC_UNAVAILABLE) span.setStatus({ code: SpanStatusCode.ERROR, message: outcome.err });
+    return outcome;
+  } catch (e) {
+    span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+    throw e;
+  } finally {
+    span.end();
+  }
+}
+export const putFile = (ctx: Ctx, scope: Scope, path: string, data: string) =>
+  roundTrip("sandbox.put_file", ctx, scope, () => driver(ctx).put(ctx, scope, path, data));
+export const getFile = (ctx: Ctx, scope: Scope, path: string) =>
+  roundTrip("sandbox.get_file", ctx, scope, () => driver(ctx).get(ctx, scope, path));
+export const getBytes = (ctx: Ctx, scope: Scope, path: string) =>
+  roundTrip("sandbox.get_bytes", ctx, scope, () => driver(ctx).getBytes(ctx, scope, path));
+export const putBytes = (ctx: Ctx, scope: Scope, path: string, data: Uint8Array) =>
+  roundTrip("sandbox.put_bytes", ctx, scope, () => driver(ctx).putBytes(ctx, scope, path, data));
+export const bindCredentials = (ctx: Ctx, scope: Scope, creds: Credential[]) =>
+  roundTrip("sandbox.bind_credentials", ctx, scope, () => driver(ctx).bind(ctx, scope, creds));
+export const killSandbox = (ctx: Ctx, scope: Scope) =>
+  roundTrip("sandbox.kill", ctx, scope, () => driver(ctx).kill(ctx, scope));
+export const renewSandbox = (ctx: Ctx, scope: Scope) =>
+  roundTrip("sandbox.renew", ctx, scope, () => driver(ctx).renew(ctx, scope));

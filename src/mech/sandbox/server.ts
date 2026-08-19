@@ -1,31 +1,31 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import type { DB } from "../../platform/persistence/database.ts";
+import { errText } from "../../platform/process/text.ts";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
-import type { Ctx } from "../../ctx.ts";
-import { loadAuth, SANDBOX_KEY, saveAuth } from "./auth.ts";
-import { allowedHostPaths, coveredBy, runningServer, SANDBOX_ADDR, SANDBOX_API_KEY_HEADER, serverAddr, splitAddr, specFor } from "./sandbox.ts";
+import type { Ctx } from "../../mech/ctx.ts";
+import { loadAuth, sandboxKeyFor, SANDBOX_KEY, saveAuth } from "./auth.ts";
+import { putSetting } from "../../platform/config/settings.ts";
+import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
+import {
+  allowedHostPaths,
+  coveredBy,
+  runningServer,
+  SANDBOX_API_KEY_HEADER,
+  serverAddr,
+  splitAddr,
+  specFor,
+} from "./sandbox.ts";
+import { jsonOr } from "../../contracts/json.ts";
+import { z } from "zod";
 
 /**
  * Starting opensandbox-server, and knowing when not to.
  *
- * A user should need an environment, not a runbook. Every container this system
- * opens goes through one server process, and asking someone to start it by hand
- * in a second terminal before anything works is a setup step that exists only
- * because nothing was doing it for them.
- *
- * But it is a **shared, machine-wide** process. It may already be running, it may
- * be serving something else, and its config may be somebody's. So the rule is
- * narrow and one-directional:
- *
- *   absent            we start one, with our own config, and remember it is ours
- *   present, usable   we use it and never touch it — it may not be ours
- *   present, not      we report it and hand over a button. Never an automatic
- *                     restart: killing a process we did not start takes down
- *                     whatever else was using it, and "I cannot drive it" is not
- *                     evidence that nobody can.
- *
- * The third case is the one worth being strict about. A restart there is
- * indistinguishable, from here, from a restart of the user's own work.
+ * A **shared, machine-wide** process, possibly already serving somebody else.
+ * Absent, we start one with our own config and remember it is ours; present and
+ * usable, we never touch it; present and not, we report it and hand over a
+ * button — never an automatic restart: "I cannot drive it" is not "nobody can".
  */
 
 /** Recorded so a later boot can tell our process from one that was already there. */
@@ -44,26 +44,13 @@ export type ServerState =
   /** Nothing running and we could not start one. */
   | { kind: "down"; why: string; log?: string };
 
-const get = (ctx: Ctx, k: string): string | null =>
-  ctx.db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(k)?.v ?? null;
-
-const put = (ctx: Ctx, k: string, v: string | null): void => {
-  if (v === null) ctx.db.run("DELETE FROM setting WHERE k = ?", [k]);
-  else ctx.db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [k, v]);
-};
-
 /**
  * Four answers, not two.
  *
- * "Can we drive it" was one boolean, and it collapsed the two cases that need
- * different actions. A server on the port that refuses our key is **not** a
- * server that is down: starting a second one just fails to bind, dies, and then
- * the health probe talks to the first one and reports 401 — which is how a
- * clean machine produced *"起来了但驱动不了：Unable to connect"*, a sentence
- * describing neither of the two things that were true.
- *
- * `auth` is also the one case we must never act on. A server holding a key we
- * were not given is, by construction, somebody else's.
+ * "Can we drive it" was one boolean and it collapsed the two cases that need
+ * different actions: a server refusing our key is **not** a server that is down,
+ * and starting a second one just fails to bind. `auth` is the one case we must
+ * never act on — a server holding a key we were not given is somebody else's.
  */
 type Probe =
   | { kind: "ok" }
@@ -77,12 +64,11 @@ type Probe =
 async function probe(server: string, key: string): Promise<Probe> {
   try {
     const { protocol, authority } = splitAddr(server);
+    // fallow-ignore-next-line security-sink -- the destination is `cfg.sandbox.server`, the address the boss set for their own sandbox server, and the key sent with it is the key stored for that same address. No request field reaches it.
     const res = await fetch(`${protocol}://${authority}/v1/sandboxes?page_size=1`, {
       // `OPEN-SANDBOX-API-KEY`, not `Authorization: Bearer` — the server reads
-      // that one header and nothing else (`middleware/auth.py`). Sending the
-      // wrong one is indistinguishable from having the wrong key: 401 either
-      // way, and it cost an hour reading a message that said the key was not
-      // accepted when the key was never presented.
+      // that one header and nothing else (`middleware/auth.py`), and sending the
+      // wrong one is indistinguishable from a wrong key: 401 either way.
       headers: key ? { [SANDBOX_API_KEY_HEADER]: key } : {},
       // Short on purpose: this is a socket on this machine, so it answers
       // quickly or it is not there — and the settings page waits on it.
@@ -92,17 +78,16 @@ async function probe(server: string, key: string): Promise<Probe> {
     if (res.status === 401 || res.status === 403) return { kind: "auth" };
     return { kind: "http", status: res.status };
   } catch (e) {
-    return { kind: "none", why: String((e as Error)?.message ?? e).slice(0, 120) };
+    return { kind: "none", why: errText(e, 120) };
   }
 }
 
 /**
  * What to tell the boss. One line, and it has to name the thing to do next.
  *
- * The first version was three sentences of reasoning — where the server came
- * from, why we did not touch it, both ways out — set as a paragraph above the
- * two controls that are the ways out. DESIGN.md's rule applies here as much as
- * anywhere: say it once, and let the control next to it do the explaining.
+ * docs/design/ui.md: say it once, and let the control next to it do the
+ * explaining. These sentences sit directly above the controls that are the
+ * ways out of each case.
  */
 function say(p: Probe, server: string): string {
   switch (p.kind) {
@@ -112,29 +97,21 @@ function say(p: Probe, server: string): string {
       return `${server} 上有东西在应答，但不是沙盒服务器（HTTP ${p.status}）—— 换个地址。`;
     case "none":
       return p.why;
-    default:
+    case "ok":
       return "";
   }
 }
 
 /** Where our own config lives when we are the one starting the server. */
-export const ourConfigPath = (home = homedir()): string => join(home, ".orch-cache", "sandbox.toml");
-
+const ourConfigPath = (home = homedir()): string => join(home, ".orch-cache", "sandbox.toml");
 
 /**
  * Set one key inside one TOML section.
  *
- * Section-aware, and that is the whole point: a blanket `^mode =` replaced
- * `[ingress] mode` with `dns+nft` and the server refused to start —
- * *"Input should be 'direct' or 'gateway'"* — because `mode` appears in two
- * sections and the first one wins a file-wide match.
- *
- * Commented lines count as the key. The generated example ships
- * `# api_key = "your-secret-api-key"`, and treating that as absent left the
- * server with no key at all while we sent one.
- *
- * Appends to the section when the key is genuinely not there, and appends the
- * section too when that is missing. Still not a TOML parser: six known keys.
+ * Section-aware, because `mode` appears in two sections and a file-wide `^mode =`
+ * takes the first one. Commented lines count as the key: the example ships
+ * `# api_key = "…"`, and treating that as absent leaves the server with no key
+ * while we send one. Appends key or section when truly absent; not a parser.
  */
 export function setIn(toml: string, section: string, key: string, line: string): string {
   const lines = toml.split("\n");
@@ -152,6 +129,7 @@ export function setIn(toml: string, section: string, key: string, line: string):
   if (start < 0) return `${toml.replace(/\n*$/, "")}\n\n[${section}]\n${line}\n`;
 
   const at = /^[ \t]*#?[ \t]*KEY[ \t]*=/.source.replace("KEY", key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  // fallow-ignore-next-line security-sink -- `at` is a source literal whose one placeholder is `key`, already run through a regex-metacharacter escape on the line above; the six callers pass fixed TOML key names.
   const re = new RegExp(at);
   for (let i = start + 1; i < end; i++) {
     if (re.test(lines[i]!)) {
@@ -166,71 +144,83 @@ export function setIn(toml: string, section: string, key: string, line: string):
 /**
  * The config we start a server with, generated by the server itself.
  *
- * Hand-writing it was wrong and failed the first time it ran on a clean machine:
- *
- *   pydantic_core.ValidationError: 1 validation error for AppConfig
- *   runtime.execd_image
- *     Field required
- *
- * A config file is that package's schema, not ours, and every required field it
- * adds in a later version would break this the same way. `init-config --example
- * docker` renders one from the packaged example, so the parts we do not care
- * about stay correct without anyone tracking them.
- *
- * Three values are then patched in, and only three — the ones that have to agree
- * with *us*:
- *
- *   api_key             or the server we just started refuses every call we make
- *   allowed_host_paths  the silent one: a path missing from it does not fail,
- *                       it mounts an empty directory, and the only symptom is
- *                       every agent having no skills
- *   egress image        v1.1.4 403s every scoped package fetch while a
- *                       credential is bound (005), and the example may ship it
- *
- * Regex rather than a TOML parser, like `keyInConfig` and `allowedHostPaths`
- * above: three known keys, one line each, and a dependency for that is a
- * dependency for that.
- *
- * Created once. A user who edits it keeps their edits.
+ * A config file is that package's schema, not ours, and every required field a
+ * later version adds would break a hand-written one — as one did on a clean
+ * machine. `init-config --example docker` renders it; `patchConfig` agrees only
+ * the values that must agree with us. Created once: a user's edits are kept.
  */
-export async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promise<string> {
+async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promise<string> {
   if (existsSync(path)) return path;
   mkdirSync(dirname(path), { recursive: true });
   const gen = Bun.spawnSync(["uvx", "opensandbox-server", "init-config", path, "--example", "docker"], {
     stdout: "pipe",
     stderr: "pipe",
   });
-  if (!existsSync(path)) {
+  // Read it rather than ask whether it exists and then read it: the two-step
+  // form is `js/file-system-race`, and the read has to succeed anyway. Its
+  // failure carries the same message, since "missing" and "unreadable" are both
+  // `init-config` not having produced a usable config.
+  let generated: string;
+  try {
+    generated = readFileSync(path, "utf8");
+  } catch {
     throw new Error(
       `opensandbox-server init-config failed: ${(gen.stderr.toString() || gen.stdout.toString()).trim().slice(-300)}`,
     );
   }
 
   const [host, port] = serverAddr(ctx).split(":");
-  const skills = resolve(ctx.config?.skillsDir ?? join(homedir(), ".orch-cache/skills"));
+  const skills = resolve(ctx.config.skillsDir);
   // The parent, not the directory itself: the server matches prefixes, and a
   // sibling cache directory added later should not need this file edited again.
   const allowed = [...new Set([dirname(skills), "/var/tmp/orch-cache"])];
 
-  let toml = readFileSync(path, "utf8");
+  // Written beside the target and renamed onto it: `rename` is atomic within a
+  // filesystem, so a server starting while this runs opens the old file or the
+  // new one and never half of a truncated write, and two processes racing the
+  // `existsSync` above end with one whole config rather than two interleaved.
+  // CodeQL calls the second `js/file-system-race`; the fix is a write that does
+  // not care whether the check still holds.
+  const staged = `${path}.${process.pid}.tmp`;
+  writeFileSync(
+    staged,
+    `# api_key / host / port / allowed_host_paths / egress set by orchestrator.\n` +
+      `# Everything else is opensandbox-server's own example. Yours to edit — only written if absent.\n` +
+      patchConfig(generated, { host, port, key, allowed }),
+    { mode: 0o600 },
+  );
+  renameSync(staged, path);
+  return path;
+}
+
+/**
+ * The values in a generated config that have to agree with *us*, and no others.
+ *
+ * Regex rather than a TOML parser, like `allowedHostPaths` above: six known
+ * keys, one line each. `setIn` is section-aware for the reason written on it.
+ */
+export function patchConfig(
+  toml: string,
+  at: { host?: string | undefined; port?: string | undefined; key: string; allowed: string[] },
+): string {
+  let out = toml;
+  // Why each: host/port, or we start a server on an address we are not asking;
+  // api_key, or the server we just started refuses every call we make;
+  // allowed_host_paths is the silent one, where a missing path mounts an empty
+  // directory and the only symptom is every agent having no skills; egress
+  // image because v1.1.4 403s every scoped package fetch while a credential is
+  // bound (005); egress mode because the example's `direct` does not route.
   for (const [section, k, line] of [
-    ["server", "host", `host = "${host}"`],
-    ["server", "port", `port = ${Number(port) || 8080}`],
-    ["server", "api_key", `api_key = "${key}"`],
-    ["storage", "allowed_host_paths", `allowed_host_paths = [${allowed.map((p) => `"${p}"`).join(", ")}]`],
+    ["server", "host", `host = "${at.host}"`],
+    ["server", "port", `port = ${Number(at.port) || 8080}`],
+    ["server", "api_key", `api_key = "${at.key}"`],
+    ["storage", "allowed_host_paths", `allowed_host_paths = [${at.allowed.map((p) => `"${p}"`).join(", ")}]`],
     ["egress", "image", `image = "opensandbox/egress:v1.1.6"`],
     ["egress", "mode", `mode = "dns+nft"`],
   ] as const) {
-    toml = setIn(toml, section, k, line);
+    out = setIn(out, section, k, line);
   }
-
-  writeFileSync(
-    path,
-    `# api_key / host / port / allowed_host_paths / egress set by orchestrator.\n` +
-      `# Everything else is opensandbox-server's own example. Yours to edit — only written if absent.\n${toml}`,
-    { mode: 0o600 },
-  );
-  return path;
+  return out;
 }
 
 /**
@@ -245,13 +235,20 @@ function ourKey(ctx: Ctx): string {
   const held = loadAuth(ctx.db, SANDBOX_KEY)?.secret;
   if (held) return held;
   const made = `orch-${crypto.randomUUID().replaceAll("-", "")}`;
-  saveAuth(ctx.db, { runtime: SANDBOX_KEY, mode: "api_key", secret: made });
+  // Bound to the address of the server this key is being generated *for*.
+  // Stored without it, `sandboxKeyFor` would treat it as belonging nowhere and
+  // the server we just started would be talked to unauthenticated.
+  saveAuth(ctx.db, {
+    runtime: SANDBOX_KEY,
+    mode: "api_key",
+    secret: made,
+    baseUrl: `http://${ctx.config.sandbox.server.trim()}`,
+  });
   return made;
 }
 
 /** Where the server we start writes its own output. The only thing that can say why. */
-export const serverLogPath = (ctx: Ctx): string =>
-  join(resolve(ctx.config?.dataDir ?? "data"), "opensandbox-server.log");
+export const serverLogPath = (ctx: Ctx): string => join(resolve(ctx.config.dataDir), "opensandbox-server.log");
 
 /** The end of it, which is where a startup failure says what it was. */
 export function serverLogTail(ctx: Ctx, lines = 12): string {
@@ -270,52 +267,55 @@ export function serverLogTail(ctx: Ctx, lines = 12): string {
  * a process that is already gone before saying "cannot connect" — which is true,
  * and is not the reason.
  */
-async function waitUp(
+export async function waitUp(
   ctx: Ctx,
   proc: { exited: Promise<number> },
   server: string,
   key: string,
   ms = 45_000,
+  io: { probe: typeof probe; sleep: (ms: number) => Promise<void> } = { probe, sleep: Bun.sleep },
 ): Promise<{ ok: boolean; why: string }> {
   let dead: number | null = null;
   void proc.exited.then((code) => (dead = code));
   const until = Date.now() + ms;
   let last = "还没应答";
   while (Date.now() < until) {
-    const r = await probe(server, key);
+    const r = await io.probe(server, key);
     if (r.kind === "ok") return { ok: true, why: "" };
     last = say(r, server);
-    if (dead !== null) {
-      // Its own words, not ours. "Unable to connect" is what we observed; the
-      // log is what happened, and without it this reports the symptom of a
-      // process that died of something specific it already printed.
-      const tail = serverLogTail(ctx);
-      return { ok: false, why: `它自己退了（exit ${dead}）${tail ? `：\n${tail}` : "，而且什么都没打印"}` };
-    }
-    await Bun.sleep(400);
+    // Its own words, not ours. "Unable to connect" is what we observed; the log
+    // is what happened, and without it this reports the symptom of a process
+    // that died of something specific it already printed.
+    if (dead !== null) return { ok: false, why: exited(dead, serverLogTail(ctx)) };
+    await io.sleep(400);
   }
-  const tail = serverLogTail(ctx);
-  return { ok: false, why: `等了 ${Math.round(ms / 1000)} 秒还是 ${last}${tail ? `。它打印的是：\n${tail}` : ""}` };
+  return { ok: false, why: timedOut(ms, last, serverLogTail(ctx)) };
 }
+
+const exited = (code: number, tail: string): string =>
+  `它自己退了（exit ${String(code)}）${tail ? `：\n${tail}` : "，而且什么都没打印"}`;
+
+const timedOut = (ms: number, last: string, tail: string): string =>
+  `等了 ${Math.round(ms / 1000)} 秒还是 ${last}${tail ? `。它打印的是：\n${tail}` : ""}`;
 
 /**
  * What is there, without changing anything.
  *
- * Split from `ensureServer` because a GET must not start a process. The settings
- * page polls this, and the first version had the panel spawning a server as a
- * side effect of being looked at — which also hung the test that opens it.
+ * Split from `ensureServer` because a GET must not start a process: the settings
+ * page polls this, and spawning a server as a side effect of being looked at
+ * also hung the test that opens it.
  */
 export async function inspectServer(ctx: Ctx): Promise<ServerState> {
   const server = serverAddr(ctx);
-  const key = loadAuth(ctx.db, SANDBOX_KEY)?.secret || ctx.config.sandbox?.apiKey || "";
+  const key = sandboxKeyFor(ctx.db, ctx.config.sandbox.server, ctx.config.sandbox.apiKey);
   const live = runningServer();
   const p = await probe(server, key);
 
   if (p.kind === "ok") {
     // Ours only if we recorded this pid. A pid from a previous boot still counts
     // — the process outlives us — but a different one means ours died.
-    const mine = !!live && get(ctx, PID_KEY) === live.pid;
-    return mine ? { kind: "ours", pid: live!.pid } : { kind: "theirs", pid: live?.pid ?? "?" };
+    const mine = !!live && readSetting(ctx.db, PID_KEY) === live.pid;
+    return mine ? { kind: "ours", pid: live.pid } : { kind: "theirs", pid: live?.pid ?? "?" };
   }
   // Answering at all means the address is taken, whether or not `ps` can see by
   // what. Reported, never restarted.
@@ -343,29 +343,43 @@ export async function inspectServer(ctx: Ctx): Promise<ServerState> {
  */
 export async function ensureServer(ctx: Ctx): Promise<ServerState> {
   const server = serverAddr(ctx);
-  const seen = await inspectServer(ctx);
-  // Anything other than "nothing is there" is somebody's, or ours already.
-  // Spawning into a taken address binds nothing, dies, and leaves the probe
-  // talking to whatever was already listening — which is what made the first
-  // failure unreadable.
-  if (seen.kind !== "down") return seen;
-  if (!Bun.which("uvx")) return seen;
-  // Only ever start one for an address on this machine. Pointed at a Tailscale
-  // peer or a cloud box, "nothing answers" means that host is down — spawning a
-  // local server would bind a port nobody is asking about and report success.
-  const { authority } = splitAddr(server);
-  const host = authority.replace(/:\d+$/, "").toLowerCase();
-  if (!(host === "localhost" || host.startsWith("127.") || host === "::1" || host === "[::1]")) {
-    return { kind: "down", why: `${server} 不应答 —— 那不是本机地址，起不了，得去那台机器上看。` };
-  }
+  const plan = startPlan(await inspectServer(ctx), server, !!Bun.which("uvx"));
+  if (plan.kind !== "start") return plan;
 
   const startKey = ourKey(ctx);
   let config: string;
   try {
     config = await writeConfig(ctx, startKey);
   } catch (e) {
-    return { kind: "down", why: `写不出配置：${String((e as Error)?.message ?? e).slice(0, 200)}` };
+    return { kind: "down", why: `写不出配置：${errText(e, 200)}` };
   }
+  return startServer(ctx, server, startKey, config);
+}
+
+/**
+ * Whether we are allowed to start one, given what is already there.
+ *
+ * Every "no" here is a different sentence, and each of them was a real report
+ * once. Kept separate from the spawn so the policy can be read — and checked —
+ * without a process being created to read it.
+ */
+export function startPlan(seen: ServerState, server: string, haveUvx: boolean): ServerState | { kind: "start" } {
+  // Anything other than "nothing is there" is somebody's, or ours already.
+  // Spawning into a taken address binds nothing, dies, and leaves the probe
+  // talking to whatever was already listening — which is what made the first
+  // failure unreadable.
+  if (seen.kind !== "down") return seen;
+  if (!haveUvx) return seen;
+  // Only ever start one for an address on this machine. Pointed at a Tailscale
+  // peer or a cloud box, "nothing answers" means that host is down — spawning a
+  // local server would bind a port nobody is asking about and report success.
+  const host = splitAddr(server).authority.replace(/:\d+$/, "").toLowerCase();
+  if (host === "localhost" || host.startsWith("127.") || host === "::1" || host === "[::1]") return { kind: "start" };
+  return { kind: "down", why: `${server} 不应答 —— 那不是本机地址，起不了，得去那台机器上看。` };
+}
+
+/** Spawn one and wait for it, remembering that it is ours. */
+async function startServer(ctx: Ctx, server: string, key: string, config: string): Promise<ServerState> {
   const argv = ["uvx", "opensandbox-server", "--config", config];
   try {
     // Its output goes to a file, not to /dev/null. Discarding it was the reason
@@ -376,31 +390,33 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
     const out = Bun.file(log);
     const p = Bun.spawn(argv, { stdout: out, stderr: out, stdin: "ignore" });
     p.unref();
-    put(ctx, PID_KEY, String(p.pid));
-    put(ctx, ARGV_KEY, JSON.stringify(argv));
-    const up = await waitUp(ctx, p, server, startKey);
+    writeSetting(ctx.db, PID_KEY, String(p.pid));
+    writeSetting(ctx.db, ARGV_KEY, JSON.stringify(argv));
+    const up = await waitUp(ctx, p, server, key);
     if (!up.ok) return { kind: "down", why: up.why, log };
     return { kind: "started", pid: String(p.pid), config };
   } catch (e) {
-    return { kind: "down", why: `起不来：${String((e as Error)?.message ?? e).slice(0, 160)}` };
+    return { kind: "down", why: `起不来：${errText(e, 160)}` };
   }
 }
 
-/** Point us at a different server. Empty clears the override back to the yaml. */
-export function setServerAddr(ctx: Ctx, addr: string): void {
-  put(ctx, SANDBOX_ADDR, addr.trim() || null);
+/**
+ * Point us at a different server. Empty clears the override back to the default.
+ *
+ * Through the settings table like every other config path. It had a row of its
+ * own (`sandbox_server_addr`) from before there was one, and migration 039 moved
+ * it — a value with two homes has a precedence order that lives only in code.
+ */
+export function setServerAddr(ctx: Ctx, addr: string): string | null {
+  return putSetting(ctx.db, ctx.config, "sandbox.server", addr.trim() || null);
 }
 
 /** The argv we started it with, for the panel's restart button. Ours only. */
-export function ourArgv(ctx: Ctx): string[] | null {
+export function ourArgv(db: DB): string[] | null {
   const live = runningServer();
-  if (!live || get(ctx, PID_KEY) !== live.pid) return null;
-  try {
-    const argv = JSON.parse(get(ctx, ARGV_KEY) ?? "[]");
-    return Array.isArray(argv) && argv.length ? argv : live.argv;
-  } catch {
-    return live.argv;
-  }
+  if (!live || readSetting(db, PID_KEY) !== live.pid) return null;
+  const argv = jsonOr(readSetting(db, ARGV_KEY), z.array(z.string()), []);
+  return argv.length ? argv : live.argv;
 }
 
 /**
@@ -413,9 +429,8 @@ export function ourArgv(ctx: Ctx): string[] | null {
 export function driftingPaths(ctx: Ctx): { want: string[]; config: string } | null {
   const allowed = allowedHostPaths();
   if (!allowed) return null;
-  const want = [
-    resolve(ctx.config?.skillsDir ?? join(homedir(), ".orch-cache/skills")),
-    ...Object.values(specFor(ctx, null).cacheDirs),
-  ].filter((p) => p && !coveredBy(allowed.paths, p));
+  const want = [resolve(ctx.config.skillsDir), ...Object.values(specFor(ctx, null).cacheDirs)].filter(
+    (p) => p && !coveredBy(allowed.paths, p),
+  );
   return want.length ? { want: [...new Set(want)], config: allowed.config } : null;
 }

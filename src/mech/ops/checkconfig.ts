@@ -1,20 +1,24 @@
+import { keysUnder, schemaAt } from "../../contracts/config.ts";
 import { existsSync, readFileSync } from "node:fs";
-import { DEFAULTS_FOR_CHECK, type Config } from "../../config.ts";
-import type { RoleDef } from "../../config.ts";
+import { DEFAULTS_FOR_CHECK, type Config } from "../../platform/config/load.ts";
+import type { RoleDef } from "../../platform/config/load.ts";
+import { JsonObject, type Json } from "../../contracts/json.ts";
+import { errText } from "../../platform/process/text.ts";
+import type { z } from "zod";
 
 /**
  * Does the yaml say what it thinks it says?
  *
- * `loadConfig` is `{ ...DEFAULTS, ...parsed }` and nothing else, which fails
- * three ways and all of them silently: a misspelled key does nothing, a wrong
- * type is carried to whoever reads it, and a partial nested block replaces the
- * whole default block — write `sandbox:` with two of its eight fields and the
- * other six become `undefined`, surfacing an hour later as a container that will
- * not start. Config errors have to be reported where they were made.
- *
- * The rules come from `DEFAULTS`, not from a second table beside it: the default
- * value's type is the expected type, and its presence is the list of legal keys.
- * A table would be 28 lines that drift from the 28 they describe.
+ * `loadConfig` is `{ ...DEFAULTS, ...parsed }` and nothing else, which fails three
+ * ways and all of them silently: a misspelled key does nothing, a wrong type is
+ * carried to whoever reads it, and a partial nested block replaces the whole default
+ * block — write `sandbox:` with two of its eight fields and the other six become
+ * `undefined`, surfacing an hour later as a container that will not start.
+ */
+/**
+ * The rules come from `DEFAULTS`, not a second table beside it: the default value's
+ * type is the expected type, and its presence is the list of legal keys. A table
+ * would be 28 lines that drift from the 28 they describe.
  */
 
 export type Level = "fatal" | "warn" | "info";
@@ -25,33 +29,9 @@ export interface Finding {
   says: string;
 }
 
-/** Numbers that cannot be zero or negative without breaking something at boot. */
-const POSITIVE = new Set([
-  "port",
-  "maxGroups",
-  "turnTimeoutMs",
-  "maxTurnsPerJob",
-  "watchdogIntervalMs",
-  "leaseTimeoutMs",
-  "installTimeoutMs",
-  "ctxBudgetChars",
-]);
+type JsonMap = z.infer<typeof JsonObject>;
 
-/**
- * Keys whose type is a union, which a default value cannot express.
- *
- * One of them, and the checker found it by calling this repo's own config
- * fatal: `leaseSlots` is one number for the whole pool or one per resource tag,
- * and the committed yaml uses the second form.
- */
-const UNIONS: Record<string, string[]> = { leaseSlots: ["number", "object"] };
-
-const kind = (v: unknown): string =>
-  Array.isArray(v) ? "array" : v === null ? "null" : typeof v;
-
-/** Plain object, as opposed to an array or a null. */
-const isMap = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === "object" && !Array.isArray(v);
+const isMap = (value: Json): value is JsonMap => value !== null && typeof value === "object" && !Array.isArray(value);
 
 /** `maxGroup` for `maxGroups`. Containment, not edit distance: typos here are dropped or doubled characters, and a Levenshtein for that is thirty lines nobody reads. */
 const nearest = (key: string, legal: string[]): string | null => {
@@ -59,32 +39,63 @@ const nearest = (key: string, legal: string[]): string | null => {
   return legal.find((c) => c.toLowerCase().includes(k) || k.includes(c.toLowerCase())) ?? null;
 };
 
-function walk(parsed: Record<string, unknown>, base: Record<string, unknown>, at: string, out: Finding[]): void {
-  const legal = Object.keys(base);
+function unknownKey(at: string, key: string, legal: string[]): Finding {
+  const near = nearest(key, legal);
+  return {
+    level: "warn",
+    key: at ? `${at}.${key}` : key,
+    says: near ? `没这个键，是不是 ${at ? `${at}.` : ""}${near}` : "没这个键，被忽略了",
+  };
+}
+
+function nestedBlock(value: Json, key: string): JsonMap | null {
+  return isMap(value) && keysUnder(key).length ? value : null;
+}
+
+function invalidValue(schema: ReturnType<typeof schemaAt>, value: Json, key: string): Finding | null {
+  if (!schema) return null;
+  const result = schema.safeParse(value);
+  return result.success
+    ? null
+    : { level: "fatal", key, says: result.error.issues.map(({ message }) => message).join("；") };
+}
+
+/**
+ * Check the yaml against `ConfigSchema`, key by key.
+ *
+ * Key by key rather than one `ConfigSchema.parse(parsed)`, for two reasons a
+ * whole-document parse cannot give: the yaml is a *partial* override, so absent keys
+ * are correct and `.parse` would demand them; and an unknown key deserves the "did
+ * you mean" that made this checker worth having — zod can say a key is unrecognised
+ * but not which real key it looks like.
+ */
+/**
+ * What is no longer here is the type table. `kind()`, `POSITIVE` and `UNIONS` were a
+ * second opinion about what a legal config is, and the panel had a third — which is
+ * how `maxGroups: 0` came to be refused in the file and accepted over HTTP.
+ */
+function walk(parsed: JsonMap, at: string, out: Finding[]): void {
+  const siblings = keysUnder(at);
   for (const [k, v] of Object.entries(parsed)) {
     const key = at ? `${at}.${k}` : k;
-    if (!(k in base)) {
-      const near = nearest(k, legal);
-      out.push({ level: "warn", key, says: near ? `没这个键，是不是 ${at ? `${at}.` : ""}${near}` : "没这个键，被忽略了" });
+    const schema = schemaAt(key);
+    if (!schema) {
+      out.push(unknownKey(at, k, siblings));
       continue;
     }
-    const want = base[k];
     if (v === null || v === undefined) {
       out.push({ level: "warn", key, says: "空的，用默认值" });
       continue;
     }
-    const allowed = UNIONS[key] ?? [kind(want)];
-    if (!allowed.includes(kind(v))) {
-      out.push({ level: "fatal", key, says: `要 ${allowed.join(" 或 ")}，写的是 ${kind(v)}` });
+    // A block the schema enumerates is walked so its own keys get the same
+    // treatment. A record is a leaf: its keys are model ids and mount points.
+    const nested = nestedBlock(v, key);
+    if (nested) {
+      walk(nested, key, out);
       continue;
     }
-    if (typeof v === "number" && POSITIVE.has(key) && v <= 0) {
-      out.push({ level: "fatal", key, says: `要大于 0，写的是 ${v}` });
-      continue;
-    }
-    // A map of models or windows is open-ended — its keys are model ids, not
-    // config keys — so only blocks the defaults actually enumerate are walked.
-    if (isMap(v) && isMap(want) && Object.keys(want).length) walk(v, want, key, out);
+    const invalid = invalidValue(schema, v, key);
+    if (invalid) out.push(invalid);
   }
 }
 
@@ -92,15 +103,16 @@ export function checkConfig(path: string): { findings: Finding[]; overridden: nu
   if (!existsSync(path)) {
     return { findings: [{ level: "warn", key: path, says: "没有这个文件，全用默认值" }], overridden: 0 };
   }
-  let parsed: unknown;
+  let parsed: JsonMap;
   try {
-    parsed = Bun.YAML.parse(readFileSync(path, "utf8"));
+    const result = JsonObject.safeParse(Bun.YAML.parse(readFileSync(path, "utf8")));
+    if (!result.success) return { findings: [], overridden: 0 };
+    parsed = result.data;
   } catch (e) {
-    return { findings: [{ level: "fatal", key: path, says: `读不了：${(e as Error).message}` }], overridden: 0 };
+    return { findings: [{ level: "fatal", key: path, says: `读不了：${errText(e)}` }], overridden: 0 };
   }
-  if (!isMap(parsed)) return { findings: [], overridden: 0 };
   const findings: Finding[] = [];
-  walk(parsed, DEFAULTS_FOR_CHECK, "", findings);
+  walk(parsed, "", findings);
   return { findings, overridden: Object.keys(parsed).length };
 }
 
@@ -131,7 +143,7 @@ export function checkRoles(roles: Map<string, RoleDef>, runtimes: string[]): Fin
 export function changed(cfg: Config): number {
   // Assignable rather than cast: `Config` is a type alias, so it carries an
   // implicit index signature and this is a plain widening.
-  const base: Record<string, unknown> = DEFAULTS_FOR_CHECK;
+  const base = JsonObject.parse(DEFAULTS_FOR_CHECK);
   return Object.entries(cfg).filter(
     // dataDir is resolved to an absolute path on the way in, so it never equals
     // the default and is not something the boss wrote.

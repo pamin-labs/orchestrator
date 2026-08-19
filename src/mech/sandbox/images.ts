@@ -1,15 +1,19 @@
-import type { DB } from "../../db.ts";
+import { errText } from "../../platform/process/text.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import type { Config } from "../../platform/config/load.ts";
+import { putSetting } from "../../platform/config/settings.ts";
 import { hasRegistry, PUBLISHED_REPO } from "./sandbox.ts";
+import { z } from "zod";
 
 /**
  * What the image field may be set to, as two lists rather than a text box.
  *
- * Typing an image name is the shape of field that fails four steps later: a
- * typo is not rejected here, it is a container that will not create, on a group
- * that has already been dispatched. And the set of legal answers is small and
- * knowable — `allowedImage` accepts exactly two families — so the panel can just
- * show them.
- *
+ * Typing an image name is the shape of field that fails four steps later: a typo is
+ * not rejected here, it is a container that will not create, on a group already
+ * dispatched. The set of legal answers is small and knowable — `allowedImage`
+ * accepts exactly two families — so the panel can just show them.
+ */
+/**
  * Both sides are best-effort and say which kind of empty they are. "No published
  * versions" and "could not reach the registry" send a reader to different places,
  * and collapsing them into one blank list is the failure mode this project keeps
@@ -36,30 +40,48 @@ export interface ImageChoices {
 async function published(): Promise<{ tags: string[]; note?: string }> {
   const repo = PUBLISHED_REPO;
   try {
+    // fallow-ignore-next-line security-sink -- fixed `https://ghcr.io` origin, and `repo` is `PUBLISHED_REPO`, the module constant in `sandbox.ts`. Nothing here is read from a request or from config.
     const auth = await fetch(`https://ghcr.io/token?scope=repository:${repo}:pull`, {
       signal: AbortSignal.timeout(6000),
     });
-    const token = ((await auth.json()) as { token?: string }).token;
+    const token = z.object({ token: z.string().min(1) }).safeParse(await auth.json()).data?.token;
     if (!token) return { tags: [], note: "拿不到 registry 的读取令牌" };
 
+    // fallow-ignore-next-line security-sink -- fixed `https://ghcr.io` origin, and `repo` is `PUBLISHED_REPO`, the module constant in `sandbox.ts`; the bearer token was minted for that same repository one call above.
     const res = await fetch(`https://ghcr.io/v2/${repo}/tags/list?n=100`, {
       headers: { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(6000),
     });
-    if (res.status === 401 || res.status === 403 || res.status === 404) {
-      // The package has never been published, or is private. Both look the same
-      // from here, and both mean "nothing to choose yet" rather than "broken".
-      return { tags: [], note: "还没发布过镜像 —— 先跑一次 release，或者用本地构建的" };
-    }
-    if (!res.ok) return { tags: [], note: `registry 答 HTTP ${res.status}` };
-    const tags = ((await res.json()) as { tags?: string[] }).tags ?? [];
-    // `latest` first, then the rest newest-looking first. Not a semver sort:
-    // whatever a release tags is the release's business, and inventing an order
-    // it did not ask for is how a "newest" ends up pointing at the wrong one.
-    return { tags: [...tags].sort((a, b) => (a === "latest" ? -1 : b === "latest" ? 1 : b.localeCompare(a, undefined, { numeric: true }))) };
+    return tagsFrom(res.status, await res.json().catch(() => null));
   } catch (e) {
-    return { tags: [], note: `连不上 ghcr.io：${String((e as Error)?.message ?? e).slice(0, 80)}` };
+    return { tags: [], note: `连不上 ghcr.io：${errText(e, 80)}` };
   }
+}
+
+/**
+ * What one `tags/list` answer means, as the list plus the kind of empty it is.
+ *
+ * Three empties, and they send a reader to three different places. Collapsing
+ * them into one blank list is the failure mode this project keeps paying for:
+ * "never released" wants a release run, "registry down" wants waiting, and a
+ * malformed body wants neither.
+ */
+export function tagsFrom(status: number, body: unknown): { tags: string[]; note?: string } {
+  if (status === 401 || status === 403 || status === 404) {
+    // The package has never been published, or is private. Both look the same
+    // from here, and both mean "nothing to choose yet" rather than "broken".
+    return { tags: [], note: "还没发布过镜像 —— 先跑一次 release，或者用本地构建的" };
+  }
+  const parsed = z.object({ tags: z.array(z.string()).default([]) }).safeParse(body);
+  if (status < 200 || status >= 300 || !parsed.success) return { tags: [], note: `registry 答 HTTP ${status}` };
+  // `latest` first, then the rest newest-looking first. Not a semver sort:
+  // whatever a release tags is the release's business, and inventing an order
+  // it did not ask for is how a "newest" ends up pointing at the wrong one.
+  return {
+    tags: [...parsed.data.tags].sort((a, b) =>
+      a === "latest" ? -1 : b === "latest" ? 1 : b.localeCompare(a, undefined, { numeric: true }),
+    ),
+  };
 }
 
 /**
@@ -82,7 +104,7 @@ function local(): { tags: string[]; note?: string } {
       .map((l) => l.trim())
       .filter((l) => l && !l.includes("<none>"));
     const mine = all.filter((r) => !hasRegistry(r));
-    return { tags: mine, note: mine.length ? undefined : "本机没有可用的镜像 —— docker build 一个再回来" };
+    return { tags: mine, ...(mine.length ? {} : { note: "本机没有可用的镜像 —— docker build 一个再回来" }) };
   } catch {
     return { tags: [], note: "这台机器上没有 docker" };
   }
@@ -100,26 +122,27 @@ export async function imageChoices(): Promise<ImageChoices> {
 /**
  * The image every project gets unless it says otherwise.
  *
- * In `setting` rather than in the yaml, for the same reason the sandbox key is:
- * the yaml is committed, so anybody self-hosting loses their edit on the next
- * pull — and this is a fact about one machine's docker, not about the project.
- * The yaml value stays as the fallback, which is what a fresh install runs on.
- *
- * Refused if the boundary would refuse it. Storing an image no container can be
- * built from turns one wrong keystroke in the settings dialog into a fleet that
- * will not start, and the message would be about a container rather than about
- * this field.
+ * In `setting` rather than the yaml, for the same reason the sandbox key is: the
+ * yaml is committed, so anybody self-hosting loses their edit on the next pull — and
+ * this is a fact about one machine's docker. The yaml value stays as the fallback,
+ * which is what a fresh install runs on.
  */
-export const DEFAULT_IMAGE_KEY = "sandbox_image";
+/**
+ * Refused if the boundary would refuse it. Storing an image no container can be
+ * built from turns one wrong keystroke into a fleet that will not start, and the
+ * message would be about a container rather than about this field.
+ */
+const DEFAULT_IMAGE_PATH = "sandbox.image";
 
-export const defaultImage = (db: DB, fallback: string): string =>
-  db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(DEFAULT_IMAGE_KEY)?.v || fallback;
-
-export function setDefaultImage(db: DB, ref: string): void {
+/**
+ * The machine's default image is `cfg.sandbox.image` and nothing else.
+ *
+ * It had its own row, its own reader and its own writer, from before every
+ * config path was settable. Two homes for one value is a precedence order that
+ * lives only in code — migration 039 moved the row across, and this is the
+ * writer that keeps it there.
+ */
+export function setDefaultImage(db: DB, cfg: Config, ref: string): string | null {
   const image = ref.trim();
-  if (!image) return void db.run("DELETE FROM setting WHERE k = ?", [DEFAULT_IMAGE_KEY]);
-  db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
-    DEFAULT_IMAGE_KEY,
-    image,
-  ]);
+  return putSetting(db, cfg, DEFAULT_IMAGE_PATH, image || null);
 }

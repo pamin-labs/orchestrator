@@ -1,5 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * One button shape for the whole panel. `go` is the primary action on a row,
@@ -26,7 +26,7 @@ export const buttonStyles = cva(
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof buttonStyles>;
 
 export function Button({ className, variant, size, ...rest }: ButtonProps) {
-  return <button className={cn(buttonStyles({ variant, size }), className)} {...rest} />;
+  return <button type="button" className={cn(buttonStyles({ variant, size }), className)} {...rest} />;
 }
 
 export function LinkButton({ className, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {

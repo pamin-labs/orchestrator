@@ -1,8 +1,10 @@
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { settlePausing } from "../flow/intercept.ts";
 import { joinQueue } from "../flow/mergequeue.ts";
 import { reopenTasks, startNextSlice } from "../flow/review.ts";
-import { clearEscalation, parseRepo, repoHeld } from "../git/github.ts";
+import { clearEscalation } from "../git/github.ts";
+import { parseRepo } from "../../contracts/repository.ts";
+import { repoHeld } from "../git/repository.ts";
 import {
   ESCALATION_STATES,
   GRP_STATES,
@@ -10,6 +12,7 @@ import {
   LEASE_STATES,
   SERVER_STATES,
   SLICE_STATES,
+  TASK_STATES,
   PROJECT_STATES,
   UTIL_STATES,
   type EscalationState,
@@ -17,34 +20,34 @@ import {
   type JobState,
   type LeaseState,
   type ProjectState,
-  type ServerState,
+  type ServerHealthState,
   type SliceState,
+  type TaskState,
   type UtilState,
-} from "./states.ts";
+  ACTIVE_JOB_STATES,
+  stateParam,
+} from "../../contracts/states.ts";
 
 /**
  * One row per state, and the row has to say who pushes it.
  *
- * Every rule in `watchdog.ts` was bought with an incident: six groups on a stale
- * base, six behind a bad `--settings` path, a group whose every slice was accepted
- * and which then had nobody left to hand the branch to. They have one shape —
- * a transition that exactly one code path fires, and when that path does not fire,
- * the state is final and *looks healthy*: RUNNING, an agent listed, no error
- * anywhere the boss looks.
+ * Every rule in `watchdog.ts` was bought with an incident, and they share one
+ * shape: a transition exactly one code path fires, which when it does not fire
+ * leaves the state final and *looking healthy* — RUNNING, an agent listed, no
+ * error anywhere the boss looks.
+ */
+/**
+ * As a table derived from the state machine, "we found another one" becomes "the
+ * table has an empty cell": `invariants.test.ts` asserts every state in
+ * `contracts/states.ts` has a row, so adding a state fails the build until someone
+ * fills it in. The repairs themselves are two lines each.
  *
- * Writing them as a table derived from the state machine turns "we found another
- * one" into "the table has an empty cell". `test/invariants.test.ts` asserts every
- * state in `states.ts` has a row, so adding a state fails the build until someone
- * fills it in. That is the whole point of this file; the repairs themselves are
- * two lines each.
- *
- * What does NOT belong here: the watchdog's *detectors* — turn timeout, no
+ * What does **not** belong here: the watchdog's *detectors* — timeout, no
  * progress, circling, budget, env_suspect. Those answer "is this healthy", which
- * is a different question from "is anybody driving this". Keeping them apart is
- * what stops this table from becoming a second dumping ground.
+ * is a different question from "is anybody driving this".
  */
 
-export interface Invariant<S extends string> {
+interface Invariant<S extends string> {
   state: S;
   /** What has to be true, in one line, for a reader deciding whether it still holds. */
   must: string;
@@ -61,7 +64,7 @@ export interface Invariant<S extends string> {
 
 const rows = <S extends string>(...r: Invariant<S>[]) => r;
 
-export const GRP_INVARIANTS = rows<GrpState>(
+const GRP_INVARIANTS = rows<GrpState>(
   {
     state: "PLANNING",
     must: "a dispatcher turn is queued or running until a DRAFT card exists",
@@ -82,14 +85,15 @@ export const GRP_INVARIANTS = rows<GrpState>(
       // acceptance — so when none of those fires again nobody starts it, and
       // RUNNING with an empty queue is indistinguishable from working.
       for (const g of ctx.db
-        .query<{ id: number }, []>(
+        .query<{ id: number }, [string]>(
           `SELECT g.id FROM grp g
            WHERE g.status = 'RUNNING'
              AND EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status = 'pending')
              AND NOT EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status NOT IN ('pending','accepted'))
-             AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id AND state IN ('pending','running'))`,
+             AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id
+                             AND state IN (SELECT value FROM json_each(?)))`,
         )
-        .all()) {
+        .all(stateParam(ACTIVE_JOB_STATES))) {
         startNextSlice(ctx, g.id);
       }
 
@@ -98,16 +102,17 @@ export const GRP_INVARIANTS = rows<GrpState>(
       // again after the Auditor sends the branch back. Not while the boss is being
       // asked: pr_retries is spent by then and shipping would walk past them.
       for (const g of ctx.db
-        .query<{ id: number }, []>(
+        .query<{ id: number }, [string]>(
           `SELECT g.id FROM grp g
            WHERE g.status = 'RUNNING' AND g.pr_number IS NULL
              AND EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id)
              AND NOT EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status != 'accepted')
-             AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id AND state IN ('pending','running'))
+             AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id
+                             AND state IN (SELECT value FROM json_each(?)))
              AND NOT EXISTS (SELECT 1 FROM escalation
                              WHERE grp_id = g.id AND answer IS NULL AND chain_state = 'boss')`,
         )
-        .all()) {
+        .all(stateParam(ACTIVE_JOB_STATES))) {
         ctx.sched.enqueue("reconcile", { grp_id: g.id, priority: 5 });
       }
     },
@@ -120,12 +125,18 @@ export const GRP_INVARIANTS = rows<GrpState>(
   },
   {
     state: "PAUSED",
-    must: "paused_at is set, or every timer keyed on it is blind to this group",
+    must: "paused_at and pause_reason are set, or no timer and no resume is about this group",
     driver: "the boss answering, resume, or the park timer",
     repair: (ctx) => {
       // Three callers write PAUSING without a timestamp; settle() stamps it now,
-      // but a row that predates that fix would stay invisible forever.
-      ctx.db.run("UPDATE grp SET paused_at = unixepoch() * 1000 WHERE status = 'PAUSED' AND paused_at IS NULL");
+      // but a row that predates that fix would stay invisible forever. A missing
+      // reason is the same failure one door over: `credentialChanged` resumes by
+      // reason, so a row without one is a row nothing will ever start again.
+      ctx.db.run(
+        `UPDATE grp SET paused_at = coalesce(paused_at, unixepoch() * 1000),
+           pause_reason = coalesce(pause_reason, 'unknown')
+         WHERE status = 'PAUSED' AND (paused_at IS NULL OR pause_reason IS NULL)`,
+      );
     },
   },
   {
@@ -136,7 +147,8 @@ export const GRP_INVARIANTS = rows<GrpState>(
   {
     state: "PR_OPEN",
     must: "it has a number, a place in the merge queue, and something reading GitHub",
-    driver: "the Scribe filing `orch pr` publishes it; then pollPrs — merged winds it up, closed pauses it, reopened puts it back",
+    driver:
+      "the Scribe filing `orch pr` publishes it; then pollPrs — merged winds it up, closed pauses it, reopened puts it back",
     repair: (ctx) => {
       // Audited, queued, and no PR: the Scribe's turn died, or ended without
       // filing a message. Its own liveness is the scheduler's — a job that fails
@@ -149,13 +161,14 @@ export const GRP_INVARIANTS = rows<GrpState>(
       // the query below. A place in the merge queue is only handed out by a
       // passed audit.
       for (const g of ctx.db
-        .query<{ id: number }, []>(
+        .query<{ id: number }, [string]>(
           `SELECT id FROM grp g WHERE status = 'PR_OPEN' AND pr_number IS NULL AND merge_seq IS NOT NULL
              AND NOT EXISTS (
-               SELECT 1 FROM job WHERE grp_id = g.id AND kind = 'agent_turn' AND state IN ('pending', 'running')
+               SELECT 1 FROM job WHERE grp_id = g.id AND kind = 'agent_turn'
+                 AND state IN (SELECT value FROM json_each(?))
              )`,
         )
-        .all()) {
+        .all(stateParam(ACTIVE_JOB_STATES))) {
         ctx.publishBranch?.(g.id);
       }
       // waiting_merge reads merge_seq_at, so a null one is invisible to it: finished
@@ -180,7 +193,7 @@ export const GRP_INVARIANTS = rows<GrpState>(
   },
 );
 
-export const SLICE_INVARIANTS = rows<SliceState>(
+const SLICE_INVARIANTS = rows<SliceState>(
   {
     state: "pending",
     must: "it starts once the slice before it is accepted",
@@ -205,7 +218,7 @@ export const SLICE_INVARIANTS = rows<SliceState>(
              AND NOT EXISTS (SELECT 1 FROM task t WHERE t.slice_id = s.id AND t.status != 'done')`,
         )
         .all()) {
-        reopenTasks(ctx, s.id);
+        reopenTasks(ctx.db, s.id);
       }
 
       // The other half of the same deadlock: the card is claimed, but by an agent
@@ -226,15 +239,34 @@ export const SLICE_INVARIANTS = rows<SliceState>(
     driver: "boss accepts or rejects; waiting_slice nudges after 4h",
   },
   { state: "accepted", must: "the next slice starts, or the branch goes to review", driver: null },
-  { state: "rejected", must: "an engineer turn carries the rejection back", driver: "postSliceDecision; watchdog rule 8" },
+  {
+    state: "rejected",
+    must: "an engineer turn carries the rejection back",
+    driver: "postSliceDecision; watchdog rule 8",
+  },
 );
 
-export const JOB_INVARIANTS = rows<JobState>(
+const TASK_INVARIANTS = rows<TaskState>(
+  {
+    state: "pending",
+    must: "the active writer can claim or complete it while its slice is running",
+    driver: "the writer through orch task claim or orch task done; watchdog rule 8 keeps that turn moving",
+  },
+  {
+    state: "in_progress",
+    must: "its active owner completes it, or a replacement writer can reclaim it",
+    driver: "orch task done; the SLICE.running repair clears ownership left by a retired agent",
+  },
+  { state: "done", must: "it stays closed until a rejected slice explicitly reopens its tasks", driver: null },
+);
+
+const JOB_INVARIANTS = rows<JobState>(
   { state: "pending", must: "it is dispatched once its group and pool have room", driver: "Scheduler.tick" },
   {
     state: "running",
     must: "it ends, or something ends it",
-    driver: "the executor; watchdog rule 1 kills a turn past its wall clock, and reclaimOrphans frees one whose process died with the server",
+    driver:
+      "the executor; watchdog rule 1 kills a turn past its wall clock, and reclaimOrphans frees one whose process died with the server",
   },
   { state: "done", must: "whatever it was doing arranged what comes next", driver: null },
   {
@@ -246,18 +278,16 @@ export const JOB_INVARIANTS = rows<JobState>(
 );
 
 /**
- * The utility container (007 step 4).
+ * The utility container.
  *
- * It is the only container bound for GitHub writes, so when it is not there,
- * every branch stops reaching the remote — and that failure has the shape this
- * table exists for: the groups keep working, keep committing, keep looking
- * healthy, and nothing on the boss's screen is red. What makes it survivable is
- * that its absence is *cheap and self-correcting* — `ensureSandbox` builds one
- * on the next call — and that the two ways it can fail to come back are both
- * already reported: the sandbox hold when no container can be opened at all, and
- * `credential:github` in preflight when there is nothing to bind.
+ * The only container bound for GitHub writes, so when it is absent every branch
+ * stops reaching the remote — and that has the shape this table exists for: groups
+ * keep working, keep committing, keep looking healthy.
+ *
+ * Survivable because its absence is cheap and self-correcting (`ensureSandbox`
+ * builds one on the next call) and both ways it fails to return are reported.
  */
-export const UTIL_INVARIANTS = rows<UtilState>(
+const UTIL_INVARIANTS = rows<UtilState>(
   {
     state: "down",
     must: "the next push builds one, and if it cannot, something says why",
@@ -275,17 +305,16 @@ export const UTIL_INVARIANTS = rows<UtilState>(
 );
 
 /**
- * A project's GitHub reachability (007 §6).
+ * A project's GitHub reachability.
  *
- * The hold exists because an expired token makes every group fail at the same
- * moment, each reporting a different error, and retrying is the one thing that
- * cannot help. It then has the deadlock this table is for: a held project runs no
- * turns, so it makes no GitHub calls, so nothing would ever clear it. The clock
- * is what breaks that, and the repair below is for the other half — the hold is
- * in memory and the question is in the database, so a restart leaves a 待办 item
- * behind nothing, which the boss cannot clear by fixing anything.
+ * The hold exists because an expired token makes every group fail at once, each
+ * reporting a different error, and retrying cannot help. It then has the deadlock
+ * this table is for: a held project runs no turns, so it makes no GitHub calls, so
+ * nothing would ever clear it — the clock is what breaks that.
+ *
+ * The repair below is the other half: the hold is in memory, the question is not.
  */
-export const PROJECT_INVARIANTS = rows<ProjectState>(
+const PROJECT_INVARIANTS = rows<ProjectState>(
   { state: "reachable", must: "GitHub answers for this project's owner/repo", driver: null },
   {
     state: "repo_held",
@@ -312,7 +341,7 @@ export const PROJECT_INVARIANTS = rows<ProjectState>(
  * is refusing produces a restart loop, and waiting for a server that is absent
  * produces a fleet that never moves.
  */
-export const SERVER_INVARIANTS = rows<ServerState>(
+const SERVER_INVARIANTS = rows<ServerHealthState>(
   {
     state: "up",
     must: "every container is opened through it, and its config is the one we mount against",
@@ -341,7 +370,7 @@ export const SERVER_INVARIANTS = rows<ServerState>(
   },
 );
 
-export const LEASE_INVARIANTS = rows<LeaseState>(
+const LEASE_INVARIANTS = rows<LeaseState>(
   {
     state: "queued",
     must: "a lease job is queued for it, and the agent is waiting on the answer",
@@ -362,7 +391,7 @@ export const LEASE_INVARIANTS = rows<LeaseState>(
   { state: "failed", must: "the agent has the exit code and the digest to act on", driver: null },
 );
 
-export const ESCALATION_INVARIANTS = rows<EscalationState>(
+const ESCALATION_INVARIANTS = rows<EscalationState>(
   {
     state: "pm",
     must: "the role it is with has a turn queued to answer it",
@@ -387,23 +416,54 @@ export const ESCALATION_INVARIANTS = rows<EscalationState>(
  * rows that are wrong and a write that makes them right, so running them twice is
  * the same as running them once.
  */
+/**
+ * Every table, not two of them.
+ *
+ * This ran GRP and SLICE and skipped the other six, so `PROJECT.repo_held`'s repair
+ * — written, reviewed, covered by `uncovered()` — had never executed once. That is
+ * this file's own failure from the other side: not a state with nobody driving it,
+ * but a driver nobody calls, and both look like a healthy system.
+ *
+ * `uncovered()` checks every state has a row; nothing checked that every row runs.
+ */
+export const INVARIANT_TABLES = {
+  grp: GRP_INVARIANTS,
+  slice: SLICE_INVARIANTS,
+  task: TASK_INVARIANTS,
+  job: JOB_INVARIANTS,
+  escalation: ESCALATION_INVARIANTS,
+  util: UTIL_INVARIANTS,
+  project: PROJECT_INVARIANTS,
+  server: SERVER_INVARIANTS,
+  lease: LEASE_INVARIANTS,
+} satisfies Record<string, readonly Invariant<string>[]>;
+
 export function runInvariants(ctx: Ctx): void {
-  for (const i of [...GRP_INVARIANTS, ...SLICE_INVARIANTS]) i.repair?.(ctx);
+  for (const table of Object.values(INVARIANT_TABLES)) for (const invariant of table) invariant.repair?.(ctx);
 }
 
 /** States with no row. The test fails on a non-empty result; nothing else calls it. */
 export function uncovered(): {
-  grp: string[]; slice: string[]; job: string[]; escalation: string[]; util: string[]; project: string[]; server: string[]; lease: string[];
+  grp: string[];
+  slice: string[];
+  task: string[];
+  job: string[];
+  escalation: string[];
+  util: string[];
+  project: string[];
+  server: string[];
+  lease: string[];
 } {
   const has = (rs: { state: string }[], s: string) => rs.some((r) => r.state === s);
   return {
-    grp: GRP_STATES.filter((s) => !has(GRP_INVARIANTS, s)),
-    slice: SLICE_STATES.filter((s) => !has(SLICE_INVARIANTS, s)),
-    job: JOB_STATES.filter((s) => !has(JOB_INVARIANTS, s)),
-    escalation: ESCALATION_STATES.filter((s) => !has(ESCALATION_INVARIANTS, s)),
-    util: UTIL_STATES.filter((s) => !has(UTIL_INVARIANTS, s)),
-    project: PROJECT_STATES.filter((s) => !has(PROJECT_INVARIANTS, s)),
-    server: SERVER_STATES.filter((s) => !has(SERVER_INVARIANTS, s)),
-    lease: LEASE_STATES.filter((s) => !has(LEASE_INVARIANTS, s)),
+    grp: GRP_STATES.filter((s) => !has(INVARIANT_TABLES.grp, s)),
+    slice: SLICE_STATES.filter((s) => !has(INVARIANT_TABLES.slice, s)),
+    task: TASK_STATES.filter((s) => !has(INVARIANT_TABLES.task, s)),
+    job: JOB_STATES.filter((s) => !has(INVARIANT_TABLES.job, s)),
+    escalation: ESCALATION_STATES.filter((s) => !has(INVARIANT_TABLES.escalation, s)),
+    util: UTIL_STATES.filter((s) => !has(INVARIANT_TABLES.util, s)),
+    project: PROJECT_STATES.filter((s) => !has(INVARIANT_TABLES.project, s)),
+    server: SERVER_STATES.filter((s) => !has(INVARIANT_TABLES.server, s)),
+    lease: LEASE_STATES.filter((s) => !has(INVARIANT_TABLES.lease, s)),
   };
 }

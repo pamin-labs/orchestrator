@@ -1,27 +1,31 @@
-/**
- * Claim versus diff.
- *
- * "The journal says it is done but nothing changed" is the characteristic
- * failure of agent systems, and an LLM reviewer will happily rubber-stamp it.
- * This check is deterministic on purpose: it compares what was claimed against
- * what git actually shows, and it runs before any reviewer sees the work.
- */
+import { z } from "zod";
+import { ChangedFilesClaimSchema } from "../../contracts/orch.ts";
+
+/** Claim versus diff. */
+
+export { ChangedFilesClaimSchema } from "../../contracts/orch.ts";
+
+export const AlreadyDoneClaimSchema = z.object({
+  already_done: z.string().trim().min(1).max(4000),
+});
+
+/** Exactly one account of completion: changed files, or work already present. */
+export const TaskClaimSchema = z.xor([ChangedFilesClaimSchema, AlreadyDoneClaimSchema]);
+export type TaskClaim = z.infer<typeof TaskClaimSchema>;
 
 export interface ReconcileInput {
   /** What the agent said it produced (`orch task done --claim …`). */
-  claims: unknown[];
+  claims: TaskClaim[];
   /** Paths git reports as changed since the slice started. */
   changedFiles: string[];
   /**
    * Claimed paths that are neither in the branch point's tree nor in the worktree.
    *
    * A scratch file the Engineer created and then deleted leaves nothing behind:
-   * never committed, so it is not in the diff, and gone, so it is not untracked
-   * either. Reporting that deletion honestly was scored as a phantom claim, and a
-   * correct branch went back twice on it. Git cannot tell that case from an
-   * invented path — neither ever existed as far as it is concerned — so neither
-   * can we, and neither is a delivery. They are dropped from the claim rather than
-   * failing it; if nothing real is left, the checks below still catch it.
+   * never committed, so not in the diff, and gone, so not untracked either.
+   * Reporting that deletion honestly was scored as a phantom claim and a correct
+   * branch went back twice on it. Git cannot tell that from an invented path, so
+   * neither can we, and neither is a delivery.
    */
   absent?: string[];
 }
@@ -35,14 +39,11 @@ export interface ReconcileInput {
  * escalated. The claim of "already done" is legitimate — but only if the gate and
  * the acceptance spec still pass, which they are checked for separately.
  */
-export function declaredNoOp(claims: unknown[]): string | null {
-  for (const c of claims) {
-    if (c && typeof c === "object" && "already_done" in (c as Record<string, unknown>)) {
-      const why = (c as Record<string, unknown>).already_done;
-      if (typeof why === "string" && why.trim()) return why.trim();
-    }
-  }
-  return null;
+function declaredNoOp(claims: TaskClaim[]): string | null {
+  return (
+    claims.find((claim): claim is z.infer<typeof AlreadyDoneClaimSchema> => "already_done" in claim)?.already_done ??
+    null
+  );
 }
 
 export interface ReconcileResult {
@@ -56,28 +57,18 @@ export interface ReconcileResult {
   reason?: string;
 }
 
-/** Anything that looks like a repo path inside a free-form claim. */
+/** Anything that looks like a repo path inside a DRAFT card. */
 const PATHISH = /(?:^|[\s"'`(,])((?:[\w.@-]+\/)+[\w.@-]+\.[\w]{1,8})/g;
 
-export function extractClaimedFiles(claims: unknown[]): string[] {
+export function extractClaimedFiles(claims: readonly (TaskClaim | string)[]): string[] {
   const out = new Set<string>();
-  const walk = (v: unknown): void => {
-    if (v == null) return;
-    if (typeof v === "string") {
-      // A claim may be prose or structured; both mention paths the same way.
-      for (const m of v.matchAll(PATHISH)) out.add(m[1]!);
-      if (/^[\w.@/-]+\.[\w]{1,8}$/.test(v.trim())) out.add(v.trim());
-      return;
+  for (const claim of claims) {
+    if (typeof claim === "string") {
+      for (const match of claim.matchAll(PATHISH)) out.add(match[1]!);
+      continue;
     }
-    if (Array.isArray(v)) {
-      for (const x of v) walk(x);
-      return;
-    }
-    if (typeof v === "object") {
-      for (const x of Object.values(v as Record<string, unknown>)) walk(x);
-    }
-  };
-  for (const c of claims) walk(c);
+    if ("files" in claim) for (const file of claim.files) out.add(file);
+  }
   return [...out];
 }
 

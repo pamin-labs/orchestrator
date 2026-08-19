@@ -2,29 +2,49 @@ import * as P from "@radix-ui/react-popover";
 import { Command } from "cmdk";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
- * One control for a value that comes from a list.
+ * One control for a value that comes from a list: type to filter, click or Enter
+ * to commit.
  *
- * Type to filter, click or Enter to commit. The first attempt at the
- * base-branch field was a text box **and** a menu beside it: two widgets for one
- * value, where the box could not say what the valid answers were and the menu
+ * The base-branch field was a text box **and** a menu beside it — two widgets for
+ * one value, where the box could not say what the valid answers were and the menu
  * could not be typed into. Having both was the bug, not either half.
- *
+ */
+/**
  * **The list is the authority when there is one.** A base branch that does not
- * exist is not a value, it is a group that fails at clone time four steps later,
- * so text that matches nothing is refused and the field snaps back. When the
- * list is *empty* — no GitHub credential, rate limited, the API down — there is
- * nothing to check against, and refusing everything would mean an unreachable
- * API silently locks a settings field. Then, and only then, text is taken as
- * typed.
- *
+ * exist is a group that fails at clone time four steps later, so text matching
+ * nothing is refused and the field snaps back. When the list is *empty* — no
+ * credential, rate limited, API down — refusing everything would let an
+ * unreachable API silently lock a settings field, so then and only then text is
+ * taken as typed.
+ */
+/**
  * shadcn's current combobox is Base UI. This is Radix Popover plus the `cmdk`
  * already here, which is the same composition one library earlier: seven Radix
  * packages are in this tree, and a second primitive library for one control is a
  * dependency that outlives its reason.
  */
+/**
+ * What a typed or clicked value becomes, and whether the caller hears about it.
+ *
+ * Refused rather than saved: see the note above. `options.length` is the whole
+ * condition — an empty list means unverifiable, not invalid — and a value equal
+ * to the stored one is committed to nothing, so reopening the field and pressing
+ * Enter is not a write.
+ */
+export function committed(
+  typed: string,
+  value: string,
+  options: string[],
+  free?: boolean,
+): { draft: string; commit: string | null } {
+  const next = typed.trim();
+  if (!free && options.length && !options.includes(next)) return { draft: value, commit: null };
+  return { draft: next, commit: next === value.trim() ? null : next };
+}
+
 export function Combobox({
   value,
   options,
@@ -32,6 +52,7 @@ export function Combobox({
   empty = "没有匹配的分支",
   disabled,
   width,
+  free,
   onCommit,
 }: {
   value: string;
@@ -40,6 +61,15 @@ export function Combobox({
   empty?: string;
   disabled?: boolean;
   width?: string;
+  /**
+   * The list is a suggestion, not the authority.
+   *
+   * For a base branch the list *is* the authority — a branch that does not exist
+   * fails at clone time four steps later. A model id is the other case: the only
+   * way a new one ever enters the config is by being typed somewhere first, and a
+   * picker that refused it would be a picker you edit the yaml to get around.
+   */
+  free?: boolean;
   onCommit: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -51,18 +81,13 @@ export function Combobox({
   // focus is the point of opening it — filtering by the value already in the box
   // would offer exactly the one branch already selected.
   const q = draft.trim().toLowerCase();
-  const shown = q && q !== value.trim().toLowerCase()
-    ? options.filter((o) => o.toLowerCase().includes(q))
-    : options;
+  const shown = q && q !== value.trim().toLowerCase() ? options.filter((o) => o.toLowerCase().includes(q)) : options;
 
   const commit = (v: string) => {
-    const next = v.trim();
     setOpen(false);
-    // Refused rather than saved: see the note above. `options.length` is the
-    // whole condition — an empty list means unverifiable, not invalid.
-    if (options.length && !options.includes(next)) return setDraft(value);
-    setDraft(next);
-    if (next !== value.trim()) onCommit(next);
+    const next = committed(v, value, options, free);
+    setDraft(next.draft);
+    if (next.commit !== null) onCommit(next.commit);
   };
 
   return (

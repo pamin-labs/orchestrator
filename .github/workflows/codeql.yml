@@ -1,0 +1,35 @@
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 3 * * 2'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-codeql:
+    name: security-codeql
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write # CodeQL publishes analysis results to code scanning.
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@988661ebb5e81487b3fb31b2185d2856c0a10679 # v4
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      - uses: github/codeql-action/analyze@988661ebb5e81487b3fb31b2185d2856c0a10679 # v4
+        with:
+          category: /language:javascript-typescript

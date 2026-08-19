@@ -1,0 +1,12 @@
+exit-code: 1
+severity:
+  - HIGH
+  - CRITICAL
+ignore-unfixed: true
+scanners:
+  - vuln
+  - secret
+  - misconfig
+timeout: 10m
+# Time-limited, individually-justified exceptions. See the file for each reason.
+ignorefile: .trivyignore.yaml

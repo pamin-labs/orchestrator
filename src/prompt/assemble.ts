@@ -1,18 +1,17 @@
 /**
- * The ONLY place a turn's input is assembled. See PLAN.md §7 token economics #1.
+ * The ONLY place a turn's input is assembled.
  *
- * The rule: everything that varies per turn goes in `prompt` (a fresh user
- * message, appended at the end). Everything else is `stable` and must be
- * byte-identical for the whole life of a session.
- *
- * Getting this wrong does not break anything visibly — the agent still works,
- * the tests still pass, and every turn silently re-reads the entire prompt at
- * full price instead of 0.1x. That is why the invariant lives in one function
- * with a hash, and why `test/cache-position.test.ts` guards it.
- *
- * Corollary that is easy to miss: when the stable half legitimately changes
- * (lessons list updated, role prompt edited, model re-tiered), we must ROTATE
- * the session rather than mutate it. `needsRotation()` decides.
+ * The rule: everything that varies per turn goes in `prompt` (a fresh user message
+ * appended at the end). Everything else is `stable` and must be byte-identical for
+ * the whole life of a session. Getting it wrong breaks nothing visibly — the agent
+ * works, the tests pass, and every turn silently re-reads the entire prompt at full
+ * price instead of 0.1x, which is why it lives in one function with a hash.
+ */
+/**
+ * The corollary that is easy to miss: when the stable half legitimately changes —
+ * lessons updated, role prompt edited, model re-tiered — the session must be
+ * ROTATED rather than mutated. `needsRotation()` decides, and
+ * `cache-position.test.ts` guards it.
  */
 
 /** The half that must never change within a session. */
@@ -87,7 +86,7 @@ const ORCH_CONTRACT = `## Talking to the orchestrator
 
 Use Bash. Every command blocks and returns its result on stdout.
 
-  orch ctx query "<question>"          # ALWAYS FIRST, before grep/git/reading files.
+  orch ctx query "<question>"          # ALWAYS FIRST, before rg/git/reading files.
       # One call answers: every slice in this group with status and acceptance line;
       # the group's status, branch and PR; the last result of each gate; the questions
       # still unanswered; and where a thing lives — a summary tree of the repo that a
@@ -179,7 +178,7 @@ export function buildStable(parts: StableParts): StablePrompt {
   const stable: Omit<StablePrompt, "hash"> = {
     systemAppend,
     model: parts.model,
-    effort: parts.effort,
+    ...(parts.effort ? { effort: parts.effort } : {}),
     tools: [...(parts.tools ?? toolsFromAllowed(parts.allowedTools))],
     allowedTools: [...parts.allowedTools],
     addDirs: [...parts.addDirs],
@@ -187,7 +186,7 @@ export function buildStable(parts: StableParts): StablePrompt {
   return { ...stable, hash: hashStable(stable) };
 }
 
-export function hashStable(s: Omit<StablePrompt, "hash">): string {
+function hashStable(s: Omit<StablePrompt, "hash">): string {
   const h = new Bun.CryptoHasher("sha256");
   // Field order is part of the contract; do not sort or reformat. The separator
   // is escaped rather than a raw NUL byte so the source survives tooling.
@@ -212,7 +211,7 @@ export function hashStable(s: Omit<StablePrompt, "hash">): string {
  * The built-in tools implied by a permission whitelist: `Bash(orch *)` needs
  * `Bash` loaded, `Read` needs `Read`. Everything else stays out of the prefix.
  */
-export function toolsFromAllowed(allowed: string[]): string[] {
+function toolsFromAllowed(allowed: string[]): string[] {
   const set = new Set<string>();
   for (const a of allowed) {
     const name = a.includes("(") ? a.slice(0, a.indexOf("(")) : a;

@@ -1,5 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * A bordered surface, in the three tones this panel has.
@@ -18,43 +18,28 @@ export const cardStyles = cva("rounded-xl border", {
   defaultVariants: { tone: "default" },
 });
 
-type Div = React.HTMLAttributes<HTMLDivElement>;
-
-export function Card({ className, tone, ...rest }: Div & VariantProps<typeof cardStyles>) {
+export function Card({
+  className,
+  tone,
+  ...rest
+}: React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof cardStyles>) {
   return <div className={cn(cardStyles({ tone }), className)} {...rest} />;
 }
 
 /** Header rule included: a header without one is a paragraph in bold. */
-export function CardHeader({ className, ...rest }: Div) {
-  return <div className={cn("flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-rule px-3.5 py-2", className)} {...rest} />;
-}
-
-export function CardTitle({ className, ...rest }: Div) {
-  return <div className={cn("font-display text-[1.0625rem] font-semibold", className)} {...rest} />;
-}
-
-/** Small-caps header, for a strip that labels rows rather than titling a panel. */
-export function CardLabel({ className, ...rest }: Div) {
+export function CardHeader({ className, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn(
-        "flex items-center gap-2 px-3.5 py-2 text-[0.75rem] font-semibold tracking-[0.02em]",
-        className,
-      )}
+      className={cn("flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-rule px-3.5 py-2", className)}
       {...rest}
     />
   );
 }
 
-export function CardBody({ className, ...rest }: Div) {
+export function CardTitle({ className, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("font-display text-[1.0625rem] font-semibold", className)} {...rest} />;
+}
+
+export function CardBody({ className, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("px-3.5 py-3", className)} {...rest} />;
-}
-
-export function CardFooter({ className, ...rest }: Div) {
-  return <div className={cn("flex flex-wrap items-center gap-2 border-t border-rule-soft px-3.5 py-2", className)} {...rest} />;
-}
-
-/** A rule-separated row inside a card. First one carries no rule. */
-export function CardRow({ className, ...rest }: Div) {
-  return <div className={cn("border-t border-rule-soft px-3.5 py-3 first:border-t-0", className)} {...rest} />;
 }

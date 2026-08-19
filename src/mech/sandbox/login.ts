@@ -1,21 +1,22 @@
-import type { Ctx } from "../../ctx.ts";
+import type { Bus } from "../../platform/persistence/event-bus.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { saveAuth } from "./auth.ts";
 import { REFRESH_HOME } from "./chatgpt.ts";
 import { execIn, execLines, getFile, putFile, UTIL } from "./sandbox.ts";
-import { shq } from "../util/shq.ts";
+import { shq } from "../../platform/process/shell.ts";
 
 /**
  * Logging in without leaving the panel.
  *
- * Both CLIs already do this properly — print a URL, wait for the browser, hand
- * back a credential — so the panel runs the CLI rather than reimplementing two
- * OAuth flows against undocumented client ids. The boss clicks a button, clicks
- * a link, and the token lands in the settings page by itself.
- *
+ * Both CLIs already do this properly — print a URL, wait for the browser, hand back
+ * a credential — so the panel runs the CLI rather than reimplementing two OAuth
+ * flows against undocumented client ids.
+ */
+/**
  * In the **utility container**, all of it. Both flows produce a real long-lived
- * credential, and that container is the one with no agent, no mailbox and no
- * `orch` in it — which is the entire reason it is allowed to hold one. The host
- * runs the server and nothing else; the browser is still the boss's.
+ * credential, and that container is the one with no agent, no mailbox and no `orch`
+ * in it — which is the entire reason it is allowed to hold one. The host runs the
+ * server and nothing else; the browser is still the boss's.
  */
 
 /**
@@ -43,6 +44,19 @@ export interface LoginRun {
   cancel: () => void;
 }
 
+type LineStream = ReturnType<typeof execLines>;
+
+async function consumeLogin(bus: Bus, stream: LineStream, onLine: (line: string) => void) {
+  for (;;) {
+    const step = await stream.next();
+    if (step.done) return step.value;
+    const plain = clean(step.value).trim();
+    if (!plain) continue;
+    bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body: plain });
+    onLine(plain);
+  }
+}
+
 /**
  * `T5M2-76TFM`. Probed against codex-cli **0.147.0** in `orch/agent:1`.
  *
@@ -59,17 +73,43 @@ export const DEVICE_CODE_TTL_MS = 15 * 60_000;
 /** One at a time: a second click would print a second code and invalidate the first. */
 let deviceLogin: LoginRun | null = null;
 
+async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
+  const stream = execLines(ctx, UTIL, "codex login --device-auth", {
+    env: { CODEX_HOME: REFRESH_HOME },
+    timeoutMs: DEVICE_CODE_TTL_MS + 60_000,
+    signal,
+  });
+  const result = await consumeLogin(ctx.bus, stream, (line) => {
+    run.url ??= line.match(URL_RE)?.[0] ?? null;
+    run.code ??= line.match(DEVICE_CODE_RE)?.[0] ?? null;
+  });
+  if (result.code !== 0)
+    return { ok: false, detail: `codex login exited ${result.code}: ${result.err.trim().slice(-300)}` };
+  if (!run.code)
+    return {
+      ok: false,
+      detail: "could not read a device code from codex's output — check `codex login --device-auth` in the image",
+    };
+  const secret = (await getFile(ctx, UTIL, `${REFRESH_HOME}/auth.json`)) ?? "";
+  if (!secret.trim()) return { ok: false, detail: "codex login finished but produced no credential" };
+  saveAuth(ctx.db, { runtime: "codex", mode: "chatgpt", secret: secret.trim() });
+  ctx.sched.tick();
+  return { ok: true, detail: "stored" };
+}
+
 /**
  * Log in to a ChatGPT account from the utility container.
  *
  * `codex login` proper starts a listener on `http://localhost:1455` and registers
  * that exact redirect with the provider — probed — so no proxied endpoint can
- * ever satisfy it, and altering `redirect_uri` is forging a redirect. codex
- * answers this itself on the next line of its own output: `--device-auth`, which
- * prints a URL and a one-time code and polls. Same shape the panel already runs
- * for GitHub, and the real CLI still does the whole exchange — so the objection
- * that kept this on the host, our code impersonating the official client, does
- * not apply.
+ * satisfy it, and altering `redirect_uri` is forging a redirect. codex answers this
+ * on the next line of its own output: `--device-auth`, which prints a URL and a
+ * one-time code and polls.
+ */
+/**
+ * Same shape the panel already runs for GitHub, and the real CLI still does the
+ * whole exchange — so the objection that kept this on the host, our code
+ * impersonating the official client, does not apply.
  *
  * In the **utility container**: this writes a real refresh token, and that is the
  * one credential no container with an agent in it may see.
@@ -85,40 +125,9 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
   };
   deviceLogin = run;
 
-  run.done = (async () => {
-    try {
-      const stream = execLines(ctx, UTIL, "codex login --device-auth", {
-        env: { CODEX_HOME: REFRESH_HOME },
-        timeoutMs: DEVICE_CODE_TTL_MS + 60_000,
-        signal: abort.signal,
-      });
-      for (;;) {
-        const step = await stream.next();
-        if (step.done) {
-          if (step.value.code !== 0) {
-            return { ok: false, detail: `codex login exited ${step.value.code}: ${step.value.err.trim().slice(-300)}` };
-          }
-          break;
-        }
-        const plain = clean(step.value).trim();
-        if (!plain) continue;
-        ctx.bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body: plain });
-        run.url ??= plain.match(URL_RE)?.[0] ?? null;
-        run.code ??= plain.match(DEVICE_CODE_RE)?.[0] ?? null;
-      }
-      if (!run.code) {
-        // Said rather than waited out: this is what a changed CLI looks like.
-        return { ok: false, detail: "could not read a device code from codex's output — check `codex login --device-auth` in the image" };
-      }
-      const secret = (await getFile(ctx, UTIL, `${REFRESH_HOME}/auth.json`)) ?? "";
-      if (!secret.trim()) return { ok: false, detail: "codex login finished but produced no credential" };
-      saveAuth(ctx.db, { runtime: "codex", mode: "chatgpt", secret: secret.trim() });
-      ctx.sched.tick(); // whatever was held for a missing credential can go now
-      return { ok: true, detail: "stored" };
-    } finally {
-      deviceLogin = null;
-    }
-  })();
+  run.done = finishCodexLogin(ctx, run, abort.signal).finally(() => {
+    deviceLogin = null;
+  });
 
   return run;
 }
@@ -126,31 +135,18 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
 /**
  * A terminal, so a terminal program will talk.
  *
- * `claude setup-token` is a TUI. Run without one it prints **nothing** and exits
- * 0 — measured, twice, in `orch/agent:1`:
+ * `claude setup-token` is a TUI: without a pty it prints nothing and exits 0, which
+ * gave the panel a login button that succeeded instantly and stored nothing.
+ */
+/**
+ * Two details are load-bearing. **The window size is set explicitly** — a parentless
+ * pty defaults to 80 columns and the CLI wraps its URL across five lines mid-token,
+ * and the link handed to the boss has to be one string; this is also why `script
+ * -qec`, in the image and tried first, does not work. **Stdin is a file this process
+ * appends to**, because the sandbox SDK has no channel into a running command.
  *
- *   claude setup-token < /dev/null   ->  (no output)   [exited with code 0]
- *
- * which is the worst possible shape: the panel had a "log in" button that
- * succeeded instantly and stored nothing, and the only way to tell was that no
- * credential appeared. Under a pty the same command prints its URL and then
- * waits at `Paste code here if prompted >`.
- *
- * Two details are not incidental. **The window size** is set explicitly, because
- * a pty with no parent defaults to 80 columns and the CLI wraps its URL across
- * five lines mid-token — the link the boss is handed has to be one string.
- * **Stdin** comes from a file this process appends to, because the sandbox SDK
- * has no channel into a running command: `select` on the master fd plus
- * `readline` on a file we `putFile` into is the whole mechanism by which the
- * pasted code gets in.
- *
- * `script -qec` is in the image and does the pty part, and it was the first
- * thing tried; it ignores `COLUMNS`, so the URL still arrived wrapped.
- *
- * **This runs the real CLI and nothing else.** No client id of ours, no URL we
- * built, no call to a token endpoint — `claude setup-token` performs the entire
- * OAuth exchange itself, exactly as it does in a terminal. A pty is a terminal;
- * that is the only thing being supplied.
+ * This runs the real CLI and nothing else. A pty is a terminal; that is all that is
+ * supplied.
  */
 const PTY_PATH = "/opt/orch/pty.py";
 const PTY_RUNNER = `import fcntl, os, pty, select, struct, sys, termios
@@ -201,19 +197,48 @@ const PASTE_RE = /paste code/i;
 /**
  * Sign in to a Claude account, from the utility container.
  *
- * The last thing that needed a binary on the boss's own machine. It is here for
- * the same reason the ChatGPT refresh is: what it produces is a real long-lived
- * credential, and the utility container is the one with no agent, no mailbox and
- * no `orch` in it — which is the entire reason it may hold one.
+ * The last thing that needed a binary on the boss's own machine. Here for the same
+ * reason the ChatGPT refresh is: what it produces is a real long-lived credential,
+ * and the utility container is the one with no agent, no mailbox and no `orch` in
+ * it — which is the entire reason it may hold one.
+ */
+/**
+ * `setup-token` mints a *separate* token rather than touching whatever session the
+ * container happens to hold, so running it here disturbs nothing.
  *
- * `setup-token` mints a *separate* token rather than touching whatever session
- * the container happens to hold, so running it here does not disturb anything.
- *
- * Two halves, minutes apart, same shape as the GitHub and codex flows: the URL
- * comes back from `start`, and `submit` carries the code the boss pastes from
- * the page — which is what the CLI is sitting at a prompt waiting for.
+ * Two halves, minutes apart, the same shape as the GitHub and codex flows: the URL
+ * comes back from `start`, and `submit` carries the code the boss pastes — which is
+ * what the CLI is sitting at a prompt waiting for.
  */
 let claudeLogin: (LoginRun & { submit: (code: string) => Promise<void> }) | null = null;
+
+async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
+  await putFile(ctx, UTIL, PTY_PATH, PTY_RUNNER);
+  await execIn(ctx, UTIL, `: > ${CODE_FILE}`);
+  const stream = execLines(ctx, UTIL, `ORCH_PTY_IN=${CODE_FILE} python3 ${PTY_PATH} claude setup-token`, {
+    timeoutMs: PASTE_TTL_MS + 60_000,
+    signal,
+  });
+  let token: string | null = null;
+  let sawPrompt = false;
+  const result = await consumeLogin(ctx.bus, stream, (line) => {
+    run.url ??= line.match(URL_RE)?.[0] ?? null;
+    token ??= line.match(CLAUDE_TOKEN_RE)?.[0] ?? null;
+    sawPrompt ||= PASTE_RE.test(line);
+  });
+  if (!token && result.code !== 0)
+    return { ok: false, detail: `claude setup-token exited ${result.code}: ${result.err.trim().slice(-300)}` };
+  if (!token)
+    return {
+      ok: false,
+      detail: sawPrompt
+        ? "claude setup-token asked for the code and never printed a token — the code may have been wrong or expired"
+        : "claude setup-token printed no token — run it under a pty in the image and see what changed",
+    };
+  saveAuth(ctx.db, { runtime: "claude", mode: "oauth_token", secret: token });
+  ctx.sched.tick();
+  return { ok: true, detail: "stored" };
+}
 
 export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) => Promise<void> } {
   if (claudeLogin) return claudeLogin;
@@ -232,56 +257,9 @@ export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) 
   };
   claudeLogin = run;
 
-  run.done = (async () => {
-    try {
-      await putFile(ctx, UTIL, PTY_PATH, PTY_RUNNER);
-      // The runner opens this before the CLI starts. Truncated, so a code from
-      // an abandoned attempt is not fed to this one.
-      await execIn(ctx, UTIL, `: > ${CODE_FILE}`);
-      const stream = execLines(
-        ctx,
-        UTIL,
-        `ORCH_PTY_IN=${CODE_FILE} python3 ${PTY_PATH} claude setup-token`,
-        { timeoutMs: PASTE_TTL_MS + 60_000, signal: abort.signal },
-      );
-      let token: string | null = null;
-      let sawPrompt = false;
-      for (;;) {
-        const step = await stream.next();
-        if (step.done) {
-          if (!token && step.value.code !== 0) {
-            return {
-              ok: false,
-              detail: `claude setup-token exited ${step.value.code}: ${step.value.err.trim().slice(-300)}`,
-            };
-          }
-          break;
-        }
-        const plain = clean(step.value).trim();
-        if (!plain) continue;
-        ctx.bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body: plain });
-        run.url ??= plain.match(URL_RE)?.[0] ?? null;
-        token ??= plain.match(CLAUDE_TOKEN_RE)?.[0] ?? null;
-        sawPrompt ||= PASTE_RE.test(plain);
-      }
-      if (!token) {
-        // Said, not waited out. A CLI that stopped printing its URL and a CLI
-        // that stopped accepting a pasted code fail identically from here, and
-        // both are silent — which is what this whole function exists to stop.
-        return {
-          ok: false,
-          detail: sawPrompt
-            ? "claude setup-token asked for the code and never printed a token — the code may have been wrong or expired"
-            : "claude setup-token printed no token — run it under a pty in the image and see what changed",
-        };
-      }
-      saveAuth(ctx.db, { runtime: "claude", mode: "oauth_token", secret: token });
-      ctx.sched.tick(); // whatever was held for a missing credential can go now
-      return { ok: true, detail: "stored" };
-    } finally {
-      claudeLogin = null;
-    }
-  })();
+  run.done = finishClaudeLogin(ctx, run, abort.signal).finally(() => {
+    claudeLogin = null;
+  });
 
   return run;
 }

@@ -1,0 +1,158 @@
+{
+  "$schema": "./node_modules/fallow/schema.json",
+  "entry": ["scripts/browse.ts", "scripts/make-github-app.ts"],
+  "ignoreUnresolvedImports": ["/dist/app.css", "/dist/main.js"],
+  "typeAware": {
+    "enabled": true,
+    "projects": ["tsconfig.src.json", "web/tsconfig.json", "tsconfig.test.json"],
+    "require": "best-effort"
+  },
+  "rules": {
+    "private-type-leaks": "error",
+    "boundary-violation": "error",
+    "unused-dev-dependencies": "error",
+    "unused-optional-dependencies": "error",
+    "test-only-dependencies": "error",
+    "dev-dependencies-in-production": "error",
+    "stale-suppressions": "error",
+    "require-suppression-reason": "error",
+    "security-client-server-leak": "warn",
+    "security-sink": "warn"
+  },
+  "ignoreDependencies": ["tailwindcss"],
+  "boundaries": {
+    "zones": [
+      {
+        "name": "shared-contracts",
+        "patterns": ["src/contracts/**"]
+      },
+      { "name": "web", "patterns": ["web/**"] },
+      { "name": "public-rpc", "patterns": ["src/http/routes/**"] },
+      { "name": "composition", "patterns": ["src/composition/**"] },
+      { "name": "application", "patterns": ["src/application/**"] },
+      { "name": "build-info", "patterns": ["src/platform/process/version.ts"] },
+      {
+        "name": "platform",
+        "patterns": ["src/platform/**"]
+      },
+      { "name": "http-edge", "patterns": ["src/http/**"] },
+      { "name": "api", "patterns": ["src/api/**"] },
+      { "name": "prompt", "patterns": ["src/prompt/**"] },
+      { "name": "runtime-adapters", "patterns": ["src/runtime/**"] },
+      { "name": "mechanisms", "patterns": ["src/mech/**"] },
+      { "name": "cli", "patterns": ["src/orch/**"] },
+      { "name": "tests", "patterns": ["test/**"] },
+      { "name": "scripts", "patterns": ["scripts/**"] }
+    ],
+    "rules": [
+      { "from": "web", "allow": ["web", "shared-contracts"], "allowTypeOnly": ["public-rpc"] },
+      {
+        "from": "public-rpc",
+        "allow": ["public-rpc", "http-edge", "api", "mechanisms", "platform", "shared-contracts"]
+      },
+      {
+        "from": "http-edge",
+        "allow": ["http-edge", "mechanisms", "platform", "shared-contracts"]
+      },
+      {
+        "from": "api",
+        "allow": ["api", "http-edge", "mechanisms", "platform", "shared-contracts"]
+      },
+      {
+        "from": "composition",
+        "allow": [
+          "composition",
+          "public-rpc",
+          "http-edge",
+          "api",
+          "application",
+          "mechanisms",
+          "runtime-adapters",
+          "prompt",
+          "build-info",
+          "platform",
+          "shared-contracts"
+        ]
+      },
+      {
+        "from": "application",
+        "allow": ["application", "mechanisms", "runtime-adapters", "prompt", "platform", "shared-contracts"]
+      },
+      {
+        "from": "mechanisms",
+        "allow": ["mechanisms", "runtime-adapters", "platform", "shared-contracts"]
+      },
+      {
+        "from": "runtime-adapters",
+        "allow": ["runtime-adapters", "platform", "shared-contracts"],
+        "allowTypeOnly": ["prompt"]
+      },
+      { "from": "prompt", "allow": ["prompt", "shared-contracts"] },
+      { "from": "build-info", "allow": ["build-info"] },
+      { "from": "platform", "allow": ["platform", "shared-contracts"] },
+      { "from": "shared-contracts", "allow": ["shared-contracts"] },
+      { "from": "cli", "allow": ["cli", "build-info", "shared-contracts"], "allowTypeOnly": ["public-rpc"] }
+    ],
+    "coverage": { "requireAllFiles": true, "allowUnmatched": [] },
+    "calls": {
+      "forbidden": [
+        { "from": "web", "callee": "node:child_process.*" },
+        { "from": "web", "callee": "Bun.spawn" },
+        { "from": "http-edge", "callee": "node:child_process.*" },
+        { "from": "public-rpc", "callee": "node:child_process.*" }
+      ]
+    }
+  },
+  "security": {
+    "categories": {
+      "include": [
+        "angular-trusted-html",
+        "cleartext-transport",
+        "code-injection",
+        "command-injection",
+        "dangerous-html",
+        "deprecated-cipher",
+        "dom-document-write",
+        "dynamic-module-load",
+        "dynamic-regex",
+        "electron-unsafe-webpreferences",
+        "hardcoded-secret",
+        "header-injection",
+        "insecure-cookie",
+        "insecure-randomness",
+        "insecure-temp-file",
+        "jquery-html",
+        "jwt-alg-none",
+        "jwt-verify-missing-algorithms",
+        "llm-call-injection",
+        "mass-assignment",
+        "mysql-multiple-statements",
+        "nextjs-open-redirect",
+        "nosql-injection",
+        "open-redirect",
+        "path-traversal",
+        "permissive-cors",
+        "postmessage-wildcard-origin",
+        "prototype-pollution",
+        "redos-regex",
+        "resource-amplification",
+        "route-send-file",
+        "secret-pii-log",
+        "secret-to-network",
+        "sql-injection",
+        "ssrf",
+        "ssti",
+        "template-escape-bypass",
+        "tls-validation-disabled",
+        "unsafe-buffer-alloc",
+        "unsafe-deserialization",
+        "weak-crypto",
+        "webview-injection",
+        "world-writable-permission",
+        "xpath-injection",
+        "xxe",
+        "zip-slip"
+      ]
+    }
+  }
+}

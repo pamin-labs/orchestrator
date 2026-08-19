@@ -1,8 +1,97 @@
 {
-  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
-  "rules": {
-    "no-unused-vars": ["warn", { "args": "none", "varsIgnorePattern": "^_" }],
-    "no-control-regex": "off"
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
   },
-  "ignorePatterns": ["web/dist", "data", "leases"]
+  "plugins": ["typescript", "react", "jsx-a11y", "promise", "unicorn", "oxc"],
+  "options": {
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "error",
+    "typeAware": true,
+    "typeCheck": false
+  },
+  "rules": {
+    "no-unused-vars": [
+      "error",
+      {
+        "args": "none",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "no-control-regex": "off",
+    "no-await-in-loop": "off",
+    "no-shadow": "off",
+    "no-underscore-dangle": "off",
+    "oxc/no-map-spread": "off",
+    "promise/always-return": "off",
+    "typescript/consistent-return": "off",
+    "typescript/no-unnecessary-type-conversion": "off",
+    "typescript/no-unnecessary-type-parameters": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/no-array-reverse": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/prefer-add-event-listener": "off",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-import-type-side-effects": "error",
+    "typescript/no-misused-promises": [
+      "error",
+      {
+        "checksVoidReturn": {
+          "attributes": false
+        }
+      }
+    ],
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/use-unknown-in-catch-callback-variable": "error",
+    "typescript/switch-exhaustiveness-check": [
+      "error",
+      {
+        "defaultCaseCommentPattern": "@skip-exhaustive-check"
+      }
+    ],
+    "no-loop-func": "error",
+    "no-promise-executor-return": "error",
+    "no-useless-return": "error",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "react/react-in-jsx-scope": "off",
+    "react/no-unstable-nested-components": [
+      "error",
+      {
+        "allowAsProps": true
+      }
+    ],
+    "react/button-has-type": "error",
+    "jsx-a11y/alt-text": "error",
+    "jsx-a11y/anchor-is-valid": "error",
+    "jsx-a11y/click-events-have-key-events": "error",
+    "jsx-a11y/label-has-associated-control": "error",
+    "jsx-a11y/no-static-element-interactions": "error",
+    "jsx-a11y/prefer-tag-over-role": "off",
+    "no-restricted-properties": [
+      "error",
+      {
+        "object": "z",
+        "property": "unknown",
+        "message": "z.unknown() erases validation at a trust boundary. Model the shape, or parse into a discriminated union."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["web/src/ui/button.tsx"],
+      "rules": {
+        "jsx-a11y/anchor-has-content": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["web/dist", "data", "leases", ".cache"]
 }

@@ -1,64 +1,80 @@
-import type { Ctx } from "../../ctx.ts";
-import { say } from "../../lang.ts";
+import type { Ctx } from "../../mech/ctx.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import { say } from "../../platform/text/lang.ts";
+import { terms } from "./terms.ts";
 
 /**
  * The boss's repeated complaints become a project rule.
  *
- * PLAN.md §7③: without this, dissatisfaction produces N isolated facts and never
- * changes how the agents behave — you say "tests are too shallow" three times to three
- * different groups and the fourth group writes shallow tests too, because a fact
- * attached to one group is invisible to the next. A `lesson` is not: it is injected
- * into every later group's prompt, which is the only mechanism by which the twentieth
- * group is smarter than the first.
- *
- * Two stages on purpose. A deterministic prefilter decides *when* to look — the same
- * content words appearing in three separate complaints — and only then does the CoS
- * spend a turn writing the rule. Asking a model on every complaint would be paying for
- * judgement that is nearly always "no"; deciding the wording with an `if` would
- * produce a rule nobody can read.
+ * Without this, dissatisfaction produces N isolated facts and never changes how the
+ * agents behave: say "tests are too shallow" to three groups and the fourth writes
+ * shallow tests too, because a fact attached to one group is invisible to the next.
+ * A `lesson` is injected into every later group's prompt, which is the only
+ * mechanism by which the twentieth group is smarter than the first.
  */
-
-/** Words that carry no topic. Deliberately short: over-filtering hides the signal. */
-const STOP = new Set([
-  "the", "a", "an", "and", "or", "but", "is", "are", "was", "be", "to", "of", "in", "on", "for", "with",
-  "this", "that", "it", "too", "so", "not", "no", "do", "does", "did", "you", "i", "we", "my", "your",
-  "boss", "rejected", "sent", "back", "slice", "again",
-  "的", "了", "是", "在", "和", "还", "太", "又", "被", "把", "给", "我", "你", "它", "这", "那", "个",
-  "不", "没", "要", "就", "都", "很", "点", "些", "上", "下",
-]);
+/**
+ * Two stages on purpose. A deterministic prefilter decides *when* to look — the
+ * same content words in three separate complaints — and only then does the CoS
+ * spend a turn writing the rule. Asking a model on every complaint pays for
+ * judgement that is nearly always "no"; deciding the wording with an `if` produces
+ * a rule nobody can read.
+ */
 
 /**
- * Content words, normalised.
+ * How alike two complaints have to be. Measured across eight languages; the table
+ * and the two methods this beat are in the commit.
  *
- * CJK has no spaces, so Latin runs are tokenised on non-letters and CJK is cut into
- * 2-character shingles — crude, and enough to notice that 「测试写得太浅」 and
- * 「测试太浅了」 are the same complaint, which is the whole job here.
+ * The hard requirement is that *unrelated* complaints never merge — the worst
+ * measured pair scores 0.170. Related-but-distinct ones may: 「构建失败」 and 「构建太慢」
+ * score 0.429 and sediment together, and the CoS reads all three before writing the
+ * rule. The lowest true pair is Korean at 0.310.
  */
-export function terms(text: string): Set<string> {
+export const SIMILARITY_FLOOR = 0.25;
+
+/**
+ * Character bigrams, taken *after* segmentation and stop words.
+ *
+ * Comparing tokens exactly cannot work across languages, and the reason is
+ * morphology: Korean 테스트가 and 테스트는 are the same noun with different particles,
+ * Russian граничных and граничные the same adjective in two cases, Arabic حالات and
+ * الحالات the same noun with the article. Exact matching scores those pairs 0.100,
+ * 0.250 and 0.222 — below unrelated complaints in other languages.
+ */
+/**
+ * Bigrams of the *tokenised* text keep both halves: `terms()` still does the ICU
+ * segmentation and the rented stop words, so 这个 and 应该 are gone before this sees
+ * them, and what is left is compared by character overlap, which 테스트가/테스트는 share.
+ *
+ * A stemmer was measured and dropped: `@orama/stemmers` covers 28 languages and
+ * fixed exactly one of the three, because there is no Snowball stemmer for an
+ * agglutinative language and the Arabic one does not strip the article.
+ */
+const BIGRAM = 2;
+
+function bigrams(text: string): Set<string> {
+  // Built by iteration rather than spread: `for...of` walks code points, which is the
+  // unit a bigram has to be, and a surrogate pair split down the middle is not one.
+  const characters: string[] = [];
+  for (const character of terms(text).join(" ")) characters.push(character);
   const out = new Set<string>();
-  const lower = (text ?? "").toLowerCase();
-  for (const w of lower.split(/[^\p{L}\p{N}_]+/u)) {
-    if (w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w)) out.add(w);
-  }
-  const cjk = lower.replace(/[^\p{Script=Han}]+/gu, " ");
-  for (const run of cjk.split(" ")) {
-    for (let i = 0; i + 2 <= run.length; i++) {
-      const pair = run.slice(i, i + 2);
-      if (!STOP.has(pair) && !STOP.has(pair[0]!) ) out.add(pair);
-    }
-  }
+  for (let i = 0; i + BIGRAM <= characters.length; i++) out.add(characters.slice(i, i + BIGRAM).join(""));
   return out;
 }
 
-/** Shared distinctive terms. Two is the floor: one is a coincidence. */
-export const OVERLAP_FLOOR = 2;
-
+/**
+ * Are these the same complaint?
+ *
+ * Jaccard — shared bigrams over all bigrams either uses — because a *count* of what
+ * two complaints share cannot tell two of four from two of twenty. That count, floor
+ * two, is what made 「这个接口应该返回错误码」 and 「这个按钮应该显示提示」 one complaint.
+ */
 export function sameComplaint(a: string, b: string): boolean {
-  const ta = terms(a);
-  const tb = terms(b);
+  const left = bigrams(a);
+  const right = bigrams(b);
+  if (left.size === 0 || right.size === 0) return false;
   let shared = 0;
-  for (const t of ta) if (tb.has(t)) shared++;
-  return shared >= OVERLAP_FLOOR;
+  for (const gram of left) if (right.has(gram)) shared++;
+  return shared / (left.size + right.size - shared) >= SIMILARITY_FLOOR;
 }
 
 interface FactRow {
@@ -79,7 +95,7 @@ export function sediment(ctx: Ctx, projectId: number | null, threshold: number):
        LEFT JOIN grp g ON g.id = n.grp_id
        WHERE n.kind = 'fact' AND (n.project_id = ? OR g.project_id = ?)
          AND coalesce(json_extract(n.frontmatter_json, '$.sedimented'), 0) != 1
-       ORDER BY n.at DESC LIMIT 40`,
+       ORDER BY n.at DESC, n.id DESC LIMIT 40`,
     )
     .all(projectId, projectId);
   if (facts.length < threshold) return 0;
@@ -97,7 +113,7 @@ export function sediment(ctx: Ctx, projectId: number | null, threshold: number):
   ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config?.language, "sediment", { n: kin.length }),
+    body: say(ctx.config.language, "sediment", { n: kin.length }),
     meta: { notes: ids },
   });
   // The CoS writes it, because a rule the agents must follow has to read like a rule.
@@ -110,4 +126,30 @@ export function sediment(ctx: Ctx, projectId: number | null, threshold: number):
   });
   ctx.sched.tick();
   return kin.length;
+}
+
+export const LESSON_CAP = 20;
+
+/** Newest first; id breaks same-millisecond ties consistently for reader and eviction. */
+const NEWEST = "ORDER BY at DESC, id DESC";
+
+/** What one project's agents are told: its own lessons and every global one. */
+export function lessonsFor(db: DB, projectId: number | null): string[] {
+  return db
+    .query<{ body: string }, [number | null]>(
+      `SELECT body FROM note WHERE kind = 'lesson' AND (project_id IS ? OR project_id IS NULL)
+       ${NEWEST} LIMIT ${LESSON_CAP}`,
+    )
+    .all(projectId)
+    .map((r) => r.body);
+}
+
+/** Keep the newest LESSON_CAP lessons in each project/global scope. */
+export function evictOldestLessons(db: DB, projectId: number | null): number {
+  const scope = "kind = 'lesson' AND (project_id IS ? OR (? IS NULL AND project_id IS NULL))";
+  return db.run(
+    `DELETE FROM note WHERE ${scope}
+       AND id NOT IN (SELECT id FROM note WHERE ${scope} ${NEWEST} LIMIT ?)`,
+    [projectId, projectId, projectId, projectId, LESSON_CAP],
+  ).changes;
 }

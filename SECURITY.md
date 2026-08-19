@@ -1,5 +1,11 @@
 # Security
 
+## Supported versions
+
+This project is pre-1.0. Security fixes are released for the latest published
+version and `main`; older pre-release versions are not maintained. If an
+advisory needs a different support window, it will name it explicitly.
+
 ## Reporting
 
 Use GitHub's [private vulnerability reporting](../../security/advisories/new) —
@@ -9,6 +15,12 @@ discuss the fix in before anything is published.
 You will get a reply. This is a small project, so treat "within a week" as the
 expectation rather than a service level, and say so in the report if you have a
 disclosure deadline in mind.
+
+Include the affected version/SHA, boundary crossed, prerequisites, minimal
+reproduction, observed impact, and any logs with secrets removed. We will
+acknowledge receipt, reproduce and assess severity, coordinate a fix and
+advisory, and credit reporters who want credit. Please allow a coordinated fix
+before public disclosure; tell us immediately if exploitation is active.
 
 ## What is in scope
 
@@ -51,8 +63,17 @@ if it comes with a way past the mitigation described:
 - The egress sidecar follows the container's own name resolution, so an agent can
   point a bound host name at an address it controls. What stops the credential
   arriving there is **upstream certificate verification** — measured, see
-  `PROGRESS.md`. Turning that off in the sidecar's configuration would make it
+  `docs/project/progress.md`. Turning that off in the sidecar's configuration would make it
   exploitable.
 - `web_commit_signoff_required` and the `dco` check cover sign-off; commit
   signatures (GPG/SSH) are deliberately not required, because agents commit
   inside containers that hold no signing key.
+
+## Supply-chain evidence
+
+CI assigns distinct owners to source analysis, dependency deltas, current
+lockfile vulnerabilities, workflow security, container/filesystem scanning, and
+SBOM/provenance. See the
+[enforcement matrix](docs/standards/enforcement-matrix.md). A scanner passing is
+not evidence that an architectural trust boundary is sound; security-sensitive
+changes also receive independent design review.

@@ -1,4 +1,8 @@
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import { projectConfig } from "../util/rows.ts";
+import { GRP_STATES } from "../../contracts/states.ts";
+import { jsonOr } from "../../contracts/json.ts";
+import { z } from "zod";
 
 /**
  * Which paths a group owns, decided before it starts.
@@ -18,7 +22,7 @@ export interface OwnershipConflict {
 }
 
 /** Files that belong to no group: a change here affects everyone. */
-export const DEFAULT_SHARED = [
+const DEFAULT_SHARED = [
   "package.json",
   "bun.lock",
   "package-lock.json",
@@ -30,25 +34,12 @@ export const DEFAULT_SHARED = [
 ];
 
 export function parseOwns(json: string | null): string[] {
-  if (!json) return [];
-  try {
-    const v = JSON.parse(json);
-    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
+  return jsonOr(json, z.array(z.string()), []);
 }
 
 export function sharedFor(db: DB, projectId: number): string[] {
-  const row = db
-    .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
-    .get(projectId);
-  try {
-    const cfg = JSON.parse(row?.config_json ?? "{}");
-    return Array.isArray(cfg.shared) ? [...DEFAULT_SHARED, ...cfg.shared] : DEFAULT_SHARED;
-  } catch {
-    return DEFAULT_SHARED;
-  }
+  const shared = projectConfig(db, projectId).shared;
+  return shared ? [...DEFAULT_SHARED, ...shared] : DEFAULT_SHARED;
 }
 
 /** The fixed part of a glob, up to the first wildcard. */
@@ -89,15 +80,16 @@ export function claimsShared(owns: string[], shared: string[]): string[] {
 /**
  * Which of these repo-relative paths the group had no business writing.
  *
- * Checked after the turn, against `git status`, and the offending files are
- * rolled back. There is no earlier clock left: a deny-list used to stop the write
- * before it happened, but the container knows nothing about which group owns
- * which file, so this is the only mechanism (decision 005, §Ceiling).
- *
- * A group that declared nothing owns nothing in particular and is not policed
- * here. Build outputs are exempt: the gate writes them on every run, for every
- * group, and it has to be able to produce the thing it then checks. So are the
- * files the orchestrator itself puts in the worktree.
+ * Checked after the turn, against `git status`, and the offending files are rolled
+ * back. There is no earlier clock left: a deny-list used to stop the write before it
+ * happened, but the container knows nothing about which group owns which file, so
+ * this is the only mechanism.
+ */
+/**
+ * A group that declared nothing owns nothing in particular and is not policed here.
+ * Build outputs are exempt — the gate writes them on every run, for every group, and
+ * it has to be able to produce the thing it then checks — and so are the files the
+ * orchestrator itself puts in the worktree.
  */
 export function outsideOwns(changed: string[], owns: string[]): string[] {
   if (!owns.length) return [];
@@ -105,16 +97,24 @@ export function outsideOwns(changed: string[], owns: string[]): string[] {
   return changed.filter((p) => !allowed.some((glob) => covers(glob, p)));
 }
 
-/** Does this glob cover this concrete path? `src/a/**`, `src/*`, `src/a/b.ts`. */
+/**
+ * Does this glob cover this concrete path? `src/a/**`, `src/*`, `src/a/b.ts`.
+ *
+ * `Bun.Glob` rather than a hand-written matcher, because the hand-written one was
+ * wrong in the direction that hurts: it understood only a trailing `/*` and treated
+ * everything else as a prefix. This function's answer decides whether a file another
+ * group owns gets rolled back after a turn, and saying yes too easily means the
+ * stray write stays.
+ */
+/**
+ * One rule is ours and stays: a wildcard-free entry is a directory claim. Agents
+ * declare `owns: ["src/mech"]` and mean everything under it, where a glob library
+ * means that one path.
+ */
 function covers(glob: string, path: string): boolean {
   if (glob === path) return true;
-  const prefix = staticPrefix(glob);
-  // No wildcard: a plain directory entry covers everything under it.
-  if (prefix === glob) return path.startsWith(glob.endsWith("/") ? glob : `${glob}/`);
-  if (!path.startsWith(prefix)) return false;
-  // `src/*` is one segment, `src/**` is any depth. Everything else is a prefix.
-  if (glob.endsWith("/*")) return !path.slice(prefix.length).includes("/");
-  return true;
+  if (!/[*?[]/.test(glob)) return path.startsWith(glob.endsWith("/") ? glob : `${glob}/`);
+  return new Bun.Glob(glob).match(path);
 }
 
 export interface StartCheck {
@@ -125,8 +125,77 @@ export interface StartCheck {
   reason?: string;
 }
 
-/** Groups that still hold their paths: anything not finished. */
-const ACTIVE = "('RUNNING', 'PAUSING', 'PAUSED', 'PARKED', 'PR_OPEN')";
+/**
+ * Two questions, which four call sites had been answering with four ad-hoc string
+ * lists and three different answers.
+ *
+ * "Who could be writing a file right now" is not "who has spoken for these
+ * paths". `canStart` wants the first: a group holds a worktree only from RUNNING
+ * onward, and refusing a start because an *unstarted* group claimed the same
+ * paths deadlocks both — neither can begin until the other dissolves, and
+ * `sweepApproved` retries that silently forever.
+ */
+/**
+ * The boundary questions want the second, which exists from birth: `newGroup`
+ * inserts a group as PLANNING with `owns_json` already populated. Those three
+ * sites had drifted apart by one state each — two missed DRAFT, so a requirement
+ * awaiting approval owned its paths to the panel and nothing to `orch blocked`.
+ *
+ * Derived from `GRP_STATES` so a new state joins by existing. Interpolated into
+ * SQL because these are compile-time constants from an `as const` array.
+ */
+const sql = (states: readonly string[]) => `(${states.map((s) => `'${s}'`).join(", ")})`;
+
+/** Groups whose agents can be writing files this second. */
+export const WRITING = ["RUNNING", "PAUSING", "PAUSED", "PARKED", "PR_OPEN"] as const;
+const WRITING_SQL = sql(WRITING);
+
+/** Groups whose declared paths are spoken for: everything that has not dissolved. */
+export const CLAIMING = GRP_STATES.filter((s) => s !== "DISSOLVED");
+export const CLAIMING_SQL = sql(CLAIMING);
+
+type OtherOwner = { id: number; name: string; owns_json: string };
+const startOk = (): StartCheck => ({ ok: true, conflicts: [], sharedClaimed: [] });
+
+function undeclaredStart(owns: string[], others: OtherOwner[]): StartCheck | null {
+  if (owns.length > 0) return null;
+  const declared = others.filter((owner) => parseOwns(owner.owns_json).length > 0);
+  if (declared.length === 0) return startOk();
+  return {
+    ok: false,
+    conflicts: [],
+    sharedClaimed: [],
+    reason:
+      `no owned paths declared, and ${declared.map(({ name }) => name).join(", ")} ` +
+      `already hold theirs — the Architect has to cut the boundary before work starts`,
+  };
+}
+
+function sharedStart(db: DB, grpId: number, projectId: number, owns: string[]): StartCheck | null {
+  const granted = parseOwns(
+    db.query<{ shared_grant: string | null }, [number]>("SELECT shared_grant FROM grp WHERE id = ?").get(grpId)
+      ?.shared_grant ?? null,
+  );
+  const shared = sharedFor(db, projectId).filter((path) => !granted.includes(path));
+  const claimed = claimsShared(owns, shared).filter((path) => !granted.includes(path));
+  if (claimed.length === 0) return null;
+  return {
+    ok: false,
+    conflicts: [],
+    sharedClaimed: claimed,
+    reason: `these belong to no group: ${claimed.join(", ")} — changes there go through the boss or the Architect`,
+  };
+}
+
+function ownerConflicts(owns: string[], others: OtherOwner[]): OwnershipConflict[] {
+  return others.flatMap((owner) =>
+    owns.flatMap((mine) =>
+      parseOwns(owner.owns_json).flatMap((theirs) =>
+        overlaps(mine, theirs) ? [{ grpId: owner.id, name: owner.name, mine, theirs }] : [],
+      ),
+    ),
+  );
+}
 
 export function canStart(db: DB, grpId: number): StartCheck {
   const me = db
@@ -136,56 +205,25 @@ export function canStart(db: DB, grpId: number): StartCheck {
     .get(grpId);
   if (!me) return { ok: false, conflicts: [], sharedClaimed: [], reason: "no such group" };
 
+  // fallow-ignore-next-line security-sink -- `WRITING_SQL` is the frozen state-list literal from `contracts/states.ts`; both ids are bound through the `?` placeholders.
   const others = db
-    .query<{ id: number; name: string; owns_json: string }, [number, number]>(
+    .query<OtherOwner, [number, number]>(
       `SELECT id, name, owns_json FROM grp
-       WHERE project_id = ? AND id != ? AND status IN ${ACTIVE}`,
+       WHERE project_id = ? AND id != ? AND status IN ${WRITING_SQL}`,
     )
     .all(me.project_id, grpId);
 
   const owns = parseOwns(me.owns_json);
-  if (owns.length === 0) {
-    // Overlap is the real criterion, and two undeclared sets cannot be shown to
-    // overlap. So this only bites when someone else HAS drawn a boundary: then
-    // starting undeclared would silently claim everything, including their paths.
-    const declared = others.filter((o) => parseOwns(o.owns_json).length > 0);
-    if (declared.length === 0) return { ok: true, conflicts: [], sharedClaimed: [] };
-    return {
-      ok: false,
-      conflicts: [],
-      sharedClaimed: [],
-      reason:
-        `no owned paths declared, and ${declared.map((o) => o.name).join(", ")} ` +
-        `already hold theirs — the Architect has to cut the boundary before work starts`,
-    };
-  }
+  const undeclared = undeclaredStart(owns, others);
+  if (undeclared) return undeclared;
 
   // A path this group was granted by name. Shared files belong to no group, and
   // that stays true for everyone else — but a defect in one has to be fixable by
   // somebody, and the requirement opened for exactly that was refused here forever.
-  const granted = parseOwns(
-    db.query<{ shared_grant: string | null }, [number]>("SELECT shared_grant FROM grp WHERE id = ?").get(grpId)
-      ?.shared_grant ?? null,
-  );
-  const shared = sharedFor(db, me.project_id).filter((s) => !granted.includes(s));
-  const sharedClaimed = claimsShared(owns, shared).filter((o) => !granted.includes(o));
-  if (sharedClaimed.length) {
-    return {
-      ok: false,
-      conflicts: [],
-      sharedClaimed,
-      reason: `these belong to no group: ${sharedClaimed.join(", ")} — changes there go through the boss or the Architect`,
-    };
-  }
+  const shared = sharedStart(db, grpId, me.project_id, owns);
+  if (shared) return shared;
 
-  const conflicts: OwnershipConflict[] = [];
-  for (const o of others) {
-    for (const mine of owns) {
-      for (const theirs of parseOwns(o.owns_json)) {
-        if (overlaps(mine, theirs)) conflicts.push({ grpId: o.id, name: o.name, mine, theirs });
-      }
-    }
-  }
+  const conflicts = ownerConflicts(owns, others);
   if (conflicts.length) {
     const c = conflicts[0]!;
     return {
@@ -195,7 +233,7 @@ export function canStart(db: DB, grpId: number): StartCheck {
       reason: `${c.mine} overlaps ${c.theirs} owned by ${c.name} — wait for it, or ask the Architect for a different split`,
     };
   }
-  return { ok: true, conflicts: [], sharedClaimed: [] };
+  return startOk();
 }
 
 /**
@@ -210,14 +248,15 @@ const BUILD_OUTPUTS = ["web/dist"];
 /**
  * Written by the orchestrator into every checkout, not by the agent in it.
  *
- * AGENTS.md / CLAUDE.md: whichever of the two the project does not ship is a
- * symlink we create, so a turn on either runtime reads the project's
- * instructions. Only the link is ours — an agent editing the real file is a
- * normal change and reconcile still sees it, because the link is what gets
- * skipped, not the target.
- * The reconcile exists to catch what an agent wrote outside its boundary, and this
- * is ours — without the exemption it was reverted after every turn, recreated
- * before the next one, and escalated to the boss each time. Observed live, once
- * per turn, forever.
+ * Whichever of AGENTS.md / CLAUDE.md the project does not ship is a symlink we
+ * create, so a turn on either runtime reads the project's instructions. Only the
+ * link is ours — an agent editing the real file is a normal change and reconcile
+ * still sees it, because the link is what gets skipped, not the target.
+ */
+/**
+ * Reconcile exists to catch what an agent wrote outside its boundary, and this is
+ * ours — without the exemption it was reverted after every turn, recreated before
+ * the next one, and escalated to the boss each time. Observed live, once per turn,
+ * forever.
  */
 const HARNESS_FILES = ["AGENTS.md", "CLAUDE.md"];

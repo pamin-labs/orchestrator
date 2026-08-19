@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "./button";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * Section label.
@@ -10,14 +10,7 @@ import { cn } from "../lib/utils";
  * were already too small to read. 12px, normal case, ink-2.
  */
 export const H2 = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <h2 className={cn("mb-2.5 text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2", className)}>
-    {children}
-  </h2>
-);
-
-/** A sub-heading inside a view. The display face earns its place at ≥15px only. */
-export const H3 = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <h3 className={cn("mt-8 mb-2.5 font-display text-[1rem] font-semibold", className)}>{children}</h3>
+  <h2 className={cn("mb-2.5 text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2", className)}>{children}</h2>
 );
 
 /**
@@ -29,9 +22,13 @@ export const H3 = ({ children, className }: { children: React.ReactNode; classNa
  * three hand-written copies of it drift.
  */
 export const Head = ({
-  title, note, children,
+  title,
+  note,
+  children,
 }: {
-  title: React.ReactNode; note?: React.ReactNode; children?: React.ReactNode;
+  title: React.ReactNode;
+  note?: React.ReactNode;
+  children?: React.ReactNode;
 }) => (
   <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
     <H2 className="mb-0">{title}</H2>
@@ -97,12 +94,11 @@ export const Pane = ({ children, className }: { children: React.ReactNode; class
  * Long prose, cut to a few lines until asked for the rest.
  *
  * Everything an agent writes to the boss is a paragraph: a QA verdict names every
- * file it checked, a watchdog escalation quotes three of them verbatim. The
- * decision is usually made by line three and the rest is there to check the
- * reasoning against, so it is one click away rather than half a screen.
+ * file it checked, a watchdog escalation quotes three verbatim. The decision is
+ * usually made by line three and the rest is there to check the reasoning against.
  *
- * The toggle only appears when the text is actually longer than the clamp —
- * otherwise every two-word question grows a 展开 that does nothing.
+ * The toggle appears only when the text is actually longer than the clamp, or every
+ * two-word question grows a 展开 that does nothing.
  */
 export function Clamp({ lines = 2, children }: { lines?: number; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -111,16 +107,13 @@ export function Clamp({ lines = 2, children }: { lines?: number; children: React
   useEffect(() => {
     const el = box.current;
     if (el && !open) setOver(el.scrollHeight > el.clientHeight + 2);
-  });
+  }, [children, lines, open]);
   return (
     <>
       <div
         ref={box}
-        style={
-          open
-            ? undefined
-            : { display: "-webkit-box", WebkitLineClamp: lines, WebkitBoxOrient: "vertical", overflow: "hidden" }
-        }
+        className={open ? undefined : "overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical]"}
+        style={open ? undefined : { WebkitLineClamp: lines }}
       >
         {children}
       </div>

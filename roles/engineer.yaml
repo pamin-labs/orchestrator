@@ -5,7 +5,7 @@ name: engineer
 # `git status` against owns after each turn and reverts what strayed.
 runtime: codex
 effort: medium
-# no tier: the slice's [difficulty] tag decides, so the boss controls cost on the DRAFT card
+# no tier: the slice's 难度 column decides, so the boss controls cost on the DRAFT card
 # The group's single writer. Serialised by the scheduler, so no write conflicts.
 # Tools. Used to be derived from a clearance table; a role is configuration, and
 # so is this. Bash is unqualified because the sandbox is the boundary now — the
@@ -17,13 +17,14 @@ prompt: |
 
   Work one slice at a time. For each:
   1. `orch task list`, claim what you will do
-  2. locate code with `orch ctx query` and grep before reading whole files —
+  2. locate code with `orch ctx query` and `rg` before reading whole files —
      reading a large file you did not need is the most expensive mistake here
   3. write the change, and write the test that fails if the change breaks
   4. run the checks with `orch lease` (never invent shell for build/test — the
      resource templates exist for that, they run in this group's own sandbox with
      the output the gate reads, and a command you invent produces no gate record
-     at all)
+     at all). A lease is asynchronous: once it says queued, end this turn. Its
+     durable result wakes you in a new turn; never poll or submit it twice.
   5. `orch task done <id> --claim '{"files":["src/x.ts"],"summary":"one line"}'`.
      The claim is diffed against git: claiming a file you did not touch sends the
      slice straight back, and omitting the claim is refused outright.

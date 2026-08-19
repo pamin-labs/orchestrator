@@ -1,84 +1,111 @@
 # Contributing
 
-Thanks for looking. This is a small project with an unusual amount of written
-reasoning behind it, so the most useful thing you can do before a first pull
-request is read [`CLAUDE.md`](CLAUDE.md) — it is the house rules, and several of
-them will otherwise look like arbitrary review comments.
+Thanks for improving Orchestrator. The project accepts focused bug fixes,
+tests, documentation, performance evidence, and features that fit the current
+[project plan](docs/project/plan.md).
 
-## Before you write code
+By participating, follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report
+security issues privately through [SECURITY.md](SECURITY.md), not an issue or
+pull request. General help belongs in the channels in [SUPPORT.md](SUPPORT.md).
 
-- **[`PROGRESS.md`](PROGRESS.md)** — where things are and what is known to be
-  broken. The 反直觉事实 section is a list of things that were measured and are
-  the opposite of what you would guess; changing one back is the most common way
-  to reintroduce a bug here.
-- **[`PLAN.md`](PLAN.md)** — the design. Design changes go in this file, not in a
-  commit message.
-- **[`docs/decisions/`](docs/decisions/)** — why a thing is the way it is.
+## Before changing code
 
-## Running it
+Read in order:
 
-```bash
-bun install
-bun test                     # every check
-bun run dev                  # build the panel and serve it on 127.0.0.1:47821
-```
+1. [`docs/project/progress.md`](docs/project/progress.md)
+2. [`docs/project/plan.md`](docs/project/plan.md)
+3. [`AGENTS.md`](AGENTS.md)
+4. affected architecture and standards from [`docs/README.md`](docs/README.md)
+5. relevant [`docs/adr/`](docs/adr/)
 
-The sandbox parts need Docker and a running `opensandbox-server`; see the
-[README quickstart](README.md#quickstart). `test/sandbox-live.test.ts` skips
-loudly without one, which is fine — CI skips it too.
+Open an issue before a large feature, new public dependency, protocol break, or
+architectural exception. Maintainers may decline work outside the active
+milestone even when the implementation is sound.
 
-## What CI will ask of you
+## Development
 
-Two required checks, and both are cheap to satisfy locally:
-
-**`check`** — `bunx tsc --noEmit -p .`, `bunx oxlint@latest --deny-warnings src
-web/src test`, `bun run build:web`, `bun test`. Run them before pushing; the
-suite takes about fifteen seconds.
-
-**`dco`** — every commit carries a `Signed-off-by` line matching its author:
+Requires Bun and, for live sandbox tests, Docker plus `opensandbox-server`.
 
 ```bash
-git commit -s -m "fix(sandbox): ..."      # adds the trailer
-git rebase --signoff main                 # fixes a branch that forgot
+bun install --frozen-lockfile
+bun run dev
+bun run check
 ```
 
-This is the [Developer Certificate of Origin](https://developercertificate.org/):
-signing off means you wrote the patch or otherwise have the right to submit it
-under the project's licence. It is not a CLA and it assigns nothing.
+Use targeted tests while iterating and the complete gate before committing.
+Live OpenSandbox tests report a skip when their server is unavailable; state
+that limitation in the pull request instead of claiming the path passed.
 
-## Commit messages
+The detailed task and agent workflow is in
+[`docs/operations/development.md`](docs/operations/development.md). Keep changes
+small, do not mix cleanup with behavior, and update documentation in the same
+coherent change as a contract.
 
-Conventional-commit prefix, and **a subject that states the finding rather than
-the diff**. Someone reading the log a year from now is asking *why is this like
-this*, and a subject naming the change answers nothing they cannot already see:
+## Engineering rules
 
+- Do not add a second enforcement owner beside the tools in the
+  [enforcement matrix](docs/standards/enforcement-matrix.md). A replacement
+  needs an ADR and migration evidence.
+- New stored states update `src/contracts/states.ts`, the invariant table, and an
+  executable repair/driver test.
+- New UI behavior uses shadcn/Radix primitives when one exists.
+- Product logic belongs here; commodity fixtures, mocks, retries, parsers,
+  polling, serialization, metrics, and benchmark machinery follow the
+  [dependency standard](docs/standards/dependencies.md). Reach for a popular,
+  maintained library rather than another local wheel — it qualifies if it
+  deletes project-owned code, tests or does the more correct thing, or supplies
+  a capability we need now or plausibly later.
+- Expected failures have stable codes; external I/O has cancellation, timeout,
+  and safe contextual errors.
+- English is used for code, comments, errors, branches, commits, and pull
+  requests. Runtime output may follow the configured language.
+
+## Before opening a pull request
+
+`bun run preflight` runs every gate CI runs, in about twenty seconds, and says
+which ones it could not run and why — a step that cannot run is reported as
+*skipped with a reason*, never passed over silently.
+
+There is nothing to install. The workflow lint runs from the same pinned
+`rhysd/actionlint` image CI verifies, so it needs only the container runtime this
+project already requires, and that image carries `shellcheck` — which a bare
+`actionlint` binary does not, and without which it skips every shell rule without
+saying so. A host `actionlint` is used when you happen to have one; asking each
+contributor to install it would make the check silently absent for whoever did
+not, and an absent check reads as a green one.
+
+`security-codeql` and `pr-plan` have no local equivalent: the first runs on
+GitHub's infrastructure, the second reads the pull request body. Filling in
+`.github/pull_request_template.md` completely is what the second checks.
+
+## Commits and DCO
+
+Use a Conventional Commit prefix — `feat` `fix` `docs` `test` `refactor` `perf`
+`build` `chore`, scoped to the module — and a subject that states the finding,
+not merely the edit: `fix(sandbox): the skills mount was empty on macOS, and
+nothing could say so`, not `fix(sandbox): update mount path`. The body explains
+how the failure presented, why the fix belongs at that layer, and what was
+deliberately left out; measurements beat adjectives. English throughout, and no
+`🤖 Generated with` footer — the trailers below are the attribution.
+
+Every human-authored commit carries a matching DCO sign-off:
+
+```bash
+git commit -s -m "fix(sandbox): the failed mount looked healthy"
+git rebase --signoff main   # repair a branch before review
 ```
-fix(sandbox): update mount path                 ← says nothing
-fix(sandbox): the skills mount was empty on macOS, and nothing could say so
-```
 
-The body says what the failure looked like — what it cost, how it presented, and
-why the fix is where it is. Numbers beat adjectives. Full version in
-[`.claude/skills/git-commit/SKILL.md`](.claude/skills/git-commit/SKILL.md), which
-is in the repository so you get it by cloning.
-
-**English** for code, comments, commit messages, pull requests and error strings,
-even though the panel's own text is Chinese.
+The [Developer Certificate of Origin](https://developercertificate.org/) means
+you have the right to submit the contribution under this project's licence. It
+is not a CLA and does not transfer copyright.
 
 ## Pull requests
 
-- One thing per pull request. If the description needs the word "also", it is
-  probably two.
-- Non-trivial logic leaves one runnable check behind — `bun test`, no framework,
-  no fixture hierarchy.
-- New state? `src/mech/ops/states.ts` and `src/mech/ops/invariants.ts` have to
-  agree, and `test/invariants.test.ts` fails until they do. That is deliberate:
-  a state nobody drives is how a group ends up looking healthy and going nowhere.
-- Adding a UI component? Check shadcn/Radix first (硬约束 4). Hand-rolled
-  dialogs and menus are how you end up with no focus trap and no Escape key.
+One pull request should deliver one coherent outcome. Fill every plan field in
+the template; use `N/A: reason` where a field truly does not apply. Include the
+exact commands and relevant output proving the change, plus a rollback path.
 
-## Reporting something
-
-Bugs and ideas go in [issues](../../issues). Anything that looks like a way
-around the sandbox, the credential vault, or the `orch` interface goes to
-[SECURITY.md](SECURITY.md) instead — privately, not in an issue.
+CI is read-only and will not format, fix, or push your branch. Run formatting,
+types, lint, tests, audit, and workflow checks locally as applicable. Respond to
+review findings with a fix or an evidence-backed disposition. The merge remains
+a maintainer decision under [GOVERNANCE.md](GOVERNANCE.md).

@@ -1,0 +1,113 @@
+import { expect, test } from "bun:test";
+import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
+import { ensureCheckout, sandboxGit } from "../../src/mech/git/checkout.ts";
+import { porcelainPaths, STATUS_Z } from "../../src/mech/git/gitops.ts";
+import { WORK } from "../../src/mech/sandbox/sandbox.ts";
+import * as fx from "../support/factories.ts";
+import { fakeSandbox } from "../support/fake-sandbox.ts";
+import { testContext } from "../support/test-context.ts";
+
+/**
+ * Three ways a checkout goes wrong quietly, and one way it goes wrong loudly.
+ *
+ * A shallow clone is faster and truncates history, which `rebaseOntoBase` and
+ * `merge-base --is-ancestor` both need — and a future reader with a slow clone in
+ * front of them reaches for `--depth=1` first.
+ */
+/**
+ * `ensureCheckout` had four early returns before it could ever throw, and when one
+ * fired the group ran a whole turn against an empty `/work`: RUNNING, an agent on
+ * the roster, no error anywhere. There are three now — "the host has no git" stopped
+ * being a way this can fail when the remote stopped being read out of a host
+ * checkout.
+ */
+function harness(opts: { project?: boolean; grp?: boolean; remote?: boolean; modules?: boolean } = {}) {
+  const db: DB = openMemory();
+  const sandbox = fakeSandbox((cmd) => {
+    if (cmd.includes(".gitmodules")) return { out: opts.modules ? "yes" : "" };
+    if (cmd.includes("test -d")) return { out: "" };
+    // No branch on the remote yet, so the checkout cuts one from the base.
+    if (cmd.includes("ls-remote")) return { code: 2 };
+    return {};
+  });
+  const ctx = testContext({ db, sandbox });
+
+  if (opts.project !== false) {
+    fx.project.insert(db, {
+      name: "p",
+      remote: opts.remote === false ? null : "https://github.com/me/x.git",
+    });
+  } else {
+    // A group whose project is gone. The foreign key is what normally stops
+    // this; it does not stop a project deleted out from under a live group.
+    db.run("PRAGMA foreign_keys = OFF");
+  }
+  if (opts.grp !== false) {
+    fx.runningGrp.insert(db, { project_id: 1, name: "g1", branch: "orch/g1" });
+  }
+  const said = () => db.query<{ body: string }, []>("SELECT body FROM event WHERE severity = 'blocker'").all();
+  return { ctx, sandbox, said };
+}
+
+test("the clone is blobless, so history survives it", async () => {
+  const { ctx, sandbox } = harness();
+  await ensureCheckout(ctx, 1);
+  const clone = sandbox.commands.find((c) => c.startsWith("git clone"));
+  expect(clone).toContain("--filter=blob:none");
+  // The whole point: not the faster one that breaks rebase and merge-base.
+  expect(clone).not.toContain("--depth");
+});
+
+test("every way out that is not a clone says which one it was", async () => {
+  const cases: [string, Awaited<ReturnType<typeof harness>>, number][] = [
+    ["组 2", harness(), 2],
+    ["项目不在了", harness({ project: false }), 1],
+    ["没记下 remote", harness({ remote: false }), 1],
+  ];
+
+  for (const [needle, h, grpId] of cases) {
+    await ensureCheckout(h.ctx, grpId);
+    expect(h.sandbox.commands).toEqual([]);
+    const bodies = h.said().map((e) => e.body);
+    expect(bodies.length).toBe(1);
+    expect(bodies[0]).toContain(needle);
+  }
+});
+
+test("submodules are initialised in two steps, and only when there are any", async () => {
+  // `git clone --recursive` is CVE-2024-32002 and CVE-2025-48384: a submodule
+  // checkout that lands a hook where git then looks for one. The two steps are
+  // the mitigation GitHub itself publishes, so collapsing them back into a flag
+  // is the regression this exists to catch.
+  const withModules = harness({ modules: true });
+  await ensureCheckout(withModules.ctx, 1);
+  const clone = withModules.sandbox.commands.find((c) => c.startsWith("git clone"))!;
+  expect(clone).not.toContain("--recursive");
+  expect(clone).not.toContain("--recurse-submodules");
+  const init = withModules.sandbox.commands.find((c) => c.includes("submodule update --init"))!;
+  expect(init).toContain("protocol.file.allow=user");
+  // Order: the working tree has to exist before `.gitmodules` can be read at all.
+  expect(withModules.sandbox.commands.indexOf(clone)).toBeLessThan(withModules.sandbox.commands.indexOf(init));
+
+  // A repository with no submodules pays one `test -f` and nothing else.
+  const without = harness();
+  await ensureCheckout(without.ctx, 1);
+  expect(without.sandbox.commands.filter((c) => c.includes("submodule"))).toEqual([]);
+});
+
+test("a warning on stderr does not become a changed path", async () => {
+  // `sandboxGit` returned `out + err` with no separator, and `git status
+  // --porcelain -z` is one NUL-terminated blob — so a single stderr line, and
+  // `warning: unable to access '/root/.config/git/ignore'` is the common one
+  // inside a container, was glued onto the last record. `porcelainPaths` then
+  // sliced it at three characters and handed the remainder to
+  // `reconcileOwnership`, which feeds paths straight to `git checkout --` and
+  // `git clean -fd --`.
+  const sandbox = fakeSandbox((cmd) => {
+    if (!cmd.includes("'status'")) return {};
+    return { out: " M src/a.ts\0", err: "warning: unable to access '/root/.config/git/ignore'" };
+  });
+  const ctx = testContext({ sandbox });
+  const r = await sandboxGit(ctx, { grp: 1 })(STATUS_Z, WORK);
+  expect(porcelainPaths(r.out)).toEqual(["src/a.ts"]);
+});

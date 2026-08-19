@@ -1,8 +1,19 @@
-import type { Ctx } from "../../ctx.ts";
-import { rollbackTo } from "../git/worktree.ts";
+import type { Ctx } from "../../mech/ctx.ts";
+import { addNote } from "../util/rows.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import { rollbackTo } from "../git/gitops.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { dropGroup } from "./start.ts";
+import { release } from "./intercept.ts";
+import {
+  ESCALATION_OPEN_STATES,
+  isDispatchableGrpState,
+  isTerminalEscalationState,
+  type EscalationOpenState,
+  type EscalationState,
+  type GrpState,
+} from "../../contracts/states.ts";
 
 /**
  * The answer chain: PM -> Architect -> CoS -> the boss.
@@ -14,8 +25,7 @@ import { dropGroup } from "./start.ts";
  * from.
  */
 
-export const CHAIN = ["pm", "architect", "cos", "boss"] as const;
-export type ChainState = (typeof CHAIN)[number] | "answered" | "revoked";
+export const CHAIN = ESCALATION_OPEN_STATES;
 
 /**
  * Topics that never route through the chain, however clear the precedent.
@@ -56,12 +66,12 @@ interface EscRow {
   agent_id: number | null;
   severity: string;
   question: string;
-  chain_state: string;
+  chain_state: EscalationState;
 }
 
-function load(ctx: Ctx, id: number): EscRow | null {
+function load(db: DB, id: number): EscRow | null {
   return (
-    ctx.db
+    db
       .query<EscRow, [number]>(
         "SELECT id, grp_id, agent_id, severity, question, chain_state FROM escalation WHERE id = ?",
       )
@@ -77,8 +87,8 @@ function load(ctx: Ctx, id: number): EscRow | null {
  */
 export function route(deps: ChainDeps, escId: number): string {
   const { ctx } = deps;
-  const esc = load(ctx, escId);
-  if (!esc || esc.chain_state === "answered" || esc.chain_state === "revoked") return "closed";
+  const esc = load(ctx.db, escId);
+  if (!esc || isTerminalEscalationState(esc.chain_state)) return "closed";
 
   // A stopped group can answer nothing: every level below the boss replies by
   // taking a turn, and a turn on a paused, parked or draft group is never
@@ -91,12 +101,10 @@ export function route(deps: ChainDeps, escId: number): string {
   // call, not a decision. Lifting those to the boss put five of them on the phone
   // as "things need you" and buried the one blocker that did.
   const status = esc.grp_id
-    ? ctx.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(esc.grp_id)?.status
+    ? ctx.db.query<{ status: GrpState }, [number]>("SELECT status FROM grp WHERE id = ?").get(esc.grp_id)?.status
     : null;
-  let level =
-    esc.severity === "blocker" && status && !["PLANNING", "RUNNING", "PR_OPEN"].includes(status)
-      ? "boss"
-      : (esc.chain_state as (typeof CHAIN)[number]);
+  let level: EscalationOpenState =
+    esc.severity === "blocker" && status && !isDispatchableGrpState(status) ? "boss" : esc.chain_state;
   for (;;) {
     if (level === "boss") {
       ctx.db.run("UPDATE escalation SET chain_state = 'boss' WHERE id = ?", [escId]);
@@ -130,59 +138,79 @@ export function route(deps: ChainDeps, escId: number): string {
 }
 
 /** A responder for this level: in-group for PM, standing for the rest. */
+function groupResponder(db: DB, grpId: number | null): number | null {
+  return (
+    db
+      .query<{ id: number }, [number | null]>(
+        "SELECT id FROM agent WHERE grp_id IS ? AND role = 'pm' AND state != 'retired'",
+      )
+      .get(grpId)?.id ?? null
+  );
+}
+
+function standingResponder(db: DB, role: string): number | null {
+  return (
+    db
+      .query<{ id: number }, [string]>("SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'")
+      .get(role)?.id ?? null
+  );
+}
+
 function findResponder(ctx: Ctx, grpId: number | null, role: string): number | null {
-  if (role === "pm") {
-    return (
-      ctx.db
-        .query<{ id: number }, [number | null]>(
-          "SELECT id FROM agent WHERE grp_id IS ? AND role = 'pm' AND state != 'retired'",
-        )
-        .get(grpId)?.id ?? null
-    );
-  }
-  const standing = ctx.db
-    .query<{ id: number }, [string]>(
-      "SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'",
-    )
-    .get(role)?.id;
-  if (standing) return standing;
+  if (role === "pm") return groupResponder(ctx.db, grpId);
+  const assigned = standingResponder(ctx.db, role);
+  if (assigned) return assigned;
   // A configured-but-not-yet-hired standing role is a level that exists; skipping
   // it would send the question to the boss for no reason.
-  if ((ctx.knownRoles?.() ?? []).includes(role)) return ctx.hire?.(null, role) ?? null;
-  return null;
+  if (!(ctx.knownRoles?.() ?? []).includes(role)) return null;
+  return ctx.hire?.(null, role) ?? null;
 }
 
 export interface AnswerInput {
   escId: number;
-  by: string;
+  by: EscalationOpenState;
   answer: string;
+  /** Present for an authenticated agent; omitted for the boss's panel. */
+  actorGrpId?: number | null;
   /** A note id the answer rests on. Required for the CoS. */
   refNoteId?: number;
+}
+
+function responderError(esc: EscRow, by: EscalationOpenState, actorGrpId?: number | null): string | null {
+  if (actorGrpId !== undefined) {
+    if (by === "boss") return "the boss answers through the panel";
+    if (by === "pm" ? actorGrpId !== esc.grp_id : actorGrpId !== null) return "not your question";
+  }
+  return by !== "boss" && esc.chain_state !== by ? `this question is waiting on ${esc.chain_state}, not ${by}` : null;
+}
+
+function citationError(db: DB, input: AnswerInput): string | null {
+  if (input.by !== "cos") return null;
+  if (!input.refNoteId) return "a stand-in answer must cite the decision it rests on (--ref <note_id>)";
+  const note = db.query<{ kind: string }, [number]>("SELECT kind FROM note WHERE id = ?").get(input.refNoteId);
+  if (!note) return `no note ${input.refNoteId}`;
+  if (note.kind === "decision" || note.kind === "fact") return null;
+  return `note ${input.refNoteId} is a ${note.kind}, not a decision`;
+}
+
+function answerError(db: DB, esc: EscRow, input: AnswerInput): string | null {
+  if (esc.chain_state === "answered") return "already answered";
+  const responder = responderError(esc, input.by, input.actorGrpId);
+  if (responder) return responder;
+  const citation = citationError(db, input);
+  if (citation) return citation;
+  return input.by !== "boss" && isReserved(esc.question)
+    ? "this one is reserved for the boss whatever the precedent"
+    : null;
 }
 
 /** A level answers. Resolves whoever is blocked on `orch ask-boss`. */
 export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok: false; error: string } {
   const { ctx } = deps;
-  const esc = load(ctx, input.escId);
+  const esc = load(ctx.db, input.escId);
   if (!esc) return { ok: false, error: `no escalation ${input.escId}` };
-  if (esc.chain_state === "answered") return { ok: false, error: "already answered" };
-
-  if (input.by === "cos") {
-    // The CoS speaks for the boss only where the boss has already spoken.
-    if (!input.refNoteId) {
-      return { ok: false, error: "a stand-in answer must cite the decision it rests on (--ref <note_id>)" };
-    }
-    const note = ctx.db
-      .query<{ kind: string }, [number]>("SELECT kind FROM note WHERE id = ?")
-      .get(input.refNoteId);
-    if (!note) return { ok: false, error: `no note ${input.refNoteId}` };
-    if (note.kind !== "decision" && note.kind !== "fact") {
-      return { ok: false, error: `note ${input.refNoteId} is a ${note.kind}, not a decision` };
-    }
-  }
-  if (input.by !== "boss" && isReserved(esc.question)) {
-    return { ok: false, error: "this one is reserved for the boss whatever the precedent" };
-  }
+  const refused = answerError(ctx.db, esc, input);
+  if (refused) return { ok: false, error: refused };
 
   ctx.db.run(
     `UPDATE escalation SET answer = ?, answered_by = ?, ref_note_id = ?, chain_state = 'answered',
@@ -198,10 +226,7 @@ export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok
     meta: { in_reply_to_escalation: input.escId, answered_by: input.by, ref: input.refNoteId ?? null },
   });
   if (esc.severity === "blocker" && esc.grp_id) {
-    ctx.db.run(
-      "UPDATE grp SET status = 'RUNNING', paused_at = NULL WHERE id = ? AND status IN ('PAUSED','PAUSING')",
-      [esc.grp_id],
-    );
+    release(ctx, esc.grp_id);
   }
 
   const w = ctx.waiters.get(`escalation:${input.escId}`);
@@ -212,11 +237,19 @@ export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok
 }
 
 /** A level declines. Not a failure — it is what keeps a guess from becoming a premise. */
-export function abstain(deps: ChainDeps, escId: number, by: string, why: string): void {
+export function abstain(
+  deps: ChainDeps,
+  escId: number,
+  by: EscalationOpenState,
+  why: string,
+  actorGrpId?: number | null,
+): { ok: true } | { ok: false; error: string } {
   const { ctx } = deps;
-  const esc = load(ctx, escId);
-  if (!esc) return;
-  const next = CHAIN[CHAIN.indexOf(by as (typeof CHAIN)[number]) + 1] ?? "boss";
+  const esc = load(ctx.db, escId);
+  if (!esc) return { ok: false, error: `no escalation ${escId}` };
+  const refused = responderError(esc, by, actorGrpId);
+  if (refused) return { ok: false, error: refused };
+  const next = CHAIN[CHAIN.indexOf(by) + 1] ?? "boss";
   ctx.db.run("UPDATE escalation SET chain_state = ? WHERE id = ?", [next, escId]);
   ctx.bus.emit({
     grpId: esc.grp_id,
@@ -228,6 +261,7 @@ export function abstain(deps: ChainDeps, escId: number, by: string, why: string)
     meta: { escalation_id: escId, next },
   });
   route(deps, escId);
+  return { ok: true };
 }
 
 /**
@@ -237,10 +271,7 @@ export function abstain(deps: ChainDeps, escId: number, by: string, why: string)
  * rightly never enable them. Rolling the worktree back to the checkpoint recorded
  * when the question was asked is what makes the bet reversible.
  */
-export async function revoke(
-  deps: ChainDeps,
-  escId: number,
-): Promise<{ rolledBackTo?: string; answeredBy?: string }> {
+export async function revoke(deps: ChainDeps, escId: number): Promise<{ rolledBackTo?: string; answeredBy?: string }> {
   const { ctx } = deps;
   const esc = ctx.db
     .query<{ grp_id: number | null; answered_by: string | null; checkpoint_sha: string | null }, [number]>(
@@ -256,7 +287,7 @@ export async function revoke(
   // The group's own checkout. Gated on `grp.worktree` before — a column nothing
   // writes — so revoking an answer never actually revoked the work done on it.
   if (esc.checkpoint_sha && esc.grp_id) {
-    const back = await rollbackTo(sandboxGit(ctx, { grp: esc.grp_id }), WORK, WORK, esc.checkpoint_sha);
+    const back = await rollbackTo(sandboxGit(ctx, { grp: esc.grp_id }), WORK, esc.checkpoint_sha);
     if (back.ok) rolledBackTo = esc.checkpoint_sha;
     else {
       ctx.bus.emit({
@@ -276,12 +307,25 @@ export async function revoke(
     body:
       `revoked ${esc.answered_by ?? "the"} answer` +
       (rolledBackTo ? ` and rolled back to ${rolledBackTo.slice(0, 8)}` : ""),
-    meta: { escalation_id: escId, rolledBackTo },
+    meta: { escalation_id: escId, ...(rolledBackTo ? { rolledBackTo } : {}) },
   });
-  return { rolledBackTo, answeredBy: esc.answered_by ?? undefined };
+  return {
+    ...(rolledBackTo ? { rolledBackTo } : {}),
+    ...(esc.answered_by ? { answeredBy: esc.answered_by } : {}),
+  };
 }
 
-export type Triage = "patch" | "respec" | "reject";
+/**
+ * A value, like `CHAIN` above, so the two doors can spell it from here.
+ *
+ * It was a bare union type, so neither route that takes it could reach it: the
+ * boss's `/api/v1/say` restated the three words as an array literal plus an
+ * unchecked `as Triage`, and `/orch/v1/triage` restated them again as a `z.enum`.
+ * A fourth verb added here would have compiled everywhere and been refused by
+ * one of the two doors at runtime.
+ */
+export const TRIAGE = ["patch", "respec", "reject"] as const;
+export type Triage = (typeof TRIAGE)[number];
 
 /**
  * What the boss's complaint means for the work.
@@ -301,11 +345,7 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
   const body = `boss (${as}): ${note}`;
   if (deps.bossFact) deps.bossFact(grpId, body);
   else {
-    ctx.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (?, 'fact', ?, ?, unixepoch() * 1000)", [
-      grpId,
-      ctx.config.language,
-      body,
-    ]);
+    addNote(ctx.db, { grpId, kind: "fact", lang: ctx.config.language, body });
   }
   ctx.bus.emit({
     grpId,
@@ -339,7 +379,7 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
     // Sending it to a PM meant the addition was never read and the boss approved a
     // card that did not contain what they had just asked for.
     const draft =
-      ctx.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grpId)?.status ===
+      ctx.db.query<{ status: GrpState }, [number]>("SELECT status FROM grp WHERE id = ?").get(grpId)?.status ===
       "DRAFT";
     if (draft) {
       ctx.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = ?", [grpId]);

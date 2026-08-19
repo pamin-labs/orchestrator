@@ -3,6 +3,42 @@
 # `data/` — the codex home and the staged skills, both full of other people's
 # `*.test.ts`. Those failed as ours and buried the real result.
 root = "test"
-# Clears the module-scope holds before every test, so no file inherits one from
-# whatever ran before it. See test/setup.ts.
-preload = ["./test/setup.ts"]
+# Order matters. A preload entry is loaded and evaluated before the next one
+# begins, and `test/support/coverage.ts` has to register its loader plugin before
+# anything it should instrument is *loaded* — not merely before it runs, because
+# a module graph is fetched ahead of evaluation. Registering from a later entry,
+# or from an `import` at the top of setup.ts, both left the four holds below and
+# their transitive closure out of the coverage map: fifty-six source files,
+# `src/scheduler.ts` among them, silently reported as estimates.
+#
+# Both files gate themselves, because the list cannot be gated from outside it.
+# coverage.ts loads the rewriter only under ORCH_COVERAGE=1; dom.ts registers a
+# document only for the test files that need one, decided from `Bun.main`, which
+# inside a preload is the absolute path of the file about to run. Between them
+# that is ~119ms per file that 107 of the 149 were paying for nothing.
+#
+# dom.ts's half only holds when each file gets its own process — `--isolate`, or
+# the `--parallel` that implies it, which is why the `test` script carries it.
+# Bare `bun test <dir>` runs one process, evaluates this list once, and leaves
+# `Bun.main` naming only the first file; the second file that wanted a document
+# gets `HTMLElement is not defined`. Neither key nor flag fixes it from here:
+# `[test] parallel` and `[test] isolate` are not read by Bun 1.3.14, verified by
+# counting preload evaluations.
+#
+# Both gates use `require`, and that is not a style choice. A preload's
+# top-level `await` does **not** hold back the test module under `--parallel`:
+# anything installed after one is installed after the file it was supposed to
+# precede. Reached with `await import`, the happy-dom registration landed too
+# late for 73 tests, which failed as `document is not defined`. Whatever has to
+# happen before the test file loads happens synchronously.
+#
+# setup.ts clears the module-scope holds before every test, so no file inherits
+# one from whatever ran before it.
+#
+# `dom.ts` is here for the same reason and one step later: it must install a
+# document before any module that reaches `web/src` is evaluated, because Radix
+# reads `globalThis?.document` once when it loads and never asks again. It runs
+# after coverage.ts so the instrumentation sees it, and before setup.ts.
+# `test/governance/preload-scope.test.ts` holds its list of files to the imports
+# they actually have.
+preload = ["./test/support/coverage.ts", "./test/support/dom.ts", "./test/support/setup.ts"]

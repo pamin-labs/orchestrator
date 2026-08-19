@@ -1,8 +1,8 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /** shadcn's badge, on our tokens. `mine` is the accent one: it means "needs you". */
-export const badgeStyles = cva("inline-block rounded-sm px-1.5 py-px font-mono text-[0.625rem] tracking-[0.06em]", {
+const badgeStyles = cva("inline-block rounded-sm px-1.5 py-px font-mono text-[0.625rem] tracking-[0.06em]", {
   variants: {
     tone: {
       muted: "bg-sunk text-ink-2",
@@ -15,6 +15,10 @@ export const badgeStyles = cva("inline-block rounded-sm px-1.5 py-px font-mono t
   defaultVariants: { tone: "muted" },
 });
 
-export function Badge({ className, tone, ...rest }: React.HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeStyles>) {
+export function Badge({
+  className,
+  tone,
+  ...rest
+}: React.HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeStyles>) {
   return <span className={cn(badgeStyles({ tone }), className)} {...rest} />;
 }

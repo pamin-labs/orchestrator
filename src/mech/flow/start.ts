@@ -1,25 +1,22 @@
-import type { Ctx } from "../../ctx.ts";
-import { say } from "../../lang.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import type { Ctx } from "../../mech/ctx.ts";
+import { say } from "../../platform/text/lang.ts";
 import { createCheckout, remoteFor } from "../git/checkout.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
 import { execIn, execLines, WORK } from "../sandbox/sandbox.ts";
 import { detectGates, detectInstall, detectShared, READS, type Root } from "../util/detect.ts";
-import { shq } from "../util/shq.ts";
+import { shq } from "../../platform/process/shell.ts";
 import { baseRefFor } from "../git/checkout.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
+import { projectConfig } from "../util/rows.ts";
+import { errText } from "../../platform/process/text.ts";
+import { raise } from "./escalate.ts";
 
-/** `project.config_json.install`, or null. Same reader shape as `gatesFor`. */
-function installFor(ctx: Ctx, projectId: number): string | null {
-  const row = ctx.db
-    .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
-    .get(projectId);
-  try {
-    const v = JSON.parse(row?.config_json ?? "{}").install;
-    return typeof v === "string" && v.trim() ? v : null;
-  } catch {
-    return null;
-  }
+/** `project.config_json.install`, or null. */
+function installFor(db: DB, projectId: number): string | null {
+  const v = projectConfig(db, projectId).install;
+  return v?.trim() ? v : null;
 }
 
 /**
@@ -34,39 +31,41 @@ function installFor(ctx: Ctx, projectId: number): string | null {
 /**
  * Wind a group up without merging it: it should not be done.
  *
- * The boss's 不做了, and the CoS triaging a complaint as `reject` — one path, or
+ * The boss's 不做了 and the CoS triaging a complaint as `reject` are one path, or
  * the two disagree about what "dropped" means. Rejecting used to only cancel the
  * queue, so the group kept its ACTIVE status and went on holding its paths against
  * every other group forever.
+ */
+/**
+ * No retro turn: a group being dropped has nobody who wants its output, and the
+ * reason is the sentence just written to its blackboard — spending an Opus turn to
+ * restate that teaches the agents that retros are paperwork. The worktree and
+ * every event stay; archiving must never mean deleting.
  *
- * No retro turn. A group that is being dropped has, by definition, nobody who
- * wants its output, and the reason it is being dropped is the sentence that was
- * just written to its blackboard — spending an Opus turn to restate that teaches
- * the agents that retros are paperwork. The worktree and every event stay:
- * archiving must never mean deleting.
- *
- * `owns` is deliberately left alone. `canStart` only counts ACTIVE groups, so
+ * `owns` is deliberately left alone. `canStart` counts only ACTIVE groups, so
  * DISSOLVED already releases the paths, and blanking the column would erase what
  * this group was allowed to touch from the record.
  */
 export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
-  ctx.sched.cancelPending(grpId, "dropped");
-  ctx.db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL WHERE id = ?", [grpId]);
-  ctx.db.run("UPDATE agent SET state = 'retired', session_id = NULL, token = NULL WHERE grp_id = ?", [grpId]);
-  ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [grpId]);
-  // Anything it had asked the boss dies with it, or the question outlives the
-  // requirement and sits in 待办 forever.
-  ctx.db.run(
-    `UPDATE escalation SET chain_state = 'revoked', answered_at = unixepoch() * 1000
-     WHERE grp_id = ? AND answer IS NULL`,
-    [grpId],
-  );
-  ctx.bus.emit({
-    grpId,
-    author: "boss",
-    kind: "state_change",
-    body: say(ctx.config?.language, "group.dropped", { why: why ? `：${why}` : "" }),
-  });
+  ctx.db.transaction(() => {
+    ctx.sched.cancelPending(grpId, "dropped");
+    ctx.db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL WHERE id = ?", [grpId]);
+    ctx.db.run("UPDATE agent SET state = 'retired', session_id = NULL, token = NULL WHERE grp_id = ?", [grpId]);
+    ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [grpId]);
+    // Anything it had asked the boss dies with it, or the question outlives the
+    // requirement and sits in 待办 forever.
+    ctx.db.run(
+      `UPDATE escalation SET chain_state = 'revoked', answered_at = unixepoch() * 1000
+       WHERE grp_id = ? AND answer IS NULL`,
+      [grpId],
+    );
+    ctx.bus.emit({
+      grpId,
+      author: "boss",
+      kind: "state_change",
+      body: say(ctx.config.language, "group.dropped", { why: why ? `：${why}` : "" }),
+    });
+  })();
 }
 
 /**
@@ -79,19 +78,15 @@ export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
  * timeline already knows how to render it — and only the tail is kept durably,
  * because an install log is worth watching and not worth storing.
  */
-export async function runInstall(
-  ctx: Ctx,
-  grpId: number,
-  cmd: string,
-): Promise<{ ok: boolean; tail: string }> {
+export async function runInstall(ctx: Ctx, grpId: number, cmd: string): Promise<{ ok: boolean; tail: string }> {
   const seen: string[] = [];
-  sandboxLog(ctx, grpId, "cmd", cmd);
+  sandboxLog(ctx.bus, grpId, "cmd", cmd);
   const stream = execLines(ctx, { grp: grpId }, cmd, {
     cwd: WORK,
-    timeoutMs: ctx.config.installTimeoutMs ?? 10_800_000,
+    timeoutMs: ctx.config.installTimeoutMs,
     // Package managers print progress on stderr; without this an install is
     // silent for its whole run and then dumps everything at once.
-    onStderr: (l) => sandboxLog(ctx, grpId, "out", l),
+    onStderr: (l) => sandboxLog(ctx.bus, grpId, "out", l),
   });
   let end = { code: -1, err: "" };
   for (;;) {
@@ -102,9 +97,9 @@ export async function runInstall(
     }
     seen.push(step.value);
     if (seen.length > 400) seen.shift();
-    sandboxLog(ctx, grpId, "out", step.value);
+    sandboxLog(ctx.bus, grpId, "out", step.value);
   }
-  sandboxLog(ctx, grpId, "end", end.code === 0 ? "ok" : `exit ${end.code}`);
+  sandboxLog(ctx.bus, grpId, "end", end.code === 0 ? "ok" : `exit ${end.code}`);
   const tail = [...seen.slice(-12), ...(end.err ? [end.err.slice(-400)] : [])].join("\n");
   ctx.bus.emit({
     grpId,
@@ -118,31 +113,29 @@ export async function runInstall(
 /**
  * Put back what a fresh container does not have.
  *
- * A sandbox is where the work lives — the clone and everything installed into
- * it — and it is replaceable: the TTL reaps an idle one, a credential change
- * kills it, the server it runs on restarts. `ensureSandbox` already builds
- * another, and until now that was the whole story, so the next turn woke up in
- * an empty container with no checkout and no dependencies and reported that the
+ * A sandbox holds the work — the clone and everything installed into it — and is
+ * replaceable: the TTL reaps an idle one, a credential change kills it, its server
+ * restarts. `ensureSandbox` already builds another, and until now that was the
+ * whole story, so the next turn woke in an empty container and reported that the
  * repository was broken.
+ */
+/**
+ * Called from `ensureSandbox` rather than from each of its callers: a caller that
+ * has to remember to restore is a caller that will not, and the ones that matter
+ * are three levels down inside a turn.
  *
- * Called from `ensureSandbox` rather than from each of its callers: a caller
- * that has to remember to restore is a caller that will not, and the ones that
- * matter are three levels down inside a turn.
- *
- * Inline rather than queued, because the turn that triggered the rebuild cannot
- * do anything useful until this finishes. `createCheckout` is idempotent, and
- * the install streams, which is what makes a long one watchable.
+ * Inline rather than queued, because the turn that triggered the rebuild cannot do
+ * anything useful until it finishes. `createCheckout` is idempotent, and the
+ * install streams, which is what makes a long one watchable.
  */
 export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
   const grp = ctx.db
-    .query<{ project_id: number; branch: string | null }, [number]>(
-      "SELECT project_id, branch FROM grp WHERE id = ?",
-    )
+    .query<{ project_id: number; branch: string | null }, [number]>("SELECT project_id, branch FROM grp WHERE id = ?")
     .get(grpId);
   // No branch means the group has not started; `startGroup` owns that path and
   // is in the middle of it.
   if (!grp?.branch) return;
-  const remote = remoteFor(ctx, grp.project_id);
+  const remote = remoteFor(ctx.db, grp.project_id);
   if (!remote) return;
 
   ctx.bus.emit({
@@ -154,14 +147,18 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
   // The branch comes back off the remote, not out of a bundle the host kept:
   // `pushBranch` put it there at the last slice boundary, and `createCheckout`
   // checks it out when `ls-remote` finds it.
-  await createCheckout(ctx, { grp: grpId }, {
-    remote,
-    branch: grp.branch,
-    base: await baseRefFor(ctx, grp.project_id),
-    projectId: grp.project_id,
-  });
+  await createCheckout(
+    ctx,
+    { grp: grpId },
+    {
+      remote,
+      branch: grp.branch,
+      base: await baseRefFor(ctx, grp.project_id),
+      projectId: grp.project_id,
+    },
+  );
 
-  const known = installFor(ctx, grp.project_id);
+  const known = installFor(ctx.db, grp.project_id);
   if (known) {
     const dep = await runInstall(ctx, grpId, known);
     if (dep.ok) return;
@@ -181,31 +178,30 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
 /**
  * What the repository turns out to be, read once, from the first clone.
  *
- * This used to run when the project was registered, against a checkout on the
- * host. There is no such checkout any more (007 §2) and there never will be
- * again, so it runs here instead: the first group's container is the first
- * moment the repository exists anywhere we can read it.
- *
+ * This used to run at registration against a checkout on the host. There is no such
+ * checkout any more (ADR 007) and never will be, so it runs here: the first group's
+ * container is the first moment the repository exists anywhere we can read it.
+ */
+/**
  * Once per project, marked by `config.detected` rather than by "are there gates
- * yet" — a project where detection genuinely finds nothing must not re-run it
- * for every group forever, and must not grow duplicate resource rows.
+ * yet" — a project where detection genuinely finds nothing must not re-run forever
+ * or grow duplicate resource rows.
  *
- * Everything it writes is a guess in a place the boss can correct: the gate
- * names, the install command and the shared paths land in project config, which
- * is `detect.ts`'s own stated rule.
+ * Everything it writes is a guess in a place the boss can correct: gate names, the
+ * install command and the shared paths all land in project config, which is
+ * `detect.ts`'s own stated rule.
  */
 export async function detectProject(ctx: Ctx, grpId: number, projectId: number): Promise<void> {
-  const row = ctx.db
-    .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
-    .get(projectId);
-  let cfg: Record<string, unknown> = {};
-  try {
-    cfg = JSON.parse(row?.config_json ?? "{}");
-  } catch {}
-  if (cfg.detected) return;
+  const cfg = projectConfig(ctx.db, projectId);
+  // Detection always writes both fields. A hand-edited/legacy `detected: true`
+  // cannot suppress it when its companion gate list did not pass the boundary.
+  if (cfg.detected === true && cfg.gates !== undefined) return;
 
   const ls = await execIn(ctx, { grp: grpId }, `ls -A ${shq(WORK)}`);
-  const names = ls.out.split("\n").map((s) => s.trim()).filter(Boolean);
+  const names = ls.out
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const files: Record<string, string> = {};
   for (const f of READS) {
     if (!names.includes(f)) continue;
@@ -241,7 +237,7 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
       "browser",
       "bun run scripts/browse.ts --steps {steps}",
       // A step file, never a command: the Runner has real permissions, so the only
-      // thing an agent may hand it is data (PLAN.md, hard constraint 2).
+      // thing an agent may hand it is data (docs/project/plan.md, hard constraint 2).
       JSON.stringify({ steps: { type: "string", pattern: "^(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.json$", maxLength: 200 } }),
       "FAIL:",
       JSON.stringify(["browser"]),
@@ -251,7 +247,7 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   const next = {
     ...cfg,
     detected: true,
-    gates: (cfg.gates as string[] | undefined)?.length ? cfg.gates : gates.map((g) => g.name),
+    gates: cfg.gates?.length ? cfg.gates : gates.map((g) => g.name),
     install: detectInstall(root),
     shared: detectShared(root),
   };
@@ -291,17 +287,17 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
   if (grp && !grp.branch) {
     {
       try {
-        const remote = remoteFor(ctx, grp.project_id);
+        const remote = remoteFor(ctx.db, grp.project_id);
         if (!remote) return "project has no remote recorded; a group clones from it";
         const branch = `orch/${grp.name}`;
         const base = await baseRefFor(ctx, grp.project_id);
         await createCheckout(ctx, { grp: grpId }, { remote, branch, base, projectId: grp.project_id });
-              ctx.db.run("UPDATE grp SET branch = ? WHERE id = ?", [branch, grpId]);
+        ctx.db.run("UPDATE grp SET branch = ? WHERE id = ?", [branch, grpId]);
         ctx.bus.emit({
           grpId,
           author: "orchestrator",
           kind: "state_change",
-          body: say(ctx.config?.language, "group.worktree", { branch }),
+          body: say(ctx.config.language, "group.worktree", { branch }),
         });
 
         // The first moment the repository exists anywhere readable. It runs
@@ -313,7 +309,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         // nobody enumerates those, and the repo says which one it is. What
         // changed is where it runs: the agent installs inside its own sandbox,
         // so there is nothing left for the orchestrator to do on its behalf.
-        const known = installFor(ctx, grp.project_id);
+        const known = installFor(ctx.db, grp.project_id);
         if (known) {
           const dep = await runInstall(ctx, grpId, known);
           if (!dep.ok)
@@ -328,15 +324,15 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         } else {
           ctx.sched.enqueue("agent_turn", { grp_id: grpId, priority: 9, payload: { role: "bootstrap" } });
         }
-      } catch (e: any) {
+      } catch (e) {
         // Refuse to start rather than let the group run without its own checkout.
-        return `could not prepare the group's checkout: ${e?.message ?? e}`;
+        return `could not prepare the group's checkout: ${errText(e)}`;
       }
     }
   }
 
   ctx.db.run("UPDATE grp SET status = 'RUNNING', approved_at = NULL WHERE id = ?", [grpId]);
-  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config?.language, "group.approved") });
+  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config.language, "group.approved") });
   // Approving a plan that then sits still is the most confusing failure there is:
   // it looks like the system ignored you.
   startNextSlice(ctx, grpId);
@@ -369,11 +365,12 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
     // and this runs on the watchdog tick, so leaving the intent set retried it
     // every thirty seconds forever, returning an error to nobody.
     ctx.db.run("UPDATE grp SET approved_at = NULL WHERE id = ?", [g.id]);
-    ctx.db.run(
-      `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
-       VALUES (?, 'blocker', ?, '批准没能落地', 'boss', unixepoch() * 1000)`,
-      [g.id, `批准没能落地：${err}。修好之后再批一次。`],
-    );
+    raise(ctx.db, {
+      grpId: g.id,
+      brief: "批准没能落地",
+      chain: "boss",
+      question: `批准没能落地：${err}。这次批准已撤回，修好之后再批一次。`,
+    });
     ctx.bus.emit({
       grpId: g.id,
       author: "orchestrator",

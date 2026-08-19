@@ -1,12 +1,19 @@
-import type { Ctx } from "../../ctx.ts";
-import type { Config } from "../../config.ts";
-import { say } from "../../lang.ts";
-import { runGates, recordGate, gateState } from "./gate.ts";
-import { extractClaimedFiles, reconcile } from "./reconcile.ts";
-import { changedSince, filesAt } from "../git/worktree.ts";
+import type { Ctx } from "../../mech/ctx.ts";
+import { addNote } from "../util/rows.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import type { Config } from "../../platform/config/load.ts";
+import { say } from "../../platform/text/lang.ts";
+import { jsonOr } from "../../contracts/json.ts";
+import { runGates, recordGate, gateState } from "../gate.ts";
+import { extractClaimedFiles, reconcile, TaskClaimSchema } from "./reconcile.ts";
+import { changedSince, filesAt } from "../git/gitops.ts";
 import { resourceExec, WORK } from "../sandbox/sandbox.ts";
 import { pushBranch, sandboxGit } from "../git/checkout.ts";
 import { joinQueue, position } from "./mergequeue.ts";
+import { hold } from "./intercept.ts";
+import { raise } from "./escalate.ts";
+import type { SliceState } from "../../contracts/states.ts";
+import { z } from "zod";
 
 /**
  * Slice-level review, in the one order that makes sense.
@@ -23,7 +30,7 @@ export interface ReviewDeps {
   cfg: Config;
 }
 
-export interface SliceRow {
+interface SliceRow {
   id: number;
   grp_id: number;
   seq: number;
@@ -34,9 +41,9 @@ export interface SliceRow {
   retries: number;
 }
 
-export function loadSlice(ctx: Ctx, sliceId: number): SliceRow | null {
+function loadSlice(db: DB, sliceId: number): SliceRow | null {
   return (
-    ctx.db
+    db
       .query<SliceRow, [number]>(
         "SELECT id, grp_id, seq, title, accept_spec, difficulty, base_sha, retries FROM slice WHERE id = ?",
       )
@@ -55,7 +62,7 @@ export async function runDeterministicReview(
   sliceId: number,
 ): Promise<{ pass: boolean; feedback: string }> {
   const { ctx, cfg } = deps;
-  const slice = loadSlice(ctx, sliceId);
+  const slice = loadSlice(ctx.db, sliceId);
   if (!slice) return { pass: false, feedback: "slice disappeared" };
 
   const grp = ctx.db
@@ -63,12 +70,17 @@ export async function runDeterministicReview(
     .get(slice.grp_id);
 
   // --- reconcile: what was claimed against what git shows for THIS slice
-  const claims = ctx.db
+  const storedClaims = ctx.db
     .query<{ claim_json: string | null }, [number]>(
       "SELECT claim_json FROM task WHERE slice_id = ? AND status = 'done'",
     )
     .all(sliceId)
-    .map((r) => safeJson(r.claim_json));
+    .map((r) => jsonOr(r.claim_json, z.json(), null));
+  const claims = z.array(TaskClaimSchema).safeParse(storedClaims);
+  if (!claims.success) {
+    recordGate(ctx.db, sliceId, "reconcile", "fail");
+    return { pass: false, feedback: `Reconcile failed: ${z.prettifyError(claims.error)}` };
+  }
 
   let changed: string[] = [];
   let absent: string[] = [];
@@ -78,26 +90,30 @@ export async function runDeterministicReview(
     // false, the change set was always empty, and the gate scored every claim
     // against nothing at all.
     const sgit = sandboxGit(ctx, { grp: slice.grp_id });
-    changed = await changedSince(sgit, WORK, WORK, slice.base_sha);
+    changed = await changedSince(sgit, WORK, slice.base_sha);
     // A path that is in neither the branch point nor the change set: a scratch file
     // created and then deleted inside this slice. Git has no record of it either
     // way, so it cannot be a delivery — and it must not be scored as a lie.
     // (`changed` already carries the untracked files, so anything that exists now
     // is in one list or the other; no filesystem check is needed.)
-    const known = new Set(await filesAt(sgit, WORK, WORK, slice.base_sha));
+    const known = new Set(await filesAt(sgit, WORK, slice.base_sha));
     const seen = new Set(changed);
-    absent = extractClaimedFiles(claims).filter((c) => !known.has(c) && !seen.has(c));
+    absent = extractClaimedFiles(claims.data).filter((c) => !known.has(c) && !seen.has(c));
   }
-  const rec = reconcile({ claims, changedFiles: changed, absent });
-  recordGate(ctx.db, sliceId, "reconcile", rec.pass ? "pass" : "fail");
+  const rec = reconcile({ claims: claims.data, changedFiles: changed, absent });
+  ctx.db.transaction(() => {
+    recordGate(ctx.db, sliceId, "reconcile", rec.pass ? "pass" : "fail");
+    if (!rec.pass) {
+      ctx.bus.emit({
+        grpId: slice.grp_id,
+        author: "orchestrator",
+        kind: "gate_result",
+        body: say(ctx.config.language, "gate.reconcile", { seq: slice.seq, reason: rec.reason ?? "" }),
+        meta: { slice_id: sliceId, phantom: rec.phantom },
+      });
+    }
+  })();
   if (!rec.pass) {
-    ctx.bus.emit({
-      grpId: slice.grp_id,
-      author: "orchestrator",
-      kind: "gate_result",
-      body: say(ctx.config?.language, "gate.reconcile", { seq: slice.seq, reason: rec.reason ?? "" }),
-      meta: { slice_id: sliceId, phantom: rec.phantom },
-    });
     return {
       pass: false,
       feedback:
@@ -117,14 +133,16 @@ export async function runDeterministicReview(
     exec: resourceExec(ctx, { grp: slice.grp_id }),
     timeoutMs: cfg.leaseTimeoutMs,
   });
-  recordGate(ctx.db, sliceId, "gate", out.pass ? "pass" : "fail");
-  ctx.bus.emit({
-    grpId: slice.grp_id,
-    author: "orchestrator",
-    kind: "gate_result",
-    body: say(ctx.config?.language, out.pass ? "gate.pass" : "gate.fail", { seq: slice.seq }),
-    meta: { slice_id: sliceId, results: out.results.map((r) => ({ name: r.name, pass: r.pass })) },
-  });
+  ctx.db.transaction(() => {
+    recordGate(ctx.db, sliceId, "gate", out.pass ? "pass" : "fail");
+    ctx.bus.emit({
+      grpId: slice.grp_id,
+      author: "orchestrator",
+      kind: "gate_result",
+      body: say(ctx.config.language, out.pass ? "gate.pass" : "gate.fail", { seq: slice.seq }),
+      meta: { slice_id: sliceId, results: out.results.map((r) => ({ name: r.name, pass: r.pass })) },
+    });
+  })();
   if (!out.pass) return { pass: false, feedback: out.feedback };
 
   if (rec.unclaimed.length) {
@@ -133,7 +151,7 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      body: say(ctx.config?.language, "gate.unclaimed", {
+      body: say(ctx.config.language, "gate.unclaimed", {
         seq: slice.seq,
         files: rec.unclaimed.slice(0, 10).join(", "),
       }),
@@ -146,22 +164,20 @@ export async function runDeterministicReview(
 /**
  * Give the writer back a card it is allowed to work on.
  *
- * A slice going back for a retry kept its tasks `done`, and `done` is the one
- * state the writer cannot act on: `task list` showed a finished card, `task claim`
- * said the slice was not being worked, `task done` said the task was not its. No
- * legal move — so the turn ended the only way it could, by asking the boss. Six
- * groups reached the same dead end, four of them stopping the group outright.
- *
- * `claim_json` stays. `reconcile` only reads it off `done` rows, so it is inert
- * here, and on a reopened card it is the record of what the last attempt already
- * put on the branch — which is what `getTasks` shows the writer so it checks
- * before rewriting.
+ * A slice going back for a retry kept its tasks `done`, and `done` is the one state
+ * the writer cannot act on: `task list` showed a finished card, `task claim` said
+ * the slice was not being worked, `task done` said the task was not its. No legal
+ * move — so the turn ended the only way it could, by asking the boss. Six groups
+ * reached the same dead end, four stopping outright.
  */
-export function reopenTasks(ctx: Ctx, sliceId: number): void {
-  ctx.db.run(
-    "UPDATE task SET status = 'pending', owner_agent_id = NULL WHERE slice_id = ? AND status = 'done'",
-    [sliceId],
-  );
+/**
+ * `claim_json` stays. `reconcile` only reads it off `done` rows, so it is inert
+ * here, and on a reopened card it is the record of what the last attempt already put
+ * on the branch — which is what `getTasks` shows the writer so it checks before
+ * rewriting.
+ */
+export function reopenTasks(db: DB, sliceId: number): void {
+  db.run("UPDATE task SET status = 'pending', owner_agent_id = NULL WHERE slice_id = ? AND status = 'done'", [sliceId]);
 }
 
 /**
@@ -173,109 +189,114 @@ export function reopenTasks(ctx: Ctx, sliceId: number): void {
  */
 export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, from: string): void {
   const { ctx, cfg } = deps;
-  const slice = loadSlice(ctx, sliceId);
+  const slice = loadSlice(ctx.db, sliceId);
   if (!slice) return;
 
-  const retries = slice.retries + 1;
-  ctx.db.run("UPDATE slice SET retries = ?, status = 'running' WHERE id = ?", [retries, sliceId]);
-  reopenTasks(ctx, sliceId);
+  const shouldTick = ctx.db.transaction(() => {
+    const retries = slice.retries + 1;
+    ctx.db.run("UPDATE slice SET retries = ?, status = 'running' WHERE id = ?", [retries, sliceId]);
+    reopenTasks(ctx.db, sliceId);
 
-  if (retries > cfg.gateRetries) {
-    // Looping forever is worse than interrupting the boss. Two failed attempts
-    // usually means the acceptance criteria are wrong, not the code.
-    // 'boss', not the default 'pm'. The next line pauses the group, so the PM this
-    // was addressed to cannot run — the question sat at chain_state='pm' forever,
-    // never reached 待你决策, and the only visible symptom was a paused group with
-    // no reason attached. Observed on pm-ai-agent: a blocker filed two hours
-    // earlier that the boss had no way to see.
-    ctx.db.run(
-      `INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at)
-       VALUES (?, 'blocker', ?, ?, 'spec', 'boss', unixepoch() * 1000)`,
-      [
-        slice.grp_id,
-        `S${slice.seq} "${slice.title}" failed ${from} ${retries} times. Latest:\n${feedback}`,
-        `S${slice.seq} 连着 ${retries} 次没过 ${from}`,
-      ],
-    );
-    ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [sliceId]);
-    ctx.db.run("UPDATE grp SET status = 'PAUSING' WHERE id = ? AND status = 'RUNNING'", [slice.grp_id]);
+    if (retries > cfg.gateRetries) {
+      // Looping forever is worse than interrupting the boss. Two failed attempts
+      // usually means the acceptance criteria are wrong, not the code.
+      // 'boss', not the default 'pm'. The next line pauses the group, so the PM this
+      // was addressed to cannot run — the question sat at chain_state='pm' forever,
+      // never reached 待你决策, and the only visible symptom was a paused group with
+      // no reason attached. Observed on pm-ai-agent: a blocker filed two hours
+      // earlier that the boss had no way to see.
+      raise(ctx.db, {
+        grpId: slice.grp_id,
+        question: `S${slice.seq} "${slice.title}" failed ${from} ${retries} times. Latest:\n${feedback}`,
+        brief: `S${slice.seq} 连着 ${retries} 次没过 ${from}`,
+        kind: "spec",
+        chain: "boss",
+      });
+      ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [sliceId]);
+      hold(ctx.db, slice.grp_id, { reason: "escalation", from: "RUNNING" });
+      ctx.bus.emit({
+        grpId: slice.grp_id,
+        author: "orchestrator",
+        kind: "escalation",
+        intent: "ask",
+        severity: "blocker",
+        body: say(ctx.config.language, "slice.failed", { seq: slice.seq, from, n: retries }),
+        meta: { slice_id: sliceId },
+      });
+      return false;
+    }
+
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: slice.grp_id,
+      slice_id: sliceId,
+      payload: { role: "engineer", rejection: feedback, rotate: true },
+    });
     ctx.bus.emit({
       grpId: slice.grp_id,
       author: "orchestrator",
-      kind: "escalation",
-      intent: "ask",
-      severity: "blocker",
-      body: say(ctx.config?.language, "slice.failed", { seq: slice.seq, from, n: retries }),
+      kind: "state_change",
+      body: say(ctx.config.language, "slice.sentback", { seq: slice.seq, from, n: retries }),
       meta: { slice_id: sliceId },
     });
-    return;
-  }
-
-  ctx.bus.emit({
-    grpId: slice.grp_id,
-    author: "orchestrator",
-    kind: "state_change",
-    body: say(ctx.config?.language, "slice.sentback", { seq: slice.seq, from, n: retries }),
-    meta: { slice_id: sliceId },
-  });
-  ctx.sched.enqueue("agent_turn", {
-    grp_id: slice.grp_id,
-    slice_id: sliceId,
-    payload: { role: "engineer", rejection: feedback, rotate: true },
-  });
-  ctx.sched.tick();
+    return true;
+  })();
+  if (shouldTick) ctx.sched.tick();
 }
 
 /** Deterministic half passed: hand the slice to QA. */
 export function handToQa(deps: ReviewDeps, sliceId: number): void {
   const { ctx } = deps;
-  const slice = loadSlice(ctx, sliceId);
+  const slice = loadSlice(ctx.db, sliceId);
   if (!slice) return;
-  ctx.db.run("UPDATE slice SET status = 'qa' WHERE id = ?", [sliceId]);
-  ctx.sched.enqueue("agent_turn", {
-    grp_id: slice.grp_id,
-    slice_id: sliceId,
-    payload: { role: "qa", review: sliceId },
-  });
+  ctx.db.transaction(() => {
+    ctx.db.run("UPDATE slice SET status = 'qa' WHERE id = ?", [sliceId]);
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: slice.grp_id,
+      slice_id: sliceId,
+      payload: { role: "qa", review: sliceId },
+    });
+  })();
   ctx.sched.tick();
 }
 
 /** QA passed: the slice is the boss's to accept. */
 export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void {
   const { ctx } = deps;
-  const slice = loadSlice(ctx, sliceId);
+  const slice = loadSlice(ctx.db, sliceId);
   if (!slice) return;
-  recordGate(ctx.db, sliceId, "qa", "pass");
-  ctx.db.run("UPDATE slice SET status = 'awaiting_boss', awaiting_at = unixepoch() * 1000 WHERE id = ?", [sliceId]);
+  ctx.db.transaction(() => {
+    recordGate(ctx.db, sliceId, "qa", "pass");
+    ctx.db.run("UPDATE slice SET status = 'awaiting_boss', awaiting_at = unixepoch() * 1000 WHERE id = ?", [sliceId]);
 
-  // Retire the sessions that carried this slice. A slice is a natural semantic
-  // break, so the handoff is cheap, and a session that keeps growing costs more on
-  // every remaining turn even at the cached rate.
-  //
-  // The writer and its reviewer only — not the whole roster. Rotating everyone cost
-  // a full prefix rebuild per role per slice: measured over 259 turns, 95% of them
-  // started on a cold prefix and cache creation came to 45.5M tokens, which bills
-  // like ~570M cached reads. The PM, Dispatcher and Auditor carry group-level
-  // context that is still true in the next slice, so throwing it away buys nothing.
-  ctx.db.run(
-    `UPDATE agent SET session_id = NULL, session_tokens = 0
-     WHERE grp_id = ? AND state != 'retired' AND role IN ('engineer','qa')`,
-    [slice.grp_id],
-  );
-  ctx.bus.emit({
-    grpId: slice.grp_id,
-    author: "orchestrator",
-    kind: "state_change",
-    body: say(ctx.config?.language, "slice.ready", { seq: slice.seq, title: slice.title }),
-    meta: { slice_id: sliceId, gates: gateState(ctx.db, sliceId) },
-  });
+    // Retire the sessions that carried this slice. A slice is a natural semantic
+    // break, so the handoff is cheap, and a session that keeps growing costs more on
+    // every remaining turn even at the cached rate.
+    //
+    // The writer and its reviewer only — not the whole roster. Rotating everyone cost
+    // a full prefix rebuild per role per slice: measured over 259 turns, 95% of them
+    // started on a cold prefix and cache creation came to 45.5M tokens, which bills
+    // like ~570M cached reads. The PM, Dispatcher and Auditor carry group-level
+    // context that is still true in the next slice, so throwing it away buys nothing.
+    ctx.db.run(
+      `UPDATE agent SET session_id = NULL, session_tokens = 0
+       WHERE grp_id = ? AND state != 'retired' AND role IN ('engineer','qa')`,
+      [slice.grp_id],
+    );
+    ctx.bus.emit({
+      grpId: slice.grp_id,
+      author: "orchestrator",
+      kind: "state_change",
+      body: say(ctx.config.language, "slice.ready", { seq: slice.seq, title: slice.title }),
+      meta: { slice_id: sliceId, gates: gateState(ctx.db, sliceId) },
+    });
+  })();
 
   // Trivial work the boss chose not to look at. Every gate still ran — self
   // review, the deterministic gate, an independent QA — so this skips the fourth
   // layer, not the first three. It is announced, never silent: an acceptance
   // nobody can see is indistinguishable from one that did not happen.
-  if ((ctx.config?.autoAcceptTiers ?? []).includes(slice.difficulty)) {
-    acceptSlice(ctx, sliceId, "orchestrator", say(ctx.config?.language, "slice.autoaccept", { tier: slice.difficulty }));
+  if (ctx.config.autoAcceptTiers.includes(slice.difficulty)) {
+    acceptSlice(ctx, sliceId, "orchestrator", say(ctx.config.language, "slice.autoaccept", { tier: slice.difficulty }));
     return;
   }
 
@@ -283,17 +304,21 @@ export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void
   // starts the next slice, so without this a group does exactly one slice and
   // then waits until morning. The slice still waits to be accepted; only the
   // next one stops waiting.
-  if (ctx.config?.autoAdvance) {
-    const started = startNextSlice(ctx, slice.grp_id);
-    if (started) {
-      ctx.bus.emit({
-        grpId: slice.grp_id,
-        author: "orchestrator",
-        kind: "state_change",
-        body: say(ctx.config?.language, "group.autoadvance"),
-        meta: { slice_id: started },
-      });
-    }
+  if (ctx.config.autoAdvance) {
+    const started = ctx.db.transaction(() => {
+      const next = queueNextSlice(ctx, slice.grp_id);
+      if (next) {
+        ctx.bus.emit({
+          grpId: slice.grp_id,
+          author: "orchestrator",
+          kind: "state_change",
+          body: say(ctx.config.language, "group.autoadvance"),
+          meta: { slice_id: next },
+        });
+      }
+      return next;
+    })();
+    if (started) ctx.sched.tick();
   }
 }
 
@@ -305,27 +330,47 @@ export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void
  * second copy of it would drift the day one of them gained a step.
  */
 export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string): void {
-  const sl = ctx.db
-    .query<{ grp_id: number; seq: number; title: string }, [number]>(
-      "SELECT grp_id, seq, title FROM slice WHERE id = ?",
-    )
-    .get(sliceId);
+  const sl = ctx.db.transaction(() => {
+    const slice = ctx.db
+      .query<{ grp_id: number; seq: number; title: string }, [number]>(
+        "SELECT grp_id, seq, title FROM slice WHERE id = ?",
+      )
+      .get(sliceId);
+    if (!slice) return null;
+
+    // Where it is accepted *from* matters. A `pending` slice has never run, so
+    // accepting it writes a carry-over handoff claiming it delivered, advances the
+    // group, and — if it was the last one open — sends a branch that does not
+    // contain it to review. `accepted` is excluded so a second call is not a second
+    // carry-over.
+    const moved = ctx.db.run(
+      "UPDATE slice SET status = 'accepted' WHERE id = ? AND status NOT IN ('pending', 'accepted')",
+      [sliceId],
+    ).changes;
+    if (!moved) return null;
+    carryOver(ctx.db, sliceId, slice.grp_id);
+    queueNextSlice(ctx, slice.grp_id);
+
+    // The last acceptance starts PR-level review. Nothing an agent does can trigger
+    // it: "satisfied" is the boss's call, or a policy the boss switched on.
+    const open = ctx.db
+      .query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'")
+      .get(slice.grp_id)!.c;
+    if (open === 0) ctx.sched.enqueue("reconcile", { grp_id: slice.grp_id, priority: 5 });
+    ctx.bus.emit({
+      grpId: slice.grp_id,
+      author: by,
+      kind: "state_change",
+      body: say(ctx.config.language, "slice.accepted", {
+        seq: slice.seq,
+        title: slice.title,
+        why: why ? `（${why}）` : "",
+      }),
+      meta: { slice_id: sliceId, by },
+    });
+    return slice;
+  })();
   if (!sl) return;
-
-  ctx.db.run("UPDATE slice SET status = 'accepted' WHERE id = ?", [sliceId]);
-  ctx.bus.emit({
-    grpId: sl.grp_id,
-    author: by,
-    kind: "state_change",
-    body: say(ctx.config?.language, "slice.accepted", {
-      seq: sl.seq,
-      title: sl.title,
-      why: why ? `（${why}）` : "",
-    }),
-    meta: { slice_id: sliceId, by },
-  });
-
-  carryOver(ctx, sliceId, sl.grp_id);
 
   // The slice boundary, and the only place a branch reaches the remote before
   // its PR (007 step 5). Here rather than per turn: a turn is thirty seconds of
@@ -359,15 +404,6 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
       // tell, and this is the branch that must not take an unrelated caller down.
     });
 
-  // Accepting one slice is what starts the next.
-  startNextSlice(ctx, sl.grp_id);
-
-  // The last acceptance starts PR-level review. Nothing an agent does can trigger
-  // it: "satisfied" is the boss's call, or a policy the boss switched on.
-  const open = ctx.db
-    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'")
-    .get(sl.grp_id)!.c;
-  if (open === 0) ctx.sched.enqueue("reconcile", { grp_id: sl.grp_id, priority: 5 });
   ctx.sched.tick();
 }
 
@@ -375,33 +411,34 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
  * What the next slice would otherwise rediscover.
  *
  * The second slice of a group re-greps what the first one already worked out —
- * which files matter, what the gate says, what was decided — because the only
- * thing carried across was a journal capped at six lines. Every one of those
- * rounds re-reads the whole transcript, which is where the token bill is.
- *
+ * which files matter, what the gate says, what was decided — because the only thing
+ * carried across was a journal capped at six lines, and every one of those rounds
+ * re-reads the whole transcript.
+ */
+/**
  * Derived, not asked for: the files are the commits this slice made, the gates are
  * recorded verdicts, the decisions are notes it wrote. A prompt asking an agent to
  * "summarise for the next slice" would be a model call producing what a SELECT
  * already knows, and would be forgotten on the turn it mattered.
  */
-export function carryOver(ctx: Ctx, sliceId: number, grpId: number): void {
+function carryOver(db: DB, sliceId: number, grpId: number): void {
   const files = new Set<string>();
-  for (const e of ctx.db
+  for (const e of db
     .query<{ meta_json: string }, [number]>(
       "SELECT meta_json FROM event WHERE kind = 'commit' AND json_extract(meta_json, '$.slice_id') = ?",
     )
     .all(sliceId)) {
-    try {
-      for (const f of JSON.parse(e.meta_json).files ?? []) files.add(String(f));
-    } catch {}
+    for (const f of jsonOr(e.meta_json, z.object({ files: z.array(z.string()).default([]) }), { files: [] }).files) {
+      files.add(f);
+    }
   }
-  const decisions = ctx.db
+  const decisions = db
     .query<{ body: string }, [number]>(
       "SELECT body FROM note WHERE slice_id = ? AND kind IN ('decision','journal') ORDER BY id",
     )
     .all(sliceId)
     .map((n) => n.body.split("\n")[0]!.slice(0, 160));
-  const sl = ctx.db
+  const sl = db
     .query<{ seq: number; title: string; gates_json: string }, [number]>(
       "SELECT seq, title, gates_json FROM slice WHERE id = ?",
     )
@@ -414,19 +451,7 @@ export function carryOver(ctx: Ctx, sliceId: number, grpId: number): void {
     `Gates: ${sl.gates_json}\n` +
     (decisions.length ? `What it settled:\n${decisions.map((d) => `- ${d}`).join("\n")}` : "");
 
-  ctx.db.run(
-    "INSERT INTO note (grp_id, slice_id, kind, body, at) VALUES (?, ?, 'handoff', ?, unixepoch() * 1000)",
-    [grpId, sliceId, body],
-  );
-}
-
-function safeJson(s: string | null): unknown {
-  if (!s) return null;
-  try {
-    return JSON.parse(s);
-  } catch {
-    return s;
-  }
+  addNote(db, { grpId, sliceId, kind: "handoff", body });
 }
 
 /**
@@ -450,22 +475,24 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
     .query<{ c: number }, [number]>("SELECT count(*) AS c FROM note WHERE grp_id = ? AND kind = 'retro'")
     .get(grpId)!.c;
   if (retro === 0) {
-    ctx.bus.emit({
-      grpId,
-      author: "orchestrator",
-      kind: "state_change",
-      body: "no retro yet — the group cannot wind up without one",
-    });
-    ctx.sched.enqueue("agent_turn", {
-      grp_id: grpId,
-      payload: {
-        role: "pm",
-        rejection:
-          "Every slice is accepted, but this group has no retro. Write one now with " +
-          "`orch journal add --kind retro`: what got reworked, which assumption was wrong, " +
-          "what the next group touching this code needs to know. Max 6 lines.",
-      },
-    });
+    ctx.db.transaction(() => {
+      ctx.sched.enqueue("agent_turn", {
+        grp_id: grpId,
+        payload: {
+          role: "pm",
+          rejection:
+            "Every slice is accepted, but this group has no retro. Write one now with " +
+            "`orch journal add --kind retro`: what got reworked, which assumption was wrong, " +
+            "what the next group touching this code needs to know. Max 6 lines.",
+        },
+      });
+      ctx.bus.emit({
+        grpId,
+        author: "orchestrator",
+        kind: "state_change",
+        body: "no retro yet — the group cannot wind up without one",
+      });
+    })();
     ctx.sched.tick();
     return;
   }
@@ -480,30 +507,36 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
     timeoutMs: cfg.leaseTimeoutMs,
   });
   if (!gateOut.pass) {
-    ctx.bus.emit({
-      grpId,
-      author: "orchestrator",
-      kind: "gate_result",
-      body: `branch gate failed:\n${gateOut.feedback}`,
-    });
-    if (branchRework(deps, grpId, "the branch gate", gateOut.feedback)) return;
-    ctx.sched.enqueue("agent_turn", {
-      grp_id: grpId,
-      payload: { role: "engineer", rejection: gateOut.feedback, rotate: true },
-    });
+    const shouldTick = ctx.db.transaction(() => {
+      ctx.bus.emit({
+        grpId,
+        author: "orchestrator",
+        kind: "gate_result",
+        body: `branch gate failed:\n${gateOut.feedback}`,
+      });
+      if (branchRework(deps, grpId, "the branch gate", gateOut.feedback)) return false;
+      ctx.sched.enqueue("agent_turn", {
+        grp_id: grpId,
+        payload: { role: "engineer", rejection: gateOut.feedback, rotate: true },
+      });
+      return true;
+    })();
+    if (!shouldTick) return;
     ctx.sched.tick();
     return;
   }
 
   // Through, so the count starts again: the next rejection is about the next
   // branch, not this one.
-  ctx.db.run("UPDATE grp SET status = 'PR_OPEN', pr_retries = 0 WHERE id = ?", [grpId]);
-  // grp_id null on purpose: hiring the Auditor into the group it audits would
-  // make it review its own reasoning, and `orch audit` rightly refuses that.
-  ctx.sched.enqueue("agent_turn", {
-    grp_id: null,
-    payload: { role: "auditor", audit: grpId, audit_branch: grp.branch, audit_group: grp.name },
-  });
+  ctx.db.transaction(() => {
+    ctx.db.run("UPDATE grp SET status = 'PR_OPEN', pr_retries = 0 WHERE id = ?", [grpId]);
+    // grp_id null on purpose: hiring the Auditor into the group it audits would
+    // make it review its own reasoning, and `orch audit` rightly refuses that.
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: null,
+      payload: { role: "auditor", audit: grpId, audit_branch: grp.branch, audit_group: grp.name },
+    });
+  })();
   ctx.sched.tick();
 }
 
@@ -511,36 +544,42 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
 export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, note: string): void {
   const { ctx } = deps;
   if (pass) {
-    joinQueue(ctx.db, grpId);
-    // Not published yet: the Scribe writes what it is published *as*, and
-    // `orch pr` is what calls `publishBranch`. One turn, in the group's own
-    // sandbox, where the branch it has to read is checked out.
-    //
-    // Nothing here waits on it. If that turn dies, or ends without filing, the
-    // group sits in PR_OPEN with a queue place and no number — which is the
-    // state PR_OPEN's invariant repair looks for, and it publishes with the
-    // record's own words rather than leaving finished work at the head of a
-    // serial merge queue.
-    ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "scribe", scribe: grpId } });
-    const pos = position(ctx.db, grpId);
-    ctx.bus.emit({
-      grpId,
-      author: "auditor",
-      kind: "state_change",
-      body:
-        pos && pos.position > 1
-          ? `audit passed — queued to merge, ${pos.position} of ${pos.total}`
-          : "audit passed — ready for you to merge",
-      meta: { audit: "pass", ...pos },
-    });
+    ctx.db.transaction(() => {
+      joinQueue(ctx.db, grpId);
+      // Not published yet: the Scribe writes what it is published *as*, and
+      // `orch pr` is what calls `publishBranch`. One turn, in the group's own
+      // sandbox, where the branch it has to read is checked out.
+      //
+      // Nothing here waits on it. If that turn dies, or ends without filing, the
+      // group sits in PR_OPEN with a queue place and no number — which is the
+      // state PR_OPEN's invariant repair looks for, and it publishes with the
+      // record's own words rather than leaving finished work at the head of a
+      // serial merge queue.
+      ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "scribe", scribe: grpId } });
+      const pos = position(ctx.db, grpId);
+      ctx.bus.emit({
+        grpId,
+        author: "auditor",
+        kind: "state_change",
+        body:
+          pos && pos.position > 1
+            ? `audit passed — queued to merge, ${pos.position} of ${pos.total}`
+            : "audit passed — ready for you to merge",
+        meta: { audit: "pass", ...pos },
+      });
+    })();
     return;
   }
-  ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ?", [grpId]);
-  if (branchRework(deps, grpId, "the Auditor", note)) return;
-  ctx.sched.enqueue("agent_turn", {
-    grp_id: grpId,
-    payload: { role: "pm", rejection: `The Auditor sent the branch back: ${note}`, rotate: true },
-  });
+  const shouldTick = ctx.db.transaction(() => {
+    ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ?", [grpId]);
+    if (branchRework(deps, grpId, "the Auditor", note)) return false;
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: grpId,
+      payload: { role: "pm", rejection: `The Auditor sent the branch back: ${note}`, rotate: true },
+    });
+    return true;
+  })();
+  if (!shouldTick) return;
   ctx.sched.tick();
 }
 
@@ -550,29 +589,26 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
  * A slice that keeps failing gives up after `gateRetries` and asks the boss. The
  * branch had no counter at all: a red branch gate sent the Engineer round, a
  * rejected audit sent the PM round, and neither loop had an end — the same money
- * spent forever on the same disagreement, with nothing on the boss's screen saying
- * so. PLAN.md's rule is two rounds, then escalate.
+ * spent forever on one disagreement, with nothing on the boss's screen.
  *
  * Returns true when the caller should stop rather than send it round again.
  */
 function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string): boolean {
   const { ctx, cfg } = deps;
   const n =
-    (ctx.db.query<{ pr_retries: number }, [number]>("SELECT pr_retries FROM grp WHERE id = ?").get(grpId)
-      ?.pr_retries ?? 0) + 1;
+    (ctx.db.query<{ pr_retries: number }, [number]>("SELECT pr_retries FROM grp WHERE id = ?").get(grpId)?.pr_retries ??
+      0) + 1;
   ctx.db.run("UPDATE grp SET pr_retries = ? WHERE id = ?", [n, grpId]);
   if (n <= cfg.gateRetries) return false;
 
-  ctx.db.run("UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ?", [grpId]);
-  ctx.db.run(
-    `INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at)
-     VALUES (?, 'blocker', ?, ?, 'spec', 'boss', unixepoch() * 1000)`,
-    [
-      grpId,
-      `整个分支被 ${from} 打回 ${n} 次了。多半是验收口径本身有问题，不是代码：\n${why}`,
-      `整条分支被 ${from} 打回 ${n} 次`,
-    ],
-  );
+  hold(ctx.db, grpId, { reason: "escalation", settled: true });
+  raise(ctx.db, {
+    grpId,
+    question: `整个分支被 ${from} 打回 ${n} 次了。多半是验收口径本身有问题，不是代码：\n${why}`,
+    brief: `整条分支被 ${from} 打回 ${n} 次`,
+    kind: "spec",
+    chain: "boss",
+  });
   ctx.bus.emit({
     grpId,
     author: "orchestrator",
@@ -591,10 +627,11 @@ function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string
  * approving a plan that then sits still is the most confusing possible failure —
  * it looks like the system ignored you.
  */
-export function startNextSlice(ctx: Ctx, grpId: number): number | null {
+function queueNextSlice(ctx: Ctx, grpId: number): number | null {
   // A slice sitting on the boss is not occupying the writer. Counting it as busy
   // is correct only when acceptance is what starts the next one.
-  const idle = ctx.config?.autoAdvance ? "('pending','accepted','awaiting_boss')" : "('pending','accepted')";
+  const idle = ctx.config.autoAdvance ? "('pending','accepted','awaiting_boss')" : "('pending','accepted')";
+  // fallow-ignore-next-line security-sink -- `idle` is one of the two source literals on the line above, chosen by the `autoAdvance` boolean; `grpId` is bound through the `?`.
   const busy = ctx.db
     .query<{ c: number }, [number]>(`SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status NOT IN ${idle}`)
     .get(grpId)!.c;
@@ -612,7 +649,7 @@ export function startNextSlice(ctx: Ctx, grpId: number): number | null {
 
   if (next.depends_on) {
     const dep = ctx.db
-      .query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?")
+      .query<{ status: SliceState }, [number]>("SELECT status FROM slice WHERE id = ?")
       .get(next.depends_on);
     if (dep && dep.status !== "accepted") return null;
   }
@@ -623,6 +660,11 @@ export function startNextSlice(ctx: Ctx, grpId: number): number | null {
     slice_id: next.id,
     payload: { role: "engineer" },
   });
-  ctx.sched.tick();
   return next.id;
+}
+
+export function startNextSlice(ctx: Ctx, grpId: number): number | null {
+  const next = ctx.db.transaction(() => queueNextSlice(ctx, grpId))();
+  if (next) ctx.sched.tick();
+  return next;
 }

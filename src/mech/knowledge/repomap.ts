@@ -1,45 +1,46 @@
-import type { DB } from "../../db.ts";
+import { z } from "zod";
+import { jsonOr } from "../../contracts/json.ts";
+import { projectConfig, saveSingletonNote, singletonNote } from "../util/rows.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import { symbolsIn } from "./symbols.ts";
+import { terms } from "./terms.ts";
 
 /**
  * One index of the repo, shared by every group.
  *
- * Seven groups were each grepping the same repository to answer the same
- * question — where does X live — and every one of those rounds re-reads the whole
- * transcript, which is where the token bill actually is. The map is built once per
- * project, kept in a note, and handed out by `orch ctx query`.
- *
+ * Seven groups were each grepping the same repository for the same answer, and
+ * every one of those rounds re-reads the whole transcript, which is where the
+ * token bill is. The map is built once per project, kept in a note, and handed out
+ * by `orch ctx query`.
+ */
+/**
  * PageIndex-shaped: a tree with a path at every node, navigated by the question
- * rather than embedded and cosine-matched. That choice is not a preference — the
- * nodes here are file paths and exported names, which are exactly the words an
- * agent's question already contains, so lexical navigation hits and an embedding
- * would only add an API call and an index to keep fresh.
+ * rather than embedded and cosine-matched. Not a preference — the nodes are file
+ * paths and exported names, exactly the words a question already contains, so
+ * lexical navigation hits and an embedding would add an API call and an index.
  *
- * ponytail: node summaries are the file's exported names, not prose. A sentence
- * per file would be better and costs a model pass over the repo; do that when a
- * question turns out to need "what does this do" rather than "where is this".
+ * ponytail: node summaries are exported names, not prose. A sentence per file costs
+ * a model pass; do that when a question needs "what does this do".
  */
 
-const EXPORTED = /^\s*export\s+(?:default\s+)?(?:async\s+)?(?:function|const|class|type|interface|enum)\s+(\w+)/gm;
+/** How many names a single file contributes to the map. */
+const MAX_SYMBOLS = 12;
 
 /**
  * What belongs in an index of a repository — by exclusion, not by allow-list.
  *
- * Both indexes used to carry their own extension allow-list. This one named
- * eighteen languages while `EXPORTED` above parses JS/TS syntax only, so a Go
- * file entered the map and never got a symbol; PageIndex's named seven and, on
- * this repo, its whole effect was to exclude eight files (a lockfile and seven
- * things an agent would reasonably ask about). Point either at a Go, Python or
- * Rust project and the source is simply invisible.
- *
- * An allow-list of source extensions cannot be finished — documentation alone is
- * md, txt, mdx, rmd, rst, adoc — while the set of things that are *not* text a
+ * An allow-list of source extensions cannot be finished (documentation alone is
+ * md, txt, mdx, rmd, rst, adoc) while the set of things that are *not* text a
  * model can summarise is stable and language-independent. `git ls-files` has
- * already excluded build output and everything gitignored, so what is left to
+ * already dropped build output and everything gitignored, so what is left to
  * remove is binaries, lockfiles and vendored trees.
- *
- * Whatever this still gets wrong is correctable per project rather than guessed
- * at again: `project.config_json.index.exclude`, the same arrangement
- * `detect.ts` uses for gates.
+ */
+/**
+ * Both indexes used to carry their own list, and both were wrong in the same
+ * direction: point either at a Go, Python or Rust project and the source was
+ * simply invisible. Whatever this still gets wrong is correctable per project
+ * rather than guessed at again — `project.config_json.index.exclude`, the same
+ * arrangement `detect.ts` uses for gates.
  */
 const BINARY =
   /\.(png|jpe?g|gif|bmp|ico|webp|avif|svgz|tiff?|pdf|zip|gz|tgz|bz2|xz|7z|rar|jar|war|class|so|dylib|dll|exe|bin|o|a|wasm|woff2?|ttf|otf|eot|mp[34]|m4a|wav|ogg|mov|mp4|avi|mkv|db|sqlite3?|pyc|pack|idx)$/i;
@@ -56,19 +57,16 @@ const GENERATED = [
   /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|poetry\.lock|uv\.lock|go\.sum|composer\.lock|Gemfile\.lock)$/,
 ];
 
-/** Very small glob: `*` within a segment, `**` across them. Enough for excludes. */
-function globToRe(glob: string): RegExp {
-  const src = glob
-    .split("**")
-    .map((part) => part.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, "."))
-    .join(".*");
-  return new RegExp(`^${src}$`);
-}
-
 export function indexable(rel: string, exclude: string[] = []): boolean {
   if (!rel || BINARY.test(rel)) return false;
   if (GENERATED.some((re) => re.test(rel))) return false;
-  return !exclude.some((g) => globToRe(g).test(rel));
+  // `Bun.Glob`, for the reason ownership.ts already gives: the hand-written
+  // glob-to-regex this replaces compiled `**` to `.*` between two literal
+  // slashes, so `**/*.ts` needed a directory to exist and did not match `a.ts`,
+  // and `docs/**/*.md` skipped every file directly in `docs/`. Both are the
+  // shape a boss writes, and both failed open — the file the exclude named got
+  // indexed anyway, and nothing said so.
+  return !exclude.some((g) => new Bun.Glob(g).match(rel));
 }
 
 /**
@@ -79,15 +77,7 @@ export function indexable(rel: string, exclude: string[] = []): boolean {
  * best-effort detection, written where it can be edited.
  */
 export function indexExcludes(db: DB, projectId: number): string[] {
-  const row = db
-    .query<{ config_json: string | null }, [number]>("SELECT config_json FROM project WHERE id = ?")
-    .get(projectId);
-  try {
-    const globs = JSON.parse(row?.config_json ?? "{}")?.index?.exclude;
-    return Array.isArray(globs) ? globs.filter((g: unknown) => typeof g === "string") : [];
-  } catch {
-    return [];
-  }
+  return projectConfig(db, projectId).index?.exclude ?? [];
 }
 
 export interface MapNode {
@@ -96,49 +86,65 @@ export interface MapNode {
 }
 
 /**
- * Tracked files only: build output and node_modules are noise, and git already knows.
+ * The stored shape, which is not the rendered one.
  *
- * `read` is how the file's text arrives, and it is a parameter because there is
- * no answer this module can work out for itself. It used to be
- * `readFileSync(join(repoPath, rel))` — and since 007 made `repo_path` an
- * `owner/name` rather than a directory, that path has not existed on this
- * machine. Every read threw, every throw was caught, and the map has been
- * **paths with no symbols** ever since, while still rendering as a map and still
- * being written only when it "changed". A caller now has to say where the text
- * comes from, and one that has none says so by passing nothing.
+ * The map used to be persisted as the text a prompt sees and parsed back by
+ * splitting on `" — "` and `", "` — so a file named `a — b.ts`, or a symbol with
+ * a comma in it, came back as a different file with different symbols, silently.
+ * The render is for reading; storage is JSON, which is what `saveTree` next door
+ * has always done for the same kind of value.
  */
-export function buildMap(
+const MapNodeSchema = z.object({
+  dir: z.string(),
+  files: z.array(z.object({ name: z.string(), symbols: z.array(z.string()) })),
+});
+
+/**
+ * Tracked files only: build output and node_modules are noise, and git knows.
+ *
+ * `read` is a parameter because there is no answer this module can work out for
+ * itself. It used to be `readFileSync(join(repoPath, rel))` — and since ADR 007
+ * made `repo_path` an `owner/name` rather than a directory, that path has not
+ * existed on this machine. Every read threw, every throw was caught, and the map
+ * has been **paths with no symbols** ever since, while still rendering as a map.
+ */
+/**
+ * Async because parsing is: a tree-sitter grammar is a WebAssembly module and
+ * there is no synchronous way to instantiate one. The cost is one-time and
+ * per-process — 6ms for the runtime, then 0.6ms (Go) to 3.6ms (TypeScript) per
+ * grammar, cached in `symbols.ts` — so a rebuild pays it on the first tick rather
+ * than once per file.
+ */
+export async function buildMap(
   repoPath: string,
   list: (repo: string) => string[],
   exclude: string[] = [],
   read?: (rel: string) => string | undefined,
-): MapNode[] {
+): Promise<MapNode[]> {
   const byDir = new Map<string, MapNode>();
   for (const rel of list(repoPath)) {
-    // Symbols are opportunistic: `EXPORTED` is JS/TS syntax, so a Go file gets a
-    // path and no names. That is still a useful map entry — "where does X live"
-    // is answered by the path — and it is strictly better than the old
-    // allow-list, which claimed thirteen more languages than it could parse.
+    // Symbols are still opportunistic — a language with no grammar gets a path
+    // and no names, which is a useful map entry, because "where does X live" is
+    // answered by the path. What changed is which languages those are: Go,
+    // Python and Rust have left that set.
     if (!indexable(rel, exclude)) continue;
     const cut = rel.lastIndexOf("/");
     const dir = cut < 0 ? "." : rel.slice(0, cut);
     const name = cut < 0 ? rel : rel.slice(cut + 1);
     const src = read?.(rel);
-    const symbols = src ? [...src.matchAll(EXPORTED)].map((m) => m[1]!).slice(0, 12) : [];
+    const symbols = src ? await symbolsIn(rel, src, MAX_SYMBOLS) : [];
     if (!byDir.has(dir)) byDir.set(dir, { dir, files: [] });
     byDir.get(dir)!.files.push({ name, symbols });
   }
   return [...byDir.values()].sort((a, b) => a.dir.localeCompare(b.dir));
 }
 
-export function renderMap(nodes: MapNode[]): string {
+function renderMap(nodes: MapNode[]): string {
   return nodes
     .map(
       (n) =>
         `${n.dir}/\n` +
-        n.files
-          .map((f) => `  ${f.name}${f.symbols.length ? ` — ${f.symbols.join(", ")}` : ""}`)
-          .join("\n"),
+        n.files.map((f) => `  ${f.name}${f.symbols.length ? ` — ${f.symbols.join(", ")}` : ""}`).join("\n"),
     )
     .join("\n");
 }
@@ -152,7 +158,12 @@ export function renderMap(nodes: MapNode[]): string {
  * the directories that were asked about.
  */
 export function mapFor(nodes: MapNode[], question: string, maxChars: number): string {
-  const words = (question.toLowerCase().match(/[a-z0-9_./-]{3,}/g) ?? []).map((w) => w.replace(/^\.*\/*/, ""));
+  // The tokenizer the note index uses, not a second one. Its own regex made stop
+  // words into query terms — and scoring is substring containment, so `the`
+  // matched `theme.ts` — while dropping everything shorter than three characters,
+  // which is `db`, `mw`, `ui` and `id`. ICU also splits a path into components, so
+  // the leading-`./` trim it used to need is gone.
+  const words = terms(question);
   if (words.length === 0) return "";
   const score = (n: MapNode) => {
     const hay = `${n.dir} ${n.files.map((f) => `${f.name} ${f.symbols.join(" ")}`).join(" ")}`.toLowerCase();
@@ -170,36 +181,15 @@ export function mapFor(nodes: MapNode[], question: string, maxChars: number): st
 }
 
 /** Store the map as a project note, and only when it actually changed. */
-export function saveMap(db: DB, projectId: number, rendered: string): boolean {
-  const prev = db
-    .query<{ id: number; body: string }, [number]>(
-      "SELECT id, body FROM note WHERE project_id = ? AND kind = 'map' ORDER BY id DESC LIMIT 1",
-    )
-    .get(projectId);
-  if (prev?.body === rendered) return false;
-  if (prev) db.run("DELETE FROM note WHERE id = ?", [prev.id]);
-  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (?, 'map', ?, unixepoch() * 1000)", [
-    projectId,
-    rendered,
-  ]);
-  return true;
+export function saveMap(db: DB, projectId: number, nodes: MapNode[]): boolean {
+  return saveSingletonNote(db, projectId, "map", JSON.stringify(nodes));
 }
 
+/**
+ * A map written by an older build is text, not JSON, and reads back as no map at
+ * all rather than as a corrupt one — the rule refreshes it on the next tick.
+ */
 export function loadMap(db: DB, projectId: number | null): MapNode[] {
   if (!projectId) return [];
-  const row = db
-    .query<{ body: string }, [number]>(
-      "SELECT body FROM note WHERE project_id = ? AND kind = 'map' ORDER BY id DESC LIMIT 1",
-    )
-    .get(projectId);
-  if (!row) return [];
-  const nodes: MapNode[] = [];
-  for (const line of row.body.split("\n")) {
-    if (line.endsWith("/")) nodes.push({ dir: line.slice(0, -1), files: [] });
-    else if (nodes.length) {
-      const [name, syms] = line.trim().split(" — ");
-      nodes[nodes.length - 1]!.files.push({ name: name!, symbols: syms ? syms.split(", ") : [] });
-    }
-  }
-  return nodes;
+  return jsonOr(singletonNote(db, projectId, "map"), z.array(MapNodeSchema), []);
 }

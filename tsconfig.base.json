@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "types": ["bun-types"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    // Bun strips types; it does not compile them. With this on, "the types are
+    // erasable" is a property the compiler checks rather than a convention —
+    // enums, namespaces and parameter properties all stop being writable.
+    "erasableSyntaxOnly": true,
+    "jsx": "react-jsx",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true
+  }
+}

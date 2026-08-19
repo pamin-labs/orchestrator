@@ -18,3 +18,15 @@ leases/            # full lease logs (only digests go in the DB)
 
 # built web bundle
 web/dist/
+
+# coverage map and rendered reports (bun run test:coverage)
+coverage/
+.fallow/
+.cache/tsc/
+
+# Agent runtime journals. `orch` writes one directory per requirement here while
+# it works, and the `note` table already holds the same text — so a checkout was
+# accumulating a second copy that nothing read and every clone carried. Twenty-nine
+# files across four requirements before they were removed. `comment-moves.md` is
+# ours, not the fleet's, and is tracked.
+docs/journal/*/

@@ -1,42 +1,48 @@
 /**
  * Refreshing a ChatGPT-account login, on the host, once.
  *
- * codex's own answer to CI is "put auth.json on the runner and let codex
- * refresh it", with a warning attached: *do not share the same file across
- * concurrent jobs or multiple machines*. A fleet is exactly that — ten groups,
- * ten sandboxes, one login — so every sandbox refreshing its own copy means
- * they invalidate each other and the boss is asked to log in again.
- *
- * So the orchestrator is the one runner. It holds the file and the sandboxes get
- * decoys, with the sidecar injecting the real access token on the way out — the
- * same arrangement as every other credential.
- *
- * The renewal itself is done by codex, not by us. Posting the refresh token to
- * `auth.openai.com` with the CLI's own client id would work — the endpoint and
- * id are both in the shipped binary — but that is our code presenting itself as
- * the official client, which is exactly the shape the subscription terms are
- * about. One throwaway `codex exec` makes the real client refresh its own
- * token, costs a few hundred tokens, and is needed roughly once a week.
+ * codex's own answer to CI is "put auth.json on the runner and let codex refresh
+ * it", warning: *do not share the same file across concurrent jobs or machines*.
+ * A fleet is exactly that, so every sandbox refreshing its own copy means they
+ * invalidate each other and the boss is asked to log in again. The orchestrator
+ * is therefore the one runner; sandboxes get decoys and the sidecar injects the
+ * real token, as with every other credential.
  */
+/**
+ * The renewal is done by codex, not by us. Posting the refresh token to
+ * `auth.openai.com` with the CLI's own client id would work — both are in the
+ * shipped binary — but that is our code presenting itself as the official client,
+ * which is the shape the subscription terms are about. One throwaway `codex exec`
+ * makes the real client refresh its own token, roughly once a week.
+ */
+
+import { jsonOr } from "../../contracts/json.ts";
+import { JsonValue, type Json } from "../../contracts/json.ts";
+import { z } from "zod";
 
 /** Enough to make codex talk to the API, and nothing anyone has to read. */
 const NUDGE = ["exec", "--skip-git-repo-check", "-c", 'web_search="disabled"', "reply with: ok"];
 
-/** The shape codex writes. Only the parts anything here reads are typed. */
-export interface CodexAuth {
-  auth_mode?: string;
-  OPENAI_API_KEY?: string | null;
-  tokens?: { access_token?: string; id_token?: string; refresh_token?: string; account_id?: string };
-  last_refresh?: string;
-}
+const CodexAuthSchema = z
+  .object({
+    auth_mode: z.string().optional(),
+    OPENAI_API_KEY: z.string().nullable().optional(),
+    tokens: z
+      .object({
+        access_token: z.string().optional(),
+        id_token: z.string().optional(),
+        refresh_token: z.string().optional(),
+        account_id: z.string().optional(),
+      })
+      .catchall(JsonValue)
+      .optional(),
+    last_refresh: z.string().optional(),
+  })
+  .catchall(JsonValue);
+export type CodexAuth = z.infer<typeof CodexAuthSchema>;
 
 export function parseAuth(json: string): CodexAuth | null {
-  try {
-    const a = JSON.parse(json) as CodexAuth;
-    return a && typeof a === "object" ? a : null;
-  } catch {
-    return null;
-  }
+  return jsonOr(json, CodexAuthSchema.nullable(), null);
 }
 
 export const accessToken = (a: CodexAuth): string | null => a.tokens?.access_token ?? null;
@@ -84,17 +90,18 @@ export interface CodexHomeIO {
 /**
  * Make codex renew its own login, and hand back the file it wrote.
  *
- * A real call is what triggers the refresh — `codex login status` reports the
- * login without touching it — so this spends the smallest turn it can. Returns
- * null when nothing was renewed, and the caller keeps what it had: a blocked
- * network must not throw away a working login.
- *
- * **The file is the answer, not the exit code.** The nudge can fail on its way
- * out — in the utility container the sidecar replaces the Authorization header
- * with the token we already had, so the API call after a successful refresh can
- * still 401 — and discarding a refreshed `auth.json` because the errand that
- * caused it came back non-zero would throw away the one thing this exists for.
- * Refresh happens at `auth.openai.com`, which nothing binds.
+ * A real call is what triggers the refresh — `codex login status` reports the login
+ * without touching it — so this spends the smallest turn it can. Returns null when
+ * nothing was renewed, and the caller keeps what it had: a blocked network must not
+ * throw away a working login.
+ */
+/**
+ * **The file is the answer, not the exit code.** The nudge can fail on its way out
+ * — in the utility container the sidecar replaces the Authorization header with the
+ * token we already had, so the API call after a successful refresh can still 401 —
+ * and discarding a refreshed `auth.json` because the errand came back non-zero
+ * would throw away the one thing this exists for. Refresh happens at
+ * `auth.openai.com`, which nothing binds.
  */
 export async function renew(io: CodexHomeIO): Promise<CodexAuth | null> {
   const before = await readAuth(io);
@@ -177,7 +184,7 @@ export function decoyAuth(a: CodexAuth): string {
 
 /** A JWT in shape only: three base64url segments, no real claim in it. */
 function decoyIdToken(): string {
-  const seg = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const seg = (o: Json) => Buffer.from(JSON.stringify(o)).toString("base64url");
   return [
     seg({ alg: "none", typ: "JWT" }),
     seg({ sub: "decoy", exp: Math.floor(Date.now() / 1000) + 86_400 }),

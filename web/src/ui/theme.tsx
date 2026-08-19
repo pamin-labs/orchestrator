@@ -1,23 +1,25 @@
 import { useEffect, useState } from "react";
 import { Segment, Segments } from "./segment";
+import { z } from "zod";
 
 /**
  * Light / dark / follow the system.
  *
- * Three states, not two: "follow the system" is the one most people want and the
- * one a bare toggle cannot express — it silently pins whatever the machine
- * happened to be when you first clicked. The stored value is the preference; the
- * `data-theme` attribute is always resolved to a concrete light or dark, which is
- * why the stylesheet needs one dark block instead of three.
- *
- * The control lives in settings, not in the header. It was an icon in the top
- * right that cycled through three states one click at a time — a permanent
- * control for a thing set once, and a cycle button cannot show what the other two
- * options are. Applying the stored theme is separate from showing the control
- * (`startTheme`, called at boot), because the page has to come up in the right
- * theme whether or not anyone opens settings.
+ * Three states, not two: "follow the system" is what most people want and what a
+ * bare toggle cannot express — it silently pins whatever the machine happened to
+ * be when you first clicked. The stored value is the preference; `data-theme` is
+ * always resolved to a concrete light or dark, which is why the stylesheet needs
+ * one dark block instead of three.
  */
-type Pref = "system" | "light" | "dark";
+/**
+ * The control lives in settings, not the header: it was an icon that cycled three
+ * states one click at a time — a permanent control for a thing set once, and a
+ * cycle button cannot show what the other two options are. Applying the stored
+ * theme is separate (`startTheme`, at boot), because the page has to come up right
+ * whether or not anyone opens settings.
+ */
+const PrefSchema = z.enum(["system", "light", "dark"]);
+type Pref = z.infer<typeof PrefSchema>;
 const KEY = "orch.theme";
 const NEXT: Record<Pref, Pref> = { system: "light", light: "dark", dark: "system" };
 const ZH: Record<Pref, string> = { system: "跟随系统", light: "浅色", dark: "深色" };
@@ -47,6 +49,11 @@ function set(p: Pref) {
   window.dispatchEvent(new CustomEvent(CHANGED));
 }
 
+/** ⌘⇧L, or Ctrl⇧L. Read off `key` rather than `code`, so it is the same chord on
+ *  a layout where L is somewhere else. */
+export const isThemeHotkey = (e: Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "shiftKey" | "key">): boolean =>
+  (e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l";
+
 /**
  * Apply the stored theme and keep it applied. Called once, at boot.
  *
@@ -59,7 +66,7 @@ export function startTheme(): void {
     if (read() === "system") apply("system");
   });
   window.addEventListener("keydown", (e) => {
-    if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== "l") return;
+    if (!isThemeHotkey(e)) return;
     e.preventDefault();
     set(NEXT[read()]);
   });
@@ -78,11 +85,12 @@ export function ThemeChoice() {
     <Segments
       value={pref}
       onValueChange={(v) => {
-        set(v as Pref);
-        setPref(v as Pref);
+        const next = PrefSchema.parse(v);
+        set(next);
+        setPref(next);
       }}
     >
-      {(Object.keys(ZH) as Pref[]).map((p) => (
+      {PrefSchema.options.map((p) => (
         <Segment key={p} value={p}>
           {ZH[p]}
         </Segment>

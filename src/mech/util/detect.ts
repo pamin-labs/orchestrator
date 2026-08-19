@@ -1,20 +1,23 @@
 /**
  * Work out a project's gates from what the repository root looks like.
  *
- * A project with no gates fails every slice by design, so leaving this to the
- * boss means the first thing the system does on a new project is refuse to work
- * and look broken. Detection is best-effort and always visible: whatever it
- * guesses is written into project config, where it can be corrected.
- *
+ * A project with no gates fails every slice by design, so leaving this to the boss
+ * means the first thing the system does on a new project is refuse to work and look
+ * broken. Detection is best-effort and always visible: whatever it guesses is
+ * written into project config, where it can be corrected.
+ */
+/**
  * No filesystem in here. The repository this reads is a clone inside a group's
- * container (007 §2) — there is no host checkout to point at any more — so the
- * caller gathers a listing and a few files however it can reach them, and this
- * stays a pure function of that. The fixture tests are the reason: they are the
- * only thing covering these rules, and they now need neither a temp directory
- * nor a container.
+ * container — there is no host checkout to point at any more — so the caller
+ * gathers a listing and a few files however it can reach them, and this stays a
+ * pure function of that. The fixture tests are the reason: they are the only thing
+ * covering these rules, and they need neither a temp directory nor a container.
  */
 
 /** A repository root: what is in it, and the contents of the few files that matter. */
+import { jsonOr } from "../../contracts/json.ts";
+import { z } from "zod";
+
 export interface Root {
   /** Names directly in the root, `ls -A`. */
   names: string[];
@@ -45,17 +48,45 @@ interface Rule {
   install?: (repo: Root) => string | null;
 }
 
-const readJson = (repo: Root, name: string): any => {
-  try {
-    return JSON.parse(repo.read(name) ?? "");
-  } catch {
-    return null;
-  }
-};
+const PackageJsonSchema = z.object({
+  scripts: z.record(z.string(), z.string()).optional(),
+  workspaces: z.union([z.array(z.string()), z.object({ packages: z.array(z.string()) })]).optional(),
+});
+type PackageJson = z.infer<typeof PackageJsonSchema>;
+
+const readJson = (repo: Root, name: string): PackageJson | null =>
+  jsonOr(repo.read(name), PackageJsonSchema.nullable(), null);
 
 const hasFile = (repo: Root, name: string) => repo.names.includes(name);
 
 const globExists = (repo: Root, re: RegExp) => repo.names.some((f) => re.test(f));
+
+function scriptGate(
+  present: string | undefined,
+  name: string,
+  runner: "bun" | "npm",
+  command: string,
+  errorRegex: string,
+): DetectedGate | null {
+  if (!present) return null;
+  return { name, template: runner === "bun" ? `bun ${command}` : `npm ${command}`, errorRegex };
+}
+
+function typecheckGate(repo: Root, scripts: Record<string, string>): DetectedGate | null {
+  if (!scripts.typecheck && !scripts.tsc && !hasFile(repo, "tsconfig.json")) return null;
+  return { name: "typecheck", template: "node_modules/.bin/tsc --noEmit", errorRegex: "error TS" };
+}
+
+function packageGates(repo: Root): DetectedGate[] {
+  const scripts: Record<string, string> = readJson(repo, "package.json")?.scripts ?? {};
+  const runner = hasFile(repo, "bun.lock") || hasFile(repo, "bun.lockb") ? "bun" : "npm";
+  return [
+    scriptGate(scripts["build:web"], "build", runner, "run build:web", "(error|ERROR|failed)"),
+    scriptGate(scripts.test, "test", runner, "test", "^(error|FAIL|✗|\\s+at )"),
+    typecheckGate(repo, scripts),
+    scriptGate(scripts.lint, "lint", runner, "run lint", "(error|warning)"),
+  ].filter((gate): gate is DetectedGate => gate !== null);
+}
 
 /** Rule order matters: the first marker that matches wins. */
 const RULES: Rule[] = [
@@ -75,51 +106,7 @@ const RULES: Rule[] = [
             : hasFile(repo, "yarn.lock")
               ? "yarn install --frozen-lockfile"
               : null,
-    gates: (repo) => {
-      const pkg = readJson(repo, "package.json") ?? {};
-      const scripts: Record<string, string> = pkg.scripts ?? {};
-      // Prefer bun when the repo already commits a bun lockfile; the runner is
-      // whatever the project actually uses, not whatever we like.
-      const runner = hasFile(repo, "bun.lock") || hasFile(repo, "bun.lockb") ? "bun" : "npm";
-      const out: DetectedGate[] = [];
-      // First, and before the tests: a suite that serves a built bundle otherwise
-      // tests whichever bundle happened to be lying there. In a worktree that was
-      // the main checkout's, so a group's own UI change was invisible to its own
-      // gate — and on the boss's machine a deleted button survived a rebuild.
-      if (scripts["build:web"]) {
-        out.push({
-          name: "build",
-          template: runner === "bun" ? "bun run build:web" : "npm run build:web",
-          errorRegex: "(error|ERROR|failed)",
-        });
-      }
-      if (scripts.test) {
-        out.push({
-          name: "test",
-          template: runner === "bun" ? "bun test" : "npm test",
-          errorRegex: "^(error|FAIL|✗|\\s+at )",
-        });
-      }
-      if (scripts.typecheck || scripts.tsc || hasFile(repo, "tsconfig.json")) {
-        out.push({
-          name: "typecheck",
-          // The local binary, not `bunx`/`npx`. Those re-resolve and install on
-          // every call, and every worktree shares one node_modules by symlink —
-          // two gates at once raced on it and one came back `Failed to link
-          // jiti: EEXIST`, which the group read as its own build being broken.
-          template: "node_modules/.bin/tsc --noEmit",
-          errorRegex: "error TS",
-        });
-      }
-      if (scripts.lint) {
-        out.push({
-          name: "lint",
-          template: runner === "bun" ? "bun run lint" : "npm run lint",
-          errorRegex: "(error|warning)",
-        });
-      }
-      return out;
-    },
+    gates: packageGates,
   },
   {
     marker: (repo) => hasFile(repo, "Cargo.toml"),
@@ -148,25 +135,26 @@ const RULES: Rule[] = [
   {
     marker: (repo) => globExists(repo, /\.(sln|csproj)$/),
     install: () => "dotnet restore",
-    gates: () => [
-      { name: "test", template: "dotnet test --nologo", errorRegex: "(error|Failed!|\\s+Failed )" },
-    ],
+    gates: () => [{ name: "test", template: "dotnet test --nologo", errorRegex: "(error|Failed!|\\s+Failed )" }],
   },
   {
     marker: (repo) => hasFile(repo, "justfile") || hasFile(repo, "Justfile"),
     gates: () => [{ name: "test", template: "just test", errorRegex: "(error|FAIL)" }],
   },
   {
-    marker: (repo) => hasMakeTarget(repo, "test"),
+    marker: (repo) => hasMakeTestTarget(repo),
     gates: () => [{ name: "test", template: "make test", errorRegex: "(error|FAIL|Error)" }],
   },
 ];
 
-function hasMakeTarget(repo: Root, target: string): boolean {
+/** `test:` at the start of a line. One target is the only one anything asks about. */
+const MAKE_TEST_TARGET = /^test\s*:/m;
+
+function hasMakeTestTarget(repo: Root): boolean {
   for (const f of ["Makefile", "makefile", "GNUmakefile"]) {
     const body = repo.read(f);
     if (body === null) continue;
-    return new RegExp(`^${target}\\s*:`, "m").test(body);
+    return MAKE_TEST_TARGET.test(body);
   }
   return false;
 }

@@ -1,23 +1,52 @@
-import type { Ctx } from "../../ctx.ts";
-import type { Config } from "../../config.ts";
-import { say } from "../../lang.ts";
-import { interrupt, park, unpark } from "../flow/intercept.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import { jsonOr } from "../../contracts/json.ts";
+import { errText, hours, minutes } from "../../platform/process/text.ts";
+import type { Ctx } from "../../mech/ctx.ts";
+import type { Config } from "../../platform/config/load.ts";
+import { say, type SayKey } from "../../platform/text/lang.ts";
+import { hold, interrupt, park, release, unpark } from "../flow/intercept.ts";
 import { sweepApproved } from "../flow/start.ts";
+import { raise } from "../flow/escalate.ts";
 import { route } from "../flow/chain.ts";
 import { runInvariants } from "./invariants.ts";
 import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
 import { CODEX_HOME } from "../sandbox/auth.ts";
-import { execIn, killSandbox, renewSandbox, restartServer, runningServer, UTIL, utilSandbox, WORK, type Scope } from "../sandbox/sandbox.ts";
-import { baseRefFor, listTree, sandboxGit, treeHeads } from "../git/checkout.ts";
+import {
+  execIn,
+  EXEC_FANOUT,
+  killSandbox,
+  renewSandbox,
+  pidAlive,
+  restartServer,
+  runningServer,
+  UTIL,
+  utilSandbox,
+  WORK,
+  type Scope,
+} from "../sandbox/sandbox.ts";
+import { baseBranch, baseRefFor, listTree, sandboxGit, treeHeads } from "../git/checkout.ts";
 import { serverLogPath } from "../sandbox/server.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { buildMap, indexExcludes, renderMap, saveMap } from "../knowledge/repomap.ts";
-import { HEAD_CHARS } from "../knowledge/pageindex.ts";
-import { resumeReclaimed, type Job } from "../../scheduler.ts";
-import { abortJob } from "../../runtime/running.ts";
+import { buildMap, indexExcludes, saveMap } from "../knowledge/repomap.ts";
+import { resumeReclaimed, type Job } from "../../platform/scheduling/scheduler.ts";
+import { abortJob } from "../../platform/process/running-turns.ts";
 import { probe } from "../sandbox/net.ts";
+import { activeTracer } from "../../platform/observability/traces.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
+import { Cron } from "croner";
+import pMap from "p-map";
+import { z } from "zod";
+import {
+  ACTIVE_JOB_STATES,
+  ANSWERLESS_GRP_STATES,
+  DISPATCHABLE_GRP_STATES,
+  ESCALATION_TERMINAL_STATES,
+  stateParam,
+  type GrpState,
+} from "../../contracts/states.ts";
 
 /**
  * Six rules, all deterministic, all cheap. No LLM is consulted.
@@ -36,6 +65,9 @@ export interface WatchdogDeps {
   pollUsage?: typeof pollUsage;
   /** Whether this machine can reach the providers. Injected for the same reason. */
   probe?: typeof probe;
+  /** Is the sandbox server up. The only subprocess on the tick, and the most
+   *  expensive thing in it. Injected for the same reason as the two above. */
+  runningServer?: typeof runningServer;
 }
 
 export interface Finding {
@@ -47,38 +79,25 @@ export interface Finding {
 
 export const IDLE_TURN_LIMIT = 3;
 export const SAME_FILE_LIMIT = 5;
-export const PAUSED_NOTIFY_MS = 15 * 60 * 1000;
+const PAUSED_NOTIFY_MS = 15 * 60 * 1000;
 /** How often one standing finding may reappear in the timeline. */
 export const REEMIT_MS = 30 * 60 * 1000;
 /** How long one of the boss's own decisions may sit before it is worth a word. */
-export const NUDGE_AFTER_MS = 4 * 60 * 60 * 1000;
+const NUDGE_AFTER_MS = 4 * 60 * 60 * 1000;
 /** And how often to say it again. Nagging every half hour is how a feed is ignored. */
-export const NUDGE_REEMIT_MS = 6 * 60 * 60 * 1000;
-
-/**
- * How often the codex rollout sweep reaches into the containers.
- *
- * A seven-day retention window enforced hourly, not twice a minute. The tick is
- * 30s and `commands.run` is ~1s, so per-tick meant ten seconds of every thirty
- * spent on ten `find`s that delete nothing — and spent inside the containers,
- * against the CPU the agents are capped at.
- */
-export const SWEEP_EVERY_MS = 60 * 60 * 1000;
-
-// ponytail: in-memory, like `lastFetch` above. A restart sweeps once more than it
-// needed to, which is a `find` that finds nothing.
-let lastSweep = 0;
+const NUDGE_REEMIT_MS = 6 * 60 * 60 * 1000;
 
 /**
  * How the sandbox server was last seen running, and how hard we have tried.
  *
- * In memory rather than a row, deliberately: the case this serves is "it died
- * while we were watching", which is exactly the case where we have seen it. An
- * orchestrator that boots with the server already down has never seen an argv,
- * says nothing, and leaves it to preflight and the boss's button — which is the
- * right answer, because a command line we did not observe is a guess.
+ * In memory rather than a row: the case this serves is "it died while we were
+ * watching". An orchestrator that boots with the server already down has never
+ * seen an argv, says nothing, and leaves it to preflight and the boss's button —
+ * a command line we did not observe is a guess.
  */
 let seenServerArgv: string[] | null = null;
+/** Its pid, so the steady state is a `kill(pid, 0)` rather than a forked `ps`. */
+let seenServerPid: string | null = null;
 let serverRestarts = 0;
 let nextServerTry = 0;
 
@@ -88,6 +107,7 @@ export const SERVER_RESTART_CAP = 3;
 /** Tests, and the boss's button: a deliberate restart clears the automatic count. */
 export function resetServerRestarts(): void {
   seenServerArgv = null;
+  seenServerPid = null;
   serverRestarts = 0;
   nextServerTry = 0;
 }
@@ -97,9 +117,8 @@ export function resetServerRestarts(): void {
  *
  * Pulled out of the rule so the one guarantee that matters can be checked without
  * a process to kill: **`present` is never `restart`**. A server that is up and
- * refusing — a bad key, a crash loop — is the case where restarting produces a
- * restart loop, and it is indistinguishable from a healthy one at this level, so
- * the answer at this level is always "not mine".
+ * refusing — a bad key, a crash loop — is indistinguishable from a healthy one at
+ * this level, and restarting it produces a restart loop.
  */
 export function serverAction(
   present: boolean,
@@ -115,35 +134,65 @@ export function serverAction(
   return restarts >= SERVER_RESTART_CAP ? "give_up" : "restart";
 }
 
+/**
+ * Is the sandbox server there, and remember how to restart it if it is.
+ *
+ * The steady state — up, and seen before — is one `kill(pid, 0)` and no
+ * subprocess. `ps` runs only when that says the pid is gone, which is also the
+ * only moment its argv is worth re-reading. A reused pid reads as alive: the
+ * conservative side, since the alternative is restarting a live server.
+ */
+function serverPresent(deps: WatchdogDeps): boolean {
+  if (seenServerPid !== null && pidAlive(seenServerPid)) return true;
+  const server = (deps.runningServer ?? runningServer)();
+  if (!server?.argv.length) return !!server;
+  seenServerArgv = server.argv;
+  seenServerPid = server.pid;
+  return true;
+}
+
 /** 30s, 2min, 8min. A server that needs three tries needs a person. */
 export const serverBackoffMs = (attempt: number): number => 30_000 * 4 ** (attempt - 1);
 
 /** Projects already told about, so the repo-map failure is said once, not per tick. */
 const mapWarned = new Set<number>();
 
-
 /**
  * Backstop, and a shorter shelf life.
  *
- * The executor now gzips a turn log the moment the turn ends, so the sweep only
- * meets files a crash left behind — hence the hour rather than the day. A week is
- * enough: these are read by a person diagnosing something that just happened, and
- * 365 files had grown to 59 MB.
+ * The executor gzips a turn log the moment the turn ends, so the sweep only meets
+ * files a crash left behind — hence the hour rather than the day. A week is
+ * enough: these are read by a person diagnosing something that just happened.
  */
 export const GZIP_AFTER_MS = 60 * 60 * 1000;
 export const DROP_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * codex writes a full transcript per session into the CODEX_HOME we hand it.
- * Nothing ever removed them: 78 rollout files and 110 MB in two days, next to a
- * turn-log directory that has had gzip and a retention window since the
- * beginning. Same window here, no compression — these are read by codex itself
- * on resume, and only while the thread is live.
+ * Compress one turn log and drop the raw file. Reports whether it did.
  *
- * Two places now, and this one is the smaller: since 005 `CODEX_HOME` is
- * `/root/.codex` *inside a container*, so what is left on the host is the weekly
- * refresh nudge's own rollouts. The 110 MB grows in the sandboxes, and
- * `sweepSandboxSessions` below is what reaches it.
+ * The sweep below is the *backstop* for the executor's own copy of this, so the
+ * two have to agree on the name the compressed file gets — otherwise the backstop
+ * compresses an already-compressed log and `DROP_AFTER_MS` never sees the result.
+ */
+export function gzipTurnLog(path: string): boolean {
+  try {
+    if (!existsSync(path)) return false;
+    writeFileSync(`${path}.gz`, gzipSync(readFileSync(path)));
+    rmSync(path, { force: true });
+    return true;
+  } catch {
+    // A log that will not compress is not worth failing a turn, or a tick, over.
+    return false;
+  }
+}
+
+/**
+ * codex writes a full transcript per session into the CODEX_HOME we hand it, and
+ * nothing ever removed them. Same window as the turn logs, no compression — these
+ * are read by codex itself on resume, and only while the thread is live.
+ *
+ * The smaller of two places: since 005 `CODEX_HOME` is `/root/.codex` *inside a
+ * container*, so the host keeps only the weekly refresh nudge's own rollouts.
  */
 export function sweepCodexSessions(home: string, now: number): number {
   const root = join(home, "sessions");
@@ -188,13 +237,7 @@ export function sweepTurnLogs(dir: string, now: number): { zipped: number; dropp
       continue;
     }
     if (!f.endsWith(".jsonl") || age < GZIP_AFTER_MS) continue;
-    try {
-      writeFileSync(`${path}.gz`, gzipSync(readFileSync(path)));
-      rmSync(path, { force: true });
-      zipped++;
-    } catch {
-      // A log that will not compress is not worth failing a watchdog tick over.
-    }
+    if (gzipTurnLog(path)) zipped++;
   }
   return { zipped, dropped };
 }
@@ -202,15 +245,13 @@ export function sweepTurnLogs(dir: string, now: number): { zipped: number; dropp
 /**
  * The three approval points, each with a clock.
  *
- * They are meant to wait — a plan the boss has not read should not start, and a
- * slice nobody accepted should not be called delivered. What was missing is that
- * they waited in silence, so "waiting for you since Tuesday" and "arrived a minute
- * ago" looked exactly alike, and a forgotten requirement is as stopped as a
- * crashed one.
+ * They are meant to wait — a plan the boss has not read should not start. What
+ * was missing is that they waited in silence, so "waiting for you since Tuesday"
+ * and "arrived a minute ago" looked alike, and a forgotten requirement is as
+ * stopped as a crashed one.
  */
 function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
   const out: Finding[] = [];
-  const hours = (ms: number) => Math.round(ms / 3_600_000);
 
   for (const g of db
     .query<{ id: number; name: string; at: number }, [number]>(
@@ -259,8 +300,7 @@ function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
       grpId: q.id,
       severity: q.behind > 0 ? "blocker" : "advisory",
       body:
-        `${q.name} 的 PR 排在队首 ${hours(now - q.at)} 小时了` +
-        (q.behind > 0 ? `，后面还堵着 ${q.behind} 个` : ""),
+        `${q.name} 的 PR 排在队首 ${hours(now - q.at)} 小时了` + (q.behind > 0 ? `，后面还堵着 ${q.behind} 个` : ""),
     });
   }
   return out;
@@ -273,145 +313,319 @@ function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
  * manage it — the codex session sweep and the quota read. Both are best-effort
  * and neither cares which sandbox answers.
  */
-function liveScopes(ctx: Ctx): Scope[] {
+function liveScopes(db: DB): Scope[] {
   const out: Scope[] = [];
-  for (const g of ctx.db
+  for (const g of db
     .query<{ id: number }, []>(
       "SELECT id FROM grp WHERE sandbox_id IS NOT NULL AND status NOT IN ('DISSOLVED','PARKED')",
     )
     .all()) {
     out.push({ grp: g.id });
   }
-  for (const p of ctx.db.query<{ id: number }, []>("SELECT id FROM project WHERE sandbox_id IS NOT NULL").all()) {
+  for (const p of db.query<{ id: number }, []>("SELECT id FROM project WHERE sandbox_id IS NOT NULL").all()) {
     out.push({ project: p.id });
   }
   return out;
 }
 
 /**
+ * The newest codex rollout anywhere in the fleet, for the quota read.
+ *
+ * Any one live sandbox will do — the quota is the account's, not the container's
+ * — so this takes the first that answers and stops. A container that has gone
+ * away is skipped rather than failing the read: this is a header number, and
+ * nothing may depend on it.
+ */
+export async function newestRollout(ctx: Ctx): Promise<string | null> {
+  for (const s of liveScopes(ctx.db)) {
+    const r = await execIn(ctx, s, NEWEST_ROLLOUT).catch(() => null);
+    if (r?.code === 0 && r.out.trim()) return r.out;
+  }
+  return null;
+}
+
+/**
  * The tick, and a promise that it always comes back.
  *
- * `runWatchdog` is straight-line async: one `throw` anywhere in it and every rule
- * after that point is skipped — and `invariants.ts` names the watchdog as the
- * `driver` for about twelve states, so a throw at rule 7e silently un-drives the
- * unwedge rule, the sandbox reaper, the TTL renewal, the stale-credential
- * rebuild, the rebase nudge and every clock the boss is waiting on. That is what
- * happened: `Bun.spawn` throws when `cwd` does not exist, `repo_path` stopped
- * being a directory, and the tick died at the first project row.
- *
- * The silence was the other half. `Scheduler.settle` writes `state='failed'` on
- * the job row and emits nothing, and the server enqueues a fresh tick regardless
- * — so it failed every thirty seconds with nothing anywhere saying so.
- *
- * The throw itself is fixed at its source (`makeGitRunner` returns a code now).
- * This is the guarantee that the next one does not get to be quiet: whatever
- * escapes comes back as a finding, in the feed, with the findings collected
- * before it.
+ * `runWatchdog` is straight-line async, and `invariants.ts` names the watchdog as
+ * the `driver` for about twelve states — so one `throw` silently un-drives the
+ * unwedge rule, the sandbox reaper, the TTL renewal and every clock the boss waits
+ * on. Whatever escapes comes back as a finding, with the ones collected before it.
  */
 export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   const findings: Finding[] = [];
   try {
     return await rules(deps, findings);
-  } catch (e: any) {
-    // Through `emit`, not `bus.emit`. A throw in a straight-line tick recurs
-    // every 30 seconds, so the guard written because the watchdog died silently
-    // would otherwise make it die loudly — 120 blocker lines an hour — which is
-    // the same dedup bug this file fixed in three other places. `emit` keys on
-    // (rule, grpId) for half an hour.
-    //
-    // The findings collected before the throw go with it: `rules` emits at its
-    // end and never got there, so without this they are returned to a caller
-    // and never reach the feed.
-    return emit(deps.ctx, [...findings, {
-      rule: "watchdog_broke",
-      grpId: null,
-      severity: "blocker",
-      body:
-        `看门狗这一轮挂了，后面的规则都没跑：${e?.message ?? e}\n` +
-        `每 30 秒都会再试一次，但在修好之前，靠它推的那些状态（卡住的组、过期的沙盒、` +
-        `基线变了要 rebase、等你决定的计时）都停在原地。`,
-    }], deps.now ?? (() => Date.now()));
+  } catch (e) {
+    // Through `emit`, not `bus.emit`: a throw in a straight-line tick recurs every
+    // 30 seconds, and `emit` keys on (rule, grpId) for half an hour. The findings
+    // collected before the throw go with it — `rules` emits at its end and never
+    // got there, so without this they never reach the feed.
+    return emit(
+      deps.ctx,
+      [
+        ...findings,
+        {
+          rule: "watchdog_broke",
+          grpId: null,
+          severity: "blocker",
+          body:
+            `看门狗这一轮挂了，后面的规则都没跑：${errText(e)}\n` +
+            `每 30 秒都会再试一次，但在修好之前，靠它推的那些状态（卡住的组、过期的沙盒、` +
+            `基线变了要 rebase、等你决定的计时）都停在原地。`,
+        },
+      ],
+      deps.now ?? (() => Date.now()),
+    );
   }
 }
 
+/**
+ * Runs on every tick. Deliberately not the pattern `* * * * * *`: parsing
+ * twenty-three cron patterns per tick to be told "yes" is work for nothing.
+ */
+const EVERY_TICK = null;
+
+/** Hourly, for a seven-day retention window. */
+const HOURLY = new Cron("0 * * * *");
+
+type Cadence = typeof EVERY_TICK | Cron;
+
+const RAN_KEY = (rule: string) => `watchdog.ran.${rule}`;
 
 /**
- * One rule, isolated.
+ * Due when the cadence's next run after the last one has arrived.
  *
- * The tick is straight-line async, so before this a `throw` anywhere skipped
- * every rule after it — and `invariants.ts` names the watchdog as the `driver`
- * for about twelve states, so one bad rule meant twelve drivers silent for
- * thirty seconds with nothing saying which one broke.
- *
- * The finding names the rule, so "rule 15 broke, the other 24 ran" is what the
- * boss reads rather than "the watchdog broke". Keyed on the rule, so `emit`
- * dedups it for `REEMIT_MS`: a rule that throws every tick reports twice an hour
- * rather than 120 times.
+ * Never having run counts as due: a new rule takes effect on the tick it ships.
+ * `nextRun` is croner's documented way to ask this of a pattern — a `Cron` built
+ * without a callback schedules nothing, so these are parsed patterns, not timers.
  */
-async function step(rule: string, findings: Finding[], run: () => Promise<void>): Promise<void> {
-  try {
-    await run();
-  } catch (e: any) {
-    findings.push({
-      rule: `rule_broke:${rule}`,
-      grpId: null,
-      severity: "blocker",
-      body: `看门狗第 ${rule} 条挂了，这一轮其余的照跑：${e?.message ?? e}`,
-    });
+function due(db: WatchdogDeps["ctx"]["db"], rule: string, cadence: Cadence, now: number): boolean {
+  if (cadence === EVERY_TICK) return true;
+  const stored = readSetting(db, RAN_KEY(rule));
+  // Tested before the conversion, because `Number(null)` is 0: reading the absent
+  // row as a number made a rule that had never run look like one that ran at the
+  // epoch. The absent row has to be checked as absent.
+  if (stored === null) return true;
+  const last = Number(stored);
+  if (!Number.isFinite(last)) return true;
+  return (cadence.nextRun(new Date(last))?.getTime() ?? Infinity) <= now;
+}
+
+/**
+ * What one rule declares about itself, beside its own body.
+ *
+ * `id` and `name` answer to different readers and neither can replace the other:
+ * the id is a stored fact — ADR 007 cites "rule 15", and `emit` dedups on
+ * `rule_broke:<id>` — while the name is what the panel shows. Declared at the call
+ * site rather than in a hoisted table, so the bodies stay where they are.
+ */
+interface Rule {
+  id: string;
+  name: string;
+  every: Cadence;
+}
+
+/**
+ * One rule, its own span, and its failure kept off the other twenty-three.
+ *
+ * Bound to this tick's database and clock, so `findings` leaves the call sites.
+ * The finding names the rule — the boss reads "rule 15 broke, the other 24 ran" —
+ * and `emit` dedups it for `REEMIT_MS`. The span is here because this is the one
+ * place every rule passes through; the twenty-fifth call site would not have one.
+ */
+function stepper(deps: WatchdogDeps, now: () => number, findings: Finding[]) {
+  const db = deps.ctx.db;
+  return async function step(rule: Rule, run: () => Promise<void>): Promise<void> {
+    if (!due(db, rule.id, rule.every, now())) return;
+    try {
+      await activeTracer().startActiveSpan(`watchdog.${rule.name}`, async (span) => {
+        try {
+          await run();
+        } catch (e) {
+          // On the span as well as in the findings: catching outside the callback
+          // ended the span green, so a rule that threw looked like one that worked.
+          span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+          findings.push({
+            // Keyed on the id, not the name: `emit` dedups these for `REEMIT_MS`,
+            // so the key is a stored fact and renaming a rule must not reset it.
+            rule: `rule_broke:${rule.id}`,
+            grpId: null,
+            severity: "blocker",
+            body: `看门狗第 ${rule.id} 条（${rule.name}）挂了，这一轮其余的照跑：${errText(e)}`,
+          });
+        } finally {
+          span.end();
+        }
+      });
+    } finally {
+      // After the run and whatever its outcome: a rule that throws every time would
+      // otherwise never record, and would retry on every tick.
+      if (rule.every !== EVERY_TICK) {
+        writeSetting(db, RAN_KEY(rule.id), String(now()));
+      }
+    }
+  };
+}
+
+type Translate = (key: SayKey, args?: Parameters<typeof say>[2]) => string;
+
+/** Stop network-dependent rules while offline and requeue interrupted turns once. */
+async function networkReady(
+  deps: WatchdogDeps,
+  findings: Finding[],
+  now: () => number,
+  t: Translate,
+): Promise<boolean> {
+  const net = await (deps.probe ?? probe)(deps.ctx.db, now());
+  if (!net.changed) return net.online;
+  const held = net.online ? 0 : holdForOffline(deps.ctx, now());
+  const body = net.online ? t("net.back") : t("net.lost", { n: held });
+  // The finding is the only announcement. There was a `bus.emit` here as well,
+  // with the same sentence and no dedup, so the feed carried the line twice in
+  // the same second — once from `orchestrator` as a state change, once from
+  // `watchdog` as the finding. `emit` below keys on the rule and backs off for
+  // `REEMIT_MS`; the direct call did neither, and a standing outage re-announced
+  // itself on the transition into every retry.
+  findings.push({
+    rule: net.online ? "network_back" : "network_lost",
+    grpId: null,
+    severity: net.online ? "advisory" : "blocker",
+    body,
+  });
+  if (net.online) deps.ctx.sched.tick();
+  return net.online;
+}
+
+interface BaseGroup {
+  id: number;
+  name: string;
+  repo: string;
+  seen: string | null;
+  project_id: number;
+}
+
+async function nudgeMovedBases(ctx: Ctx, findings: Finding[], now: () => number): Promise<void> {
+  const groups = ctx.db
+    .query<BaseGroup, []>(
+      `SELECT g.id, g.name, p.repo_path AS repo, g.rebase_seen AS seen, g.project_id
+       FROM grp g JOIN project p ON p.id = g.project_id
+       WHERE g.status IN ('RUNNING','PR_OPEN') AND g.sandbox_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM job j WHERE j.grp_id = g.id AND j.state = 'pending'
+                           AND j.kind = 'agent_turn' AND j.payload_json LIKE '%"conflict":true%')`,
+    )
+    .all();
+  // One request per *project*, not per group: ten groups on one project spent ten
+  // identical calls of one rate limit every tick, fetching the same string.
+  const heads = new Map<number, BaseHead | null>();
+  for (const group of groups) {
+    if (!heads.has(group.project_id)) heads.set(group.project_id, await remoteBaseHead(ctx, group));
   }
+  for (const group of groups) await nudgeMovedBase(ctx, group, heads.get(group.project_id) ?? null, findings, now);
+}
+
+async function nudgeMovedBase(
+  ctx: Ctx,
+  group: BaseGroup,
+  head: BaseHead | null,
+  findings: Finding[],
+  now: () => number,
+): Promise<void> {
+  // The comparison stays per group: the base is a fact about the project, and
+  // whether it *moved* is a fact about what this group last saw.
+  if (!head || head.sha === group.seen) return;
+  const movement = head;
+  const git = sandboxGit(ctx, { grp: group.id });
+  if (!(await knowsCommit(git, movement.sha))) return;
+  if ((await git(["merge-base", "--is-ancestor", movement.sha, "HEAD"], WORK)).code === 0) return;
+  // Enqueue first, record after: `rebase_seen` is the claim that this movement was
+  // handled, and a throw between the two left the claim standing with no nudge sent.
+  queueRebase(ctx, group, movement, findings);
+  ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [movement.sha, now(), group.id]);
+}
+
+interface BaseHead {
+  baseRef: string;
+  sha: string;
+}
+
+/** Where a project's base branch points now. Nothing group-specific in it. */
+async function remoteBaseHead(ctx: Ctx, group: BaseGroup): Promise<BaseHead | null> {
+  const baseRef = await baseRefFor(ctx, group.project_id);
+  const branch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : baseRef;
+  const head = await ctx.gh?.request(
+    "GET",
+    `/repos/${group.repo}/branches/${branch}`,
+    z.object({ commit: z.object({ sha: z.string().optional() }).optional() }),
+  );
+  const sha = head?.ok ? (head.data?.commit?.sha ?? "") : "";
+  return sha ? { baseRef, sha } : null;
+}
+
+type GitIn = ReturnType<typeof sandboxGit>;
+
+async function knowsCommit(git: GitIn, sha: string): Promise<boolean> {
+  if ((await git(["cat-file", "-e", `${sha}^{commit}`], WORK)).code === 0) return true;
+  if ((await git(["fetch", "--quiet", "origin"], WORK)).code !== 0) return false;
+  return (await git(["cat-file", "-e", `${sha}^{commit}`], WORK)).code === 0;
+}
+
+function queueRebase(
+  ctx: Ctx,
+  group: BaseGroup,
+  movement: { baseRef: string; sha: string },
+  findings: Finding[],
+): void {
+  const { baseRef, sha } = movement;
+  const remoteBranch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : null;
+  const fetchStep = remoteBranch ? `\`git fetch origin ${remoteBranch}\` then ` : "";
+  ctx.sched.enqueue("agent_turn", {
+    grp_id: group.id,
+    priority: 4,
+    payload: {
+      role: "engineer",
+      conflict: true,
+      rejection:
+        `${baseRef} moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
+        `${fetchStep}\`git rebase ${baseRef}\`, then carry on. ` +
+        `If ${baseRef} removed or reshaped something this slice was built on, STOP and say which premise is gone ` +
+        `with \`orch ask-boss\`; that reaches the Architect.`,
+    },
+  });
+  findings.push({
+    rule: "base_moved",
+    grpId: group.id,
+    severity: "advisory",
+    body: `${baseRef} 动到了 ${sha.slice(0, 8)}，${group.name} 的基线落后了，已经让它先 rebase`,
+  });
 }
 
 async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]> {
   const { ctx, cfg } = deps;
-  // These bodies land in the boss's feed and notifications, so they follow
-  // output.language. Feedback aimed at an agent stays English: it lands in a prompt
-  // next to code and gate output.
-  const t = (k: any, a?: any) => say(ctx.config?.language, k, a);
+  // Boss-facing findings follow output.language; agent feedback stays English.
+  const t = (k: SayKey, a?: Parameters<typeof say>[2]) => say(ctx.config.language, k, a);
   const now = deps.now ?? (() => Date.now());
-
-  // 19. The machine's own network, before anything that needs it.
-  //
-  // A laptop closes, a VPN drops. Without this every turn in flight burns its
-  // wall clock retrying, rule 1 interrupts each group into PAUSED, and PAUSED is
-  // a state nothing leaves on its own — so coming back online means a fleet of
-  // paused groups and a park timer filing them away. The gate in the scheduler
-  // does the holding; this decides when it is on and deals with what was already
-  // running.
-  const net = await (deps.probe ?? probe)(ctx.db, now());
-  if (net.changed) {
-    const held = net.online ? 0 : holdForOffline(ctx, now());
-    ctx.bus.emit({
-      author: "orchestrator",
-      kind: "state_change",
-      body: net.online ? t("net.back") : t("net.lost", { n: held }),
-    });
-    findings.push({
-      rule: net.online ? "network_back" : "network_lost",
-      grpId: null,
-      severity: net.online ? "advisory" : "blocker",
-      body: net.online ? t("net.back") : t("net.lost", { n: held }),
-    });
-    if (net.online) ctx.sched.tick();
-  }
-  // Everything below this line either talks to the network or drives work that
-  // does, so an offline tick stops here. The rules are all restatements of state
-  // we recorded ourselves; none of them is worth a two-second DNS timeout each.
-  if (!net.online) return emit(ctx, findings, now);
+  const step = stepper(deps, now, findings);
+  if (!(await networkReady(deps, findings, now, t))) return emit(ctx, findings, now);
 
   // Liveness first: one row per state, each saying who pushes it (invariants.ts).
-  // The rules below are the other question — not "is anybody driving this" but
-  // "is this healthy" — and keeping the two apart is what stops either from
-  // becoming a dumping ground.
-  runInvariants(ctx);
+  // The rules below are the other question — "is this healthy" — and keeping the
+  // two apart is what stops either becoming a dumping ground. Through `step` like
+  // every rule below: these two run *before* all twenty-four, so a throw here
+  // escaped to `runWatchdog` and skipped every one of them.
+  await step({ id: "0a", name: "invariants", every: EVERY_TICK }, async () => {
+    runInvariants(ctx);
+  });
 
-  // A group the boss approved while a boundary held it. `orch owns` sweeps too,
-  // but a blocker can also leave by merging, being split, or being parked and then
-  // dissolved — hooking each of those is four places to forget. Polling one column
-  // is the same shape as the rate-limit wait above.
-  await sweepApproved(ctx);
+  // A group the boss approved while a boundary held it. `orch owns` sweeps too, but
+  // a blocker can also leave by merging, being split, or being parked and then
+  // dissolved — hooking each of those is four places to forget.
+  await step({ id: "0b", name: "approved", every: EVERY_TICK }, async () => {
+    await sweepApproved(ctx);
+  });
 
   // 1. Turn wall-clock timeout.
-  await step("1", findings, async () => {
+  await step({ id: "1", name: "turn_timeout", every: EVERY_TICK }, async () => {
     const stale = ctx.db
       .query<{ id: number; grp_id: number | null; started_at: number }, [number]>(
         `SELECT id, grp_id, started_at FROM job
@@ -423,14 +637,14 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "turn_timeout",
         grpId: j.grp_id,
         severity: "advisory",
-        body: t("wd.turn_timeout", { min: Math.round(cfg.turnTimeoutMs / 60000) }),
+        body: t("wd.turn_timeout", { min: minutes(cfg.turnTimeoutMs) }),
       });
       if (j.grp_id) await interrupt(ctx, j.grp_id, "keep");
     }
   });
 
   // 2. Consecutive turns that wrote nothing to the blackboard.
-  await step("2", findings, async () => {
+  await step({ id: "2", name: "no_progress", every: EVERY_TICK }, async () => {
     const idle = ctx.db
       .query<{ id: number; grp_id: number | null; role: string; idle_turns: number }, [number]>(
         "SELECT id, grp_id, role, idle_turns FROM agent WHERE idle_turns >= ?",
@@ -448,7 +662,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   });
 
   // 3. The same agent rewriting the same file over and over.
-  await step("3", findings, async () => {
+  await step({ id: "3", name: "circling", every: EVERY_TICK }, async () => {
     const looping = ctx.db
       .query<{ id: number; grp_id: number | null; role: string; loop_file: string; loop_count: number }, [number]>(
         "SELECT id, grp_id, role, loop_file, loop_count FROM agent WHERE loop_count >= ? AND loop_file IS NOT NULL",
@@ -468,7 +682,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   });
 
   // 4. A lease that keeps failing while the code has not changed.
-  await step("4", findings, async () => {
+  await step({ id: "4", name: "env_suspect", every: EVERY_TICK }, async () => {
     const envSuspect = ctx.db
       .query<{ resource: string; grp_id: number | null; head_sha: string | null; c: number }, []>(
         `SELECT resource, grp_id, head_sha, count(*) AS c FROM lease
@@ -493,9 +707,9 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   });
 
   // 5. Budget.
-  await step("5", findings, async () => {
+  await step({ id: "5", name: "budget", every: EVERY_TICK }, async () => {
     const budgets = ctx.db
-      .query<{ id: number; name: string; budget_tokens: number; spent_tokens: number; status: string }, []>(
+      .query<{ id: number; name: string; budget_tokens: number; spent_tokens: number; status: GrpState }, []>(
         "SELECT id, name, budget_tokens, spent_tokens, status FROM grp WHERE budget_tokens IS NOT NULL",
       )
       .all();
@@ -508,28 +722,21 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           severity: "blocker",
           body: t("wd.budget_exhausted", { name: g.name, tokens: g.spent_tokens }),
         });
-        ctx.db.run("UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ?", [g.id]);
+        hold(ctx.db, g.id, { reason: "budget", settled: true });
         // A notification says it stopped; it does not put a decision in front of
         // anyone. Without a row in the queue the group sat suspended, 继续 did
         // nothing the scheduler would honour, and the only visible state was a
         // paused group with no reason attached. `budget:` prefixes the question so
         // raising the cap can close exactly this row.
-        const open = ctx.db
-          .query<{ c: number }, [number]>(
-            "SELECT count(*) AS c FROM escalation WHERE grp_id = ? AND answer IS NULL AND question LIKE 'budget:%'",
-          )
-          .get(g.id)!.c;
-        if (open === 0) {
-          ctx.db.run(
-            `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
-             VALUES (?, 'blocker', ?, '预算烧穿了，加不加', 'boss', unixepoch() * 1000)`,
-            [
-              g.id,
-              `budget: ${g.name} 用完了 ${g.budget_tokens} tokens，全组已挂起。` +
-                `提高上限它就接着跑，或者就让它停在这里。`,
-            ],
-          );
-        }
+        raise(ctx.db, {
+          grpId: g.id,
+          brief: "预算烧穿了，加不加",
+          chain: "boss",
+          dedupe: { prefix: "budget:", scope: "group", grpId: g.id },
+          question:
+            `budget: ${g.name} 用完了 ${g.budget_tokens} tokens，全组已挂起。` +
+            `提高上限它就接着跑，或者就让它停在这里。`,
+        });
       } else if (frac >= 0.8) {
         findings.push({
           rule: "budget_80",
@@ -541,16 +748,16 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     }
   });
 
-  // 6. Quota came back. PLAN.md §11 says a rate-limited group waits for the reset,
+  // 6. Quota came back. docs/project/plan.md §11 says a rate-limited group waits for the reset,
   // and waiting is only useful if something is watching the clock.
-  await step("6", findings, async () => {
+  await step({ id: "6", name: "rate_limit_resumed", every: EVERY_TICK }, async () => {
     const throttled = ctx.db
       .query<{ id: number; name: string }, [number]>(
         "SELECT id, name FROM grp WHERE status = 'PAUSED' AND rl_resets_at IS NOT NULL AND rl_resets_at <= ?",
       )
       .all(now());
     for (const g of throttled) {
-      ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL, rl_resets_at = NULL WHERE id = ?", [g.id]);
+      release(ctx, g.id);
       ctx.bus.emit({
         grpId: g.id,
         author: "orchestrator",
@@ -561,84 +768,51 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     }
   });
 
-  // 7d2. Turn logs, compressed then dropped.
-  //
-  // Ten requirements produced 123 MB of raw NDJSON, median 324 KB a turn and 3 MB
-  // at the tail, because a turn's transcript is mostly tool output and all of it is
-  // written verbatim. It is worth keeping — every measurement in PROGRESS.md came
-  // out of these files — but not worth keeping uncompressed: NDJSON gzips about
-  // ten to one, and nothing reads a turn from a week ago without unzipping it
-  // first anyway.
-  await step("7d2", findings, async () => {
+  // 7d2. Turn logs, compressed then dropped. Worth keeping — every measurement in
+  // docs/project/progress.md came out of these files — but not uncompressed.
+  await step({ id: "7d2", name: "turn_logs_swept", every: EVERY_TICK }, async () => {
     sweepTurnLogs(join(cfg.dataDir, "turns"), now());
     sweepCodexSessions(join(cfg.dataDir, "codex-home"), now());
   });
 
-  // 7d2b. The same sweep, in the containers where the files actually are.
-  //
-  // Hourly, and in parallel. The first version ran one `execIn` per live sandbox
-  // on every 30s tick, serially: `commands.run` is ~1s, so ten groups meant ten
-  // seconds of every thirty spent deleting nothing, competing with the agents for
-  // the CPU their own containers are capped at. It is a seven-day retention
-  // window — it does not need to be enforced twice a minute.
-  await step("7d2b", findings, async () => {
-    if (now() - lastSweep >= SWEEP_EVERY_MS) {
-      lastSweep = now();
-      await Promise.allSettled(
-        liveScopes(ctx).map((s) =>
-          execIn(ctx, s, `find ${CODEX_HOME}/sessions -type f -mtime +7 -delete 2>/dev/null || true`),
-        ),
-      );
-    }
+  // 7d2b. The same sweep, in the containers where the files actually are. Hourly
+  // and in parallel: a seven-day retention window does not need enforcing twice a
+  // minute. The cadence is declared beside the rule and enforced by `step`, so it
+  // survives a restart and is not shared with a second tick.
+  await step({ id: "7d2b", name: "container_sessions_swept", every: HOURLY }, async () => {
+    await pMap(
+      liveScopes(ctx.db),
+      (s) => execIn(ctx, s, `find ${CODEX_HOME}/sessions -type f -mtime +7 -delete 2>/dev/null || true`),
+      // `stopOnError: false` is what `allSettled` meant here: one container that
+      // refuses must not cancel the sweep of the other nine.
+      { concurrency: EXEC_FANOUT, stopOnError: false },
+    );
   });
 
-  // 7d3. How much of the claude subscription is left.
-  //
-  // codex reports both its windows in every turn; claude's stream reports none,
-  // so the only way to put the two side by side in the header is to ask. Rate
-  // limited to five minutes inside, and it swallows its own failures — the
-  // endpoint is undocumented and nothing here may depend on it.
-  // Injectable, because it is the one thing in this tick that talks to the
-  // network. `test/watchdog.test.ts` ran it for real: the endpoint hung on its
-  // 10s timeout inside a gate sandbox, the test blew bun's 5s limit, and the
-  // slice was rejected for a red test that had nothing to do with its change.
-  // Two slices lost to it, on two different requirements.
-  await step("7d3", findings, async () => {
-    await (deps.pollUsage ?? pollUsage)(ctx, cfg.dataDir, now(), async () => {
-      // The fleet's own rollouts live in the sandboxes now; the host copy is only
-      // as fresh as the last weekly refresh nudge. Any one live sandbox will do —
-      // the quota is the account's, not the container's.
-      for (const s of liveScopes(ctx)) {
-        const r = await execIn(ctx, s, NEWEST_ROLLOUT).catch(() => null);
-        if (r?.code === 0 && r.out.trim()) return r.out;
-      }
-      return null;
-    });
+  // 7d3. How much of the claude subscription is left. codex reports both windows
+  // in every turn; claude's stream reports none, so the only way to put the two
+  // side by side is to ask. It swallows its own failures — the endpoint is
+  // undocumented and nothing here may depend on it — and is injectable, being the
+  // one thing in this tick that talks to the network.
+  await step({ id: "7d3", name: "subscription_usage", every: EVERY_TICK }, async () => {
+    await (deps.pollUsage ?? pollUsage)(ctx, cfg.dataDir, now(), () => newestRollout(ctx));
   });
 
   // 7e. Keep the shared repo map current.
   //
-  // Deterministic and cheap — `git ls-files` plus a regex per file — and only
-  // written when the render changed, so a quiet repo costs one comparison. This is
-  // the thing seven groups were each rediscovering by grep.
-  await step("7e", findings, async () => {
+  // Deterministic and cheap — `git ls-files` plus one tree-sitter parse per file,
+  // grammars loaded once per process — and only written when the render changed,
+  // so a quiet repo costs one comparison. Seven groups were grepping for this.
+  await step({ id: "7e", name: "repo_map", every: EVERY_TICK }, async () => {
     for (const p of ctx.db
-      .query<{ id: number; repo_path: string; remote: string | null }, []>(
-        "SELECT id, repo_path, remote FROM project",
-      )
+      .query<{ id: number; repo_path: string; remote: string | null }, []>("SELECT id, repo_path, remote FROM project")
       .all()) {
       const { files, why } = p.remote
-        ? await listTree(ctx, p.remote, await baseRefFor(ctx, p.id))
+        ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))
         : { files: [], why: "这个项目没记下 remote，没有可以镜像的地址" };
-      // The mirror is the corpus now. Said once per project rather than never
-      // (the map silently stops being refreshed and seven groups go back to
-      // grepping) and rather than every tick (a line every thirty seconds
-      // forever is a feed nobody reads).
-      //
-      // And said with git's own words. This used to name two possible causes in
-      // prose — the utility container, or the GitHub login — which is a guess
-      // printed as a diagnosis: it was wrong in the first case anyone hit, and
-      // being wrong it sent the reader to check two things that were both fine.
+      // Said once per project: never means the map silently stops being refreshed,
+      // and every tick is a feed nobody reads. Said with git's own words, because
+      // naming possible causes in prose is a guess printed as a diagnosis.
       if (!files.length) {
         if (!mapWarned.has(p.id)) {
           mapWarned.add(p.id);
@@ -653,18 +827,20 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       }
       mapWarned.delete(p.id);
       // Symbols need file *contents*, and the only copy is in the project's own
-      // container: the mirror is `--filter=blob:none`, so reading through it is
-      // a network fetch per file, and this machine has no checkout at all. One
-      // exec for the whole corpus — the same call and the same head size the
-      // indexer already makes, so a map and a tree agree about what a file says.
-      //
-      // Empty is a legitimate answer (indexing off, or no container yet) and it
-      // means a paths-only map, which is still the thing seven groups were
-      // rediscovering by grep. It is no longer a *silent* answer: the count is
-      // in the line below.
-      const heads = await treeHeads(ctx, { project: p.id }, HEAD_CHARS).catch(() => new Map<string, string>());
-      const named = buildMap(p.repo_path, () => files, indexExcludes(ctx.db, p.id), (rel) => heads.get(rel));
-      if (saveMap(ctx.db, p.id, renderMap(named))) {
+      // container. Whole files, not the indexer's head: a parser needs the whole
+      // declaration, so a truncated file silently loses its last one and no larger
+      // cap fixes that. Empty is legitimate and means a paths-only map.
+
+      // ponytail: the whole corpus crosses the exec every tick (0.8 MB → 4.0 MB
+      // here). Gate the exec on the tree's head sha if a large repo makes it hurt.
+      const heads = await treeHeads(ctx, { project: p.id }, null).catch(() => new Map<string, string>());
+      const named = await buildMap(
+        p.repo_path,
+        () => files,
+        indexExcludes(ctx.db, p.id),
+        (rel) => heads.get(rel),
+      );
+      if (saveMap(ctx.db, p.id, named)) {
         ctx.bus.emit({
           author: "librarian",
           kind: "state_change",
@@ -674,41 +850,30 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     }
   });
 
-  // 8. A live group with nothing queued.
-  //
-  // Every way a turn can end is terminal — failed, done, cancelled — and nothing
-  // re-queues. So whenever a turn ends without arranging the next one, the group
-  // stays RUNNING, its slice stays `running`, `startNextSlice` counts it busy, and
-  // the desk wall reads 在跑 0 with no error anywhere. A `claude --settings` path
-  // bug took six groups down this way; a Dispatcher that finished without filing a
-  // card left a seventh in PLANNING the same afternoon. The queue being empty under
-  // a live group IS the fault, whatever the last turn's exit code said. One
-  // automatic retry, then the boss.
-  await step("8", findings, async () => {
+  // 8. A live group with nothing queued. Every way a turn can end is terminal and
+  // nothing re-queues, so a turn that ends without arranging the next one leaves
+  // the group RUNNING with no error anywhere. The queue being empty under a live
+  // group IS the fault, whatever the last turn's exit code said. One automatic
+  // retry, then the boss.
+  await step({ id: "8", name: "stalled", every: EVERY_TICK }, async () => {
     const stalled = ctx.db
-      .query<Job, []>(
+      .query<Job, [string]>(
         `SELECT j.id, j.kind, j.grp_id, j.agent_id, j.slice_id, j.payload_json, j.priority, j.state, j.error
          FROM job j JOIN grp g ON g.id = j.grp_id
          WHERE g.status IN ('RUNNING', 'PLANNING') AND j.kind = 'agent_turn'
            AND j.id = (SELECT max(id) FROM job WHERE grp_id = j.grp_id AND kind = 'agent_turn')
-           AND NOT EXISTS (SELECT 1 FROM job k WHERE k.grp_id = j.grp_id AND k.state IN ('pending','running'))`,
+           AND NOT EXISTS (SELECT 1 FROM job k WHERE k.grp_id = j.grp_id
+                           AND k.state IN (SELECT value FROM json_each(?)))`,
       )
-      .all();
+      .all(stateParam(ACTIVE_JOB_STATES));
     for (const j of stalled) {
       // A rebase that beat the Engineer twice is a design question, not a harder
-      // rebase. It only reaches here after failing with the fork spelled out, so the
-      // next thing to try is the role that can say whether the slice still makes
-      // sense — not the same role with more determination.
-      //
-      // `conflict` marks a turn that was *told* to rebase (rule 15), not one that
-      // failed to. Reading the flag alone turned every successful rebase into a
-      // design escalation the moment the queue went quiet: pm-ai-agent got the same
-      // "The Engineer could not rebase this branch onto main" eight times, all eight
-      // false, and its Architect burned a turn refuting each one. A turn that ended
-      // `done` is a stall — that is the branch below, and it was always the right one.
-      let payload: any = {};
-      try { payload = JSON.parse(j.payload_json); } catch {}
-      if (payload?.conflict && j.state === "failed") {
+      // rebase, so the next thing to try is the role that can say whether the slice
+      // still makes sense. `conflict` marks a turn that was *told* to rebase (rule
+      // 15), not one that failed to — hence `state === 'failed'` as well: a turn
+      // that ended `done` is a stall, which is the branch below.
+      const payload = jsonOr(j.payload_json, z.looseObject({ conflict: z.boolean().optional() }), {});
+      if (payload.conflict === true && j.state === "failed") {
         ctx.sched.enqueue("agent_turn", {
           grp_id: j.grp_id,
           priority: 6,
@@ -729,20 +894,18 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "stalled",
         grpId: j.grp_id,
         severity: "blocker",
-        body: t("wd.stalled", { why: (j as any).error ?? "" }),
+        body: t("wd.stalled", { why: j.error ?? "" }),
       });
     }
     // No tick here: the server ticks on the same timer that enqueued this watchdog,
     // so the re-queued turn goes out a beat later either way.
   });
 
-  // 9. Work queued for a group that is gone.
-  //
-  // Dropping and splitting both cancel what was pending, but a mail arriving a
-  // moment later enqueues another one, and no status a dissolved group has is
-  // dispatchable. It sits pending forever, counted in every "what is queued" view
-  // the boss reads.
-  await step("9", findings, async () => {
+  // 9. Work queued for a group that is gone. Dropping and splitting both cancel
+  // what was pending, but a mail arriving a moment later enqueues another one, and
+  // no status a dissolved group has is dispatchable — so it sits pending forever,
+  // counted in every "what is queued" view the boss reads.
+  await step({ id: "9", name: "orphan_jobs", every: EVERY_TICK }, async () => {
     const orphanQueued = ctx.db.run(
       `UPDATE job SET state = 'cancelled', ended_at = ?, error = 'the group was dissolved'
        WHERE state = 'pending' AND grp_id IN (SELECT id FROM grp WHERE status = 'DISSOLVED')`,
@@ -758,32 +921,36 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   });
 
   // 11. A question stranded below the boss on a group that cannot answer it.
-  //
-  // route() sends these to the boss now, but only at the moment they are routed —
-  // a group can stop *after* a question was handed to its PM, and every one filed
-  // before that fix is still sitting where it was. The symptom is the worst kind:
-  // a stopped group, and a 待办 count of zero.
-  await step("11", findings, async () => {
+  // route() sends these to the boss, but only at the moment they are routed — a
+  // group can stop *after* a question was handed to its PM. The symptom is the
+  // worst kind: a stopped group, and a 待办 count of zero.
+  await step({ id: "11", name: "stranded_question", every: EVERY_TICK }, async () => {
     const stranded = ctx.db
-      .query<{ id: number }, []>(
+      .query<{ id: number }, [string, string, string]>(
         // Blockers only, same reason route() lifts only blockers: an advisory that
         // nobody answers costs nothing, and a clearance denial is a JSON blob about
         // a tool call rather than a decision anyone can take.
         `SELECT e.id FROM escalation e JOIN grp g ON g.id = e.grp_id
          WHERE e.answer IS NULL AND e.severity = 'blocker'
-           AND e.chain_state NOT IN ('boss', 'answered', 'revoked')
-           AND g.status NOT IN ('PLANNING', 'RUNNING', 'PR_OPEN')`,
+           AND e.chain_state != 'boss'
+           AND e.chain_state NOT IN (SELECT value FROM json_each(?))
+           AND g.status NOT IN (SELECT value FROM json_each(?))
+           AND g.status NOT IN (SELECT value FROM json_each(?))`,
       )
-      .all();
-    for (const e of stranded) route({ ctx, notifyBoss: ctx.notifyBoss }, e.id);
+      .all(
+        stateParam(ESCALATION_TERMINAL_STATES),
+        stateParam(DISPATCHABLE_GRP_STATES),
+        // Rule 16 revokes these. Without the second clause this routes them to the
+        // boss — notification and all — and rule 16 kills the question afterwards.
+        stateParam(ANSWERLESS_GRP_STATES),
+      );
+    for (const e of stranded) route({ ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) }, e.id);
   });
 
-  // 10. The group it was waiting on has landed.
-  //
-  // `orch blocked` hands a defect outside a group's boundary to whoever can fix
-  // it and stops the caller. Without this the caller waits forever: nothing else
-  // in the system knows that one group's merge is another group's green light.
-  await step("10", findings, async () => {
+  // 10. The group it was waiting on has landed. `orch blocked` stops the caller,
+  // and without this it waits forever: nothing else in the system knows that one
+  // group's merge is another group's green light.
+  await step({ id: "10", name: "unblocked", every: EVERY_TICK }, async () => {
     const waiting = ctx.db
       .query<{ id: number; name: string; blocked_on: number }, []>(
         `SELECT g.id, g.name, g.blocked_on FROM grp g JOIN grp b ON b.id = g.blocked_on
@@ -791,10 +958,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       )
       .all();
     for (const g of waiting) {
-      ctx.db.run(
-        "UPDATE grp SET status = 'RUNNING', paused_at = NULL, blocked_on = NULL WHERE id = ?",
-        [g.id],
-      );
+      release(ctx, g.id);
       ctx.bus.emit({
         grpId: g.id,
         author: "orchestrator",
@@ -803,12 +967,17 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       });
       // Rule 8 above requeues a live group with an empty queue, so the turn itself
       // comes from there — this only has to make the group live again.
-      findings.push({ rule: "unblocked", grpId: g.id, severity: "advisory", body: t("group.unblocked", { target: String(g.blocked_on) }) });
+      findings.push({
+        rule: "unblocked",
+        grpId: g.id,
+        severity: "advisory",
+        body: t("group.unblocked", { target: String(g.blocked_on) }),
+      });
     }
   });
 
   // 7. Paused too long: notify, then park to stop holding a slot.
-  await step("7", findings, async () => {
+  await step({ id: "7", name: "paused_too_long", every: EVERY_TICK }, async () => {
     const paused = ctx.db
       .query<{ id: number; name: string; paused_at: number }, []>(
         // `rl_resets_at IS NULL`: a group waiting for quota is not waiting for the boss,
@@ -823,36 +992,30 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     for (const g of paused) {
       const waited = now() - g.paused_at;
       if (waited >= cfg.parkAfterPausedMs) {
-        park(ctx, g.id, `waited ${Math.round(waited / 60000)} min for you`);
+        park(ctx, g.id, `waited ${minutes(waited)} min for you`);
         findings.push({
           rule: "parked",
           grpId: g.id,
           severity: "advisory",
-          body: t("wd.parked", { name: g.name, min: Math.round(waited / 60000) }),
+          body: t("wd.parked", { name: g.name, min: minutes(waited) }),
         });
       } else if (waited >= PAUSED_NOTIFY_MS) {
         findings.push({
           rule: "waiting_on_you",
           grpId: g.id,
           severity: "blocker",
-          body: t("wd.waiting_on_you", { name: g.name, min: Math.round(waited / 60000) }),
+          body: t("wd.waiting_on_you", { name: g.name, min: minutes(waited) }),
         });
       }
     }
   });
 
-  // 12. A parked group whose question got answered after it stopped.
-  //
-  // `answer()` un-pauses PAUSED groups and silently skips PARKED ones, so a group
-  // that waited long enough to be parked stayed parked even once the boss answered
-  // the very thing it was waiting for — the boss answers, and watches nothing
-  // happen. Parking is the only state the system puts a group into and never takes
-  // it out of again: 唤醒 is a button and nothing else.
-  //
-  // Answered *after* it stopped, not merely "no open blocker": most parked groups
-  // never had a blocker at all, and reviving those would undo the parking on the
-  // same tick that did it.
-  await step("12", findings, async () => {
+  // 12. A parked group whose question got answered after it stopped. `answer()`
+  // un-pauses PAUSED groups and silently skips PARKED ones, and parking is the only
+  // state the system never takes a group out of on its own. Answered *after* it
+  // stopped, not merely "no open blocker": most parked groups never had a blocker,
+  // and reviving those would undo the parking on the same tick that did it.
+  await step({ id: "12", name: "unparked", every: EVERY_TICK }, async () => {
     const revivable = ctx.db
       .query<{ id: number; name: string }, []>(
         `SELECT g.id, g.name FROM grp g WHERE g.status = 'PARKED' AND g.paused_at IS NOT NULL
@@ -869,96 +1032,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     }
   });
 
-  // 15. The group's base moved while it is still working.
-  //
-  // `landGroup` tells the groups still in the merge queue to rebase, which covers
-  // the case where another group merged. It does not cover the boss pushing to
-  // main directly — and that is the common case, since the boss is a person with a
-  // terminal. Six groups spent a day building on a base fifteen commits stale, and
-  // every one of them would have found out at PR time, one conflict at a time.
-  //
-  // Told once per base: `rebase_seen` records what the group has already been
-  // warned about, so a group that reads the message and keeps working is not
-  // nagged every thirty seconds.
-  //
-  // PR_OPEN counts. Its branch is the one thing that has to merge, and it used to
-  // be excluded — so a stale PR sat in the queue until GitHub called it
-  // CONFLICTING, which is the late half of the same news.
-  await step("15", findings, async () => {
-    for (const g of ctx.db
-      .query<{ id: number; name: string; repo: string; seen: string | null; project_id: number }, []>(
-        `SELECT g.id, g.name, p.repo_path AS repo, g.rebase_seen AS seen, g.project_id
-         FROM grp g JOIN project p ON p.id = g.project_id
-         WHERE g.status IN ('RUNNING','PR_OPEN') AND g.sandbox_id IS NOT NULL
-           -- Coalesce on the nudge that is already queued, not on a clock. Three
-           -- pushes a minute apart were three shas and three rebase turns; a timer
-           -- would fix that by making a group wait to be told, and a group whose PR
-           -- is blocked on a rebase must not wait at all. If the turn is still
-           -- pending it will rebase onto whatever main is when it runs.
-           AND NOT EXISTS (SELECT 1 FROM job j WHERE j.grp_id = g.id AND j.state = 'pending'
-                             AND j.kind = 'agent_turn' AND j.payload_json LIKE '%"conflict":true%')`,
-      )
-      .all()) {
-      // Against the real base, and asked of GitHub rather than of a checkout on
-      // this machine — there is none since 007 step 6. One conditional request per
-      // group per tick, and a repeat is a 304, which does not count against the
-      // rate limit. Main also moves when somebody pushes from another machine,
-      // which is the case a local `rev-parse` could never see.
-      const baseRef = await baseRefFor(ctx, g.project_id);
-      const branch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : baseRef;
-      const head = await ctx.gh?.request<{ commit?: { sha?: string } }>(
-        "GET",
-        `/repos/${g.repo}/branches/${branch}`,
-      );
-      const sha = head?.ok ? (head.data?.commit?.sha ?? "") : "";
-      if (!sha || sha === g.seen) continue;
-      // The clone has to know the object before it can be asked about it. It is a
-      // separate `git clone` that never fetched, so `merge-base --is-ancestor`
-      // exited non-zero for "I have never heard of that commit" exactly as it does
-      // for "you are behind it" — the same code, two different facts, and the
-      // rebase nudge could not tell them apart. Fetch first, and then a non-zero
-      // answer means what it says.
-      const gitIn = sandboxGit(ctx, { grp: g.id });
-      const known = await gitIn(WORK, ["cat-file", "-e", `${sha}^{commit}`], WORK);
-      if (known.code !== 0) {
-        const fetched = await gitIn(WORK, ["fetch", "--quiet", "origin"], WORK);
-        // Still unknown after a fetch: the clone cannot see this base at all, which
-        // is a checkout problem and not something a rebase turn would fix.
-        if (fetched.code !== 0) continue;
-        if ((await gitIn(WORK, ["cat-file", "-e", `${sha}^{commit}`], WORK)).code !== 0) continue;
-      }
-      const merged = await gitIn(WORK, ["merge-base", "--is-ancestor", sha, "HEAD"], WORK);
-      if (merged.code === 0) continue; // already on it
+  // 15. A live branch is told once per remote base to rebase before PR time.
+  await step({ id: "15", name: "base_moved", every: EVERY_TICK }, () => nudgeMovedBases(ctx, findings, now));
 
-      ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [sha, now(), g.id]);
-      const remoteBranch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : null;
-      const fetchStep = remoteBranch ? `\`git fetch origin ${remoteBranch}\` then ` : "";
-      ctx.sched.enqueue("agent_turn", {
-        grp_id: g.id,
-        priority: 4,
-        payload: {
-          role: "engineer",
-          conflict: true,
-          rejection:
-            `${baseRef} moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
-            `${fetchStep}\`git rebase ${baseRef}\`, then carry on. ` +
-            `If ${baseRef} removed or reshaped something this slice was built on, STOP and say which premise is gone ` +
-            `with \`orch ask-boss\`; that reaches the Architect.`,
-        },
-      });
-      findings.push({
-        rule: "base_moved",
-        grpId: g.id,
-        severity: "advisory",
-        body: `${baseRef} 动到了 ${sha.slice(0, 8)}，${g.name} 的基线落后了，已经让它先 rebase`,
-      });
-    }
-  });
-
-  // 14. Parked and forgotten. It will not come back on its own and it will not ask
-  // again, so the one thing owed is a reminder that says how long — 唤醒 and 不做了
-  // are both one click from the requirement page.
-  await step("14", findings, async () => {
+  // 14. Parked and forgotten. It will not come back on its own and will not ask
+  // again, so the one thing owed is a reminder that says how long.
+  await step({ id: "14", name: "waiting_parked", every: EVERY_TICK }, async () => {
     for (const g of ctx.db
       .query<{ id: number; name: string; paused_at: number }, [number]>(
         "SELECT id, name, paused_at FROM grp WHERE status = 'PARKED' AND paused_at IS NOT NULL AND paused_at < ?",
@@ -968,22 +1047,17 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "waiting_parked",
         grpId: g.id,
         severity: "advisory",
-        body: `${g.name} 封存了 ${Math.round((now() - g.paused_at) / 3_600_000)} 小时，唤醒还是不做了？`,
+        body: `${g.name} 封存了 ${hours(now() - g.paused_at)} 小时，唤醒还是不做了？`,
       });
     }
   });
 
-  // 17. A dissolved group's sandbox.
-  //
-  // Two containers per group — the sandbox and its egress sidecar — and neither
-  // goes away on its own until the TTL runs out, which is a day. DISSOLVED means
-  // the work is either merged or dropped, so nothing in there is wanted; what is
-  // left is memory, CPU and disk held against every group that comes next.
-  //
-  // `pause` is not the cheap alternative it looks like: measured, it is a real
-  // `docker pause`, so the container and its disk both stay (docs/decisions/005).
+  // 17. A dissolved group's sandbox. Two containers per group — the sandbox and
+  // its egress sidecar — and neither goes away on its own until the TTL runs out,
+  // which is a day. `pause` is not the cheap alternative it looks like: it is a
+  // real `docker pause`, so the container and its disk both stay (docs/adr/005).
   // Only kill frees anything.
-  await step("17", findings, async () => {
+  await step({ id: "17", name: "sandbox_swept", every: EVERY_TICK }, async () => {
     for (const g of ctx.db
       .query<{ id: number; name: string }, []>(
         `SELECT id, name FROM grp WHERE status = 'DISSOLVED' AND sandbox_id IS NOT NULL`,
@@ -999,21 +1073,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     }
   });
 
-  // 17b. A sandbox older than the credential it is supposed to be using.
-  //
-  // A sidecar is loaded once, when its sandbox is built, and never again — so
-  // storing a credential has to kill the running sandboxes, and exactly one of
-  // the two ways to store one did. A login from the panel saved the token and
-  // stopped, so every group kept a sidecar bound to the credential that was
-  // still missing and every turn came back `Authentication credentials are
-  // invalid` against a token that was perfectly good.
-  //
-  // Both callers do the right thing now, and that is still not the fix: the next
-  // way to store a credential — an import, a refresh, a CLI — would have to
-  // remember, and this is the class of bug where forgetting looks healthy. The
-  // durable form is a fact about the row, checked here, true no matter which
-  // path stored it, for every project that will ever be added.
-  await step("17b", findings, async () => {
+  // 17b. A sandbox older than the credential it is supposed to be using. A sidecar
+  // is loaded once, when its sandbox is built, so storing a credential has to kill
+  // the running sandboxes. Not left to the callers — the next way to store one
+  // would have to remember, and forgetting looks healthy here. A fact about the
+  // row, checked here, whichever path stored it.
+  await step({ id: "17b", name: "sandbox_stale_credential", every: EVERY_TICK }, async () => {
     const newestCredential =
       ctx.db.query<{ at: number | null }, []>("SELECT max(updated_at) at FROM runtime_auth").get()?.at ?? 0;
     if (newestCredential) {
@@ -1040,28 +1105,21 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         .all(newestCredential)) {
         await killSandbox(ctx, { project: p.id });
       }
-      // The utility container is the one that matters most here: its sidecar holds
-      // the GitHub token, so a rotated login leaves it pushing with the old one —
-      // and a push refused for authentication is exactly the boss-bucket failure
-      // 007 §6 says must never present as an agent problem.
+      // The utility container matters most: its sidecar holds the GitHub token, so
+      // a rotated login leaves it pushing with the old one — and a push refused for
+      // authentication is the boss-bucket failure 007 §6 says must never present as
+      // an agent problem.
       const util = utilSandbox(ctx.db);
       if (util.id && util.at < newestCredential) await killSandbox(ctx, UTIL);
     }
   });
 
-  // 18. A live container expiring under whatever is using it.
-  //
-  // The TTL is what stops a crashed orchestrator leaking containers forever, so
-  // it has to be short enough to matter and therefore short enough to reap a
-  // group that is simply thinking. Renewing on every tick is the other half of
-  // that bargain: while something is watching, nothing expires.
-  //
-  // One loop over every kind there is, deliberately. This walked `grp` only, and
-  // the project containers had to be added when the index moved into one; adding
-  // a third loop for the utility container would guarantee the same omission a
-  // third time. `renewSandbox` is a no-op for a scope with no container, so the
-  // list can be built without asking which of them exist.
-  await step("18", findings, async () => {
+  // 18. A live container expiring under whatever is using it. The TTL stops a
+  // crashed orchestrator leaking containers forever, so it is short enough to reap
+  // a group that is merely thinking, and renewing every tick is the other half of
+  // that bargain. One loop over every kind, deliberately: a third loop for the
+  // utility container would guarantee the same omission a third time.
+  await step({ id: "18", name: "sandbox_expiring", every: EVERY_TICK }, async () => {
     const alive: Scope[] = [
       ...ctx.db
         .query<{ id: number }, []>(
@@ -1078,31 +1136,14 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     for (const scope of alive) await renewSandbox(ctx, scope);
   });
 
-  // 19. The sandbox server is gone.
-  //
-  // Narrow on purpose. Three states look identical from the panel and want three
-  // different answers: **absent** (restart it), **present but refusing** — a bad
-  // key, a crash loop — where a restart only makes a restart loop, and **present
-  // and healthy on stale config**, which is not a restart problem at all and is
-  // reported by preflight's `allowed_host_paths` check.
-  //
-  // So this fires on absence and nothing else. Two more guards, because an
-  // automatic action that keeps trying is how a crash loop becomes an outage:
-  //
-  // - only from an argv we have **seen** this process run. How the boss starts it
-  //   (uvx, a venv, a wrapper, extra flags) is theirs, and a composed command
-  //   line would start a second, differently-configured server beside the wedged
-  //   one. Never seen it up means we say nothing — preflight already reports a
-  //   server that is not there, and guessing is worse than reporting.
-  // - a hard cap. On reaching it this stops and escalates, because N failed
-  //   restarts is evidence that restarting is not the answer.
-  await step("19", findings, async () => {
-    const server = runningServer();
-    if (server?.argv.length) {
-      seenServerArgv = server.argv;
-      serverRestarts = 0;
-    }
-    switch (serverAction(!!server, seenServerArgv, serverRestarts, now(), nextServerTry)) {
+  // 19. The sandbox server is gone. Fires on **absence** and nothing else: one
+  // present but refusing would only be restarted into a loop. Two more guards,
+  // because an automatic action that keeps trying is how a crash loop becomes an
+  // outage — only an argv we have **seen** this process run, and a hard cap.
+  await step({ id: "19", name: "sandbox_server", every: EVERY_TICK }, async () => {
+    const present = serverPresent(deps);
+    if (present) serverRestarts = 0;
+    switch (serverAction(present, seenServerArgv, serverRestarts, now(), nextServerTry)) {
       case "give_up":
         nextServerTry = now() + REEMIT_MS;
         findings.push({
@@ -1128,27 +1169,23 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         });
         break;
       }
+      case "none":
+        break;
     }
   });
 
-  // 16. A question the work has already gone past.
-  //
-  // `review.ts` files a blocker when a slice fails QA three times, and it is
-  // right to: the acceptance criteria are usually wrong. But nothing closes it if
-  // the group recovers — the slice is re-run, accepted, the branch goes to PR —
-  // and the question sits in 待办 forever asking the boss to unblock a group that
-  // is finished. Live: src-mech-watchdog-ts had an open blocker and a merge-ready
-  // PR on the same requirement, in the same list.
-  //
-  // A group at PR_OPEN or DISSOLVED has no caller left to unblock. Answering it
-  // would change nothing, so the queue must stop asking.
-  await step("16", findings, async () => {
+  // 16. A question the work has already gone past. `review.ts` files a blocker
+  // when a slice fails QA three times, and nothing closes it if the group then
+  // recovers. A group at PR_OPEN or DISSOLVED has no caller left to unblock —
+  // answering would change nothing, so the queue must stop asking.
+  await step({ id: "16", name: "stale_ask", every: EVERY_TICK }, async () => {
     for (const e of ctx.db
-      .query<{ id: number; grp_id: number; name: string }, []>(
+      .query<{ id: number; grp_id: number; name: string }, [string, string]>(
         `SELECT e.id, e.grp_id, g.name FROM escalation e JOIN grp g ON g.id = e.grp_id
-         WHERE e.chain_state NOT IN ('answered','revoked') AND g.status IN ('PR_OPEN','DISSOLVED')`,
+         WHERE e.chain_state NOT IN (SELECT value FROM json_each(?))
+           AND g.status IN (SELECT value FROM json_each(?))`,
       )
-      .all()) {
+      .all(stateParam(ESCALATION_TERMINAL_STATES), stateParam(ANSWERLESS_GRP_STATES))) {
       ctx.db.run(
         `UPDATE escalation SET chain_state = 'revoked', answered_by = 'orchestrator',
            answer = ?, answered_at = unixepoch() * 1000 WHERE id = ?`,
@@ -1167,13 +1204,9 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     }
   });
 
-  // 13. The three places that wait on the boss, with a clock on each.
-  //
-  // DRAFT waiting for approval, a slice waiting to be accepted, and the head of
-  // the merge queue are all supposed to wait — that is the design. What was missing
-  // is that they wait in silence: three days later the system has still said
-  // nothing, and the requirement is as stopped as if it had crashed.
-  await step("13", findings, async () => {
+  // 13. The three places that wait on the boss, with a clock on each. They are
+  // supposed to wait; what was missing is that they waited in silence.
+  await step({ id: "13", name: "boss_clocks", every: EVERY_TICK }, async () => {
     for (const w of waitingOnBoss(ctx.db, now())) findings.push(w);
   });
 
@@ -1181,16 +1214,10 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
 }
 
 /**
- * A standing condition is re-detected on every tick, and emitting it every time
- * filled the timeline with the same line dozens of times over — "perf-rewrite is
- * at 102% of its budget", every few seconds, until the feed was worthless. The
- * notifier already backs off; the event log needs the same rule. A repeat is a
- * reminder, not a new problem.
- *
- * The returned list is filtered to the same set, not just the emitted events.
- * It is what the caller pushes to the boss's phone, and leaving it unfiltered
- * meant the timeline was deduplicated while the notifications were not — one
- * stalled group produced a push every thirty seconds, all night.
+ * A standing condition is re-detected on every tick, and a repeat is a reminder
+ * rather than a new problem — so the event log backs off the way the notifier
+ * already does. The returned list is filtered to the same set, not just the
+ * emitted events: it is what the caller pushes to the boss's phone.
  */
 function emit(ctx: Ctx, findings: Finding[], now: () => number): Finding[] {
   const fresh: Finding[] = [];
@@ -1222,15 +1249,10 @@ function emit(ctx: Ctx, findings: Finding[], now: () => number): Finding[] {
 /**
  * Stop every turn that is in flight, and put the work straight back on the queue.
  *
- * Doing nothing is the trap: the CLI backs off and retries until `turnTimeoutMs`,
- * rule 1 interrupts the group into PAUSED, and a PAUSED group is one nothing
- * resumes — the park timer files it away and the boss finds a fleet to restart by
- * hand once the connection is back.
- *
- * So the job is cancelled and re-queued and **the group's status is not touched**.
- * It stays RUNNING with pending work, the scheduler's offline gate holds that
- * work, and when the gate lifts the queue drains on the next tick. That is the
- * whole of "pause" and "resume": no new state, nothing to remember.
+ * Doing nothing is the trap: the CLI retries until `turnTimeoutMs`, rule 1
+ * interrupts the group into PAUSED, and nothing resumes a PAUSED group. So the job
+ * is cancelled and re-queued and **the group's status is not touched** — the
+ * scheduler's offline gate holds the work, and the queue drains when it lifts.
  */
 export function holdForOffline(ctx: Ctx, now: number): number {
   const running = ctx.db
@@ -1253,15 +1275,17 @@ export function holdForOffline(ctx: Ctx, now: number): number {
   ctx.db.run("UPDATE agent SET state = 'idle' WHERE state = 'running'");
   // `resumeReclaimed` exempts an `offline:` error from the one-retry rule for the
   // same reason it exempts `orphaned:`: the turn did nothing wrong.
-  return resumeReclaimed(ctx.sched, running.map((j) => ({ ...j, state: "cancelled" as const, error: "offline: the host lost its network" })));
+  return resumeReclaimed(
+    ctx.sched,
+    running.map((j) => ({ ...j, state: "cancelled" as const, error: "offline: the host lost its network" })),
+  );
 }
 
 /**
  * Update the loop/idle counters from a finished turn.
  *
  * "Wrote nothing" means no file changed, no task moved and no note was written —
- * three things we can check without asking the agent how it feels about its
- * progress.
+ * three things we can check without asking the agent how it is getting on.
  */
 export function recordTurnOutcome(
   ctx: Ctx,

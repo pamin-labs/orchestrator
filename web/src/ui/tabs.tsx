@@ -1,5 +1,5 @@
 import * as T from "@radix-ui/react-tabs";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * shadcn's tabs, on our tokens.
@@ -14,7 +14,13 @@ export function TabList({ className, ...rest }: React.ComponentProps<typeof T.Li
   return <T.List className={cn("flex flex-wrap gap-1 border-b border-rule", className)} {...rest} />;
 }
 
-export function Tab({ className, count, mine, children, ...rest }: React.ComponentProps<typeof T.Trigger> & {
+export function Tab({
+  className,
+  count,
+  mine,
+  children,
+  ...rest
+}: React.ComponentProps<typeof T.Trigger> & {
   count?: number;
   /** Waiting on the boss: the one tone the accent is reserved for. */
   mine?: boolean;

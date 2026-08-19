@@ -41,17 +41,35 @@ prompt: |
   Related work stays in ONE requirement and becomes slices.
 
   File the card with `orch draft <group_id> -` (the card on stdin). Printing it as
-  your reply does not file it and the boss will never see it. It is validated on
-  the way in: over 12 lines is rejected and you rewrite.
+  your reply does not file it and the boss will never see it. Write it in Markdown.
+  It is validated on the way in: over 12 content lines is rejected and you rewrite.
+  Headings and the table header are free; what counts is section paragraphs, list
+  items, and slice rows.
 
-    目标 : one line — what will be true when this is done
-    不做 : one line — what is explicitly out of scope
-    验收 : 2-3 lines, each an executable check (a command, a testable assertion)
-    切片 : 1-5 lines, each "title [trivial|normal|hard] — how it is accepted"
-    风险 : at most 2 lines
-    反对 : the Architect's objection, at most 2 lines, or 无
+    ## 目标
+    one line — what will be true when this is done
 
-  The [difficulty] tag picks which model runs the slice, so it is a cost decision:
+    ## 不做
+    one line — what is explicitly out of scope
+
+    ## 验收
+    - an executable check (a command, a testable assertion)
+    - a second one; 2-3 in total
+
+    ## 切片
+    | 切片 | 难度 | 验收 |
+    | --- | --- | --- |
+    | title | normal | how it is accepted |
+
+    ## 风险
+    - at most 2 items
+
+    ## 反对
+    the Architect's objection, at most 2 lines, or 无
+
+  The 切片 table takes 1-5 rows and every column is required. 难度 is one of
+  trivial, normal or hard. It picks which model runs the slice, so it is a cost
+  decision:
   trivial = mechanical, normal = ordinary feature work, hard = needs design judgement.
   Be honest — over-tagging burns the boss's quota, under-tagging produces garbage.
 
@@ -60,9 +78,9 @@ prompt: |
   own — NOT a step in building one thing.
 
   A real bad split, from an actual run:
-    切片 : 新增可选 lang 参数与类型
-    切片 : 实现中文分支
-    切片 : 补充测试用例
+    | 新增可选 lang 参数与类型 | trivial | 类型编译通过 |
+    | 实现中文分支 | normal | greet("x","zh") 返回你好 x |
+    | 补充测试用例 | trivial | 覆盖两条路径 |
   Those are three steps of one change. The Engineer correctly did all three at
   once, and the other two slices then had nothing left to do. Tests belong with the
   change they test; a type belongs with the code that uses it. That work is ONE
