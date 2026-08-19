@@ -316,6 +316,38 @@ M7 — executable engineering governance and versioned protocol.
   `host: 0.0.0.0`, which `ConfigSchema` refuses — the schema is right (these routes
   have no login) and the instruction was wrong.
 
+- The retrieval walk now has an off switch, and the first measurement of what it
+  buys. An empty `indexModel.model` means no navigator — both readers of `askIn`
+  already treat its absence that way. Measured on a 500-note corpus, three
+  questions: the lexical half answers in 12.6ms; the walk adds two model calls per
+  question and **192 characters**, about 1% more context, because `ctxBudgetChars`
+  was already full. Stable across model latencies of 300/900/1500ms — its cost
+  scales with the model and its contribution does not. Not yet a verdict: a corpus
+  where the lexical half misses is where a walk should earn its keep, and this one
+  does not contain that case. What it settles is that the walk is not free.
+- An idle project paid **four container execs per tick** for a repo map that never
+  changed — `listTree` plus a `treeHeads` that ships every tracked file's contents
+  out of the container (0.8 MB here, 4.0 MB on a large repository) only for
+  `saveMap` to find the render byte-identical. Gated on a HEAD stamp in the
+  `setting` table: **one exec**, 41 bytes back.
+- A requirement's own retrieval was invisible to its budget. `chargeIndex` wrote to
+  the `indexer` agent row alone, so a group calling `orch ctx query` every turn —
+  which the contract tells it to do first — never moved its `spent_tokens`, the
+  number `sliceBudgetTokens` stops a runaway with. The project-scoped rebuild stays
+  unattributed on purpose: charging it to whichever group was open is a wrong
+  number rather than a missing one.
+- The SSE write chain had no ceiling and one rejection poisoned it permanently. It
+  is fed by one `bus.live()` per token from up to four concurrent turns, so a
+  browser that stopped reading accumulated closures without bound; and every later
+  `.then` produced another rejected promise, each unhandled, reaching the
+  process-wide reporter that emits a bus event into the same writer. Bounded, with
+  the loss counted rather than silent.
+- The `event` table had no retention at all — the only `DELETE FROM event` was
+  project deletion. The conversation (`say`, `boss_say`, `note`, `escalation`) is
+  kept: it is the record, and the unread cursor walks it. The machine's own
+  narration is not; 成本's chart asks for 24 hours and nothing reads `state_change`
+  back at all.
+
 ## Blockers and deviations
 
 - The `main` branch ruleset required a status check named `check` that no
