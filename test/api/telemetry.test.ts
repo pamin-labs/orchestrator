@@ -237,3 +237,52 @@ test("the window the report was computed over is stated in the report", async ()
   expect(answer.body.windowMs).toBe(600_000);
   expect((await report(context, { scope: "system" })).body.windowMs).toBe(24 * 60 * 60 * 1_000);
 });
+
+test("two reads inside one TTL compute the report once", () => {
+  // Not about latency — the report is inside its budget. It is five window-function
+  // queries run *synchronously*, so while one computes, every other request and the
+  // SSE heartbeat wait behind it. A reloading tab was enough to hold the fleet.
+  const context = ctx();
+  writeSpans(context.db, [span({ spanId: "1".repeat(16), name: "turn", durationMs: 100, attributes: {} })]);
+
+  let statements = 0;
+  const realQuery = context.db.query.bind(context.db);
+  // Bound, not proxied: the driver's methods read `this`, and a `Reflect.get`
+  // hands them back unbound.
+  Object.assign(context.db, {
+    query: (...args: Parameters<typeof realQuery>) => {
+      statements += 1;
+      return realQuery(...args);
+    },
+  });
+
+  const query = TelemetryQuery.parse({ scope: "system" });
+  void getTelemetry(context, new Request("http://x/"), {}, query);
+  const first = statements;
+  expect(first).toBeGreaterThan(0);
+
+  void getTelemetry(context, new Request("http://x/"), {}, query);
+  expect(statements).toBe(first);
+});
+
+test("a different database is a different report, not the first one's", () => {
+  // Keyed on scope and window alone, a module-level cache answers one database's
+  // question with another's numbers. That is a wrong panel the first time two
+  // exist, and it was two red tests here the moment the cache went in.
+  const a = ctx();
+  const b = ctx();
+  writeSpans(a.db, [span({ spanId: "1".repeat(16), name: "turn", durationMs: 100, attributes: {} })]);
+  writeSpans(b.db, [span({ spanId: "2".repeat(16), name: "gate.run", durationMs: 7, attributes: {} })]);
+
+  const query = TelemetryQuery.parse({ scope: "system" });
+  // Parsed, not asserted: `.json()` is `any`, and the schema is what the browser
+  // gets anyway.
+  const read = async (c: typeof a) =>
+    TelemetryReportSchema.parse(await (await getTelemetry(c, new Request("http://x/"), {}, query)).json()).stages.map(
+      (st) => st.name,
+    );
+  return Promise.all([read(a), read(b)]).then(([first, other]) => {
+    expect(first).toEqual(["turn"]);
+    expect(other).toEqual(["gate.run"]);
+  });
+});

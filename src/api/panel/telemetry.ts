@@ -5,7 +5,9 @@
  * unfalsifiable — a table nothing queried, and a boss still with no way to ask.
  */
 
+import QuickLRU from "quick-lru";
 import { z } from "zod";
+import type { Ctx } from "../../mech/ctx.ts";
 import type { Handler } from "../../http/handler.ts";
 import { failure, json } from "../../http/respond.ts";
 import {
@@ -101,6 +103,9 @@ const DEFAULT_BUCKET_MS = 60 * 60 * 1_000;
 /** How many recent traces the drill-in list offers. */
 const TRACE_LIMIT = 20;
 
+/** Stands in for an absent `bucketMs` in the cache key, so it cannot collide with one. */
+const DEFAULT_BUDGET_KEY = "default";
+
 /**
  * One span of an opened trace, as the waterfall draws it.
  *
@@ -176,16 +181,48 @@ export interface TelemetryReport {
  * fleet was busiest. A scope naming a project that is gone is an empty report,
  * not an error: a span observes work rather than referring to it.
  */
+/**
+ * One answer per scope+window, briefly.
+ *
+ * Not for latency — the report is inside its budget. It is that the five queries
+ * are synchronous, so a reloading tab holds every other request and the SSE
+ * heartbeat behind it. `maxAge` rather than an invalidation: the spans are
+ * written by a heartbeat, so a report is stale by that much the moment it is
+ * computed, and a TTL under one tick cannot serve anything older than that.
+ */
+const reports = new WeakMap<Ctx["db"], QuickLRU<string, TelemetryReport>>();
+
+/**
+ * Per database, not per process.
+ *
+ * A module-level cache keyed on scope+window alone answers one database's question
+ * with another's report — which is a wrong panel in production the first time two
+ * databases exist, and was two red tests here immediately.
+ */
+function cacheFor(db: Ctx["db"], ttl: number): QuickLRU<string, TelemetryReport> {
+  const found = reports.get(db);
+  if (found) return found;
+  const made = new QuickLRU<string, TelemetryReport>({ maxSize: 32, maxAge: ttl });
+  reports.set(db, made);
+  return made;
+}
+
 export const getTelemetry = (async (ctx, _req, _params, query) => {
   const scope = toScope(query);
   const windowMs = query.windowMs ?? DEFAULT_WINDOW_MS;
   // An explicit range wins; otherwise the last `windowMs`. Both are clamped to
   // retention inside the store, which is the one place that knows how far back
   // rows actually go.
+  // A default window ends "now", which would make every request its own cache key.
+  // Rounded to the cache's own period so two reloads inside one TTL ask the same
+  // question — *up*, never down: rounding down moves the window's end into the
+  // past and drops the spans written since, which is a report that is wrong rather
+  // than merely stale.
+  const ttl = ctx.config.telemetryCacheMs;
   const window =
     query.from !== undefined && query.to !== undefined && query.to > query.from
       ? { from: query.from, to: query.to }
-      : recentWindow(windowMs);
+      : recentWindow(windowMs, Math.ceil(Date.now() / ttl) * ttl);
   const spans = query.trace ? readTrace(ctx.db, query.trace) : [];
   // A trace id that matches nothing is the one case worth refusing rather than
   // reporting empty: unlike a scope id, it was copied from a list this endpoint
@@ -196,6 +233,15 @@ export const getTelemetry = (async (ctx, _req, _params, query) => {
   // and nothing is being refused — the thing it named is gone, which is what the
   // rest of the panel returns for a row a delete or a retention pass removed.
   if (query.trace && spans.length === 0) return failure("that trace is no longer stored", 404);
+  // An open trace is never served from the cache: it is one reader's drill-in, so
+  // it would evict the aggregate everyone else is asking for.
+  const key = query.trace
+    ? null
+    : JSON.stringify([query.scope, query.id ?? 0, window.from, window.to, query.bucketMs ?? DEFAULT_BUDGET_KEY]);
+  const cache = cacheFor(ctx.db, ttl);
+  const hit = key === null ? undefined : cache.get(key);
+  if (hit) return json(hit);
+
   const report: TelemetryReport = {
     scope: query.scope,
     windowMs,
@@ -208,6 +254,7 @@ export const getTelemetry = (async (ctx, _req, _params, query) => {
     slices: scope.kind === "group" ? sliceCosts(ctx.db, scope.id, window) : [],
     trace: query.trace ? { traceId: query.trace, spans: spans.map(toWaterfallSpan) } : null,
   };
+  if (key !== null) cache.set(key, report);
   return json(report);
 }) satisfies Handler<TelemetryQueryValue>;
 

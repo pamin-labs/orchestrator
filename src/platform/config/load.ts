@@ -150,6 +150,29 @@ const DEFAULTS: Config = {
   gateRetries: 2,
   leaseTimeoutMs: 10_800_000,
   installTimeoutMs: 10_800_000,
+  // Today's literals, unchanged: this is about making them settable, not about
+  // retuning them. Two are worth knowing about — `sandboxPingMs` and
+  // `networkPingMs` differ by a second that nobody appears to have chosen, and
+  // `usageReadMs` is the container round trip around a `curl -m 10` that is still
+  // a literal in the command string.
+  timeouts: {
+    githubApiMs: 15_000,
+    credentialCheckMs: 6_000,
+    webhookMs: 5_000,
+    sandboxPingMs: 3_000,
+    networkPingMs: 2_000,
+    tokenRefreshMs: 120_000,
+    usageReadMs: 30_000,
+    transferMs: 600_000,
+  },
+  intervals: {
+    recheckMs: 5 * 60_000,
+    usagePollMs: 10 * 60_000,
+    usageBackoffMs: 45 * 60_000,
+    notifyBatchMs: 30 * 60_000,
+    // 5 min, then 15, then hourly. A repeat is a reminder, not a new problem.
+    notifyBackoffMs: [5 * 60_000, 15 * 60_000, 60 * 60_000],
+  },
   // Measured against api.github.com: the whole query costs 1 point at these
   // counts. Threads are the narrower window on purpose — a thread carries every
   // reply, and the ones worth waking a group are the recent ones.
@@ -177,6 +200,9 @@ const DEFAULTS: Config = {
   // In order. `main` first because it is what GitHub creates today, `master`
   // because it is what everything created before 2020 still has.
   baseBranchFallbacks: ["main", "master"],
+  // Under the heartbeat that writes the spans, so a report is never staler than
+  // the data it reads was when it was computed.
+  telemetryCacheMs: 15_000,
   watchdog: {
     // Three turns writing nothing, or five turns on the same file. Both were
     // chosen against real stalls: two is a hard day, six is a night wasted.

@@ -608,6 +608,8 @@ function Trend({
   );
 }
 
+/** Matches the server's own cache window; a shorter one would ask and be handed the same answer. */
+const TELEMETRY_STALE_MS = 15_000;
 /**
  * The read, and the trace opened on top of it.
  *
@@ -665,6 +667,13 @@ function useTelemetry(
       return answer;
     },
     placeholderData: keepPreviousData,
+    // The one query that overrides the global `staleTime: 0`, and the reason is in
+    // the report rather than in taste: the spans it reads are written by a
+    // heartbeat, so an answer cannot be fresher than that tick — while re-asking
+    // costs five synchronous window-function queries the server runs on its only
+    // thread. Alt-tabbing back was re-paying that for a number that had not moved.
+    staleTime: TELEMETRY_STALE_MS,
+    refetchOnWindowFocus: false,
   });
   const report: Report | null = data ?? null;
 
