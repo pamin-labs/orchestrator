@@ -95,17 +95,6 @@ export type JobState = (typeof JOB_STATES)[number];
 export type LeaseState = (typeof LEASE_STATES)[number];
 export type EscalationState = (typeof ESCALATION_STATES)[number];
 
-export type StateSubset =
-  | readonly GrpState[]
-  | readonly UtilState[]
-  | readonly ServerHealthState[]
-  | readonly ProjectState[]
-  | readonly SliceState[]
-  | readonly TaskState[]
-  | readonly JobState[]
-  | readonly LeaseState[]
-  | readonly EscalationState[];
-
 /** Jobs that still occupy a queue or executor slot. */
 export const ACTIVE_JOB_STATES = ["pending", "running"] as const satisfies readonly JobState[];
 
@@ -141,6 +130,3 @@ const terminalEscalationStates = new Set<EscalationState>(ESCALATION_TERMINAL_ST
 export const isDispatchableGrpState = (state: GrpState): boolean => dispatchableGrpStates.has(state);
 export const isTerminalEscalationState = (state: EscalationState): state is EscalationTerminalState =>
   terminalEscalationStates.has(state);
-
-/** Encode one typed state-machine subset as a SQLite `json_each(?)` binding. */
-export const stateParam = (states: StateSubset): string => JSON.stringify(states);

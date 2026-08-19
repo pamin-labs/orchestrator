@@ -99,6 +99,7 @@ async function terminalStateGuard(db: DB): Promise<void> {
     `CREATE TRIGGER grp_status_terminal BEFORE UPDATE OF status ON grp
        FOR EACH ROW EXECUTE FUNCTION grp_status_terminal()`,
   ]) {
+    // fallow-ignore-next-line security-sink -- every statement in this list is a literal in this file; the only interpolation is `GRP_TERMINAL_STATES`, a module constant from `contracts/states.ts`, and nothing reaches here from a request
     await db.execute(sql.raw(statement));
   }
 }
@@ -221,19 +222,24 @@ export async function applyMigrations(db: DB): Promise<void> {
 /**
  * Empty the tables, retrying while the last test is still letting go.
  *
- * `TRUNCATE` needs an exclusive lock on every table, and a detached chain from
- * the test before — a job settling, a watchdog rule finishing — still holds a
- * read lock on one of them. Postgres calls that a deadlock and picks a victim,
- * which was one failed run in eight. Waiting is the whole fix: the stray query
- * is finishing, not stuck.
+ * A detached chain from the test before still holds a read lock on one of them,
+ * and it is finishing rather than stuck — so waiting is the whole fix, but the
+ * wait has to be *this* statement's. Left plain, the deadlock detector picks the
+ * victim, and the abort landed on the stray, arriving as a failure in the next
+ * test. `lock_timeout` under `deadlock_timeout` makes this one always give up
+ * first; `SET LOCAL` in a transaction, or the pool settles it elsewhere.
  */
 async function emptied(db: DB, statement: string): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
-      await db.execute(sql.raw(statement));
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`SET LOCAL lock_timeout = '250ms'`);
+        // fallow-ignore-next-line security-sink -- the caller builds this from `getTableName` over the tables in `schema.ts`; there is no request path into it and this function is test-only
+        await tx.execute(sql.raw(statement));
+      });
       return;
     } catch (error) {
-      if (attempt >= 20 || !/deadlock|lock timeout/i.test(errText(error, 2_000))) throw error;
+      if (attempt >= 40 || !/deadlock|lock timeout|lock_timeout/i.test(errText(error, 2_000))) throw error;
       await Bun.sleep(10);
     }
   }
