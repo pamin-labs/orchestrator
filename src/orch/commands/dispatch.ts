@@ -222,6 +222,32 @@ async function pr(
   return api.send(api.orch.pr.$post({ json: { group_id: groupId, title, body: await api.readStdin() } }));
 }
 
+/**
+ * Close one review thread this group fixed. The refusals are the server's.
+ *
+ * `--note` is for this group's own record and never reaches GitHub: the reply a
+ * reviewer reads is the commit that answered them, and a second one saying "done"
+ * is a notification with nothing in it.
+ */
+async function prResolve(
+  api: DispatchContext,
+  opts: { thread?: string; group?: string; note?: string },
+): Promise<CommandResponse> {
+  const thread = opts.thread?.trim();
+  // The id, not the file: two threads can sit on the same line, and the feedback
+  // prints the id in brackets ahead of the path for exactly this.
+  if (!thread) return usageError("pr resolve needs --thread <id>, the id in brackets on the thread's line");
+  return api.send(
+    api.orch.pr.resolve.$post({
+      json: {
+        group_id: opts.group ?? process.env.ORCH_GRP_ID,
+        thread_id: thread,
+        note: opts.note ?? "",
+      },
+    }),
+  );
+}
+
 async function answer(
   api: DispatchContext,
   escalationId: string | undefined,
@@ -431,8 +457,20 @@ function buildProgram(api: DispatchContext, act: Act, out: string[], err: string
     .option("--note <note>", "what you ran and saw; also takeable as trailing words")
     .action(bind(audit));
 
-  program
-    .command("pr <group_id> [-]")
+  const prCommand = program.command("pr");
+  // `resolve` is a subcommand rather than `pr-resolve`, the same shape `lease log`
+  // takes beside `lease <resource>`: commander matches a subcommand name before it
+  // reads the parent's positional, so `orch pr <group_id>` is unchanged.
+  prCommand
+    .command("resolve")
+    .description("close a review thread this group fixed; the id is in brackets on the feedback line")
+    .option("--thread <id>", "the review thread's id, quoted from the feedback")
+    .option("--group <group>", "group id or name; defaults to yours")
+    .option("--note <note>", "what closed it, for this group's record — never sent to GitHub")
+    .action(bind(prResolve));
+  prCommand
+    .argument("<group_id>")
+    .argument("[-]")
     .description("Scribe only. Open the pull request; the body is read from stdin")
     .option("--title <title>", "<type(scope): subject>")
     .action(bind(pr));
