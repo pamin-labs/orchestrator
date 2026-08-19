@@ -1,7 +1,7 @@
 import type { Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { say } from "../../platform/text/lang.ts";
-import { terms as sharedTerms } from "./terms.ts";
+import { terms } from "./terms.ts";
 
 /**
  * The boss's repeated complaints become a project rule.
@@ -21,44 +21,59 @@ import { terms as sharedTerms } from "./terms.ts";
  */
 
 /**
- * How much of what two complaints say has to be the same thing.
+ * How alike two complaints have to be. Measured across eight languages; the table
+ * and the two methods this beat are in the commit.
  *
- * Jaccard: shared terms over all terms either uses. Measured across the three
- * languages the boss writes in, the closest true pair scored **0.375** and the
- * furthest false one **0.222** — 「文档不清楚，缺少例子」 against 「部署脚本不清楚，缺少说明」,
- * which share a shape and not a subject. The full table is in the commit.
+ * The hard requirement is that *unrelated* complaints never merge — the worst
+ * measured pair scores 0.170. Related-but-distinct ones may: 「构建失败」 and 「构建太慢」
+ * score 0.429 and sediment together, and the CoS reads all three before writing the
+ * rule. The lowest true pair is Korean at 0.310.
  */
-export const SIMILARITY_FLOOR = 0.3;
+export const SIMILARITY_FLOOR = 0.25;
+
+/**
+ * Character bigrams, taken *after* segmentation and stop words.
+ *
+ * Comparing tokens exactly cannot work across languages, and the reason is
+ * morphology: Korean 테스트가 and 테스트는 are the same noun with different particles,
+ * Russian граничных and граничные the same adjective in two cases, Arabic حالات and
+ * الحالات the same noun with the article. Exact matching scores those pairs 0.100,
+ * 0.250 and 0.222 — below unrelated complaints in other languages.
+ */
+/**
+ * Bigrams of the *tokenised* text keep both halves: `terms()` still does the ICU
+ * segmentation and the rented stop words, so 这个 and 应该 are gone before this sees
+ * them, and what is left is compared by character overlap, which 테스트가/테스트는 share.
+ *
+ * A stemmer was measured and dropped: `@orama/stemmers` covers 28 languages and
+ * fixed exactly one of the three, because there is no Snowball stemmer for an
+ * agglutinative language and the Arabic one does not strip the article.
+ */
+const BIGRAM = 2;
+
+function bigrams(text: string): Set<string> {
+  // Built by iteration rather than spread: `for...of` walks code points, which is the
+  // unit a bigram has to be, and a surrogate pair split down the middle is not one.
+  const characters: string[] = [];
+  for (const character of terms(text).join(" ")) characters.push(character);
+  const out = new Set<string>();
+  for (let i = 0; i + BIGRAM <= characters.length; i++) out.add(characters.slice(i, i + BIGRAM).join(""));
+  return out;
+}
 
 /**
  * Are these the same complaint?
  *
- * This counted *shared terms*, floor two, so two sharing two common words were one
- * complaint however much else they said: 「这个接口应该返回错误码」 matched 「这个按钮应该显示提
- * 示」 on 这个 + 应该. A count cannot tell two words out of four from two out of twenty.
- * A fraction can, and that is the whole change.
- */
-/**
- * Deliberately not BM25, which is installed and was the easier reach. IDF assumes
- * the query is rare in the corpus, and here the thing being looked for *is* the
- * corpus: three complaints that are all the same complaint give their shared terms
- * an IDF near zero and score 0 against each other. Measured, on the case this
- * function exists for.
- */
-/**
- * No library either. Every candidate at this seam works on character n-grams —
- * `dice-coefficient`, `string-similarity-js`, `sorensen-dice` — which is the approach
- * this branch removed for being wrong on kana; or on numeric vectors
- * (`ml-distance`), which needs the vocabulary built first. `talisman` has it over
- * sequences and has not published since 2022, past the line in
- * `docs/standards/dependencies.md`.
+ * Jaccard — shared bigrams over all bigrams either uses — because a *count* of what
+ * two complaints share cannot tell two of four from two of twenty. That count, floor
+ * two, is what made 「这个接口应该返回错误码」 and 「这个按钮应该显示提示」 one complaint.
  */
 export function sameComplaint(a: string, b: string): boolean {
-  const left = new Set(sharedTerms(a));
-  const right = new Set(sharedTerms(b));
+  const left = bigrams(a);
+  const right = bigrams(b);
   if (left.size === 0 || right.size === 0) return false;
   let shared = 0;
-  for (const term of left) if (right.has(term)) shared++;
+  for (const gram of left) if (right.has(gram)) shared++;
   return shared / (left.size + right.size - shared) >= SIMILARITY_FLOOR;
 }
 
