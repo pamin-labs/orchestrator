@@ -587,6 +587,17 @@ async function createMountedSandbox(
   try {
     return { sandbox: await createSandbox(ctx, scope, spec, [...cached, ...skills]), skillsMounted: skills.length > 0 };
   } catch (error) {
+    // Retried once, and only here: nothing has been written down yet — `remember`
+    // runs after this returns — so a failed create leaves no group pointing at a
+    // container, which is what makes a second draw safe rather than a duplicate.
+    // Once, not a loop: a sidecar that cannot start for a standing reason costs
+    // one extra create and then reports the same thing.
+    if (isSidecarStartFailure(error)) {
+      return {
+        sandbox: await createSandbox(ctx, scope, spec, [...cached, ...skills]),
+        skillsMounted: skills.length > 0,
+      };
+    }
     if (!skills.length || !isPathNotAllowed(error)) throw error;
     await ctx.bus?.emit({
       grpId: "grp" in scope ? scope.grp : null,
@@ -749,6 +760,21 @@ const EXEC_MODE = 755;
 /** The one creation failure worth degrading for rather than failing the group. */
 function isPathNotAllowed<T>(e: T): boolean {
   return /not under any allowed prefix|allowed_host_paths/i.test(String(e));
+}
+
+/**
+ * The egress sidecar did not come up, which is usually a lost port race.
+ *
+ * The server draws a random host port for the sidecar and does not check it, so
+ * two containers starting together collide — `failed to bind host port
+ * 0.0.0.0:57714/tcp: address already in use`, five times in one server log. That
+ * sentence is in the *server's* log and not in its reply: the client is told only
+ * `Egress sidecar container failed to start`, so this has to match what arrives,
+ * not the cause. Matching the Docker text would have retried nothing.
+ */
+/** Exported for the test that pins it to the message the client is actually given. */
+export function isSidecarStartFailure<T>(e: T): boolean {
+  return /egress sidecar container failed to start/i.test(String(e));
 }
 
 /**

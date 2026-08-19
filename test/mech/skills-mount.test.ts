@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import type { Ctx } from "../../src/mech/ctx.ts";
-import { checkSkillsMount, lineQueue, lsofCwd, type Counter } from "../../src/mech/sandbox/sandbox.ts";
+import {
+  checkSkillsMount,
+  isSidecarStartFailure,
+  lineQueue,
+  lsofCwd,
+  type Counter,
+} from "../../src/mech/sandbox/sandbox.ts";
 import { event } from "../../src/platform/persistence/schema.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { testContext } from "../support/test-context.ts";
@@ -222,4 +228,22 @@ test("a command that printed nothing ends rather than hanging", async () => {
   q.end();
 
   expect(await drained(q)).toEqual([]);
+});
+
+test("a sidecar that lost a port race is retried, and nothing else is", () => {
+  // The cause is a lost port race — `failed to bind host port 0.0.0.0:57714/tcp:
+  // address already in use`, five times in one `data/opensandbox-server.log` — but
+  // that sentence stays in the server's log. What the client is handed, and what
+  // reached this suite as `code=126`, is the short one. A classifier written
+  // against the Docker text would have matched nothing and retried nothing, which
+  // is the whole reason this test quotes both.
+  expect(isSidecarStartFailure("container unavailable: Egress sidecar container failed to start.")).toBe(true);
+  expect(isSidecarStartFailure(new Error("Egress sidecar container failed to start"))).toBe(true);
+  expect(isSidecarStartFailure(new Error("failed to bind host port 0.0.0.0:57714/tcp: address already in use"))).toBe(
+    false,
+  );
+  // Retrying anything else would be retrying a real refusal: the image is missing,
+  // the daemon is down, the mount is outside `allowed_host_paths`.
+  expect(isSidecarStartFailure(new Error("No such image: ghcr.io/pamin-labs/orch-agent:latest"))).toBe(false);
+  expect(isSidecarStartFailure(new Error("path is not under any allowed prefix"))).toBe(false);
 });

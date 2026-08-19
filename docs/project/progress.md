@@ -1,3 +1,20 @@
+- **The live-sandbox `126` is diagnosed and fixed.** It reproduced once the probe
+  stopped discarding its output, and named itself immediately:
+  `code=126 out= err=container unavailable: Egress sidecar container failed to
+  start.` — `126` is this repository's own `EXEC_UNAVAILABLE`, not a shell's
+  "cannot execute". `data/opensandbox-server.log` has the cause five times over:
+  the server draws a random host port for the egress sidecar without checking it,
+  so two containers starting together collide on
+  `failed to bind host port 0.0.0.0:57714/tcp: address already in use`. A turn
+  died whenever Docker picked a busy port.
+
+  Retried once in `createMountedSandbox`, which is safe precisely there: `remember`
+  runs after it returns, so a failed create leaves no group pointing at a
+  container. The classifier matches the message the *client* is handed, not the
+  Docker text — that stays in the server's log, and a classifier written against
+  it would have retried nothing. Three live runs green since; two earlier
+  hypotheses (slow boot, provisioning race) were tested and both were wrong.
+
 # Project progress
 
 Read this file first when resuming work. Update it after a verifiable unit, not
