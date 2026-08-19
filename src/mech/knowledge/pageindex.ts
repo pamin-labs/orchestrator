@@ -389,7 +389,13 @@ const CodexReply = z.looseObject({
  * Inert by construction: watchdog rule 2 needs `idle_turns >= 3` and rule 3 needs
  * a `loop_file`, and nothing here writes either.
  */
-export function chargeIndex(ctx: Ctx, projectId: number, spec: { runtime?: string; model: string }, u: AskUsage): void {
+export function chargeIndex(
+  ctx: Ctx,
+  projectId: number,
+  spec: { runtime?: string; model: string },
+  u: AskUsage,
+  grpId?: number,
+): void {
   const runtime = spec.runtime ?? "claude";
   const total = u.input + u.output + u.cacheRead + u.cacheCreate;
   if (total === 0) return;
@@ -407,6 +413,12 @@ export function chargeIndex(ctx: Ctx, projectId: number, spec: { runtime?: strin
       )
       .get(projectId, spec.model, runtime)!.id;
   ctx.db.run("UPDATE agent SET total_tokens = total_tokens + ?, model = ? WHERE id = ?", [total, spec.model, id]);
+  // And onto the requirement that asked, when one did. This landed on the agent
+  // row alone, so a group's budget could not see the retrieval its own turns
+  // caused — `sliceBudgetTokens` is what stops a runaway, and the most frequent
+  // model call in the system was invisible to it. The project-scoped calls (the
+  // index rebuild) still belong to nobody, which is correct: no requirement asked.
+  if (grpId) ctx.db.run("UPDATE grp SET spent_tokens = spent_tokens + ? WHERE id = ?", [total, grpId]);
   // The same event shape `recordCost` emits, because that is what the hourly
   // burn chart reads — an event row has no agent to join back to, so the runtime
   // has to travel in the meta or the split guesses from the model name.

@@ -752,7 +752,7 @@ export function start(overrides: Partial<Config> = {}): Started {
           askIn: (scope: Scope) =>
             modelAsk(ctx, cfg.indexModel, scope, undefined, (u) => {
               const projectId = chargedProject(db, scope);
-              if (projectId) chargeIndex(ctx, projectId, cfg.indexModel, u);
+              if (projectId) chargeIndex(ctx, projectId, cfg.indexModel, u, "grp" in scope ? scope.grp : undefined);
             }),
         }
       : {}),

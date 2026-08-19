@@ -317,3 +317,26 @@ test("how far and how wide the walk goes is config, not a literal inside it", as
   // that shipped before the move, and this says so out of `config/default.yaml`.
   expect(WALK).toEqual({ depth: 3, width: 4 });
 });
+
+test("a requirement's own retrieval counts against its budget", () => {
+  // It did not. Index spend landed on the `indexer` agent row alone, so a group
+  // could ask `orch ctx query` on every turn and its `spent_tokens` — the number
+  // `sliceBudgetTokens` stops a runaway with — never moved. The most frequent
+  // model call in the system was the one the budget could not see.
+  const db = openMemory();
+  const p = fx.project.insert(db, { name: "p" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  const ctx = testContext({ db });
+  const spec = { runtime: "codex", model: "gpt-5.6-luna" };
+
+  chargeIndex(ctx, p.id, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1, thinking: 0 }, g.id);
+  expect(db.query<{ t: number }, []>("SELECT spent_tokens AS t FROM grp").get()?.t).toBe(126);
+
+  // The rebuild belongs to no requirement: it is a project-scoped pass on a timer,
+  // and charging it to whichever group happened to be open would be a wrong number
+  // rather than a missing one.
+  chargeIndex(ctx, p.id, spec, { input: 10, output: 2, cacheRead: 0, cacheCreate: 0, thinking: 0 });
+  expect(db.query<{ t: number }, []>("SELECT spent_tokens AS t FROM grp").get()?.t).toBe(126);
+  // Both still reach the project-level total either way.
+  expect(costReport(db).byRole.find((r) => r.label === "indexer")?.tokens).toBe(138);
+});
