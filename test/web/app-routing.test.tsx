@@ -135,3 +135,26 @@ test("a chord that is not a shortcut is left to the browser", async () => {
   expect(event.defaultPrevented).toBe(false);
   expect(location.hash).toBe("#p=1&v=cost");
 });
+
+/**
+ * The side panel stays where the boss put it, across a reload.
+ *
+ * `readSide` is pure and tested; the write is an effect in `app.tsx` and was not.
+ * Only one of the two halves failing is enough — a panel that reads the preference
+ * and never writes it comes up right once and then reverts on every reload, which
+ * reads as the toggle not working rather than as the write being absent.
+ *
+ * ⌘B is the toggle, which is also the third of the four shortcuts reaching real code.
+ */
+test("toggling the side panel is remembered", async () => {
+  localStorage.setItem("orch.side", "1");
+  location.hash = "#p=1&v=cost";
+  const view = panel();
+  await waitFor(() => expect(view.container.textContent).toContain("one"));
+
+  act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true })));
+  await waitFor(() => expect(localStorage.getItem("orch.side")).toBe("0"));
+
+  act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true })));
+  await waitFor(() => expect(localStorage.getItem("orch.side")).toBe("1"));
+});
