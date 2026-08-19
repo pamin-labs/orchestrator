@@ -4,6 +4,7 @@ import type { DB } from "../../platform/persistence/database.ts";
 import { orm } from "../../platform/persistence/orm.ts";
 import { grp, project } from "../../platform/persistence/schema.ts";
 import { errText } from "../../platform/process/text.ts";
+import { VERSION } from "../../platform/process/version.ts";
 import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
@@ -961,6 +962,27 @@ export function serverAddr(ctx: Ctx): string {
 export const MAILBOX_DIR = "/var/orch";
 
 /**
+ * The CLI as one self-contained file, which is the shape a container can run.
+ *
+ * Built here rather than read, because `src/orch/cli.ts` is only sometimes a
+ * bundle: the release archive ships one at that path, and a checkout ships the
+ * source, which since the API split imports five modules and `hono/client` that
+ * no container has. `orch` was dead in every sandbox started from a checkout —
+ * the agent's only interface — and the one test that would have said so was
+ * skipping. Building both shapes keeps one code path, and costs about 7ms.
+ */
+export async function agentCli(): Promise<string> {
+  const built = await Bun.build({
+    entrypoints: [join(ROOT, "src/orch/cli.ts")],
+    target: "bun",
+    define: { __ORCH_VERSION__: JSON.stringify(VERSION) },
+  });
+  const [output] = built.outputs;
+  if (!built.success || !output) throw new Error(`cannot build the agent CLI: ${built.logs.join("; ")}`);
+  return await output.text();
+}
+
+/**
  * Everything the agent needs before its first turn: a mailbox and an `orch`.
  *
  * The CLI is copied in as source rather than installed, for the same reason the
@@ -969,7 +991,7 @@ export const MAILBOX_DIR = "/var/orch";
  * started yesterday.
  */
 async function provision(sb: Sandbox): Promise<void> {
-  const cli = readFileSync(join(ROOT, "src/orch/cli.ts"), "utf8");
+  const cli = await agentCli();
   await sb.files.createDirectories([
     { path: `${MAILBOX_DIR}/req` },
     { path: `${MAILBOX_DIR}/res` },

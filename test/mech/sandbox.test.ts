@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { VERSION } from "../../src/platform/process/version.ts";
 import { open, openMemory } from "../../src/platform/persistence/database.ts";
 import {
+  agentCli,
   allowedImage,
   hostPathForDaemon,
   addrInConfig,
@@ -363,4 +368,28 @@ test("on Windows the mount path is the one the daemon can read, not the one we w
   // `/mnt` prefix would fail the same way in the other direction.
   expect(hostPathForDaemon("/var/tmp/orch-cache/skills", "darwin")).toBe("/var/tmp/orch-cache/skills");
   expect(hostPathForDaemon("/var/tmp/orch-cache/skills", "linux")).toBe("/var/tmp/orch-cache/skills");
+});
+
+/**
+ * What is written into `/opt/orch/cli.ts` has to run with nothing else present.
+ *
+ * A container has no repository and no node_modules, so an import in that file
+ * is a module it cannot resolve. `src/orch/cli.ts` was read verbatim, and the
+ * API split gave it five relative imports and `hono/client` — `orch` was dead in
+ * every sandbox started from a checkout, which is the agent's only way to reach
+ * the orchestrator. Run in a bare directory, because that is the container.
+ */
+test("the provisioned CLI runs where nothing else is installed", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "orch-cli-"));
+  try {
+    writeFileSync(join(dir, "cli.ts"), await agentCli());
+    const ran = Bun.spawnSync(["bun", "run", join(dir, "cli.ts"), "--version"], { cwd: dir });
+    expect({
+      code: ran.exitCode,
+      out: ran.stdout.toString().trim(),
+      err: ran.stderr.toString().slice(0, 400),
+    }).toEqual({ code: 0, out: VERSION, err: "" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
