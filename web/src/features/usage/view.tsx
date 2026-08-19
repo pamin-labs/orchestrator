@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { useTranslation } from "react-i18next";
 import { R, type RingInput, ringView, staleMark } from "./model";
 import type { Usage } from "../../shared/api";
 import { cn } from "../../ui/cn";
@@ -45,6 +46,7 @@ export function windowRing(u: Usage, w: "five" | "week"): { v?: number; at?: num
 }
 
 function UsageRow({ usage }: { usage: Usage }) {
+  const { t } = useTranslation();
   const shared = {
     read: usage.at,
     stale: staleMark(usage),
@@ -54,7 +56,7 @@ function UsageRow({ usage }: { usage: Usage }) {
     <Fragment>
       <span className="truncate text-right text-ink-3">{usage.runtime}</span>
       <Ring label="5h" {...windowRing(usage, "five")} {...shared} />
-      <Ring label="周" {...windowRing(usage, "week")} {...shared} />
+      <Ring label={t("usage.view.week", "周")} {...windowRing(usage, "week")} {...shared} />
     </Fragment>
   );
 }

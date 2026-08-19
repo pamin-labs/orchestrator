@@ -1,3 +1,5 @@
+import i18n from "../../i18n";
+
 /**
  * What the two pickers work out before they draw a row.
  *
@@ -52,9 +54,9 @@ export function browseListing(dirs: Listing | null): { parts: string[]; rows: [E
  */
 export function entryMeta(entry: Entry, selected: boolean, pick: boolean): string {
   const choices: [boolean, string][] = [
-    [selected, "已选"],
-    [!!entry.taken, "已添加"],
-    [!!entry.repo && !pick, "git 仓库"],
+    [selected, i18n.t("picker.model.entryMeta.selected", "已选")],
+    [!!entry.taken, i18n.t("picker.model.entryMeta.taken", "已添加")],
+    [!!entry.repo && !pick, i18n.t("picker.model.entryMeta.repo", "git 仓库")],
     [entry.size != null, `${Math.max(1, Math.round((entry.size ?? 0) / 1024))}k`],
   ];
   return choices.find(([matches]) => matches)?.[1] ?? "";
@@ -80,7 +82,11 @@ export function browseRow(entry: Entry, isDir: boolean, pick: boolean, selected:
 export function days(t: number): string {
   if (!t) return "";
   const d = Math.round((Date.now() - t) / 86_400_000);
-  return d < 1 ? "今天" : d < 30 ? `${d} 天前` : `${Math.round(d / 30)} 个月前`;
+  return d < 1
+    ? i18n.t("picker.model.days.today", "今天")
+    : d < 30
+      ? i18n.t("picker.model.days.days", "{{n}} 天前", { n: d })
+      : i18n.t("picker.model.days.months", "{{n}} 个月前", { n: Math.round(d / 30) });
 }
 
 /** A repository as it is shown by GitHub, and what this panel has done with it. */
@@ -110,8 +116,14 @@ export function repoRow(repo: RepoLine, busy: string): RepoMarks {
   const adding = busy === repo.fullName;
   return {
     name: repo.fullName.split("/")[1] ?? repo.fullName,
-    meta: adding ? "添加中…" : repo.taken ? "已添加" : days(repo.pushedAt),
-    action: repo.taken ? `去 ${repo.taken.name} →` : `添加 · ${repo.defaultBranch}`,
+    meta: adding
+      ? i18n.t("picker.model.repoRow.adding", "添加中…")
+      : repo.taken
+        ? i18n.t("picker.model.entryMeta.taken", "已添加")
+        : days(repo.pushedAt),
+    action: repo.taken
+      ? i18n.t("picker.model.repoRow.goTo", "去 {{name}} →", { name: repo.taken.name })
+      : i18n.t("picker.model.repoRow.add", "添加 · {{branch}}", { branch: repo.defaultBranch }),
     adding,
   };
 }

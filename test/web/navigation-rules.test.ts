@@ -8,7 +8,7 @@ import {
   showNewRequirement,
   showRequirementCrumb,
   showSide,
-  VIEWS,
+  views,
   viewActive,
   waitingProject,
 } from "../../web/src/features/navigation/model.ts";
@@ -81,7 +81,9 @@ test("every view that owns its scrolling is in the list that says so", () => {
   expect(scrollClass("req")).toContain("overflow-hidden");
   // Stated as a set difference so a new view has to be classified on purpose:
   // whoever adds one to the strip has to decide which half it belongs to.
-  const unclassified = VIEWS.map(([view]) => view).filter(
+  const unclassified = views()
+    .map(([view]) => view)
+    .filter(
     (view) => !scrollClass(view).includes("overflow-hidden") && view !== "home",
   );
   expect(unclassified).toEqual([]);

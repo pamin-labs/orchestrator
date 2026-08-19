@@ -2,6 +2,7 @@ import * as P from "@radix-ui/react-popover";
 import { Command } from "cmdk";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "./cn";
 
 /**
@@ -49,7 +50,7 @@ export function Combobox({
   value,
   options,
   placeholder,
-  empty = "没有匹配的分支",
+  empty,
   disabled,
   width,
   free,
@@ -72,6 +73,8 @@ export function Combobox({
   free?: boolean;
   onCommit: (v: string) => void;
 }) {
+  const { t } = useTranslation();
+  const emptyText = empty ?? t("ui.combobox.noMatchingBranch", "没有匹配的分支");
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const box = useRef<HTMLInputElement>(null);
@@ -167,7 +170,7 @@ export function Combobox({
             >
               {!shown.length && (
                 <div className="px-2 py-2 text-[0.75rem] text-ink-3">
-                  {options.length ? empty : "读不到远端分支，这里按你填的存"}
+                  {options.length ? emptyText : t("ui.combobox.cannotReadRemote", "读不到远端分支，这里按你填的存")}
                 </div>
               )}
               {shown.map((o) => (

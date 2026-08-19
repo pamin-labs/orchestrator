@@ -1,5 +1,6 @@
 import type { InferResponseType } from "hono/client";
 import { useEffect, useMemo, useRef, useTransition } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { GRP_STATES } from "../../../../src/contracts/states.ts";
@@ -79,17 +80,28 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
   useEffect(() => {
     tail.current?.scrollTo({ top: tail.current.scrollHeight });
   }, [lines.length]);
+  const { t } = useTranslation();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <Meta>{info?.sandbox.id ? "容器在跑" : "还没有容器"}</Meta>
+        <Meta>
+          {info?.sandbox.id
+            ? t("workspace.view.status.running", "容器在跑")
+            : t("workspace.view.status.none", "还没有容器")}
+        </Meta>
         {info && (
           <>
-            <Fact k="镜像" v={info.sandbox.image} />
-            <Fact k="规格" v={`${info.sandbox.cpu || "默认"} core · ${info.sandbox.memory}`} />
-            <Fact k="分支" v={info.group.branch ?? "还没切"} />
-            {info.sandbox.at && <Fact k="开出来" v={clock(info.sandbox.at)} />}
+            <Fact k={t("workspace.view.fact.image", "镜像")} v={info.sandbox.image} />
+            <Fact
+              k={t("workspace.view.fact.spec", "规格")}
+              v={`${info.sandbox.cpu || t("workspace.view.fact.default", "默认")} core · ${info.sandbox.memory}`}
+            />
+            <Fact
+              k={t("workspace.view.fact.branch", "分支")}
+              v={info.group.branch ?? t("workspace.view.fact.noBranch", "还没切")}
+            />
+            {info.sandbox.at && <Fact k={t("workspace.view.fact.startedAt", "开出来")} v={clock(info.sandbox.at)} />}
             <Fact k="TTL" v={`${Math.round(info.sandbox.ttlSeconds / 3600)}h`} />
           </>
         )}
@@ -100,11 +112,11 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
           disabled={busy}
           onClick={async () => {
             const go = await ask({
-              title: "重开容器",
+              title: t("workspace.view.rebuild.title", "重开容器"),
               // No duration here: nothing times a rebuild, and clone plus install
               // already says what it costs.
-              body: "容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。",
-              yes: "重开",
+              body: t("workspace.view.rebuild.body", "容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。"),
+              yes: t("workspace.view.rebuild.yes", "重开"),
             });
             if (!go) return;
             // The confirm is outside: the transition covers the rebuild and the
@@ -115,7 +127,7 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
             });
           }}
         >
-          重开容器
+          {t("workspace.view.rebuild.label", "重开容器")}
         </Button>
       </div>
 
@@ -124,7 +136,7 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
           {info.sandbox.mounts.map((m) => (
             <Meta key={m.mountPath} title={m.hostPath}>
               {m.mountPath}
-              {m.readOnly ? " 只读" : ""}
+              {m.readOnly ? ` ${t("workspace.view.mounts.readOnly", "只读")}` : ""}
             </Meta>
           ))}
         </div>
@@ -134,7 +146,7 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
           line, and the scroll rules are the same ones Pane applies. */}
       <div ref={tail} className="min-h-0 flex-1 overflow-y-auto rounded-md border border-rule bg-sunk px-3 py-2">
         {!lines.length ? (
-          <Empty>容器还没说话。克隆和装依赖会在这里逐行出现。</Empty>
+          <Empty>{t("workspace.view.empty", "容器还没说话。克隆和装依赖会在这里逐行出现。")}</Empty>
         ) : (
           lines.map((l) => (
             <div
@@ -149,7 +161,9 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
           ))
         )}
       </div>
-      <Meta className="mt-1.5 block">日志在服务端内存里，最多 500 行，重启就没了。结论那条在「记录」里。</Meta>
+      <Meta className="mt-1.5 block">
+        {t("workspace.view.footer", "日志在服务端内存里，最多 500 行，重启就没了。结论那条在「记录」里。")}
+      </Meta>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { PanelRight, SlidersHorizontal } from "lucide-react";
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
 import { countWaiting, STATUS_ZH } from "../shared/select";
@@ -56,7 +57,7 @@ import {
   sideText,
   type Selection,
   type Shortcut,
-  VIEWS,
+  views,
   viewActive,
   viewClass,
   waitingProject,
@@ -113,6 +114,7 @@ function Crumb({
 }
 
 export function App() {
+  const { t } = useTranslation();
   const { state: st, cost, frames, live, refresh } = useOrch();
   const [sel, setSel] = useState<Selection>(() => parseSelection(location.hash));
   const { ui, setAdding, setPickProject, setPickReq, setPicking, setSide } = useUi();
@@ -221,22 +223,26 @@ export function App() {
     empty: () => (
       <Card className="max-w-[40rem]">
         <CardBody>
-          <CardTitle>还没有需求</CardTitle>
-          <div className="mt-1 text-[0.75rem] text-ink-3">写一句话，拆成计划卡再回来给你批。</div>
+          <CardTitle>{t("app.app.empty.title", "还没有需求")}</CardTitle>
+          <div className="mt-1 text-[0.75rem] text-ink-3">
+            {t("app.app.empty.subtitle", "写一句话，拆成计划卡再回来给你批。")}
+          </div>
           <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-rule-soft pt-3 text-[0.75rem]">
-            <dt className="text-ink-3">仓库</dt>
+            <dt className="text-ink-3">{t("app.app.empty.repo", "仓库")}</dt>
             <dd className="truncate font-mono text-[0.6875rem]">{project?.repo_path}</dd>
-            <dt className="text-ink-3">从这个分支开</dt>
-            <dd className="font-mono text-[0.6875rem]">{project?.base_branch || "问 GitHub 要"}</dd>
-            <dt className="text-ink-3">闸门 / 安装命令</dt>
-            <dd className="text-ink-2">第一个组克隆完才猜得出来，到时候填进设置</dd>
+            <dt className="text-ink-3">{t("app.app.empty.baseBranch", "从这个分支开")}</dt>
+            <dd className="font-mono text-[0.6875rem]">
+              {project?.base_branch || t("app.app.empty.askGithub", "问 GitHub 要")}
+            </dd>
+            <dt className="text-ink-3">{t("app.app.empty.gates", "闸门 / 安装命令")}</dt>
+            <dd className="text-ink-2">{t("app.app.empty.gatesNote", "第一个组克隆完才猜得出来，到时候填进设置")}</dd>
           </dl>
           <div className="mt-3 flex items-center gap-2">
             <Button variant="go" onClick={() => setAdding(true)}>
-              ＋ 新需求
+              {t("app.app.empty.newRequirement", "＋ 新需求")}
             </Button>
             <Button variant="quiet" onClick={() => go({ view: "sandbox" })}>
-              改基线分支
+              {t("app.app.empty.changeBaseBranch", "改基线分支")}
             </Button>
           </div>
         </CardBody>
@@ -256,7 +262,11 @@ export function App() {
         />
       );
     },
-    missing: () => <div className="text-[0.8125rem] text-ink-3">这个需求已经归档或不存在了。</div>,
+    missing: () => (
+      <div className="text-[0.8125rem] text-ink-3">
+        {t("app.app.missingRequirement", "这个需求已经归档或不存在了。")}
+      </div>
+    ),
     desk: () => <Desk st={st} frames={frames} projectId={idOrZero(sel.p)} />,
     notes: () => <Notes projectId={idOrZero(sel.p)} tab={sel.t} onTab={(tab) => go({ t: tab })} />,
     owns: () => <Owns st={st} projectId={idOrZero(sel.p)} />,
@@ -269,7 +279,11 @@ export function App() {
     // moves, which is the reason the number should not have been here at all.
     time: () => (
       <Pane>
-        <Telemetry scope={{ kind: "project", id: idOrZero(sel.p) }} trend empty="这个项目还没跑过任何活。" />
+        <Telemetry
+          scope={{ kind: "project", id: idOrZero(sel.p) }}
+          trend
+          empty={t("app.app.noProjectActivity", "这个项目还没跑过任何活。")}
+        />
       </Pane>
     ),
     cost: () => <CostView cost={cost} />,
@@ -283,18 +297,18 @@ export function App() {
       <Switcher
         open={ui.pickProject}
         onOpenChange={setPickProject}
-        label="切换项目"
-        placeholder="项目名…"
-        empty="没有匹配的项目"
+        label={t("app.app.switchProject", "切换项目")}
+        placeholder={t("app.app.projectNamePlaceholder", "项目名…")}
+        empty={t("app.app.noMatchingProject", "没有匹配的项目")}
         items={st.projects.map((item) => projectItem(item, countWaiting(st, item.id)))}
         onPick={(id) => go({ p: id, g: null, view: "board" })}
       />
       <Switcher
         open={ui.pickReq}
         onOpenChange={setPickReq}
-        label="切换需求"
-        placeholder="需求名…"
-        empty="这个项目没有别的需求"
+        label={t("app.app.switchRequirement", "切换需求")}
+        placeholder={t("app.app.requirementNamePlaceholder", "需求名…")}
+        empty={t("app.app.noOtherRequirement", "这个项目没有别的需求")}
         items={groups.map((group) => requirementItem(group, STATUS_ZH[group.status] ?? group.status))}
         onPick={(id) => go({ view: "req", g: id })}
       />
@@ -351,7 +365,7 @@ export function App() {
           {choose(
             !home,
             <span className="flex min-w-0 gap-4 overflow-x-auto border-l border-rule pl-5">
-              {VIEWS.map(([key, label]) => (
+              {views().map(([key, label]) => (
                 <button
                   type="button"
                   key={key}
@@ -384,14 +398,14 @@ export function App() {
               size="sm"
               onClick={() => go(choose(!!sel.p, { view: "board", g: null }, { view: "home", p: null, g: null }))}
             >
-              待办 {waiting}
+              {t("app.app.pendingCount", "待办 {{n}}", { n: waiting })}
             </Button>,
-            <span className="font-mono text-[0.6875rem] text-ink-3">无待办</span>,
+            <span className="font-mono text-[0.6875rem] text-ink-3">{t("app.app.noPending", "无待办")}</span>,
           )}
           {choose(
             showNewRequirement(sel.p, st.projects.length),
             <Button size="sm" className="ml-1" onClick={() => setAdding(true)}>
-              ＋ 新需求
+              {t("app.app.newRequirement", "＋ 新需求")}
             </Button>,
             null,
           )}
@@ -402,7 +416,7 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => setSide((value) => !value)}
-                  aria-label="事件流"
+                  aria-label={t("app.app.eventStreamAriaLabel", "事件流")}
                   className={cn(
                     "grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
                     sideClass(ui.side),
@@ -413,11 +427,11 @@ export function App() {
               </Tip>,
               null,
             )}
-            <Tip label="设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S">
+            <Tip label={t("app.app.settingsTip", "设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S")}>
               <button
                 type="button"
                 onClick={() => go({ view: "github" })}
-                aria-label="设置"
+                aria-label={t("app.app.settingsAriaLabel", "设置")}
                 className={cn(
                   "relative grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
                   settingsClass(!!section),

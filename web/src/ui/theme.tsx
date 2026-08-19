@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Segment, Segments } from "./segment";
 import { z } from "zod";
 
@@ -22,7 +23,6 @@ const PrefSchema = z.enum(["system", "light", "dark"]);
 type Pref = z.infer<typeof PrefSchema>;
 const KEY = "orch.theme";
 const NEXT: Record<Pref, Pref> = { system: "light", light: "dark", dark: "system" };
-const ZH: Record<Pref, string> = { system: "跟随系统", light: "浅色", dark: "深色" };
 const CHANGED = "orch:theme";
 
 const read = (): Pref => {
@@ -74,12 +74,18 @@ export function startTheme(): void {
 
 /** The three states, said out loud. ⌘⇧L still cycles them from anywhere. */
 export function ThemeChoice() {
+  const { t } = useTranslation();
   const [pref, setPref] = useState<Pref>(read);
   useEffect(() => {
     const sync = () => setPref(read());
     window.addEventListener(CHANGED, sync);
     return () => window.removeEventListener(CHANGED, sync);
   }, []);
+  const ZH: Record<Pref, string> = {
+    system: t("ui.theme.system", "跟随系统"),
+    light: t("ui.theme.light", "浅色"),
+    dark: t("ui.theme.dark", "深色"),
+  };
 
   return (
     <Segments

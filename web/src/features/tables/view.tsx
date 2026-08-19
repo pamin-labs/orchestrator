@@ -1,6 +1,8 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../../i18n";
 import { Empty, Meta, Pane } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { Badge } from "../../ui/badge";
@@ -24,11 +26,14 @@ import { activityOf } from "../../shared/activity";
  * stream the page is already holding, so nothing here costs an agent a token.
  */
 export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[]; projectId: number }) {
+  const { t } = useTranslation();
   const ids = new Set(st.groups.filter((g) => g.project_id === projectId).map((g) => g.id));
   const rows = st.agents.filter((a) => !a.grp_id || ids.has(a.grp_id));
   const [idle, setIdle] = useState(false);
   if (!rows.length) {
-    return <Empty>还没有人上工。批准一张计划卡，这里就会列出每个 agent 在做什么。</Empty>;
+    return (
+      <Empty>{t("tables.view.desk.empty", "还没有人上工。批准一张计划卡，这里就会列出每个 agent 在做什么。")}</Empty>
+    );
   }
   // Newest live frame per agent: the tail of what it is printing right now.
   const last = new Map<number, string>();
@@ -45,7 +50,7 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
   const groups = [...new Set(shown.map((a) => a.grp_id))]
     .map((id) => ({
       id,
-      name: id == null ? "常驻岗" : (st.groups.find((g) => g.id === id)?.name ?? `#${id}`),
+      name: id == null ? t("tables.view.desk.standing", "常驻岗") : (st.groups.find((g) => g.id === id)?.name ?? `#${id}`),
       agents: shown.filter((a) => a.grp_id === id),
     }))
     .sort((a, b) => {
@@ -56,14 +61,16 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
-        <h2 className="text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2">工位</h2>
-        <Meta>
-          在跑 {running.length} · 共 {rows.length}
-        </Meta>
+        <h2 className="text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2">
+          {t("tables.view.desk.title", "工位")}
+        </h2>
+        <Meta>{t("tables.view.desk.runningOfTotal", "在跑 {{running}} · 共 {{total}}", { running: running.length, total: rows.length })}</Meta>
         <span className="grow" />
         {running.length > 0 && rows.length > running.length && (
           <Button variant="quiet" size="sm" onClick={() => setIdle((v) => !v)}>
-            {idle ? "只看在跑的" : `连空闲的一起看（${rows.length - running.length}）`}
+            {idle
+              ? t("tables.view.desk.onlyRunning", "只看在跑的")
+              : t("tables.view.desk.includeIdle", "连空闲的一起看（{{n}}）", { n: rows.length - running.length })}
           </Button>
         )}
       </div>
@@ -76,8 +83,8 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
         <div
           className={cn(DESK_ROW, "sticky top-0 z-10 border-b border-rule bg-paper pb-1.5 text-[0.6875rem] text-ink-3")}
         >
-          <span>谁 · 模型</span>
-          <span>在做什么</span>
+          <span>{t("tables.view.desk.colWho", "谁 · 模型")}</span>
+          <span>{t("tables.view.desk.colWhat", "在做什么")}</span>
           <span className="text-right">turn</span>
           <span className="text-right max-[52rem]:hidden">tokens</span>
         </div>
@@ -85,7 +92,9 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
           <Desks key={String(g.id)} name={g.name} agents={g.agents} slices={st.slices} tail={last} />
         ))}
         {!idle && running.length > 0 && rows.length > running.length && (
-          <div className="mt-3 text-[0.75rem] text-ink-3">另外 {rows.length - running.length} 个空闲，没在花钱。</div>
+          <div className="mt-3 text-[0.75rem] text-ink-3">
+            {t("tables.view.desk.otherIdle", "另外 {{n}} 个空闲，没在花钱。", { n: rows.length - running.length })}
+          </div>
         )}
       </Pane>
     </div>
@@ -124,6 +133,7 @@ function Desks({
   slices: Slice[];
   tail: Map<number, string>;
 }) {
+  const { t } = useTranslation();
   const runners = agents.filter((a) => a.state === "running").length;
   const [open, setOpen] = useState(runners > 0);
   const list = [...agents].sort((a, b) => Number(b.state === "running") - Number(a.state === "running"));
@@ -157,7 +167,7 @@ function Desks({
                 .filter((a) => a.state === "running")
                 .map((a) => a.role)
                 .join(" · ")
-            : "空闲"}
+            : t("tables.view.desk.idle", "空闲")}
         </Meta>
         <span className="grow" />
         {(() => {
@@ -174,7 +184,12 @@ function Desks({
                 {/* The session count moved into this label: it does not answer
                     "who is working on what", and a column for it is part of what
                     made this table nine wide. */}
-                <Tip label={`本 session ${K(a.session_tokens)} tokens · ${a.model}`}>
+                <Tip
+                  label={t("tables.view.desk.sessionTokens", "本 session {{tokens}} tokens · {{model}}", {
+                    tokens: K(a.session_tokens),
+                    model: a.model,
+                  })}
+                >
                   <span className="flex min-w-0 items-baseline gap-1.5">
                     <span className="shrink-0 truncate text-[0.8125rem] font-medium">{a.role}</span>
                     {/* A chip, because which model an agent is on is the second
@@ -256,13 +271,18 @@ function ownershipModel(all: Group[]) {
 }
 
 export function Owns({ st, projectId }: { st: State; projectId: number }) {
+  const { t } = useTranslation();
   const all = st.groups.filter((g) => g.project_id === projectId);
   const { groups: gs, bare, bumps, hit, rows } = ownershipModel(all);
   if (!gs.length) {
     return (
       <Empty>
-        还没有划过边界。Architect 开工前划定每组能写哪些路径，没划的组并行会踩到同一批文件。
-        {bare.length > 0 && `目前 ${bare.length} 个需求没有边界：${bare.map((g) => g.name).join("、")}。`}
+        {t("tables.view.owns.noBoundaries", "还没有划过边界。Architect 开工前划定每组能写哪些路径，没划的组并行会踩到同一批文件。")}
+        {bare.length > 0 &&
+          t("tables.view.owns.unboundedGroups", "目前 {{n}} 个需求没有边界：{{names}}。", {
+            n: bare.length,
+            names: bare.map((g) => g.name).join("、"),
+          })}
       </Empty>
     );
   }
@@ -275,11 +295,13 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
           once. */}
       <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {hit.length ? (
-          <b className="text-[0.8125rem] font-semibold text-bad">{hit.length} 个需求想改同一批文件，不能一起跑</b>
+          <b className="text-[0.8125rem] font-semibold text-bad">
+            {t("tables.view.owns.conflict", "{{n}} 个需求想改同一批文件，不能一起跑", { n: hit.length })}
+          </b>
         ) : (
           <b className="text-[0.8125rem] font-semibold">
-            {gs.length} 个需求各改各的，可以一起跑{bare.length ? `（还有 ${bare.length} 个没分` : ""}
-            {bare.length ? "）" : ""}
+            {t("tables.view.owns.clear", "{{n}} 个需求各改各的，可以一起跑", { n: gs.length })}
+            {bare.length ? t("tables.view.owns.plusUnbound", "（还有 {{n}} 个没分）", { n: bare.length }) : ""}
           </b>
         )}
       </div>
@@ -289,8 +311,8 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
         className="grid grid-cols-[13rem_minmax(0,1fr)] gap-x-5 border-b border-rule pb-1.5 text-[0.6875rem]
                       text-ink-3 max-[52rem]:grid-cols-1"
       >
-        <span>需求</span>
-        <span>能改哪些文件</span>
+        <span>{t("tables.view.owns.colGroup", "需求")}</span>
+        <span>{t("tables.view.owns.colPaths", "能改哪些文件")}</span>
       </div>
 
       <Pane>
@@ -309,7 +331,9 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                 </Tip>
                 {others.length > 0 && (
                   <Tip label={others.join("、")}>
-                    <Meta className="truncate text-bad">压着 {others.join("、")}</Meta>
+                    <Meta className="truncate text-bad">
+                      {t("tables.view.owns.overlapsWith", "压着 {{names}}", { names: others.join("、") })}
+                    </Meta>
                   </Tip>
                 )}
               </div>
@@ -319,7 +343,12 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                 {owns(g).length ? (
                   owns(g).map((o) =>
                     mine.has(o) ? (
-                      <Tip key={o} label={`和 ${mine.get(o)!.join("、")} 是同一块地方`}>
+                      <Tip
+                        key={o}
+                        label={t("tables.view.owns.samePlace", "和 {{names}} 是同一块地方", {
+                          names: mine.get(o)!.join("、"),
+                        })}
+                      >
                         <span className="rounded-sm bg-bad-soft px-1.5 py-0.5 font-mono text-[0.6875rem] text-bad">
                           {o}
                         </span>
@@ -331,7 +360,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                     ),
                   )
                 ) : (
-                  <Badge tone="warn">未划定</Badge>
+                  <Badge tone="warn">{t("tables.view.owns.unbounded", "未划定")}</Badge>
                 )}
               </span>
             </div>
@@ -342,11 +371,11 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
   );
 }
 
-const ROTATION_REASON: Record<string, string> = {
-  hash: "前缀变了",
-  budget: "上下文满了",
-  explicit: "打回重做",
-  new: "新雇的",
+const ROTATION_REASON: Record<string, { key: string; text: string }> = {
+  hash: { key: "hash", text: "前缀变了" },
+  budget: { key: "budget", text: "上下文满了" },
+  explicit: { key: "explicit", text: "打回重做" },
+  new: { key: "new", text: "新雇的" },
 };
 
 function rotationModel(cost: Cost) {
@@ -355,7 +384,13 @@ function rotationModel(cost: Cost) {
   return {
     turns: cost.rotations.turns,
     cold,
-    why: entries.map(([reason, count]) => `${ROTATION_REASON[reason] ?? reason} ${count}`).join(" · "),
+    why: entries
+      .map(([reason, count]) => {
+        const entry = ROTATION_REASON[reason];
+        const label = entry ? i18n.t(`tables.view.rotationReason.${entry.key}`, entry.text) : reason;
+        return `${label} ${count}`;
+      })
+      .join(" · "),
     className: cold * 2 > cost.rotations.turns ? "text-warn" : "text-ink",
   };
 }
@@ -378,15 +413,26 @@ function costSummary(cost: Cost) {
   const per = cost.delivered.count ? cost.delivered.tokens / cost.delivered.count : null;
   return {
     per: per == null ? "—" : K(per),
-    perNote: per == null ? "（合入一个才有）" : `（${cost.delivered.count} 个）`,
-    cache: cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`,
+    perNote:
+      per == null
+        ? i18n.t("tables.view.cost.perNoneYet", "（合入一个才有）")
+        : i18n.t("tables.view.cost.perCount", "（{{n}} 个）", { n: cost.delivered.count }),
+    cache:
+      cost.cacheRatio == null
+        ? i18n.t("tables.view.cost.noCacheData", "还没数据")
+        : `${Math.round(cost.cacheRatio * 100)}%`,
     cacheClass: cost.cacheRatio == null ? "text-ink-3" : cost.cacheRatio < 0.5 ? "text-warn" : "text-ink",
   };
 }
 
 export function CostView({ cost }: { cost: Cost | null }) {
+  const { t } = useTranslation();
   if (!cost?.total?.tokens) {
-    return <Empty>还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。</Empty>;
+    return (
+      <Empty>
+        {t("tables.view.cost.empty", "还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。")}
+      </Empty>
+    );
   }
   const { turns, cold, why, className: rotationClass } = rotationModel(cost);
   const { standing, standingTotal, groups, sum, top } = attributionModel(cost);
@@ -411,11 +457,13 @@ export function CostView({ cost }: { cost: Cost | null }) {
             reach five rows. */}
         <Tabs defaultValue="grp" className="flex min-h-0 min-w-0 flex-col">
           <TabList>
-            <Tab value="grp">按需求</Tab>
-            <Tab value="tier">按难度</Tab>
-            <Tab value="acct">按账号</Tab>
+            <Tab value="grp">{t("tables.view.cost.byGroup", "按需求")}</Tab>
+            <Tab value="tier">{t("tables.view.cost.byTier", "按难度")}</Tab>
+            <Tab value="acct">{t("tables.view.cost.byAccount", "按账号")}</Tab>
             <span className="grow" />
-            <Meta className="self-center pb-1.5 max-[52rem]:hidden">tokens · 占比</Meta>
+            <Meta className="self-center pb-1.5 max-[52rem]:hidden">
+              {t("tables.view.cost.colTokensShare", "tokens · 占比")}
+            </Meta>
           </TabList>
           <TabPanel value="grp" className="flex min-h-0 flex-1 flex-col">
             <Pane className="[&>*:first-child_button]:border-t-0">
@@ -431,8 +479,8 @@ export function CostView({ cost }: { cost: Cost | null }) {
               ))}
               {standing.length > 0 && (
                 <Node
-                  label="常驻岗"
-                  note="跨需求共用"
+                  label={t("tables.view.desk.standing", "常驻岗")}
+                  note={t("tables.view.cost.crossGroup", "跨需求共用")}
                   tokens={standingTotal}
                   top={top}
                   share={standingTotal / sum}
@@ -463,15 +511,17 @@ export function CostView({ cost }: { cost: Cost | null }) {
           <div className="mb-5">
             <div className="flex items-baseline gap-1.5">
               <b className="font-mono text-[1.375rem] font-semibold leading-none">{K(cost.total.tokens)}</b>
-              <span className="text-[0.75rem] text-ink-3">tokens · 这个项目累计</span>
+              <span className="text-[0.75rem] text-ink-3">{t("tables.view.cost.tokensTotal", "tokens · 这个项目累计")}</span>
             </div>
             <div className="mt-1.5 text-[0.75rem] text-ink-2">
-              每个已交付需求 <b className="font-mono font-semibold text-ink">{summary.per}</b>
+              {t("tables.view.cost.perDelivered", "每个已交付需求")}{" "}
+              <b className="font-mono font-semibold text-ink">{summary.per}</b>
               <span className="text-ink-3">{summary.perNote}</span>
             </div>
-            <Tip label="掉到 50% 以下＝prompt 组装被改坏，每个 turn 贵 3-5 倍">
+            <Tip label={t("tables.view.cost.cacheHintTip", "掉到 50% 以下＝prompt 组装被改坏，每个 turn 贵 3-5 倍")}>
               <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
-                cache 命中 <b className={cn("font-mono font-semibold", summary.cacheClass)}>{summary.cache}</b>
+                {t("tables.view.cost.cacheHitRate", "cache 命中")}{" "}
+                <b className={cn("font-mono font-semibold", summary.cacheClass)}>{summary.cache}</b>
               </div>
             </Tip>
             {/* The second half of the same question, over the same sample as the
@@ -483,9 +533,15 @@ export function CostView({ cost }: { cost: Cost | null }) {
               because those counts sum to the count already printed — the same
               number said twice, once as a total and once as its parts. */}
             {cold > 0 && (
-              <Tip label={`${turns} 个 turn 里重开了 ${cold} 次：${why}。重开一次，缓存前缀要从头建一遍`}>
+              <Tip
+                label={t("tables.view.cost.rotationTip", "{{turns}} 个 turn 里重开了 {{cold}} 次：{{why}}。重开一次，缓存前缀要从头建一遍", {
+                  turns,
+                  cold,
+                  why,
+                })}
+              >
                 <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
-                  重开会话{" "}
+                  {t("tables.view.cost.reopenedSessions", "重开会话")}{" "}
                   <b className={cn("font-mono font-semibold", rotationClass)}>
                     {cold}/{turns}
                   </b>
@@ -493,13 +549,13 @@ export function CostView({ cost }: { cost: Cost | null }) {
               </Tip>
             )}
           </div>
-          <Rail title="烧得多快" note="近 24 小时，按小时">
+          <Rail title={t("tables.view.cost.burnRate", "烧得多快")} note={t("tables.view.cost.burnRateNote", "近 24 小时，按小时")}>
             <BurnChart data={cost.byHour} />
           </Rail>
-          <Rail title="按账号" note="">
+          <Rail title={t("tables.view.cost.byAccount", "按账号")} note="">
             <SplitDonut rows={cost.byRuntime} />
           </Rail>
-          <Rail title="按难度" note="">
+          <Rail title={t("tables.view.cost.byTier", "按难度")} note="">
             <SplitDonut rows={cost.byDifficulty} />
           </Rail>
         </aside>

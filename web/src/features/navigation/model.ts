@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { State } from "../../shared/api";
 import { SectionSchema, type Section } from "../settings/model";
+import i18n from "../../i18n";
 
 const ViewSchema = z.enum([
   "home",
@@ -51,18 +52,18 @@ const DIALOG: Partial<Record<View, Section>> = {
   sandbox: "sandbox",
 };
 
-export const VIEWS: [View, string][] = [
-  ["progress", "需求"],
-  ["desk", "工位墙"],
-  ["notes", "记录"],
-  ["owns", "所有权"],
-  ["cost", "成本"],
+export const views = (): [View, string][] => [
+  ["progress", i18n.t("nav.model.views.progress", "需求")],
+  ["desk", i18n.t("nav.model.views.desk", "工位墙")],
+  ["notes", i18n.t("nav.model.views.notes", "记录")],
+  ["owns", i18n.t("nav.model.views.owns", "所有权")],
+  ["cost", i18n.t("nav.model.views.cost", "成本")],
   // Top level, beside the other four. It was a tab inside 需求, one rank down,
   // which put "where did this project's wall clock go" underneath "which
   // requirements are running" — but a project's spans are every route and
   // container operation that named it, most of them belonging to no requirement
   // at all. It is a sibling question, not a detail of that one.
-  ["time", "耗时"],
+  ["time", i18n.t("nav.model.views.time", "耗时")],
 ];
 
 export const choose = <T>(condition: boolean, yes: T, no: T): T => (condition ? yes : no);
@@ -87,8 +88,14 @@ export const viewActive = (view: View, candidate: View): boolean =>
   view === candidate || (view === "req" && candidate === "progress");
 export const viewClass = (active: boolean): string =>
   active ? "border-accent font-medium text-ink" : "border-transparent text-ink-3 hover:text-ink";
-export const connectionText = (live: string): string => (live === "retry" ? "连接断了，重连中" : "连接中");
-export const sideText = (side: boolean): string => (side ? "收起事件流" : "展开事件流：谁跟谁说了什么，按时间倒序");
+export const connectionText = (live: string): string =>
+  live === "retry"
+    ? i18n.t("nav.model.connection.retrying", "连接断了，重连中")
+    : i18n.t("nav.model.connection.connecting", "连接中");
+export const sideText = (side: boolean): string =>
+  side
+    ? i18n.t("nav.model.side.collapse", "收起事件流")
+    : i18n.t("nav.model.side.expand", "展开事件流：谁跟谁说了什么，按时间倒序");
 export const sideClass = (side: boolean): string => (side ? "text-ink" : "text-ink-3 hover:text-ink");
 export const settingsClass = (active: boolean): string => (active ? "text-ink" : "text-ink-3 hover:text-ink");
 export const scrollClass = (view: View): string =>
@@ -175,7 +182,7 @@ export function projectItem(project: State["projects"][number], waiting: number)
     name: same ? project.repo_path : project.name,
     ...(same ? {} : { meta: project.repo_path }),
     rtlMeta: true,
-    ...(waiting > 0 ? { badge: `${waiting} 件待办` } : {}),
+    ...(waiting > 0 ? { badge: i18n.t("nav.model.pendingBadge", "{{n}} 件待办", { n: waiting }) } : {}),
   };
 }
 

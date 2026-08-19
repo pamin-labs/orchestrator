@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { Tip } from "./tooltip";
@@ -32,6 +33,7 @@ export function WithAttachments({ body, className }: { body: string; className?:
 }
 
 function Attachments({ files }: { files: Attached[] }) {
+  const { t } = useTranslation();
   const [full, setFull] = useState<Attached | null>(null);
   if (!files.length) return null;
   const images = files.filter((f) => f.image);
@@ -105,7 +107,7 @@ function Attachments({ files }: { files: Attached[] }) {
               />
             )}
             <Dialog.Close
-              aria-label="关掉"
+              aria-label={t("ui.attachments.close", "关掉")}
               className="absolute right-4 top-4 grid size-8 cursor-pointer place-items-center rounded-md bg-paper/90 text-ink hover:bg-paper"
             >
               <X size={16} strokeWidth={2} />

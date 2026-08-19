@@ -9,6 +9,7 @@
 
  */
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import flamegraph, { type FlameFrame, type FlameGraph } from "d3-flame-graph";
 import { select } from "d3-selection";
 import { cn } from "../../ui/cn";
@@ -218,6 +219,7 @@ function useFlameChart({
 }
 
 export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked: readonly string[] }) {
+  const { t } = useTranslation();
   const [view, setView] = useState<TimeWindow>({ from: 0, to: 1 });
   const zoom = view.to - view.from;
   const { host, port, details, chart, zoomed, setZoomed } = useFlameChart({ tree, self, picked, zoom });
@@ -255,17 +257,23 @@ export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; 
               "transition-colors hover:text-ink",
             )}
           >
-            ← 回到全部
+            {t("telemetry.flame.backToAll", "← 回到全部")}
           </button>
         )}
-        {zoomed !== null && <span className="shrink-0 text-[0.6875rem] text-ink-3">看的是 {humanName(zoomed)}</span>}
+        {zoomed !== null && (
+          <span className="shrink-0 text-[0.6875rem] text-ink-3">
+            {t("telemetry.flame.lookingAt", "看的是 {{name}}", { name: humanName(zoomed) })}
+          </span>
+        )}
         {zoomed === null && zoom < 1 && (
-          <span className="shrink-0 text-[0.6875rem] text-ink-3">放大到 {(1 / zoom).toFixed(0)}×</span>
+          <span className="shrink-0 text-[0.6875rem] text-ink-3">
+            {t("telemetry.flame.zoomedTo", "放大到 {{n}}×", { n: (1 / zoom).toFixed(0) })}
+          </span>
         )}
         <div ref={details} className="min-w-0 truncate font-mono text-[0.6875rem] text-ink-2" />
       </div>
       <div className="mb-1">
-        <Minimap view={view} limit={WHOLE} label="看的是哪一段" onPan={setView} />
+        <Minimap view={view} limit={WHOLE} label={t("telemetry.flame.whichWindow", "看的是哪一段")} onPan={setView} />
       </div>
 
       {/* The viewport. The chart inside it is rendered `1/zoom` times wider and

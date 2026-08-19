@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { Button, LinkButton } from "../../ui/button";
 import { z } from "zod";
 import { api } from "../../shared/api";
@@ -49,6 +50,7 @@ export const HostCheckSchema = z
  * clipboard.
  */
 export function DeviceCode({ code, url, go }: { code: string; url: string; go: string }) {
+  const { t } = useTranslation();
   return (
     <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md bg-sunk px-3 py-2.5">
       <code className="font-mono text-[1.375rem] leading-none font-semibold tracking-[0.3em] select-all">{code}</code>
@@ -57,10 +59,10 @@ export function DeviceCode({ code, url, go }: { code: string; url: string; go: s
         variant="quiet"
         onClick={() => {
           void navigator.clipboard.writeText(code);
-          toast.success("登录码复制好了");
+          toast.success(t("settings.credentials.deviceCodeCopied"));
         }}
       >
-        复制
+        {t("settings.credentials.copy")}
       </Button>
       <span className="grow" />
       <LinkButton href={url} className="px-2 py-0.5 text-[0.75rem]">

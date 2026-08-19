@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { Meta, Pane } from "../../ui/bits";
 import { Badge } from "../../ui/badge";
@@ -43,17 +44,21 @@ const FrontmatterSchema = z.object({
   files: z.array(z.string()).optional(),
   gate: z.string().nullable().optional(),
 });
-const GATES: Record<string, { text: string; className?: string }> = {
-  pass: { text: "过", className: "text-ok" },
-  fail: { text: "没过", className: "text-bad" },
+const GATES: Record<string, { key: string; fallback: string; className?: string }> = {
+  pass: { key: "notes.view.gates.pass", fallback: "过", className: "text-ok" },
+  fail: { key: "notes.view.gates.fail", fallback: "没过", className: "text-bad" },
 };
 
 function Evidence({ note, gate, files }: { note: Note; gate: string | null; files: string[] }) {
+  const { t } = useTranslation();
   if (![gate, note.exportPath, ...files].some(Boolean)) return null;
-  const verdict = gate ? (GATES[gate] ?? { text: gate }) : null;
+  const verdict = gate ? (GATES[gate] ?? null) : null;
+  const verdictText = verdict ? t(verdict.key, verdict.fallback) : gate;
   return (
     <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
-      {verdict && <Meta className={verdict.className}>闸门 {verdict.text}</Meta>}
+      {gate && (
+        <Meta className={verdict?.className}>{t("notes.view.evidence.gate", "闸门 {{text}}", { text: verdictText })}</Meta>
+      )}
       {files.map((file) => (
         <Tip key={file} label={file}>
           <Meta className="min-w-0 truncate font-mono">{file}</Meta>
@@ -136,11 +141,12 @@ export function NotesBoard({
   tab?: string | null;
   onTab?: (t: string) => void;
 }) {
-  if (!notes) return <Meta>读记录…</Meta>;
+  const { t } = useTranslation();
+  if (!notes) return <Meta>{t("notes.view.loading", "读记录…")}</Meta>;
   if (!notes.length) {
     return (
       <div className="text-[0.8125rem] text-ink-3">
-        还没有记录。agent 每个 turn 写 journal，组解散前写 retro，retro 归纳成教训注入后续组。
+        {t("notes.view.empty", "还没有记录。agent 每个 turn 写 journal，组解散前写 retro，retro 归纳成教训注入后续组。")}
       </div>
     );
   }
@@ -159,7 +165,7 @@ export function NotesBoard({
       <TabList>
         {present.map(([k, zh]) => (
           <Tab key={k} value={k} count={notes.filter((n) => n.kind === k).length}>
-            {zh}
+            {t(`notes.view.kinds.${k}`, zh)}
           </Tab>
         ))}
       </TabList>
@@ -179,6 +185,7 @@ export function NotesBoard({
 
 function List({ notes, size, showKind }: { notes: Note[]; size: number; showKind?: boolean }) {
   const { page, rest, more, total } = usePaged(notes, size);
+  const { t } = useTranslation();
   return (
     <>
       {page.map((n) => (
@@ -186,7 +193,7 @@ function List({ notes, size, showKind }: { notes: Note[]; size: number; showKind
       ))}
       {rest > 0 && (
         <Button variant="quiet" size="sm" className="mt-2" onClick={more}>
-          还有 {rest} 条（共 {total}）
+          {t("notes.view.list.more", "还有 {{rest}} 条（共 {{total}}）", { rest, total })}
         </Button>
       )}
     </>
@@ -194,6 +201,7 @@ function List({ notes, size, showKind }: { notes: Note[]; size: number; showKind
 }
 
 function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
+  const { t } = useTranslation();
   // frontmatter is structured on purpose: files and the gate verdict are the
   // deterministic anchors that stop a journal being self-congratulation.
   const frontmatter = jsonOr(n.frontmatter, FrontmatterSchema, {});
@@ -212,7 +220,7 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-2">
-          {showKind && <Badge>{ZH.get(n.kind) ?? n.kind}</Badge>}
+          {showKind && <Badge>{t(`notes.view.kinds.${n.kind}`, ZH.get(n.kind) ?? n.kind)}</Badge>}
           <Meta>{clock(n.at)}</Meta>
         </div>
         {n.group && (
@@ -245,6 +253,7 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
 function Body({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const long = text.split("\n").length > 4 || text.length > 320;
+  const { t } = useTranslation();
   return (
     <div className="mt-1.5">
       <div className={cn("text-[0.8125rem] leading-[1.7] text-ink-2", !open && long && "line-clamp-4")}>
@@ -256,7 +265,7 @@ function Body({ text }: { text: string }) {
           onClick={() => setOpen((v) => !v)}
           className="mt-0.5 cursor-pointer font-mono text-[0.6875rem] text-ink-3 hover:text-accent"
         >
-          {open ? "收起" : "展开"}
+          {open ? t("notes.view.body.collapse", "收起") : t("notes.view.body.expand", "展开")}
         </button>
       )}
     </div>

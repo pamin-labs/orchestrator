@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Head, Input, Meta } from "../../ui/bits";
 import { Badge } from "../../ui/badge";
@@ -27,6 +28,7 @@ import { skillsKey } from "../composer/view";
  */
 
 export function Skills({ projectId }: { projectId: number | null }) {
+  const { t } = useTranslation();
   const queries = useQueryClient();
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -76,26 +78,26 @@ export function Skills({ projectId }: { projectId: number | null }) {
   return (
     <>
       <Head
-        title="技能"
+        title={t("skills.view.title", "技能")}
         note={
           rows
-            ? `勾中的 ${tally.staged}/${tally.user} 个进沙盒` +
-              (tally.repo ? `，仓库自带 ${tally.repo} 个` : "") +
-              `，每 turn 前缀约 ${tally.k}k tokens`
-            : "读取中…"
+            ? t("skills.view.tally", "勾中的 {{staged}}/{{user}} 个进沙盒", { staged: tally.staged, user: tally.user }) +
+              (tally.repo ? t("skills.view.tallyRepo", "，仓库自带 {{n}} 个", { n: tally.repo }) : "") +
+              t("skills.view.tallyPrefix", "，每 turn 前缀约 {{k}}k tokens", { k: tally.k })
+            : t("skills.view.loading", "读取中…")
         }
       >
         <Button variant="quiet" size="sm" disabled={busy === "*"} onClick={rescan}>
-          重新扫描
+          {t("skills.view.rescan", "重新扫描")}
         </Button>
       </Head>
 
       <Input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="搜技能"
+        placeholder={t("skills.view.searchPlaceholder", "搜技能")}
         className="mb-2"
-        aria-label="搜技能"
+        aria-label={t("skills.view.searchPlaceholder", "搜技能")}
       />
 
       <div className="divide-y divide-rule-soft">
@@ -124,12 +126,14 @@ export function Skills({ projectId }: { projectId: number | null }) {
               <span className="font-mono text-[0.75rem] text-ink">{r.name}</span>
               {/* Only the exception is marked. 全局 on every other row was a word
                   repeated a hundred and seventy-eight times to say "normal". */}
-              {fixed && <Badge className="shrink-0 self-center">随仓库</Badge>}
+              {fixed && <Badge className="shrink-0 self-center">{t("skills.view.repoWide", "随仓库")}</Badge>}
               <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{r.description}</span>
             </label>
           );
         })}
-        {rows && !shown.length && <Meta className="block py-2">没有匹配的技能</Meta>}
+        {rows && !shown.length && (
+          <Meta className="block py-2">{t("skills.view.noMatches", "没有匹配的技能")}</Meta>
+        )}
       </div>
     </>
   );

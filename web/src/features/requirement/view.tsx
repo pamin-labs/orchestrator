@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { Button, LinkButton } from "../../ui/button";
 import { Menu, MenuItem } from "../../ui/menu";
 import { Tab, TabList, TabPanel, Tabs } from "../../ui/tabs";
@@ -139,6 +140,7 @@ export function Requirement({
   const shown = shownSlice(slices, picked);
   const active = activeTab(tab, mine.length);
   const sub = askLane(subPick, mine.length, others.length);
+  const { t } = useTranslation();
 
   return (
     // Tabs put one of the four things this page holds in front of the boss at a
@@ -158,7 +160,7 @@ export function Requirement({
         <Tabs value={active} {...tabProps(onTab)} className="mt-3 flex min-h-0 flex-1 flex-col">
           <TabList>
             <Tab value="slice" count={slices.length}>
-              切片
+              {t("requirement.view.tabs.slice", "切片")}
             </Tab>
             {/* Only the ones on the boss are 待你决策. The rest are open questions
                 the chain is still holding, and counting them under that heading
@@ -167,16 +169,16 @@ export function Requirement({
               {askTabLabel(mine.length)}
             </Tab>
             <Tab value="notes" {...countProps(notes)}>
-              记录
+              {t("requirement.view.tabs.notes", "记录")}
             </Tab>
             {/* No count: a container is one or none, and a badge reading 1 next
                 to 工作区 says nothing the tab does not already. */}
-            <Tab value="work">工作区</Tab>
+            <Tab value="work">{t("requirement.view.tabs.work", "工作区")}</Tab>
             {/* No count either, and for a stronger reason than 工作区's: the number
                 of spans a requirement has produced is not a quantity anybody is
                 waiting on, and a badge reading 1,482 beside 耗时 would be the
                 loudest number on the tab strip while meaning the least. */}
-            <Tab value="time">耗时</Tab>
+            <Tab value="time">{t("requirement.view.tabs.time", "耗时")}</Tab>
           </TabList>
 
           <TabPanel value="slice" className="flex min-h-0 flex-1 flex-col">
@@ -215,7 +217,10 @@ export function Requirement({
               waterfall are what answer "where did the wall clock go". */}
           <TabPanel value="time" className="flex min-h-0 flex-1 flex-col">
             <Pane>
-              <Telemetry scope={{ kind: "group", id: g.id }} empty="这个需求还没跑过任何活。" />
+              <Telemetry
+                scope={{ kind: "group", id: g.id }}
+                empty={t("requirement.view.telemetryEmpty", "这个需求还没跑过任何活。")}
+              />
             </Pane>
           </TabPanel>
         </Tabs>
@@ -256,10 +261,11 @@ function SliceList({
   onPick: (v: number | "none") => void;
   refresh: () => void;
 }) {
+  const { t } = useTranslation();
   if (!slices.length) {
     return (
       <Pane>
-        <Working>正在拆解</Working>
+        <Working>{t("requirement.view.sliceList.working", "正在拆解")}</Working>
       </Pane>
     );
   }
@@ -306,6 +312,7 @@ function AskLanes({
   refresh: () => void;
 }) {
   const value = openAskValue(openAsk, mine);
+  const { t } = useTranslation();
   return (
     <>
       <Segments value={sub} onValueChange={(v) => v && onSub(v)} className="-ml-2 shrink-0">
@@ -321,7 +328,9 @@ function AskLanes({
           saw a question cut mid-sentence and no way to reply to it. */}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 pr-1">
         {noQuestions(mine.length + others.length, answered.length) && (
-          <div className="text-[0.8125rem] text-ink-3">没有开着的问题。这一组的人现在不等你。</div>
+          <div className="text-[0.8125rem] text-ink-3">
+            {t("requirement.view.askLanes.empty", "没有开着的问题。这一组的人现在不等你。")}
+          </div>
         )}
         {sub === "mine" && mine.length > 0 && (
           <div className="overflow-hidden rounded-lg border border-accent">
@@ -365,6 +374,7 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
   const [now, setNow] = useState(() => Date.now());
 
   const { running, failed, cmd, lines, since, until } = bootstrapOf(frames, grpId);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!running) return;
@@ -386,19 +396,19 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {/* The same marks the gate tracks use. Progress on this page is which
             step passed, never a bar that fills. */}
-        <Step label="克隆" state={cloneStep(cmd, failed)} />
-        <Step label="装依赖" state={installStep(cmd, failed, until)} />
+        <Step label={t("requirement.view.bootstrap.clone", "克隆")} state={cloneStep(cmd, failed)} />
+        <Step label={t("requirement.view.bootstrap.install", "装依赖")} state={installStep(cmd, failed, until)} />
         <Meta className="min-w-0 flex-1 truncate">{bootCmd(cmd)}</Meta>
         <Meta className={cn(failed && "text-bad")}>{bootClock(failed, bootSecs(since, until, now))}</Meta>
         <Button variant="quiet" size="sm" aria-expanded={!shut} onClick={() => setShut((v) => !v)}>
-          {shut ? "看日志" : "收起"}
+          {shut ? t("requirement.view.bootstrap.showLog", "看日志") : t("requirement.view.bootstrap.collapse", "收起")}
         </Button>
       </div>
       {!shut && lines.length > 0 && (
         <div
           ref={box}
           role="log"
-          aria-label="装环境的输出"
+          aria-label={t("requirement.view.bootstrap.logAriaLabel", "装环境的输出")}
           onScroll={(e) => {
             const el = e.currentTarget;
             pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
@@ -415,7 +425,11 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
           ))}
         </div>
       )}
-      {failed && <Meta className="mt-1.5 block">交给 bootstrap 重试，它会带着上面的报错读一遍仓库</Meta>}
+      {failed && (
+        <Meta className="mt-1.5 block">
+          {t("requirement.view.bootstrap.failedHint", "交给 bootstrap 重试，它会带着上面的报错读一遍仓库")}
+        </Meta>
+      )}
     </div>
   );
 }
@@ -442,6 +456,7 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
   const inQueue = inMergeQueue(st, g.id);
   const url = prUrl(st, g);
   const act = (a: "pause" | "resume" | "wake") => actThen(g, a, refresh);
+  const { t } = useTranslation();
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-rule pb-3">
@@ -459,12 +474,16 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
             up by itself. */}
         {url && <LinkButton href={url}>{prLabel(inQueue)}</LinkButton>}
         {canNewPr(g) && <NewPr grpId={g.id} refresh={refresh} />}
-        {showQueued(inQueue, g) && <Badge>排队中</Badge>}
-        {g.status === "RUNNING" && <Button onClick={() => act("pause")}>暂停</Button>}
-        {canResume(g, overBudget(g)) && <Button onClick={() => act("resume")}>继续</Button>}
+        {showQueued(inQueue, g) && <Badge>{t("requirement.view.header.queued", "排队中")}</Badge>}
+        {g.status === "RUNNING" && (
+          <Button onClick={() => act("pause")}>{t("requirement.view.header.pause", "暂停")}</Button>
+        )}
+        {canResume(g, overBudget(g)) && (
+          <Button onClick={() => act("resume")}>{t("requirement.view.header.resume", "继续")}</Button>
+        )}
         {g.status === "PARKED" && (
           <Button variant="go" onClick={() => act("wake")}>
-            唤醒
+            {t("requirement.view.header.wake", "唤醒")}
           </Button>
         )}
         <HeaderMenu g={g} refresh={refresh} />
@@ -480,74 +499,89 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
  */
 function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
   const running = isRunning(g);
+  const { t } = useTranslation();
   return (
-    <Menu label="更多">
+    <Menu label={t("requirement.view.headerMenu.more", "更多")}>
       {running && (
         <MenuItem
-          hint="停止当前 turn，改动留着，下一个 turn 会被告知"
+          hint={t("requirement.view.headerMenu.interruptKeep.hint", "停止当前 turn，改动留着，下一个 turn 会被告知")}
           onSelect={async () => {
             await groupAction(g.id, "interrupt", { mode: "keep" });
             refresh();
           }}
         >
-          打断，保留改动
+          {t("requirement.view.headerMenu.interruptKeep.label", "打断，保留改动")}
         </MenuItem>
       )}
       {running && (
         <MenuItem
           danger
-          hint="回到这一轮开始前的 checkpoint，这个 turn 的改动全丢"
+          hint={t("requirement.view.headerMenu.interruptRollback.hint", "回到这一轮开始前的 checkpoint，这个 turn 的改动全丢")}
           onSelect={confirmThen(
             {
-              title: "打断并回滚",
-              body: "丢弃当前 turn 的全部改动，退回到这一轮开始前。",
-              yes: "打断并回滚",
+              title: t("requirement.view.headerMenu.interruptRollback.title", "打断并回滚"),
+              body: t("requirement.view.headerMenu.interruptRollback.body", "丢弃当前 turn 的全部改动，退回到这一轮开始前。"),
+              yes: t("requirement.view.headerMenu.interruptRollback.yes", "打断并回滚"),
               danger: true,
             },
             () => groupAction(g.id, "interrupt", { mode: "rollback" }),
             refresh,
           )}
         >
-          打断并回滚
+          {t("requirement.view.headerMenu.interruptRollback.label", "打断并回滚")}
         </MenuItem>
       )}
       {canPark(g) && (
-        <MenuItem hint="释放并发槽，沙盒里的代码和 checkpoint 原地不动" onSelect={() => actThen(g, "park", refresh)}>
-          封存
+        <MenuItem
+          hint={t("requirement.view.headerMenu.park.hint", "释放并发槽，沙盒里的代码和 checkpoint 原地不动")}
+          onSelect={() => actThen(g, "park", refresh)}
+        >
+          {t("requirement.view.headerMenu.park.label", "封存")}
         </MenuItem>
       )}
       <MenuItem
-        hint="容器卡住、少挂了东西、或换过凭据时用。下一个 turn 重新 clone + 装依赖，分支在宿主仓库里不会丢"
+        hint={t(
+          "requirement.view.headerMenu.rebuild.hint",
+          "容器卡住、少挂了东西、或换过凭据时用。下一个 turn 重新 clone + 装依赖，分支在宿主仓库里不会丢",
+        )}
         onSelect={confirmThen(
           {
-            title: "重开容器",
-            body: `${g.name} 的容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。`,
-            yes: "重开",
+            title: t("requirement.view.headerMenu.rebuild.title", "重开容器"),
+            body: t(
+              "requirement.view.headerMenu.rebuild.body",
+              "{{name}} 的容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。",
+              { name: g.name },
+            ),
+            yes: t("requirement.view.headerMenu.rebuild.yes", "重开"),
           },
           () => groupAction(g.id, "rebuild"),
           refresh,
         )}
       >
-        重开容器
+        {t("requirement.view.headerMenu.rebuild.label", "重开容器")}
       </MenuItem>
       {/* 退回重拆 sends it back to the Dispatcher, which writes another card for
           work nobody wants. A requirement that turned out to be a duplicate, or
           that someone already fixed, needs to leave the board instead. */}
       <MenuItem
         danger
-        hint="排队的 turn 全取消，占的路径交还给别的组。代码、分支和记录都留着"
+        hint={t("requirement.view.headerMenu.drop.hint", "排队的 turn 全取消，占的路径交还给别的组。代码、分支和记录都留着")}
         onSelect={confirmThen(
           {
-            title: "不做了",
-            body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录留着，组不会再被拉起。`,
-            yes: "不做了",
+            title: t("requirement.view.headerMenu.drop.title", "不做了"),
+            body: t(
+              "requirement.view.headerMenu.drop.body",
+              "{{name}} 会从看板上消失，排队的 turn 全部取消。代码和记录留着，组不会再被拉起。",
+              { name: g.name },
+            ),
+            yes: t("requirement.view.headerMenu.drop.yes", "不做了"),
             danger: true,
           },
           () => groupAction(g.id, "drop"),
           refresh,
         )}
       >
-        不做了
+        {t("requirement.view.headerMenu.drop.label", "不做了")}
       </MenuItem>
     </Menu>
   );
@@ -610,6 +644,7 @@ function Ticks({ s, gs }: { s: Slice; gs: Record<string, string> }) {
 /** The selected slice, in full: what it promised, what it did, and the two buttons. */
 function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => void }) {
   const tasks = st.tasks.filter((t) => t.slice_id === s.id);
+  const { t } = useTranslation();
   // No header: the lane row above and the evidence panel below already carry the
   // slice number, the title and the acceptance line. The buttons moved next to
   // the evidence they are a verdict on.
@@ -623,7 +658,7 @@ function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => v
             refresh();
           }}
         >
-          查收
+          {t("requirement.view.sliceDetail.accept", "查收")}
         </Button>
         <RejectSlice sliceId={s.id} refresh={refresh} />
       </span>
@@ -632,7 +667,7 @@ function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => v
   if (s.status === "pending") {
     return (
       <div className="border-t border-rule-soft py-2 pl-14 pr-3 text-[0.75rem] text-ink-3">
-        还没开工，等前面的切片查收。
+        {t("requirement.view.sliceDetail.pending", "还没开工，等前面的切片查收。")}
       </div>
     );
   }
@@ -665,23 +700,27 @@ function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => v
  * as "already done".
  */
 function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
+  const { t } = useTranslation();
   return (
     <Button
       variant="go"
       onClick={confirmThen(
         {
-          title: "开一个新 PR",
-          body: "能在 GitHub 上重开旧 PR 就不用这个。分支被强推或删过才用：会用当前分支重提一个，回到合入队列。",
-          yes: "开新 PR",
+          title: t("requirement.view.newPr.title", "开一个新 PR"),
+          body: t(
+            "requirement.view.newPr.body",
+            "能在 GitHub 上重开旧 PR 就不用这个。分支被强推或删过才用：会用当前分支重提一个，回到合入队列。",
+          ),
+          yes: t("requirement.view.newPr.yes", "开新 PR"),
         },
         async () => {
           const r = await groupAction(grpId, "newpr");
-          if (!r.ok) await ask({ title: "开不出来", body: r.text, yes: "知道了" });
+          if (!r.ok) await ask({ title: t("requirement.view.newPr.failTitle", "开不出来"), body: r.text, yes: t("requirement.view.newPr.gotIt", "知道了") });
         },
         refresh,
       )}
     >
-      开新 PR
+      {t("requirement.view.newPr.label", "开新 PR")}
     </Button>
   );
 }
@@ -693,16 +732,17 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
  */
 function RejectSlice({ sliceId, refresh }: { sliceId: number; refresh: () => void }) {
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation();
   return (
     <>
-      <Button onClick={() => setOpen(true)}>不满意</Button>
+      <Button onClick={() => setOpen(true)}>{t("requirement.view.rejectSlice.open", "不满意")}</Button>
       <ComposerDialog
         open={open}
         onOpenChange={setOpen}
-        title="退回这一片"
-        hint="原话记进黑板，PM 据此安排修正。截图直接粘。"
-        placeholder="哪里不满意。⌘Enter 退回"
-        submit="退回"
+        title={t("requirement.view.rejectSlice.title", "退回这一片")}
+        hint={t("requirement.view.rejectSlice.hint", "原话记进黑板，PM 据此安排修正。截图直接粘。")}
+        placeholder={t("requirement.view.rejectSlice.placeholder", "哪里不满意。⌘Enter 退回")}
+        submit={t("requirement.view.rejectSlice.submit", "退回")}
         rows={4}
         onSubmit={async ({ text, attachments }) => {
           const r = await sliceDecision(sliceId, "reject", { feedback: text, attachments });
@@ -721,6 +761,7 @@ const setBudget = async (g: Group, tokens: number | null, refresh: () => void) =
 
 /** Spend against its cap, and the cap itself, editable. Nothing sets one otherwise. */
 function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
+  const { t } = useTranslation();
   if (g.budget_tokens == null) {
     return (
       <button
@@ -728,22 +769,27 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
         className="cursor-pointer font-mono text-[0.6875rem] text-ink-3 underline decoration-dotted hover:text-ink"
         onClick={async () => {
           const v = await ask({
-            title: "给这个需求设 token 上限",
-            body: "用满就挂起，等你决定加不加。",
-            yes: "设定",
-            field: "例如 2000000",
+            title: t("requirement.view.budget.setTitle", "给这个需求设 token 上限"),
+            body: t("requirement.view.budget.setBody", "用满就挂起，等你决定加不加。"),
+            yes: t("requirement.view.budget.setYes", "设定"),
+            field: t("requirement.view.budget.setField", "例如 2000000"),
           });
           const n = Number(String(v ?? "").replace(/[^\d]/g, ""));
           if (n > 0) await setBudget(g, n, refresh);
         }}
       >
-        无预算上限
+        {t("requirement.view.budget.noCap", "无预算上限")}
       </button>
     );
   }
   const frac = g.spent_tokens / g.budget_tokens;
   return (
-    <Tip label={`${g.spent_tokens} / ${g.budget_tokens} tokens。用满即挂起全组。`}>
+    <Tip
+      label={t("requirement.view.budget.tip", "{{spent}} / {{cap}} tokens。用满即挂起全组。", {
+        spent: g.spent_tokens,
+        cap: g.budget_tokens,
+      })}
+    >
       <span className="flex w-20 items-center gap-1.5">
         <Bar frac={frac} tone={frac >= 1 ? "bad" : frac >= 0.8 ? "warn" : "ink"} />
         <Meta>
@@ -766,20 +812,28 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
   // a `number` — so "no cap set" arrived as null and this computed NaN, which is
   // what the raise-the-budget field would have been pre-filled with.
   const doubled = Math.max((g.budget_tokens ?? 0) * 2, g.spent_tokens + 100_000);
+  const { t } = useTranslation();
   return (
     <Card tone="mine" className="mt-2.5">
       <CardBody>
-        <CardTitle className="text-[0.9375rem] text-accent">预算用尽，全组挂起</CardTitle>
+        <CardTitle className="text-[0.9375rem] text-accent">
+          {t("requirement.view.budgetWall.title", "预算用尽，全组挂起")}
+        </CardTitle>
         <div className="mt-0.5 text-[0.75rem] text-ink-2">
-          已花 {K(g.spent_tokens)} tokens，上限 {K(g.budget_tokens)}。 加上限才动得了，「继续」不生效。
+          {t("requirement.view.budgetWall.body", "已花 {{spent}} tokens，上限 {{cap}}。 加上限才动得了，「继续」不生效。", {
+            spent: K(g.spent_tokens),
+            cap: K(g.budget_tokens),
+          })}
         </div>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           <Button variant="go" onClick={() => setBudget(g, doubled, refresh)}>
-            翻倍到 {K(doubled)}
+            {t("requirement.view.budgetWall.double", "翻倍到 {{n}}", { n: K(doubled) })}
           </Button>
-          <Button onClick={() => setBudget(g, null, refresh)}>取消上限</Button>
+          <Button onClick={() => setBudget(g, null, refresh)}>
+            {t("requirement.view.budgetWall.clear", "取消上限")}
+          </Button>
           <Button variant="quiet" onClick={() => actThen(g, "park", refresh)}>
-            就停在这里（封存）
+            {t("requirement.view.budgetWall.park", "就停在这里（封存）")}
           </Button>
         </div>
       </CardBody>
@@ -793,6 +847,7 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
  * answer it yourself, and re-run from there.
  */
 function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => void }) {
+  const { t } = useTranslation();
   // Nothing at all when nobody has answered for you. A sentence explaining what
   // an empty block would have held is the page reporting an absence, which
   // PRODUCT.md says an empty state must not do.
@@ -805,23 +860,25 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
         // words, not the boss's.
         <div key={a.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
           <div className="flex items-baseline gap-2">
-            <span className="font-mono text-[0.6875rem] text-ink-3">{a.answered_by} 代答</span>
+            <span className="font-mono text-[0.6875rem] text-ink-3">
+              {t("requirement.view.delegated.answeredBy", "{{who}} 代答", { who: a.answered_by })}
+            </span>
             <span className="grow" />
             <Button
               variant="quiet"
               size="sm"
               onClick={confirmThen(
                 {
-                  title: "撤销并接管",
-                  body: "回滚到提问时的 checkpoint，之后的改动作废，由你重新回答。",
-                  yes: "撤销并接管",
+                  title: t("requirement.view.delegated.revoke.title", "撤销并接管"),
+                  body: t("requirement.view.delegated.revoke.body", "回滚到提问时的 checkpoint，之后的改动作废，由你重新回答。"),
+                  yes: t("requirement.view.delegated.revoke.yes", "撤销并接管"),
                   danger: true,
                 },
                 () => mutate(api.escalations[":id"].revoke.$post({ param: { id: String(a.id) } })),
                 refresh,
               )}
             >
-              撤销并接管
+              {t("requirement.view.delegated.revoke.label", "撤销并接管")}
             </Button>
           </div>
           {/* An exchange, laid out as one: what was asked on the left, what was
@@ -848,6 +905,7 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
 /** One line at rest, the full composer once clicked. */
 function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation();
   if (!open) {
     return (
       <button
@@ -856,9 +914,9 @@ function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
         className="mt-2 flex w-full cursor-pointer items-center gap-2 rounded-md border border-rule
                    bg-paper px-3 py-2 text-left text-[0.8125rem] text-ink-3 transition-colors hover:border-ink-3"
       >
-        跟这个组说话…
+        {t("requirement.view.sayDock.prompt", "跟这个组说话…")}
         <span className="grow" />
-        <Meta>⌘Enter 发给 PM</Meta>
+        <Meta>{t("requirement.view.sayDock.hint", "⌘Enter 发给 PM")}</Meta>
       </button>
     );
   }
@@ -907,6 +965,7 @@ function SendAs({
  * decomposition survives to the end.
  */
 function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; projectId: number }) {
+  const { t } = useTranslation();
   const send = async (d: Draft, as?: "patch" | "respec" | "reject") => {
     const r = await mutate(
       api.say.$post({
@@ -924,43 +983,48 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
 
   return (
     <>
-      <H2 className="mt-6">跟这个组说话</H2>
+      <H2 className="mt-6">{t("requirement.view.say.heading", "跟这个组说话")}</H2>
       <Composer
         rows={2}
         projectId={projectId}
-        placeholder="下一个 turn 开头就会读到。截图直接粘，/ 插技能路径。⌘Enter 发给 PM"
-        submit="发给 PM"
+        placeholder={t("requirement.view.say.placeholder", "下一个 turn 开头就会读到。截图直接粘，/ 插技能路径。⌘Enter 发给 PM")}
+        submit={t("requirement.view.say.submit", "发给 PM")}
         onSubmit={(d) => send(d)}
         actions={({ text, attachments, busy, clear }) => (
           <>
-            <span className="mr-1 text-[0.75rem] text-ink-3 max-[40rem]:hidden">分量：</span>
-            <Tip label="原话记进黑板，PM 安排一条修正 task，组继续跑">
+            <span className="mr-1 text-[0.75rem] text-ink-3 max-[40rem]:hidden">
+              {t("requirement.view.say.weight", "分量：")}
+            </span>
+            <Tip label={t("requirement.view.say.patch.tip", "原话记进黑板，PM 安排一条修正 task，组继续跑")}>
               <Button
                 size="sm"
                 disabled={busy || !text}
                 onClick={async () => (await send({ text, attachments }, "patch")) && clear()}
               >
-                要改一处
+                {t("requirement.view.say.patch.label", "要改一处")}
               </Button>
             </Tip>
             <SendAs
-              label="方向错了"
-              tip="整个需求退回 Dispatcher 重新深挖，已写的代码留在分支上"
+              label={t("requirement.view.say.respec.label", "方向错了")}
+              tip={t("requirement.view.say.respec.tip", "整个需求退回 Dispatcher 重新深挖，已写的代码留在分支上")}
               spec={{
-                title: "退回重新拆解",
-                body: "这句话作为最高优先级 fact，整个需求退回 Dispatcher 重新深挖。已写的代码留在分支上。",
-                yes: "退回重拆",
+                title: t("requirement.view.say.respec.title", "退回重新拆解"),
+                body: t(
+                  "requirement.view.say.respec.body",
+                  "这句话作为最高优先级 fact，整个需求退回 Dispatcher 重新深挖。已写的代码留在分支上。",
+                ),
+                yes: t("requirement.view.say.respec.yes", "退回重拆"),
               }}
               disabled={busy || !text}
               run={async () => (await send({ text, attachments }, "respec")) && clear()}
             />
             <SendAs
-              label="不做了"
-              tip="停止派发，分支保留不合入，仍然要写 retro"
+              label={t("requirement.view.say.reject.label", "不做了")}
+              tip={t("requirement.view.say.reject.tip", "停止派发，分支保留不合入，仍然要写 retro")}
               spec={{
-                title: "作废这个需求",
-                body: "停止派发，分支保留不合入。仍然要求写 retro。",
-                yes: "作废",
+                title: t("requirement.view.say.reject.title", "作废这个需求"),
+                body: t("requirement.view.say.reject.body", "停止派发，分支保留不合入。仍然要求写 retro。"),
+                yes: t("requirement.view.say.reject.yes", "作废"),
                 danger: true,
               }}
               disabled={busy || !text}
@@ -976,6 +1040,7 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
 function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void }) {
   const { filed, idea, late, proposal, unknown } = draftView(st, g.id);
   const [card, setCard] = useState(filed);
+  const { t } = useTranslation();
 
   return (
     <>
@@ -987,7 +1052,10 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           key={`${o.author}:${o.body}`}
           className="my-2 break-words whitespace-pre-wrap rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]"
         >
-          <b className="font-semibold text-warn">{o.author} 后补反对</b> {o.body}
+          <b className="font-semibold text-warn">
+            {t("requirement.view.draft.lateObjection", "{{author}} 后补反对", { author: o.author })}
+          </b>{" "}
+          {o.body}
         </div>
       ))}
       {/* A plan that creates a file names it, so this is not an error — but a plan
@@ -997,9 +1065,11 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           caught. */}
       {unknown.length > 0 && (
         <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]">
-          <b className="font-semibold text-warn">卡里这些路径仓库里没有</b>{" "}
+          <b className="font-semibold text-warn">{t("requirement.view.draft.unknownPaths.title", "卡里这些路径仓库里没有")}</b>{" "}
           <span className="font-mono">{unknown.join("、")}</span>
-          <div className="mt-1 text-ink-3">新建的文件正常；如果它以为这些已经存在，这张卡是照着想象写的。</div>
+          <div className="mt-1 text-ink-3">
+            {t("requirement.view.draft.unknownPaths.note", "新建的文件正常；如果它以为这些已经存在，这张卡是照着想象写的。")}
+          </div>
         </div>
       )}
       {/* A planner found this is already covered, and the server checked the
@@ -1009,20 +1079,26 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
       {!filed ? (
         // Nothing to approve yet. An empty textarea and an approve button asks the
         // boss to sign off on nothing, which is why this screen read as "我该干嘛".
-        <Working>Dispatcher 正在写计划卡，写完出现在这里</Working>
+        <Working>{t("requirement.view.draft.writing", "Dispatcher 正在写计划卡，写完出现在这里")}</Working>
       ) : g.approved_at ? (
         // Already decided. Showing 批准开工 again asks for a click that changes
         // nothing and reads as "the last one was ignored" — which is what it was.
         // 退回重拆 below is still the way out: it withdraws the approval.
         <>
           <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-[0.8125rem]">
-            <b className="font-semibold text-warn">已批准，边界挡着</b> {blockedReason(st, g.id)}
+            <b className="font-semibold text-warn">{t("requirement.view.draft.blocked.title", "已批准，边界挡着")}</b>{" "}
+            {blockedReason(st, g.id)}
           </div>
-          <Working>让开之后自动开工，不用再点一次</Working>
+          <Working>{t("requirement.view.draft.blocked.note", "让开之后自动开工，不用再点一次")}</Working>
         </>
       ) : (
         <>
-          <Textarea rows={cardRows(filed)} value={card} onChange={(e) => setCard(e.target.value)} aria-label="计划卡" />
+          <Textarea
+            rows={cardRows(filed)}
+            value={card}
+            onChange={(e) => setCard(e.target.value)}
+            aria-label={t("requirement.view.draft.cardAriaLabel", "计划卡")}
+          />
           <div className="mt-3 flex items-baseline gap-3">
             <Button
               variant="go"
@@ -1036,9 +1112,9 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
                 refresh();
               }}
             >
-              批准开工
+              {t("requirement.view.draft.approve", "批准开工")}
             </Button>
-            <span className="text-[0.75rem] text-ink-3">卡可以直接改再批</span>
+            <span className="text-[0.75rem] text-ink-3">{t("requirement.view.draft.editHint", "卡可以直接改再批")}</span>
           </div>
         </>
       )}
@@ -1049,9 +1125,12 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
 
 /** A planner's case that this requirement is already covered, and the two answers to it. */
 function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="my-3 rounded-md border border-warn/40 bg-sunk px-3 py-2.5">
-      <div className="text-[0.8125rem] font-semibold text-warn">规划岗建议作废</div>
+      <div className="text-[0.8125rem] font-semibold text-warn">
+        {t("requirement.view.dropProposal.title", "规划岗建议作废")}
+      </div>
       <div className="my-1 break-words whitespace-pre-wrap text-[0.8125rem]">{body}</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button
@@ -1059,29 +1138,35 @@ function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: (
           size="sm"
           onClick={confirmThen(
             {
-              title: "作废这条需求",
-              body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
-              yes: "作废",
+              title: t("requirement.view.dropProposal.confirm.title", "作废这条需求"),
+              body: t("requirement.view.dropProposal.confirm.body", "{{name}} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。", {
+                name: g.name,
+              }),
+              yes: t("requirement.view.dropProposal.confirm.yes", "作废"),
               danger: true,
             },
             () => groupAction(g.id, "drop", { why: firstLine(body) }),
             refresh,
           )}
         >
-          确认作废
+          {t("requirement.view.dropProposal.confirmLabel", "确认作废")}
         </Button>
         <Button
           size="sm"
           onClick={async () => {
             await mutate(
               api.say.$post({
-                json: { group_id: g.id, body: "不是重复，也不算已经做完了 —— 接着拆。", as: "respec" },
+                json: {
+                  group_id: g.id,
+                  body: t("requirement.view.dropProposal.keepGoingMsg", "不是重复，也不算已经做完了 —— 接着拆。"),
+                  as: "respec",
+                },
               }),
             );
             refresh();
           }}
         >
-          不，接着做
+          {t("requirement.view.dropProposal.keepGoing", "不，接着做")}
         </Button>
       </div>
     </div>
@@ -1101,23 +1186,24 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
     refresh();
     return r.ok;
   };
+  const { t } = useTranslation();
   return (
     <div className="mt-4 border-t border-rule-soft pt-3">
       <Composer
         rows={2}
         projectId={projectId}
-        placeholder="补充要求，或者写退回理由。截图、设计稿直接粘，/ 插技能路径。⌘Enter 要求修改"
-        submit="要求修改"
+        placeholder={t("requirement.view.exits.placeholder", "补充要求，或者写退回理由。截图、设计稿直接粘，/ 插技能路径。⌘Enter 要求修改")}
+        submit={t("requirement.view.exits.submit", "要求修改")}
         onSubmit={(d) => send(d, "patch")}
         actions={({ text, attachments, busy, clear }) => (
           <>
             <SendAs
-              label="退回重拆"
-              tip="整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact"
+              label={t("requirement.view.exits.respec.label", "退回重拆")}
+              tip={t("requirement.view.exits.respec.tip", "整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact")}
               spec={{
-                title: "退回重新拆解",
-                body: "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。",
-                yes: "退回重拆",
+                title: t("requirement.view.exits.respec.title", "退回重新拆解"),
+                body: t("requirement.view.exits.respec.body", "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。"),
+                yes: t("requirement.view.exits.respec.yes", "退回重拆"),
               }}
               disabled={busy || !text}
               run={async () => (await send({ text, attachments }, "respec")) && clear()}
@@ -1126,12 +1212,14 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
                 one outweighs 批准开工, which is the answer this screen usually wants.
                 The confirm carries the weight instead. */}
             <SendAs
-              label="不做了"
-              tip="排队的 turn 全取消，占的路径交还给别的组"
+              label={t("requirement.view.exits.drop.label", "不做了")}
+              tip={t("requirement.view.exits.drop.tip", "排队的 turn 全取消，占的路径交还给别的组")}
               spec={{
-                title: "不做了",
-                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
-                yes: "不做了",
+                title: t("requirement.view.exits.drop.title", "不做了"),
+                body: t("requirement.view.exits.drop.body", "{{name}} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。", {
+                  name: g.name,
+                }),
+                yes: t("requirement.view.exits.drop.yes", "不做了"),
                 danger: true,
               }}
               disabled={busy}
@@ -1143,7 +1231,9 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
           </>
         )}
       />
-      <div className="mt-1.5 text-[0.75rem] text-ink-3">两个都发给 Dispatcher，它改完卡再回来给你批。</div>
+      <div className="mt-1.5 text-[0.75rem] text-ink-3">
+        {t("requirement.view.exits.note", "两个都发给 Dispatcher，它改完卡再回来给你批。")}
+      </div>
     </div>
   );
 }
@@ -1169,11 +1259,12 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
   // boss so much as looks at, and most are answered without wanting a draft. The
   // button is in the composer's own row, where the other writing aids are.
   const [draft, setDraft] = useState<{ busy: boolean; text?: string }>({ busy: false });
+  const { t } = useTranslation();
   const askDraft = () => {
     if (draft.busy) return;
     setDraft({ busy: true });
     void readApi(api.escalations[":id"].draft.$get({ param: { id: String(e.id) } }), AnswerDraftSchema).then((r) =>
-      setDraft({ busy: false, text: r?.text?.trim() || "没能拟出来，这条得你自己写。" }),
+      setDraft({ busy: false, text: r?.text?.trim() || t("requirement.view.ask.draftFailed", "没能拟出来，这条得你自己写。") }),
     );
   };
   return (
@@ -1188,9 +1279,11 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
           closed row is for. */}
       <AccordionTrigger className="block px-4 py-2.5 transition-colors hover:bg-accent-soft">
         <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-[0.6875rem]">
-          <span className="text-ink-2">{e.asker ?? "系统"}</span>
+          <span className="text-ink-2">{e.asker ?? t("requirement.view.ask.system", "系统")}</span>
           <span className="text-ink-3">{waited(e.created_at)}</span>
-          {e.severity === "blocker" && <span className="font-semibold text-bad">全组停着</span>}
+          {e.severity === "blocker" && (
+            <span className="font-semibold text-bad">{t("requirement.view.ask.blockerAll", "全组停着")}</span>
+          )}
         </div>
         {!open && <div className="mt-1 line-clamp-2 max-w-[72ch] text-[0.8125rem] text-ink-2">{nl(e.question)}</div>}
       </AccordionTrigger>
@@ -1207,18 +1300,18 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             verbatim and runs to fifteen — the decision is usually made by line
             three, with the rest there to check the reasoning against. */}
         <Asked body={e.question} />
-        {draft.busy && <Typing label="AI 在替你想" />}
+        {draft.busy && <Typing label={t("requirement.view.ask.aiThinking", "AI 在替你想")} />}
         {draft.text && (
           // On your side of the exchange, because that is what it is: a reply
           // nobody has sent. Dashed, so it cannot be mistaken for one that went.
           <div className="my-2 ml-auto max-w-[46rem] rounded-2xl rounded-tr-sm border border-dashed border-rule bg-paper px-3.5 py-2">
             <div className="flex items-baseline gap-2">
-              <Tip label="按这一组的黑板现算的，还没发给任何人。填进输入框后你可以改">
-                <Meta className="cursor-help">AI 替你拟的答复</Meta>
+              <Tip label={t("requirement.view.ask.draftTip", "按这一组的黑板现算的，还没发给任何人。填进输入框后你可以改")}>
+                <Meta className="cursor-help">{t("requirement.view.ask.draftLabel", "AI 替你拟的答复")}</Meta>
               </Tip>
               <span className="grow" />
               <Button size="sm" onClick={() => setSeed((p) => ({ n: p.n + 1, text: draft.text! }))}>
-                填进输入框
+                {t("requirement.view.ask.fillIn", "填进输入框")}
               </Button>
             </div>
             <div className="mt-1 whitespace-pre-wrap break-words text-[0.8125rem] text-ink-2">
@@ -1231,8 +1324,8 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             key={seed.n}
             initial={seed.text}
             rows={2}
-            placeholder="答复。发出去直接解开被阻塞的 agent。⌘Enter 发送"
-            submit="回答"
+            placeholder={t("requirement.view.ask.answerPlaceholder", "答复。发出去直接解开被阻塞的 agent。⌘Enter 发送")}
+            submit={t("requirement.view.ask.answerSubmit", "回答")}
             onSubmit={async ({ text, attachments }) => {
               const r = await mutate(
                 api.escalations[":id"].answer.$post({
@@ -1245,12 +1338,14 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             }}
             actions={({ text, busy }) => (
               <>
-                <Tip label="用这一组的黑板现算一份草稿，不会发出去">
+                <Tip label={t("requirement.view.ask.draftAction.tip", "用这一组的黑板现算一份草稿，不会发出去")}>
                   <Button size="sm" variant="quiet" disabled={draft.busy} onClick={askDraft}>
-                    {draft.text ? "再拟一份" : "让 AI 拟一份"}
+                    {draft.text
+                      ? t("requirement.view.ask.draftAction.again", "再拟一份")
+                      : t("requirement.view.ask.draftAction.first", "让 AI 拟一份")}
                   </Button>
                 </Tip>
-                <Tip label="技术选型和架构边界归 Architect 判断，它答不了会自己回来">
+                <Tip label={t("requirement.view.ask.delegate.tip", "技术选型和架构边界归 Architect 判断，它答不了会自己回来")}>
                   <Button
                     size="sm"
                     onClick={async () => {
@@ -1263,7 +1358,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                       refresh();
                     }}
                   >
-                    转 Architect
+                    {t("requirement.view.ask.delegate.label", "转 Architect")}
                   </Button>
                 </Tip>
                 {/* The commonest blocker here is one no answer resolves — a config file
@@ -1273,7 +1368,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
 
                   Not `go`: two filled violet buttons side by side is two primaries,
                   and answering is the primary here. */}
-                <Tip label="开成一条需求去做，这一组等它落地后自动继续">
+                <Tip label={t("requirement.view.ask.toRequirement.tip", "开成一条需求去做，这一组等它落地后自动继续")}>
                   <Button
                     size="sm"
                     disabled={busy}
@@ -1288,7 +1383,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                       if (r.ok) toast.success(r.text);
                     }}
                   >
-                    开成需求
+                    {t("requirement.view.ask.toRequirement.label", "开成需求")}
                   </Button>
                 </Tip>
               </>
@@ -1320,6 +1415,7 @@ function Asked({ body, className, tone }: { body: string; className?: string; to
  * Reference, not work.
  */
 function Held({ rows }: { rows: Escalation[] }) {
+  const { t } = useTranslation();
   return (
     <div className="overflow-hidden rounded-lg border border-rule-soft">
       {rows.map((e) => (
@@ -1328,7 +1424,7 @@ function Held({ rows }: { rows: Escalation[] }) {
         // writing back are the whole content.
         <div key={e.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
           <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-[0.6875rem] text-ink-3">
-            <span className="text-ink-2">{e.asker ?? "系统"}</span>
+            <span className="text-ink-2">{e.asker ?? t("requirement.view.held.system", "系统")}</span>
             <span>{waited(e.created_at)}</span>
           </div>
           <Asked body={e.question} className="mt-1.5" tone="text-ink-2" />

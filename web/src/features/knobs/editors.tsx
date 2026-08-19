@@ -8,6 +8,7 @@
  */
 import { Fragment, useEffect, useState } from "react";
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "../../ui/cn";
 import { Combobox } from "../../ui/combobox";
 import { Field, FieldContent, FieldTitle } from "../../ui/field";
@@ -112,6 +113,7 @@ export function Amount<U extends string>({
 }) {
   // Held locally so that changing the unit keeps the digits already typed, and
   // so a value the server snapped to a different unit re-splits on the way back.
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(String(n));
   useEffect(() => setDraft(String(n)), [n, unit]);
 
@@ -147,7 +149,7 @@ export function Amount<U extends string>({
       />
       {/* One unit is not a choice, it is a suffix. */}
       {units.length === 1 ? (
-        <Meta>{units[0]}</Meta>
+        <Meta>{t(`knobs.units.${unit}`, unit)}</Meta>
       ) : (
         <Segments
           value={unit}
@@ -161,12 +163,12 @@ export function Amount<U extends string>({
             const selected = units.find((candidate) => candidate === wanted);
             if (selected !== undefined) send(draft, selected);
           }}
-          aria-label={`${label} 的单位`}
+          aria-label={t("settings.knobs.unitAria", { label })}
           className="shrink-0"
         >
           {units.filter(Boolean).map((u) => (
             <Segment key={u} value={u}>
-              {u}
+              {t(`knobs.units.${u}`, u)}
             </Segment>
           ))}
         </Segments>
@@ -218,14 +220,15 @@ function ModelPick({
   disabled?: boolean;
   onCommit: (v: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Combobox
       free
       {...(disabled !== undefined ? { disabled } : {})}
       value={value}
       options={options}
-      placeholder="模型 id"
-      empty="还没有别的模型，直接写就行"
+      placeholder={t("settings.knobs.modelIdPlaceholder")}
+      empty={t("settings.knobs.noOtherModels")}
       onCommit={onCommit}
     />
   );
@@ -275,10 +278,17 @@ export function Box({
 }
 
 function RemoveRow({ name, onRemove }: { name: string; onRemove?: () => void }) {
+  const { t } = useTranslation();
   if (!onRemove) return <span className="w-7 shrink-0" />;
   return (
-    <Tip label="删掉这一行">
-      <Button variant="quiet" size="sm" aria-label={`删掉 ${name}`} className="shrink-0" onClick={onRemove}>
+    <Tip label={t("settings.knobs.removeRowTip")}>
+      <Button
+        variant="quiet"
+        size="sm"
+        aria-label={t("settings.knobs.removeRowAria", { name })}
+        className="shrink-0"
+        onClick={onRemove}
+      >
         <X className="size-3" />
       </Button>
     </Tip>
@@ -310,6 +320,7 @@ export function Pairs({
   onRefuse: (why: string, at: string) => void;
   onClear: () => void;
 }) {
+  const { t } = useTranslation();
   const entries = Object.entries(map);
   const show = textOf;
   // A number gets the same 9rem a number gets on every other row of this page;
@@ -317,7 +328,7 @@ export function Pairs({
   const vw = kind === "text" ? "" : "w-[9rem] flex-none";
   const commit = (k: string, raw: string) => {
     if (kind === "text") return onWrite({ ...map, [k]: raw });
-    if (!/^\d+$/.test(raw)) return onRefuse("要一个整数", k);
+    if (!/^\d+$/.test(raw)) return onRefuse(t("settings.knobs.pairIntError"), k);
     const n = Number(raw);
     onWrite({ ...map, [k]: n });
   };
@@ -328,11 +339,11 @@ export function Pairs({
         <div key={k} className="flex items-center gap-1.5">
           <Box
             value={k}
-            aria-label={`${k} 的名字`}
+            aria-label={t("settings.knobs.pairKeyAria", { key: k })}
             className="w-[13rem] flex-none"
             onCommit={(next) => {
               const name = next.trim();
-              if (!name) return onRefuse("名字不能空着，要删就按右边的 ×", k);
+              if (!name) return onRefuse(t("settings.knobs.pairKeyEmptyError"), k);
               // Rebuilt in place rather than deleted and re-added, so a rename
               // does not send the row to the bottom of the list mid-edit.
               onWrite(Object.fromEntries(entries.map(([ek, ev]) => [ek === k ? name : ek, ev])));
@@ -355,7 +366,7 @@ export function Pairs({
           key={`add-${entries.length}`}
           value=""
           placeholder={keyPh}
-          aria-label="加一项"
+          aria-label={t("settings.knobs.addRowAria")}
           className="w-[13rem] flex-none"
           // Same reason as the window table: an integer knob here is
           // `z.number().int().positive()`, so a row born at 0 is a row the
@@ -365,7 +376,7 @@ export function Pairs({
             if (name) onWrite({ ...map, [name]: kind === "text" ? "" : 1 });
           }}
         />
-        <Meta>填个名字就多一行</Meta>
+        <Meta>{t("settings.knobs.addRowHint")}</Meta>
       </div>
     </div>
   );
@@ -451,6 +462,7 @@ export function Windows({
   src: ModelSources;
   onWrite: (v: Json) => void;
 }) {
+  const { t } = useTranslation();
   // `default` first and always present: it is the window every model without a
   // row falls back to, and deleting it drops all of them to `MIN_CONTEXT` — a
   // fleet-wide rotation nothing reports. Sorted, because the fallback belongs
@@ -502,7 +514,7 @@ export function Windows({
             }}
           />
         </div>
-        <Meta>{free.length ? "选一个模型就多一行" : "填个模型 id 就多一行"}</Meta>
+        <Meta>{free.length ? t("settings.knobs.pickModelHint") : t("settings.knobs.typeModelHint")}</Meta>
       </div>
     </div>
   );
@@ -598,11 +610,12 @@ export function Embedding({
   onMode: (v: string) => void;
   onModel: (v: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex w-full items-center gap-2">
       <Segments value={mode} onValueChange={onMode}>
-        <Segment value="local">本地</Segment>
-        <Segment value="remote">远程</Segment>
+        <Segment value="local">{t("settings.knobs.embeddingLocal")}</Segment>
+        <Segment value="remote">{t("settings.knobs.embeddingRemote")}</Segment>
       </Segments>
       <ModelPick value={model} options={mode === "local" ? LOCAL_EMBEDDINGS : []} onCommit={onModel} />
     </div>
@@ -615,13 +628,17 @@ export function Embedding({
  * A button rather than a prompt on load: asking before the page has said
  * anything worth being notified about gets 拒绝, and that decision is sticky.
  */
-/** What each answer means, and where the reader has to go to change it. */
-const NOTIFY_SAID: Record<NotifyState, string> = {
-  unsupported: "这个浏览器不支持",
-  granted: "浏览器已放行。面板在后台也会弹，浏览器整个关掉才收不到——那时重新打开会补上。",
-  denied: "被浏览器拒了。要开的话在地址栏左边的站点设置里改，然后刷新。",
+/**
+ * What each answer means, and where the reader has to go to change it.
+ *
+ * A function rather than a static record, called from inside `Permission`'s own
+ * render: the text has to track whichever locale is live right now, not
+ * whichever one was live when this module first loaded.
+ */
+const notifySaid = (state: NotifyState, t: (key: string) => string): string => {
   // The only state with anything left to press.
-  ask: "",
+  if (state === "ask") return "";
+  return t(`settings.knobs.notify.${state}`);
 };
 
 /**
@@ -634,20 +651,21 @@ const NOTIFY_SAID: Record<NotifyState, string> = {
  * ungranted permission already does.
  */
 export function Permission() {
+  const { t } = useTranslation();
   const supported = typeof Notification !== "undefined";
   const [state, setState] = useState(supported ? Notification.permission : "denied");
   const [want, setWant] = useState(notifyWanted);
-  const said = NOTIFY_SAID[notifyState(supported, state)];
+  const said = notifySaid(notifyState(supported, state), t);
   return (
     <>
       <Field aria-labelledby="notify-perm">
-        <FieldTitle id="notify-perm">浏览器许可</FieldTitle>
+        <FieldTitle id="notify-perm">{t("settings.knobs.notifyPermTitle")}</FieldTitle>
         <FieldContent>
           {said ? (
             <Meta>{said}</Meta>
           ) : (
             <Button size="sm" onClick={() => void Notification.requestPermission().then(setState)}>
-              允许通知
+              {t("settings.knobs.notifyAllowButton")}
             </Button>
           )}
         </FieldContent>
@@ -657,7 +675,7 @@ export function Permission() {
           one thing left to press. */}
       {state === "granted" && (
         <Field aria-labelledby="notify-want">
-          <FieldTitle id="notify-want">弹到桌面</FieldTitle>
+          <FieldTitle id="notify-want">{t("settings.knobs.notifyDesktopTitle")}</FieldTitle>
           <FieldContent className="flex-col items-start gap-1">
             <Switch
               aria-labelledby="notify-want"
@@ -668,7 +686,7 @@ export function Permission() {
                 setNotifyWanted(next);
               }}
             />
-            <Meta>关掉之后仍然会在页面里提示，标签页标题也照样带计数——只是不再弹出窗口。</Meta>
+            <Meta>{t("settings.knobs.notifyDesktopHint")}</Meta>
           </FieldContent>
         </Field>
       )}

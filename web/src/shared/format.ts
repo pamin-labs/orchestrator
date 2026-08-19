@@ -1,3 +1,5 @@
+import i18n from "../i18n";
+
 /**
  * Token counts, in the unit that fits.
  *
@@ -49,5 +51,9 @@ export const duration = (ms: number) => {
 /** How long something has been waiting, in the coarsest unit that still says it. */
 export const waited = (ms: number) => {
   const m = Math.round((Date.now() - ms) / 60000);
-  return m < 1 ? "刚刚" : m < 60 ? `等待 ${m}m` : `等待 ${Math.round(m / 60)}h`;
+  return m < 1
+    ? i18n.t("shared.format.justNow", "刚刚")
+    : m < 60
+      ? i18n.t("shared.format.waitingMinutes", "等待 {{m}}m", { m })
+      : i18n.t("shared.format.waitingHours", "等待 {{h}}h", { h: Math.round(m / 60) });
 };

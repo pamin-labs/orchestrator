@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { homeRows, projectRow } from "./model";
 import type { State } from "../../shared/api";
 import { cn } from "../../ui/cn";
@@ -31,6 +32,7 @@ export function Home({
   onAdd: () => void;
   refresh: () => void;
 }) {
+  const { t } = useTranslation();
   // 都处理完了 reports on work that got processed. With no requirement anywhere
   // there is none, and a green line claiming otherwise is the first thing a fresh
   // install reads.
@@ -39,7 +41,7 @@ export function Home({
     <>
       {anyWork && <Queue st={st} projectId={null} onOpen={onOpen} refresh={refresh} />}
       <div className="max-w-[44rem]">
-        <H2 className={cn(anyWork && "mt-9")}>项目</H2>
+        <H2 className={cn(anyWork && "mt-9")}>{t("home.view.title", "项目")}</H2>
         <div className="flex flex-col gap-2.5">
           {homeRows(st).map((p) => {
             const { n, state, bits, live, meta } = projectRow(st, p.id);
@@ -77,14 +79,16 @@ export function Home({
                     !state.fresh && <div className="mt-1 text-[0.75rem] text-ink-3">{state.zh}</div>
                   )}
                   {live.length > 0 && (
-                    <div className="mt-1.5 truncate text-[0.75rem] text-ink-2">在跑：{live.join("、")}</div>
+                    <div className="mt-1.5 truncate text-[0.75rem] text-ink-2">
+                      {t("home.view.running", "在跑：{{names}}", { names: live.join("、") })}
+                    </div>
                   )}
                 </div>
                 {state.fresh ? (
                   // Nothing has ever been asked of this project, so the row is where to
                   // ask. `relative` puts it above the stretched name, not on it.
                   <Button className="relative" onClick={() => onNew(p.id)}>
-                    ＋ 新需求
+                    {t("home.view.newRequirement", "＋ 新需求")}
                   </Button>
                 ) : (
                   meta.length > 0 && <Meta className="whitespace-nowrap">{meta.join(" · ")}</Meta>
@@ -95,7 +99,7 @@ export function Home({
         </div>
         {/* Adding a project happens once. It does not outrank the rows it adds to. */}
         <Button variant="quiet" className="mt-2.5" onClick={onAdd}>
-          ＋ 添加项目
+          {t("home.view.addProject", "＋ 添加项目")}
         </Button>
       </div>
     </>

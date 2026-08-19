@@ -1,4 +1,5 @@
 import type { Usage } from "../../shared/api";
+import i18n from "../../i18n";
 
 const WARN_AT = 80;
 
@@ -12,10 +13,10 @@ const WARN_AT = 80;
  */
 const STALE_MS = 60 * 60_000;
 
-const WHY: Record<string, string> = {
-  rate_limited: "读用量被限流了，过一会自己恢复",
-  unreachable: "连不上用量接口",
-  no_windows: "这个账号没有窗口",
+const WHY: Record<string, { key: string; text: string }> = {
+  rate_limited: { key: "rateLimited", text: "读用量被限流了，过一会自己恢复" },
+  unreachable: { key: "unreachable", text: "连不上用量接口" },
+  no_windows: { key: "noWindows", text: "这个账号没有窗口" },
 };
 
 /** Ring geometry. Hand-drawn at 15px, so the arc is a dash pattern, not a chart. */
@@ -27,11 +28,11 @@ export type RingInput = { v?: number; at?: number; read?: number; stale: boolean
 export function until(unixSecs?: number): string {
   if (!unixSecs) return "";
   const ms = unixSecs * 1000 - Date.now();
-  if (ms <= 0) return "即将重置";
+  if (ms <= 0) return i18n.t("usage.model.resettingSoon", "即将重置");
   const min = Math.floor(ms / 60_000);
   const h = Math.floor(min / 60);
   const d = Math.floor(h / 24);
-  if (d >= 1) return `${d}天${h % 24}h`;
+  if (d >= 1) return i18n.t("usage.model.daysHours", "{{d}}天{{h}}h", { d, h: h % 24 });
   return h >= 1 ? `${h}h${min % 60}m` : `${min}m`;
 }
 
@@ -51,9 +52,12 @@ export const ringArc = (v?: number) => (v === undefined ? null : `${(Math.min(10
  * not been refreshed" stop being the same sentence.
  */
 export function ringTip(p: RingInput): string {
-  if (p.v === undefined) return WHY[p.why ?? ""] ?? "读不到";
+  if (p.v === undefined) {
+    const entry = WHY[p.why ?? ""];
+    return entry ? i18n.t(`usage.model.why.${entry.key}`, entry.text) : i18n.t("usage.model.unreadable", "读不到");
+  }
   const age = p.read ? Math.round((Date.now() - p.read) / 60_000) : 0;
-  return `${Math.round(p.v)}%${p.at ? ` · ${until(p.at)}后重置` : ""}${age >= 15 ? ` · ${age}m 前` : ""}`;
+  return `${Math.round(p.v)}%${p.at ? ` · ${i18n.t("usage.model.resetsAfter", "{{t}}后重置", { t: until(p.at) })}` : ""}${age >= 15 ? ` · ${i18n.t("usage.model.minutesAgo", "{{age}}m 前", { age })}` : ""}`;
 }
 
 /**

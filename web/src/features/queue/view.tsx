@@ -1,4 +1,5 @@
 import { useState, useTransition } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { Button, LinkButton } from "../../ui/button";
 import { Tip } from "../../ui/tooltip";
@@ -11,6 +12,7 @@ import { KIND_ZH } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { foldQueueItems, queueClusters, queueItems, type QueueCluster, type QueueItem } from "./model";
+import i18n from "../../i18n";
 
 /**
  * Everything waiting on the boss, ordered by what ignoring it costs.
@@ -37,12 +39,13 @@ export function Queue({
   refresh: () => void;
 }) {
   const items = queueItems(st, projectId);
+  const { t } = useTranslation();
 
   // Was the label plus an explanation of the label: a sentence naming the four
   // things that would refill it and promising a notification. A queue that fills
   // itself does not need a paragraph saying it will.
   if (!items.length) {
-    return <div className="text-[0.8125rem] text-ok">都处理完了</div>;
+    return <div className="text-[0.8125rem] text-ok">{t("queue.view.allDone", "都处理完了")}</div>;
   }
 
   const blocks = queueClusters(items).map((cluster) => ({
@@ -67,13 +70,14 @@ export function Queue({
  */
 function Paged({ blocks }: { blocks: { node: React.ReactNode }[] }) {
   const { page, rest, more } = usePaged(blocks, 20);
+  const { t } = useTranslation();
   return (
     <div>
       {page.map((b) => b.node)}
       {rest > 0 && (
         <div className="border-t border-rule-soft px-2 py-2">
           <Button variant="quiet" size="sm" onClick={more}>
-            还有 {rest} 条需求
+            {t("queue.view.paged.more", "还有 {{rest}} 条需求", { rest })}
           </Button>
         </div>
       )}
@@ -182,9 +186,14 @@ function ClusterIdentity({ st, c, standing, hard }: { st: State; c: QueueCluster
   );
 }
 
-const clusterName = (st: State, grpId: number, standing: boolean) => (standing ? "常驻岗" : groupName(st, grpId));
-const clusterWaiting = (hard: number, total: number) => (hard > 0 ? `${hard} 条卡着全组` : `${total} 条等你`);
-const clusterTokens = (tokens: number | undefined) => (tokens ? ` · ${K(tokens)} tokens` : "");
+const clusterName = (st: State, grpId: number, standing: boolean) =>
+  standing ? i18n.t("queue.view.cluster.standing", "常驻岗") : groupName(st, grpId);
+const clusterWaiting = (hard: number, total: number) =>
+  hard > 0
+    ? i18n.t("queue.view.cluster.waitingHard", "{{n}} 条卡着全组", { n: hard })
+    : i18n.t("queue.view.cluster.waiting", "{{n}} 条等你", { n: total });
+const clusterTokens = (tokens: number | undefined) =>
+  tokens ? ` · ${i18n.t("queue.view.cluster.tokens", "{{n}} tokens", { n: K(tokens) })}` : "";
 
 function ClusterTickets({
   folded,
@@ -197,6 +206,7 @@ function ClusterTickets({
   refresh: () => void;
   standing: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex min-w-0 flex-wrap items-stretch gap-1.5 max-[60rem]:col-span-full">
       {shown.map(({ item, n }) => (
@@ -204,7 +214,7 @@ function ClusterTickets({
       ))}
       {folded.length > shown.length && (
         <span className="self-center font-mono text-[0.6875rem] text-ink-3">
-          还有 {folded.length - shown.length} 条
+          {t("queue.view.ticket.more", "还有 {{n}} 条", { n: folded.length - shown.length })}
         </span>
       )}
     </div>
@@ -226,7 +236,8 @@ function ClusterTickets({
  */
 function MergeAction({ items }: { items: QueueItem[] }) {
   const href = items.find((item) => item.href)?.href;
-  return href ? <LinkButton href={href}>去合并 PR ↗</LinkButton> : null;
+  const { t } = useTranslation();
+  return href ? <LinkButton href={href}>{t("queue.view.mergeAction", "去合并 PR ↗")}</LinkButton> : null;
 }
 
 function Ticket({
@@ -297,6 +308,7 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [busy, startTransition] = useTransition();
+  const { t } = useTranslation();
   const send = (answer: string) => {
     // The re-entry guard stays: `startTransition` starts a second action rather
     // than refusing one, and `orch ask-boss` unblocks on the first answer — a
@@ -310,16 +322,17 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
     });
   };
   if (fyi) {
+    const gotIt = t("queue.view.reply.gotIt", "知道了");
     return (
-      <Button variant="go" disabled={busy} onClick={() => send("知道了")}>
-        知道了
+      <Button variant="go" disabled={busy} onClick={() => send(gotIt)}>
+        {gotIt}
       </Button>
     );
   }
   if (!open)
     return (
       <Button variant="go" onClick={() => setOpen(true)}>
-        回答
+        {t("queue.view.reply.open", "回答")}
       </Button>
     );
   return (
@@ -336,11 +349,11 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
             () => send(text),
           )
         }
-        placeholder="回答…  ⌘↵ 发送"
+        placeholder={t("queue.view.reply.placeholder", "回答…  ⌘↵ 发送")}
         className="w-[20rem] resize-none rounded-md border border-rule bg-paper px-2 py-1.5 text-[0.8125rem] outline-none focus:border-accent"
       />
       <Button variant="go" disabled={busy || !text.trim()} onClick={() => send(text)}>
-        发送
+        {t("queue.view.reply.send", "发送")}
       </Button>
     </span>
   );
@@ -382,11 +395,12 @@ function Draft({ escId, onUse }: { escId: number; onUse: (t: string) => void }) 
         await readApi(api.escalations[":id"].draft.$get({ param: { id: String(escId) } }), AnswerDraftSchema)
       )?.text?.trim() ?? "",
   });
+  const { t } = useTranslation();
   if (!text) return null;
   return (
     <Tip label={text}>
       <Button size="sm" onClick={() => onUse(text)}>
-        用草稿
+        {t("queue.view.draft.use", "用草稿")}
       </Button>
     </Tip>
   );

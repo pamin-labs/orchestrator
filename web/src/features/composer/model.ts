@@ -1,4 +1,5 @@
 import { z } from "zod";
+import i18n from "../../i18n";
 
 /** Not exported: the derived types are the contract, this is how they are built. */
 const AttachedSchema = z.object({
@@ -84,7 +85,12 @@ export const skillsForSlash = (skills: Skill[] | null, slash: Slash | null): Ski
         (sk) => !slash.q || sk.name.toLowerCase().includes(slash.q) || sk.path.toLowerCase().includes(slash.q),
       );
 
-const kindOf = (type: string) => (type === "inode/directory" ? "目录" : type.startsWith("image/") ? "图" : "附件");
+const kindOf = (type: string) =>
+  type === "inode/directory"
+    ? i18n.t("composer.model.kind.dir", "目录")
+    : type.startsWith("image/")
+      ? i18n.t("composer.model.kind.image", "图")
+      : i18n.t("composer.model.kind.attachment", "附件");
 
 /**
  * A name for each file, written into the text where it was added.

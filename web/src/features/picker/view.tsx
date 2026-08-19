@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button, LinkButton } from "../../ui/button";
 import { Badge } from "../../ui/badge";
 import { Menu, MenuItem } from "../../ui/menu";
@@ -49,12 +50,13 @@ function Glyph({ mark, accent }: { mark: string; accent: boolean }) {
 
 /** Picking attachments: the arrow walks in, the name toggles the tick. */
 function PickBrowseRow(props: RowProps) {
+  const { t } = useTranslation();
   return (
     <div className={cn(props.row, "hover:bg-sunk")}>
       {props.isDir ? (
         <button
           type="button"
-          aria-label={`进入 ${props.entry.name}`}
+          aria-label={t("picker.view.browseRow.enter", "进入 {{name}}", { name: props.entry.name })}
           onClick={() => props.load(props.entry.path)}
           className="cursor-pointer font-mono text-[0.75rem] text-ink-3 hover:text-accent"
         >
@@ -113,10 +115,13 @@ function BrowseRows(props: {
   onRow: (e: Entry, isDir: boolean) => boolean;
   load: (path: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="max-h-[46vh] overflow-y-auto">
       {props.err && <div className="p-3.5 text-[0.75rem] text-bad">{props.err}</div>}
-      {props.here && !props.rows.length && <div className="p-3.5 text-[0.75rem] text-ink-3">空目录</div>}
+      {props.here && !props.rows.length && (
+        <div className="p-3.5 text-[0.75rem] text-ink-3">{t("picker.view.browseRows.empty", "空目录")}</div>
+      )}
       {props.rows.map(([entry, isDir]) => (
         <BrowseRow
           key={entry.path}
@@ -267,16 +272,23 @@ function RepoHeader({
   here: RepoList["installations"][number] | undefined;
   selectInstallation: (id: number) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-baseline gap-2 border-b border-rule p-3">
       {title}
-      <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">点一行就添加</span>
+      <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">
+        {t("picker.view.repoHeader.hint", "点一行就添加")}
+      </span>
       {data && data.installations.length > 1 ? (
-        <Menu label={here ? here.account : "选账号"}>
+        <Menu label={here ? here.account : t("picker.view.repoHeader.pickAccount", "选账号")}>
           {data.installations.map((installation) => (
             <MenuItem
               key={installation.id}
-              hint={installation.kind === "Organization" ? "组织" : "个人账号"}
+              hint={
+                installation.kind === "Organization"
+                  ? t("picker.view.repoHeader.org", "组织")
+                  : t("picker.view.repoHeader.personal", "个人账号")
+              }
               onSelect={() => selectInstallation(installation.id)}
             >
               {installation.account}
@@ -291,11 +303,12 @@ function RepoHeader({
 }
 
 function RepoError({ error, onSettings }: { error: string; onSettings: () => void }) {
+  const { t } = useTranslation();
   if (!error) return null;
   return (
     <div className="space-y-2 border-b border-rule-soft p-3.5">
       <p className="text-[0.8125rem] text-bad">{error}</p>
-      <Button onClick={onSettings}>去设置看 GitHub</Button>
+      <Button onClick={onSettings}>{t("picker.view.repoError.goToSettings", "去设置看 GitHub")}</Button>
     </div>
   );
 }
@@ -314,27 +327,33 @@ function RepoLoading({ data, error }: { data: RepoList | null; error: string }) 
 }
 
 function RepoInstallEmpty({ data, empty }: { data: RepoList | null; empty: boolean | null }) {
+  const { t } = useTranslation();
   if (!empty) return null;
   return (
     <div className="space-y-2 p-3.5 text-[0.8125rem] text-ink-2">
-      <p>连上了，但这个 GitHub App 还没装到任何账号上，所以一个仓库也看不见。</p>
+      <p>{t("picker.view.repoInstallEmpty.body", "连上了，但这个 GitHub App 还没装到任何账号上，所以一个仓库也看不见。")}</p>
       {data?.installUrl ? (
-        <LinkButton href={data.installUrl}>去 GitHub 装上</LinkButton>
+        <LinkButton href={data.installUrl}>{t("picker.view.repoInstallEmpty.install", "去 GitHub 装上")}</LinkButton>
       ) : (
-        <p className="text-[0.75rem] text-ink-3">去 GitHub → 这个 App → Install App，选要给它看的仓库。</p>
+        <p className="text-[0.75rem] text-ink-3">
+          {t("picker.view.repoInstallEmpty.hint", "去 GitHub → 这个 App → Install App，选要给它看的仓库。")}
+        </p>
       )}
     </div>
   );
 }
 
 function RepoListEmpty({ data, account }: { data: RepoList | null; account: string | undefined }) {
+  const { t } = useTranslation();
   if (!data) return null;
   if (!data.installations.length) return null;
   if (data.repos.length) return null;
   return (
     <div className="space-y-2 p-3.5 text-[0.8125rem] text-ink-2">
-      <p>{account} 下面，这个 App 一个仓库都看不到。装的时候可能只勾了几个。</p>
-      {data.installUrl && <LinkButton href={data.installUrl}>去改它能看哪些</LinkButton>}
+      <p>{t("picker.view.repoListEmpty.body", "{{account}} 下面，这个 App 一个仓库都看不到。装的时候可能只勾了几个。", { account })}</p>
+      {data.installUrl && (
+        <LinkButton href={data.installUrl}>{t("picker.view.repoListEmpty.change", "去改它能看哪些")}</LinkButton>
+      )}
     </div>
   );
 }
@@ -379,6 +398,7 @@ function RepoEdge({ marks }: { marks: ReturnType<typeof repoRow> }) {
 
 function RepoItem({ repo, busy, select }: { repo: Repo; busy: string; select: (repo: Repo) => void }) {
   const marks = repoRow(repo, busy);
+  const { t } = useTranslation();
   return (
     <Command.Item
       value={repo.fullName}
@@ -391,7 +411,7 @@ function RepoItem({ repo, busy, select }: { repo: Repo; busy: string; select: (r
     >
       <span className="flex min-w-0 items-baseline gap-2">
         <span className="truncate font-medium">{marks.name}</span>
-        {repo.private && <Badge>私有</Badge>}
+        {repo.private && <Badge>{t("picker.view.repoItem.private", "私有")}</Badge>}
       </span>
       <RepoEdge marks={marks} />
     </Command.Item>
@@ -400,9 +420,14 @@ function RepoItem({ repo, busy, select }: { repo: Repo; busy: string; select: (r
 
 function RepositoryList({ data, busy, select }: { data: RepoList | null; busy: string; select: (repo: Repo) => void }) {
   const repos = data?.repos ?? [];
+  const { t } = useTranslation();
   return (
     <Command.List>
-      {!!repos.length && <Command.Empty className="p-3.5 text-[0.75rem] text-ink-3">没有匹配的</Command.Empty>}
+      {!!repos.length && (
+        <Command.Empty className="p-3.5 text-[0.75rem] text-ink-3">
+          {t("picker.view.repositoryList.noMatch", "没有匹配的")}
+        </Command.Empty>
+      )}
       {repos.map((repo) => (
         <RepoItem key={repo.fullName} repo={repo} busy={busy} select={select} />
       ))}
@@ -411,13 +436,16 @@ function RepositoryList({ data, busy, select }: { data: RepoList | null; busy: s
 }
 
 function RepoFooter({ data, onCancel }: { data: RepoList | null; onCancel: (() => void) | undefined }) {
+  const { t } = useTranslation();
   if (!onCancel && !data?.repos.length) return null;
   return (
     <div className="flex shrink-0 items-center gap-2 border-t border-rule p-3">
       <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">
-        {data?.repos.length ? `${data.repos.length} 个仓库，最近动过的在前` : ""}
+        {data?.repos.length
+          ? t("picker.view.repoFooter.count", "{{n}} 个仓库，最近动过的在前", { n: data.repos.length })
+          : ""}
       </span>
-      {onCancel && <Button onClick={onCancel}>取消</Button>}
+      {onCancel && <Button onClick={onCancel}>{t("picker.view.repoFooter.cancel", "取消")}</Button>}
     </div>
   );
 }
@@ -439,6 +467,7 @@ function Repos({
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
   const [q, setQ] = useState("");
+  const { t } = useTranslation();
 
   const load = async (installation?: number) => {
     const want = installation ?? lastInstallation;
@@ -474,7 +503,7 @@ function Repos({
   };
 
   return (
-    <Command label="选择仓库" className="flex min-h-0 flex-col">
+    <Command label={t("picker.view.repos.label", "选择仓库")} className="flex min-h-0 flex-col">
       <RepoHeader
         title={title}
         data={d}
@@ -488,7 +517,7 @@ function Repos({
         <Command.Input
           value={q}
           onValueChange={setQ}
-          placeholder="筛一下，或者直接打名字"
+          placeholder={t("picker.view.repos.placeholder", "筛一下，或者直接打名字")}
           className="w-full border-b border-rule-soft bg-transparent px-3.5 py-2.5 text-[0.875rem]
                      text-ink placeholder:text-ink-3 focus:outline-none"
         />
@@ -517,10 +546,15 @@ export function Picker({
     onOpenChange(false);
     onAdded(id);
   };
+  const { t } = useTranslation();
   return (
     <Shell open={open} onOpenChange={onOpenChange}>
       <Repos
-        title={<Dialog.Title className="shrink-0 font-display text-[1.0625rem] font-semibold">选择仓库</Dialog.Title>}
+        title={
+          <Dialog.Title className="shrink-0 font-display text-[1.0625rem] font-semibold">
+            {t("picker.view.picker.title", "选择仓库")}
+          </Dialog.Title>
+        }
         onAdded={leave}
         onOpenProject={leave}
         onSettings={() => {
@@ -540,10 +574,15 @@ export function FirstProject({
   onAdded: (projectId: number) => void;
   onSettings: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="max-w-[40rem] overflow-hidden rounded-xl border border-rule bg-paper">
       <Repos
-        title={<h2 className="shrink-0 font-display text-[1.0625rem] font-semibold">添加第一个项目</h2>}
+        title={
+          <h2 className="shrink-0 font-display text-[1.0625rem] font-semibold">
+            {t("picker.view.firstProject.title", "添加第一个项目")}
+          </h2>
+        }
         onAdded={onAdded}
         onOpenProject={onAdded}
         onSettings={onSettings}
@@ -565,11 +604,12 @@ export function FilePicker({
   useEffect(() => {
     if (open) setSel([]);
   }, [open]);
+  const { t } = useTranslation();
   return (
     <Shell open={open} onOpenChange={onOpenChange}>
       <Browse
-        title="选附件"
-        hint="文件和目录都行，点名字进目录"
+        title={t("picker.view.filePicker.title", "选附件")}
+        hint={t("picker.view.filePicker.hint", "文件和目录都行，点名字进目录")}
         files
         pick
         chosen={(p) => sel.includes(p)}
@@ -580,9 +620,11 @@ export function FilePicker({
         footer={() => (
           <>
             <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">
-              {sel.length ? `选了 ${sel.length} 个` : "还没选"}
+              {sel.length
+                ? t("picker.view.filePicker.selected", "选了 {{n}} 个", { n: sel.length })
+                : t("picker.view.filePicker.noneSelected", "还没选")}
             </span>
-            <Button onClick={() => onOpenChange(false)}>取消</Button>
+            <Button onClick={() => onOpenChange(false)}>{t("picker.view.filePicker.cancel", "取消")}</Button>
             <Button
               variant="go"
               disabled={!sel.length}
@@ -591,7 +633,7 @@ export function FilePicker({
                 onOpenChange(false);
               }}
             >
-              加进来
+              {t("picker.view.filePicker.add", "加进来")}
             </Button>
           </>
         )}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import parseDiff from "parse-diff";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { Group, Panel, Separator } from "react-resizable-panels";
@@ -200,6 +201,7 @@ function DiffFile({
   head: (element: HTMLDivElement | null) => void;
   onExpand: () => void;
 }) {
+  const { t } = useTranslation();
   const name = nameOf(file);
   const rows = file.chunks.flatMap((chunk): Row[] => [{ gap: chunk.content }, ...rowsOf(chunk)]);
   const shown = expanded ? rows : rows.slice(0, 400);
@@ -231,7 +233,7 @@ function DiffFile({
       {rows.length > shown.length && (
         <div className="border-y border-rule-soft bg-sunk px-3.5 py-1">
           <Button variant="quiet" size="sm" onClick={onExpand}>
-            还有 {rows.length - shown.length} 行
+            {t("diff.view.moreLines", "还有 {{n}} 行", { n: rows.length - shown.length })}
           </Button>
         </div>
       )}
@@ -240,6 +242,7 @@ function DiffFile({
 }
 
 export function DiffView({ diff, truncated }: { diff: string; truncated?: boolean }) {
+  const { t } = useTranslation();
   const files = useMemo(() => parseDiff(diff), [diff]);
   const [here, setHere] = useState(0);
   const [open, setOpen] = useState<Set<number>>(new Set());
@@ -309,7 +312,9 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
             />
           ))}
           {truncated && (
-            <Meta className="block px-3.5 py-2">改动超过 400k 字符，尾部没取回来，剩下的在沙盒的 checkout 里</Meta>
+            <Meta className="block px-3.5 py-2">
+              {t("diff.view.truncated", "改动超过 400k 字符，尾部没取回来，剩下的在沙盒的 checkout 里")}
+            </Meta>
           )}
         </div>
       </Panel>

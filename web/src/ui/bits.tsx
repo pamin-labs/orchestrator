@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "./button";
 import { cn } from "./cn";
 
@@ -101,6 +102,7 @@ export const Pane = ({ children, className }: { children: React.ReactNode; class
  * two-word question grows a 展开 that does nothing.
  */
 export function Clamp({ lines = 2, children }: { lines?: number; children: React.ReactNode }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [over, setOver] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -119,7 +121,7 @@ export function Clamp({ lines = 2, children }: { lines?: number; children: React
       </div>
       {(over || open) && (
         <Button variant="quiet" size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? "收起" : "展开"}
+          {open ? t("ui.bits.collapse", "收起") : t("ui.bits.expand", "展开")}
         </Button>
       )}
     </>

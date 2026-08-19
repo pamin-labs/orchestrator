@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
 import type { State } from "../../shared/api";
 import { groupedRows, type PanelFrame } from "../../shared/stream";
 import { clock } from "../../shared/format";
@@ -67,8 +68,9 @@ export function Timeline({
   grpId: number | null;
   projectId: number | null;
 }) {
+  const { t } = useTranslation();
   let ids: Set<number> | null = null;
-  let label = "全部";
+  let label = t("timeline.view.all", "全部");
   if (grpId) {
     ids = new Set([grpId]);
     label = st.groups.find((g) => g.id === grpId)?.name ?? "";
@@ -94,9 +96,9 @@ export function Timeline({
   return (
     <div>
       <h2 className="mb-2.5 flex items-baseline gap-1.5 text-[0.75rem] font-semibold text-ink-2">
-        事件流 <span className="truncate font-normal text-ink-3">{label}</span>
+        {t("timeline.view.eventStream", "事件流")} <span className="truncate font-normal text-ink-3">{label}</span>
       </h2>
-      {!shown.length && <div className="text-[0.75rem] text-ink-3">无事件</div>}
+      {!shown.length && <div className="text-[0.75rem] text-ink-3">{t("timeline.view.noEvents", "无事件")}</div>}
       <div className="[&>*:first-child]:border-t-0">
         {groupedRows(shown).map(({ f, showHeader, showDivider }) => (
           <TimelineRow key={f.id} f={f} showHeader={showHeader} showDivider={showDivider} />
