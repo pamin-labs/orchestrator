@@ -9,6 +9,7 @@ import {
   SLICE_STATES,
   TASK_STATES,
 } from "../../src/contracts/states.ts";
+import { escalation } from "../../src/platform/persistence/schema.ts";
 import { INVARIANT_TABLES, runInvariants, uncovered } from "../../src/mech/ops/invariants.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
@@ -62,20 +63,19 @@ test("every repair-bearing table is in the production runner", () => {
   ).toEqual(["grp", "slice", "project"]);
 });
 
-test("the project repair executes through the production registry", () => {
-  const ctx = testContext();
-  fx.project.insert(ctx.db, { name: "p", remote: "git@github.com:me/x.git" });
-  fx.escalation.insert(ctx.db, {
+test("the project repair executes through the production registry", async () => {
+  const ctx = await testContext();
+  const f = fx.on(ctx.db);
+  await f.project.create({ name: "p", remote: "git@github.com:me/x.git" });
+  await f.escalation.create({
     severity: "blocker",
     question: "GitHub me/x: unavailable",
     chain_state: "boss",
   });
 
-  runInvariants(ctx);
+  await runInvariants(ctx);
 
-  expect(ctx.db.query<{ state: string }, []>("SELECT chain_state AS state FROM escalation").get()!.state).toBe(
-    "revoked",
-  );
+  expect((await ctx.db.select({ state: escalation.chain_state }).from(escalation))[0]?.state).toBe("revoked");
 });
 
 test("a state in the table is a state something actually writes", () => {

@@ -636,3 +636,21 @@ test("no job asks for a larger runner, which is charged even on a public reposit
   }
   expect(offenders).toEqual([]);
 });
+
+/**
+ * Everything the server reads from `ROOT` has to be inside the archive.
+ *
+ * The release is one compiled binary plus the files beside it, and the binary
+ * cannot tell that one is missing until it is running. `drizzle/` is the newest
+ * of them and the worst to lose: the server starts, then cannot open its own
+ * database, on a machine where nobody has the repository to compare against.
+ */
+test("the release archive carries every directory the server resolves from ROOT", () => {
+  const release = readFileSync(".github/workflows/release.yml", "utf8");
+  const copied = /cp -R ([^"]+) "dist\/\$root\/"/.exec(release)?.[1]?.trim().split(/\s+/) ?? [];
+  const fromRoot = [...readFileSync("src/platform/persistence/database.ts", "utf8").matchAll(/join\(ROOT, "([^/"]+)/g)]
+    .map((m) => m[1])
+    .filter((d): d is string => d !== undefined);
+  expect(fromRoot.length).toBeGreaterThan(0);
+  for (const dir of fromRoot) expect({ dir, carried: copied.includes(dir) }).toEqual({ dir, carried: true });
+});

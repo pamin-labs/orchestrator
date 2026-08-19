@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
+import { grp, project } from "../../src/platform/persistence/schema.ts";
 import {
   canStart,
   CLAIMING,
@@ -11,27 +13,30 @@ import {
   staticPrefix,
 } from "../../src/mech/flow/ownership.ts";
 import { head, joinQueue, landed, position, queue } from "../../src/mech/flow/mergequeue.ts";
+import type { GrpState } from "../../src/contracts/states.ts";
 import { reconcileOwnership } from "../../src/application/executor.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
-function seed(groups: Array<{ name: string; owns: string[]; status?: string }>): DB {
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
+async function seed(groups: Array<{ name: string; owns: string[]; status?: GrpState }>): Promise<DB> {
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
   for (const g of groups) {
-    fx.grp.insert(db, {
+    await f.grp.create({
       project_id: p.id,
       name: g.name,
       status: g.status ?? "RUNNING",
-      owns_json: JSON.stringify(g.owns),
+      // jsonb: the value, not its text.
+      owns_json: g.owns,
       branch: `orch/${g.name}`,
     });
   }
   return db;
 }
 
-test("static prefix stops at a path boundary, but a literal path is itself", () => {
+test("static prefix stops at a path boundary, but a literal path is itself", async () => {
   expect(staticPrefix("src/auth/**")).toBe("src/auth/");
   expect(staticPrefix("src/aut*")).toBe("src/");
   expect(staticPrefix("**/*.ts")).toBe("");
@@ -59,159 +64,166 @@ describe("overlap is conservative — unsure means yes", () => {
   });
 });
 
-test("the only group in a project needs no boundary", () => {
+test("the only group in a project needs no boundary", async () => {
   // Overlap is the criterion, and there is nothing here to overlap with.
   // Demanding a declaration anyway would be ceremony.
-  expect(canStart(seed([{ name: "g1", owns: [] }]), 1).ok).toBe(true);
+  expect((await canStart(await seed([{ name: "g1", owns: [] }]), 1)).ok).toBe(true);
 });
 
-test("starting undeclared beside a group that HAS declared is refused", () => {
-  const db = seed([
+test("starting undeclared beside a group that HAS declared is refused", async () => {
+  const db = await seed([
     { name: "auth", owns: ["src/auth/**"] },
     { name: "vague", owns: [] },
   ]);
-  const r = canStart(db, 2);
+  const r = await canStart(db, 2);
   // An undeclared group silently claims everything, including their paths.
   expect(r.ok).toBe(false);
   expect(r.reason).toContain("auth");
   expect(r.reason).toContain("boundary");
 });
 
-test("two undeclared groups are allowed — two blanks cannot be shown to overlap", () => {
-  const db = seed([
+test("two undeclared groups are allowed — two blanks cannot be shown to overlap", async () => {
+  const db = await seed([
     { name: "a", owns: [] },
     { name: "b", owns: [] },
   ]);
-  expect(canStart(db, 2).ok).toBe(true);
+  expect((await canStart(db, 2)).ok).toBe(true);
 });
 
-test("overlapping groups cannot run in parallel, and the message names both", () => {
-  const db = seed([
+test("overlapping groups cannot run in parallel, and the message names both", async () => {
+  const db = await seed([
     { name: "auth", owns: ["src/auth/**"] },
     { name: "authz", owns: ["src/auth/mw.ts"] },
   ]);
-  const r = canStart(db, 2);
+  const r = await canStart(db, 2);
   expect(r.ok).toBe(false);
   expect(r.conflicts[0]!.name).toBe("auth");
   expect(r.reason).toContain("src/auth/mw.ts");
   expect(r.reason).toContain("Architect");
 });
 
-test("disjoint groups start together", () => {
-  const db = seed([
+test("disjoint groups start together", async () => {
+  const db = await seed([
     { name: "auth", owns: ["src/auth/**"] },
     { name: "ui", owns: ["src/ui/**", "web/**"] },
   ]);
-  expect(canStart(db, 2).ok).toBe(true);
+  expect((await canStart(db, 2)).ok).toBe(true);
 });
 
-test("a finished group stops holding its paths", () => {
-  const db = seed([
+test("a finished group stops holding its paths", async () => {
+  const db = await seed([
     { name: "old", owns: ["src/auth/**"], status: "DISSOLVED" },
     { name: "new", owns: ["src/auth/**"] },
   ]);
-  expect(canStart(db, 2).ok).toBe(true);
+  expect((await canStart(db, 2)).ok).toBe(true);
 });
 
-test("a parked group still holds them — it is coming back", () => {
-  const db = seed([
+test("a parked group still holds them — it is coming back", async () => {
+  const db = await seed([
     { name: "parked", owns: ["src/auth/**"], status: "PARKED" },
     { name: "new", owns: ["src/auth/**"] },
   ]);
-  expect(canStart(db, 2).ok).toBe(false);
+  expect((await canStart(db, 2)).ok).toBe(false);
 });
 
-test("shared files belong to no group", () => {
-  const db = seed([{ name: "g1", owns: ["src/auth/**", "package.json"] }]);
-  const r = canStart(db, 1);
+test("shared files belong to no group", async () => {
+  const db = await seed([{ name: "g1", owns: ["src/auth/**", "package.json"] }]);
+  const r = await canStart(db, 1);
   expect(r.ok).toBe(false);
   expect(r.sharedClaimed).toContain("package.json");
   expect(r.reason).toContain("no group");
 });
 
-test("a project may declare extra shared paths", () => {
-  const db = seed([{ name: "g1", owns: ["proto/**"] }]);
-  db.run("UPDATE project SET config_json = ? WHERE id = 1", [JSON.stringify({ shared: ["proto/**"] })]);
-  expect(sharedFor(db, 1)).toContain("proto/**");
-  expect(claimsShared(["proto/api.proto"], sharedFor(db, 1))).toHaveLength(1);
-  expect(canStart(db, 1).ok).toBe(false);
+test("a project may declare extra shared paths", async () => {
+  const db = await seed([{ name: "g1", owns: ["proto/**"] }]);
+  await db
+    .update(project)
+    .set({ config_json: { shared: ["proto/**"] } })
+    .where(eq(project.id, 1));
+  expect(await sharedFor(db, 1)).toContain("proto/**");
+  expect(claimsShared(["proto/api.proto"], await sharedFor(db, 1))).toHaveLength(1);
+  expect((await canStart(db, 1)).ok).toBe(false);
 });
 
 // -------------------------------------------------------------- merge queue
 
-test("branches merge in the order they passed audit", () => {
-  const db = seed([
+test("branches merge in the order they passed audit", async () => {
+  const db = await seed([
     { name: "a", owns: ["src/a/**"], status: "PR_OPEN" },
     { name: "b", owns: ["src/b/**"], status: "PR_OPEN" },
   ]);
-  expect(joinQueue(db, 2)).toBe(1);
-  expect(joinQueue(db, 1)).toBe(2);
-  expect(queue(db, 1).map((e) => e.name)).toEqual(["b", "a"]);
+  expect(await joinQueue(db, 2)).toBe(1);
+  expect(await joinQueue(db, 1)).toBe(2);
+  expect((await queue(db, 1)).map((e) => e.name)).toEqual(["b", "a"]);
   // Only the head is offered: three "ready to merge" cards invite the boss to
   // merge them in the wrong order.
-  expect(head(db, 1)!.name).toBe("b");
+  expect((await head(db, 1))!.name).toBe("b");
 });
 
-test("joining twice keeps the original place in line", () => {
-  const db = seed([{ name: "a", owns: ["src/a/**"], status: "PR_OPEN" }]);
-  expect(joinQueue(db, 1)).toBe(1);
-  expect(joinQueue(db, 1)).toBe(1);
+test("joining twice keeps the original place in line", async () => {
+  const db = await seed([{ name: "a", owns: ["src/a/**"], status: "PR_OPEN" }]);
+  expect(await joinQueue(db, 1)).toBe(1);
+  expect(await joinQueue(db, 1)).toBe(1);
 });
 
-test("a group knows where it is in line", () => {
-  const db = seed([
+test("a group knows where it is in line", async () => {
+  const db = await seed([
     { name: "a", owns: ["src/a/**"], status: "PR_OPEN" },
     { name: "b", owns: ["src/b/**"], status: "PR_OPEN" },
   ]);
-  joinQueue(db, 1);
-  joinQueue(db, 2);
-  expect(position(db, 2)).toEqual({ position: 2, total: 2 });
-  expect(position(db, 1)).toEqual({ position: 1, total: 2 });
+  await joinQueue(db, 1);
+  await joinQueue(db, 2);
+  expect(await position(db, 2)).toEqual({ position: 2, total: 2 });
+  expect(await position(db, 1)).toEqual({ position: 1, total: 2 });
 });
 
-test("landing dissolves the group and returns who now needs a rebase", () => {
-  const db = seed([
+test("landing dissolves the group and returns who now needs a rebase", async () => {
+  const db = await seed([
     { name: "a", owns: ["src/a/**"], status: "PR_OPEN" },
     { name: "b", owns: ["src/b/**"], status: "PR_OPEN" },
     { name: "c", owns: ["src/c/**"], status: "PR_OPEN" },
   ]);
-  for (const id of [1, 2, 3]) joinQueue(db, id);
+  for (const id of [1, 2, 3]) await joinQueue(db, id);
 
-  const stale = landed(db, 1);
+  const stale = await landed(db, 1);
   // Their branch point is now behind main, and a stale base is what turns a
   // clean merge into a conflict later.
   expect(stale).toEqual([2, 3]);
-  expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("DISSOLVED");
-  expect(head(db, 1)!.name).toBe("b");
+  expect((await db.select({ status: grp.status }).from(grp).where(eq(grp.id, 1)))[0]?.status).toBe("DISSOLVED");
+  expect((await head(db, 1))!.name).toBe("b");
 });
 
-test("a group not in the queue has no position", () => {
-  const db = seed([{ name: "a", owns: ["src/a/**"] }]);
-  expect(position(db, 1)).toBeNull();
-  expect(head(db, 1)).toBeNull();
+test("a group not in the queue has no position", async () => {
+  const db = await seed([{ name: "a", owns: ["src/a/**"] }]);
+  expect(await position(db, 1)).toBeNull();
+  expect(await head(db, 1)).toBeNull();
 });
 
-test("a group granted one shared path by name may start; everyone else still may not", () => {
+test("a group granted one shared path by name may start; everyone else still may not", async () => {
   // Shared files belong to no group, and that must stay true — two groups editing
   // package.json is the collision ownership exists to prevent. But a defect in one
   // still has to be fixable, and the requirement opened for exactly that could
   // never start: the boundary can only be the file itself, which canStart then
   // refused as shared. sweepApproved retried that forever, silently.
-  const db = seed([
+  const db = await seed([
     { name: "other", owns: ["src/a/**"] },
     { name: "fix-tsconfig", owns: ["tsconfig.json"], status: "DRAFT" },
     { name: "opportunist", owns: ["tsconfig.json"], status: "DRAFT" },
   ]);
-  expect(canStart(db, 2).ok).toBe(false);
+  expect((await canStart(db, 2)).ok).toBe(false);
 
-  db.run("UPDATE grp SET shared_grant = ? WHERE id = 2", [JSON.stringify(["tsconfig.json"])]);
-  expect(canStart(db, 2).ok).toBe(true);
+  // `shared_grant` is a text column, not one of the jsonb thirteen.
+  await db
+    .update(grp)
+    .set({ shared_grant: JSON.stringify(["tsconfig.json"]) })
+    .where(eq(grp.id, 2));
+  expect((await canStart(db, 2)).ok).toBe(true);
   // The grant is by name and by group: nobody else gets in on it.
-  expect(canStart(db, 3).ok).toBe(false);
-  expect(canStart(db, 3).sharedClaimed).toContain("tsconfig.json");
+  expect((await canStart(db, 3)).ok).toBe(false);
+  expect((await canStart(db, 3)).sharedClaimed).toContain("tsconfig.json");
 });
 
-test("after-the-fact ownership catches a write outside the boundary", () => {
+test("after-the-fact ownership catches a write outside the boundary", async () => {
   // The container knows nothing about which group owns which file, so this rule
   // runs against `git status` once the turn is over. It is the only clock left.
   const owns = ["src/auth/**", "docs/auth.md"];
@@ -251,7 +263,7 @@ test("the revert actually runs, against the group's own checkout", async () => {
   // against `/work`, a path that exists only inside the container, so the one
   // mechanism enforcing file ownership after 005 threw on every turn. Nothing
   // asserted the wiring, only the pure function above it.
-  const db = seed([{ name: "g1", owns: ["src/auth/**"] }]);
+  const db = await seed([{ name: "g1", owns: ["src/auth/**"] }]);
   // shq quotes every argument, so the command is `git 'status' '--porcelain' '-z'`,
   // and `-z` means the separator is NUL. The second status is the read-back: the
   // announcement is made from what is gone, not from what we tried to remove.
@@ -262,16 +274,9 @@ test("the revert actually runs, against the group's own checkout", async () => {
     if (!cmd.includes("'status'")) return {};
     return { out: ++statuses === 1 ? " M src/auth/mw.ts\0?? web/stray.ts\0" : " M src/auth/mw.ts\0" };
   });
-  const ctx = testContext({ db, sandbox });
+  const ctx = await testContext({ db, sandbox });
 
-  await reconcileOwnership(
-    { ctx },
-    { role: "engineer" },
-    { grp_id: 1 },
-    {
-      owns_json: JSON.stringify(["src/auth/**"]),
-    },
-  );
+  await reconcileOwnership({ ctx }, { role: "engineer" }, { grp_id: 1 }, { owns_json: ["src/auth/**"] });
 
   const ran = sandbox.commands.join("\n");
   // The group's own checkout, inside its container. There is no `/work` here.
@@ -284,12 +289,7 @@ test("the revert actually runs, against the group's own checkout", async () => {
   // What it kept: the owned file is not in either repair command.
   expect(ran).not.toContain("src/auth/mw.ts");
   // Said out loud, or the agent watches its own work vanish.
-  expect(
-    ctx.bus
-      .since(0)
-      .map((event) => event.body)
-      .join(" "),
-  ).toContain("web/stray.ts");
+  expect((await ctx.bus.since(0)).map((event) => event.body).join(" ")).toContain("web/stray.ts");
 });
 
 test("a path git had to quote is still the path that gets rolled back", async () => {
@@ -300,59 +300,37 @@ test("a path git had to quote is still the path that gets rolled back", async ()
   // nothing. The exit code was not read, so the bus announced a revert that had
   // not happened — decision 005's last enforcement failing open and reporting
   // success, in a project whose output language is Chinese.
-  const db = seed([{ name: "g1", owns: ["src/auth/**"] }]);
+  const db = await seed([{ name: "g1", owns: ["src/auth/**"] }]);
   let statuses = 0;
   const sandbox = fakeSandbox((cmd) => {
     if (!cmd.includes("'status'")) return {};
     return { out: ++statuses === 1 ? "?? docs/设计 稿.md\0" : "" };
   });
-  const ctx = testContext({ db, sandbox });
+  const ctx = await testContext({ db, sandbox });
 
-  await reconcileOwnership(
-    { ctx },
-    { role: "engineer" },
-    { grp_id: 1 },
-    {
-      owns_json: JSON.stringify(["src/auth/**"]),
-    },
-  );
+  await reconcileOwnership({ ctx }, { role: "engineer" }, { grp_id: 1 }, { owns_json: ["src/auth/**"] });
 
   expect(sandbox.commands.join("\n")).toContain("'clean' '-fd' '--' 'docs/设计 稿.md'");
-  expect(
-    ctx.bus
-      .since(0)
-      .map((event) => event.body)
-      .join(" "),
-  ).toContain("docs/设计 稿.md");
+  expect((await ctx.bus.since(0)).map((event) => event.body).join(" ")).toContain("docs/设计 稿.md");
 });
 
 test("a revert that changed nothing says so instead of claiming it worked", async () => {
-  const db = seed([{ name: "g1", owns: ["src/auth/**"] }]);
+  const db = await seed([{ name: "g1", owns: ["src/auth/**"] }]);
   // Both status calls report the stray: git ran, git exited non-zero, the file
   // is still there.
   const sandbox = fakeSandbox((cmd) =>
     cmd.includes("'status'") ? { out: "?? web/stray.ts\0" } : { code: 1, out: "error: pathspec did not match" },
   );
-  const ctx = testContext({ db, sandbox });
+  const ctx = await testContext({ db, sandbox });
 
-  await reconcileOwnership(
-    { ctx },
-    { role: "engineer" },
-    { grp_id: 1 },
-    {
-      owns_json: JSON.stringify(["src/auth/**"]),
-    },
-  );
+  await reconcileOwnership({ ctx }, { role: "engineer" }, { grp_id: 1 }, { owns_json: ["src/auth/**"] });
 
-  const all = ctx.bus
-    .since(0)
-    .map((event) => event.body)
-    .join(" ");
+  const all = (await ctx.bus.since(0)).map((event) => event.body).join(" ");
   expect(all).toContain("could not roll back");
   expect(all).toContain("web/stray.ts");
 });
 
-test("a DRAFT group owns its paths for the boundary check, and blocks nobody's start", () => {
+test("a DRAFT group owns its paths for the boundary check, and blocks nobody's start", async () => {
   // Two questions, and they had been sharing one hardcoded status list per call
   // site — four sites, three different lists. A DRAFT group has declared paths
   // (`newGroup` populates owns_json at insert) but holds no worktree, so it must
@@ -366,13 +344,13 @@ test("a DRAFT group owns its paths for the boundary check, and blocks nobody's s
   // The direction that would have deadlocked: two unstarted groups on the same
   // path. Neither is writing, so approving either one still starts it — and the
   // second is refused then, because by that point the first is RUNNING.
-  const db = seed([
+  const db = await seed([
     { name: "a", owns: ["src/x/**"], status: "DRAFT" },
     { name: "b", owns: ["src/x/**"], status: "DRAFT" },
   ]);
-  expect(canStart(db, 1).ok).toBe(true);
-  db.run("UPDATE grp SET status = 'RUNNING' WHERE id = 1");
-  expect(canStart(db, 2).ok).toBe(false);
+  expect((await canStart(db, 1)).ok).toBe(true);
+  await db.update(grp).set({ status: "RUNNING" }).where(eq(grp.id, 1));
+  expect((await canStart(db, 2)).ok).toBe(false);
 });
 
 test("a partial rollback is not announced as a boundary that held", async () => {
@@ -383,7 +361,7 @@ test("a partial rollback is not announced as a boundary that held", async () => 
   // then removes only the untracked half. So the pair silently half-succeeded,
   // `reverted` was non-empty, and the boss was told the boundary held while the
   // out-of-bounds edit rode into the next checkpoint and the PR.
-  const db = seed([{ name: "g1", owns: ["src/auth/**"] }]);
+  const db = await seed([{ name: "g1", owns: ["src/auth/**"] }]);
   let statuses = 0;
   const sandbox = fakeSandbox((cmd) => {
     if (cmd.includes("'status'")) {
@@ -395,14 +373,9 @@ test("a partial rollback is not announced as a boundary that held", async () => 
     if (cmd.includes("'checkout'")) return { code: 1, out: "error: unable to unlink 'README.md'" };
     return {};
   });
-  const ctx = testContext({ db, sandbox });
+  const ctx = await testContext({ db, sandbox });
 
-  await reconcileOwnership(
-    { ctx },
-    { role: "engineer" },
-    { grp_id: 1 },
-    { owns_json: JSON.stringify(["src/auth/**"]) },
-  );
+  await reconcileOwnership({ ctx }, { role: "engineer" }, { grp_id: 1 }, { owns_json: ["src/auth/**"] });
 
   const ran = sandbox.commands.join("\n");
   // Tracked and untracked go to the command that can act on each.
@@ -410,10 +383,7 @@ test("a partial rollback is not announced as a boundary that held", async () => 
   expect(ran).not.toContain("'checkout' '--' 'README.md' 'docs/plan.md'");
   expect(ran).toContain("'clean' '-fd' '--' 'docs/plan.md'");
   // And what is still outside the group's paths is what gets said.
-  const said = ctx.bus
-    .since(0)
-    .map((e) => e.body)
-    .join(" ");
+  const said = (await ctx.bus.since(0)).map((e) => e.body).join(" ");
   expect(said).toContain("could not roll back");
   expect(said).toContain("README.md");
 });
@@ -431,7 +401,7 @@ test("a partial rollback is not announced as a boundary that held", async () => 
  * revert the whole turn of a group whose plan has no `owns` yet, which is every
  * group before the Dispatcher has cut its boundary.
  */
-test("a group that owns nothing in particular is not policed", () => {
+test("a group that owns nothing in particular is not policed", async () => {
   expect(outsideOwns(["src/a.ts", "web/b.tsx"], [])).toEqual([]);
 });
 
@@ -440,7 +410,7 @@ test("a group that owns nothing in particular is not policed", () => {
  * everyone who does not own `web/**` meant the gate could not produce the thing the
  * gate then checks — so it is exempt whatever the group owns.
  */
-test("build output is never a stray write", () => {
+test("build output is never a stray write", async () => {
   expect(outsideOwns(["web/dist/main.js", "web/dist/app.css"], ["src/**"])).toEqual([]);
   // And the exemption is that path, not everything under `web/`.
   expect(outsideOwns(["web/src/app/app.tsx"], ["src/**"])).toEqual(["web/src/app/app.tsx"]);
@@ -452,7 +422,7 @@ test("build output is never a stray write", () => {
  * recreated before the next one, and escalated to the boss each time — observed
  * live, once per turn, forever.
  */
-test("the files the orchestrator itself writes are not the agent's stray writes", () => {
+test("the files the orchestrator itself writes are not the agent's stray writes", async () => {
   expect(outsideOwns(["AGENTS.md", "CLAUDE.md"], ["src/**"])).toEqual([]);
   // Not a blanket pass for markdown at the root.
   expect(outsideOwns(["README.md"], ["src/**"])).toEqual(["README.md"]);
