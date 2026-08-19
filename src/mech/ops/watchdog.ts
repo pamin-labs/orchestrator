@@ -563,7 +563,7 @@ async function networkReady(
   now: () => number,
   t: Translate,
 ): Promise<boolean> {
-  const net = await (deps.probe ?? probe)(deps.ctx.db, now());
+  const net = await (deps.probe ?? probe)(deps.ctx.db, now(), undefined, deps.ctx.config);
   if (!net.changed) return net.online;
   const held = net.online ? 0 : holdForOffline(deps.ctx, now());
   const body = net.online ? t("net.back") : t("net.lost", { n: held });

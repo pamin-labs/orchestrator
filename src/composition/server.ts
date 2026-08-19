@@ -741,7 +741,7 @@ export function start(overrides: Partial<Config> = {}): Started {
     repoHeld: (projectId) => repoHeld(db, projectId),
   });
 
-  const gh = makeGithub(db, undefined, cfg.language);
+  const gh = makeGithub(db, undefined, cfg.language, cfg.timeouts.githubApiMs);
   const ctx: Ctx = {
     db,
     bus,
@@ -883,7 +883,11 @@ export function start(overrides: Partial<Config> = {}): Started {
   // token. Identity is never a request-body field.
   process.env.ORCH_URL = url;
 
-  const notifier = new Notifier({ deliver: busDeliver(bus, cfg.notifyWebhook) });
+  const notifier = new Notifier({
+    deliver: busDeliver(bus, cfg.notifyWebhook, cfg.timeouts.webhookMs),
+    batchMs: cfg.intervals.notifyBatchMs,
+    backoffMs: cfg.intervals.notifyBackoffMs,
+  });
   ctx.onFinding = (rule, severity, body, grpId) => {
     // The finding is already an event in the timeline. A notification on top of it
     // is a claim that the boss has to act, and most rules are the system reporting
@@ -956,7 +960,7 @@ export function start(overrides: Partial<Config> = {}): Started {
     readinessWork = track(
       refreshRuntimeReadiness(runtime, () =>
         sandboxServer.then(() =>
-          preflight({ db, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir, cacheDirs: cfg.sandbox.cacheDirs }).then(
+          preflight({ db, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir, cacheDirs: cfg.sandbox.cacheDirs, cfg }).then(
             (checks) => {
               db.query<{ ok: number }, []>("SELECT 1 AS ok").get();
               return [{ name: "database", ok: true, detail: "migrated and queryable" }, ...checks];
