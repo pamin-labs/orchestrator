@@ -2,13 +2,10 @@ import type {
   Agent,
   Answered,
   Archived,
-  Channel,
-  DraftCard,
   Escalation,
   Group,
   GroupNote,
   GroupSaid,
-  Project,
   Slice,
   Task,
 } from "../../contracts/panel.ts";
@@ -23,6 +20,17 @@ import { json } from "../../http/respond.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { ESCALATION_TERMINAL_STATES, stateParam } from "../../contracts/states.ts";
 import { z } from "zod";
+import { and, count, eq, isNotNull, max, notInArray, sql } from "drizzle-orm";
+import { orm } from "../../platform/persistence/orm.ts";
+import {
+  channel,
+  event,
+  grp,
+  note,
+  project,
+  runtime_auth,
+  usage_snapshot,
+} from "../../platform/persistence/schema.ts";
 
 /**
  * Everything the panel draws, in one payload.
@@ -43,6 +51,7 @@ export const getCost = (async (ctx, _req, _params, query) => json(costReport(ctx
 
 export function snapshot(ctx: Ctx): Snapshot {
   const db = ctx.db;
+  const q = orm(db);
   return {
     /**
      * Is there a credential at all?
@@ -53,11 +62,22 @@ export function snapshot(ctx: Ctx): Snapshot {
      * it in a queue that never moves. The deeper checks — docker, the sandbox
      * server, the sidecar version — cost network and stay in the settings page.
      */
-    ready: (db.query<{ n: number }, []>("SELECT count(*) AS n FROM runtime_auth").get()?.n ?? 0) > 0,
+    ready: (q.select({ n: count() }).from(runtime_auth).get()?.n ?? 0) > 0,
     // `base_branch` rides along because it is the one thing add-a-project decided
     // on the boss's behalf, and a decision taken silently has to be visible where
     // its consequence starts — the new project's own page.
-    projects: db.query<Project, []>("SELECT id, name, repo_path, remote, base_branch FROM project").all(),
+    projects: q
+      .select({
+        id: project.id,
+        name: project.name,
+        repo_path: project.repo_path,
+        remote: project.remote,
+        base_branch: project.base_branch,
+      })
+      .from(project)
+      .all(),
+    // Raw: `status` reaches the panel as `GrpState`, and `text()` infers `string`.
+    // Narrowing belongs on the column (`$type<GrpState>()`), not in a cast here.
     groups: db
       .query<Group, []>(
         `SELECT id, project_id, name, branch, status, owns_json, budget_tokens,
@@ -66,21 +86,31 @@ export function snapshot(ctx: Ctx): Snapshot {
       .all(),
     // Why an approved group has not started. The boss pressed the button; showing
     // the same button again reads as "the click did nothing".
-    approvedBlocked: db
-      .query<{ id: number }, []>("SELECT id FROM grp WHERE status = 'DRAFT' AND approved_at IS NOT NULL")
+    approvedBlocked: q
+      .select({ id: grp.id })
+      .from(grp)
+      .where(and(eq(grp.status, "DRAFT"), isNotNull(grp.approved_at)))
       .all()
       .map((g) => ({ grpId: g.id, reason: canStart(db, g.id).reason ?? "" }))
       .filter((b) => b.reason),
     // A planner found this requirement is already covered. The evidence was checked
     // before the row could exist; the boss decides whether it leaves the board.
-    dropProposals: db
-      .query<GroupNote, []>(
-        `SELECT n.grp_id AS grpId, n.body FROM note n
-         JOIN grp g ON g.id = n.grp_id
-         WHERE g.status NOT IN ('DISSOLVED') AND json_extract(n.frontmatter_json, '$.drop_proposal') = 1
-         GROUP BY n.grp_id HAVING n.at = max(n.at)`,
+    dropProposals: q
+      // `grp.id`, not `note.grp_id`: the inner join makes them the same value, and
+      // this one is NOT NULL — which is what the panel contract says `grpId` is.
+      .select({ grpId: grp.id, body: note.body })
+      .from(note)
+      .innerJoin(grp, eq(grp.id, note.grp_id))
+      // Raw on the right: `json_extract` has no Drizzle operator.
+      .where(
+        and(notInArray(grp.status, ["DISSOLVED"]), sql`json_extract(${note.frontmatter_json}, '$.drop_proposal') = 1`),
       )
+      .groupBy(note.grp_id)
+      // Raw: SQLite's bare-column rule, which picks the row the aggregate came
+      // from. Newest proposal per group, in one query rather than one per group.
+      .having(sql`${note.at} = max(${note.at})`)
       .all(),
+    // Raw for the same reason as `groups`: `status` is a `SliceState` downstream.
     slices: db
       .query<Slice, []>(
         `SELECT id, grp_id, seq, title, accept_spec, difficulty, status, gates_json,
@@ -91,6 +121,9 @@ export function snapshot(ctx: Ctx): Snapshot {
     // live last line. Two of the three are here; the third is the SSE stream,
     // which the client already holds. Turn count is what tells a stuck agent from
     // a busy one — "in_progress" looks identical either way.
+    // Raw: `turns` and `slice_id` are scalar subqueries correlated on `a.id`, and
+    // both must stay inside this one statement — a per-agent lookup is the N+1 this
+    // read model exists to avoid.
     agents: db
       .query<Agent, []>(
         `SELECT a.id, a.grp_id, a.role, a.model, a.state, a.activity, a.session_tokens,
@@ -102,18 +135,35 @@ export function snapshot(ctx: Ctx): Snapshot {
          FROM agent a WHERE a.state != 'retired'`,
       )
       .all(),
+    // Raw for the same reason as `groups`: `status` is a `TaskState` downstream.
     tasks: db.query<Task, []>("SELECT id, grp_id, slice_id, title, status FROM task").all(),
-    channels: db.query<Channel, []>("SELECT id, project_id, grp_id, kind, status FROM channel").all(),
+    channels: q
+      .select({
+        id: channel.id,
+        project_id: channel.project_id,
+        grp_id: channel.grp_id,
+        kind: channel.kind,
+        status: channel.status,
+      })
+      .from(channel)
+      .all(),
     // The card each DRAFT group filed. Without this the boss is shown an empty
     // box and asked to approve something they cannot see.
-    draftCards: db
-      .query<DraftCard, []>(
-        `SELECT n.grp_id AS grpId, n.body, n.at,
-                json_extract(n.frontmatter_json, '$.unknownPaths') AS unknownPaths FROM note n
-         JOIN grp g ON g.id = n.grp_id
-         WHERE g.status = 'DRAFT' AND json_extract(n.frontmatter_json, '$.draft_card') = 1
-         GROUP BY n.grp_id HAVING n.at = max(n.at)`,
-      )
+    draftCards: q
+      .select({
+        // Same as `dropProposals`: the non-null side of the join.
+        grpId: grp.id,
+        body: note.body,
+        at: note.at,
+        // Raw: `json_extract`, here in the select list rather than the filter.
+        unknownPaths: sql<string | null>`json_extract(${note.frontmatter_json}, '$.unknownPaths')`,
+      })
+      .from(note)
+      .innerJoin(grp, eq(grp.id, note.grp_id))
+      .where(and(eq(grp.status, "DRAFT"), sql`json_extract(${note.frontmatter_json}, '$.draft_card') = 1`))
+      .groupBy(note.grp_id)
+      // Newest card per group; see `dropProposals` for why the HAVING is raw.
+      .having(sql`${note.at} = max(${note.at})`)
       .all(),
     // An objection that arrived after the card was filed.
     //
@@ -130,6 +180,8 @@ export function snapshot(ctx: Ctx): Snapshot {
     // card still reads 反对 : 无. Approving that is approving something the boss
     // was never shown. Measured: the late objection was "the locale-inference
     // slice contradicts the acceptance criterion that says behaviour is unchanged".
+    // Raw: the `>=` above is against a subquery correlated on `e.grp_id`, and the
+    // comparison itself is the fix this comment describes. It stays as written.
     lateObjections: db
       .query<GroupSaid, []>(
         `SELECT e.grp_id AS grpId, e.author, e.body FROM event e
@@ -145,6 +197,9 @@ export function snapshot(ctx: Ctx): Snapshot {
     // What the boss originally said, verbatim. Those 20 seconds on the card are
     // the only guard against a plan that is well-formed but aimed at the wrong
     // thing, and that comparison is impossible without the original next to it.
+    // Raw: `event.grp_id` is nullable and the contract's `grpId` is not. The
+    // `IS NOT NULL` in the WHERE is what makes that true, and no builder type can
+    // carry a guarantee that lives in a filter. Nothing to join against here.
     ideas: db
       .query<GroupNote, []>(
         `SELECT grp_id AS grpId, body FROM event
@@ -154,6 +209,11 @@ export function snapshot(ctx: Ctx): Snapshot {
       .all(),
     // Recently answered by a stand-in, so the boss can take one back. Without a
     // visible undo, delegated answers are a bet nobody would take.
+    // Raw, and the type mismatch it hides is worth naming: `Answered` declares
+    // `grp_id` and `answer` non-null, and this query guarantees neither — only
+    // `answered_by` is filtered. A standing agent's escalation has no group, and
+    // `chain_state = 'answered'` does not imply an `answer` was written. The
+    // contract is what is wrong; converting would only move the assertion.
     answered: db
       .query<Answered, []>(
         `SELECT id, grp_id, question, answer, answered_by, ref_note_id, answered_at
@@ -162,6 +222,7 @@ export function snapshot(ctx: Ctx): Snapshot {
          ORDER BY answered_at DESC, id DESC LIMIT 10`,
       )
       .all(),
+    // Raw: `json_each` over a bound state array, which has no builder form.
     escalations: db
       .query<Escalation, [string]>(
         `SELECT e.id, e.grp_id, e.severity, e.question, e.brief, e.kind, e.chain_state, e.answered_by, e.answer,
@@ -172,8 +233,9 @@ export function snapshot(ctx: Ctx): Snapshot {
       .all(stateParam(ESCALATION_TERMINAL_STATES)),
     // Only the queue head is offered for merging; the rest carry their place in
     // line so the boss can see why they are waiting.
-    mergeQueue: db
-      .query<{ id: number }, []>("SELECT id FROM project")
+    mergeQueue: q
+      .select({ id: project.id })
+      .from(project)
       .all()
       .flatMap((p) => {
         const h = head(db, p.id);
@@ -182,6 +244,8 @@ export function snapshot(ctx: Ctx): Snapshot {
     // Delivered work, so 收尾 stops meaning "vanished". A group that merged is the
     // only proof the system did what it was asked, and it was leaving no trace
     // anywhere in the panel.
+    // Raw: `slices` and `at` are scalar subqueries correlated on `g.id`, and the
+    // ORDER BY sorts on the second of them.
     archived: db
       .query<Archived, []>(
         `SELECT g.id, g.project_id, g.name, g.branch, g.pr_number, g.spent_tokens,
@@ -202,8 +266,9 @@ export function snapshot(ctx: Ctx): Snapshot {
     // How much of each subscription is gone. Not spend — spend is attributable and
     // belongs in 成本. This answers "can this still run tonight", which is the one
     // usage question that changes what the boss does next.
-    usage: db
-      .query<{ runtime: string; json: string; at: number }, []>("SELECT runtime, json, at FROM usage_snapshot")
+    usage: q
+      .select({ runtime: usage_snapshot.runtime, json: usage_snapshot.json, at: usage_snapshot.at })
+      .from(usage_snapshot)
       .all()
       // Parsed, not spread. The blob was written by an earlier version of this
       // process, so a field it does not have is a field this one must not claim:
@@ -217,6 +282,10 @@ export function snapshot(ctx: Ctx): Snapshot {
         });
         return parsed.success ? parsed.data : { runtime: r.runtime, at: r.at };
       }),
-    lastSeq: ctx.db.query<{ s: number | null }, []>("SELECT max(seq) AS s FROM event").get()?.s ?? 0,
+    lastSeq:
+      q
+        .select({ s: max(event.seq) })
+        .from(event)
+        .get()?.s ?? 0,
   };
 }
