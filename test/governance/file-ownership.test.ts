@@ -417,3 +417,43 @@ test("a partial rollback is not announced as a boundary that held", async () => 
   expect(said).toContain("could not roll back");
   expect(said).toContain("README.md");
 });
+
+/**
+ * The three rules that let a write through, none of which had a test.
+ *
+ * `outsideOwns` is the only mechanism enforcing ADR 005's boundary — there is no
+ * earlier clock, because the container knows nothing about which group owns which
+ * file — and each of these could be deleted with the suite staying green. Measured
+ * by mutation.
+ */
+/**
+ * A group that declared nothing is not policed. Refusing everything instead would
+ * revert the whole turn of a group whose plan has no `owns` yet, which is every
+ * group before the Dispatcher has cut its boundary.
+ */
+test("a group that owns nothing in particular is not policed", () => {
+  expect(outsideOwns(["src/a.ts", "web/b.tsx"], [])).toEqual([]);
+});
+
+/**
+ * The build gate writes `web/dist` on every run, for every group. Reverting it for
+ * everyone who does not own `web/**` meant the gate could not produce the thing the
+ * gate then checks — so it is exempt whatever the group owns.
+ */
+test("build output is never a stray write", () => {
+  expect(outsideOwns(["web/dist/main.js", "web/dist/app.css"], ["src/**"])).toEqual([]);
+  // And the exemption is that path, not everything under `web/`.
+  expect(outsideOwns(["web/src/app/app.tsx"], ["src/**"])).toEqual(["web/src/app/app.tsx"]);
+});
+
+/**
+ * `AGENTS.md` and `CLAUDE.md` are written into the checkout by the orchestrator, not
+ * by the agent in it. Without the exemption they were reverted after every turn,
+ * recreated before the next one, and escalated to the boss each time — observed
+ * live, once per turn, forever.
+ */
+test("the files the orchestrator itself writes are not the agent's stray writes", () => {
+  expect(outsideOwns(["AGENTS.md", "CLAUDE.md"], ["src/**"])).toEqual([]);
+  // Not a blanket pass for markdown at the root.
+  expect(outsideOwns(["README.md"], ["src/**"])).toEqual(["README.md"]);
+});
