@@ -5,6 +5,9 @@ import { reopenTasks, startNextSlice } from "../flow/review.ts";
 import { clearEscalation } from "../git/github.ts";
 import { parseRepo } from "../../contracts/repository.ts";
 import { repoHeld } from "../git/repository.ts";
+import { isNotNull } from "drizzle-orm";
+import { orm } from "../../platform/persistence/orm.ts";
+import { project } from "../../platform/persistence/schema.ts";
 import {
   ESCALATION_STATES,
   GRP_STATES,
@@ -323,10 +326,14 @@ const PROJECT_INVARIANTS = rows<ProjectState>(
       "REPO_HOLD_MS lapses and lets one turn re-test; any GitHub answer clears the hold and revokes the " +
       "question; saving a credential forgets the hold at once, so a boss who just fixed it does not wait",
     repair: (ctx) => {
-      for (const p of ctx.db
-        .query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project WHERE remote IS NOT NULL")
+      for (const p of orm(ctx.db)
+        .select({ id: project.id, remote: project.remote })
+        .from(project)
+        .where(isNotNull(project.remote))
         .all()) {
-        const slug = parseRepo(p.remote!);
+        // `p.remote` is still typed nullable — the predicate is a runtime fact and
+        // not a type — so this reads it rather than asserting past it.
+        const slug = p.remote === null ? null : parseRepo(p.remote);
         if (slug && !repoHeld(ctx.db, p.id)) clearEscalation(ctx.db, slug);
       }
     },

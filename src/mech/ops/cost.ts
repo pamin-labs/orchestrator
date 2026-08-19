@@ -1,4 +1,7 @@
+import { desc, eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { agent, grp } from "../../platform/persistence/schema.ts";
 import type { CostReport } from "../../contracts/cost.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { z } from "zod";
@@ -38,14 +41,6 @@ const HourRowSchema = z.object({
 });
 type HourRow = z.infer<typeof HourRowSchema>;
 
-const AgentCostSchema = CostRowSchema.extend({
-  id: z.number(),
-  grpId: z.number().nullable(),
-  role: z.string(),
-  model: z.string(),
-  runtime: z.string(),
-});
-type AgentCost = z.infer<typeof AgentCostSchema>;
 
 /** The four counters a turn reports, summed. Written once; the CASE needs it twice. */
 /**
@@ -78,22 +73,39 @@ const TOK = `json_extract(meta_json, '$.usage.input') + json_extract(meta_json, 
  */
 type ProjectArg = [number | null];
 
+/** How many requirements the ranking offers. Was a literal inside the query. */
+const GROUP_LIMIT = 50;
+
 export function costReport(db: DB, projectId?: number): CostReport {
   const of: ProjectArg = [projectId ?? null];
 
-  const byGroup = db
-    .query<CostRow & { grpId: number }, ProjectArg>(
-      `SELECT id AS grpId, name AS label, spent_tokens AS tokens FROM grp
-       WHERE (?1 IS NULL OR project_id = ?1) ORDER BY spent_tokens DESC LIMIT 50`,
-    )
-    .all(...of);
+  // The filter is a condition rather than `(?1 IS NULL OR project_id = ?1)`, which
+  // is how SQL says "optional" when it has no way to leave a clause out.
+  const inProject = <T extends typeof grp.project_id | typeof agent.project_id>(column: T) =>
+    projectId === undefined ? undefined : eq(column, projectId);
 
-  const agents = db
-    .query<AgentCost, ProjectArg>(
-      `SELECT id, grp_id AS grpId, role, role AS label, model, runtime, total_tokens AS tokens
-       FROM agent WHERE (?1 IS NULL OR project_id = ?1) ORDER BY tokens DESC`,
-    )
-    .all(...of);
+  const byGroup = orm(db)
+    .select({ grpId: grp.id, label: grp.name, tokens: grp.spent_tokens })
+    .from(grp)
+    .where(inProject(grp.project_id))
+    .orderBy(desc(grp.spent_tokens))
+    .limit(GROUP_LIMIT)
+    .all();
+
+  const agents = orm(db)
+    .select({
+      id: agent.id,
+      grpId: agent.grp_id,
+      role: agent.role,
+      label: agent.role,
+      model: agent.model,
+      runtime: agent.runtime,
+      tokens: agent.total_tokens,
+    })
+    .from(agent)
+    .where(inProject(agent.project_id))
+    .orderBy(desc(agent.total_tokens))
+    .all();
 
   const byRole = db
     .query<CostRow, ProjectArg>(
