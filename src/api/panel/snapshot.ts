@@ -1,14 +1,4 @@
-import type {
-  Agent,
-  Answered,
-  Archived,
-  Escalation,
-  Group,
-  GroupNote,
-  GroupSaid,
-  Slice,
-  Task,
-} from "../../contracts/panel.ts";
+import type { Agent, Answered, Archived, Escalation, GroupNote, GroupSaid } from "../../contracts/panel.ts";
 import { UsageWindow, type Snapshot } from "../../contracts/panel.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { costReport } from "../../mech/ops/cost.ts";
@@ -20,7 +10,7 @@ import { json } from "../../http/respond.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { ESCALATION_TERMINAL_STATES, stateParam } from "../../contracts/states.ts";
 import { z } from "zod";
-import { and, count, eq, isNotNull, max, notInArray, sql } from "drizzle-orm";
+import { and, count, eq, isNotNull, max, ne, notInArray, sql } from "drizzle-orm";
 import { orm } from "../../platform/persistence/orm.ts";
 import {
   channel,
@@ -29,6 +19,8 @@ import {
   note,
   project,
   runtime_auth,
+  slice,
+  task,
   usage_snapshot,
 } from "../../platform/persistence/schema.ts";
 
@@ -76,13 +68,21 @@ export function snapshot(ctx: Ctx): Snapshot {
       })
       .from(project)
       .all(),
-    // Raw: `status` reaches the panel as `GrpState`, and `text()` infers `string`.
-    // Narrowing belongs on the column (`$type<GrpState>()`), not in a cast here.
-    groups: db
-      .query<Group, []>(
-        `SELECT id, project_id, name, branch, status, owns_json, budget_tokens,
-                spent_tokens, pr_number, approved_at FROM grp WHERE status != 'DISSOLVED'`,
-      )
+    groups: q
+      .select({
+        id: grp.id,
+        project_id: grp.project_id,
+        name: grp.name,
+        branch: grp.branch,
+        status: grp.status,
+        owns_json: grp.owns_json,
+        budget_tokens: grp.budget_tokens,
+        spent_tokens: grp.spent_tokens,
+        pr_number: grp.pr_number,
+        approved_at: grp.approved_at,
+      })
+      .from(grp)
+      .where(ne(grp.status, "DISSOLVED"))
       .all(),
     // Why an approved group has not started. The boss pressed the button; showing
     // the same button again reads as "the click did nothing".
@@ -110,12 +110,21 @@ export function snapshot(ctx: Ctx): Snapshot {
       // from. Newest proposal per group, in one query rather than one per group.
       .having(sql`${note.at} = max(${note.at})`)
       .all(),
-    // Raw for the same reason as `groups`: `status` is a `SliceState` downstream.
-    slices: db
-      .query<Slice, []>(
-        `SELECT id, grp_id, seq, title, accept_spec, difficulty, status, gates_json,
-                spent_tokens, awaiting_at FROM slice ORDER BY grp_id, seq`,
-      )
+    slices: q
+      .select({
+        id: slice.id,
+        grp_id: slice.grp_id,
+        seq: slice.seq,
+        title: slice.title,
+        accept_spec: slice.accept_spec,
+        difficulty: slice.difficulty,
+        status: slice.status,
+        gates_json: slice.gates_json,
+        spent_tokens: slice.spent_tokens,
+        awaiting_at: slice.awaiting_at,
+      })
+      .from(slice)
+      .orderBy(slice.grp_id, slice.seq)
       .all(),
     // docs/project/plan.md §8 asks the desk wall for the current slice, the turn count and the
     // live last line. Two of the three are here; the third is the SSE stream,
@@ -135,8 +144,10 @@ export function snapshot(ctx: Ctx): Snapshot {
          FROM agent a WHERE a.state != 'retired'`,
       )
       .all(),
-    // Raw for the same reason as `groups`: `status` is a `TaskState` downstream.
-    tasks: db.query<Task, []>("SELECT id, grp_id, slice_id, title, status FROM task").all(),
+    tasks: q
+      .select({ id: task.id, grp_id: task.grp_id, slice_id: task.slice_id, title: task.title, status: task.status })
+      .from(task)
+      .all(),
     channels: q
       .select({
         id: channel.id,
