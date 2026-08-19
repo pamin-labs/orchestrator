@@ -64,11 +64,19 @@ function expectDryRunOnlyJobs(workflow: Workflow, names: readonly string[]): voi
  * Asserting a hardcoded copy here would make this the fourth place the list
  * lives, which is the problem rather than a check on it.
  */
-function requiredChecks(): string[] {
-  return readFileSync(".github/required-checks.txt", "utf8")
+const namesIn = (file: string): string[] =>
+  readFileSync(file, "utf8")
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "" && !line.startsWith("#"));
+
+function requiredChecks(): string[] {
+  return namesIn(".github/required-checks.txt");
+}
+
+/** Merge gates that are not release gates. See the file's own header for why. */
+function mergeOnlyChecks(): string[] {
+  return namesIn(".github/merge-only-checks.txt");
 }
 
 describe("workflow governance", () => {
@@ -354,6 +362,17 @@ describe("workflow governance", () => {
     // in the place testing that there is only one.
     expect(checkGate).toContain(".github/required-checks.txt");
     expect(checkGate).toContain("required-checks.txt is empty");
+    // And reads only that one. `merge-only-checks.txt` holds names that appear on
+    // a pull request head and nowhere else — `codecov/patch` is posted by
+    // `pr-report.yml`, so no `main` commit carries it. Requiring one here would
+    // block every release on a check that can never be green for a release sha.
+    expect(checkGate).not.toContain("merge-only-checks.txt");
+    for (const name of mergeOnlyChecks()) expect(requiredChecks(), name).not.toContain(name);
+    expect(mergeOnlyChecks()).toContain("codecov/patch");
+    // The ruleset is the one consumer of both, and it lives in a document because
+    // a GitHub setting cannot read a file.
+    const ops = readFileSync("docs/operations/ci.md", "utf8");
+    expect(ops).toContain(".github/required-checks.txt .github/merge-only-checks.txt");
     expect(requiredChecks().length).toBeGreaterThan(5);
     expect(checkGate).toContain("commits/$SOURCE_SHA/check-runs?per_page=100");
     expect(checkGate).toContain('"completed:success"');
