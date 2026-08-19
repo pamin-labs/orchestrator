@@ -256,7 +256,12 @@ live(
       await c.db.update(grpTable).set({ branch: "orch/live" }).where(eq(grpTable.id, 1));
 
       expect(await keepBranch(c, 1)).toEqual({ ok: true });
-      const landed = await execIn(c, UTIL, `git -C ${mirror} log -1 --format=%s refs/heads/orch/live`);
+      // `refs/orch/`, not `refs/heads/`: the mirror's `+refs/heads/*:refs/heads/*`
+      // prune deletes by destination, so a local-only branch under `refs/heads/` is
+      // gone before `pushBranch` can send it. `pushBranch` is what promotes it, and
+      // to the *remote*'s `refs/heads/`. This asserted the location it had before
+      // that fix, so it read as "the utility container cannot take a commit".
+      const landed = await execIn(c, UTIL, `git -C ${mirror} log -1 --format=%s refs/orch/orch/live`);
       expect(landed.out.trim()).toBe("wip: probe");
     } finally {
       await killSandbox(c, grp).catch(() => {});
