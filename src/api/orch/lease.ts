@@ -63,11 +63,11 @@ export const getLeaseLog = (async (ctx, _req, a, params, { grep }) => {
   // Whose lease this is. Unchecked, any sandbox could read any group's build log
   // by counting up from 1 — the `/orch/v1/` prefix gate on the mailbox is about
   // which routes are reachable, not about who is reaching them.
-  const row = ctx.db
-    .query<{ log_path: string | null; grp_id: number | null }, [number]>(
-      "SELECT log_path, grp_id FROM lease WHERE id = ?",
-    )
-    .get(params.id);
+  const row = orm(ctx.db)
+    .select({ log_path: leases.log_path, grp_id: leases.grp_id })
+    .from(leases)
+    .where(eq(leases.id, params.id))
+    .get();
   if (!row?.log_path) return message("no log", 404);
   if (row.grp_id !== a.grp_id) return message("not this group's lease", 403);
   const raw = await Bun.file(row.log_path).text();

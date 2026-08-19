@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { orm } from "../../platform/persistence/orm.ts";
 import { grp } from "../../platform/persistence/schema.ts";
@@ -26,11 +26,13 @@ export function resolveGroup(
   if (name) {
     const id = Number(name);
     if (Number.isInteger(id)) return id;
-    const group = ctx.db
-      .query<{ id: number }, [string]>(
-        "SELECT id FROM grp WHERE name = ? AND status != 'DISSOLVED' ORDER BY id DESC LIMIT 1",
-      )
-      .get(name);
+    const group = orm(ctx.db)
+      .select({ id: grp.id })
+      .from(grp)
+      .where(and(eq(grp.name, name), ne(grp.status, "DISSOLVED")))
+      .orderBy(desc(grp.id))
+      .limit(1)
+      .get();
     if (group) return group.id;
   }
   return fallbackGroupId ?? null;
