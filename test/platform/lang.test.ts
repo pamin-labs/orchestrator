@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { SAY_KEYS, say } from "../../src/platform/text/lang.ts";
+import { isChinese, SAY_KEYS, say } from "../../src/platform/text/lang.ts";
 
 /**
  * The two tables and the keys callers may name.
@@ -52,4 +52,21 @@ test("no placeholder survives into the boss's feed unfilled", () => {
       expect([key, out.includes("{")]).toEqual([key, false]);
     }
   }
+});
+
+test("the language test is one predicate, and `en` is not what it answers to", () => {
+  // `escalation.ts` asked `language === "en"` while this module asked whether the
+  // string starts with 中 or zh. The default is "中文" and the panel offers
+  // "English", so that branch was unreachable for every value the setting can hold
+  // — the boss reading English got a Chinese prompt, from a comparison that looked
+  // deliberate. Free text in, so the test is what the value looks like.
+  expect([isChinese("中文"), isChinese("zh"), isChinese("zh-CN"), isChinese("中")]).toEqual([true, true, true, true]);
+  expect([isChinese("English"), isChinese("en"), isChinese("日本語"), isChinese(undefined)]).toEqual([
+    false,
+    false,
+    false,
+    false,
+  ]);
+  // And it is the same answer `say` gives, because there is one of it now.
+  expect(say("English", "gate.pass", { name: "x" })).toBe(say("fr", "gate.pass", { name: "x" }));
 });

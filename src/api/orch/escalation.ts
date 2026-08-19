@@ -23,6 +23,7 @@ import type { AgentHandler, Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
+import { isChinese } from "../../platform/text/lang.ts";
 
 /**
  * A question that an agent could not answer for itself, and everything that
@@ -288,7 +289,7 @@ function answerDraftContext(
   ctx: Ctx,
   groupId: number | null,
 ): { requirement: string; notes: string[]; slices: string[] } {
-  if (!groupId) return { requirement: ctx.config.language === "en" ? "standing" : "常驻岗", notes: [], slices: [] };
+  if (!groupId) return { requirement: isChinese(ctx.config.language) ? "常驻岗" : "standing", notes: [], slices: [] };
   const requirement =
     ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(groupId)?.name ?? "?";
   const notes = ctx.db
@@ -313,26 +314,25 @@ function answerDraftPrompt(
   escalation: AnswerDraftRow,
   context: ReturnType<typeof answerDraftContext>,
 ): string {
-  const [intro, rules, requirement, asker, question, slices, notes] =
-    language === "en"
-      ? [
-          "You draft answers for the boss. Below is a question an agent escalated, plus this requirement's blackboard. Write the reply the boss could send as-is.",
-          "Rules: conclusion and evidence, no preamble, no restating the question, at most 4 lines. Answer from the blackboard when it is there; when it is not, say what is missing and give the most likely decision.",
-          "requirement",
-          "asker",
-          "question",
-          "slices",
-          "blackboard",
-        ]
-      : [
-          "你是老板的助手。下面是一个 agent 提给老板的问题，以及这个需求的黑板内容。写出老板可以直接发出去的答复。",
-          "要求：直接给结论和依据，不要开场白，不要复述问题，不超过 4 行。黑板里答得出来就直接答；答不出来就说清楚缺什么、并给出你认为最可能的决定。",
-          "需求",
-          "提问的人",
-          "问题",
-          "切片",
-          "黑板",
-        ];
+  const [intro, rules, requirement, asker, question, slices, notes] = isChinese(language)
+    ? [
+        "你是老板的助手。下面是一个 agent 提给老板的问题，以及这个需求的黑板内容。写出老板可以直接发出去的答复。",
+        "要求：直接给结论和依据，不要开场白，不要复述问题，不超过 4 行。黑板里答得出来就直接答；答不出来就说清楚缺什么、并给出你认为最可能的决定。",
+        "需求",
+        "提问的人",
+        "问题",
+        "切片",
+        "黑板",
+      ]
+    : [
+        "You draft answers for the boss. Below is a question an agent escalated, plus this requirement's blackboard. Write the reply the boss could send as-is.",
+        "Rules: conclusion and evidence, no preamble, no restating the question, at most 4 lines. Answer from the blackboard when it is there; when it is not, say what is missing and give the most likely decision.",
+        "requirement",
+        "asker",
+        "question",
+        "slices",
+        "blackboard",
+      ];
   return [
     intro,
     rules,
