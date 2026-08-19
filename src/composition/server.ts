@@ -7,7 +7,11 @@ import { landGroup } from "../api/panel/group.ts";
 import { roleFor, type Ctx } from "../mech/ctx.ts";
 import { joinQueue } from "../mech/flow/mergequeue.ts";
 import { bindSandboxKey } from "../mech/sandbox/auth.ts";
+import { and, eq, max } from "drizzle-orm";
 import { Bus, trimEvents } from "../platform/persistence/event-bus.ts";
+import { orm } from "../platform/persistence/orm.ts";
+import { projectOfGrp } from "../mech/util/rows.ts";
+import { grp, project, runtime_auth as runtimeAuth } from "../platform/persistence/schema.ts";
 import { consola } from "consola";
 import {
   checkCapabilities,
@@ -302,7 +306,7 @@ export function applyPrOutcome(ctx: Ctx, f: Feedback, url: string, notifier: Not
  * automatically — the close was deliberate.
  */
 function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): void {
-  const g = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grpId);
+  const g = orm(ctx.db).select({ name: grp.name }).from(grp).where(eq(grp.id, grpId)).get();
   hold(ctx.db, grpId, { reason: "merge", settled: true, from: "PR_OPEN", leaveQueue: true });
   raise(ctx.db, {
     grpId,
@@ -331,10 +335,11 @@ function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifi
 
 /** Reopened on GitHub: back into the queue, and the question that asked is answered. */
 function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
-  ctx.db.run(
-    "UPDATE grp SET status = 'PR_OPEN', paused_at = NULL, pause_reason = NULL WHERE id = ? AND status = 'PAUSED'",
-    [grpId],
-  );
+  orm(ctx.db)
+    .update(grp)
+    .set({ status: "PR_OPEN", paused_at: null, pause_reason: null })
+    .where(and(eq(grp.id, grpId), eq(grp.status, "PAUSED")))
+    .run();
   const prefix = `PR #${prNumber} 被关掉了`;
   ctx.db.run(
     `UPDATE escalation SET chain_state = 'answered', answered_by = 'github', answer = 'reopened'
@@ -386,7 +391,10 @@ function memory(db: DB): IndexMemory {
 
 /** When the runtimes' credentials last changed. Rule 17b reads the same row. */
 const authStamp = (db: DB): number =>
-  db.query<{ at: number | null }, []>("SELECT max(updated_at) at FROM runtime_auth").get()?.at ?? 0;
+  orm(db)
+    .select({ at: max(runtimeAuth.updated_at) })
+    .from(runtimeAuth)
+    .get()?.at ?? 0;
 
 /**
  * Whether a pass would be spending calls that cannot be answered.
@@ -510,8 +518,9 @@ export function indexPaused(db: DB, projectId: number): boolean {
  */
 export function indexTargets(db: DB, now = Date.now()): IndexProject[] {
   if (now < memory(db).blockedUntil) return [];
-  return db
-    .query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project")
+  return orm(db)
+    .select({ id: project.id, remote: project.remote })
+    .from(project)
     .all()
     .flatMap((p) => (p.remote && !indexPaused(db, p.id) ? [{ id: p.id, remote: p.remote }] : []));
 }
@@ -628,8 +637,9 @@ export function recordIndexResult(
 export function chargedProject(db: DB, scope: Scope): number | undefined {
   if ("project" in scope) return scope.project;
   if (!("grp" in scope)) return undefined;
-  return db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(scope.grp)
-    ?.project_id;
+  // `?? undefined`, not the helper's `null`: the return says "no project" with
+  // `undefined`, and `chargeIndex` is skipped on a falsy value either way.
+  return projectOfGrp(db, scope.grp) ?? undefined;
 }
 
 /**
