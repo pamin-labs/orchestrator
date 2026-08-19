@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  backgroundView,
+  contentSlot,
   findById,
   isHome,
+  navigationShortcut,
+  repairMissingGroup,
   projectForGroup,
   scrollClass,
   settingsInitial,
@@ -125,5 +129,64 @@ describe("a crumb and a button each need every one of their conditions", () => {
     ["no project list", 1, 0, false],
   ])("the new-requirement button: %s", (_case, projectId, projects, shown) => {
     expect(showNewRequirement(projectId, projects)).toBe(shown);
+  });
+});
+
+/**
+ * A requirement that has been delivered leaves no live group behind, so the
+ * requirements page counted zero and drew the first-run onboarding panel over a
+ * project with a shipped history. "Nothing running" and "nothing ever" are the
+ * same number and different pages.
+ */
+describe("a delivered requirement is history, not an empty project", () => {
+  test.each([
+    ["work in flight", 2, false, "progress"],
+    ["nothing running but something delivered", 0, true, "progress"],
+    ["neither", 0, false, "empty"],
+  ] as const)("%s", (_case, groups, delivered, slot) => {
+    expect(contentSlot(1, false, "progress", groups, delivered, false)).toBe(slot);
+  });
+});
+
+/**
+ * `req` is the drill-in, and it is only reachable with a requirement to draw.
+ * Behind a dialog opened from the bare list, resolving to `req` anyway asks the
+ * page for a requirement nobody selected — a blank pane behind the modal, and a
+ * remount of it when the modal closes.
+ */
+test("the page behind a dialog is the list until a requirement is picked", () => {
+  expect(backgroundView({ view: "progress", g: null })).toBe("progress");
+  expect(backgroundView({ view: "progress", g: 11 })).toBe("req");
+  // `board` is the old name for the list, and it drills in on the same rule.
+  expect(backgroundView({ view: "board", g: null })).toBe("progress");
+});
+
+/**
+ * The requirement list arrives after the hash does. An empty list is "the state
+ * has not loaded yet", not "that requirement is gone" — repairing on it threw
+ * away the requirement in the URL on every cold load of a deep link.
+ */
+test("an empty requirement list is not yet loaded, not a missing requirement", () => {
+  expect(repairMissingGroup(11, [])).toBeNull();
+  expect(repairMissingGroup(11, [10, 12])).toEqual({ g: null, view: "progress", t: null });
+  expect(repairMissingGroup(11, [11])).toBeNull();
+  expect(repairMissingGroup(null, [10])).toBeNull();
+});
+
+/**
+ * ⌘K on a requirement offers to jump between requirements; anywhere else it
+ * offers projects. On `req` with nothing selected there are no requirements to
+ * list, so the picker opens empty and the one key that always works stops.
+ */
+describe("⌘K opens the picker that has something in it", () => {
+  const press = (key: string, view: "req" | "progress", g: number | null) =>
+    navigationShortcut({ key, metaKey: true, ctrlKey: false, altKey: false }, { view, g });
+
+  test.each([
+    ["on a requirement", "req", 11, "requirement-picker"],
+    ["on the list", "progress", null, "project-picker"],
+    ["on req before one is selected", "req", null, "project-picker"],
+  ] as const)("%s", (_case, view, g, shortcut) => {
+    expect(press("k", view, g)).toBe(shortcut);
   });
 });
