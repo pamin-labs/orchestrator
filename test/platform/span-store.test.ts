@@ -9,6 +9,7 @@ import {
   SqliteSpanExporter,
   trimSpans,
   writeSpans,
+  foldedStacks,
   stageStats,
   traceList,
   type SpanRow,
@@ -357,4 +358,52 @@ test("the trace list is the newest-starting traces, whole, and the tie-break hol
   // The summary covers the whole trace, not the span the ranking found it by.
   expect(traces[0]).toMatchObject({ name: "turn", startedAt: t0 + 24_000, durationMs: 510, failed: true });
   expect(traces[1]?.failed).toBe(false);
+});
+
+/**
+ * What the fold treats as a root, now that the parent link is a SQL join.
+ *
+ * A root is a span whose parent the *scope* cannot see, and there are three ways
+ * for that to happen: no parent id, a parent the window or the scope filtered out,
+ * and a parent id that belongs to another trace. The last is the one the join
+ * itself decides, and the one a lookup keyed on the span id alone gets wrong: span
+ * ids are unique within a trace and nowhere else.
+ */
+test("a span whose parent the scope cannot see is a root, however it came to be one", () => {
+  const db = openMemory();
+  const t0 = Date.now() - 60_000;
+  const write = (
+    traceId: string,
+    spanId: string,
+    parentSpanId: string | null,
+    name: string,
+    at: number,
+    attributes: Record<string, unknown> = {},
+  ) =>
+    writeSpans(db, [
+      {
+        traceId: traceId.repeat(32),
+        spanId: spanId.repeat(16),
+        parentSpanId: parentSpanId && parentSpanId.repeat(16),
+        name,
+        kind: "internal",
+        startedAt: at,
+        durationMs: 10,
+        status: "ok",
+        statusMessage: null,
+        attributes,
+      },
+    ]);
+
+  write("a", "1", null, "root.a", t0);
+  write("a", "2", "1", "child.a", t0 + 1);
+  // Same parent span id, different trace: `1` names nothing in trace `b`.
+  write("b", "1", null, "root.b", t0 + 2, { "grp.id": 3 });
+  write("b", "2", "1", "child.b", t0 + 3);
+  // A parent inside the trace but outside the window this read asks for.
+  write("c", "1", null, "root.c", t0 - 10_000);
+  write("c", "2", "1", "child.c", t0 + 4);
+
+  const paths = foldedStacks(db, { kind: "system" }, { from: t0, to: t0 + 1_000 }).map((f) => f.path);
+  expect(paths).toEqual(["child.b", "child.c", "root.a", "root.a;child.a"]);
 });

@@ -486,24 +486,31 @@ const MAX_STACK_DEPTH = 64;
  * Every call path in the scope, summed — the flamegraph's data.
  *
  * A root is a span whose parent is absent *from the scope* rather than NULL:
- * anchoring on NULL returns nothing at all. The key carries `trace_id` as well as
- * the span id, because span ids are unique only within a trace. **Folded here rather
- * than in SQL**, this file's one exception: a tree walk has no index to stand on.
+ * anchoring on NULL returns nothing at all. The parent link is resolved in SQL, on
+ * `(trace_id, span_id)` because span ids are unique only within a trace, so what
+ * crosses into JS is a pair of `rowid`s rather than three hex strings per row to
+ * build a key from. **Folded here rather than in SQL**, this file's one exception:
+ * a tree walk has no index to stand on.
  */
 export function foldedStacks(db: DB, scope: ReadScope, window: TimeWindow = recentWindow()): FoldedStack[] {
   const bounds = clamp(window);
   const { where, params } = scopeSql(scope);
-  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds. This is the flat read the fold walks in JS; nothing else is interpolated.
+  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds. This is the read the fold walks in JS; nothing else is interpolated.
   const rows = db
     .query<FoldRow, number[]>(
-      `SELECT trace_id, span_id, parent_span_id, name, duration_ms
-         FROM span WHERE started_at >= ? AND started_at < ? AND ${where}`,
+      // The join is unfiltered on the parent side on purpose: what decides whether
+      // a parent is visible is whether it came back in the scoped set below, and
+      // filtering here as well would state that rule in a second place.
+      `SELECT s.rowid AS id, p.rowid AS parent, s.name, s.duration_ms
+         FROM (SELECT rowid, trace_id, span_id, parent_span_id, name, duration_ms
+                 FROM span WHERE started_at >= ? AND started_at < ? AND ${where}) s
+         LEFT JOIN span p ON p.trace_id = s.trace_id AND p.span_id = s.parent_span_id`,
     )
     .all(bounds.from, bounds.to, ...params);
 
-  const byId = new Map(rows.map((row) => [spanKey(row.trace_id, row.span_id), row]));
-  const paths = new Map<string, string>();
-  const walking = new Set<string>();
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const paths = new Map<number, string>();
+  const walking = new Set<number>();
 
   /**
    * A span's ancestry, or as much of it as the scope can establish.
@@ -514,25 +521,24 @@ export function foldedStacks(db: DB, scope: ReadScope, window: TimeWindow = rece
    * repeating the ring sixty-four times. Every span is still counted exactly once.
    */
   const pathOf = (row: FoldRow, depth: number): string => {
-    const id = spanKey(row.trace_id, row.span_id);
-    const known = paths.get(id);
+    const known = paths.get(row.id);
     if (known !== undefined) return known;
-    const parent = row.parent_span_id ? byId.get(spanKey(row.trace_id, row.parent_span_id)) : undefined;
+    const parent = row.parent === null ? undefined : byId.get(row.parent);
     // The cycle test is on the *parent*, not on this span: stopping when we are
     // about to re-enter a span already on the stack ends the ring one step
     // before it repeats a name, where testing self emits `a;b;a`.
-    const stop = !parent || depth >= MAX_STACK_DEPTH || walking.has(spanKey(parent.trace_id, parent.span_id));
+    const stop = !parent || depth >= MAX_STACK_DEPTH || walking.has(parent.id);
     if (stop) {
       // Memoised like any other answer, so a span whose ancestry cannot be
       // established is a root once rather than a different root depending on
       // which row happened to reach it first.
-      paths.set(id, row.name);
+      paths.set(row.id, row.name);
       return row.name;
     }
-    walking.add(id);
+    walking.add(row.id);
     const path = `${pathOf(parent, depth + 1)};${row.name}`;
-    walking.delete(id);
-    paths.set(id, path);
+    walking.delete(row.id);
+    paths.set(row.id, path);
     return path;
   };
 
@@ -550,16 +556,13 @@ export function foldedStacks(db: DB, scope: ReadScope, window: TimeWindow = rece
   return [...folded.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
+/** A span and its parent as the join resolved them: `rowid`s, not a composite key. */
 interface FoldRow {
-  trace_id: string;
-  span_id: string;
-  parent_span_id: string | null;
+  id: number;
+  parent: number | null;
   name: string;
   duration_ms: number;
 }
-
-/** Span ids are unique within a trace, not across them. */
-const spanKey = (traceId: string, spanId: string): string => `${traceId} ${spanId}`;
 
 /** One bucket of the trend: when, how many, and how long they took. */
 export interface TrendPoint {
