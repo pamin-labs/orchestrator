@@ -10,6 +10,7 @@ import {
   trimSpans,
   writeSpans,
   stageStats,
+  traceList,
   type SpanRow,
 } from "../../src/platform/observability/span-store.ts";
 import { endSpan, installTracerProvider, startTrace } from "../../src/platform/observability/traces.ts";
@@ -299,4 +300,55 @@ test("a stage carries its newest failure's reason, and a healthy one carries non
   const byName = new Map(stageStats(db, { kind: "system" }).map((s) => [s.name, s]));
   expect(byName.get("index.ask")).toMatchObject({ errors: 2, reason: "no credential for codex" });
   expect(byName.get("git.ls_tree")).toMatchObject({ errors: 0, reason: null });
+});
+
+/**
+ * The twenty a reader is offered, when there are more than twenty to choose from.
+ *
+ * `traceList` narrows to its candidates before the window functions run, so the
+ * candidate ranking is now a second place the order is decided and a second place
+ * it can disagree with itself. Every part of that key is exercised here: the tie
+ * on `started_at`, and a long-running old trace whose newest span is the newest in
+ * the scope — ranking on the latest span rather than the earliest would put it top.
+ */
+test("the trace list is the newest-starting traces, whole, and the tie-break holds", () => {
+  const db = openMemory();
+  const t0 = 1_800_000_000_000;
+  const write = (trace: number, span: number, startedAt: number, name: string, failed = false) =>
+    writeSpans(db, [
+      {
+        traceId: String(trace).padStart(32, "0"),
+        spanId: `${trace}-${span}`.padStart(16, "0"),
+        parentSpanId: span === 0 ? null : `${trace}-0`.padStart(16, "0"),
+        name,
+        kind: "internal",
+        startedAt,
+        durationMs: 10,
+        status: failed ? "error" : "ok",
+        statusMessage: null,
+        attributes: {},
+      },
+    ]);
+
+  // Twenty-five traces, newest last, with a tie at each end of the cut: 23 starts
+  // with 24, and 4 starts with 5 — the last one that fits. The order among tied
+  // traces is `trace_id DESC`, at the top of the list and at the boundary alike.
+  for (let trace = 0; trace < 25; trace++) {
+    const start = t0 + (trace === 23 ? 24 : trace === 4 ? 5 : trace) * 1_000;
+    write(trace, 0, start, "turn");
+    write(trace, 1, start + 500, "turn.provider", trace === 24);
+  }
+  // The oldest trace, still running: its newest span is the newest in the scope.
+  write(0, 2, t0 + 100_000, "turn.late");
+
+  const traces = traceList(db, { kind: "system" }, 20, { from: t0 - 1, to: t0 + 200_000 });
+
+  expect(traces.map((t) => t.traceId)).toEqual(
+    [24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5].map((n) =>
+      String(n).padStart(32, "0"),
+    ),
+  );
+  // The summary covers the whole trace, not the span the ranking found it by.
+  expect(traces[0]).toMatchObject({ name: "turn", startedAt: t0 + 24_000, durationMs: 510, failed: true });
+  expect(traces[1]?.failed).toBe(false);
 });

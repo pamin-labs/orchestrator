@@ -402,18 +402,25 @@ export interface TraceSummary {
 /**
  * The scope's recent traces, for picking one to open.
  *
- * `MAX(end) - MIN(start)` *within the scope* rather than a root span, and that is
- * the correct reading rather than a shortcut: `startChildTrace` gives a turn a
- * remote parent, so no span in a requirement's own scope has a NULL parent.
- * `FIRST_VALUE` supplies the name, ordered by `span_id` so it cannot flap.
+ * `MAX(end) - MIN(start)` *within the scope* rather than a root span: `startChildTrace`
+ * gives a turn a remote parent, so no span in a requirement's own scope has a NULL
+ * parent. `FIRST_VALUE` supplies the name, ordered by `span_id` so it cannot flap.
+ * `recent` names the twenty first, because a `LIMIT` cannot be pushed past a window
+ * function and partitioning the whole window sorted 84,000 rows to return twenty. It
+ * ranks by the same key the outer `ORDER BY` does, so it selects the same twenty.
  */
 export function traceList(db: DB, scope: ReadScope, limit = 20, window: TimeWindow = recentWindow()): TraceSummary[] {
   const bounds = clamp(window);
   const { where, params } = scopeSql(scope);
-  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds and `limit`.
+  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. It appears twice and is the same literal both times. Every number travels in `params` and is bound through `?`, as are the two window bounds and `limit`, each supplied once per occurrence.
   return db
     .query<{ trace_id: string; name: string; started_at: number; duration_ms: number; failed: number }, number[]>(
-      `SELECT trace_id, name, started_at, duration_ms, failed FROM (
+      `WITH recent AS (
+         SELECT trace_id, MIN(started_at) AS started_at
+         FROM span WHERE started_at >= ? AND started_at < ? AND ${where}
+         GROUP BY trace_id ORDER BY started_at DESC, trace_id DESC LIMIT ?
+       )
+       SELECT trace_id, name, started_at, duration_ms, failed FROM (
          SELECT trace_id,
                 FIRST_VALUE(name) OVER w                                          AS name,
                 MIN(started_at)   OVER p                                          AS started_at,
@@ -421,11 +428,12 @@ export function traceList(db: DB, scope: ReadScope, limit = 20, window: TimeWind
                 MAX(status = 'error')         OVER p                              AS failed,
                 ROW_NUMBER()      OVER w                                          AS rn
          FROM span WHERE started_at >= ? AND started_at < ? AND ${where}
+           AND trace_id IN (SELECT trace_id FROM recent)
          WINDOW p AS (PARTITION BY trace_id),
                 w AS (PARTITION BY trace_id ORDER BY started_at, span_id)
        ) WHERE rn = 1 ORDER BY started_at DESC, trace_id DESC LIMIT ?`,
     )
-    .all(bounds.from, bounds.to, ...params, limit)
+    .all(bounds.from, bounds.to, ...params, limit, bounds.from, bounds.to, ...params, limit)
     .map((row) => ({
       traceId: row.trace_id,
       name: row.name,
