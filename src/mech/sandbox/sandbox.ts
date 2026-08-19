@@ -377,8 +377,10 @@ function connection(ctx: Ctx): ConnectionConfig {
     domain: `${host}:${port ?? 8080}`,
     protocol,
     ...(key ? { apiKey: key } : {}),
-    // The SDK default is 30s, which an image pull blows straight through.
-    requestTimeoutSeconds: 600,
+    // The SDK default is 30s, which an image pull blows straight through — the
+    // same shape of wait, and the same number, as a `git clone`, which is why
+    // both read `timeouts.transferMs`.
+    requestTimeoutSeconds: Math.ceil(ctx.config.timeouts.transferMs / 1000),
   });
 }
 
@@ -767,7 +769,7 @@ function codexHomeIO(ctx: Ctx): CodexHomeIO {
     remove: async (path) => void (await execIn(ctx, UTIL, `rm -f ${shq(path)}`)),
     run: async (argv) => {
       const r = await execIn(ctx, UTIL, `codex ${argv.map(shq).join(" ")}`, {
-        timeoutMs: 120_000,
+        timeoutMs: ctx.config.timeouts.tokenRefreshMs,
         env: { CODEX_HOME: REFRESH_HOME },
       });
       return r.code === 0;

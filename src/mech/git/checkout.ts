@@ -239,7 +239,10 @@ async function createCheckoutInner(ctx: Ctx, scope: Scope, spec: CheckoutSpec): 
   // `--filter=blob:none`, never `--depth=1`: `rebaseOntoBase` and `merge-base
   // --is-ancestor` need the real history.
   const cloneCmd = `git clone --progress --filter=blob:none ${shq(spec.remote)} ${WORK}`;
-  const clone = await streamed(ctx, scope, cloneCmd, { timeoutMs: 600_000, env: { GIT_TERMINAL_PROMPT: "0" } });
+  const clone = await streamed(ctx, scope, cloneCmd, {
+    timeoutMs: ctx.config.timeouts.transferMs,
+    env: { GIT_TERMINAL_PROMPT: "0" },
+  });
   if (clone.code !== 0) throw new Error(`git clone failed: ${clone.out.slice(-400)}`);
 
   // Two places the branch can be:
@@ -292,7 +295,7 @@ async function initSubmodules(ctx: Ctx, scope: Scope): Promise<void> {
   if (has.out.trim() !== "yes") return;
   const r = await execIn(ctx, scope, `git -c protocol.file.allow=user submodule update --init`, {
     cwd: WORK,
-    timeoutMs: 600_000,
+    timeoutMs: ctx.config.timeouts.transferMs,
   });
   if (r.code !== 0 && "grp" in scope) {
     // Not fatal: a repository whose submodules will not init is still a
@@ -336,7 +339,7 @@ export async function utilGit(ctx: Ctx, argv: string[], cwd?: string): Promise<{
   const cmd = `git -c core.hooksPath=/dev/null ${verb} ${argv.slice(1).map(shq).join(" ")}`;
   const r = await execIn(ctx, UTIL, cmd, {
     ...(cwd ? { cwd } : {}),
-    timeoutMs: 600_000,
+    timeoutMs: ctx.config.timeouts.transferMs,
     env: { GIT_TERMINAL_PROMPT: "0" },
   });
   return { code: r.code, out: `${r.out}${r.err}`.trimEnd() };

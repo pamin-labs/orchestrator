@@ -6,7 +6,11 @@ import type { Ctx } from "../../src/mech/ctx.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
-import { POLL_EVERY_MS, pollClaudeUsage, pollUsage, rateLimitsIn, toRateLimit } from "../../src/mech/ops/subusage.ts";
+import { pollClaudeUsage, pollUsage, rateLimitsIn, toRateLimit } from "../../src/mech/ops/subusage.ts";
+import { DEFAULTS_FOR_CHECK } from "../../src/platform/config/load.ts";
+
+/** The poll interval is `intervals.usagePollMs` now; the shipped default is ten minutes. */
+const POLL_EVERY_MS = DEFAULTS_FOR_CHECK.intervals.usagePollMs;
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";

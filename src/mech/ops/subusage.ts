@@ -35,7 +35,7 @@ const ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
 const BETA = "oauth-2025-04-20";
 
 /**
- * Ten minutes, which is as often as this endpoint will actually answer.
+ * `intervals.usagePollMs` is as often as this endpoint will actually answer.
  *
  * It was one minute, reasoning that the windows move in hours and a minute-fresh
  * number costs one request. That ignores the endpoint's own budget: it answers a
@@ -47,21 +47,17 @@ const BETA = "oauth-2025-04-20";
 /**
  * The boss's own `/status` in the CLI spends from the same budget, so polling hard
  * also makes their check fail. Ten minutes inside a five-hour window is a 3% error
- * at worst.
+ * at worst — which is the default, and it is a setting because the right number
+ * here is a property of an account's own throttle rather than of this code.
  */
-export const POLL_EVERY_MS = 10 * 60_000;
-
 /**
- * After a 429, back off hard.
- *
- * The endpoint answers a too-frequent read with 429 and it is not ours to tune,
- * so the polite response to being told to slow down is to slow down. Ten minutes
- * was not enough to clear it — the throttle is per account and the boss's own CLI
- * is spending from it too — and a retry that earns another 429 restarts the
- * lockout. The header keeps showing the last good reading meanwhile, which is
- * what it should do: the window moves in hours.
+ * `intervals.usageBackoffMs` is what a 429 buys, and it is deliberately much
+ * longer. The endpoint is not ours to tune, so the polite response to being told
+ * to slow down is to slow down: ten minutes was not enough to clear it — the
+ * throttle is per account and the boss's own CLI spends from it too — and a retry
+ * that earns another 429 restarts the lockout. The header keeps showing the last
+ * good reading meanwhile, which is what it should do: the window moves in hours.
  */
-const BACKOFF_MS = 45 * 60_000;
 
 /** Only the two windows are consumed; the response has a dozen more fields. */
 const SubscriptionWindow = z.object({
@@ -165,7 +161,7 @@ async function fetchClaudeUsage(ctx: Ctx): Promise<UsageRead> {
     ctx,
     UTIL,
     `curl -s -m 10 -w '\n%{http_code}' -H ${shq(auth)} -H ${shq(`anthropic-beta: ${BETA}`)} ${shq(ENDPOINT)}`,
-    { timeoutMs: 30_000 },
+    { timeoutMs: ctx.config.timeouts.usageReadMs },
   );
   if (r.code !== 0) return { error: "unreachable" };
   const lines = r.out.trimEnd().split("\n");
@@ -182,7 +178,7 @@ async function fetchClaudeUsage(ctx: Ctx): Promise<UsageRead> {
 }
 
 /**
- * Refresh the claude row of usage_snapshot, at most every POLL_EVERY_MS.
+ * Refresh the claude row of usage_snapshot, at most every `intervals.usagePollMs`.
  *
  * Called from the watchdog tick, which already runs on a clock nobody has to
  * remember to wind. Returns whether it wrote, for the test.
@@ -205,7 +201,8 @@ export async function pollClaudeUsage(ctx: Ctx, now = Date.now()): Promise<boole
   const last = snapshot?.at;
   const prev = snapshot?.json;
   const throttled = !!prev && prev.includes('"error":"rate_limited"');
-  if (last && now - last < (throttled ? BACKOFF_MS : POLL_EVERY_MS)) return false;
+  const { usagePollMs, usageBackoffMs } = ctx.config.intervals;
+  if (last && now - last < (throttled ? usageBackoffMs : usagePollMs)) return false;
   // The settings-page credential, which is also the one `subscriptionAccount`
   // just checked. An api_key or a ChatGPT-style login has no OAuth token to ask
   // with, and that writes nothing rather than an error: a missing gauge is not
@@ -399,7 +396,7 @@ export async function pollUsage(
     .from(usageSnapshot)
     .where(eq(usageSnapshot.runtime, "codex"))
     .get()?.at;
-  if (last && now - last < POLL_EVERY_MS) return;
+  if (last && now - last < ctx.config.intervals.usagePollMs) return;
   const rollout = await fromSandbox?.().catch(() => null);
   if (rollout) rl = rateLimitsIn(rollout, now);
   if (!rl) rl = codexUsage(dataDir, now);

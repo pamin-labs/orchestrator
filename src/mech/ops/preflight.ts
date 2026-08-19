@@ -16,6 +16,7 @@ import { z } from "zod";
 import { isNotNull } from "drizzle-orm";
 import { orm } from "../../platform/persistence/orm.ts";
 import { agent } from "../../platform/persistence/schema.ts";
+import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "../../platform/config/load.ts";
 
 /**
  * What has to be true before any agent can run, checked once. Every one of these
@@ -42,12 +43,12 @@ export interface Check {
  * `/v1/sandboxes` is the cheapest *authenticated* call — a list, no side effect.
  * An unauthenticated endpoint answers for a server that rejects every real call.
  */
-async function reachable(url: string, apiKey: string): Promise<{ ok: boolean; detail: string }> {
+async function reachable(url: string, apiKey: string, timeoutMs: number): Promise<{ ok: boolean; detail: string }> {
   try {
     // fallow-ignore-next-line security-sink -- the one caller builds `url` from `cfg.sandbox.server`, the address the boss set for their own sandbox server, and `sandboxKeyFor` is what makes "the key stored for that same address" true rather than assumed: a stored key carries the address it was accepted by, and is withheld when the two disagree.
     const res = await fetch(`${url}/v1/sandboxes`, {
       headers: apiKey ? { [SANDBOX_API_KEY_HEADER]: apiKey } : {},
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (res.ok) return { ok: true, detail: "reachable" };
     // The two the boss can act on, said in their own words.
@@ -74,19 +75,20 @@ async function reachable(url: string, apiKey: string): Promise<{ ok: boolean; de
  * every open.
  */
 const seen = new Map<string, { at: number; ok: boolean; detail: string }>();
-const CACHE_MS = 5 * 60_000;
 
-async function accepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+const accepted: Verify = async (runtime, auth, cfg = DEFAULTS) => {
   // Hashed, not a tail: a pasted auth.json ends in `"}}` no matter whose login
   // it is, so a tail collides and reports one credential's verdict for another.
   const key = `${runtime}:${auth.mode}:${Bun.hash(auth.secret)}:${auth.baseUrl ?? ""}`;
   const hit = seen.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return { ok: hit.ok, detail: hit.detail };
+  // The same window the reachability probe re-asks on: both are "we asked this
+  // recently enough", which is why they are one setting.
+  if (hit && Date.now() - hit.at < cfg.intervals.recheckMs) return { ok: hit.ok, detail: hit.detail };
 
-  const out = await ask(runtime, auth);
+  const out = await ask(runtime, auth, cfg.timeouts.credentialCheckMs);
   seen.set(key, { at: Date.now(), ...out });
   return out;
-}
+};
 
 /**
  * These are host `fetch`es carrying the real token, and they stay that way.
@@ -97,10 +99,10 @@ async function accepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boole
  * container" a prerequisite for reporting that we cannot. **A check that needs
  * the thing it checks is not a check.**
  */
-async function ask(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+async function ask(runtime: string, auth: RuntimeAuth, timeoutMs: number): Promise<{ ok: boolean; detail: string }> {
   if (auth.mode === "chatgpt") return chatgptAccepted(auth);
-  if (runtime === "github") return githubAccepted(auth);
-  return modelAccepted(runtime, auth);
+  if (runtime === "github") return githubAccepted(auth, timeoutMs);
+  return modelAccepted(runtime, auth, timeoutMs);
 }
 
 function chatgptAccepted(auth: RuntimeAuth): { ok: boolean; detail: string } {
@@ -113,13 +115,13 @@ function chatgptAccepted(auth: RuntimeAuth): { ok: boolean; detail: string } {
   return { ok: true, detail: days >= 1 ? `还有 ${days} 天` : "快过期了" };
 }
 
-async function githubAccepted(auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+async function githubAccepted(auth: RuntimeAuth, timeoutMs: number): Promise<{ ok: boolean; detail: string }> {
   // GitHub is not a model provider and has no `/v1/models`. A missing credential
   // otherwise surfaces only when the utility container tries to push a branch.
   try {
     const response = await fetch("https://api.github.com/user", {
       headers: { authorization: `Bearer ${auth.secret}`, "user-agent": "orchestrator" },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (response.ok) return { ok: true, detail: "能用" };
     // GitHub deliberately uses 404 for resources a token cannot see.
@@ -167,11 +169,15 @@ export function credentialVerdict(status: number): { ok: boolean; detail: string
   return { ok: true, detail: `没验成（HTTP ${status}）` };
 }
 
-async function modelAccepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+async function modelAccepted(
+  runtime: string,
+  auth: RuntimeAuth,
+  timeoutMs: number,
+): Promise<{ ok: boolean; detail: string }> {
   const { url, headers } = modelProbe(runtime, auth);
   try {
     // fallow-ignore-next-line security-sink -- `modelProbe` builds the URL from the provider default or `runtime_auth.base_url`, and the secret it sends is the one stored in that same row; the gateway and the credential are set together by the boss and cannot be substituted for each other.
-    return credentialVerdict((await fetch(url, { headers, signal: AbortSignal.timeout(6000) })).status);
+    return credentialVerdict((await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) })).status);
   } catch {
     return { ok: true, detail: "连不上，没验" };
   }
@@ -215,8 +221,19 @@ export interface PreflightInput {
   /** `argv` defaults to `--version`; the docker check needs `info` (the daemon, not the binary). */
   probe?: (bin: string, argv?: string[]) => boolean;
   /** Injected in tests: the real one asks the provider whether it still works. */
-  verify?: (runtime: string, auth: RuntimeAuth) => Promise<{ ok: boolean; detail: string }>;
+  verify?: Verify;
+  /**
+   * The live `Config`, for the three waits in here. Reads the shipped defaults
+   * when absent, so a test need not build one.
+   */
+  cfg?: Config;
 }
+
+/**
+ * How a credential is verified. `cfg` is optional so a test's two-argument spy
+ * still satisfies it — the real one reads two timeouts out of it.
+ */
+export type Verify = (runtime: string, auth: RuntimeAuth, cfg?: Config) => Promise<{ ok: boolean; detail: string }>;
 
 /** Is this exact image:tag on this machine? */
 function localImages(ref: string): boolean {
@@ -418,7 +435,9 @@ function credentialRuntimes(db: DB): string[] {
 
 async function credentialCheck(input: PreflightInput, runtime: string): Promise<Check> {
   const auth = loadAuth(input.db, runtime);
-  const live = auth ? await (input.verify ?? accepted)(runtime, auth) : { ok: false, detail: "没配" };
+  const live = auth
+    ? await (input.verify ?? accepted)(runtime, auth, input.cfg ?? DEFAULTS)
+    : { ok: false, detail: "没配" };
   return {
     name: `credential:${runtime}`,
     ok: live.ok,
@@ -474,7 +493,7 @@ async function preflightInner(input: PreflightInput): Promise<Check[]> {
   // the yaml. Checking a different key than the one the turns use is how a green
   // tick sat next to a fleet that could not open a single container.
   const key = sandboxKeyFor(input.db, input.sandbox.server, input.sandbox.apiKey);
-  const server = await reachable(`http://${input.sandbox.server}`, key);
+  const server = await reachable(`http://${input.sandbox.server}`, key, (input.cfg ?? DEFAULTS).timeouts.sandboxPingMs);
   out.push(sandboxServerCheck(input, contained, server));
 
   // One row instead of the three above, and only in a container. Said once

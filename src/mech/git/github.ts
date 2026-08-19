@@ -16,6 +16,7 @@ import { activeTracer } from "../../platform/observability/traces.ts";
 import type { Json } from "../../contracts/json.ts";
 import { recordCache, recordRetry } from "../../platform/observability/metrics.ts";
 import { currentRequestId, requestContext } from "../../platform/observability/request-context.ts";
+import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../../platform/config/load.ts";
 
 /**
  * GitHub, as eight endpoints of ordinary JSON — over somebody else's transport.
@@ -27,7 +28,14 @@ import { currentRequestId, requestContext } from "../../platform/observability/r
  */
 
 const API = "https://api.github.com";
-const TIMEOUT_MS = 15_000;
+/**
+ * One GitHub call's wall clock, from `timeouts.githubApiMs`.
+ *
+ * Reads the config default rather than restating it; production passes the live
+ * value in through `makeGithub`, so this number only ever applies where there is
+ * no `Config` to ask — which today is the tests.
+ */
+const DEFAULT_TIMEOUT_MS = DEFAULTS.timeouts.githubApiMs;
 /**
  * ETags kept, before the least recently used is dropped.
  *
@@ -221,6 +229,7 @@ type GithubState = {
   kit: InstanceType<typeof GithubKit>;
   notes: Notes;
   lang: string | undefined;
+  timeoutMs: number;
   cache: QuickLRU<string, CacheEntry>;
   remaining: number | null;
 };
@@ -546,8 +555,8 @@ async function requestGithub<T>(state: GithubState, input: RequestInput<T>): Pro
 async function requestGithubInner<T>(state: GithubState, input: RequestInput<T>): Promise<GhResult<T>> {
   const callerSignal = input.callerSignal ?? requestContext.getStore()?.signal;
   const activeSignal = callerSignal
-    ? AbortSignal.any([callerSignal, AbortSignal.timeout(TIMEOUT_MS)])
-    : AbortSignal.timeout(TIMEOUT_MS);
+    ? AbortSignal.any([callerSignal, AbortSignal.timeout(state.timeoutMs)])
+    : AbortSignal.timeout(state.timeoutMs);
   if (callerSignal?.aborted) throw callerSignal.reason;
 
   const token = loadAuth(state.db, "github")?.secret;
@@ -569,6 +578,8 @@ export function makeGithub(
   fetchFn: GithubFetcher = fetch,
   /** `output.language`, for the one sentence the boss reads. */
   lang?: string,
+  /** `timeouts.githubApiMs`. Omitted only where there is no `Config` to read. */
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Github {
   /**
    * ETags, keyed by token as well as URL.
@@ -604,7 +615,15 @@ export function makeGithub(
       onSecondaryRateLimit: (retryAfter, options) => noteRetryAfter(notes, options, retryAfter),
     },
   });
-  const state: GithubState = { db, kit, notes, lang, cache: new QuickLRU({ maxSize: CACHE_ENTRIES }), remaining: null };
+  const state: GithubState = {
+    db,
+    kit,
+    notes,
+    lang,
+    timeoutMs,
+    cache: new QuickLRU({ maxSize: CACHE_ENTRIES }),
+    remaining: null,
+  };
 
   return {
     remaining: () => state.remaining,

@@ -85,6 +85,7 @@ export const getPreflight = (async (ctx) =>
       db: ctx.db,
       sandbox: ctx.config.sandbox,
       skillsDir: ctx.config.skillsDir,
+      cfg: ctx.config,
     }),
   })) satisfies Handler;
 

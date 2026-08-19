@@ -3,7 +3,11 @@ import type { Ctx } from "../../src/mech/ctx.ts";
 import { type DB, openMemory } from "../../src/platform/persistence/database.ts";
 import { holdForOffline } from "../../src/mech/ops/watchdog.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
-import { isOnline, PROBE_EVERY_MS, probe, resetNet } from "../../src/mech/sandbox/net.ts";
+import { isOnline, probe, resetNet } from "../../src/mech/sandbox/net.ts";
+import { DEFAULTS_FOR_CHECK } from "../../src/platform/config/load.ts";
+
+/** The probe's cadence is `intervals.recheckMs` now; the shipped default is five minutes. */
+const PROBE_EVERY_MS = DEFAULTS_FOR_CHECK.intervals.recheckMs;
 import { ensureSandbox, resetSandboxHold, sandboxHeld } from "../../src/mech/sandbox/sandbox.ts";
 import { type Job, resumeReclaimed, Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import * as fx from "../support/factories.ts";
