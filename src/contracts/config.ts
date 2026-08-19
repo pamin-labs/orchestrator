@@ -212,6 +212,15 @@ export const ConfigSchema = z.object({
    * off the expensive subscription.
    */
   indexModel: ModelRef,
+  /**
+   * How many SSE frames may wait on one slow browser before frames are dropped.
+   *
+   * The chain feeding it is one `bus.live()` per token from up to four concurrent
+   * turns, so a tab that stops reading is the one case that grows without bound.
+   * Dropping is safe — the panel re-reads its state on the next event — and the
+   * loss is counted rather than silent.
+   */
+  streamBacklog: count,
   /** Unused by retrieval today; see `EmbeddingRef`. */
   embedding: EmbeddingRef,
   /**

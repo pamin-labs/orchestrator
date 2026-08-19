@@ -4,6 +4,7 @@ import type { Ctx } from "../../mech/ctx.ts";
 import type { Frame, StoredEvent } from "../../contracts/events.ts";
 import type { SSEStreamingApi } from "hono/streaming";
 import { z } from "zod";
+import { recordDroppedFrames } from "../../platform/observability/metrics.ts";
 
 /**
  * One SSE stream, everything the panel draws off it.
@@ -41,6 +42,40 @@ function projectResolver(db: DB): (grpId: number | null | undefined) => number |
     }
     return projects.get(grpId) ?? null;
   };
+}
+
+/**
+ * One writer per connection, with a ceiling and a visible loss.
+ *
+ * It was `writes = writes.then(() => send(frame))` — unbounded, and fed by one
+ * `bus.live()` per token from up to four concurrent turns. A browser that stopped
+ * reading held the stream's backpressure and every later frame accumulated as a
+ * closure with no cap and no drop policy. One rejection also poisoned the chain
+ * permanently: each subsequent `.then` produced another rejected promise, and the
+ * `void enqueue(...)` at the call site left every one of them unhandled.
+ */
+export function boundedWriter(send: (frame: Frame) => Promise<void>, limit: number) {
+  let queued = 0;
+  let chain: Promise<void> = Promise.resolve();
+  const write = (run: () => Promise<void>): Promise<void> => {
+    // A slow client is not a broken one: drop the frame, count it, and keep the
+    // connection. The panel re-reads its state on the next event either way.
+    if (queued >= limit) {
+      recordDroppedFrames(1);
+      return chain;
+    }
+    queued += 1;
+    // `catch` before the next link, so a dead socket ends this frame rather than
+    // every frame after it.
+    chain = chain
+      .then(run)
+      .catch(() => {})
+      .finally(() => {
+        queued -= 1;
+      });
+    return chain;
+  };
+  return { write, enqueue: (frame: Frame) => write(() => send(frame)), settled: () => chain };
 }
 
 function frameSender(db: DB, stream: SSEStreamingApi): (frame: Frame) => Promise<void> {
@@ -126,8 +161,8 @@ export async function getStream(
   req.signal.addEventListener("abort", stop, { once: true });
 
   const send = frameSender(ctx.db, stream);
-  let writes = Promise.resolve();
-  const enqueue = (frame: Frame) => (writes = writes.then(() => send(frame)));
+  const writer = boundedWriter(send, ctx.config.streamBacklog);
+  const enqueue = writer.enqueue;
 
   // Subscribe before replay. Events persisted while a long catch-up is running
   // are buffered, then deduped against the final replay cursor.
@@ -149,10 +184,8 @@ export async function getStream(
   replaying = false;
 
   if (!stopped) {
-    beat = setInterval(() => {
-      writes = writes.then(() => stream.write(": ping\n\n")).then(() => {});
-    }, SSE_HEARTBEAT_MS);
+    beat = setInterval(() => void writer.write(async () => void (await stream.write(": ping\n\n"))), SSE_HEARTBEAT_MS);
   }
   await done;
-  await writes;
+  await writer.settled();
 }

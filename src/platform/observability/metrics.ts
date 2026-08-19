@@ -91,9 +91,13 @@ const cacheEntries = meter.createGauge("orchestrator_cache_entries", { descripti
 const droppedTelemetry = meter.createCounter("orchestrator_telemetry_dropped_total", {
   description: "Spans the exporter failed to deliver.",
 });
+const droppedFrames = meter.createCounter("orchestrator_stream_frames_dropped_total", {
+  description: "SSE frames dropped because a client could not keep up.",
+});
 // Seeded so the series exists at zero. A counter that only appears after the
 // first loss reads as "no data" on the dashboard that is watching for loss.
 droppedTelemetry.add(0);
+droppedFrames.add(0);
 
 const loop = monitorEventLoopDelay({ resolution: 20 });
 loop.enable();
@@ -217,6 +221,11 @@ export function recordCache(owner: string, hit: boolean, size: number): void {
 /** Spans that left the queue but never landed. Counted so the loss is visible. */
 export function recordDroppedSpans(count: number): void {
   droppedTelemetry.add(count);
+}
+
+/** Frames a browser was too slow to take. Counted for the same reason as spans. */
+export function recordDroppedFrames(count: number): void {
+  droppedFrames.add(count);
 }
 
 /**

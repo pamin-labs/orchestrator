@@ -162,6 +162,9 @@ const DEFAULTS: Config = {
   // cap is for the agent that has lost the plot, not the one having a hard day.
   sliceBudgetTokens: { trivial: 8_000_000, normal: 20_000_000, hard: 30_000_000 },
   indexModel: { runtime: "codex", model: "gpt-5.6-luna" },
+  // Deep enough that a browser catching up after a tab wakes never drops, and
+  // shallow enough that a dead socket cannot hold a turn's worth of tokens.
+  streamBacklog: 256,
   // Local, and the smaller of the two ADR 031 measured — they ranked the same and
   // the gap it cares about did not close with the larger one. Nothing reads this
   // yet; `bun run embedding:check` does.
