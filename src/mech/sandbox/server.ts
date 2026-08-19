@@ -194,6 +194,14 @@ async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promi
 }
 
 /**
+ * The egress sidecar's image. v1.1.4 403s every scoped package fetch while a
+ * credential is bound (ADR 005), so the tag is a decision, not a default.
+ * Named because `.github/workflows/nightly.yml` pulls it before the server asks
+ * for it, and a tag restated in a workflow is one tag and one stale copy.
+ */
+export const EGRESS_IMAGE = "opensandbox/egress:v1.1.6";
+
+/**
  * The values in a generated config that have to agree with *us*, and no others.
  *
  * Regex rather than a TOML parser, like `allowedHostPaths` above: six known
@@ -215,7 +223,7 @@ export function patchConfig(
     ["server", "port", `port = ${Number(at.port) || 8080}`],
     ["server", "api_key", `api_key = "${at.key}"`],
     ["storage", "allowed_host_paths", `allowed_host_paths = [${at.allowed.map((p) => `"${p}"`).join(", ")}]`],
-    ["egress", "image", `image = "opensandbox/egress:v1.1.6"`],
+    ["egress", "image", `image = "${EGRESS_IMAGE}"`],
     ["egress", "mode", `mode = "dns+nft"`],
   ] as const) {
     out = setIn(out, section, k, line);

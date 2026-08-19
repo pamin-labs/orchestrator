@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { z } from "zod";
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -7,8 +7,8 @@ import { makeApp } from "../../src/composition/api.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { createCheckout, keepBranch, sandboxGit, utilGit } from "../../src/mech/git/checkout.ts";
 import { startMailbox } from "../../src/mech/sandbox/mailbox.ts";
-import { CODEX_HOME } from "../../src/mech/sandbox/auth.ts";
-import { ConnectionConfig, SandboxManager } from "@alibaba-group/opensandbox";
+import { CODEX_HOME, SANDBOX_KEY, sandboxKeyFor, saveAuth } from "../../src/mech/sandbox/auth.ts";
+import { ensureServer } from "../../src/mech/sandbox/server.ts";
 import {
   bindCredentials,
   closeAll,
@@ -19,6 +19,7 @@ import {
   MAILBOX_DIR,
   putFile,
   REAL,
+  serverKeyOnDisk,
   SKILL_SYNC,
   UTIL,
   WORK,
@@ -36,40 +37,90 @@ import { testContext } from "../support/test-context.ts";
  * cannot reach this machine.
  */
 /**
- * Skipped unless a server is up, and it says so rather than passing quietly — a
- * green suite that silently skipped the only test of the real thing is the failure
- * this whole design exists to avoid.
+ * The suite starts its own server, and skips only for a reason it detected.
  *
- *   uvx opensandbox-server --config <toml>   # [egress] mode = "dns+nft", image >= v1.1.6
- *   docker build -f docker/agent.Dockerfile -t orch/agent:1 .
+ * It used to probe 127.0.0.1:8080 and skip when nothing answered, which made
+ * "nobody started a server" indistinguishable from "this machine cannot run
+ * containers" — and the first of those is not a reason to skip the only test of
+ * the real thing. `ensureServer` is the same call the orchestrator makes at boot:
+ * it leaves a running server alone, starts one when there is none, and waits on
+ * the port *and* the process so a config error is reported as itself rather than
+ * as a timeout. Nothing here polls; that loop is `waitUp`'s.
+ *
+ * On with `ORCH_LIVE_SANDBOX=1`, which nightly sets. Off by default because six
+ * containers and 40s is not what an inner-loop `bun run test` should cost — and
+ * that default cannot hide a skip, because the nightly job fails on one.
+ *
+ *   docker pull ghcr.io/pamin-labs/orch-agent:latest   # public, no login
+ *   docker pull opensandbox/egress:v1.1.6              # v1.1.4 403s scoped fetches
  */
-
 const cfg = loadConfig();
 
+/** On by explicit request only. Anything else, including unset, is off. */
+const ENABLED = process.env.ORCH_LIVE_SANDBOX === "1";
+
 /**
- * Usable, not merely listening.
+ * The daemon, not the binary.
  *
- * The first version of this asked whether the port answered, which it does even
- * when the API key is wrong — so the tests ran and failed on 401 instead of
- * skipping. "Can I drive it" is the only question worth asking.
+ * `docker --version` answers on a machine whose daemon is not running, and the
+ * symptom of trusting it is a server that starts, listens, and fails every
+ * create. Same probe as preflight's docker check.
  */
-async function serverUp(): Promise<boolean> {
+function dockerUp(): boolean {
   try {
-    const m = SandboxManager.create({
-      connectionConfig: new ConnectionConfig({
-        domain: cfg.sandbox.server,
-        protocol: "http",
-        ...(cfg.sandbox.apiKey ? { apiKey: cfg.sandbox.apiKey } : {}),
-        requestTimeoutSeconds: 5,
-      }),
-    });
-    await m.listSandboxInfos({ pageSize: 1 });
-    await m.close();
-    return true;
+    return Bun.spawnSync(["docker", "info"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
   } catch {
     return false;
   }
 }
+
+/**
+ * A server, and the key to drive it with.
+ *
+ * The key is the part that made this skip on a machine where everything worked:
+ * `ORCH_SANDBOX_API_KEY` is normally unset, the server on 8080 has one, and every
+ * call came back 401. `serverKeyOnDisk` reads it out of the config of the server
+ * that is actually running — the same way the panel's 「从服务器读」 does — and it
+ * is seeded into the boot database so `ensureServer` does not generate a second
+ * one that the existing config does not know about. When it does start a server
+ * of its own, `sandboxKeyFor` reads back whatever key that one was given.
+ */
+async function boot(): Promise<{ key: string; started: string | null } | { why: string }> {
+  if (!ENABLED) return { why: "ORCH_LIVE_SANDBOX is not 1" };
+  if (!dockerUp()) return { why: "docker daemon 不应答 —— 起不了容器，这几个测试没有意义" };
+
+  const db = openMemory();
+  const held = serverKeyOnDisk();
+  const known = cfg.sandbox.apiKey || (held?.server === cfg.sandbox.server ? held.key : "");
+  if (known)
+    saveAuth(db, {
+      runtime: SANDBOX_KEY,
+      mode: "api_key",
+      secret: known,
+      baseUrl: `http://${cfg.sandbox.server}`,
+    });
+
+  // Every "no" this returns is a different sentence and each names what to do,
+  // which is the whole reason to go through it rather than probe a port.
+  const state = await ensureServer(testContext({ db, config: cfg }));
+  if (state.kind === "down" || state.kind === "stuck") return { why: state.why };
+  return {
+    key: sandboxKeyFor(db, cfg.sandbox.server, cfg.sandbox.apiKey),
+    started: state.kind === "started" ? state.pid : null,
+  };
+}
+
+const booted = await boot();
+const ready = "key" in booted;
+const live = ready ? test : test.skip;
+if (!ready) console.log(`\n[sandbox-live] skipped: ${booted.why}\n`);
+
+// Only ever the one we started. A server that was already there is somebody
+// else's — possibly the orchestrator this checkout is being developed against —
+// and killing it is not this file's business.
+afterAll(() => {
+  if (ready && booted.started) process.kill(Number(booted.started));
+});
 
 function ctx(port = cfg.port) {
   const db = openMemory();
@@ -81,17 +132,9 @@ function ctx(port = cfg.port) {
     // An ephemeral port, not the configured one: this test serves the routes
     // itself, and a fixed port collides with a real orchestrator or with the
     // previous run's socket still in TIME_WAIT.
-    config: { ...cfg, port },
+    config: { ...cfg, port, sandbox: { ...cfg.sandbox, apiKey: ready ? booted.key : "" } },
   });
 }
-
-const up = await serverUp();
-const live = up ? test : test.skip;
-if (!up)
-  console.log(
-    `\n[sandbox-live] skipped: cannot drive opensandbox-server on ${cfg.sandbox.server}` +
-      ` (not running, or ORCH_SANDBOX_API_KEY is unset/wrong)\n`,
-  );
 
 live(
   "a sandbox is a boundary: it gets a checkout, runs its gates, and cannot touch this machine",
