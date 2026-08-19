@@ -1,3 +1,4 @@
+import { and, asc, count, eq, inArray, ne } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { z } from "zod";
 import { addNote } from "../../mech/util/rows.ts";
@@ -9,17 +10,18 @@ import { bad, json, message } from "../../http/respond.ts";
 import { say } from "../../platform/text/lang.ts";
 import { hold } from "../../mech/flow/intercept.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
-import { CLAIMING_SQL, canStart, claimsShared, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";
+import { CLAIMING, canStart, claimsShared, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";
 import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
 import { sweepApproved } from "../../mech/flow/start.ts";
 import { baseBranch, baseRefFor, sandboxGit, treeFiles } from "../../mech/git/checkout.ts";
 import { execIn, WORK } from "../../mech/sandbox/sandbox.ts";
 import { shq } from "../../platform/process/shell.ts";
 import { validateDraftCard } from "../../mech/util/validate.ts";
-import type { GrpState } from "../../contracts/states.ts";
 import { GroupRef } from "../../contracts/fields.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { channel, grp as grps, note as notes, project, slice } from "../../platform/persistence/schema.ts";
 
 function actingGroup(ctx: Ctx, caller: Caller, ref: z.infer<typeof GroupRef> | null | undefined): number | Response {
   const groupId = resolveGroup(ctx, ref, caller.grp_id);
@@ -67,7 +69,7 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
 
   const grpId = actingGroup(ctx, a, b.group_id);
   if (grpId instanceof Response) return grpId;
-  const grp = ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId);
+  const grp = orm(ctx.db).select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, grpId)).get();
   if (!grp) return bad(`no group ${grpId}`);
 
   // Paths the card names that are not in the repo.
@@ -83,9 +85,11 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
   // whatever branch the boss last had out, so `existsSync` was asking a working
   // tree nobody planned against, and the answer moved when the boss switched
   // branches. `ls-tree` of the base is the same thing the group will be cut from.
-  const remote = ctx.db
-    .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
-    .get(grp.project_id)?.remote;
+  const remote = orm(ctx.db)
+    .select({ remote: project.remote })
+    .from(project)
+    .where(eq(project.id, grp.project_id))
+    .get()?.remote;
   const claimed = extractClaimedFiles([b.card]);
   let missingPaths: string[] = [];
   if (remote && claimed.length) {
@@ -109,7 +113,7 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
         ...(missingPaths.length ? { unknownPaths: missingPaths } : {}),
       }),
     });
-    ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grpId]);
+    orm(ctx.db).update(grps).set({ status: "DRAFT" }).where(eq(grps.id, grpId)).run();
     // Planning is over, so anything still queued for this group is moot — and DRAFT
     // is not dispatchable, so it would otherwise sit pending forever and then fire
     // after approval against a plan it never saw.
@@ -157,11 +161,11 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
 
   const gid = actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
-  const grp = ctx.db
-    .query<{ project_id: number; name: string; status: GrpState; branch: string | null }, [number]>(
-      "SELECT project_id, name, status, branch FROM grp WHERE id = ?",
-    )
-    .get(gid);
+  const grp = orm(ctx.db)
+    .select({ project_id: grps.project_id, name: grps.name, status: grps.status, branch: grps.branch })
+    .from(grps)
+    .where(eq(grps.id, gid))
+    .get();
   if (!grp) return message("no such group", 404);
   if (grp.status !== "PLANNING") {
     return bad(
@@ -169,7 +173,7 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
         `after that the branch exists and re-cutting the work is the boss's respec, not yours.`,
     );
   }
-  const hasWork = ctx.db.query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ?").get(gid)!.c;
+  const hasWork = orm(ctx.db).select({ c: count() }).from(slice).where(eq(slice.grp_id, gid)).get()!.c;
   if (hasWork > 0 || grp.branch) return bad(`${grp.name} already has slices or a branch; split before that`);
 
   const items = (b.requirements ?? []).filter((r) => r?.idea?.trim());
@@ -185,11 +189,15 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
 
   // What the boss originally said, so nothing typed in that box is lost — including
   // the attachment paths, which live in the first note.
-  const original = ctx.db
-    .query<{ id: number; body: string }, [number]>(
-      "SELECT id, body FROM note WHERE grp_id = ? AND kind = 'fact' ORDER BY at, id LIMIT 1",
-    )
-    .get(gid);
+  const original = orm(ctx.db)
+    .select({ id: notes.id, body: notes.body })
+    .from(notes)
+    .where(and(eq(notes.grp_id, gid), eq(notes.kind, "fact")))
+    // Both keys, oldest first: `at` is a millisecond clock, and the first thing the
+    // boss typed shares one with whatever the same request wrote beside it.
+    .orderBy(asc(notes.at), asc(notes.id))
+    .limit(1)
+    .get();
 
   const made = ctx.db.transaction(() => {
     const created: { id: number; name: string }[] = [];
@@ -216,8 +224,8 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
     // retro — it never did any work, and demanding one for a bookkeeping group would
     // teach the agents that retros are paperwork.
     ctx.sched.cancelPending(gid, "split into separate requirements");
-    ctx.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = ?", [gid]);
-    ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [gid]);
+    orm(ctx.db).update(grps).set({ status: "DISSOLVED" }).where(eq(grps.id, gid)).run();
+    orm(ctx.db).update(channel).set({ status: "archived" }).where(eq(channel.grp_id, gid)).run();
     ctx.bus.emit({
       grpId: gid,
       author: a.role,
@@ -259,7 +267,7 @@ function duplicateEvidence(ctx: Ctx, gid: number, ref: z.infer<typeof GroupRef>)
   const duplicateId = resolveGroup(ctx, ref);
   if (!duplicateId) return bad(`no group ${ref}`);
   if (duplicateId === gid) return bad("a group cannot be a duplicate of itself");
-  const duplicate = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(duplicateId)!;
+  const duplicate = orm(ctx.db).select({ name: grps.name }).from(grps).where(eq(grps.id, duplicateId)).get()!;
   return `duplicate of ${duplicate.name} (grp ${duplicateId})`;
 }
 
@@ -268,9 +276,11 @@ async function commitEvidence(ctx: Ctx, gid: number, sha: string): Promise<strin
   const git = sandboxGit(ctx, { grp: gid });
   const commit = await git(["cat-file", "-t", sha], WORK);
   if (commit.code !== 0 || commit.out.trim() !== "commit") return bad(`${sha} is not a commit in this repo`);
-  const projectId = ctx.db
-    .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
-    .get(gid)?.project_id;
+  const projectId = orm(ctx.db)
+    .select({ project_id: grps.project_id })
+    .from(grps)
+    .where(eq(grps.id, gid))
+    .get()?.project_id;
   if (!projectId) return bad("no such group");
   const base = await baseRefFor(ctx, projectId);
   const merged = await git(["merge-base", "--is-ancestor", sha, base], WORK);
@@ -302,8 +312,8 @@ export const postDrop = (async (ctx, _req, a, _p, b) => {
     // takes a value, and a caller that already has the group id can find it.
     addNote(ctx.db, {
       projectId:
-        ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(gid)
-          ?.project_id ?? null,
+        orm(ctx.db).select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, gid)).get()?.project_id ??
+        null,
       grpId: gid,
       kind: "decision",
       lang: ctx.config.language,
@@ -312,7 +322,11 @@ export const postDrop = (async (ctx, _req, a, _p, b) => {
     });
     // DRAFT, so the group stops being dispatchable and the boss is asked. Left in
     // PLANNING the Dispatcher would be woken again and re-propose the same thing.
-    ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ? AND status = 'PLANNING'", [gid]);
+    orm(ctx.db)
+      .update(grps)
+      .set({ status: "DRAFT" })
+      .where(and(eq(grps.id, gid), eq(grps.status, "PLANNING")))
+      .run();
     ctx.bus.emit({
       grpId: gid,
       author: a.role,
@@ -355,13 +369,13 @@ type PathOwner = { id: number; name: string; owns_json: string };
 
 function pathOwner(db: DB, projectId: number, blockedGroupId: number, path: string): PathOwner | null {
   return (
-    // fallow-ignore-next-line security-sink -- `CLAIMING_SQL` is `sql(CLAIMING)` in `mech/flow/ownership.ts`: a module-level constant built once from `GRP_STATES`, a source literal tuple. No value on this path is an input. The ids are bound through `?`.
-    db
-      .query<PathOwner, [number, number]>(
-        `SELECT id, name, owns_json FROM grp WHERE project_id = ? AND id != ?
-         AND status IN ${CLAIMING_SQL}`,
-      )
-      .all(projectId, blockedGroupId)
+    orm(db)
+      .select({ id: grps.id, name: grps.name, owns_json: grps.owns_json })
+      .from(grps)
+      // `CLAIMING` is the state list itself, bound as parameters. The suppression
+      // this replaces existed to explain that `CLAIMING_SQL` interpolated no input.
+      .where(and(eq(grps.project_id, projectId), ne(grps.id, blockedGroupId), inArray(grps.status, CLAIMING)))
+      .all()
       .find((group) => parseOwns(group.owns_json).some((glob) => overlaps(glob, path))) ?? null
   );
 }
@@ -371,8 +385,7 @@ function waitsOn(db: DB, start: number, target: number): boolean {
   for (let hops = 0; group && hops < 32; hops++) {
     if (group === target) return true;
     group =
-      db.query<{ blocked_on: number | null }, [number]>("SELECT blocked_on FROM grp WHERE id = ?").get(group)
-        ?.blocked_on ?? null;
+      orm(db).select({ blocked_on: grps.blocked_on }).from(grps).where(eq(grps.id, group)).get()?.blocked_on ?? null;
   }
   return false;
 }
@@ -435,11 +448,11 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
   if (!path) return bad("--path <file> — which file you cannot change");
   if (why.length < 10) return bad("--why has to say what is wrong with it, in a sentence");
 
-  const me = ctx.db
-    .query<{ project_id: number; name: string; owns_json: string }, [number]>(
-      "SELECT project_id, name, owns_json FROM grp WHERE id = ?",
-    )
-    .get(gid);
+  const me = orm(ctx.db)
+    .select({ project_id: grps.project_id, name: grps.name, owns_json: grps.owns_json })
+    .from(grps)
+    .where(eq(grps.id, gid))
+    .get();
   if (!me) return bad("no such group");
   // In the group's own checkout, not the host's. The caller named this path from
   // inside `/work`, and the host main checkout sits on whatever the boss last had
@@ -492,7 +505,11 @@ export const postOwns = (async (ctx, _req, a, _p, b) => {
   if (gid instanceof Response) return gid;
 
   const check = ctx.db.transaction(() => {
-    ctx.db.run("UPDATE grp SET owns_json = ? WHERE id = ?", [JSON.stringify(b.paths), gid]);
+    orm(ctx.db)
+      .update(grps)
+      .set({ owns_json: JSON.stringify(b.paths) })
+      .where(eq(grps.id, gid))
+      .run();
     const result = canStart(ctx.db, gid);
     ctx.bus.emit({
       grpId: gid,
