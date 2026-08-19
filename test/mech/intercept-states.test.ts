@@ -76,3 +76,54 @@ test("a slice that never ran cannot be accepted", async () => {
     .get(id)!.c;
   expect(handoffs).toBe(0);
 });
+
+/**
+ * A resume scoped to one cause does not restart what stopped for another.
+ *
+ * The one bulk resume in the tree runs when a credential changes, and without `only`
+ * it matched every PAUSED row: signing into GitHub restarted a group the boss had
+ * paused by hand, and one waiting out a rate limit came back with `rl_resets_at`
+ * still set. Deleting the scope left the suite green — nothing asserted that a
+ * resume leaves anything alone.
+ */
+test("a bulk resume touches only the groups that stopped for that cause", () => {
+  const ctx = testContext();
+  const p = fx.project.insert(ctx.db, { name: "p" });
+  const byHand = fx.grp.insert(ctx.db, { project_id: p.id, name: "hand" });
+  const byAuth = fx.grp.insert(ctx.db, { project_id: p.id, name: "auth" });
+  for (const [id, reason] of [
+    [byHand.id, "boss"],
+    [byAuth.id, "auth:claude"],
+  ] as const) {
+    ctx.db.run("UPDATE grp SET status = 'PAUSED', paused_from = 'RUNNING', pause_reason = ? WHERE id = ?", [
+      reason,
+      id,
+    ]);
+  }
+
+  release(ctx, null, { only: "auth:claude" });
+
+  expect({ hand: statusOf(ctx.db, byHand.id), auth: statusOf(ctx.db, byAuth.id) }).toEqual({
+    hand: "PAUSED",
+    auth: "RUNNING",
+  });
+});
+
+/**
+ * A targeted resume is scoped by cause too, when it names one.
+ *
+ * `resume` from the panel names no cause and takes the group back whatever stopped
+ * it, which is right — the boss is looking at it. A caller that does name one is
+ * saying "only if it stopped for this", and a group that stopped for something else
+ * is still stopped for something else.
+ */
+test("naming a cause on one group does not resume it for another reason", () => {
+  const { ctx, id } = seeded();
+  ctx.db.run("UPDATE grp SET status = 'PAUSED', paused_from = 'RUNNING', pause_reason = 'boss' WHERE id = ?", [id]);
+
+  release(ctx, id, { only: "auth:claude" });
+  expect(statusOf(ctx.db, id)).toBe("PAUSED");
+
+  release(ctx, id, { only: "boss" });
+  expect(statusOf(ctx.db, id)).toBe("RUNNING");
+});
