@@ -1,5 +1,8 @@
 import type { Bus } from "../../platform/persistence/event-bus.ts";
+import { eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp, project } from "../../platform/persistence/schema.ts";
 import { errText } from "../../platform/process/text.ts";
 import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
@@ -412,17 +415,15 @@ function owner(db: DB, scope: Scope): { sandboxId: string | null; projectId: num
   if (isUtil(scope)) return { sandboxId: utilSandbox(db).id, projectId: null };
   const h = holder(scope);
   if (h.table === "grp") {
-    const row = db
-      .query<{ sandbox_id: string | null; project_id: number }, [number]>(
-        "SELECT sandbox_id, project_id FROM grp WHERE id = ?",
-      )
-      .get(h.id);
+    const row = orm(db)
+      .select({ sandbox_id: grp.sandbox_id, project_id: grp.project_id })
+      .from(grp)
+      .where(eq(grp.id, h.id))
+      .get();
     if (!row) throw new Error(`no group ${h.id}`);
     return { sandboxId: row.sandbox_id, projectId: row.project_id };
   }
-  const row = db
-    .query<{ sandbox_id: string | null }, [number]>("SELECT sandbox_id FROM project WHERE id = ?")
-    .get(h.id);
+  const row = orm(db).select({ sandbox_id: project.sandbox_id }).from(project).where(eq(project.id, h.id)).get();
   if (!row) throw new Error(`no project ${h.id}`);
   return { sandboxId: row.sandbox_id, projectId: h.id };
 }
@@ -438,15 +439,27 @@ function remember(db: DB, scope: Scope, id: string | null): void {
     return;
   }
   const h = holder(scope);
-  db.run(`UPDATE ${h.table} SET sandbox_id = ?, sandbox_at = ? WHERE id = ?`, [id, at, h.id]);
+  orm(db)
+    .update(binding(h.table))
+    .set({ sandbox_id: id, sandbox_at: at })
+    .where(eq(binding(h.table).id, h.id))
+    .run();
 }
+
+/**
+ * Which table holds this scope's binding.
+ *
+ * The UPDATE was assembled from `holder`'s table *name*, which is also a log
+ * line's — so a string meant for a person was reaching the statement. Both rows
+ * carry the same two columns, so the choice is a table and not a fragment.
+ */
+const binding = (table: string) => (table === "grp" ? grp : project);
 
 /** The remote this scope's container may reach, for the read-only binding. */
 function remoteOf(db: DB, projectId: number | null): string | null {
   if (projectId == null) return null;
   return (
-    db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId)?.remote ??
-    null
+    orm(db).select({ remote: project.remote }).from(project).where(eq(project.id, projectId)).get()?.remote ?? null
   );
 }
 
