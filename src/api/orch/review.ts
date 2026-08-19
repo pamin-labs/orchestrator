@@ -264,7 +264,12 @@ export const postSliceDecision = (async (ctx, _req, params, raw) => {
       body: b.feedback ?? "rejected",
       meta: { slice_id: id },
     });
-    bossFact(ctx, sl.grp_id, b.feedback ?? "boss rejected the slice");
+    // Only when the boss said something. A rejection with no words is already the
+    // slice's own status and the event above; filing it as a *fact* puts a note on
+    // the blackboard that tells later work nothing, and three of them sediment into
+    // a project rule about nothing. `lessons.ts` used to filter the placeholder's
+    // words back out, one table further down.
+    if (b.feedback) bossFact(ctx, sl.grp_id, b.feedback);
     // With autoAdvance on, later slices were built on the one just rejected. Fixing
     // it underneath work that assumed it is how two problems become four, so the
     // group stops and says so instead.
