@@ -45,9 +45,16 @@ A comment's home is the same question as a document's. Three kinds, three places
 **No block comment longer than eight lines.** One that genuinely needs more is a
 signal the code wants a name, not that the comment wants the space.
 
-The measured starting point was 24% of `src` + `web/src` + `test` — 19,337 lines
-of 79,149, with single files above 50%. The target is not a number; it is that
-every surviving line answers "what breaks if this is wrong".
+The target is not a number; it is that every surviving line answers "what breaks
+if this is wrong". The percentage was tried as one and rejected: chasing 24% down
+to 12% meant deleting the traps — `/user/installations/{id}/repositories` and not
+`/user/repos`, GitHub answering 404 where it means 403 — which is the category
+this page exists to keep. Block length is the rule that can be checked, and a
+block over eight lines is either prose that belongs in a commit or a function
+that wants splitting.
+
+`test/governance/comment-blocks.test.ts` enforces it. The measured position when
+it landed: 2,025 block comments, 261 of them over eight lines.
 
 Links are relative, case-correct, and checked. The source guard prevents the
 retired root planning/design files and former decision directory from being
