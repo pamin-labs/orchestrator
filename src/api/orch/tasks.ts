@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { z } from "zod";
 import { Id } from "../../contracts/fields.ts";
@@ -8,7 +8,7 @@ import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";
 import { orm } from "../../platform/persistence/orm.ts";
-import { slice, task } from "../../platform/persistence/schema.ts";
+import { agent, slice, task } from "../../platform/persistence/schema.ts";
 import {
   AlreadyDoneClaimSchema,
   ChangedFilesClaimSchema,
@@ -247,17 +247,37 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
   // someone else is retired, in which case the card outlived its claimant and the
   // group's current writer is the only one who can finish it. Same reason as claim.
   const claim: TaskClaim = "already_done" in b ? { already_done: b.already_done } : b.claim;
+  // Read outside the closure: the guard at the top of the handler narrows
+  // `a.grp_id` to a number, and that narrowing does not survive into a callback.
+  // `eq()` refuses a possibly-null value against a NOT NULL column, where the
+  // bound statement accepted one and matched nothing.
+  const grpId = a.grp_id;
   const advanced = ctx.db.transaction(() => {
-    // Raw: this asks how many rows it changed, and the bun-sqlite driver types
-    // Drizzle's `run()` as `void` — the count exists at runtime and not in the
-    // type, so reading it through the builder needs a cast this does not want.
-    const done = ctx.db.run(
-      `UPDATE task SET status = 'done', claim_json = ?, owner_agent_id = ?
-       WHERE id = ? AND grp_id = ? AND (owner_agent_id IS NULL OR owner_agent_id = ?
-                         OR owner_agent_id IN (SELECT id FROM agent WHERE state = 'retired'))`,
-      [JSON.stringify(claim), a.id, b.task_id, a.grp_id, a.id],
-    );
-    if (done.changes === 0) return null;
+    // `.returning(…).all().length`, not `.changes`: this driver types the
+    // builder's `run()` as `void`, so the row count exists at runtime and not in
+    // the type. RETURNING emits one row per updated row, and this WHERE matches
+    // at most one.
+    const done = orm(ctx.db)
+      .update(task)
+      .set({ status: "done", claim_json: JSON.stringify(claim), owner_agent_id: a.id })
+      .where(
+        and(
+          eq(task.id, b.task_id),
+          eq(task.grp_id, grpId),
+          or(
+            isNull(task.owner_agent_id),
+            eq(task.owner_agent_id, a.id),
+            // Raw subquery, not correlated: the builder's own select is not
+            // accepted as an `inArray` operand by this Drizzle's types. The
+            // parentheses are ours — `inArray` brackets an array operand and
+            // passes an `sql` one through verbatim, which is a syntax error.
+            inArray(task.owner_agent_id, sql`(select ${agent.id} from ${agent} where ${eq(agent.state, "retired")})`),
+          ),
+        ),
+      )
+      .returning({ id: task.id })
+      .all();
+    if (done.length === 0) return null;
     // A slice enters review only when nothing is left open in it. Reviewing a
     // half-finished slice burns the reviewer on work that is about to change.
     const shouldTick = advanceCompletedSlice(ctx, a, completion, b.review);
