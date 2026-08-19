@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { TRIAGE, triage } from "../../mech/flow/chain.ts";
 import { projectSkills, skillNames } from "../../mech/skills.ts";
 import { projectOfAgent } from "../../mech/util/rows.ts";
@@ -154,7 +154,7 @@ export const postSay = (async (ctx, _req, _p, b) => {
   // Plain talk. The recipient defaults to the group's PM: docs/project/plan.md §7 makes the PM
   // the group's only conversational entrance so one sentence costs one turn
   // instead of five.
-  const to = b.target || "pm";
+  const to = b.target || roleFor(ctx, "lead_group");
   const target = resolveTarget(ctx, grpId, to, project);
   if (!target) {
     const known = (ctx.knownRoles?.() ?? []).join(", ");

@@ -17,7 +17,7 @@ import { bad, json, message } from "../../http/respond.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { slug } from "../slug.ts";
 import { say } from "../../platform/text/lang.ts";
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { GrpState } from "../../contracts/states.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 
@@ -82,13 +82,16 @@ export const postIdea = (async (ctx, _req, _p, b) => {
     ctx.sched.enqueue("agent_turn", {
       grp_id: grp.id,
       priority: 6,
-      payload: { role: "architect", boundary: needBoundary, idea: b.text },
+      payload: { role: roleFor(ctx, "cut_boundary"), boundary: needBoundary, idea: b.text },
     });
   }
 
   // After the Architect's, when there is one: the boundary has to be cut before
   // anyone plans work inside it.
-  ctx.sched.enqueue("agent_turn", { grp_id: grp.id, payload: { role: "dispatcher", idea: b.text } });
+  ctx.sched.enqueue("agent_turn", {
+    grp_id: grp.id,
+    payload: { role: roleFor(ctx, "plan_requirement"), idea: b.text },
+  });
   ctx.sched.tick();
   return json({ grp_id: grp.id, channel_id: grp.channelId, boundaryNeeded: others.length > 0 });
 }) satisfies Handler<z.infer<typeof IdeaBody>>;
@@ -126,7 +129,10 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
       addNote(ctx.db, { projectId, grpId, kind: "fact", lang: ctx.config.language, body: fact });
       ctx.db.run("UPDATE grp SET status = 'PLANNING', approved_at = NULL WHERE id = ? AND status = 'DRAFT'", [grpId]);
       ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: why });
-      ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "dispatcher", respec: why } });
+      ctx.sched.enqueue("agent_turn", {
+        grp_id: grpId,
+        payload: { role: roleFor(ctx, "plan_requirement"), respec: why },
+      });
     })();
     sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold);
     ctx.sched.tick();
@@ -207,7 +213,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
         grp_id: grpId,
         priority: 7,
         payload: {
-          role: "architect",
+          role: roleFor(ctx, "cut_boundary"),
           boundary: undeclared.map((g) => ({ ...g, idea: firstIdea(ctx.db, g.id) })),
         },
       });
@@ -243,7 +249,7 @@ export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
   ctx.sched.enqueue("agent_turn", {
     grp_id: grpId,
     payload: {
-      role: "librarian",
+      role: roleFor(ctx, "compress_context"),
       rejection:
         "This group just merged. Read its retro and journals, then update the project's " +
         "lesson list (`orch journal add --kind lesson`) with anything that would have changed " +
@@ -254,7 +260,7 @@ export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
     ctx.sched.enqueue("agent_turn", {
       grp_id: id,
       payload: {
-        role: "engineer",
+        role: roleFor(ctx, "write_code"),
         rejection: "main moved: `git fetch origin main` and `git rebase origin/main` before doing anything else.",
         rotate: true,
       },

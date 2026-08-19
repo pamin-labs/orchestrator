@@ -1,3 +1,4 @@
+import { roleFor } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -64,7 +65,7 @@ function rememberInstall(db: DB, projectId: number, cmd: string | null): void {
 }
 
 export const postSetup = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== "bootstrap") return bad(`${a.role} does not set this project up`);
+  if (a.role !== roleFor(ctx, "bootstrap_env")) return bad(`${a.role} does not set this project up`);
   const projectId = a.grp_id
     ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(a.grp_id)
         ?.project_id
