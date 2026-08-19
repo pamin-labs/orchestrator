@@ -433,6 +433,17 @@ M7 — executable engineering governance and versioned protocol.
   which is the boss's call. Until then the retrieval ADR the plan asks for has
   nothing to record, and no part of PageIndex is being cut on the unmeasured
   "59% of the cache-read bill" line.
+- `scripts/` was outside `bun run lint`, and that is where the async migration
+  hid. Ten findings, two of them `no-floating-promises`: `benchmark.ts` called
+  five newly-async span queries without awaiting one, so the telemetry budget
+  Wave 1 added reported **67µs against a 600ms ceiling** — five promises being
+  constructed — and could not have gone red for any regression. `seedSpans` had
+  the same shape, so its 90,000 inserts raced the whole run rather than preceding
+  it, which is the whole of the `snapshot: 7.96e+3ms > 90ms` failure. Awaited:
+  telemetry report **176–178ms** on PostgreSQL (739ms → 281ms was the SQLite
+  path), snapshot **2.6ms**, watchdog tick 6.8–10.5ms; every budget clear, and
+  the telemetry one shown able to fail. A test now fails if any directory holding
+  TypeScript is outside the lint target.
 
 ## Blockers and deviations
 
