@@ -555,7 +555,10 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
       // state PR_OPEN's invariant repair looks for, and it publishes with the
       // record's own words rather than leaving finished work at the head of a
       // serial merge queue.
-      ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: roleFor(ctx, "write_pr_message"), scribe: grpId } });
+      ctx.sched.enqueue("agent_turn", {
+        grp_id: grpId,
+        payload: { role: roleFor(ctx, "write_pr_message"), scribe: grpId },
+      });
       const pos = position(ctx.db, grpId);
       ctx.bus.emit({
         grpId,
@@ -575,7 +578,11 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
     if (branchRework(deps, grpId, "the Auditor", note)) return false;
     ctx.sched.enqueue("agent_turn", {
       grp_id: grpId,
-      payload: { role: roleFor(ctx, "lead_group"), rejection: `The Auditor sent the branch back: ${note}`, rotate: true },
+      payload: {
+        role: roleFor(ctx, "lead_group"),
+        rejection: `The Auditor sent the branch back: ${note}`,
+        rotate: true,
+      },
     });
     return true;
   })();

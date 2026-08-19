@@ -1,7 +1,7 @@
 import type { DB } from "../../platform/persistence/database.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { errText, hours, minutes } from "../../platform/process/text.ts";
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { say, type SayKey } from "../../platform/text/lang.ts";
 import { hold, interrupt, park, release, unpark } from "../flow/intercept.ts";
@@ -583,7 +583,7 @@ function queueRebase(
     grp_id: group.id,
     priority: 4,
     payload: {
-      role: "engineer",
+      role: roleFor(ctx, "write_code"),
       conflict: true,
       rejection:
         `${baseRef} moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
@@ -842,7 +842,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       );
       if (saveMap(ctx.db, p.id, named)) {
         ctx.bus.emit({
-          author: "librarian",
+          author: roleFor(ctx, "compress_context"),
           kind: "state_change",
           body: `repo map refreshed (${files.length} files, ${heads.size} read for symbols)`,
         });
@@ -882,7 +882,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           grp_id: j.grp_id,
           priority: 6,
           payload: {
-            role: "architect",
+            role: roleFor(ctx, "cut_boundary"),
             rejection:
               `The Engineer could not rebase this branch onto main. Decide what it means: is the slice still ` +
               `what we want now that main has moved, does the boundary need re-cutting, or should it be dropped? ` +

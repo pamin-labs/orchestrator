@@ -1,4 +1,4 @@
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { say } from "../../platform/text/lang.ts";
 import { terms } from "./terms.ts";
@@ -120,7 +120,7 @@ export function sediment(ctx: Ctx, projectId: number | null, threshold: number):
   ctx.sched.enqueue("agent_turn", {
     priority: 3,
     payload: {
-      role: "cos",
+      role: roleFor(ctx, "triage_boss_feedback"),
       sediment: kin.map((f) => f.body.slice(0, 400)),
     },
   });

@@ -4,7 +4,7 @@ import { existsSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs
 import { join } from "node:path";
 import { makeApp } from "./api.ts";
 import { landGroup } from "../api/panel/group.ts";
-import type { Ctx } from "../mech/ctx.ts";
+import { roleFor, type Ctx } from "../mech/ctx.ts";
 import { joinQueue } from "../mech/flow/mergequeue.ts";
 import { bindSandboxKey } from "../mech/sandbox/auth.ts";
 import { Bus } from "../platform/persistence/event-bus.ts";
@@ -534,7 +534,7 @@ export function recordIndexResult(
   memory(ctx.db).blockedUntil = 0;
   memory(ctx.db).lastError = "";
   ctx.bus.emit({
-    author: "librarian",
+    author: roleFor(ctx, "compress_context"),
     kind: "state_change",
     body: `PageIndex: summarised ${result.calls - result.failed} node(s), ${result.files} files indexed`,
   });
@@ -567,7 +567,7 @@ function warnModelDown(ctx: Ctx, projectId: number, failed: number): void {
   if (down.get(projectId) === stamp) return;
   down.set(projectId, stamp);
   ctx.bus.emit({
-    author: "librarian",
+    author: roleFor(ctx, "compress_context"),
     kind: "escalation",
     intent: "inform",
     severity: "blocker",

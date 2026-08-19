@@ -4,7 +4,7 @@ import { basename, join, resolve } from "node:path";
 import { imagePaths } from "../mech/util/attachment-text.ts";
 import type { Config, RoleDef } from "../platform/config/load.ts";
 import { contextWindowFor, DEFAULT_PROVIDER, modelFor } from "../platform/config/load.ts";
-import type { Ctx } from "../mech/ctx.ts";
+import { roleFor, type Ctx } from "../mech/ctx.ts";
 
 function mintToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
@@ -113,7 +113,7 @@ export function makeExecutor(deps: ExecDeps): Executor {
 function resolveAgent(deps: ExecDeps, job: Job<"agent_turn">): AgentRow {
   const assigned = assignedAgent(deps.ctx.db, job.agent_id);
   if (assigned) return assigned;
-  const roleName = job.payload.role ?? "engineer";
+  const roleName = job.payload.role ?? roleFor(deps.ctx, "write_code");
   // fallow-ignore-next-line security-sink -- `SELECT_AGENT_BASE` is a module-level column-list literal; the group id and the role name are bound through the `?` placeholders.
   const existing = deps.ctx.db
     .query<AgentRow, [number | null, string]>(
@@ -1009,7 +1009,7 @@ export function makeReviewVerdict(deps: ExecDeps) {
   return (sliceId: number, pass: boolean, note: string): void => {
     const rd = { ctx: deps.ctx, cfg: deps.cfg };
     if (pass) handToBoss(rd, sliceId);
-    else sendBack(rd, sliceId, note || "QA rejected the slice", "qa");
+    else sendBack(rd, sliceId, note || "QA rejected the slice", roleFor(deps.ctx, "review_slice"));
   };
 }
 

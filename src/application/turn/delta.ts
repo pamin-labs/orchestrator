@@ -1,5 +1,5 @@
 import type { DB } from "../../platform/persistence/database.ts";
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { say } from "../../platform/text/lang.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { getFile, type Scope } from "../../mech/sandbox/sandbox.ts";
@@ -165,14 +165,14 @@ function applyPayloadCards(ctx: Ctx, payload: TurnPayload, delta: Delta): void {
   if (payload.rejection) delta.rejection = payload.rejection;
 }
 
-function applyWorkCard(db: DB, agent: TurnAgent, job: TurnJob, delta: Delta): void {
-  if (job.slice_id) return applySliceCard(db, agent, job.slice_id, delta);
+function applyWorkCard(ctx: Ctx, agent: TurnAgent, job: TurnJob, delta: Delta): void {
+  if (job.slice_id) return applySliceCard(ctx, agent, job.slice_id, delta);
   if (!job.grp_id || job.payload.idea) return;
   // The slice list is the fallback for a turn with no stated reason. A payload
   // card is that reason — a lease result, a digest, a scribe brief — and none of
   // them has another way into the prompt.
   if (delta.card) return;
-  const slices = db
+  const slices = ctx.db
     .query<{ seq: number; title: string; status: SliceState; difficulty: string }, [number]>(
       "SELECT seq, title, status, difficulty FROM slice WHERE grp_id = ? ORDER BY seq",
     )
@@ -184,15 +184,15 @@ function applyWorkCard(db: DB, agent: TurnAgent, job: TurnJob, delta: Delta): vo
   }
 }
 
-function applySliceCard(db: DB, agent: TurnAgent, sliceId: number, delta: Delta): void {
-  const slice = db
+function applySliceCard(ctx: Ctx, agent: TurnAgent, sliceId: number, delta: Delta): void {
+  const slice = ctx.db
     .query<{ seq: number; title: string; accept_spec: string; difficulty: string }, [number]>(
       "SELECT seq, title, accept_spec, difficulty FROM slice WHERE id = ?",
     )
     .get(sliceId);
   if (!slice) return;
   delta.card = `Slice S${slice.seq} (slice_id ${sliceId}) [${slice.difficulty}]: ${slice.title}\nAccepted when: ${slice.accept_spec}`;
-  if (agent.role === "qa") {
+  if (agent.role === roleFor(ctx, "review_slice")) {
     delta.card += `\n\nFile your verdict with exactly:\n  orch review ${sliceId} --verdict pass|fail --note "one line per criterion"`;
   }
 }
@@ -279,7 +279,7 @@ function enqueueDigestOnce(ctx: Ctx, channelId: number, groupId: number, from: n
   ctx.sched.enqueue("agent_turn", {
     grp_id: groupId,
     priority: 2,
-    payload: { role: "librarian", digest: { channel_id: channelId, from, to } },
+    payload: { role: roleFor(ctx, "compress_context"), digest: { channel_id: channelId, from, to } },
   });
 }
 
@@ -323,7 +323,7 @@ export async function buildTurnDelta(
 ): Promise<Delta> {
   const delta: Delta = {};
   applyPayloadCards(deps.ctx, job.payload, delta);
-  applyWorkCard(deps.ctx.db, agent, job, delta);
+  applyWorkCard(deps.ctx, agent, job, delta);
   applyHandoff(deps.ctx, job.grp_id, rotated, delta);
   const unread = readUnread(deps.ctx, agent, job.grp_id, deps.cfg);
   await applySkills(deps.ctx, agent, job, scope, delta);
