@@ -775,7 +775,15 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
     body: `PR #${f.prNumber} has feedback:\n${lines}`.slice(0, 2000),
     meta: { pr: f.prNumber, comments: f.comments.length, failingChecks: f.failingChecks },
   });
-  ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ? AND status = 'PR_OPEN'", [f.grpId]);
+  // Deliberately not moved out of PR_OPEN. That flip made the group deaf to
+  // everything said next: `pollPr` returns null for any other status, and nothing
+  // moved it back — PR_OPEN is written by a fresh branch gate, a reopen from
+  // PAUSED, or the boss, and the `reconcile` repair in `invariants.ts` skips any
+  // group that has a PR. So the second review comment was never read, while the
+  // group still held `merge_seq` at the head of a strictly serial queue.
+  //
+  // The flip was never needed either: PR_OPEN is in `DISPATCHABLE_GRP_STATES`, so
+  // the turn below runs from it unchanged.
   // A conflict is work, not a judgement call: the PM would only forward it. Reading
   // a review and deciding what to concede is the PM's; `git rebase` is not.
   ctx.sched.enqueue("agent_turn", {

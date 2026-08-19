@@ -393,7 +393,36 @@ test("mergeable still being computed is not a conflict", async () => {
   expect(fs).toEqual([]);
 });
 
-test("feedback reopens the group and hands it to the PM", () => {
+test("a group handed PR feedback is still listening for the next comment", async () => {
+  // It was not. `dispatchFeedback` moved the group to RUNNING and nothing moved it
+  // back: `PR_OPEN` is written by a fresh branch gate, a reopen from PAUSED, or the
+  // boss, and the `reconcile` repair in invariants.ts excludes any group that has a
+  // PR. `pollPr` returns null for anything not PR_OPEN, so the second reviewer
+  // comment was never read — while the group still held `merge_seq` at the head of
+  // a strictly serial queue, stopping everything behind it.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 7, merge_seq = 1 WHERE id = 1");
+
+  dispatchFeedback(h.ctx, {
+    grpId: 1,
+    prNumber: 7,
+    comments: [{ author: "bob", body: "needs a test", at: 2000 }],
+    failingChecks: [],
+  });
+
+  const second = await pollPrs(
+    h.ctx,
+    gh({
+      "GET /repos/me/x/pulls/7": pr({}),
+      "GET /repos/me/x/issues/7/comments": ok([
+        { user: { login: "bob" }, body: "and a name", created_at: new Date(9000).toISOString() },
+      ]),
+    }),
+  );
+  expect(second.flatMap((f) => f.comments.map((c) => c.body))).toContain("and a name");
+});
+
+test("feedback hands the group to the PM without taking it out of PR_OPEN", () => {
   const h = harness();
   dispatchFeedback(h.ctx, {
     grpId: 1,
@@ -401,7 +430,9 @@ test("feedback reopens the group and hands it to the PM", () => {
     comments: [{ author: "bob", body: "needs a test", at: 2000 }],
     failingChecks: ["ci"],
   });
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("RUNNING");
+  // Deliberately still PR_OPEN: it is already in DISPATCHABLE_GRP_STATES, so the
+  // turn runs either way, and leaving it there is what keeps the PR being polled.
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("PR_OPEN");
   const job = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job").get()!;
   // Replying to a review needs judgement; noticing it did not.
   const payload = AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json));
