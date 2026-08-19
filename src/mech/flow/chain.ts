@@ -1,6 +1,9 @@
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { addNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { agent as agentTable, escalation, grp, note as noteTable } from "../../platform/persistence/schema.ts";
 import { rollbackTo } from "../git/gitops.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
@@ -69,6 +72,14 @@ interface EscRow {
   chain_state: EscalationState;
 }
 
+/**
+ * Raw, for its type rather than its SQL. `EscRow.chain_state` is `EscalationState`
+ * and `escalation.chain_state` is declared `text()`, so reading it through the
+ * schema yields `string` and every caller that narrows on the union stops
+ * compiling. The generic is where that claim currently lives; giving the column a
+ * `$type<EscalationState>()` in `schema.ts` would move it somewhere checked, and
+ * that file belongs to another zone.
+ */
 function load(db: DB, id: number): EscRow | null {
   return (
     db
@@ -100,6 +111,8 @@ export function route(deps: ChainDeps, escId: number): string {
   // command an agent tried is the common one, and it is a JSON blob about a tool
   // call, not a decision. Lifting those to the boss put five of them on the phone
   // as "things need you" and buried the one blocker that did.
+  // Raw for the same reason as `load`: `isDispatchableGrpState` takes a `GrpState`,
+  // and the schema types this column `text()`.
   const status = esc.grp_id
     ? ctx.db.query<{ status: GrpState }, [number]>("SELECT status FROM grp WHERE id = ?").get(esc.grp_id)?.status
     : null;
@@ -107,7 +120,7 @@ export function route(deps: ChainDeps, escId: number): string {
     esc.severity === "blocker" && status && !isDispatchableGrpState(status) ? "boss" : esc.chain_state;
   for (;;) {
     if (level === "boss") {
-      ctx.db.run("UPDATE escalation SET chain_state = 'boss' WHERE id = ?", [escId]);
+      orm(ctx.db).update(escalation).set({ chain_state: "boss" }).where(eq(escalation.id, escId)).run();
       deps.notifyBoss?.(escId, esc.question, esc.severity);
       ctx.bus.emit({
         grpId: esc.grp_id,
@@ -123,7 +136,7 @@ export function route(deps: ChainDeps, escId: number): string {
 
     const agent = findResponder(ctx, esc.grp_id, level);
     if (agent) {
-      ctx.db.run("UPDATE escalation SET chain_state = ? WHERE id = ?", [level, escId]);
+      orm(ctx.db).update(escalation).set({ chain_state: level }).where(eq(escalation.id, escId)).run();
       ctx.sched.enqueue("agent_turn", {
         grp_id: esc.grp_id,
         agent_id: agent,
@@ -140,19 +153,30 @@ export function route(deps: ChainDeps, escId: number): string {
 /** A responder for this level: in-group for PM, standing for the rest. */
 function groupResponder(db: DB, grpId: number | null): number | null {
   return (
-    db
-      .query<{ id: number }, [number | null]>(
-        "SELECT id FROM agent WHERE grp_id IS ? AND role = 'pm' AND state != 'retired'",
+    orm(db)
+      .select({ id: agentTable.id })
+      .from(agentTable)
+      .where(
+        and(
+          // `grp_id IS ?`, not `= ?`: called with a null `grpId` this has to find
+          // the standing PM, whose `grp_id` is NULL. `eq()` would find nobody and
+          // the question would skip a level it should have been routed to.
+          grpId === null ? isNull(agentTable.grp_id) : eq(agentTable.grp_id, grpId),
+          eq(agentTable.role, "pm"),
+          ne(agentTable.state, "retired"),
+        ),
       )
-      .get(grpId)?.id ?? null
+      .get()?.id ?? null
   );
 }
 
 function standingResponder(db: DB, role: string): number | null {
   return (
-    db
-      .query<{ id: number }, [string]>("SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'")
-      .get(role)?.id ?? null
+    orm(db)
+      .select({ id: agentTable.id })
+      .from(agentTable)
+      .where(and(isNull(agentTable.grp_id), eq(agentTable.role, role), ne(agentTable.state, "retired")))
+      .get()?.id ?? null
   );
 }
 
@@ -187,7 +211,11 @@ function responderError(esc: EscRow, by: EscalationOpenState, actorGrpId?: numbe
 function citationError(db: DB, input: AnswerInput): string | null {
   if (input.by !== "cos") return null;
   if (!input.refNoteId) return "a stand-in answer must cite the decision it rests on (--ref <note_id>)";
-  const note = db.query<{ kind: string }, [number]>("SELECT kind FROM note WHERE id = ?").get(input.refNoteId);
+  const note = orm(db)
+    .select({ kind: noteTable.kind })
+    .from(noteTable)
+    .where(eq(noteTable.id, input.refNoteId))
+    .get();
   if (!note) return `no note ${input.refNoteId}`;
   if (note.kind === "decision" || note.kind === "fact") return null;
   return `note ${input.refNoteId} is a ${note.kind}, not a decision`;
@@ -212,11 +240,17 @@ export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok
   const refused = answerError(ctx.db, esc, input);
   if (refused) return { ok: false, error: refused };
 
-  ctx.db.run(
-    `UPDATE escalation SET answer = ?, answered_by = ?, ref_note_id = ?, chain_state = 'answered',
-     answered_at = unixepoch() * 1000 WHERE id = ?`,
-    [input.answer, input.by, input.refNoteId ?? null, input.escId],
-  );
+  orm(ctx.db)
+    .update(escalation)
+    .set({
+      answer: input.answer,
+      answered_by: input.by,
+      ref_note_id: input.refNoteId ?? null,
+      chain_state: "answered",
+      answered_at: sql`unixepoch() * 1000`,
+    })
+    .where(eq(escalation.id, input.escId))
+    .run();
   ctx.bus.emit({
     grpId: esc.grp_id,
     author: input.by,
@@ -250,7 +284,7 @@ export function abstain(
   const refused = responderError(esc, by, actorGrpId);
   if (refused) return { ok: false, error: refused };
   const next = CHAIN[CHAIN.indexOf(by) + 1] ?? "boss";
-  ctx.db.run("UPDATE escalation SET chain_state = ? WHERE id = ?", [next, escId]);
+  orm(ctx.db).update(escalation).set({ chain_state: next }).where(eq(escalation.id, escId)).run();
   ctx.bus.emit({
     grpId: esc.grp_id,
     author: by,
@@ -273,14 +307,22 @@ export function abstain(
  */
 export async function revoke(deps: ChainDeps, escId: number): Promise<{ rolledBackTo?: string; answeredBy?: string }> {
   const { ctx } = deps;
-  const esc = ctx.db
-    .query<{ grp_id: number | null; answered_by: string | null; checkpoint_sha: string | null }, [number]>(
-      "SELECT grp_id, answered_by, checkpoint_sha FROM escalation WHERE id = ?",
-    )
-    .get(escId);
+  const esc = orm(ctx.db)
+    .select({
+      grp_id: escalation.grp_id,
+      answered_by: escalation.answered_by,
+      checkpoint_sha: escalation.checkpoint_sha,
+    })
+    .from(escalation)
+    .where(eq(escalation.id, escId))
+    .get();
   if (!esc) return {};
 
-  ctx.db.run("UPDATE escalation SET chain_state = 'boss', answer = NULL WHERE id = ?", [escId]);
+  orm(ctx.db)
+    .update(escalation)
+    .set({ chain_state: "boss", answer: null })
+    .where(eq(escalation.id, escId))
+    .run();
   if (esc.grp_id) ctx.sched.cancelPending(esc.grp_id, "answer revoked");
 
   let rolledBackTo: string | undefined;
@@ -367,7 +409,7 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
     // PLANNING, not DRAFT. DRAFT blocks dispatch, so setting it here deadlocked the
     // Dispatcher turn enqueued on the next line — the group sat waiting on a boss
     // who was being shown the very card that had just been thrown out.
-    ctx.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = ?", [grpId]);
+    orm(ctx.db).update(grp).set({ status: "PLANNING" }).where(eq(grp.id, grpId)).run();
     ctx.sched.enqueue("agent_turn", {
       grp_id: grpId,
       payload: { role: roleFor(ctx, "plan_requirement"), respec: note, rotate: true, skills },
@@ -379,10 +421,9 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
     // Sending it to a PM meant the addition was never read and the boss approved a
     // card that did not contain what they had just asked for.
     const draft =
-      ctx.db.query<{ status: GrpState }, [number]>("SELECT status FROM grp WHERE id = ?").get(grpId)?.status ===
-      "DRAFT";
+      orm(ctx.db).select({ status: grp.status }).from(grp).where(eq(grp.id, grpId)).get()?.status === "DRAFT";
     if (draft) {
-      ctx.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = ?", [grpId]);
+      orm(ctx.db).update(grp).set({ status: "PLANNING" }).where(eq(grp.id, grpId)).run();
       ctx.sched.enqueue("agent_turn", {
         grp_id: grpId,
         payload: {
