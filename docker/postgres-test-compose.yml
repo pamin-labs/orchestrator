@@ -1,0 +1,46 @@
+# The suite's own PostgreSQL. Separate from the one `db:up` starts, on purpose.
+#
+# Tests create and drop databases, and the development server's data is on the
+# other one — a suite that can drop a database is a suite that must not be
+# pointed at anything you would miss. Different port, different container, no
+# volume: there is nothing here worth keeping between runs.
+#
+#   bun run db:test:up      # before `bun run test`
+#   bun run db:test:down
+services:
+  postgres-test:
+    image: postgres:18-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+    container_name: orchestrator-postgres-test
+    environment:
+      POSTGRES_DB: orchestrator
+      POSTGRES_USER: orchestrator
+      # Committed on purpose: this server holds nothing but throwaway test
+      # databases, listens on loopback only, and every developer needs the same
+      # value for `bun run test` to work without a setup step.
+      POSTGRES_PASSWORD: orchestrator
+    ports:
+      - "127.0.0.1:5433:5432"
+    # In memory: the data directory never outlives the container, so a suite
+    # cannot inherit yesterday's rows and there is nothing to clean up.
+    tmpfs:
+      - /var/lib/postgresql
+    # `fsync=off` and friends: durability is worthless for a database that is
+    # discarded, and it is most of what a write costs.
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+      - -c
+      # Ten workers, each holding a pool wide enough for the panel snapshot's
+      # nineteen concurrent statements, plus the admin connections that create
+      # the databases. Cheap on a server that stores nothing.
+      - max_connections=600
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orchestrator -d orchestrator"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

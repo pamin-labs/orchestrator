@@ -20,20 +20,17 @@ import { slug } from "../slug.ts";
 import { say } from "../../platform/text/lang.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { escalation, event, grp as grps, note, project, slice, task } from "../../platform/persistence/schema.ts";
 
 /** What the boss first asked for, for this group. */
-function firstIdea(db: DB, groupId: number): string {
-  return (
-    orm(db)
-      .select({ body: event.body })
-      .from(event)
-      .where(and(eq(event.grp_id, groupId), eq(event.kind, "boss_say")))
-      .orderBy(asc(event.seq))
-      .limit(1)
-      .get()?.body ?? ""
-  );
+async function firstIdea(db: DB, groupId: number): Promise<string> {
+  const [first] = await db
+    .select({ body: event.body })
+    .from(event)
+    .where(and(eq(event.grp_id, groupId), eq(event.kind, "boss_say")))
+    .orderBy(asc(event.seq))
+    .limit(1);
+  return first?.body ?? "";
 }
 
 /**
@@ -56,7 +53,7 @@ export const postIdea = (async (ctx, _req, _p, b) => {
   const name = (b.name ?? slug(b.text)).slice(0, 40);
   // Attachments go on the blackboard as paths next to the words they came with, so
   // whoever plans this reads them in the same breath as the idea.
-  const grp = newGroup(ctx, {
+  const grp = await newGroup(ctx, {
     projectId: b.project_id,
     name,
     idea: b.text,
@@ -65,25 +62,25 @@ export const postIdea = (async (ctx, _req, _p, b) => {
   // With another group already holding paths, the boundary has to be cut before
   // anyone plans work inside it — otherwise the plan is written against paths the
   // group turns out not to own.
-  const others = orm(ctx.db)
+  const others = await ctx.db
     .select({ id: grps.id, name: grps.name, owns_json: grps.owns_json })
     .from(grps)
     // `CLAIMING` bound as parameters, which is what the suppression this replaces
     // spent four lines explaining `CLAIMING_SQL` already was.
-    .where(and(eq(grps.project_id, b.project_id), ne(grps.id, grp.id), inArray(grps.status, CLAIMING)))
-    .all();
+    .where(and(eq(grps.project_id, b.project_id), ne(grps.id, grp.id), inArray(grps.status, CLAIMING)));
   if (others.length > 0) {
     // Every undeclared active group, not just the new one. The first group in a
     // project needs no boundary — but the moment a second appears, an undeclared
     // group beside a declared one is the exact situation the rule exists to
     // prevent, reached from the other direction.
+    const undeclared = others.filter((o) => parseOwns(o.owns_json).length === 0);
     const needBoundary = [
       { id: grp.id, name, idea: b.text },
-      ...others
-        .filter((o) => parseOwns(o.owns_json).length === 0)
-        .map((o) => ({ id: o.id, name: o.name, idea: firstIdea(ctx.db, o.id) })),
+      ...(await Promise.all(
+        undeclared.map(async (o) => ({ id: o.id, name: o.name, idea: await firstIdea(ctx.db, o.id) })),
+      )),
     ];
-    ctx.sched.enqueue("agent_turn", {
+    await ctx.sched.enqueue("agent_turn", {
       grp_id: grp.id,
       priority: 6,
       payload: { role: roleFor(ctx, "cut_boundary"), boundary: needBoundary, idea: b.text },
@@ -92,11 +89,11 @@ export const postIdea = (async (ctx, _req, _p, b) => {
 
   // After the Architect's, when there is one: the boundary has to be cut before
   // anyone plans work inside it.
-  ctx.sched.enqueue("agent_turn", {
+  await ctx.sched.enqueue("agent_turn", {
     grp_id: grp.id,
     payload: { role: roleFor(ctx, "plan_requirement"), idea: b.text },
   });
-  ctx.sched.tick();
+  await ctx.sched.tick();
   return json({ grp_id: grp.id, channel_id: grp.channelId, boundaryNeeded: others.length > 0 });
 }) satisfies Handler<z.infer<typeof IdeaBody>>;
 
@@ -111,55 +108,116 @@ export const DraftDecisionBody = z.object({
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
+/**
+ * The boss sent the card back.
+ *
+ * PLANNING, not DRAFT: left in DRAFT it still counted as a decision waiting on
+ * the boss, still showed the rejected card, and 批准开工 still worked on it — one
+ * stray click approves the very plan that was just sent back. `approved_at` goes
+ * with it, or the next card to reach DRAFT starts itself on the strength of a yes
+ * the boss said to a plan that no longer exists.
+ */
+async function sendBack(ctx: Ctx, grpId: number, b: z.infer<typeof DraftDecisionBody>): Promise<void> {
+  const fact = withAttachments(`boss sent the DRAFT back: ${b.reason ?? ""}`, b.attachments);
+  const [owner] = await ctx.db.select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, grpId));
+  const projectId = owner?.project_id ?? null;
+  // Back to PLANNING, which is what the group actually is now. Left in DRAFT it
+  // still counted as a decision waiting on the boss, still showed the rejected
+  // card, and 批准开工 still worked on it — one stray click approves the very
+  // plan that was just sent back.
+  //
+  // Clearing approved_at as well: sending a plan back withdraws the approval, or
+  // the next card to reach DRAFT would start itself on the strength of a yes the
+  // boss said to a plan that no longer exists.
+  const why = withAttachments(b.reason ?? "respec", b.attachments);
+  await ctx.bus.transaction(async (tx) => {
+    await addNote(tx, { projectId, grpId, kind: "fact", lang: ctx.config.language, body: fact });
+    await tx
+      .update(grps)
+      .set({ status: "PLANNING", approved_at: null })
+      .where(and(eq(grps.id, grpId), eq(grps.status, "DRAFT")));
+    await ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: why });
+    await ctx.sched.enqueue("agent_turn", {
+      grp_id: grpId,
+      payload: { role: roleFor(ctx, "plan_requirement"), respec: why },
+    });
+  });
+  await sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold);
+  await ctx.sched.tick();
+}
+
+/**
+ * The boss said yes, but a boundary is in the way.
+ *
+ * A refusal used to end here and the click was gone: the group sat in DRAFT with
+ * nothing recording the yes, and nobody re-ran it when the group holding the
+ * paths merged. One click has to be final, so the approval is written and the
+ * Architect is put back on the boundary it forgot to cut.
+ */
+async function heldForBoundary(ctx: Ctx, grpId: number, why: string): Promise<void> {
+  // A refusal used to end here, and the click was gone: the group sat in DRAFT
+  // with nothing recording that the boss had said yes, and nobody re-ran it when
+  // the group holding the paths merged. One click has to be final.
+  await ctx.db.update(grps).set({ approved_at: Date.now() }).where(eq(grps.id, grpId));
+  // Put the Architect back on it — the boundary is its job, and it was observed
+  // cutting one group's paths and forgetting the other's.
+  // The project is read rather than sub-queried: this handler already names the
+  // group, and the builder has no operand form for a scalar subquery.
+  const [mine] = await ctx.db.select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, grpId));
+  const undeclared = mine
+    ? await ctx.db
+        .select({ id: grps.id, name: grps.name })
+        .from(grps)
+        .where(
+          and(
+            eq(grps.project_id, mine.project_id),
+            inArray(grps.status, CLAIMING),
+            // `owns_json` is NOT NULL, so the `IS NULL` half has never matched.
+            // Kept because removing a branch is not what this change is for.
+            or(isNull(grps.owns_json), eq(grps.owns_json, [])),
+          ),
+        )
+    : [];
+  if (undeclared.length) {
+    await ctx.sched.enqueue("agent_turn", {
+      grp_id: grpId,
+      priority: 7,
+      payload: {
+        role: roleFor(ctx, "cut_boundary"),
+        boundary: await Promise.all(undeclared.map(async (g) => ({ ...g, idea: await firstIdea(ctx.db, g.id) }))),
+      },
+    });
+    await ctx.sched.tick();
+  }
+  await ctx.bus.emit({
+    grpId,
+    author: "orchestrator",
+    kind: "state_change",
+    body: say(ctx.config.language, "group.approve_held", { why }),
+  });
+}
+
 export const postDraftDecision = (async (ctx, _req, params, b) => {
   const grpId = params.id;
   const approve = params.decision === "approve";
 
   if (!approve) {
-    const fact = withAttachments(`boss sent the DRAFT back: ${b.reason ?? ""}`, b.attachments);
-    const projectId =
-      orm(ctx.db).select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, grpId)).get()?.project_id ??
-      null;
-    // Back to PLANNING, which is what the group actually is now. Left in DRAFT it
-    // still counted as a decision waiting on the boss, still showed the rejected
-    // card, and 批准开工 still worked on it — one stray click approves the very
-    // plan that was just sent back.
-    //
-    // Clearing approved_at as well: sending a plan back withdraws the approval, or
-    // the next card to reach DRAFT would start itself on the strength of a yes the
-    // boss said to a plan that no longer exists.
-    const why = withAttachments(b.reason ?? "respec", b.attachments);
-    ctx.db.transaction(() => {
-      addNote(ctx.db, { projectId, grpId, kind: "fact", lang: ctx.config.language, body: fact });
-      orm(ctx.db)
-        .update(grps)
-        .set({ status: "PLANNING", approved_at: null })
-        .where(and(eq(grps.id, grpId), eq(grps.status, "DRAFT")))
-        .run();
-      ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: why });
-      ctx.sched.enqueue("agent_turn", {
-        grp_id: grpId,
-        payload: { role: roleFor(ctx, "plan_requirement"), respec: why },
-      });
-    })();
-    sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold);
-    ctx.sched.tick();
+    await sendBack(ctx, grpId, b);
     return message("sent back");
   }
 
   // The boss usually approves what the Dispatcher filed; an edited card in the
   // request body is the "改完批准" path.
-  const filed = orm(ctx.db)
+  const [filed] = await ctx.db
     .select({ body: note.body })
     .from(note)
-    // Raw on the right: `json_extract` has no Drizzle operator.
-    .where(and(eq(note.grp_id, grpId), sql`json_extract(${note.frontmatter_json}, '$.draft_card') = 1`))
+    // Raw on the right: jsonb containment has no Drizzle operator.
+    .where(and(eq(note.grp_id, grpId), sql`${note.frontmatter_json} @> '{"draft_card": true}'::jsonb`))
     // Both keys: `at` is a millisecond clock, and a card shares one with whatever
     // the same request wrote beside it.
     .orderBy(desc(note.at), desc(note.id))
-    .limit(1)
-    .get()?.body;
-  const card = b.card ?? filed;
+    .limit(1);
+  const card = b.card ?? filed?.body;
 
   if (card) {
     const v = validateDraftCard(card);
@@ -168,7 +226,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
     // `note` and `slice.depends_on` holding references, so re-approving a group
     // that had already run died on `FOREIGN KEY constraint failed` — see
     // `SLICE_REFS`.
-    dropSlices(ctx.db, grpId);
+    await dropSlices(ctx.db, grpId);
     // A cap, per difficulty, written at birth. Until this, `budget_tokens` was
     // never INSERTed anywhere, so it was NULL on every row and both admission
     // checks in scheduler.ts had never stopped a single turn. It matters more now
@@ -179,11 +237,11 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
     // improvises an id, `task done` never lands, and the whole review pipeline
     // silently never fires — which is exactly what the live run showed.
     //
-    // Both statements were prepared once outside the loop. A card carries a
-    // handful of slices, so building them per row costs nothing measurable and
-    // reads as what it is.
-    v.slices.forEach((sl, i) => {
-      const row = orm(ctx.db)
+    // Serially, and in order: `seq` is the slice's position and the task rows
+    // point at the ids these hand back.
+    const at = Date.now();
+    for (const [i, sl] of v.slices.entries()) {
+      const [row] = await ctx.db
         .insert(slice)
         .values({
           grp_id: grpId,
@@ -192,16 +250,11 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
           accept_spec: sl.accept,
           difficulty: sl.difficulty,
           budget_tokens: ctx.config.sliceBudgetTokens?.[sl.difficulty] ?? ctx.config.sliceBudgetTokens?.normal ?? null,
-          // Raw: SQLite's clock, as both statements had.
-          created_at: sql`unixepoch() * 1000`,
+          created_at: at,
         })
-        .returning({ id: slice.id })
-        .get();
-      orm(ctx.db)
-        .insert(task)
-        .values({ grp_id: grpId, slice_id: row.id, title: sl.title, created_at: sql`unixepoch() * 1000` })
-        .run();
-    });
+        .returning({ id: slice.id });
+      await ctx.db.insert(task).values({ grp_id: grpId, slice_id: row!.id, title: sl.title, created_at: at });
+    }
   }
   // Boundaries before work. Two groups discovering at merge time that they were
   // both editing one file have already paid for the work twice.
@@ -209,46 +262,9 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
   // The slices above are written either way: without them there is nothing for the
   // automatic start to run once the boundary clears, and an edited card would be
   // lost between the two clicks.
-  const start = canStart(ctx.db, grpId);
+  const start = await canStart(ctx.db, grpId);
   if (!start.ok) {
-    // A refusal used to end here, and the click was gone: the group sat in DRAFT
-    // with nothing recording that the boss had said yes, and nobody re-ran it when
-    // the group holding the paths merged. One click has to be final.
-    orm(ctx.db).update(grps).set({ approved_at: sql`unixepoch() * 1000` }).where(eq(grps.id, grpId)).run();
-    // Put the Architect back on it — the boundary is its job, and it was observed
-    // cutting one group's paths and forgetting the other's.
-    const undeclared = orm(ctx.db)
-      .select({ id: grps.id, name: grps.name })
-      .from(grps)
-      .where(
-        and(
-          // Raw on the right: a scalar subquery against the same table, which the
-          // builder has no operand form for.
-          eq(grps.project_id, sql`(select project_id from grp where id = ${grpId})`),
-          inArray(grps.status, CLAIMING),
-          // `owns_json` is NOT NULL, so the `IS NULL` half has never matched. Kept
-          // because removing a branch is not what this change is for.
-          or(isNull(grps.owns_json), eq(grps.owns_json, "[]")),
-        ),
-      )
-      .all();
-    if (undeclared.length) {
-      ctx.sched.enqueue("agent_turn", {
-        grp_id: grpId,
-        priority: 7,
-        payload: {
-          role: roleFor(ctx, "cut_boundary"),
-          boundary: undeclared.map((g) => ({ ...g, idea: firstIdea(ctx.db, g.id) })),
-        },
-      });
-      ctx.sched.tick();
-    }
-    ctx.bus.emit({
-      grpId,
-      author: "orchestrator",
-      kind: "state_change",
-      body: say(ctx.config.language, "group.approve_held", { why: start.reason ?? "" }),
-    });
+    await heldForBoundary(ctx, grpId, start.reason ?? "");
     // 200, not 422: the boss did decide, and a red error toast says the opposite.
     return message(say(ctx.config.language, "group.approve_held", { why: start.reason ?? "" }));
   }
@@ -263,14 +279,14 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
  * Dissolving is the most irreversible thing on the panel — the group leaves every
  * view — so it must never rest on a guess about whether the branch is in main.
  */
-export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
-  const stale = landed(ctx.db, grpId);
-  ctx.bus.emit({ grpId, author: by, kind: "state_change", body: say(ctx.config.language, "group.merged") });
+export async function landGroup(ctx: Ctx, grpId: number, by: string): Promise<number[]> {
+  const stale = await landed(ctx.db, grpId);
+  await ctx.bus.emit({ grpId, author: by, kind: "state_change", body: say(ctx.config.language, "group.merged") });
 
   // Turn this group's retro into lessons while the branch is fresh. This is
   // the only mechanism by which the twentieth group is smarter than the
   // first, so it runs on the way out, not "later".
-  ctx.sched.enqueue("agent_turn", {
+  await ctx.sched.enqueue("agent_turn", {
     grp_id: grpId,
     payload: {
       role: roleFor(ctx, "compress_context"),
@@ -283,8 +299,8 @@ export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
   for (const id of stale) {
     // Named from the project rather than written into the sentence: a group on
     // `develop` was being told to rebase onto a branch its repository has not got.
-    const base = baseBranchOf(ctx.db, id, ctx.config.baseBranchFallbacks);
-    ctx.sched.enqueue("agent_turn", {
+    const base = await baseBranchOf(ctx.db, id, ctx.config.baseBranchFallbacks);
+    await ctx.sched.enqueue("agent_turn", {
       grp_id: id,
       payload: {
         role: roleFor(ctx, "write_code"),
@@ -295,7 +311,7 @@ export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
       },
     });
   }
-  ctx.sched.tick();
+  await ctx.sched.tick();
   return stale;
 }
 
@@ -328,22 +344,21 @@ export const GroupControlBody = z.object({
   mode: z.enum(["keep", "rollback"]).optional(),
 });
 
-function changeBudget(ctx: Ctx, grpId: number, tokens: number | null | undefined): Response {
+async function changeBudget(ctx: Ctx, grpId: number, tokens: number | null | undefined): Promise<Response> {
   // Budget exhaustion suspends the group, and until this existed there was no
   // route out of it: 继续 un-paused a group the scheduler refused to admit,
   // so the next tick suspended it again. A limit needs a way to be raised.
   const t = normalizeBudget(tokens);
-  const spent = orm(ctx.db)
+  const [spent] = await ctx.db
     .select({ spent_tokens: grps.spent_tokens, status: grps.status })
     .from(grps)
-    .where(eq(grps.id, grpId))
-    .get();
+    .where(eq(grps.id, grpId));
   if (!spent) return message("no such group", 404);
   const error = budgetError(t, spent.spent_tokens);
   if (error) return error;
-  recordBudget(ctx, grpId, t);
-  if (spent.status === "PAUSED") resume(ctx, grpId);
-  ctx.sched.tick();
+  await recordBudget(ctx, grpId, t);
+  if (spent.status === "PAUSED") await resume(ctx, grpId);
+  await ctx.sched.tick();
   return json({ budget: t });
 }
 
@@ -359,10 +374,10 @@ function budgetError(tokens: number | null, spent: number): Response | null {
   return null;
 }
 
-function recordBudget(ctx: Ctx, grpId: number, tokens: number | null): void {
+async function recordBudget(ctx: Ctx, grpId: number, tokens: number | null): Promise<void> {
   const description = tokens === null ? "budget cap lifted" : `budget raised to ${tokens} tokens`;
-  orm(ctx.db).update(grps).set({ budget_tokens: tokens }).where(eq(grps.id, grpId)).run();
-  ctx.bus.emit({
+  await ctx.db.update(grps).set({ budget_tokens: tokens }).where(eq(grps.id, grpId));
+  await ctx.bus.emit({
     grpId,
     author: "boss",
     kind: "state_change",
@@ -370,14 +385,13 @@ function recordBudget(ctx: Ctx, grpId: number, tokens: number | null): void {
   });
   // Raising the cap is the answer to the question the watchdog asked, so it
   // also closes it: a stale "out of budget" row in 等你 is worse than none.
-  orm(ctx.db)
+  await ctx.db
     .update(escalation)
     .set({
       chain_state: "answered",
       answered_by: "boss",
       answer: tokens === null ? "cap lifted" : `raised to ${tokens}`,
-      // Raw: SQLite's clock, as the statement it replaces had.
-      answered_at: sql`unixepoch() * 1000`,
+      answered_at: Date.now(),
     })
     // `isNull`: an unanswered row is what this closes, and `= NULL` matches none.
     .where(
@@ -387,25 +401,23 @@ function recordBudget(ctx: Ctx, grpId: number, tokens: number | null): void {
         isNull(escalation.answer),
         like(escalation.question, "budget:%"),
       ),
-    )
-    .run();
+    );
 }
 
-function resumeGroup(ctx: Ctx, grpId: number): Response {
+async function resumeGroup(ctx: Ctx, grpId: number): Promise<Response> {
   // Un-pausing an over-budget group is a no-op the boss cannot see: the
   // scheduler refuses to admit it, so it sits in RUNNING doing nothing.
-  const g = orm(ctx.db)
+  const [g] = await ctx.db
     .select({ budget_tokens: grps.budget_tokens, spent_tokens: grps.spent_tokens })
     .from(grps)
-    .where(eq(grps.id, grpId))
-    .get();
+    .where(eq(grps.id, grpId));
   if (g?.budget_tokens != null && g.spent_tokens >= g.budget_tokens) {
     return bad(
       `out of budget (${g.spent_tokens}/${g.budget_tokens} tokens). Raise the cap first, ` +
         `or it stops again on the next tick.`,
     );
   }
-  resume(ctx, grpId);
+  await resume(ctx, grpId);
   return message("ok");
 }
 
@@ -415,40 +427,34 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
   // been force-pushed or deleted, and sometimes the boss simply wants a clean
   // one — without this the group is stuck holding a pr_number that openPr
   // treats as "already done", so it could never get another.
-  const g = orm(ctx.db)
+  const [g] = await ctx.db
     .select({ name: grps.name, repo: project.repo_path, pr_number: grps.pr_number })
     .from(grps)
     .innerJoin(project, eq(project.id, grps.project_id))
-    .where(eq(grps.id, grpId))
-    .get();
+    .where(eq(grps.id, grpId));
   if (!g) return message("no such group", 404);
   if (!ctx.gh) return bad("no GitHub client on this server");
-  orm(ctx.db).update(grps).set({ pr_number: null }).where(eq(grps.id, grpId)).run();
+  await ctx.db.update(grps).set({ pr_number: null }).where(eq(grps.id, grpId));
   const r = await openPr({
     ctx,
     gh: ctx.gh,
     grpId,
-    title: prTitle(ctx.db, grpId),
-    body: prBody(ctx.db, grpId),
+    title: await prTitle(ctx.db, grpId),
+    body: await prBody(ctx.db, grpId),
   });
   if ("error" in r) {
     // Put the old number back: a group with no PR and no way to open one is
     // worse off than one whose PR is closed.
-    orm(ctx.db).update(grps).set({ pr_number: g.pr_number }).where(eq(grps.id, grpId)).run();
+    await ctx.db.update(grps).set({ pr_number: g.pr_number }).where(eq(grps.id, grpId));
     return bad(r.error);
   }
-  orm(ctx.db)
-    .update(grps)
-    .set({ status: "PR_OPEN", paused_at: null, pause_reason: null })
-    .where(eq(grps.id, grpId))
-    .run();
-  joinQueue(ctx.db, grpId);
-  orm(ctx.db)
+  await ctx.db.update(grps).set({ status: "PR_OPEN", paused_at: null, pause_reason: null }).where(eq(grps.id, grpId));
+  await joinQueue(ctx.db, grpId);
+  await ctx.db
     .update(escalation)
     .set({ chain_state: "answered", answered_by: "boss", answer: `opened #${r.number} instead` })
-    .where(and(eq(escalation.grp_id, grpId), isNull(escalation.answer), like(escalation.question, "PR #%被关掉了%")))
-    .run();
-  ctx.bus.emit({
+    .where(and(eq(escalation.grp_id, grpId), isNull(escalation.answer), like(escalation.question, "PR #%被关掉了%")));
+  await ctx.bus.emit({
     grpId,
     author: "boss",
     kind: "state_change",
@@ -463,10 +469,10 @@ async function dropRequirement(ctx: Ctx, grpId: number, why: string | undefined)
   // else already fixed, had no way off the board: 退回重拆 sends it back to the
   // Dispatcher, which writes another card for work nobody wants. The paths it
   // held stayed held, so a group waiting on them waited forever.
-  const g = orm(ctx.db).select({ status: grps.status, name: grps.name }).from(grps).where(eq(grps.id, grpId)).get();
+  const [g] = await ctx.db.select({ status: grps.status, name: grps.name }).from(grps).where(eq(grps.id, grpId));
   if (!g) return message("no such group", 404);
   if (g.status === "DISSOLVED") return message("ok");
-  dropGroup(ctx, grpId, why ?? "");
+  await dropGroup(ctx, grpId, why ?? "");
   // Its paths are free the moment it leaves ACTIVE, so anything the boss
   // already approved behind it can start now.
   return json({ started: await sweepApproved(ctx) });
@@ -481,13 +487,13 @@ async function rebuildSandbox(ctx: Ctx, grpId: number): Promise<Response> {
   await killSandbox(ctx, { grp: grpId });
   // The old lines described a container that no longer exists.
   clearSandboxLog(grpId);
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId,
     author: "boss",
     kind: "state_change",
     body: say(ctx.config.language, "sandbox.rebuild"),
   });
-  ctx.sched.tick();
+  await ctx.sched.tick();
   return message("ok");
 }
 
@@ -500,13 +506,13 @@ export const postGroupControl = (async (ctx, req, params, b) => {
     case "pause": {
       // Reports how many turns it is waiting on: PAUSING is honest, PAUSED
       // would not be while something is still in flight.
-      const waiting = pause(ctx, grpId);
+      const waiting = await pause(ctx, grpId);
       return json({ status: waiting ? "PAUSING" : "PAUSED", waiting });
     }
     case "resume":
       return resumeGroup(ctx, grpId);
     case "park":
-      park(ctx, grpId, "you parked it");
+      await park(ctx, grpId, "you parked it");
       return message("ok");
     case "newpr":
       return replacePr(ctx, grpId);

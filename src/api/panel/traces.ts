@@ -143,6 +143,6 @@ function otlpSpanRows(body: OtlpTrace): SpanRow[] {
  * request whose response it never saw writes the same rows.
  */
 export const postTraces = (async (ctx, _req, _params, body) => {
-  writeSpans(ctx.db, otlpSpanRows(body));
+  await writeSpans(ctx.db, otlpSpanRows(body));
   return json({});
 }) satisfies Handler<OtlpTrace>;

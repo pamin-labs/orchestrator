@@ -64,7 +64,6 @@
       },
       "devDependencies": {
         "@biomejs/biome": "^2.5.8",
-        "@electric-sql/pglite": "^0.5.5",
         "@happy-dom/global-registrator": "^20.11.2",
         "@opentelemetry/otlp-transformer": "^0.221.0",
         "@tailwindcss/cli": "^4.3.3",

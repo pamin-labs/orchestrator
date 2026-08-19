@@ -1,6 +1,12 @@
 import type { StablePrompt } from "../../prompt/assemble.ts";
 
-export interface RateLimitInfo {
+/**
+ * A type alias, not an interface, and that is load-bearing: this is written
+ * straight into a `jsonb` column typed `Json`, and only an object *type* gets the
+ * implicit index signature that assignment needs. As an interface the write does
+ * not compile, and the shortcut around it is a cast.
+ */
+export type RateLimitInfo = {
   status: string;
   rateLimitType: string;
   resetsAt: number;
@@ -9,7 +15,7 @@ export interface RateLimitInfo {
   fiveHourPercent?: number;
   weeklyPercent?: number;
   weeklyResetsAt?: number;
-}
+};
 
 export interface Usage {
   input: number;

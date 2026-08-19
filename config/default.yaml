@@ -18,9 +18,17 @@
 #
 #   ORCH_HOST   ORCH_PORT   ORCH_DATA_DIR
 #
-# Two more exist and are deliberately not keys here: ORCH_SANDBOX_API_KEY (a
-# secret, and this file is committed) and ORCH_SKILLS_DIR (a property of where
-# this installation was unpacked).
+# Three more exist and are deliberately not keys here. ORCH_SANDBOX_API_KEY and
+# ORCH_DATABASE_URL are secrets and this file is committed; ORCH_DATABASE_URL is
+# also the one value that could not live in the database whatever we decided,
+# since it is how the database is reached. ORCH_SKILLS_DIR is a property of where
+# this installation was unpacked.
+#
+#   ORCH_DATABASE_URL=postgres://user:password@host:5432/orchestrator
+#
+# Bring your own PostgreSQL — managed, on another machine, or the one container
+# in docker/postgres-compose.yml that `bun run db:up` starts. Nothing in the
+# product knows which it got, and the schema is applied at boot either way.
 #
 # Anything you do add here still works — it is the default under whatever the
 # panel has set — but `test/config.test.ts` will fail if it disagrees with

@@ -1,6 +1,5 @@
 import { and, desc, eq, ne } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { grp } from "../../platform/persistence/schema.ts";
 import type { z } from "zod";
 import type { GroupRef } from "../../contracts/fields.ts";
@@ -8,31 +7,30 @@ import type { Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 
 /** Authorize an agent against its group, or its project for standing roles. */
-export function mayAct(db: DB, caller: Caller, groupId: number): boolean {
+export async function mayAct(db: DB, caller: Caller, groupId: number): Promise<boolean> {
   if (caller.grp_id !== null) return caller.grp_id === groupId;
   if (caller.project_id === null) return false;
-  const group = orm(db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, groupId)).get();
+  const [group] = await db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, groupId));
   return group?.project_id === caller.project_id;
 }
 
 /** Resolve a validated group reference by id or active name. */
-export function resolveGroup(
+export async function resolveGroup(
   ctx: Ctx,
   ref: z.infer<typeof GroupRef> | null | undefined,
   fallbackGroupId?: number | null,
-): number | null {
+): Promise<number | null> {
   if (typeof ref === "number") return ref;
   const name = ref?.trim();
   if (name) {
     const id = Number(name);
     if (Number.isInteger(id)) return id;
-    const group = orm(ctx.db)
+    const [group] = await ctx.db
       .select({ id: grp.id })
       .from(grp)
       .where(and(eq(grp.name, name), ne(grp.status, "DISSOLVED")))
       .orderBy(desc(grp.id))
-      .limit(1)
-      .get();
+      .limit(1);
     if (group) return group.id;
   }
   return fallbackGroupId ?? null;

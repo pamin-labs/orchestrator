@@ -199,7 +199,7 @@ export function busDeliver(bus: Bus, webhook?: string, timeoutMs: number = DEFAU
     // A frame of its own rather than an ordinary event: the page raises a system
     // notification for these and nothing else, and "everything the boss might
     // want" is what turns a notification into noise.
-    bus.emit({ author: "orchestrator", kind: "notify", body, meta: { url, title } });
+    await bus.emit({ author: "orchestrator", kind: "notify", body, meta: { url, title } });
     if (!webhook) return;
     try {
       // Scrubbed, because this is the one thing here that leaves the machine.

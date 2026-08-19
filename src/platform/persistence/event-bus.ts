@@ -1,6 +1,6 @@
-import { and, lt, notInArray } from "drizzle-orm";
+import { and, asc, desc, gt, lt, notInArray } from "drizzle-orm";
+import { openTransaction, transaction, writeHandle } from "./database.ts";
 import type { DB } from "./database.ts";
-import { orm } from "./orm.ts";
 import { event } from "./schema.ts";
 import {
   EventInputSchema,
@@ -9,7 +9,7 @@ import {
   type LiveFrame,
   type StoredEvent,
 } from "../../contracts/events.ts";
-import { jsonOr, JsonValue } from "../../contracts/json.ts";
+import { jsonOr, valueOr, JsonValue } from "../../contracts/json.ts";
 import { requestContext } from "../observability/request-context.ts";
 import { scrub } from "../observability/redaction.ts";
 
@@ -21,11 +21,44 @@ import { scrub } from "../observability/redaction.ts";
  * one home and the UI never needs its own state.
  */
 
-type EventRow = Omit<StoredEvent, "meta"> & { meta_json: string };
 type ValidatedEventInput = Omit<StoredEvent, "seq" | "at">;
 
 /** An unset optional field is stored as NULL, never as placeholder text. */
 const orNull = <T>(v: T | null | undefined): T | null => v ?? null;
+
+/**
+ * The stored columns under the names the contract uses.
+ *
+ * One selection for both readers, so a column added to one is added to the other.
+ */
+const COLUMNS = {
+  seq: event.seq,
+  channelId: event.channel_id,
+  grpId: event.grp_id,
+  author: event.author,
+  kind: event.kind,
+  intent: event.intent,
+  severity: event.severity,
+  body: event.body,
+  target: event.target,
+  meta_json: event.meta_json,
+  at: event.at,
+  correlationId: event.correlation_id,
+  traceId: event.trace_id,
+  spanId: event.span_id,
+};
+
+/**
+ * `meta_json` is `jsonb`, so the driver hands back a value and not text.
+ *
+ * Still validated: the row may have been written by an older build, and every
+ * reader downstream is typed against the contract rather than against whatever
+ * that build stored.
+ */
+const toStored = <T extends { meta_json: unknown }>({ meta_json, ...e }: T) => ({
+  ...e,
+  meta: valueOr(meta_json, JsonValue, {}),
+});
 
 /**
  * What the event table keeps forever, and what it does not.
@@ -46,26 +79,18 @@ const KEPT_FOREVER = ["say", "boss_say", "note", "escalation"] as const;
  * accumulated for the life of the installation — and a stale SSE cursor replays
  * every row of it.
  */
-export function trimEvents(db: DB, olderThanMs: number, now = Date.now()): number {
-  // `.returning()` rather than a row count: the query builder's `.run()` is typed
-  // `void` on this driver, so `.changes` does not exist to read.
-  return orm(db)
+export async function trimEvents(db: DB, olderThanMs: number, now = Date.now()): Promise<number> {
+  // `.returning()` rather than the driver's own row count: `DB` is either driver,
+  // and the two do not report one under the same name.
+  const gone = await db
     .delete(event)
     .where(and(lt(event.at, now - olderThanMs), notInArray(event.kind, [...KEPT_FOREVER])))
-    .returning({ seq: event.seq })
-    .all().length;
+    .returning({ seq: event.seq });
+  return gone.length;
 }
 
 export class Bus {
   private sinks = new Set<(frame: Frame) => void>();
-  /**
-   * Events inserted by a synchronous SQLite transaction cannot be fanned until
-   * its outermost transaction commits. The seq is AUTOINCREMENT but a rolled
-   * back value may be reused, so the value is also an identity guard: a later
-   * event that reuses the seq replaces this pending entry and is the only one
-   * allowed to fan.
-   */
-  private pending = new Map<number, StoredEvent>();
 
   private readonly db: DB;
 
@@ -86,16 +111,34 @@ export class Bus {
    * good. `claude setup-token` prints the token it mints and the login streams
    * the CLI's output, which is how one got here.
    */
-  emit(e: EventInput): StoredEvent {
-    const { event, metaJson } = this.prepare(e);
+  async emit(e: EventInput): Promise<StoredEvent> {
+    const event = this.prepare(e);
     const at = Date.now();
-    const seq = this.insert(event, metaJson, at);
+    const open = openTransaction.getStore();
+    const seq = await this.insert(event, at, writeHandle(this.db));
     const stored: StoredEvent = { ...event, seq, at };
-    this.publish(stored);
+    // Deferred, not fanned, while a transaction is open: a subscriber told about
+    // an event whose transaction then rolls back has been told about work that
+    // did not happen.
+    if (open) open.onCommit.push(() => this.fan({ type: "event", ...stored }));
+    else this.fan({ type: "event", ...stored });
     return stored;
   }
 
-  private prepare(e: EventInput): { event: ValidatedEventInput; metaJson: string } {
+  /**
+   * A transaction whose events belong to it.
+   *
+   * `db.transaction` alone is not enough twice over. The row: an emit through the
+   * outer handle writes on another connection, so it outlives a rollback — and on
+   * the single-connection driver the tests use it deadlocks instead. The fan: a
+   * subscriber told inside a transaction cannot be untold. Both are structural
+   * here rather than remembered at each call site, so `emit` needs no argument.
+   */
+  async transaction<T>(run: (tx: DB) => Promise<T>): Promise<T> {
+    return transaction(this.db, run);
+  }
+
+  private prepare(e: EventInput): ValidatedEventInput {
     const body = scrub(e.body ?? "");
     // `meta` too, not just the body. It is written to the same append-only row and
     // read back by the panel and the cost report, and several emitters put whole
@@ -105,57 +148,34 @@ export class Bus {
     // survives it.
     const metaJson = scrub(JSON.stringify(e.meta ?? {}));
     const context = requestContext.getStore();
-    return {
-      event: EventInputSchema.parse({
-        ...e,
-        body,
-        meta: jsonOr(metaJson, JsonValue, {}),
-        ...(context ? { correlationId: context.requestId, traceId: context.traceId, spanId: context.spanId } : {}),
-      }),
-      metaJson,
-    };
+    return EventInputSchema.parse({
+      ...e,
+      body,
+      meta: jsonOr(metaJson, JsonValue, {}),
+      ...(context ? { correlationId: context.requestId, traceId: context.traceId, spanId: context.spanId } : {}),
+    });
   }
 
-  private insert(event: ValidatedEventInput, metaJson: string, at: number): number {
-    return this.db
-      .query<
-        { seq: number },
-        [
-          number | null,
-          number | null,
-          string,
-          string,
-          string | null,
-          string | null,
-          string,
-          string | null,
-          string,
-          number,
-          string | null,
-          string | null,
-          string | null,
-        ]
-      >(
-        `INSERT INTO event
-           (channel_id, grp_id, author, kind, intent, severity, body, target, meta_json, at,
-            correlation_id, trace_id, span_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING seq`,
-      )
-      .get(
-        orNull(event.channelId),
-        orNull(event.grpId),
-        event.author,
-        event.kind,
-        orNull(event.intent),
-        orNull(event.severity),
-        event.body ?? "",
-        orNull(event.target),
-        metaJson,
+  private async insert(e: ValidatedEventInput, at: number, on: DB): Promise<number> {
+    const [row] = await on
+      .insert(event)
+      .values({
+        channel_id: orNull(e.channelId),
+        grp_id: orNull(e.grpId),
+        author: e.author,
+        kind: e.kind,
+        intent: orNull(e.intent),
+        severity: orNull(e.severity),
+        body: e.body ?? "",
+        target: orNull(e.target),
+        meta_json: e.meta ?? {},
         at,
-        orNull(event.correlationId),
-        orNull(event.traceId),
-        orNull(event.spanId),
-      )!.seq;
+        correlation_id: orNull(e.correlationId),
+        trace_id: orNull(e.traceId),
+        span_id: orNull(e.spanId),
+      })
+      .returning({ seq: event.seq });
+    return row!.seq;
   }
 
   /**
@@ -168,29 +188,19 @@ export class Bus {
     this.fan({ type: "live", ...f, body: scrub(f.body) });
   }
 
-  since(seq: number, limit = 500): StoredEvent[] {
-    return this.db
-      .query<EventRow, [number, number]>(
-        `SELECT seq, channel_id AS channelId, grp_id AS grpId, author, kind, intent, severity,
-                body, target, meta_json, at, correlation_id AS correlationId,
-                trace_id AS traceId, span_id AS spanId
-         FROM event WHERE seq > ? ORDER BY seq LIMIT ?`,
-      )
-      .all(seq, limit)
-      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr(meta_json, JsonValue, {}) }));
+  async since(seq: number, limit = 500): Promise<StoredEvent[]> {
+    const rows = await this.db
+      .select(COLUMNS)
+      .from(event)
+      .where(gt(event.seq, seq))
+      .orderBy(asc(event.seq))
+      .limit(limit);
+    return rows.map(toStored);
   }
 
-  latest(limit = 500): StoredEvent[] {
-    return this.db
-      .query<EventRow, [number]>(
-        `SELECT seq, channel_id AS channelId, grp_id AS grpId, author, kind, intent, severity,
-                body, target, meta_json, at, correlation_id AS correlationId,
-                trace_id AS traceId, span_id AS spanId
-         FROM event ORDER BY seq DESC LIMIT ?`,
-      )
-      .all(limit)
-      .reverse()
-      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr(meta_json, JsonValue, {}) }));
+  async latest(limit = 500): Promise<StoredEvent[]> {
+    const rows = await this.db.select(COLUMNS).from(event).orderBy(desc(event.seq)).limit(limit);
+    return rows.reverse().map(toStored);
   }
 
   private fan(f: Frame): void {
@@ -201,30 +211,5 @@ export class Bus {
         // A dead SSE connection must never break the emitter.
       }
     }
-  }
-
-  private publish(event: StoredEvent): void {
-    if (!this.db.inTransaction) {
-      // A rolled-back transaction may have reserved this AUTOINCREMENT value.
-      // The committed event owns it now; invalidate the stale microtask.
-      this.pending.delete(event.seq);
-      this.fan({ type: "event", ...event });
-      return;
-    }
-
-    this.pending.set(event.seq, event);
-    queueMicrotask(() => {
-      if (this.pending.get(event.seq) !== event) return;
-      this.pending.delete(event.seq);
-      try {
-        const committed = this.db
-          .query<{ seq: number }, [number]>("SELECT seq FROM event WHERE seq = ?")
-          .get(event.seq);
-        if (committed) this.fan({ type: "event", ...event });
-      } catch {
-        // Shutdown may close the handle after the commit but before this
-        // microtask. The row is durable and reconnecting readers will tail it.
-      }
-    });
   }
 }

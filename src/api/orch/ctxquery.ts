@@ -12,7 +12,6 @@ import { Id } from "../../contracts/fields.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { scopeAttributes } from "../../platform/observability/metrics.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { note as notes } from "../../platform/persistence/schema.ts";
 
 /** The tree render, plus the notes it quoted — which must not be quoted twice. */
@@ -23,7 +22,7 @@ async function pageIndexContext(
   question: string,
 ): Promise<{ where: string; notes: number[] }> {
   const none = { where: "", notes: [] };
-  const tree = loadTree(ctx.db, projectId);
+  const tree = await loadTree(ctx.db, projectId);
   // Bound before the closure: narrowing a property does not survive into a
   // callback, and the honest fix is the local, not an assertion that tells the
   // compiler to stop checking a field the composition layer leaves unset in tests.
@@ -44,11 +43,7 @@ async function pageIndexContext(
       const noteIds = hits.filter((hit) => hit.startsWith(NOTE_PREFIX)).map((hit) => Number(hit.split("/").pop()));
       const quoted: number[] = [];
       for (const id of noteIds) {
-        const note = orm(ctx.db)
-          .select({ kind: notes.kind, body: notes.body })
-          .from(notes)
-          .where(eq(notes.id, id))
-          .get();
+        const [note] = await ctx.db.select({ kind: notes.kind, body: notes.body }).from(notes).where(eq(notes.id, id));
         if (!note) continue;
         answer += `\n\n### ${note.kind} #${id}\n${note.body.slice(0, 1200)}`;
         quoted.push(id);
@@ -101,7 +96,7 @@ export const postCtxQuery = (async (ctx, _req, a, _p, b) =>
   )) satisfies AgentHandler<z.infer<typeof CtxQueryBody>>;
 
 async function answerCtxQuery(ctx: Ctx, a: Caller, b: z.infer<typeof CtxQueryBody>): Promise<Response> {
-  const projectId = projectOfAgent(ctx.db, a.id);
+  const projectId = await projectOfAgent(ctx.db, a.id);
   // PageIndex: a model walks the summary tree and can land on a file whose name
   // shares no word with the question. It costs one cheap call, against grep rounds
   // that each re-read the agent's whole transcript. No tree yet, or a navigator
@@ -110,7 +105,7 @@ async function answerCtxQuery(ctx: Ctx, a: Caller, b: z.infer<typeof CtxQueryBod
   // already in the database; the shared index build remains project-scoped.
   const picked = await pageIndexContext(ctx, a, projectId, b.question);
   return message(
-    ctxQuery({
+    await ctxQuery({
       db: ctx.db,
       index: ctx.notes ?? makeNoteIndex(ctx.db),
       grpId: a.grp_id,

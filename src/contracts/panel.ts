@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { JsonValue } from "./json.ts";
 import { ESCALATION_STATES, GRP_STATES, SLICE_STATES, TASK_STATES } from "./states.ts";
 
 /**
@@ -33,7 +34,7 @@ export const Group = z.object({
   name: z.string(),
   branch: z.string().nullable(),
   status: z.enum(GRP_STATES),
-  owns_json: z.string(),
+  owns_json: JsonValue,
   budget_tokens: z.number().nullable(),
   spent_tokens: z.number(),
   pr_number: z.number().nullable(),
@@ -49,7 +50,7 @@ export const Slice = z.object({
   accept_spec: z.string(),
   difficulty: z.string(),
   status: z.enum(SLICE_STATES),
-  gates_json: z.string(),
+  gates_json: JsonValue,
   spent_tokens: z.number(),
   /** When it started waiting on the boss. The clock on 白干的单位. */
   awaiting_at: z.number().nullable(),
@@ -145,8 +146,8 @@ export const Answered = z.object({
   ref_note_id: z.number().nullable(),
 });
 
-export const GroupNote = z.object({ grpId: z.number(), body: z.string() });
-export const GroupSaid = z.object({ grpId: z.number(), author: z.string(), body: z.string() });
+const GroupNote = z.object({ grpId: z.number(), body: z.string() });
+const GroupSaid = z.object({ grpId: z.number(), author: z.string(), body: z.string() });
 const Blocked = z.object({ grpId: z.number(), reason: z.string() });
 const QueueEntry = z.object({
   projectId: z.number(),
@@ -217,6 +218,4 @@ export type Archived = z.infer<typeof Archived>;
 export type Escalation = z.infer<typeof Escalation>;
 export type DraftCard = z.infer<typeof DraftCard>;
 export type Answered = z.infer<typeof Answered>;
-export type GroupNote = z.infer<typeof GroupNote>;
-export type GroupSaid = z.infer<typeof GroupSaid>;
 export type Snapshot = z.infer<typeof SnapshotSchema>;

@@ -14,7 +14,6 @@ import { isStale, parseAuth } from "../sandbox/chatgpt.ts";
 import { decode } from "hono/jwt";
 import { z } from "zod";
 import { isNotNull } from "drizzle-orm";
-import { orm } from "../../platform/persistence/orm.ts";
 import { agent } from "../../platform/persistence/schema.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "../../platform/config/load.ts";
 
@@ -418,15 +417,9 @@ function credentialFix(runtime: string): string {
   return "设置页 → codex → 登录，走官方的设备码流程，本机不用装 codex。也可以直接贴一个 API key。";
 }
 
-function credentialRuntimes(db: DB): string[] {
-  const runtimes = new Set(
-    orm(db)
-      .selectDistinct({ runtime: agent.runtime })
-      .from(agent)
-      .where(isNotNull(agent.runtime))
-      .all()
-      .flatMap(({ runtime }) => (runtime === null ? [] : [runtime])),
-  );
+async function credentialRuntimes(db: DB): Promise<string[]> {
+  const rows = await db.selectDistinct({ runtime: agent.runtime }).from(agent).where(isNotNull(agent.runtime));
+  const runtimes = new Set(rows.flatMap(({ runtime }) => (runtime === null ? [] : [runtime])));
   runtimes.add("claude");
   runtimes.add("codex");
   runtimes.add("github");
@@ -434,7 +427,7 @@ function credentialRuntimes(db: DB): string[] {
 }
 
 async function credentialCheck(input: PreflightInput, runtime: string): Promise<Check> {
-  const auth = loadAuth(input.db, runtime);
+  const auth = await loadAuth(input.db, runtime);
   const live = auth
     ? await (input.verify ?? accepted)(runtime, auth, input.cfg ?? DEFAULTS)
     : { ok: false, detail: "没配" };
@@ -446,8 +439,8 @@ async function credentialCheck(input: PreflightInput, runtime: string): Promise<
   };
 }
 
-function codexRefresherCheck(db: DB): Check | null {
-  const auth = loadAuth(db, "codex");
+async function codexRefresherCheck(db: DB): Promise<Check | null> {
+  const auth = await loadAuth(db, "codex");
   if (auth?.mode !== "chatgpt") return null;
   const parsed = parseAuth(auth.secret);
   const stale = !parsed || isStale(parsed);
@@ -492,7 +485,7 @@ async function preflightInner(input: PreflightInput): Promise<Check[]> {
   // The same order `connection()` resolves it in: panel, then environment, then
   // the yaml. Checking a different key than the one the turns use is how a green
   // tick sat next to a fleet that could not open a single container.
-  const key = sandboxKeyFor(input.db, input.sandbox.server, input.sandbox.apiKey);
+  const key = await sandboxKeyFor(input.db, input.sandbox.server, input.sandbox.apiKey);
   const server = await reachable(`http://${input.sandbox.server}`, key, (input.cfg ?? DEFAULTS).timeouts.sandboxPingMs);
   out.push(sandboxServerCheck(input, contained, server));
 
@@ -539,14 +532,15 @@ async function preflightInner(input: PreflightInput): Promise<Check[]> {
 
   // Credentials are per runtime and live in the DB, never in an event or a
   // prompt.
-  out.push(...(await Promise.all(credentialRuntimes(input.db).map((runtime) => credentialCheck(input, runtime)))));
+  const runtimes = await credentialRuntimes(input.db);
+  out.push(...(await Promise.all(runtimes.map((runtime) => credentialCheck(input, runtime)))));
 
   // A ChatGPT-account login is a pair of tokens codex itself rotates, renewed by
   // running the real `codex` rather than posting the refresh token ourselves
   // (chatgpt.ts says why). The failure is silent and delayed: `renew` returns
   // null, the stored token is kept, and hours later every codex turn 401s looking
   // like an expired account. The other modes need nothing here.
-  const codexRefresher = codexRefresherCheck(input.db);
+  const codexRefresher = await codexRefresherCheck(input.db);
   if (codexRefresher) out.push(codexRefresher);
 
   return out;

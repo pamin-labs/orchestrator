@@ -1,12 +1,11 @@
-import { and, eq, inArray, max } from "drizzle-orm";
+import { and, eq, inArray, isNull, max, notInArray } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
-import { orm } from "../../platform/persistence/orm.ts";
-import { grp, lease, slice as sliceTable } from "../../platform/persistence/schema.ts";
+import { escalation, grp, lease, slice as sliceTable } from "../../platform/persistence/schema.ts";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { scopeAttributes } from "../../platform/observability/metrics.ts";
 import { loadMap, mapFor } from "./repomap.ts";
 import type { NoteIndex } from "./note-index.ts";
-import { ESCALATION_TERMINAL_STATES, stateParam, type EscalationState } from "../../contracts/states.ts";
+import { ESCALATION_TERMINAL_STATES } from "../../contracts/states.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../../platform/config/load.ts";
 
 /**
@@ -62,7 +61,7 @@ export interface QueryOptions {
   /**
    * Where the answer lives, already looked up. Passed in rather than looked up
    * here because PageIndex navigation is a model call, and this function is the
-   * pure, synchronous half — the half every test can run without a model.
+   * model-free half — the half every test can run without one.
    */
   where?: string;
   /**
@@ -85,17 +84,17 @@ export interface QueryOptions {
 export const DEFAULT_BUDGET = DEFAULTS.ctxBudgetChars;
 
 /** Answer a query, always prefixing the group's acceptance context when present. */
-export function query(opts: QueryOptions): string {
-  // Synchronous, so the body is not async: it is four SQLite reads and an
-  // in-memory Orama search. It carries a span for comparison — ADR 020 measured
-  // this half at 0.32ms while the other spends up to three model calls, and only
-  // a span on both puts that difference in 系统耗时 rather than in a document.
+export function query(opts: QueryOptions): Promise<string> {
+  // No model call in here — four database reads and an in-memory Orama search.
+  // It carries a span for comparison: ADR 020 measured this half at 0.32ms while
+  // the other spends up to three model calls, and only a span on both puts that
+  // difference in 系统耗时 rather than in a document.
   return activeTracer().startActiveSpan(
     "ctx.assemble",
     { attributes: scopeAttributes({ grpId: opts.grpId, projectId: opts.projectId }) },
-    (span) => {
+    async (span) => {
       try {
-        return assemble(opts);
+        return await assemble(opts);
       } finally {
         span.end();
       }
@@ -103,20 +102,20 @@ export function query(opts: QueryOptions): string {
   );
 }
 
-function assemble(opts: QueryOptions): string {
+async function assemble(opts: QueryOptions): Promise<string> {
   const budget = opts.budget ?? DEFAULT_BUDGET;
   const now = opts.now?.() ?? Date.now();
   const output = budgetOutput(budget);
   if (opts.grpId) {
-    const slices = sliceContext(opts.db, opts.grpId);
-    const state = groupContext(opts.db, opts.grpId);
+    const slices = await sliceContext(opts.db, opts.grpId);
+    const state = await groupContext(opts.db, opts.grpId);
     if (slices) output.push(slices);
     if (state) output.push(state);
   }
   const room = Math.floor(budget / 4);
-  const where = opts.where || mapFor(loadMap(opts.db, opts.projectId ?? null), opts.question, room);
+  const where = opts.where || mapFor(await loadMap(opts.db, opts.projectId ?? null), opts.question, room);
   if (where) output.push(`## Where that lives\n${where.slice(0, room)}`);
-  const hits = opts.index.search(opts.question, { grpId: opts.grpId, projectId: opts.projectId }, now);
+  const hits = await opts.index.search(opts.question, { grpId: opts.grpId, projectId: opts.projectId }, now);
   const shown = appendHits(output, hits, new Set(opts.whereNotes ?? []));
   return queryResult(output.parts, hits.length, shown);
 }
@@ -135,8 +134,8 @@ function budgetOutput(budget: number): { parts: string[]; push: (text: string) =
   };
 }
 
-function sliceContext(db: DB, groupId: number): string | null {
-  const slices = orm(db)
+async function sliceContext(db: DB, groupId: number): Promise<string | null> {
+  const slices = await db
     .select({
       seq: sliceTable.seq,
       title: sliceTable.title,
@@ -145,8 +144,7 @@ function sliceContext(db: DB, groupId: number): string | null {
     })
     .from(sliceTable)
     .where(eq(sliceTable.grp_id, groupId))
-    .orderBy(sliceTable.seq)
-    .all();
+    .orderBy(sliceTable.seq);
   if (!slices.length) return null;
   return (
     `## This group's slices\n` +
@@ -156,34 +154,42 @@ function sliceContext(db: DB, groupId: number): string | null {
   );
 }
 
-function groupContext(db: DB, groupId: number): string | null {
-  const group = orm(db)
+async function groupContext(db: DB, groupId: number): Promise<string | null> {
+  const [group] = await db
     .select({ name: grp.name, status: grp.status, branch: grp.branch, pr: grp.pr_number })
     .from(grp)
-    .where(eq(grp.id, groupId))
-    .get();
+    .where(eq(grp.id, groupId));
   if (!group) return null;
-  // Raw: `json_each(?)` is how every state-subset predicate in this codebase binds a
-  // `StateSubset`, and Drizzle has no builder for a table-valued function.
-  const open = db
-    .query<{ id: number; chain_state: EscalationState; severity: string; question: string }, [number, string]>(
-      `SELECT id, chain_state, severity, question FROM escalation
-       WHERE grp_id = ? AND answer IS NULL
-         AND chain_state NOT IN (SELECT value FROM json_each(?)) ORDER BY id`,
+  // The state subset is an array `notInArray` binds directly. It used to be JSON
+  // fed through `json_each(?)`, a table-valued function with no builder — the
+  // one shape SQLite had for this and Postgres does not need.
+  const open = await db
+    .select({
+      id: escalation.id,
+      chain_state: escalation.chain_state,
+      severity: escalation.severity,
+      question: escalation.question,
+    })
+    .from(escalation)
+    .where(
+      and(
+        eq(escalation.grp_id, groupId),
+        isNull(escalation.answer),
+        notInArray(escalation.chain_state, [...ESCALATION_TERMINAL_STATES]),
+      ),
     )
-    .all(groupId, stateParam(ESCALATION_TERMINAL_STATES));
+    .orderBy(escalation.id);
   // The newest lease per resource. No ORDER BY in the original and none added:
   // the caller joins these into one line and never indexed them.
-  const newestPerResource = orm(db)
+  const newestPerResource = db
     .select({ id: max(lease.id) })
     .from(lease)
     .where(eq(lease.grp_id, groupId))
     .groupBy(lease.resource);
-  const gates = orm(db)
+  const gates = await db
     .select({ resource: lease.resource, state: lease.state })
     .from(lease)
-    .where(and(eq(lease.grp_id, groupId), inArray(lease.id, newestPerResource)))
-    .all();
+    .where(and(eq(lease.grp_id, groupId), inArray(lease.id, newestPerResource)));
   const branch = group.branch ? ` on ${group.branch}` : "";
   const pullRequest = group.pr ? ` — PR #${group.pr}` : " — no PR yet";
   const gateState = gates.length

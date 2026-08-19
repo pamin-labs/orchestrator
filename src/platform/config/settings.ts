@@ -1,5 +1,4 @@
 import { writeSetting, type DB } from "../persistence/database.ts";
-import { orm } from "../persistence/orm.ts";
 import { setting } from "../persistence/schema.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "./load.ts";
 import {
@@ -56,9 +55,9 @@ export function refuse(path: string, value: Json): string | null {
   return message.startsWith("no setting called ") ? message : `${path}: ${message}`;
 }
 
-function read(db: DB): SettingWrite[] {
+async function read(db: DB): Promise<SettingWrite[]> {
   const out: SettingWrite[] = [];
-  for (const r of orm(db).select({ k: setting.k, v: setting.v }).from(setting).all()) {
+  for (const r of await db.select({ k: setting.k, v: setting.v }).from(setting)) {
     if (!r.k.startsWith(PREFIX)) continue;
     try {
       const value: unknown = JSON.parse(r.v);
@@ -70,9 +69,9 @@ function read(db: DB): SettingWrite[] {
 }
 
 /** What the panel shows: only the paths that actually have an override. */
-export function overrides(db: DB): Record<string, Json> {
+export async function overrides(db: DB): Promise<Record<string, Json>> {
   const out: Record<string, Json> = {};
-  for (const { path, value } of read(db)) if (value !== null) out[path] = JsonValue.parse(value);
+  for (const { path, value } of await read(db)) if (value !== null) out[path] = JsonValue.parse(value);
   return out;
 }
 
@@ -91,8 +90,8 @@ function assign(cfg: Config, path: SettingPath, value: Json): void {
 }
 
 /** Overlay the stored overrides onto the config object. Mutates, at boot. */
-export function applyOverrides(db: DB, cfg: Config): Config {
-  for (const { path, value } of read(db)) if (value !== null) assign(cfg, path, JsonValue.parse(value));
+export async function applyOverrides(db: DB, cfg: Config): Promise<Config> {
+  for (const { path, value } of await read(db)) if (value !== null) assign(cfg, path, JsonValue.parse(value));
   return cfg;
 }
 
@@ -103,23 +102,23 @@ export function applyOverrides(db: DB, cfg: Config): Config {
  * what the running fleet reads. Doing only the first is the shape of a knob that
  * reads back as itself and changes nothing until tomorrow.
  */
-export function putSetting<P extends SettingPath>(
+export async function putSetting<P extends SettingPath>(
   db: DB,
   cfg: Config,
   path: P,
   value: SettingValue<P> | null,
-): string | null {
+): Promise<string | null> {
   const parsed = SettingWriteSchema.safeParse({ path, value });
   if (!parsed.success) return `${path}: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`;
   if (parsed.data.value === null) {
-    writeSetting(db, PREFIX + path, null);
+    await writeSetting(db, PREFIX + path, null);
     // Back to whatever the file said. Re-reading it would mean re-running the
     // env overrides too, so the default comes from the same table the panel
     // shows as "default".
     assign(cfg, path, JsonValue.parse(defaultFor(path)));
     return null;
   }
-  writeSetting(db, PREFIX + path, JSON.stringify(parsed.data.value));
+  await writeSetting(db, PREFIX + path, JSON.stringify(parsed.data.value));
   assign(cfg, path, JsonValue.parse(parsed.data.value));
   return null;
 }

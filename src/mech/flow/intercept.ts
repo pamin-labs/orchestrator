@@ -1,7 +1,6 @@
 import { and, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { agent, grp, job } from "../../platform/persistence/schema.ts";
 import { addNote } from "../util/rows.ts";
 import { rebaseOntoBase, rollbackTo } from "../git/gitops.ts";
@@ -72,17 +71,17 @@ export interface Hold {
   leaveQueue?: boolean;
 }
 
-export function hold(db: DB, grpId: number, h: Hold): void {
-  orm(db)
+export async function hold(db: DB, grpId: number, h: Hold): Promise<void> {
+  await db
     .update(grp)
     .set({
       status: h.settled ? "PAUSED" : "PAUSING",
       // Where to resume to. `COALESCE` so the PAUSING → PAUSED step does not
       // overwrite it with `PAUSING`, and so a second hold keeps the original.
-      // Reads the row as it was: SQLite evaluates every SET right-hand side
-      // against the original values, whatever order the assignments are in.
+      // Reads the row as it was: every SET right-hand side is evaluated against
+      // the original values, whatever order the assignments are in.
       paused_from: sql`COALESCE(${grp.paused_from}, ${grp.status})`,
-      paused_at: sql`unixepoch() * 1000`,
+      paused_at: Date.now(),
       pause_reason: h.reason,
       // The three optional assignments, spread rather than pushed onto a list of
       // SQL fragments. Omitting a key leaves the column alone, which is what not
@@ -103,8 +102,7 @@ export function hold(db: DB, grpId: number, h: Hold): void {
         notInArray(grp.status, [...GRP_TERMINAL_STATES]),
         h.from ? eq(grp.status, h.from) : undefined,
       ),
-    )
-    .run();
+    );
 }
 
 /**
@@ -125,11 +123,11 @@ export function hold(db: DB, grpId: number, h: Hold): void {
  */
 const STOPPED = ["PAUSED", "PAUSING"] as const;
 
-export function release(
+export async function release(
   ctx: Ctx,
   grpId: number | null,
   opts: { only?: PauseReason; from?: readonly GrpState[] } = {},
-): void {
+): Promise<void> {
   // Two shapes, as before: a bulk resume matches on cause alone, a targeted one on
   // the group plus its state, and only then also on cause. `and()` drops the
   // `undefined` arm, and never sees an empty list — the id is always present.
@@ -141,7 +139,7 @@ export function release(
           inArray(grp.status, opts.from ?? STOPPED),
           opts.only ? eq(grp.pause_reason, opts.only) : undefined,
         );
-  orm(ctx.db)
+  await ctx.db
     .update(grp)
     .set({
       status: sql`COALESCE(${grp.paused_from}, 'RUNNING')`,
@@ -151,21 +149,20 @@ export function release(
       rl_resets_at: null,
       blocked_on: null,
     })
-    .where(where)
-    .run();
+    .where(where);
 }
 
 /** L2. Returns the number of turns still in flight that we are waiting on. */
-export function pause(ctx: Ctx, grpId: number, reason: PauseReason = "boss"): number {
-  hold(ctx.db, grpId, { reason, from: "RUNNING" });
-  const inFlight = runningJobs(ctx.db, grpId).length;
-  ctx.bus.emit({
+export async function pause(ctx: Ctx, grpId: number, reason: PauseReason = "boss"): Promise<number> {
+  await hold(ctx.db, grpId, { reason, from: "RUNNING" });
+  const inFlight = (await runningJobs(ctx.db, grpId)).length;
+  await ctx.bus.emit({
     grpId,
     author: "boss",
     kind: "state_change",
     body: inFlight ? `pausing — waiting for ${inFlight} turn(s) to land` : "paused",
   });
-  if (inFlight === 0) settle(ctx, grpId);
+  if (inFlight === 0) await settle(ctx, grpId);
   return inFlight;
 }
 
@@ -175,34 +172,33 @@ export function pause(ctx: Ctx, grpId: number, reason: PauseReason = "boss"): nu
  * Called from the watchdog tick rather than from the turn's own completion path,
  * so a crashed turn cannot leave a group stuck in PAUSING forever.
  */
-export function settlePausing(ctx: Ctx): number {
-  const groups = orm(ctx.db).select({ id: grp.id }).from(grp).where(eq(grp.status, "PAUSING")).all();
+export async function settlePausing(ctx: Ctx): Promise<number> {
+  const groups = await ctx.db.select({ id: grp.id }).from(grp).where(eq(grp.status, "PAUSING"));
   let settled = 0;
   for (const g of groups) {
-    if (runningJobs(ctx.db, g.id).length === 0) {
-      settle(ctx, g.id);
+    if ((await runningJobs(ctx.db, g.id)).length === 0) {
+      await settle(ctx, g.id);
       settled++;
     }
   }
   return settled;
 }
 
-function settle(ctx: Ctx, grpId: number): void {
+async function settle(ctx: Ctx, grpId: number): Promise<void> {
   // Stamp here, not at every caller: three of them write PAUSING without a
   // timestamp, and every watchdog timer keys off `paused_at` — a group that
   // arrives here with NULL is never parked, never nudged, never unparked. Same
   // argument for the reason: a PAUSED row with no reason is one no resume can
   // ever be about, so it gets the only honest value there is.
-  orm(ctx.db)
+  await ctx.db
     .update(grp)
     .set({
       status: "PAUSED",
-      paused_at: sql`coalesce(${grp.paused_at}, unixepoch() * 1000)`,
+      paused_at: sql`coalesce(${grp.paused_at}, ${Date.now()})`,
       pause_reason: sql`coalesce(${grp.pause_reason}, 'unknown')`,
     })
-    .where(and(eq(grp.id, grpId), eq(grp.status, "PAUSING")))
-    .run();
-  ctx.bus.emit({
+    .where(and(eq(grp.id, grpId), eq(grp.status, "PAUSING")));
+  await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "state_change",
@@ -210,10 +206,10 @@ function settle(ctx: Ctx, grpId: number): void {
   });
 }
 
-export function resume(ctx: Ctx, grpId: number): void {
-  release(ctx, grpId);
-  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config.language, "group.resumed") });
-  ctx.sched.tick();
+export async function resume(ctx: Ctx, grpId: number): Promise<void> {
+  await release(ctx, grpId);
+  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config.language, "group.resumed") });
+  await ctx.sched.tick();
 }
 
 /**
@@ -229,35 +225,32 @@ export async function interrupt(
   grpId: number,
   mode: InterruptMode = "keep",
 ): Promise<{ killed: number; rolledBackTo?: string }> {
-  const jobs = runningJobs(ctx.db, grpId);
+  const jobs = await runningJobs(ctx.db, grpId);
   let killed = 0;
   for (const j of jobs) {
     // A turn runs in the group's sandbox, not on this machine, so there is no
     // pid to signal — stopping it means abandoning the stream we are reading.
     if (abortJob(j.id)) killed++;
-    orm(ctx.db)
+    await ctx.db
       .update(job)
-      .set({ state: "cancelled", error: `interrupted (${mode})`, ended_at: sql`unixepoch() * 1000` })
-      .where(eq(job.id, j.id))
-      .run();
+      .set({ state: "cancelled", error: `interrupted (${mode})`, ended_at: Date.now() })
+      .where(eq(job.id, j.id));
   }
-  orm(ctx.db)
+  await ctx.db
     .update(agent)
     .set({ state: "idle" })
-    .where(and(eq(agent.grp_id, grpId), eq(agent.state, "running")))
-    .run();
+    .where(and(eq(agent.grp_id, grpId), eq(agent.state, "running")));
   // Not `hold`: an interrupt keeps whatever cause already stopped it — the boss
   // interrupting a group that was already waiting on an answer is still waiting
   // on that answer.
-  orm(ctx.db)
+  await ctx.db
     .update(grp)
     .set({
       status: "PAUSED",
-      paused_at: sql`unixepoch() * 1000`,
+      paused_at: Date.now(),
       pause_reason: sql`coalesce(${grp.pause_reason}, 'boss')`,
     })
-    .where(and(eq(grp.id, grpId), inArray(grp.status, ["RUNNING", "PAUSING"])))
-    .run();
+    .where(and(eq(grp.id, grpId), inArray(grp.status, ["RUNNING", "PAUSING"])));
 
   let rolledBackTo: string | undefined;
   if (mode === "rollback") {
@@ -271,7 +264,7 @@ export async function interrupt(
       else {
         // "Interrupt and roll back" that only interrupted leaves a dirty tree
         // the boss believes is clean, which is the worse of the two states.
-        ctx.bus.emit({
+        await ctx.bus.emit({
           grpId,
           author: "orchestrator",
           kind: "escalation",
@@ -283,7 +276,7 @@ export async function interrupt(
     }
   } else if (killed > 0) {
     // Tell the next turn, or it will be confused by its own leftovers.
-    addNote(ctx.db, {
+    await addNote(ctx.db, {
       grpId,
       kind: "fact",
       lang: "zh",
@@ -291,7 +284,7 @@ export async function interrupt(
     });
   }
 
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId,
     author: "boss",
     kind: "state_change",
@@ -307,12 +300,11 @@ interface RunningJob {
   checkpoint_sha: string | null;
 }
 
-function runningJobs(db: DB, grpId: number): RunningJob[] {
-  return orm(db)
+function runningJobs(db: DB, grpId: number): Promise<RunningJob[]> {
+  return db
     .select({ id: job.id, pid: job.pid, checkpoint_sha: job.checkpoint_sha })
     .from(job)
-    .where(and(eq(job.grp_id, grpId), eq(job.state, "running"), eq(job.kind, "agent_turn")))
-    .all();
+    .where(and(eq(job.grp_id, grpId), eq(job.state, "running"), eq(job.kind, "agent_turn")));
 }
 
 /**
@@ -321,15 +313,14 @@ function runningJobs(db: DB, grpId: number): RunningJob[] {
  * Not an approval step — pure resource reclamation. The worktree and every
  * checkpoint stay exactly where they are, so nothing is lost.
  */
-export function park(ctx: Ctx, grpId: number, reason: string): void {
-  const cancelled = ctx.sched.cancelPending(grpId, `parked: ${reason}`);
-  orm(ctx.db)
+export async function park(ctx: Ctx, grpId: number, reason: string): Promise<void> {
+  const cancelled = await ctx.sched.cancelPending(grpId, `parked: ${reason}`);
+  await ctx.db
     .update(agent)
     .set({ session_id: null, session_tokens: 0 })
-    .where(and(eq(agent.grp_id, grpId), ne(agent.state, "retired")))
-    .run();
-  orm(ctx.db).update(grp).set({ status: "PARKED" }).where(eq(grp.id, grpId)).run();
-  ctx.bus.emit({
+    .where(and(eq(agent.grp_id, grpId), ne(agent.state, "retired")));
+  await ctx.db.update(grp).set({ status: "PARKED" }).where(eq(grp.id, grpId));
+  await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "state_change",
@@ -343,7 +334,7 @@ export async function unpark(ctx: Ctx, grpId: number): Promise<void> {
   const r = await rebaseOntoBase(sandboxGit(ctx, { grp: grpId }), WORK, ctx.config.baseBranchFallbacks);
   if (r.code !== 0) {
     // A conflicting rebase is the boss's call, not something to paper over.
-    ctx.bus.emit({
+    await ctx.bus.emit({
       grpId,
       author: "orchestrator",
       kind: "escalation",
@@ -356,7 +347,7 @@ export async function unpark(ctx: Ctx, grpId: number): Promise<void> {
   // From PARKED, the one state `release` will not leave on its own — the rebase
   // above is the reason. Anything that wakes a parked group without it starts a
   // turn on a base that moved while the group was asleep.
-  release(ctx, grpId, { from: ["PARKED"] });
-  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "woken up" });
-  ctx.sched.tick();
+  await release(ctx, grpId, { from: ["PARKED"] });
+  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "woken up" });
+  await ctx.sched.tick();
 }

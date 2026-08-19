@@ -1,4 +1,3 @@
-import type { SQLQueryBindings } from "bun:sqlite";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +12,9 @@ import type { Github } from "./github.ts";
 import { pages } from "./paging.ts";
 import { parseRepo } from "../../contracts/repository.ts";
 import { WORK } from "../sandbox/sandbox.ts";
-import { jsonOr } from "../../contracts/json.ts";
+import { valueOr, jsonOr } from "../../contracts/json.ts";
+import { and, asc, desc, eq, isNotNull, ne } from "drizzle-orm";
+import { event, grp as grps, note, project, slice } from "../../platform/persistence/schema.ts";
 import pMap from "p-map";
 import { z } from "zod";
 import type { GrpState } from "../../contracts/states.ts";
@@ -42,8 +43,8 @@ const PackageVersion = z.object({ version: z.string() });
  * the schema changes to hold `owner/repo` directly, this function is the only
  * thing that changes — everything below already speaks `owner/repo`.
  */
-function repoSlug(db: DB, projectId: number): string | null {
-  const p = db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId);
+async function repoSlug(db: DB, projectId: number): Promise<string | null> {
+  const [p] = await db.select({ remote: project.remote }).from(project).where(eq(project.id, projectId));
   return p?.remote ? parseRepo(p.remote) : null;
 }
 
@@ -58,13 +59,12 @@ export interface OpenPrInput {
 /** Open the PR once the audit passes. Returns its number, or null with a reason. */
 export async function openPr(input: OpenPrInput): Promise<{ number: number } | { error: string }> {
   const { ctx, gh, grpId } = input;
-  const grp = ctx.db
-    .query<{ branch: string | null; pr_number: number | null; project_id: number }, [number]>(
-      "SELECT branch, pr_number, project_id FROM grp WHERE id = ?",
-    )
-    .get(grpId);
+  const [grp] = await ctx.db
+    .select({ branch: grps.branch, pr_number: grps.pr_number, project_id: grps.project_id })
+    .from(grps)
+    .where(eq(grps.id, grpId));
   if (!grp?.branch) return { error: "group has no branch" };
-  const slug = repoSlug(ctx.db, grp.project_id);
+  const slug = await repoSlug(ctx.db, grp.project_id);
   if (!slug) return { error: "project has no GitHub remote: a PR has nowhere to go" };
 
   if (grp.pr_number) {
@@ -90,11 +90,11 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   const sq = await squashWip(
     sandbox,
     WORK,
-    commitMessage(ctx.db, grpId, input.title),
+    await commitMessage(ctx.db, grpId, input.title),
     ctx.config.baseBranchFallbacks,
-    gitTrailers(ctx.db),
+    await gitTrailers(ctx.db),
   );
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "commit",
@@ -137,8 +137,8 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   }
   if (!number) return { error: "opened, but GitHub's answer had no PR number in it" };
 
-  ctx.db.run("UPDATE grp SET pr_number = ? WHERE id = ?", [number, grpId]);
-  ctx.bus.emit({
+  await ctx.db.update(grps).set({ pr_number: number }).where(eq(grps.id, grpId));
+  await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "state_change",
@@ -221,46 +221,46 @@ export function checkPrMessage(title: string, body: string): string | null {
  * With no body it stays one line, which is the right shape for a commit nobody
  * described — better than pasting the pull request's headings into a log.
  */
-export function commitMessage(db: DB, grpId: number, title: string): string {
-  const summary = db
-    .query<{ pr_summary: string | null }, [number]>("SELECT pr_summary FROM grp WHERE id = ?")
-    .get(grpId)?.pr_summary;
+export async function commitMessage(db: DB, grpId: number, title: string): Promise<string> {
+  const [row] = await db.select({ pr_summary: grps.pr_summary }).from(grps).where(eq(grps.id, grpId));
+  const summary = row?.pr_summary;
   return summary?.trim() ? `${title}\n\n${summary.trim()}` : title;
 }
 
-export function prTitle(db: DB, grpId: number): string {
-  const g = db
-    .query<{ name: string; pr_title: string | null }, [number]>("SELECT name, pr_title FROM grp WHERE id = ?")
-    .get(grpId);
+export async function prTitle(db: DB, grpId: number): Promise<string> {
+  const [g] = await db.select({ name: grps.name, pr_title: grps.pr_title }).from(grps).where(eq(grps.id, grpId));
   return g?.pr_title?.trim() || `orch: ${g?.name ?? "changes"}`;
 }
 
-export function prBody(db: DB, grpId: number): string {
-  // One row shape per call and always the same bindings, so only the first type
-  // argument is worth writing. It used to take `unknown[]` and cast twice to get
-  // there, which threw away what `db.query` already declares.
-  const q = <T>(sql: string, ...p: SQLQueryBindings[]): T[] => db.query<T, SQLQueryBindings[]>(sql).all(...p);
+export async function prBody(db: DB, grpId: number): Promise<string> {
   const out: string[] = [];
 
   // The Scribe's, and first, because it is the only part written by something
   // that read the diff. Everything below is the record: true, assembled from the
   // database, and unable to say what the change actually does.
-  const summary = q<{ pr_summary: string | null }>("SELECT pr_summary FROM grp WHERE id = ?", grpId)[0]?.pr_summary;
+  const [g] = await db
+    .select({ name: grps.name, branch: grps.branch, spent_tokens: grps.spent_tokens, pr_summary: grps.pr_summary })
+    .from(grps)
+    .where(eq(grps.id, grpId));
+  const summary = g?.pr_summary;
   if (summary?.trim()) out.push(summary.trim());
 
-  const idea = q<{ body: string }>(
-    "SELECT body FROM event WHERE grp_id = ? AND kind = 'boss_say' ORDER BY seq LIMIT 1",
-    grpId,
-  )[0];
+  const [idea] = await db
+    .select({ body: event.body })
+    .from(event)
+    .where(and(eq(event.grp_id, grpId), eq(event.kind, "boss_say")))
+    .orderBy(asc(event.seq))
+    .limit(1);
   if (idea) out.push(`## Asked for\n\n${idea.body.trim().slice(0, 1000)}`);
 
-  const slices = q<{ seq: number; title: string; accept_spec: string; gates_json: string }>(
-    "SELECT seq, title, accept_spec, gates_json FROM slice WHERE grp_id = ? ORDER BY seq",
-    grpId,
-  );
+  const slices = await db
+    .select({ seq: slice.seq, title: slice.title, accept_spec: slice.accept_spec, gates_json: slice.gates_json })
+    .from(slice)
+    .where(eq(slice.grp_id, grpId))
+    .orderBy(asc(slice.seq));
   if (slices.length) {
     const lines = slices.map((s) => {
-      const passed = Object.entries(jsonOr(s.gates_json, GateResults, {}))
+      const passed = Object.entries(valueOr(s.gates_json, GateResults, {}))
         .filter(([, v]) => v === "pass")
         .map(([k]) => k);
       return (
@@ -272,10 +272,11 @@ export function prBody(db: DB, grpId: number): string {
     out.push(`## Slices (${slices.length}, all accepted)\n\n${lines.join("\n")}`);
   }
 
-  const decisions = q<{ body: string; export_path: string | null }>(
-    "SELECT body, export_path FROM note WHERE grp_id = ? AND kind = 'decision' ORDER BY id",
-    grpId,
-  );
+  const decisions = await db
+    .select({ body: note.body, export_path: note.export_path })
+    .from(note)
+    .where(and(eq(note.grp_id, grpId), eq(note.kind, "decision")))
+    .orderBy(asc(note.id));
   if (decisions.length) {
     const lines = decisions.map((d) => {
       const first = d.body.trim().split("\n")[0]!.slice(0, 200);
@@ -284,16 +285,14 @@ export function prBody(db: DB, grpId: number): string {
     out.push(`## Decisions\n\n${lines.join("\n")}`);
   }
 
-  const retro = q<{ body: string }>(
-    "SELECT body FROM note WHERE grp_id = ? AND kind = 'retro' ORDER BY id DESC LIMIT 1",
-    grpId,
-  )[0];
+  const [retro] = await db
+    .select({ body: note.body })
+    .from(note)
+    .where(and(eq(note.grp_id, grpId), eq(note.kind, "retro")))
+    .orderBy(desc(note.id))
+    .limit(1);
   if (retro) out.push(`## Retro\n\n${retro.body.trim().slice(0, 2000)}`);
 
-  const g = q<{ name: string; branch: string | null; spent_tokens: number }>(
-    "SELECT name, branch, spent_tokens FROM grp WHERE id = ?",
-    grpId,
-  )[0];
   if (g) {
     out.push(
       `---\n\`${g.branch ?? "?"}\` · ${slices.length} slice(s) · ${g.spent_tokens} tokens · ` +
@@ -558,14 +557,14 @@ async function loadPollDetails(
   return { issue: issue.data, reviews: reviews.data, threads: [], checks: runs.data, statuses: statuses.data };
 }
 
-function changedFeedback(
+async function changedFeedback(
   db: DB,
   group: WatchedGroup,
   prNumber: number,
   details: PollDetails,
   mergeable: boolean | null | undefined,
   mergeableState: string | undefined,
-): Feedback | null {
+): Promise<Feedback | null> {
   const comments = newComments(details.issue, details.reviews, group.pr_seen_at);
   const threads = newThreads(details.threads, group.pr_seen_at);
   const failingChecks = failedChecks(details.checks, details.statuses);
@@ -579,7 +578,7 @@ function changedFeedback(
   // tick for as long as it stays open.
   const said = [...comments, ...threads.flatMap((thread) => thread.comments)];
   const newest = said.reduce((value, comment) => Math.max(value, comment.at), group.pr_seen_at);
-  db.run("UPDATE grp SET pr_seen_at = ?, pr_checks_sig = ? WHERE id = ?", [newest, signature, group.id]);
+  await db.update(grps).set({ pr_seen_at: newest, pr_checks_sig: signature }).where(eq(grps.id, group.id));
   return {
     grpId: group.id,
     prNumber,
@@ -620,7 +619,7 @@ async function pollPr(db: DB, gh: Github, group: WatchedGroup): Promise<Feedback
     new Date(Math.max(0, group.pr_seen_at)).toISOString(),
   );
   if (!details) return null;
-  return changedFeedback(db, group, prNumber, details, parsed.mergeable, parsed.mergeable_state);
+  return await changedFeedback(db, group, prNumber, details, parsed.mergeable, parsed.mergeable_state);
 }
 
 export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
@@ -996,13 +995,18 @@ export async function resolveReviewThread(gh: Github, threadId: string, signal?:
 }
 
 async function pollPrsInner(db: DB, gh: Github, counts: PollCounts): Promise<Feedback[]> {
-  const groups = db
-    .query<WatchedGroup, []>(
-      `SELECT g.id, g.status, g.pr_number, g.pr_seen_at, g.pr_checks_sig, p.remote
-       FROM grp g JOIN project p ON p.id = g.project_id
-       WHERE g.status != 'DISSOLVED' AND g.pr_number IS NOT NULL`,
-    )
-    .all();
+  const groups = await db
+    .select({
+      id: grps.id,
+      status: grps.status,
+      pr_number: grps.pr_number,
+      pr_seen_at: grps.pr_seen_at,
+      pr_checks_sig: grps.pr_checks_sig,
+      remote: project.remote,
+    })
+    .from(grps)
+    .innerJoin(project, eq(project.id, grps.project_id))
+    .where(and(ne(grps.status, "DISSOLVED"), isNotNull(grps.pr_number)));
   // Concurrent, because these are N independent conversations with GitHub and
   // nothing here reads another group's answer. Serially, ten open PRs cost five
   // requests each inside one 30-second tick — about 7.5 seconds of it spent
@@ -1050,7 +1054,7 @@ async function pollOne(
   const transition = transitionFeedback(group, target.prNumber, have.state);
   if (transition) return transition;
   if (group.status !== "PR_OPEN") return null;
-  return changedFeedback(db, group, target.prNumber, have.details, have.mergeable, undefined);
+  return await changedFeedback(db, group, target.prNumber, have.details, have.mergeable, undefined);
 }
 
 /**
@@ -1063,10 +1067,10 @@ async function pollOne(
 const PR_FANOUT = 4;
 
 /** Hand PR feedback to the PM: replying to a review needs judgement, polling does not. */
-export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
+export async function dispatchFeedback(ctx: Ctx, f: Feedback): Promise<void> {
   // Named from the project. `main` was written into the rebase instruction below,
   // so a group on `develop` was told to fetch a branch its repository has not got.
-  const base = baseBranchOf(ctx.db, f.grpId, ctx.config.baseBranchFallbacks);
+  const base = await baseBranchOf(ctx.db, f.grpId, ctx.config.baseBranchFallbacks);
   const lines = [
     ...f.comments.map((c) => `${c.author}: ${c.body}`),
     // The file and the line first: a review thread is an instruction about one
@@ -1093,7 +1097,7 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
     ...(f.conflicting ? ["the branch no longer merges cleanly into main"] : []),
   ].join("\n");
 
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: f.grpId,
     author: "pr-watcher",
     kind: "say",
@@ -1112,7 +1116,7 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
   // the turn below runs from it unchanged.
   // A conflict is work, not a judgement call: the PM would only forward it. Reading
   // a review and deciding what to concede is the PM's; `git rebase` is not.
-  ctx.sched.enqueue("agent_turn", {
+  await ctx.sched.enqueue("agent_turn", {
     grp_id: f.grpId,
     payload: f.conflicting
       ? {
@@ -1135,7 +1139,7 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
         }
       : { role: roleFor(ctx, "lead_group"), rejection: `PR #${f.prNumber} feedback:\n${lines}` },
   });
-  ctx.sched.tick();
+  await ctx.sched.tick();
 }
 
 /** Report an authenticated token whose repository role still cannot push. */

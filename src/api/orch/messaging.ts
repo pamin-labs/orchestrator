@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { TRIAGE, triage } from "../../mech/flow/chain.ts";
@@ -11,8 +11,7 @@ import { bossFact } from "../panel/attach.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";
 import { resolveGroup } from "./access.ts";
-import { orm } from "../../platform/persistence/orm.ts";
-import { grp, project as projects } from "../../platform/persistence/schema.ts";
+import { agent, grp, project as projects } from "../../platform/persistence/schema.ts";
 
 /**
  * Agent to agent, and boss to anyone.
@@ -57,8 +56,8 @@ export const postMail = (async (ctx, _req, a, _p, b) => {
   // waking someone means enqueueing an agent_turn for them, nothing more.
   let target: { agentId: number; grpId: number | null } | null = null;
   if (WAKING.has(b.intent)) {
-    const senderProject = projectOfAgent(ctx.db, a.id);
-    target = resolveTarget(ctx, a.grp_id, b.target, senderProject);
+    const senderProject = await projectOfAgent(ctx.db, a.id);
+    target = await resolveTarget(ctx, a.grp_id, b.target, senderProject);
     if (!target) {
       const known = (ctx.knownRoles?.() ?? []).join(", ");
       // Never a silent no-op: an unreachable recipient is exactly how an agent
@@ -71,7 +70,7 @@ export const postMail = (async (ctx, _req, a, _p, b) => {
   // would file its reply under nothing and drop it out of the group's timeline.
   // Measured: the Architect's objection to a DRAFT card landed with grp_id NULL
   // and the boss approved a card that said 反对 : 无.
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: a.grp_id ?? target?.grpId ?? null,
     author: a.role,
     kind: "say",
@@ -86,7 +85,7 @@ export const postMail = (async (ctx, _req, a, _p, b) => {
     // The message travels with the job. A standing recipient is not in the
     // sender's channel, so relying on the unread cursor would wake it with an
     // empty prompt and it would never see the question at all.
-    ctx.sched.enqueue("agent_turn", {
+    await ctx.sched.enqueue("agent_turn", {
       grp_id: target.grpId,
       agent_id: target.agentId,
       priority: b.intent === "ask" ? 4 : 0,
@@ -100,7 +99,7 @@ export const postMail = (async (ctx, _req, a, _p, b) => {
       },
     });
   }
-  ctx.sched.tick();
+  await ctx.sched.tick();
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof MailBody>>;
 
@@ -126,43 +125,28 @@ export const SayBody = z.object({
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
-export const postSay = (async (ctx, _req, _p, b) => {
-  // A screenshot is as useful when saying "这里不对" as when filing the idea.
-  const said = withAttachments(b.body.trim(), b.attachments);
-  const grpId = b.group_id == null ? null : resolveGroup(ctx, b.group_id);
-  if (b.group_id != null && !grpId) return bad("no such requirement");
-
-  const project = grpId
-    ? (orm(ctx.db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)).get()?.project_id ?? null)
-    : null;
-  const repo = project
-    ? orm(ctx.db).select({ repo_path: projects.repo_path }).from(projects).where(eq(projects.id, project)).get()
-        ?.repo_path
-    : null;
-  // A skill the boss pointed at is inlined into that turn — for triage too,
-  // since "do it this way instead" is exactly when it matters. `/name` resolves
-  // against the repository's own skills as well as this machine's: they are what
-  // a project ships to be used, and being unable to name one was the gap.
-  const skills = skillNames(said, repo, projectSkills(ctx.db, project));
-
-  if (b.as) {
-    if (!grpId) return bad("triage needs a requirement");
-    ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: said });
-    triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, grpId, b.as, said, skills);
-    ctx.sched.tick();
-    return message("ok");
-  }
-
-  // Plain talk. The recipient defaults to the group's PM: docs/project/plan.md §7 makes the PM
-  // the group's only conversational entrance so one sentence costs one turn
-  // instead of five.
-  const to = b.target || roleFor(ctx, "lead_group");
-  const target = resolveTarget(ctx, grpId, to, project);
+/**
+ * Plain talk. The recipient defaults to the group's PM.
+ *
+ * `docs/project/plan.md` §7 makes the PM the group's only conversational
+ * entrance, so one sentence costs one turn instead of five. Boss talk jumps the
+ * queue: the whole point of L1 intercept is that it lands on the next turn
+ * rather than after everything already enqueued.
+ */
+async function deliver(
+  ctx: Ctx,
+  grpId: number | null,
+  project: number | null,
+  said: string,
+  skills: string[],
+  to: string,
+): Promise<Response | null> {
+  const target = await resolveTarget(ctx, grpId, to, project);
   if (!target) {
     const known = (ctx.knownRoles?.() ?? []).join(", ");
     return bad(`没有 "${to}" 这个收件人。现有角色：${known || "none configured"}`);
   }
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: grpId ?? target.grpId ?? null,
     author: "boss",
     kind: "boss_say",
@@ -170,15 +154,44 @@ export const postSay = (async (ctx, _req, _p, b) => {
     body: said,
     target: to,
   });
-  // Boss talk jumps the queue: the whole point of L1 intercept is that it lands on
-  // the next turn rather than after everything already enqueued.
-  ctx.sched.enqueue("agent_turn", {
+  await ctx.sched.enqueue("agent_turn", {
     grp_id: target.grpId ?? grpId,
     agent_id: target.agentId,
     priority: 6,
     payload: { mail: { from: "boss", from_group: null, intent: "request", body: said }, skills },
   });
-  ctx.sched.tick();
+  return null;
+}
+
+export const postSay = (async (ctx, _req, _p, b) => {
+  // A screenshot is as useful when saying "这里不对" as when filing the idea.
+  const said = withAttachments(b.body.trim(), b.attachments);
+  const grpId = b.group_id == null ? null : await resolveGroup(ctx, b.group_id);
+  if (b.group_id != null && !grpId) return bad("no such requirement");
+
+  const [owner] = grpId ? await ctx.db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)) : [];
+  const project = owner?.project_id ?? null;
+  const [home] = project
+    ? await ctx.db.select({ repo_path: projects.repo_path }).from(projects).where(eq(projects.id, project))
+    : [];
+  const repo = home?.repo_path ?? null;
+  // A skill the boss pointed at is inlined into that turn — for triage too,
+  // since "do it this way instead" is exactly when it matters. `/name` resolves
+  // against the repository's own skills as well as this machine's: they are what
+  // a project ships to be used, and being unable to name one was the gap.
+  const skills = skillNames(said, repo, await projectSkills(ctx.db, project));
+
+  if (b.as) {
+    if (!grpId) return bad("triage needs a requirement");
+    await ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: said });
+    await triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, grpId, b.as, said, skills);
+    await ctx.sched.tick();
+    return message("ok");
+  }
+
+  const refused = await deliver(ctx, grpId, project, said, skills, b.target || roleFor(ctx, "lead_group"));
+  if (refused) return refused;
+  await ctx.sched.tick();
   return message("ok");
 }) satisfies Handler<z.infer<typeof SayBody>>;
 
@@ -187,27 +200,37 @@ export const postSay = (async (ctx, _req, _p, b) => {
  * holder of that role, and finally — for a role that exists in config but has no
  * agent yet — a newly hired one.
  */
-function resolveTarget(
+async function resolveTarget(
   ctx: Ctx,
   senderGrp: number | null,
   role: string,
   senderProject: number | null,
-): { agentId: number; grpId: number | null } | null {
+): Promise<{ agentId: number; grpId: number | null } | null> {
   // Same-group wins, then any live holder of the role in this project. A standing
   // Architect replying to a Dispatcher must not hire a second Dispatcher.
-  // Raw: `IS ?` matches NULL where `=` does not, and both the WHERE and the
-  // two-key ORDER BY depend on that. `eq()` is `=` and would drop the
-  // project-less rows this is written to find.
-  const existing = ctx.db
-    .query<{ id: number; grp_id: number | null }, [string, number | null, number | null, number | null, number | null]>(
-      `SELECT id, grp_id FROM agent
-       WHERE role = ? AND state != 'retired' AND (project_id IS ? OR ? IS NULL)
-       ORDER BY (? IS NOT NULL AND grp_id IS ?) DESC, (grp_id IS NOT NULL) DESC, id DESC LIMIT 1`,
+  // Raw, and dropped entirely for a standing sender: `=` yields NULL for a NULL
+  // `grp_id` and Postgres sorts NULL *first* under DESC, so the rows this ranks
+  // last came back first; `IS NOT DISTINCT FROM` yields false and has no builder
+  // form. A constant key is not a key — `order by false` is a syntax error here,
+  // and a sender with no group has nothing for it to mean.
+  const sameGroup = senderGrp === null ? null : sql`${agent.grp_id} is not distinct from ${senderGrp}`;
+  const [existing] = await ctx.db
+    .select({ id: agent.id, grp_id: agent.grp_id })
+    .from(agent)
+    .where(
+      and(
+        eq(agent.role, role),
+        ne(agent.state, "retired"),
+        // A sender with no project reaches every role; one with a project is held
+        // to it.
+        senderProject === null ? undefined : eq(agent.project_id, senderProject),
+      ),
     )
-    .get(role, senderProject, senderProject, senderGrp, senderGrp);
+    .orderBy(...(sameGroup ? [desc(sameGroup)] : []), desc(isNotNull(agent.grp_id)), desc(agent.id))
+    .limit(1);
   if (existing) return { agentId: existing.id, grpId: existing.grp_id };
 
   if (!(ctx.knownRoles?.() ?? []).includes(role)) return null;
-  const hired = ctx.hire?.(null, role, senderProject) ?? null;
+  const hired = (await ctx.hire?.(null, role, senderProject)) ?? null;
   return hired === null ? null : { agentId: hired, grpId: null };
 }

@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!.claude/settings.local.json", "!.fallow/**"]
+    "includes": ["**", "!.claude/settings.local.json", "!.fallow/**", "!drizzle/**"]
   },
   "formatter": {
     "enabled": true,

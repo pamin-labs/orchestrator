@@ -1,5 +1,7 @@
+import { and, eq, isNull, notInArray, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
-import { ESCALATION_TERMINAL_STATES, stateParam, type EscalationOpenState } from "../../contracts/states.ts";
+import { escalation } from "../../platform/persistence/schema.ts";
+import { ESCALATION_TERMINAL_STATES, type EscalationOpenState } from "../../contracts/states.ts";
 
 /** A state a newly filed question may enter. The other two are terminal. */
 type FilingState = EscalationOpenState;
@@ -32,59 +34,43 @@ export interface EscalationRequest {
   dedupe?: Dedupe;
 }
 
-/**
- * All three statements here stay raw SQL. Two are `INSERT ... SELECT <values>
- * WHERE NOT EXISTS (...)` — a FROM-less SELECT, which Drizzle's insert-select has
- * no form for — and their guard uses `json_each(?)`. The third could convert, but
- * then one column list would be written twice in two idioms, which is the drift
- * this module exists to have stopped.
- */
-type Insert = [number | null, number | null, "blocker" | "advisory", string, string | null, string | null, FilingState];
+/** The columns every filing writes, whichever of the two paths writes them. */
+const row = (ask: EscalationRequest) => ({
+  grp_id: ask.grpId ?? null,
+  agent_id: ask.agentId ?? null,
+  severity: ask.severity ?? "blocker",
+  question: ask.question,
+  brief: ask.brief ?? null,
+  kind: ask.kind ?? null,
+  chain_state: ask.chain ?? ("pm" satisfies FilingState),
+  created_at: Date.now(),
+});
 
-const COLUMNS = "grp_id, agent_id, severity, question, brief, kind, chain_state, created_at";
-const VALUES = "?, ?, ?, ?, ?, ?, ?, unixepoch() * 1000";
-
-export function raise(db: DB, ask: EscalationRequest): number | null {
-  const values: Insert = [
-    ask.grpId ?? null,
-    ask.agentId ?? null,
-    ask.severity ?? "blocker",
-    ask.question,
-    ask.brief ?? null,
-    ask.kind ?? null,
-    ask.chain ?? "pm",
-  ];
-  if (!ask.dedupe) {
-    return db
-      .query<{ id: number }, Insert>(`INSERT INTO escalation (${COLUMNS}) VALUES (${VALUES}) RETURNING id`)
-      .get(...values)!.id;
+export async function raise(db: DB, ask: EscalationRequest): Promise<number | null> {
+  const dedupe = ask.dedupe;
+  if (!dedupe) {
+    const [filed] = await db.insert(escalation).values(row(ask)).returning({ id: escalation.id });
+    return filed?.id ?? null;
   }
 
-  // One statement, not SELECT then INSERT: two simultaneous failures cannot both
-  // pass a stale check. `substr` keeps %, _ and \ as literal subject characters.
-  const open = `answer IS NULL AND chain_state NOT IN (SELECT value FROM json_each(?))
-    AND substr(question, 1, length(?)) = ?`;
-  const terminal = stateParam(ESCALATION_TERMINAL_STATES);
-  if (ask.dedupe.scope === "global") {
-    return (
-      // fallow-ignore-next-line security-sink -- `COLUMNS`, `VALUES` and `open` are source literals in this module; the question text, the dedupe prefix and the terminal-state JSON are all bound through the `?` placeholders in them.
-      db
-        .query<{ id: number }, [...Insert, string, string, string]>(
-          `INSERT INTO escalation (${COLUMNS})
-           SELECT ${VALUES} WHERE NOT EXISTS (SELECT 1 FROM escalation WHERE ${open})
-           RETURNING id`,
-        )
-        .get(...values, terminal, ask.dedupe.prefix, ask.dedupe.prefix)?.id ?? null
-    );
-  }
-  return (
-    // fallow-ignore-next-line security-sink -- `COLUMNS`, `VALUES` and `open` are source literals in this module; the question text, the dedupe prefix, the group id and the terminal-state JSON are all bound through the `?` placeholders in them.
-    db
-      .query<{ id: number }, [...Insert, string, string, string, number]>(
-        `INSERT INTO escalation (${COLUMNS})
-         SELECT ${VALUES} WHERE NOT EXISTS (SELECT 1 FROM escalation WHERE ${open} AND grp_id = ?)
-         RETURNING id`,
-      )
-      .get(...values, terminal, ask.dedupe.prefix, ask.dedupe.prefix, ask.dedupe.grpId)?.id ?? null
+  // The check and the insert are one transaction holding a lock on the subject,
+  // where they used to be one statement: `INSERT ... SELECT ... WHERE NOT EXISTS`
+  // needs a FROM-less SELECT, which Drizzle cannot build with a typed column list.
+  // Without the lock two simultaneous failures both pass a stale check and file
+  // the same question twice. `starts_with` compares the prefix literally, so %, _
+  // and \ stay ordinary subject characters — which is what `LIKE` would not do.
+  const open = and(
+    isNull(escalation.answer),
+    notInArray(escalation.chain_state, [...ESCALATION_TERMINAL_STATES]),
+    sql`starts_with(${escalation.question}, ${dedupe.prefix})`,
+    dedupe.scope === "group" ? eq(escalation.grp_id, dedupe.grpId) : undefined,
   );
+  const key = dedupe.scope === "group" ? `${dedupe.grpId}:${dedupe.prefix}` : dedupe.prefix;
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`);
+    const [existing] = await tx.select({ id: escalation.id }).from(escalation).where(open).limit(1);
+    if (existing) return null;
+    const [filed] = await tx.insert(escalation).values(row(ask)).returning({ id: escalation.id });
+    return filed?.id ?? null;
+  });
 }

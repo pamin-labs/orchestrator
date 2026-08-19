@@ -2,8 +2,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm"
 import { jsonOr } from "../../contracts/json.ts";
 import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
-import { orm } from "../../platform/persistence/orm.ts";
-import { agent, grp, note } from "../../platform/persistence/schema.ts";
+import { agent, grp, note, nowMs } from "../../platform/persistence/schema.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
@@ -392,26 +391,25 @@ const CodexReply = z.looseObject({
  * Inert by construction: watchdog rule 2 needs `idle_turns >= 3` and rule 3 needs
  * a `loop_file`, and nothing here writes either.
  */
-export function chargeIndex(
+export async function chargeIndex(
   ctx: Ctx,
   projectId: number,
   spec: { runtime?: string; model: string },
   u: AskUsage,
   grpId?: number,
-): void {
+): Promise<void> {
   const runtime = spec.runtime ?? "claude";
   const total = u.input + u.output + u.cacheRead + u.cacheCreate;
   if (total === 0) return;
-  const row = orm(ctx.db)
+  const [row] = await ctx.db
     .select({ id: agent.id })
     .from(agent)
     .where(
       and(eq(agent.project_id, projectId), isNull(agent.grp_id), eq(agent.role, "indexer"), eq(agent.runtime, runtime)),
-    )
-    .get();
-  const id =
-    row?.id ??
-    orm(ctx.db)
+    );
+  let id = row?.id;
+  if (id === undefined) {
+    const [made] = await ctx.db
       .insert(agent)
       .values({
         project_id: projectId,
@@ -420,33 +418,32 @@ export function chargeIndex(
         model: spec.model,
         runtime,
         // `state` carries a schema default of the same value and is still spelled
-        // out, as the old INSERT spelled it. `created_at` stays a `sql` expression
-        // so the row is stamped by SQLite's clock, not this process's.
+        // out, as the old INSERT spelled it. `created_at` uses `nowMs` so the row is
+        // stamped by the database's clock, not this process's.
         state: "idle",
-        created_at: sql`unixepoch() * 1000`,
+        created_at: nowMs,
       })
-      .returning({ id: agent.id })
-      .get().id;
-  orm(ctx.db)
+      .returning({ id: agent.id });
+    id = made!.id;
+  }
+  await ctx.db
     .update(agent)
     .set({ total_tokens: sql`${agent.total_tokens} + ${total}`, model: spec.model })
-    .where(eq(agent.id, id))
-    .run();
+    .where(eq(agent.id, id));
   // And onto the requirement that asked, when one did. This landed on the agent
   // row alone, so a group's budget could not see the retrieval its own turns
   // caused — `sliceBudgetTokens` is what stops a runaway, and the most frequent
   // model call in the system was invisible to it. The project-scoped calls (the
   // index rebuild) still belong to nobody, which is correct: no requirement asked.
   if (grpId)
-    orm(ctx.db)
+    await ctx.db
       .update(grp)
       .set({ spent_tokens: sql`${grp.spent_tokens} + ${total}` })
-      .where(eq(grp.id, grpId))
-      .run();
+      .where(eq(grp.id, grpId));
   // The same event shape `recordCost` emits, because that is what the hourly
   // burn chart reads — an event row has no agent to join back to, so the runtime
   // has to travel in the meta or the split guesses from the model name.
-  ctx.bus.emit({
+  await ctx.bus.emit({
     author: "indexer",
     kind: "tool_summary",
     body: `index call (${total} tokens)`,
@@ -465,8 +462,8 @@ export function chargeIndex(
  * the whole table could only ever return whole notes and rank them by word overlap,
  * which is exactly what fails when the retro that matters calls it something else.
  */
-export function noteLeaves(db: DB, projectId: number | null): { ids: string[]; read: Read } {
-  const rows = orm(db)
+export async function noteLeaves(db: DB, projectId: number | null): Promise<{ ids: string[]; read: Read }> {
+  const rows = await db
     .select({ id: note.id, grp_id: note.grp_id, kind: note.kind, body: note.body })
     .from(note)
     .where(
@@ -479,8 +476,7 @@ export function noteLeaves(db: DB, projectId: number | null): { ids: string[]; r
       ),
     )
     .orderBy(desc(note.id))
-    .limit(500)
-    .all();
+    .limit(500);
   const byId = new Map<string, string>();
   for (const r of rows) {
     byId.set(`${NOTE_PREFIX}${r.grp_id ? `grp-${r.grp_id}` : "project"}/${r.kind}/${r.id}`, r.body);
@@ -492,10 +488,10 @@ export function noteLeaves(db: DB, projectId: number | null): { ids: string[]; r
 
 // ------------------------------------------------------------------ storage
 
-export function saveTree(db: DB, projectId: number, tree: Tree): void {
-  saveSingletonNote(db, projectId, "pageindex", JSON.stringify(tree));
+export async function saveTree(db: DB, projectId: number, tree: Tree): Promise<void> {
+  await saveSingletonNote(db, projectId, "pageindex", JSON.stringify(tree));
 }
 
-export function loadTree(db: DB, projectId: number | null): Tree | null {
-  return jsonOr(singletonNote(db, projectId, "pageindex"), TreeSchema.nullable(), null);
+export async function loadTree(db: DB, projectId: number | null): Promise<Tree | null> {
+  return jsonOr(await singletonNote(db, projectId, "pageindex"), TreeSchema.nullable(), null);
 }

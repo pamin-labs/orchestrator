@@ -1,9 +1,8 @@
-import { count, eq, gte, inArray, isNotNull, max } from "drizzle-orm";
+import { and, count, eq, gte, inArray, isNotNull, max, notInArray } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
-import { orm } from "../../platform/persistence/orm.ts";
-import { grp, lease } from "../../platform/persistence/schema.ts";
+import { maxMs, escalation, event, grp, lease } from "../../platform/persistence/schema.ts";
 import { overlaps, parseOwns } from "./ownership.ts";
-import { ESCALATION_TERMINAL_STATES, stateParam } from "../../contracts/states.ts";
+import { ESCALATION_TERMINAL_STATES } from "../../contracts/states.ts";
 
 /**
  * What a standup is actually for.
@@ -22,16 +21,56 @@ export interface StandupItem {
 
 export const STALL_MS = 60 * 60_000;
 
-export function runStandup(db: DB, now = Date.now()): StandupItem[] {
+/**
+ * Work that stopped without anybody saying so.
+ *
+ * A blocked group is fine — it is waiting on an answer and somebody knows.
+ * Silence is the problem. Three queries and a join in JS, where this was one
+ * statement with two correlated subqueries: Drizzle has no builder for those and
+ * the alternative is raw SQL no column rename would break loudly. A standup runs
+ * on a handful of running groups.
+ */
+async function stalled(db: DB, now: number): Promise<StandupItem[]> {
+  const running = await db.select({ id: grp.id, name: grp.name }).from(grp).where(eq(grp.status, "RUNNING"));
+  const ids = running.map((g) => g.id);
+  if (ids.length === 0) return [];
+
+  const heard = await db
+    .select({ grp_id: event.grp_id, last: maxMs(event.at) })
+    .from(event)
+    .where(inArray(event.grp_id, ids))
+    .groupBy(event.grp_id);
+  const lastEvent = new Map(heard.flatMap((r) => (r.grp_id === null || r.last === null ? [] : [[r.grp_id, r.last]])));
+
+  const open = await db
+    .select({ grp_id: escalation.grp_id })
+    .from(escalation)
+    .where(and(inArray(escalation.grp_id, ids), notInArray(escalation.chain_state, [...ESCALATION_TERMINAL_STATES])));
+  const asking = new Set(open.flatMap((r) => (r.grp_id === null ? [] : [r.grp_id])));
+
+  return running.flatMap((g) => {
+    const last = lastEvent.get(g.id) ?? null;
+    if (asking.has(g.id) || (last ?? 0) >= now - STALL_MS) return [];
+    const mins = last ? Math.round((now - last) / 60000) : null;
+    return [
+      {
+        kind: "stalled" as const,
+        grpIds: [g.id],
+        body: `${g.name} has been running with nothing happening for ${mins ?? "?"} min and nobody is waiting on an answer`,
+      },
+    ];
+  });
+}
+
+export async function runStandup(db: DB, now = Date.now()): Promise<StandupItem[]> {
   const items: StandupItem[] = [];
 
   // Two groups whose declared paths overlap while both are live. `canStart`
   // prevents this at start, but boundaries get widened afterwards.
-  const live = orm(db)
+  const live = await db
     .select({ id: grp.id, name: grp.name, owns_json: grp.owns_json, project_id: grp.project_id })
     .from(grp)
-    .where(inArray(grp.status, ["RUNNING", "PAUSING", "PAUSED"]))
-    .all();
+    .where(inArray(grp.status, ["RUNNING", "PAUSING", "PAUSED"]));
   for (let i = 0; i < live.length; i++) {
     for (let j = i + 1; j < live.length; j++) {
       const a = live[i]!;
@@ -48,48 +87,26 @@ export function runStandup(db: DB, now = Date.now()): StandupItem[] {
     }
   }
 
-  // Work that stopped without anybody saying so. A blocked group is fine: it is
-  // waiting on an answer and somebody knows. Silence is the problem.
-  // Raw: `json_each(?)` binds the terminal-state subset the way every such
-  // predicate here does, and the two `max(at)` reads are correlated subqueries
-  // against the outer row, which Drizzle's builder has no form for.
-  const stalled = db
-    .query<{ id: number; name: string; last: number | null }, [string, number]>(
-      `SELECT g.id, g.name, (SELECT max(at) FROM event WHERE grp_id = g.id) AS last
-       FROM grp g WHERE g.status = 'RUNNING'
-         AND (SELECT count(*) FROM escalation e WHERE e.grp_id = g.id
-              AND e.chain_state NOT IN (SELECT value FROM json_each(?))) = 0
-         AND coalesce((SELECT max(at) FROM event WHERE grp_id = g.id), 0) < ?`,
-    )
-    .all(stateParam(ESCALATION_TERMINAL_STATES), now - STALL_MS);
-  for (const g of stalled) {
-    const mins = g.last ? Math.round((now - g.last) / 60000) : null;
-    items.push({
-      kind: "stalled",
-      grpIds: [g.id],
-      body: `${g.name} has been running with nothing happening for ${mins ?? "?"} min and nobody is waiting on an answer`,
-    });
-  }
+  items.push(...(await stalled(db, now)));
 
   // The same gate failing across several groups is a project problem, not three
   // separate coding problems.
   // Only the latest attempt per (resource, group) counts. Counting every failed
   // row ever recorded made a gate that had since gone green keep reporting
   // itself broken in four groups, with nothing that could ever clear it.
-  const lastPerResourceAndGroup = orm(db)
+  const lastPerResourceAndGroup = db
     .select({ last_id: max(lease.id).as("last_id") })
     .from(lease)
     .where(isNotNull(lease.grp_id))
     .groupBy(lease.resource, lease.grp_id)
     .as("g");
-  const repeats = orm(db)
+  const repeats = await db
     .select({ resource: lease.resource, n: count() })
     .from(lastPerResourceAndGroup)
     .innerJoin(lease, eq(lease.id, lastPerResourceAndGroup.last_id))
     .where(eq(lease.state, "failed"))
     .groupBy(lease.resource)
-    .having(gte(count(), 2))
-    .all();
+    .having(gte(count(), 2));
   for (const r of repeats) {
     items.push({
       kind: "repeat_failure",

@@ -93,7 +93,7 @@
       { "from": "shared-contracts", "allow": ["shared-contracts"] },
       { "from": "cli", "allow": ["cli", "build-info", "shared-contracts"], "allowTypeOnly": ["public-rpc"] }
     ],
-    "coverage": { "requireAllFiles": true, "allowUnmatched": [] },
+    "coverage": { "requireAllFiles": true, "allowUnmatched": ["drizzle.config.ts"] },
     "calls": {
       "forbidden": [
         { "from": "web", "callee": "node:child_process.*" },

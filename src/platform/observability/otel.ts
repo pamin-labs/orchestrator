@@ -18,7 +18,7 @@ import {
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import type { DB } from "../persistence/database.ts";
 import { recordDroppedSpans } from "./metrics.ts";
-import { SqliteSpanExporter } from "./span-store.ts";
+import { StoredSpanExporter } from "./span-store.ts";
 import { installTracerProvider } from "./traces.ts";
 
 /**
@@ -76,7 +76,7 @@ function counting(inner: SpanExporter): SpanExporter {
  * no endpoint nothing is sent and no socket is opened.
  */
 export function configureTracing(db: DB): void {
-  const spanProcessors: SpanProcessor[] = [new BatchSpanProcessor(new SqliteSpanExporter(db), QUEUE)];
+  const spanProcessors: SpanProcessor[] = [new BatchSpanProcessor(new StoredSpanExporter(db), QUEUE)];
   if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
     spanProcessors.push(new BatchSpanProcessor(counting(new OTLPTraceExporter()), QUEUE));
   }

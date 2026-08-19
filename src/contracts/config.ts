@@ -324,6 +324,16 @@ export const ConfigSchema = z.object({
    */
   telemetryCacheMs: count,
   /**
+   * Connections the server keeps open to Postgres.
+   *
+   * Bun's own default is 10 and nobody chose it. The panel's snapshot issues
+   * nineteen statements at once, so a pool under that serves them in waves —
+   * measured as a p95 several times the median while the median barely moves.
+   * Above the statement count it buys nothing; a managed Postgres with a
+   * connection cap is the reason to lower it.
+   */
+  dbPoolSize: count,
+  /**
    * What the watchdog calls stuck, and how often it is willing to repeat itself.
    *
    * The interval was settable and every threshold it enforces was not, so the one

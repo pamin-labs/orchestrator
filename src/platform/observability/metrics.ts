@@ -9,8 +9,10 @@ import {
   ATTR_HTTP_ROUTE,
   ATTR_SERVICE_NAME,
 } from "@opentelemetry/semantic-conventions";
+import { count } from "drizzle-orm";
 import { JOB_STATES } from "../../contracts/states.ts";
 import type { DB } from "../persistence/database.ts";
+import { job } from "../persistence/schema.ts";
 import { endSpan, shutdownTracing, type Trace } from "./traces.ts";
 
 /**
@@ -127,24 +129,24 @@ meter
 /**
  * The database this scrape reads job counts from.
  *
- * Job state lives in SQLite, not in a counter here, so it is queried at
- * collection time. `prometheus()` sets this immediately before `collect()` runs
- * the callback synchronously, and clears it after, so no handle outlives a scrape.
+ * Job state lives in the database, not in a counter here, so it is queried at
+ * collection time. `prometheus()` sets this immediately before `collect()`, which
+ * awaits the callback, and clears it after, so no handle outlives a scrape.
  */
 let scrapeDb: DB | undefined;
 
-meter.createObservableGauge("orchestrator_jobs", { description: "Jobs by lifecycle state." }).addCallback((result) => {
-  if (!scrapeDb) return;
-  const rows = scrapeDb
-    .query<{ state: string; count: number }, []>("SELECT state, count(*) AS count FROM job GROUP BY state")
-    .all();
-  const counts = new Map(rows.map((row) => [row.state, row.count]));
-  // Every state is observed, including the empty ones. A gauge keeps its last
-  // value for an attribute set nobody reported this cycle, so reporting only the
-  // states that have rows would leave a drained queue showing its old depth
-  // forever — the reading an operator is most likely to act on.
-  for (const state of JOB_STATES) result.observe(counts.get(state) ?? 0, { state });
-});
+meter
+  .createObservableGauge("orchestrator_jobs", { description: "Jobs by lifecycle state." })
+  .addCallback(async (result) => {
+    if (!scrapeDb) return;
+    const rows = await scrapeDb.select({ state: job.state, n: count() }).from(job).groupBy(job.state);
+    const counts = new Map(rows.map((row) => [row.state, row.n]));
+    // Every state is observed, including the empty ones. A gauge keeps its last
+    // value for an attribute set nobody reported this cycle, so reporting only the
+    // states that have rows would leave a drained queue showing its old depth
+    // forever — the reading an operator is most likely to act on.
+    for (const state of JOB_STATES) result.observe(counts.get(state) ?? 0, { state });
+  });
 
 export interface RuntimeStatus {
   accepting: boolean;

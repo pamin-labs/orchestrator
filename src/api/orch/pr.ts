@@ -8,7 +8,6 @@ import { GroupRef } from "../../contracts/fields.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { grp as grps, project } from "../../platform/persistence/schema.ts";
 
 /**
@@ -42,23 +41,22 @@ export const PrBody = z.object({
 
 export const postPr = (async (ctx, _req, a, _p, b) => {
   if (a.role !== roleFor(ctx, "write_pr_message")) return bad(`${a.role} does not write pull request messages`);
-  const gid = resolveGroup(ctx, b.group_id);
+  const gid = await resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx.db, a, gid)) return message("not your project", 403);
+  if (!(await mayAct(ctx.db, a, gid))) return message("not your project", 403);
 
   const title = b.title.trim();
   const summary = b.body.trim();
   const wrong = checkPrMessage(title, summary);
   if (wrong) return bad(wrong);
 
-  const g = orm(ctx.db)
+  const [g] = await ctx.db
     .select({ status: grps.status, pr_number: grps.pr_number })
     .from(grps)
-    .where(eq(grps.id, gid))
-    .get();
+    .where(eq(grps.id, gid));
   if (!g) return bad("no such group");
-  orm(ctx.db).update(grps).set({ pr_title: title, pr_summary: summary }).where(eq(grps.id, gid)).run();
-  ctx.bus.emit({
+  await ctx.db.update(grps).set({ pr_title: title, pr_summary: summary }).where(eq(grps.id, gid));
+  await ctx.bus.emit({
     grpId: gid,
     author: roleFor(ctx, "write_pr_message"),
     kind: "note",
@@ -93,17 +91,16 @@ export const postPrResolve = (async (ctx, req, a, _p, b) => {
   // The caller's own group when it did not say: an agent replying to a review of
   // its own PR has exactly one answer, and making it retype the id is how the
   // wrong one gets typed.
-  const gid = resolveGroup(ctx, b.group_id, a.grp_id);
+  const gid = await resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx.db, a, gid)) return message("not your project", 403);
+  if (!(await mayAct(ctx.db, a, gid))) return message("not your project", 403);
   if (!ctx.gh) return bad("this server has no GitHub client");
 
-  const g = orm(ctx.db)
+  const [g] = await ctx.db
     .select({ pr_number: grps.pr_number, owns_json: grps.owns_json, remote: project.remote })
     .from(grps)
     .innerJoin(project, eq(project.id, grps.project_id))
-    .where(eq(grps.id, gid))
-    .get();
+    .where(eq(grps.id, gid));
   if (!g) return bad("no such group");
   if (!g.pr_number) return bad("this group has no pull request open, so it has no threads to close");
 
@@ -133,7 +130,7 @@ export const postPrResolve = (async (ctx, req, a, _p, b) => {
 
   const failed = await resolveReviewThread(ctx.gh, b.thread_id, req.signal);
   if (failed) return bad(failed);
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: gid,
     author: a.role,
     kind: "note",

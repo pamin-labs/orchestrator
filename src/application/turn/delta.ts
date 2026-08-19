@@ -1,7 +1,17 @@
-import { eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNull, lte, max, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
-import { orm } from "../../platform/persistence/orm.ts";
-import { agent, escalation, grp, project } from "../../platform/persistence/schema.ts";
+import {
+  agent,
+  channel as channels,
+  cursor as cursors,
+  escalation,
+  event as events,
+  grp,
+  job as jobs,
+  note as notes,
+  project,
+  slice as slices,
+} from "../../platform/persistence/schema.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { say } from "../../platform/text/lang.ts";
 import type { Config } from "../../platform/config/load.ts";
@@ -9,7 +19,10 @@ import { getFile, type Scope } from "../../mech/sandbox/sandbox.ts";
 import { listSkills, projectSkills, readSkillIn } from "../../mech/skills.ts";
 import type { Delta } from "../../prompt/assemble.ts";
 import type { Job } from "../../platform/scheduling/scheduler.ts";
-import { ACTIVE_JOB_STATES, type SliceState, stateParam } from "../../contracts/states.ts";
+import { ACTIVE_JOB_STATES } from "../../contracts/states.ts";
+
+/** What counts as backlog worth reading or compressing. One list, three readers. */
+const READABLE_KINDS = ["say", "boss_say", "note", "escalation"] as const;
 
 /** Exported because `applySkills` takes one and is called from tests. */
 export interface TurnAgent {
@@ -21,9 +34,9 @@ export interface TurnAgent {
 type TurnJob = Job<"agent_turn">;
 type TurnPayload = TurnJob["payload"];
 
-function escalationCard(db: DB, payload: TurnPayload): string | undefined {
+async function escalationCard(db: DB, payload: TurnPayload): Promise<string | undefined> {
   if (!payload.escalation) return;
-  const esc = orm(db)
+  const [esc] = await db
     .select({
       id: escalation.id,
       question: escalation.question,
@@ -31,13 +44,12 @@ function escalationCard(db: DB, payload: TurnPayload): string | undefined {
       agent_id: escalation.agent_id,
     })
     .from(escalation)
-    .where(eq(escalation.id, payload.escalation))
-    .get();
+    .where(eq(escalation.id, payload.escalation));
   if (!esc) return;
   const asker =
     esc.agent_id === null
       ? "someone"
-      : (orm(db).select({ role: agent.role }).from(agent).where(eq(agent.id, esc.agent_id)).get()?.role ?? "someone");
+      : ((await db.select({ role: agent.role }).from(agent).where(eq(agent.id, esc.agent_id)))[0]?.role ?? "someone");
   return (
     `${asker} is blocked and asked (severity ${esc.severity}):\n${esc.question}\n\n` +
     `Answer it with \`orch answer ${esc.id} --answer "…"\`, or pass it up with ` +
@@ -96,15 +108,15 @@ function auditCard(payload: TurnPayload): string | undefined {
   );
 }
 
-function scribeCard(ctx: Ctx, payload: TurnPayload): string | undefined {
+async function scribeCard(ctx: Ctx, payload: TurnPayload): Promise<string | undefined> {
   const groupId = payload.scribe;
   if (!groupId) return;
-  const base = orm(ctx.db)
+  const [row] = await ctx.db
     .select({ base_branch: project.base_branch })
     .from(grp)
     .innerJoin(project, eq(project.id, grp.project_id))
-    .where(eq(grp.id, groupId))
-    .get()?.base_branch;
+    .where(eq(grp.id, groupId));
+  const base = row?.base_branch;
   // The project's own base, then the configured fallback. `main` was written here,
   // so a project that develops on `develop` was told to diff against a branch its
   // repository does not have.
@@ -123,17 +135,23 @@ function scribeCard(ctx: Ctx, payload: TurnPayload): string | undefined {
   );
 }
 
-function digestCard(db: DB, payload: TurnPayload): string | undefined {
+async function digestCard(db: DB, payload: TurnPayload): Promise<string | undefined> {
   const digest = payload.digest;
   if (!digest) return;
-  const rows = db
-    .query<{ seq: number; author: string; body: string }, [number, number, number]>(
-      `SELECT seq, author, body FROM event
-       WHERE channel_id = ? AND seq > ? AND seq <= ? AND kind IN ('say','boss_say','note','escalation')
-       ORDER BY seq LIMIT 400`,
+  const rows = await db
+    .select({ seq: events.seq, author: events.author, body: events.body })
+    .from(events)
+    .where(
+      and(
+        eq(events.channel_id, digest.channel_id),
+        gt(events.seq, digest.from),
+        lte(events.seq, digest.to),
+        inArray(events.kind, [...READABLE_KINDS]),
+      ),
     )
-    .all(digest.channel_id, digest.from, digest.to);
-  const events = rows
+    .orderBy(asc(events.seq))
+    .limit(400);
+  const transcript = rows
     .map((row) => `[${row.seq}] ${row.author}: ${row.body}`)
     .join("\n")
     .slice(0, 20_000);
@@ -142,7 +160,7 @@ function digestCard(db: DB, payload: TurnPayload): string | undefined {
     `seq ${digest.from}..${digest.to}.\n\n` +
     `File ONE note: \`orch journal add --kind journal -\`, at most 6 lines, covering what was ` +
     `decided, what is still open, and anything a later turn must not re-litigate. Names and ` +
-    `file paths verbatim; drop the pleasantries.\n\n${events}`
+    `file paths verbatim; drop the pleasantries.\n\n${transcript}`
   );
 }
 
@@ -159,14 +177,14 @@ function sedimentCard(payload: TurnPayload): string | undefined {
   );
 }
 
-function applyPayloadCards(ctx: Ctx, payload: TurnPayload, delta: Delta): void {
+async function applyPayloadCards(ctx: Ctx, payload: TurnPayload, delta: Delta): Promise<void> {
   for (const card of [
-    escalationCard(ctx.db, payload),
+    await escalationCard(ctx.db, payload),
     mailCard(payload),
     boundaryCard(payload),
     auditCard(payload),
-    scribeCard(ctx, payload),
-    digestCard(ctx.db, payload),
+    await scribeCard(ctx, payload),
+    await digestCard(ctx.db, payload),
     sedimentCard(payload),
     payload.idea ? `The boss wants: ${payload.idea}` : undefined,
   ]) {
@@ -176,31 +194,33 @@ function applyPayloadCards(ctx: Ctx, payload: TurnPayload, delta: Delta): void {
   if (payload.rejection) delta.rejection = payload.rejection;
 }
 
-function applyWorkCard(ctx: Ctx, agent: TurnAgent, job: TurnJob, delta: Delta): void {
-  if (job.slice_id) return applySliceCard(ctx, agent, job.slice_id, delta);
+async function applyWorkCard(ctx: Ctx, agent: TurnAgent, job: TurnJob, delta: Delta): Promise<void> {
+  if (job.slice_id) return await applySliceCard(ctx, agent, job.slice_id, delta);
   if (!job.grp_id || job.payload.idea) return;
   // The slice list is the fallback for a turn with no stated reason. A payload
   // card is that reason — a lease result, a digest, a scribe brief — and none of
   // them has another way into the prompt.
   if (delta.card) return;
-  const slices = ctx.db
-    .query<{ seq: number; title: string; status: SliceState; difficulty: string }, [number]>(
-      "SELECT seq, title, status, difficulty FROM slice WHERE grp_id = ? ORDER BY seq",
-    )
-    .all(job.grp_id);
-  if (slices.length) {
-    delta.card = slices
-      .map((slice) => `S${slice.seq} [${slice.difficulty}] ${slice.title} — ${slice.status}`)
-      .join("\n");
+  const rows = await ctx.db
+    .select({ seq: slices.seq, title: slices.title, status: slices.status, difficulty: slices.difficulty })
+    .from(slices)
+    .where(eq(slices.grp_id, job.grp_id))
+    .orderBy(asc(slices.seq));
+  if (rows.length) {
+    delta.card = rows.map((slice) => `S${slice.seq} [${slice.difficulty}] ${slice.title} — ${slice.status}`).join("\n");
   }
 }
 
-function applySliceCard(ctx: Ctx, agent: TurnAgent, sliceId: number, delta: Delta): void {
-  const slice = ctx.db
-    .query<{ seq: number; title: string; accept_spec: string; difficulty: string }, [number]>(
-      "SELECT seq, title, accept_spec, difficulty FROM slice WHERE id = ?",
-    )
-    .get(sliceId);
+async function applySliceCard(ctx: Ctx, agent: TurnAgent, sliceId: number, delta: Delta): Promise<void> {
+  const [slice] = await ctx.db
+    .select({
+      seq: slices.seq,
+      title: slices.title,
+      accept_spec: slices.accept_spec,
+      difficulty: slices.difficulty,
+    })
+    .from(slices)
+    .where(eq(slices.id, sliceId));
   if (!slice) return;
   delta.card = `Slice S${slice.seq} (slice_id ${sliceId}) [${slice.difficulty}]: ${slice.title}\nAccepted when: ${slice.accept_spec}`;
   if (agent.role === roleFor(ctx, "review_slice")) {
@@ -208,13 +228,16 @@ function applySliceCard(ctx: Ctx, agent: TurnAgent, sliceId: number, delta: Delt
   }
 }
 
-function applyHandoff(ctx: Ctx, groupId: number | null, rotated: boolean, delta: Delta): void {
+async function applyHandoff(ctx: Ctx, groupId: number | null, rotated: boolean, delta: Delta): Promise<void> {
   if (!rotated) return;
-  const handoff = ctx.db
-    .query<{ body: string }, [number | null]>(
-      "SELECT body FROM note WHERE grp_id IS ? AND kind = 'handoff' ORDER BY at DESC, id DESC LIMIT 1",
-    )
-    .get(groupId);
+  // `IS ?` matched a NULL group; `eq` never does, and a group-less agent would
+  // silently get no handoff at all.
+  const [handoff] = await ctx.db
+    .select({ body: notes.body })
+    .from(notes)
+    .where(and(groupId === null ? isNull(notes.grp_id) : eq(notes.grp_id, groupId), eq(notes.kind, "handoff")))
+    .orderBy(desc(notes.at), desc(notes.id))
+    .limit(1);
   delta.handoff =
     (handoff?.body ? `${handoff.body}\n\n` : "") +
     "This is a fresh session. Use `orch ctx query` for anything you are missing rather than assuming you remember it.";
@@ -236,13 +259,15 @@ export async function applySkills(
 ): Promise<void> {
   const wanted = job.payload.skills ?? [];
   if (!wanted.length) return;
-  const row = ctx.db
-    .query<{ repo_path: string; project_id: number }, [number | null]>(
-      "SELECT p.repo_path, p.id AS project_id FROM project p JOIN grp g ON g.project_id = p.id WHERE g.id = ?",
-    )
-    .get(job.grp_id ?? null);
+  const [row] = job.grp_id
+    ? await ctx.db
+        .select({ repo_path: project.repo_path, project_id: project.id })
+        .from(project)
+        .innerJoin(grp, eq(grp.project_id, project.id))
+        .where(eq(grp.id, job.grp_id))
+    : [];
   const projectId = row?.project_id ?? agent.project_id ?? null;
-  const all = listSkills(row?.repo_path, projectSkills(ctx.db, projectId));
+  const all = listSkills(row?.repo_path, await projectSkills(ctx.db, projectId));
   const found = wanted.map((name) => all.find((skill) => skill.name === name)).filter((skill) => skill !== undefined);
   if (!found.length) return;
   delta.skills = (
@@ -257,18 +282,22 @@ interface UnreadRow {
   body: string;
 }
 
-function digestBacklog(ctx: Ctx, channelId: number, groupId: number, rows: UnreadRow[], limit: number): string {
+async function digestBacklog(
+  ctx: Ctx,
+  channelId: number,
+  groupId: number,
+  rows: UnreadRow[],
+  limit: number,
+): Promise<string> {
   if (rows.length < limit) return "";
   const last = rows.at(-1)!;
-  const behind = ctx.db
-    .query<{ c: number; hi: number }, [number, number]>(
-      `SELECT count(*) AS c, max(seq) AS hi FROM event
-       WHERE channel_id = ? AND seq > ? AND kind IN ('say', 'boss_say', 'note', 'escalation')`,
-    )
-    .get(channelId, last.seq)!;
-  if (behind.c === 0) return "";
-  enqueueDigestOnce(ctx, channelId, groupId, last.seq, behind.hi);
-  ctx.bus.emit({
+  const [behind] = await ctx.db
+    .select({ c: count(), hi: max(events.seq) })
+    .from(events)
+    .where(and(eq(events.channel_id, channelId), gt(events.seq, last.seq), inArray(events.kind, [...READABLE_KINDS])));
+  if (!behind || behind.c === 0 || behind.hi === null) return "";
+  await enqueueDigestOnce(ctx, channelId, groupId, last.seq, behind.hi);
+  await ctx.bus.emit({
     grpId: groupId,
     author: "orchestrator",
     kind: "state_change",
@@ -278,49 +307,72 @@ function digestBacklog(ctx: Ctx, channelId: number, groupId: number, rows: Unrea
   return `\n\n(${behind.c} 条更早的还没读，Librarian 正在压成一条摘要，别自己去翻)`;
 }
 
-function enqueueDigestOnce(ctx: Ctx, channelId: number, groupId: number, from: number, to: number): void {
-  const queued = ctx.db
-    .query<{ c: number }, [string, number]>(
-      `SELECT count(*) AS c FROM job WHERE kind = 'agent_turn'
-       AND state IN (SELECT value FROM json_each(?))
-       AND json_extract(payload_json, '$.digest.channel_id') = ?`,
-    )
-    .get(stateParam(ACTIVE_JOB_STATES), channelId)!.c;
-  if (queued !== 0) return;
-  ctx.sched.enqueue("agent_turn", {
+async function enqueueDigestOnce(
+  ctx: Ctx,
+  channelId: number,
+  groupId: number,
+  from: number,
+  to: number,
+): Promise<void> {
+  // The one query Drizzle has no builder for: reaching into `payload_json` for the
+  // channel a queued digest already covers. `#>>` yields text, so the comparison is
+  // against the id as text — `=` on a jsonb value and an integer finds nothing.
+  const [queued] = await ctx.db
+    .select({ c: count() })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.kind, "agent_turn"),
+        inArray(jobs.state, [...ACTIVE_JOB_STATES]),
+        sql`${jobs.payload_json} #>> '{digest,channel_id}' = ${String(channelId)}`,
+      ),
+    );
+  if (!queued || queued.c !== 0) return;
+  await ctx.sched.enqueue("agent_turn", {
     grp_id: groupId,
     priority: 2,
     payload: { role: roleFor(ctx, "compress_context"), digest: { channel_id: channelId, from, to } },
   });
 }
 
-function readUnread(ctx: Ctx, agent: TurnAgent, groupId: number | null, cfg: Config): string | undefined {
+async function readUnread(
+  ctx: Ctx,
+  agent: TurnAgent,
+  groupId: number | null,
+  cfg: Config,
+): Promise<string | undefined> {
   if (!groupId) return;
-  const channel = ctx.db
-    .query<{ id: number }, [number]>("SELECT id FROM channel WHERE grp_id = ? LIMIT 1")
-    .get(groupId);
+  const [channel] = await ctx.db
+    .select({ id: channels.id })
+    .from(channels)
+    .where(eq(channels.grp_id, groupId))
+    .limit(1);
   if (!channel) return;
-  const cursor =
-    ctx.db
-      .query<{ last_seq: number }, [number, number]>(
-        "SELECT last_seq FROM cursor WHERE agent_id = ? AND channel_id = ?",
-      )
-      .get(agent.id, channel.id)?.last_seq ?? 0;
+  const channelId = channel.id;
+  const [seen] = await ctx.db
+    .select({ last_seq: cursors.last_seq })
+    .from(cursors)
+    .where(and(eq(cursors.agent_id, agent.id), eq(cursors.channel_id, channelId)));
   const limit = cfg.unreadDigestThreshold ?? 30;
-  const rows = ctx.db
-    .query<UnreadRow, [number, number, number]>(
-      `SELECT seq, author, intent, body FROM event
-       WHERE channel_id = ? AND seq > ? AND kind IN ('say', 'boss_say', 'note', 'escalation')
-       ORDER BY seq LIMIT ?`,
+  const rows = await ctx.db
+    .select({ seq: events.seq, author: events.author, intent: events.intent, body: events.body })
+    .from(events)
+    .where(
+      and(
+        eq(events.channel_id, channelId),
+        gt(events.seq, seen?.last_seq ?? 0),
+        inArray(events.kind, [...READABLE_KINDS]),
+      ),
     )
-    .all(channel.id, cursor, limit);
+    .orderBy(asc(events.seq))
+    .limit(limit);
   if (!rows.length) return;
-  const tail = digestBacklog(ctx, channel.id, groupId, rows, limit);
-  ctx.db.run(
-    `INSERT INTO cursor (agent_id, channel_id, last_seq) VALUES (?, ?, ?)
-     ON CONFLICT (agent_id, channel_id) DO UPDATE SET last_seq = excluded.last_seq`,
-    [agent.id, channel.id, rows.at(-1)!.seq],
-  );
+  const tail = await digestBacklog(ctx, channelId, groupId, rows, limit);
+  const last_seq = rows.at(-1)!.seq;
+  await ctx.db
+    .insert(cursors)
+    .values({ agent_id: agent.id, channel_id: channelId, last_seq })
+    .onConflictDoUpdate({ target: [cursors.agent_id, cursors.channel_id], set: { last_seq } });
   return rows.map((row) => `${row.author}${row.intent ? ` (${row.intent})` : ""}: ${row.body}`).join("\n") + tail;
 }
 
@@ -333,10 +385,10 @@ export async function buildTurnDelta(
   scope: Scope,
 ): Promise<Delta> {
   const delta: Delta = {};
-  applyPayloadCards(deps.ctx, job.payload, delta);
-  applyWorkCard(deps.ctx, agent, job, delta);
-  applyHandoff(deps.ctx, job.grp_id, rotated, delta);
-  const unread = readUnread(deps.ctx, agent, job.grp_id, deps.cfg);
+  await applyPayloadCards(deps.ctx, job.payload, delta);
+  await applyWorkCard(deps.ctx, agent, job, delta);
+  await applyHandoff(deps.ctx, job.grp_id, rotated, delta);
+  const unread = await readUnread(deps.ctx, agent, job.grp_id, deps.cfg);
   await applySkills(deps.ctx, agent, job, scope, delta);
   if (unread) delta.unread = unread;
   return delta;

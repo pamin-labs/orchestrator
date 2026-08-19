@@ -79,7 +79,7 @@ export async function probe(
   if (state.online && now - lastProbe < cfg.intervals.recheckMs) return { online: true, changed: false };
   lastProbe = now;
 
-  const origins = probeHosts(db);
+  const origins = await probeHosts(db);
   // Nothing configured yet: there is no wall to detect, and gating every turn on
   // an empty probe would stop a fleet that has not been set up rather than say so.
   // `credentialMissing` in the scheduler is what covers that case.

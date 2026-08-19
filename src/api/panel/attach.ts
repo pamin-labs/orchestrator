@@ -9,7 +9,6 @@ import type { Ctx } from "../../mech/ctx.ts";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { grp } from "../../platform/persistence/schema.ts";
 
 export const AttachmentNameParams = z.object({ name: z.string().min(1) });
@@ -205,10 +204,9 @@ export const getAttachment = (async (ctx, _req, params) => {
  * The boss said something that should stick. One helper, because "record it and see if
  * it is the third time" must not be remembered separately at four call sites.
  */
-export function bossFact(ctx: Ctx, grpId: number | null, body: string): void {
-  const projectId = grpId
-    ? (orm(ctx.db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)).get()?.project_id ?? null)
-    : null;
-  addNote(ctx.db, { projectId, grpId, kind: "fact", lang: ctx.config.language, body });
-  sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold);
+export async function bossFact(ctx: Ctx, grpId: number | null, body: string): Promise<void> {
+  const [owner] = grpId ? await ctx.db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)) : [];
+  const projectId = owner?.project_id ?? null;
+  await addNote(ctx.db, { projectId, grpId, kind: "fact", lang: ctx.config.language, body });
+  await sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold);
 }

@@ -223,7 +223,7 @@ export const getTelemetry = (async (ctx, _req, _params, query) => {
     query.from !== undefined && query.to !== undefined && query.to > query.from
       ? { from: query.from, to: query.to }
       : recentWindow(windowMs, Math.ceil(Date.now() / ttl) * ttl);
-  const spans = query.trace ? readTrace(ctx.db, query.trace) : [];
+  const spans = query.trace ? await readTrace(ctx.db, query.trace) : [];
   // A trace id that matches nothing is the one case worth refusing rather than
   // reporting empty: unlike a scope id, it was copied from a list this endpoint
   // itself produced, so nothing there means the trace aged out from under the
@@ -242,16 +242,27 @@ export const getTelemetry = (async (ctx, _req, _params, query) => {
   const hit = key === null ? undefined : cache.get(key);
   if (hit) return json(hit);
 
+  // Together, not one after another: six independent reads of one table, and
+  // serially they are six round trips a reader waits through for a page that
+  // cannot render until the last one lands.
+  const [dataWindow, stages, traces, points, flame, slices] = await Promise.all([
+    spanExtent(ctx.db, scope),
+    stageStats(ctx.db, scope, window),
+    traceList(ctx.db, scope, TRACE_LIMIT, window),
+    trend(ctx.db, scope, query.bucketMs ?? DEFAULT_BUCKET_MS, window),
+    foldedStacks(ctx.db, scope, window),
+    scope.kind === "group" ? sliceCosts(ctx.db, scope.id, window) : [],
+  ]);
   const report: TelemetryReport = {
     scope: query.scope,
     windowMs,
     window,
-    dataWindow: spanExtent(ctx.db, scope),
-    stages: stageStats(ctx.db, scope, window),
-    traces: traceList(ctx.db, scope, TRACE_LIMIT, window),
-    trend: trend(ctx.db, scope, query.bucketMs ?? DEFAULT_BUCKET_MS, window),
-    flame: foldedStacks(ctx.db, scope, window),
-    slices: scope.kind === "group" ? sliceCosts(ctx.db, scope.id, window) : [],
+    dataWindow,
+    stages,
+    traces,
+    trend: points,
+    flame,
+    slices,
     trace: query.trace ? { traceId: query.trace, spans: spans.map(toWaterfallSpan) } : null,
   };
   if (key !== null) cache.set(key, report);

@@ -1,7 +1,6 @@
-import { and, asc, eq, isNotNull, max, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { projectOfGrp } from "../util/rows.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { agent, channel, grp } from "../../platform/persistence/schema.ts";
 
 /**
@@ -13,6 +12,9 @@ import { agent, channel, grp } from "../../platform/persistence/schema.ts";
  * person here, so that cost lands on the one person the system exists to spare.
  */
 
+/** One line for the whole install, so one lock name for it. */
+const QUEUE_LOCK = "orch:merge_queue";
+
 export interface QueueEntry {
   grpId: number;
   name: string;
@@ -21,34 +23,49 @@ export interface QueueEntry {
 }
 
 /** Called when a branch passes its audit: it takes the next slot in line. */
-export function joinQueue(db: DB, grpId: number): number {
-  const existing = orm(db).select({ merge_seq: grp.merge_seq }).from(grp).where(eq(grp.id, grpId)).get();
-  if (existing?.merge_seq != null) return existing.merge_seq;
-
-  // Table-wide `max`, not per project: merge order is one line across the whole
-  // install, as it was. The `?? 0` covers both an empty table and all-NULL.
-  const next =
-    (orm(db)
-      .select({ m: max(grp.merge_seq) })
-      .from(grp)
-      .get()?.m ?? 0) + 1;
-  orm(db).update(grp).set({ merge_seq: next, merge_seq_at: sql`unixepoch() * 1000` }).where(eq(grp.id, grpId)).run();
-  return next;
+export async function joinQueue(db: DB, grpId: number): Promise<number | null> {
+  // Reading the max and writing it back is two statements, and Postgres runs them
+  // for two groups at once — both read the same max and both take slot 4, which is
+  // the "which of three turned main red" morning this module exists to prevent.
+  // SQLite made it atomic by being synchronous; here the lock has to be asked for.
+  // Table-wide, because merge order is one line across the install, and the same
+  // `pg_advisory_xact_lock` idiom `escalate.ts` files a question under.
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${QUEUE_LOCK}))`);
+    // Already in line keeps its own slot, whichever call put it there.
+    const [existing] = await tx.select({ merge_seq: grp.merge_seq }).from(grp).where(eq(grp.id, grpId));
+    if (existing?.merge_seq != null) return existing.merge_seq;
+    const [taken] = await tx
+      .update(grp)
+      .set({
+        // Aliased, and the column named through `sql.identifier`: an unaliased
+        // `${grp.merge_seq}` renders as `grp.merge_seq`, which binds to the row
+        // being updated rather than to the subquery — an aggregate in an UPDATE,
+        // which Postgres refuses outright.
+        merge_seq: sql`(SELECT coalesce(max(q.${sql.identifier(grp.merge_seq.name)}), 0) + 1 FROM ${grp} q)`,
+        merge_seq_at: Date.now(),
+      })
+      .where(and(eq(grp.id, grpId), isNull(grp.merge_seq)))
+      .returning({ merge_seq: grp.merge_seq });
+    return taken?.merge_seq ?? null;
+  });
 }
 
-export function queue(db: DB, projectId: number): QueueEntry[] {
-  return (
-    orm(db)
-      .select({ grpId: grp.id, name: grp.name, branch: grp.branch, seq: grp.merge_seq })
-      .from(grp)
-      .where(and(eq(grp.project_id, projectId), isNotNull(grp.merge_seq), eq(grp.status, "PR_OPEN")))
-      .orderBy(asc(grp.merge_seq))
-      .all()
-      // The `IS NOT NULL` above already guarantees this, but `merge_seq` is a
-      // nullable column and the schema says so. Narrowed rather than asserted: the
-      // old generic simply declared `seq: number` over the same nullable column.
-      .filter((e): e is QueueEntry => e.seq !== null)
-  );
+export async function queue(db: DB, projectId: number): Promise<QueueEntry[]> {
+  const rows = await db
+    .select({
+      grpId: grp.id,
+      name: grp.name,
+      branch: grp.branch,
+      seq: grp.merge_seq,
+    })
+    .from(grp)
+    .where(and(eq(grp.project_id, projectId), isNotNull(grp.merge_seq), eq(grp.status, "PR_OPEN")))
+    .orderBy(asc(grp.merge_seq));
+  // The `IS NOT NULL` above already guarantees this, but `merge_seq` is a
+  // nullable column and the schema says so. Narrowed rather than asserted: the
+  // old generic simply declared `seq: number` over the same nullable column.
+  return rows.filter((e): e is QueueEntry => e.seq !== null);
 }
 
 /**
@@ -57,18 +74,17 @@ export function queue(db: DB, projectId: number): QueueEntry[] {
  * Everything behind it stays queued rather than being presented, because three
  * "ready to merge" cards is an invitation to merge them in the wrong order.
  */
-export function head(db: DB, projectId: number): QueueEntry | null {
-  return queue(db, projectId)[0] ?? null;
+export async function head(db: DB, projectId: number): Promise<QueueEntry | null> {
+  return (await queue(db, projectId))[0] ?? null;
 }
 
-export function position(db: DB, grpId: number): { position: number; total: number } | null {
-  const me = orm(db)
+export async function position(db: DB, grpId: number): Promise<{ position: number; total: number } | null> {
+  const [me] = await db
     .select({ project_id: grp.project_id, merge_seq: grp.merge_seq })
     .from(grp)
-    .where(eq(grp.id, grpId))
-    .get();
+    .where(eq(grp.id, grpId));
   if (!me || me.merge_seq == null) return null;
-  const q = queue(db, me.project_id);
+  const q = await queue(db, me.project_id);
   const idx = q.findIndex((e) => e.grpId === grpId);
   return idx === -1 ? null : { position: idx + 1, total: q.length };
 }
@@ -78,18 +94,18 @@ export function position(db: DB, grpId: number): { position: number; total: numb
  * their branch point is now stale, and a stale base is what turns a clean merge
  * into a conflict later.
  */
-export function landed(db: DB, grpId: number): number[] {
+export async function landed(db: DB, grpId: number): Promise<number[]> {
   // Read before the write, as it was: this group has to leave the queue before
   // `queue()` below is asked who is still in it.
-  const projectId = projectOfGrp(db, grpId);
-  orm(db).update(grp).set({ status: "DISSOLVED", merge_seq: null, merge_seq_at: null }).where(eq(grp.id, grpId)).run();
+  const projectId = await projectOfGrp(db, grpId);
+  await db.update(grp).set({ status: "DISSOLVED", merge_seq: null, merge_seq_at: null }).where(eq(grp.id, grpId));
 
   // Wind the group up: sessions are worthless now, but the channel and every
   // event stay. A later group grepping this history is the only long-term memory
   // the system has, so archiving must never mean deleting.
-  orm(db).update(agent).set({ state: "retired", session_id: null, token: null }).where(eq(agent.grp_id, grpId)).run();
-  orm(db).update(channel).set({ status: "archived" }).where(eq(channel.grp_id, grpId)).run();
+  await db.update(agent).set({ state: "retired", session_id: null, token: null }).where(eq(agent.grp_id, grpId));
+  await db.update(channel).set({ status: "archived" }).where(eq(channel.grp_id, grpId));
 
   if (projectId === null) return [];
-  return queue(db, projectId).map((e) => e.grpId);
+  return (await queue(db, projectId)).map((e) => e.grpId);
 }

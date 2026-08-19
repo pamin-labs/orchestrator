@@ -6,7 +6,6 @@ import type { Frame, StoredEvent } from "../../contracts/events.ts";
 import type { SSEStreamingApi } from "hono/streaming";
 import { z } from "zod";
 import { recordDroppedFrames } from "../../platform/observability/metrics.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { grp } from "../../platform/persistence/schema.ts";
 
 /**
@@ -31,16 +30,14 @@ function cursorFor(req: Request, since: number): number {
   return Math.max(since, header.success ? header.data : 0);
 }
 
-function projectResolver(db: DB): (grpId: number | null | undefined) => number | null {
+function projectResolver(db: DB): (grpId: number | null | undefined) => Promise<number | null> {
   // grp -> project is immutable, so live tokens do not query once per token.
   const projects = new Map<number, number | null>();
-  return (grpId) => {
+  return async (grpId) => {
     if (grpId == null) return null;
     if (!projects.has(grpId)) {
-      projects.set(
-        grpId,
-        orm(db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)).get()?.project_id ?? null,
-      );
+      const [row] = await db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId));
+      projects.set(grpId, row?.project_id ?? null);
     }
     return projects.get(grpId) ?? null;
   };
@@ -82,14 +79,13 @@ export function boundedWriter(send: (frame: Frame) => Promise<void>, limit: numb
 
 function frameSender(db: DB, stream: SSEStreamingApi): (frame: Frame) => Promise<void> {
   const projectOf = projectResolver(db);
-  return (frame) =>
-    stream.writeSSE({
-      data: JSON.stringify({
-        ...frame,
-        projectId: (frame.type === "live" ? frame.projectId : null) ?? projectOf(frame.grpId),
-      }),
+  return async (frame) => {
+    const projectId = (frame.type === "live" ? frame.projectId : null) ?? (await projectOf(frame.grpId));
+    await stream.writeSSE({
+      data: JSON.stringify({ ...frame, projectId }),
       ...(frame.type === "event" ? { id: String(frame.seq) } : {}),
     });
+  };
 }
 
 async function sendEvents(
@@ -107,11 +103,11 @@ async function sendEvents(
 }
 
 async function replay(bus: Bus, cursor: number, stopped: () => boolean, enqueue: Enqueue): Promise<number> {
-  if (cursor === 0) return sendEvents(bus.latest(REPLAY_PAGE), cursor, stopped, enqueue);
+  if (cursor === 0) return sendEvents(await bus.latest(REPLAY_PAGE), cursor, stopped, enqueue);
 
   let lastSeq = cursor;
   while (!stopped()) {
-    const page = bus.since(lastSeq, REPLAY_PAGE);
+    const page = await bus.since(lastSeq, REPLAY_PAGE);
     lastSeq = await sendEvents(page, lastSeq, stopped, enqueue);
     if (page.length < REPLAY_PAGE) break;
   }

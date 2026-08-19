@@ -202,6 +202,7 @@ const DEFAULTS: Config = {
   baseBranchFallbacks: ["main", "master"],
   // Under the heartbeat that writes the spans, so a report is never staler than
   // the data it reads was when it was computed.
+  dbPoolSize: 24,
   telemetryCacheMs: 15_000,
   watchdog: {
     // Three turns writing nothing, or five turns on the same file. Both were

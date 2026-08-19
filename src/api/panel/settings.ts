@@ -25,7 +25,7 @@ type SettingRowFor<P extends SettingPath> = {
 
 /** Everything the panel needs to draw the page: value, default, and whether it was changed. */
 export const getSettings = (async (ctx) => {
-  const set = overrides(ctx.db);
+  const set = await overrides(ctx.db);
   const cfg = ConfigSchema.parse(ctx.config);
   return json({
     settings: [...settablePaths()].map(([path, type]) => settingRow(cfg, set, path, type)),
@@ -37,10 +37,10 @@ export const SettingBody = SettingWriteSchema;
 
 export const postSetting = (async (ctx, _req, _p, b) => {
   const cfg = ConfigSchema.parse(ctx.config);
-  const why = putSetting(ctx.db, cfg, b.path, b.value);
+  const why = await putSetting(ctx.db, cfg, b.path, b.value);
   if (why) return bad(why);
   Object.assign(ctx.config, cfg);
-  ctx.bus.emit({
+  await ctx.bus.emit({
     author: "boss",
     kind: "state_change",
     body: `设置：${b.path} = ${b.value === null ? "恢复默认" : JSON.stringify(b.value)}`,
@@ -48,7 +48,7 @@ export const postSetting = (async (ctx, _req, _p, b) => {
   });
   // Some of these change what may be dispatched right now — raising `maxGroups`
   // is only a number until something looks at the queue again.
-  ctx.sched.tick();
+  await ctx.sched.tick();
   return message("ok");
 }) satisfies Handler<z.infer<typeof SettingBody>>;
 

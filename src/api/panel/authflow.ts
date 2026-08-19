@@ -42,7 +42,6 @@ import { errText } from "../../platform/process/text.ts";
 import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/login-flow.ts";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { escalation, grp, project, runtime_auth } from "../../platform/persistence/schema.ts";
 
 /**
@@ -60,7 +59,7 @@ import { escalation, grp, project, runtime_auth } from "../../platform/persisten
 // `trailers` rides along: the Claude block draws one of the three switches, and
 // a second fetch for one boolean is a second thing that can be stale.
 export const getAuth = (async (ctx) =>
-  json({ runtimes: listAuth(ctx.db), trailers: trailers(ctx.db) })) satisfies Handler;
+  json({ runtimes: await listAuth(ctx.db), trailers: await trailers(ctx.db) })) satisfies Handler;
 
 /**
  * `secret` is not length-capped and not logged. A pasted `auth.json` is tens of
@@ -78,8 +77,8 @@ export const postAuth = (async (ctx, _req, _p, b) => {
   // account. Removing it is the only way back to "not configured", which is a
   // state the scheduler and the panel both understand.
   if ("clear" in b) {
-    orm(ctx.db).delete(runtime_auth).where(eq(runtime_auth.runtime, b.runtime)).run();
-    for (const g of orm(ctx.db).select({ id: grp.id }).from(grp).where(isNotNull(grp.sandbox_id)).all()) {
+    await ctx.db.delete(runtime_auth).where(eq(runtime_auth.runtime, b.runtime));
+    for (const g of await ctx.db.select({ id: grp.id }).from(grp).where(isNotNull(grp.sandbox_id))) {
       await killSandbox(ctx, { grp: g.id });
     }
     return message("ok");
@@ -98,7 +97,7 @@ export const postAuth = (async (ctx, _req, _p, b) => {
       return bad(
         "没找到沙盒服务器的配置。它是用 --config 启动的，把那个文件的路径放进 OPENSANDBOX_CONFIG，或者放在 ./sandbox.toml、~/.sandbox.toml。",
       );
-    saveAuth(ctx.db, {
+    await saveAuth(ctx.db, {
       runtime: SANDBOX_KEY,
       mode: "api_key",
       secret: found.key,
@@ -127,7 +126,7 @@ export const postAuth = (async (ctx, _req, _p, b) => {
     // later cannot make this key follow it. `sandboxKeyFor` is the reader.
     auth = { ...auth, baseUrl: `http://${server}` };
   }
-  saveAuth(ctx.db, auth);
+  await saveAuth(ctx.db, auth);
   await credentialChanged(ctx, auth.runtime);
   return message("ok");
 }) satisfies Handler<z.infer<typeof AuthBody>>;
@@ -164,35 +163,33 @@ async function sandboxKeyWorks(server: string, key: string): Promise<"ok" | "inv
  * every way in has to do it, not just the one that happens to be edited.
  */
 export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void> {
-  for (const g of orm(ctx.db).select({ id: grp.id }).from(grp).where(isNotNull(grp.sandbox_id)).all()) {
+  for (const g of await ctx.db.select({ id: grp.id }).from(grp).where(isNotNull(grp.sandbox_id))) {
     await killSandbox(ctx, { grp: g.id });
   }
   const prefix = `${runtime} 的凭据`;
-  orm(ctx.db)
+  await ctx.db
     .update(escalation)
     .set({
       chain_state: "answered",
       answered_by: "boss",
       answer: "reconfigured",
-      // Raw: SQLite's clock, not this process's, as the statement it replaces had.
-      answered_at: sql`unixepoch() * 1000`,
+      answered_at: Date.now(),
     })
     // `isNull`, not `eq(..., null)`: `= NULL` is NULL, which matches nothing.
     // The prefix test stays raw — `substr`/`length` have no builder, and `like`
     // would read the `%` and `_` in a runtime name as wildcards.
-    .where(and(isNull(escalation.answer), sql`substr(${escalation.question}, 1, length(${prefix})) = ${prefix}`))
-    .run();
+    .where(and(isNull(escalation.answer), sql`substr(${escalation.question}, 1, length(${prefix})) = ${prefix}`));
   // Only the groups this credential stopped. Unscoped, this matches every PAUSED
   // row there is — a hand-paused group, a budget-burnt one, a rate-limited one
   // still carrying `rl_resets_at` that watchdog rule 6 then never clears.
-  release(ctx, null, { only: `auth:${runtime}` });
+  await release(ctx, null, { only: `auth:${runtime}` });
   // A different account commits under a different name, and a stale one would
   // sign off as somebody who is no longer connected.
   if (runtime === "github") {
-    forgetIdentity(ctx);
-    forgetGithubConnection(ctx);
+    await forgetIdentity(ctx);
+    await forgetGithubConnection(ctx);
   }
-  ctx.sched.tick();
+  await ctx.sched.tick();
 }
 
 /**
@@ -238,7 +235,7 @@ export const postClaudeLogin = (async (ctx) => {
   void run.done.then(async (r) => {
     claudeFlow = null;
     if (r.ok) await credentialChanged(ctx, "claude");
-    ctx.bus.emit({
+    await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
       body: r.ok ? "claude 登录好了" : `claude 登录没成：${r.detail}`,
@@ -295,13 +292,13 @@ function livePending(): GhFlow | null {
 export async function finishGithubLogin(ctx: Ctx, d: DeviceCode, fetchFn?: DeviceFlowFetcher): Promise<void> {
   try {
     const token = await pollForToken(d, fetchFn ? { fetchFn } : {});
-    saveAuth(ctx.db, { runtime: "github", mode: "api_key", secret: token });
+    await saveAuth(ctx.db, { runtime: "github", mode: "api_key", secret: token });
     // Every running sandbox holds the old (absent) credential in its sidecar.
     await credentialChanged(ctx, "github");
-    ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "GitHub 连上了" });
+    await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "GitHub 连上了" });
   } catch (e) {
     ghError = errText(e);
-    ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `GitHub 没连上：${ghError}` });
+    await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `GitHub 没连上：${ghError}` });
   } finally {
     ghFlow = null;
   }
@@ -351,9 +348,9 @@ export const postCodexDevice = (async (ctx) => {
     return bad("容器里的 codex 没打印出登录码 —— 镜像里跑一下 `codex login --device-auth` 看看。");
   }
   codexFlow = { code: both.code, url: both.url, expiresAt: startedAt + DEVICE_CODE_TTL_MS };
-  void run.done.then((r) => {
+  void run.done.then(async (r) => {
     codexFlow = null;
-    ctx.bus.emit({
+    await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
       body: r.ok ? "codex 登录好了" : `codex 登录没成：${r.detail}`,
@@ -442,8 +439,8 @@ const Snapshot = z.object({
 });
 
 /** Cleared when the GitHub credential changes, beside the commit identity. */
-const forgetGithubConnection = (ctx: Ctx): void => {
-  if (ctx.db) writeSetting(ctx.db, SNAPSHOT_KEY, null);
+const forgetGithubConnection = async (ctx: Ctx): Promise<void> => {
+  if (ctx.db) await writeSetting(ctx.db, SNAPSHOT_KEY, null);
 };
 
 /**
@@ -462,13 +459,13 @@ async function readConnection(ctx: Ctx, gh: NonNullable<Ctx["gh"]>, signal?: Abo
   };
   // Only a usable answer is kept. Storing a failed read would turn one
   // unreachable moment into ten minutes of 连接已失效.
-  if (account) writeSetting(ctx.db, SNAPSHOT_KEY, JSON.stringify(snapshot));
+  if (account) await writeSetting(ctx.db, SNAPSHOT_KEY, JSON.stringify(snapshot));
   return snapshot;
 }
 
 export const getGithubLogin = (async (ctx, req, _params, query) => {
-  const a = loadAuth(ctx.db, "github");
-  const cached = a ? jsonOr(readSetting(ctx.db, SNAPSHOT_KEY), Snapshot.nullable(), null) : null;
+  const a = await loadAuth(ctx.db, "github");
+  const cached = a ? jsonOr(await readSetting(ctx.db, SNAPSHOT_KEY), Snapshot.nullable(), null) : null;
   const usable = cached && !query?.fresh && Date.now() - cached.at < SNAPSHOT_TTL_MS ? cached : null;
 
   //
@@ -497,7 +494,7 @@ export const getGithubLogin = (async (ctx, req, _params, query) => {
     pending: waiting ? { userCode: waiting.userCode, verificationUri: waiting.verificationUri } : null,
     error: ghError,
     /** On this route because both answers come from the connection above. */
-    trailers: trailers(ctx.db),
+    trailers: await trailers(ctx.db),
     identity: await commitIdentity(ctx),
     bot: { ...BOT },
   });
@@ -511,7 +508,9 @@ export const TrailersBody = z.object({
 });
 
 export const postTrailers = (async (ctx, _req, _p, b) => {
-  return json(setTrailers(ctx.db, Object.fromEntries(Object.entries(b).filter((entry) => entry[1] !== undefined))));
+  return json(
+    await setTrailers(ctx.db, Object.fromEntries(Object.entries(b).filter((entry) => entry[1] !== undefined))),
+  );
 }) satisfies Handler<z.infer<typeof TrailersBody>>;
 
 /**
@@ -523,7 +522,7 @@ export const GithubReposQuery = z.object({ installation: z.coerce.number().int()
 
 export const getGithubRepos = (async (ctx, req, _params, { installation: asked = 0 }) => {
   if (!ctx.gh) return bad("this server has no GitHub client");
-  if (!loadAuth(ctx.db, "github")) return bad("还没连 GitHub，先去设置里连一下");
+  if (!(await loadAuth(ctx.db, "github"))) return bad("还没连 GitHub，先去设置里连一下");
   // Both at once when the caller names an installation, which it does on every
   // open after the first. The first open of a session still has to learn the id
   // before it can ask.
@@ -541,13 +540,10 @@ export const getGithubRepos = (async (ctx, req, _params, { installation: asked =
   // repository added here is `owner/name`.
   // Which project, not whether: naming it makes an 已添加 row a route rather than
   // a dead end.
-  const taken = new Map(
-    orm(ctx.db)
-      .select({ id: project.id, name: project.name, repo_path: project.repo_path })
-      .from(project)
-      .all()
-      .map((r) => [r.repo_path, { id: r.id, name: r.name }] as const),
-  );
+  const registered = await ctx.db
+    .select({ id: project.id, name: project.name, repo_path: project.repo_path })
+    .from(project);
+  const taken = new Map(registered.map((r) => [r.repo_path, { id: r.id, name: r.name }] as const));
   return json({
     installations: inst.data,
     selected,

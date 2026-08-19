@@ -1,17 +1,16 @@
-import { sql } from "drizzle-orm";
 import type { Ctx } from "../../mech/ctx.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { channel, grp as grpTable } from "../../platform/persistence/schema.ts";
 import { addNote } from "../util/rows.ts";
 
 /**
- * Starting a requirement: the five writes that have to happen together.
+ * Starting a requirement: the writes that have to happen together.
  *
- * A row, its channel, the idea on the blackboard, and the same idea on the
- * timeline. Four places did this by hand and had already drifted — one set
- * `owns_json`, one passed the channel id to the emit, one wrote a different
- * author. None of those was a decision; they are the order the four were written
- * in.
+ * A row, its channel and the idea on the blackboard, in one transaction; the
+ * same idea on the timeline once it commits, because the bus holds the pool and
+ * not this transaction's handle. Four places did this by hand and had already
+ * drifted — one set `owns_json`, one passed the channel id to the emit, one
+ * wrote a different author. None of those was a decision; they are the order the
+ * four were written in.
  */
 /**
  * Queueing the planning turn is deliberately **not** here. It looks like the fifth
@@ -38,9 +37,9 @@ export interface NewGroup {
   sharedGrant?: string[];
 }
 
-export function newGroup(ctx: Ctx, g: NewGroup): { id: number; channelId: number } {
-  return ctx.db.transaction(() => {
-    const grp = orm(ctx.db)
+export async function newGroup(ctx: Ctx, g: NewGroup): Promise<{ id: number; channelId: number }> {
+  const made = await ctx.bus.transaction(async (tx) => {
+    const [grp] = await tx
       .insert(grpTable)
       .values({
         project_id: g.projectId,
@@ -49,34 +48,45 @@ export function newGroup(ctx: Ctx, g: NewGroup): { id: number; channelId: number
         status: "PLANNING",
         shared_grant: g.sharedGrant?.length ? JSON.stringify(g.sharedGrant) : null,
         // Was `coalesce(?, '[]')` around a bound NULL. `owns_json` is NOT NULL
-        // DEFAULT '[]' and a bound NULL overrides the default rather than falling
-        // back to it, so the empty value is written directly instead.
-        owns_json: g.owns?.length ? JSON.stringify(g.owns) : "[]",
-        created_at: sql`unixepoch() * 1000`,
+        // DEFAULT and a bound NULL overrides the default rather than falling back
+        // to it, so the empty value is written directly instead. It is `jsonb`, so
+        // what goes in is the array itself and never a string of one.
+        owns_json: g.owns?.length ? g.owns : [],
+        created_at: Date.now(),
       })
-      .returning({ id: grpTable.id })
-      .get();
+      .returning({ id: grpTable.id });
+    if (!grp) throw new Error("group insert returned no row");
 
     // `channel.grp_id` is the only link between the two; a reverse pointer on grp
     // would be a second source of truth for the same edge.
-    const ch = orm(ctx.db)
+    const [ch] = await tx
       .insert(channel)
-      .values({ project_id: g.projectId, grp_id: grp.id, kind: "group", created_at: sql`unixepoch() * 1000` })
-      .returning({ id: channel.id })
-      .get();
+      .values({
+        project_id: g.projectId,
+        grp_id: grp.id,
+        kind: "group",
+        created_at: Date.now(),
+      })
+      .returning({ id: channel.id });
+    if (!ch) throw new Error("channel insert returned no row");
 
     // Two bodies, not one. The blackboard note carries what a planner needs to
     // read alongside the ask — attachment paths, which group this was split out of
     // — and the timeline carries the ask itself. Collapsing them puts file paths
     // and provenance into the line the boss reads back as "what I asked for".
-    addNote(ctx.db, {
+    await addNote(tx, {
       projectId: g.projectId,
       grpId: grp.id,
       kind: "fact",
       lang: ctx.config.language,
       body: g.note ?? g.idea,
     });
-    ctx.bus.emit({
+    // Inside, not after. It sat after because the bus held the pool and not this
+    // transaction's handle, so the idea would have reached the timeline on
+    // another connection whatever happened here. `Bus.emit` joins the open
+    // transaction now — and a group whose creation rolled back must not leave
+    // its idea on the timeline with no requirement behind it.
+    await ctx.bus.emit({
       grpId: grp.id,
       channelId: ch.id,
       author: g.author ?? "boss",
@@ -85,5 +95,6 @@ export function newGroup(ctx: Ctx, g: NewGroup): { id: number; channelId: number
       body: g.idea,
     });
     return { id: grp.id, channelId: ch.id };
-  })();
+  });
+  return made;
 }

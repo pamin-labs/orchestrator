@@ -5,7 +5,9 @@ import { z } from "zod";
 import type { DB } from "../platform/persistence/database.ts";
 import { projectConfig } from "./util/rows.ts";
 import { loadResource, type ResourceExec, runResource } from "./lease.ts";
-import { jsonOr } from "../contracts/json.ts";
+import { valueOr } from "../contracts/json.ts";
+import { eq } from "drizzle-orm";
+import { slice } from "../platform/persistence/schema.ts";
 
 /**
  * The deterministic gate: build, test, lint, typecheck, secret scan.
@@ -45,8 +47,9 @@ const GateState = z.record(z.string(), z.string());
  * `{"gates": ["test", "lint"]}` — resource names, so gates go through the same
  * validated templates as everything else and an agent still cannot invent one.
  */
-export function gatesFor(db: DB, projectId: number): string[] {
-  return (projectConfig(db, projectId).gates ?? []).flatMap((g) => GateName.safeParse(g).data ?? []);
+export async function gatesFor(db: DB, projectId: number): Promise<string[]> {
+  const config = await projectConfig(db, projectId);
+  return (config.gates ?? []).flatMap((g) => GateName.safeParse(g).data ?? []);
 }
 
 export interface RunGatesOptions {
@@ -82,7 +85,7 @@ export async function runGates(opts: RunGatesOptions): Promise<GateOutcome> {
 }
 
 async function runGatesInner(opts: RunGatesOptions): Promise<GateOutcome> {
-  const names = gatesFor(opts.db, opts.projectId);
+  const names = await gatesFor(opts.db, opts.projectId);
   const run = opts.run ?? runResource;
   const results: GateResult[] = [];
 
@@ -106,7 +109,7 @@ async function runGatesInner(opts: RunGatesOptions): Promise<GateOutcome> {
   mkdirSync(logDir, { recursive: true });
 
   for (const name of names) {
-    const def = loadResource(opts.db, name);
+    const def = await loadResource(opts.db, name);
     if (!def) {
       results.push({ name, pass: false, exitCode: 127, errorLines: [`unknown gate resource ${name}`] });
       break;
@@ -160,14 +163,13 @@ function formatFeedback(results: GateResult[]): string {
 }
 
 /** Merge a gate verdict into `slice.gates_json` without losing the other layers. */
-export function recordGate(db: DB, sliceId: number, layer: string, verdict: "pass" | "fail"): void {
-  const row = db.query<{ gates_json: string }, [number]>("SELECT gates_json FROM slice WHERE id = ?").get(sliceId);
-  const gates = jsonOr(row?.gates_json, GateState, {});
+export async function recordGate(db: DB, sliceId: number, layer: string, verdict: "pass" | "fail"): Promise<void> {
+  const gates = await gateState(db, sliceId);
   gates[layer] = verdict;
-  db.run("UPDATE slice SET gates_json = ? WHERE id = ?", [JSON.stringify(gates), sliceId]);
+  await db.update(slice).set({ gates_json: gates }).where(eq(slice.id, sliceId));
 }
 
-export function gateState(db: DB, sliceId: number): Record<string, string> {
-  const row = db.query<{ gates_json: string }, [number]>("SELECT gates_json FROM slice WHERE id = ?").get(sliceId);
-  return jsonOr(row?.gates_json, GateState, {});
+export async function gateState(db: DB, sliceId: number): Promise<Record<string, string>> {
+  const [row] = await db.select({ gates_json: slice.gates_json }).from(slice).where(eq(slice.id, sliceId));
+  return valueOr(row?.gates_json, GateState, {});
 }

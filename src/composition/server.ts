@@ -7,11 +7,10 @@ import { landGroup } from "../api/panel/group.ts";
 import { roleFor, type Ctx } from "../mech/ctx.ts";
 import { joinQueue } from "../mech/flow/mergequeue.ts";
 import { bindSandboxKey } from "../mech/sandbox/auth.ts";
-import { and, eq, max } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, like, sql } from "drizzle-orm";
 import { Bus, trimEvents } from "../platform/persistence/event-bus.ts";
-import { orm } from "../platform/persistence/orm.ts";
 import { projectOfGrp } from "../mech/util/rows.ts";
-import { grp, project, runtime_auth as runtimeAuth } from "../platform/persistence/schema.ts";
+import { maxMs, escalation, grp, job, project, runtime_auth as runtimeAuth } from "../platform/persistence/schema.ts";
 import { consola } from "consola";
 import {
   checkCapabilities,
@@ -55,7 +54,7 @@ import { hold } from "../mech/flow/intercept.ts";
 import { raise } from "../mech/flow/escalate.ts";
 import { restoreWorkspace } from "../mech/flow/start.ts";
 import { closeTelemetry, runtimeStatus, type RuntimeStatus } from "../platform/observability/metrics.ts";
-import { ACTIVE_JOB_STATES, stateParam } from "../contracts/states.ts";
+import { ACTIVE_JOB_STATES } from "../contracts/states.ts";
 import { configureTracing } from "../platform/observability/otel.ts";
 import { trimSpans } from "../platform/observability/span-store.ts";
 import { configureStructuredLogging } from "../platform/observability/logging.ts";
@@ -101,7 +100,7 @@ export async function shutdownRuntime(
     stopIntake: () => boolean;
     drain: () => Promise<void>;
     gracefulStop: () => Promise<void>;
-    reclaim: () => void;
+    reclaim: () => Promise<void>;
     abort: () => void;
     forceStop: () => Promise<void>;
     close: () => void;
@@ -115,7 +114,7 @@ export async function shutdownRuntime(
     ops.sleep(deadlineMs).then(() => false),
   ]);
   if (!graceful) {
-    ops.reclaim();
+    await ops.reclaim();
     ops.abort();
     await ops.forceStop();
     await Promise.race([ops.drain(), ops.sleep(1_000)]);
@@ -184,7 +183,7 @@ export interface HeartbeatDeps {
  * every branch here is reachable without starting the process and waiting out an
  * interval. Only the re-arming stays in the callback: that is about the handle.
  */
-export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }: HeartbeatDeps): void {
+export async function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }: HeartbeatDeps): Promise<void> {
   // The watchdog is an ordinary job, and one in flight is enough.
   //
   // `pending` **or** `running`: a tick can outlast the interval that drives it,
@@ -192,33 +191,39 @@ export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }
   // Two watchdogs at once is worse than a slow one — the rules keep module state
   // (the server argv last seen, the sweep clock, which projects were warned)
   // that a second run would race.
-  const queued = db
-    .query<{ c: number }, [string]>(
-      "SELECT count(*) AS c FROM job WHERE kind = 'watchdog' AND state IN (SELECT value FROM json_each(?))",
-    )
-    .get(stateParam(ACTIVE_JOB_STATES))!.c;
-  if (queued === 0) sched.enqueue("watchdog", {});
-  sched.tick();
+  const [queued] = await db
+    .select({ c: count() })
+    .from(job)
+    .where(and(eq(job.kind, "watchdog"), inArray(job.state, [...ACTIVE_JOB_STATES])));
+  // `?? 0`, so a row that somehow did not come back still enqueues: a watchdog
+  // that never fires is the failure this whole block exists to prevent, and a
+  // duplicate one is caught by the same count on the next tick.
+  if ((queued?.c ?? 0) === 0) await sched.enqueue("watchdog", {});
+  await sched.tick();
 
   // Span retention, on the tick rather than on the span. A trace arriving is not
   // a reason to run housekeeping, and this is already the process's periodic
   // driver — a timer of its own would be a second thing to arm and shut down.
-  trimSpans(db);
+  await trimSpans(db);
   // The same for events, which had no retention at all: the only `DELETE FROM
   // event` in the tree was project deletion, so an installation kept every
   // `state_change` it had ever emitted and a stale SSE cursor replayed all of them.
-  trimEvents(db, ctx.config.eventRetentionMs);
+  await trimEvents(db, ctx.config.eventRetentionMs);
 
   // Everything waiting on the boss, as one message. The CoS is meant to do this
   // in its own words; this is the backstop for when it does not run at all.
-  const waiting = db
-    .query<PendingItem, []>(
-      `SELECT e.id, e.severity, e.question, e.grp_id AS grpId, g.name AS "group"
-         FROM escalation e LEFT JOIN grp g ON g.id = e.grp_id
-         WHERE e.chain_state = 'boss' AND e.answer IS NULL
-         ORDER BY e.created_at, e.id`,
-    )
-    .all();
+  const waiting: PendingItem[] = await db
+    .select({
+      id: escalation.id,
+      severity: escalation.severity,
+      question: escalation.question,
+      grpId: escalation.grp_id,
+      group: grp.name,
+    })
+    .from(escalation)
+    .leftJoin(grp, eq(grp.id, escalation.grp_id))
+    .where(and(eq(escalation.chain_state, "boss"), isNull(escalation.answer)))
+    .orderBy(asc(escalation.created_at), asc(escalation.id));
   const batched = batchForBoss(waiting, url);
   if (batched) void notifier.push(batched);
 
@@ -245,8 +250,8 @@ export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }
   if (!inFlight.poll) {
     inFlight.poll = track(
       pollPrs(ctx, gh)
-        .then((fs) => {
-          for (const f of fs) applyPrOutcome(ctx, f, url, notifier);
+        .then(async (fs) => {
+          for (const f of fs) await applyPrOutcome(ctx, f, url, notifier);
         })
         .catch((e: unknown) => consola.error(`pollPrs: ${errText(e)}`)),
     ).finally(() => {
@@ -266,16 +271,18 @@ export function reportRejection(bus: Bus, e: unknown, said: string): string {
   const why = (e instanceof Error ? (e.stack ?? e.message) : String(e)).slice(0, 600);
   consola.error(`unhandled rejection (kept running):\n${why}`);
   if (why === said) return said;
-  try {
-    bus.emit({
+  // Detached with its failure handled, not awaited: the caller is a
+  // `process.on("unhandledRejection")` listener, which is synchronous and cannot
+  // be made otherwise. If the record is the thing that failed, the console line
+  // above is the report.
+  void bus
+    .emit({
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
       body: `有个后台任务崩了，服务没跟着退出。这是个 bug，请把这段贴给开发：\n${why.slice(0, 400)}`,
-    });
-  } catch {
-    // The record is the thing that failed. The console line above is the report.
-  }
+    })
+    .catch(() => {});
   return why;
 }
 
@@ -287,14 +294,14 @@ export function reportRejection(bus: Bus, e: unknown, said: string): string {
  * Order matters — a PR can come back merged *and* closed in one poll, and
  * treating that as a close stops a group whose work is already on main.
  */
-export function applyPrOutcome(ctx: Ctx, f: Feedback, url: string, notifier: Notifier): void {
+export async function applyPrOutcome(ctx: Ctx, f: Feedback, url: string, notifier: Notifier): Promise<void> {
   if (f.merged) {
-    landGroup(ctx, f.grpId, "github");
+    await landGroup(ctx, f.grpId, "github");
     return;
   }
-  if (f.closed) return prClosed(ctx, f.grpId, f.prNumber, url, notifier);
-  if (f.reopened) return prReopened(ctx, f.grpId, f.prNumber);
-  dispatchFeedback(ctx, f);
+  if (f.closed) return await prClosed(ctx, f.grpId, f.prNumber, url, notifier);
+  if (f.reopened) return await prReopened(ctx, f.grpId, f.prNumber);
+  await dispatchFeedback(ctx, f);
 }
 
 /**
@@ -305,10 +312,10 @@ export function applyPrOutcome(ctx: Ctx, f: Feedback, url: string, notifier: Not
  * as a group waiting on the boss, with both exits stated, and reopens nothing
  * automatically — the close was deliberate.
  */
-function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): void {
-  const g = orm(ctx.db).select({ name: grp.name }).from(grp).where(eq(grp.id, grpId)).get();
-  hold(ctx.db, grpId, { reason: "merge", settled: true, from: "PR_OPEN", leaveQueue: true });
-  raise(ctx.db, {
+async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): Promise<void> {
+  const [g] = await ctx.db.select({ name: grp.name }).from(grp).where(eq(grp.id, grpId));
+  await hold(ctx.db, grpId, { reason: "merge", settled: true, from: "PR_OPEN", leaveQueue: true });
+  await raise(ctx.db, {
     grpId,
     brief: "PR 被关掉了，要不要重开",
     chain: "boss",
@@ -316,7 +323,7 @@ function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifi
       `PR #${prNumber} 被关掉了（没有合入）。这一组已经停下并让出了合入队列。\n` +
       `要继续：在 GitHub 上重开这个 PR，它会自己回到队列。不想要了：在这个需求上点「不做了」。`,
   });
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId,
     author: "pr-watcher",
     kind: "escalation",
@@ -334,27 +341,35 @@ function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifi
 }
 
 /** Reopened on GitHub: back into the queue, and the question that asked is answered. */
-function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
-  orm(ctx.db)
+async function prReopened(ctx: Ctx, grpId: number, prNumber: number): Promise<void> {
+  await ctx.db
     .update(grp)
     .set({ status: "PR_OPEN", paused_at: null, pause_reason: null })
-    .where(and(eq(grp.id, grpId), eq(grp.status, "PAUSED")))
-    .run();
+    .where(and(eq(grp.id, grpId), eq(grp.status, "PAUSED")));
+  // The question this answers is the one `prClosed` asked, matched on its opening
+  // line. `substr(question, 1, length(?)) = ?` was a prefix test; `like` with the
+  // prefix escaped is the same test, and the escape matters — a PR number cannot
+  // contain `%`, but the rest of the prefix is not ours to promise about.
   const prefix = `PR #${prNumber} 被关掉了`;
-  ctx.db.run(
-    `UPDATE escalation SET chain_state = 'answered', answered_by = 'github', answer = 'reopened'
-     WHERE grp_id = ? AND answer IS NULL AND substr(question, 1, length(?)) = ?`,
-    [grpId, prefix, prefix],
-  );
-  joinQueue(ctx.db, grpId);
-  ctx.bus.emit({
+  await ctx.db
+    .update(escalation)
+    .set({ chain_state: "answered", answered_by: "github", answer: "reopened" })
+    .where(
+      and(
+        eq(escalation.grp_id, grpId),
+        isNull(escalation.answer),
+        like(escalation.question, `${prefix.replaceAll(/[%_\\]/g, "\\$&")}%`),
+      ),
+    );
+  await joinQueue(ctx.db, grpId);
+  await ctx.bus.emit({
     grpId,
     author: "pr-watcher",
     kind: "state_change",
     body: `PR #${prNumber} was reopened; back in the merge queue`,
     meta: { pr: prNumber },
   });
-  ctx.sched.tick();
+  await ctx.sched.tick();
 }
 
 /**
@@ -390,11 +405,10 @@ function memory(db: DB): IndexMemory {
 }
 
 /** When the runtimes' credentials last changed. Rule 17b reads the same row. */
-const authStamp = (db: DB): number =>
-  orm(db)
-    .select({ at: max(runtimeAuth.updated_at) })
-    .from(runtimeAuth)
-    .get()?.at ?? 0;
+const authStamp = async (db: DB): Promise<number> => {
+  const [row] = await db.select({ at: maxMs(runtimeAuth.updated_at) }).from(runtimeAuth);
+  return row?.at ?? 0;
+};
 
 /**
  * Whether a pass would be spending calls that cannot be answered.
@@ -459,10 +473,10 @@ export function routeRequest(path: string, peer: () => string | undefined): "ind
   return isApplicationPath(path) ? "app" : "file";
 }
 
-export function reportServerState(ctx: Ctx, st: ServerState): void {
+export async function reportServerState(ctx: Ctx, st: ServerState): Promise<void> {
   if (st.kind === "started") {
     consola.success(`opensandbox-server started (pid ${st.pid}, ${st.config})`);
-    ctx.bus.emit({
+    await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
       body: `沙盒服务器起好了（我们起的，pid ${st.pid}）`,
@@ -482,7 +496,7 @@ export function reportServerState(ctx: Ctx, st: ServerState): void {
   // accident: a reconnect to our own process is not news.
   if (st.kind === "ours") return;
   consola.warn(`opensandbox-server running (pid ${st.pid}) but not drivable: ${st.why}`);
-  ctx.bus.emit({
+  await ctx.bus.emit({
     author: "orchestrator",
     kind: "escalation",
     intent: "inform",
@@ -493,7 +507,7 @@ export function reportServerState(ctx: Ctx, st: ServerState): void {
   });
 }
 
-export function indexThrew(ctx: Ctx, error: unknown, now = Date.now()): void {
+export async function indexThrew(ctx: Ctx, error: unknown, now = Date.now()): Promise<void> {
   const reason = errText(error);
   const mem = memory(ctx.db);
   mem.blockedUntil = now + INDEX_THROW_BACKOFF_MS;
@@ -501,11 +515,11 @@ export function indexThrew(ctx: Ctx, error: unknown, now = Date.now()): void {
   // news however many times it happens, and a different one is worth saying.
   if (reason === mem.lastError) return;
   mem.lastError = reason;
-  ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${reason}` });
+  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${reason}` });
 }
 
-export function indexPaused(db: DB, projectId: number): boolean {
-  return memory(db).down.get(projectId) === authStamp(db);
+export async function indexPaused(db: DB, projectId: number): Promise<boolean> {
+  return memory(db).down.get(projectId) === (await authStamp(db));
 }
 
 /**
@@ -516,19 +530,23 @@ export function indexPaused(db: DB, projectId: number): boolean {
  * to ask — and the second of those used to be decided *after* a container
  * checkout had already been paid for.
  */
-export function indexTargets(db: DB, now = Date.now()): IndexProject[] {
+export async function indexTargets(db: DB, now = Date.now()): Promise<IndexProject[]> {
   if (now < memory(db).blockedUntil) return [];
-  return orm(db)
-    .select({ id: project.id, remote: project.remote })
-    .from(project)
-    .all()
-    .flatMap((p) => (p.remote && !indexPaused(db, p.id) ? [{ id: p.id, remote: p.remote }] : []));
+  const rows = await db.select({ id: project.id, remote: project.remote }).from(project);
+  const targets: IndexProject[] = [];
+  // `indexPaused` rather than its two lines inlined, even though that means one
+  // read of the same row per project: it is the rule a test asserts on directly,
+  // and a second copy here is a second thing to keep true.
+  for (const p of rows) {
+    if (p.remote && !(await indexPaused(db, p.id))) targets.push({ id: p.id, remote: p.remote });
+  }
+  return targets;
 }
 
 async function refreshIndex(ctx: Ctx): Promise<void> {
   const askIn = ctx.askIn;
   if (!askIn) return;
-  for (const project of indexTargets(ctx.db)) await refreshProjectIndex(ctx, project, askIn);
+  for (const project of await indexTargets(ctx.db)) await refreshProjectIndex(ctx, project, askIn);
 }
 
 type AskIn = NonNullable<Ctx["askIn"]>;
@@ -543,7 +561,7 @@ async function refreshProjectIndex(ctx: Ctx, project: IndexProject, askIn: AskIn
   const at = indexStamp(heads);
   if (at && memory(ctx.db).at.get(project.id) === at) return;
   const result = await buildProjectIndex(ctx.db, project.id, heads, askIn);
-  recordIndexResult(ctx, project.id, at, result);
+  await recordIndexResult(ctx, project.id, at, result);
 }
 
 async function indexHeads(ctx: Ctx, project: IndexProject, base: string): Promise<Map<string, string> | null> {
@@ -557,16 +575,16 @@ async function indexHeads(ctx: Ctx, project: IndexProject, base: string): Promis
     });
     return await treeHeads(ctx, scope, HEAD_CHARS);
   } catch (error) {
-    warnIndexOnce(ctx, project.id, error);
+    await warnIndexOnce(ctx, project.id, error);
     return null;
   }
 }
 
-function warnIndexOnce(ctx: Ctx, projectId: number, error: unknown): void {
+async function warnIndexOnce(ctx: Ctx, projectId: number, error: unknown): Promise<void> {
   const warned = memory(ctx.db).warned;
   if (warned.has(projectId)) return;
   warned.add(projectId);
-  ctx.bus.emit({
+  await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
     body: `索引刷不了：这个项目的容器起不来（${errText(error)}）。`,
@@ -585,16 +603,17 @@ function indexStamp(heads: Map<string, string>): string {
  * cheapest tier catches up over a few minutes and then costs nothing.
  */
 async function buildProjectIndex(db: DB, projectId: number, heads: Map<string, string>, askIn: AskIn) {
-  const excludes = indexExcludes(db, projectId);
+  const excludes = await indexExcludes(db, projectId);
   const files = [...heads.keys()].filter((file) => indexable(file, excludes));
-  const notes = noteLeaves(db, projectId);
+  const notes = await noteLeaves(db, projectId);
+  const previous = (await loadTree(db, projectId)) ?? {};
   const result = await summarise(
     skeleton([...files, ...notes.ids]),
     (id) => (id.startsWith(NOTE_PREFIX) ? notes.read(id) : (heads.get(id) ?? null)),
     askIn({ project: projectId }),
-    { previous: loadTree(db, projectId) ?? {}, maxCalls: 12 },
+    { previous, maxCalls: 12 },
   );
-  saveTree(db, projectId, result.tree);
+  await saveTree(db, projectId, result.tree);
   return { calls: result.calls, failed: result.failed, files: files.length };
 }
 
@@ -606,20 +625,20 @@ async function buildProjectIndex(db: DB, projectId: number, heads: Map<string, s
  * model being down rather than the repository being broken, and a pass that made
  * no calls at all says nothing and must not clear the down flag.
  */
-export function recordIndexResult(
+export async function recordIndexResult(
   ctx: Ctx,
   projectId: number,
   at: string,
   result: { calls: number; failed: number; files: number },
-): void {
+): Promise<void> {
   if (at && result.calls < 12 && result.failed === 0) memory(ctx.db).at.set(projectId, at);
-  if (result.failed > 0 && result.failed === result.calls) return warnModelDown(ctx, projectId, result.failed);
+  if (result.failed > 0 && result.failed === result.calls) return await warnModelDown(ctx, projectId, result.failed);
   if (!result.calls) return;
   memory(ctx.db).down.delete(projectId);
   // A pass that worked is the only evidence the throw path has recovered.
   memory(ctx.db).blockedUntil = 0;
   memory(ctx.db).lastError = "";
-  ctx.bus.emit({
+  await ctx.bus.emit({
     author: roleFor(ctx, "compress_context"),
     kind: "state_change",
     body: `PageIndex: summarised ${result.calls - result.failed} node(s), ${result.files} files indexed`,
@@ -634,12 +653,12 @@ export function recordIndexResult(
  * itself, a group-scoped one bills the group's project; there is no util case,
  * because nothing in the utility container asks a model.
  */
-export function chargedProject(db: DB, scope: Scope): number | undefined {
+export async function chargedProject(db: DB, scope: Scope): Promise<number | undefined> {
   if ("project" in scope) return scope.project;
   if (!("grp" in scope)) return undefined;
   // `?? undefined`, not the helper's `null`: the return says "no project" with
   // `undefined`, and `chargeIndex` is skipped on a falsy value either way.
-  return projectOfGrp(db, scope.grp) ?? undefined;
+  return (await projectOfGrp(db, scope.grp)) ?? undefined;
 }
 
 /**
@@ -648,12 +667,12 @@ export function chargedProject(db: DB, scope: Scope): number | undefined {
  * Once *per state* rather than once ever: if the boss signs the index runtime in
  * and it still fails, that is news and not a repeat.
  */
-function warnModelDown(ctx: Ctx, projectId: number, failed: number): void {
-  const stamp = authStamp(ctx.db);
+async function warnModelDown(ctx: Ctx, projectId: number, failed: number): Promise<void> {
+  const stamp = await authStamp(ctx.db);
   const down = memory(ctx.db).down;
   if (down.get(projectId) === stamp) return;
   down.set(projectId, stamp);
-  ctx.bus.emit({
+  await ctx.bus.emit({
     author: roleFor(ctx, "compress_context"),
     kind: "escalation",
     intent: "inform",
@@ -683,7 +702,7 @@ function reArming(periodOf: () => number, work: () => void): () => void {
   return () => clearInterval(timer);
 }
 
-export function start(overrides: Partial<Config> = {}): Started {
+export async function start(overrides: Partial<Config> = {}, handle?: DB): Promise<Started> {
   // Overrides can put a relative dataDir back; the subprocesses cannot use one.
   const cfg = withAbsoluteDataDir({ ...loadConfig(), ...overrides });
   const missing = missingBinaries();
@@ -694,25 +713,27 @@ export function start(overrides: Partial<Config> = {}): Started {
   }
   mkdirSync(cfg.dataDir, { recursive: true });
 
-  const dbPath = join(cfg.dataDir, "orchestrator.sqlite");
-  const db = open(dbPath);
-  // The provider tokens are in `runtime_auth` in plain text, and the default 0644
-  // under 0755 is readable by every account on the machine — `.gitignore` is a
-  // different question from who on this host may read it. Best-effort: a
-  // filesystem that carries no modes is not a reason to refuse to start.
-  for (const p of [cfg.dataDir, dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
-    try {
-      chmodSync(p, p === cfg.dataDir ? 0o700 : 0o600);
-    } catch {}
-  }
+  // `ORCH_DATABASE_URL`, not a path under `dataDir`. The database is a PostgreSQL
+  // server now and `open()` throws by name when the variable is unset, which is
+  // the whole of the diagnosis. `dataDir` still holds turn logs, gate logs and
+  // attachments, so it is still made, still owned by this account only — those
+  // files are as readable as the credentials once were.
+  // `handle` is how the smoke test boots the real server: `open()` needs a
+  // connection string and a running PostgreSQL, and that suite's whole point is
+  // that the process comes up — skipping it when a database is missing is a
+  // green tick over the one test that starts the thing.
+  const db = handle ?? (await open(cfg.dbPoolSize));
+  try {
+    chmodSync(cfg.dataDir, 0o700);
+  } catch {}
   // The panel's settings, over the file's. Before anything reads `cfg`: the
   // scheduler, the watchdog timer and every handler share this one object.
-  applyOverrides(db, cfg);
+  await applyOverrides(db, cfg);
   // After the overrides, because the address it binds to has to be the one this
   // run will actually use. A key stored before the address travelled with it is
   // given the address in effect now; from then on `sandboxKeyFor` refuses to
   // send it anywhere else.
-  bindSandboxKey(db, cfg.sandbox.server);
+  await bindSandboxKey(db, cfg.sandbox.server);
 
   const bus = new Bus(db);
   const roles = loadRoles();
@@ -760,8 +781,16 @@ export function start(overrides: Partial<Config> = {}): Started {
       ? {
           askIn: (scope: Scope) =>
             modelAsk(ctx, cfg.indexModel, scope, undefined, (u) => {
-              const projectId = chargedProject(db, scope);
-              if (projectId) chargeIndex(ctx, projectId, cfg.indexModel, u, "grp" in scope ? scope.grp : undefined);
+              // Detached with its failure handled. `onUsage` is a synchronous
+              // callback the summariser fires per call, and this is the most
+              // frequent model call in the system — the charge must not be able
+              // to fail silently, but it must not hold up the answer either.
+              void chargedProject(db, scope)
+                .then(async (projectId) => {
+                  if (!projectId) return;
+                  await chargeIndex(ctx, projectId, cfg.indexModel, u, "grp" in scope ? scope.grp : undefined);
+                })
+                .catch((e: unknown) => consola.warn(`index call went uncharged: ${errText(e)}`));
             }),
         }
       : {}),
@@ -773,6 +802,7 @@ export function start(overrides: Partial<Config> = {}): Started {
     restoreWorkspace: (grpId) => restoreWorkspace(ctx, grpId),
     // One object, not a copy. See `Ctx` for what the copy used to cost.
     config: cfg,
+    version: VERSION,
   };
   const execDeps = { ctx, cfg, roles };
 
@@ -782,60 +812,60 @@ export function start(overrides: Partial<Config> = {}): Started {
    * with whatever the record can say by itself.
    */
   ctx.publishBranch = (grpId: number) => {
-    const grp = db
-      .query<{ name: string; repo_path: string }, [number]>(
-        "SELECT g.name, p.repo_path FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
-      )
-      .get(grpId);
-    void openPr({
+    void publishBranch(grpId)
+      // Detached, so anything the handler throws would surface against whoever is
+      // running when it lands rather than against the PR that caused it.
+      .catch((error: unknown) => consola.warn(`opening the PR for ${grpId} threw: ${errText(error)}`));
+  };
+  const publishBranch = async (grpId: number): Promise<void> => {
+    const [group] = await db
+      .select({ name: grp.name, repo_path: project.repo_path })
+      .from(grp)
+      .innerJoin(project, eq(project.id, grp.project_id))
+      .where(eq(grp.id, grpId));
+    await openPr({
       ctx,
       gh,
       grpId,
-      title: prTitle(ctx.db, grpId),
-      body: prBody(ctx.db, grpId),
-    })
-      .then((r) => {
-        if ("error" in r) {
-          // No remote, no gh auth, a rejected push: the branch has nowhere to go.
-          // Leave the queue rather than block it — a group at PR_OPEN with a null
-          // pr_number is one `pollPrs` skips forever, at the head of a serial
-          // queue — and stop waiting on the boss. Answering un-pauses it and the
-          // watchdog retries the PR, so there is no mechanism only for this.
-          hold(ctx.db, grpId, { reason: "merge", settled: true, leaveQueue: true });
-          raise(db, {
-            grpId,
-            question: `分支做完了但 PR 开不出来：${r.error}\n\n修好之后回答这条，这一组会自己重试。`,
-            brief: "PR 开不出来",
-            chain: "boss",
-          });
-          ctx.bus.emit({
-            grpId,
-            author: "orchestrator",
-            kind: "escalation",
-            intent: "ask",
-            severity: "blocker",
-            body: `could not open a PR: ${r.error}`,
-          });
-          void notifier.push({
-            key: `pr-open:${grpId}`,
-            tier: "immediate",
-            body: `${grp?.name ?? grpId}: PR 开不出来 — ${r.error}`.slice(0, 200),
-            url,
-          });
-        }
-      })
-      // Detached, so anything the handler throws would surface against whoever
-      // is running when it lands rather than against the PR that caused it. The
-      // PAUSED path above answers a *failed* PR; this answers a failure while
-      // answering one.
-      .catch((error: unknown) => consola.warn(`opening the PR for ${grpId} threw: ${errText(error)}`));
+      title: await prTitle(ctx.db, grpId),
+      body: await prBody(ctx.db, grpId),
+    }).then(async (r) => {
+      if ("error" in r) {
+        // No remote, no gh auth, a rejected push: the branch has nowhere to go.
+        // Leave the queue rather than block it — a group at PR_OPEN with a null
+        // pr_number is one `pollPrs` skips forever, at the head of a serial
+        // queue — and stop waiting on the boss. Answering un-pauses it and the
+        // watchdog retries the PR, so there is no mechanism only for this.
+        await hold(ctx.db, grpId, { reason: "merge", settled: true, leaveQueue: true });
+        await raise(db, {
+          grpId,
+          question: `分支做完了但 PR 开不出来：${r.error}\n\n修好之后回答这条，这一组会自己重试。`,
+          brief: "PR 开不出来",
+          chain: "boss",
+        });
+        await ctx.bus.emit({
+          grpId,
+          author: "orchestrator",
+          kind: "escalation",
+          intent: "ask",
+          severity: "blocker",
+          body: `could not open a PR: ${r.error}`,
+        });
+        void notifier.push({
+          key: `pr-open:${grpId}`,
+          tier: "immediate",
+          body: `${group?.name ?? grpId}: PR 开不出来 — ${r.error}`.slice(0, 200),
+          url,
+        });
+      }
+    });
   };
   exec = makeExecutor(execDeps);
   ctx.knownRoles = () => [...roles.keys()];
   ctx.roles = roles;
-  ctx.hire = (grpId, role, projectId) => {
+  ctx.hire = async (grpId, role, projectId) => {
     if (!roles.has(role)) return null;
-    return hire(execDeps, grpId, role, null, projectId ?? null).id;
+    return (await hire(execDeps, grpId, role, null, projectId ?? null)).id;
   };
   ctx.reviewVerdict = makeReviewVerdict(execDeps);
   ctx.auditVerdict = makeAuditVerdict(execDeps);
@@ -896,25 +926,32 @@ export function start(overrides: Partial<Config> = {}): Started {
     void notifier.push({ key: `${rule}:${grpId ?? 0}`, tier: tierFor(rule, severity), body, url });
   };
   ctx.notifyBoss = (escId, question, severity) => {
-    const g = db
-      .query<{ grp_id: number | null }, [number]>("SELECT grp_id FROM escalation WHERE id = ?")
-      .get(escId)?.grp_id;
-    void notifier.push({
-      key: `escalation:${escId}`,
-      tier: tierFor("blocker", severity),
-      body: question.slice(0, 300),
-      url: g ? `${url}/#g=${g}&v=progress` : url,
-    });
+    // Detached with its failure handled: `notifyBoss` is called from handlers that
+    // must not wait on a notification, and the group id only decides which page
+    // the link opens — a lookup that fails still has something worth pushing.
+    void db
+      .select({ grp_id: escalation.grp_id })
+      .from(escalation)
+      .where(eq(escalation.id, escId))
+      .then(([row]) =>
+        notifier.push({
+          key: `escalation:${escId}`,
+          tier: tierFor("blocker", severity),
+          body: question.slice(0, 300),
+          url: row?.grp_id ? `${url}/#g=${row.grp_id}&v=progress` : url,
+        }),
+      )
+      .catch((error: unknown) => consola.warn(`notifying the boss of ${escId} threw: ${errText(error)}`));
   };
 
   // Before the first tick: a turn that was in flight when the last server stopped
   // still holds its group's only slot, and that group would never move again.
-  const orphans = reclaimOrphans(db, { maxAgeMs: cfg.turnTimeoutMs * 4 });
+  const orphans = await reclaimOrphans(db, { maxAgeMs: cfg.turnTimeoutMs * 4 });
   if (orphans.length > 0) {
     // Freeing the slot is not the same as resuming the work: the slice stays
     // `running`, so the group looks busy to `startNextSlice` and never moves again.
-    const resumed = resumeReclaimed(sched, orphans);
-    bus.emit({
+    const resumed = await resumeReclaimed(sched, orphans);
+    await bus.emit({
       author: "orchestrator",
       kind: "state_change",
       body: `reclaimed ${orphans.length} turn(s) left running by the previous server, resumed ${resumed}`,
@@ -927,7 +964,10 @@ export function start(overrides: Partial<Config> = {}): Started {
   const inFlight: InFlight = { index: null, poll: null };
   const stopHeartbeat = reArming(
     () => cfg.watchdogIntervalMs,
-    () => heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }),
+    () =>
+      void track(heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight })).catch((e: unknown) =>
+        consola.error(`heartbeat: ${errText(e)}`),
+      ),
   );
 
   // The agents' only way out. Nothing in a sandbox can reach this process
@@ -938,7 +978,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   // The directory every sandbox mounts read-only. Rebuilt here because the boss
   // installs and uninstalls skills outside this process; a tick box rebuilds it
   // again, and neither needs a container restarted.
-  const skills = restageSkills(db, cfg.skillsDir);
+  const skills = await restageSkills(db, cfg.skillsDir);
   if (skills.failed.length) consola.warn(`skills skipped (dangling): ${skills.failed.join(", ")}`);
 
   // A server, if there is not one, and never one it did not start (`ensureServer`).
@@ -947,7 +987,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   // itself two seconds later.
   const sandboxServer = track(
     ensureServer(ctx)
-      .then((st) => reportServerState(ctx, st))
+      .then(async (st) => await reportServerState(ctx, st))
       .catch((e: unknown) => consola.error(`ensureServer: ${errText(e)}`)),
   );
 
@@ -961,8 +1001,10 @@ export function start(overrides: Partial<Config> = {}): Started {
       refreshRuntimeReadiness(runtime, () =>
         sandboxServer.then(() =>
           preflight({ db, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir, cacheDirs: cfg.sandbox.cacheDirs, cfg }).then(
-            (checks) => {
-              db.query<{ ok: number }, []>("SELECT 1 AS ok").get();
+            async (checks) => {
+              // A real round trip, not a handle that exists: `open()` migrated it
+              // at boot, and what this reports is whether it still answers.
+              await db.execute(sql`select 1`);
               return [{ name: "database", ok: true, detail: "migrated and queryable" }, ...checks];
             },
           ),
@@ -980,7 +1022,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   // for why neither may resolve it once at boot.
   const stopReadiness = reArming(() => readinessPeriodMs(cfg.watchdogIntervalMs), refreshReadiness);
 
-  sched.tick();
+  await sched.tick();
   let stopped = false;
   const stopIntake = () => {
     if (stopped) return false;
@@ -1013,14 +1055,18 @@ export function start(overrides: Partial<Config> = {}): Started {
           gracefulStop: async () => {
             await server.stop(false);
           },
-          reclaim: () => resumeReclaimed(sched, reclaimOrphans(db, { maxAgeMs: 0 })),
+          reclaim: async () => {
+            await resumeReclaimed(sched, await reclaimOrphans(db, { maxAgeMs: 0 }));
+          },
           abort: abortAll,
           forceStop: async () => {
             await server.stop(true);
           },
           close: () => {
+            // No `db.close()`: `DB` is a Drizzle query interface and the pool
+            // behind it belongs to `open()`. Shutting the pool down is that
+            // module's to expose; nothing here holds a driver handle to close.
             closeTelemetry();
-            db.close();
           },
           sleep: Bun.sleep,
         },
@@ -1060,7 +1106,7 @@ if (import.meta.main) {
   }
   configureStructuredLogging();
   reportConfig(loadConfig());
-  const { ctx, url, shutdown } = start();
+  const { ctx, url, shutdown } = await start();
   consola.info(`orchestrator on ${url}`);
   // The panel is served from `web/dist` and nothing rebuilds it, so a committed,
   // tested, typechecked UI change still shows the old page. Not rebuilt here on

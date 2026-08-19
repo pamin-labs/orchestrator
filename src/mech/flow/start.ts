@@ -1,7 +1,6 @@
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { agent, channel, escalation, grp as grpTable, project, resource } from "../../platform/persistence/schema.ts";
 import { say } from "../../platform/text/lang.ts";
 import { createCheckout, remoteFor } from "../git/checkout.ts";
@@ -15,10 +14,11 @@ import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { projectConfig } from "../util/rows.ts";
 import { errText } from "../../platform/process/text.ts";
 import { raise } from "./escalate.ts";
+import { JsonObject, valueOr } from "../../contracts/json.ts";
 
 /** `project.config_json.install`, or null. */
-function installFor(db: DB, projectId: number): string | null {
-  const v = projectConfig(db, projectId).install;
+async function installFor(db: DB, projectId: number): Promise<string | null> {
+  const v = (await projectConfig(db, projectId)).install;
   return v?.trim() ? v : null;
 }
 
@@ -49,30 +49,30 @@ function installFor(db: DB, projectId: number): string | null {
  * DISSOLVED already releases the paths, and blanking the column would erase what
  * this group was allowed to touch from the record.
  */
-export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
-  ctx.db.transaction(() => {
-    ctx.sched.cancelPending(grpId, "dropped");
-    orm(ctx.db).update(grpTable).set({ status: "DISSOLVED", merge_seq: null }).where(eq(grpTable.id, grpId)).run();
-    orm(ctx.db)
-      .update(agent)
-      .set({ state: "retired", session_id: null, token: null })
-      .where(eq(agent.grp_id, grpId))
-      .run();
-    orm(ctx.db).update(channel).set({ status: "archived" }).where(eq(channel.grp_id, grpId)).run();
+export async function dropGroup(ctx: Ctx, grpId: number, why: string): Promise<void> {
+  // All of it inside, including the queue and the timeline. They used to sit
+  // outside because the scheduler and the bus each held the pool rather than
+  // this handle, and a write of theirs would have waited on rows this
+  // transaction had locked. Both read `writeHandle` now, so they join it — and a
+  // dissolve that rolls back must not leave the group's queued work cancelled.
+  await ctx.bus.transaction(async (tx) => {
+    await ctx.sched.cancelPending(grpId, "dropped");
+    await tx.update(grpTable).set({ status: "DISSOLVED", merge_seq: null }).where(eq(grpTable.id, grpId));
+    await tx.update(agent).set({ state: "retired", session_id: null, token: null }).where(eq(agent.grp_id, grpId));
+    await tx.update(channel).set({ status: "archived" }).where(eq(channel.grp_id, grpId));
     // Anything it had asked the boss dies with it, or the question outlives the
     // requirement and sits in 待办 forever.
-    orm(ctx.db)
+    await tx
       .update(escalation)
-      .set({ chain_state: "revoked", answered_at: sql`unixepoch() * 1000` })
-      .where(and(eq(escalation.grp_id, grpId), isNull(escalation.answer)))
-      .run();
-    ctx.bus.emit({
+      .set({ chain_state: "revoked", answered_at: Date.now() })
+      .where(and(eq(escalation.grp_id, grpId), isNull(escalation.answer)));
+    await ctx.bus.emit({
       grpId,
       author: "boss",
       kind: "state_change",
       body: say(ctx.config.language, "group.dropped", { why: why ? `：${why}` : "" }),
     });
-  })();
+  });
 }
 
 /**
@@ -108,7 +108,7 @@ export async function runInstall(ctx: Ctx, grpId: number, cmd: string): Promise<
   }
   sandboxLog(ctx.bus, grpId, "end", end.code === 0 ? "ok" : `exit ${end.code}`);
   const tail = [...seen.slice(-12), ...(end.err ? [end.err.slice(-400)] : [])].join("\n");
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "state_change",
@@ -136,18 +136,17 @@ export async function runInstall(ctx: Ctx, grpId: number, cmd: string): Promise<
  * install streams, which is what makes a long one watchable.
  */
 export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
-  const grp = orm(ctx.db)
+  const [grp] = await ctx.db
     .select({ project_id: grpTable.project_id, branch: grpTable.branch })
     .from(grpTable)
-    .where(eq(grpTable.id, grpId))
-    .get();
+    .where(eq(grpTable.id, grpId));
   // No branch means the group has not started; `startGroup` owns that path and
   // is in the middle of it.
   if (!grp?.branch) return;
-  const remote = remoteFor(ctx.db, grp.project_id);
+  const remote = await remoteFor(ctx.db, grp.project_id);
   if (!remote) return;
 
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "state_change",
@@ -167,14 +166,14 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     },
   );
 
-  const known = installFor(ctx.db, grp.project_id);
+  const known = await installFor(ctx.db, grp.project_id);
   if (known) {
     const dep = await runInstall(ctx, grpId, known);
     if (dep.ok) return;
   }
   // No recorded command, or the recorded one stopped working: the same role that
   // works it out the first time works it out again, with the failure in hand.
-  ctx.sched.enqueue("agent_turn", {
+  await ctx.sched.enqueue("agent_turn", {
     grp_id: grpId,
     priority: 9,
     payload: {
@@ -201,7 +200,7 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
  * `detect.ts`'s own stated rule.
  */
 export async function detectProject(ctx: Ctx, grpId: number, projectId: number): Promise<void> {
-  const cfg = projectConfig(ctx.db, projectId);
+  const cfg = await projectConfig(ctx.db, projectId);
   // Detection always writes both fields. A hand-edited/legacy `detected: true`
   // cannot suppress it when its companion gate list did not pass the boundary.
   if (cfg.detected === true && cfg.gates !== undefined) return;
@@ -222,8 +221,8 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
 
   /**
    * The upsert's conflict arm, named once and shared by both writers below.
-   * `excluded` is the row the insert tried to add; it is a SQLite pseudo-table
-   * with no Drizzle column of its own, so the four assignments stay `sql`.
+   * `excluded` is the row the insert tried to add; it is a pseudo-table with no
+   * Drizzle column of its own, so the four assignments stay `sql`.
    */
   const onNameConflict = {
     target: resource.name,
@@ -246,18 +245,17 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   // statement, so two gates sharing a name would become an error instead of an
   // upsert applied twice.
   for (const g of gates) {
-    orm(ctx.db)
+    await ctx.db
       .insert(resource)
       .values({
         name: g.name,
         template: g.template,
-        arg_schema_json: "{}",
+        arg_schema_json: {},
         error_regex: g.errorRegex,
         concurrency: 1,
-        tags_json: JSON.stringify(["repo"]),
+        tags_json: ["repo"],
       })
-      .onConflictDoUpdate(onNameConflict)
-      .run();
+      .onConflictDoUpdate(onNameConflict);
   }
 
   // A project that ships the runner gets the browser resource. Without it every
@@ -267,22 +265,21 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   // Chromium. A nested path, so it is asked for rather than read off the listing.
   const browse = await execIn(ctx, { grp: grpId }, `test -f ${shq(`${WORK}/scripts/browse.ts`)} && echo yes`);
   if (browse.out.trim() === "yes") {
-    orm(ctx.db)
+    await ctx.db
       .insert(resource)
       .values({
         name: "browser",
         template: "bun run scripts/browse.ts --steps {steps}",
         // A step file, never a command: the Runner has real permissions, so the only
         // thing an agent may hand it is data (docs/project/plan.md, hard constraint 2).
-        arg_schema_json: JSON.stringify({
+        arg_schema_json: {
           steps: { type: "string", pattern: "^(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.json$", maxLength: 200 },
-        }),
+        },
         error_regex: "FAIL:",
         concurrency: 1,
-        tags_json: JSON.stringify(["browser"]),
+        tags_json: ["browser"],
       })
-      .onConflictDoUpdate(onNameConflict)
-      .run();
+      .onConflictDoUpdate(onNameConflict);
   }
 
   const next = {
@@ -292,16 +289,17 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
     install: detectInstall(root),
     shared: detectShared(root),
   };
-  orm(ctx.db)
-    .update(project)
-    .set({ config_json: JSON.stringify(next) })
-    .where(eq(project.id, projectId))
-    .run();
+  // `config_json` is `jsonb`, so the value goes in as it is rather than as text.
+  // The undefined keys are dropped first: the reader's `catch(undefined)` arms
+  // put them there for a field it could not parse, and `undefined` is not a JSON
+  // value — validating with them still in wipes the column to `{}`.
+  const stored = valueOr(Object.fromEntries(Object.entries(next).filter(([, v]) => v !== undefined)), JsonObject, {});
+  await ctx.db.update(project).set({ config_json: stored }).where(eq(project.id, projectId));
 
   if (!gates.length) {
     // Said plainly rather than letting the first slice fail with a puzzle. This
     // is the same warning registration used to give; only the moment moved.
-    ctx.bus.emit({
+    await ctx.bus.emit({
       grpId,
       author: "orchestrator",
       kind: "escalation",
@@ -313,7 +311,7 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
     });
     return;
   }
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "state_change",
@@ -324,21 +322,20 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
 
 /** Sandbox, checkout, RUNNING, first slice. Returns an error message, or null. */
 export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null> {
-  const grp = orm(ctx.db)
+  const [grp] = await ctx.db
     .select({ name: grpTable.name, project_id: grpTable.project_id, branch: grpTable.branch })
     .from(grpTable)
-    .where(eq(grpTable.id, grpId))
-    .get();
+    .where(eq(grpTable.id, grpId));
   if (grp && !grp.branch) {
     {
       try {
-        const remote = remoteFor(ctx.db, grp.project_id);
+        const remote = await remoteFor(ctx.db, grp.project_id);
         if (!remote) return "project has no remote recorded; a group clones from it";
         const branch = `orch/${grp.name}`;
         const base = await baseRefFor(ctx, grp.project_id);
         await createCheckout(ctx, { grp: grpId }, { remote, branch, base, projectId: grp.project_id });
-        orm(ctx.db).update(grpTable).set({ branch }).where(eq(grpTable.id, grpId)).run();
-        ctx.bus.emit({
+        await ctx.db.update(grpTable).set({ branch }).where(eq(grpTable.id, grpId));
+        await ctx.bus.emit({
           grpId,
           author: "orchestrator",
           kind: "state_change",
@@ -354,11 +351,11 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         // nobody enumerates those, and the repo says which one it is. What
         // changed is where it runs: the agent installs inside its own sandbox,
         // so there is nothing left for the orchestrator to do on its behalf.
-        const known = installFor(ctx.db, grp.project_id);
+        const known = await installFor(ctx.db, grp.project_id);
         if (known) {
           const dep = await runInstall(ctx, grpId, known);
           if (!dep.ok)
-            ctx.sched.enqueue("agent_turn", {
+            await ctx.sched.enqueue("agent_turn", {
               grp_id: grpId,
               priority: 9,
               payload: {
@@ -367,7 +364,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
               },
             });
         } else {
-          ctx.sched.enqueue("agent_turn", {
+          await ctx.sched.enqueue("agent_turn", {
             grp_id: grpId,
             priority: 9,
             payload: { role: roleFor(ctx, "bootstrap_env") },
@@ -380,12 +377,12 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
     }
   }
 
-  orm(ctx.db).update(grpTable).set({ status: "RUNNING", approved_at: null }).where(eq(grpTable.id, grpId)).run();
-  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config.language, "group.approved") });
+  await ctx.db.update(grpTable).set({ status: "RUNNING", approved_at: null }).where(eq(grpTable.id, grpId));
+  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config.language, "group.approved") });
   // Approving a plan that then sits still is the most confusing failure there is:
   // it looks like the system ignored you.
-  startNextSlice(ctx, grpId);
-  ctx.sched.tick();
+  await startNextSlice(ctx, grpId);
+  await ctx.sched.tick();
   return null;
 }
 
@@ -398,14 +395,13 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
  * Returns the ids that started.
  */
 export async function sweepApproved(ctx: Ctx): Promise<number[]> {
-  const waiting = orm(ctx.db)
+  const waiting = await ctx.db
     .select({ id: grpTable.id })
     .from(grpTable)
-    .where(and(eq(grpTable.status, "DRAFT"), isNotNull(grpTable.approved_at)))
-    .all();
+    .where(and(eq(grpTable.status, "DRAFT"), isNotNull(grpTable.approved_at)));
   const started: number[] = [];
   for (const g of waiting) {
-    if (!canStart(ctx.db, g.id).ok) continue;
+    if (!(await canStart(ctx.db, g.id)).ok) continue;
     const err = await startGroup(ctx, g.id);
     if (err === null) {
       started.push(g.id);
@@ -415,14 +411,14 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
     // permanent — a full disk, a branch name already taken, no write permission —
     // and this runs on the watchdog tick, so leaving the intent set retried it
     // every thirty seconds forever, returning an error to nobody.
-    orm(ctx.db).update(grpTable).set({ approved_at: null }).where(eq(grpTable.id, g.id)).run();
-    raise(ctx.db, {
+    await ctx.db.update(grpTable).set({ approved_at: null }).where(eq(grpTable.id, g.id));
+    await raise(ctx.db, {
       grpId: g.id,
       brief: "批准没能落地",
       chain: "boss",
       question: `批准没能落地：${err}。这次批准已撤回，修好之后再批一次。`,
     });
-    ctx.bus.emit({
+    await ctx.bus.emit({
       grpId: g.id,
       author: "orchestrator",
       kind: "escalation",

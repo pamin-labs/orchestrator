@@ -42,9 +42,9 @@ export interface Ctx {
    */
   askIn?: (scope: import("./sandbox/sandbox.ts").Scope) => import("./knowledge/pageindex.ts").Ask;
   /** Wired by the server: advances the review pipeline on a QA verdict. */
-  reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
+  reviewVerdict?: (sliceId: number, pass: boolean, note: string) => Promise<void>;
   /** Wired by the server: the Auditor's PR-level verdict. */
-  auditVerdict?: (grpId: number, pass: boolean, note: string) => void;
+  auditVerdict?: (grpId: number, pass: boolean, note: string) => Promise<void>;
   /**
    * Wired by the server: squash, push, open the PR.
    *
@@ -66,7 +66,7 @@ export interface Ctx {
    * the event — otherwise mailing the Architect before an Architect exists is a
    * silent no-op, and the sender waits on a reply that can never come.
    */
-  hire?: (grpId: number | null, role: string, projectId?: number | null) => number | null;
+  hire?: (grpId: number | null, role: string, projectId?: number | null) => Promise<number | null>;
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
   /**
@@ -93,6 +93,15 @@ export interface Ctx {
    * exercise; a partial production state would only force fake fallbacks and casts.
    */
   config: Config;
+  /**
+   * What this build calls itself, for the CLI provisioned into a sandbox.
+   *
+   * Passed in rather than imported: `platform/process/version.ts` is the release
+   * identity and mechanisms may not reach it, so composition — which may — hands
+   * it down. A sandbox reporting a different version from the server that made
+   * it is a support conversation nobody can win.
+   */
+  version?: string;
 }
 
 /** The role that has this capability. Throws when no role, or more than one, declares it. */

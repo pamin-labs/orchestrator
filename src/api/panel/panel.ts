@@ -18,7 +18,6 @@ import { bad, json } from "../../http/respond.ts";
 import { expandHome } from "./attach.ts";
 import { errText } from "../../platform/process/text.ts";
 import type { PanelNote } from "../../contracts/notes.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { grp, note as notes, project } from "../../platform/persistence/schema.ts";
 
 /**
@@ -54,7 +53,7 @@ export const getNotes = (async (ctx, _req, _params, query) => {
       projectId
       ? or(eq(notes.project_id, projectId), eq(grp.project_id, projectId))
       : undefined;
-  const rows: PanelNote[] = orm(ctx.db)
+  const rows = await ctx.db
     .select({
       id: notes.id,
       grpId: notes.grp_id,
@@ -72,8 +71,10 @@ export const getNotes = (async (ctx, _req, _params, query) => {
         scope,
         kind ? eq(notes.kind, kind) : undefined,
         // The draft card is a note too, and it already has its own screen.
-        // Raw: `json_extract` has no Drizzle operator, and the column is text.
-        sql`coalesce(json_extract(${notes.frontmatter_json}, '$.draft_card'), 0) != 1`,
+        // Raw: jsonb containment has no Drizzle operator. `@>` and not `->>` so a
+        // row that never had the key is matched by the same expression as one
+        // that has it set to something else.
+        sql`not (${notes.frontmatter_json} @> '{"draft_card": true}'::jsonb)`,
         // Nor are the index's own rows notes: `pageindex` is a serialised tree and
         // `map` is a rendered directory listing, both stored here because `note` was
         // the table that already existed. Neither is anything the boss reads.
@@ -81,9 +82,12 @@ export const getNotes = (async (ctx, _req, _params, query) => {
       ),
     )
     .orderBy(desc(notes.at), desc(notes.id))
-    .limit(300)
-    .all();
-  return json({ notes: rows });
+    .limit(300);
+  // `frontmatter` is a string on the wire and the column is `jsonb`, so it is
+  // re-encoded here rather than in `contracts/notes.ts`: the panel parses it with
+  // its own schema, and the shape it parses is not this route's to change.
+  const notesOut: PanelNote[] = rows.map((r) => ({ ...r, frontmatter: JSON.stringify(r.frontmatter) }));
+  return json({ notes: notesOut });
 }) satisfies Handler<z.infer<typeof NotesQuery>>;
 
 /**
@@ -104,13 +108,15 @@ export const getNotes = (async (ctx, _req, _params, query) => {
 export const SkillsQuery = z.object({ project: z.coerce.number().int().positive().optional() });
 
 export const getSkills = (async (ctx, _req, _params, { project: id }) => {
-  const repo = id
-    ? orm(ctx.db).select({ repo_path: project.repo_path }).from(project).where(eq(project.id, id)).get()?.repo_path
-    : undefined;
-  if (id !== undefined) projectSkillsPending(ctx, id, repo);
-  const off = new Set(skillsOff(ctx.db));
+  const [found] = id
+    ? await ctx.db.select({ repo_path: project.repo_path }).from(project).where(eq(project.id, id))
+    : [];
+  const repo = found?.repo_path;
+  if (id !== undefined) await projectSkillsPending(ctx, id, repo);
+  const off = new Set(await skillsOff(ctx.db));
+  const listed = await projectSkills(ctx.db, id);
   return json({
-    skills: listSkills(repo, projectSkills(ctx.db, id)).map(({ name, rel, description, scope }) => ({
+    skills: listSkills(repo, listed).map(({ name, rel, description, scope }) => ({
       name,
       path: rel,
       description,
@@ -146,8 +152,8 @@ export const postSkill = (async (ctx, _req, _p, b) => {
   // No name is a rescan: the boss installed or removed a skill outside this
   // process, so both halves of the list are stale — the staged copy of this
   // machine's, and the cached inventory of every checkout's.
-  if (b.name) setSkillOff(ctx.db, b.name, b.on === false);
-  const { staged, failed } = restageSkills(ctx.db, ctx.config.skillsDir);
+  if (b.name) await setSkillOff(ctx.db, b.name, b.on === false);
+  const { staged, failed } = await restageSkills(ctx.db, ctx.config.skillsDir);
   // The mount is a staging path now, not either CLI's own directory, so a
   // changed set is not visible until the links are rebuilt. Every live
   // container, because a standing agent's container has no checkout and so no
@@ -165,7 +171,7 @@ export const postSkill = (async (ctx, _req, _p, b) => {
   // cache alone rather than clear it.
   if (b.project) {
     const listed = await listProjectSkills(ctx, b.project);
-    if (listed !== null) cacheProjectSkills(ctx.db, b.project, listed);
+    if (listed !== null) await cacheProjectSkills(ctx.db, b.project, listed);
   }
   return json({ staged: staged.length, failed });
 }) satisfies Handler<z.infer<typeof SkillBody>>;
@@ -181,13 +187,7 @@ export const getDirs = (async (ctx, _req, _params, query) => {
   } catch (e) {
     return bad(`${path}: ${errText(e)}`);
   }
-  const taken = new Set(
-    orm(ctx.db)
-      .select({ repo_path: project.repo_path })
-      .from(project)
-      .all()
-      .map((r) => r.repo_path),
-  );
+  const taken = new Set((await ctx.db.select({ repo_path: project.repo_path }).from(project)).map((r) => r.repo_path));
   const dirs = entries
     .filter((d) => d.isDirectory() && !d.name.startsWith("."))
     .map((d) => {

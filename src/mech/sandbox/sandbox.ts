@@ -1,10 +1,8 @@
 import type { Bus } from "../../platform/persistence/event-bus.ts";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import { grp, project } from "../../platform/persistence/schema.ts";
 import { errText } from "../../platform/process/text.ts";
-import { VERSION } from "../../platform/process/version.ts";
 import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
@@ -98,9 +96,9 @@ function defaultCpu(): string {
 }
 
 /** Config, then the project's override. Adding a knob is a yaml key. */
-export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
+export async function specFor(ctx: Ctx, projectId: number | null): Promise<SandboxSpec> {
   const base = ctx.config.sandbox;
-  const over = projectConfig(ctx.db, projectId).sandbox ?? {};
+  const over = (await projectConfig(ctx.db, projectId)).sandbox ?? {};
   // `||`, not `??`: an empty string is how the yaml says "you decide". The image is
   // the one key a project may not freely set — `patchProjectConfig` merges arbitrary
   // keys into `config_json`, so refusing it only in the panel would be a check a
@@ -366,14 +364,14 @@ function processCwd(pid: string): string | null {
   }
 }
 
-function connection(ctx: Ctx): ConnectionConfig {
+async function connection(ctx: Ctx): Promise<ConnectionConfig> {
   const { protocol, authority } = splitAddr(serverAddr(ctx));
   const [host, port] = authority.split(":");
   // Set from the panel first, then the environment, then the yaml. The yaml is
   // committed, so a key that lives there is a key that leaks. Resolved against the
   // address it is about to be sent to: a stored key travels with the address it
   // was stored for, and `sandbox.server` is a knob the panel can move under it.
-  const key = sandboxKeyFor(ctx.db, authority, ctx.config.sandbox.apiKey);
+  const key = await sandboxKeyFor(ctx.db, authority, ctx.config.sandbox.apiKey);
   return new ConnectionConfig({
     domain: `${host}:${port ?? 8080}`,
     protocol,
@@ -403,8 +401,9 @@ export const isUtil = (s: Scope): s is { util: true } => "util" in s;
 const UTIL_ID = "util_sandbox_id";
 const UTIL_AT = "util_sandbox_at";
 
-export function utilSandbox(db: Ctx["db"]): { id: string | null; at: number } {
-  return { id: readSetting(db, UTIL_ID), at: Number(readSetting(db, UTIL_AT) ?? 0) };
+export async function utilSandbox(db: Ctx["db"]): Promise<{ id: string | null; at: number }> {
+  const [id, at] = await Promise.all([readSetting(db, UTIL_ID), readSetting(db, UTIL_AT)]);
+  return { id, at: Number(at ?? 0) };
 }
 
 const holder = (s: Scope) =>
@@ -414,39 +413,37 @@ const holder = (s: Scope) =>
       ? { table: "grp", id: s.grp }
       : { table: "project", id: s.project };
 
-function owner(db: DB, scope: Scope): { sandboxId: string | null; projectId: number | null } {
-  if (isUtil(scope)) return { sandboxId: utilSandbox(db).id, projectId: null };
+async function owner(db: DB, scope: Scope): Promise<{ sandboxId: string | null; projectId: number | null }> {
+  if (isUtil(scope)) return { sandboxId: (await utilSandbox(db)).id, projectId: null };
   const h = holder(scope);
   if (h.table === "grp") {
-    const row = orm(db)
+    const [row] = await db
       .select({ sandbox_id: grp.sandbox_id, project_id: grp.project_id })
       .from(grp)
-      .where(eq(grp.id, h.id))
-      .get();
+      .where(eq(grp.id, h.id));
     if (!row) throw new Error(`no group ${h.id}`);
     return { sandboxId: row.sandbox_id, projectId: row.project_id };
   }
-  const row = orm(db).select({ sandbox_id: project.sandbox_id }).from(project).where(eq(project.id, h.id)).get();
+  const [row] = await db.select({ sandbox_id: project.sandbox_id }).from(project).where(eq(project.id, h.id));
   if (!row) throw new Error(`no project ${h.id}`);
   return { sandboxId: row.sandbox_id, projectId: h.id };
 }
 
-function remember(db: DB, scope: Scope, id: string | null): void {
+async function remember(db: DB, scope: Scope, id: string | null): Promise<void> {
   // The timestamp is what makes a stale binding visible. A sidecar is loaded
   // with the credentials that existed at this moment and never again, so a
   // sandbox older than the newest credential is one nobody has rebound.
   const at = id ? Date.now() : null;
   if (isUtil(scope)) {
-    writeSetting(db, UTIL_ID, id);
-    writeSetting(db, UTIL_AT, at === null ? null : String(at));
+    await writeSetting(db, UTIL_ID, id);
+    await writeSetting(db, UTIL_AT, at === null ? null : String(at));
     return;
   }
   const h = holder(scope);
-  orm(db)
+  await db
     .update(binding(h.table))
     .set({ sandbox_id: id, sandbox_at: at })
-    .where(eq(binding(h.table).id, h.id))
-    .run();
+    .where(eq(binding(h.table).id, h.id));
 }
 
 /**
@@ -459,11 +456,10 @@ function remember(db: DB, scope: Scope, id: string | null): void {
 const binding = (table: string) => (table === "grp" ? grp : project);
 
 /** The remote this scope's container may reach, for the read-only binding. */
-function remoteOf(db: DB, projectId: number | null): string | null {
+async function remoteOf(db: DB, projectId: number | null): Promise<string | null> {
   if (projectId == null) return null;
-  return (
-    orm(db).select({ remote: project.remote }).from(project).where(eq(project.id, projectId)).get()?.remote ?? null
-  );
+  const [row] = await db.select({ remote: project.remote }).from(project).where(eq(project.id, projectId));
+  return row?.remote ?? null;
 }
 
 /**
@@ -493,13 +489,13 @@ export function resetSandboxHold(): void {
   saidDown = false;
 }
 
-function markDown<T>(ctx: Ctx, e: T, now = Date.now()): void {
+async function markDown<T>(ctx: Ctx, e: T, now = Date.now()): Promise<void> {
   downUntil = now + HOLD_MS;
   if (saidDown) return;
   saidDown = true;
   // Once per outage, not once per attempt: a held job produces no attempt, and
   // the same line every minute is how a feed stops being read.
-  ctx.bus?.emit({
+  await ctx.bus?.emit({
     author: "orchestrator",
     kind: "escalation",
     intent: "inform",
@@ -510,9 +506,9 @@ function markDown<T>(ctx: Ctx, e: T, now = Date.now()): void {
   });
 }
 
-function markUp(bus: Bus): void {
+async function markUp(bus: Bus): Promise<void> {
   if (saidDown) {
-    bus?.emit({ author: "orchestrator", kind: "state_change", body: "容器又能开了，挂起的活自动继续" });
+    await bus?.emit({ author: "orchestrator", kind: "state_change", body: "容器又能开了，挂起的活自动继续" });
   }
   downUntil = 0;
   saidDown = false;
@@ -521,10 +517,10 @@ function markUp(bus: Bus): void {
 export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   try {
     const sb = await openSandbox(ctx, scope);
-    markUp(ctx.bus);
+    await markUp(ctx.bus);
     return sb;
   } catch (e) {
-    markDown(ctx, e);
+    await markDown(ctx, e);
     throw e;
   }
 }
@@ -540,14 +536,14 @@ async function reconnect(ctx: Ctx, scope: Scope, sandboxId: string | null): Prom
     { attributes: sandboxScope(scope, "project" in scope ? scope.project : null) },
     async (span) => {
       try {
-        const sandbox = await Sandbox.connect({ connectionConfig: connection(ctx), sandboxId });
+        const sandbox = await Sandbox.connect({ connectionConfig: await connection(ctx), sandboxId });
         live.set(sandboxId, sandbox);
         return sandbox;
       } catch (e) {
         // A reconnect that burns its timeout and fails falls through to a fresh
         // `sandbox.create`, so without this span its cost was charged there.
         span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
-        remember(ctx.db, scope, null);
+        await remember(ctx.db, scope, null);
         return null;
       } finally {
         span.end();
@@ -564,10 +560,10 @@ function cacheVolumes(spec: SandboxSpec): Volume[] {
   }));
 }
 
-function createSandbox(ctx: Ctx, scope: Scope, spec: SandboxSpec, volumes: Volume[]) {
+async function createSandbox(ctx: Ctx, scope: Scope, spec: SandboxSpec, volumes: Volume[]) {
   const ownerName = isUtil(scope) ? "util" : `${holder(scope).table}-${holder(scope).id}`;
   return Sandbox.create({
-    connectionConfig: connection(ctx),
+    connectionConfig: await connection(ctx),
     image: spec.image,
     timeoutSeconds: spec.ttlSeconds,
     resource: { cpu: spec.cpu, memory: spec.memory },
@@ -592,7 +588,7 @@ async function createMountedSandbox(
     return { sandbox: await createSandbox(ctx, scope, spec, [...cached, ...skills]), skillsMounted: skills.length > 0 };
   } catch (error) {
     if (!skills.length || !isPathNotAllowed(error)) throw error;
-    ctx.bus?.emit({
+    await ctx.bus?.emit({
       grpId: "grp" in scope ? scope.grp : null,
       author: "orchestrator",
       kind: "state_change",
@@ -606,7 +602,7 @@ async function createMountedSandbox(
 }
 
 async function writeLoginFiles(db: DB, sandbox: Sandbox): Promise<void> {
-  const files = filesFor(db);
+  const files = await filesFor(db);
   if (!Object.keys(files).length) return;
   await sandbox.files.createDirectories([{ path: CODEX_HOME }]).catch(() => {});
   await writeInto(
@@ -622,7 +618,7 @@ async function installVaultCredentials(
   projectId: number | null,
 ): Promise<void> {
   const { credentials } = await vaultBindings(ctx.db, codexHomeIO(ctx), {
-    repo: isUtil(scope) ? null : remoteOf(ctx.db, projectId),
+    repo: isUtil(scope) ? null : await remoteOf(ctx.db, projectId),
   });
   if (!credentials.length) return;
   await sandbox.credentialVault
@@ -637,8 +633,8 @@ async function installVaultCredentials(
         auth: authFor(credential),
       })),
     })
-    .catch((error: unknown) => {
-      ctx.bus?.emit({
+    .catch(async (error: unknown) => {
+      await ctx.bus?.emit({
         grpId: "grp" in scope ? scope.grp : null,
         author: "orchestrator",
         kind: "state_change",
@@ -652,8 +648,8 @@ async function installVaultCredentials(
 
 async function restoreGroupWorkspace(ctx: Ctx, scope: Scope): Promise<void> {
   if (!("grp" in scope) || !ctx.restoreWorkspace) return;
-  await ctx.restoreWorkspace(scope.grp).catch((error: unknown) => {
-    ctx.bus.emit({
+  await ctx.restoreWorkspace(scope.grp).catch(async (error: unknown) => {
+    await ctx.bus.emit({
       grpId: scope.grp,
       author: "orchestrator",
       kind: "state_change",
@@ -682,12 +678,12 @@ export function sandboxScope(scope: Scope, projectId: number | null) {
  * minutes building" or "four minutes filling", which point at different fixes.
  */
 async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
-  const { sandboxId, projectId } = owner(ctx.db, scope);
+  const { sandboxId, projectId } = await owner(ctx.db, scope);
   const existing = await reconnect(ctx, scope, sandboxId);
   if (existing) return existing;
 
   const attributes = sandboxScope(scope, projectId);
-  const spec = specFor(ctx, projectId);
+  const spec = await specFor(ctx, projectId);
   const skills = isUtil(scope) ? [] : skillMounts(ctx);
   const created = await activeTracer().startActiveSpan(
     "sandbox.create",
@@ -705,14 +701,14 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   );
   const sb = created.sandbox;
   live.set(sb.id, sb);
-  remember(ctx.db, scope, sb.id);
+  await remember(ctx.db, scope, sb.id);
 
   await activeTracer().startActiveSpan("sandbox.init", { attributes }, async (span) => {
     try {
       // The utility container gets no mailbox and no `orch`: nothing in it is an
       // agent, so the one interface an agent is allowed would be surface with no
       // user — in the container that holds the real tokens.
-      if (!isUtil(scope)) await provision(sb);
+      if (!isUtil(scope)) await provision(sb, ctx.version);
       // Mounted is not the same as readable — but only when a mount was actually
       // accepted, since "mounted but empty" would falsely describe a container built
       // without the mount at all. The three share no state and each owns its own
@@ -819,7 +815,7 @@ export async function checkSkillsMount(bus: Bus, sb: Counter, hostPath: string, 
       .trim(),
   );
   if (!Number.isFinite(inside) || inside > 0) return;
-  bus?.emit({
+  await bus?.emit({
     author: "orchestrator",
     kind: "state_change",
     severity: "blocker",
@@ -953,7 +949,7 @@ export function remoteInClear(addr: string): boolean {
  */
 export function serverAddr(ctx: Ctx): string {
   // One place. The `sandbox_server_addr` row this used to consult first is
-  // `cfg.sandbox.server` since migration 039, so the config already carries
+  // `cfg.sandbox.server` now, so the config already carries
   // whatever the panel set.
   return ctx.config.sandbox.server.trim();
 }
@@ -971,11 +967,11 @@ export const MAILBOX_DIR = "/var/orch";
  * the agent's only interface — and the one test that would have said so was
  * skipping. Building both shapes keeps one code path, and costs about 7ms.
  */
-export async function agentCli(): Promise<string> {
+export async function agentCli(version?: string): Promise<string> {
   const built = await Bun.build({
     entrypoints: [join(ROOT, "src/orch/cli.ts")],
     target: "bun",
-    define: { __ORCH_VERSION__: JSON.stringify(VERSION) },
+    ...(version ? { define: { __ORCH_VERSION__: JSON.stringify(version) } } : {}),
   });
   const [output] = built.outputs;
   if (!built.success || !output) throw new Error(`cannot build the agent CLI: ${built.logs.map(String).join("; ")}`);
@@ -990,8 +986,8 @@ export async function agentCli(): Promise<string> {
  * orchestrator, so a route added this morning is not missing from a sandbox
  * started yesterday.
  */
-async function provision(sb: Sandbox): Promise<void> {
-  const cli = await agentCli();
+async function provision(sb: Sandbox, version?: string): Promise<void> {
+  const cli = await agentCli(version);
   await sb.files.createDirectories([
     { path: `${MAILBOX_DIR}/req` },
     { path: `${MAILBOX_DIR}/res` },
@@ -1022,12 +1018,14 @@ export async function relinkSkills(): Promise<void> {
  * `sandbox.create`. Null means nobody answered, *not* "this repository ships none".
  */
 export async function listProjectSkills(ctx: Ctx, projectId: number): Promise<string | null> {
-  const groups = ctx.db
-    .query<{ id: number }, [number]>("SELECT id FROM grp WHERE project_id = ? ORDER BY id DESC")
-    .all(projectId);
+  const groups = await ctx.db
+    .select({ id: grp.id })
+    .from(grp)
+    .where(eq(grp.project_id, projectId))
+    .orderBy(desc(grp.id));
   const scopes: Scope[] = [{ project: projectId }, ...groups.map((g) => ({ grp: g.id }))];
   for (const scope of scopes) {
-    const { sandboxId } = owner(ctx.db, scope);
+    const { sandboxId } = await owner(ctx.db, scope);
     if (!sandboxId) continue;
     const sb = await reconnect(ctx, scope, sandboxId);
     if (!sb) continue;
@@ -1520,12 +1518,12 @@ async function realBind(ctx: Ctx, scope: Scope, creds: Credential[]): Promise<vo
  * anything, which is why a dissolved group kills rather than pauses.
  */
 async function realKill(ctx: Ctx, scope: Scope): Promise<void> {
-  const id = owner(ctx.db, scope).sandboxId;
+  const { sandboxId: id } = await owner(ctx.db, scope);
   if (!id) return;
   const sb = live.get(id);
   try {
     if (sb) await sb.kill();
-    else await (await Sandbox.connect({ connectionConfig: connection(ctx), sandboxId: id })).kill();
+    else await (await Sandbox.connect({ connectionConfig: await connection(ctx), sandboxId: id })).kill();
   } catch {
     // Already gone by TTL or by hand. Clearing the column is the point.
   }
@@ -1533,16 +1531,16 @@ async function realKill(ctx: Ctx, scope: Scope): Promise<void> {
   live.delete(id);
   // The session belonged to that container and does not outlive it.
   sessions.delete(id);
-  remember(ctx.db, scope, null);
+  await remember(ctx.db, scope, null);
 }
 
 /** Push the expiry out. A group mid-turn must not be reaped by its own TTL. */
 async function realRenew(ctx: Ctx, scope: Scope): Promise<void> {
-  const { sandboxId, projectId } = owner(ctx.db, scope);
+  const { sandboxId, projectId } = await owner(ctx.db, scope);
   if (!sandboxId) return;
   const sb = live.get(sandboxId);
   if (!sb) return;
-  await sb.renew(specFor(ctx, projectId).ttlSeconds).catch(() => {});
+  await sb.renew((await specFor(ctx, projectId)).ttlSeconds).catch(() => {});
 }
 
 /** Every sandbox this process is connected to. The mailbox poller's worklist. */
@@ -1582,7 +1580,7 @@ export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpt
   // file names, which `docs/standards/observability.md` forbids on labels — so
   // the scope is what identifies it. The group's project, not just the group: a
   // span whose `project_id` is NULL is invisible to the panel's project scope.
-  const attributes = sandboxScope(scope, projectOf(ctx.db, scope));
+  const attributes = sandboxScope(scope, await projectOf(ctx.db, scope));
   return activeTracer().startActiveSpan("sandbox.exec", { attributes }, async (span) => {
     try {
       const out = await driver(ctx).exec(ctx, scope, cmd, opts);
@@ -1602,13 +1600,11 @@ export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpt
 }
 
 /** Which project a scope belongs to, so a span can be filtered by one. */
-function projectOf(db: DB, scope: Scope): number | null {
+async function projectOf(db: DB, scope: Scope): Promise<number | null> {
   if ("project" in scope) return scope.project;
   if (!("grp" in scope)) return null;
-  return (
-    db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(scope.grp)?.project_id ??
-    null
-  );
+  const [row] = await db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, scope.grp));
+  return row?.project_id ?? null;
 }
 
 /** `sh`'s "found it, could not run it". The lease guard already speaks it. */
@@ -1630,8 +1626,8 @@ export const EXEC_FANOUT = 4;
  * written in this shape. Never the path or the command as an attribute — both
  * carry repository and file names, which observability.md keeps off labels.
  */
-function roundTrip<T>(name: string, ctx: Ctx, scope: Scope, run: () => Promise<T>): Promise<T> {
-  const attributes = sandboxScope(scope, projectOf(ctx.db, scope));
+async function roundTrip<T>(name: string, ctx: Ctx, scope: Scope, run: () => Promise<T>): Promise<T> {
+  const attributes = sandboxScope(scope, await projectOf(ctx.db, scope));
   return activeTracer().startActiveSpan(name, { attributes }, async (span) => {
     try {
       return await run();
@@ -1657,7 +1653,7 @@ export async function* execLines(
   cmd: string,
   opts?: ExecOpts,
 ): AsyncGenerator<string, { code: number; err: string }, void> {
-  const attributes = sandboxScope(scope, projectOf(ctx.db, scope));
+  const attributes = sandboxScope(scope, await projectOf(ctx.db, scope));
   const span = activeTracer().startSpan("sandbox.exec_lines", { attributes });
   try {
     const outcome = yield* driver(ctx).lines(ctx, scope, cmd, opts);

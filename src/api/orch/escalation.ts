@@ -24,7 +24,6 @@ import { bad, json, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
 import { isChinese } from "../../platform/text/lang.ts";
-import { orm } from "../../platform/persistence/orm.ts";
 import {
   agent,
   escalation as escalations,
@@ -83,7 +82,7 @@ export const AskBossBody = z.object({
 export const postAskBoss = (async (ctx, _req, a, _p, b) => {
   const severity = b.severity === "blocker" ? "blocker" : "advisory";
 
-  const id = raise(ctx.db, {
+  const id = (await raise(ctx.db, {
     grpId: a.grp_id,
     agentId: a.id,
     severity,
@@ -91,22 +90,22 @@ export const postAskBoss = (async (ctx, _req, a, _p, b) => {
     brief: brief(b.brief, b.question),
     kind: askKind(b.kind),
     chain: entryPoint(b.question),
-  })!;
+  }))!;
 
   // The commit the question was asked at, so a stand-in's answer can be undone.
   if (a.grp_id) {
     const head = await sandboxGit(ctx, { grp: a.grp_id })(["rev-parse", "HEAD"], WORK);
     if (head.code === 0) {
-      orm(ctx.db).update(escalations).set({ checkpoint_sha: head.out.trim() }).where(eq(escalations.id, id)).run();
+      await ctx.db.update(escalations).set({ checkpoint_sha: head.out.trim() }).where(eq(escalations.id, id));
     }
   }
-  orm(ctx.db).update(agent).set({ state: "blocked" }).where(eq(agent.id, a.id)).run();
+  await ctx.db.update(agent).set({ state: "blocked" }).where(eq(agent.id, a.id));
   // A blocker is the one intent that stops the whole group: the answer changes
   // the premise everyone else is reasoning from.
   if (severity === "blocker" && a.grp_id) {
-    hold(ctx.db, a.grp_id, { reason: "escalation", from: "RUNNING" });
+    await hold(ctx.db, a.grp_id, { reason: "escalation", from: "RUNNING" });
   }
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: a.grp_id,
     author: a.role,
     kind: "escalation",
@@ -116,12 +115,12 @@ export const postAskBoss = (async (ctx, _req, a, _p, b) => {
     meta: { escalation_id: id },
   });
 
-  route({ ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) }, id);
+  await route({ ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) }, id);
 
   const answer = await new Promise<string>((resolve) => {
     ctx.waiters.set(`escalation:${id}`, resolve);
   });
-  orm(ctx.db).update(agent).set({ state: "idle" }).where(eq(agent.id, a.id)).run();
+  await ctx.db.update(agent).set({ state: "idle" }).where(eq(agent.id, a.id));
   return message(answer);
 }) satisfies AgentHandler<z.infer<typeof AskBossBody>>;
 
@@ -141,11 +140,11 @@ export const postAnswer2 = (async (ctx, _req, a, _p, b) => {
   if (b.abstain) {
     // Abstaining is the expected move when a level is unsure: a guess made on
     // the boss's behalf becomes a premise the whole group reasons from.
-    const r = abstain(deps, b.escalation_id, level.data, b.why ?? "", a.grp_id);
+    const r = await abstain(deps, b.escalation_id, level.data, b.why ?? "", a.grp_id);
     return r.ok ? message("passed up") : bad(r.error);
   }
   if (!b.answer?.trim()) return bad("an answer needs text, or pass --abstain");
-  const r = chainAnswer(deps, {
+  const r = await chainAnswer(deps, {
     escId: b.escalation_id,
     by: level.data,
     answer: b.answer,
@@ -163,10 +162,10 @@ export const TriageBody = z.object({
 
 export const postTriage = (async (ctx, _req, a, _p, b) => {
   if (a.role !== roleFor(ctx, "triage_boss_feedback")) return bad(`${a.role} does not triage the boss's feedback`);
-  const gid = resolveGroup(ctx, b.group_id);
+  const gid = await resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx.db, a, gid)) return message("not your group", 403);
-  triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as, b.note ?? "");
+  if (!(await mayAct(ctx.db, a, gid))) return message("not your group", 403);
+  await triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as, b.note ?? "");
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof TriageBody>>;
 
@@ -188,63 +187,56 @@ export const RequirementBody = z.object({
 
 export const postEscalationRequirement = (async (ctx, _req, params, b) => {
   const id = params.id;
-  const esc = orm(ctx.db)
+  const [esc] = await ctx.db
     .select({ grp_id: escalations.grp_id, question: escalations.question, answer: escalations.answer })
     .from(escalations)
-    .where(eq(escalations.id, id))
-    .get();
+    .where(eq(escalations.id, id));
   if (!esc) return message("no such question", 404);
   if (esc.answer) return bad("already answered");
 
-  const projectId = esc.grp_id
-    ? (orm(ctx.db).select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, esc.grp_id)).get()
-        ?.project_id ?? null)
-    : (orm(ctx.db)
+  // A standing agent carries the project on itself; one inside a group carries it
+  // on the group. The join replaces a scalar subquery reading the asker's id back
+  // out of the row this handler already has.
+  const [owner] = esc.grp_id
+    ? await ctx.db.select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, esc.grp_id))
+    : await ctx.db
         .select({ project_id: agent.project_id })
-        .from(agent)
-        .where(
-          eq(
-            agent.id,
-            orm(ctx.db).select({ agent_id: escalations.agent_id }).from(escalations).where(eq(escalations.id, id)).get()
-              ?.agent_id ?? 0,
-          ),
-        )
-        .get()?.project_id ?? null);
+        .from(escalations)
+        .leftJoin(agent, eq(agent.id, escalations.agent_id))
+        .where(eq(escalations.id, id));
+  const projectId = owner?.project_id ?? null;
   if (!projectId) return bad("cannot tell which project this belongs to");
 
   const idea = [b.text?.trim(), esc.question].filter(Boolean).join("\n\n");
   const name = (b.name ?? slug(idea)).slice(0, 40) || `esc-${id}`;
-  const grp = ctx.db.transaction(() => {
-    const created = newGroup(ctx, { projectId, name, idea });
-    ctx.sched.enqueue("agent_turn", {
+  const grp = await ctx.bus.transaction(async (tx) => {
+    const created = await newGroup(ctx, { projectId, name, idea });
+    await ctx.sched.enqueue("agent_turn", {
       grp_id: created.id,
       priority: 6,
       payload: { role: roleFor(ctx, "plan_requirement"), idea },
     });
 
-    orm(ctx.db)
+    await tx
       .update(escalations)
       .set({
         answer: `开成需求 ${name}（grp ${created.id}）`,
         answered_by: "boss",
         chain_state: "answered",
-        // Raw: SQLite's clock, as the statement it replaces had.
-        answered_at: sql`unixepoch() * 1000`,
+        answered_at: Date.now(),
       })
-      .where(eq(escalations.id, id))
-      .run();
+      .where(eq(escalations.id, id));
     // A blocker on a group that has already stopped is what `blocked_on` is for: the
     // group comes back by itself when the new requirement lands, so this does not
     // become a second thing for the boss to remember.
     if (esc.grp_id) {
-      orm(ctx.db)
+      await tx
         .update(grps)
         .set({ blocked_on: created.id })
         // `isNull`, not `eq(..., null)`: only a group nothing else is already
         // waiting on may be pointed at this new one.
-        .where(and(eq(grps.id, esc.grp_id), inArray(grps.status, ["PAUSED", "PAUSING"]), isNull(grps.blocked_on)))
-        .run();
-      ctx.bus.emit({
+        .where(and(eq(grps.id, esc.grp_id), inArray(grps.status, ["PAUSED", "PAUSING"]), isNull(grps.blocked_on)));
+      await ctx.bus.emit({
         grpId: esc.grp_id,
         author: "boss",
         kind: "state_change",
@@ -253,11 +245,11 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
       });
     }
     return created;
-  })();
+  });
   const w = ctx.waiters.get(`escalation:${id}`);
   ctx.waiters.delete(`escalation:${id}`);
   w?.(`the boss turned this into requirement ${name} (grp ${grp.id}); stop and wait for it`);
-  ctx.sched.tick();
+  await ctx.sched.tick();
   return json({ grp_id: grp.id, name });
 }) satisfies Handler<z.infer<typeof RequirementBody>, z.infer<typeof IdParams>>;
 
@@ -273,16 +265,15 @@ export const BossAnswerBody = z.object({
 
 export const postAnswer = (async (ctx, _req, params, b) => {
   const id = params.id;
-  const esc = orm(ctx.db)
+  const [esc] = await ctx.db
     .select({ grp_id: escalations.grp_id, severity: escalations.severity })
     .from(escalations)
-    .where(eq(escalations.id, id))
-    .get();
+    .where(eq(escalations.id, id));
   if (!esc) return message("no such escalation", 404);
 
   // The boss answers through the same path a stand-in would, so unblocking the
   // caller and un-pausing the group cannot drift between the two.
-  const r = chainAnswer({ ctx }, { escId: id, by: "boss", answer: withAttachments(b.answer, b.attachments) });
+  const r = await chainAnswer({ ctx }, { escId: id, by: "boss", answer: withAttachments(b.answer, b.attachments) });
   return r.ok ? message("ok") : bad(r.error);
 }) satisfies Handler<z.infer<typeof BossAnswerBody>, z.infer<typeof IdParams>>;
 
@@ -311,13 +302,14 @@ type AnswerDraftRow = {
   project_id: number | null;
 };
 
-function answerDraftContext(
+async function answerDraftContext(
   ctx: Ctx,
   groupId: number | null,
-): { requirement: string; notes: string[]; slices: string[] } {
+): Promise<{ requirement: string; notes: string[]; slices: string[] }> {
   if (!groupId) return { requirement: isChinese(ctx.config.language) ? "常驻岗" : "standing", notes: [], slices: [] };
-  const requirement = orm(ctx.db).select({ name: grps.name }).from(grps).where(eq(grps.id, groupId)).get()?.name ?? "?";
-  const noteLines = orm(ctx.db)
+  const [found] = await ctx.db.select({ name: grps.name }).from(grps).where(eq(grps.id, groupId));
+  const requirement = found?.name ?? "?";
+  const recent = await ctx.db
     .select({ kind: notes.kind, body: notes.body })
     .from(notes)
     // The standing half of the blackboard has no group, so `isNull` is what puts
@@ -327,23 +319,21 @@ function answerDraftContext(
     )
     // Both keys: `at` alone reorders the notes written inside one millisecond.
     .orderBy(desc(notes.at), desc(notes.id))
-    .limit(12)
-    .all()
-    .map((note) => `[${note.kind}] ${note.body.slice(0, 400)}`);
-  const sliceLines = orm(ctx.db)
+    .limit(12);
+  const noteLines = recent.map((note) => `[${note.kind}] ${note.body.slice(0, 400)}`);
+  const planned = await ctx.db
     .select({ seq: slices.seq, title: slices.title, status: slices.status })
     .from(slices)
     .where(eq(slices.grp_id, groupId))
-    .orderBy(slices.seq)
-    .all()
-    .map((slice) => `S${slice.seq} ${slice.status} ${slice.title}`);
+    .orderBy(slices.seq);
+  const sliceLines = planned.map((slice) => `S${slice.seq} ${slice.status} ${slice.title}`);
   return { requirement, notes: noteLines, slices: sliceLines };
 }
 
 function answerDraftPrompt(
   language: string,
   escalation: AnswerDraftRow,
-  context: ReturnType<typeof answerDraftContext>,
+  context: Awaited<ReturnType<typeof answerDraftContext>>,
 ): string {
   const [intro, rules, requirement, asker, question, slices, notes] = isChinese(language)
     ? [
@@ -378,7 +368,7 @@ function answerDraftPrompt(
 
 export const getAnswerDraft = (async (ctx, _req, params) => {
   if (!ctx.askIn) return json({ text: "" });
-  const escalation: AnswerDraftRow | undefined = orm(ctx.db)
+  const [escalation]: (AnswerDraftRow | undefined)[] = await ctx.db
     .select({
       grp_id: escalations.grp_id,
       question: escalations.question,
@@ -391,12 +381,12 @@ export const getAnswerDraft = (async (ctx, _req, params) => {
     .from(escalations)
     .leftJoin(agent, eq(agent.id, escalations.agent_id))
     .leftJoin(grps, eq(grps.id, escalations.grp_id))
-    .where(and(eq(escalations.id, params.id), isNull(escalations.answer)))
-    .get();
+    .where(and(eq(escalations.id, params.id), isNull(escalations.answer)));
   if (!escalation?.project_id) return json({ text: "" });
   // The blackboard is newest-first and capped: this is the cheapest model in
   // the system and a 40k-character prompt costs more than the answer is worth.
-  const prompt = answerDraftPrompt(ctx.config.language, escalation, answerDraftContext(ctx, escalation.grp_id));
+  const context = await answerDraftContext(ctx, escalation.grp_id);
+  const prompt = answerDraftPrompt(ctx.config.language, escalation, context);
 
   try {
     const out = (await ctx.askIn({ project: escalation.project_id })(prompt)).trim();
@@ -423,15 +413,14 @@ export const DelegateBody = z.object({ to: z.enum(CHAIN).exclude(["boss"]).defau
 export const postDelegate = (async (ctx, _req, params, b) => {
   const to = b.to;
   const id = params.id;
-  const esc = orm(ctx.db)
+  const [esc] = await ctx.db
     .select({ grp_id: escalations.grp_id, question: escalations.question })
     .from(escalations)
-    .where(eq(escalations.id, id))
-    .get();
+    .where(eq(escalations.id, id));
   if (!esc) return message("no such escalation", 404);
 
-  orm(ctx.db).update(escalations).set({ chain_state: to }).where(eq(escalations.id, id)).run();
-  ctx.bus.emit({
+  await ctx.db.update(escalations).set({ chain_state: to }).where(eq(escalations.id, id));
+  await ctx.bus.emit({
     grpId: esc.grp_id,
     author: "boss",
     kind: "escalation",
@@ -441,6 +430,6 @@ export const postDelegate = (async (ctx, _req, params, b) => {
   });
   // route() skips a level with nobody in it, so this cannot strand the question:
   // worst case it comes straight back.
-  const landed = route({ ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) }, id);
+  const landed = await route({ ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) }, id);
   return message(landed);
 }) satisfies Handler<z.infer<typeof DelegateBody>, z.infer<typeof IdParams>>;
