@@ -25,13 +25,10 @@ test("ctx.config is the config object, not a copy of the parts someone listed", 
 /**
  * A settable key nothing names is worse than a literal.
  *
- * A literal is honest — somebody has to edit code to change it. A knob the
- * settings page offers while no source mentions it is a control the boss turns
- * while nothing happens and nothing reports it.
- *
- * It checks the name is *reached*, not that a particular call site passes it: the
- * second is what a reviewer does, and a test that tried would be a list of call
- * sites drifting out of date one wire at a time.
+ * A literal is honest: somebody has to edit code to change it. A knob the settings
+ * page offers while no source mentions it is a control the boss turns while
+ * nothing happens and nothing reports it. Checked by name reached, not by call
+ * site — a test naming wires would go stale one commit at a time.
  */
 test("every timeout and interval the settings page offers reaches a call site", () => {
   const defaults = readFileSync(new URL("../../src/platform/config/load.ts", import.meta.url).pathname, "utf8");
