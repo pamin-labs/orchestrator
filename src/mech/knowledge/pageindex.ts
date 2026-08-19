@@ -11,6 +11,7 @@ import { codexUsage } from "../../runtime/codex.ts";
 import { shq } from "../../platform/process/shell.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { activeTracer } from "../../platform/observability/traces.ts";
+import { scrub } from "../../platform/observability/redaction.ts";
 import { z } from "zod";
 
 /**
@@ -299,8 +300,22 @@ export function modelAsk(
         if (!r || r.code !== 0) {
           // The empty string is both a legitimate answer and the failure value,
           // and `summarise` counts it as `failed` without being able to tell
-          // which. The span can tell, so it says.
-          span.setStatus({ code: SpanStatusCode.ERROR, message: r ? `exit ${r.code}` : "exec threw" });
+          // which. The span can tell, so it says — **and says what the CLI said**.
+          // Measured over one 7-hour window: 36 of 36 calls failed, 738.5s of wall
+          // clock, and the only record of any of it was the two words `exit 1`. A
+          // number with no sentence beside it cannot be acted on, so the most
+          // expensive model call here failed all day and looked like a quiet one.
+          // Scrubbed, because the CLI echoes its own arguments on a bad flag.
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: r
+              ? `exit ${r.code}: ${
+                  scrub(r.err || r.out)
+                    .trim()
+                    .slice(-400) || "said nothing"
+                }`
+              : "exec threw",
+          });
           return "";
         }
         const { text, usage } = codex ? readCodex(r.out) : readClaude(r.out);

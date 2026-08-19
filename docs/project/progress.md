@@ -425,14 +425,22 @@ M7 — executable engineering governance and versioned protocol.
   container died at import with `ENOENT: /package.json`. The fourth was the suite's
   own — it asserted `refs/heads/` where `keepBranch` deliberately writes
   `refs/orch/`. Nightly should be green.
-- `pageindex.enabled` is the A/B switch the retrieval question needs, default on.
-  Off skips the walk before the tree is loaded, so the query costs no model call
-  and falls through to the lexical half; `depth: 0` was rejected for it because
-  that still returns the root's children and would measure a degenerate walk.
-  **The measurement itself is not done** — it needs a real fleet and real spend,
-  which is the boss's call. Until then the retrieval ADR the plan asks for has
-  nothing to record, and no part of PageIndex is being cut on the unmeasured
-  "59% of the cache-read bill" line.
+- **The retrieval question is measured, and the answer is that it has never been
+  asked.** From the pre-migration database, 98,056 spans over 2026-08-19:
+  `index.ask` ran **36 times, succeeded 0 times**, spent **738.5s** of wall clock
+  (mean 20.5s, max 24.4s), and accounts for **36 of the 56 error spans in the
+  whole system — 64%**. Each `orch ctx query` that reached the tree paid ~20.5s to
+  learn nothing and fell through to the lexical half, which ADR 020 measured at
+  0.32ms. So the "59% of the cache-read bill" line is not refuted — it is
+  untestable, because the layer has never returned an answer to compare.
+
+  Why is not recoverable from that data: the span recorded `exit 1` and nothing
+  else, while the panel reads `status_message`. The boss was told 43 times
+  ("PageIndex 建不起来：12 次调用全部没有返回") with no reason attached, and both
+  runtimes were tried and reverted, so it is not one model name. `index.ask` now
+  carries the CLI's own words, scrubbed and clipped. Nothing is cut and the
+  default stays on — see [ADR 040](../adr/040-the-retrieval-walk-has-never-answered.md).
+  `pageindex.enabled` is the switch for the comparison once calls succeed.
 - `scripts/` was outside `bun run lint`, and that is where the async migration
   hid. Ten findings, two of them `no-floating-promises`: `benchmark.ts` called
   five newly-async span queries without awaiting one, so the telemetry budget
@@ -452,8 +460,15 @@ M7 — executable engineering governance and versioned protocol.
   (server reused), and immediately after three back-to-back full suites, which is
   what preceded the red one. Two hypotheses were tested and both were wrong — the
   22s wall clock was a *consequence* of failing early, not a slow boot, and a cold
-  `ensureServer` start does not reproduce it. Left undiagnosed on purpose: naming
-  a cause here would be a guess printed as a diagnosis.
+  `ensureServer` start does not reproduce it. `provision()` is awaited inside
+  `openSandbox`, so it is not a provisioning race either.
+
+  The reason it cannot be taken further is the assertion: `expect(orch.code).toBe(0)`
+  discarded both output streams, so a container that said something kept it. Same
+  defect class as `index.ask`'s `exit 1`, and fixed the same way — the probe now
+  prints `code`, `out` and `err`. A container is the one place where re-running is
+  not a way to find out. No cause is named here, because naming one would be a
+  guess printed as a diagnosis.
 
 ## Blockers and deviations
 

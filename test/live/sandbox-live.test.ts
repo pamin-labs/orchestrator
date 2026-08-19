@@ -140,13 +140,19 @@ live(
     const scope = { grp: 1 } as const;
     try {
       // Provisioning: the mailbox and a matching `orch` land before anything else.
+      // Asserted with the output attached, not on the code alone. One run in seven
+      // gave `Received: 126` here and nothing else — the shell's "found but could
+      // not execute", against a command that only runs `test` and `ls` — and the
+      // two streams that would have named it had been discarded by the matcher.
+      // A container is the one place where re-running is not a way to find out.
       const orch = await execIn(c, scope, "test -x /usr/local/bin/orch && ls /var/orch");
-      expect(orch.code).toBe(0);
-      expect(orch.out).toContain("req");
+      const said = (r: { code: number; out: string; err: string }) => `code=${r.code} out=${r.out} err=${r.err}`;
+      expect(orch.code, said(orch)).toBe(0);
+      expect(orch.out, said(orch)).toContain("req");
 
       // The toolchain the gates need. `tsc` is why node is in the image at all.
       const tools = await execIn(c, scope, "bun --version && node --version && git --version");
-      expect(tools.code).toBe(0);
+      expect(tools.code, said(tools)).toBe(0);
 
       // The host is not reachable. This is the whole point: whatever the agent
       // does, it does inside here.
