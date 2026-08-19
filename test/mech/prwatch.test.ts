@@ -803,15 +803,22 @@ test("an unresolved review thread arrives with the file and the line it is about
 
   expect(fs[0]!.threads).toEqual([
     {
+      id: "T1",
       path: "src/mech/git/prwatch.ts",
       line: 42,
       comments: [{ author: "reviewer", body: "this needs a guard", at: Date.parse("2026-08-18T10:00:00Z") }],
     },
   ]);
-  // And the PM is told where, not just what.
+  // And the PM is told where, not just what — plus the id, which is the only
+  // handle `orch pr resolve` takes. Without it the thread can be fixed and never
+  // closed, which is the state every thread was in.
   dispatchFeedback(h.ctx, fs[0]!);
   const job = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job").get()!;
-  expect(AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json)).rejection).toContain("src/mech/git/prwatch.ts:42");
+  const rejection = AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json)).rejection ?? "";
+  expect(rejection).toContain("[T1] src/mech/git/prwatch.ts:42");
+  expect(rejection).toContain("orch pr resolve --thread");
+  // And what to do with the ones it must not close itself.
+  expect(rejection).toContain("orch ask-boss");
 });
 
 test("a settled thread is not raised again, whichever way it was settled", async () => {

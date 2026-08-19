@@ -313,7 +313,12 @@ export interface Feedback {
    * any one comment in it. Optional because only GraphQL can answer it — see
    * `loadPollDetails`.
    */
-  threads?: Array<{ path: string; line: number | null; comments: Feedback["comments"] }>;
+  /**
+   * `id` is GitHub's node id, and it is here so it can be quoted back: `orch pr
+   * resolve` names a thread by it. Without it an agent that fixed what a reviewer
+   * asked for had no way to say which thread it fixed, so every one stayed open.
+   */
+  threads?: Array<{ id: string; path: string; line: number | null; comments: Feedback["comments"] }>;
   /**
    * Which checks are failing, and enough of what they said to act on.
    *
@@ -458,6 +463,7 @@ function newThreads(threads: Thread[], seenAt: number): NonNullable<Feedback["th
   return threads
     .filter((thread) => !thread.resolved)
     .map((thread) => ({
+      id: thread.id,
       path: thread.path,
       line: thread.line,
       comments: saidSince(thread.comments, seenAt),
@@ -493,6 +499,8 @@ function failedChecks(checks: Check[], statuses: Status[]): Feedback["failingChe
 
 /** One line-level thread as the poll reads it, before the cursor is applied. */
 interface Thread {
+  /** GitHub's node id: what `resolveReviewThread` takes, and what the agent quotes. */
+  id: string;
   path: string;
   line: number | null;
   /** Outdated counts as resolved: the lines it was filed against are no longer there. */
@@ -787,6 +795,7 @@ type PollCounts = Config["prPoll"];
 /** The threads a PR node carries, in the shape `newThreads` filters. */
 function graphThreads(pr: z.infer<typeof GraphPrNode>): Thread[] {
   return (pr.reviewThreads?.nodes ?? []).map((thread) => ({
+    id: thread.id ?? "",
     path: thread.path ?? "",
     line: thread.line ?? null,
     resolved: !!(thread.isResolved || thread.isOutdated),
@@ -944,8 +953,17 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
     // place in the diff, and without them the PM is told to fix something it
     // cannot find.
     ...(f.threads ?? []).map(
-      (t) => `${t.path}:${t.line ?? "?"} — ${t.comments.map((c) => `${c.author}: ${c.body}`).join(" / ")}`,
+      (t) => `[${t.id}] ${t.path}:${t.line ?? "?"} — ${t.comments.map((c) => `${c.author}: ${c.body}`).join(" / ")}`,
     ),
+    // The id is quoted back, so it leads the line: the event body is truncated at
+    // 2000 characters and a review comment is up to 1000 of them.
+    ...(f.threads?.length
+      ? [
+          "Fixed one? `orch pr resolve --thread <id>` closes it. A thread about design, another " +
+            "group's files, or a premise that changed goes to `orch ask-boss` and stays open — " +
+            "the boss decides it. Unsure: leave it open.",
+        ]
+      : []),
     ...(f.failingChecks.length ? [`failing checks: ${f.failingChecks.map((c) => c.name).join(", ")}`] : []),
     // What the gate said, under the list of names. "failing checks: build" told
     // the PM a fact with no next step in it, and the summary is the step.
