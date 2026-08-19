@@ -285,6 +285,37 @@ M7 — executable engineering governance and versioned protocol.
   `PLANNING_ROLES` in `scheduler.ts`, which is a DRAFT-freeze list rather than a
   dispatch and fails safe for a role that is not in it.
 
+- A group given PR feedback went deaf and blocked everyone behind it.
+  `dispatchFeedback` moved it PR_OPEN → RUNNING and nothing moved it back, while
+  `pollPr` returns null for any other status — so every later comment, red check and
+  conflict was read by nobody, and the group still held `merge_seq` at the head of a
+  strictly serial queue. The flip bought nothing: PR_OPEN is already in
+  `DISPATCHABLE_GRP_STATES`. Removing it was the whole fix, and the stall rule then
+  had to stop naming two states where it meant every dispatchable one.
+- Half of a review was invisible. `state` was on neither transport, so APPROVED and
+  CHANGES_REQUESTED were the same string and a bodyless approval — the common shape —
+  was dropped by a filter on `body`. Line-level threads were never requested at all,
+  and a failing check arrived as the bare word `build`. All three now reach the group,
+  with the check summary deliberately kept out of `pr_checks_sig`: summaries carry run
+  numbers, and folding one in would wake the group every 30 seconds forever.
+- 系统耗时 opened in **739ms** and now opens in **262ms**, measured over 90,000 spans.
+  Indexes were tried first and rejected on measurement — `(started_at, grp_id,
+  project_id)` and `(started_at, name)` plus ANALYZE each left SQLite on `span_scope`
+  and made the total worse (655 → 716 → 728ms). The cost was sorting, not scanning:
+  `traceList` sorted every span in the window to return twenty, and `stageStats` paid
+  a third full sort for one status message per stage.
+- "Roles are configuration, not code" was false where it was stated. Ten capabilities
+  are declared in `roles/*.yaml` and the flow asks for a capability, never a name. The
+  guard is a fixture role called `composer` — a name appearing nowhere in the source —
+  dispatched by `handToQa` with no code change. A capability no role claims, or two
+  roles claiming one, is a named error rather than a silent `undefined` role.
+- Two config contradictions were live bugs. `escalation.ts` chose its language with
+  `language === "en"`, which is false for every value the setting can hold including
+  `"English"`, so the English branch was unreachable; there is one exported
+  `isChinese` now. And `config/default.yaml` told container users to set
+  `host: 0.0.0.0`, which `ConfigSchema` refuses — the schema is right (these routes
+  have no login) and the instruction was wrong.
+
 ## Blockers and deviations
 
 - The `main` branch ruleset required a status check named `check` that no
