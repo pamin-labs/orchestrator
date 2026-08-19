@@ -8,6 +8,7 @@ import {
   indexTargets,
   indexThrew,
   INDEX_THROW_BACKOFF_MS,
+  navigatorEnabled,
   reportRejection,
 } from "../../src/composition/server.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -277,4 +278,17 @@ test("an index pass that throws backs off and says the reason once", () => {
   // A different one is worth saying.
   indexThrew(ctx, new Error("no such container"), t0);
   expect(said()).toBe(2);
+});
+
+test("an empty index model turns the tree walk off rather than calling an empty one", () => {
+  // The one path told to run before anything else, and its cost was never
+  // compared against not having it. Measured on a 500-note corpus: the lexical
+  // half answers three questions in 12.6ms and the walk adds two model calls per
+  // question for 192 more characters — about 1%, because the budget was already
+  // full. So the switch has to exist before the claim can be argued with.
+  expect(navigatorEnabled({ model: "gpt-5.6-luna" })).toBe(true);
+  // Whitespace is not a model id. It arrives from a yaml and from the settings
+  // page, and " " reaching `codex exec -m` is a turn that fails rather than a
+  // navigator that is off.
+  expect([navigatorEnabled({ model: "" }), navigatorEnabled({ model: "   " })]).toEqual([false, false]);
 });

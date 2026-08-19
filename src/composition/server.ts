@@ -408,6 +408,20 @@ const authStamp = (db: DB): number =>
  */
 export const INDEX_THROW_BACKOFF_MS = 5 * 60_000;
 
+/**
+ * Whether `orch ctx query` gets a model to walk the summary tree with.
+ *
+ * An empty `indexModel.model` turns it off, and both readers of `askIn` already
+ * treat its absence as "no navigator": the query falls through to the lexical
+ * half and the index stops rebuilding. So the off switch is a setting, not a
+ * second code path — and it is what makes this layer's own claim testable, since
+ * "cheaper than the grep rounds it replaces" was never measured against not
+ * having it.
+ */
+export function navigatorEnabled(indexModel: { model: string }): boolean {
+  return indexModel.model.trim().length > 0;
+}
+
 export function indexThrew(ctx: Ctx, error: unknown, now = Date.now()): void {
   const reason = errText(error);
   const mem = memory(ctx.db);
@@ -664,11 +678,21 @@ export function start(overrides: Partial<Config> = {}): Started {
     sandbox: REAL,
     // Cheapest tier: navigating a tree of one-line summaries is not a reasoning
     // job, and this runs on every `orch ctx query`.
-    askIn: (scope) =>
-      modelAsk(ctx, cfg.indexModel, scope, undefined, (u) => {
-        const projectId = chargedProject(db, scope);
-        if (projectId) chargeIndex(ctx, projectId, cfg.indexModel, u);
-      }),
+    //
+    // An empty model turns the walk off, and both callers already read `askIn`
+    // being absent as "no navigator" — the query falls through to the lexical
+    // half and the index stops rebuilding. That is the off switch the claim this
+    // layer rests on has never been measured against: it is asserted to cost less
+    // than the grep rounds it replaces, and nothing here could compare.
+    ...(navigatorEnabled(cfg.indexModel)
+      ? {
+          askIn: (scope: Scope) =>
+            modelAsk(ctx, cfg.indexModel, scope, undefined, (u) => {
+              const projectId = chargedProject(db, scope);
+              if (projectId) chargeIndex(ctx, projectId, cfg.indexModel, u);
+            }),
+        }
+      : {}),
     waiters: new Map(),
     // Built here because it outlives every request and has to be kept fresh,
     // which is state — and state gets one owner rather than a module reaching
