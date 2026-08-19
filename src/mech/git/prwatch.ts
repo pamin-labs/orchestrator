@@ -667,6 +667,17 @@ const GRAPH_QUERY = `query($owner:String!,$name:String!,$prs:Int!,$messages:Int!
   }
 }`;
 
+/**
+ * Where GraphQL puts a failure: inside a 200, beside whatever data it did produce.
+ *
+ * Every reader below checks this instead of the status, and a partial answer must
+ * not read as a complete one.
+ */
+const GraphErrors = z
+  .array(z.object({ message: z.string().optional() }))
+  .nullable()
+  .optional();
+
 const GraphActor = z.object({ login: z.string().optional() }).nullable().optional();
 const GraphContext = z.object({
   __typename: z.string().optional(),
@@ -775,10 +786,7 @@ const GraphReply = z.object({
     .optional(),
   // A GraphQL failure is a 200 with this filled in, so the caller checks it rather
   // than the status. Any error at all sends the repository back to REST.
-  errors: z
-    .array(z.object({ message: z.string().optional() }))
-    .nullable()
-    .optional(),
+  errors: GraphErrors,
 });
 
 /** What one PR looks like once the query's shape is flattened. */
@@ -876,6 +884,108 @@ async function pollViaGraph(
   const nodes = reply.data.data?.repository?.pullRequests?.nodes;
   if (!nodes) return null;
   return new Map(nodes.filter((pr): pr is NonNullable<typeof pr> => !!pr).map((pr) => [pr.number, flattenGraphPr(pr)]));
+}
+
+/**
+ * Where one review thread lives, asked of GitHub rather than taken from the caller.
+ *
+ * `orch pr resolve` refuses a thread on another PR and a thread outside the
+ * group's boundary, and the id an agent quotes cannot answer either question. Both
+ * answers come from here, so neither is something the agent gets to assert.
+ */
+const THREAD_QUERY = `query($id:ID!){ node(id:$id){ ... on PullRequestReviewThread {
+  path pullRequest{ number repository{ nameWithOwner } }
+} } }`;
+
+const ThreadReply = z.object({
+  data: z
+    .object({
+      node: z
+        .object({
+          path: z.string().optional(),
+          pullRequest: z
+            .object({
+              number: z.number().int().positive(),
+              repository: z.object({ nameWithOwner: z.string().optional() }).nullable().optional(),
+            })
+            .nullable()
+            .optional(),
+        })
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+  errors: GraphErrors,
+});
+
+/** A thread's own account of where it is: `owner/repo`, PR number, file. */
+export interface ReviewThreadAt {
+  repo: string;
+  prNumber: number;
+  path: string;
+}
+
+/** Null for every reason there is — unknown id, wrong node type, a GraphQL error. */
+export async function reviewThreadAt(
+  gh: Github,
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<ReviewThreadAt | null> {
+  const reply = await gh.request(
+    "POST",
+    "/graphql",
+    ThreadReply,
+    { query: THREAD_QUERY, variables: { id: threadId } },
+    signal,
+  );
+  if (!reply.ok || reply.data.errors?.length) return null;
+  const node = reply.data.data?.node;
+  const pr = node?.pullRequest;
+  // `node(id:)` answers null for an id of any other type, and the inline fragment
+  // leaves an empty object for one that is not a review thread. Both land here.
+  return node?.path && pr?.number && pr.repository?.nameWithOwner
+    ? { repo: pr.repository.nameWithOwner, prNumber: pr.number, path: node.path }
+    : null;
+}
+
+const RESOLVE_MUTATION = `mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ id isResolved } } }`;
+
+const ResolveReply = z.object({
+  data: z
+    .object({
+      resolveReviewThread: z
+        .object({ thread: z.object({ isResolved: z.boolean().optional() }).nullable().optional() })
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+  errors: GraphErrors,
+});
+
+/**
+ * Close the thread. Returns why it did not, or null when it did.
+ *
+ * `github.ts` gives every non-GET `retries: 0`, which is what a mutation wants:
+ * this one is idempotent, but the transport cannot know that and the next
+ * mutation written here will not be.
+ */
+export async function resolveReviewThread(gh: Github, threadId: string, signal?: AbortSignal): Promise<string | null> {
+  const reply = await gh.request(
+    "POST",
+    "/graphql",
+    ResolveReply,
+    { query: RESOLVE_MUTATION, variables: { id: threadId } },
+    signal,
+  );
+  if (!reply.ok) return reply.message;
+  const said = (reply.data.errors ?? []).map((e) => e.message).filter(Boolean);
+  if (said.length) return said.join("; ");
+  // A 200 with neither an error nor a thread is GitHub declining without saying
+  // so; reporting it as success leaves the agent believing a thread it can still
+  // see open was closed.
+  return reply.data.data?.resolveReviewThread?.thread ? null : "GitHub answered the resolve with no thread in it";
 }
 
 async function pollPrsInner(db: DB, gh: Github, counts: PollCounts): Promise<Feedback[]> {

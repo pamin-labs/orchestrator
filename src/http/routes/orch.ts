@@ -27,7 +27,7 @@ import {
   postSplit,
   SplitBody,
 } from "../../api/orch/planning.ts";
-import { postPr, PrBody } from "../../api/orch/pr.ts";
+import { postPr, postPrResolve, PrBody, PrResolveBody } from "../../api/orch/pr.ts";
 import { JournalBody, postJournal, postStatus, StatusBody } from "../../api/orch/report.ts";
 import { AuditBody, postAudit, postReview, ReviewBody } from "../../api/orch/review.ts";
 import { postSetup, SetupBody } from "../../api/panel/project.ts";
@@ -91,6 +91,9 @@ export function orchRoutes(ctx: Ctx) {
       postAudit(ctx, c.req.raw, c.get("agent"), c.req.param(), c.req.valid("json")),
     )
     .post("/pr", ...jsonBody(PrBody), (c) => postPr(ctx, c.req.raw, c.get("agent"), c.req.param(), c.req.valid("json")))
+    .post("/pr/resolve", ...jsonBody(PrResolveBody), (c) =>
+      postPrResolve(ctx, c.req.raw, c.get("agent"), c.req.param(), c.req.valid("json")),
+    )
     .post("/answer", ...jsonBody(AnswerBody), (c) =>
       postAnswer2(ctx, c.req.raw, c.get("agent"), c.req.param(), c.req.valid("json")),
     )

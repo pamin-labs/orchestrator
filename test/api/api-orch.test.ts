@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
 import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import type { Json } from "../../src/contracts/json.ts";
@@ -10,6 +11,7 @@ import { saveTree, type Tree } from "../../src/mech/knowledge/pageindex.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
+import type { Github } from "../../src/mech/git/github.ts";
 
 /**
  * The three agent-facing routes whose whole job is refusing the wrong caller.
@@ -20,7 +22,7 @@ import { seedAuth } from "../support/seed-auth.ts";
  * from a test, so a refusal that stopped refusing would have gone unnoticed.
  */
 
-function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: string; err?: string }) {
+function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: string; err?: string }, gh?: Github) {
   const db = openMemory();
   seedAuth(db);
   const published: number[] = [];
@@ -32,8 +34,9 @@ function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: s
     waiters: new Map(),
     config: loadConfig(),
     publishBranch: (grpId) => void published.push(grpId),
+    ...(gh ? { gh } : {}),
   };
-  const p = fx.project.insert(db, { name: "p", repo_path: "o/p" });
+  const p = fx.project.insert(db, { name: "p", repo_path: "o/p", remote: "git@github.com:o/p.git" });
   const q = fx.project.insert(db, { name: "q", repo_path: "o/q" });
   const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
   fx.runningGrp.insert(db, { project_id: q.id, name: "g2" });
@@ -247,4 +250,119 @@ test("no index and no model each fall straight through", async () => {
   // No tree means no walk: the cheap call is skipped rather than made against
   // nothing.
   expect(walked).toBe(false);
+});
+
+// -------------------------------------------------------- orch/pr/resolve
+
+/**
+ * A GitHub that answers both halves of a resolve. Both are `POST /graphql`, so
+ * which one this is comes off the query text, and `calls` is what proves the
+ * mutation was never reached.
+ */
+function fakeGh(where: Json, calls: string[]): Github {
+  return {
+    remaining: () => 4999,
+    async request(_method, _path, schema, body) {
+      const sent = z.object({ query: z.string() }).safeParse(body);
+      const query = sent.success ? sent.data.query : "";
+      const mutation = query.startsWith("mutation");
+      calls.push(mutation ? "resolve" : "locate");
+      const answer: Json = mutation ? { data: { resolveReviewThread: { thread: { isResolved: true } } } } : where;
+      const parsed = schema.safeParse(answer);
+      return parsed.success
+        ? { ok: true, status: 200, data: parsed.data }
+        : { ok: false, status: 200, bucket: "transient", message: "invalid fixture" };
+    },
+  };
+}
+
+/** Where GitHub says the thread is. The group below is `o/p` #7 owning `src/api/**`. */
+const threadAt = (over: Record<string, Json> = {}): Json => ({
+  data: {
+    node: {
+      path: "src/api/orch/pr.ts",
+      pullRequest: { number: 7, repository: { nameWithOwner: "o/p" } },
+      ...over,
+    },
+  },
+});
+
+function resolveHarness(where: Json) {
+  const calls: string[] = [];
+  const h = harness(undefined, fakeGh(where, calls));
+  h.db.run("UPDATE grp SET pr_number = 7, owns_json = ? WHERE id = 1", [JSON.stringify(["src/api/**"])]);
+  const send = (body: Json) => h.post("/orch/v1/pr/resolve", body, "tok-eng");
+  return { ...h, calls, send };
+}
+
+const noteCount = (db: ReturnType<typeof harness>["db"]) =>
+  db.query<{ n: number }, []>("SELECT count(*) AS n FROM event WHERE kind = 'note'").get()!.n;
+
+test("a thread on somebody else's pull request is refused before the mutation runs", async () => {
+  // The id is opaque and the agent is the one quoting it, so nothing about it says
+  // which PR it belongs to. Trusting it means one group closing another's review.
+  const h = resolveHarness(threadAt({ pullRequest: { number: 7, repository: { nameWithOwner: "o/somewhere-else" } } }));
+  const r = await h.send({ group_id: 1, thread_id: "PRRT_x" });
+  expect(r.status).toBe(422);
+  expect(await r.text()).toContain("that thread is on o/somewhere-else#7");
+  // The number alone matches: every repository this token can write to has a #7.
+  expect(h.calls).toEqual(["locate"]);
+
+  // And the same repository, a different PR.
+  const other = resolveHarness(threadAt({ pullRequest: { number: 9, repository: { nameWithOwner: "o/p" } } }));
+  const r2 = await other.send({ group_id: 1, thread_id: "PRRT_x" });
+  expect(r2.status).toBe(422);
+  expect(await r2.text()).toContain("o/p#9");
+  expect(other.calls).toEqual(["locate"]);
+});
+
+test("a thread on a file the group does not own is refused, and sent to the boss instead", async () => {
+  // Closing it would hide the request from whoever does own the file: the thread
+  // is the only place it is recorded, and a resolved one is not re-raised.
+  const h = resolveHarness(threadAt({ path: "src/mech/git/prwatch.ts" }));
+  const r = await h.send({ group_id: 1, thread_id: "PRRT_x" });
+  expect(r.status).toBe(422);
+  const said = await r.text();
+  expect(said).toContain("src/mech/git/prwatch.ts is outside this group's boundary");
+  expect(said).toContain("orch ask-boss");
+  expect(h.calls).toEqual(["locate"]);
+  expect(noteCount(h.db)).toBe(0);
+});
+
+test("a thread inside the boundary is closed, and the group's record says so", async () => {
+  const h = resolveHarness(threadAt());
+  const r = await h.send({ group_id: 1, thread_id: "PRRT_x", note: "guarded it, test at pr.test.ts:40" });
+  expect(r.status).toBe(200);
+  expect(h.calls).toEqual(["locate", "resolve"]);
+  const note = h.db
+    .query<{ author: string; body: string }, []>("SELECT author, body FROM event WHERE kind = 'note'")
+    .get()!;
+  expect(note).toEqual({
+    author: "engineer",
+    body: "resolved review thread on src/api/orch/pr.ts: guarded it, test at pr.test.ts:40",
+  });
+});
+
+test("resolve refuses another project's group, and a group with no pull request", async () => {
+  const h = resolveHarness(threadAt());
+  const other = await h.send({ group_id: 2, thread_id: "PRRT_x" });
+  expect(other.status).toBe(403);
+  expect(await other.text()).toContain("not your project");
+
+  h.db.run("UPDATE grp SET pr_number = NULL WHERE id = 1");
+  const none = await h.send({ group_id: 1, thread_id: "PRRT_x" });
+  expect(none.status).toBe(422);
+  expect(await none.text()).toContain("no pull request open");
+  // Neither reached GitHub at all.
+  expect(h.calls).toEqual([]);
+});
+
+test("an id that names no review thread is a refusal, not a resolve", async () => {
+  // `node(id:)` answers null for an id of another type, which is what a
+  // hallucinated or stale id looks like.
+  const h = resolveHarness({ data: { node: null } });
+  const r = await h.send({ group_id: 1, thread_id: "PRRT_nope" });
+  expect(r.status).toBe(422);
+  expect(await r.text()).toContain("no review thread with id PRRT_nope");
+  expect(h.calls).toEqual(["locate"]);
 });
