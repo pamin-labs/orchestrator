@@ -128,7 +128,16 @@ if (needsDom(Bun.main)) {
    * `Event`, and Radix builds a `CustomEvent` from the global. Hand back Bun's and
    * every dismissable layer in the panel fails on mount.
    */
-  const DOM_OWNS = (name: string) => name === "EventTarget" || name.endsWith("Event") || name === "DOMException";
+  // `dispatchEvent` and its two registrars go with the event classes, because they
+  // are one mechanism. Restoring Bun's while keeping happy-dom's `Event` left
+  // `window.dispatchEvent` silently doing nothing — a happy-dom event handed to
+  // Bun's dispatcher, which drops it — while `document.dispatchEvent` worked. The
+  // six `window.addEventListener` calls in `web/src` (the theme hotkey and its
+  // change event, the panel's shortcuts, `popstate`, `hashchange`) were therefore
+  // not merely untested but untestable.
+  const DISPATCH = new Set(["dispatchEvent", "addEventListener", "removeEventListener"]);
+  const DOM_OWNS = (name: string) =>
+    name === "EventTarget" || name.endsWith("Event") || name === "DOMException" || DISPATCH.has(name);
   for (const [name, value] of native) {
     if (DOM_OWNS(name) || Reflect.get(globalThis, name) === value) continue;
     Reflect.set(globalThis, name, value);
