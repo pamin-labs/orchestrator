@@ -944,3 +944,60 @@ test("a project that develops on develop is not told to rebase onto main", () =>
   expect(payload.rejection).toContain("git rebase origin/develop");
   expect(payload.rejection).not.toContain("origin/main");
 });
+
+test("a check that timed out or errored is red too, not just one that said FAILURE", async () => {
+  // A CI job killed by its own timeout, or an action that could not start, leaves
+  // the PR red on GitHub with no `FAILURE` anywhere in the rollup. Counting only
+  // FAILURE means the group is never told, and the branch sits at the head of a
+  // serial merge queue waiting for feedback that will not come.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 5 WHERE id = 1");
+  const fs = await pollPrs(
+    h.ctx,
+    gh({
+      "POST /graphql": graphReply({
+        contexts: [
+          { __typename: "CheckRun", name: "e2e", conclusion: "TIMED_OUT" },
+          { __typename: "CheckRun", name: "build", conclusion: "ERROR" },
+          { __typename: "CheckRun", name: "lint", conclusion: "SUCCESS" },
+        ],
+      }),
+    }),
+  );
+  expect(fs[0]!.failingChecks.map((c) => c.name)).toEqual(["e2e", "build"]);
+});
+
+test("a branch GitHub already calls dirty is conflicting while mergeable is still null", async () => {
+  // `mergeable` is null for a few seconds after every push, and on a conflicting
+  // branch `mergeable_state` says `dirty` first. Reading only `mergeable` means
+  // the poll that lands in that window says nothing, and nothing polls again
+  // until something else changes — so the boss's card never asks for the rebase.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 7 WHERE id = 1");
+  const fs = await pollPrs(h.ctx, gh({ "GET /repos/me/x/pulls/7": pr({ mergeable: null, mergeable_state: "dirty" }) }));
+  expect(fs[0]!.conflicting).toBe(true);
+});
+
+test("the same red checks in a different order are not news, and not repeated", async () => {
+  // GitHub returns the rollup in whatever order it likes. Comparing the list as
+  // it arrives makes a reordering look like a change, and the PM gets a turn
+  // every 30 seconds over a build that has been red the whole time — and every
+  // reply to a reviewer arrives with the same failing check attached again.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 5 WHERE id = 1");
+  const red = (names: string[], comments: Json[] = []) =>
+    gh({
+      "POST /graphql": graphReply({
+        contexts: names.map((name) => ({ __typename: "CheckRun", name, conclusion: "FAILURE" })),
+        comments,
+      }),
+    });
+
+  expect(await pollPrs(h.ctx, red(["build", "test"]))).toHaveLength(1);
+  expect(await pollPrs(h.ctx, red(["test", "build"]))).toEqual([]);
+
+  const said = [{ author: { login: "bob" }, body: "rebase please", createdAt: "2026-08-18T10:00:00Z" }];
+  const third = await pollPrs(h.ctx, red(["test", "build"], said));
+  expect(third[0]!.comments.map((c) => c.body)).toEqual(["rebase please"]);
+  expect(third[0]!.failingChecks).toEqual([]);
+});
