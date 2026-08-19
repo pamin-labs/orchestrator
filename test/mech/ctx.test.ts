@@ -400,3 +400,32 @@ test("a superseded decision is not what the blackboard answers with", () => {
   const hits = makeNoteIndex(db).search("gate order", { grpId: null, projectId: p.id }, 2);
   expect(hits.map((h) => h.doc.body)).toEqual(["gate order is lint then typecheck then test"]);
 });
+
+test("a question sharing no word with its answer is what lexical retrieval cannot do", () => {
+  // The measurement that decides whether the model walk on top of this is worth
+  // its two calls per question. Lexical scoring is exact-term matching, so it is
+  // near-perfect when the asker already knows the vocabulary and blind when they
+  // do not — and this asserts the blind spot rather than describing it, because
+  // the argument for the walk rests entirely on it.
+  const db = openMemory();
+  const p = fx.project.insert(db, { name: "p" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  for (let n = 0; n < 30; n++) {
+    fx.note.insert(db, { project_id: p.id, grp_id: g.id, kind: "journal", body: `Ran the gates, all green. ${n}` });
+  }
+  fx.note.insert(db, {
+    project_id: p.id,
+    grp_id: g.id,
+    kind: "decision",
+    body: "We chose zod over ajv for boundary parsing because it ships types.",
+  });
+
+  const ask = (question: string) =>
+    query({ db, index: makeNoteIndex(db), grpId: g.id, projectId: p.id, question }).includes("chose zod over ajv");
+
+  // Same words: found. No shared word: not found, and no ranking change fixes
+  // that — it is the property of the algorithm, not a tuning failure.
+  expect(ask("zod or ajv?")).toBe(true);
+  expect(ask("which validation library did we pick?")).toBe(false);
+  db.close();
+});

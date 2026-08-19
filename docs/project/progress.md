@@ -322,9 +322,17 @@ M7 — executable engineering governance and versioned protocol.
   questions: the lexical half answers in 12.6ms; the walk adds two model calls per
   question and **192 characters**, about 1% more context, because `ctxBudgetChars`
   was already full. Stable across model latencies of 300/900/1500ms — its cost
-  scales with the model and its contribution does not. Not yet a verdict: a corpus
-  where the lexical half misses is where a walk should earn its keep, and this one
-  does not contain that case. What it settles is that the walk is not free.
+  scales with the model and its contribution does not.
+
+  Then the missing case was measured, and it changes the reading. Ask "which
+  validation library did we pick?" of a note that says "we chose zod over ajv
+  because it ships types" and lexical retrieval returns **nothing** — the question
+  and the answer share no word, which is the one thing BM25 cannot cross and the
+  exact gap a model walking summaries exists to close. Ask "zod or ajv?" and it is
+  found instantly. So the honest verdict is neither "keep" nor "cut": the walk is
+  near-worthless when the asker already knows the vocabulary and is the only thing
+  that works when they do not. Conditional, not default — and the switch is now
+  there to make that arguable with data instead of prose.
 - An idle project paid **four container execs per tick** for a repo map that never
   changed — `listTree` plus a `treeHeads` that ships every tracked file's contents
   out of the container (0.8 MB here, 4.0 MB on a large repository) only for
