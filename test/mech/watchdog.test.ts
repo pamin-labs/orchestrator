@@ -131,6 +131,25 @@ test("a turn that ended cleanly without arranging the next one also counts as st
   expect(AgentTurnPayloadSchema.parse(JSON.parse(back.payload_json)).role).toBe("dispatcher");
 });
 
+test("a PM turn that dies answering a review is picked up, not left in PR_OPEN", async () => {
+  // PR feedback used to move the group to RUNNING, where this rule covered it. It
+  // stays in PR_OPEN now, so the rule has to cover every state a turn dispatches
+  // from — otherwise a turn that fails while answering a reviewer leaves the group
+  // holding the head of the merge queue with an empty queue and nobody looking.
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = 7, merge_seq = 1 WHERE id = 1");
+  fx.job.insert(h.db, {
+    grp_id: 1,
+    payload_json: '{"role":"pm"}',
+    state: "failed",
+    error: "the model was unreachable",
+  });
+
+  await runWatchdog(h.deps);
+  const back = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").get()!;
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(back.payload_json)).role).toBe("pm");
+});
+
 test("work queued for a dissolved group is cancelled, not left pending forever", async () => {
   // Drop and split both cancel what was pending, but a mail landing a moment later
   // enqueues another, and no status a dissolved group has is dispatchable.

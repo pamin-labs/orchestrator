@@ -856,16 +856,20 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // group IS the fault, whatever the last turn's exit code said. One automatic
   // retry, then the boss.
   await step({ id: "8", name: "stalled", every: EVERY_TICK }, async () => {
+    // Every state a turn can be dispatched from, not a list retyped here. It said
+    // RUNNING and PLANNING, which was the same set until PR feedback stopped moving
+    // groups out of PR_OPEN — and a PM turn that dies answering a review would then
+    // have been covered by nothing at all.
     const stalled = ctx.db
-      .query<Job, [string]>(
+      .query<Job, [string, string]>(
         `SELECT j.id, j.kind, j.grp_id, j.agent_id, j.slice_id, j.payload_json, j.priority, j.state, j.error
          FROM job j JOIN grp g ON g.id = j.grp_id
-         WHERE g.status IN ('RUNNING', 'PLANNING') AND j.kind = 'agent_turn'
+         WHERE g.status IN (SELECT value FROM json_each(?)) AND j.kind = 'agent_turn'
            AND j.id = (SELECT max(id) FROM job WHERE grp_id = j.grp_id AND kind = 'agent_turn')
            AND NOT EXISTS (SELECT 1 FROM job k WHERE k.grp_id = j.grp_id
                            AND k.state IN (SELECT value FROM json_each(?)))`,
       )
-      .all(stateParam(ACTIVE_JOB_STATES));
+      .all(stateParam(DISPATCHABLE_GRP_STATES), stateParam(ACTIVE_JOB_STATES));
     for (const j of stalled) {
       // A rebase that beat the Engineer twice is a design question, not a harder
       // rebase, so the next thing to try is the role that can say whether the slice
