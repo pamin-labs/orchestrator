@@ -1,4 +1,5 @@
 import { afterEach } from "bun:test";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 /**
@@ -53,39 +54,75 @@ import { createRequire } from "node:module";
  * and `[test] parallel`/`isolate` in `bunfig.toml` are not read. The guard is
  * therefore on the command, in `preload-scope.test.ts`, not on the symptom.
  */
-const DOM_TESTS = new Set([
-  "api/telemetry.test.ts",
-  "governance/bundle-boots.test.ts",
-  "http/response-json.test.ts",
-  // Not a browser test. It imports `waitFor` from `@testing-library/dom` as a
-  // polling helper, and `waitFor` reads `document` before it does anything else
-  // — so it needs the whole DOM to wait for a row to appear in SQLite.
-  "mech/auth.test.ts",
-]);
+/**
+ * What "reaches the browser" means. The dependency, not the directory.
+ *
+ * It was the directory — everything under `test/web` plus a hand-kept list — and
+ * that is what put the restoration loop here. Sixteen of the forty-one files in
+ * `test/web` touch no document; they are there because they import a pure module
+ * from `web/src`. One of them, `panel-text.test.ts`, builds a `Request` and
+ * asserts a 413, which happy-dom's `Request` answers as 400. So a document
+ * nobody asked for had to be half-undone for a file that never wanted it, and
+ * undoing it split `dispatchEvent` from `Event` — after which no `window` event
+ * fired anywhere, for anyone.
+ *
+ * Not a scan for `web/src` either, which was the first cut and reproduced the
+ * same fault one layer in: `panel-text.test.ts` imports three *pure* `.ts`
+ * modules from there and still got a document. A `.tsx` is the signal, because
+ * evaluating one evaluates Radix, and Radix reads `globalThis?.document` once at
+ * module load and never asks again.
+ *
+ * `test/mech/auth.test.ts` is the other direction: it imports `waitFor` from
+ * `@testing-library/dom`, which calls `getDocument()` before it does anything
+ * else. A server-side test with a browser dependency.
+ */
+const reachesDom = (spec: string): boolean =>
+  spec.endsWith(".tsx") ||
+  spec.includes("support/render") ||
+  spec.startsWith("@testing-library/") ||
+  spec.includes("happy-dom");
 
-/** Whether `file` — absolute, or relative to the repo root — needs a document. */
-export function needsDom(file: string): boolean {
-  // Keyed on the path below `test/`, so the same predicate answers for
-  // `Bun.main` (absolute) and for a glob result (`test/web/…`). A file name ends
-  // `.test.ts`, never `test/`, so the last occurrence is the directory.
-  const at = file.lastIndexOf("test/");
-  if (at === -1) return false;
-  const rest = file.slice(at + "test/".length);
-  return rest.startsWith("web/") || DOM_TESTS.has(rest);
+/**
+ * `Bun.Transpiler`, synchronously, on the file about to run.
+ *
+ * Measured at 0.28ms including the read, against ~60ms to register happy-dom for
+ * a file that does not need it — so deriving costs less than the list it
+ * replaces and cannot drift from it. Synchronous because a preload's top-level
+ * `await` does not hold back the test module under `--parallel`.
+ *
+ * Direct imports only, which is the one thing a list did better: a test reaching
+ * the browser through a helper of its own is not seen here. That failure is loud
+ * — Radix decides at module evaluation, so every portal in the file stays
+ * unmounted — but it does not name its cause, so a helper that pulls in
+ * `web/src` should re-export from `support/render`, where this can see it.
+ */
+const scan = { ts: new Bun.Transpiler({ loader: "ts" }), tsx: new Bun.Transpiler({ loader: "tsx" }) };
+
+/** Whether the test file at `path` needs a document. */
+export function needsDom(path: string): boolean {
+  if (!path.includes("test/")) return false;
+  try {
+    const source = readFileSync(path, "utf8");
+    return scan[path.endsWith(".tsx") ? "tsx" : "ts"].scanImports(source).some(({ path: spec }) => reachesDom(spec));
+  } catch {
+    // Unreadable is not a browser test; the run says so on its own terms.
+    return false;
+  }
 }
 
 /**
- * Bun's own network stack, taken before the DOM replaces it.
+ * Bun's own `fetch`, captured before the DOM replaces it.
  *
- * `GlobalRegistrator.register()` installs happy-dom's `fetch` and friends over
- * Bun's. That is right for a browser simulation and wrong for this process,
- * where `test/integration` starts a real `Bun.serve` and talks to it over a real
- * socket — through happy-dom those requests fail with
- * `Failed to execute "fetch()" on "Window" … Parse Error`.
+ * This used to be load-bearing for a whole class of test: happy-dom's `fetch`
+ * cannot talk to a real socket — `test/integration` starts a `Bun.serve` and gets
+ * `Failed to execute "fetch()" on "Window" … Parse Error` — and those files were
+ * being given a document they never asked for. They are no longer classified as
+ * browser tests, so the ambient `fetch` is already Bun's for them.
  *
- * Capturing has to happen before `register`, which is the bug this replaces: the
- * previous version read `globalThis.fetch` after registration, so the value it
- * saved to "restore" was happy-dom's own.
+ * What is left is `restoreFetch` in `render.tsx`, for the three files that hold
+ * `globalThis.fetch` themselves to order a reply against a render. Capturing
+ * still has to happen before `register`, which was the bug before this one: the
+ * value saved to "restore" was read afterwards, so it was happy-dom's own.
  */
 /**
  * A synchronous require, typed by the caller.
@@ -100,10 +137,6 @@ const load = createRequire(import.meta.url) as <T>(id: string) => T;
 export const nativeFetch = globalThis.fetch;
 
 if (needsDom(Bun.main)) {
-  const native = new Map(
-    Object.getOwnPropertyNames(globalThis).map((name) => [name, Reflect.get(globalThis, name) as unknown]),
-  );
-
   // `require`, not a static import: a static import is loaded by all 149 files,
   // and the loading is the cost being removed. Not `await import` either —
   // measured against Bun 1.3.14, a preload's top-level `await` does **not** hold
@@ -113,35 +146,6 @@ if (needsDom(Bun.main)) {
   // the document exists before Bun goes looking for the test file.
   const { GlobalRegistrator } = load<typeof import("@happy-dom/global-registrator")>("@happy-dom/global-registrator");
   GlobalRegistrator.register({ url: "http://localhost/" });
-
-  /**
-   * What the DOM is allowed to keep: the names it invented.
-   *
-   * Registration adds 487 globals and *replaces* 35 that Bun already had —
-   * `setTimeout`, `AbortController`, `Event`, `URL`, `Blob`, `TransformStream`,
-   * `fetch` among them. The 487 are the point; the 35 are collateral, and they
-   * are the primitives the server-side suites run on. Restoring every name that
-   * existed before registration keeps the substitution to exactly the DOM.
-   *
-   * The event classes stay happy-dom's, because dispatch is an identity check:
-   * `EventTarget.dispatchEvent` throws unless the argument `instanceof` its own
-   * `Event`, and Radix builds a `CustomEvent` from the global. Hand back Bun's and
-   * every dismissable layer in the panel fails on mount.
-   */
-  // `dispatchEvent` and its two registrars go with the event classes, because they
-  // are one mechanism. Restoring Bun's while keeping happy-dom's `Event` left
-  // `window.dispatchEvent` silently doing nothing — a happy-dom event handed to
-  // Bun's dispatcher, which drops it — while `document.dispatchEvent` worked. The
-  // six `window.addEventListener` calls in `web/src` (the theme hotkey and its
-  // change event, the panel's shortcuts, `popstate`, `hashchange`) were therefore
-  // not merely untested but untestable.
-  const DISPATCH = new Set(["dispatchEvent", "addEventListener", "removeEventListener"]);
-  const DOM_OWNS = (name: string) =>
-    name === "EventTarget" || name.endsWith("Event") || name === "DOMException" || DISPATCH.has(name);
-  for (const [name, value] of native) {
-    if (DOM_OWNS(name) || Reflect.get(globalThis, name) === value) continue;
-    Reflect.set(globalThis, name, value);
-  }
 
   /**
    * Unmount between tests, once, for every file that registered.
