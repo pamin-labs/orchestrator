@@ -665,3 +665,50 @@ test("a Scribe turn that never files does not strand the branch at the head of t
   runInvariants(h.ctx);
   expect(published).toBe(1);
 });
+
+/**
+ * A slice that keeps failing its gate stops instead of paying for another round.
+ *
+ * The branch-level counter has a test; the slice-level one — the older of the two,
+ * and the one every rejected slice goes through — had none. Deleting its ceiling left
+ * the suite green, measured by mutation.
+ *
+ * Looping forever is worse than interrupting the boss: past two attempts it is
+ * usually the acceptance criteria that are wrong rather than the code.
+ */
+test("a slice the gate keeps rejecting asks the boss instead of going round again", async () => {
+  const h = await harness();
+  const status = () =>
+    h.db.query<{ status: string; retries: number }, []>("SELECT status, retries FROM slice WHERE id = 1").get()!;
+
+  h.ctx.reviewVerdict!(1, false, "the boundary cases are still missing");
+  h.ctx.reviewVerdict!(1, false, "still missing");
+  expect(status()).toEqual({ status: "running", retries: 2 });
+
+  h.ctx.reviewVerdict!(1, false, "and again");
+  expect(status()).toEqual({ status: "rejected", retries: 3 });
+  // PAUSING, not PAUSED: `hold` writes the intent and `settle` lands it once the
+  // turn in flight has stopped. Asserting the settled state here would be asserting
+  // that the turn had already been cancelled, which is a different mechanism.
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSING");
+});
+
+/**
+ * The question goes to the boss, not to the PM.
+ *
+ * The next line pauses the group, so a PM this was addressed to cannot run — the
+ * question sat at `chain_state='pm'` forever, never reached 待你决策, and the only
+ * visible symptom was a paused group with no reason attached. Observed live: a
+ * blocker filed two hours before anyone could have seen it.
+ */
+test("a slice that gave up asks the boss directly, because the group is about to stop", async () => {
+  const h = await harness();
+  for (const note of ["one", "two", "three"]) h.ctx.reviewVerdict!(1, false, note);
+
+  const esc = h.db
+    .query<{ chain_state: string; severity: string; kind: string }, []>(
+      "SELECT chain_state, severity, kind FROM escalation ORDER BY id DESC LIMIT 1",
+    )
+    .get()!;
+  expect(esc).toEqual({ chain_state: "boss", severity: "blocker", kind: "spec" });
+});
