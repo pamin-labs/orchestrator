@@ -9,7 +9,7 @@ import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
 import { say } from "../../platform/text/lang.ts";
-import { GRP_TERMINAL_STATES } from "../../contracts/states.ts";
+import { GRP_TERMINAL_STATES, type GrpState } from "../../contracts/states.ts";
 
 /**
  * Three levels of getting in the way, all of them operations on the job queue.
@@ -128,7 +128,7 @@ const STOPPED = ["PAUSED", "PAUSING"] as const;
 export function release(
   ctx: Ctx,
   grpId: number | null,
-  opts: { only?: PauseReason; from?: readonly string[] } = {},
+  opts: { only?: PauseReason; from?: readonly GrpState[] } = {},
 ): void {
   // Two shapes, as before: a bulk resume matches on cause alone, a targeted one on
   // the group plus its state, and only then also on cause. `and()` drops the

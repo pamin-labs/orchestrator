@@ -14,6 +14,7 @@ import {
 import type { Config } from "../../platform/config/load.ts";
 import { say } from "../../platform/text/lang.ts";
 import { jsonOr } from "../../contracts/json.ts";
+import type { SliceState } from "../../contracts/states.ts";
 import { runGates, recordGate, gateState } from "../gate.ts";
 import { extractClaimedFiles, reconcile, TaskClaimSchema } from "./reconcile.ts";
 import { changedSince, filesAt } from "../git/gitops.ts";
@@ -690,7 +691,9 @@ function queueNextSlice(ctx: Ctx, grpId: number): number | null {
   // is correct only when acceptance is what starts the next one.
   // A list of states rather than a parenthesised SQL literal, so the values are
   // bound and the `security-sink` suppression this query used to need is gone.
-  const idle = ctx.config.autoAdvance ? ["pending", "accepted", "awaiting_boss"] : ["pending", "accepted"];
+  const idle: SliceState[] = ctx.config.autoAdvance
+    ? ["pending", "accepted", "awaiting_boss"]
+    : ["pending", "accepted"];
   const busy = orm(ctx.db)
     .select({ c: count() })
     .from(sliceTable)

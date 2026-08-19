@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
+import type { EscalationState, GrpState, JobState, LeaseState, SliceState, TaskState } from "../../contracts/states.ts";
 import { index, integer, primaryKey, real, sqliteTable, text, unique, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 /**
@@ -33,7 +34,7 @@ export const grp = sqliteTable(
       .references(() => project.id),
     name: text().notNull(),
     branch: text(),
-    status: text().notNull().default("DRAFT"),
+    status: text().notNull().default("DRAFT").$type<GrpState>(),
     owns_json: text().notNull().default("[]"),
     budget_tokens: integer(),
     spent_tokens: integer().notNull().default(0),
@@ -135,7 +136,7 @@ export const slice = sqliteTable(
     title: text().notNull(),
     accept_spec: text().notNull(),
     difficulty: text().notNull().default("normal"),
-    status: text().notNull().default("pending"),
+    status: text().notNull().default("pending").$type<SliceState>(),
     gates_json: text().notNull().default("{}"),
     budget_tokens: integer(),
     spent_tokens: integer().notNull().default(0),
@@ -157,7 +158,7 @@ export const task = sqliteTable(
       .references(() => grp.id),
     slice_id: integer().references(() => slice.id),
     title: text().notNull(),
-    status: text().notNull().default("pending"),
+    status: text().notNull().default("pending").$type<TaskState>(),
     owner_agent_id: integer().references(() => agent.id),
     depends_on_json: text().notNull().default("[]"),
     claim_json: text(),
@@ -220,7 +221,7 @@ export const job = sqliteTable(
     slice_id: integer().references(() => slice.id),
     payload_json: text().notNull().default("{}"),
     priority: integer().notNull().default(0),
-    state: text().notNull().default("pending"),
+    state: text().notNull().default("pending").$type<JobState>(),
     pid: integer(),
     error: text(),
     enqueued_at: integer().notNull(),
@@ -260,7 +261,7 @@ export const lease = sqliteTable(
     agent_id: integer().references(() => agent.id),
     args_json: text().notNull().default("{}"),
     resolved_cmd: text(),
-    state: text().notNull().default("queued"),
+    state: text().notNull().default("queued").$type<LeaseState>(),
     exit_code: integer(),
     log_path: text(),
     result_digest: text(),
@@ -280,7 +281,7 @@ export const escalation = sqliteTable(
     agent_id: integer().references(() => agent.id),
     severity: text().notNull().default("advisory"),
     question: text().notNull(),
-    chain_state: text().notNull().default("pm"),
+    chain_state: text().notNull().default("pm").$type<EscalationState>(),
     answered_by: text(),
     answer: text(),
     ref_note_id: integer().references(() => note.id),
