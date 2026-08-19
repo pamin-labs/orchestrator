@@ -9,6 +9,8 @@ import {
   indexThrew,
   INDEX_THROW_BACKOFF_MS,
   navigatorEnabled,
+  reportServerState,
+  routeRequest,
   reportRejection,
 } from "../../src/composition/server.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -291,4 +293,54 @@ test("an empty index model turns the tree walk off rather than calling an empty 
   // page, and " " reaching `codex exec -m` is a turn that fails rather than a
   // navigator that is off.
   expect([navigatorEnabled({ model: "" }), navigatorEnabled({ model: "   " })]).toEqual([false, false]);
+});
+
+test("a sandbox server nobody can drive raises a question instead of being restarted", () => {
+  // Four of the five states are reported and never acted on. `stuck` is the one
+  // that matters: a running, undrivable server may be somebody else's, and "we
+  // cannot drive it" is not evidence that nobody can — so it reaches the boss
+  // rather than being killed by an installation that did not start it.
+  const ctx = testContext();
+  reportServerState(ctx, { kind: "stuck", pid: "42", why: "handshake refused" });
+
+  const raised = ctx.db
+    .query<{ kind: string; severity: string; body: string }, []>("SELECT kind, severity, body FROM event")
+    .all();
+  expect(raised).toHaveLength(1);
+  expect(raised[0]).toMatchObject({ kind: "escalation", severity: "blocker" });
+  expect(raised[0]?.body).toContain("handshake refused");
+});
+
+test("a server this process already drives is not news", () => {
+  // `ours` had no branch at all and fell out of the chain silently. That was the
+  // right outcome reached by accident — reconnecting to our own process is not an
+  // event — and it stays the outcome now that the branch is written down.
+  const ctx = testContext();
+  for (const state of [
+    { kind: "ours", pid: "1" },
+    { kind: "theirs", pid: "2" },
+    { kind: "down", why: "no binary" },
+  ] as const) {
+    reportServerState(ctx, state);
+  }
+  expect(ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event").get()?.c).toBe(0);
+});
+
+test("/metrics is loopback-only, and the rule is not a path prefix", () => {
+  // ADR 012 keeps `/metrics` on loopback, and `PrometheusExporter` is deliberately
+  // unused because it opens a port on every interface and would walk around this.
+  // The refusal is 404, not 403: a scanner learns nothing from "exists, denied".
+  const local = () => "127.0.0.1";
+  const remote = () => "10.0.0.7";
+  expect(routeRequest("/metrics", local)).toBe("app");
+  expect(routeRequest("/metrics", remote)).toBe("refuse");
+  // A unix socket has no address at all, and that is not a reason to refuse it.
+  expect(routeRequest("/metrics", () => undefined)).toBe("app");
+});
+
+test("the panel's own paths are served, and everything else falls through to a file", () => {
+  expect(routeRequest("/", () => undefined)).toBe("index");
+  expect(routeRequest("/api/v1/state", () => undefined)).toBe("app");
+  expect(routeRequest("/orch/v1/status", () => undefined)).toBe("app");
+  expect(routeRequest("/dist/main.js", () => undefined)).toBe("file");
 });
