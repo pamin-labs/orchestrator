@@ -101,3 +101,37 @@ test("editing the hash directly moves the panel too", async () => {
 
   await waitFor(() => expect(view.container.textContent).toContain("two"));
 });
+
+/**
+ * ⌘S opens settings, against the component rather than against the rule.
+ *
+ * `navigationShortcut` is a pure function and has its own tests; what those cannot
+ * see is whether anything listens to it. The listener is a `window` keydown, which is
+ * the class that could not be reached at all before `dom.ts` was fixed — so a
+ * shortcut that stopped being wired would have looked exactly like one that worked.
+ */
+test("a shortcut reaches the panel, not just the rule that decodes it", async () => {
+  location.hash = "#p=1&v=cost";
+  const view = panel();
+  await waitFor(() => expect(view.container.textContent).toContain("one"));
+
+  act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true })));
+  await waitFor(() => expect(location.hash).toContain("v=settings"));
+});
+
+/**
+ * A chord the rule refuses changes nothing, and must not be swallowed either.
+ *
+ * The handler calls `preventDefault` before acting, so a listener that acted on
+ * everything would eat the browser's own ⌘R and ⌘F on this page.
+ */
+test("a chord that is not a shortcut is left to the browser", async () => {
+  location.hash = "#p=1&v=cost";
+  const view = panel();
+  await waitFor(() => expect(view.container.textContent).toContain("one"));
+
+  const event = new KeyboardEvent("keydown", { key: "r", metaKey: true, cancelable: true });
+  act(() => void window.dispatchEvent(event));
+  expect(event.defaultPrevented).toBe(false);
+  expect(location.hash).toBe("#p=1&v=cost");
+});
