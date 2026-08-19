@@ -168,6 +168,7 @@ export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: st
       "intervals.recheckMs",
       "intervals.usagePollMs",
       "intervals.usageBackoffMs",
+      "dbPoolSize",
     ],
   },
   notify: {

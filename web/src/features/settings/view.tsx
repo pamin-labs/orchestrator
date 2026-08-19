@@ -648,8 +648,8 @@ function Group({
   children: React.ReactNode;
 }) {
   // A project's origin is a place you can go, so it is a link rather than a
-  // hover string. The tooltip is the fallback for a row migration 037 could not
-  // convert — it still holds a path, and that is still where it points.
+  // hover string. The tooltip is the fallback for a row whose host path was
+  // never converted — it still holds one, and that is still where it points.
   const href = repoHref(hint);
   const line = <Meta className="mb-1.5 block truncate px-2">{note}</Meta>;
   return (

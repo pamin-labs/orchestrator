@@ -150,7 +150,7 @@ async function configured(embedding: EmbeddingRef): Promise<Embed> {
     console.log(`local: ${embedding.model}\n`);
     return localEmbed(embedding.model);
   }
-  const auth = loadAuth(open(), embedding.credential);
+  const auth = await loadAuth(await open(), embedding.credential);
   if (!auth)
     throw new Error(`no credential named "${embedding.credential}" in runtime_auth — add it in settings first.`);
   console.log(`remote: ${embedding.model} at ${embedding.endpoint}\n`);

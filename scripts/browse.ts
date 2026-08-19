@@ -79,7 +79,7 @@ if (built.exitCode !== 0) {
 }
 
 const dataDir = mkdtempSync(join(tmpdir(), "orch-browse-"));
-const srv = start({ dataDir, port: 0, maxGroups: 0 });
+const srv = await start({ dataDir, port: 0, maxGroups: 0 });
 const browser = await chromium.launch();
 const page = await browser.newPage();
 
