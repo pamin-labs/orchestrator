@@ -120,7 +120,10 @@ function emptyOf(key: string): string {
   // No `mine` case: that bucket renders the queue, which carries its own empty
   // line. The copy that lived here was a second, drifting version of it.
   if (key === "live") return i18n.t("progress.view.empty.live", "没有在办的需求。右上角 ＋ 新需求。");
-  return i18n.t("progress.view.empty.held", "没有停着的需求。预算用尽、或等你答问题超过 2 小时会封存到这里，工作不丢。");
+  return i18n.t(
+    "progress.view.empty.held",
+    "没有停着的需求。预算用尽、或等你答问题超过 2 小时会封存到这里，工作不丢。",
+  );
 }
 
 function List({

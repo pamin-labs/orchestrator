@@ -128,7 +128,12 @@ export const showTasks = (tasks: State["tasks"], s: Slice): boolean =>
 /** The recorded gate track, plus the boss's own column — not a gate, but read as one. */
 export const tickStops = (waiting: boolean): [string, string][] => [
   ...STOPS,
-  ["boss", waiting ? i18n.t("requirement.model.tickStops.waiting", "待查收") : i18n.t("requirement.model.tickStops.done", "查收")],
+  [
+    "boss",
+    waiting
+      ? i18n.t("requirement.model.tickStops.waiting", "待查收")
+      : i18n.t("requirement.model.tickStops.done", "查收"),
+  ],
 ];
 
 export const tickState = (s: Slice, key: string, gs: Record<string, string>): string =>
@@ -168,7 +173,9 @@ export const inMergeQueue = (st: State, grpId: number): boolean => st.mergeQueue
 export const groupTone = (g: Group): "muted" | "mine" | "live" =>
   heldApproved(g) ? "muted" : g.status === "DRAFT" ? "mine" : g.status === "RUNNING" ? "live" : "muted";
 export const prLabel = (inQueue: boolean): string =>
-  inQueue ? i18n.t("requirement.model.prLabel.queued", "去合并 PR ↗") : i18n.t("requirement.model.prLabel.open", "打开 PR ↗");
+  inQueue
+    ? i18n.t("requirement.model.prLabel.queued", "去合并 PR ↗")
+    : i18n.t("requirement.model.prLabel.open", "打开 PR ↗");
 export const isRunning = (g: Group): boolean => ["RUNNING", "PAUSING"].includes(g.status);
 /** Closed PR: reopening it on GitHub is enough and the watchdog sees it, but a
  *  branch that was force-pushed or deleted cannot be reopened at all. */
@@ -191,7 +198,8 @@ export function draftView(st: State, grpId: number) {
 }
 
 export const blockedReason = (st: State, grpId: number): string =>
-  st.approvedBlocked.find((b) => b.grpId === grpId)?.reason ?? i18n.t("requirement.model.blockedReason", "等 Architect 切边界");
+  st.approvedBlocked.find((b) => b.grpId === grpId)?.reason ??
+  i18n.t("requirement.model.blockedReason", "等 Architect 切边界");
 export const cardRows = (filed: string): number => Math.max(7, filed.split("\n").length + 1);
 export const firstLine = (body: string): string => body.split("\n")[0] ?? "";
 /** Send the text only when edited: an untouched card is approved as filed, so

@@ -53,7 +53,10 @@ async function reachable(url: string, apiKey: string, lang?: string): Promise<{ 
       const why = await res.text().catch(() => "");
       return {
         ok: false,
-        detail: say(lang, why.includes("MISSING") ? "preflight.reachable.authRequired" : "preflight.reachable.keyRejected"),
+        detail: say(
+          lang,
+          why.includes("MISSING") ? "preflight.reachable.authRequired" : "preflight.reachable.keyRejected",
+        ),
       };
     }
     return { ok: false, detail: `HTTP ${res.status}` };
@@ -111,10 +114,7 @@ function chatgptAccepted(auth: RuntimeAuth, lang?: string): { ok: boolean; detai
   if (exp <= Date.now()) return { ok: false, detail: say(lang, "preflight.chatgpt.expired") };
   return {
     ok: true,
-    detail:
-      days >= 1
-        ? say(lang, "preflight.chatgpt.daysLeft", { days })
-        : say(lang, "preflight.chatgpt.expiringSoon"),
+    detail: days >= 1 ? say(lang, "preflight.chatgpt.daysLeft", { days }) : say(lang, "preflight.chatgpt.expiringSoon"),
   };
 }
 
@@ -173,7 +173,11 @@ export function credentialVerdict(status: number, lang?: string): { ok: boolean;
   return { ok: true, detail: say(lang, "preflight.notVerified", { status }) };
 }
 
-async function modelAccepted(runtime: string, auth: RuntimeAuth, lang?: string): Promise<{ ok: boolean; detail: string }> {
+async function modelAccepted(
+  runtime: string,
+  auth: RuntimeAuth,
+  lang?: string,
+): Promise<{ ok: boolean; detail: string }> {
   const { url, headers } = modelProbe(runtime, auth);
   try {
     // fallow-ignore-next-line security-sink -- `modelProbe` builds the URL from the provider default or `runtime_auth.base_url`, and the secret it sends is the one stored in that same row; the gateway and the credential are set together by the boss and cannot be substituted for each other.
@@ -300,11 +304,7 @@ function hostToolChecks(contained: boolean, probe: Probe, lang?: string): { chec
   };
 }
 
-function sandboxServerCheck(
-  input: PreflightInput,
-  contained: boolean,
-  server: { ok: boolean; detail: string },
-): Check {
+function sandboxServerCheck(input: PreflightInput, contained: boolean, server: { ok: boolean; detail: string }): Check {
   return {
     name: "opensandbox-server",
     ok: server.ok,
@@ -401,9 +401,9 @@ function allowedPathsCheck(input: PreflightInput, staged: string): Check {
 }
 
 function credentialFix(runtime: string, lang?: string): string {
-  if (runtime === "claude") return say(lang, "preflight.credentialFix.claude");
-  if (runtime === "github") return say(lang, "preflight.credentialFix.github");
-  return say(lang, "preflight.credentialFix.codex");
+  if (runtime === "claude") return say(lang, "preflight.loginHelp.claude");
+  if (runtime === "github") return say(lang, "preflight.loginHelp.github");
+  return say(lang, "preflight.loginHelp.codex");
 }
 
 function credentialRuntimes(db: DB): string[] {
@@ -423,7 +423,9 @@ async function credentialCheck(input: PreflightInput, runtime: string): Promise<
   const lang = input.lang;
   const auth = loadAuth(input.db, runtime);
   const verify = input.verify ? input.verify : (r: string, a: RuntimeAuth) => accepted(r, a, lang);
-  const live = auth ? await verify(runtime, auth) : { ok: false, detail: say(lang, "preflight.credential.notConfigured") };
+  const live = auth
+    ? await verify(runtime, auth)
+    : { ok: false, detail: say(lang, "preflight.credential.notConfigured") };
   return {
     name: `credential:${runtime}`,
     ok: live.ok,

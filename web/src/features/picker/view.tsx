@@ -331,7 +331,9 @@ function RepoInstallEmpty({ data, empty }: { data: RepoList | null; empty: boole
   if (!empty) return null;
   return (
     <div className="space-y-2 p-3.5 text-[0.8125rem] text-ink-2">
-      <p>{t("picker.view.repoInstallEmpty.body", "连上了，但这个 GitHub App 还没装到任何账号上，所以一个仓库也看不见。")}</p>
+      <p>
+        {t("picker.view.repoInstallEmpty.body", "连上了，但这个 GitHub App 还没装到任何账号上，所以一个仓库也看不见。")}
+      </p>
       {data?.installUrl ? (
         <LinkButton href={data.installUrl}>{t("picker.view.repoInstallEmpty.install", "去 GitHub 装上")}</LinkButton>
       ) : (
@@ -350,7 +352,11 @@ function RepoListEmpty({ data, account }: { data: RepoList | null; account: stri
   if (data.repos.length) return null;
   return (
     <div className="space-y-2 p-3.5 text-[0.8125rem] text-ink-2">
-      <p>{t("picker.view.repoListEmpty.body", "{{account}} 下面，这个 App 一个仓库都看不到。装的时候可能只勾了几个。", { account })}</p>
+      <p>
+        {t("picker.view.repoListEmpty.body", "{{account}} 下面，这个 App 一个仓库都看不到。装的时候可能只勾了几个。", {
+          account,
+        })}
+      </p>
       {data.installUrl && (
         <LinkButton href={data.installUrl}>{t("picker.view.repoListEmpty.change", "去改它能看哪些")}</LinkButton>
       )}

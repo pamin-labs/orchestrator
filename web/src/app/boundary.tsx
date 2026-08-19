@@ -37,9 +37,7 @@ export class Boundary extends Component<{ children: ReactNode }, { err: Error | 
             <Button variant="go" onClick={() => location.reload()}>
               {i18n.t("app.boundary.refresh", "刷新")}
             </Button>
-            <Button onClick={() => this.setState({ err: null })}>
-              {i18n.t("app.boundary.retry", "重试这个视图")}
-            </Button>
+            <Button onClick={() => this.setState({ err: null })}>{i18n.t("app.boundary.retry", "重试这个视图")}</Button>
           </div>
         </CardBody>
       </Card>

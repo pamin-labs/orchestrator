@@ -333,13 +333,7 @@ function KnobLabel({ knob, id }: { knob: Knob; id: string }) {
 function ResetOverride({ onReset }: { onReset: () => void }) {
   return (
     <Tip label={i18n.t("knobs.ui.resetTip")}>
-      <Button
-        variant="quiet"
-        size="sm"
-        aria-label={i18n.t("knobs.ui.resetTip")}
-        className="shrink-0"
-        onClick={onReset}
-      >
+      <Button variant="quiet" size="sm" aria-label={i18n.t("knobs.ui.resetTip")} className="shrink-0" onClick={onReset}>
         <RotateCcw className="size-3" />
         {i18n.t("knobs.ui.resetLabel")}
       </Button>
@@ -579,7 +573,10 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
       onCommit={(raw) => {
         const n = readNumber(raw, now, shape);
         if (n === null) {
-          return onRefuse(shape ? i18n.t(`knobs.wants.${shape}`, WANTS[shape]) : i18n.t("knobs.wants.number", "要一个数字"), "");
+          return onRefuse(
+            shape ? i18n.t(`knobs.wants.${shape}`, WANTS[shape]) : i18n.t("knobs.wants.number", "要一个数字"),
+            "",
+          );
         }
         onWrite(n);
       }}

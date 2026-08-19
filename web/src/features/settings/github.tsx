@@ -96,7 +96,8 @@ function Connection({ status, onRefresh }: { status: GhStatus | null; onRefresh:
 function ConnectionStatus({ status }: { status: GhStatus | null }) {
   const { t } = useTranslation();
   if (!status) return <Meta>{t("settings.loading")}</Meta>;
-  if (!status.connected) return <span className="text-[0.8125rem] font-medium text-accent">{t("settings.github.notConnected")}</span>;
+  if (!status.connected)
+    return <span className="text-[0.8125rem] font-medium text-accent">{t("settings.github.notConnected")}</span>;
   return <ConnectedStatus status={status} />;
 }
 
@@ -116,7 +117,9 @@ function ConnectedStatus({ status }: { status: GhStatus }) {
       </span>
     );
   }
-  return <span className="text-[0.8125rem]">{accountLabel(status.account, t("settings.github.connectedFallback"))}</span>;
+  return (
+    <span className="text-[0.8125rem]">{accountLabel(status.account, t("settings.github.connectedFallback"))}</span>
+  );
 }
 
 function accountLabel(account: string | null, fallback: string) {
@@ -172,7 +175,11 @@ function DeviceAuthorization({ status }: { status: GhStatus | null }) {
   if (!status) return null;
   if (!status.pending) return null;
   return (
-    <DeviceCode code={status.pending.userCode} url={status.pending.verificationUri} go={t("settings.github.deviceGo")} />
+    <DeviceCode
+      code={status.pending.userCode}
+      url={status.pending.verificationUri}
+      go={t("settings.github.deviceGo")}
+    />
   );
 }
 
@@ -257,7 +264,9 @@ function AccountRow({ account }: { account: Installation }) {
           but proportional digits make the two counts look like two
           different scales. */}
       <Meta className="tabular-nums">
-        {account.repos === null ? t("settings.github.reposUnknown") : t("settings.github.reposCount", { count: account.repos })}
+        {account.repos === null
+          ? t("settings.github.reposUnknown")
+          : t("settings.github.reposCount", { count: account.repos })}
       </Meta>
     </div>
   );

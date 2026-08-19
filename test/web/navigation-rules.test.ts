@@ -83,9 +83,7 @@ test("every view that owns its scrolling is in the list that says so", () => {
   // whoever adds one to the strip has to decide which half it belongs to.
   const unclassified = views()
     .map(([view]) => view)
-    .filter(
-    (view) => !scrollClass(view).includes("overflow-hidden") && view !== "home",
-  );
+    .filter((view) => !scrollClass(view).includes("overflow-hidden") && view !== "home");
   expect(unclassified).toEqual([]);
 });
 

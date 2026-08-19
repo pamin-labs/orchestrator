@@ -398,7 +398,10 @@ export function Composer({
     // on its own afterwards, and that difference is invisible from the picker.
     const go = await ask({
       title: t("composer.view.insertSkill.title", "{{name}} 没启用", { name: sk.name }),
-      body: t("composer.view.insertSkill.body", "没勾选的技能不在沙盒里，agent 自己找不到它。去设置里勾上，还是取消这次插入？"),
+      body: t(
+        "composer.view.insertSkill.body",
+        "没勾选的技能不在沙盒里，agent 自己找不到它。去设置里勾上，还是取消这次插入？",
+      ),
       yes: t("composer.view.insertSkill.yes", "去设置"),
     });
     takeSlash("");

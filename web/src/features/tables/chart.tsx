@@ -22,7 +22,9 @@ import { AXIS, CHART_CARD, ChartTooltip } from "../../ui/chart";
 export function BurnChart({ data }: { data: { hour: string; claude: number; codex: number }[] }) {
   const { t } = useTranslation();
   if (data.length < 2) {
-    return <div className="py-4 text-[0.75rem] text-ink-3">{t("tables.chart.tooFewHours", "还不够两个小时的数据。")}</div>;
+    return (
+      <div className="py-4 text-[0.75rem] text-ink-3">{t("tables.chart.tooFewHours", "还不够两个小时的数据。")}</div>
+    );
   }
   return (
     <div className="h-[8.5rem]">

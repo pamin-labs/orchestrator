@@ -309,7 +309,8 @@ function CredentialHeader({ state }: { state: CredentialState }) {
 function CredentialStatus({ state }: { state: CredentialState }) {
   const { t } = useTranslation();
   const { props, form } = state;
-  if (!props.current) return <span className="text-[0.75rem] font-medium text-accent">{t("settings.credentials.unconfigured")}</span>;
+  if (!props.current)
+    return <span className="text-[0.75rem] font-medium text-accent">{t("settings.credentials.unconfigured")}</span>;
   const labels = Object.fromEntries(props.runtime.modes.map((mode) => [mode.mode, mode.label]));
   const modeKey = labels[props.current.mode];
   return (
@@ -334,7 +335,10 @@ function secretPlaceholder(props: CredentialProps, form: CredentialForm, fallbac
   return i18n.t("settings.credentials.secretPlaceholderCurrent", { hint: props.current.hint });
 }
 
-const SECRET_LABEL = { oauth_token: "settings.credentials.secretLabel.oauthToken", api_key: "settings.credentials.secretLabel.apiKey" } as const;
+const SECRET_LABEL = {
+  oauth_token: "settings.credentials.secretLabel.oauthToken",
+  api_key: "settings.credentials.secretLabel.apiKey",
+} as const;
 
 function SecretField({ state }: { state: CredentialState }) {
   const { t } = useTranslation();

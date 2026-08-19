@@ -50,7 +50,8 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
   const groups = [...new Set(shown.map((a) => a.grp_id))]
     .map((id) => ({
       id,
-      name: id == null ? t("tables.view.desk.standing", "常驻岗") : (st.groups.find((g) => g.id === id)?.name ?? `#${id}`),
+      name:
+        id == null ? t("tables.view.desk.standing", "常驻岗") : (st.groups.find((g) => g.id === id)?.name ?? `#${id}`),
       agents: shown.filter((a) => a.grp_id === id),
     }))
     .sort((a, b) => {
@@ -64,7 +65,12 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
         <h2 className="text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2">
           {t("tables.view.desk.title", "工位")}
         </h2>
-        <Meta>{t("tables.view.desk.runningOfTotal", "在跑 {{running}} · 共 {{total}}", { running: running.length, total: rows.length })}</Meta>
+        <Meta>
+          {t("tables.view.desk.runningOfTotal", "在跑 {{running}} · 共 {{total}}", {
+            running: running.length,
+            total: rows.length,
+          })}
+        </Meta>
         <span className="grow" />
         {running.length > 0 && rows.length > running.length && (
           <Button variant="quiet" size="sm" onClick={() => setIdle((v) => !v)}>
@@ -277,7 +283,10 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
   if (!gs.length) {
     return (
       <Empty>
-        {t("tables.view.owns.noBoundaries", "还没有划过边界。Architect 开工前划定每组能写哪些路径，没划的组并行会踩到同一批文件。")}
+        {t(
+          "tables.view.owns.noBoundaries",
+          "还没有划过边界。Architect 开工前划定每组能写哪些路径，没划的组并行会踩到同一批文件。",
+        )}
         {bare.length > 0 &&
           t("tables.view.owns.unboundedGroups", "目前 {{n}} 个需求没有边界：{{names}}。", {
             n: bare.length,
@@ -430,7 +439,10 @@ export function CostView({ cost }: { cost: Cost | null }) {
   if (!cost?.total?.tokens) {
     return (
       <Empty>
-        {t("tables.view.cost.empty", "还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。")}
+        {t(
+          "tables.view.cost.empty",
+          "还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。",
+        )}
       </Empty>
     );
   }
@@ -511,7 +523,9 @@ export function CostView({ cost }: { cost: Cost | null }) {
           <div className="mb-5">
             <div className="flex items-baseline gap-1.5">
               <b className="font-mono text-[1.375rem] font-semibold leading-none">{K(cost.total.tokens)}</b>
-              <span className="text-[0.75rem] text-ink-3">{t("tables.view.cost.tokensTotal", "tokens · 这个项目累计")}</span>
+              <span className="text-[0.75rem] text-ink-3">
+                {t("tables.view.cost.tokensTotal", "tokens · 这个项目累计")}
+              </span>
             </div>
             <div className="mt-1.5 text-[0.75rem] text-ink-2">
               {t("tables.view.cost.perDelivered", "每个已交付需求")}{" "}
@@ -534,11 +548,15 @@ export function CostView({ cost }: { cost: Cost | null }) {
               number said twice, once as a total and once as its parts. */}
             {cold > 0 && (
               <Tip
-                label={t("tables.view.cost.rotationTip", "{{turns}} 个 turn 里重开了 {{cold}} 次：{{why}}。重开一次，缓存前缀要从头建一遍", {
-                  turns,
-                  cold,
-                  why,
-                })}
+                label={t(
+                  "tables.view.cost.rotationTip",
+                  "{{turns}} 个 turn 里重开了 {{cold}} 次：{{why}}。重开一次，缓存前缀要从头建一遍",
+                  {
+                    turns,
+                    cold,
+                    why,
+                  },
+                )}
               >
                 <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
                   {t("tables.view.cost.reopenedSessions", "重开会话")}{" "}
@@ -549,7 +567,10 @@ export function CostView({ cost }: { cost: Cost | null }) {
               </Tip>
             )}
           </div>
-          <Rail title={t("tables.view.cost.burnRate", "烧得多快")} note={t("tables.view.cost.burnRateNote", "近 24 小时，按小时")}>
+          <Rail
+            title={t("tables.view.cost.burnRate", "烧得多快")}
+            note={t("tables.view.cost.burnRateNote", "近 24 小时，按小时")}
+          >
             <BurnChart data={cost.byHour} />
           </Rail>
           <Rail title={t("tables.view.cost.byAccount", "按账号")} note="">

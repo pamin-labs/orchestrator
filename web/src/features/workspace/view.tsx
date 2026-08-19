@@ -115,7 +115,10 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
               title: t("workspace.view.rebuild.title", "重开容器"),
               // No duration here: nothing times a rebuild, and clone plus install
               // already says what it costs.
-              body: t("workspace.view.rebuild.body", "容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。"),
+              body: t(
+                "workspace.view.rebuild.body",
+                "容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。",
+              ),
               yes: t("workspace.view.rebuild.yes", "重开"),
             });
             if (!go) return;

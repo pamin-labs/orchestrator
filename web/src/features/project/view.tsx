@@ -291,7 +291,9 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
         )}
         <Input
           className="min-w-0 max-w-[22rem] font-mono"
-          placeholder={value.length ? t("project.sandbox.denyAddPlaceholder") : t("project.sandbox.denyEmptyPlaceholder")}
+          placeholder={
+            value.length ? t("project.sandbox.denyAddPlaceholder") : t("project.sandbox.denyEmptyPlaceholder")
+          }
           value={draft}
           disabled={busy}
           onChange={(e) => setDraft(e.target.value)}

@@ -516,11 +516,17 @@ function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
       {running && (
         <MenuItem
           danger
-          hint={t("requirement.view.headerMenu.interruptRollback.hint", "回到这一轮开始前的 checkpoint，这个 turn 的改动全丢")}
+          hint={t(
+            "requirement.view.headerMenu.interruptRollback.hint",
+            "回到这一轮开始前的 checkpoint，这个 turn 的改动全丢",
+          )}
           onSelect={confirmThen(
             {
               title: t("requirement.view.headerMenu.interruptRollback.title", "打断并回滚"),
-              body: t("requirement.view.headerMenu.interruptRollback.body", "丢弃当前 turn 的全部改动，退回到这一轮开始前。"),
+              body: t(
+                "requirement.view.headerMenu.interruptRollback.body",
+                "丢弃当前 turn 的全部改动，退回到这一轮开始前。",
+              ),
               yes: t("requirement.view.headerMenu.interruptRollback.yes", "打断并回滚"),
               danger: true,
             },
@@ -565,7 +571,10 @@ function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
           that someone already fixed, needs to leave the board instead. */}
       <MenuItem
         danger
-        hint={t("requirement.view.headerMenu.drop.hint", "排队的 turn 全取消，占的路径交还给别的组。代码、分支和记录都留着")}
+        hint={t(
+          "requirement.view.headerMenu.drop.hint",
+          "排队的 turn 全取消，占的路径交还给别的组。代码、分支和记录都留着",
+        )}
         onSelect={confirmThen(
           {
             title: t("requirement.view.headerMenu.drop.title", "不做了"),
@@ -715,7 +724,12 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
         },
         async () => {
           const r = await groupAction(grpId, "newpr");
-          if (!r.ok) await ask({ title: t("requirement.view.newPr.failTitle", "开不出来"), body: r.text, yes: t("requirement.view.newPr.gotIt", "知道了") });
+          if (!r.ok)
+            await ask({
+              title: t("requirement.view.newPr.failTitle", "开不出来"),
+              body: r.text,
+              yes: t("requirement.view.newPr.gotIt", "知道了"),
+            });
         },
         refresh,
       )}
@@ -820,10 +834,14 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
           {t("requirement.view.budgetWall.title", "预算用尽，全组挂起")}
         </CardTitle>
         <div className="mt-0.5 text-[0.75rem] text-ink-2">
-          {t("requirement.view.budgetWall.body", "已花 {{spent}} tokens，上限 {{cap}}。 加上限才动得了，「继续」不生效。", {
-            spent: K(g.spent_tokens),
-            cap: K(g.budget_tokens),
-          })}
+          {t(
+            "requirement.view.budgetWall.body",
+            "已花 {{spent}} tokens，上限 {{cap}}。 加上限才动得了，「继续」不生效。",
+            {
+              spent: K(g.spent_tokens),
+              cap: K(g.budget_tokens),
+            },
+          )}
         </div>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           <Button variant="go" onClick={() => setBudget(g, doubled, refresh)}>
@@ -870,7 +888,10 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
               onClick={confirmThen(
                 {
                   title: t("requirement.view.delegated.revoke.title", "撤销并接管"),
-                  body: t("requirement.view.delegated.revoke.body", "回滚到提问时的 checkpoint，之后的改动作废，由你重新回答。"),
+                  body: t(
+                    "requirement.view.delegated.revoke.body",
+                    "回滚到提问时的 checkpoint，之后的改动作废，由你重新回答。",
+                  ),
                   yes: t("requirement.view.delegated.revoke.yes", "撤销并接管"),
                   danger: true,
                 },
@@ -987,7 +1008,10 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
       <Composer
         rows={2}
         projectId={projectId}
-        placeholder={t("requirement.view.say.placeholder", "下一个 turn 开头就会读到。截图直接粘，/ 插技能路径。⌘Enter 发给 PM")}
+        placeholder={t(
+          "requirement.view.say.placeholder",
+          "下一个 turn 开头就会读到。截图直接粘，/ 插技能路径。⌘Enter 发给 PM",
+        )}
         submit={t("requirement.view.say.submit", "发给 PM")}
         onSubmit={(d) => send(d)}
         actions={({ text, attachments, busy, clear }) => (
@@ -1065,10 +1089,15 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           caught. */}
       {unknown.length > 0 && (
         <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]">
-          <b className="font-semibold text-warn">{t("requirement.view.draft.unknownPaths.title", "卡里这些路径仓库里没有")}</b>{" "}
+          <b className="font-semibold text-warn">
+            {t("requirement.view.draft.unknownPaths.title", "卡里这些路径仓库里没有")}
+          </b>{" "}
           <span className="font-mono">{unknown.join("、")}</span>
           <div className="mt-1 text-ink-3">
-            {t("requirement.view.draft.unknownPaths.note", "新建的文件正常；如果它以为这些已经存在，这张卡是照着想象写的。")}
+            {t(
+              "requirement.view.draft.unknownPaths.note",
+              "新建的文件正常；如果它以为这些已经存在，这张卡是照着想象写的。",
+            )}
           </div>
         </div>
       )}
@@ -1114,7 +1143,9 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
             >
               {t("requirement.view.draft.approve", "批准开工")}
             </Button>
-            <span className="text-[0.75rem] text-ink-3">{t("requirement.view.draft.editHint", "卡可以直接改再批")}</span>
+            <span className="text-[0.75rem] text-ink-3">
+              {t("requirement.view.draft.editHint", "卡可以直接改再批")}
+            </span>
           </div>
         </>
       )}
@@ -1139,9 +1170,13 @@ function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: (
           onClick={confirmThen(
             {
               title: t("requirement.view.dropProposal.confirm.title", "作废这条需求"),
-              body: t("requirement.view.dropProposal.confirm.body", "{{name}} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。", {
-                name: g.name,
-              }),
+              body: t(
+                "requirement.view.dropProposal.confirm.body",
+                "{{name}} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。",
+                {
+                  name: g.name,
+                },
+              ),
               yes: t("requirement.view.dropProposal.confirm.yes", "作废"),
               danger: true,
             },
@@ -1192,17 +1227,26 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
       <Composer
         rows={2}
         projectId={projectId}
-        placeholder={t("requirement.view.exits.placeholder", "补充要求，或者写退回理由。截图、设计稿直接粘，/ 插技能路径。⌘Enter 要求修改")}
+        placeholder={t(
+          "requirement.view.exits.placeholder",
+          "补充要求，或者写退回理由。截图、设计稿直接粘，/ 插技能路径。⌘Enter 要求修改",
+        )}
         submit={t("requirement.view.exits.submit", "要求修改")}
         onSubmit={(d) => send(d, "patch")}
         actions={({ text, attachments, busy, clear }) => (
           <>
             <SendAs
               label={t("requirement.view.exits.respec.label", "退回重拆")}
-              tip={t("requirement.view.exits.respec.tip", "整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact")}
+              tip={t(
+                "requirement.view.exits.respec.tip",
+                "整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact",
+              )}
               spec={{
                 title: t("requirement.view.exits.respec.title", "退回重新拆解"),
-                body: t("requirement.view.exits.respec.body", "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。"),
+                body: t(
+                  "requirement.view.exits.respec.body",
+                  "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。",
+                ),
                 yes: t("requirement.view.exits.respec.yes", "退回重拆"),
               }}
               disabled={busy || !text}
@@ -1216,9 +1260,13 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
               tip={t("requirement.view.exits.drop.tip", "排队的 turn 全取消，占的路径交还给别的组")}
               spec={{
                 title: t("requirement.view.exits.drop.title", "不做了"),
-                body: t("requirement.view.exits.drop.body", "{{name}} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。", {
-                  name: g.name,
-                }),
+                body: t(
+                  "requirement.view.exits.drop.body",
+                  "{{name}} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。",
+                  {
+                    name: g.name,
+                  },
+                ),
                 yes: t("requirement.view.exits.drop.yes", "不做了"),
                 danger: true,
               }}
@@ -1264,7 +1312,10 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
     if (draft.busy) return;
     setDraft({ busy: true });
     void readApi(api.escalations[":id"].draft.$get({ param: { id: String(e.id) } }), AnswerDraftSchema).then((r) =>
-      setDraft({ busy: false, text: r?.text?.trim() || t("requirement.view.ask.draftFailed", "没能拟出来，这条得你自己写。") }),
+      setDraft({
+        busy: false,
+        text: r?.text?.trim() || t("requirement.view.ask.draftFailed", "没能拟出来，这条得你自己写。"),
+      }),
     );
   };
   return (
@@ -1306,7 +1357,9 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
           // nobody has sent. Dashed, so it cannot be mistaken for one that went.
           <div className="my-2 ml-auto max-w-[46rem] rounded-2xl rounded-tr-sm border border-dashed border-rule bg-paper px-3.5 py-2">
             <div className="flex items-baseline gap-2">
-              <Tip label={t("requirement.view.ask.draftTip", "按这一组的黑板现算的，还没发给任何人。填进输入框后你可以改")}>
+              <Tip
+                label={t("requirement.view.ask.draftTip", "按这一组的黑板现算的，还没发给任何人。填进输入框后你可以改")}
+              >
                 <Meta className="cursor-help">{t("requirement.view.ask.draftLabel", "AI 替你拟的答复")}</Meta>
               </Tip>
               <span className="grow" />
@@ -1345,7 +1398,12 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                       : t("requirement.view.ask.draftAction.first", "让 AI 拟一份")}
                   </Button>
                 </Tip>
-                <Tip label={t("requirement.view.ask.delegate.tip", "技术选型和架构边界归 Architect 判断，它答不了会自己回来")}>
+                <Tip
+                  label={t(
+                    "requirement.view.ask.delegate.tip",
+                    "技术选型和架构边界归 Architect 判断，它答不了会自己回来",
+                  )}
+                >
                   <Button
                     size="sm"
                     onClick={async () => {

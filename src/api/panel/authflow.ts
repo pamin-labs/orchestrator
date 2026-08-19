@@ -285,7 +285,11 @@ export async function finishGithubLogin(ctx: Ctx, d: DeviceCode, fetchFn?: Devic
     saveAuth(ctx.db, { runtime: "github", mode: "api_key", secret: token });
     // Every running sandbox holds the old (absent) credential in its sidecar.
     await credentialChanged(ctx, "github");
-    ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: say(ctx.config.language, "authflow.githubConnected") });
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body: say(ctx.config.language, "authflow.githubConnected"),
+    });
   } catch (e) {
     ghError = errText(e);
     ctx.bus.emit({

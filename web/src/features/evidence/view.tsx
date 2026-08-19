@@ -120,11 +120,15 @@ function EvidenceHeader({
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
         <span className="min-w-0 text-[0.8125rem] text-ink">{evidence.accept_spec}</span>
         <Meta className="shrink-0">
-          {stats.files ? t("evidence.view.header.files", "{{n}} 个文件", { n: stats.files }) : t("evidence.view.header.noChange", "无改动")}
+          {stats.files
+            ? t("evidence.view.header.files", "{{n}} 个文件", { n: stats.files })
+            : t("evidence.view.header.noChange", "无改动")}
           {evidence.diff && ` · +${stats.plus} −${stats.minus}`}
         </Meta>
         {evidence.retries > 0 && (
-          <Meta className="shrink-0 text-warn">{t("evidence.view.header.retries", "被打回过 {{n}} 次", { n: evidence.retries })}</Meta>
+          <Meta className="shrink-0 text-warn">
+            {t("evidence.view.header.retries", "被打回过 {{n}} 次", { n: evidence.retries })}
+          </Meta>
         )}
         <span className="grow" />
         {actions}
@@ -161,8 +165,15 @@ function EvidenceTabs({
         ))}
       </Segments>
       {evidence.scope === "branch" && (
-        <Tip label={t("evidence.view.tabs.branchScopeTip", "切片基线被 rebase 冲掉了，这里是整条分支相对 origin/main 的改动")}>
-          <Meta className="cursor-help underline decoration-dotted">{t("evidence.view.tabs.branchScope", "整条分支")}</Meta>
+        <Tip
+          label={t(
+            "evidence.view.tabs.branchScopeTip",
+            "切片基线被 rebase 冲掉了，这里是整条分支相对 origin/main 的改动",
+          )}
+        >
+          <Meta className="cursor-help underline decoration-dotted">
+            {t("evidence.view.tabs.branchScope", "整条分支")}
+          </Meta>
         </Tip>
       )}
     </div>
@@ -174,7 +185,11 @@ function EvidenceBody({ evidence, view, sliceId }: { evidence: Evidence; view: s
   if (view === "verdicts") return <Verdicts rows={evidence.verdicts} />;
   if (view !== "diff") return <GateLog key={view} sliceId={sliceId} name={view} />;
   if (!evidence.diff)
-    return <Message>{t("evidence.view.body.noDiff", "没有 diff 可读。这一片没有记下基线 commit，或者沙盒已经回收了。")}</Message>;
+    return (
+      <Message>
+        {t("evidence.view.body.noDiff", "没有 diff 可读。这一片没有记下基线 commit，或者沙盒已经回收了。")}
+      </Message>
+    );
   return (
     <div className="h-[34rem] bg-sunk">
       <DiffView diff={evidence.diff} truncated={evidence.truncated} />
@@ -276,7 +291,9 @@ function GateToolbar({
   return (
     <div className={cn(PAD, "flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-rule py-1.5")}>
       <span className={cn("text-[0.75rem] font-semibold", fails ? "text-bad" : "text-ok")}>
-        {fails ? t("evidence.view.toolbar.failCount", "{{n}} 条没过", { n: fails }) : t("evidence.view.toolbar.allPass", "全过")}
+        {fails
+          ? t("evidence.view.toolbar.failCount", "{{n}} 条没过", { n: fails })
+          : t("evidence.view.toolbar.allPass", "全过")}
       </span>
       <Meta>{t("evidence.view.toolbar.lines", "{{n}} 行", { n: lines })}</Meta>
       <input
@@ -304,7 +321,9 @@ function GateTranscript({ lines, query }: { lines: string[]; query: string }) {
   if (!lines.length)
     return (
       <LogPane>
-        {query ? t("evidence.view.transcript.noMatch", "没有匹配的行") : t("evidence.view.transcript.empty", "这份日志是空的")}
+        {query
+          ? t("evidence.view.transcript.noMatch", "没有匹配的行")
+          : t("evidence.view.transcript.empty", "这份日志是空的")}
       </LogPane>
     );
   return (

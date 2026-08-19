@@ -13,7 +13,7 @@ import en from "./locales/en.json";
  * the strings a person who built this UI happened to write, not anything an
  * agent generates.
  */
-export const LOCALE_KEY = "orch.locale";
+const LOCALE_KEY = "orch.locale";
 
 const read = (): string => {
   try {

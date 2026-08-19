@@ -1,4 +1,9 @@
 import { nativeFetch } from "./dom.ts";
+// Side-effecting: initializes the same i18next instance production uses, so a
+// component calling `t()` renders real copy rather than the raw key — without
+// this, every accessible-name assertion against translated text was failing
+// silent-wrong: not an error, just a query that could never match anything.
+import "../../web/src/i18n/index.ts";
 
 /**
  * testing-library, over the document `dom.ts` installs at preload.

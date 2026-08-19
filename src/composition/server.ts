@@ -886,12 +886,10 @@ export function start(overrides: Partial<Config> = {}): Started {
             skillsDir: cfg.skillsDir,
             cacheDirs: cfg.sandbox.cacheDirs,
             lang: cfg.language,
-          }).then(
-            (checks) => {
-              db.query<{ ok: number }, []>("SELECT 1 AS ok").get();
-              return [{ name: "database", ok: true, detail: "migrated and queryable" }, ...checks];
-            },
-          ),
+          }).then((checks) => {
+            db.query<{ ok: number }, []>("SELECT 1 AS ok").get();
+            return [{ name: "database", ok: true, detail: "migrated and queryable" }, ...checks];
+          }),
         ),
       ).then(() => {
         const bad = report([...runtime.checks]);

@@ -81,7 +81,10 @@ export function Skills({ projectId }: { projectId: number | null }) {
         title={t("skills.view.title", "技能")}
         note={
           rows
-            ? t("skills.view.tally", "勾中的 {{staged}}/{{user}} 个进沙盒", { staged: tally.staged, user: tally.user }) +
+            ? t("skills.view.tally", "勾中的 {{staged}}/{{user}} 个进沙盒", {
+                staged: tally.staged,
+                user: tally.user,
+              }) +
               (tally.repo ? t("skills.view.tallyRepo", "，仓库自带 {{n}} 个", { n: tally.repo }) : "") +
               t("skills.view.tallyPrefix", "，每 turn 前缀约 {{k}}k tokens", { k: tally.k })
             : t("skills.view.loading", "读取中…")
@@ -131,9 +134,7 @@ export function Skills({ projectId }: { projectId: number | null }) {
             </label>
           );
         })}
-        {rows && !shown.length && (
-          <Meta className="block py-2">{t("skills.view.noMatches", "没有匹配的技能")}</Meta>
-        )}
+        {rows && !shown.length && <Meta className="block py-2">{t("skills.view.noMatches", "没有匹配的技能")}</Meta>}
       </div>
     </>
   );

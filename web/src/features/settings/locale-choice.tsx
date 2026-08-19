@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
-import { Segment, Segments } from "../ui/segment";
-import { setLocale } from "./index";
+import { Segment, Segments } from "../../ui/segment";
+import { setLocale } from "../../i18n";
 
 /**
  * Chinese / English, for the interface itself.

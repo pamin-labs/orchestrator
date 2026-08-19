@@ -26,7 +26,7 @@ import { Knobs } from "../knobs/view";
 import { repoHref } from "../../shared/github";
 import { cn } from "../../ui/cn";
 import { ThemeChoice } from "../../ui/theme";
-import { LocaleChoice } from "../../i18n/locale-choice";
+import { LocaleChoice } from "./locale-choice";
 import { useTranslation } from "react-i18next";
 import { ImageChoicesSchema, ProjectConfigSchema, type ProjectPatch } from "../project/view";
 import { Skills } from "../skills/view";

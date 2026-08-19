@@ -57,7 +57,9 @@ function Evidence({ note, gate, files }: { note: Note; gate: string | null; file
   return (
     <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
       {gate && (
-        <Meta className={verdict?.className}>{t("notes.view.evidence.gate", "闸门 {{text}}", { text: verdictText })}</Meta>
+        <Meta className={verdict?.className}>
+          {t("notes.view.evidence.gate", "闸门 {{text}}", { text: verdictText })}
+        </Meta>
       )}
       {files.map((file) => (
         <Tip key={file} label={file}>
@@ -146,7 +148,10 @@ export function NotesBoard({
   if (!notes.length) {
     return (
       <div className="text-[0.8125rem] text-ink-3">
-        {t("notes.view.empty", "还没有记录。agent 每个 turn 写 journal，组解散前写 retro，retro 归纳成教训注入后续组。")}
+        {t(
+          "notes.view.empty",
+          "还没有记录。agent 每个 turn 写 journal，组解散前写 retro，retro 归纳成教训注入后续组。",
+        )}
       </div>
     );
   }

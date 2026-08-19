@@ -567,9 +567,7 @@ test("耗时 is a view of its own, not a tab under 需求", async () => {
   // A sibling of 需求 rather than a tab inside it: as a tab, a project with no
   // requirements could not reach 耗时 at all.
   const { contentSlot, views } = await import("../../web/src/features/navigation/model.ts");
-  expect(
-    views().map(([view]) => view),
-  ).toContain("time");
+  expect(views().map(([view]) => view)).toContain("time");
   expect(contentSlot(1, false, "time", 0, false, false)).toBe("time");
   // And reachable with no requirements, which is the state it was invisible in.
   expect(contentSlot(1, false, "time", 0, false, false)).toBe("time");

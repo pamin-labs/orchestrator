@@ -115,7 +115,8 @@ const emptyProjectState = (st: State, p: number) =>
 
 function activeProjectState(groups: Group[]) {
   const live = groups.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;
-  if (live) return { zh: i18n.t("shared.select.project.liveCount", "{{n}} 个在跑", { n: live }), mine: false, live: true };
+  if (live)
+    return { zh: i18n.t("shared.select.project.liveCount", "{{n}} 个在跑", { n: live }), mine: false, live: true };
   const held = groups.filter((g) => ["PAUSED", "PARKED"].includes(g.status)).length;
   return held
     ? { zh: i18n.t("shared.select.project.heldCount", "{{n}} 个停着", { n: held }), mine: false }

@@ -90,29 +90,35 @@ const ZH: Partial<Record<SayKey, string>> = {
     "这个 orchestrator 跑在容器里，起不了沙盒服务器，也不该起 —— 它要的是宿主的 docker。" +
     "在宿主上跑 uvx opensandbox-server，然后用 ORCH_SANDBOX_SERVER 指过去" +
     "（Docker Desktop 上是 host.docker.internal:8080，Linux 上用宿主 IP 或 --network host）。",
-  "preflight.sandboxServer.fixHost": 'uvx opensandbox-server --config ~/.sandbox.toml，监听 {server}，[egress] mode 要是 "dns+nft"',
+  "preflight.sandboxServer.fixHost":
+    'uvx opensandbox-server --config ~/.sandbox.toml，监听 {server}，[egress] mode 要是 "dns+nft"',
   "preflight.hostEnvironment.detail": "docker、uv、egress 镜像都归跑沙盒服务器的那台机器管，这儿看不到",
-  "preflight.hostEnvironment.fix": "那台机器上要有：docker、uvx opensandbox-server、docker pull opensandbox/egress:v1.1.6。",
+  "preflight.hostEnvironment.fix":
+    "那台机器上要有：docker、uvx opensandbox-server、docker pull opensandbox/egress:v1.1.6。",
   "preflight.sandboxAuth.detail": "服务器没开鉴权，本机任何进程都能进容器",
   "preflight.sandboxAuth.fix":
     '在服务器的 TOML 里写 [server] api_key = "…"，重启，然后设置 → 沙盒服务器 → 「从服务器读」。容器里有仓库、信箱令牌和 CLI 登录。',
-  "preflight.egress.fix": "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
+  "preflight.egress.fix":
+    "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
   "preflight.agentImage.detail": "{image} 不在本机",
-  "preflight.agentImage.fix": "docker build -f docker/agent.Dockerfile -t {image} . —— 没有 registry 前缀的镜像只能本地构建。",
+  "preflight.agentImage.fix":
+    "docker build -f docker/agent.Dockerfile -t {image} . —— 没有 registry 前缀的镜像只能本地构建。",
   "preflight.skillsMount.none": "没有勾选的技能",
   "preflight.skillsMount.fixContained":
     "{staged} 是这个容器里的路径，而挂载是沙盒服务器的 docker 做的 —— 它按自己看到的路径挂。" +
     "两边要用同一个绝对路径（-v <宿主路径>:{staged}），并且写进沙盒服务器的 allowed_host_paths。" +
     "不一致不会报错，只会挂个空目录。",
-  "preflight.skillsMount.fixHost": "沙盒服务器的 allowed_host_paths 要包含 {staged}，否则每个组开容器都会失败。技能在设置里勾。",
+  "preflight.skillsMount.fixHost":
+    "沙盒服务器的 allowed_host_paths 要包含 {staged}，否则每个组开容器都会失败。技能在设置里勾。",
   "preflight.allowedPaths.noConfig": "找不到 opensandbox-server 的配置文件，没法核对",
   "preflight.allowedPaths.missing": "{config} 不含 {missing}",
   "preflight.allowedPaths.covered": "{config} 覆盖了要挂的 {n} 个路径",
   "preflight.allowedPaths.fix": "把这一行写进 {config} 的 [sandbox] 段，然后重启 opensandbox-server：\n      {line}",
-  "preflight.credentialFix.claude":
+  "preflight.loginHelp.claude":
     "设置页 → Claude → 登录。在工具容器里跑官方的 claude setup-token，本机不用装；页面给的码贴回输入框就存下了。一年有效。",
-  "preflight.credentialFix.github": "设置页里连一次 GitHub。分支是靠它推上去的 —— 没有它，每个切片都会在最后一步被拒。",
-  "preflight.credentialFix.codex": "设置页 → codex → 登录，走官方的设备码流程，本机不用装 codex。也可以直接贴一个 API key。",
+  "preflight.loginHelp.github": "设置页里连一次 GitHub。分支是靠它推上去的 —— 没有它，每个切片都会在最后一步被拒。",
+  "preflight.loginHelp.codex":
+    "设置页 → codex → 登录，走官方的设备码流程，本机不用装 codex。也可以直接贴一个 API key。",
   "preflight.codexRefresher.stale":
     "这个 ChatGPT 登录已经旧到该续期了 —— 下一个容器起来时会自动续，续不上就要重新贴 auth.json",
   "preflight.codexRefresher.fresh": "登录还新，续期在工具容器里跑，本机不需要装 codex",
@@ -215,12 +221,14 @@ const EN = {
     "Docker is installed but not running — start Docker Desktop (or `colima start`) and come back once it's green.",
   "preflight.docker.fixNotInstalled":
     "Install Docker (or Colima / Podman — anything that provides a docker socket works) and start it.",
-  "preflight.uv.fix": "brew install uv — opensandbox-server is a Python package and has nothing to start it without one.",
+  "preflight.uv.fix":
+    "brew install uv — opensandbox-server is a Python package and has nothing to start it without one.",
   "preflight.sandboxServer.fixContained":
     "This orchestrator runs inside a container, so it cannot start a sandbox server here — and shouldn't, since it " +
     "needs the host's docker. Run uvx opensandbox-server on the host, then point ORCH_SANDBOX_SERVER at it " +
     "(host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux).",
-  "preflight.sandboxServer.fixHost": 'uvx opensandbox-server --config ~/.sandbox.toml, listening on {server}, [egress] mode should be "dns+nft"',
+  "preflight.sandboxServer.fixHost":
+    'uvx opensandbox-server --config ~/.sandbox.toml, listening on {server}, [egress] mode should be "dns+nft"',
   "preflight.hostEnvironment.detail":
     "docker, uv and the egress image are owned by the machine running the sandbox server; not visible from here",
   "preflight.hostEnvironment.fix":
@@ -244,13 +252,14 @@ const EN = {
   "preflight.allowedPaths.noConfig": "could not find opensandbox-server's config file to check against",
   "preflight.allowedPaths.missing": "{config} does not contain {missing}",
   "preflight.allowedPaths.covered": "{config} covers all {n} path(s) to mount",
-  "preflight.allowedPaths.fix": "Write this line into the [sandbox] section of {config}, then restart opensandbox-server:\n      {line}",
-  "preflight.credentialFix.claude":
+  "preflight.allowedPaths.fix":
+    "Write this line into the [sandbox] section of {config}, then restart opensandbox-server:\n      {line}",
+  "preflight.loginHelp.claude":
     "Settings → Claude → Log in. It runs the official `claude setup-token` inside the utility container, nothing to " +
     "install here; paste the code the page gives you back into the input and it's stored. Valid for a year.",
-  "preflight.credentialFix.github":
+  "preflight.loginHelp.github":
     "Connect GitHub once in Settings. Branches are pushed through it — without it, every slice gets rejected at the last step.",
-  "preflight.credentialFix.codex":
+  "preflight.loginHelp.codex":
     "Settings → codex → Log in, through the official device-code flow — nothing to install locally. Or paste an API key directly.",
   "preflight.codexRefresher.stale":
     "This ChatGPT login is old enough to need a refresh — the next container renews it automatically, and re-paste auth.json if that fails",
@@ -261,7 +270,8 @@ const EN = {
 
   "authflow.sandboxConfigMissing":
     "Could not find the sandbox server's config. It's started with --config — put that file's path in OPENSANDBOX_CONFIG, or place it at ./sandbox.toml or ~/.sandbox.toml.",
-  "authflow.sandboxKeyInvalid": "The sandbox server does not accept this key. Whatever its own config says, that's what belongs here.",
+  "authflow.sandboxKeyInvalid":
+    "The sandbox server does not accept this key. Whatever its own config says, that's what belongs here.",
   "authflow.claudeNoLoginLink":
     "The claude CLI inside the container did not print a login link — run `claude setup-token` in the image and see (it needs a pty; without one it prints nothing and exits 0).",
   "authflow.claudeLoggedIn": "claude logged in",
