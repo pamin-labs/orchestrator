@@ -1,6 +1,7 @@
 import type { Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { say } from "../../platform/text/lang.ts";
+import { terms as sharedTerms } from "./terms.ts";
 
 /**
  * The boss's repeated complaints become a project rule.
@@ -19,95 +20,26 @@ import { say } from "../../platform/text/lang.ts";
  * a rule nobody can read.
  */
 
-/** Words that carry no topic. Deliberately short: over-filtering hides the signal. */
-const STOP = new Set([
-  "the",
-  "a",
-  "an",
-  "and",
-  "or",
-  "but",
-  "is",
-  "are",
-  "was",
-  "be",
-  "to",
-  "of",
-  "in",
-  "on",
-  "for",
-  "with",
-  "this",
-  "that",
-  "it",
-  "too",
-  "so",
-  "not",
-  "no",
-  "do",
-  "does",
-  "did",
-  "you",
-  "i",
-  "we",
-  "my",
-  "your",
-  "boss",
-  "rejected",
-  "sent",
-  "back",
-  "slice",
-  "again",
-  "的",
-  "了",
-  "是",
-  "在",
-  "和",
-  "还",
-  "太",
-  "又",
-  "被",
-  "把",
-  "给",
-  "我",
-  "你",
-  "它",
-  "这",
-  "那",
-  "个",
-  "不",
-  "没",
-  "要",
-  "就",
-  "都",
-  "很",
-  "点",
-  "些",
-  "上",
-  "下",
-]);
+/**
+ * The words that carry no topic *in a complaint*, on top of the rented list.
+ *
+ * Every complaint arrives through the same wording — the boss rejected a slice and
+ * sent it back — so these six appear in all of them and would overlap every pair.
+ * They are not stop words anywhere else in the repository, which is why they are
+ * here rather than in `terms.ts`.
+ */
+const COMPLAINT_STOP = new Set(["boss", "rejected", "sent", "back", "slice", "again"]);
 
 /**
- * Content words, normalised.
+ * Content words, from the shared tokeniser.
  *
- * CJK has no spaces, so Latin runs are tokenised on non-letters and CJK is cut into
- * 2-character shingles — crude, and enough to notice that 「测试写得太浅」 and
- * 「测试太浅了」 are the same complaint, which is the whole job here.
+ * This had its own 67-word table and its own CJK handling — 2-character shingles,
+ * which approximated 「测试写得太浅」 and 「测试太浅了」 being one complaint. The shared
+ * `terms()` segments with ICU and rents its stop words, so it does that properly and
+ * for every script; what is left here is the six words above.
  */
 export function terms(text: string): Set<string> {
-  const out = new Set<string>();
-  const lower = (text ?? "").toLowerCase();
-  for (const w of lower.split(/[^\p{L}\p{N}_]+/u)) {
-    if (w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w)) out.add(w);
-  }
-  const cjk = lower.replace(/[^\p{Script=Han}]+/gu, " ");
-  for (const run of cjk.split(" ")) {
-    for (let i = 0; i + 2 <= run.length; i++) {
-      const pair = run.slice(i, i + 2);
-      if (!STOP.has(pair) && !STOP.has(pair[0]!)) out.add(pair);
-    }
-  }
-  return out;
+  return new Set(sharedTerms(text ?? "").filter((word) => !COMPLAINT_STOP.has(word)));
 }
 
 /** Shared distinctive terms. Two is the floor: one is a coincidence. */

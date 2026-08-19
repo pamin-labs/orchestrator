@@ -78,3 +78,30 @@ test("a project's complaints are its own", () => {
   expect(h.ran.filter((j) => AgentTurnPayloadSchema.parse(JSON.parse(j.payload_json)).role === "cos").length).toBe(0);
   expect(sediment(h.ctx, 1, 3)).toBe(0);
 });
+
+/**
+ * A complaint in Japanese is a complaint.
+ *
+ * This module used to tokenise CJK as two-character Han shingles, and kana is not
+ * Han — so `テストが浅すぎる、境界ケースがない` came apart into the whole clause plus one
+ * word, and a rewording of it shared **one** term against a floor of two. Japanese
+ * complaints could never sediment into a rule, silently, however many times the boss
+ * made the same one.
+ */
+test("a Japanese complaint reworded is still the same complaint", () => {
+  expect([...terms("テストが浅すぎる、境界ケースがない")]).toContain("テスト");
+  expect(sameComplaint("テストが浅すぎる、境界ケースがない", "テストは浅い、境界ケースを飛ばしている")).toBe(true);
+  expect(sameComplaint("テストが浅すぎる", "このボタンの色が違う")).toBe(false);
+});
+
+/**
+ * The six words every complaint carries are still filtered, and only those six.
+ *
+ * They are not stop words anywhere else in the repository — `back` and `slice` are
+ * ordinary content words in a note about git — which is why they live in this module
+ * rather than in the rented list.
+ */
+test("the wording every complaint shares does not make two complaints alike", () => {
+  expect([...terms("the boss rejected slice 2 and sent it back again")]).toEqual([]);
+  expect(sameComplaint("boss rejected the slice, sent it back again", "boss rejected the slice again")).toBe(false);
+});
