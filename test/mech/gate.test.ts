@@ -154,3 +154,27 @@ test("a project whose config lost a brace runs on defaults, not on nothing", () 
   expect(projectConfig(db, null)).toEqual({});
   expect(projectConfig(db, 999)).toEqual({});
 });
+
+test("the rejection delta is the extracted errors, capped — not the tail of the log", async () => {
+  // A real failing typecheck prints its errors first and then a hundred lines of
+  // progress. Reading the tail instead sends the agent "ok 99" and never the
+  // compiler error, and it retries blind; sending every extracted line instead
+  // spends the retry's context on forty variations of one fact.
+  const db = seed(["test"]);
+  resource(db, "test");
+  const errors = Array.from({ length: 40 }, (_, i) => `error TS2345: dup${String(i).padStart(2, "0")}`);
+  const noise = Array.from({ length: 100 }, (_, i) => `  ok ${i}`);
+  const out = await runGates({
+    db,
+    projectId: 1,
+    cwd: "/tmp",
+    dataDir: dataDir(),
+    sliceId: 1,
+    exec: noExec,
+    run: fakeRun({ test: { code: 2, out: [...errors, ...noise].join("\n") } }),
+  });
+  expect(out.feedback).toContain("dup00");
+  expect(out.feedback).toContain("dup19");
+  expect(out.feedback).not.toContain("dup20");
+  expect(out.feedback).not.toContain("ok 99");
+});
