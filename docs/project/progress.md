@@ -356,6 +356,33 @@ M7 — executable engineering governance and versioned protocol.
   narration is not; 成本's chart asks for 24 hours and nothing reads `state_change`
   back at all.
 
+- A review thread had no way to be closed. `dispatchFeedback` read threads to the
+  group and the reply did not exist, so an agent that fixed what a reviewer asked
+  could say so in a commit and nowhere else, and a human closed every thread by
+  hand. `orch pr resolve --thread <id>` goes through GraphQL's
+  `resolveReviewThread` on the same seam `pollViaGraph` uses. Two refusals decided
+  in code rather than asked of the agent: the thread must be on this group's pull
+  request — repository as well as number, since PR #7 exists in every repository
+  the token can write to — and its file must be inside `owns_json`. Anything else
+  stays open and goes to `orch ask-boss`, which is the human backstop.
+- The first Drizzle step is the check, not the schema. `schema.ts` describes what
+  the 46 migrations leave, and `test/platform/schema-equivalence.test.ts` compares
+  it against them by reading `table_info`, `index_xinfo` and `foreign_key_list`
+  from two in-memory databases — one replayed, one generated through
+  `drizzle-kit generate`, which is the production path rather than a hand-rolled
+  render. It earned its place on arrival: `grp.spent_tokens` and
+  `slice.spent_tokens` were declared nullable against migrations that say NOT NULL,
+  and it named both columns and both sides. Two things it cannot cover, stated
+  rather than left to be found: the state triggers, which Drizzle's DSL has no form
+  for, and the body of a partial index's WHERE.
+- `drizzle-orm`/`drizzle-kit` are pinned to the **v1 beta** line, not `latest`,
+  which is 0.45.2 and has not moved since 2026-03-27 while v1 replaces the
+  migration layout. And the number that decides the next step was re-measured
+  against the installed package: `drizzle-orm/bun-sqlite` is **synchronous**, so
+  the 423 `await` conversions and the 310 `openMemory` replacements this file
+  budgeted are the price of **Postgres**, not of the ORM. ADR 037 charges them to
+  that decision, where they belong.
+
 ## Blockers and deviations
 
 - The `main` branch ruleset required a status check named `check` that no
