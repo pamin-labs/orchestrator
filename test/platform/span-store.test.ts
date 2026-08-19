@@ -352,9 +352,7 @@ test("the trace list is the newest-starting traces, whole, and the tie-break hol
   const traces = traceList(db, { kind: "system" }, 20, { from: t0 - 1, to: t0 + 200_000 });
 
   expect(traces.map((t) => t.traceId)).toEqual(
-    [24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5].map((n) =>
-      String(n).padStart(32, "0"),
-    ),
+    [24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5].map((n) => String(n).padStart(32, "0")),
   );
   // The summary covers the whole trace, not the span the ranking found it by.
   expect(traces[0]).toMatchObject({ name: "turn", startedAt: t0 + 24_000, durationMs: 510, failed: true });
