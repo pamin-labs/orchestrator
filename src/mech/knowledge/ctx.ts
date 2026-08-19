@@ -7,6 +7,7 @@ import { scopeAttributes } from "../../platform/observability/metrics.ts";
 import { loadMap, mapFor } from "./repomap.ts";
 import type { NoteIndex } from "./note-index.ts";
 import { ESCALATION_TERMINAL_STATES, stateParam, type EscalationState } from "../../contracts/states.ts";
+import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../../platform/config/load.ts";
 
 /**
  * Retrieval for \`orch ctx query\`.
@@ -74,7 +75,14 @@ export interface QueryOptions {
   now?: () => number;
 }
 
-export const DEFAULT_BUDGET = 16_000;
+/**
+ * The fallback for a caller holding no config: tests, and the direct API.
+ *
+ * Reads the config default rather than restating it. Production passes
+ * `ctxBudgetChars` from `api/orch/ctxquery.ts`, so this number only ever applies
+ * where there is no `Config` to ask.
+ */
+export const DEFAULT_BUDGET = DEFAULTS.ctxBudgetChars;
 
 /** Answer a query, always prefixing the group's acceptance context when present. */
 export function query(opts: QueryOptions): string {

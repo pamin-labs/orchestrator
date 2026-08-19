@@ -5,6 +5,7 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import { activeTracer } from "../platform/observability/traces.ts";
 import type { DB } from "../platform/persistence/database.ts";
 import { jsonOr } from "../contracts/json.ts";
+import { WORK } from "./sandbox/sandbox.ts";
 
 /**
  * A lease runs in the group's own sandbox, so this is no longer the host's only
@@ -332,9 +333,6 @@ export interface RunOutcome {
 /** 124 is what `timeout(1)` returns, so the number already means this. */
 export const LEASE_TIMEOUT_CODE = 124;
 
-/** Where a group's checkout lives. Mirrors mech/sandbox.ts; importing it here would be a cycle. */
-const WORK_DEFAULT = "/work";
-
 /**
  * Runs one resolved command. The sandbox supplies this; nothing runs on the host.
  *
@@ -387,7 +385,7 @@ async function runResourceInner(
   const resolved = resolveLease(def, args);
   if (!resolved.ok) return resolved;
 
-  const cwd = opts.cwd ?? resolved.cwd ?? WORK_DEFAULT;
+  const cwd = opts.cwd ?? resolved.cwd ?? WORK;
   const limit = opts.timeoutMs ?? 0;
   const { code, out: output } = await opts.exec(resolved.argv, { cwd, ...(limit ? { timeoutMs: limit } : {}) });
   if (opts.logPath) await Bun.write(opts.logPath, output);
