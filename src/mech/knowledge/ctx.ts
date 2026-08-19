@@ -1,4 +1,6 @@
 import type { DB } from "../../platform/persistence/database.ts";
+import { activeTracer } from "../../platform/observability/traces.ts";
+import { scopeAttributes } from "../../platform/observability/metrics.ts";
 import { loadMap, mapFor } from "./repomap.ts";
 import type { NoteIndex } from "./note-index.ts";
 import {
@@ -80,6 +82,24 @@ export const DEFAULT_BUDGET = 16_000;
 
 /** Answer a query, always prefixing the group's acceptance context when present. */
 export function query(opts: QueryOptions): string {
+  // Synchronous, so the body is not async: it is four SQLite reads and an
+  // in-memory Orama search. It carries a span for comparison — ADR 020 measured
+  // this half at 0.32ms while the other spends up to three model calls, and only
+  // a span on both puts that difference in 系统耗时 rather than in a document.
+  return activeTracer().startActiveSpan(
+    "ctx.assemble",
+    { attributes: scopeAttributes({ grpId: opts.grpId, projectId: opts.projectId }) },
+    (span) => {
+      try {
+        return assemble(opts);
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+
+function assemble(opts: QueryOptions): string {
   const budget = opts.budget ?? DEFAULT_BUDGET;
   const now = opts.now?.() ?? Date.now();
   const output = budgetOutput(budget);

@@ -9,6 +9,7 @@ import { Scheduler, type Executor } from "../../src/platform/scheduling/schedule
 import { makeExecutor, type ExecDeps } from "../../src/application/executor.ts";
 import type { TurnResult } from "../../src/runtime/claude.ts";
 import { readTrace, SqliteSpanExporter, type StoredSpan } from "../../src/platform/observability/span-store.ts";
+import { saveTree } from "../../src/mech/knowledge/pageindex.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import * as fx from "../support/factories.ts";
@@ -58,6 +59,13 @@ function soleTrace(db: DB): StoredSpan[] {
   const ids = db.query<{ trace_id: string }, []>("SELECT DISTINCT trace_id FROM span").all();
   expect(ids).toHaveLength(1);
   return readTrace(db, ids[0]!.trace_id);
+}
+
+/** The trace one named span belongs to. The HTTP request opens a trace of its own. */
+function traceContaining(db: DB, name: string): StoredSpan[] {
+  const row = db.query<{ trace_id: string }, [string]>("SELECT trace_id FROM span WHERE name = ?").get(name);
+  if (!row) throw new Error(`no span named ${name} in any trace`);
+  return readTrace(db, row.trace_id);
 }
 
 const byName = (spans: StoredSpan[], name: string): StoredSpan => {
@@ -204,4 +212,73 @@ test("a watchdog tick is stored rule by rule, not as one opaque number", async (
   // `emit` dedups broken rules on `rule_broke:<id>` — but it is not what is shown.
   expect(rules).toContain("watchdog.turn_timeout");
   for (const rule of rules) expect(rule.slice("watchdog.".length)).not.toMatch(/^\d/);
+});
+
+test("`orch ctx query` is timed, and its two halves are timed apart", async () => {
+  // The one command every role is told to run first, and the only waiting path
+  // with no span at all: its whole justification is that it costs less than the
+  // grep rounds it replaces, and that was the one claim nothing could measure.
+  const { db, ctx, app, provider } = harness(ok);
+  const agent = fx.agent.insert(db, { project_id: 1, grp_id: 1, role: "engineer", token: "tok-eng" });
+  fx.note.insert(db, { project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
+  saveTree(db, 1, {
+    "/": { id: "/", kind: "dir", summary: "", sig: "", children: ["notes/"] },
+    "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", sig: "", children: [] },
+  });
+  ctx.askIn = () => async () => "NONE";
+
+  await app(
+    new Request("http://x/orch/v1/ctx/query", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+        "x-orch-token": String(agent.token),
+      },
+      body: JSON.stringify({ question: "which validation library?" }),
+    }),
+  );
+  await provider.forceFlush();
+
+  const spans = traceContaining(db, "ctx.query");
+  // Separately, because they are not comparable costs: the lexical half is an
+  // in-memory index at sub-millisecond, the page-index half spends up to three
+  // serial model calls. One number over both cannot say which was paid.
+  const query = byName(spans, "ctx.query");
+  expect(byName(spans, "ctx.assemble").parentSpanId).toBe(query.spanId);
+  expect(byName(spans, "ctx.pageindex").parentSpanId).toBe(query.spanId);
+  expect(query.grpId).toBe(1);
+});
+
+test("a page-index walk that throws ends its span red, not green", async () => {
+  // The catch predates the span and is why it is worth having: a walk that threw
+  // and a tree with no hits both fall through to the lexical half in silence, and
+  // `span-store` aggregates on `status = 'error'`, so a green span here would make
+  // a broken navigator indistinguishable from a quiet one.
+  const { db, ctx, app, provider } = harness(ok);
+  const agent = fx.agent.insert(db, { project_id: 1, grp_id: 1, role: "engineer", token: "tok-eng" });
+  saveTree(db, 1, {
+    "/": { id: "/", kind: "dir", summary: "", sig: "", children: ["notes/"] },
+    "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", sig: "", children: [] },
+  });
+  ctx.askIn = () => async () => {
+    throw new Error("the cheap model is unreachable");
+  };
+
+  const answer = await app(
+    new Request("http://x/orch/v1/ctx/query", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+        "x-orch-token": String(agent.token),
+      },
+      body: JSON.stringify({ question: "which validation library?" }),
+    }),
+  );
+  await provider.forceFlush();
+
+  // The agent still gets its answer; only the span reports the failure.
+  expect(answer.status).toBe(200);
+  expect(byName(traceContaining(db, "ctx.pageindex"), "ctx.pageindex").status).toBe("error");
 });
