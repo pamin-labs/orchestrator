@@ -1,6 +1,14 @@
 import { Database } from "bun:sqlite";
 import { maskValue } from "../observability/redaction.ts";
 import { parseRepo } from "../../contracts/repository.ts";
+import {
+  ESCALATION_STATES,
+  GRP_STATES,
+  JOB_STATES,
+  LEASE_STATES,
+  SLICE_STATES,
+  TASK_STATES,
+} from "../../contracts/states.ts";
 
 /**
  * Single source of truth for the schema. See docs/project/plan.md §3.
@@ -550,7 +558,51 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   `
   ALTER TABLE project ADD COLUMN base_branch_pinned INTEGER NOT NULL DEFAULT 0;
   `,
+
+  // 044 — a state column may only hold one of its states, and the database says so.
+  // `states.ts` was the vocabulary and the type system enforced it everywhere the
+  // type was present; a string reaching `db.run` is a string, which is where four
+  // of this branch's transition bugs wrote a legal-looking value the state machine
+  // had no edge for. Triggers rather than CHECK because adding a CHECK to an
+  // existing SQLite table means rebuilding it, and these tables carry the foreign
+  // keys `drop-slices.test.ts` covers.
+  stateConstraints,
 ];
+
+/**
+ * `BEFORE INSERT` and `BEFORE UPDATE` guards, generated from `states.ts`.
+ *
+ * Generated, not transcribed: a copy of the vocabulary in SQL would be a second
+ * owner, and the first divergence would be a new state that inserts fail on for a
+ * reason no error message connects to this file. Adding a state to `states.ts`
+ * admits it here, and only a fresh database re-runs this — an existing one keeps
+ * the trigger it was migrated with, which `migrate` handles by version, not by
+ * this function being idempotent.
+ */
+function stateConstraints(db: DB): void {
+  const columns = [
+    ["grp", "status", GRP_STATES],
+    ["slice", "status", SLICE_STATES],
+    ["task", "status", TASK_STATES],
+    ["job", "state", JOB_STATES],
+    ["lease", "state", LEASE_STATES],
+    ["escalation", "chain_state", ESCALATION_STATES],
+  ] as const;
+  for (const [table, column, states] of columns) {
+    // The states are this module's own constants, never input.
+    const allowed = states.map((state) => `'${state}'`).join(", ");
+    for (const [suffix, event] of [
+      ["ins", "INSERT"],
+      ["upd", `UPDATE OF ${column}`],
+    ] as const) {
+      db.run(
+        `CREATE TRIGGER ${table}_${column}_${suffix} BEFORE ${event} ON ${table}
+           WHEN NEW.${column} IS NOT NULL AND NEW.${column} NOT IN (${allowed})
+           BEGIN SELECT RAISE(ABORT, '${table}.${column} is not a state in states.ts'); END`,
+      );
+    }
+  }
+}
 
 export type DB = Database;
 
