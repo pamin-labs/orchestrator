@@ -474,18 +474,49 @@ describe("workflow governance", () => {
     expect(workflow.jobs.publish?.needs).toEqual(["checks", "release-evidence", "manifest"]);
   });
 
-  test("release uses the supported immutable action revisions", async () => {
+  /**
+   * Every third-party action is pinned to a commit, and the shape is what is checked.
+   *
+   * This listed six SHAs verbatim, so it asserted the *versions* rather than the
+   * property: every Dependabot pull request failed it, on an assertion that says the
+   * same thing Dependabot exists to do. Seen on #8. It also covered six of the nine
+   * third-party actions in this workflow and said nothing about the other three.
+   */
+  /**
+   * **Letting Dependabot move a pin is safe here, and the pin is not what stops it.**
+   *
+   * A SHA is "the only way to use an action as an immutable release" (GitHub's
+   * security hardening guide), and what it defends against is a *tag being moved* —
+   * a compromised account repointing `v5`, which takes effect with no action from us.
+   * A bump is a pull request, and this repository's ruleset requires an approving
+   * review with no auto-merge, so the change is deliberate rather than silent.
+   */
+  /**
+   * The cost, from the same page: an action pinned to a SHA gets no Dependabot
+   * *security alerts*, only version updates. That is the trade, not a free win.
+   */
+  test("every third-party action in release is pinned to a commit", async () => {
     const release = await source("release");
-    for (const action of [
-      "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
-      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-      "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
-      "aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8",
-      "actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661",
-      "actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f",
-    ]) {
-      expect(release).toContain(action);
+    const tagged: string[] = [];
+    for (const match of release.matchAll(/uses:\s+([^\s#]+)/g)) {
+      const ref = match[1]!;
+      // A local composite action has no revision to pin; `./` is the whole of it.
+      if (ref.startsWith("./")) continue;
+      if (!/@[0-9a-f]{40}$/.test(ref)) tagged.push(ref);
     }
+    // The refs, not a count: the fix is to pin exactly these.
+    expect(tagged).toEqual([]);
+  });
+
+  /**
+   * Bun comes from the composite action, twice, and never from the marketplace one.
+   *
+   * The version lives in one place that way. This is separate from the pinning rule
+   * because Dependabot cannot fix it: `oven-sh/setup-bun` appearing here is a change
+   * somebody made, not a revision that moved.
+   */
+  test("release installs bun through the repository's own action", async () => {
+    const release = await source("release");
     expect(release.match(/\.\/\.github\/actions\/setup-bun/g)).toHaveLength(2);
     expect(release).not.toContain("oven-sh/setup-bun@");
   });
