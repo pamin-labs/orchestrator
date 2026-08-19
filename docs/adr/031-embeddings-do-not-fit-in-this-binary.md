@@ -77,10 +77,21 @@ and a `vector[N]` field are in the installed Orama.
 
 **Reopen when a model ranks the relevant other-language passage above an
 irrelevant same-language one** on the table above. That is a runnable check rather
-than a judgement, and the corpus is five sentences. Candidates worth the download
+than a judgement, and the corpus is five sentences.
+
+It is now literally runnable: `bun run embedding:check` scores that table against
+whatever `embedding` in the config names and exits non-zero while this refusal
+stands. `mode: local` needs `@huggingface/transformers`, which is deliberately not
+a dependency and which the command says how to add. `mode: remote` needs an
+endpoint and the name of a stored credential, which is the half below that could
+not be tested before. Candidates worth the download
 when one appears: `bge-m3`, which is built for exactly this and is far larger, or a
 hosted embedding — which needs the boss's own endpoint, and is a different
 decision because the corpus would leave the machine.
 
 Not measured and deliberately not guessed: whether a hosted embedding does better
-on this corpus. That test needs the endpoint the boss would choose.
+on this corpus. That test needs the endpoint the boss would choose — which is why
+`embedding` exists in the config and in settings, defaulting to `local`. A remote
+embedding sends the corpus, and the corpus is the boss's own requirements and
+acceptance criteria, so that switch is a decision rather than a fallback
+(`docs/standards/security.md`).
