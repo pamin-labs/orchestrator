@@ -41,7 +41,6 @@ const HourRowSchema = z.object({
 });
 type HourRow = z.infer<typeof HourRowSchema>;
 
-
 /** The four counters a turn reports, summed. Written once; the CASE needs it twice. */
 /**
  * Which account paid, from the turn event.
