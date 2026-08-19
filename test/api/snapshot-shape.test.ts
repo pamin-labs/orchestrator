@@ -86,3 +86,34 @@ test("every row the panel is sent matches the shape it is declared as", () => {
   expect(s.agents.length).toBeGreaterThan(0);
   expect(s.escalations.length).toBeGreaterThan(0);
 });
+
+test("an answered question with no group and no answer text parses", () => {
+  // `Answered` declared `grp_id` and `answer` non-null, and the query promises
+  // neither: a standing agent's question belongs to no group, and `answered` is
+  // also reached by `revoked` and by the chain running out, neither of which
+  // writes an answer. `db.query<Answered>` is a cast, so both NULLs crossed the
+  // wire typed as values — the browser's `answeredFor` filters on `grp_id` and
+  // simply never matched, which is a row the boss cannot take back.
+  const db = openMemory();
+  seedAuth(db);
+  const ctx: Ctx = {
+    db,
+    bus: new Bus(db),
+    sched: new Scheduler(db, async () => {}),
+    waiters: new Map(),
+    config: loadConfig(),
+  };
+  const p = fx.project.insert(db, { name: "p" });
+  fx.escalation.insert(db, {
+    grp_id: null,
+    question: "a standing agent asked this",
+    chain_state: "answered",
+    answered_by: "cos",
+  });
+
+  const row = z.array(S.Answered).safeParse(snapshot(ctx).answered);
+  expect(row.success ? [] : row.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual([]);
+  expect(snapshot(ctx).answered).toHaveLength(1);
+  expect(p.id).toBeGreaterThan(0);
+  db.close();
+});

@@ -835,7 +835,9 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
             </div>
             <div className="flex justify-end">
               <div className="max-w-[46rem] rounded-2xl rounded-tr-sm border border-rule bg-paper px-3.5 py-2 text-[0.8125rem] text-ink-2">
-                <Clamp lines={3}>{nl(a.answer)}</Clamp>
+                {/* `answered` is also where a revoked question and one the chain
+                    ran out on land, and neither wrote a reply. `nl(null)` threw. */}
+                <Clamp lines={3}>{a.answer === null ? "（没有留下答复）" : nl(a.answer)}</Clamp>
               </div>
             </div>
           </div>

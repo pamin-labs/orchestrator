@@ -127,11 +127,20 @@ export const DraftCard = z.object({
   unknownPaths: z.string().nullable().optional(),
 });
 
+/**
+ * An escalation a stand-in answered, offered back so the boss can take it over.
+ *
+ * `grp_id` and `answer` are nullable because the query cannot promise otherwise: a
+ * standing agent's question belongs to no group, and `chain_state = 'answered'` is
+ * reached by `revoked` and by the answer chain running out, neither of which writes
+ * an answer. Both were declared required and asserted rather than parsed, so the
+ * NULLs reached the browser typed as `string`.
+ */
 export const Answered = z.object({
   id: z.number(),
-  grp_id: z.number(),
+  grp_id: z.number().nullable(),
   question: z.string(),
-  answer: z.string(),
+  answer: z.string().nullable(),
   answered_by: z.string(),
   ref_note_id: z.number().nullable(),
 });
