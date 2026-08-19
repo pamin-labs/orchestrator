@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
-import { OVERLAP_FLOOR, sameComplaint, sediment, terms } from "../../src/mech/knowledge/lessons.ts";
+import { sameComplaint, sediment, SIMILARITY_FLOOR } from "../../src/mech/knowledge/lessons.ts";
 import { bossFact } from "../../src/api/panel/attach.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { AgentTurnPayloadSchema, Scheduler, type Job } from "../../src/platform/scheduling/scheduler.ts";
@@ -32,15 +32,52 @@ function harness() {
   return { db, ctx, ran };
 }
 
-test("the same complaint in different words is recognised; unrelated ones are not", () => {
-  expect([...terms("测试写得太浅")]).toContain("测试");
-  // Two shared distinctive terms, not one: one is a coincidence.
-  expect(OVERLAP_FLOOR).toBe(2);
+/**
+ * The same complaint in different words, in the three languages the boss writes in.
+ *
+ * The Japanese case used to be impossible: this module tokenised CJK as
+ * two-character *Han* shingles, and kana is not Han, so a reworded Japanese
+ * complaint shared one term against a floor of two and never sedimented.
+ */
+test("a reworded complaint is the same complaint, in three scripts", () => {
   expect({
-    reworded: sameComplaint("测试写得太浅，没有边界用例", "测试太浅了，边界都没覆盖"),
-    english: sameComplaint("QA tests are shallow, no edge cases", "the tests are shallow and skip edge cases"),
+    zh: sameComplaint("测试写得太浅，没有边界用例", "测试太浅了，边界都没覆盖"),
+    zh2: sameComplaint("测试写得太浅，边界用例没有", "又是测试太浅，边界情况呢"),
+    en: sameComplaint("QA tests are shallow, no edge cases", "the tests are shallow and skip edge cases"),
+    ja: sameComplaint("テストが浅すぎる、境界ケースがない", "テストは浅い、境界ケースを飛ばしている"),
+  }).toEqual({ zh: true, zh2: true, en: true, ja: true });
+});
+
+/**
+ * Two complaints sharing only common words are not one complaint.
+ *
+ * 「这个接口应该返回错误码」 and 「这个按钮应该显示提示」 share 这个 and 应该 and nothing else. A
+ * *count* of shared terms cannot tell that from two words out of four, which is why
+ * it read as a match; a fraction can.
+ */
+test("common words alone do not make two complaints alike", () => {
+  expect({
+    functionWords: sameComplaint("这个接口应该返回错误码", "这个按钮应该显示提示"),
+    differentSubjects: sameComplaint("文档写得不清楚，缺少例子", "部署脚本不清楚，缺少说明"),
     unrelated: sameComplaint("测试写得太浅", "这个按钮颜色不对"),
-  }).toEqual({ reworded: true, english: true, unrelated: false });
+  }).toEqual({ functionWords: false, differentSubjects: false, unrelated: false });
+});
+
+/**
+ * A complaint with no terms is not alike anything, including itself.
+ *
+ * Punctuation, or a script the tokeniser drops. Zero over zero is not a match, and
+ * treating it as one would make every contentless note kin to every other.
+ */
+test("a complaint with nothing in it matches nothing", () => {
+  expect(sameComplaint("、。！", "、。！")).toBe(false);
+  expect(sameComplaint("", "测试太浅")).toBe(false);
+});
+
+test("the floor sits in the gap the measurement found", () => {
+  // 0.375 is the closest true pair measured, 0.222 the furthest false one.
+  expect(SIMILARITY_FLOOR).toBeGreaterThan(0.222);
+  expect(SIMILARITY_FLOOR).toBeLessThan(0.375);
 });
 
 test("the third time it becomes a project rule, and does not fire again on the same three", () => {
@@ -77,31 +114,4 @@ test("a project's complaints are its own", () => {
   bossFact(h.ctx, 4, "测试太浅，边界没覆盖"); // other project
   expect(h.ran.filter((j) => AgentTurnPayloadSchema.parse(JSON.parse(j.payload_json)).role === "cos").length).toBe(0);
   expect(sediment(h.ctx, 1, 3)).toBe(0);
-});
-
-/**
- * A complaint in Japanese is a complaint.
- *
- * This module used to tokenise CJK as two-character Han shingles, and kana is not
- * Han — so `テストが浅すぎる、境界ケースがない` came apart into the whole clause plus one
- * word, and a rewording of it shared **one** term against a floor of two. Japanese
- * complaints could never sediment into a rule, silently, however many times the boss
- * made the same one.
- */
-test("a Japanese complaint reworded is still the same complaint", () => {
-  expect([...terms("テストが浅すぎる、境界ケースがない")]).toContain("テスト");
-  expect(sameComplaint("テストが浅すぎる、境界ケースがない", "テストは浅い、境界ケースを飛ばしている")).toBe(true);
-  expect(sameComplaint("テストが浅すぎる", "このボタンの色が違う")).toBe(false);
-});
-
-/**
- * The six words every complaint carries are still filtered, and only those six.
- *
- * They are not stop words anywhere else in the repository — `back` and `slice` are
- * ordinary content words in a note about git — which is why they live in this module
- * rather than in the rented list.
- */
-test("the wording every complaint shares does not make two complaints alike", () => {
-  expect([...terms("the boss rejected slice 2 and sent it back again")]).toEqual([]);
-  expect(sameComplaint("boss rejected the slice, sent it back again", "boss rejected the slice again")).toBe(false);
 });

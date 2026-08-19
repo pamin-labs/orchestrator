@@ -21,36 +21,45 @@ import { terms as sharedTerms } from "./terms.ts";
  */
 
 /**
- * The words that carry no topic *in a complaint*, on top of the rented list.
+ * How much of what two complaints say has to be the same thing.
  *
- * Every complaint arrives through the same wording — the boss rejected a slice and
- * sent it back — so these six appear in all of them and would overlap every pair.
- * They are not stop words anywhere else in the repository, which is why they are
- * here rather than in `terms.ts`.
+ * Jaccard: shared terms over all terms either uses. Measured across the three
+ * languages the boss writes in, the closest true pair scored **0.375** and the
+ * furthest false one **0.222** — 「文档不清楚，缺少例子」 against 「部署脚本不清楚，缺少说明」,
+ * which share a shape and not a subject. The full table is in the commit.
  */
-const COMPLAINT_STOP = new Set(["boss", "rejected", "sent", "back", "slice", "again"]);
+export const SIMILARITY_FLOOR = 0.3;
 
 /**
- * Content words, from the shared tokeniser.
+ * Are these the same complaint?
  *
- * This had its own 67-word table and its own CJK handling — 2-character shingles,
- * which approximated 「测试写得太浅」 and 「测试太浅了」 being one complaint. The shared
- * `terms()` segments with ICU and rents its stop words, so it does that properly and
- * for every script; what is left here is the six words above.
+ * This counted *shared terms*, floor two, so two sharing two common words were one
+ * complaint however much else they said: 「这个接口应该返回错误码」 matched 「这个按钮应该显示提
+ * 示」 on 这个 + 应该. A count cannot tell two words out of four from two out of twenty.
+ * A fraction can, and that is the whole change.
  */
-export function terms(text: string): Set<string> {
-  return new Set(sharedTerms(text ?? "").filter((word) => !COMPLAINT_STOP.has(word)));
-}
-
-/** Shared distinctive terms. Two is the floor: one is a coincidence. */
-export const OVERLAP_FLOOR = 2;
-
+/**
+ * Deliberately not BM25, which is installed and was the easier reach. IDF assumes
+ * the query is rare in the corpus, and here the thing being looked for *is* the
+ * corpus: three complaints that are all the same complaint give their shared terms
+ * an IDF near zero and score 0 against each other. Measured, on the case this
+ * function exists for.
+ */
+/**
+ * No library either. Every candidate at this seam works on character n-grams —
+ * `dice-coefficient`, `string-similarity-js`, `sorensen-dice` — which is the approach
+ * this branch removed for being wrong on kana; or on numeric vectors
+ * (`ml-distance`), which needs the vocabulary built first. `talisman` has it over
+ * sequences and has not published since 2022, past the line in
+ * `docs/standards/dependencies.md`.
+ */
 export function sameComplaint(a: string, b: string): boolean {
-  const ta = terms(a);
-  const tb = terms(b);
+  const left = new Set(sharedTerms(a));
+  const right = new Set(sharedTerms(b));
+  if (left.size === 0 || right.size === 0) return false;
   let shared = 0;
-  for (const t of ta) if (tb.has(t)) shared++;
-  return shared >= OVERLAP_FLOOR;
+  for (const term of left) if (right.has(term)) shared++;
+  return shared / (left.size + right.size - shared) >= SIMILARITY_FLOOR;
 }
 
 interface FactRow {
