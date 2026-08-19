@@ -2,6 +2,7 @@ import { jsonOr } from "../../contracts/json.ts";
 import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
+import type { Config } from "../../platform/config/load.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { claudeUsage, promptPath, UsageSchema, type Usage } from "../../runtime/claude.ts";
 import { codexUsage } from "../../runtime/codex.ts";
@@ -176,14 +177,10 @@ const oneLine = (s: string) => s.trim().split("\n").findLast(Boolean)?.slice(0, 
  * whose summary says "this is where X lives" wins even when it shares no words
  * with the question.
  */
-export async function search(
-  tree: Tree,
-  question: string,
-  ask: Ask,
-  opts: { depth?: number; width?: number } = {},
-): Promise<string[]> {
-  const depth = opts.depth ?? 3;
-  const width = opts.width ?? 4;
+export async function search(tree: Tree, question: string, ask: Ask, walk: Config["pageindex"]): Promise<string[]> {
+  // Required rather than defaulted: a literal here is a model bill the boss can
+  // neither see nor change, and depth is serial calls per question.
+  const { depth, width } = walk;
   let frontier = tree["/"]?.children ?? [];
   const opened: string[] = [];
 

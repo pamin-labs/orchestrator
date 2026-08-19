@@ -34,7 +34,7 @@ async function pageIndexContext(
   return activeTracer().startActiveSpan("ctx.pageindex", async (span) => {
     try {
       const scope = caller.grp_id ? { grp: caller.grp_id } : { project: projectId };
-      const hits = await search(tree, question, askIn(scope));
+      const hits = await search(tree, question, askIn(scope), ctx.config.pageindex);
       if (hits.length === 0) return none;
 
       let answer = render(tree, hits);

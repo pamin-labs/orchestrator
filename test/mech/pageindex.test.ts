@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import { loadConfig } from "../../src/platform/config/load.ts";
 import {
   chargeIndex,
   loadTree,
@@ -21,6 +22,10 @@ import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { z } from "zod";
 import { tempDir } from "../support/temp.ts";
+
+/** The shipped numbers, not a literal beside them: a walk tested at a depth the
+ *  product does not use proves nothing about the product's model bill. */
+const WALK = loadConfig().pageindex;
 
 const UsageMeta = z.object({ runtime: z.string() });
 
@@ -94,7 +99,7 @@ test("retrieval is the model walking the tree, not a similarity score", async ()
     const hit = lines.find((l) => l.includes("notification centre")) ?? lines[0]!;
     return hit.split(" — ")[0]!;
   };
-  const hits = await search(tree, "where does the desktop popup come from", ask);
+  const hits = await search(tree, "where does the desktop popup come from", ask, WALK);
   expect(hits).toEqual(["src/mech/notify.ts"]);
   expect(seen[0]).toContain("Which of these are worth opening");
   expect(render(tree, hits)).toContain("notification centre");
@@ -103,7 +108,7 @@ test("retrieval is the model walking the tree, not a similarity score", async ()
 test("a navigator that finds nothing relevant says so instead of guessing", async () => {
   const dir = repo();
   const { tree } = await summarise(skeleton(FILES), dirRead(dir), async () => "s");
-  expect(await search(tree, "how do I file my taxes", async () => "NONE")).toEqual([]);
+  expect(await search(tree, "how do I file my taxes", async () => "NONE", WALK)).toEqual([]);
 });
 
 test("the tree survives a round trip through the note it lives in", async () => {
@@ -132,10 +137,15 @@ test("journals and retros are leaves in the same tree as the code", async () => 
   // "what is this file for" of one produces a summary of the format.
   expect(tree["notes/grp-1/retro/1"]!.summary).toBe("why the timeline flickered");
 
-  const hits = await search(tree, "did anyone work out the flicker", async (p) => {
-    const lines = (p.split("NONE if none of them are relevant.")[1] ?? "").trim().split("\n");
-    return lines[0]!.split(" — ")[0]!;
-  });
+  const hits = await search(
+    tree,
+    "did anyone work out the flicker",
+    async (p) => {
+      const lines = (p.split("NONE if none of them are relevant.")[1] ?? "").trim().split("\n");
+      return lines[0]!.split(" — ")[0]!;
+    },
+    WALK,
+  );
   expect(hits).toEqual(["notes/grp-1/retro/1"]);
 });
 
@@ -275,4 +285,35 @@ test("a summary is asked for in English, whatever the file is written in", async
 
   expect(asked.length).toBeGreaterThan(0);
   for (const prompt of asked) expect(prompt).toContain("in English");
+});
+
+/**
+ * Depth was a literal, and depth is money.
+ *
+ * It decides how many **serial** model calls one `orch ctx query` makes — two per
+ * question on the measured corpus, each with its own 60s timeout — which makes it
+ * the most frequent model spend in the system. It sat as `opts.depth ?? 3` inside
+ * the walk, where the boss could not see it and no setting could reach it.
+ */
+test("how far and how wide the walk goes is config, not a literal inside it", async () => {
+  const { tree } = await summarise(skeleton(FILES), dirRead(repo()), async () => "s");
+  const asks: string[] = [];
+  const ask: Ask = async (p) => {
+    asks.push(p);
+    const lines = (p.split("NONE if none of them are relevant.")[1] ?? "").trim().split("\n");
+    return lines[0]!.split(" — ")[0]!;
+  };
+
+  // Three levels between the root and a file, so depth 3 is three serial calls.
+  await search(tree, "where is the notifier", ask, { depth: 3, width: 4 });
+  expect(asks).toHaveLength(3);
+
+  asks.length = 0;
+  await search(tree, "where is the notifier", ask, { depth: 1, width: 2 });
+  expect(asks).toHaveLength(1);
+  expect(asks[0]).toContain("at most 2 ids");
+
+  // Moving the numbers was not the point; being able to is. These are the values
+  // that shipped before the move, and this says so out of `config/default.yaml`.
+  expect(WALK).toEqual({ depth: 3, width: 4 });
 });
