@@ -207,11 +207,7 @@ function responderError(esc: EscRow, by: EscalationOpenState, actorGrpId?: numbe
 function citationError(db: DB, input: AnswerInput): string | null {
   if (input.by !== "cos") return null;
   if (!input.refNoteId) return "a stand-in answer must cite the decision it rests on (--ref <note_id>)";
-  const note = orm(db)
-    .select({ kind: noteTable.kind })
-    .from(noteTable)
-    .where(eq(noteTable.id, input.refNoteId))
-    .get();
+  const note = orm(db).select({ kind: noteTable.kind }).from(noteTable).where(eq(noteTable.id, input.refNoteId)).get();
   if (!note) return `no note ${input.refNoteId}`;
   if (note.kind === "decision" || note.kind === "fact") return null;
   return `note ${input.refNoteId} is a ${note.kind}, not a decision`;
@@ -314,11 +310,7 @@ export async function revoke(deps: ChainDeps, escId: number): Promise<{ rolledBa
     .get();
   if (!esc) return {};
 
-  orm(ctx.db)
-    .update(escalation)
-    .set({ chain_state: "boss", answer: null })
-    .where(eq(escalation.id, escId))
-    .run();
+  orm(ctx.db).update(escalation).set({ chain_state: "boss", answer: null }).where(eq(escalation.id, escId)).run();
   if (esc.grp_id) ctx.sched.cancelPending(esc.grp_id, "answer revoked");
 
   let rolledBackTo: string | undefined;
