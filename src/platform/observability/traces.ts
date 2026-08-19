@@ -24,6 +24,8 @@ import {
   type Span,
   type Tracer,
 } from "@opentelemetry/api";
+import { W3CTraceContextPropagator } from "@opentelemetry/core";
+import type { TextMapGetter } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { NodeTracerProvider, type BasicTracerProvider } from "@opentelemetry/sdk-trace-node";
 
@@ -50,7 +52,24 @@ export interface Trace {
   span: Span;
 }
 
-const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/i;
+/**
+ * The W3C header is parsed by the propagator that owns the format.
+ *
+ * The regex this replaces captured the trace id and the span id and **dropped the
+ * flags**, and `remoteParent` then built the context with `SAMPLED` regardless — so
+ * a caller that had decided against a trace got it back from us marked kept, and
+ * every service we called downstream was told the same. `@opentelemetry/core` is a
+ * declared dependency and exports the propagator; it reads the version, the flags
+ * and the tracestate, which is three things a regex would each have to be told.
+ */
+const PROPAGATOR = new W3CTraceContextPropagator();
+
+/** `extract` reads a carrier through a getter; this process holds one header. */
+const HEADER_GETTER: TextMapGetter<Record<string, string>> = {
+  get: (carrier, key) => carrier[key],
+  keys: (carrier) => Object.keys(carrier),
+};
+
 const TRACE_ID = /^[0-9a-f]{32}$/i;
 const SPAN_ID = /^[0-9a-f]{16}$/i;
 
@@ -114,12 +133,14 @@ export function shutdownTracing(): Promise<void> {
  * one recorded on a job row by the request that enqueued it. Ill-formed ids
  * start a fresh trace instead of poisoning one.
  */
-function remoteParent(traceId?: string | null, spanId?: string | null): Context {
+function remoteParent(traceId?: string | null, spanId?: string | null, flags?: number | null): Context {
   if (!traceId || !spanId || !TRACE_ID.test(traceId) || !SPAN_ID.test(spanId)) return ROOT_CONTEXT;
   return traceApi.setSpanContext(ROOT_CONTEXT, {
     traceId: traceId.toLowerCase(),
     spanId: spanId.toLowerCase(),
-    traceFlags: TraceFlags.SAMPLED,
+    // The recorded decision, or sampled when the row predates the column — those
+    // rows were all written while nothing in this process configured a sampler.
+    traceFlags: flags ?? TraceFlags.SAMPLED,
     isRemote: true,
   });
 }
@@ -133,12 +154,19 @@ function begin(kind: SpanKind, parent: Context): Trace {
 }
 
 export function startTrace(traceparentHeader?: string): Trace {
-  const incoming = traceparentHeader?.match(TRACEPARENT);
-  return begin(SpanKind.SERVER, remoteParent(incoming?.[1], incoming?.[2]));
+  if (!traceparentHeader) return begin(SpanKind.SERVER, ROOT_CONTEXT);
+  // A getter over the one header, because `extract` takes a carrier: this process
+  // holds a `Request`, and nothing here should have to hand it a plain object twice.
+  const extracted = PROPAGATOR.extract(ROOT_CONTEXT, { traceparent: traceparentHeader }, HEADER_GETTER);
+  return begin(SpanKind.SERVER, extracted);
 }
 
-export function startChildTrace(traceId?: string | null, parentSpanId?: string | null): Trace {
-  return begin(SpanKind.INTERNAL, remoteParent(traceId, parentSpanId));
+export function startChildTrace(
+  traceId?: string | null,
+  parentSpanId?: string | null,
+  traceFlags?: number | null,
+): Trace {
+  return begin(SpanKind.INTERNAL, remoteParent(traceId, parentSpanId, traceFlags));
 }
 
 export function traceparent(trace: Trace): string {

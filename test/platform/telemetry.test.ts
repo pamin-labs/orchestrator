@@ -219,3 +219,22 @@ test("traceparent carries the span's own sampled flag, not a hard-coded one", ()
   installTracerProvider(new NodeTracerProvider({ sampler: new AlwaysOffSampler() }));
   expect(traceparent(startTrace())).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-00$/);
 });
+
+/**
+ * An upstream that says it is not sampling is not overruled here.
+ *
+ * `remoteParent` built the incoming span context with `traceFlags: SAMPLED`
+ * regardless of what the header said — the regex captured the trace id and the span
+ * id and dropped the flags. So a caller that had decided against this trace got it
+ * back from us marked kept, and every downstream service we then called was told the
+ * same. The outgoing half of this was fixed on its own; the inbound half is where
+ * the wrong value came from.
+ */
+test("a traceparent that says not-sampled stays not-sampled through this process", () => {
+  const notSampled = startTrace(`00-${INCOMING_TRACE}-${INCOMING_SPAN}-00`);
+  expect(notSampled.span.spanContext().traceFlags).toBe(0);
+  expect(traceparent(notSampled)).toBe(`00-${INCOMING_TRACE}-${notSampled.span.spanContext().spanId}-00`);
+
+  const sampled = startTrace(`00-${INCOMING_TRACE}-${INCOMING_SPAN}-01`);
+  expect(sampled.span.spanContext().traceFlags).toBe(1);
+});
