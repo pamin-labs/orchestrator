@@ -251,6 +251,29 @@ M7 — executable engineering governance and versioned protocol.
   time on a lesson worth keeping: binding NULL to a `NOT NULL DEFAULT` column
   overrides the default rather than falling back to it.
 
+- `orch ctx query` is the command every role is told to run first and was the only
+  waiting path in the system with no span. Its whole justification is that it costs
+  less than the grep rounds it replaces, and that was the one claim nothing here
+  could measure. It now opens `ctx.query`, with `ctx.pageindex` and `ctx.assemble`
+  timed separately — the two halves are not comparable costs, since the lexical half
+  is an in-memory index at 0.32ms while the other spends up to three serial model
+  calls. A walk that throws now ends its span red; the `catch` that hides the failure
+  from the agent predates the span and is why it was worth adding.
+- The 系统耗时 report has a budget for the first time, measured rather than guessed:
+  **705ms** for the system scope over 90,000 spans, which is one idle day (the
+  watchdog alone writes ~26 spans every 30 seconds). Five window-function queries
+  over the whole table, synchronous, so while it computes it blocks every other
+  request and the SSE heartbeat. The seed reproduces the real 94%-unscoped skew,
+  because that skew is what makes the system scope the expensive read.
+- `telemetry.ts` promised a seven-day window and a 200k retention cap; retention is
+  `SPAN_MAX_AGE_MS` (24h) and the cap is `SPAN_MAX_ROWS` (1,000,000), and `windowMs`
+  is already `.max(SPAN_MAX_AGE_MS)` in the same file — so seven days was unreachable
+  through a schema written twenty lines above the sentence claiming it. Both now read
+  from the constants instead of restating them.
+- The benchmark seeded `task.status = 'open'`, which is not in `TASK_STATES`
+  (`pending | in_progress | done`). Migration 044's constraint trigger made it a hard
+  failure; it had been meaningless data before that.
+
 ## Blockers and deviations
 
 - The `main` branch ruleset required a status check named `check` that no

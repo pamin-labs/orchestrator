@@ -7,6 +7,14 @@ import { reconcile } from "../src/mech/flow/reconcile.ts";
 import { runWatchdog } from "../src/mech/ops/watchdog.ts";
 import { assemble, type StablePrompt } from "../src/prompt/assemble.ts";
 import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
+import {
+  foldedStacks,
+  recentWindow,
+  spanExtent,
+  stageStats,
+  traceList,
+  trend,
+} from "../src/platform/observability/span-store.ts";
 import type { Ctx } from "../src/mech/ctx.ts";
 
 /**
@@ -76,7 +84,7 @@ function seedGroup(index: number): void {
       "INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (1, ?, 'group', 0) RETURNING id",
     )
     .get(group.id)!;
-  db.run("INSERT INTO task (grp_id, slice_id, title, status, created_at) VALUES (?, ?, 'work', 'open', 0)", [
+  db.run("INSERT INTO task (grp_id, slice_id, title, status, created_at) VALUES (?, ?, 'work', 'pending', 0)", [
     group.id,
     slice.id,
   ]);
@@ -139,6 +147,72 @@ const watchdogDeps = {
   probe: async () => ({ online: true, changed: false }),
 };
 
+/**
+ * A day of spans, shaped like a real one.
+ *
+ * 94% carry no scope, which is not padding: the watchdog, the HTTP server and the
+ * retention trim belong to no project, and that skew is what makes the system scope
+ * the expensive read. A fixed clock and a deterministic spread, so the budget fails
+ * on the code rather than on the sample.
+ */
+const SPAN_ROWS = 90_000;
+const SPAN_CLOCK = 1_700_000_000_000;
+const SPAN_NAMES = [
+  "turn",
+  "sandbox.exec",
+  "gate.run",
+  "lease.run",
+  "pr.poll",
+  "index.ask",
+  "git.tree_heads",
+  "ctx.query",
+  "ctx.assemble",
+  "ctx.pageindex",
+  ...Array.from({ length: 26 }, (_, rule) => `watchdog.rule_${rule}`),
+];
+
+type SpanRow = [
+  string,
+  string,
+  string | null,
+  string,
+  number,
+  number,
+  string,
+  number | null,
+  number | null,
+  number | null,
+];
+
+/** One row's worth of shape, so the loop that writes 90,000 of them is a loop. */
+function spanRow(row: number): SpanRow {
+  const scoped = row % 16 === 0 ? 1 : null;
+  const root = row % 8 === 0;
+  return [
+    String(Math.floor(row / 8)).padStart(32, "0"),
+    String(row).padStart(16, "0"),
+    root ? null : String(row - 1).padStart(16, "0"),
+    SPAN_NAMES[row % SPAN_NAMES.length]!,
+    SPAN_CLOCK - ((row * 937) % (24 * 60 * 60 * 1_000)),
+    (row % 500) + 1,
+    row % 50 === 0 ? "error" : "ok",
+    scoped,
+    scoped,
+    scoped,
+  ];
+}
+
+function seedSpans(rows: number): void {
+  const insert = db.prepare<unknown, SpanRow>(
+    `INSERT INTO span (trace_id, span_id, parent_span_id, name, kind, started_at, duration_ms, status,
+                       attributes_json, project_id, grp_id, slice_id)
+     VALUES (?, ?, ?, ?, 'INTERNAL', ?, ?, ?, '{}', ?, ?, ?)`,
+  );
+  db.run("BEGIN");
+  for (let row = 0; row < rows; row++) insert.run(...spanRow(row));
+  db.run("COMMIT");
+}
+
 /** Rows present before any task runs. The scheduler cycle is rolled back to this. */
 const seededJobs = db.query<{ id: number }, []>("SELECT COALESCE(MAX(id), 0) AS id FROM job").get()!.id;
 
@@ -168,6 +242,30 @@ bench.add(
 
 limits.set("watchdog tick", 60);
 bench.add("watchdog tick", async () => void (await runWatchdog(watchdogDeps)), { async: true });
+
+/**
+ * The 系统耗时 report, at the volume one idle day produces.
+ *
+ * The slowest thing the panel does and the only one with no budget: five
+ * window-function queries over the whole table, synchronous, so while it computes it
+ * blocks every request and the SSE heartbeat. `system` scope because its predicate
+ * (`project_id IS NULL AND grp_id IS NULL`) is the one no index can seek.
+ */
+seedSpans(SPAN_ROWS);
+const telemetryWindow = recentWindow(undefined, SPAN_CLOCK);
+const telemetryScope = { kind: "system" } as const;
+limits.set("telemetry report", 1_200);
+bench.add(
+  "telemetry report",
+  () => {
+    spanExtent(db, telemetryScope);
+    stageStats(db, telemetryScope, telemetryWindow);
+    traceList(db, telemetryScope, 20, telemetryWindow);
+    trend(db, telemetryScope, 3_600_000, telemetryWindow);
+    foldedStacks(db, telemetryScope, telemetryWindow);
+  },
+  { async: false },
+);
 
 await bench.run();
 
