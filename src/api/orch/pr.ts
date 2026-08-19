@@ -1,4 +1,5 @@
 import { checkPrMessage } from "../../mech/git/prwatch.ts";
+import { roleFor } from "../../mech/ctx.ts";
 import { z } from "zod";
 import { GroupRef } from "../../contracts/fields.ts";
 import type { AgentHandler } from "../../http/handler.ts";
@@ -36,7 +37,7 @@ export const PrBody = z.object({
 });
 
 export const postPr = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== "scribe") return bad(`${a.role} does not write pull request messages`);
+  if (a.role !== roleFor(ctx, "write_pr_message")) return bad(`${a.role} does not write pull request messages`);
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
   if (!mayAct(ctx.db, a, gid)) return message("not your project", 403);
@@ -53,7 +54,7 @@ export const postPr = (async (ctx, _req, a, _p, b) => {
   ctx.db.run("UPDATE grp SET pr_title = ?, pr_summary = ? WHERE id = ?", [title, summary, gid]);
   ctx.bus.emit({
     grpId: gid,
-    author: "scribe",
+    author: roleFor(ctx, "write_pr_message"),
     kind: "note",
     intent: "note",
     body: title,

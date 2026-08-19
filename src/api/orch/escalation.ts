@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import {
   abstain,
   CHAIN,
@@ -154,7 +154,7 @@ export const TriageBody = z.object({
 });
 
 export const postTriage = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== "cos") return bad(`${a.role} does not triage the boss's feedback`);
+  if (a.role !== roleFor(ctx, "triage_boss_feedback")) return bad(`${a.role} does not triage the boss's feedback`);
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
   if (!mayAct(ctx.db, a, gid)) return message("not your group", 403);
@@ -203,7 +203,11 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
   const name = (b.name ?? slug(idea)).slice(0, 40) || `esc-${id}`;
   const grp = ctx.db.transaction(() => {
     const created = newGroup(ctx, { projectId, name, idea });
-    ctx.sched.enqueue("agent_turn", { grp_id: created.id, priority: 6, payload: { role: "dispatcher", idea } });
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: created.id,
+      priority: 6,
+      payload: { role: roleFor(ctx, "plan_requirement"), idea },
+    });
 
     ctx.db.run(
       `UPDATE escalation SET answer = ?, answered_by = 'boss', chain_state = 'answered',

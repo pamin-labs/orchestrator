@@ -2,7 +2,7 @@ import type { DB } from "../../platform/persistence/database.ts";
 import { z } from "zod";
 import { addNote } from "../../mech/util/rows.ts";
 import { SplitRequirements } from "../../contracts/orch.ts";
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
@@ -26,6 +26,13 @@ function actingGroup(ctx: Ctx, caller: Caller, ref: z.infer<typeof GroupRef> | n
   if (!groupId) return bad("which group? pass its id or name");
   return mayAct(ctx.db, caller, groupId) ? groupId : message("not your group", 403);
 }
+
+/**
+ * Who may write the plan: the role that splits a requirement, or the one that
+ * leads the group once it is running and owns the work in flight.
+ */
+const plans = (ctx: Ctx, a: Caller): boolean =>
+  a.role === roleFor(ctx, "plan_requirement") || a.role === roleFor(ctx, "lead_group");
 
 /**
  * What a group does with its own plan: file the DRAFT card, fan out into
@@ -53,7 +60,7 @@ function actingGroup(ctx: Ctx, caller: Caller, ref: z.infer<typeof GroupRef> | n
 export const DraftBody = z.object({ group_id: GroupRef.optional(), card: z.string().min(1).max(20_000) });
 
 export const postDraft = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not file DRAFT cards`);
+  if (!plans(ctx, a)) return bad(`${a.role} does not file DRAFT cards`);
 
   const v = validateDraftCard(b.card);
   if (!v.ok) return bad(v.error);
@@ -146,7 +153,7 @@ export const SplitBody = z.object({
 });
 
 export const postSplit = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not split requirements`);
+  if (!plans(ctx, a)) return bad(`${a.role} does not split requirements`);
 
   const gid = actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
@@ -200,7 +207,7 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
       ctx.sched.enqueue("agent_turn", {
         grp_id: child.id,
         priority: 5,
-        payload: { role: "dispatcher", idea: item.idea.trim() },
+        payload: { role: roleFor(ctx, "plan_requirement"), idea: item.idea.trim() },
       });
       created.push({ id: child.id, name });
     }
@@ -279,7 +286,7 @@ async function dropEvidence(ctx: Ctx, gid: number, body: z.infer<typeof DropBody
 }
 
 export const postDrop = (async (ctx, _req, a, _p, b) => {
-  if (!["dispatcher", "pm", "architect"].includes(a.role)) return bad(`${a.role} does not propose dropping work`);
+  if (!plans(ctx, a) && a.role !== roleFor(ctx, "cut_boundary")) return bad(`${a.role} does not propose dropping work`);
   const gid = actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
   const why = b.why.trim();
@@ -392,7 +399,7 @@ function routeBlockedPath(
       grp_id: owner.id,
       priority: 6,
       payload: {
-        role: "pm",
+        role: roleFor(ctx, "lead_group"),
         rejection: `Another group is blocked on ${path}, which is inside your boundary: ${why}\n\nAdd it to this group's work.`,
       },
     });
@@ -412,7 +419,11 @@ function routeBlockedPath(
     owns: [path],
     sharedGrant: grant,
   });
-  ctx.sched.enqueue("agent_turn", { grp_id: created.id, priority: 6, payload: { role: "dispatcher", idea } });
+  ctx.sched.enqueue("agent_turn", {
+    grp_id: created.id,
+    priority: 6,
+    payload: { role: roleFor(ctx, "plan_requirement"), idea },
+  });
   return { target: created.id, handedTo: "a new requirement" };
 }
 
@@ -476,7 +487,7 @@ export const OwnsBody = z.object({
 });
 
 export const postOwns = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== "architect") return bad(`${a.role} does not cut boundaries`);
+  if (a.role !== roleFor(ctx, "cut_boundary")) return bad(`${a.role} does not cut boundaries`);
   const gid = actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
 
@@ -485,7 +496,7 @@ export const postOwns = (async (ctx, _req, a, _p, b) => {
     const result = canStart(ctx.db, gid);
     ctx.bus.emit({
       grpId: gid,
-      author: "architect",
+      author: roleFor(ctx, "cut_boundary"),
       kind: "decision",
       intent: "decision",
       body: `owns ${b.paths.join(", ")}${result.ok ? "" : ` — still blocked: ${result.reason}`}`,

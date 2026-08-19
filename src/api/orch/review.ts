@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { acceptSlice } from "../../mech/flow/review.ts";
 import { criteriaIn, validateSelfReview } from "../../mech/util/validate.ts";
 import { sliceDiffBase } from "../../mech/git/gitops.ts";
@@ -37,7 +37,7 @@ const Verdict = z.enum(["pass", "fail"]);
 export const AuditBody = z.object({ group_id: GroupRef, verdict: Verdict, note: z.string().max(8000).optional() });
 
 export const postAudit = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== "auditor") return bad(`${a.role} does not file audit verdicts`);
+  if (a.role !== roleFor(ctx, "audit_branch")) return bad(`${a.role} does not file audit verdicts`);
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
   // The Auditor is deliberately not a member of the group it reviews, so it is
@@ -49,7 +49,7 @@ export const postAudit = (async (ctx, _req, a, _p, b) => {
 
   ctx.bus.emit({
     grpId: gid,
-    author: "auditor",
+    author: roleFor(ctx, "audit_branch"),
     kind: "gate_result",
     intent: "decision",
     body: `audit ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
@@ -73,7 +73,8 @@ export const ReviewBody = z.object({
 });
 
 export const postReview = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== "qa" && a.role !== "auditor") return bad(`${a.role} does not file review verdicts`);
+  if (a.role !== roleFor(ctx, "review_slice") && a.role !== roleFor(ctx, "audit_branch"))
+    return bad(`${a.role} does not file review verdicts`);
 
   const slice = ctx.db
     .query<{ id: number; grp_id: number; seq: number; accept_spec: string }, [number]>(
