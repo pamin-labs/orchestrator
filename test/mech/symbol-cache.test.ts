@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-node";
+import { count, eq } from "drizzle-orm";
 import { openMemory } from "../../src/platform/persistence/database.ts";
-import { SqliteSpanExporter } from "../../src/platform/observability/span-store.ts";
+import { StoredSpanExporter } from "../../src/platform/observability/span-store.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
+import { span } from "../../src/platform/persistence/schema.ts";
 import { buildMap } from "../../src/mech/knowledge/repomap.ts";
 
 /**
@@ -21,11 +23,11 @@ import { buildMap } from "../../src/mech/knowledge/repomap.ts";
  * and does not quietly become vacuous depending on which command ran it.
  */
 test("a second project loads no grammar the first one already loaded", async () => {
-  const db = openMemory();
-  const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(new SqliteSpanExporter(db))] });
+  const db = await openMemory();
+  const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(new StoredSpanExporter(db))] });
   installTracerProvider(provider);
-  const loads = () =>
-    db.query<{ n: number }, []>("SELECT count(*) AS n FROM span WHERE name = 'symbols.grammar.load'").get()!.n;
+  const loads = async () =>
+    (await db.select({ n: count() }).from(span).where(eq(span.name, "symbols.grammar.load")))[0]?.n ?? 0;
   try {
     // Two Go files, so a per-file cache is distinguishable from a per-grammar one.
     const files = ["a.go", "b.go", "c.py"];
@@ -38,11 +40,11 @@ test("a second project loads no grammar the first one already loaded", async () 
 
     const first = await buildMap("owner/one", () => files, [], read);
     await provider.forceFlush();
-    const afterFirst = loads();
+    const afterFirst = await loads();
 
     const second = await buildMap("owner/two", () => files, [], read);
     await provider.forceFlush();
-    const afterSecond = loads();
+    const afterSecond = await loads();
 
     // Both maps are real, so a zero delta below is not zero because nothing parsed.
     for (const map of [first, second]) {

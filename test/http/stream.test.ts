@@ -3,24 +3,27 @@ import { makeApp } from "../../src/composition/api.ts";
 import { boundedWriter } from "../../src/api/panel/stream.ts";
 import type { Frame } from "../../src/contracts/events.ts";
 import * as fx from "../support/factories.ts";
+import { event } from "../../src/platform/persistence/schema.ts";
 import { testContext } from "../support/test-context.ts";
 
 const LAST_SEQ = 1_101;
 
-function harness() {
-  const ctx = testContext();
-  ctx.db.transaction(() => {
-    for (let seq = 1; seq <= LAST_SEQ; seq++) {
-      fx.event.insert(ctx.db, { author: "boss", body: `event ${seq}`, at: seq });
-    }
-  })();
+async function harness() {
+  const ctx = await testContext();
+  // One statement rather than 1101: the transaction this used to open was there
+  // for the same reason, and the rows are what the test is about, not the writes.
+  await ctx.db
+    .insert(event)
+    .values(
+      Array.from({ length: LAST_SEQ }, (_, i) => fx.event.build({ author: "boss", body: `event ${i + 1}`, at: i + 1 })),
+    );
   return makeApp(ctx);
 }
 
 async function replay(path: string, headers: HeadersInit, finalSeq: number): Promise<string> {
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), 2_000);
-  const response = await harness()(new Request(`http://x${path}`, { headers, signal: abort.signal }));
+  const response = await (await harness())(new Request(`http://x${path}`, { headers, signal: abort.signal }));
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let body = "";

@@ -49,7 +49,7 @@ test("a model that answers nothing is retried, not cached as an empty summary", 
   // and a matching signature for every node: the next pass matched, skipped, and
   // the index stayed empty while reporting itself built. Nothing anywhere would
   // have said so.
-  openMemory();
+  await openMemory();
   let calls = 0;
   const silent = async () => {
     calls++;

@@ -19,6 +19,17 @@ import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { WORK } from "../../src/mech/sandbox/sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
+import { count, desc, eq } from "drizzle-orm";
+import {
+  agent as agentTable,
+  escalation as escalationTable,
+  event as eventTable,
+  grp as grpTable,
+  job as jobTable,
+  resource as resourceTable,
+  slice as sliceTable,
+  task as taskTable,
+} from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import { z } from "zod";
 import { tempDir } from "../support/temp.ts";
@@ -53,9 +64,9 @@ async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
   if (!fixture) await Bun.write(join(work, "a.txt"), "one\n");
   const wt = { worktree: work, branch: "orch/g1" };
 
-  const db = openMemory();
+  const db = await openMemory();
 
-  seedAuth(db);
+  await seedAuth(db);
   const bus = new Bus(db);
   const cfg = { ...loadConfig(), dataDir: tempDir("orch-rp-data-"), gateRetries: 2 };
   const specs: TurnSpec[] = [];
@@ -102,15 +113,16 @@ async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
   ctx.reviewVerdict = makeReviewVerdict(deps);
   ctx.auditVerdict = makeAuditVerdict(deps);
 
-  const p = fx.project.insert(db, {
+  const f = fx.on(db);
+  const p = await f.project.create({
     name: "p",
     repo_path: repo,
-    config_json: JSON.stringify({ gates: opts.gates ?? ["test"] }),
+    config_json: { gates: opts.gates ?? ["test"] },
   });
-  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1", branch: wt.branch });
+  const g = await f.runningGrp.create({ project_id: p.id, name: "g1", branch: wt.branch });
   // 'running' is what startNextSlice sets: a task whose slice has not started
   // cannot be completed, so the fixture has to reflect a started slice.
-  const s = fx.slice.insert(db, {
+  const s = await f.slice.create({
     grp_id: g.id,
     seq: 1,
     title: "S1",
@@ -118,9 +130,9 @@ async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
     difficulty: "trivial",
     status: "running",
   });
-  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, token: "tok-eng" });
-  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, role: "qa", token: "tok-qa" });
-  fx.task.insert(db, { grp_id: g.id, slice_id: s.id, title: "edit a.txt" });
+  await f.agent.create({ project_id: p.id, grp_id: g.id, token: "tok-eng" });
+  await f.agent.create({ project_id: p.id, grp_id: g.id, role: "qa", token: "tok-qa" });
+  await f.task.create({ grp_id: g.id, slice_id: s.id, title: "edit a.txt" });
 
   const app = makeApp(ctx);
   const post = (path: string, body?: Json, token?: string) =>
@@ -138,17 +150,15 @@ async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
 
   // Baseline for reconcile, as the executor would set on the slice's first turn.
   const base = realGit ? await checkpoint(git, wt.worktree, "start") : null;
-  db.run("UPDATE slice SET base_sha = ? WHERE id = 1", [base]);
+  await db.update(sliceTable).set({ base_sha: base }).where(eq(sliceTable.id, 1));
 
-  const gate = (code: number, out = "") =>
-    db.run(
-      "INSERT OR REPLACE INTO resource (name, template, arg_schema_json, error_regex) VALUES ('test', ?, '{}', '^(FAIL|error)')",
-      [
-        // A template is tokenised, not shell-parsed: one argv, no spaces inside a
-        // single token, no nesting. That constraint is the point of templates.
-        code === 0 ? "true" : `bun -e console.log("${out}");process.exit(${code})`,
-      ],
-    );
+  const gate = (code: number, out = "") => {
+    // A template is tokenised, not shell-parsed: one argv, no spaces inside a
+    // single token, no nesting. That constraint is the point of templates.
+    const template = code === 0 ? "true" : `bun -e console.log("${out}");process.exit(${code})`;
+    const row = { name: "test", template, arg_schema_json: {}, error_regex: "^(FAIL|error)" };
+    return db.insert(resourceTable).values(row).onConflictDoUpdate({ target: resourceTable.name, set: row });
+  };
 
   return { db, ctx, sched, deps, app, post, repo, wt, specs, gate, git };
 }
@@ -159,98 +169,123 @@ type Post = (path: string, body?: Json, token?: string) => Promise<Response>;
 const doneClaim = (post: Post, claim: Json) =>
   post("/orch/v1/task/done", { task_id: 1, claim, review: REVIEW }, "tok-eng");
 
-test.concurrent("a truthful claim with a passing gate reaches QA, not the boss", async () => {
-  const h = await harness({ realGit: true });
-  h.gate(0);
-  writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
-  await h.git(["commit", "-qam", "edit"], h.wt.worktree);
+/**
+ * The four real-git cases used to run `test.concurrent`, and cannot any more:
+ * one the test database serves the process and `openMemory()` empties it, so a second
+ * harness building its fixture deletes the first one's rows mid-test. Serial
+ * they are, and serial they exceed bun's 5s default — measured at 5006ms here,
+ * with the timeout leaking a `retries` of 2 into the next test. Same number and
+ * same reason as the branch-audit case further down.
+ */
+const REAL_GIT_MS = 30_000;
 
-  await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
-  await h.sched.drain();
+test(
+  "a truthful claim with a passing gate reaches QA, not the boss",
+  async () => {
+    const h = await harness({ realGit: true });
+    await h.gate(0);
+    writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
+    await h.git(["commit", "-qam", "edit"], h.wt.worktree);
 
-  // self is layer 1 and is recorded by `task done --review`, before the two
-  // deterministic layers run.
-  expect(gateState(h.db, 1)).toEqual({ self: "pass", reconcile: "pass", gate: "pass" });
-  const slice = h.db.query<{ status: string }, []>("SELECT status FROM slice WHERE id = 1").get()!;
-  expect(slice.status).toBe("qa");
-  // A QA turn was queued; the boss is not involved until QA files a verdict.
-  expect(h.specs.map((s) => s.stable.systemAppend).join("\n")).toContain("You are QA");
-});
-
-test.concurrent("a claim git cannot corroborate is sent back before any reviewer sees it", async () => {
-  const h = await harness({ realGit: true });
-  h.gate(0);
-  // Nothing changed on disk, but the claim says otherwise.
-  await doneClaim(h.post, { files: ["a.txt"], summary: "edited a.txt" });
-  await h.sched.drain();
-
-  expect(gateState(h.db, 1).reconcile).toBe("fail");
-  const slice = h.db
-    .query<{ status: string; retries: number }, []>("SELECT status, retries FROM slice WHERE id = 1")
-    .get()!;
-  expect(slice.retries).toBe(1);
-  // Straight back to the writer — the reviewer's judgement is not spent on this.
-  expect(h.specs.filter((s) => s.stable.systemAppend.includes("You are QA"))).toEqual([]);
-  const retry = h.specs.at(-1)!;
-  expect(retry.prompt).toContain("Reconcile failed");
-  // A retry starts a fresh session: the old history is mostly the failed attempt.
-  expect(retry.resumeSessionId).toBeUndefined();
-  expect(retry.newSessionId).toBeTruthy();
-});
-
-test.concurrent("a failing gate sends the slice back with the failing lines", async () => {
-  const h = await harness({ realGit: true });
-  h.gate(1, "FAIL_mw_test");
-  writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
-  await h.git(["commit", "-qam", "edit"], h.wt.worktree);
-  await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
-  await h.sched.drain();
-
-  expect(gateState(h.db, 1)).toEqual({ self: "pass", reconcile: "pass", gate: "fail" });
-  expect(h.specs.at(-1)!.prompt).toContain("FAIL_mw_test");
-});
-
-test.concurrent("repeated failures escalate to the boss instead of looping forever", async () => {
-  const h = await harness({ realGit: true });
-  h.gate(1, "FAIL_again");
-  writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
-  await h.git(["commit", "-qam", "edit"], h.wt.worktree);
-
-  for (let i = 0; i < 3; i++) {
-    h.db.run("UPDATE task SET status = 'done' WHERE id = 1");
-    h.ctx.sched.enqueue("gate", { grp_id: 1, slice_id: 1 });
+    await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
     await h.sched.drain();
-  }
 
-  const esc = h.db
-    .query<{ severity: string; question: string; brief: string; kind: string; chain_state: string }, []>(
-      "SELECT severity, question, brief, kind, chain_state FROM escalation",
-    )
-    .get()!;
-  expect(esc.severity).toBe("blocker");
-  expect(esc.brief).toBe("S1 连着 3 次没过 gate");
-  expect(esc.kind).toBe("spec");
-  expect(esc.chain_state).toBe("boss");
-  // Two failures usually means the criteria are wrong, not the code — so the
-  // message says that rather than just reporting another failure.
-  expect(esc.question).toContain("failed gate");
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSING");
-});
+    // self is layer 1 and is recorded by `task done --review`, before the two
+    // deterministic layers run.
+    expect(await gateState(h.db, 1)).toEqual({ self: "pass", reconcile: "pass", gate: "pass" });
+    const [slice] = await h.db.select({ status: sliceTable.status }).from(sliceTable).where(eq(sliceTable.id, 1));
+    expect(slice!.status).toBe("qa");
+    // A QA turn was queued; the boss is not involved until QA files a verdict.
+    expect(h.specs.map((s) => s.stable.systemAppend).join("\n")).toContain("You are QA");
+  },
+  REAL_GIT_MS,
+);
+
+test(
+  "a claim git cannot corroborate is sent back before any reviewer sees it",
+  async () => {
+    const h = await harness({ realGit: true });
+    await h.gate(0);
+    // Nothing changed on disk, but the claim says otherwise.
+    await doneClaim(h.post, { files: ["a.txt"], summary: "edited a.txt" });
+    await h.sched.drain();
+
+    expect((await gateState(h.db, 1)).reconcile).toBe("fail");
+    const [slice] = await h.db
+      .select({ status: sliceTable.status, retries: sliceTable.retries })
+      .from(sliceTable)
+      .where(eq(sliceTable.id, 1));
+    expect(slice!.retries).toBe(1);
+    // Straight back to the writer — the reviewer's judgement is not spent on this.
+    expect(h.specs.filter((s) => s.stable.systemAppend.includes("You are QA"))).toEqual([]);
+    const retry = h.specs.at(-1)!;
+    expect(retry.prompt).toContain("Reconcile failed");
+    // A retry starts a fresh session: the old history is mostly the failed attempt.
+    expect(retry.resumeSessionId).toBeUndefined();
+    expect(retry.newSessionId).toBeTruthy();
+  },
+  REAL_GIT_MS,
+);
+
+test(
+  "a failing gate sends the slice back with the failing lines",
+  async () => {
+    const h = await harness({ realGit: true });
+    await h.gate(1, "FAIL_mw_test");
+    writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
+    await h.git(["commit", "-qam", "edit"], h.wt.worktree);
+    await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
+    await h.sched.drain();
+
+    expect(await gateState(h.db, 1)).toEqual({ self: "pass", reconcile: "pass", gate: "fail" });
+    expect(h.specs.at(-1)!.prompt).toContain("FAIL_mw_test");
+  },
+  REAL_GIT_MS,
+);
+
+test(
+  "repeated failures escalate to the boss instead of looping forever",
+  async () => {
+    const h = await harness({ realGit: true });
+    await h.gate(1, "FAIL_again");
+    writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
+    await h.git(["commit", "-qam", "edit"], h.wt.worktree);
+
+    for (let i = 0; i < 3; i++) {
+      await h.db.update(taskTable).set({ status: "done" }).where(eq(taskTable.id, 1));
+      await h.ctx.sched.enqueue("gate", { grp_id: 1, slice_id: 1 });
+      await h.sched.drain();
+    }
+
+    const [esc] = await h.db.select().from(escalationTable);
+    expect(esc!.severity).toBe("blocker");
+    expect(esc!.brief).toBe("S1 连着 3 次没过 gate");
+    expect(esc!.kind).toBe("spec");
+    expect(esc!.chain_state).toBe("boss");
+    // Two failures usually means the criteria are wrong, not the code — so the
+    // message says that rather than just reporting another failure.
+    expect(esc!.question).toContain("failed gate");
+    expect((await h.db.select({ status: grpTable.status }).from(grpTable).where(eq(grpTable.id, 1)))[0]!.status).toBe(
+      "PAUSING",
+    );
+  },
+  REAL_GIT_MS,
+);
 
 test("QA's pass hands the slice to the boss and rotates the sessions", async () => {
   const h = await harness();
-  h.db.run("UPDATE slice SET difficulty = 'hard' WHERE id = 1");
-  h.db.run("UPDATE agent SET session_id = 'old', session_tokens = 90000");
+  await h.db.update(sliceTable).set({ difficulty: "hard" }).where(eq(sliceTable.id, 1));
+  await h.db.update(agentTable).set({ session_id: "old", session_tokens: 90000 });
   await h.post("/orch/v1/review", { slice_id: 1, verdict: "pass", note: "all three criteria met" }, "tok-qa");
 
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM slice WHERE id = 1").get()!.status).toBe(
-    "awaiting_boss",
-  );
+  expect(
+    (await h.db.select({ status: sliceTable.status }).from(sliceTable).where(eq(sliceTable.id, 1)))[0]!.status,
+  ).toBe("awaiting_boss");
   // The slice boundary is the primary rotation point: cheapest handoff, and it
   // stops a session growing across unrelated work.
-  const agents = h.db
-    .query<{ session_id: string | null; session_tokens: number }, []>("SELECT session_id, session_tokens FROM agent")
-    .all();
+  const agents = await h.db
+    .select({ session_id: agentTable.session_id, session_tokens: agentTable.session_tokens })
+    .from(agentTable);
   expect(agents.filter((a) => a.session_id !== null || a.session_tokens !== 0)).toEqual([]);
 });
 
@@ -258,7 +293,9 @@ test("QA's fail sends the slice back with QA's note", async () => {
   const h = await harness();
   await h.post("/orch/v1/review", { slice_id: 1, verdict: "fail", note: "fail: criterion 2 unchecked" }, "tok-qa");
   await h.sched.drain();
-  expect(h.db.query<{ retries: number }, []>("SELECT retries FROM slice WHERE id = 1").get()!.retries).toBe(1);
+  expect(
+    (await h.db.select({ retries: sliceTable.retries }).from(sliceTable).where(eq(sliceTable.id, 1)))[0]!.retries,
+  ).toBe(1);
   expect(h.specs.at(-1)!.prompt).toContain("criterion 2 unchecked");
 });
 
@@ -282,53 +319,57 @@ test("only reviewers may file verdicts, and only for their own group", async () 
 
 test("a slice with open tasks does not enter review", async () => {
   const h = await harness();
-  fx.task.insert(h.db, { grp_id: 1, slice_id: 1, title: "second task" });
+  await fx.on(h.db).task.create({ grp_id: 1, slice_id: 1, title: "second task" });
   await doneClaim(h.post, { files: ["a.txt"] });
   await h.sched.drain();
   // Reviewing half a slice spends judgement on work that is about to change.
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'gate'").get()!.c).toBe(0);
+  expect((await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.kind, "gate")))[0]!.c).toBe(0);
 });
 
 test("accepting the last slice starts PR review; accepting an earlier one does not", async () => {
   const h = await harness();
-  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2" });
+  await fx.on(h.db).slice.create({ grp_id: 1, seq: 2, title: "S2" });
 
   await h.post("/api/v1/slices/1/accept");
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
+  expect((await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.kind, "reconcile")))[0]!.c).toBe(0);
 
   await h.post("/api/v1/slices/2/accept");
   // "The boss is satisfied" is not a verdict an agent can reach, so nothing an
   // agent does can start this.
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(1);
+  expect((await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.kind, "reconcile")))[0]!.c).toBe(1);
 });
 
 test("a group with no retro cannot wind up — the PM is sent back to write one", async () => {
   const h = await harness();
-  h.gate(0);
+  await h.gate(0);
   await h.post("/api/v1/slices/1/accept");
   await h.sched.drain();
 
   // retro is the only long-term memory this system has, and "later" means never
   // once the branch is merged.
   expect(h.specs.at(-1)!.prompt).toContain("no retro");
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).not.toBe("PR_OPEN");
+  expect((await h.db.select({ status: grpTable.status }).from(grpTable).where(eq(grpTable.id, 1)))[0]!.status).not.toBe(
+    "PR_OPEN",
+  );
 });
 
 test("with a retro and a green branch gate, the Auditor is called in", async () => {
   const h = await harness();
-  h.gate(0);
-  fx.note.insert(h.db, { grp_id: 1, kind: "retro", body: "S1 返工一次，验收标准写模糊了" });
+  await h.gate(0);
+  await fx.on(h.db).note.create({ grp_id: 1, kind: "retro", body: "S1 返工一次，验收标准写模糊了" });
   await h.post("/api/v1/slices/1/accept");
   await h.sched.drain();
 
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PR_OPEN");
+  expect((await h.db.select({ status: grpTable.status }).from(grpTable).where(eq(grpTable.id, 1)))[0]!.status).toBe(
+    "PR_OPEN",
+  );
   expect(h.specs.map((s) => s.stable.systemAppend).join("\n")).toContain("You are the Auditor");
 });
 
 test("an auditor may not audit its own group", async () => {
   const h = await harness();
-  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, role: "auditor", token: "tok-in" });
-  fx.agent.insert(h.db, { project_id: 1, role: "auditor", token: "tok-out" });
+  await fx.on(h.db).agent.create({ project_id: 1, grp_id: 1, role: "auditor", token: "tok-in" });
+  await fx.on(h.db).agent.create({ project_id: 1, role: "auditor", token: "tok-out" });
   // Sharing the group's context means reviewing your own reasoning.
   expect((await h.post("/orch/v1/audit", { group_id: 1, verdict: "pass" }, "tok-in")).status).toBe(422);
   expect((await h.post("/orch/v1/audit", { group_id: 1, verdict: "pass" }, "tok-out")).status).toBe(200);
@@ -336,58 +377,59 @@ test("an auditor may not audit its own group", async () => {
 
 test("a failed audit reopens the group and sends the PM back", async () => {
   const h = await harness();
-  fx.agent.insert(h.db, { project_id: 1, role: "auditor", token: "tok-aud" });
-  h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1");
+  await fx.on(h.db).agent.create({ project_id: 1, role: "auditor", token: "tok-aud" });
+  await h.db.update(grpTable).set({ status: "PR_OPEN" }).where(eq(grpTable.id, 1));
   await h.post("/orch/v1/audit", { group_id: 1, verdict: "fail", note: "S2's promise is not in the diff" }, "tok-aud");
   await h.sched.drain();
 
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
+  expect((await h.db.select({ status: grpTable.status }).from(grpTable).where(eq(grpTable.id, 1)))[0]!.status).toBe(
+    "RUNNING",
+  );
   expect(h.specs.at(-1)!.prompt).toContain("S2's promise is not in the diff");
 });
 
 test("accepting a slice starts the next one, and only one runs at a time", async () => {
   const h = await harness();
-  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2" });
-  fx.slice.insert(h.db, { grp_id: 1, seq: 3, title: "S3" });
+  await fx.on(h.db).slice.create({ grp_id: 1, seq: 2, title: "S2" });
+  await fx.on(h.db).slice.create({ grp_id: 1, seq: 3, title: "S3" });
 
   const { startNextSlice } = await import("../../src/mech/flow/review.ts");
   // S1 is already running in the fixture, so nothing new may start: a second
   // in-flight slice would only queue behind the group's single writer and its
   // review would race the first one's.
-  expect(startNextSlice(h.ctx, 1)).toBeNull();
+  expect(await startNextSlice(h.ctx, 1)).toBeNull();
 
-  h.db.run("UPDATE slice SET status = 'accepted' WHERE id = 1");
-  expect(startNextSlice(h.ctx, 1)).toBe(2);
-  h.db.run("UPDATE slice SET status = 'pending' WHERE id = 2");
+  await h.db.update(sliceTable).set({ status: "accepted" }).where(eq(sliceTable.id, 1));
+  expect(await startNextSlice(h.ctx, 1)).toBe(2);
+  await h.db.update(sliceTable).set({ status: "pending" }).where(eq(sliceTable.id, 2));
   // S1 back to where the boss actually accepts from. It was left `accepted` here,
   // so this step was re-accepting an already-accepted slice — which `acceptSlice`
   // now refuses, because a second acceptance is a second carry-over note.
-  h.db.run("UPDATE slice SET status = 'awaiting_boss' WHERE id = 1");
+  await h.db.update(sliceTable).set({ status: "awaiting_boss" }).where(eq(sliceTable.id, 1));
   await h.post("/api/v1/slices/1/accept");
-  const running = h.db
-    .query<{ seq: number }, []>("SELECT seq FROM slice WHERE status = 'running'")
-    .all()
-    .map((r) => r.seq);
+  const running = (
+    await h.db.select({ seq: sliceTable.seq }).from(sliceTable).where(eq(sliceTable.status, "running"))
+  ).map((r) => r.seq);
   expect(running).toEqual([2]);
 });
 
 test("a slice waits for the one it depends on", async () => {
   const h = await harness();
-  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2", depends_on: 1 });
+  await fx.on(h.db).slice.create({ grp_id: 1, seq: 2, title: "S2", depends_on: 1 });
   const { startNextSlice } = await import("../../src/mech/flow/review.ts");
-  h.db.run("UPDATE slice SET status = 'accepted' WHERE id = 1");
-  expect(startNextSlice(h.ctx, 1)).toBe(2);
+  await h.db.update(sliceTable).set({ status: "accepted" }).where(eq(sliceTable.id, 1));
+  expect(await startNextSlice(h.ctx, 1)).toBe(2);
 
   const h2 = await harness();
-  fx.slice.insert(h2.db, { grp_id: 1, seq: 2, title: "S2", depends_on: 1 });
-  h2.db.run("UPDATE slice SET status = 'rejected' WHERE id = 1");
-  expect(startNextSlice(h2.ctx, 1)).toBeNull();
+  await fx.on(h2.db).slice.create({ grp_id: 1, seq: 2, title: "S2", depends_on: 1 });
+  await h2.db.update(sliceTable).set({ status: "rejected" }).where(eq(sliceTable.id, 1));
+  expect(await startNextSlice(h2.ctx, 1)).toBeNull();
 });
 
 test("a task on a slice that has not started cannot be listed or completed", async () => {
   const h = await harness();
-  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2" });
-  fx.task.insert(h.db, { grp_id: 1, slice_id: 2, title: "later work" });
+  await fx.on(h.db).slice.create({ grp_id: 1, seq: 2, title: "S2" });
+  await fx.on(h.db).task.create({ grp_id: 1, slice_id: 2, title: "later work" });
   const list = await (
     await h.app(new Request("http://x/orch/v1/task", { headers: { "x-orch-token": "tok-eng" } }))
   ).text();
@@ -414,20 +456,19 @@ test("a task on a slice that has not started cannot be listed or completed", asy
 
 test("the Auditor is hired outside the group it audits, and told how to read the branch", async () => {
   const h = await harness();
-  h.gate(0);
-  fx.note.insert(h.db, { grp_id: 1, kind: "retro", body: "S1 返工一次" });
+  await h.gate(0);
+  await fx.on(h.db).note.create({ grp_id: 1, kind: "retro", body: "S1 返工一次" });
   await h.post("/api/v1/slices/1/accept");
   await h.sched.drain();
 
-  const auditor = h.db
-    .query<{ grp_id: number | null; project_id: number | null }, []>(
-      "SELECT grp_id, project_id FROM agent WHERE role = 'auditor'",
-    )
-    .get()!;
+  const [auditor] = await h.db
+    .select({ grp_id: agentTable.grp_id, project_id: agentTable.project_id })
+    .from(agentTable)
+    .where(eq(agentTable.role, "auditor"));
   // Inside the group it would be reviewing its own reasoning, and `orch audit`
   // refuses that — so the turn would fail with the branch already finished.
-  expect(auditor.grp_id).toBeNull();
-  expect(auditor.project_id).toBe(1);
+  expect(auditor!.grp_id).toBeNull();
+  expect(auditor!.project_id).toBe(1);
 
   const spec = h.specs.find((s) => s.stable.systemAppend.includes("You are the Auditor"))!;
   expect(spec.prompt).toContain("group_id 1");
@@ -461,76 +502,77 @@ test("--already-done is accepted and recorded as such", async () => {
     "tok-eng",
   );
   expect(r.status).toBe(200);
-  const claim = TaskClaimSchema.parse(
-    JSON.parse(h.db.query<{ claim_json: string }, []>("SELECT claim_json FROM task WHERE id = 1").get()!.claim_json),
-  );
+  const [row] = await h.db.select({ claim_json: taskTable.claim_json }).from(taskTable).where(eq(taskTable.id, 1));
+  const claim = TaskClaimSchema.parse(row!.claim_json);
   expect("already_done" in claim ? claim.already_done : undefined).toBe("S1 covered it");
 });
 
 test("writing the retro resumes PR-level review instead of dead-ending", async () => {
   const h = await harness();
-  h.gate(0);
+  await h.gate(0);
   // Every slice accepted but no retro: review asks for one and stops.
   await h.post("/api/v1/slices/1/accept");
   await h.sched.drain();
   expect(h.specs.at(-1)!.prompt).toContain("no retro");
 
-  const before = h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c;
+  const before = (await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.kind, "reconcile")))[0]!.c;
   await h.post("/orch/v1/journal", { kind: "retro", body: "S1 返工一次，验收标准写模糊了" }, "tok-eng");
   // Without this the PM writes a retro nobody asked for again and the finished
   // branch sits unreviewed until someone nudges it by hand.
-  const after = h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c;
+  const after = (await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.kind, "reconcile")))[0]!.c;
   expect(after).toBe(before + 1);
 });
 
 test("a retro written mid-flight does not trigger PR review", async () => {
   const h = await harness();
-  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2" });
+  await fx.on(h.db).slice.create({ grp_id: 1, seq: 2, title: "S2" });
   await h.post("/orch/v1/journal", { kind: "retro", body: "早写的 retro" }, "tok-eng");
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
+  expect((await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.kind, "reconcile")))[0]!.c).toBe(0);
 });
 
 test("a trivial slice is accepted automatically once all three gates pass", async () => {
   const h = await harness();
   h.ctx.config.autoAcceptTiers = ["trivial"];
-  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2", accept_spec: "b", status: "pending" });
+  await fx.on(h.db).slice.create({ grp_id: 1, seq: 2, title: "S2", accept_spec: "b", status: "pending" });
 
-  handToBoss({ ctx: h.ctx }, 1);
+  await handToBoss({ ctx: h.ctx }, 1);
 
-  const s1 = h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!;
+  const [s1] = await h.db.select({ status: sliceTable.status }).from(sliceTable).where(eq(sliceTable.id, 1));
   // Three gates still ran; this skips the boss's look, not the verification.
-  expect(s1.status).toBe("accepted");
+  expect(s1!.status).toBe("accepted");
   // Announced, never silent: an acceptance nobody can see cannot be audited.
-  const said = h.db
-    .query<{ body: string; author: string }, []>("SELECT author, body FROM event ORDER BY seq DESC")
-    .all()
-    .find((e) => e.body.includes("自动查收"))!;
+  const said = (
+    await h.db
+      .select({ author: eventTable.author, body: eventTable.body })
+      .from(eventTable)
+      .orderBy(desc(eventTable.seq))
+  ).find((e) => e.body.includes("自动查收"))!;
   expect(said.author).toBe("orchestrator");
   expect(said.body).toContain("自动查收");
   // And the next slice starts, which is the point of the whole thing.
-  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(2)!.status).not.toBe(
-    "pending",
-  );
+  expect(
+    (await h.db.select({ status: sliceTable.status }).from(sliceTable).where(eq(sliceTable.id, 2)))[0]!.status,
+  ).not.toBe("pending");
 });
 
 test("a normal slice still waits for the boss even with trivial auto-accept on", async () => {
   const h = await harness();
   h.ctx.config.autoAcceptTiers = ["trivial"];
-  h.db.run("UPDATE slice SET difficulty = 'normal' WHERE id = 1");
+  await h.db.update(sliceTable).set({ difficulty: "normal" }).where(eq(sliceTable.id, 1));
 
-  handToBoss({ ctx: h.ctx }, 1);
-  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!.status).toBe(
-    "awaiting_boss",
-  );
+  await handToBoss({ ctx: h.ctx }, 1);
+  expect(
+    (await h.db.select({ status: sliceTable.status }).from(sliceTable).where(eq(sliceTable.id, 1)))[0]!.status,
+  ).toBe("awaiting_boss");
 });
 
 test("with auto-accept disabled, every slice waits for the boss", async () => {
   const h = await harness();
   h.ctx.config = { ...h.ctx.config, autoAcceptTiers: [] };
-  handToBoss({ ctx: h.ctx }, 1);
-  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!.status).toBe(
-    "awaiting_boss",
-  );
+  await handToBoss({ ctx: h.ctx }, 1);
+  expect(
+    (await h.db.select({ status: sliceTable.status }).from(sliceTable).where(eq(sliceTable.id, 1)))[0]!.status,
+  ).toBe("awaiting_boss");
 });
 
 test("the task that closes a slice needs a self-review, and vacuous does not count", async () => {
@@ -568,16 +610,19 @@ test("the task that closes a slice needs a self-review, and vacuous does not cou
   expect(ok.status).toBe(200);
   // Recorded as the gate layer it is, so the panel can draw the first tick and the
   // evidence panel can show what was claimed.
-  const gates = GateResults.parse(
-    JSON.parse(h.db.query<{ gates_json: string }, []>("SELECT gates_json FROM slice WHERE id = 1").get()!.gates_json),
-  );
+  const [sliceRow] = await h.db
+    .select({ gates_json: sliceTable.gates_json })
+    .from(sliceTable)
+    .where(eq(sliceTable.id, 1));
+  const gates = GateResults.parse(sliceRow!.gates_json);
   expect(gates.self).toBe("pass");
-  const filed = h.db
-    .query<{ body: string; author: string }, []>(
-      "SELECT author, body FROM event WHERE kind = 'gate_result' ORDER BY seq",
-    )
-    .all()
-    .find((e) => e.body.includes("a.txt says two"))!;
+  const filed = (
+    await h.db
+      .select({ author: eventTable.author, body: eventTable.body })
+      .from(eventTable)
+      .where(eq(eventTable.kind, "gate_result"))
+      .orderBy(eventTable.seq)
+  ).find((e) => e.body.includes("a.txt says two"))!;
   expect(filed.author).toBe("engineer");
 });
 
@@ -592,28 +637,27 @@ test("a branch the Auditor keeps rejecting stops instead of paying for another r
   // branch had no counter at all — the same money spent forever on the same
   // disagreement, with nothing on the boss's screen saying so.
   const h = await harness();
-  h.ctx.auditVerdict!(1, false, "the error path is still untested");
-  h.ctx.auditVerdict!(1, false, "still untested");
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
+  await h.ctx.auditVerdict!(1, false, "the error path is still untested");
+  await h.ctx.auditVerdict!(1, false, "still untested");
+  expect((await h.db.select({ status: grpTable.status }).from(grpTable).where(eq(grpTable.id, 1)))[0]!.status).toBe(
+    "RUNNING",
+  );
 
-  h.ctx.auditVerdict!(1, false, "and again");
-  const g = h.db
-    .query<{ status: string; pr_retries: number }, []>("SELECT status, pr_retries FROM grp WHERE id = 1")
-    .get()!;
-  expect(g.status).toBe("PAUSED");
-  expect(g.pr_retries).toBe(3);
-  const esc = h.db
-    .query<{ severity: string; chain_state: string; question: string; brief: string; kind: string }, []>(
-      "SELECT severity, chain_state, question, brief, kind FROM escalation ORDER BY id DESC LIMIT 1",
-    )
-    .get()!;
-  expect(esc.severity).toBe("blocker");
-  expect(esc.chain_state).toBe("boss");
-  expect(esc.brief).toBe("整条分支被 the Auditor 打回 3 次");
-  expect(esc.kind).toBe("spec");
+  await h.ctx.auditVerdict!(1, false, "and again");
+  const [g] = await h.db
+    .select({ status: grpTable.status, pr_retries: grpTable.pr_retries })
+    .from(grpTable)
+    .where(eq(grpTable.id, 1));
+  expect(g!.status).toBe("PAUSED");
+  expect(g!.pr_retries).toBe(3);
+  const [esc] = await h.db.select().from(escalationTable).orderBy(desc(escalationTable.id)).limit(1);
+  expect(esc!.severity).toBe("blocker");
+  expect(esc!.chain_state).toBe("boss");
+  expect(esc!.brief).toBe("整条分支被 the Auditor 打回 3 次");
+  expect(esc!.kind).toBe("spec");
   // The likely cause, said out loud: three rounds usually means the acceptance
   // wording is wrong, not the code.
-  expect(esc.question).toContain("验收口径");
+  expect(esc!.question).toContain("验收口径");
 }, 30_000);
 
 test("a passed audit hires the Scribe, and nothing is published until it files", async () => {
@@ -625,24 +669,25 @@ test("a passed audit hires the Scribe, and nothing is published until it files",
   let published = 0;
   h.ctx.publishBranch = () => published++;
 
-  h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1"); // set by the branch gate, before the audit
-  h.ctx.auditVerdict!(1, true, "");
+  await h.db.update(grpTable).set({ status: "PR_OPEN" }).where(eq(grpTable.id, 1)); // set by the branch gate, before the audit
+  await h.ctx.auditVerdict!(1, true, "");
   expect(published).toBe(0);
 
-  const job = h.db
-    .query<{ payload_json: string; grp_id: number | null }, []>(
-      "SELECT payload_json, grp_id FROM job WHERE kind = 'agent_turn' ORDER BY id DESC LIMIT 1",
-    )
-    .get()!;
+  const [job] = await h.db
+    .select({ payload_json: jobTable.payload_json, grp_id: jobTable.grp_id })
+    .from(jobTable)
+    .where(eq(jobTable.kind, "agent_turn"))
+    .orderBy(desc(jobTable.id))
+    .limit(1);
   // In the group's own sandbox, unlike the Auditor: the branch it has to read is
   // checked out there, and summarising a diff is not reviewing one's own work.
-  expect(job.grp_id).toBe(1);
-  expect(AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json)).role).toBe("scribe");
+  expect(job!.grp_id).toBe(1);
+  expect(AgentTurnPayloadSchema.parse(job!.payload_json).role).toBe("scribe");
 
   // A place in the merge queue all the same. The queue is what the boss sees,
   // and a finished branch that is invisible until an agent writes a sentence is
   // a worse failure than an ugly title.
-  expect(h.db.query<{ n: number | null }, []>("SELECT merge_seq AS n FROM grp WHERE id = 1").get()!.n).not.toBeNull();
+  expect((await h.db.select({ n: grpTable.merge_seq }).from(grpTable).where(eq(grpTable.id, 1)))[0]!.n).not.toBeNull();
 });
 
 test("a Scribe turn that never files does not strand the branch at the head of the queue", async () => {
@@ -654,15 +699,15 @@ test("a Scribe turn that never files does not strand the branch at the head of t
   let published = 0;
   h.ctx.publishBranch = (id: number) => void (published = id);
 
-  h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1"); // set by the branch gate, before the audit
-  h.ctx.auditVerdict!(1, true, "");
+  await h.db.update(grpTable).set({ status: "PR_OPEN" }).where(eq(grpTable.id, 1)); // set by the branch gate, before the audit
+  await h.ctx.auditVerdict!(1, true, "");
   // Still queued, so the repair leaves it alone: its own liveness is the
   // scheduler's until there is nothing left to run.
-  runInvariants(h.ctx);
+  await runInvariants(h.ctx);
   expect(published).toBe(0);
 
-  h.db.run("UPDATE job SET state = 'failed' WHERE kind = 'agent_turn'");
-  runInvariants(h.ctx);
+  await h.db.update(jobTable).set({ state: "failed" }).where(eq(jobTable.kind, "agent_turn"));
+  await runInvariants(h.ctx);
   expect(published).toBe(1);
 });
 
@@ -678,19 +723,26 @@ test("a Scribe turn that never files does not strand the branch at the head of t
  */
 test("a slice the gate keeps rejecting asks the boss instead of going round again", async () => {
   const h = await harness();
-  const status = () =>
-    h.db.query<{ status: string; retries: number }, []>("SELECT status, retries FROM slice WHERE id = 1").get()!;
+  const status = async () =>
+    (
+      await h.db
+        .select({ status: sliceTable.status, retries: sliceTable.retries })
+        .from(sliceTable)
+        .where(eq(sliceTable.id, 1))
+    )[0]!;
 
-  h.ctx.reviewVerdict!(1, false, "the boundary cases are still missing");
-  h.ctx.reviewVerdict!(1, false, "still missing");
-  expect(status()).toEqual({ status: "running", retries: 2 });
+  await h.ctx.reviewVerdict!(1, false, "the boundary cases are still missing");
+  await h.ctx.reviewVerdict!(1, false, "still missing");
+  expect(await status()).toEqual({ status: "running", retries: 2 });
 
-  h.ctx.reviewVerdict!(1, false, "and again");
-  expect(status()).toEqual({ status: "rejected", retries: 3 });
+  await h.ctx.reviewVerdict!(1, false, "and again");
+  expect(await status()).toEqual({ status: "rejected", retries: 3 });
   // PAUSING, not PAUSED: `hold` writes the intent and `settle` lands it once the
   // turn in flight has stopped. Asserting the settled state here would be asserting
   // that the turn had already been cancelled, which is a different mechanism.
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSING");
+  expect((await h.db.select({ status: grpTable.status }).from(grpTable).where(eq(grpTable.id, 1)))[0]!.status).toBe(
+    "PAUSING",
+  );
 });
 
 /**
@@ -703,12 +755,16 @@ test("a slice the gate keeps rejecting asks the boss instead of going round agai
  */
 test("a slice that gave up asks the boss directly, because the group is about to stop", async () => {
   const h = await harness();
-  for (const note of ["one", "two", "three"]) h.ctx.reviewVerdict!(1, false, note);
+  for (const note of ["one", "two", "three"]) await h.ctx.reviewVerdict!(1, false, note);
 
-  const esc = h.db
-    .query<{ chain_state: string; severity: string; kind: string }, []>(
-      "SELECT chain_state, severity, kind FROM escalation ORDER BY id DESC LIMIT 1",
-    )
-    .get()!;
+  const [esc] = await h.db
+    .select({
+      chain_state: escalationTable.chain_state,
+      severity: escalationTable.severity,
+      kind: escalationTable.kind,
+    })
+    .from(escalationTable)
+    .orderBy(desc(escalationTable.id))
+    .limit(1);
   expect(esc).toEqual({ chain_state: "boss", severity: "blocker", kind: "spec" });
 });

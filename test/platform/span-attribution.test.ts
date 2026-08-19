@@ -1,14 +1,16 @@
 import { afterEach, expect, test } from "bun:test";
 import { BatchSpanProcessor, NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
+import { eq } from "drizzle-orm";
 import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig, loadRoles } from "../../src/platform/config/load.ts";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
+import { job, span } from "../../src/platform/persistence/schema.ts";
 import { Scheduler, type Executor } from "../../src/platform/scheduling/scheduler.ts";
 import { makeExecutor, type ExecDeps } from "../../src/application/executor.ts";
 import type { TurnResult } from "../../src/runtime/claude.ts";
-import { readTrace, SqliteSpanExporter, type StoredSpan } from "../../src/platform/observability/span-store.ts";
+import { readTrace, StoredSpanExporter, type StoredSpan } from "../../src/platform/observability/span-store.ts";
 import { saveTree } from "../../src/mech/knowledge/pageindex.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
@@ -25,10 +27,10 @@ import { tempDir } from "../support/temp.ts";
 
 afterEach(() => installTracerProvider(new NodeTracerProvider()));
 
-function harness(turn: () => Promise<TurnResult>) {
-  const db = openMemory();
-  seedAuth(db);
-  const provider = new NodeTracerProvider({ spanProcessors: [new BatchSpanProcessor(new SqliteSpanExporter(db))] });
+async function harness(turn: () => Promise<TurnResult>) {
+  const db = await openMemory();
+  await seedAuth(db);
+  const provider = new NodeTracerProvider({ spanProcessors: [new BatchSpanProcessor(new StoredSpanExporter(db))] });
   installTracerProvider(provider);
 
   const cfg = { ...loadConfig(), dataDir: tempDir("orch-spans-") };
@@ -38,8 +40,9 @@ function harness(turn: () => Promise<TurnResult>) {
   const deps: ExecDeps = { ctx, cfg, roles: loadRoles("roles"), runTurn: turn };
   exec = makeExecutor(deps);
 
-  const p = fx.project.insert(db, { name: "p" });
-  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  await f.runningGrp.create({ project_id: p.id, name: "g1" });
   return { db, ctx, sched, provider, app: makeApp(ctx) };
 }
 
@@ -55,15 +58,15 @@ const ok = async (): Promise<TurnResult> => ({
 });
 
 /** The one trace a single job produced, whatever id it was given. */
-function soleTrace(db: DB): StoredSpan[] {
-  const ids = db.query<{ trace_id: string }, []>("SELECT DISTINCT trace_id FROM span").all();
+async function soleTrace(db: DB): Promise<StoredSpan[]> {
+  const ids = await db.selectDistinct({ trace_id: span.trace_id }).from(span);
   expect(ids).toHaveLength(1);
   return readTrace(db, ids[0]!.trace_id);
 }
 
 /** The trace one named span belongs to. The HTTP request opens a trace of its own. */
-function traceContaining(db: DB, name: string): StoredSpan[] {
-  const row = db.query<{ trace_id: string }, [string]>("SELECT trace_id FROM span WHERE name = ?").get(name);
+async function traceContaining(db: DB, name: string): Promise<StoredSpan[]> {
+  const [row] = await db.select({ trace_id: span.trace_id }).from(span).where(eq(span.name, name));
   if (!row) throw new Error(`no span named ${name} in any trace`);
   return readTrace(db, row.trace_id);
 }
@@ -75,13 +78,13 @@ const byName = (spans: StoredSpan[], name: string): StoredSpan => {
 };
 
 test("a turn's stages are stored as one nested trace under the job that ran them", async () => {
-  const { db, sched, provider } = harness(ok);
+  const { db, sched, provider } = await harness(ok);
 
-  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
   await provider.forceFlush();
 
-  const spans = soleTrace(db);
+  const spans = await soleTrace(db);
   expect(spans.map((s) => s.name).toSorted()).toEqual([
     "job agent_turn",
     // The container round trips the checkpoint makes, timed since the exec
@@ -118,19 +121,19 @@ test("a turn's stages are stored as one nested trace under the job that ran them
 });
 
 test("a failing provider marks its span an error and still fails the job", async () => {
-  const { db, sched, provider } = harness(() => Promise.reject(new Error("provider exploded")));
+  const { db, sched, provider } = await harness(() => Promise.reject(new Error("provider exploded")));
 
-  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
   await provider.forceFlush();
 
-  const spans = soleTrace(db);
+  const spans = await soleTrace(db);
   // Recorded at every level rather than swallowed at the innermost one.
   for (const name of ["turn.provider", "turn", "job agent_turn"]) {
     expect(byName(spans, name).status).toBe("error");
   }
   // The span did not eat the exception: the job is still failed.
-  expect(db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("failed");
+  expect((await db.select({ state: job.state }).from(job))[0]?.state).toBe("failed");
 });
 
 test("a turn that fails without throwing marks its span too", async () => {
@@ -140,41 +143,41 @@ test("a turn that fails without throwing marks its span too", async () => {
   // producing nothing measured exactly like one that worked — in the surface
   // built to tell them apart. Nothing in the span table carried `status =
   // 'error'` at all while this and its sibling in `git.ls_tree` were open.
-  const { db, sched, provider } = harness(async () => ({ ...(await ok()), ok: false, terminalReason: "no_result" }));
+  const { db, sched, provider } = await harness(async () => ({
+    ...(await ok()),
+    ok: false,
+    terminalReason: "no_result",
+  }));
 
-  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
   await provider.forceFlush();
 
-  const stage = byName(soleTrace(db), "turn.provider");
+  const stage = byName(await soleTrace(db), "turn.provider");
   expect(stage.status).toBe("error");
 });
 
 test("system work belongs to no project, and stays NULL rather than being guessed", async () => {
-  const { db, sched, provider } = harness(ok);
+  const { db, sched, provider } = await harness(ok);
 
-  sched.enqueue("watchdog", {});
+  await sched.enqueue("watchdog", {});
   await sched.drain();
   await provider.forceFlush();
 
-  const span = byName(soleTrace(db), "job watchdog");
+  const span = byName(await soleTrace(db), "job watchdog");
   expect(span.grpId).toBeNull();
   expect(span.sliceId).toBeNull();
   expect(span.projectId).toBeNull();
 });
 
 test("an HTTP request is scoped by the id its own route names", async () => {
-  const { db, app, provider } = harness(ok);
+  const { db, app, provider } = await harness(ok);
 
   await app(new Request("http://x/api/v1/slices/1/evidence"));
   await app(new Request("http://x/healthz"));
   await provider.forceFlush();
 
-  const stored = db
-    .query<{ name: string; grp_id: number | null; slice_id: number | null }, []>(
-      "SELECT name, grp_id, slice_id FROM span",
-    )
-    .all();
+  const stored = await db.select({ name: span.name, grp_id: span.grp_id, slice_id: span.slice_id }).from(span);
 
   const slice = stored.find((s) => s.name.includes("/slices/"))!;
   expect(slice.slice_id).toBe(1);
@@ -192,13 +195,13 @@ test("a watchdog tick is stored rule by rule, not as one opaque number", async (
   // not say which of twenty-four rules spent it. A rule that reaches into a
   // container or asks GitHub costs a round trip; one that reads a table costs
   // nothing; and a single span for the whole tick cannot tell them apart.
-  const { db, sched, provider } = harness(ok);
+  const { db, sched, provider } = await harness(ok);
 
-  sched.enqueue("watchdog", {});
+  await sched.enqueue("watchdog", {});
   await sched.drain();
   await provider.forceFlush();
 
-  const spans = soleTrace(db);
+  const spans = await soleTrace(db);
   const rules = spans.map((s) => s.name).filter((n) => n.startsWith("watchdog."));
   expect(rules.length).toBeGreaterThan(1);
 
@@ -218,10 +221,11 @@ test("`orch ctx query` is timed, and its two halves are timed apart", async () =
   // The one command every role is told to run first, and the only waiting path
   // with no span at all: its whole justification is that it costs less than the
   // grep rounds it replaces, and that was the one claim nothing could measure.
-  const { db, ctx, app, provider } = harness(ok);
-  const agent = fx.agent.insert(db, { project_id: 1, grp_id: 1, role: "engineer", token: "tok-eng" });
-  fx.note.insert(db, { project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
-  saveTree(db, 1, {
+  const { db, ctx, app, provider } = await harness(ok);
+  const f = fx.on(db);
+  const agent = await f.agent.create({ project_id: 1, grp_id: 1, role: "engineer", token: "tok-eng" });
+  await f.note.create({ project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
+  await saveTree(db, 1, {
     "/": { id: "/", kind: "dir", summary: "", sig: "", children: ["notes/"] },
     "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", sig: "", children: [] },
   });
@@ -240,7 +244,7 @@ test("`orch ctx query` is timed, and its two halves are timed apart", async () =
   );
   await provider.forceFlush();
 
-  const spans = traceContaining(db, "ctx.query");
+  const spans = await traceContaining(db, "ctx.query");
   // Separately, because they are not comparable costs: the lexical half is an
   // in-memory index at sub-millisecond, the page-index half spends up to three
   // serial model calls. One number over both cannot say which was paid.
@@ -255,9 +259,10 @@ test("a page-index walk that throws ends its span red, not green", async () => {
   // and a tree with no hits both fall through to the lexical half in silence, and
   // `span-store` aggregates on `status = 'error'`, so a green span here would make
   // a broken navigator indistinguishable from a quiet one.
-  const { db, ctx, app, provider } = harness(ok);
-  const agent = fx.agent.insert(db, { project_id: 1, grp_id: 1, role: "engineer", token: "tok-eng" });
-  saveTree(db, 1, {
+  const { db, ctx, app, provider } = await harness(ok);
+  const f = fx.on(db);
+  const agent = await f.agent.create({ project_id: 1, grp_id: 1, role: "engineer", token: "tok-eng" });
+  await saveTree(db, 1, {
     "/": { id: "/", kind: "dir", summary: "", sig: "", children: ["notes/"] },
     "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", sig: "", children: [] },
   });
@@ -280,5 +285,5 @@ test("a page-index walk that throws ends its span red, not green", async () => {
 
   // The agent still gets its answer; only the span reports the failure.
   expect(answer.status).toBe(200);
-  expect(byName(traceContaining(db, "ctx.pageindex"), "ctx.pageindex").status).toBe("error");
+  expect(byName(await traceContaining(db, "ctx.pageindex"), "ctx.pageindex").status).toBe("error");
 });

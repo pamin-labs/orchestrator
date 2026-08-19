@@ -1,5 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { grp as grpTable, project as projectTable } from "../../src/platform/persistence/schema.ts";
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -83,11 +85,11 @@ async function boot(): Promise<{ key: string; started: string | null } | { why: 
   if (!ENABLED) return { why: "ORCH_LIVE_SANDBOX is not 1" };
   if (!dockerUp()) return { why: "docker daemon 不应答 —— 起不了容器，这几个测试没有意义" };
 
-  const db = openMemory();
+  const db = await openMemory();
   const held = serverKeyOnDisk();
   const known = cfg.sandbox.apiKey || (held?.server === cfg.sandbox.server ? held.key : "");
   if (known)
-    saveAuth(db, {
+    await saveAuth(db, {
       runtime: SANDBOX_KEY,
       mode: "api_key",
       secret: known,
@@ -96,10 +98,10 @@ async function boot(): Promise<{ key: string; started: string | null } | { why: 
 
   // Every "no" this returns is a different sentence and each names what to do,
   // which is the whole reason to go through it rather than probe a port.
-  const state = await ensureServer(testContext({ db, config: cfg }));
+  const state = await ensureServer(await testContext({ db, config: cfg }));
   if (state.kind === "down" || state.kind === "stuck") return { why: state.why };
   return {
-    key: sandboxKeyFor(db, cfg.sandbox.server, cfg.sandbox.apiKey),
+    key: await sandboxKeyFor(db, cfg.sandbox.server, cfg.sandbox.apiKey),
     started: state.kind === "started" ? state.pid : null,
   };
 }
@@ -116,10 +118,11 @@ afterAll(() => {
   if (ready && booted.started) process.kill(Number(booted.started));
 });
 
-function ctx(port = cfg.port) {
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
-  fx.runningGrp.insert(db, { project_id: p.id, name: "live" });
+async function ctx(port = cfg.port) {
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  await f.runningGrp.create({ project_id: p.id, name: "live" });
   return testContext({
     db,
     sandbox: REAL,
@@ -133,7 +136,7 @@ function ctx(port = cfg.port) {
 live(
   "a sandbox is a boundary: it gets a checkout, runs its gates, and cannot touch this machine",
   async () => {
-    const c = ctx();
+    const c = await ctx();
     const scope = { grp: 1 } as const;
     try {
       // Provisioning: the mailbox and a matching `orch` land before anything else.
@@ -182,7 +185,7 @@ live(
   "an agent reaches the orchestrator through the mailbox, with no route to this machine",
   async () => {
     const port = 40000 + Math.floor(Math.random() * 20000);
-    const c = ctx(port);
+    const c = await ctx(port);
     const scope = { grp: 1 } as const;
     // A real orchestrator, on the port the mailbox replays to.
     const app = makeApp(c);
@@ -225,10 +228,10 @@ live(
     // first time at the boss's first slice boundary.
     //
     // A public repository, so this asserts the mechanism and not a token.
-    const c = ctx();
+    const c = await ctx();
     const grp = { grp: 1 } as const;
     const remote = "https://github.com/octocat/Hello-World.git";
-    c.db.run("UPDATE project SET remote = ?, base_branch = 'master' WHERE id = 1", [remote]);
+    await c.db.update(projectTable).set({ remote, base_branch: "master" }).where(eq(projectTable.id, 1));
     try {
       // Not a sandbox in the 005 sense: no agent, so none of an agent's furniture.
       const bare = await execIn(
@@ -250,7 +253,7 @@ live(
 
       await createCheckout(c, grp, { remote, branch: "orch/live", base: "origin/master" });
       await execIn(c, grp, "echo probe > PROBE.md && git add -A && git commit -qm 'wip: probe'", { cwd: WORK });
-      c.db.run("UPDATE grp SET branch = 'orch/live' WHERE id = 1");
+      await c.db.update(grpTable).set({ branch: "orch/live" }).where(eq(grpTable.id, 1));
 
       expect(await keepBranch(c, 1)).toEqual({ ok: true });
       const landed = await execIn(c, UTIL, `git -C ${mirror} log -1 --format=%s refs/heads/orch/live`);
@@ -279,7 +282,7 @@ live(
     //
     // postman-echo rather than GitHub: this needs a host that says what it
     // received, and no credential of the boss's is involved.
-    const c = ctx();
+    const c = await ctx();
     const scope = { grp: 1 } as const;
     const real = "REAL-INJECTED-BY-SIDECAR";
     const decoy = "DECOY-NEVER-INJECTED";
@@ -311,7 +314,7 @@ live(
 live(
   "every skill reaches both CLIs, and the ones the boss ticked stay read-only",
   async () => {
-    const c = ctx();
+    const c = await ctx();
     const scope = { grp: 1 } as const;
     // One skill of our own, so this asserts the mount rather than whatever the
     // machine running it happens to have installed.
@@ -372,11 +375,9 @@ live(
       expect(w.out).not.toContain("rc=0");
       // And the listing travels back out, which is what the settings page and
       // `/name` read. It cannot come from this machine: the checkout is in here.
-      const found = cacheProjectSkills(c.db, 1, synced.out)
-        .map((s) => s.name)
-        .sort();
+      const found = (await cacheProjectSkills(c.db, 1, synced.out)).map((skill) => skill.name).sort();
       expect(found).toEqual(["repo-agents", "repo-codex"]);
-      expect(cacheProjectSkills(c.db, 1, synced.out)[0]!.description).toBe("shipped by the repository");
+      expect((await cacheProjectSkills(c.db, 1, synced.out))[0]!.description).toBe("shipped by the repository");
     } finally {
       rmSync(join(dir, "live-check"), { recursive: true, force: true });
       await killSandbox(c, scope).catch(() => {});
@@ -395,7 +396,7 @@ live(
     // `git status --porcelain`, `ls`, and a skills inventory all arrived as a
     // single line — and every caller that splits on newlines silently matched
     // nothing. A wrong answer shaped exactly like an empty one.
-    const c = ctx();
+    const c = await ctx();
     const scope = { grp: 1 } as const;
     try {
       expect((await execIn(c, scope, `printf 'a\\nbb\\nccc\\n'`)).out.split("\n")).toEqual(["a", "bb", "ccc"]);

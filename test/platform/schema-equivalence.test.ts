@@ -1,95 +1,30 @@
-import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { openMemory } from "../../src/platform/persistence/database.ts";
-
-const ROOT = join(import.meta.dir, "../..");
 
 /**
- * A second database, built from `schema.ts` instead of from the migrations.
+ * The checked-in migrations still describe `schema.ts`.
  *
- * `drizzle-kit generate` is the only way to turn a Drizzle schema into DDL:
- * `drizzle-kit@1.0.0-beta.24` exports `defineConfig` and a studio server, and
- * nothing that renders SQL. Generating into an empty directory is what makes the
- * output a full `CREATE TABLE` set rather than a diff against a previous state.
+ * This file used to diff `schema.ts` against 46 hand-written migrations, because
+ * the two were separate sources. `drizzle-kit generate` derives them now, so that
+ * comparison is tautological — but the drift moved rather than went away: a column
+ * edited without a regenerate leaves the SQL a deployment runs describing the old
+ * shape, and the failure is a server that boots and then cannot write a column its
+ * code believes in.
  */
-function fromSchemaFile(): Database {
-  const out = mkdtempSync(join(tmpdir(), "schema-equivalence-"));
-  try {
-    const gen = Bun.spawnSync(
-      [
-        join(ROOT, "node_modules/.bin/drizzle-kit"),
-        "generate",
-        "--dialect=sqlite",
-        "--schema=./src/platform/persistence/schema.ts",
-        `--out=${out}`,
-      ],
-      { cwd: ROOT, stdout: "pipe", stderr: "pipe" },
-    );
-    if (gen.exitCode !== 0)
-      throw new Error(`drizzle-kit generate failed: ${gen.stderr.toString()}${gen.stdout.toString()}`);
-    const dirs = readdirSync(out, { withFileTypes: true }).filter((e) => e.isDirectory());
-    if (dirs.length !== 1) throw new Error(`expected one migration directory, got ${dirs.length}`);
-    const db = new Database(":memory:");
-    for (const statement of readFileSync(join(out, dirs[0]!.name, "migration.sql"), "utf8").split(
-      "--> statement-breakpoint",
-    )) {
-      if (statement.trim()) db.run(statement);
-    }
-    return db;
-  } finally {
-    rmSync(out, { recursive: true, force: true });
-  }
-}
-
-/**
- * One sorted line per thing the schema asserts, read from the PRAGMAs rather than
- * from `sqlite_master`: SQLite stores `CREATE TABLE` text verbatim, so whitespace,
- * comments and the order ALTER TABLE left the columns in differ harmlessly.
- *
- * Not covered, because Drizzle cannot express them: the thirteen state triggers,
- * and the body of a partial index's WHERE — `index_list` reports only that one
- * exists.
- */
-function facts(db: Database): string[] {
-  const all = <T>(sql: string): T[] => db.query<T, []>(sql).all();
-  const lines: string[] = [];
-  const tables = all<{ name: string }>(
-    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-  );
-  for (const { name: table } of tables) {
-    lines.push(`${table}: table exists`);
-    for (const c of all<Col>(`PRAGMA table_info(${table})`)) {
-      lines.push(
-        `${table}.${c.name}: ${c.type.toUpperCase()} notnull=${c.notnull} default=${c.dflt_value ?? "none"} pk=${c.pk}`,
-      );
-    }
-    for (const i of all<Idx>(`PRAGMA index_list(${table})`)) {
-      const cols = all<IdxCol>(`PRAGMA index_xinfo(${i.name})`)
-        .filter((c) => c.key === 1)
-        .map((c) => `${c.name}${c.desc === 1 ? " DESC" : ""}`)
-        .join(", ");
-      lines.push(`${table} index ${i.name}: unique=${i.unique} partial=${i.partial} origin=${i.origin} (${cols})`);
-    }
-    for (const f of all<Fk>(`PRAGMA foreign_key_list(${table})`)) {
-      lines.push(`${table}.${f.from} references ${f.table}.${f.to}: update ${f.on_update}, delete ${f.on_delete}`);
-    }
-  }
-  return lines.sort();
-}
-
-type Col = { name: string; type: string; notnull: number; dflt_value: string | null; pk: number };
-type Idx = { name: string; unique: number; origin: string; partial: number };
-type IdxCol = { name: string | null; desc: number; key: number };
-type Fk = { table: string; from: string; to: string; on_update: string; on_delete: string };
-
-test("schema.ts describes exactly the database the migrations produce", () => {
-  const migrated = new Set(facts(openMemory()));
-  const declared = new Set(facts(fromSchemaFile()));
-  expect({
-    inMigrationsButNotInSchema: [...migrated].filter((f) => !declared.has(f)),
-    inSchemaButNotInMigrations: [...declared].filter((f) => !migrated.has(f)),
-  }).toEqual({ inMigrationsButNotInSchema: [], inSchemaButNotInMigrations: [] });
-}, 30_000);
+test("schema.ts has nothing left to generate", async () => {
+  // `--explain` is the dry run: it prints what it would write and writes nothing.
+  // Generating for real would mean a failing test leaves a migration in the tree,
+  // and a test that edits the repository is worse than the drift it found.
+  const ran = Bun.spawnSync(["bunx", "drizzle-kit", "generate", "--explain"], {
+    cwd: import.meta.dir.replace(/\/test\/platform$/, ""),
+  });
+  const out = `${ran.stdout.toString()}${ran.stderr.toString()}`;
+  // Its own words, because the exit code is 0 either way — it succeeds at
+  // planning a migration just as happily as at finding none to plan.
+  expect({ code: ran.exitCode, planned: out.includes("Generated migration statements") }).toEqual({
+    code: 0,
+    planned: false,
+  });
+  // Spawning `drizzle-kit` and letting it read every migration is seconds, not
+  // milliseconds, and the default cuts it off mid-run — which reports as a null
+  // exit code, not as a timeout, and reads like drift that is not there.
+}, 60_000);

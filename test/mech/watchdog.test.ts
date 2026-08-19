@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-node";
-import { SqliteSpanExporter } from "../../src/platform/observability/span-store.ts";
+import { StoredSpanExporter } from "../../src/platform/observability/span-store.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
-import { Database } from "bun:sqlite";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory, readSetting, type DB } from "../../src/platform/persistence/database.ts";
@@ -20,6 +19,18 @@ import { join } from "node:path";
 import { AgentTurnPayloadSchema, Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
+import { and, count, desc, eq, like, sql } from "drizzle-orm";
+import {
+  agent as agentTable,
+  escalation as escalationTable,
+  event as eventTable,
+  grp as grpTable,
+  job as jobTable,
+  project as projectTable,
+  runtime_auth as runtimeAuthTable,
+  slice as sliceTable,
+  span as spanTable,
+} from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
@@ -28,6 +39,26 @@ import { tempDir } from "../support/temp.ts";
 
 /** The shipped thresholds. The subject is the rule, not the number it is tuned to. */
 const LIMITS = loadConfig().watchdog;
+
+/** The one column most rules here move. */
+const grpStatus = async (db: DB, id = 1): Promise<string> =>
+  (await db.select({ status: grpTable.status }).from(grpTable).where(eq(grpTable.id, id)))[0]!.status;
+
+/**
+ * The queued turns, oldest first.
+ *
+ * `ORDER BY id` is stated rather than inherited: sqlite handed these back in
+ * rowid order and every assertion below was written against that, which
+ * Postgres does not promise for an unordered select.
+ */
+const pending = async (db: DB) =>
+  (
+    await db
+      .select({ p: jobTable.payload_json })
+      .from(jobTable)
+      .where(eq(jobTable.state, "pending"))
+      .orderBy(jobTable.id)
+  ).map((r) => r.p);
 
 const NotifyMeta = z.object({ url: z.string() });
 const WebhookBody = z.object({ message: z.string() });
@@ -39,25 +70,25 @@ const gh = (answer: (path: string) => Json) =>
     request: async (_method, path, schema) => ({ ok: true as const, status: 200, data: schema.parse(answer(path)) }),
   }) satisfies NonNullable<Ctx["gh"]>;
 
-const watchdogDbImage = (() => {
-  const db = openMemory();
-  seedAuth(db);
-  const p = fx.project.insert(db, { name: "p" });
-  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
-  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, token: "t" });
-  const image = db.serialize();
-  db.close();
-  return image;
-})();
-
-function watchdogDb(): DB {
-  const db = Database.deserialize(watchdogDbImage, { strict: true });
-  db.run("PRAGMA foreign_keys = ON");
+/**
+ * One project, one running group, one agent — the shape every rule below reads.
+ *
+ * This used to be a serialised sqlite image restored per test. Postgres has no
+ * equivalent, and it needs none: `openMemory()` truncates and restarts identity,
+ * so the four inserts are the fixture and the ids are 1 again either way.
+ */
+async function watchdogDb(): Promise<DB> {
+  const db = await openMemory();
+  const f = fx.on(db);
+  await seedAuth(db);
+  const p = await f.project.create({ name: "p" });
+  const g = await f.runningGrp.create({ project_id: p.id, name: "g1" });
+  await f.agent.create({ project_id: p.id, grp_id: g.id, token: "t" });
   return db;
 }
 
-function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
-  const db = watchdogDb();
+async function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
+  const db = await watchdogDb();
   const bus = new Bus(db);
   const sched = new Scheduler(db, async () => {});
   const cfg = { ...loadConfig(), ...over };
@@ -90,46 +121,46 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
 }
 
 test("a turn past its wall clock is killed and reported", async () => {
-  const h = harness({ turnTimeoutMs: 1000 });
-  fx.job.insert(h.db, { grp_id: 1, state: "running", started_at: 0 });
+  const h = await harness({ turnTimeoutMs: 1000 });
+  await fx.on(h.db).job.create({ grp_id: 1, state: "running", started_at: 0 });
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("turn_timeout");
-  expect(h.db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("cancelled");
+  expect((await h.db.select({ state: jobTable.state }).from(jobTable))[0]!.state).toBe("cancelled");
 });
 
 test("a RUNNING group whose last turn failed is put back once, then handed to the boss", async () => {
   // Failure is terminal, so the chain just ends: RUNNING group, empty queue, no
   // error anywhere the boss looks. Six groups sat like this behind one bad path.
-  const h = harness();
-  fx.job.insert(h.db, {
+  const h = await harness();
+  await fx.on(h.db).job.create({
     grp_id: 1,
-    payload_json: '{"role":"engineer"}',
+    payload_json: { role: "engineer" },
     state: "failed",
     error: "Settings file not found",
   });
   expect((await runWatchdog(h.deps)).map((x) => x.rule)).not.toContain("stalled");
-  const back = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").all();
+  const back = await pending(h.db);
   expect(back).toHaveLength(1);
-  expect(AgentTurnPayloadSchema.parse(JSON.parse(back[0]!.payload_json)).role).toBe("engineer");
+  expect(AgentTurnPayloadSchema.parse(back[0]).role).toBe("engineer");
 
   // It failed again. A third try is not going to work either — say so instead.
-  h.db.run("UPDATE job SET state = 'failed', error = 'same thing' WHERE state = 'pending'");
+  await h.db.update(jobTable).set({ state: "failed", error: "same thing" }).where(eq(jobTable.state, "pending"));
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("stalled");
   expect(f.find((x) => x.rule === "stalled")!.body).toContain("same thing");
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'pending'").get()!.c).toBe(0);
+  expect(await pending(h.db)).toHaveLength(0);
 });
 
 test("a turn that ended cleanly without arranging the next one also counts as stalled", async () => {
   // The exit code is not the signal. A Dispatcher that finished without filing a
   // card leaves PLANNING with an empty queue, and that reads identically to
   // success from every view the boss has.
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = 1");
-  fx.job.insert(h.db, { grp_id: 1, payload_json: '{"role":"dispatcher"}', state: "done" });
+  const h = await harness();
+  await h.db.update(grpTable).set({ status: "PLANNING" }).where(eq(grpTable.id, 1));
+  await fx.on(h.db).job.create({ grp_id: 1, payload_json: { role: "dispatcher" }, state: "done" });
   await runWatchdog(h.deps);
-  const back = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").get()!;
-  expect(AgentTurnPayloadSchema.parse(JSON.parse(back.payload_json)).role).toBe("dispatcher");
+  const [back] = await pending(h.db);
+  expect(AgentTurnPayloadSchema.parse(back).role).toBe("dispatcher");
 });
 
 test("a PM turn that dies answering a review is picked up, not left in PR_OPEN", async () => {
@@ -137,53 +168,53 @@ test("a PM turn that dies answering a review is picked up, not left in PR_OPEN",
   // stays in PR_OPEN now, so the rule has to cover every state a turn dispatches
   // from — otherwise a turn that fails while answering a reviewer leaves the group
   // holding the head of the merge queue with an empty queue and nobody looking.
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = 7, merge_seq = 1 WHERE id = 1");
-  fx.job.insert(h.db, {
+  const h = await harness();
+  await h.db.update(grpTable).set({ status: "PR_OPEN", pr_number: 7, merge_seq: 1 }).where(eq(grpTable.id, 1));
+  await fx.on(h.db).job.create({
     grp_id: 1,
-    payload_json: '{"role":"pm"}',
+    payload_json: { role: "pm" },
     state: "failed",
     error: "the model was unreachable",
   });
 
   await runWatchdog(h.deps);
-  const back = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").get()!;
-  expect(AgentTurnPayloadSchema.parse(JSON.parse(back.payload_json)).role).toBe("pm");
+  const [back] = await pending(h.db);
+  expect(AgentTurnPayloadSchema.parse(back).role).toBe("pm");
 });
 
 test("work queued for a dissolved group is cancelled, not left pending forever", async () => {
   // Drop and split both cancel what was pending, but a mail landing a moment later
   // enqueues another, and no status a dissolved group has is dispatchable.
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 1");
-  fx.job.insert(h.db, { grp_id: 1, state: "pending" });
+  const h = await harness();
+  await h.db.update(grpTable).set({ status: "DISSOLVED" }).where(eq(grpTable.id, 1));
+  await fx.on(h.db).job.create({ grp_id: 1, state: "pending" });
   await runWatchdog(h.deps);
-  expect(h.db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("cancelled");
+  expect((await h.db.select({ state: jobTable.state }).from(jobTable))[0]!.state).toBe("cancelled");
 });
 
 test("turns that write nothing accumulate, and productive ones reset", async () => {
-  const h = harness();
-  for (let i = 0; i < LIMITS.idleTurns; i++) recordTurnOutcome(h.ctx, 1, [], false, false);
+  const h = await harness();
+  for (let i = 0; i < LIMITS.idleTurns; i++) await recordTurnOutcome(h.ctx, 1, [], false, false);
   let f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("no_progress");
 
-  recordTurnOutcome(h.ctx, 1, ["a.ts"], false, false);
+  await recordTurnOutcome(h.ctx, 1, ["a.ts"], false, false);
   f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).not.toContain("no_progress");
 });
 
 test("a note or a moved task counts as progress even with no file change", async () => {
-  const h = harness();
-  recordTurnOutcome(h.ctx, 1, [], true, false);
-  recordTurnOutcome(h.ctx, 1, [], false, true);
-  recordTurnOutcome(h.ctx, 1, [], false, false);
+  const h = await harness();
+  await recordTurnOutcome(h.ctx, 1, [], true, false);
+  await recordTurnOutcome(h.ctx, 1, [], false, true);
+  await recordTurnOutcome(h.ctx, 1, [], false, false);
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).not.toContain("no_progress");
 });
 
 test("rewriting one file every turn is caught and sent to the Architect", async () => {
-  const h = harness();
-  for (let i = 0; i < LIMITS.sameFile; i++) recordTurnOutcome(h.ctx, 1, ["auth/mw.ts"], false, false);
+  const h = await harness();
+  for (let i = 0; i < LIMITS.sameFile; i++) await recordTurnOutcome(h.ctx, 1, ["auth/mw.ts"], false, false);
   const f = await runWatchdog(h.deps);
   const circling = f.find((x) => x.rule === "circling")!;
   expect(circling).toBeDefined();
@@ -193,19 +224,19 @@ test("rewriting one file every turn is caught and sent to the Architect", async 
 });
 
 test("touching several files does not look like circling", async () => {
-  const h = harness();
-  for (let i = 0; i < LIMITS.sameFile + 2; i++) recordTurnOutcome(h.ctx, 1, ["a.ts", "b.ts"], false, false);
+  const h = await harness();
+  for (let i = 0; i < LIMITS.sameFile + 2; i++) await recordTurnOutcome(h.ctx, 1, ["a.ts", "b.ts"], false, false);
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).not.toContain("circling");
 });
 
 test("the same lease failing twice on unchanged code blames the environment", async () => {
-  const h = harness();
-  fx.resource.insert(h.db, { name: "build" });
+  const h = await harness();
+  await fx.on(h.db).resource.create({ name: "build" });
   const failedAt = (head_sha: string) =>
-    fx.lease.insert(h.db, { resource: "build", grp_id: 1, state: "failed", head_sha });
-  failedAt("sha-a");
-  failedAt("sha-a");
+    fx.on(h.db).lease.create({ resource: "build", grp_id: 1, state: "failed", head_sha });
+  await failedAt("sha-a");
+  await failedAt("sha-a");
   const f = await runWatchdog(h.deps);
   const env = f.find((x) => x.rule === "env_suspect")!;
   expect(env).toBeDefined();
@@ -216,94 +247,101 @@ test("the same lease failing twice on unchanged code blames the environment", as
 });
 
 test("two failures at different commits are just two failures", async () => {
-  const h = harness();
-  fx.resource.insert(h.db, { name: "build" });
+  const h = await harness();
+  await fx.on(h.db).resource.create({ name: "build" });
   const failedAt = (head_sha: string) =>
-    fx.lease.insert(h.db, { resource: "build", grp_id: 1, state: "failed", head_sha });
-  failedAt("sha-a");
-  failedAt("sha-b");
+    fx.on(h.db).lease.create({ resource: "build", grp_id: 1, state: "failed", head_sha });
+  await failedAt("sha-a");
+  await failedAt("sha-b");
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).not.toContain("env_suspect");
 });
 
 test("budget warns at 80% and suspends the group at 100%", async () => {
-  const h = harness();
-  h.db.run("UPDATE grp SET budget_tokens = 1000, spent_tokens = 850 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ budget_tokens: 1000, spent_tokens: 850 }).where(eq(grpTable.id, 1));
   let f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("budget_80");
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("RUNNING");
+  expect(await grpStatus(h.db)).toBe("RUNNING");
 
-  h.db.run("UPDATE grp SET spent_tokens = 1000 WHERE id = 1");
+  await h.db.update(grpTable).set({ spent_tokens: 1000 }).where(eq(grpTable.id, 1));
   f = await runWatchdog(h.deps);
   expect(f.find((x) => x.rule === "budget_exhausted")!.severity).toBe("blocker");
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("PAUSED");
+  expect(await grpStatus(h.db)).toBe("PAUSED");
 });
 
 test("a long wait notifies first, then parks and frees the slot", async () => {
-  const h = harness({ parkAfterPausedMs: 60_000 });
-  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = ? WHERE id = 1", [1_000_000 - 20 * 60_000]);
+  const h = await harness({ parkAfterPausedMs: 60_000 });
+  await h.db
+    .update(grpTable)
+    .set({ status: "PAUSED", paused_at: 1_000_000 - 20 * 60_000 })
+    .where(eq(grpTable.id, 1));
   let f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("parked");
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("PARKED");
+  expect(await grpStatus(h.db)).toBe("PARKED");
 
-  const h2 = harness({ parkAfterPausedMs: 2 * 3600_000 });
-  h2.db.run("UPDATE grp SET status = 'PAUSED', paused_at = ? WHERE id = 1", [1_000_000 - 20 * 60_000]);
+  const h2 = await harness({ parkAfterPausedMs: 2 * 3600_000 });
+  await h2.db
+    .update(grpTable)
+    .set({ status: "PAUSED", paused_at: 1_000_000 - 20 * 60_000 })
+    .where(eq(grpTable.id, 1));
   f = await runWatchdog(h2.deps);
   expect(f.map((x) => x.rule)).toContain("waiting_on_you");
-  expect(h2.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("PAUSED");
+  expect(await grpStatus(h2.db)).toBe("PAUSED");
 });
 
-test("pause reports how many turns it is waiting on, and settles later", () => {
-  const h = harness();
-  fx.job.insert(h.db, { grp_id: 1, state: "running" });
-  expect(pause(h.ctx, 1)).toBe(1);
+test("pause reports how many turns it is waiting on, and settles later", async () => {
+  const h = await harness();
+  await fx.on(h.db).job.create({ grp_id: 1, state: "running" });
+  expect(await pause(h.ctx, 1)).toBe(1);
   // PAUSING, not PAUSED: an in-flight turn cannot be steered, and the status
   // should not claim otherwise.
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("PAUSING");
+  expect(await grpStatus(h.db)).toBe("PAUSING");
 
-  h.db.run("UPDATE job SET state = 'done'");
-  expect(settlePausing(h.ctx)).toBe(1);
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("PAUSED");
+  await h.db.update(jobTable).set({ state: "done" });
+  expect(await settlePausing(h.ctx)).toBe(1);
+  expect(await grpStatus(h.db)).toBe("PAUSED");
 });
 
 test("a group that reaches PAUSED always carries the time it got there", async () => {
-  const h = harness();
+  const h = await harness();
   // The ask-boss blocker path writes PAUSING without a timestamp. Every
   // watchdog timer keys off paused_at, so a NULL here froze the group with
   // nobody nudged and nothing parked.
-  h.db.run("UPDATE grp SET status = 'PAUSING' WHERE id = 1");
-  settlePausing(h.ctx);
-  expect(h.db.query<{ p: number | null }, []>("SELECT paused_at AS p FROM grp").get()!.p).toBeGreaterThan(0);
+  await h.db.update(grpTable).set({ status: "PAUSING" }).where(eq(grpTable.id, 1));
+  await settlePausing(h.ctx);
+  expect((await h.db.select({ p: grpTable.paused_at }).from(grpTable))[0]!.p).toBeGreaterThan(0);
 
   // And an already-broken row is repaired rather than left invisible forever.
-  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = NULL WHERE id = 1");
+  await h.db.update(grpTable).set({ status: "PAUSED", paused_at: null }).where(eq(grpTable.id, 1));
   await runWatchdog(h.deps);
-  expect(h.db.query<{ p: number | null }, []>("SELECT paused_at AS p FROM grp").get()!.p).toBeGreaterThan(0);
+  expect((await h.db.select({ p: grpTable.paused_at }).from(grpTable))[0]!.p).toBeGreaterThan(0);
 });
 
-test("pausing an idle group settles immediately", () => {
-  const h = harness();
-  expect(pause(h.ctx, 1)).toBe(0);
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("PAUSED");
-  resume(h.ctx, 1);
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("RUNNING");
+test("pausing an idle group settles immediately", async () => {
+  const h = await harness();
+  expect(await pause(h.ctx, 1)).toBe(0);
+  expect(await grpStatus(h.db)).toBe("PAUSED");
+  await resume(h.ctx, 1);
+  expect(await grpStatus(h.db)).toBe("RUNNING");
 });
 
-test("park drops queued turns and retires sessions, keeping the checkout", () => {
-  const h = harness();
-  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
-  h.db.run("UPDATE agent SET session_id = 'live', session_tokens = 5000 WHERE id = 1");
-  h.sched.enqueue("agent_turn", { grp_id: 1 });
-  h.sched.enqueue("agent_turn", { grp_id: 1 });
+test("park drops queued turns and retires sessions, keeping the checkout", async () => {
+  const h = await harness();
+  await h.db.update(grpTable).set({ sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
+  await h.db.update(agentTable).set({ session_id: "live", session_tokens: 5000 }).where(eq(agentTable.id, 1));
+  await h.sched.enqueue("agent_turn", { grp_id: 1 });
+  await h.sched.enqueue("agent_turn", { grp_id: 1 });
 
-  park(h.ctx, 1, "waited for you");
+  await park(h.ctx, 1, "waited for you");
 
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'cancelled'").get()!.c).toBe(2);
-  const a = h.db.query<{ session_id: string | null }, []>("SELECT session_id FROM agent").get()!;
-  expect(a.session_id).toBeNull();
+  const cancelled = await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.state, "cancelled"));
+  expect(cancelled[0]!.c).toBe(2);
+  const [a] = await h.db.select({ session_id: agentTable.session_id }).from(agentTable);
+  expect(a!.session_id).toBeNull();
   // Park is resource reclamation, not an approval step: nothing is lost.
   // Parking is not dissolving: the sandbox, and the work in it, stay.
-  expect(h.db.query<{ s: string }, []>("SELECT sandbox_id AS s FROM grp").get()!.s).toBe("sb-1");
+  expect((await h.db.select({ s: grpTable.sandbox_id }).from(grpTable))[0]!.s).toBe("sb-1");
 });
 
 // ------------------------------------------------------------------ notifier
@@ -333,7 +371,7 @@ describe("only what the boss can act on is worth a notification", () => {
   });
 });
 
-test("blockers interrupt immediately; ordinary findings are batched", () => {
+test("blockers interrupt immediately; ordinary findings are batched", async () => {
   expect(tierFor("budget_80")).toBe("batched");
   expect(tierFor("anything", "blocker")).toBe("immediate");
   expect(tierFor("waiting_on_you")).toBe("immediate");
@@ -414,7 +452,7 @@ test("answering clears the reminder", async () => {
 
 // ------------------------------------------------------- boss batching backstop
 
-test("several things waiting on the boss become one message", () => {
+test("several things waiting on the boss become one message", async () => {
   const n = batchForBoss([
     { id: 1, severity: "advisory", question: "which library?", group: "auth" },
     { id: 2, severity: "advisory", question: "rename the flag?", group: "ui" },
@@ -425,7 +463,7 @@ test("several things waiting on the boss become one message", () => {
   expect(n.tier).toBe("batched");
 });
 
-test("one blocker in the set makes the whole batch immediate", () => {
+test("one blocker in the set makes the whole batch immediate", async () => {
   const n = batchForBoss([
     { id: 1, severity: "advisory", question: "a", group: "x" },
     { id: 2, severity: "blocker", question: "b", group: "y" },
@@ -434,7 +472,7 @@ test("one blocker in the set makes the whole batch immediate", () => {
   expect(n.body).toContain("1 blocking");
 });
 
-test("the batch key is the set, so a new arrival is news and a repeat is not", () => {
+test("the batch key is the set, so a new arrival is news and a repeat is not", async () => {
   const two = batchForBoss([
     { id: 1, severity: "advisory", question: "a", group: null },
     { id: 2, severity: "advisory", question: "b", group: null },
@@ -453,14 +491,14 @@ test("the batch key is the set, so a new arrival is news and a repeat is not", (
   expect(three.key).not.toBe(two.key);
 });
 
-test("a single item is not dressed up as a batch, and nothing waiting sends nothing", () => {
+test("a single item is not dressed up as a batch, and nothing waiting sends nothing", async () => {
   expect(batchForBoss([])).toBeNull();
   const one = batchForBoss([{ id: 7, severity: "blocker", question: "which lib?", group: "auth" }])!;
   expect(one.key).toBe("escalation:7");
   expect(one.body).toContain("auth: which lib?");
 });
 
-test("a batched notification carries a link, and one item links to its requirement", () => {
+test("a batched notification carries a link, and one item links to its requirement", async () => {
   // Without this the batched path built notifications with no url, which fell
   // back to osascript: no click target, and the notification belonged to
   // whatever app ran the script rather than to the page it is about.
@@ -482,78 +520,84 @@ test("a batched notification carries a link, and one item links to its requireme
 });
 
 test("a rate-limited group resumes itself when the quota comes back", async () => {
-  const h = harness();
+  const h = await harness();
   // docs/project/plan.md §11: on the cheapest tier there is nothing to downgrade to, so it waits —
   // and waiting is only useful if something watches the clock. Before this, one 429 at
   // 01:00 held the group until the boss woke up, which is the failure the whole system
   // exists to prevent.
-  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = ?, rl_resets_at = ? WHERE id = 1", [
-    1_000_000 - 60_000,
-    1_000_000 - 1_000,
-  ]);
+  await h.db
+    .update(grpTable)
+    .set({ status: "PAUSED", paused_at: 1_000_000 - 60_000, rl_resets_at: 1_000_000 - 1_000 })
+    .where(eq(grpTable.id, 1));
   const found = await runWatchdog(h.deps);
   expect(found.some((f) => f.rule === "rate_limit_resumed")).toBe(true);
-  const g = h.db
-    .query<{ status: string; rl: number | null }, []>("SELECT status, rl_resets_at AS rl FROM grp WHERE id = 1")
-    .get()!;
-  expect(g.status).toBe("RUNNING");
-  expect(g.rl).toBe(null);
+  const [g] = await h.db
+    .select({ status: grpTable.status, rl: grpTable.rl_resets_at })
+    .from(grpTable)
+    .where(eq(grpTable.id, 1));
+  expect(g!.status).toBe("RUNNING");
+  expect(g!.rl).toBe(null);
 });
 
 test("a group waiting on quota is not parked out from under itself", async () => {
-  const h = harness();
+  const h = await harness();
   // parkAfterPausedMs has passed, but the reset has not. Parking here retires the
   // sessions minutes before it could have resumed on its own.
-  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = ?, rl_resets_at = ? WHERE id = 1", [
-    1_000_000 - h.cfg.parkAfterPausedMs - 1000,
-    1_000_000 + 600_000,
-  ]);
+  await h.db
+    .update(grpTable)
+    .set({
+      status: "PAUSED",
+      paused_at: 1_000_000 - h.cfg.parkAfterPausedMs - 1000,
+      rl_resets_at: 1_000_000 + 600_000,
+    })
+    .where(eq(grpTable.id, 1));
   const found = await runWatchdog(h.deps);
   expect(found.filter((f) => f.rule === "parked")).toEqual([]);
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSED");
+  expect(await grpStatus(h.db)).toBe("PAUSED");
 });
 
 test("the group it was waiting on landed, so it starts again by itself", async () => {
   // `orch blocked` hands a defect outside a group's boundary to whoever can fix it
   // and stops the caller. Nothing else in the system knows that one group's merge
   // is another group's green light.
-  const h = harness();
-  fx.runningGrp.insert(h.db, { project_id: 1, name: "fixer" });
-  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = 0, blocked_on = 2 WHERE id = 1");
+  const h = await harness();
+  await fx.on(h.db).runningGrp.create({ project_id: 1, name: "fixer" });
+  await h.db.update(grpTable).set({ status: "PAUSED", paused_at: 0, blocked_on: 2 }).where(eq(grpTable.id, 1));
 
   // Still running: nothing to wake up for, and parking must not touch it either —
   // it is waiting on another group, not on the boss.
   await runWatchdog(h.deps);
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSED");
+  expect(await grpStatus(h.db)).toBe("PAUSED");
 
-  h.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 2");
+  await h.db.update(grpTable).set({ status: "DISSOLVED" }).where(eq(grpTable.id, 2));
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("unblocked");
-  const g = h.db
-    .query<{ status: string; blocked_on: number | null }, []>("SELECT status, blocked_on FROM grp WHERE id = 1")
-    .get()!;
-  expect(g.status).toBe("RUNNING");
-  expect(g.blocked_on).toBeNull();
+  const [g] = await h.db
+    .select({ status: grpTable.status, blocked_on: grpTable.blocked_on })
+    .from(grpTable)
+    .where(eq(grpTable.id, 1));
+  expect(g!.status).toBe("RUNNING");
+  expect(g!.blocked_on).toBeNull();
 });
 
 test("a question stranded on a stopped group is lifted to the boss", async () => {
   // route() handles this at routing time, but a group can stop *after* a question
   // was handed to its PM — and every one filed before that fix is still sitting
   // where it was. Symptom: a stopped group and a 待办 count of zero.
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = 999_999 WHERE id = 1");
-  fx.escalation.insert(h.db, { grp_id: 1, severity: "blocker", question: "S1 failed the gate 3 times" });
+  const h = await harness();
+  await h.db.update(grpTable).set({ status: "PAUSED", paused_at: 999_999 }).where(eq(grpTable.id, 1));
+  await fx.on(h.db).escalation.create({ grp_id: 1, severity: "blocker", question: "S1 failed the gate 3 times" });
   await runWatchdog(h.deps);
-  expect(h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state).toBe("boss");
+  expect((await h.db.select({ s: escalationTable.chain_state }).from(escalationTable))[0]!.s).toBe("boss");
 });
 
 test("a parked group whose question got answered comes back", async () => {
   // answer() un-pauses PAUSED groups and silently skips PARKED ones, so a group
   // that waited long enough to be parked stayed parked even after the boss answered
   // the very thing it was waiting for.
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'PARKED', paused_at = 100 WHERE id = 1");
-  fx.escalation.insert(h.db, {
+  const h = await harness();
+  await h.db.update(grpTable).set({ status: "PARKED", paused_at: 100 }).where(eq(grpTable.id, 1));
+  await fx.on(h.db).escalation.create({
     grp_id: 1,
     severity: "blocker",
     question: "which library?",
@@ -564,33 +608,38 @@ test("a parked group whose question got answered comes back", async () => {
   });
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("unparked");
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).not.toBe("PARKED");
+  expect(await grpStatus(h.db)).not.toBe("PARKED");
 });
 
 test("parking is not undone on the tick that did it", async () => {
   // Most parked groups never had a blocker at all. "No open blocker" would revive
   // every one of them immediately, including the one just parked for waiting.
-  const h = harness({ parkAfterPausedMs: 60_000 });
-  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = ? WHERE id = 1", [1_000_000 - 20 * 60_000]);
+  const h = await harness({ parkAfterPausedMs: 60_000 });
+  await h.db
+    .update(grpTable)
+    .set({ status: "PAUSED", paused_at: 1_000_000 - 20 * 60_000 })
+    .where(eq(grpTable.id, 1));
   await runWatchdog(h.deps);
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PARKED");
+  expect(await grpStatus(h.db)).toBe("PARKED");
   await runWatchdog(h.deps);
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PARKED");
+  expect(await grpStatus(h.db)).toBe("PARKED");
 });
 
 test("the three places that wait on the boss each carry a clock", async () => {
   // They are meant to wait. What was missing is that they waited in silence, so
   // "waiting since Tuesday" and "arrived a minute ago" looked exactly alike.
-  const h = harness();
+  const h = await harness();
   const old = 1_000_000 - 5 * 3_600_000;
-  h.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = 1");
-  fx.note.insert(h.db, {
+  await h.db.update(grpTable).set({ status: "DRAFT" }).where(eq(grpTable.id, 1));
+  await fx.on(h.db).note.create({
     grp_id: 1,
     body: "card",
-    frontmatter_json: JSON.stringify({ draft_card: 1 }),
+    // `true`, not `1`: what writes this is `planning.ts`, and every reader is a
+    // `@> '{"draft_card": true}'` containment test that a number does not satisfy.
+    frontmatter_json: { draft_card: true },
     at: old,
   });
-  fx.slice.insert(h.db, {
+  await fx.on(h.db).slice.create({
     grp_id: 1,
     seq: 1,
     title: "S1",
@@ -599,7 +648,7 @@ test("the three places that wait on the boss each carry a clock", async () => {
     awaiting_at: old,
   });
   for (const merge_seq of [1, 2]) {
-    fx.grp.insert(h.db, {
+    await fx.on(h.db).grp.create({
       project_id: 1,
       name: `q${merge_seq}`,
       status: "PR_OPEN",
@@ -623,36 +672,28 @@ test("a rebase the Engineer could not finish goes to the Architect, not round ag
   // the Engineer only knows its own slice. Sending it back with more determination
   // produces code that compiles and points the wrong way, which nothing downstream
   // can catch.
-  const h = harness();
-  fx.job.insert(h.db, {
+  const h = await harness();
+  await fx.on(h.db).job.create({
     grp_id: 1,
-    payload_json: '{"role":"engineer","conflict":true}',
+    payload_json: { role: "engineer", conflict: true },
     state: "failed",
     error: "could not rebase",
   });
   await runWatchdog(h.deps);
-  const p = AgentTurnPayloadSchema.parse(
-    JSON.parse(
-      h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").get()!
-        .payload_json,
-    ),
-  );
+  const p = AgentTurnPayloadSchema.parse((await pending(h.db))[0]);
   expect(p.role).toBe("architect");
   expect(p.rejection).toContain("could not rebase");
 });
 
-test("a rebase turn that finished is a stall, not a conflict", () => {
+test("a rebase turn that finished is a stall, not a conflict", async () => {
   // `conflict` marks a turn that was *told* to rebase (rule 15), not one that
   // failed to. Reading the flag without the outcome turned every clean rebase into
   // a design escalation as soon as the queue went quiet: pm-ai-agent was handed the
   // same false "could not rebase" eight times and its Architect refuted all eight.
-  const h = harness();
-  fx.job.insert(h.db, { grp_id: 1, payload_json: '{"role":"engineer","conflict":true}', state: "done" });
-  return runWatchdog(h.deps).then(() => {
-    const queued = h.db
-      .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'")
-      .all()
-      .map((q) => AgentTurnPayloadSchema.parse(JSON.parse(q.payload_json)));
+  const h = await harness();
+  await fx.on(h.db).job.create({ grp_id: 1, payload_json: { role: "engineer", conflict: true }, state: "done" });
+  return runWatchdog(h.deps).then(async () => {
+    const queued = (await pending(h.db)).map((q) => AgentTurnPayloadSchema.parse(q));
     // The one-shot resume below, which is what an emptied queue always deserved —
     // and not a word to the Architect about a rebase that never failed.
     expect(queued.map((p) => p.role)).toEqual(["engineer"]);
@@ -665,8 +706,8 @@ test("main moving under a running group sends it to rebase, once per commit", as
   // cover the boss pushing to main directly — and the boss is a person with a
   // terminal. Six groups spent a day on a base fifteen commits stale and would each
   // have found out at PR time, one conflict apiece.
-  const h = harness();
-  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
   // GitHub answers with the base branch's sha; the group's own clone says it is
   // not an ancestor. There is no host checkout to ask since 007 step 6.
   h.ctx.gh = gh(() => ({ commit: { sha: "abc1234567" } }));
@@ -674,12 +715,8 @@ test("main moving under a running group sends it to rebase, once per commit", as
 
   const f = await runWatchdog(deps);
   expect(f.map((x) => x.rule)).toContain("base_moved");
-  const p = AgentTurnPayloadSchema.parse(
-    JSON.parse(
-      h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job ORDER BY id DESC LIMIT 1").get()!
-        .payload_json,
-    ),
-  );
+  const [newest] = await h.db.select({ p: jobTable.payload_json }).from(jobTable).orderBy(desc(jobTable.id)).limit(1);
+  const p = AgentTurnPayloadSchema.parse(newest!.p);
   expect(p.role).toBe("engineer");
   expect(p.rejection).toContain("rebase");
   // Told once per base — otherwise the same nudge fires every tick until the
@@ -692,35 +729,35 @@ test("work that is finished but has no PR is sent back through the branch review
   // retro, and neither fires again after the Auditor sends the branch back. So a
   // group with every slice accepted had nobody left to hand it to: no PR, no
   // error, and an Engineer still being woken by rebase nudges so it looked busy.
-  const h = harness();
-  fx.acceptedSlice.insert(h.db, { grp_id: 1, seq: 1, title: "s", accept_spec: "a" });
+  const h = await harness();
+  await fx.on(h.db).acceptedSlice.create({ grp_id: 1, seq: 1, title: "s", accept_spec: "a" });
   await runWatchdog(h.deps);
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(1);
+  expect((await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.kind, "reconcile")))[0]!.c).toBe(1);
 
   // A question still travelling the chain is not a reason to leave it unshipped:
   // one group carried three stale advisories, two of them clearance denials nobody
   // was ever going to answer.
-  h.db.run("DELETE FROM job");
-  fx.escalation.insert(h.db, { grp_id: 1, chain_state: "architect" });
+  await h.db.delete(jobTable);
+  await fx.on(h.db).escalation.create({ grp_id: 1, chain_state: "architect" });
   await runWatchdog(h.deps);
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(1);
+  expect((await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.kind, "reconcile")))[0]!.c).toBe(1);
 
   // The boss being asked IS: pr_retries is spent, and shipping anyway walks past
   // the person who was asked.
-  h.db.run("DELETE FROM job");
-  h.db.run("UPDATE escalation SET chain_state = 'boss' WHERE grp_id = 1");
+  await h.db.delete(jobTable);
+  await h.db.update(escalationTable).set({ chain_state: "boss" }).where(eq(escalationTable.grp_id, 1));
   await runWatchdog(h.deps);
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
+  expect((await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.kind, "reconcile")))[0]!.c).toBe(0);
 });
 
 test("a finished PR that never joined the queue gets in line", async () => {
   // `waiting_merge` reads merge_seq_at, so a PR_OPEN group with a null one is
   // invisible to it — no nudge, no place in the order, nothing else looking. The
   // same shape as a PAUSED group with no paused_at.
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = 5, merge_seq = NULL WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ status: "PR_OPEN", pr_number: 5, merge_seq: null }).where(eq(grpTable.id, 1));
   await runWatchdog(h.deps);
-  expect(h.db.query<{ m: number }, []>("SELECT merge_seq AS m FROM grp WHERE id = 1").get()!.m).toBe(1);
+  expect((await h.db.select({ m: grpTable.merge_seq }).from(grpTable).where(eq(grpTable.id, 1)))[0]!.m).toBe(1);
 });
 
 test("a pending slice under an idle group is started rather than waited on", async () => {
@@ -728,14 +765,16 @@ test("a pending slice under an idle group is started rather than waited on", asy
   // starting, autoAdvance, an acceptance. A slice left pending when none of those
   // fires again has nobody to start it, and RUNNING with an empty queue looks
   // exactly like working.
-  const h = harness();
-  fx.slice.insert(h.db, { grp_id: 1, seq: 1, title: "s", accept_spec: "a", status: "pending" });
+  const h = await harness();
+  await fx.on(h.db).slice.create({ grp_id: 1, seq: 1, title: "s", accept_spec: "a", status: "pending" });
   await runWatchdog(h.deps);
-  expect(h.db.query<{ s: string }, []>("SELECT status AS s FROM slice WHERE grp_id = 1").get()!.s).toBe("running");
+  expect((await h.db.select({ s: sliceTable.status }).from(sliceTable).where(eq(sliceTable.grp_id, 1)))[0]!.s).toBe(
+    "running",
+  );
   // The harness scheduler dispatches inline, so by now the turn is done and rule 8
   // has put another one back. What matters is that one exists at all.
   expect(
-    h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'agent_turn'").get()!.c,
+    (await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.kind, "agent_turn")))[0]!.c,
   ).toBeGreaterThan(0);
 });
 
@@ -744,11 +783,11 @@ test("a stale PR branch is told to rebase too, with the measured remote base in 
   // main had moved when GitHub called it CONFLICTING — the late half of the same
   // news. And the base was read from the local checkout's HEAD, so a push from
   // another machine was invisible however often this ran.
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'PR_OPEN', sandbox_id = 'sb-1' WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ status: "PR_OPEN", sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
   // The base branch is a column now, written from GitHub's `default_branch` at
   // registration — never detected with host git, which has no checkout to ask.
-  h.db.run("UPDATE project SET repo_path = 'acme/p-pr', base_branch = 'master' WHERE id = 1");
+  await h.db.update(projectTable).set({ repo_path: "acme/p-pr", base_branch: "master" }).where(eq(projectTable.id, 1));
   const asked: string[] = [];
   h.ctx.gh = gh((path) => {
     asked.push(path);
@@ -760,10 +799,11 @@ test("a stale PR branch is told to rebase too, with the measured remote base in 
   // The branch it asks about is the project's base, named, not whatever some
   // checkout happens to be standing on.
   expect(asked).toContain("/repos/acme/p-pr/branches/master");
-  const job = h.db
-    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn' AND state = 'pending'")
-    .get()!;
-  const payload = AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json));
+  const [job] = await h.db
+    .select({ p: jobTable.payload_json })
+    .from(jobTable)
+    .where(and(eq(jobTable.kind, "agent_turn"), eq(jobTable.state, "pending")));
+  const payload = AgentTurnPayloadSchema.parse(job!.p);
   expect(payload.rejection).toContain("origin/master moved to abc12345");
   expect(payload.rejection).toContain("git fetch origin master");
   expect(payload.rejection).toContain("git rebase origin/master");
@@ -772,8 +812,8 @@ test("a stale PR branch is told to rebase too, with the measured remote base in 
 test("a group already on the base is not nudged", async () => {
   // The sha comparison is the whole rule: a group that has rebased must not be
   // told again, or an agent learns to skip the message.
-  const h = harness();
-  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
   h.ctx.gh = gh(() => ({ commit: { sha: "def4560000000000000000000000000000000000" } }));
   const deps = h.deps;
   // `merge-base --is-ancestor` succeeds in the group's own clone: already on it.
@@ -781,11 +821,11 @@ test("a group already on the base is not nudged", async () => {
 
   const f = await runWatchdog(deps);
   expect(f.map((x) => x.rule)).not.toContain("base_moved");
-  const jobs = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn'").all();
-  expect(jobs.map((j) => AgentTurnPayloadSchema.parse(JSON.parse(j.payload_json)).role)).not.toContain("engineer");
+  const jobs = await h.db.select({ p: jobTable.payload_json }).from(jobTable).where(eq(jobTable.kind, "agent_turn"));
+  expect(jobs.map((j) => AgentTurnPayloadSchema.parse(j.p).role)).not.toContain("engineer");
 });
 
-test("turn logs are compressed after a day and dropped after two weeks", () => {
+test("turn logs are compressed after a day and dropped after two weeks", async () => {
   // A transcript is mostly tool output written verbatim, so these are worth
   // keeping and not worth keeping uncompressed.
   const dir = tempDir("orch-logs-");
@@ -811,32 +851,40 @@ test("turn logs are compressed after a day and dropped after two weeks", () => {
 });
 
 test("a burst of pushes costs one rebase turn, and never delays one", async () => {
-  const h = harness();
-  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
-  h.db.run("UPDATE project SET repo_path = 'acme/p-burst' WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
+  await h.db.update(projectTable).set({ repo_path: "acme/p-burst" }).where(eq(projectTable.id, 1));
   let sha = "aaaa111111";
   h.ctx.gh = gh(() => ({ commit: { sha } }));
   const deps = h.deps;
 
   // Count the turns, not the findings: a finding is suppressed as a re-emit for
   // half an hour, and what is being asserted here is what the group was made to do.
-  const turns = () =>
-    h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE payload_json LIKE '%conflict%'").get()!.c;
+  // Containment, not a LIKE over the rendered payload: `jsonb` prints a space
+  // after every colon and does not keep key order, so the substring the sqlite
+  // version matched is not a string Postgres produces.
+  const turns = async () =>
+    (
+      await h.db
+        .select({ c: count() })
+        .from(jobTable)
+        .where(sql`${jobTable.payload_json} @> '{"conflict":true}'::jsonb`)
+    )[0]!.c;
 
   await runWatchdog(deps);
-  expect(turns()).toBe(1);
+  expect(await turns()).toBe(1);
 
   // Pushed again while the first nudge is still queued: same turn, not a second.
   sha = "bbbb222222";
   await runWatchdog(deps);
-  expect(turns()).toBe(1);
+  expect(await turns()).toBe(1);
 
   // It ran. A base that moved again is acted on immediately — there is no clock to
   // wait out, because a group whose PR is blocked on a rebase must not sit on it.
-  h.db.run("UPDATE job SET state = 'done' WHERE state = 'pending'");
+  await h.db.update(jobTable).set({ state: "done" }).where(eq(jobTable.state, "pending"));
   sha = "cccc333333";
   await runWatchdog(deps);
-  expect(turns()).toBe(2);
+  expect(await turns()).toBe(2);
 });
 
 test("a question the work went past is closed rather than left in 待办", async () => {
@@ -844,9 +892,9 @@ test("a question the work went past is closed rather than left in 待办", async
   // group. Nothing closed it if the group recovered: live, src-mech-watchdog-ts
   // had a merge-ready PR and an open blocker on the same requirement, in the same
   // list, asking the boss to unblock a group that was finished.
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1");
-  fx.escalation.insert(h.db, {
+  const h = await harness();
+  await h.db.update(grpTable).set({ status: "PR_OPEN" }).where(eq(grpTable.id, 1));
+  await fx.on(h.db).escalation.create({
     grp_id: 1,
     severity: "blocker",
     question: "S1 failed qa 3 times",
@@ -854,29 +902,30 @@ test("a question the work went past is closed rather than left in 待办", async
   });
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("stale_ask");
-  expect(h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state).toBe(
-    "revoked",
-  );
+  expect((await h.db.select({ s: escalationTable.chain_state }).from(escalationTable))[0]!.s).toBe("revoked");
 });
 
 test("a question on a group that is still working is left alone", async () => {
-  const h = harness();
-  fx.escalation.insert(h.db, {
+  const h = await harness();
+  await fx.on(h.db).escalation.create({
     grp_id: 1,
     severity: "blocker",
     question: "which library?",
     chain_state: "boss",
   });
   await runWatchdog(h.deps);
-  expect(h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state).toBe("boss");
+  expect((await h.db.select({ s: escalationTable.chain_state }).from(escalationTable))[0]!.s).toBe("boss");
 });
 
 test("a dissolved group's sandbox is killed, so it stops holding two containers", async () => {
-  const h = harness();
+  const h = await harness();
   // Nothing removed one, ever, in the worktree era: twelve dead checkouts sat on
   // disk holding their branches. A sandbox is worse — two containers and their
   // memory, until a TTL a day out.
-  h.db.run("UPDATE grp SET status = 'DISSOLVED', sandbox_id = 'sb-1', branch = 'orch/g1', pr_number = 7 WHERE id = 1");
+  await h.db
+    .update(grpTable)
+    .set({ status: "DISSOLVED", sandbox_id: "sb-1", branch: "orch/g1", pr_number: 7 })
+    .where(eq(grpTable.id, 1));
 
   const killed: string[] = [];
   h.ctx.sandbox = {
@@ -892,15 +941,15 @@ test("a dissolved group's sandbox is killed, so it stops holding two containers"
 });
 
 test("losing the network holds the fleet without pausing a single requirement", async () => {
-  const h = harness();
-  fx.job.insert(h.db, {
+  const h = await harness();
+  await fx.on(h.db).job.create({
     grp_id: 1,
     agent_id: 1,
-    payload_json: '{"role":"engineer"}',
+    payload_json: { role: "engineer" },
     state: "running",
     started_at: 0,
   });
-  h.db.run("UPDATE agent SET state = 'running' WHERE id = 1");
+  await h.db.update(agentTable).set({ state: "running" }).where(eq(agentTable.id, 1));
 
   const f = await runWatchdog({ ...h.deps, probe: async () => ({ online: false, changed: true }) });
   expect(f.map((x) => x.rule)).toContain("network_lost");
@@ -908,20 +957,22 @@ test("losing the network holds the fleet without pausing a single requirement", 
   // The work goes back on the queue and the requirement stays RUNNING. Pausing it
   // is what would need a human afterwards: nothing takes a group out of PAUSED,
   // and the park timer would file it away while the network was down.
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
-  expect(
-    h.db
-      .query<{ n: number }, []>("SELECT count(*) AS n FROM job WHERE state = 'pending' AND kind = 'agent_turn'")
-      .get()!.n,
-  ).toBe(1);
-  expect(h.db.query<{ state: string }, []>("SELECT state FROM agent WHERE id = 1").get()!.state).toBe("idle");
+  expect(await grpStatus(h.db)).toBe("RUNNING");
+  const requeued = await h.db
+    .select({ n: count() })
+    .from(jobTable)
+    .where(and(eq(jobTable.state, "pending"), eq(jobTable.kind, "agent_turn")));
+  expect(requeued[0]!.n).toBe(1);
+  expect((await h.db.select({ state: agentTable.state }).from(agentTable).where(eq(agentTable.id, 1)))[0]!.state).toBe(
+    "idle",
+  );
 });
 
 test("an offline tick does not run the rules that need the network", async () => {
   // Every rule below the gate is a restatement of state we recorded ourselves, and
   // none is worth a two-second DNS timeout each. This one would otherwise fire.
-  const h = harness({ turnTimeoutMs: 1000 });
-  fx.job.insert(h.db, { grp_id: 1, state: "running", started_at: 0 });
+  const h = await harness({ turnTimeoutMs: 1000 });
+  await fx.on(h.db).job.create({ grp_id: 1, state: "running", started_at: 0 });
   const f = await runWatchdog({ ...h.deps, probe: async () => ({ online: false, changed: false }) });
   expect(f.map((x) => x.rule)).not.toContain("turn_timeout");
 });
@@ -931,7 +982,7 @@ test("one rule throwing costs that rule, not the twenty-four after it", async ()
   // rule below it, and `invariants.ts` names the watchdog as the `driver` for
   // about twelve states — so one bad rule meant twelve drivers silent for thirty
   // seconds, and the report said only "the watchdog broke".
-  const h = harness();
+  const h = await harness();
   // Rule 7d3 reads subscription usage. It is injected, so it is the one rule a
   // test can make throw without pretending anything else is broken.
   const deps = {
@@ -942,7 +993,7 @@ test("one rule throwing costs that rule, not the twenty-four after it", async ()
   };
   // Rule 8's condition, which is checked *after* 7d3: a RUNNING group whose last
   // turn failed twice and has nothing queued.
-  fx.job.insert(h.db, { grp_id: 1, payload_json: '{"role":"engineer"}', state: "failed", error: "boom" });
+  await fx.on(h.db).job.create({ grp_id: 1, payload_json: { role: "engineer" }, state: "failed", error: "boom" });
   const first = await runWatchdog(deps);
   // The rule that threw names itself, so the finding is actionable — "rule 7d3
   // broke" rather than "the watchdog broke".
@@ -952,14 +1003,14 @@ test("one rule throwing costs that rule, not the twenty-four after it", async ()
   // The next tick, with 7d3 still throwing: the rules after it ran anyway, and
   // the breakage is not reported a second time — once per REEMIT_MS, or a rule
   // that throws every 30 seconds is 120 blocker lines an hour.
-  h.db.run("UPDATE job SET state = 'failed', error = 'boom' WHERE state = 'pending'");
+  await h.db.update(jobTable).set({ state: "failed", error: "boom" }).where(eq(jobTable.state, "pending"));
   const second = await runWatchdog(deps);
   expect(second.map((x) => x.rule)).toContain("stalled");
   expect(second.map((x) => x.rule)).not.toContain("rule_broke:7d3");
 });
 
 test("delivery is a bus frame the page can raise, plus an optional webhook", async () => {
-  const db = openMemory();
+  const db = await openMemory();
   const bus = new Bus(db);
   const posted: Array<{ url: string; body: string }> = [];
   const realFetch = globalThis.fetch;
@@ -987,13 +1038,12 @@ test("delivery is a bus frame the page can raise, plus an optional webhook", asy
     // One frame, its own kind. The page raises a system notification for this and
     // for nothing else — "everything the boss might want" is what turns a
     // notification into noise, and the rules upstream exist to avoid exactly that.
-    const [f] = db
-      .query<{ kind: string; body: string; meta_json: string }, []>(
-        "SELECT kind, body, meta_json FROM event WHERE kind = 'notify'",
-      )
-      .all();
+    const [f] = await db
+      .select({ kind: eventTable.kind, body: eventTable.body, meta_json: eventTable.meta_json })
+      .from(eventTable)
+      .where(eq(eventTable.kind, "notify"));
     expect(f?.body).toBe("谁来定一下基线分支");
-    expect(NotifyMeta.parse(JSON.parse(f!.meta_json)).url).toContain("#g=3");
+    expect(NotifyMeta.parse(f!.meta_json).url).toContain("#g=3");
 
     expect(posted).toHaveLength(1);
     expect(WebhookBody.parse(JSON.parse(posted[0]!.body)).message).toBe("谁来定一下基线分支");
@@ -1003,7 +1053,7 @@ test("delivery is a bus frame the page can raise, plus an optional webhook", asy
 });
 
 test("a webhook that is down does not take the run with it", async () => {
-  const db = openMemory();
+  const db = await openMemory();
   const bus = new Bus(db);
   const realFetch = globalThis.fetch;
   globalThis.fetch = Object.assign(
@@ -1017,7 +1067,7 @@ test("a webhook that is down does not take the run with it", async () => {
     // The frame is written before the POST is attempted, so the panel is told
     // even when the thing on the other end is not there.
     expect(await n.push({ key: "k", tier: "immediate", body: "x" })).toBe(true);
-    expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE kind = 'notify'").get()!.c).toBe(1);
+    expect((await db.select({ c: count() }).from(eventTable).where(eq(eventTable.kind, "notify")))[0]!.c).toBe(1);
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -1030,12 +1080,12 @@ test("a webhook that is down does not take the run with it", async () => {
  * swept again and two concurrent ticks each saw the other's zero.
  */
 test("the container sweep runs hourly, and the clock is not in this process", async () => {
-  const h = harness();
+  const h = await harness();
   // The harness's own driver is typed as the interface, which does not carry the
   // recorder. Same behaviour, kept as the concrete fake so `commands` is typed.
   const sandbox = fakeSandbox((cmd) => (cmd.includes("merge-base") ? { code: 1 } : { code: 0 }));
   h.ctx.sandbox = sandbox;
-  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
+  await h.db.update(grpTable).set({ sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
   let clock = 1_000_000;
   const deps = { ...h.deps, now: () => clock };
   const swept = () => sandbox.commands.filter((c) => c.includes("sessions -type f -mtime +7")).length;
@@ -1069,8 +1119,8 @@ test("the container sweep runs hourly, and the clock is not in this process", as
  * is for whoever is looking at where the tick went.
  */
 test("a rule that throws marks its own span, not just the findings", async () => {
-  const h = harness();
-  const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(new SqliteSpanExporter(h.db))] });
+  const h = await harness();
+  const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(new StoredSpanExporter(h.db))] });
   installTracerProvider(provider);
   try {
     await runWatchdog({
@@ -1081,9 +1131,10 @@ test("a rule that throws marks its own span, not just the findings", async () =>
     });
     await provider.forceFlush();
 
-    const rows = h.db
-      .query<{ name: string; status: string }, []>("SELECT name, status FROM span WHERE name LIKE 'watchdog.%'")
-      .all();
+    const rows = await h.db
+      .select({ name: spanTable.name, status: spanTable.status })
+      .from(spanTable)
+      .where(like(spanTable.name, "watchdog.%"));
     // Lowercase: `spanStatusName` is what the column stores, and the aggregation
     // in `span-store.ts` counts `status = 'error'`.
     expect(rows.find((r) => r.name === "watchdog.subscription_usage")?.status).toBe("error");
@@ -1101,7 +1152,7 @@ test("the two reconcilers above the rules cost themselves, not the twenty-four b
   // `runWatchdog`'s catch, so all twenty-four rules were skipped — every thirty
   // seconds, reported as one deduped line every half hour. Rule 18 stops renewing
   // sandbox TTLs on that path, and the fleet is reaped in a day.
-  const h = harness({ turnTimeoutMs: 1000 });
+  const h = await harness({ turnTimeoutMs: 1000 });
   // `publishBranch` is the one `Ctx` callback `runInvariants` reaches
   // (invariants.ts:175), so it is how a test makes that half throw without
   // pretending anything else is broken.
@@ -1111,10 +1162,10 @@ test("the two reconcilers above the rules cost themselves, not the twenty-four b
   // That repair's condition: PR_OPEN, no PR number, has a merge_seq, and no live
   // turn — so the timed-out turn below has to belong to a different group, or it
   // satisfies the NOT EXISTS and the repair never runs.
-  h.db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = NULL, merge_seq = 1 WHERE id = 1");
-  const other = fx.runningGrp.insert(h.db, { project_id: 1, name: "g2" });
+  await h.db.update(grpTable).set({ status: "PR_OPEN", pr_number: null, merge_seq: 1 }).where(eq(grpTable.id, 1));
+  const other = await fx.on(h.db).runningGrp.create({ project_id: 1, name: "g2" });
   // Rule 1's condition, which is checked after both reconcilers.
-  fx.job.insert(h.db, { grp_id: other.id, state: "running", started_at: 0 });
+  await fx.on(h.db).job.create({ grp_id: other.id, state: "running", started_at: 0 });
 
   const findings = await runWatchdog(h.deps);
   const rules = findings.map((f) => f.rule);
@@ -1130,8 +1181,8 @@ test("a rebase nudge that fails to enqueue is not recorded as delivered", async 
   // so that movement was never nudged again — the group silently stays stale.
   // Act first, record after, which is the same order a reconciler writes
   // `observedGeneration`.
-  const h = harness();
-  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
   h.ctx.gh = gh(() => ({ commit: { sha: "abc1234567" } }));
   h.ctx.sched.enqueue = () => {
     throw new Error("enqueue exploded");
@@ -1139,7 +1190,7 @@ test("a rebase nudge that fails to enqueue is not recorded as delivered", async 
 
   await runWatchdog(h.deps);
 
-  expect(h.db.query<{ s: string | null }, []>("SELECT rebase_seen AS s FROM grp WHERE id = 1").get()!.s).toBeNull();
+  expect((await h.db.select({ s: grpTable.rebase_seen }).from(grpTable).where(eq(grpTable.id, 1)))[0]!.s).toBeNull();
 });
 
 test("a question on a group nobody can answer is closed, not pushed to the boss first", async () => {
@@ -1148,11 +1199,11 @@ test("a question on a group nobody can answer is closed, not pushed to the boss 
   // dispatchable state" — includes exactly the states rule 16 revokes. So a
   // dissolved group's blocker was pushed to the boss's phone and killed three
   // hundred lines later in the same sweep.
-  const h = harness();
+  const h = await harness();
   const pushed: number[] = [];
   h.ctx.notifyBoss = (escId) => void pushed.push(escId);
-  h.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 1");
-  fx.escalation.insert(h.db, { grp_id: 1, chain_state: "pm", severity: "blocker", question: "which schema?" });
+  await h.db.update(grpTable).set({ status: "DISSOLVED" }).where(eq(grpTable.id, 1));
+  await fx.on(h.db).escalation.create({ grp_id: 1, chain_state: "pm", severity: "blocker", question: "which schema?" });
 
   const findings = await runWatchdog(h.deps);
 
@@ -1168,12 +1219,12 @@ test("a question on a group nobody can answer is closed, not pushed to the boss 
  * Whether the base *moved* is still per group: that compares what each last saw.
  */
 test("groups sharing a project ask GitHub about their base once between them", async () => {
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'RUNNING', sandbox_id = 'sb-1' WHERE id = 1");
-  h.db.run("UPDATE project SET repo_path = 'acme/p-pr', base_branch = 'master' WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ status: "RUNNING", sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
+  await h.db.update(projectTable).set({ repo_path: "acme/p-pr", base_branch: "master" }).where(eq(projectTable.id, 1));
   for (const name of ["g2", "g3"]) {
-    const id = fx.grp.insert(h.db, { project_id: 1, name }).id;
-    h.db.run("UPDATE grp SET status = 'RUNNING', sandbox_id = 'sb-1' WHERE id = ?", [id]);
+    const { id } = await fx.on(h.db).grp.create({ project_id: 1, name });
+    await h.db.update(grpTable).set({ status: "RUNNING", sandbox_id: "sb-1" }).where(eq(grpTable.id, id));
   }
   const asked: string[] = [];
   h.ctx.gh = gh((path) => {
@@ -1185,7 +1236,7 @@ test("groups sharing a project ask GitHub about their base once between them", a
 
   expect(asked.filter((p) => p.includes("/branches/master"))).toHaveLength(1);
   // All three still learned about it: the shared answer is not a shared verdict.
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM grp WHERE rebase_seen = 'abc1234567'").get()!.c).toBe(
+  expect((await h.db.select({ c: count() }).from(grpTable).where(eq(grpTable.rebase_seen, "abc1234567")))[0]!.c).toBe(
     3,
   );
 });
@@ -1201,12 +1252,12 @@ test("groups sharing a project ask GitHub about their base once between them", a
  * backs off for `REEMIT_MS`.
  */
 test("losing the network is announced once, by the path that dedups", async () => {
-  const h = harness();
+  const h = await harness();
   const offline = { online: false, changed: true };
   const found = await runWatchdog({ ...h.deps, probe: async () => offline });
 
   expect(found.filter((f) => f.rule === "network_lost")).toHaveLength(1);
-  const said = h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE body LIKE '%断网%'").get()!.c;
+  const said = (await h.db.select({ c: count() }).from(eventTable).where(like(eventTable.body, "%断网%")))[0]!.c;
   expect(said).toBe(1);
 });
 
@@ -1220,7 +1271,7 @@ test("losing the network is announced once, by the path that dedups", async () =
  * identical to the stored one.
  */
 test("an idle project pays one cheap exec a tick, not the whole corpus", async () => {
-  const h = harness();
+  const h = await harness();
   let head = "1111111111111111111111111111111111111111";
   const sandbox = fakeSandbox((cmd) => {
     if (cmd.includes("merge-base")) return { code: 1 };
@@ -1229,7 +1280,7 @@ test("an idle project pays one cheap exec a tick, not the whole corpus", async (
     return { code: 0 };
   });
   h.ctx.sandbox = sandbox;
-  h.db.run("UPDATE project SET remote = 'https://example.invalid/o/r.git' WHERE id = 1");
+  await h.db.update(projectTable).set({ remote: "https://example.invalid/o/r.git" }).where(eq(projectTable.id, 1));
   const mapWork = () => sandbox.commands.filter((c) => /ls-tree|ls-files|test -d|git .*clone/.test(c)).length;
 
   await runWatchdog(h.deps);
@@ -1260,20 +1311,20 @@ test("an idle project pays one cheap exec a tick, not the whole corpus", async (
  * ever ask again, because the answer to "did it change" would keep failing.
  */
 test("an unreadable container refreshes the map rather than skipping it", async () => {
-  const h = harness();
+  const h = await harness();
   const sandbox = fakeSandbox((cmd) => {
     if (cmd.includes("rev-parse")) return { code: 128, err: "not a git repository" };
     if (cmd.includes("ls-tree")) return { out: "src/a.ts\n" };
     return { code: 0 };
   });
   h.ctx.sandbox = sandbox;
-  h.db.run("UPDATE project SET remote = 'https://example.invalid/o/r.git' WHERE id = 1");
+  await h.db.update(projectTable).set({ remote: "https://example.invalid/o/r.git" }).where(eq(projectTable.id, 1));
 
   await runWatchdog(h.deps);
   await runWatchdog(h.deps);
 
   expect(sandbox.commands.filter((c) => c.includes("ls-tree"))).toHaveLength(2);
-  expect(readSetting(h.db, "watchdog.repo_map.1")).toBeNull();
+  expect(await readSetting(h.db, "watchdog.repo_map.1")).toBeNull();
 });
 
 test("every live container is renewed on the tick: groups, projects and the utility one", async () => {
@@ -1281,12 +1332,12 @@ test("every live container is renewed on the tick: groups, projects and the util
   // the other half of that bargain. Miss it and every container in the fleet is
   // reaped under whatever was using it, about a day later, with no error anywhere:
   // the next command in a live checkout simply says the sandbox is gone.
-  const h = harness();
+  const h = await harness();
   // Rule 17b kills a container older than the newest credential, which is every
   // container in this fixture. Silenced here so the renewals are the only subject.
-  h.db.run("UPDATE runtime_auth SET updated_at = 0");
-  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
-  h.db.run("UPDATE project SET sandbox_id = 'sb-p' WHERE id = 1");
+  await h.db.update(runtimeAuthTable).set({ updated_at: 0 });
+  await h.db.update(grpTable).set({ sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
+  await h.db.update(projectTable).set({ sandbox_id: "sb-p" }).where(eq(projectTable.id, 1));
 
   const renewed: string[] = [];
   h.ctx.sandbox = {
@@ -1305,10 +1356,12 @@ test("a sandbox older than the credential it is bound to is recycled, a newer on
   // reaches a container that was already up. It keeps pushing with the old one and
   // GitHub refuses it — the boss-bucket failure 007 §6 says must never present as
   // an agent problem, and the container looks perfectly healthy while it happens.
-  const h = harness();
-  h.db.run("UPDATE runtime_auth SET updated_at = 5000");
-  const fresh = fx.runningGrp.insert(h.db, { project_id: 1, name: "g-fresh", sandbox_id: "sb-2", sandbox_at: 9000 });
-  h.db.run("UPDATE grp SET sandbox_id = 'sb-1', sandbox_at = 1000 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(runtimeAuthTable).set({ updated_at: 5000 });
+  const fresh = await fx
+    .on(h.db)
+    .runningGrp.create({ project_id: 1, name: "g-fresh", sandbox_id: "sb-2", sandbox_at: 9000 });
+  await h.db.update(grpTable).set({ sandbox_id: "sb-1", sandbox_at: 1000 }).where(eq(grpTable.id, 1));
 
   const killed: string[] = [];
   h.ctx.sandbox = {
@@ -1328,38 +1381,40 @@ test("a burnt budget puts a decision in front of the boss, not only a line in th
   // Suspending without a row to answer left the group stopped with no reason
   // attached: 继续 did nothing the scheduler would honour, and the only visible
   // state was a paused requirement nobody could unpause.
-  const h = harness();
-  h.db.run("UPDATE grp SET budget_tokens = 100, spent_tokens = 100 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ budget_tokens: 100, spent_tokens: 100 }).where(eq(grpTable.id, 1));
 
   await runWatchdog(h.deps);
-  const e = h.db
-    .query<{ chain_state: string; question: string }, []>("SELECT chain_state, question FROM escalation")
-    .get()!;
-  expect(e.chain_state).toBe("boss");
-  expect(e.question).toStartWith("budget:");
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSED");
+  const [e] = await h.db
+    .select({ chain_state: escalationTable.chain_state, question: escalationTable.question })
+    .from(escalationTable);
+  expect(e!.chain_state).toBe("boss");
+  expect(e!.question).toStartWith("budget:");
+  expect(await grpStatus(h.db)).toBe("PAUSED");
 });
 
 test("an agent that keeps writing nothing is blocked, and its count starts over", async () => {
   // The finding is a sentence; blocking it is the effect. Without it the same agent
   // is dispatched on every tick, writes nothing again, and the only symptom is
   // money leaving — which is the exact failure this rule was bought for.
-  const h = harness();
-  h.db.run("UPDATE agent SET idle_turns = ? WHERE id = 1", [LIMITS.idleTurns]);
+  const h = await harness();
+  await h.db.update(agentTable).set({ idle_turns: LIMITS.idleTurns }).where(eq(agentTable.id, 1));
 
   await runWatchdog(h.deps);
-  expect(
-    h.db.query<{ state: string; idle_turns: number }, []>("SELECT state, idle_turns FROM agent WHERE id = 1").get(),
-  ).toEqual({ state: "blocked", idle_turns: 0 });
+  const [worker] = await h.db
+    .select({ state: agentTable.state, idle_turns: agentTable.idle_turns })
+    .from(agentTable)
+    .where(eq(agentTable.id, 1));
+  expect(worker).toEqual({ state: "blocked", idle_turns: 0 });
 });
 
 test("a parked group with a question still open is not revived by an older answer", async () => {
   // Waking it puts a group back to work on the very thing it is still waiting to be
   // told, and it parks itself again on the next clock: a loop with two containers
   // at each turn of it.
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'PARKED', paused_at = 100 WHERE id = 1");
-  fx.escalation.insert(h.db, {
+  const h = await harness();
+  await h.db.update(grpTable).set({ status: "PARKED", paused_at: 100 }).where(eq(grpTable.id, 1));
+  await fx.on(h.db).escalation.create({
     grp_id: 1,
     severity: "blocker",
     question: "which library?",
@@ -1368,35 +1423,39 @@ test("a parked group with a question still open is not revived by an older answe
     chain_state: "answered",
     answered_at: 500,
   });
-  fx.escalation.insert(h.db, { grp_id: 1, severity: "blocker", question: "and the schema?", chain_state: "boss" });
+  await fx
+    .on(h.db)
+    .escalation.create({ grp_id: 1, severity: "blocker", question: "and the schema?", chain_state: "boss" });
 
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).not.toContain("unparked");
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PARKED");
+  expect(await grpStatus(h.db)).toBe("PARKED");
 });
 
 test("a group waiting on another group is not parked out from under itself either", async () => {
   // Same bargain as the quota wait: rule 10 wakes this one the moment the group it
   // is blocked on lands, and parking retires the sessions minutes before that.
-  const h = harness();
-  const other = fx.runningGrp.insert(h.db, { project_id: 1, name: "g-blocker" });
-  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = ?, blocked_on = ? WHERE id = 1", [
-    1_000_000 - h.cfg.parkAfterPausedMs - 1000,
-    other.id,
-  ]);
+  const h = await harness();
+  const other = await fx.on(h.db).runningGrp.create({ project_id: 1, name: "g-blocker" });
+  await h.db
+    .update(grpTable)
+    .set({ status: "PAUSED", paused_at: 1_000_000 - h.cfg.parkAfterPausedMs - 1000, blocked_on: other.id })
+    .where(eq(grpTable.id, 1));
 
   const f = await runWatchdog(h.deps);
   expect(f.filter((x) => x.rule === "parked")).toEqual([]);
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSED");
+  expect(await grpStatus(h.db)).toBe("PAUSED");
 });
 
 test("closing a question the work went past also lets go of whoever was waiting on it", async () => {
   // The revoke closes the row; the waiter is what holds a job alive. Left hanging,
   // the requirement is merged and a turn is still parked on an answer that is never
   // coming — a running job row nothing will ever end.
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1");
-  const e = fx.escalation.insert(h.db, { grp_id: 1, severity: "blocker", question: "S1 failed qa", chain_state: "pm" });
+  const h = await harness();
+  await h.db.update(grpTable).set({ status: "PR_OPEN" }).where(eq(grpTable.id, 1));
+  const e = await fx
+    .on(h.db)
+    .escalation.create({ grp_id: 1, severity: "blocker", question: "S1 failed qa", chain_state: "pm" });
   const released: string[] = [];
   h.ctx.waiters.set(`escalation:${e.id}`, (v) => {
     released.push(v);
@@ -1418,7 +1477,7 @@ test("the tick sweeps the turn logs where the config says they are", async () =>
   const now = 10 * DROP_AFTER_MS;
   utimesSync(log, 0, (now - GZIP_AFTER_MS * 2) / 1000);
 
-  const h = harness({ dataDir: dir });
+  const h = await harness({ dataDir: dir });
   await runWatchdog({ ...h.deps, now: () => now });
   expect({ raw: existsSync(log), gz: existsSync(`${log}.gz`) }).toEqual({ raw: false, gz: true });
 });
@@ -1428,27 +1487,33 @@ test("a group already told about this commit is not told again once the turn has
   // it has run and the branch is still not on the base — a conflict it could not
   // finish — the commit recorded as announced is the only thing between the group
   // and a fresh rebase order every thirty seconds, for as long as it stays stuck.
-  const h = harness();
-  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
   h.ctx.gh = gh(() => ({ commit: { sha: "abc1234567" } }));
-  const nudges = () =>
-    h.db
-      .query<{ c: number }, []>(`SELECT count(*) AS c FROM job WHERE payload_json LIKE '%"conflict":true%'`)
-      .get()!.c;
+  const nudges = async () =>
+    (
+      await h.db
+        .select({ c: count() })
+        .from(jobTable)
+        .where(sql`${jobTable.payload_json} @> '{"conflict":true}'::jsonb`)
+    )[0]!.c;
 
   await runWatchdog(h.deps);
-  expect(nudges()).toBe(1);
-  h.db.run("UPDATE job SET state = 'failed', error = 'could not rebase' WHERE state = 'pending'");
+  expect(await nudges()).toBe(1);
+  await h.db.update(jobTable).set({ state: "failed", error: "could not rebase" }).where(eq(jobTable.state, "pending"));
   await runWatchdog(h.deps);
-  expect(nudges()).toBe(1);
+  expect(await nudges()).toBe(1);
 });
 
 test("a group parked and forgotten is still asked about", async () => {
   // Nothing takes a group out of PARKED on its own and it will not ask again, so
   // the reminder is the whole of what is owed: without it the requirement is filed
   // away silently and the boss finds it by accident, weeks later.
-  const h = harness();
-  h.db.run("UPDATE grp SET status = 'PARKED', paused_at = ? WHERE id = 1", [1_000_000 - LIMITS.nudgeAfterMs - 1000]);
+  const h = await harness();
+  await h.db
+    .update(grpTable)
+    .set({ status: "PARKED", paused_at: 1_000_000 - LIMITS.nudgeAfterMs - 1000 })
+    .where(eq(grpTable.id, 1));
 
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("waiting_parked");
@@ -1458,37 +1523,34 @@ test("an approval that cannot land is withdrawn on the tick, not retried every t
   // The boss approves while a boundary holds the group; the tick is what starts it
   // afterwards. A checkout failure is almost always permanent, so leaving the
   // intent set retried it forever and returned the error to nobody.
-  const h = harness();
-  const g = fx.grp.insert(h.db, { project_id: 1, name: "g-approved", approved_at: 1 });
+  const h = await harness();
+  const g = await fx.on(h.db).grp.create({ project_id: 1, name: "g-approved", approved_at: 1 });
 
   await runWatchdog(h.deps);
-  expect(
-    h.db.query<{ approved_at: number | null }, [number]>("SELECT approved_at FROM grp WHERE id = ?").get(g.id)!
-      .approved_at,
-  ).toBe(null);
-  expect(
-    h.db.query<{ c: number }, [number]>("SELECT count(*) AS c FROM escalation WHERE grp_id = ?").get(g.id)!.c,
-  ).toBe(1);
+  const [row] = await h.db.select({ approved_at: grpTable.approved_at }).from(grpTable).where(eq(grpTable.id, g.id));
+  expect(row!.approved_at).toBe(null);
+  const asked = await h.db.select({ c: count() }).from(escalationTable).where(eq(escalationTable.grp_id, g.id));
+  expect(asked[0]!.c).toBe(1);
 });
 
 test("a merge queue held up behind the head interrupts, one PR waiting on its own does not", async () => {
   // A blocker reaches the boss's phone now; an advisory waits for the next batch.
   // The head of a queue with three requirements stopped behind it is the one thing
   // in this rule that costs a working day per hour of silence.
-  const h = harness();
+  const h = await harness();
   const old = 1_000_000 - 5 * 3_600_000;
   const queued = (n: number) =>
-    fx.grp.insert(h.db, { project_id: 1, name: `q${n}`, status: "PR_OPEN", merge_seq: n, merge_seq_at: old });
-  queued(1);
+    fx.on(h.db).grp.create({ project_id: 1, name: `q${n}`, status: "PR_OPEN", merge_seq: n, merge_seq_at: old });
+  await queued(1);
 
   const alone = (await runWatchdog(h.deps)).find((x) => x.rule === "waiting_merge")!;
   expect(alone.severity).toBe("advisory");
 
-  const h2 = harness();
+  const h2 = await harness();
   const queued2 = (n: number) =>
-    fx.grp.insert(h2.db, { project_id: 1, name: `q${n}`, status: "PR_OPEN", merge_seq: n, merge_seq_at: old });
-  queued2(1);
-  queued2(2);
+    fx.on(h2.db).grp.create({ project_id: 1, name: `q${n}`, status: "PR_OPEN", merge_seq: n, merge_seq_at: old });
+  await queued2(1);
+  await queued2(2);
   const head = (await runWatchdog(h2.deps)).find((x) => x.rule === "waiting_merge")!;
   expect(head.severity).toBe("blocker");
   expect(head.body).toContain("1");

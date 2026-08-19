@@ -38,4 +38,9 @@ test("a wrapped error still says what actually went wrong", () => {
   expect(errText(loop)).toBe("a: a: a: a");
   // A cause that is not an Error is not a message; it is skipped, not stringified.
   expect(errText(new Error("plain", { cause: "context" }))).toBe("plain");
+  // Clipped per link, not over the join. A driver error names the whole statement
+  // — past 300 characters for any wide table — so a joined clip cut the reason off
+  // at the character it began, which is the half worth reading.
+  const wide = new Error(`Failed query: ${"x".repeat(400)}`, { cause: new Error("unique constraint") });
+  expect(errText(wide).endsWith(": unique constraint")).toBe(true);
 });

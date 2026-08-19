@@ -13,8 +13,8 @@ import * as fx from "../support/factories.ts";
  * created with *no* `remote.origin.fetch` refspec — `--mirror` writes one,
  * `--bare` does not.
  */
-const ctxWith = (run: (cmd: string) => { out?: string; code?: number }) => {
-  const db = openMemory();
+const ctxWith = async (run: (cmd: string) => { out?: string; code?: number }) => {
+  const db = await openMemory();
   const sandbox = fakeSandbox(run);
   return testContext({ db, sandbox });
 };
@@ -25,7 +25,7 @@ test("the mirror is never asked for a ref a bare repository cannot have", async 
   //   git ls-tree origin/main exited 128: fatal: Not a valid object name origin/main
   // once a tick, forever, and the repo map never refreshed again.
   const seen: string[] = [];
-  const ctx = ctxWith((cmd) => {
+  const ctx = await ctxWith((cmd) => {
     seen.push(cmd);
     if (cmd.includes("test -d")) return { out: "yes" };
     if (cmd.includes("ls-tree")) return { out: "src/a.ts\nREADME.md" };
@@ -44,7 +44,7 @@ test("an existing mirror is fetched, or every answer describes the day it was cl
   // added after the first clone came back "not in the repo", permanently, on a
   // project that had been working.
   const seen: string[] = [];
-  const ctx = ctxWith((cmd) => {
+  const ctx = await ctxWith((cmd) => {
     seen.push(cmd);
     if (cmd.includes("test -d")) return { out: "yes" };
     return { out: "" };
@@ -62,7 +62,7 @@ test("a mirror that cannot be reached is stale, not empty-because-broken", async
   // Best effort: refusing on a failed fetch would turn one unreachable network
   // into "this repository has no files", which is the answer the caller reports
   // to the boss.
-  const ctx = ctxWith((cmd) => {
+  const ctx = await ctxWith((cmd) => {
     if (cmd.includes("test -d")) return { out: "yes" };
     if (cmd.includes(" fetch ")) return { code: 128, out: "could not resolve host" };
     if (cmd.includes("ls-tree")) return { out: "src/a.ts" };
@@ -88,10 +88,10 @@ test("a work-in-progress branch is kept where prune cannot delete it", async () 
     if (cmd.includes("test -d")) return { out: "yes" };
     return {};
   });
-  const ctx = testContext({ sandbox });
-  const p = fx.project.insert(ctx.db, { name: "p", remote: "git@github.com:o/p.git" });
-  const g = fx.grp.insert(ctx.db, { project_id: p.id, name: "g1" });
-  ctx.db.run("UPDATE grp SET branch = 'orch/g1' WHERE id = ?", [g.id]);
+  const ctx = await testContext({ sandbox });
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p", remote: "git@github.com:o/p.git" });
+  const g = await f.grp.create({ project_id: p.id, name: "g1", branch: "orch/g1" });
 
   const r = await pushBranch(ctx, g.id);
   expect(r.ok).toBe(true);

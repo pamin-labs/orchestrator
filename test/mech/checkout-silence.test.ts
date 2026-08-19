@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
+import { eq, sql } from "drizzle-orm";
+import { openMemory } from "../../src/platform/persistence/database.ts";
+import { event } from "../../src/platform/persistence/schema.ts";
 import { ensureCheckout, sandboxGit } from "../../src/mech/git/checkout.ts";
 import { porcelainPaths, STATUS_Z } from "../../src/mech/git/gitops.ts";
 import { WORK } from "../../src/mech/sandbox/sandbox.ts";
@@ -21,8 +23,11 @@ import { testContext } from "../support/test-context.ts";
  * being a way this can fail when the remote stopped being read out of a host
  * checkout.
  */
-function harness(opts: { project?: boolean; grp?: boolean; remote?: boolean; modules?: boolean } = {}) {
-  const db: DB = openMemory();
+async function harness(opts: { project?: boolean; grp?: boolean; remote?: boolean; modules?: boolean } = {}) {
+  // `openMemory` hands back the one database, emptied — so a harness is a reseed
+  // rather than a second instance, and two of them cannot be held at once.
+  const db = await openMemory();
+  const f = fx.on(db);
   const sandbox = fakeSandbox((cmd) => {
     if (cmd.includes(".gitmodules")) return { out: opts.modules ? "yes" : "" };
     if (cmd.includes("test -d")) return { out: "" };
@@ -30,27 +35,33 @@ function harness(opts: { project?: boolean; grp?: boolean; remote?: boolean; mod
     if (cmd.includes("ls-remote")) return { code: 2 };
     return {};
   });
-  const ctx = testContext({ db, sandbox });
+  const ctx = await testContext({ db, sandbox });
 
   if (opts.project !== false) {
-    fx.project.insert(db, {
+    await f.project.create({
       name: "p",
       remote: opts.remote === false ? null : "https://github.com/me/x.git",
     });
-  } else {
-    // A group whose project is gone. The foreign key is what normally stops
-    // this; it does not stop a project deleted out from under a live group.
-    db.run("PRAGMA foreign_keys = OFF");
   }
   if (opts.grp !== false) {
-    fx.runningGrp.insert(db, { project_id: 1, name: "g1", branch: "orch/g1" });
+    // A group whose project is gone. The foreign key is what normally stops
+    // this; it does not stop a project deleted out from under a live group. In
+    // Postgres it is a trigger, and `replica` is where `PRAGMA foreign_keys =
+    // OFF` went — put back immediately, because the session outlives the row.
+    const orphan = opts.project === false;
+    if (orphan) await db.execute(sql`SET session_replication_role = replica`);
+    try {
+      await f.runningGrp.create({ project_id: 1, name: "g1", branch: "orch/g1" });
+    } finally {
+      if (orphan) await db.execute(sql`SET session_replication_role = origin`);
+    }
   }
-  const said = () => db.query<{ body: string }, []>("SELECT body FROM event WHERE severity = 'blocker'").all();
+  const said = () => db.select({ body: event.body }).from(event).where(eq(event.severity, "blocker"));
   return { ctx, sandbox, said };
 }
 
 test("the clone is blobless, so history survives it", async () => {
-  const { ctx, sandbox } = harness();
+  const { ctx, sandbox } = await harness();
   await ensureCheckout(ctx, 1);
   const clone = sandbox.commands.find((c) => c.startsWith("git clone"));
   expect(clone).toContain("--filter=blob:none");
@@ -59,16 +70,19 @@ test("the clone is blobless, so history survives it", async () => {
 });
 
 test("every way out that is not a clone says which one it was", async () => {
-  const cases: [string, Awaited<ReturnType<typeof harness>>, number][] = [
-    ["组 2", harness(), 2],
-    ["项目不在了", harness({ project: false }), 1],
-    ["没记下 remote", harness({ remote: false }), 1],
+  // Built one at a time: each harness empties the one database, so holding three
+  // of them would leave the first two describing rows that are gone.
+  const cases: [string, () => Promise<Awaited<ReturnType<typeof harness>>>, number][] = [
+    ["组 2", () => harness(), 2],
+    ["项目不在了", () => harness({ project: false }), 1],
+    ["没记下 remote", () => harness({ remote: false }), 1],
   ];
 
-  for (const [needle, h, grpId] of cases) {
+  for (const [needle, make, grpId] of cases) {
+    const h = await make();
     await ensureCheckout(h.ctx, grpId);
     expect(h.sandbox.commands).toEqual([]);
-    const bodies = h.said().map((e) => e.body);
+    const bodies = (await h.said()).map((e) => e.body);
     expect(bodies.length).toBe(1);
     expect(bodies[0]).toContain(needle);
   }
@@ -79,7 +93,7 @@ test("submodules are initialised in two steps, and only when there are any", asy
   // checkout that lands a hook where git then looks for one. The two steps are
   // the mitigation GitHub itself publishes, so collapsing them back into a flag
   // is the regression this exists to catch.
-  const withModules = harness({ modules: true });
+  const withModules = await harness({ modules: true });
   await ensureCheckout(withModules.ctx, 1);
   const clone = withModules.sandbox.commands.find((c) => c.startsWith("git clone"))!;
   expect(clone).not.toContain("--recursive");
@@ -90,7 +104,7 @@ test("submodules are initialised in two steps, and only when there are any", asy
   expect(withModules.sandbox.commands.indexOf(clone)).toBeLessThan(withModules.sandbox.commands.indexOf(init));
 
   // A repository with no submodules pays one `test -f` and nothing else.
-  const without = harness();
+  const without = await harness();
   await ensureCheckout(without.ctx, 1);
   expect(without.sandbox.commands.filter((c) => c.includes("submodule"))).toEqual([]);
 });
@@ -107,7 +121,7 @@ test("a warning on stderr does not become a changed path", async () => {
     if (!cmd.includes("'status'")) return {};
     return { out: " M src/a.ts\0", err: "warning: unable to access '/root/.config/git/ignore'" };
   });
-  const ctx = testContext({ sandbox });
+  const ctx = await testContext({ sandbox });
   const r = await sandboxGit(ctx, { grp: 1 })(STATUS_Z, WORK);
   expect(porcelainPaths(r.out)).toEqual(["src/a.ts"]);
 });

@@ -12,9 +12,9 @@ test("a ChatGPT login is called out when it is old, not when the host lacks code
   // What can still go wrong is the login going stale with nothing able to renew
   // it, and that failure is silent and hours late: every codex turn 401s looking
   // like an expired account.
-  const db = openMemory();
-  const withLogin = (lastRefresh: string) => {
-    saveAuth(db, {
+  const db = await openMemory();
+  const withLogin = async (lastRefresh: string) => {
+    await saveAuth(db, {
       runtime: "codex",
       mode: "chatgpt",
       secret: JSON.stringify({ tokens: { refresh_token: "r" }, last_refresh: lastRefresh }),
@@ -43,8 +43,8 @@ test("a ChatGPT login is called out when it is old, not when the host lacks code
 test("the other credential modes need nothing on this host", async () => {
   // A pasted `sk-ant-oat01-` is good for a year and an API key does not expire,
   // so neither has anything to renew. Only the ChatGPT pair does.
-  const db = openMemory();
-  saveAuth(db, { runtime: "codex", mode: "api_key", secret: "sk-x" });
+  const db = await openMemory();
+  await saveAuth(db, { runtime: "codex", mode: "api_key", secret: "sk-x" });
   const checks = await preflight({
     db,
     sandbox: { server: "http://127.0.0.1:1", apiKey: "", image: "x" },
@@ -62,7 +62,7 @@ test("docker installed but not started is not 'running'", async () => {
   // 自检那栏会说是哪个" and a self-check saying it was up.
   const asked: string[][] = [];
   const checks = await preflight({
-    db: openMemory(),
+    db: await openMemory(),
     sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
     // The daemon is what is asked about, so only `info` decides.
     probe: (bin, argv = ["--version"]) => {

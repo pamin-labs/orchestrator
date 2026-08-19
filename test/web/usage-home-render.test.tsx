@@ -38,7 +38,7 @@ const group = (id: number, projectId: number, over: Partial<State["groups"][numb
   name: `需求${id}`,
   branch: null,
   status: "PARKED" as const,
-  owns_json: "[]",
+  owns_json: [],
   budget_tokens: null,
   spent_tokens: 0,
   pr_number: null,

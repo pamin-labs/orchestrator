@@ -138,22 +138,22 @@ test("the map is searched with the same tokenizer as the notes", async () => {
  * `", "`, so a file whose name contained the separator came back as a different
  * file with different symbols and nothing said so. The render is one-way.
  */
-test("a file name containing the render's separator survives a round trip", () => {
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" }).id;
+test("a file name containing the render's separator survives a round trip", async () => {
+  const db = await openMemory();
+  const p = (await fx.on(db).project.create({ name: "p" })).id;
   const nodes = [
     { dir: "src", files: [{ name: "a — b.ts", symbols: ["one, two", "three"] }] },
     { dir: "docs", files: [{ name: "plain.md", symbols: [] }] },
   ];
-  expect(saveMap(db, p, nodes)).toBe(true);
-  expect(loadMap(db, p)).toEqual(nodes);
+  expect(await saveMap(db, p, nodes)).toBe(true);
+  expect(await loadMap(db, p)).toEqual(nodes);
   // Unchanged content is still not a write, which is what the rule depends on.
-  expect(saveMap(db, p, nodes)).toBe(false);
+  expect(await saveMap(db, p, nodes)).toBe(false);
 });
 
-test("a map written by an older build reads as absent rather than as nonsense", () => {
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" }).id;
-  saveSingletonNote(db, p, "map", "src/\n  a.ts — one, two\n");
-  expect(loadMap(db, p)).toEqual([]);
+test("a map written by an older build reads as absent rather than as nonsense", async () => {
+  const db = await openMemory();
+  const p = (await fx.on(db).project.create({ name: "p" })).id;
+  await saveSingletonNote(db, p, "map", "src/\n  a.ts — one, two\n");
+  expect(await loadMap(db, p)).toEqual([]);
 });

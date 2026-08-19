@@ -1,16 +1,14 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
 import { makeApp } from "../../src/composition/api.ts";
-import type { Ctx } from "../../src/mech/ctx.ts";
+import { eq, isNotNull } from "drizzle-orm";
 import type { Json } from "../../src/contracts/json.ts";
-import { Bus } from "../../src/platform/persistence/event-bus.ts";
-import { loadConfig } from "../../src/platform/config/load.ts";
-import { openMemory } from "../../src/platform/persistence/database.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { saveTree, type Tree } from "../../src/mech/knowledge/pageindex.ts";
+import { event, grp, project } from "../../src/platform/persistence/schema.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
+import { testContext } from "../support/test-context.ts";
 import type { Github } from "../../src/mech/git/github.ts";
 
 /**
@@ -22,30 +20,29 @@ import type { Github } from "../../src/mech/git/github.ts";
  * from a test, so a refusal that stopped refusing would have gone unnoticed.
  */
 
-function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: string; err?: string }, gh?: Github) {
-  const db = openMemory();
-  seedAuth(db);
+async function harness(
+  handle?: (cmd: string, cwd: string) => { code?: number; out?: string; err?: string },
+  gh?: Github,
+) {
   const published: number[] = [];
-  const ctx: Ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
+  const ctx = await testContext({
     sandbox: fakeSandbox(handle),
-    waiters: new Map(),
-    config: loadConfig(),
     publishBranch: (grpId) => void published.push(grpId),
     ...(gh ? { gh } : {}),
-  };
-  const p = fx.project.insert(db, { name: "p", repo_path: "o/p", remote: "git@github.com:o/p.git" });
-  const q = fx.project.insert(db, { name: "q", repo_path: "o/q" });
-  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
-  fx.runningGrp.insert(db, { project_id: q.id, name: "g2" });
+  });
+  const db = ctx.db;
+  await seedAuth(db);
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p", repo_path: "o/p", remote: "git@github.com:o/p.git" });
+  const q = await f.project.create({ name: "q", repo_path: "o/q" });
+  const g = await f.runningGrp.create({ project_id: p.id, name: "g1" });
+  await f.runningGrp.create({ project_id: q.id, name: "g2" });
   for (const [role, token] of [
     ["scribe", "tok-scribe"],
     ["bootstrap", "tok-boot"],
     ["engineer", "tok-eng"],
   ] as const) {
-    fx.agent.insert(db, { project_id: p.id, grp_id: g.id, role, token });
+    await f.agent.create({ project_id: p.id, grp_id: g.id, role, token });
   }
   const app = makeApp(ctx);
   const post = (path: string, body: Json, token: string) =>
@@ -60,15 +57,24 @@ function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: s
         },
       }),
     );
-  return { db, ctx, app, post, published };
+  return { db, ctx, app, post, published, f };
 }
+
+type Harness = Awaited<ReturnType<typeof harness>>;
+
+/** `config_json` is `jsonb`: it comes back parsed, so these compare values. */
+const config = async (h: Harness) =>
+  (await h.db.select({ c: project.config_json }).from(project).where(eq(project.id, 1)))[0]?.c;
+
+const oneEvent = async (h: Harness, kind: string) =>
+  (await h.db.select({ author: event.author, body: event.body }).from(event).where(eq(event.kind, kind)))[0];
 
 const BODY = "The Scribe had no way to say what the branch is. This is that message.";
 
 // ------------------------------------------------------------------ orch/pr
 
 test("only the Scribe writes a pull request message, and only for its own project", async () => {
-  const h = harness();
+  const h = await harness();
   const send = (token: string, group: Json) =>
     h.post("/orch/v1/pr", { group_id: group, title: "fix(pr): say what landed", body: BODY }, token);
 
@@ -87,22 +93,21 @@ test("only the Scribe writes a pull request message, and only for its own projec
   expect(await otherProject.text()).toContain("not your project");
 
   expect(h.published).toEqual([]);
-  expect(h.db.query<{ n: number }, []>("SELECT count(*) AS n FROM grp WHERE pr_title IS NOT NULL").get()!.n).toBe(0);
+  expect(await h.db.select({ id: grp.id }).from(grp).where(isNotNull(grp.pr_title))).toHaveLength(0);
 });
 
 test("a message the convention refuses is not stored and publishes nothing", async () => {
-  const h = harness();
+  const h = await harness();
   const r = await h.post("/orch/v1/pr", { group_id: 1, title: "made some changes", body: BODY }, "tok-scribe");
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("title needs a type prefix");
   expect(h.published).toEqual([]);
-  expect(
-    h.db.query<{ pr_title: string | null }, []>("SELECT pr_title FROM grp WHERE id = 1").get()!.pr_title,
-  ).toBeNull();
+  const [only] = await h.db.select({ pr_title: grp.pr_title }).from(grp).where(eq(grp.id, 1));
+  expect(only?.pr_title).toBeNull();
 });
 
 test("an accepted message is stored, announced, and publishes the branch", async () => {
-  const h = harness();
+  const h = await harness();
   const r = await h.post(
     "/orch/v1/pr",
     { group_id: "g1", title: "  fix(pr): say what landed  ", body: `  ${BODY}  ` },
@@ -110,54 +115,45 @@ test("an accepted message is stored, announced, and publishes the branch", async
   );
   expect(r.status).toBe(200);
 
-  const g = h.db
-    .query<{ pr_title: string; pr_summary: string }, []>("SELECT pr_title, pr_summary FROM grp WHERE id = 1")
-    .get()!;
+  const [g] = await h.db.select({ pr_title: grp.pr_title, pr_summary: grp.pr_summary }).from(grp).where(eq(grp.id, 1));
   // Trimmed on the way in: the title is a git subject line and the body is the
   // commit message under it.
-  expect(g.pr_title).toBe("fix(pr): say what landed");
-  expect(g.pr_summary).toBe(BODY);
+  expect(g?.pr_title).toBe("fix(pr): say what landed");
+  expect(g?.pr_summary).toBe(BODY);
   expect(h.published).toEqual([1]);
-  const note = h.db
-    .query<{ author: string; body: string }, []>("SELECT author, body FROM event WHERE kind = 'note'")
-    .get()!;
-  expect(note).toEqual({ author: "scribe", body: "fix(pr): say what landed" });
+  expect(await oneEvent(h, "note")).toEqual({ author: "scribe", body: "fix(pr): say what landed" });
 });
 
 // --------------------------------------------------------------- orch/setup
 
 test("only the bootstrap role sets a project up", async () => {
-  const h = harness();
+  const h = await harness();
   const r = await h.post("/orch/v1/setup", { cmd: "bun install" }, "tok-eng");
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("engineer does not set this project up");
 });
 
 test("setup needs a command or an explicit none", async () => {
-  const h = harness();
+  const h = await harness();
   const r = await h.post("/orch/v1/setup", { cmd: "   " }, "tok-boot");
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("--none");
   // Nothing ran, so nothing was remembered either.
-  expect(h.db.query<{ c: string }, []>("SELECT config_json AS c FROM project WHERE id = 1").get()!.c).toBe("{}");
+  expect(await config(h)).toEqual({});
 });
 
 test("--none records that the repository needs nothing and says so", async () => {
-  const h = harness();
+  const h = await harness();
   const r = await h.post("/orch/v1/setup", { none: true }, "tok-boot");
   expect(r.status).toBe(200);
-  expect(h.db.query<{ c: string }, []>("SELECT config_json AS c FROM project WHERE id = 1").get()!.c).toBe(
-    '{"install":null}',
-  );
-  const said = h.db
-    .query<{ author: string; body: string }, []>("SELECT author, body FROM event WHERE kind = 'state_change'")
-    .get()!;
-  expect(said.author).toBe("bootstrap");
-  expect(said.body).toContain("不需要装");
+  expect(await config(h)).toEqual({ install: null });
+  const said = await oneEvent(h, "state_change");
+  expect(said?.author).toBe("bootstrap");
+  expect(said?.body).toContain("不需要装");
 });
 
 test("a failed install is reported with its tail and is not remembered", async () => {
-  const h = harness(() => ({ code: 1, out: "error: no lockfile", err: "exit 1" }));
+  const h = await harness(() => ({ code: 1, out: "error: no lockfile", err: "exit 1" }));
   const r = await h.post("/orch/v1/setup", { cmd: "bun install --frozen-lockfile" }, "tok-boot");
   expect(r.status).toBe(422);
   const text = await r.text();
@@ -165,16 +161,14 @@ test("a failed install is reported with its tail and is not remembered", async (
   expect(text).toContain("no lockfile");
   // The point of remembering is that the next group does not pay again — a
   // command that did not work is not worth handing on.
-  expect(h.db.query<{ c: string }, []>("SELECT config_json AS c FROM project WHERE id = 1").get()!.c).toBe("{}");
+  expect(await config(h)).toEqual({});
 });
 
 test("an install that worked is remembered on the project", async () => {
-  const h = harness(() => ({ code: 0, out: "done" }));
+  const h = await harness(() => ({ code: 0, out: "done" }));
   const r = await h.post("/orch/v1/setup", { cmd: "bun install" }, "tok-boot");
   expect(r.status).toBe(200);
-  expect(h.db.query<{ c: string }, []>("SELECT config_json AS c FROM project WHERE id = 1").get()!.c).toBe(
-    '{"install":"bun install"}',
-  );
+  expect(await config(h)).toEqual({ install: "bun install" });
 });
 
 // ----------------------------------------------------------- orch/ctx/query
@@ -191,16 +185,19 @@ const indexed = (): Tree => ({
   },
 });
 
-function withIndex(h: ReturnType<typeof harness>, ask: (prompt: string) => Promise<string>) {
-  fx.note.insert(h.db, { id: 1, project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
-  saveTree(h.db, 1, indexed());
+async function withIndex(h: Harness, ask: (prompt: string) => Promise<string>) {
+  // No explicit id: it is the first note either way, and `generatedByDefaultAsIdentity`
+  // does not advance its sequence for a supplied one — so `saveTree` below would
+  // then insert its own note at id 1 and collide.
+  await h.f.note.create({ project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
+  await saveTree(h.db, 1, indexed());
   h.ctx.askIn = () => ask;
 }
 
 test("the page index walks to a note and its body comes back with the answer", async () => {
-  const h = harness();
+  const h = await harness();
   const asked: string[] = [];
-  withIndex(h, async (prompt) => {
+  await withIndex(h, async (prompt) => {
     asked.push(prompt);
     return prompt.includes("notes/grp-1/decision/1") ? "notes/grp-1/decision/1" : "notes/";
   });
@@ -217,16 +214,16 @@ test("the page index walks to a note and its body comes back with the answer", a
 });
 
 test("a navigator that declines leaves the lexical map to answer", async () => {
-  const h = harness();
-  withIndex(h, async () => "NONE");
+  const h = await harness();
+  await withIndex(h, async () => "NONE");
   const r = await h.post("/orch/v1/ctx/query", { question: "which validation library?" }, "tok-eng");
   expect(r.status).toBe(200);
   expect(await r.text()).not.toContain("the validation library this fleet uses");
 });
 
 test("a navigator that throws is not an error the agent sees", async () => {
-  const h = harness();
-  withIndex(h, async () => {
+  const h = await harness();
+  await withIndex(h, async () => {
     throw new Error("the cheap model is unreachable");
   });
   const r = await h.post("/orch/v1/ctx/query", { question: "which validation library?" }, "tok-eng");
@@ -235,11 +232,11 @@ test("a navigator that throws is not an error the agent sees", async () => {
 });
 
 test("no index and no model each fall straight through", async () => {
-  const noModel = harness();
-  saveTree(noModel.db, 1, indexed());
+  const noModel = await harness();
+  await saveTree(noModel.db, 1, indexed());
   expect((await noModel.post("/orch/v1/ctx/query", { question: "anything" }, "tok-eng")).status).toBe(200);
 
-  const noTree = harness();
+  const noTree = await harness();
   let walked = false;
   noTree.ctx.askIn = () => async () => {
     walked = true;
@@ -287,21 +284,26 @@ const threadAt = (over: Record<string, Json> = {}): Json => ({
   },
 });
 
-function resolveHarness(where: Json) {
+async function resolveHarness(where: Json) {
   const calls: string[] = [];
-  const h = harness(undefined, fakeGh(where, calls));
-  h.db.run("UPDATE grp SET pr_number = 7, owns_json = ? WHERE id = 1", [JSON.stringify(["src/api/**"])]);
+  const h = await harness(undefined, fakeGh(where, calls));
+  await h.db
+    .update(grp)
+    .set({ pr_number: 7, owns_json: ["src/api/**"] })
+    .where(eq(grp.id, 1));
   const send = (body: Json) => h.post("/orch/v1/pr/resolve", body, "tok-eng");
   return { ...h, calls, send };
 }
 
-const noteCount = (db: ReturnType<typeof harness>["db"]) =>
-  db.query<{ n: number }, []>("SELECT count(*) AS n FROM event WHERE kind = 'note'").get()!.n;
+const noteCount = async (db: Harness["db"]) =>
+  (await db.select({ seq: event.seq }).from(event).where(eq(event.kind, "note"))).length;
 
 test("a thread on somebody else's pull request is refused before the mutation runs", async () => {
   // The id is opaque and the agent is the one quoting it, so nothing about it says
   // which PR it belongs to. Trusting it means one group closing another's review.
-  const h = resolveHarness(threadAt({ pullRequest: { number: 7, repository: { nameWithOwner: "o/somewhere-else" } } }));
+  const h = await resolveHarness(
+    threadAt({ pullRequest: { number: 7, repository: { nameWithOwner: "o/somewhere-else" } } }),
+  );
   const r = await h.send({ group_id: 1, thread_id: "PRRT_x" });
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("that thread is on o/somewhere-else#7");
@@ -309,7 +311,7 @@ test("a thread on somebody else's pull request is refused before the mutation ru
   expect(h.calls).toEqual(["locate"]);
 
   // And the same repository, a different PR.
-  const other = resolveHarness(threadAt({ pullRequest: { number: 9, repository: { nameWithOwner: "o/p" } } }));
+  const other = await resolveHarness(threadAt({ pullRequest: { number: 9, repository: { nameWithOwner: "o/p" } } }));
   const r2 = await other.send({ group_id: 1, thread_id: "PRRT_x" });
   expect(r2.status).toBe(422);
   expect(await r2.text()).toContain("o/p#9");
@@ -319,37 +321,34 @@ test("a thread on somebody else's pull request is refused before the mutation ru
 test("a thread on a file the group does not own is refused, and sent to the boss instead", async () => {
   // Closing it would hide the request from whoever does own the file: the thread
   // is the only place it is recorded, and a resolved one is not re-raised.
-  const h = resolveHarness(threadAt({ path: "src/mech/git/prwatch.ts" }));
+  const h = await resolveHarness(threadAt({ path: "src/mech/git/prwatch.ts" }));
   const r = await h.send({ group_id: 1, thread_id: "PRRT_x" });
   expect(r.status).toBe(422);
   const said = await r.text();
   expect(said).toContain("src/mech/git/prwatch.ts is outside this group's boundary");
   expect(said).toContain("orch ask-boss");
   expect(h.calls).toEqual(["locate"]);
-  expect(noteCount(h.db)).toBe(0);
+  expect(await noteCount(h.db)).toBe(0);
 });
 
 test("a thread inside the boundary is closed, and the group's record says so", async () => {
-  const h = resolveHarness(threadAt());
+  const h = await resolveHarness(threadAt());
   const r = await h.send({ group_id: 1, thread_id: "PRRT_x", note: "guarded it, test at pr.test.ts:40" });
   expect(r.status).toBe(200);
   expect(h.calls).toEqual(["locate", "resolve"]);
-  const note = h.db
-    .query<{ author: string; body: string }, []>("SELECT author, body FROM event WHERE kind = 'note'")
-    .get()!;
-  expect(note).toEqual({
+  expect(await oneEvent(h, "note")).toEqual({
     author: "engineer",
     body: "resolved review thread on src/api/orch/pr.ts: guarded it, test at pr.test.ts:40",
   });
 });
 
 test("resolve refuses another project's group, and a group with no pull request", async () => {
-  const h = resolveHarness(threadAt());
+  const h = await resolveHarness(threadAt());
   const other = await h.send({ group_id: 2, thread_id: "PRRT_x" });
   expect(other.status).toBe(403);
   expect(await other.text()).toContain("not your project");
 
-  h.db.run("UPDATE grp SET pr_number = NULL WHERE id = 1");
+  await h.db.update(grp).set({ pr_number: null }).where(eq(grp.id, 1));
   const none = await h.send({ group_id: 1, thread_id: "PRRT_x" });
   expect(none.status).toBe(422);
   expect(await none.text()).toContain("no pull request open");
@@ -360,7 +359,7 @@ test("resolve refuses another project's group, and a group with no pull request"
 test("an id that names no review thread is a refusal, not a resolve", async () => {
   // `node(id:)` answers null for an id of another type, which is what a
   // hallucinated or stale id looks like.
-  const h = resolveHarness({ data: { node: null } });
+  const h = await resolveHarness({ data: { node: null } });
   const r = await h.send({ group_id: 1, thread_id: "PRRT_nope" });
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("no review thread with id PRRT_nope");

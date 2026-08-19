@@ -81,7 +81,7 @@ test("drift is reported with the line to paste, not a description of it", async 
   process.env.OPENSANDBOX_CONFIG = path;
   try {
     const checks = await preflight({
-      db: openMemory(),
+      db: await openMemory(),
       sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
       skillsDir: "/Users/me/.orch-cache/skills",
       cacheDirs: { "/root/.bun/install/cache": "/Users/me/.orch-cache/bun" },
@@ -97,7 +97,7 @@ test("drift is reported with the line to paste, not a description of it", async 
     );
 
     const ok = await preflight({
-      db: openMemory(),
+      db: await openMemory(),
       sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
       skillsDir: "/var/tmp/orch-cache/skills",
       probe: () => false,
@@ -240,9 +240,9 @@ test("every shape of a local address is startable, including the IPv6 loopback",
  * the entire timeout before saying "cannot connect" — true, and not the reason.
  */
 
-function waiting(dataDir: string, log?: string) {
+async function waiting(dataDir: string, log?: string) {
   if (log !== undefined) writeFileSync(join(dataDir, "opensandbox-server.log"), log);
-  const ctx = testContext();
+  const ctx = await testContext();
   ctx.config = { ...ctx.config, dataDir };
   return ctx;
 }
@@ -251,7 +251,7 @@ const never = async () => ({ kind: "none", why: "Unable to connect" }) as const;
 
 test("a server that dies on its config is reported with what it printed, not with our probe", async () => {
   const dir = tempDir("orch-srv-");
-  const ctx = waiting(dir, "pydantic_core.ValidationError: 1 validation error for AppConfig\n");
+  const ctx = await waiting(dir, "pydantic_core.ValidationError: 1 validation error for AppConfig\n");
   const slept: number[] = [];
 
   const up = await waitUp(ctx, { exited: Promise.resolve(1) }, HERE, "k", 45_000, {
@@ -270,7 +270,7 @@ test("a server that dies on its config is reported with what it printed, not wit
 });
 
 test("a process that died silently says that, rather than leaving a blank where the log goes", async () => {
-  const ctx = waiting(tempDir("orch-srv-"));
+  const ctx = await waiting(tempDir("orch-srv-"));
 
   const up = await waitUp(ctx, { exited: Promise.resolve(2) }, HERE, "k", 45_000, {
     probe: never,
@@ -289,7 +289,7 @@ test("a server that never answers gives up at the deadline and says how long it 
   // `sleep` is injected — so this test costs whatever deadline it is given. 600ms
   // is the cheapest one that still rounds to the "等了 1 秒" below, and it was
   // 1200ms: the same two assertions for twice the wall clock.
-  const ctx = waiting(tempDir("orch-srv-"), "Address already in use\n");
+  const ctx = await waiting(tempDir("orch-srv-"), "Address already in use\n");
   let probes = 0;
 
   const up = await waitUp(ctx, { exited: new Promise<number>(() => {}) }, HERE, "k", 600, {
@@ -309,7 +309,7 @@ test("a server that never answers gives up at the deadline and says how long it 
 test("a server holding somebody else's key is reported as that, not as unreachable", async () => {
   // The sentence this exists to stop: "起来了但驱动不了：Unable to connect",
   // which describes neither of the two things that were true.
-  const ctx = waiting(tempDir("orch-srv-"));
+  const ctx = await waiting(tempDir("orch-srv-"));
 
   const up = await waitUp(ctx, { exited: Promise.resolve(0) }, HERE, "k", 5000, {
     probe: async () => ({ kind: "auth" }),
@@ -321,7 +321,7 @@ test("a server holding somebody else's key is reported as that, not as unreachab
 });
 
 test("a server that comes up on a later probe is up, and the wait ends there", async () => {
-  const ctx = waiting(tempDir("orch-srv-"));
+  const ctx = await waiting(tempDir("orch-srv-"));
   let n = 0;
 
   const up = await waitUp(ctx, { exited: new Promise<number>(() => {}) }, HERE, "k", 10_000, {

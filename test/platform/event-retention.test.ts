@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
+import { asc } from "drizzle-orm";
 import { trimEvents } from "../../src/platform/persistence/event-bus.ts";
-import { openMemory } from "../../src/platform/persistence/database.ts";
+import { type DB, openMemory } from "../../src/platform/persistence/database.ts";
+import { event } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 
 /**
@@ -12,30 +14,29 @@ import * as fx from "../support/factories.ts";
 const NOW = 1_800_000_000_000;
 const WEEK = 7 * 24 * 60 * 60 * 1_000;
 
-function seed() {
-  const db = openMemory();
+async function seed() {
+  const db = await openMemory();
+  const f = fx.on(db);
   const old = NOW - WEEK - 1;
   for (const kind of ["say", "boss_say", "note", "escalation", "state_change", "tool_summary"]) {
-    fx.event.insert(db, { author: "a", kind, body: `old ${kind}`, at: old });
-    fx.event.insert(db, { author: "a", kind, body: `fresh ${kind}`, at: NOW });
+    await f.event.create({ author: "a", kind, body: `old ${kind}`, at: old });
+    await f.event.create({ author: "a", kind, body: `fresh ${kind}`, at: NOW });
   }
   return db;
 }
 
-const kindsLeft = (db: ReturnType<typeof openMemory>) =>
-  db
-    .query<{ kind: string; body: string }, []>("SELECT kind, body FROM event ORDER BY kind, at, seq")
-    .all()
+const kindsLeft = async (db: DB) =>
+  (await db.select({ body: event.body }).from(event).orderBy(asc(event.kind), asc(event.at), asc(event.seq)))
     .map((row) => row.body)
     .toSorted();
 
-test("what the boss and the agents said is kept; what the machine said about it is not", () => {
-  const db = seed();
-  const dropped = trimEvents(db, WEEK, NOW);
+test("what the boss and the agents said is kept; what the machine said about it is not", async () => {
+  const db = await seed();
+  const dropped = await trimEvents(db, WEEK, NOW);
 
   // Deleting a conversation row moves an agent's unread cursor past a message
   // nobody read, and loses the boss's own words — those are the record.
-  expect(kindsLeft(db)).toEqual(
+  expect(await kindsLeft(db)).toEqual(
     [
       "fresh boss_say",
       "fresh escalation",
@@ -50,12 +51,10 @@ test("what the boss and the agents said is kept; what the machine said about it 
     ].toSorted(),
   );
   expect(dropped).toBe(2);
-  db.close();
 });
 
-test("retention is idempotent, so a heartbeat every 30 seconds is not a rewrite", () => {
-  const db = seed();
-  expect(trimEvents(db, WEEK, NOW)).toBe(2);
-  expect(trimEvents(db, WEEK, NOW)).toBe(0);
-  db.close();
+test("retention is idempotent, so a heartbeat every 30 seconds is not a rewrite", async () => {
+  const db = await seed();
+  expect(await trimEvents(db, WEEK, NOW)).toBe(2);
+  expect(await trimEvents(db, WEEK, NOW)).toBe(0);
 });

@@ -10,18 +10,18 @@ import { testContext } from "../support/test-context.ts";
  * existed had nowhere to be.
  */
 
-const ctx = (out: string[] = []) => {
-  const ctx = testContext();
+const ctx = async (out: string[] = []) => {
+  const ctx = await testContext();
   ctx.bus.subscribe((frame) => {
     if (frame.type === "live") out.push(frame.body);
   });
   return ctx;
 };
 
-test("a line is on the feed and in the buffer, and the buffer is capped", () => {
+test("a line is on the feed and in the buffer, and the buffer is capped", async () => {
   clearSandboxLog(1);
   const said: string[] = [];
-  const c = ctx(said);
+  const c = await ctx(said);
   sandboxLog(c.bus, 1, "cmd", "git clone --progress x /work");
   for (let i = 0; i < 600; i++) sandboxLog(c.bus, 1, "out", `line ${i}`);
   sandboxLog(c.bus, 1, "end", "ok");
@@ -36,9 +36,9 @@ test("a line is on the feed and in the buffer, and the buffer is capped", () => 
   expect(kept.at(-2)).toMatchObject({ kind: "out", text: "line 599" });
 });
 
-test("a rebuilt container starts an empty log", () => {
+test("a rebuilt container starts an empty log", async () => {
   clearSandboxLog(2);
-  sandboxLog(ctx().bus, 2, "out", "from the container that is now gone");
+  sandboxLog((await ctx()).bus, 2, "out", "from the container that is now gone");
   expect(sandboxLines(2)).toHaveLength(1);
   clearSandboxLog(2);
   expect(sandboxLines(2)).toEqual([]);

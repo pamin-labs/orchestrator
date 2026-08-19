@@ -18,6 +18,8 @@ import {
   type Ask,
 } from "../../src/mech/knowledge/pageindex.ts";
 import { costReport } from "../../src/mech/ops/cost.ts";
+import { count, eq } from "drizzle-orm";
+import { agent, event, grp, note } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { z } from "zod";
@@ -112,22 +114,23 @@ test("a navigator that finds nothing relevant says so instead of guessing", asyn
 });
 
 test("the tree survives a round trip through the note it lives in", async () => {
-  const db = openMemory();
-  fx.project.insert(db, { name: "p" });
+  const db = await openMemory();
+  await fx.on(db).project.create({ name: "p" });
   const { tree } = await summarise(skeleton(FILES), dirRead(repo()), async () => "s");
-  saveTree(db, 1, tree);
-  saveTree(db, 1, tree);
-  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'pageindex'").get()!.c).toBe(1);
-  expect(loadTree(db, 1)!["src/mech/gate.ts"]!.summary).toBe("s");
+  await saveTree(db, 1, tree);
+  await saveTree(db, 1, tree);
+  expect((await db.select({ c: count() }).from(note).where(eq(note.kind, "pageindex")))[0]!.c).toBe(1);
+  expect((await loadTree(db, 1))!["src/mech/gate.ts"]!.summary).toBe("s");
 });
 
 test("journals and retros are leaves in the same tree as the code", async () => {
-  const db = openMemory();
-  fx.project.insert(db, { name: "p" });
-  const g = fx.runningGrp.insert(db, { project_id: 1, name: "g1" });
-  fx.note.insert(db, { grp_id: g.id, kind: "retro", body: "the flicker was the key, not the diffing" });
+  const db = await openMemory();
+  const f = fx.on(db);
+  await f.project.create({ name: "p" });
+  const g = await f.runningGrp.create({ project_id: 1, name: "g1" });
+  await f.note.create({ grp_id: g.id, kind: "retro", body: "the flicker was the key, not the diffing" });
 
-  const notes = noteLeaves(db, 1);
+  const notes = await noteLeaves(db, 1);
   expect(notes.ids).toEqual(["notes/grp-1/retro/1"]);
 
   const { tree } = await summarise(skeleton(notes.ids), notes.read, async (p) =>
@@ -154,38 +157,38 @@ test("what the index spends shows up in the cost report", async () => {
   // is not a turn, and `costReport` reads turns. It is charged to a standing
   // `indexer` row rather than to the Librarian, whose turns carry a full cached
   // prefix and a session — mixing the two makes "librarian took 4M" unusable.
-  const db = openMemory();
-  fx.project.insert(db, { name: "p" });
-  const ctx = testContext({ db });
+  const db = await openMemory();
+  await fx.on(db).project.create({ name: "p" });
+  const ctx = await testContext({ db });
   const spec = { runtime: "codex", model: "gpt-5.6-luna" };
 
-  chargeIndex(ctx, 1, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1, thinking: 0 });
-  chargeIndex(ctx, 1, spec, { input: 10, output: 2, cacheRead: 0, cacheCreate: 0, thinking: 0 });
+  await chargeIndex(ctx, 1, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1, thinking: 0 });
+  await chargeIndex(ctx, 1, spec, { input: 10, output: 2, cacheRead: 0, cacheCreate: 0, thinking: 0 });
 
-  const report = costReport(db);
+  const report = await costReport(db);
   expect(report.byRole.find((r) => r.label === "indexer")?.tokens).toBe(138);
   expect(report.byRuntime.find((r) => r.label === "codex")?.tokens).toBe(138);
   // One row per project, not one per call.
-  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM agent WHERE role = 'indexer'").get()!.n).toBe(1);
+  expect((await db.select({ n: count() }).from(agent).where(eq(agent.role, "indexer")))[0]!.n).toBe(1);
   // And the hourly burn chart reads the events, which need the same meta shape a
   // turn emits or the provider split guesses from the model name.
-  const ev = db.query<{ meta_json: string }, []>("SELECT meta_json FROM event WHERE author = 'indexer' LIMIT 1").get()!;
-  expect(UsageMeta.parse(JSON.parse(ev.meta_json)).runtime).toBe("codex");
+  const [ev] = await db.select({ meta_json: event.meta_json }).from(event).where(eq(event.author, "indexer")).limit(1);
+  expect(UsageMeta.parse(ev!.meta_json).runtime).toBe("codex");
 });
 
-test("a call that reported no usage is not charged", () => {
+test("a call that reported no usage is not charged", async () => {
   // Missing numbers must never fail the index, and a zero row would be a lie in
   // the report rather than an absence.
-  const db = openMemory();
-  fx.project.insert(db, { name: "p" });
-  const ctx = testContext({ db });
-  chargeIndex(
+  const db = await openMemory();
+  await fx.on(db).project.create({ name: "p" });
+  const ctx = await testContext({ db });
+  await chargeIndex(
     ctx,
     1,
     { runtime: "codex", model: "m" },
     { input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 },
   );
-  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM agent").get()!.n).toBe(0);
+  expect((await db.select({ n: count() }).from(agent))[0]!.n).toBe(0);
 });
 
 test("Codex output keeps the last valid message and usage in one noisy stream", () => {
@@ -318,25 +321,27 @@ test("how far and how wide the walk goes is config, not a literal inside it", as
   expect(WALK).toEqual({ depth: 3, width: 4 });
 });
 
-test("a requirement's own retrieval counts against its budget", () => {
+test("a requirement's own retrieval counts against its budget", async () => {
   // It did not. Index spend landed on the `indexer` agent row alone, so a group
   // could ask `orch ctx query` on every turn and its `spent_tokens` — the number
   // `sliceBudgetTokens` stops a runaway with — never moved. The most frequent
   // model call in the system was the one the budget could not see.
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
-  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
-  const ctx = testContext({ db });
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  const g = await f.runningGrp.create({ project_id: p.id, name: "g1" });
+  const ctx = await testContext({ db });
   const spec = { runtime: "codex", model: "gpt-5.6-luna" };
+  const spent = async () => (await db.select({ t: grp.spent_tokens }).from(grp))[0]?.t;
 
-  chargeIndex(ctx, p.id, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1, thinking: 0 }, g.id);
-  expect(db.query<{ t: number }, []>("SELECT spent_tokens AS t FROM grp").get()?.t).toBe(126);
+  await chargeIndex(ctx, p.id, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1, thinking: 0 }, g.id);
+  expect(await spent()).toBe(126);
 
   // The rebuild belongs to no requirement: it is a project-scoped pass on a timer,
   // and charging it to whichever group happened to be open would be a wrong number
   // rather than a missing one.
-  chargeIndex(ctx, p.id, spec, { input: 10, output: 2, cacheRead: 0, cacheCreate: 0, thinking: 0 });
-  expect(db.query<{ t: number }, []>("SELECT spent_tokens AS t FROM grp").get()?.t).toBe(126);
+  await chargeIndex(ctx, p.id, spec, { input: 10, output: 2, cacheRead: 0, cacheCreate: 0, thinking: 0 });
+  expect(await spent()).toBe(126);
   // Both still reach the project-level total either way.
-  expect(costReport(db).byRole.find((r) => r.label === "indexer")?.tokens).toBe(138);
+  expect((await costReport(db)).byRole.find((r) => r.label === "indexer")?.tokens).toBe(138);
 });

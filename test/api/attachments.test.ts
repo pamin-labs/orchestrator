@@ -1,19 +1,18 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { makeApp } from "../../src/composition/api.ts";
-import type { Ctx } from "../../src/mech/ctx.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { imagePaths } from "../../src/mech/util/attachment-text.ts";
-import { Bus } from "../../src/platform/persistence/event-bus.ts";
-import { openMemory } from "../../src/platform/persistence/database.ts";
 import { loadConfig, loadRoles } from "../../src/platform/config/load.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
+import { event } from "../../src/platform/persistence/schema.ts";
 import { ATTACH_DIR, stageAttachments, type ExecDeps } from "../../src/application/executor.ts";
 import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { tempDir } from "../support/temp.ts";
+import { testContext } from "../support/test-context.ts";
 
 /**
  * The boss attaches a screenshot and the agent has to be able to open it.
@@ -26,28 +25,21 @@ import { tempDir } from "../support/temp.ts";
  * as the container had been the boundary.
  */
 
-function harness() {
+async function harness() {
   const dir = tempDir("orch-attach-");
   mkdirSync(join(dir, "attachments"), { recursive: true });
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
-  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
   const sandbox = fakeSandbox();
   const cfg = { ...loadConfig(), dataDir: dir };
-  const ctx: Ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
-    sandbox,
-    waiters: new Map(),
-    config: cfg,
-  };
+  const ctx = await testContext({ sandbox, config: cfg });
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p" });
+  await f.runningGrp.create({ project_id: p.id, name: "g1" });
   const deps: ExecDeps = { ctx, cfg, roles: loadRoles("roles") };
   return { dir, ctx, sandbox, deps };
 }
 
 test("an attachment is copied into the sandbox and the prompt points at the copy", async () => {
-  const h = harness();
+  const h = await harness();
   const host = join(h.dir, "attachments", "20260815-0-shot.png");
   writeFileSync(host, "PNGDATA");
 
@@ -67,7 +59,7 @@ test("an attachment is copied into the sandbox and the prompt points at the copy
 });
 
 test("only paths under the attachments directory are touched", async () => {
-  const h = harness();
+  const h = await harness();
   // An agent's own bullet list, and a boss path pointing somewhere else entirely.
   // Parsing the `附件（路径如下）：` header instead would make both of these
   // candidates for being copied into the container.
@@ -78,14 +70,17 @@ test("only paths under the attachments directory are touched", async () => {
 });
 
 test("an attachment that cannot be staged is said out loud", async () => {
-  const h = harness();
+  const h = await harness();
   const missing = join(h.dir, "attachments", "gone.png");
   const prompt = `附件（路径如下）：\n- ${missing} (image)`;
   await stageAttachments(h.deps, { grp: 1 }, prompt, 1);
 
-  const said = h.ctx.db
-    .query<{ body: string }, []>("SELECT body FROM event WHERE kind = 'state_change' ORDER BY seq DESC LIMIT 1")
-    .get();
+  const [said] = await h.ctx.db
+    .select({ body: event.body })
+    .from(event)
+    .where(eq(event.kind, "state_change"))
+    .orderBy(desc(event.seq))
+    .limit(1);
   // Silence is what made the original bug survive; a broken attachment has to be
   // a line the boss can see.
   expect(said?.body).toContain("gone.png");
@@ -103,8 +98,8 @@ const Staged = z.object({
   files: z.array(z.object({ name: z.string(), path: z.string(), type: z.string(), size: z.number() })),
 });
 
-function localHarness() {
-  const h = harness();
+async function localHarness() {
+  const h = await harness();
   const app = makeApp(h.ctx);
   const post = (paths: Json) =>
     app(
@@ -118,7 +113,7 @@ function localHarness() {
 }
 
 test("an empty pick is refused rather than answered with an empty list", async () => {
-  const h = localHarness();
+  const h = await localHarness();
   for (const paths of [[], ["   "]]) {
     const r = await h.post(paths);
     expect(r.status).toBe(422);
@@ -127,14 +122,14 @@ test("an empty pick is refused rather than answered with an empty list", async (
 });
 
 test("a path that cannot be read names itself in the refusal", async () => {
-  const h = localHarness();
+  const h = await localHarness();
   const r = await h.post([join(h.dir, "not-here.png")]);
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("not-here.png");
 });
 
 test("a picked file is copied under the data directory, typed and sized", async () => {
-  const h = localHarness();
+  const h = await localHarness();
   const src = join(h.dir, "shot.png");
   writeFileSync(src, "PNGDATA");
 
@@ -152,7 +147,7 @@ test("a picked file is copied under the data directory, typed and sized", async 
 });
 
 test("a picked directory is one attachment, copied whole", async () => {
-  const h = localHarness();
+  const h = await localHarness();
   const src = join(h.dir, "spec");
   mkdirSync(join(src, "img"), { recursive: true });
   writeFileSync(join(src, "README.md"), "read me");

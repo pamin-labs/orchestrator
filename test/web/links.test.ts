@@ -31,7 +31,7 @@ const group = (prNumber: number | null): Group => ({
   name: "g",
   branch: null,
   status: "PR_OPEN",
-  owns_json: "[]",
+  owns_json: [],
   budget_tokens: null,
   spent_tokens: 0,
   pr_number: prNumber,

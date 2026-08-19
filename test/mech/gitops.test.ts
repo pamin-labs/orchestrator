@@ -4,6 +4,7 @@ import { writeFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { baseBranch, LINK_AGENTS_MD } from "../../src/mech/git/checkout.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import { project } from "../../src/platform/persistence/schema.ts";
 import type { Github } from "../../src/mech/git/github.ts";
 import {
   baseRef,
@@ -334,8 +335,8 @@ test(
     // is no checkout on this machine to ask. The drift itself still has to be
     // caught — a default branch renamed on the remote leaves every clone, rebase
     // and diff resolving against a ref that is not there.
-    const db = openMemory();
-    fx.project.insert(db, { name: "p", repo_path: "acme/p" });
+    const db = await openMemory();
+    await fx.on(db).project.create({ name: "p", repo_path: "acme/p" });
     let branch = "main";
     const gh: Github = {
       remaining: () => null,
@@ -345,23 +346,18 @@ test(
         data: schema.parse({ default_branch: branch, full_name: "acme/p" }),
       }),
     };
-    const ctx = testContext({ db, gh });
+    const ctx = await testContext({ db, gh });
 
     // Resolved once, then stored: the diff baseline has to mean the same thing on
     // the day a slice was cut and the day the boss reads it.
     expect(await baseBranch(ctx, 1)).toBe("main");
-    expect(db.query<{ b: string | null }, []>("SELECT base_branch AS b FROM project").get()!.b).toBe("main");
+    expect((await db.select({ b: project.base_branch }).from(project))[0]!.b).toBe("main");
     // Learning it the first time is not a change, so it is not announced.
-    expect(ctx.bus.since(0)).toEqual([]);
+    expect(await ctx.bus.since(0)).toEqual([]);
 
     branch = "mainline";
     expect(await baseBranch(ctx, 1)).toBe("mainline");
-    expect(
-      ctx.bus
-        .since(0)
-        .map((event) => event.body)
-        .join(" "),
-    ).toContain("mainline");
+    expect((await ctx.bus.since(0)).map((event) => event.body).join(" ")).toContain("mainline");
 
     // GitHub unreachable keeps what is stored: resetting a project that develops
     // on `develop` to `main` because the network blinked would repoint every diff.
@@ -369,7 +365,7 @@ test(
       remaining: () => null,
       request: async () => ({ ok: false, status: 0, bucket: "transient", message: "x" }),
     };
-    const offline = testContext({ ...ctx, gh: unavailable });
+    const offline = await testContext({ ...ctx, gh: unavailable });
     expect(await baseBranch(offline, 1)).toBe("mainline");
   },
   GIT_IO,
@@ -383,8 +379,8 @@ test(
     // `GET /repos/old/name` — which is why everything kept working and nothing
     // said anything — but a POST to open a pull request does not survive a
     // redirect, and the old path only works until somebody claims the freed name.
-    const db = openMemory();
-    fx.project.insert(db, { name: "p", repo_path: "Old-Org/p", remote: "https://github.com/Old-Org/p.git" });
+    const db = await openMemory();
+    await fx.on(db).project.create({ name: "p", repo_path: "Old-Org/p", remote: "https://github.com/Old-Org/p.git" });
     const gh: Github = {
       remaining: () => null,
       request: async (_method, _path, schema) => ({
@@ -397,19 +393,14 @@ test(
         }),
       }),
     };
-    const ctx = testContext({ db, gh });
+    const ctx = await testContext({ db, gh });
 
     await baseBranch(ctx, 1);
-    const row = db.query<{ p: string; r: string }, []>("SELECT repo_path AS p, remote AS r FROM project").get()!;
-    expect(row.p).toBe("new-org/p");
+    const [row] = await db.select({ p: project.repo_path, r: project.remote }).from(project);
+    expect(row!.p).toBe("new-org/p");
     // The remote too, or the clone still fetches by the old URL.
-    expect(row.r).toBe("https://github.com/new-org/p.git");
-    expect(
-      ctx.bus
-        .since(0)
-        .map((event) => event.body)
-        .join(" "),
-    ).toContain("new-org/p");
+    expect(row!.r).toBe("https://github.com/new-org/p.git");
+    expect((await ctx.bus.since(0)).map((event) => event.body).join(" ")).toContain("new-org/p");
   },
   GIT_IO,
 );

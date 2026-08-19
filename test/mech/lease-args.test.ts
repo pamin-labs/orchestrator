@@ -260,15 +260,18 @@ test("the refusal still says what to write instead", () => {
  * than unguarded. Mutation put the fallback to a permissive schema and nothing
  * failed — `loadResource` had no test at all.
  */
-test("a resource whose schema column is corrupt refuses every argument", () => {
-  const db = openMemory();
-  fx.resource.insert(db, {
+test("a resource whose schema column is corrupt refuses every argument", async () => {
+  const db = await openMemory();
+  // `jsonb` rejects unparseable text at the column, so corrupt now means what it
+  // can still mean: well-formed JSON that is not a schema. The fallback under
+  // test is the same one — `valueOr` returning `{}` rather than throwing.
+  await fx.on(db).resource.create({
     name: "gate",
     template: "bun run {target}",
-    arg_schema_json: "{ this is not json",
+    arg_schema_json: { target: "a string, not an arg spec" },
   });
 
-  const def = loadResource(db, "gate")!;
+  const def = (await loadResource(db, "gate"))!;
   expect(def.argSchema).toEqual({});
   // An empty schema means no argument is declared, so any argument is unknown.
   expect(resolveLease(def, { target: "release" }).ok).toBe(false);
@@ -283,8 +286,8 @@ test("a resource whose schema column is corrupt refuses every argument", () => {
  * An agent naming a resource that does not exist is an ordinary mistake — the agent
  * reads the refusal and picks another — and the caller turns this into that message.
  */
-test("an unknown resource is absent rather than an error", () => {
-  expect(loadResource(openMemory(), "nope")).toBeNull();
+test("an unknown resource is absent rather than an error", async () => {
+  expect(await loadResource(await openMemory(), "nope")).toBeNull();
 });
 
 /**
@@ -294,10 +297,10 @@ test("an unknown resource is absent rather than an error", () => {
  * has neither key — a `cwd: null` reaching the runner would be a directory named
  * "null" rather than the default.
  */
-test("unset optional columns do not become null values", () => {
-  const db = openMemory();
-  fx.resource.insert(db, { name: "plain", template: "true", arg_schema_json: "{}" });
-  const def = loadResource(db, "plain")!;
+test("unset optional columns do not become null values", async () => {
+  const db = await openMemory();
+  await fx.on(db).resource.create({ name: "plain", template: "true", arg_schema_json: {} });
+  const def = (await loadResource(db, "plain"))!;
   expect("cwd" in def).toBe(false);
   expect("errorRegex" in def).toBe(false);
   expect(def.tags).toEqual([]);

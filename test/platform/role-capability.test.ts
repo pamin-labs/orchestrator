@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { desc, eq } from "drizzle-orm";
+import type { Ctx } from "../../src/mech/ctx.ts";
+import { job, slice } from "../../src/platform/persistence/schema.ts";
 import { handToQa } from "../../src/mech/flow/review.ts";
 import { checkCapabilities, loadConfig, loadRoles, roleWith } from "../../src/platform/config/load.ts";
 import { AgentTurnPayloadSchema } from "../../src/platform/scheduling/scheduler.ts";
@@ -26,11 +29,15 @@ function rolesDir(...defs: { name: string; capabilities: string[] }[]): string {
 }
 
 /** The role the newest `agent_turn` job was enqueued for. */
-function enqueuedRole(ctx: ReturnType<typeof testContext>): string | undefined {
-  const row = ctx.db
-    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn' ORDER BY id DESC")
-    .get();
-  return row ? AgentTurnPayloadSchema.parse(JSON.parse(row.payload_json)).role : undefined;
+async function enqueuedRole(ctx: Ctx): Promise<string | undefined> {
+  // `payload_json` is jsonb, so it arrives parsed; the schema is still what
+  // decides whether what arrived is a turn payload.
+  const [row] = await ctx.db
+    .select({ payload: job.payload_json })
+    .from(job)
+    .where(eq(job.kind, "agent_turn"))
+    .orderBy(desc(job.id));
+  return row ? AgentTurnPayloadSchema.parse(row.payload).role : undefined;
 }
 
 /**
@@ -41,16 +48,17 @@ function enqueuedRole(ctx: ReturnType<typeof testContext>): string | undefined {
  * this ever needs a code change to pass, the comment above `RoleDefSchema` is a
  * lie again.
  */
-test("a role that declares review_slice is dispatched without touching the flow", () => {
-  const ctx = testContext({ roles: loadRoles(rolesDir({ name: "composer", capabilities: ["review_slice"] })) });
-  const p = fx.project.insert(ctx.db, { name: "p" });
-  const g = fx.runningGrp.insert(ctx.db, { project_id: p.id });
-  const s = fx.slice.insert(ctx.db, { grp_id: g.id, status: "gate" });
+test("a role that declares review_slice is dispatched without touching the flow", async () => {
+  const ctx = await testContext({ roles: loadRoles(rolesDir({ name: "composer", capabilities: ["review_slice"] })) });
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p" });
+  const g = await f.runningGrp.create({ project_id: p.id });
+  const s = await f.slice.create({ grp_id: g.id, status: "gate" });
 
-  handToQa({ ctx, cfg: loadConfig() }, s.id);
+  await handToQa({ ctx, cfg: loadConfig() }, s.id);
 
-  expect(enqueuedRole(ctx)).toBe("composer");
-  expect(ctx.db.query<{ status: string }, []>("SELECT status FROM slice").get()?.status).toBe("qa");
+  expect(await enqueuedRole(ctx)).toBe("composer");
+  expect((await ctx.db.select({ status: slice.status }).from(slice))[0]?.status).toBe("qa");
 });
 
 test("a capability no role declares is a named error, not an undefined role", () => {

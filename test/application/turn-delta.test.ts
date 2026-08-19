@@ -1,3 +1,4 @@
+import { JsonValue } from "../../src/contracts/json.ts";
 import { expect, test } from "bun:test";
 import { buildTurnDelta } from "../../src/application/turn/delta.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
@@ -20,18 +21,21 @@ const agent = { id: 1, project_id: 1, role: "engineer" };
 type TurnPayload = Job<"agent_turn">["payload"];
 
 async function delta(payload: TurnPayload, opts: { sliceId?: boolean } = {}) {
-  const ctx = testContext({ sandbox: fakeSandbox() });
-  const p = fx.project.insert(ctx.db, { name: "p" });
-  const g = fx.grp.insert(ctx.db, { project_id: p.id, name: "g" });
-  fx.agent.insert(ctx.db, { project_id: p.id, grp_id: g.id, token: "t" });
-  const slice = fx.slice.insert(ctx.db, { grp_id: g.id, seq: 1, title: "add the menu" });
+  const ctx = await testContext({ sandbox: fakeSandbox() });
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p" });
+  const g = await f.grp.create({ project_id: p.id, name: "g" });
+  await f.agent.create({ project_id: p.id, grp_id: g.id, token: "t" });
+  const slice = await f.slice.create({ grp_id: g.id, seq: 1, title: "add the menu" });
   const job: Job<"agent_turn"> = {
     id: 1,
     kind: "agent_turn",
     grp_id: g.id,
     agent_id: null,
     slice_id: opts.sliceId ? slice.id : null,
-    payload_json: JSON.stringify(payload),
+    // Through the contract, as the scheduler does: an optional field is
+    // `undefined` in TypeScript and absent in JSON, and the column takes JSON.
+    payload_json: JsonValue.parse(payload),
     priority: 5,
     state: "running",
     payload,

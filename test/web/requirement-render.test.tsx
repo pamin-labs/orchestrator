@@ -13,7 +13,7 @@ const group = (status: Group["status"], over: Partial<Group> = {}): Group => ({
   name: "ship it",
   branch: "feature/ship",
   status,
-  owns_json: '["src/**"]',
+  owns_json: ["src/**"],
   budget_tokens: 1000,
   spent_tokens: 120,
   pr_number: null,
@@ -213,8 +213,8 @@ test("each slice row says where it is in its own words", () => {
   st.slices.push(
     slice({ id: 1, seq: 1, title: "First", status: "accepted", gates_json: '{"qa":"pass"}', awaiting_at: null }),
     slice({ id: 2, seq: 2, title: "Second", status: "rejected", gates_json: '{"gate":"fail"}', awaiting_at: null }),
-    slice({ id: 3, seq: 3, title: "Third", status: "running", gates_json: "{}", awaiting_at: null }),
-    slice({ id: 4, seq: 4, title: "Fourth", status: "pending", gates_json: "{}", awaiting_at: null }),
+    slice({ id: 3, seq: 3, title: "Third", status: "running", gates_json: {}, awaiting_at: null }),
+    slice({ id: 4, seq: 4, title: "Fourth", status: "pending", gates_json: {}, awaiting_at: null }),
   );
   st.agents.push({
     id: 5,

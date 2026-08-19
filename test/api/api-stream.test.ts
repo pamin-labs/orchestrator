@@ -1,13 +1,9 @@
 import { expect, test } from "bun:test";
 import { makeApp } from "../../src/composition/api.ts";
-import type { Ctx } from "../../src/mech/ctx.ts";
 import type { Frame } from "../../src/contracts/events.ts";
-import { Bus } from "../../src/platform/persistence/event-bus.ts";
-import { loadConfig } from "../../src/platform/config/load.ts";
-import { openMemory } from "../../src/platform/persistence/database.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { flushPending } from "../../src/api/panel/stream.ts";
 import * as fx from "../support/factories.ts";
+import { testContext } from "../support/test-context.ts";
 
 /**
  * Replay from a cursor, and the buffer that keeps a reconnect from seeing double.
@@ -54,18 +50,12 @@ test("nothing is flushed to a connection that has already gone", async () => {
 });
 
 test("the stream replays from the cursor the browser last saw", async () => {
-  const db = openMemory();
-  const ctx: Ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
-    waiters: new Map(),
-    config: loadConfig(),
-  };
-  const p = fx.project.insert(db, { name: "p", repo_path: "o/p" });
-  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  const ctx = await testContext();
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p", repo_path: "o/p" });
+  await f.runningGrp.create({ project_id: p.id, name: "g1" });
   for (const body of ["first", "second", "third"]) {
-    ctx.bus.emit({ grpId: 1, author: "orchestrator", kind: "note", body });
+    await ctx.bus.emit({ grpId: 1, author: "orchestrator", kind: "note", body });
   }
   const app = makeApp(ctx);
 

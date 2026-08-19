@@ -3,7 +3,9 @@ import type { ResourceExec } from "../../src/mech/lease.ts";
 
 /** These check ordering and reporting, never a real command. */
 const noExec: ResourceExec = async () => ({ code: 0, out: "" });
+import { eq, sql } from "drizzle-orm";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
+import { project } from "../../src/platform/persistence/schema.ts";
 import { gateState, gatesFor, recordGate, runGates, type RunGatesOptions } from "../../src/mech/gate.ts";
 import { projectConfig } from "../../src/mech/util/rows.ts";
 import { digestOutput } from "../../src/mech/lease.ts";
@@ -11,16 +13,17 @@ import type { Json } from "../../src/contracts/json.ts";
 import * as fx from "../support/factories.ts";
 import { tempDir } from "../support/temp.ts";
 
-function seed(gates: Json | undefined): DB {
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p", config_json: JSON.stringify({ gates }) });
-  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
-  fx.slice.insert(db, { grp_id: g.id, seq: 1, title: "S1", accept_spec: "tests pass" });
+async function seed(gates: Json | undefined): Promise<DB> {
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p", config_json: { gates } });
+  const g = await f.runningGrp.create({ project_id: p.id, name: "g1" });
+  await f.slice.create({ grp_id: g.id, seq: 1, title: "S1", accept_spec: "tests pass" });
   return db;
 }
 
 function resource(db: DB, name: string, errorRegex = "^(error|FAIL)") {
-  fx.resource.insert(db, { name, error_regex: errorRegex });
+  return fx.on(db).resource.create({ name, error_regex: errorRegex });
 }
 
 /** Fake runner so the tests do not depend on any real toolchain. */
@@ -36,15 +39,15 @@ const fakeRun = (script: Record<string, { code: number; out: string }>) =>
 
 const dataDir = () => tempDir("orch-gate-");
 
-test("gates come from project config, not from anything an agent can set", () => {
-  expect(gatesFor(seed(["test", "lint"]), 1)).toEqual(["test", "lint"]);
-  expect(gatesFor(seed("test"), 1)).toEqual([]);
-  expect(gatesFor(seed(["lint@ci"]), 1)).toEqual([]);
-  expect(gatesFor(seed(undefined), 1)).toEqual([]);
+test("gates come from project config, not from anything an agent can set", async () => {
+  expect(await gatesFor(await seed(["test", "lint"]), 1)).toEqual(["test", "lint"]);
+  expect(await gatesFor(await seed("test"), 1)).toEqual([]);
+  expect(await gatesFor(await seed(["lint@ci"]), 1)).toEqual([]);
+  expect(await gatesFor(await seed(undefined), 1)).toEqual([]);
 });
 
 test("no configured gates is a failure, not a free pass", async () => {
-  const db = seed([]);
+  const db = await seed([]);
   const out = await runGates({ db, projectId: 1, cwd: "/tmp", dataDir: dataDir(), sliceId: 1, exec: noExec });
   // A project with nothing deterministic to check has no floor under its LLM
   // reviewers, and silently passing would hide that.
@@ -53,9 +56,9 @@ test("no configured gates is a failure, not a free pass", async () => {
 });
 
 test("all gates passing is a pass", async () => {
-  const db = seed(["test", "lint"]);
-  resource(db, "test");
-  resource(db, "lint");
+  const db = await seed(["test", "lint"]);
+  await resource(db, "test");
+  await resource(db, "lint");
   const out = await runGates({
     db,
     projectId: 1,
@@ -70,8 +73,8 @@ test("all gates passing is a pass", async () => {
 });
 
 test("the first failure stops the run — later output would be noise", async () => {
-  const db = seed(["typecheck", "test", "lint"]);
-  for (const n of ["typecheck", "test", "lint"]) resource(db, n);
+  const db = await seed(["typecheck", "test", "lint"]);
+  for (const n of ["typecheck", "test", "lint"]) await resource(db, n);
   const out = await runGates({
     db,
     projectId: 1,
@@ -90,8 +93,8 @@ test("the first failure stops the run — later output would be noise", async ()
 });
 
 test("feedback carries the failing lines, never the whole log", async () => {
-  const db = seed(["test"]);
-  resource(db, "test");
+  const db = await seed(["test"]);
+  await resource(db, "test");
   const noise = Array.from({ length: 5000 }, (_, i) => `line ${i}`).join("\n");
   const out = await runGates({
     db,
@@ -115,44 +118,54 @@ test("feedback carries the failing lines, never the whole log", async () => {
 });
 
 test("an unknown gate resource fails loudly instead of being skipped", async () => {
-  const db = seed(["nope"]);
+  const db = await seed(["nope"]);
   const out = await runGates({ db, projectId: 1, cwd: "/tmp", dataDir: dataDir(), sliceId: 1, exec: noExec });
   expect(out.pass).toBe(false);
   expect(out.feedback).toContain("unknown gate resource nope");
 });
 
-test("gate verdicts merge into gates_json without clobbering other layers", () => {
-  const db = seed(["test"]);
-  recordGate(db, 1, "self", "pass");
-  recordGate(db, 1, "gate", "fail");
-  recordGate(db, 1, "gate", "pass");
-  expect(gateState(db, 1)).toEqual({ self: "pass", gate: "pass" });
+test("gate verdicts merge into gates_json without clobbering other layers", async () => {
+  const db = await seed(["test"]);
+  await recordGate(db, 1, "self", "pass");
+  await recordGate(db, 1, "gate", "fail");
+  await recordGate(db, 1, "gate", "pass");
+  expect(await gateState(db, 1)).toEqual({ self: "pass", gate: "pass" });
 });
 
-test("a project whose config lost a brace runs on defaults, not on nothing", () => {
+test("a project whose config is the wrong shape runs on defaults, not on nothing", async () => {
   // Six readers each wrote out their own SELECT, `?? "{}"`, try and catch — and
   // the catch is the load-bearing part: config_json is edited by the panel and by
   // agents, so a broken value must cost this project its overrides and not its
   // gates, its excludes, its shared paths and its sandbox all at once.
-  const db = openMemory();
-  fx.project.insert(db, { name: "p", config_json: '{"gates":["test"' });
-  expect(projectConfig(db, 1)).toEqual({});
-  expect(gatesFor(db, 1)).toEqual([]);
+  const db = await openMemory();
+  await fx.on(db).project.create({ name: "p" });
+
+  // The half-written brace this was built around no longer reaches the row:
+  // `jsonb` parses on the way in, so that half of the guard is the column's now.
+  const halfWritten = Promise.resolve(db.execute(sql`UPDATE project SET config_json = '{"gates":["test"'`));
+  // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
+  await expect(halfWritten).rejects.toThrow();
 
   // A JSON value that is not an object is the same answer: `[1,2]` has no keys
   // to read and `.gates` on it would be undefined either way, but a caller that
   // spreads the result must not get an array.
-  db.run("UPDATE project SET config_json = '[1,2]' WHERE id = 1");
-  expect(projectConfig(db, 1)).toEqual({});
+  await db
+    .update(project)
+    .set({ config_json: [1, 2] })
+    .where(eq(project.id, 1));
+  expect(await projectConfig(db, 1)).toEqual({});
 
-  db.run(`UPDATE project SET config_json = '{"gates":["test","lint",7]}' WHERE id = 1`);
-  expect(projectConfig(db, 1).gates).toBeUndefined();
-  expect(gatesFor(db, 1)).toEqual([]);
+  await db
+    .update(project)
+    .set({ config_json: { gates: ["test", "lint", 7] } })
+    .where(eq(project.id, 1));
+  expect((await projectConfig(db, 1)).gates).toBeUndefined();
+  expect(await gatesFor(db, 1)).toEqual([]);
 
   // No project, no row, no config — never a throw, because every one of the six
   // is called from a path that has only a nullable project id.
-  expect(projectConfig(db, null)).toEqual({});
-  expect(projectConfig(db, 999)).toEqual({});
+  expect(await projectConfig(db, null)).toEqual({});
+  expect(await projectConfig(db, 999)).toEqual({});
 });
 
 test("the rejection delta is the extracted errors, capped — not the tail of the log", async () => {
@@ -160,8 +173,8 @@ test("the rejection delta is the extracted errors, capped — not the tail of th
   // progress. Reading the tail instead sends the agent "ok 99" and never the
   // compiler error, and it retries blind; sending every extracted line instead
   // spends the retry's context on forty variations of one fact.
-  const db = seed(["test"]);
-  resource(db, "test");
+  const db = await seed(["test"]);
+  await resource(db, "test");
   const errors = Array.from({ length: 40 }, (_, i) => `error TS2345: dup${String(i).padStart(2, "0")}`);
   const noise = Array.from({ length: 100 }, (_, i) => `  ok ${i}`);
   const out = await runGates({

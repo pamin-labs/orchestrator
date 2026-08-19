@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
+import { count } from "drizzle-orm";
 import { makeApp } from "../../src/composition/api.ts";
 import { ErrorResponseSchema } from "../../src/contracts/protocol.ts";
 import { JSON_BODY_LIMIT } from "../../src/http/idempotency/store.ts";
 import { runtimeStatus } from "../../src/platform/observability/metrics.ts";
+import { span as spanTable } from "../../src/platform/persistence/schema.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -27,14 +29,14 @@ const oversized = (): string => {
 };
 
 test("an export past the shared JSON body limit is refused, not stored", async () => {
-  const ctx = testContext();
+  const ctx = await testContext();
   const body = oversized();
   expect(body.length).toBeGreaterThan(JSON_BODY_LIMIT);
 
   const response = await makeApp(ctx)(new Request(url, { method: "POST", headers: JSON_HEADERS, body }));
 
   expect(response.status).toBe(413);
-  expect(ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM span").get()!.c).toBe(0);
+  expect((await ctx.db.select({ c: count() }).from(spanTable))[0]?.c).toBe(0);
 });
 
 test("a shutting-down server refuses an export like any other write", async () => {
@@ -42,7 +44,7 @@ test("a shutting-down server refuses an export like any other write", async () =
   status.accepting = false;
 
   const response = await makeApp(
-    testContext(),
+    await testContext(),
     status,
   )(new Request(url, { method: "POST", headers: JSON_HEADERS, body: "{}" }));
 
@@ -51,7 +53,7 @@ test("a shutting-down server refuses an export like any other write", async () =
 });
 
 test("a cross-site browser export is refused like any other panel write", async () => {
-  const response = await makeApp(testContext())(
+  const response = await makeApp(await testContext())(
     new Request(url, {
       method: "POST",
       headers: { ...JSON_HEADERS, origin: "http://evil.example", "sec-fetch-site": "cross-site" },
@@ -66,7 +68,7 @@ test("an export needs no Idempotency-Key, because the table is what makes it ide
   // Every other mutating panel route 400s without one. An OTLP client cannot
   // send a fresh key per batch, and `INSERT OR IGNORE` on (trace_id, span_id)
   // means there is no second side effect for a key to protect.
-  const ctx = testContext();
+  const ctx = await testContext();
   const app = makeApp(ctx);
 
   const idea = await app(

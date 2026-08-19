@@ -3,7 +3,9 @@ import { expect, test } from "bun:test";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
-import { openMemory } from "../../src/platform/persistence/database.ts";
+import { count, eq, sql } from "drizzle-orm";
+import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
+import { usage_snapshot } from "../../src/platform/persistence/schema.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { pollClaudeUsage, pollUsage, rateLimitsIn, toRateLimit } from "../../src/mech/ops/subusage.ts";
@@ -33,7 +35,7 @@ const RESPONSE = {
  * these tests drive is a sandbox command, and `curl`'s answer is a body plus a
  * status line.
  */
-const ctx = (db: ReturnType<typeof openMemory>, answer = `${JSON.stringify(RESPONSE)}\n200`): Ctx => ({
+const ctx = (db: DB, answer = `${JSON.stringify(RESPONSE)}\n200`): Ctx => ({
   db,
   bus: new Bus(db),
   sched: new Scheduler(db, async () => {}),
@@ -62,72 +64,80 @@ test("a response without the windows produces nothing rather than zeroes", () =>
 });
 
 test("a fresh row is left alone until the poll interval is up", async () => {
-  const db = openMemory();
-  seedAuth(db);
+  const db = await openMemory();
+  await seedAuth(db);
   const now = 1_000_000_000;
-  fx.usageSnapshot.insert(db, { at: now });
+  await fx.on(db).usageSnapshot.create({ at: now });
   // No network call, so this also proves the interval is checked before the fetch:
   // the watchdog ticks every 30s and this endpoint is not ours to hammer.
   expect(await pollClaudeUsage(ctx(db), now + POLL_EVERY_MS - 1)).toBe(false);
 });
 
 test("a failed poll still costs the interval, so a bad endpoint is not hammered", async () => {
-  const db = openMemory();
-  seedAuth(db);
+  const db = await openMemory();
+  await seedAuth(db);
   const now = 2_000_000_000;
   // No token, no network, so this fails — and must still record the attempt. The
   // watchdog ticks every 30s, and stamping only on success meant a failing
   // endpoint got retried twice a minute. This one answers failure with 429.
   await pollClaudeUsage(ctx(db), now);
-  const row = db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'").get();
+  const [row] = await db
+    .select({ at: usage_snapshot.at })
+    .from(usage_snapshot)
+    .where(eq(usage_snapshot.runtime, "claude"));
   expect(row?.at).toBe(now);
   expect(await pollClaudeUsage(ctx(db), now + POLL_EVERY_MS - 1)).toBe(false);
 });
 
-test("a failed poll keeps the last good reading rather than blanking the header", () => {
-  const db = openMemory();
-  const good = JSON.stringify(toRateLimit(RESPONSE));
-  fx.usageSnapshot.insert(db, { json: good, at: 1 });
+test("a failed poll keeps the last good reading rather than blanking the header", async () => {
+  const db = await openMemory();
+  const good = toRateLimit(RESPONSE)!;
+  await fx.on(db).usageSnapshot.create({ json: { ...good }, at: 1 });
   // The window did not move because we could not ask; showing nothing would read
   // as "no data" when what we have is data from four minutes ago.
-  db.run(
-    `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', '{}', 2)
-     ON CONFLICT (runtime) DO UPDATE SET json = usage_snapshot.json, at = excluded.at`,
-  );
-  const row = db.query<{ json: string; at: number }, []>("SELECT json, at FROM usage_snapshot").get()!;
-  expect(row.at).toBe(2);
-  expect(StoredUsage.parse(JSON.parse(row.json)).weeklyPercent).toBe(65);
+  await db
+    .insert(usage_snapshot)
+    .values({ runtime: "claude", json: {}, at: 2 })
+    .onConflictDoUpdate({ target: usage_snapshot.runtime, set: { json: sql`${usage_snapshot.json}`, at: 2 } });
+  const [row] = await db.select().from(usage_snapshot);
+  expect(row!.at).toBe(2);
+  expect(StoredUsage.parse(row!.json).weeklyPercent).toBe(65);
 });
 
 test("only a subscription on the official endpoint gets a usage row", async () => {
-  const db = openMemory();
+  const db = await openMemory();
   const now = 3_000_000_000;
-  const row = () => db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'").get();
-  const stale = () => db.run("INSERT OR REPLACE INTO usage_snapshot (runtime, json, at) VALUES ('claude', '{}', 1)");
+  const row = async () =>
+    (await db.select({ at: usage_snapshot.at }).from(usage_snapshot).where(eq(usage_snapshot.runtime, "claude")))[0];
+  const stale = () =>
+    db
+      .insert(usage_snapshot)
+      .values({ runtime: "claude", json: {}, at: 1 })
+      .onConflictDoUpdate({ target: usage_snapshot.runtime, set: { json: {}, at: 1 } });
 
   // Billed per token: no window to run out of, and the row left over from before
   // the switch would keep showing a number nobody is spending against.
-  stale();
-  saveAuth(db, { runtime: "claude", mode: "api_key", secret: "sk-ant-x" });
+  await stale();
+  await saveAuth(db, { runtime: "claude", mode: "api_key", secret: "sk-ant-x" });
   expect(await pollClaudeUsage(ctx(db), now)).toBe(false);
-  expect(row()).toBeNull();
+  expect(await row()).toBeUndefined();
 
   // A subscription behind a gateway: the endpoint this reads is the provider's
   // own, so the quota it would report belongs to a different account.
-  stale();
-  saveAuth(db, {
+  await stale();
+  await saveAuth(db, {
     runtime: "claude",
     mode: "oauth_token",
     secret: "sk-ant-oat01-x",
     baseUrl: "https://gw.internal/v1",
   });
   expect(await pollClaudeUsage(ctx(db), now)).toBe(false);
-  expect(row()).toBeNull();
+  expect(await row()).toBeUndefined();
 
   // Subscription, official endpoint: it gets as far as stamping the attempt.
-  saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: "sk-ant-oat01-x" });
+  await saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: "sk-ant-oat01-x" });
   await pollClaudeUsage(ctx(db), now);
-  expect(row()?.at).toBe(now);
+  expect((await row())?.at).toBe(now);
 });
 
 test("codex quota comes from its rollout file, not the stream", () => {
@@ -183,8 +193,8 @@ test("codex quota is read from a sandbox first, and the host is only the fallbac
   // `<dataDir>/codex-home/sessions` holds nothing but the weekly refresh nudge's
   // own rollout. The number it reports is the account's and correct — and up to a
   // week stale, while ten agents spend the same subscription.
-  const db = openMemory();
-  saveAuth(db, {
+  const db = await openMemory();
+  await saveAuth(db, {
     runtime: "codex",
     mode: "chatgpt",
     secret: JSON.stringify({ tokens: { refresh_token: "r" } }),
@@ -194,8 +204,8 @@ test("codex quota is read from a sandbox first, and the host is only the fallbac
     `{"primary":{"used_percent":42,"window_minutes":300,"resets_at":1786000000},"secondary":null}}}`;
 
   await pollUsage(ctx(db), "/tmp/nonexistent-codex-home", 1_700_000_000_000, async () => rollout);
-  const snap = db.query<{ json: string }, []>("SELECT json FROM usage_snapshot WHERE runtime = 'codex'").get()!;
-  expect(StoredUsage.parse(JSON.parse(snap.json)).fiveHourPercent).toBe(42);
+  const [snap] = await db.select().from(usage_snapshot).where(eq(usage_snapshot.runtime, "codex"));
+  expect(StoredUsage.parse(snap!.json).fiveHourPercent).toBe(42);
 });
 
 test("the usage read carries a decoy, never the stored token", async () => {
@@ -203,8 +213,8 @@ test("the usage read carries a decoy, never the stored token", async () => {
   // going through the sidecar: a host `fetch` with `Bearer ${runtime_auth}`. The
   // vault's premise is that a real value only reaches the wire by substitution,
   // so an exception here did not weaken the rule — it made it untrue.
-  const db = openMemory();
-  saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: `sk-ant-oat01-${"S".repeat(80)}` });
+  const db = await openMemory();
+  await saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: `sk-ant-oat01-${"S".repeat(80)}` });
   const seen: string[] = [];
   const c: Ctx = {
     db,
@@ -230,8 +240,8 @@ test("an unreachable sandbox does not lose the reading", async () => {
   // Best-effort, like everything else that reaches into a container from the
   // watchdog tick: a sandbox that has gone away must not take the quota bar with
   // it, and must not throw out of the tick either.
-  const db = openMemory();
-  saveAuth(db, {
+  const db = await openMemory();
+  await saveAuth(db, {
     runtime: "codex",
     mode: "chatgpt",
     secret: JSON.stringify({ tokens: { refresh_token: "r" } }),
@@ -239,5 +249,5 @@ test("an unreachable sandbox does not lose the reading", async () => {
   await pollUsage(ctx(db), "/tmp/nonexistent-codex-home", Date.now(), async () => {
     throw new Error("no such sandbox");
   });
-  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM usage_snapshot").get()!.n).toBe(0);
+  expect((await db.select({ n: count() }).from(usage_snapshot))[0]!.n).toBe(0);
 });
