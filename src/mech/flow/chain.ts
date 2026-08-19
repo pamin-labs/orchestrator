@@ -1,4 +1,4 @@
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { addNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { rollbackTo } from "../git/gitops.ts";
@@ -157,7 +157,7 @@ function standingResponder(db: DB, role: string): number | null {
 }
 
 function findResponder(ctx: Ctx, grpId: number | null, role: string): number | null {
-  if (role === "pm") return groupResponder(ctx.db, grpId);
+  if (role === roleFor(ctx, "lead_group")) return groupResponder(ctx.db, grpId);
   const assigned = standingResponder(ctx.db, role);
   if (assigned) return assigned;
   // A configured-but-not-yet-hired standing role is a level that exists; skipping
@@ -349,7 +349,7 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
   }
   ctx.bus.emit({
     grpId,
-    author: "cos",
+    author: roleFor(ctx, "triage_boss_feedback"),
     kind: "state_change",
     intent: "decision",
     body: `triaged as ${as}: ${note}`,
@@ -370,7 +370,7 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
     ctx.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = ?", [grpId]);
     ctx.sched.enqueue("agent_turn", {
       grp_id: grpId,
-      payload: { role: "dispatcher", respec: note, rotate: true, skills },
+      payload: { role: roleFor(ctx, "plan_requirement"), respec: note, rotate: true, skills },
     });
   } else {
     // A patch normally goes to the PM, who owns the work in flight. But while the
@@ -386,7 +386,7 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
       ctx.sched.enqueue("agent_turn", {
         grp_id: grpId,
         payload: {
-          role: "dispatcher",
+          role: roleFor(ctx, "plan_requirement"),
           rejection:
             `The boss added a requirement while the card was waiting for approval: ${note}\n\n` +
             `Rewrite the card so it covers this, then file it again with \`orch draft\`.`,
@@ -396,7 +396,7 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
     } else {
       ctx.sched.enqueue("agent_turn", {
         grp_id: grpId,
-        payload: { role: "pm", rejection: `The boss wants a correction: ${note}`, skills },
+        payload: { role: roleFor(ctx, "lead_group"), rejection: `The boss wants a correction: ${note}`, skills },
       });
     }
   }

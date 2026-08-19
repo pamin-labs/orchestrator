@@ -1,5 +1,5 @@
 import type { DB } from "../../platform/persistence/database.ts";
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { say } from "../../platform/text/lang.ts";
 import { createCheckout, remoteFor } from "../git/checkout.ts";
 import { canStart } from "./ownership.ts";
@@ -169,7 +169,7 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     grp_id: grpId,
     priority: 9,
     payload: {
-      role: "bootstrap",
+      role: roleFor(ctx, "bootstrap_env"),
       ...(known ? { rejection: `沙盒重建后，记下来的安装命令跑不通：${known}` } : {}),
     },
   });
@@ -317,12 +317,16 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
               grp_id: grpId,
               priority: 9,
               payload: {
-                role: "bootstrap",
+                role: roleFor(ctx, "bootstrap_env"),
                 rejection: `记下来的安装命令跑不通了：${known}\n${dep.tail}`,
               },
             });
         } else {
-          ctx.sched.enqueue("agent_turn", { grp_id: grpId, priority: 9, payload: { role: "bootstrap" } });
+          ctx.sched.enqueue("agent_turn", {
+            grp_id: grpId,
+            priority: 9,
+            payload: { role: roleFor(ctx, "bootstrap_env") },
+          });
         }
       } catch (e) {
         // Refuse to start rather than let the group run without its own checkout.
