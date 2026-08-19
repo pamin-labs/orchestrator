@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { HttpResponse, http } from "msw";
 import { waitFor } from "../support/render.tsx";
+import { tempDir } from "../support/temp.ts";
 import { inFlight, mockHttp, server } from "../support/http.ts";
 import { emptyState } from "../../web/src/shared/api.ts";
 
@@ -70,7 +69,8 @@ afterEach(() => {
   Reflect.deleteProperty(HTMLElement.prototype, "offsetWidth");
   Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
   Reflect.deleteProperty(globalThis, "EventSource");
-  if (workdir) rmSync(workdir, { recursive: true, force: true });
+  // Removal is `setup.ts`'s one `rm` over the run's own root, not a line here that a
+  // failing test never reaches.
   workdir = "";
 });
 
@@ -112,7 +112,7 @@ const TELEMETRY = {
 };
 
 test("the built bundle mounts 耗时 without throwing", async () => {
-  workdir = mkdtempSync(join(tmpdir(), "orch-boot-"));
+  workdir = tempDir("orch-boot-");
   const built = await Bun.build({ entrypoints: [ENTRY], target: "browser", minify: true, outdir: workdir });
   expect(built.success).toBe(true);
 
