@@ -15,7 +15,6 @@ import {
   isTerminalEscalationState,
   type EscalationOpenState,
   type EscalationState,
-  type GrpState,
 } from "../../contracts/states.ts";
 
 /**
@@ -72,21 +71,20 @@ interface EscRow {
   chain_state: EscalationState;
 }
 
-/**
- * Raw, for its type rather than its SQL. `EscRow.chain_state` is `EscalationState`
- * and `escalation.chain_state` is declared `text()`, so reading it through the
- * schema yields `string` and every caller that narrows on the union stops
- * compiling. The generic is where that claim currently lives; giving the column a
- * `$type<EscalationState>()` in `schema.ts` would move it somewhere checked, and
- * that file belongs to another zone.
- */
 function load(db: DB, id: number): EscRow | null {
   return (
-    db
-      .query<EscRow, [number]>(
-        "SELECT id, grp_id, agent_id, severity, question, chain_state FROM escalation WHERE id = ?",
-      )
-      .get(id) ?? null
+    orm(db)
+      .select({
+        id: escalation.id,
+        grp_id: escalation.grp_id,
+        agent_id: escalation.agent_id,
+        severity: escalation.severity,
+        question: escalation.question,
+        chain_state: escalation.chain_state,
+      })
+      .from(escalation)
+      .where(eq(escalation.id, id))
+      .get() ?? null
   );
 }
 
@@ -111,10 +109,8 @@ export function route(deps: ChainDeps, escId: number): string {
   // command an agent tried is the common one, and it is a JSON blob about a tool
   // call, not a decision. Lifting those to the boss put five of them on the phone
   // as "things need you" and buried the one blocker that did.
-  // Raw for the same reason as `load`: `isDispatchableGrpState` takes a `GrpState`,
-  // and the schema types this column `text()`.
   const status = esc.grp_id
-    ? ctx.db.query<{ status: GrpState }, [number]>("SELECT status FROM grp WHERE id = ?").get(esc.grp_id)?.status
+    ? orm(ctx.db).select({ status: grp.status }).from(grp).where(eq(grp.id, esc.grp_id)).get()?.status
     : null;
   let level: EscalationOpenState =
     esc.severity === "blocker" && status && !isDispatchableGrpState(status) ? "boss" : esc.chain_state;

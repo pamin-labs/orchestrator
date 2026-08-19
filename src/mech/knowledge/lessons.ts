@@ -169,7 +169,12 @@ export function evictOldestLessons(db: DB, projectId: number | null): number {
   // only. The old text said so as `(? IS NULL AND project_id IS NULL)`, a second
   // binding of the same id that could only ever be dead when the first one matched.
   const scope = and(eq(note.kind, "lesson"), ownedBy(projectId));
-  const keep = orm(db).select({ id: note.id }).from(note).where(scope).orderBy(...NEWEST).limit(LESSON_CAP);
+  const keep = orm(db)
+    .select({ id: note.id })
+    .from(note)
+    .where(scope)
+    .orderBy(...NEWEST)
+    .limit(LESSON_CAP);
   // `.returning()` and not `.run().changes`: the bun-sqlite driver types a builder's
   // `run()` as `void`, and the row count is this function's whole return value.
   return orm(db)

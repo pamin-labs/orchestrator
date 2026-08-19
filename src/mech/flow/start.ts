@@ -292,7 +292,11 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
     install: detectInstall(root),
     shared: detectShared(root),
   };
-  orm(ctx.db).update(project).set({ config_json: JSON.stringify(next) }).where(eq(project.id, projectId)).run();
+  orm(ctx.db)
+    .update(project)
+    .set({ config_json: JSON.stringify(next) })
+    .where(eq(project.id, projectId))
+    .run();
 
   if (!gates.length) {
     // Said plainly rather than letting the first slice fail with a puzzle. This

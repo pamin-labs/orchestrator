@@ -406,12 +406,7 @@ export function chargeIndex(
     .select({ id: agent.id })
     .from(agent)
     .where(
-      and(
-        eq(agent.project_id, projectId),
-        isNull(agent.grp_id),
-        eq(agent.role, "indexer"),
-        eq(agent.runtime, runtime),
-      ),
+      and(eq(agent.project_id, projectId), isNull(agent.grp_id), eq(agent.role, "indexer"), eq(agent.runtime, runtime)),
     )
     .get();
   const id =
