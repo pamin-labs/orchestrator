@@ -123,7 +123,7 @@ export async function summarise(
     await summariseNode(
       node,
       children,
-      `One line, under 20 words: what does ${node.id} hold, as a whole?\n\n${children.slice(0, 4000)}`,
+      `One line in English, under 20 words: what does ${node.id} hold, as a whole?\n\n${children.slice(0, 4000)}`,
       prev,
       ask,
       state,
@@ -134,8 +134,8 @@ export async function summarise(
 
 function filePrompt(id: string, head: string): string {
   const instruction = id.startsWith(NOTE_PREFIX)
-    ? "One line, under 20 words: what does this note establish? Name the decision or fact, not the format."
-    : `One line, under 20 words: what is ${id} for? Name the thing it owns, not its language.`;
+    ? "One line in English, under 20 words: what does this note establish? Name the decision or fact, not the format."
+    : `One line in English, under 20 words: what is ${id} for? Name the thing it owns, not its language.`;
   return `${instruction}\n\n----\n${head}\n----`;
 }
 

@@ -77,9 +77,10 @@ test("nothing changed, nothing re-summarised", async () => {
 test("retrieval is the model walking the tree, not a similarity score", async () => {
   const dir = repo();
   const { tree } = await summarise(skeleton(FILES), dirRead(dir), async (p) =>
-    p.startsWith("One line, under 20 words: what is src/mech/notify.ts")
-      ? "the only place that talks to the OS notification centre"
-      : "misc",
+    // Matched on the id, not the wording: a prompt that gains a word — "in English"
+    // did — must not silently turn this fake into one that answers "misc" to
+    // everything, which is a passing test that has stopped testing anything.
+    p.includes("what is src/mech/notify.ts") ? "the only place that talks to the OS notification centre" : "misc",
   );
 
   const seen: string[] = [];
@@ -247,4 +248,31 @@ test("JSON-shaped malformed index output degrades without a cast", () => {
   expect(readClaude("null")).toEqual({ text: "" });
   expect(readClaude(JSON.stringify({ result: 1 }))).toEqual({ text: "" });
   expect(readCodex(["null", JSON.stringify({ type: "item.completed", item: null })].join("\n"))).toEqual({ text: "" });
+});
+
+/**
+ * Every summary is asked for in English, and the prompt says so.
+ *
+ * `sigOf` hashes the file's content and nothing else, so a summary is rebuilt only
+ * when the file changes. That makes its *language* something no mechanism can
+ * correct: let it drift and the index holds two languages with signatures that will
+ * never invalidate. English makes a summary a pure function of its input again,
+ * which is what the incremental contract claims it already is.
+ */
+test("a summary is asked for in English, whatever the file is written in", async () => {
+  const asked: string[] = [];
+  const ask: Ask = async (prompt) => {
+    asked.push(prompt);
+    return "一句中文摘要";
+  };
+  const dir = repo();
+  writeFileSync(join(dir, "src/mech/中文.ts"), "export const 常量 = 1; // 这是一个中文文件\n");
+  await summarise(
+    skeleton(["src/mech/notify.ts", "src/mech/中文.ts"]),
+    (rel) => readFileSync(join(dir, rel), "utf8"),
+    ask,
+  );
+
+  expect(asked.length).toBeGreaterThan(0);
+  for (const prompt of asked) expect(prompt).toContain("in English");
 });
