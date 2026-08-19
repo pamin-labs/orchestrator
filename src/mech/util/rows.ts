@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { orm } from "../../platform/persistence/orm.ts";
-import { agent, note as notes, project } from "../../platform/persistence/schema.ts";
+import { agent, grp, note as notes, project } from "../../platform/persistence/schema.ts";
 import { StoredProjectConfigSchema, type StoredProjectConfig } from "../../contracts/config.ts";
 import { jsonOr } from "../../contracts/json.ts";
 
@@ -45,6 +45,18 @@ export const projectOfAgent = (db: DB, agentId: number | null | undefined): numb
     ? null
     : (orm(db).select({ project_id: agent.project_id }).from(agent).where(eq(agent.id, agentId)).get()?.project_id ??
       null);
+
+/**
+ * Which project a group belongs to.
+ *
+ * Seventeen call sites across ten files wrote this SELECT out, beside a
+ * `projectOfAgent` that had been extracted for the same reason and left with the
+ * duplication it was meant to replace still in place.
+ */
+export const projectOfGrp = (db: DB, grpId: number | null | undefined): number | null =>
+  grpId == null
+    ? null
+    : (orm(db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)).get()?.project_id ?? null);
 
 /**
  * A note of which a project keeps exactly one: the repo map, the page index.

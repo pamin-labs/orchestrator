@@ -32,7 +32,7 @@ import { scopeAttributes, type SpanScope } from "../platform/observability/metri
 import { activeTracer } from "../platform/observability/traces.ts";
 import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
 import { MAILBOX_DIR, putBytes, runnerFor, type Scope, WORK } from "../mech/sandbox/sandbox.ts";
-import { projectOfAgent } from "../mech/util/rows.ts";
+import { projectOfAgent, projectOfGrp } from "../mech/util/rows.ts";
 import { jsonOr } from "../contracts/json.ts";
 import { clip, errText } from "../platform/process/text.ts";
 import { runLease } from "./lease-job.ts";
@@ -132,10 +132,7 @@ function assignedAgent(db: DB, agentId: number | null): AgentRow | null {
 function payloadProjectId(db: DB, job: Job<"agent_turn">): number | null {
   if (job.payload.project_id) return job.payload.project_id;
   if (!job.payload.audit) return null;
-  return (
-    db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.payload.audit)
-      ?.project_id ?? null
-  );
+  return projectOfGrp(db, job.payload.audit);
 }
 
 const SELECT_AGENT_BASE = `SELECT id, grp_id, project_id, role, model, runtime, session_id, session_tokens, cwd, token, stable_hash, context_window FROM agent`;
@@ -156,9 +153,7 @@ export function hire(
     ? (ctx.db.query<{ difficulty: string }, [number]>("SELECT difficulty FROM slice WHERE id = ?").get(sliceId)
         ?.difficulty ?? null)
     : null;
-  const grp = grpId
-    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-    : null;
+  const projectOfGroup = projectOfGrp(ctx.db, grpId);
 
   const row = ctx.db
     .query<{ id: number }, [number | null, number | null, string, string, string, string, string]>(
@@ -166,7 +161,7 @@ export function hire(
        VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     )
     .get(
-      grp?.project_id ?? projectId ?? null,
+      projectOfGroup ?? projectId ?? null,
       grpId,
       roleName,
       modelFor(cfg, role, difficulty),
@@ -222,11 +217,7 @@ function turnScope(deps: ExecDeps, job: Job<"agent_turn">): SpanScope {
   // derives it through `grp`, but a span exported over OTLP reaches a collector
   // that never heard of our `grp` table, where this column is the only thing
   // saying which project the work belonged to. One PK lookup per turn.
-  const projectId =
-    job.grp_id === null
-      ? null
-      : (deps.ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.grp_id)
-          ?.project_id ?? null);
+  const projectId = job.grp_id === null ? null : projectOfGrp(deps.ctx.db, job.grp_id);
   return { grpId: job.grp_id, sliceId: job.slice_id, projectId };
 }
 
