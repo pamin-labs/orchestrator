@@ -1,3 +1,4 @@
+import { and, count, eq, ne } from "drizzle-orm";
 import { dirname, join } from "node:path";
 import { addNote } from "../../mech/util/rows.ts";
 import { z } from "zod";
@@ -11,6 +12,8 @@ import { shq } from "../../platform/process/shell.ts";
 import type { JournalKind } from "../../mech/util/validate.ts";
 import { validateJournal } from "../../mech/util/validate.ts";
 import { Id, Prose } from "../../contracts/fields.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { agent, grp as grps, note as notes, slice } from "../../platform/persistence/schema.ts";
 
 /**
  * What an agent says about itself: the one-line status, and the journal.
@@ -25,7 +28,7 @@ import { Id, Prose } from "../../contracts/fields.ts";
 export const StatusBody = z.object({ text: z.string().max(200).default("") });
 
 export const postStatus = (async (ctx, _req, a, _p, b) => {
-  ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [b.text, a.id]);
+  orm(ctx.db).update(agent).set({ activity: b.text }).where(eq(agent.id, a.id)).run();
   ctx.bus.live({ grpId: a.grp_id, agentId: a.id, role: a.role, kind: "status", body: b.text });
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof StatusBody>>;
@@ -86,10 +89,8 @@ async function exportJournal(
 ): Promise<string | null> {
   if (!caller.grp_id || !group || !["journal", "retro", "decision"].includes(kind)) return null;
 
-  const count = ctx.db
-    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM note WHERE grp_id = ?")
-    .get(caller.grp_id)!.c;
-  const path = join("docs", "journal", group.name, `${String(count + 1).padStart(3, "0")}-${kind}.md`);
+  const existing = orm(ctx.db).select({ c: count() }).from(notes).where(eq(notes.grp_id, caller.grp_id)).get()!.c;
+  const path = join("docs", "journal", group.name, `${String(existing + 1).padStart(3, "0")}-${kind}.md`);
   const yaml = frontmatterBlock(frontmatter);
   await execIn(ctx, { grp: caller.grp_id }, `mkdir -p ${shq(`${WORK}/${dirname(path)}`)}`);
   await putFile(ctx, { grp: caller.grp_id }, `${WORK}/${path}`, `---\n${yaml}\n---\n${body}\n`);
@@ -98,9 +99,11 @@ async function exportJournal(
 
 function queueCompletedRetro(ctx: Ctx, groupId: number | null, kind: JournalKind): void {
   if (kind !== "retro" || !groupId) return;
-  const open = ctx.db
-    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'")
-    .get(groupId)!.c;
+  const open = orm(ctx.db)
+    .select({ c: count() })
+    .from(slice)
+    .where(and(eq(slice.grp_id, groupId), ne(slice.status, "accepted")))
+    .get()!.c;
   if (open !== 0) return;
   ctx.sched.enqueue("reconcile", { grp_id: groupId, priority: 5 });
   ctx.sched.tick();
@@ -111,9 +114,11 @@ export const postJournal = (async (ctx, _req, a, _p, b) => {
   if (!v.ok) return bad(v.error);
 
   const grp = a.grp_id
-    ? ctx.db
-        .query<{ name: string; project_id: number }, [number]>("SELECT name, project_id FROM grp WHERE id = ?")
-        .get(a.grp_id)
+    ? (orm(ctx.db)
+        .select({ name: grps.name, project_id: grps.project_id })
+        .from(grps)
+        .where(eq(grps.id, a.grp_id))
+        .get() ?? null)
     : null;
 
   const frontmatter = {

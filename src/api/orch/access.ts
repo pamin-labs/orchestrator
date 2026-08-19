@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp } from "../../platform/persistence/schema.ts";
 import type { z } from "zod";
 import type { GroupRef } from "../../contracts/fields.ts";
 import type { Ctx } from "../../mech/ctx.ts";
@@ -8,7 +11,7 @@ import type { Caller } from "../../http/agent-auth.ts";
 export function mayAct(db: DB, caller: Caller, groupId: number): boolean {
   if (caller.grp_id !== null) return caller.grp_id === groupId;
   if (caller.project_id === null) return false;
-  const group = db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(groupId);
+  const group = orm(db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, groupId)).get();
   return group?.project_id === caller.project_id;
 }
 

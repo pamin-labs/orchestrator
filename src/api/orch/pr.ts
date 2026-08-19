@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { checkPrMessage, resolveReviewThread, reviewThreadAt } from "../../mech/git/prwatch.ts";
 import { outsideOwns, parseOwns } from "../../mech/flow/ownership.ts";
 import { parseRepo } from "../../contracts/repository.ts";
@@ -7,7 +8,8 @@ import { GroupRef } from "../../contracts/fields.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
-import type { GrpState } from "../../contracts/states.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp as grps, project } from "../../platform/persistence/schema.ts";
 
 /**
  * The Scribe's PR message: title and body, checked before anything is pushed.
@@ -49,11 +51,13 @@ export const postPr = (async (ctx, _req, a, _p, b) => {
   const wrong = checkPrMessage(title, summary);
   if (wrong) return bad(wrong);
 
-  const g = ctx.db
-    .query<{ status: GrpState; pr_number: number | null }, [number]>("SELECT status, pr_number FROM grp WHERE id = ?")
-    .get(gid);
+  const g = orm(ctx.db)
+    .select({ status: grps.status, pr_number: grps.pr_number })
+    .from(grps)
+    .where(eq(grps.id, gid))
+    .get();
   if (!g) return bad("no such group");
-  ctx.db.run("UPDATE grp SET pr_title = ?, pr_summary = ? WHERE id = ?", [title, summary, gid]);
+  orm(ctx.db).update(grps).set({ pr_title: title, pr_summary: summary }).where(eq(grps.id, gid)).run();
   ctx.bus.emit({
     grpId: gid,
     author: roleFor(ctx, "write_pr_message"),
@@ -94,11 +98,12 @@ export const postPrResolve = (async (ctx, req, a, _p, b) => {
   if (!mayAct(ctx.db, a, gid)) return message("not your project", 403);
   if (!ctx.gh) return bad("this server has no GitHub client");
 
-  const g = ctx.db
-    .query<{ pr_number: number | null; owns_json: string; remote: string | null }, [number]>(
-      "SELECT g.pr_number, g.owns_json, p.remote FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
-    )
-    .get(gid);
+  const g = orm(ctx.db)
+    .select({ pr_number: grps.pr_number, owns_json: grps.owns_json, remote: project.remote })
+    .from(grps)
+    .innerJoin(project, eq(project.id, grps.project_id))
+    .where(eq(grps.id, gid))
+    .get();
   if (!g) return bad("no such group");
   if (!g.pr_number) return bad("this group has no pull request open, so it has no threads to close");
 

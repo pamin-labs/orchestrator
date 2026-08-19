@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { TRIAGE, triage } from "../../mech/flow/chain.ts";
@@ -10,6 +11,8 @@ import { bossFact } from "../panel/attach.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";
 import { resolveGroup } from "./access.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp, project as projects } from "../../platform/persistence/schema.ts";
 
 /**
  * Agent to agent, and boss to anyone.
@@ -130,11 +133,10 @@ export const postSay = (async (ctx, _req, _p, b) => {
   if (b.group_id != null && !grpId) return bad("no such requirement");
 
   const project = grpId
-    ? (ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-        ?.project_id ?? null)
+    ? (orm(ctx.db).select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)).get()?.project_id ?? null)
     : null;
   const repo = project
-    ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(project)
+    ? orm(ctx.db).select({ repo_path: projects.repo_path }).from(projects).where(eq(projects.id, project)).get()
         ?.repo_path
     : null;
   // A skill the boss pointed at is inlined into that turn — for triage too,
@@ -193,6 +195,9 @@ function resolveTarget(
 ): { agentId: number; grpId: number | null } | null {
   // Same-group wins, then any live holder of the role in this project. A standing
   // Architect replying to a Dispatcher must not hire a second Dispatcher.
+  // Raw: `IS ?` matches NULL where `=` does not, and both the WHERE and the
+  // two-key ORDER BY depend on that. `eq()` is `=` and would drop the
+  // project-less rows this is written to find.
   const existing = ctx.db
     .query<{ id: number; grp_id: number | null }, [string, number | null, number | null, number | null, number | null]>(
       `SELECT id, grp_id FROM agent

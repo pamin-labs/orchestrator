@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
@@ -11,6 +12,8 @@ import { Id } from "../../contracts/fields.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { scopeAttributes } from "../../platform/observability/metrics.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { note as notes } from "../../platform/persistence/schema.ts";
 
 /** The tree render, plus the notes it quoted — which must not be quoted twice. */
 async function pageIndexContext(
@@ -41,9 +44,11 @@ async function pageIndexContext(
       const noteIds = hits.filter((hit) => hit.startsWith(NOTE_PREFIX)).map((hit) => Number(hit.split("/").pop()));
       const quoted: number[] = [];
       for (const id of noteIds) {
-        const note = ctx.db
-          .query<{ kind: string; body: string }, [number]>("SELECT kind, body FROM note WHERE id = ?")
-          .get(id);
+        const note = orm(ctx.db)
+          .select({ kind: notes.kind, body: notes.body })
+          .from(notes)
+          .where(eq(notes.id, id))
+          .get();
         if (!note) continue;
         answer += `\n\n### ${note.kind} #${id}\n${note.body.slice(0, 1200)}`;
         quoted.push(id);

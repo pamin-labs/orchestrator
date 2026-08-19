@@ -1,8 +1,11 @@
+import { eq, sql } from "drizzle-orm";
 import { LeaseArgsSchema, loadResource, resolveLease } from "../../mech/lease.ts";
 import { z } from "zod";
 import { IdParams } from "../../contracts/fields.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { agent, lease as leases } from "../../platform/persistence/schema.ts";
 
 /**
  * The one way an agent runs something it did not write.
@@ -33,14 +36,22 @@ export const postLease = (async (ctx, _req, a, _p, b) => {
   if (!r.ok) return bad(r.error);
 
   const row = ctx.db.transaction(() => {
-    const lease = ctx.db
-      .query<{ id: number }, [string, number | null, number, string, string]>(
-        `INSERT INTO lease (resource, grp_id, agent_id, args_json, resolved_cmd, enqueued_at)
-         VALUES (?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
-      )
-      .get(b.resource, a.grp_id, a.id, JSON.stringify(b.args), r.argv.join(" "))!;
+    const lease = orm(ctx.db)
+      .insert(leases)
+      .values({
+        resource: b.resource,
+        grp_id: a.grp_id,
+        agent_id: a.id,
+        args_json: JSON.stringify(b.args),
+        resolved_cmd: r.argv.join(" "),
+        // Raw: the clock stays SQLite's. `unixepoch()` truncates to the second,
+        // and `Date.now()` here would silently start stamping milliseconds.
+        enqueued_at: sql`unixepoch() * 1000`,
+      })
+      .returning({ id: leases.id })
+      .get();
 
-    ctx.db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [a.id]);
+    orm(ctx.db).update(agent).set({ state: "waiting_lease" }).where(eq(agent.id, a.id)).run();
     ctx.sched.enqueue("lease", { grp_id: a.grp_id, agent_id: a.id, payload: { lease_id: lease.id } });
     return lease;
   })();
