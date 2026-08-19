@@ -1,4 +1,7 @@
+import { count, eq, gte, inArray, isNotNull, max } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp, lease } from "../../platform/persistence/schema.ts";
 import { overlaps, parseOwns } from "./ownership.ts";
 import { ESCALATION_TERMINAL_STATES, stateParam } from "../../contracts/states.ts";
 
@@ -24,10 +27,10 @@ export function runStandup(db: DB, now = Date.now()): StandupItem[] {
 
   // Two groups whose declared paths overlap while both are live. `canStart`
   // prevents this at start, but boundaries get widened afterwards.
-  const live = db
-    .query<{ id: number; name: string; owns_json: string; project_id: number }, []>(
-      "SELECT id, name, owns_json, project_id FROM grp WHERE status IN ('RUNNING','PAUSING','PAUSED')",
-    )
+  const live = orm(db)
+    .select({ id: grp.id, name: grp.name, owns_json: grp.owns_json, project_id: grp.project_id })
+    .from(grp)
+    .where(inArray(grp.status, ["RUNNING", "PAUSING", "PAUSED"]))
     .all();
   for (let i = 0; i < live.length; i++) {
     for (let j = i + 1; j < live.length; j++) {
@@ -47,6 +50,9 @@ export function runStandup(db: DB, now = Date.now()): StandupItem[] {
 
   // Work that stopped without anybody saying so. A blocked group is fine: it is
   // waiting on an answer and somebody knows. Silence is the problem.
+  // Raw: `json_each(?)` binds the terminal-state subset the way every such
+  // predicate here does, and the two `max(at)` reads are correlated subqueries
+  // against the outer row, which Drizzle's builder has no form for.
   const stalled = db
     .query<{ id: number; name: string; last: number | null }, [string, number]>(
       `SELECT g.id, g.name, (SELECT max(at) FROM event WHERE grp_id = g.id) AS last
@@ -70,14 +76,19 @@ export function runStandup(db: DB, now = Date.now()): StandupItem[] {
   // Only the latest attempt per (resource, group) counts. Counting every failed
   // row ever recorded made a gate that had since gone green keep reporting
   // itself broken in four groups, with nothing that could ever clear it.
-  const repeats = db
-    .query<{ resource: string; n: number }, []>(
-      `SELECT l.resource AS resource, count(*) AS n
-       FROM (SELECT resource, grp_id, max(id) AS last_id FROM lease
-             WHERE grp_id IS NOT NULL GROUP BY resource, grp_id) g
-       JOIN lease l ON l.id = g.last_id
-       WHERE l.state = 'failed' GROUP BY l.resource HAVING n >= 2`,
-    )
+  const lastPerResourceAndGroup = orm(db)
+    .select({ last_id: max(lease.id).as("last_id") })
+    .from(lease)
+    .where(isNotNull(lease.grp_id))
+    .groupBy(lease.resource, lease.grp_id)
+    .as("g");
+  const repeats = orm(db)
+    .select({ resource: lease.resource, n: count() })
+    .from(lastPerResourceAndGroup)
+    .innerJoin(lease, eq(lease.id, lastPerResourceAndGroup.last_id))
+    .where(eq(lease.state, "failed"))
+    .groupBy(lease.resource)
+    .having(gte(count(), 2))
     .all();
   for (const r of repeats) {
     items.push({

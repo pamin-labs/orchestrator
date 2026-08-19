@@ -32,6 +32,13 @@ export interface EscalationRequest {
   dedupe?: Dedupe;
 }
 
+/**
+ * All three statements here stay raw SQL. Two are `INSERT ... SELECT <values>
+ * WHERE NOT EXISTS (...)` — a FROM-less SELECT, which Drizzle's insert-select has
+ * no form for — and their guard uses `json_each(?)`. The third could convert, but
+ * then one column list would be written twice in two idioms, which is the drift
+ * this module exists to have stopped.
+ */
 type Insert = [number | null, number | null, "blocker" | "advisory", string, string | null, string | null, FilingState];
 
 const COLUMNS = "grp_id, agent_id, severity, question, brief, kind, chain_state, created_at";

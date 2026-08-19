@@ -1,4 +1,7 @@
+import { sql } from "drizzle-orm";
 import type { Ctx } from "../../mech/ctx.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { channel, grp as grpTable } from "../../platform/persistence/schema.ts";
 import { addNote } from "../util/rows.ts";
 
 /**
@@ -37,25 +40,30 @@ export interface NewGroup {
 
 export function newGroup(ctx: Ctx, g: NewGroup): { id: number; channelId: number } {
   return ctx.db.transaction(() => {
-    const grp = ctx.db
-      .query<{ id: number }, [number, string, string | null, string | null]>(
-        `INSERT INTO grp (project_id, name, status, shared_grant, owns_json, created_at)
-         VALUES (?, ?, 'PLANNING', ?, coalesce(?, '[]'), unixepoch() * 1000) RETURNING id`,
-      )
-      .get(
-        g.projectId,
-        g.name,
-        g.sharedGrant?.length ? JSON.stringify(g.sharedGrant) : null,
-        g.owns?.length ? JSON.stringify(g.owns) : null,
-      )!;
+    const grp = orm(ctx.db)
+      .insert(grpTable)
+      .values({
+        project_id: g.projectId,
+        name: g.name,
+        // `status` has a schema default of DRAFT, so PLANNING has to be said.
+        status: "PLANNING",
+        shared_grant: g.sharedGrant?.length ? JSON.stringify(g.sharedGrant) : null,
+        // Was `coalesce(?, '[]')` around a bound NULL. `owns_json` is NOT NULL
+        // DEFAULT '[]' and a bound NULL overrides the default rather than falling
+        // back to it, so the empty value is written directly instead.
+        owns_json: g.owns?.length ? JSON.stringify(g.owns) : "[]",
+        created_at: sql`unixepoch() * 1000`,
+      })
+      .returning({ id: grpTable.id })
+      .get();
 
     // `channel.grp_id` is the only link between the two; a reverse pointer on grp
     // would be a second source of truth for the same edge.
-    const ch = ctx.db
-      .query<{ id: number }, [number, number]>(
-        "INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', unixepoch() * 1000) RETURNING id",
-      )
-      .get(g.projectId, grp.id)!;
+    const ch = orm(ctx.db)
+      .insert(channel)
+      .values({ project_id: g.projectId, grp_id: grp.id, kind: "group", created_at: sql`unixepoch() * 1000` })
+      .returning({ id: channel.id })
+      .get();
 
     // Two bodies, not one. The blackboard note carries what a planner needs to
     // read alongside the ask — attachment paths, which group this was split out of
