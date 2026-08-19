@@ -3,9 +3,10 @@ import { logLine } from "../../src/platform/observability/logging.ts";
 import { maskValue } from "../../src/platform/observability/redaction.ts";
 import { requestContext } from "../../src/platform/observability/request-context.ts";
 import { publishStandupItem } from "../../src/application/executor.ts";
-import { REEMIT_MS } from "../../src/mech/ops/watchdog.ts";
+
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
+import { loadConfig } from "../../src/platform/config/load.ts";
 
 const at = new Date("2026-08-17T09:00:00.000Z");
 
@@ -82,7 +83,7 @@ test("a standup line returns once the window has passed", () => {
   const item = { kind: "stalled", body: "还是那两个需求", grpIds: [1] };
 
   publishStandupItem(ctx, item);
-  ctx.db.run("UPDATE event SET at = ? WHERE author = 'standup'", [Date.now() - REEMIT_MS - 1]);
+  ctx.db.run("UPDATE event SET at = ? WHERE author = 'standup'", [Date.now() - loadConfig().watchdog.reemitMs - 1]);
   publishStandupItem(ctx, item);
 
   const said = ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE author = 'standup'").get()!.c;

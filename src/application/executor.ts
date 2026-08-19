@@ -26,7 +26,7 @@ import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts"
 import { gitTrailers } from "../mech/git/ghlogin.ts";
 import { changedSince, checkpoint, porcelainEntries, porcelainPaths, STATUS_Z } from "../mech/git/gitops.ts";
 import { lessonsFor } from "../mech/knowledge/lessons.ts";
-import { gzipTurnLog, REEMIT_MS, recordTurnOutcome, runWatchdog } from "../mech/ops/watchdog.ts";
+import { gzipTurnLog, recordTurnOutcome, runWatchdog } from "../mech/ops/watchdog.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { scopeAttributes, type SpanScope } from "../platform/observability/metrics.ts";
 import { activeTracer } from "../platform/observability/traces.ts";
@@ -977,7 +977,7 @@ export function publishStandupItem(ctx: Ctx, item: { kind: string; body: string;
   const seen = ctx.db
     .query<{ at: number }, [string]>(`SELECT max(at) AS at FROM event WHERE author = 'standup' AND body = ?`)
     .get(item.body);
-  if (seen?.at && Date.now() - seen.at < REEMIT_MS) return;
+  if (seen?.at && Date.now() - seen.at < ctx.config.watchdog.reemitMs) return;
   const groupId = item.grpIds[0] ?? null;
   ctx.bus.emit({
     grpId: groupId,

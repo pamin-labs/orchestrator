@@ -14,8 +14,6 @@ import {
   recordTurnOutcome,
   runWatchdog,
   sweepTurnLogs,
-  IDLE_TURN_LIMIT,
-  SAME_FILE_LIMIT,
 } from "../../src/mech/ops/watchdog.ts";
 import { existsSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -27,6 +25,9 @@ import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { z } from "zod";
 import { tempDir } from "../support/temp.ts";
+
+/** The shipped thresholds. The subject is the rule, not the number it is tuned to. */
+const LIMITS = loadConfig().watchdog;
 
 const NotifyMeta = z.object({ url: z.string() });
 const WebhookBody = z.object({ message: z.string() });
@@ -162,7 +163,7 @@ test("work queued for a dissolved group is cancelled, not left pending forever",
 
 test("turns that write nothing accumulate, and productive ones reset", async () => {
   const h = harness();
-  for (let i = 0; i < IDLE_TURN_LIMIT; i++) recordTurnOutcome(h.ctx, 1, [], false, false);
+  for (let i = 0; i < LIMITS.idleTurns; i++) recordTurnOutcome(h.ctx, 1, [], false, false);
   let f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("no_progress");
 
@@ -182,7 +183,7 @@ test("a note or a moved task counts as progress even with no file change", async
 
 test("rewriting one file every turn is caught and sent to the Architect", async () => {
   const h = harness();
-  for (let i = 0; i < SAME_FILE_LIMIT; i++) recordTurnOutcome(h.ctx, 1, ["auth/mw.ts"], false, false);
+  for (let i = 0; i < LIMITS.sameFile; i++) recordTurnOutcome(h.ctx, 1, ["auth/mw.ts"], false, false);
   const f = await runWatchdog(h.deps);
   const circling = f.find((x) => x.rule === "circling")!;
   expect(circling).toBeDefined();
@@ -193,7 +194,7 @@ test("rewriting one file every turn is caught and sent to the Architect", async 
 
 test("touching several files does not look like circling", async () => {
   const h = harness();
-  for (let i = 0; i < SAME_FILE_LIMIT + 2; i++) recordTurnOutcome(h.ctx, 1, ["a.ts", "b.ts"], false, false);
+  for (let i = 0; i < LIMITS.sameFile + 2; i++) recordTurnOutcome(h.ctx, 1, ["a.ts", "b.ts"], false, false);
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).not.toContain("circling");
 });

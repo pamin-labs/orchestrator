@@ -224,6 +224,25 @@ export const ConfigSchema = z.object({
    */
   indexModel: ModelRef,
   /**
+   * What the watchdog calls stuck, and how often it is willing to repeat itself.
+   *
+   * The interval was settable and every threshold it enforces was not, so the one
+   * knob the panel offered changed how often the rules ran and nothing about what
+   * they decided. Two kinds: `idleTurns`/`sameFile` are how much repetition is a
+   * loop rather than a hard day, and the three `*Ms` are how long a feed stays
+   * worth reading — a finding repeated every half hour is one the eye learns to skip.
+   */
+  watchdog: z
+    .object({
+      idleTurns: count,
+      sameFile: count,
+      reemitMs: count,
+      nudgeAfterMs: count,
+      nudgeReemitMs: count,
+      pausedNotifyMs: count,
+    })
+    .strict(),
+  /**
    * The branch names to try when nothing else has answered.
    *
    * A project's own `base_branch` wins, then GitHub's `default_branch`; this is

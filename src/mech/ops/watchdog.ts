@@ -80,15 +80,14 @@ export interface Finding {
   severity: "advisory" | "blocker";
 }
 
-export const IDLE_TURN_LIMIT = 3;
-export const SAME_FILE_LIMIT = 5;
-const PAUSED_NOTIFY_MS = 15 * 60 * 1000;
-/** How often one standing finding may reappear in the timeline. */
-export const REEMIT_MS = 30 * 60 * 1000;
-/** How long one of the boss's own decisions may sit before it is worth a word. */
-const NUDGE_AFTER_MS = 4 * 60 * 60 * 1000;
-/** And how often to say it again. Nagging every half hour is how a feed is ignored. */
-const NUDGE_REEMIT_MS = 6 * 60 * 60 * 1000;
+/**
+ * What the watchdog calls stuck, and how often it repeats itself.
+ *
+ * Every one of these was a literal while `watchdogIntervalMs` sat beside them in
+ * the settings page — so the boss could change how often the rules ran and nothing
+ * about what they decided.
+ */
+const limits = (ctx: Pick<Ctx, "config">) => ctx.config.watchdog;
 
 /**
  * How the sandbox server was last seen running, and how hard we have tried.
@@ -253,7 +252,7 @@ export function sweepTurnLogs(dir: string, now: number): { zipped: number; dropp
  * and "arrived a minute ago" looked alike, and a forgotten requirement is as
  * stopped as a crashed one.
  */
-function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
+function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number, nudgeAfterMs: number): Finding[] {
   const out: Finding[] = [];
 
   for (const g of db
@@ -263,7 +262,7 @@ function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
          AND json_extract(n.frontmatter_json, '$.draft_card') = 1
        GROUP BY g.id HAVING max(n.at) < ?`,
     )
-    .all(now - NUDGE_AFTER_MS)) {
+    .all(now - nudgeAfterMs)) {
     out.push({
       rule: "waiting_card",
       grpId: g.id,
@@ -277,7 +276,7 @@ function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
       `SELECT s.grp_id, g.name, s.seq, s.awaiting_at FROM slice s JOIN grp g ON g.id = s.grp_id
        WHERE s.status = 'awaiting_boss' AND s.awaiting_at IS NOT NULL AND s.awaiting_at < ?`,
     )
-    .all(now - NUDGE_AFTER_MS)) {
+    .all(now - nudgeAfterMs)) {
     out.push({
       rule: "waiting_slice",
       grpId: s.grp_id,
@@ -297,7 +296,7 @@ function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
          AND NOT EXISTS (SELECT 1 FROM grp o WHERE o.project_id = g.project_id
                            AND o.status = 'PR_OPEN' AND o.merge_seq < g.merge_seq)`,
     )
-    .all(now - NUDGE_AFTER_MS)) {
+    .all(now - nudgeAfterMs)) {
     out.push({
       rule: "waiting_merge",
       grpId: q.id,
@@ -736,7 +735,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       .query<{ id: number; grp_id: number | null; role: string; idle_turns: number }, [number]>(
         "SELECT id, grp_id, role, idle_turns FROM agent WHERE idle_turns >= ?",
       )
-      .all(IDLE_TURN_LIMIT);
+      .all(limits(ctx).idleTurns);
     for (const a of idle) {
       findings.push({
         rule: "no_progress",
@@ -754,7 +753,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       .query<{ id: number; grp_id: number | null; role: string; loop_file: string; loop_count: number }, [number]>(
         "SELECT id, grp_id, role, loop_file, loop_count FROM agent WHERE loop_count >= ? AND loop_file IS NOT NULL",
       )
-      .all(SAME_FILE_LIMIT);
+      .all(limits(ctx).sameFile);
     for (const a of looping) {
       findings.push({
         rule: "circling",
@@ -1049,7 +1048,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           severity: "advisory",
           body: t("wd.parked", { name: g.name, min: minutes(waited) }),
         });
-      } else if (waited >= PAUSED_NOTIFY_MS) {
+      } else if (waited >= limits(ctx).pausedNotifyMs) {
         findings.push({
           rule: "waiting_on_you",
           grpId: g.id,
@@ -1092,7 +1091,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       .query<{ id: number; name: string; paused_at: number }, [number]>(
         "SELECT id, name, paused_at FROM grp WHERE status = 'PARKED' AND paused_at IS NOT NULL AND paused_at < ?",
       )
-      .all(now() - NUDGE_AFTER_MS)) {
+      .all(now() - limits(ctx).nudgeAfterMs)) {
       findings.push({
         rule: "waiting_parked",
         grpId: g.id,
@@ -1195,7 +1194,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     if (present) serverRestarts = 0;
     switch (serverAction(present, seenServerArgv, serverRestarts, now(), nextServerTry)) {
       case "give_up":
-        nextServerTry = now() + REEMIT_MS;
+        nextServerTry = now() + limits(ctx).reemitMs;
         findings.push({
           rule: "server_gone",
           grpId: null,
@@ -1257,7 +1256,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // 13. The three places that wait on the boss, with a clock on each. They are
   // supposed to wait; what was missing is that they waited in silence.
   await step({ id: "13", name: "boss_clocks", every: EVERY_TICK }, async () => {
-    for (const w of waitingOnBoss(ctx.db, now())) findings.push(w);
+    for (const w of waitingOnBoss(ctx.db, now(), limits(ctx).nudgeAfterMs)) findings.push(w);
   });
 
   return emit(ctx, findings, now);
@@ -1280,7 +1279,8 @@ function emit(ctx: Ctx, findings: Finding[], now: () => number): Finding[] {
            AND (grp_id IS ? OR (grp_id IS NULL AND ? IS NULL))`,
       )
       .get(f.rule, f.grpId ?? null, f.grpId ?? null);
-    const window = f.rule.startsWith("waiting_") ? NUDGE_REEMIT_MS : REEMIT_MS;
+    const l = limits(ctx);
+    const window = f.rule.startsWith("waiting_") ? l.nudgeReemitMs : l.reemitMs;
     if (last?.at && now() - last.at < window) continue;
     fresh.push(f);
     ctx.bus.emit({

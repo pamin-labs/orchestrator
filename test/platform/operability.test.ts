@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { makeApp } from "../../src/composition/api.ts";
-import { readinessPeriodMs } from "../../src/composition/server.ts";
+import { missingBinaries, readinessPeriodMs } from "../../src/composition/server.ts";
 import { ErrorResponseSchema } from "../../src/contracts/protocol.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { runtimeStatus } from "../../src/platform/observability/metrics.ts";
@@ -227,4 +227,29 @@ test("the self-check period follows the watchdog's interval, within bounds", () 
   expect(readinessPeriodMs(600_000)).toBe(30_000);
   expect(readinessPeriodMs(5_000)).toBe(5_000);
   expect(readinessPeriodMs(30_000)).toBe(30_000);
+});
+
+/**
+ * The host needs no binary of its own, which is a product claim and not a constant.
+ *
+ * `README.md` asks for Docker and nothing else, and `start()` refuses to boot for
+ * anything `missingBinaries()` names. Since ADR 007 the answer is nothing: git runs
+ * in the group's container and the CLIs in the sandbox. So a host binary added back
+ * changes what a user must install, and this is where they are made to notice.
+ */
+test("a headless box needs nothing on PATH that this process checks for", () => {
+  expect(missingBinaries()).toEqual([]);
+});
+
+test("the boss's watchdog interval is followed; only the readiness probe is clamped", () => {
+  // Worth pinning because the two look alike: `readinessPeriodMs` bounds a
+  // `spawnSync` self-check to 5–30s, and it is *derived* from the interval rather
+  // than replacing it. A reading that confuses them concludes the panel's own knob
+  // is silently overridden, which would be worth fixing — and is not what happens.
+  expect(readinessPeriodMs(60_000)).toBe(30_000);
+  expect(readinessPeriodMs(1_000)).toBe(5_000);
+  // And the clamp is one-directional in neither: a value already inside the band
+  // is returned as it stands, which is what makes it a bound rather than a fixed
+  // period wearing a parameter.
+  expect(readinessPeriodMs(15_000)).toBe(15_000);
 });

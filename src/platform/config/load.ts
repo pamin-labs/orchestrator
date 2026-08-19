@@ -177,6 +177,16 @@ const DEFAULTS: Config = {
   // In order. `main` first because it is what GitHub creates today, `master`
   // because it is what everything created before 2020 still has.
   baseBranchFallbacks: ["main", "master"],
+  watchdog: {
+    // Three turns writing nothing, or five turns on the same file. Both were
+    // chosen against real stalls: two is a hard day, six is a night wasted.
+    idleTurns: 3,
+    sameFile: 5,
+    reemitMs: 30 * 60 * 1_000,
+    nudgeAfterMs: 4 * 60 * 60 * 1_000,
+    nudgeReemitMs: 6 * 60 * 60 * 1_000,
+    pausedNotifyMs: 15 * 60 * 1_000,
+  },
   // Local, and the smaller of the two ADR 031 measured — they ranked the same and
   // the gap it cares about did not close with the larger one. Nothing reads this
   // yet; `bun run embedding:check` does.
