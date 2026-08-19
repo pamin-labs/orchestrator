@@ -1,3 +1,4 @@
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
 import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
@@ -41,6 +42,8 @@ import { errText } from "../../platform/process/text.ts";
 import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/login-flow.ts";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { escalation, grp, project, runtime_auth } from "../../platform/persistence/schema.ts";
 
 /**
  * Signing in: to the two model accounts, to GitHub, and to the sandbox server.
@@ -75,8 +78,8 @@ export const postAuth = (async (ctx, _req, _p, b) => {
   // account. Removing it is the only way back to "not configured", which is a
   // state the scheduler and the panel both understand.
   if ("clear" in b) {
-    ctx.db.run("DELETE FROM runtime_auth WHERE runtime = ?", [b.runtime]);
-    for (const g of ctx.db.query<{ id: number }, []>("SELECT id FROM grp WHERE sandbox_id IS NOT NULL").all()) {
+    orm(ctx.db).delete(runtime_auth).where(eq(runtime_auth.runtime, b.runtime)).run();
+    for (const g of orm(ctx.db).select({ id: grp.id }).from(grp).where(isNotNull(grp.sandbox_id)).all()) {
       await killSandbox(ctx, { grp: g.id });
     }
     return message("ok");
@@ -161,16 +164,24 @@ async function sandboxKeyWorks(server: string, key: string): Promise<"ok" | "inv
  * every way in has to do it, not just the one that happens to be edited.
  */
 export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void> {
-  for (const g of ctx.db.query<{ id: number }, []>("SELECT id FROM grp WHERE sandbox_id IS NOT NULL").all()) {
+  for (const g of orm(ctx.db).select({ id: grp.id }).from(grp).where(isNotNull(grp.sandbox_id)).all()) {
     await killSandbox(ctx, { grp: g.id });
   }
   const prefix = `${runtime} 的凭据`;
-  ctx.db.run(
-    `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = 'reconfigured',
-       answered_at = unixepoch() * 1000
-     WHERE answer IS NULL AND substr(question, 1, length(?)) = ?`,
-    [prefix, prefix],
-  );
+  orm(ctx.db)
+    .update(escalation)
+    .set({
+      chain_state: "answered",
+      answered_by: "boss",
+      answer: "reconfigured",
+      // Raw: SQLite's clock, not this process's, as the statement it replaces had.
+      answered_at: sql`unixepoch() * 1000`,
+    })
+    // `isNull`, not `eq(..., null)`: `= NULL` is NULL, which matches nothing.
+    // The prefix test stays raw — `substr`/`length` have no builder, and `like`
+    // would read the `%` and `_` in a runtime name as wildcards.
+    .where(and(isNull(escalation.answer), sql`substr(${escalation.question}, 1, length(${prefix})) = ${prefix}`))
+    .run();
   // Only the groups this credential stopped. Unscoped, this matches every PAUSED
   // row there is — a hand-paused group, a budget-burnt one, a rate-limited one
   // still carrying `rl_resets_at` that watchdog rule 6 then never clears.
@@ -531,8 +542,9 @@ export const getGithubRepos = (async (ctx, req, _params, { installation: asked =
   // Which project, not whether: naming it makes an 已添加 row a route rather than
   // a dead end.
   const taken = new Map(
-    ctx.db
-      .query<{ id: number; name: string; repo_path: string }, []>("SELECT id, name, repo_path FROM project")
+    orm(ctx.db)
+      .select({ id: project.id, name: project.name, repo_path: project.repo_path })
+      .from(project)
       .all()
       .map((r) => [r.repo_path, { id: r.id, name: r.name }] as const),
   );
