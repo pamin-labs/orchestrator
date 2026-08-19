@@ -18,6 +18,22 @@ const queryWith = (db: DB, rest: Omit<Parameters<typeof query>[0], "db" | "index
  * filtered while 这个 sailed through as a content word — and it is one of the most
  * common tokens in any Chinese sentence.
  */
+/**
+ * A one-letter Latin token is noise; a one-character Han token is often a word.
+ *
+ * The length rule reads the *script* rather than the count, which is the whole of
+ * why it is not `length > 1`. Dropping it entirely changed nothing any test could
+ * see — measured by mutation — while putting every stray `a`, `x` and digit from a
+ * path or a diff into the index as a term.
+ */
+test("length is judged by script, not by counting characters", () => {
+  // Latin singles and bare digits go; a Han single stays, because 钱, 锁 and 图 are
+  // words a query would reasonably be. 中 is not one of them here — it is on the
+  // rented stop list, which is a different rule and would hide this one.
+  expect(terms("a b x 7 _ 钱 锁")).toEqual(["钱", "锁"]);
+  expect(terms("run x() twice")).toEqual(["run", "twice"]);
+});
+
 test("a multi-character token whose every character is a stop word is filtered", () => {
   expect(terms("这个接口应该返回错误码")).toEqual(["接口", "应该", "返回", "错误", "码"]);
   expect(terms("那个页面什么都没有")).not.toContain("那个");
