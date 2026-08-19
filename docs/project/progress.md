@@ -425,6 +425,14 @@ M7 — executable engineering governance and versioned protocol.
   container died at import with `ENOENT: /package.json`. The fourth was the suite's
   own — it asserted `refs/heads/` where `keepBranch` deliberately writes
   `refs/orch/`. Nightly should be green.
+- `pageindex.enabled` is the A/B switch the retrieval question needs, default on.
+  Off skips the walk before the tree is loaded, so the query costs no model call
+  and falls through to the lexical half; `depth: 0` was rejected for it because
+  that still returns the root's children and would measure a degenerate walk.
+  **The measurement itself is not done** — it needs a real fleet and real spend,
+  which is the boss's call. Until then the retrieval ADR the plan asks for has
+  nothing to record, and no part of PageIndex is being cut on the unmeasured
+  "59% of the cache-read bill" line.
 
 ## Blockers and deviations
 
