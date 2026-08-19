@@ -5,7 +5,7 @@ import { installTracerProvider } from "../../src/platform/observability/traces.t
 import { Database } from "bun:sqlite";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
-import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
+import { openMemory, readSetting, type DB } from "../../src/platform/persistence/database.ts";
 import { busDeliver, Notifier, notifiable, tierFor, batchForBoss } from "../../src/mech/ops/notify.ts";
 import { pause, resume, settlePausing, park } from "../../src/mech/flow/intercept.ts";
 import {
@@ -1207,4 +1207,70 @@ test("losing the network is announced once, by the path that dedups", async () =
   expect(found.filter((f) => f.rule === "network_lost")).toHaveLength(1);
   const said = h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE body LIKE '%断网%'").get()!.c;
   expect(said).toBe(1);
+});
+
+/**
+ * The idle fleet paid for a rebuild that found nothing.
+ *
+ * `repo_map` runs every tick, per project, and made both its round trips before
+ * it knew whether anything had changed — the second one carrying every tracked
+ * file's contents out of the container. A repository nobody touched cost four
+ * container execs and 0.8 MB every thirty seconds to produce a map byte for byte
+ * identical to the stored one.
+ */
+test("an idle project pays one cheap exec a tick, not the whole corpus", async () => {
+  const h = harness();
+  let head = "1111111111111111111111111111111111111111";
+  const sandbox = fakeSandbox((cmd) => {
+    if (cmd.includes("merge-base")) return { code: 1 };
+    if (cmd.includes("rev-parse")) return { out: head };
+    if (cmd.includes("ls-tree")) return { out: "src/a.ts\n" };
+    return { code: 0 };
+  });
+  h.ctx.sandbox = sandbox;
+  h.db.run("UPDATE project SET remote = 'https://example.invalid/o/r.git' WHERE id = 1");
+  const mapWork = () => sandbox.commands.filter((c) => /ls-tree|ls-files|test -d|git .*clone/.test(c)).length;
+
+  await runWatchdog(h.deps);
+  expect(mapWork()).toBe(4);
+
+  // A restart between the ticks: fresh module state, same database. The stamp has
+  // to be in the database, or every restart re-does the work — and two ticks each
+  // see the other's nothing.
+  sandbox.commands.length = 0;
+  await runWatchdog({ ...h.deps, ctx: { ...h.ctx } });
+  expect(mapWork()).toBe(0);
+  // The whole tick, not just this rule: one `rev-parse HEAD`, 41 bytes back.
+  expect(sandbox.commands).toHaveLength(1);
+  expect(sandbox.commands[0]).toContain("rev-parse");
+
+  // The point of the gate is that it still notices. HEAD moves, the map is rebuilt.
+  head = "2222222222222222222222222222222222222222";
+  sandbox.commands.length = 0;
+  await runWatchdog(h.deps);
+  expect(mapWork()).toBe(4);
+});
+
+/**
+ * A stamp that cannot be taken is not a stamp saying "unchanged".
+ *
+ * The container being unreadable is the one case where skipping would be wrong
+ * and permanent: the map would freeze at whatever it last held, and nothing would
+ * ever ask again, because the answer to "did it change" would keep failing.
+ */
+test("an unreadable container refreshes the map rather than skipping it", async () => {
+  const h = harness();
+  const sandbox = fakeSandbox((cmd) => {
+    if (cmd.includes("rev-parse")) return { code: 128, err: "not a git repository" };
+    if (cmd.includes("ls-tree")) return { out: "src/a.ts\n" };
+    return { code: 0 };
+  });
+  h.ctx.sandbox = sandbox;
+  h.db.run("UPDATE project SET remote = 'https://example.invalid/o/r.git' WHERE id = 1");
+
+  await runWatchdog(h.deps);
+  await runWatchdog(h.deps);
+
+  expect(sandbox.commands.filter((c) => c.includes("ls-tree"))).toHaveLength(2);
+  expect(readSetting(h.db, "watchdog.repo_map.1")).toBeNull();
 });

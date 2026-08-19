@@ -393,6 +393,82 @@ type Cadence = typeof EVERY_TICK | Cron;
 
 const RAN_KEY = (rule: string) => `watchdog.ran.${rule}`;
 
+/** The repo map's stamp, in the database because process memory forgets on restart. */
+const MAP_KEY = (projectId: number) => `watchdog.repo_map.${projectId}`;
+
+/**
+ * Everything the repo map is a function of, in one 41-byte round trip.
+ *
+ * The project checkout is only ever a clean checkout of the base branch — agents
+ * work in group containers — so its HEAD is a faithful stamp of the contents the
+ * map reads. The exclude list and the repository's name are the map's other two
+ * inputs and neither moves HEAD, so both go in. Empty means the container could
+ * not be read, which the caller must treat as "unknown", never as "unchanged".
+ */
+type MapProject = { id: number; repo_path: string; remote: string | null };
+
+/**
+ * One project's map, rebuilt only when something it is made of moved.
+ *
+ * The stamp comes first because both round trips below used to happen before the
+ * rule knew whether anything had changed, and the second one carries every
+ * tracked file's contents out of the container. An idle project paid four
+ * container execs and 0.8 MB every thirty seconds for a map identical to the
+ * stored one.
+ */
+async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise<void> {
+  // An empty stamp means "cannot tell", which is a reason to do the work rather
+  // than to skip it: a container that will not answer must not freeze the map.
+  const stamp = p.remote ? await mapStamp(ctx, p.id, p.repo_path) : "";
+  if (stamp && readSetting(ctx.db, MAP_KEY(p.id)) === stamp) return;
+  const { files, why } = p.remote
+    ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))
+    : { files: [], why: "这个项目没记下 remote，没有可以镜像的地址" };
+  // Said once per project: never means the map silently stops being refreshed,
+  // and every tick is a feed nobody reads. Said with git's own words, because
+  // naming possible causes in prose is a guess printed as a diagnosis.
+  if (!files.length) {
+    if (mapWarned.has(p.id)) return;
+    mapWarned.add(p.id);
+    findings.push({
+      rule: "repo-map",
+      grpId: null,
+      severity: "advisory",
+      body: `仓库地图没法刷新了：${p.repo_path} —— ${why ?? "没有原因可说，这本身就是个 bug"}`,
+    });
+    return;
+  }
+  mapWarned.delete(p.id);
+  // Symbols need file *contents*, and the only copy is in the project's own
+  // container. Whole files, not the indexer's head: a parser needs the whole
+  // declaration, so a truncated file silently loses its last one and no larger
+  // cap fixes that. Empty is legitimate and means a paths-only map. This is the
+  // 0.8 MB the stamp exists to spend only when it buys something.
+  const heads = await treeHeads(ctx, { project: p.id }, null).catch(() => new Map<string, string>());
+  const named = await buildMap(
+    p.repo_path,
+    () => files,
+    indexExcludes(ctx.db, p.id),
+    (rel) => heads.get(rel),
+  );
+  if (saveMap(ctx.db, p.id, named)) {
+    ctx.bus.emit({
+      author: roleFor(ctx, "compress_context"),
+      kind: "state_change",
+      body: `repo map refreshed (${files.length} files, ${heads.size} read for symbols)`,
+    });
+  }
+  // After the map is stored, never before: a tick that refreshed nothing must not
+  // record that it did.
+  if (stamp) writeSetting(ctx.db, MAP_KEY(p.id), stamp);
+}
+
+async function mapStamp(ctx: Ctx, projectId: number, repoPath: string): Promise<string> {
+  const head = await sandboxGit(ctx, { project: projectId })(["rev-parse", "HEAD"], WORK);
+  if (head.code !== 0) return "";
+  return Bun.hash([head.out.trim(), repoPath, ...indexExcludes(ctx.db, projectId)].join("\n")).toString(16);
+}
+
 /**
  * Due when the cadence's next run after the last one has arrived.
  *
@@ -804,49 +880,8 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // grammars loaded once per process — and only written when the render changed,
   // so a quiet repo costs one comparison. Seven groups were grepping for this.
   await step({ id: "7e", name: "repo_map", every: EVERY_TICK }, async () => {
-    for (const p of ctx.db
-      .query<{ id: number; repo_path: string; remote: string | null }, []>("SELECT id, repo_path, remote FROM project")
-      .all()) {
-      const { files, why } = p.remote
-        ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))
-        : { files: [], why: "这个项目没记下 remote，没有可以镜像的地址" };
-      // Said once per project: never means the map silently stops being refreshed,
-      // and every tick is a feed nobody reads. Said with git's own words, because
-      // naming possible causes in prose is a guess printed as a diagnosis.
-      if (!files.length) {
-        if (!mapWarned.has(p.id)) {
-          mapWarned.add(p.id);
-          findings.push({
-            rule: "repo-map",
-            grpId: null,
-            severity: "advisory",
-            body: `仓库地图没法刷新了：${p.repo_path} —— ${why ?? "没有原因可说，这本身就是个 bug"}`,
-          });
-        }
-        continue;
-      }
-      mapWarned.delete(p.id);
-      // Symbols need file *contents*, and the only copy is in the project's own
-      // container. Whole files, not the indexer's head: a parser needs the whole
-      // declaration, so a truncated file silently loses its last one and no larger
-      // cap fixes that. Empty is legitimate and means a paths-only map.
-
-      // ponytail: the whole corpus crosses the exec every tick (0.8 MB → 4.0 MB
-      // here). Gate the exec on the tree's head sha if a large repo makes it hurt.
-      const heads = await treeHeads(ctx, { project: p.id }, null).catch(() => new Map<string, string>());
-      const named = await buildMap(
-        p.repo_path,
-        () => files,
-        indexExcludes(ctx.db, p.id),
-        (rel) => heads.get(rel),
-      );
-      if (saveMap(ctx.db, p.id, named)) {
-        ctx.bus.emit({
-          author: roleFor(ctx, "compress_context"),
-          kind: "state_change",
-          body: `repo map refreshed (${files.length} files, ${heads.size} read for symbols)`,
-        });
-      }
+    for (const p of ctx.db.query<MapProject, []>("SELECT id, repo_path, remote FROM project").all()) {
+      await refreshMap(ctx, p, findings);
     }
   });
 
