@@ -125,8 +125,18 @@ export const ConfigSchema = z.object({
   maxGroups: count,
   /** One number for the whole Runner pool, or one pool per resource tag. */
   leaseSlots: LeaseSlots,
-  /** Boss routes have no remote auth. The process may only listen on loopback. */
-  host: z.enum(["127.0.0.1", "localhost", "::1"]),
+  /**
+   * Loopback only, and the refusal says why.
+   *
+   * Boss routes have no login: whoever reaches the port is the boss. A bare enum
+   * error names three strings and leaves the reader to guess it is a policy —
+   * `config/default.yaml` told container users to set `0.0.0.0` for two releases
+   * while this refused it, and what they got was a startup failure with no reason
+   * in it. Publish a port with `-p 127.0.0.1:47821:47821` instead.
+   */
+  host: z.enum(["127.0.0.1", "localhost", "::1"], {
+    error: "host must be a loopback address: this server has no login, so anything reachable is the boss",
+  }),
   port: z.number().int().min(1).max(65535),
   /** provider -> difficulty -> model. One knob per family; adding one is a yaml block. */
   difficultyModel: z.record(z.string(), z.record(z.string(), z.string())),
@@ -166,6 +176,21 @@ export const ConfigSchema = z.object({
    * So the default is generous and the install streams.
    */
   installTimeoutMs: count,
+  /**
+   * How many nodes one PR poll asks GitHub for.
+   *
+   * Node counts are what a GraphQL query costs and what a busy pull request
+   * overflows: a hundred line-level threads read through a window of twenty means
+   * the eighty oldest are never seen. That ceiling is a property of the repository
+   * being watched, not of the watcher, so it is a setting rather than a constant.
+   */
+  prPoll: z.object({
+    prs: count,
+    messages: count,
+    checks: count,
+    threads: count,
+    threadComments: count,
+  }),
   /** Start the next slice when QA passes, without waiting for the boss to accept. */
   autoAdvance: z.boolean(),
   /** Difficulty tags accepted automatically once all three gates pass. */
