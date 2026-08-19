@@ -144,17 +144,16 @@ export interface StartCheck {
  * sites had drifted apart by one state each — two missed DRAFT, so a requirement
  * awaiting approval owned its paths to the panel and nothing to `orch blocked`.
  *
- * Derived from `GRP_STATES` so a new state joins by existing. Interpolated into
- * SQL because these are compile-time constants from an `as const` array.
+ * Derived from `GRP_STATES` so a new state joins by existing. Both are plain
+ * lists now: every reader binds them through `inArray` rather than pasting them
+ * into SQL text.
  */
-const sql = (states: readonly string[]) => `(${states.map((s) => `'${s}'`).join(", ")})`;
 
 /** Groups whose agents can be writing files this second. */
 export const WRITING = ["RUNNING", "PAUSING", "PAUSED", "PARKED", "PR_OPEN"] as const;
 
 /** Groups whose declared paths are spoken for: everything that has not dissolved. */
 export const CLAIMING = GRP_STATES.filter((s) => s !== "DISSOLVED");
-export const CLAIMING_SQL = sql(CLAIMING);
 
 type OtherOwner = { id: number; name: string; owns_json: string };
 const startOk = (): StartCheck => ({ ok: true, conflicts: [], sharedClaimed: [] });
