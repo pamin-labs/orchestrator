@@ -8,6 +8,9 @@ import { execIn, UTIL } from "../sandbox/sandbox.ts";
 import { shq } from "../../platform/process/shell.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
+import { orm } from "../../platform/persistence/orm.ts";
+import { usage_snapshot as usageSnapshot } from "../../platform/persistence/schema.ts";
 
 /**
  * How much of the claude subscription's windows is gone.
@@ -191,11 +194,16 @@ export async function pollClaudeUsage(ctx: Ctx, now = Date.now()): Promise<boole
   // own subscriptions. An API key or a gateway therefore gets no bar, and any row
   // left over from before the switch is deleted rather than left to age.
   if (!subscriptionAccount(db, "claude")) {
-    db.run("DELETE FROM usage_snapshot WHERE runtime = 'claude'");
+    orm(db).delete(usageSnapshot).where(eq(usageSnapshot.runtime, "claude")).run();
     return false;
   }
-  const last = db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'").get()?.at;
-  const prev = db.query<{ json: string }, []>("SELECT json FROM usage_snapshot WHERE runtime = 'claude'").get()?.json;
+  const snapshot = orm(db)
+    .select({ at: usageSnapshot.at, json: usageSnapshot.json })
+    .from(usageSnapshot)
+    .where(eq(usageSnapshot.runtime, "claude"))
+    .get();
+  const last = snapshot?.at;
+  const prev = snapshot?.json;
   const throttled = !!prev && prev.includes('"error":"rate_limited"');
   if (last && now - last < (throttled ? BACKOFF_MS : POLL_EVERY_MS)) return false;
   // The settings-page credential, which is also the one `subscriptionAccount`
@@ -232,6 +240,9 @@ export async function pollClaudeUsage(ctx: Ctx, now = Date.now()): Promise<boole
 function stamp(db: DB, now: number, read: UsageRead): void {
   const patch = "rl" in read ? JSON.stringify(read.rl) : JSON.stringify({ error: read.error });
   const update = "rl" in read ? JSON.stringify({ ...read.rl, error: null }) : patch;
+  // Raw: the update merges into the stored JSON with `json_patch`, so a read that
+  // failed keeps the last good numbers and adds an error beside them. Drizzle has
+  // no form for a SQLite JSON function reading the row it is updating.
   db.run(
     `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', ?, ?)
      ON CONFLICT (runtime) DO UPDATE SET
@@ -372,7 +383,7 @@ export async function pollUsage(
   // Same rule as claude, stated rather than inferred: an api_key session's rollout
   // file happens to carry no `rate_limits`, so this used to be right by accident.
   if (!subscriptionAccount(db, "codex")) {
-    db.run("DELETE FROM usage_snapshot WHERE runtime = 'codex'");
+    orm(db).delete(usageSnapshot).where(eq(usageSnapshot.runtime, "codex")).run();
     return;
   }
   // The sandboxes first: that is where the fleet's own sessions are now, and the
@@ -383,15 +394,20 @@ export async function pollUsage(
   // sharing, and the watchdog ticks every 30s. A quota gauge does not need to be
   // a second of container time twice a minute.
   let rl: RateLimitInfo | null = null;
-  const last = db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'codex'").get()?.at;
+  const last = orm(db)
+    .select({ at: usageSnapshot.at })
+    .from(usageSnapshot)
+    .where(eq(usageSnapshot.runtime, "codex"))
+    .get()?.at;
   if (last && now - last < POLL_EVERY_MS) return;
   const rollout = await fromSandbox?.().catch(() => null);
   if (rollout) rl = rateLimitsIn(rollout, now);
   if (!rl) rl = codexUsage(dataDir, now);
   if (!rl) return;
-  db.run(
-    `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('codex', ?, ?)
-     ON CONFLICT (runtime) DO UPDATE SET json = excluded.json, at = excluded.at`,
-    [JSON.stringify(rl), now],
-  );
+  const json = JSON.stringify(rl);
+  orm(db)
+    .insert(usageSnapshot)
+    .values({ runtime: "codex", json, at: now })
+    .onConflictDoUpdate({ target: usageSnapshot.runtime, set: { json, at: now } })
+    .run();
 }

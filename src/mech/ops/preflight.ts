@@ -13,6 +13,9 @@ import {
 import { isStale, parseAuth } from "../sandbox/chatgpt.ts";
 import { decode } from "hono/jwt";
 import { z } from "zod";
+import { isNotNull } from "drizzle-orm";
+import { orm } from "../../platform/persistence/orm.ts";
+import { agent } from "../../platform/persistence/schema.ts";
 
 /**
  * What has to be true before any agent can run, checked once. Every one of these
@@ -400,10 +403,12 @@ function credentialFix(runtime: string): string {
 
 function credentialRuntimes(db: DB): string[] {
   const runtimes = new Set(
-    db
-      .query<{ runtime: string }, []>("SELECT DISTINCT runtime FROM agent WHERE runtime IS NOT NULL")
+    orm(db)
+      .selectDistinct({ runtime: agent.runtime })
+      .from(agent)
+      .where(isNotNull(agent.runtime))
       .all()
-      .map(({ runtime }) => runtime),
+      .flatMap(({ runtime }) => (runtime === null ? [] : [runtime])),
   );
   runtimes.add("claude");
   runtimes.add("codex");
