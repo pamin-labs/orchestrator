@@ -9,6 +9,45 @@ import * as fx from "../support/factories.ts";
 const queryWith = (db: DB, rest: Omit<Parameters<typeof query>[0], "db" | "index">) =>
   query({ db, index: makeNoteIndex(db), ...rest });
 
+/**
+ * A word made only of stop characters is a stop word.
+ *
+ * The rented list and the rented segmenter disagree about what a token is: \`zho\` is
+ * 78 entries and every one is a single character, because it was built for a
+ * character-splitting tokeniser. ICU hands back words, so 这 and 个 were both
+ * filtered while 这个 sailed through as a content word — and it is one of the most
+ * common tokens in any Chinese sentence.
+ */
+test("a multi-character token whose every character is a stop word is filtered", () => {
+  expect(terms("这个接口应该返回错误码")).toEqual(["接口", "应该", "返回", "错误", "码"]);
+  expect(terms("那个页面什么都没有")).not.toContain("那个");
+  for (const word of ["这个", "那个", "一个", "还是", "就是", "不是", "什么", "几个"]) {
+    expect(terms(`${word}测试`)).toEqual(["测试"]);
+  }
+});
+
+/**
+ * Latin is excluded from that rule, and it has to be: \`eng\` contains \`a\` and \`i\`.
+ *
+ * English does not compose words out of function words character by character, so
+ * the rule would only ever be wrong there — \`ai\` is the cheapest proof.
+ */
+test("the rule does not reach Latin, where single letters are stop words", () => {
+  expect(terms("the ai model")).toEqual(["ai", "model"]);
+});
+
+/**
+ * Deliberately under-inclusive: only what the rented list already covers, composed.
+ *
+ * 可以 and 没有 survive because 可 and 有 are not on it. Widening this by hand would
+ * be the second stop word table ADR 021 refused, one script at a time.
+ */
+test("a word with one content character is content", () => {
+  for (const word of ["上下", "大小", "以上", "起来", "自己", "如果", "因为", "所以", "可以", "没有"]) {
+    expect(terms(word)).toEqual([word]);
+  }
+});
+
 test("terms are words in whatever script the writing uses, and stopwords go", () => {
   // `use` survives now. The hand-written list dropped it along with `get`, `set`,
   // `make` and `need` — content words in a corpus about code — and the rented
