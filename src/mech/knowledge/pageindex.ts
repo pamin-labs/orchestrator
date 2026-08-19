@@ -1,6 +1,9 @@
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { jsonOr } from "../../contracts/json.ts";
 import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { agent, grp, note } from "../../platform/persistence/schema.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
@@ -399,26 +402,52 @@ export function chargeIndex(
   const runtime = spec.runtime ?? "claude";
   const total = u.input + u.output + u.cacheRead + u.cacheCreate;
   if (total === 0) return;
-  const row = ctx.db
-    .query<{ id: number }, [number, string]>(
-      "SELECT id FROM agent WHERE project_id = ? AND grp_id IS NULL AND role = 'indexer' AND runtime = ?",
+  const row = orm(ctx.db)
+    .select({ id: agent.id })
+    .from(agent)
+    .where(
+      and(
+        eq(agent.project_id, projectId),
+        isNull(agent.grp_id),
+        eq(agent.role, "indexer"),
+        eq(agent.runtime, runtime),
+      ),
     )
-    .get(projectId, runtime);
+    .get();
   const id =
     row?.id ??
-    ctx.db
-      .query<{ id: number }, [number, string, string]>(
-        `INSERT INTO agent (project_id, grp_id, role, model, runtime, state, created_at)
-         VALUES (?, NULL, 'indexer', ?, ?, 'idle', unixepoch() * 1000) RETURNING id`,
-      )
-      .get(projectId, spec.model, runtime)!.id;
-  ctx.db.run("UPDATE agent SET total_tokens = total_tokens + ?, model = ? WHERE id = ?", [total, spec.model, id]);
+    orm(ctx.db)
+      .insert(agent)
+      .values({
+        project_id: projectId,
+        grp_id: null,
+        role: "indexer",
+        model: spec.model,
+        runtime,
+        // `state` carries a schema default of the same value and is still spelled
+        // out, as the old INSERT spelled it. `created_at` stays a `sql` expression
+        // so the row is stamped by SQLite's clock, not this process's.
+        state: "idle",
+        created_at: sql`unixepoch() * 1000`,
+      })
+      .returning({ id: agent.id })
+      .get().id;
+  orm(ctx.db)
+    .update(agent)
+    .set({ total_tokens: sql`${agent.total_tokens} + ${total}`, model: spec.model })
+    .where(eq(agent.id, id))
+    .run();
   // And onto the requirement that asked, when one did. This landed on the agent
   // row alone, so a group's budget could not see the retrieval its own turns
   // caused — `sliceBudgetTokens` is what stops a runaway, and the most frequent
   // model call in the system was invisible to it. The project-scoped calls (the
   // index rebuild) still belong to nobody, which is correct: no requirement asked.
-  if (grpId) ctx.db.run("UPDATE grp SET spent_tokens = spent_tokens + ? WHERE id = ?", [total, grpId]);
+  if (grpId)
+    orm(ctx.db)
+      .update(grp)
+      .set({ spent_tokens: sql`${grp.spent_tokens} + ${total}` })
+      .where(eq(grp.id, grpId))
+      .run();
   // The same event shape `recordCost` emits, because that is what the hourly
   // burn chart reads — an event row has no agent to join back to, so the runtime
   // has to travel in the meta or the split guesses from the model name.
@@ -442,13 +471,21 @@ export function chargeIndex(
  * which is exactly what fails when the retro that matters calls it something else.
  */
 export function noteLeaves(db: DB, projectId: number | null): { ids: string[]; read: Read } {
-  const rows = db
-    .query<{ id: number; grp_id: number | null; kind: string; body: string }, [number | null]>(
-      `SELECT id, grp_id, kind, body FROM note
-       WHERE (project_id IS ? OR grp_id IS NOT NULL) AND kind IN ('decision','retro','journal','fact','lesson')
-       ORDER BY id DESC LIMIT 500`,
+  const rows = orm(db)
+    .select({ id: note.id, grp_id: note.grp_id, kind: note.kind, body: note.body })
+    .from(note)
+    .where(
+      and(
+        // `project_id IS ?` in the old text, so asking for the global scope has to
+        // match the rows whose `project_id` is NULL. `eq()` is `=` and would match
+        // none of them, which is the whole corpus when no project is in scope.
+        or(projectId === null ? isNull(note.project_id) : eq(note.project_id, projectId), isNotNull(note.grp_id)),
+        inArray(note.kind, ["decision", "retro", "journal", "fact", "lesson"]),
+      ),
     )
-    .all(projectId);
+    .orderBy(desc(note.id))
+    .limit(500)
+    .all();
   const byId = new Map<string, string>();
   for (const r of rows) {
     byId.set(`${NOTE_PREFIX}${r.grp_id ? `grp-${r.grp_id}` : "project"}/${r.kind}/${r.id}`, r.body);
