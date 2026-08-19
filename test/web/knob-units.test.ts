@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { settablePaths, defaultFor } from "../../src/platform/config/settings.ts";
 import { isSettingPath } from "../../src/contracts/config.ts";
+import { KNOBS_ELSEWHERE, SECTIONS } from "../../web/src/features/knobs/view.tsx";
 import {
   KNOB_SHAPE,
   fmtCount,
@@ -112,4 +113,16 @@ test("every duration knob the server offers has a unit on the page", () => {
     if (typeof value !== "number") throw new Error(`${path} is not numeric`);
     expect(showNumber(value, KNOB_SHAPE[path])).not.toContain("NaN");
   }
+});
+
+test("every settable knob appears in a section, or the settings page cannot draw it", () => {
+  // `SECTIONS` is a hand-written path list, which is the shape this branch has
+  // already paid for once with role names: a list nobody extends silently drops
+  // what it does not mention. Thirteen keys landed settable through the API and
+  // invisible on the page, which is a control the boss cannot find.
+  const placed = new Set(Object.values(SECTIONS).flatMap((s) => s.paths));
+  const missing = [...settablePaths()]
+    .map(([path]) => path)
+    .filter((path) => !placed.has(path) && !KNOBS_ELSEWHERE.has(path));
+  expect(missing).toEqual([]);
 });

@@ -78,14 +78,41 @@ const KnobSchema = z.custom<Knob>((value) => {
 });
 const SettingsResponseSchema: z.ZodType<SettingsResponse> = z.object({ settings: z.array(KnobSchema) });
 
-export type KnobSection = "sched" | "models" | "turn" | "boxdefaults" | "notify";
+export type KnobSection = "sched" | "models" | "turn" | "boxdefaults" | "notify" | "waits";
 
 /** Which rows a section shows, in the order they are shown. */
-const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] }> = {
+/**
+ * Knobs a section deliberately does not draw, because another control owns them.
+ *
+ * Exported so the coverage check can tell "owned elsewhere" from "forgotten" —
+ * the second is what put thirteen keys on the API and nowhere on the page.
+ */
+export const KNOBS_ELSEWHERE = new Set(["sandbox.server", "sandbox.image"]);
+
+export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] }> = {
   sched: {
     zh: "调度",
     note: "同时开工多少、谁等谁",
-    paths: ["maxGroups", "leaseSlots", "watchdogIntervalMs", "autoAdvance", "autoAcceptTiers", "parkAfterPausedMs"],
+    paths: [
+      "maxGroups",
+      "leaseSlots",
+      "watchdogIntervalMs",
+      "autoAdvance",
+      "autoAcceptTiers",
+      "parkAfterPausedMs",
+      "watchdog.idleTurns",
+      "watchdog.sameFile",
+      "watchdog.reemitMs",
+      "watchdog.nudgeAfterMs",
+      "watchdog.nudgeReemitMs",
+      "watchdog.pausedNotifyMs",
+      "prPoll.prs",
+      "prPoll.messages",
+      "prPoll.checks",
+      "prPoll.threads",
+      "prPoll.threadComments",
+      "baseBranchFallbacks",
+    ],
   },
   models: {
     zh: "模型与预算",
@@ -99,6 +126,10 @@ const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] 
       "embedding.mode",
       "embedding.endpoint",
       "embedding.credential",
+      "embedding.model",
+      "indexModel.model",
+      "pageindex.depth",
+      "pageindex.width",
     ],
   },
   turn: {
@@ -115,12 +146,34 @@ const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] 
       "leaseTimeoutMs",
       "installTimeoutMs",
       "skillsDir",
+      "telemetryCacheMs",
+      "eventRetentionMs",
+      "streamBacklog",
+    ],
+  },
+  waits: {
+    zh: "等待与重试",
+    // Everything here bounds a wait on something outside this process: GitHub, a
+    // container, the network. They were eighteen literals across seven files, and
+    // the only ones anybody could change were the three turn budgets.
+    note: "等外面的东西多久算超时",
+    paths: [
+      "timeouts.githubApiMs",
+      "timeouts.credentialCheckMs",
+      "timeouts.sandboxPingMs",
+      "timeouts.networkPingMs",
+      "timeouts.tokenRefreshMs",
+      "timeouts.usageReadMs",
+      "timeouts.transferMs",
+      "intervals.recheckMs",
+      "intervals.usagePollMs",
+      "intervals.usageBackoffMs",
     ],
   },
   notify: {
     zh: "通知",
     note: "有事叫你的方式",
-    paths: ["notifyWebhook"],
+    paths: ["notifyWebhook", "timeouts.webhookMs", "intervals.notifyBatchMs", "intervals.notifyBackoffMs"],
   },
   boxdefaults: {
     zh: "沙盒默认值",
