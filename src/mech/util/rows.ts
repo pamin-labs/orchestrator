@@ -1,4 +1,7 @@
+import { and, desc, eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { agent, note as notes, project } from "../../platform/persistence/schema.ts";
 import { StoredProjectConfigSchema, type StoredProjectConfig } from "../../contracts/config.ts";
 import { jsonOr } from "../../contracts/json.ts";
 
@@ -32,9 +35,7 @@ const ReadProjectConfigSchema = StoredProjectConfigSchema.extend({
 
 export function projectConfig(db: DB, projectId: number | null | undefined): StoredProjectConfig {
   if (projectId == null) return {};
-  const row = db
-    .query<{ config_json: string | null }, [number]>("SELECT config_json FROM project WHERE id = ?")
-    .get(projectId);
+  const row = orm(db).select({ config_json: project.config_json }).from(project).where(eq(project.id, projectId)).get();
   return jsonOr(row?.config_json, ReadProjectConfigSchema, {});
 }
 
@@ -42,8 +43,8 @@ export function projectConfig(db: DB, projectId: number | null | undefined): Sto
 export const projectOfAgent = (db: DB, agentId: number | null | undefined): number | null =>
   agentId == null
     ? null
-    : (db.query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?").get(agentId)
-        ?.project_id ?? null);
+    : (orm(db).select({ project_id: agent.project_id }).from(agent).where(eq(agent.id, agentId)).get()?.project_id ??
+      null);
 
 /**
  * A note of which a project keeps exactly one: the repo map, the page index.
@@ -84,36 +85,37 @@ export interface NewNote {
 const DEFAULT_NOTE_LANG = "zh";
 
 export function addNote(db: DB, note: NewNote): void {
-  db.run(
-    `INSERT INTO note (project_id, grp_id, slice_id, kind, lang, body, frontmatter_json, export_path, supersedes, at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      note.projectId ?? null,
-      note.grpId ?? null,
-      note.sliceId ?? null,
-      note.kind,
+  orm(db)
+    .insert(notes)
+    .values({
+      project_id: note.projectId ?? null,
+      grp_id: note.grpId ?? null,
+      slice_id: note.sliceId ?? null,
+      kind: note.kind,
       // The two columns carrying a schema default are spelled out rather than
       // bound as NULL: `lang` and `frontmatter_json` are both `NOT NULL DEFAULT`,
       // and a bound NULL overrides a default rather than falling back to it —
       // which is a constraint failure, not the empty value the caller meant.
-      note.lang ?? DEFAULT_NOTE_LANG,
-      note.body,
-      note.frontmatterJson ?? "{}",
-      note.exportPath ?? null,
-      note.supersedes ?? null,
-      note.at ?? Date.now(),
-    ],
-  );
+      lang: note.lang ?? DEFAULT_NOTE_LANG,
+      body: note.body,
+      frontmatter_json: note.frontmatterJson ?? "{}",
+      export_path: note.exportPath ?? null,
+      supersedes: note.supersedes ?? null,
+      at: note.at ?? Date.now(),
+    })
+    .run();
 }
 
 export function saveSingletonNote(db: DB, projectId: number, kind: string, body: string): boolean {
-  const prev = db
-    .query<{ id: number; body: string }, [number, string]>(
-      "SELECT id, body FROM note WHERE project_id = ? AND kind = ? ORDER BY id DESC LIMIT 1",
-    )
-    .get(projectId, kind);
+  const prev = orm(db)
+    .select({ id: notes.id, body: notes.body })
+    .from(notes)
+    .where(and(eq(notes.project_id, projectId), eq(notes.kind, kind)))
+    .orderBy(desc(notes.id))
+    .limit(1)
+    .get();
   if (prev?.body === body) return false;
-  if (prev) db.run("DELETE FROM note WHERE id = ?", [prev.id]);
+  if (prev) orm(db).delete(notes).where(eq(notes.id, prev.id)).run();
   addNote(db, { projectId, kind, body });
   return true;
 }
@@ -122,8 +124,10 @@ export function saveSingletonNote(db: DB, projectId: number, kind: string, body:
 export const singletonNote = (db: DB, projectId: number | null, kind: string): string | null =>
   projectId == null
     ? null
-    : (db
-        .query<{ body: string }, [number, string]>(
-          "SELECT body FROM note WHERE project_id = ? AND kind = ? ORDER BY id DESC LIMIT 1",
-        )
-        .get(projectId, kind)?.body ?? null);
+    : (orm(db)
+        .select({ body: notes.body })
+        .from(notes)
+        .where(and(eq(notes.project_id, projectId), eq(notes.kind, kind)))
+        .orderBy(desc(notes.id))
+        .limit(1)
+        .get()?.body ?? null);
