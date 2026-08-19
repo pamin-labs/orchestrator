@@ -102,10 +102,16 @@ function snapshotQueries(): number {
   let queries = 0;
   const counted = new Proxy(db, {
     get(target, property) {
-      if (property !== "query") throw new Error(`snapshot accessed unsupported database member ${String(property)}`);
+      // Both ways a statement reaches SQLite: `query` is the raw path and
+      // `prepare` is how Drizzle issues one. Counting only the first would let a
+      // converted module grow a query per group and report a flat count — which
+      // is the exact regression this guard exists to catch.
+      if (property !== "query" && property !== "prepare") {
+        throw new Error(`snapshot accessed unsupported database member ${String(property)}`);
+      }
       return (...args: Parameters<DB["query"]>) => {
         queries += 1;
-        return target.query(...args);
+        return property === "query" ? target.query(...args) : target.prepare(...args);
       };
     },
   });

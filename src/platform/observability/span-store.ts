@@ -12,7 +12,10 @@ import { ExportResultCode, hrTimeToMilliseconds, type ExportResult } from "@open
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-node";
 import type { Statement } from "bun:sqlite";
 import { JsonObject, jsonOr } from "../../contracts/json.ts";
+import { eq, lt } from "drizzle-orm";
 import type { DB } from "../persistence/database.ts";
+import { orm } from "../persistence/orm.ts";
+import { span } from "../persistence/schema.ts";
 import { recordDroppedSpans } from "./metrics.ts";
 
 /** One row of the `span` table, and the only shape that reaches the SQL. */
@@ -207,9 +210,12 @@ function decode(row: SpanRecord): StoredSpan {
  * contiguous run of rows rather than a table scan with a filter.
  */
 export function readTrace(db: DB, traceId: string): StoredSpan[] {
-  return db
-    .query<SpanRecord, [string]>("SELECT * FROM span WHERE trace_id = ? ORDER BY started_at, span_id")
-    .all(traceId)
+  return orm(db)
+    .select()
+    .from(span)
+    .where(eq(span.trace_id, traceId))
+    .orderBy(span.started_at, span.span_id)
+    .all()
     .map(decode);
 }
 
@@ -638,7 +644,10 @@ export function trend(
  * housekeeping on a schedule, and a span arriving is not a reason to run it.
  */
 export function trimSpans(db: DB, now = Date.now(), maxRows = SPAN_MAX_ROWS): void {
-  db.run("DELETE FROM span WHERE started_at < ?", [now - SPAN_MAX_AGE_MS]);
+  orm(db)
+    .delete(span)
+    .where(lt(span.started_at, now - SPAN_MAX_AGE_MS))
+    .run();
   db.run(
     `DELETE FROM span WHERE rowid IN (
        SELECT rowid FROM span ORDER BY started_at DESC, rowid DESC LIMIT -1 OFFSET ?
