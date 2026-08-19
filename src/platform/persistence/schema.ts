@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file -- nothing in `src` reads this yet: it lands ahead of the query sites so that `test/platform/schema-equivalence.test.ts` can prove it matches the migrated database before anything depends on it. `stale-suppressions` deletes this line for whoever writes the first Drizzle query.
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { index, integer, primaryKey, real, sqliteTable, text, unique, uniqueIndex } from "drizzle-orm/sqlite-core";
