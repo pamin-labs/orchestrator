@@ -444,6 +444,16 @@ M7 — executable engineering governance and versioned protocol.
   path), snapshot **2.6ms**, watchdog tick 6.8–10.5ms; every budget clear, and
   the telemetry one shown able to fail. A test now fails if any directory holding
   TypeScript is outside the lint target.
+- **One unreproduced live-sandbox failure, kept here rather than called a flake.**
+  One run in seven had three tests fail, the first at `test -x /usr/local/bin/orch
+  && ls /var/orch` returning **126** — the shell's "found but could not execute" —
+  337ms into the first test, so the container existed and provisioning had not
+  finished. Six runs since have been green: cold (server killed first), warm
+  (server reused), and immediately after three back-to-back full suites, which is
+  what preceded the red one. Two hypotheses were tested and both were wrong — the
+  22s wall clock was a *consequence* of failing early, not a slow boot, and a cold
+  `ensureServer` start does not reproduce it. Left undiagnosed on purpose: naming
+  a cause here would be a guess printed as a diagnosis.
 
 ## Blockers and deviations
 
