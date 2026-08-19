@@ -715,3 +715,69 @@ test("a job records the sampling decision of the request that enqueued it", () =
     db.query<{ trace_flags: number | null }, [number]>("SELECT trace_flags FROM job WHERE id = ?").get(id)?.trace_flags;
   expect({ dropped: flags(dropped), noRequest: flags(own) }).toEqual({ dropped: 0, noRequest: null });
 });
+
+/**
+ * A group that has spent its budget stops being dispatched.
+ *
+ * This is the only place the ceiling is enforced — the panel shows the number, and
+ * `hasBudget` is what stops the work. Removing it entirely left the suite green:
+ * every test naming `budget_tokens` was a rendering test.
+ *
+ * Overspending is not visible from the outside. The group keeps its status, keeps
+ * its agent, and keeps costing money, which is the failure this guards.
+ */
+test("a group over its budget is not dispatched", () => {
+  const db = openMemory();
+  const [group] = seed(db, 1);
+  const ran: number[] = [];
+  const scheduler = new Scheduler(db, async (job) => void ran.push(job.id));
+
+  db.run("UPDATE grp SET budget_tokens = 1000, spent_tokens = 1000 WHERE id = ?", [group!]);
+  scheduler.enqueue("agent_turn", { grp_id: group! });
+  scheduler.tick();
+  expect(ran).toEqual([]);
+
+  // Raising the ceiling releases it: the gate is the comparison, not a latch.
+  db.run("UPDATE grp SET budget_tokens = 2000 WHERE id = ?", [group!]);
+  scheduler.tick();
+  expect(ran).toHaveLength(1);
+});
+
+/**
+ * No budget set means no ceiling, which is what a fresh group has.
+ *
+ * `budget_tokens` is nullable and null is the default. Reading null as zero would
+ * stop every group that had never been given one — that is, all of them.
+ */
+test("a group with no budget set is not treated as having spent it", () => {
+  const db = openMemory();
+  const [group] = seed(db, 1);
+  const ran: number[] = [];
+  const scheduler = new Scheduler(db, async (job) => void ran.push(job.id));
+
+  db.run("UPDATE grp SET budget_tokens = NULL, spent_tokens = 999999 WHERE id = ?", [group!]);
+  scheduler.enqueue("agent_turn", { grp_id: group! });
+  scheduler.tick();
+  expect(ran).toHaveLength(1);
+});
+
+/**
+ * A slice has its own ceiling, so overspend is caught at the slice rather than the
+ * group.
+ *
+ * A group's budget is the sum of what its slices may spend, so waiting for the group
+ * to exceed means one runaway slice spends the others' allowance first — and the
+ * slices that had not started are the ones that pay.
+ */
+test("a slice over its own budget stops even while its group has room", () => {
+  const db = openMemory();
+  const [group] = seed(db, 1);
+  const slice = fx.slice.insert(db, { grp_id: group!, budget_tokens: 100, spent_tokens: 100 });
+  const ran: number[] = [];
+  const scheduler = new Scheduler(db, async (job) => void ran.push(job.id));
+
+  db.run("UPDATE grp SET budget_tokens = 1000000, spent_tokens = 0 WHERE id = ?", [group!]);
+  scheduler.enqueue("agent_turn", { grp_id: group!, slice_id: slice.id });
+  scheduler.tick();
+  expect(ran).toEqual([]);
+});
