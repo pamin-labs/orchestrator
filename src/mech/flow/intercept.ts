@@ -1,5 +1,8 @@
+import { and, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { agent, grp, job } from "../../platform/persistence/schema.ts";
 import { addNote } from "../util/rows.ts";
 import { rebaseOntoBase, rollbackTo } from "../git/gitops.ts";
 import { sandboxGit } from "../git/checkout.ts";
@@ -70,36 +73,38 @@ export interface Hold {
 }
 
 export function hold(db: DB, grpId: number, h: Hold): void {
-  const sets = [
-    `status = '${h.settled ? "PAUSED" : "PAUSING"}'`,
-    // Where to resume to. `COALESCE` so the PAUSING → PAUSED step does not
-    // overwrite it with `PAUSING`, and so a second hold keeps the original.
-    "paused_from = COALESCE(paused_from, status)",
-    "paused_at = unixepoch() * 1000",
-    "pause_reason = ?",
-  ];
-  const args: (string | number)[] = [h.reason];
-  if (h.until !== undefined) {
-    sets.push("rl_resets_at = ?");
-    args.push(h.until);
-  }
-  if (h.on !== undefined) {
-    sets.push("blocked_on = ?");
-    args.push(h.on);
-  }
-  if (h.leaveQueue) sets.push("merge_seq = NULL, merge_seq_at = NULL");
-  args.push(grpId);
-  // A dissolved group is over, and nothing may restart it. `dropGroup` leaves the
-  // budget columns alone, so the budget rule kept matching and moved DISSOLVED to
-  // PAUSED — which is in `WRITING`, so the dead group's paths stayed claimed and
-  // the next group that wanted them never started.
-  const terminal = GRP_TERMINAL_STATES.map((state) => `'${state}'`).join(", ");
-  db.run(
-    `UPDATE grp SET ${sets.join(", ")} WHERE id = ? AND status NOT IN (${terminal})${
-      h.from ? ` AND status = '${h.from}'` : ""
-    }`,
-    args,
-  );
+  orm(db)
+    .update(grp)
+    .set({
+      status: h.settled ? "PAUSED" : "PAUSING",
+      // Where to resume to. `COALESCE` so the PAUSING → PAUSED step does not
+      // overwrite it with `PAUSING`, and so a second hold keeps the original.
+      // Reads the row as it was: SQLite evaluates every SET right-hand side
+      // against the original values, whatever order the assignments are in.
+      paused_from: sql`COALESCE(${grp.paused_from}, ${grp.status})`,
+      paused_at: sql`unixepoch() * 1000`,
+      pause_reason: h.reason,
+      // The three optional assignments, spread rather than pushed onto a list of
+      // SQL fragments. Omitting a key leaves the column alone, which is what not
+      // pushing the fragment did.
+      ...(h.until !== undefined ? { rl_resets_at: h.until } : {}),
+      ...(h.on !== undefined ? { blocked_on: h.on } : {}),
+      ...(h.leaveQueue ? { merge_seq: null, merge_seq_at: null } : {}),
+    })
+    .where(
+      and(
+        eq(grp.id, grpId),
+        // A dissolved group is over, and nothing may restart it. `dropGroup` leaves
+        // the budget columns alone, so the budget rule kept matching and moved
+        // DISSOLVED to PAUSED — which is in `WRITING`, so the dead group's paths
+        // stayed claimed and the next group that wanted them never started.
+        // Spread: `inArray` takes a ReadonlyArray but `notInArray` does not, and
+        // `GRP_TERMINAL_STATES` is an `as const` tuple.
+        notInArray(grp.status, [...GRP_TERMINAL_STATES]),
+        h.from ? eq(grp.status, h.from) : undefined,
+      ),
+    )
+    .run();
 }
 
 /**
@@ -125,15 +130,29 @@ export function release(
   grpId: number | null,
   opts: { only?: PauseReason; from?: readonly string[] } = {},
 ): void {
-  const states = (opts.from ?? STOPPED).map((x) => `'${x}'`).join(", ");
+  // Two shapes, as before: a bulk resume matches on cause alone, a targeted one on
+  // the group plus its state, and only then also on cause. `and()` drops the
+  // `undefined` arm, and never sees an empty list — the id is always present.
   const where =
-    grpId === null ? "pause_reason = ?" : `id = ? AND status IN (${states})${opts.only ? " AND pause_reason = ?" : ""}`;
-  ctx.db.run(
-    `UPDATE grp SET status = COALESCE(paused_from, 'RUNNING'), paused_from = NULL,
-       paused_at = NULL, pause_reason = NULL, rl_resets_at = NULL, blocked_on = NULL
-     WHERE ${where}`,
-    grpId === null ? [opts.only!] : opts.only ? [grpId, opts.only] : [grpId],
-  );
+    grpId === null
+      ? eq(grp.pause_reason, opts.only!)
+      : and(
+          eq(grp.id, grpId),
+          inArray(grp.status, opts.from ?? STOPPED),
+          opts.only ? eq(grp.pause_reason, opts.only) : undefined,
+        );
+  orm(ctx.db)
+    .update(grp)
+    .set({
+      status: sql`COALESCE(${grp.paused_from}, 'RUNNING')`,
+      paused_from: null,
+      paused_at: null,
+      pause_reason: null,
+      rl_resets_at: null,
+      blocked_on: null,
+    })
+    .where(where)
+    .run();
 }
 
 /** L2. Returns the number of turns still in flight that we are waiting on. */
@@ -157,7 +176,7 @@ export function pause(ctx: Ctx, grpId: number, reason: PauseReason = "boss"): nu
  * so a crashed turn cannot leave a group stuck in PAUSING forever.
  */
 export function settlePausing(ctx: Ctx): number {
-  const groups = ctx.db.query<{ id: number }, []>("SELECT id FROM grp WHERE status = 'PAUSING'").all();
+  const groups = orm(ctx.db).select({ id: grp.id }).from(grp).where(eq(grp.status, "PAUSING")).all();
   let settled = 0;
   for (const g of groups) {
     if (runningJobs(ctx.db, g.id).length === 0) {
@@ -174,12 +193,15 @@ function settle(ctx: Ctx, grpId: number): void {
   // arrives here with NULL is never parked, never nudged, never unparked. Same
   // argument for the reason: a PAUSED row with no reason is one no resume can
   // ever be about, so it gets the only honest value there is.
-  ctx.db.run(
-    `UPDATE grp SET status = 'PAUSED', paused_at = coalesce(paused_at, unixepoch() * 1000),
-       pause_reason = coalesce(pause_reason, 'unknown')
-     WHERE id = ? AND status = 'PAUSING'`,
-    [grpId],
-  );
+  orm(ctx.db)
+    .update(grp)
+    .set({
+      status: "PAUSED",
+      paused_at: sql`coalesce(${grp.paused_at}, unixepoch() * 1000)`,
+      pause_reason: sql`coalesce(${grp.pause_reason}, 'unknown')`,
+    })
+    .where(and(eq(grp.id, grpId), eq(grp.status, "PAUSING")))
+    .run();
   ctx.bus.emit({
     grpId,
     author: "orchestrator",
@@ -213,19 +235,29 @@ export async function interrupt(
     // A turn runs in the group's sandbox, not on this machine, so there is no
     // pid to signal — stopping it means abandoning the stream we are reading.
     if (abortJob(j.id)) killed++;
-    ctx.db.run("UPDATE job SET state = 'cancelled', error = ?, ended_at = unixepoch() * 1000 WHERE id = ?", [
-      `interrupted (${mode})`,
-      j.id,
-    ]);
+    orm(ctx.db)
+      .update(job)
+      .set({ state: "cancelled", error: `interrupted (${mode})`, ended_at: sql`unixepoch() * 1000` })
+      .where(eq(job.id, j.id))
+      .run();
   }
-  ctx.db.run("UPDATE agent SET state = 'idle' WHERE grp_id = ? AND state = 'running'", [grpId]);
+  orm(ctx.db)
+    .update(agent)
+    .set({ state: "idle" })
+    .where(and(eq(agent.grp_id, grpId), eq(agent.state, "running")))
+    .run();
   // Not `hold`: an interrupt keeps whatever cause already stopped it — the boss
   // interrupting a group that was already waiting on an answer is still waiting
   // on that answer.
-  ctx.db.run(
-    "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = coalesce(pause_reason, 'boss') WHERE id = ? AND status IN ('RUNNING','PAUSING')",
-    [grpId],
-  );
+  orm(ctx.db)
+    .update(grp)
+    .set({
+      status: "PAUSED",
+      paused_at: sql`unixepoch() * 1000`,
+      pause_reason: sql`coalesce(${grp.pause_reason}, 'boss')`,
+    })
+    .where(and(eq(grp.id, grpId), inArray(grp.status, ["RUNNING", "PAUSING"])))
+    .run();
 
   let rolledBackTo: string | undefined;
   if (mode === "rollback") {
@@ -276,11 +308,11 @@ interface RunningJob {
 }
 
 function runningJobs(db: DB, grpId: number): RunningJob[] {
-  return db
-    .query<RunningJob, [number]>(
-      "SELECT id, pid, checkpoint_sha FROM job WHERE grp_id = ? AND state = 'running' AND kind = 'agent_turn'",
-    )
-    .all(grpId);
+  return orm(db)
+    .select({ id: job.id, pid: job.pid, checkpoint_sha: job.checkpoint_sha })
+    .from(job)
+    .where(and(eq(job.grp_id, grpId), eq(job.state, "running"), eq(job.kind, "agent_turn")))
+    .all();
 }
 
 /**
@@ -291,8 +323,12 @@ function runningJobs(db: DB, grpId: number): RunningJob[] {
  */
 export function park(ctx: Ctx, grpId: number, reason: string): void {
   const cancelled = ctx.sched.cancelPending(grpId, `parked: ${reason}`);
-  ctx.db.run("UPDATE agent SET session_id = NULL, session_tokens = 0 WHERE grp_id = ? AND state != 'retired'", [grpId]);
-  ctx.db.run("UPDATE grp SET status = 'PARKED' WHERE id = ?", [grpId]);
+  orm(ctx.db)
+    .update(agent)
+    .set({ session_id: null, session_tokens: 0 })
+    .where(and(eq(agent.grp_id, grpId), ne(agent.state, "retired")))
+    .run();
+  orm(ctx.db).update(grp).set({ status: "PARKED" }).where(eq(grp.id, grpId)).run();
   ctx.bus.emit({
     grpId,
     author: "orchestrator",
