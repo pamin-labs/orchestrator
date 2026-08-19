@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { agent, escalation, grp, project } from "../../platform/persistence/schema.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { say } from "../../platform/text/lang.ts";
 import type { Config } from "../../platform/config/load.ts";
@@ -20,17 +23,21 @@ type TurnPayload = TurnJob["payload"];
 
 function escalationCard(db: DB, payload: TurnPayload): string | undefined {
   if (!payload.escalation) return;
-  const esc = db
-    .query<{ id: number; question: string; severity: string; agent_id: number | null }, [number]>(
-      "SELECT id, question, severity, agent_id FROM escalation WHERE id = ?",
-    )
-    .get(payload.escalation);
+  const esc = orm(db)
+    .select({
+      id: escalation.id,
+      question: escalation.question,
+      severity: escalation.severity,
+      agent_id: escalation.agent_id,
+    })
+    .from(escalation)
+    .where(eq(escalation.id, payload.escalation))
+    .get();
   if (!esc) return;
   const asker =
     esc.agent_id === null
       ? "someone"
-      : (db.query<{ role: string }, [number]>("SELECT role FROM agent WHERE id = ?").get(esc.agent_id)?.role ??
-        "someone");
+      : (orm(db).select({ role: agent.role }).from(agent).where(eq(agent.id, esc.agent_id)).get()?.role ?? "someone");
   return (
     `${asker} is blocked and asked (severity ${esc.severity}):\n${esc.question}\n\n` +
     `Answer it with \`orch answer ${esc.id} --answer "…"\`, or pass it up with ` +
@@ -92,11 +99,12 @@ function auditCard(payload: TurnPayload): string | undefined {
 function scribeCard(ctx: Ctx, payload: TurnPayload): string | undefined {
   const groupId = payload.scribe;
   if (!groupId) return;
-  const base = ctx.db
-    .query<{ base_branch: string | null }, [number]>(
-      "SELECT p.base_branch FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
-    )
-    .get(groupId)?.base_branch;
+  const base = orm(ctx.db)
+    .select({ base_branch: project.base_branch })
+    .from(grp)
+    .innerJoin(project, eq(project.id, grp.project_id))
+    .where(eq(grp.id, groupId))
+    .get()?.base_branch;
   const ref = `origin/${base ?? "main"}`;
   return (
     `This branch passed its audit and is about to be published. Write what it says in a log.\n\n` +
