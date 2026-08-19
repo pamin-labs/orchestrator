@@ -128,6 +128,7 @@ export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: st
       "embedding.credential",
       "embedding.model",
       "indexModel.model",
+      "pageindex.enabled",
       "pageindex.depth",
       "pageindex.width",
     ],

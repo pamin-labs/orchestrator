@@ -143,7 +143,7 @@ const DEFAULTS: Config = {
   // retuning them. Depth 3 answered every question the walk was measured on in
   // two calls; a fourth level is a third serial call on every query that reaches
   // it, which is what makes this the expensive number of the two.
-  pageindex: { depth: 3, width: 4 },
+  pageindex: { enabled: true, depth: 3, width: 4 },
   notifyWebhook: "",
   parkAfterPausedMs: 7_200_000,
   watchdogIntervalMs: 30_000,

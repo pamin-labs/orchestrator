@@ -153,14 +153,14 @@ export const ConfigSchema = z.object({
   /**
    * How far and how wide a model may walk the PageIndex tree.
    *
-   * `depth` is the number of **serial** model calls one `orch ctx query` can make
-   * — two per question at depth 3, each with its own 60s timeout — so it is the
-   * single knob on the most frequent model spend in the system. `width` caps how
-   * many ids the model may name at a level, which decides how much of the tree one
-   * call sees rather than how many calls there are. Both were literals inside the
-   * walk, where the boss could not reach them.
+   * `depth` is serial model calls per `orch ctx query` — two per question at depth
+   * 3, each with a 60s timeout — so it is the single knob on the most frequent
+   * model spend here; `width` caps the ids the model may name at a level.
+   * `enabled` is the A/B switch, on by default: off skips the walk before the tree
+   * is loaded, so the query costs no model call and falls through to the lexical
+   * half. Its own knob rather than `depth: 0`, which still walks, degenerately.
    */
-  pageindex: z.object({ depth: count, width: count }).strict(),
+  pageindex: z.object({ enabled: z.boolean(), depth: count, width: count }).strict(),
   /**
    * Forward every notification to a URL, as JSON. Empty means nobody but the panel.
    *

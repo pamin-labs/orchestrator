@@ -22,6 +22,9 @@ async function pageIndexContext(
   question: string,
 ): Promise<{ where: string; notes: number[] }> {
   const none = { where: "", notes: [] };
+  // Before the tree is loaded, not inside the walk: off has to cost nothing at
+  // all, or the A/B measures a cheaper walk rather than no walk.
+  if (!ctx.config.pageindex.enabled) return none;
   const tree = await loadTree(ctx.db, projectId);
   // Bound before the closure: narrowing a property does not survive into a
   // callback, and the honest fix is the local, not an assertion that tells the

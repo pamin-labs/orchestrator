@@ -254,6 +254,48 @@ test("`orch ctx query` is timed, and its two halves are timed apart", async () =
   expect(query.grpId).toBe(1);
 });
 
+test("pageindex off costs no model call, and the lexical half still answers", async () => {
+  // The A/B switch Wave 5.1 turns on: the claim that the walk pays for itself is
+  // measurable only against a run with it off, and "off" has to mean no model call
+  // rather than a cheaper walk — `depth: 0` would still hand back the root's
+  // children. Asserted on `askIn`, which is the thing that costs money.
+  const { db, ctx, app, provider } = await harness(ok);
+  const f = fx.on(db);
+  const agent = await f.agent.create({ project_id: 1, grp_id: 1, role: "engineer", token: "tok-eng" });
+  await f.note.create({ project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
+  await saveTree(db, 1, {
+    "/": { id: "/", kind: "dir", summary: "", sig: "", children: ["notes/"] },
+    "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", sig: "", children: [] },
+  });
+  let asked = 0;
+  ctx.askIn = () => async () => {
+    asked += 1;
+    return "NONE";
+  };
+  ctx.config = { ...ctx.config, pageindex: { ...ctx.config.pageindex, enabled: false } };
+
+  const r = await app(
+    new Request("http://x/orch/v1/ctx/query", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+        "x-orch-token": String(agent.token),
+      },
+      body: JSON.stringify({ question: "which validation library?" }),
+    }),
+  );
+  await provider.forceFlush();
+
+  expect(asked).toBe(0);
+  // The other half is untouched — it is what the walk is being compared against —
+  // so the answer still comes back assembled and still carries its own span.
+  expect(await r.text()).toContain("This group right now");
+  const spans = await traceContaining(db, "ctx.query");
+  expect(spans.map((span) => span.name)).toContain("ctx.assemble");
+  expect(spans.map((span) => span.name)).not.toContain("ctx.pageindex");
+});
+
 test("a page-index walk that throws ends its span red, not green", async () => {
   // The catch predates the span and is why it is worth having: a walk that threw
   // and a tree with no hits both fall through to the lexical half in silence, and
