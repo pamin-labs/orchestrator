@@ -2,7 +2,10 @@ import { create, insertMultiple, search } from "@orama/orama";
 import { stemmer as arabic } from "@orama/stemmers/arabic";
 import { stemmer as english } from "@orama/stemmers/english";
 import { stemmer as russian } from "@orama/stemmers/russian";
+import { and, count, gt, isNotNull, notInArray, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { note } from "../../platform/persistence/schema.ts";
 import { type Doc, type Hit, KIND_WEIGHT } from "./ctx.ts";
 import { terms } from "./terms.ts";
 
@@ -51,27 +54,50 @@ interface Stamp {
   maxAt: number;
 }
 
+/**
+ * `coalesce` around the two maxima has no builder and stays `sql`: `max()` over an
+ * empty table is NULL, and every reader of a stamp compares it against a number.
+ */
 const stampOf = (db: DB): Stamp =>
-  db
-    .query<Stamp, []>(
-      "SELECT count(*) AS count, coalesce(max(id), 0) AS maxId, coalesce(max(at), 0) AS maxAt FROM note",
-    )
+  orm(db)
+    .select({
+      count: count(),
+      maxId: sql<number>`coalesce(max(${note.id}), 0)`,
+      maxAt: sql<number>`coalesce(max(${note.at}), 0)`,
+    })
+    .from(note)
     .get()!;
 
 const rowsAfter = (db: DB, afterId: number): Row[] =>
-  db
-    .query<Row, [number]>(
-      `SELECT id, kind, body, export_path AS exportPath, at, slice_id AS sliceId,
-              grp_id AS grpId, project_id AS projectId
-         FROM note
-        WHERE kind NOT IN ('pageindex', 'map') AND id > ?
-          -- What a later note overturned is not an answer. Filtered at the source
-          -- rather than after scoring, because a superseded decision carries the
-          -- highest weight in the table and would win on its way out.
-          AND id NOT IN (SELECT supersedes FROM note WHERE supersedes IS NOT NULL)
-        ORDER BY id`,
+  orm(db)
+    .select({
+      id: note.id,
+      kind: note.kind,
+      body: note.body,
+      exportPath: note.export_path,
+      at: note.at,
+      sliceId: note.slice_id,
+      grpId: note.grp_id,
+      projectId: note.project_id,
+    })
+    .from(note)
+    .where(
+      and(
+        notInArray(note.kind, ["pageindex", "map"]),
+        gt(note.id, afterId),
+        // What a later note overturned is not an answer. Filtered at the source
+        // rather than after scoring, because a superseded decision carries the
+        // highest weight in the table and would win on its way out. The inner
+        // `IS NOT NULL` is load-bearing: one NULL in a `NOT IN` list makes the
+        // whole predicate NULL and the query returns nothing.
+        notInArray(
+          note.id,
+          orm(db).select({ supersedes: note.supersedes }).from(note).where(isNotNull(note.supersedes)),
+        ),
+      ),
     )
-    .all(afterId);
+    .orderBy(note.id)
+    .all();
 
 type Index = ReturnType<typeof emptyIndex>;
 

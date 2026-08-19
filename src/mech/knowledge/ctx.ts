@@ -1,16 +1,12 @@
+import { and, eq, inArray, max } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { orm } from "../../platform/persistence/orm.ts";
+import { grp, lease, slice as sliceTable } from "../../platform/persistence/schema.ts";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { scopeAttributes } from "../../platform/observability/metrics.ts";
 import { loadMap, mapFor } from "./repomap.ts";
 import type { NoteIndex } from "./note-index.ts";
-import {
-  ESCALATION_TERMINAL_STATES,
-  stateParam,
-  type EscalationState,
-  type GrpState,
-  type LeaseState,
-  type SliceState,
-} from "../../contracts/states.ts";
+import { ESCALATION_TERMINAL_STATES, stateParam, type EscalationState } from "../../contracts/states.ts";
 
 /**
  * Retrieval for \`orch ctx query\`.
@@ -132,11 +128,17 @@ function budgetOutput(budget: number): { parts: string[]; push: (text: string) =
 }
 
 function sliceContext(db: DB, groupId: number): string | null {
-  const slices = db
-    .query<{ seq: number; title: string; accept_spec: string; status: SliceState }, [number]>(
-      "SELECT seq, title, accept_spec, status FROM slice WHERE grp_id = ? ORDER BY seq",
-    )
-    .all(groupId);
+  const slices = orm(db)
+    .select({
+      seq: sliceTable.seq,
+      title: sliceTable.title,
+      accept_spec: sliceTable.accept_spec,
+      status: sliceTable.status,
+    })
+    .from(sliceTable)
+    .where(eq(sliceTable.grp_id, groupId))
+    .orderBy(sliceTable.seq)
+    .all();
   if (!slices.length) return null;
   return (
     `## This group's slices\n` +
@@ -147,12 +149,14 @@ function sliceContext(db: DB, groupId: number): string | null {
 }
 
 function groupContext(db: DB, groupId: number): string | null {
-  const group = db
-    .query<{ name: string; status: GrpState; branch: string | null; pr: number | null }, [number]>(
-      "SELECT name, status, branch, pr_number AS pr FROM grp WHERE id = ?",
-    )
-    .get(groupId);
+  const group = orm(db)
+    .select({ name: grp.name, status: grp.status, branch: grp.branch, pr: grp.pr_number })
+    .from(grp)
+    .where(eq(grp.id, groupId))
+    .get();
   if (!group) return null;
+  // Raw: `json_each(?)` is how every state-subset predicate in this codebase binds a
+  // `StateSubset`, and Drizzle has no builder for a table-valued function.
   const open = db
     .query<{ id: number; chain_state: EscalationState; severity: string; question: string }, [number, string]>(
       `SELECT id, chain_state, severity, question FROM escalation
@@ -160,12 +164,18 @@ function groupContext(db: DB, groupId: number): string | null {
          AND chain_state NOT IN (SELECT value FROM json_each(?)) ORDER BY id`,
     )
     .all(groupId, stateParam(ESCALATION_TERMINAL_STATES));
-  const gates = db
-    .query<{ resource: string; state: LeaseState }, [number, number]>(
-      `SELECT resource, state FROM lease WHERE grp_id = ? AND id IN
-         (SELECT max(id) FROM lease WHERE grp_id = ? GROUP BY resource)`,
-    )
-    .all(groupId, groupId);
+  // The newest lease per resource. No ORDER BY in the original and none added:
+  // the caller joins these into one line and never indexed them.
+  const newestPerResource = orm(db)
+    .select({ id: max(lease.id) })
+    .from(lease)
+    .where(eq(lease.grp_id, groupId))
+    .groupBy(lease.resource);
+  const gates = orm(db)
+    .select({ resource: lease.resource, state: lease.state })
+    .from(lease)
+    .where(and(eq(lease.grp_id, groupId), inArray(lease.id, newestPerResource)))
+    .all();
   const branch = group.branch ? ` on ${group.branch}` : "";
   const pullRequest = group.pr ? ` — PR #${group.pr}` : " — no PR yet";
   const gateState = gates.length
