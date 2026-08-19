@@ -12,7 +12,7 @@ import {
   modelFor,
   withAbsoluteDataDir,
 } from "../../src/platform/config/load.ts";
-import { ConfigSchema } from "../../src/contracts/config.ts";
+import { EmbeddingRef, ConfigSchema } from "../../src/contracts/config.ts";
 import { routeSource } from "../support/route-source.ts";
 import { tempDir } from "../support/temp.ts";
 
@@ -249,4 +249,34 @@ describe("a sandbox address is a host and a port, not the rest of a URL", () => 
   ])("%s accepted: %p", (value, accepted) => {
     expect(server(value)).toBe(accepted);
   });
+});
+
+/**
+ * A remote embedding is refused unless it says where and with whose credential.
+ *
+ * ADR 031 refused embeddings on a measurement and left half of that measurement
+ * unrunnable: whether a *hosted* embedding ranks across languages is "not
+ * measured and deliberately not guessed", because the test needs the endpoint the
+ * boss would choose. This is that endpoint, and the reason it is validated here
+ * rather than at the call site is that there is no call site yet — a config that
+ * says `mode: remote` and nothing else would sit valid until the day something
+ * reads it.
+ *
+ * The credential is a *name* in `runtime_auth`, never a key. A key here is a key
+ * in shell history and in every backup of the config file.
+ */
+test("a remote embedding needs an endpoint and a credential name; local needs neither", () => {
+  const local = { mode: "local", model: "Xenova/multilingual-e5-small", endpoint: "", credential: "" };
+  expect(EmbeddingRef.parse(local).mode).toBe("local");
+
+  const remote = { mode: "remote", model: "text-embedding-3-large" };
+  expect(EmbeddingRef.safeParse({ ...remote, endpoint: "", credential: "" }).success).toBe(false);
+  expect(
+    EmbeddingRef.safeParse({ ...remote, endpoint: "https://api.example.com/v1/embeddings", credential: "" }).success,
+  ).toBe(false);
+  expect(EmbeddingRef.safeParse({ ...remote, endpoint: "not-a-url", credential: "openai" }).success).toBe(false);
+  expect(
+    EmbeddingRef.safeParse({ ...remote, endpoint: "https://api.example.com/v1/embeddings", credential: "openai" })
+      .success,
+  ).toBe(true);
 });

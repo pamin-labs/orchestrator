@@ -7,6 +7,7 @@ import type { ModelSources } from "./models";
 import {
   Amount,
   Box,
+  Embedding,
   Caps,
   CountAmount,
   IndexModel,
@@ -91,7 +92,16 @@ const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] 
   models: {
     zh: "模型与预算",
     note: "花钱的那几个旋钮",
-    paths: ["difficultyModel", "indexModel.runtime", "contextWindow", "sliceBudgetTokens", "language"],
+    paths: [
+      "difficultyModel",
+      "indexModel.runtime",
+      "contextWindow",
+      "sliceBudgetTokens",
+      "language",
+      "embedding.mode",
+      "embedding.endpoint",
+      "embedding.credential",
+    ],
   },
   turn: {
     zh: "turn 与上下文",
@@ -162,6 +172,18 @@ const COPY: Record<string, { zh: string; why?: string; ph?: string }> = {
   difficultyModel: {
     zh: "难度 → 模型",
     why: "Dispatcher 给每片打难度标签，这张表把标签换成模型。哪个角色用哪个 CLI 写在 roles/*.yaml，这里只管「那个 CLI 上，这个难度用哪个模型」。改了只影响之后新雇的 agent——模型在雇的时候就冻进 agent 行了。",
+  },
+  "embedding.mode": {
+    zh: "向量检索",
+    why: "本地还是远程。今天两者都不接检索——ADR 031 实测拒绝了向量：同语言内排序是对的，跨语言时问题所在语言的一段无关文字会盖过另一种语言里真正相关的那段，而跨语言正是这个功能唯一存在的理由。它的重开条件是一条能跑的检查（`bun run embedding:check`），而这条检查的远程那一半跑不了，因为它需要你自己选的 endpoint。这个开关就是为了让那个拒绝可以被证伪。远程会把语料发出去，而语料里有你写的需求和验收标准——所以默认是本地，切远程是一次决定。",
+  },
+  "embedding.endpoint": {
+    zh: "远程 endpoint",
+    why: "OpenAI 形状的 /v1/embeddings 完整地址。写全而不是只写主机名，因为「这家用哪个路径」是个只能靠猜的问题。仅在模式为远程时使用。",
+  },
+  "embedding.credential": {
+    zh: "远程凭据名",
+    why: "「模型账号」里那一行的名字，不是密钥本身。密钥写进配置文件就等于写进 shell 历史和它的每一份备份里。",
   },
   "indexModel.runtime": {
     zh: "索引模型",
@@ -268,7 +290,10 @@ const PAIRS: Record<string, { kind: PairKind; keyPh: string }> = {
  * model belongs to a CLI: two rows invite codex plus an Anthropic model, which
  * boots and then fails on every index call.
  */
-const PAIRED: Record<string, string> = { "indexModel.runtime": "indexModel.model" };
+const PAIRED: Record<string, string> = {
+  "indexModel.runtime": "indexModel.model",
+  "embedding.mode": "embedding.model",
+};
 
 type Write = (write: SettingWrite) => Promise<{ ok: boolean; text: string }>;
 
@@ -462,6 +487,15 @@ function modelValue({ knob, mate, src, onWrite, onWriteMate }: Editor) {
       return <ModelTable table={ConfigSchema.shape.difficultyModel.parse(knob.value)} src={src} onWrite={onWrite} />;
     case "sliceBudgetTokens":
       return <Caps caps={ConfigSchema.shape.sliceBudgetTokens.parse(knob.value)} onWrite={onWrite} />;
+    case "embedding.mode":
+      return (
+        <Embedding
+          mode={ConfigSchema.shape.embedding.shape.mode.parse(knob.value)}
+          model={ConfigSchema.shape.embedding.shape.model.catch("").parse(mateValue(mate))}
+          onMode={onWrite}
+          onModel={onWriteMate}
+        />
+      );
     case "indexModel.runtime":
       return (
         <IndexModel

@@ -569,6 +569,48 @@ export function IndexModel({
 }
 
 /**
+ * The two model names ADR 031 measured, plus the one it names as the candidate.
+ *
+ * Suggestions, not a closed list — `ModelPick` is free text underneath, and a
+ * closed list here would be this file claiming to know what
+ * `@huggingface/transformers` can resolve.
+ */
+const LOCAL_EMBEDDINGS = ["Xenova/multilingual-e5-small", "Xenova/multilingual-e5-base", "BAAI/bge-m3"];
+
+/**
+ * Local or remote, and which model — one row, because they are one decision.
+ *
+ * Two rows would invite `mode: remote` with a local model id, which fails at the
+ * first call to an endpoint that has never heard of `Xenova/…`. The same argument
+ * as `IndexModel` above, and the same shape.
+ *
+ * The endpoint and the credential stay their own rows: they are only read when
+ * the mode is remote, and hiding them when it is local would make a configured
+ * endpoint disappear the moment somebody switched back to compare.
+ */
+export function Embedding({
+  mode,
+  model,
+  onMode,
+  onModel,
+}: {
+  mode: string;
+  model: string;
+  onMode: (v: string) => void;
+  onModel: (v: string) => void;
+}) {
+  return (
+    <div className="flex w-full items-center gap-2">
+      <Segments value={mode} onValueChange={onMode}>
+        <Segment value="local">本地</Segment>
+        <Segment value="remote">远程</Segment>
+      </Segments>
+      <ModelPick value={model} options={mode === "local" ? LOCAL_EMBEDDINGS : []} onCommit={onModel} />
+    </div>
+  );
+}
+
+/**
  * The browser's own permission, asked for where the boss can see why.
  *
  * A button rather than a prompt on load: asking before the page has said

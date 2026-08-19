@@ -15,6 +15,11 @@ authentication.
   utility container never checks out or executes it and disables Git hooks.
 - Real model/GitHub credentials remain outside agent containers. Do not log,
   return, mount, persist, or attach them to errors.
+- A remote embedding sends the corpus, and the corpus is the boss's own
+  requirements and acceptance criteria. `embedding.mode` defaults to `local` and
+  switching it is a decision somebody makes, never a default or a fallback. The
+  endpoint's key is the *name* of a `runtime_auth` row, never a key in the config
+  file — a key there is a key in shell history and in every backup of it.
 - Validate and normalize paths before access; resolve symlinks where the
   security property depends on the final target. Reject traversal and ambiguous
   encodings.

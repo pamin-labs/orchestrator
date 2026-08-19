@@ -24,6 +24,56 @@ const LeaseSlots = z.union([count, z.record(z.string(), count)]);
 
 const ModelRef = z.object({ runtime: z.string().min(1), model: z.string() });
 
+/**
+ * Where an embedding would come from, if one is ever used.
+ *
+ * ADR 031 refused embeddings on a measurement, not on principle: within a
+ * language the ranking is right, across languages an irrelevant same-language
+ * passage outranks the relevant other-language one — which is the only case the
+ * feature existed for. Its reopen condition is a runnable check on five
+ * sentences, and half of it *cannot be run* without this: whether a hosted
+ * embedding does better is "not measured and deliberately not guessed", because
+ * the test needs the endpoint the boss would choose.
+ *
+ * So this is the knob that makes the refusal falsifiable. `bun run
+ * embedding:check` is the other half.
+ *
+ * **`local` is the default and remote is a decision.** A hosted embedding sends
+ * every passage it ranks, and the corpus is the boss's own requirements and
+ * acceptance criteria. `docs/standards/security.md` carries the boundary.
+ */
+export const EmbeddingRef = z
+  .object({
+    mode: z.enum(["local", "remote"]),
+    /**
+     * Local: a model id `@huggingface/transformers` resolves — ADR 031 measured
+     * `Xenova/multilingual-e5-small` and `-base`, and names `BAAI/bge-m3` as the
+     * candidate built for the case that failed. Remote: whatever the endpoint
+     * calls its model.
+     */
+    model: z.string().min(1),
+    /**
+     * An OpenAI-shaped `/v1/embeddings` URL, written out in full rather than
+     * assembled from a host — "which path does this provider use" is the
+     * question a base URL makes somebody guess at.
+     */
+    endpoint: z.string(),
+    /**
+     * The name of a `runtime_auth` row, never a key. A secret in the config file
+     * is a secret in the boss's shell history and in every backup of it.
+     */
+    credential: z.string(),
+  })
+  // Flat with a mode rather than a discriminated union: the union doubles this
+  // object in every inferred RPC type, and `web/src/shared/api.ts` is already at
+  // the compiler's serialization ceiling — it failed with TS7056 on the first cut.
+  // Empty strings rather than optionals, because `knobs/view.tsx` walks this
+  // schema generically and `undefined` is not one of the values it can render.
+  .refine((v) => v.mode === "local" || (URL.canParse(v.endpoint) && !!v.credential), {
+    error: "a remote embedding needs an endpoint URL and the name of a stored credential",
+  });
+export type EmbeddingRef = z.infer<typeof EmbeddingRef>;
+
 /** The six values that become an OpenSandbox request. */
 const SandboxSpecSchema = z.object({
   image: z.string(),
@@ -141,6 +191,8 @@ export const ConfigSchema = z.object({
    * off the expensive subscription.
    */
   indexModel: ModelRef,
+  /** Unused by retrieval today; see `EmbeddingRef`. */
+  embedding: EmbeddingRef,
   /**
    * model -> context window, and a `default` for anything unlisted.
    *

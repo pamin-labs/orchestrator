@@ -14,6 +14,7 @@
     "build:web": "bun build web/src/app/main.tsx --outdir web/dist --minify --target browser && tailwindcss -i web/style.css -o web/dist/app.css --minify",
     "perf:budget": "bun run scripts/performance-budget.ts",
     "perf:bench": "bun run scripts/benchmark.ts",
+    "embedding:check": "bun run scripts/embedding-check.ts",
     "test": "bun test --parallel",
     "test:changed": "bun test --parallel --changed",
     "test:coverage": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun test --parallel && bun run test/support/coverage-report.ts",
