@@ -23,7 +23,7 @@ import type { AgentHandler, Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
-import { isChinese } from "../../platform/text/lang.ts";
+import { isChinese } from "../../contracts/config.ts";
 import {
   agent,
   escalation as escalations,

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { isChinese, SAY_KEYS, say } from "../../src/platform/text/lang.ts";
+import { SAY_KEYS, say } from "../../src/platform/text/lang.ts";
+import { isChinese } from "../../src/contracts/config.ts";
 
 /**
  * The two tables and the keys callers may name.
@@ -61,6 +62,10 @@ test("the language test is one predicate, and `en` is not what it answers to", (
   // — the boss reading English got a Chinese prompt, from a comparison that looked
   // deliberate. Free text in, so the test is what the value looks like.
   expect([isChinese("中文"), isChinese("zh"), isChinese("zh-CN"), isChinese("中")]).toEqual([true, true, true, true]);
+  // The panel's own suggestion list, which is where the free text usually comes
+  // from: `繁體中文` is its second entry and read as English until `localeOf`
+  // stopped anchoring the test to the first character.
+  expect([isChinese("繁體中文"), isChinese("简体中文"), isChinese("汉语")]).toEqual([true, true, true]);
   expect([isChinese("English"), isChinese("en"), isChinese("日本語"), isChinese(undefined)]).toEqual([
     false,
     false,

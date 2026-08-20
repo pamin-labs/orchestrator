@@ -26,6 +26,7 @@ import { Knobs } from "../knobs/view";
 import { repoHref } from "../../shared/github";
 import { cn } from "../../ui/cn";
 import { ThemeChoice } from "../../ui/theme";
+import { LocaleChoice } from "./locale-choice";
 import { ImageChoicesSchema, ProjectConfigSchema, type ProjectPatch } from "../project/view";
 import { Skills } from "../skills/view";
 import { CredPane, RUNTIMES } from "./credentials";
@@ -518,6 +519,15 @@ function Preferences() {
             <FieldTitle id="pref-theme">主题</FieldTitle>
             <FieldContent>
               <ThemeChoice />
+            </FieldContent>
+          </Field>
+          {/* Here rather than beside 对外语言 in the knobs: that one travels with
+              the project and tells the agents what to write, this one is only
+              this browser's chrome. The pane already says so at the top. */}
+          <Field aria-labelledby="pref-locale">
+            <FieldTitle id="pref-locale">界面语言</FieldTitle>
+            <FieldContent>
+              <LocaleChoice />
             </FieldContent>
           </Field>
         </FieldGroup>

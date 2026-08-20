@@ -120,6 +120,27 @@ export const StoredProjectConfigSchema = z
 
 export type StoredProjectConfig = z.infer<typeof StoredProjectConfigSchema>;
 
+/**
+ * The panel's catalog for a free-text `language`, and whether the boss reads
+ * Chinese. Here rather than in `platform/text` because the panel needs the same
+ * answer and may only import contracts — two copies of this question already got
+ * two answers once: `escalation.ts` asked `language === "en"`, and the default is
+ * `"中文"`, so its English branch was unreachable for every spelling including
+ * `"English"`. The setting is free text — the panel suggests two dozen, a yaml
+ * can say anything — so the test is what it looks like.
+ */
+export const localeOf = (lang: string | undefined): "zh" | "en" => {
+  const l = lang ?? "";
+  // Anywhere in the string, not at the front. `繁體中文` is the second entry in
+  // the panel's own suggestion list and `startsWith("中")` read it as English —
+  // so picking the option the panel offers gave an English feed and an English
+  // pane, which looks like the setting not working at all.
+  return /[中汉漢]/.test(l) || l.toLowerCase().startsWith("zh") ? "zh" : "en";
+};
+
+/** Everything not Chinese is English. */
+export const isChinese = (lang: string | undefined): boolean => localeOf(lang) === "zh";
+
 export const ConfigSchema = z.object({
   language: z.string().min(1),
   maxGroups: count,
