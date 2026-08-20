@@ -163,7 +163,15 @@ function schemaTag(): string {
  * run. A copy is 9MB and the server holds them in tmpfs, so isolation is
  * structural rather than something each test has to remember.
  */
-const nameFor = (isolate: string) => `orch_test_${SCHEMA_TAG}_${Bun.hash(`${Bun.main}${isolate}`).toString(36)}`;
+/**
+ * The half of the name that identifies the *file*, and survives a schema change.
+ *
+ * Exported for the guard: if this stops agreeing with the name, reclamation
+ * silently matches nothing and the generations pile up again with nothing to say.
+ */
+export const suffixFor = (isolate: string) => Bun.hash(`${Bun.main}${isolate}`).toString(36);
+
+const nameFor = (isolate: string) => `orch_test_${SCHEMA_TAG}_${suffixFor(isolate)}`;
 
 /** Any constant. Session-scoped, so a killed worker does not hold it. */
 const LOCK = 0x0_7c_11_5e;
@@ -195,6 +203,30 @@ async function ensureTemplate(admin: SQL): Promise<void> {
   // session is connected to the source.
   await client.end();
   await admin.unsafe(`ALTER DATABASE "${building}" RENAME TO "${TEMPLATE}"`);
+}
+
+/**
+ * This file's databases from older schemas, dropped as this file's is created.
+ *
+ * The name carries the schema's hash, so a schema change orphans every one and
+ * nothing collected it: **197 databases, 1,799 MB**, 858 MB of it schemas no
+ * longer in the tree, in a tmpfs — 3 GB resident. One file's own, not a sweep:
+ * `DROP DATABASE` forces a checkpoint, so 97 serial ones took minutes and pinned
+ * a core, serial because the admin handle is `max: 1` for the advisory lock.
+ */
+async function dropMyOldGenerations(admin: SQL, mine: string, suffix: string): Promise<void> {
+  // `right(...)` rather than a `LIKE` pattern: the names are full of underscores
+  // and `_` is LIKE's single-character wildcard, so the pattern that reads as
+  // exact is not, and escaping it is a backslash three languages have opinions on.
+  const tail = `_${suffix}`;
+  const stale = await admin<{ datname: string }[]>`
+    SELECT datname FROM pg_database
+    WHERE starts_with(datname, 'orch_test_') AND right(datname, ${tail.length}) = ${tail} AND datname <> ${mine}`;
+  for (const { datname } of stale) {
+    // `FORCE`, because a worker from an older run may still be connected, and
+    // best-effort, because losing that race costs memory and nothing else.
+    await admin.unsafe(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`).catch(() => {});
+  }
 }
 
 const ready = new Map<string, Promise<SQL>>();
@@ -293,6 +325,7 @@ export async function openMemory(logger?: Logger, isolate = ""): Promise<DB> {
         // Left in place between runs rather than dropped: `openMemory` empties it,
         // and dropping one a sibling still holds is how a worker kills a peer.
         if (found.length === 0) await admin.unsafe(`CREATE DATABASE "${mine}" TEMPLATE "${TEMPLATE}"`);
+        await dropMyOldGenerations(admin, mine, suffixFor(isolate));
       } finally {
         await admin`SELECT pg_advisory_unlock(${LOCK})`;
         await admin.end();

@@ -22,8 +22,15 @@ services:
       - "127.0.0.1:5433:5432"
     # In memory: the data directory never outlives the container, so a suite
     # cannot inherit yesterday's rows and there is nothing to clean up.
+    #
+    # Sized, because "in memory" and "unbounded" together is the machine's problem
+    # rather than this container's. One database per test file at ~9MB is about
+    # 1.8GB for 189 files, and a schema change used to orphan the whole generation
+    # beside it — measured at 197 databases and 1,799 MB, holding 3GB resident.
+    # `openMemory` collects the old generation now; this is the ceiling if it ever
+    # cannot.
     tmpfs:
-      - /var/lib/postgresql
+      - /var/lib/postgresql:size=4g
     # `fsync=off` and friends: durability is worthless for a database that is
     # discarded, and it is most of what a write costs.
     command:
