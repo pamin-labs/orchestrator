@@ -240,10 +240,24 @@ async function emptied(db: DB, statement: string): Promise<void> {
       return;
     } catch (error) {
       if (attempt >= 40 || !/deadlock|lock timeout|lock_timeout/i.test(errText(error, 2_000))) throw error;
+      // Only once the wait has already failed. Unconditionally clearing the
+      // database's other backends looks tidier and is wrong: the login flows keep
+      // working after their request returns, on purpose, so the common path would
+      // cancel legitimate work and report it against the next test —
+      // `canceling statement due to user request`, seen once in six runs. A
+      // statement that has held a lock through the retries is a different thing.
+      if (attempt === 20) await clearBackends(db);
       await Bun.sleep(10);
     }
   }
 }
+
+/** Whatever is still holding a lock in this database, after waiting did not work. */
+const clearBackends = (db: DB): Promise<unknown> =>
+  db.execute(sql`
+    SELECT pg_cancel_backend(pid), CASE WHEN state = 'idle in transaction' THEN pg_terminate_backend(pid) END
+    FROM pg_stat_activity
+    WHERE datname = current_database() AND pid <> pg_backend_pid()`);
 
 /**
  * A database for one test file, emptied rather than rebuilt.
