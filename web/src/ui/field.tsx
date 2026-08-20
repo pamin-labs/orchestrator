@@ -33,8 +33,17 @@ import { cn } from "./cn";
  * Only where a pane genuinely holds two subjects: a pane with one already has its
  * name in `Head`, and a legend repeating it is a second heading for one thing.
  */
+/**
+ * Block, not flex. A `<legend>` is not laid out as a child of its `<fieldset>` —
+ * the browser lifts it out of the box's normal flow — so in a flex fieldset it
+ * stops participating and lands *on top of* the first row. 多久再问一次 sat over
+ * 重新检查可达性 in the waiting pane for exactly this reason.
+ *
+ * Nothing is lost: `FieldGroup` below is already the flex column, which is where
+ * the rows actually live.
+ */
 export function FieldSet({ className, ...rest }: React.ComponentProps<"fieldset">) {
-  return <fieldset data-slot="field-set" className={cn("flex w-full min-w-0 flex-col", className)} {...rest} />;
+  return <fieldset data-slot="field-set" className={cn("w-full min-w-0", className)} {...rest} />;
 }
 
 /**

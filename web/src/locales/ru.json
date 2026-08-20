@@ -41,12 +41,6 @@
     "comments": [],
     "translation": ""
   },
-  "8IHNy_": {
-    "message": "'We asked recently.' One sentence covering two things that were already the same number: how often the reachability probe runs while online, and how long a credential verdict stays cached for this page.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
   "_8U9xN": {
     "message": "({deliveredCount})",
     "placeholders": {
@@ -518,12 +512,6 @@
     "comments": [],
     "translation": ""
   },
-  "F9ED3s": {
-    "message": "A lease is real compilation or testing. Ten concurrent will trash the machine; dead leases hold slots until timeout. Browser gets 1 alone—each is a real Chromium—or all gates queue behind one screenshot.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
   "27QmIv": {
     "message": "A number",
     "placeholders": {},
@@ -645,12 +633,6 @@
   },
   "QWsB_B": {
     "message": "After approval, copy the code from that page",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
-  "-sExAR": {
-    "message": "After passing all four gates (self-review / audit / test run / QA), the fifth—your manual eye—is skipped. Defaults to trivial and normal; hard still waits for you. That glance is least valuable on the two cheapest tiers.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -823,6 +805,12 @@
     "comments": [],
     "translation": ""
   },
+  "tZ6Kgm": {
+    "translation": "",
+    "message": "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time.",
+    "placeholders": {},
+    "comments": []
+  },
   "X3C4bT": {
     "message": "At most {maxGroups} groups at once. When it is full, approved requirements queue for a slot rather than being stuck.",
     "placeholders": {
@@ -929,12 +917,6 @@
     "comments": [],
     "translation": ""
   },
-  "iCmtBj": {
-    "message": "Blacklist, not whitelist—whitelist is the one that's incomplete (every registry, every docs site). Credential security doesn't rely on it: real tokens live in the sidecar, sandbox gets format-valid fakes.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
   "TRRBw1": {
     "message": "Blocked domains",
     "placeholders": {},
@@ -1009,12 +991,6 @@
   },
   "lR_A13": {
     "message": "Budget exhausted; group paused",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
-  "4Uu52E": {
-    "message": "Bun's own default is 10 and nobody chose it. The panel's snapshot issues nineteen statements at once, so a pool under that serves them in waves—measured as a p95 several times the median while the median barely moved. Above the statement count it buys nothing; a managed Postgres with a connection cap is the reason to lower it.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -1489,6 +1465,12 @@
     "comments": [],
     "translation": ""
   },
+  "wQ5vD-": {
+    "translation": "",
+    "message": "Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections.",
+    "placeholders": {},
+    "comments": []
+  },
   "_ITcnz": {
     "message": "day",
     "placeholders": {},
@@ -1593,12 +1575,6 @@
     "comments": [],
     "translation": ""
   },
-  "ag87Md": {
-    "message": "Disabled: a group finishes a slice and stops until morning, defeating the whole purpose of this system. Cost stated clearly: if a slice goes wrong, the next ones are built on it—when you revert that slice, the whole group pauses and explains, not silently under-rewriting completed work.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
   "s2IVgM": {
     "message": "Discard all changes in the current turn and return to the start of this round.",
     "placeholders": {},
@@ -1623,17 +1599,17 @@
     "comments": [],
     "translation": ""
   },
-  "woNhUu": {
-    "message": "Dispatcher tags each slice; this table maps tags to models. Which CLI role uses which is in roles/*.yaml; here we choose model per difficulty per CLI. Changes only affect newly hired agents—model is frozen at hire time.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
   "auRefc": {
     "message": "Dissolved",
     "placeholders": {},
     "comments": [],
     "translation": ""
+  },
+  "Zmmpji": {
+    "translation": "",
+    "message": "Domains the sandbox may not reach. A blocklist, not an allowlist — an allowlist would have to name every registry and docs site. Credentials do not depend on this: the sandbox only ever holds fakes.",
+    "placeholders": {},
+    "comments": []
   },
   "hdg82H": {
     "message": "Don't proceed",
@@ -1721,6 +1697,12 @@
     "comments": [],
     "translation": ""
   },
+  "oMqqTK": {
+    "translation": "",
+    "message": "Empty, only this page notifies you. Filled, each notification POSTs JSON (title / message / url) — ntfy, Bark, a group bot, anything. Content is scrubbed first: this is the only channel that leaves the machine.",
+    "placeholders": {},
+    "comments": []
+  },
   "QbiIMp": {
     "message": "Empty: bootstrap detects from repo",
     "placeholders": {},
@@ -1729,12 +1711,6 @@
   },
   "Zvw8A0": {
     "message": "Empty: only this page notifies you",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
-  "e-UjWf": {
-    "message": "Empty: only this page notifies you. Filled: each notification POSTs JSON (title / message / url)—ntfy, Bark, group bot, or what you wrote this afternoon, all work. Scrubbed before egress—this is the only channel that sends content off this machine.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -1940,12 +1916,6 @@
     "comments": [],
     "translation": ""
   },
-  "pwC1m3": {
-    "message": "From 16 real slices here: trivial average 4.0M (one outlier 12.0M), normal average 7.3M, tail 16.1M. Cap above 'worst finished slice', below 'the outlier'—this ceiling is for already-lost agents, not today's bad run. Changes affect new slices only.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
   "QwS_6h": {
     "message": "From your connected GitHub account",
     "placeholders": {},
@@ -2136,12 +2106,6 @@
     "comments": [],
     "translation": ""
   },
-  "qIobaT": {
-    "message": "Governs journals, channel messages, the questions it asks you, and status summaries. An agent writes those, so any language works — the list only saves typing, it is not the set. Code, commit messages, branch names, PRs and error messages stay English. The orchestrator's own two dozen status lines exist in Chinese and English only; any other language falls back to English, which does not affect what the agents write. Changing this rotates every session in the fleet — it is part of the cache prefix.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
   "uvVKhA": {
     "message": "Gray text shows defaults",
     "placeholders": {},
@@ -2180,11 +2144,11 @@
     "comments": [],
     "translation": ""
   },
-  "lehVJ0": {
-    "message": "Host directories shared across all sandboxes, 'mount point in container: host path'. Cache package managers only. Real test: this repo, group two's bun install—no share 2.9s, shared 1.2s. Small because repo is small; monorepo sees minutes. Disabled by default because the worst incident here was all worktrees sharing node_modules; two gates install together, groups mistake EEXIST for their own broken build. Also needs that path listed in sandbox server's allowed_host_paths.",
+  "Ynnk8P": {
+    "translation": "",
+    "message": "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths.",
     "placeholders": {},
-    "comments": [],
-    "translation": ""
+    "comments": []
   },
   "w9KbwD": {
     "message": "How a checkout is read when GitHub cannot be asked",
@@ -2198,11 +2162,23 @@
     "comments": [],
     "translation": ""
   },
+  "EqDlPr": {
+    "translation": "",
+    "message": "How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page.",
+    "placeholders": {},
+    "comments": []
+  },
   "OFsFwT": {
     "message": "How long a notification waits for company before it is sent. This is the knob between one alert an hour and one per event.",
     "placeholders": {},
     "comments": [],
     "translation": ""
+  },
+  "bExEWF": {
+    "translation": "",
+    "message": "How long an unanswered notification waits before each repeat. It holds at the last step for as long as nobody answers. At least one step: an empty ladder repeats every tick.",
+    "placeholders": {},
+    "comments": []
   },
   "nQE4Jd": {
     "message": "How long before a group that answered nothing is nudged again. Longer than the first wait, or the nudge becomes the noise it was meant to cut through.",
@@ -2216,11 +2192,11 @@
     "comments": [],
     "translation": ""
   },
-  "fsbkOV": {
-    "message": "How long one System timing report is reused before it is computed again. The report is five window-function queries over the whole span table, run synchronously, so while it computes every other request waits behind it. The data is written by a heartbeat and is never fresher than that.",
+  "10Jfdd": {
+    "translation": "",
+    "message": "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway.",
     "placeholders": {},
-    "comments": [],
-    "translation": ""
+    "comments": []
   },
   "zAEv6-": {
     "message": "How long one turn may run, and how much it may read",
@@ -2234,17 +2210,29 @@
     "comments": [],
     "translation": ""
   },
+  "blRinx": {
+    "translation": "",
+    "message": "How long the rest of a group's events are kept. The conversation itself — what was said, asked and escalated — is never dropped.",
+    "placeholders": {},
+    "comments": []
+  },
   "qnORSK": {
     "message": "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones.",
     "placeholders": {},
     "comments": [],
     "translation": ""
   },
-  "zkIDNY": {
-    "message": "How many live frames may queue for one slow browser tab before frames are dropped. Up to four concurrent turns push one frame per token, so a tab that stopped reading is the one case that grows without bound. Dropping is safe—the panel re-reads its state on the next event—and the loss is counted rather than silent.",
+  "tOvJXf": {
+    "translation": "",
+    "message": "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium.",
     "placeholders": {},
-    "comments": [],
-    "translation": ""
+    "comments": []
+  },
+  "_XSiMm": {
+    "translation": "",
+    "message": "How many live frames wait for one slow tab before they are dropped. A tab that stopped reading is the only thing here that grows without bound. Dropping is safe: the panel re-reads its state on the next event.",
+    "placeholders": {},
+    "comments": []
   },
   "p4BjUG": {
     "message": "How many nodes the model may name at one level. Width costs tokens in a single call, where depth costs another call.",
@@ -2270,11 +2258,11 @@
     "comments": [],
     "translation": ""
   },
-  "rWXzDL": {
-    "message": "How often the shared repository map is even checked. A container round trip cost 947ms of every 30s tick, over 2,766 ticks, to answer 'unchanged' about a map whose only input is a push — so this is deliberately far longer than the tick.",
+  "RvduWd": {
+    "translation": "",
+    "message": "How often the shared repository map is re-checked. Deliberately far longer than the watchdog tick: the map only changes on a push, and checking costs a container round trip.",
     "placeholders": {},
-    "comments": [],
-    "translation": ""
+    "comments": []
   },
   "k0sg9Y": {
     "message": "How to alert you",
@@ -2481,11 +2469,11 @@
     "comments": [],
     "translation": ""
   },
-  "EQID1f": {
-    "message": "Line-level review threads per pull request. A hundred threads read through a window of twenty means the eighty oldest are never seen, and that ceiling is a property of the repository being watched rather than of the watcher.",
+  "Rbr0M8": {
+    "translation": "",
+    "message": "Line-level review threads read per pull request. Set it below what the repository actually produces and the oldest threads are never seen.",
     "placeholders": {},
-    "comments": [],
-    "translation": ""
+    "comments": []
   },
   "4B00A1": {
     "message": "Live stream backlog",
@@ -2524,10 +2512,10 @@
     "translation": ""
   },
   "rBmsAu": {
-    "translation": "",
     "message": "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision.",
     "placeholders": {},
-    "comments": []
+    "comments": [],
+    "translation": ""
   },
   "mTyZmU": {
     "message": "Local to this machine only, not tied to the project",
@@ -3025,11 +3013,17 @@
     "comments": [],
     "translation": ""
   },
-  "0LY7RL": {
-    "message": "On, a question walks the PageIndex tree before it is answered. Off skips the walk before the tree is even loaded, so the query costs no model call and falls through to the lexical half — which is the A/B this switch exists for. Its own switch rather than a depth of 0, which still walks, degenerately.",
+  "oAiwdE": {
+    "translation": "",
+    "message": "On, a group starts the next slice without waiting for you. Off, it finishes one and stops. The cost: later slices build on an earlier one, so reverting it pauses the whole group.",
     "placeholders": {},
-    "comments": [],
-    "translation": ""
+    "comments": []
+  },
+  "TMRMoB": {
+    "translation": "",
+    "message": "On, a question walks the index tree before it is answered — one model call. Off skips the walk entirely and falls through to keyword search, which is the comparison this switch is for.",
+    "placeholders": {},
+    "comments": []
   },
   "gukxZ5": {
     "message": "Onboarding",
@@ -3067,20 +3061,14 @@
     "comments": [],
     "translation": ""
   },
-  "U0Bgc_": {
-    "message": "One operation that moves a repository or an image across the network—a clone, a fetch, a submodule init, the sandbox SDK's own per-request budget. Minutes rather than seconds: the worst case is an image pull, which is the same shape of wait as a clone.",
+  "zbIkyx": {
+    "translation": "",
+    "message": "One network operation that moves a repository or an image — clone, fetch, submodule init, image pull. Minutes rather than seconds.",
     "placeholders": {},
-    "comments": [],
-    "translation": ""
+    "comments": []
   },
   "QPXgDJ": {
     "message": "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
-  "b75mRc": {
-    "message": "One unanswered notification is repeated on this ladder: the first repeat waits the first step, then the second, and it holds at the last step for as long as nobody answers. At least one step—an empty ladder means 'repeat every tick'.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -3093,12 +3081,6 @@
   },
   "Tl9TR8": {
     "message": "Only this stage",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
-  "8YP-N2": {
-    "message": "Only two sources: our releases (ghcr.io/pamin-labs/…) and local builds without registry prefix. Agents run here with your code—swap in an untrusted image and you've handed the boundary to someone else, invisibly from the panel.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -3481,12 +3463,6 @@
     "comments": [],
     "translation": ""
   },
-  "Z1GEoV": {
-    "message": "Real data: 259 turns, median 36 steps, p90 93, max 144. The 23% over 60 steps ate 59% of the cache-read bill, because every step re-reads the full transcript. 36 is work; the tail is an agent lost, grepping. Cut the tail, median doesn't move. Changing this rotates the whole fleet through a session.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
   "A16Eqd": {
     "message": "Real tokens don't enter the sandbox",
     "placeholders": {},
@@ -3718,6 +3694,12 @@
     "placeholders": {},
     "comments": [],
     "translation": ""
+  },
+  "YzaGjb": {
+    "translation": "",
+    "message": "Requirements running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page.",
+    "placeholders": {},
+    "comments": []
   },
   "Igjjz3": {
     "message": "Rescan",
@@ -4318,6 +4300,12 @@
     "comments": [],
     "translation": ""
   },
+  "g9LjVn": {
+    "translation": "",
+    "message": "Steps one turn may take before it is cut off. Most turns finish in about 36; the long tail is an agent lost rather than working, and it costs the most because every step re-reads the transcript. Changing it restarts every session.",
+    "placeholders": {},
+    "comments": []
+  },
   "zw03Lf": {
     "message": "Stop denying {d}",
     "placeholders": {
@@ -4430,32 +4418,14 @@
     "comments": [],
     "translation": ""
   },
-  "clowMB": {
-    "message": "The codex refresh-token exchange, run inside the utility container. Longer than the usage read because it is a process start plus an OAuth round trip, where that one wraps a curl already carrying its own limit.",
+  "YujIH9": {
+    "translation": "",
+    "message": "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip.",
     "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
-  "cu7PMH": {
-    "message": "The conversation—what was said, asked and escalated—is never dropped: it is the record, and the unread cursor walks it. This bounds the rest, which the cost view reads inside a day and then never again.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
-  "oToTQd": {
-    "message": "The denominator for session rotation. Both CLI agents report real values in a turn, and that takes priority; this table manages the first turn of a session. When we pinned 200k, strong models rotated constantly in the 12% of a 1M window, discarding built-up cache prefix each time.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
+    "comments": []
   },
   "Bn1Nxe": {
     "message": "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
-  "DJSa8p": {
-    "message": "The first ceiling usually isn't this: two groups can't own overlapping paths, so low-modularity projects can't reach 10; then account-level rate limits. Raising this, watch cache hit rate on the cost page—high concurrency on one subscription throttles there first.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4542,12 +4512,6 @@
   },
   "gu-D6k": {
     "message": "This log is empty",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
-  "UVazM1": {
-    "message": "This many turns in a row that changed nothing is what the watchdog calls stuck. Below three it fires on an agent that is reading before it writes; well above it, a loop runs all afternoon before anybody hears about it.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4640,6 +4604,12 @@
     "comments": [],
     "translation": ""
   },
+  "5gZgOo": {
+    "translation": "",
+    "message": "Token ceiling for one slice. Set it above your worst finished slice and below the outliers — it exists to stop an agent that is lost, not to trim a slow day. New slices only.",
+    "placeholders": {},
+    "comments": []
+  },
   "bCeP-N": {
     "message": "Token limit per slice",
     "placeholders": {},
@@ -4665,10 +4635,10 @@
     "translation": ""
   },
   "Ms3Kz5": {
-    "translation": "",
     "message": "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached.",
     "placeholders": {},
-    "comments": []
+    "comments": [],
+    "translation": ""
   },
   "KDw4GX": {
     "message": "Try again",
@@ -4694,11 +4664,23 @@
     "comments": [],
     "translation": ""
   },
+  "T2T6vx": {
+    "translation": "",
+    "message": "Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed.",
+    "placeholders": {},
+    "comments": []
+  },
   "pbsQ9q": {
     "message": "Turns without progress",
     "placeholders": {},
     "comments": [],
     "translation": ""
+  },
+  "x_GTNI": {
+    "translation": "",
+    "message": "Two sources only: our releases (ghcr.io/pamin-labs/…) and local builds with no registry prefix. Agents run your code inside this image, so an untrusted one hands away the boundary — and the panel cannot tell.",
+    "placeholders": {},
+    "comments": []
   },
   "7VgwUn": {
     "message": "Type a model ID to add a row",
@@ -4968,6 +4950,12 @@
     "comments": [],
     "translation": ""
   },
+  "KqKxLA": {
+    "translation": "",
+    "message": "What the agents write in: journals, channel messages, questions, summaries. Any language works; the list only saves typing. Code, commits, branch names, PRs and errors stay English. Changing it restarts every session in the fleet.",
+    "placeholders": {},
+    "comments": []
+  },
   "2JOwRq": {
     "message": "What this browser reads. What the agents write is the output language, under Models & budget — and this follows it unless you pick one here.",
     "placeholders": {},
@@ -4998,11 +4986,23 @@
     "comments": [],
     "translation": ""
   },
+  "bB-bvr": {
+    "translation": "",
+    "message": "Which model handles each difficulty, per CLI. Which role uses which CLI is in roles/*.yaml. Only affects newly hired agents — a model is frozen at hire time.",
+    "placeholders": {},
+    "comments": []
+  },
   "A73faa": {
     "message": "Which model runs what, and what it may spend",
     "placeholders": {},
     "comments": [],
     "translation": ""
+  },
+  "K1fXIN": {
+    "translation": "",
+    "message": "Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you.",
+    "placeholders": {},
+    "comments": []
   },
   "QXTfG1": {
     "message": "Which window",

@@ -297,11 +297,11 @@ export const COPY: Record<
 > = {
   maxGroups: {
     label: msg`Concurrent jobs`,
-    why: msg`The first ceiling usually isn't this: two groups can't own overlapping paths, so low-modularity projects can't reach 10; then account-level rate limits. Raising this, watch cache hit rate on the cost page—high concurrency on one subscription throttles there first.`,
+    why: msg`Requirements running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page.`,
   },
   leaseSlots: {
     label: msg`Gate concurrency`,
-    why: msg`A lease is real compilation or testing. Ten concurrent will trash the machine; dead leases hold slots until timeout. Browser gets 1 alone—each is a real Chromium—or all gates queue behind one screenshot.`,
+    why: msg`How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium.`,
   },
   watchdogIntervalMs: {
     label: msg`Watchdog interval`,
@@ -309,11 +309,11 @@ export const COPY: Record<
   },
   autoAdvance: {
     label: msg`Auto-advance when approved`,
-    why: msg`Disabled: a group finishes a slice and stops until morning, defeating the whole purpose of this system. Cost stated clearly: if a slice goes wrong, the next ones are built on it—when you revert that slice, the whole group pauses and explains, not silently under-rewriting completed work.`,
+    why: msg`On, a group starts the next slice without waiting for you. Off, it finishes one and stops. The cost: later slices build on an earlier one, so reverting it pauses the whole group.`,
   },
   autoAcceptTiers: {
     label: msg`Auto-accept tiers`,
-    why: msg`After passing all four gates (self-review / audit / test run / QA), the fifth—your manual eye—is skipped. Defaults to trivial and normal; hard still waits for you. That glance is least valuable on the two cheapest tiers.`,
+    why: msg`Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you.`,
   },
   parkAfterPausedMs: {
     label: msg`Archive after paused`,
@@ -321,7 +321,7 @@ export const COPY: Record<
   },
   "watchdog.idleTurns": {
     label: msg`Turns without progress`,
-    why: msg`This many turns in a row that changed nothing is what the watchdog calls stuck. Below three it fires on an agent that is reading before it writes; well above it, a loop runs all afternoon before anybody hears about it.`,
+    why: msg`Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed.`,
   },
   "watchdog.sameFile": {
     label: msg`Edits to one file`,
@@ -345,7 +345,7 @@ export const COPY: Record<
   },
   "watchdog.repoMapEveryMs": {
     label: msg`Recheck the repo map`,
-    why: msg`How often the shared repository map is even checked. A container round trip cost 947ms of every 30s tick, over 2,766 ticks, to answer 'unchanged' about a map whose only input is a push — so this is deliberately far longer than the tick.`,
+    why: msg`How often the shared repository map is re-checked. Deliberately far longer than the watchdog tick: the map only changes on a push, and checking costs a container round trip.`,
   },
   baseBranchFallbacks: {
     label: msg`Base branch fallbacks`,
@@ -366,7 +366,7 @@ export const COPY: Record<
   },
   "prPoll.threads": {
     label: msg`Review threads`,
-    why: msg`Line-level review threads per pull request. A hundred threads read through a window of twenty means the eighty oldest are never seen, and that ceiling is a property of the repository being watched rather than of the watcher.`,
+    why: msg`Line-level review threads read per pull request. Set it below what the repository actually produces and the oldest threads are never seen.`,
   },
   "prPoll.threadComments": {
     label: msg`Replies per thread`,
@@ -374,7 +374,7 @@ export const COPY: Record<
   },
   difficultyModel: {
     label: msg`Difficulty → Model`,
-    why: msg`Dispatcher tags each slice; this table maps tags to models. Which CLI role uses which is in roles/*.yaml; here we choose model per difficulty per CLI. Changes only affect newly hired agents—model is frozen at hire time.`,
+    why: msg`Which model handles each difficulty, per CLI. Which role uses which CLI is in roles/*.yaml. Only affects newly hired agents — a model is frozen at hire time.`,
   },
   "embedding.mode": {
     label: msg`Embedding mode`,
@@ -390,7 +390,7 @@ export const COPY: Record<
   },
   "pageindex.enabled": {
     label: msg`Walk the index tree`,
-    why: msg`On, a question walks the PageIndex tree before it is answered. Off skips the walk before the tree is even loaded, so the query costs no model call and falls through to the lexical half — which is the A/B this switch exists for. Its own switch rather than a depth of 0, which still walks, degenerately.`,
+    why: msg`On, a question walks the index tree before it is answered — one model call. Off skips the walk entirely and falls through to keyword search, which is the comparison this switch is for.`,
   },
   "pageindex.depth": {
     label: msg`Walk depth`,
@@ -406,15 +406,15 @@ export const COPY: Record<
   },
   contextWindow: {
     label: msg`Context window`,
-    why: msg`The denominator for session rotation. Both CLI agents report real values in a turn, and that takes priority; this table manages the first turn of a session. When we pinned 200k, strong models rotated constantly in the 12% of a 1M window, discarding built-up cache prefix each time.`,
+    why: msg`Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time.`,
   },
   sliceBudgetTokens: {
     label: msg`Token limit per slice`,
-    why: msg`From 16 real slices here: trivial average 4.0M (one outlier 12.0M), normal average 7.3M, tail 16.1M. Cap above 'worst finished slice', below 'the outlier'—this ceiling is for already-lost agents, not today's bad run. Changes affect new slices only.`,
+    why: msg`Token ceiling for one slice. Set it above your worst finished slice and below the outliers — it exists to stop an agent that is lost, not to trim a slow day. New slices only.`,
   },
   language: {
     label: msg`Output language`,
-    why: msg`Governs journals, channel messages, the questions it asks you, and status summaries. An agent writes those, so any language works — the list only saves typing, it is not the set. Code, commit messages, branch names, PRs and error messages stay English. The orchestrator's own two dozen status lines exist in Chinese and English only; any other language falls back to English, which does not affect what the agents write. Changing this rotates every session in the fleet — it is part of the cache prefix.`,
+    why: msg`What the agents write in: journals, channel messages, questions, summaries. Any language works; the list only saves typing. Code, commits, branch names, PRs and errors stay English. Changing it restarts every session in the fleet.`,
   },
   turnTimeoutMs: {
     label: msg`Turn timeout`,
@@ -422,7 +422,7 @@ export const COPY: Record<
   },
   maxTurnsPerJob: {
     label: msg`Max steps per turn`,
-    why: msg`Real data: 259 turns, median 36 steps, p90 93, max 144. The 23% over 60 steps ate 59% of the cache-read bill, because every step re-reads the full transcript. 36 is work; the tail is an agent lost, grepping. Cut the tail, median doesn't move. Changing this rotates the whole fleet through a session.`,
+    why: msg`Steps one turn may take before it is cut off. Most turns finish in about 36; the long tail is an agent lost rather than working, and it costs the most because every step re-reads the transcript. Changing it restarts every session.`,
   },
   sessionRotateFraction: {
     label: msg`Session rotation threshold`,
@@ -470,7 +470,7 @@ export const COPY: Record<
   },
   "timeouts.tokenRefreshMs": {
     label: msg`Token refresh`,
-    why: msg`The codex refresh-token exchange, run inside the utility container. Longer than the usage read because it is a process start plus an OAuth round trip, where that one wraps a curl already carrying its own limit.`,
+    why: msg`The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip.`,
   },
   "timeouts.usageReadMs": {
     label: msg`Usage read`,
@@ -478,11 +478,11 @@ export const COPY: Record<
   },
   "timeouts.transferMs": {
     label: msg`Clone, fetch or image pull`,
-    why: msg`One operation that moves a repository or an image across the network—a clone, a fetch, a submodule init, the sandbox SDK's own per-request budget. Minutes rather than seconds: the worst case is an image pull, which is the same shape of wait as a clone.`,
+    why: msg`One network operation that moves a repository or an image — clone, fetch, submodule init, image pull. Minutes rather than seconds.`,
   },
   "intervals.recheckMs": {
     label: msg`Recheck reachability`,
-    why: msg`'We asked recently.' One sentence covering two things that were already the same number: how often the reachability probe runs while online, and how long a credential verdict stays cached for this page.`,
+    why: msg`How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page.`,
   },
   "intervals.usagePollMs": {
     label: msg`Poll subscription usage`,
@@ -502,23 +502,23 @@ export const COPY: Record<
   },
   "intervals.notifyBackoffMs": {
     label: msg`Reminder ladder`,
-    why: msg`One unanswered notification is repeated on this ladder: the first repeat waits the first step, then the second, and it holds at the last step for as long as nobody answers. At least one step—an empty ladder means 'repeat every tick'.`,
+    why: msg`How long an unanswered notification waits before each repeat. It holds at the last step for as long as nobody answers. At least one step: an empty ladder repeats every tick.`,
   },
   dbPoolSize: {
     label: msg`Database connections`,
-    why: msg`Bun's own default is 10 and nobody chose it. The panel's snapshot issues nineteen statements at once, so a pool under that serves them in waves—measured as a p95 several times the median while the median barely moved. Above the statement count it buys nothing; a managed Postgres with a connection cap is the reason to lower it.`,
+    why: msg`Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections.`,
   },
   eventRetentionMs: {
     label: msg`Keep machine events`,
-    why: msg`The conversation—what was said, asked and escalated—is never dropped: it is the record, and the unread cursor walks it. This bounds the rest, which the cost view reads inside a day and then never again.`,
+    why: msg`How long the rest of a group's events are kept. The conversation itself — what was said, asked and escalated — is never dropped.`,
   },
   streamBacklog: {
     label: msg`Live stream backlog`,
-    why: msg`How many live frames may queue for one slow browser tab before frames are dropped. Up to four concurrent turns push one frame per token, so a tab that stopped reading is the one case that grows without bound. Dropping is safe—the panel re-reads its state on the next event—and the loss is counted rather than silent.`,
+    why: msg`How many live frames wait for one slow tab before they are dropped. A tab that stopped reading is the only thing here that grows without bound. Dropping is safe: the panel re-reads its state on the next event.`,
   },
   telemetryCacheMs: {
     label: msg`Timing report cache`,
-    why: msg`How long one System timing report is reused before it is computed again. The report is five window-function queries over the whole span table, run synchronously, so while it computes every other request waits behind it. The data is written by a heartbeat and is never fresher than that.`,
+    why: msg`How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway.`,
   },
   "sandbox.server": {
     label: msg`Sandbox server`,
@@ -527,7 +527,7 @@ export const COPY: Record<
   },
   "sandbox.image": {
     label: msg`Default image`,
-    why: msg`Only two sources: our releases (ghcr.io/pamin-labs/…) and local builds without registry prefix. Agents run here with your code—swap in an untrusted image and you've handed the boundary to someone else, invisibly from the panel.`,
+    why: msg`Two sources only: our releases (ghcr.io/pamin-labs/…) and local builds with no registry prefix. Agents run your code inside this image, so an untrusted one hands away the boundary — and the panel cannot tell.`,
   },
   "sandbox.cpu": {
     label: msg`CPU`,
@@ -542,17 +542,17 @@ export const COPY: Record<
   "sandbox.denyDomains": {
     label: msg`Denied domains`,
     ph: msg`One domain per line; empty allows all`,
-    why: msg`Blacklist, not whitelist—whitelist is the one that's incomplete (every registry, every docs site). Credential security doesn't rely on it: real tokens live in the sidecar, sandbox gets format-valid fakes.`,
+    why: msg`Domains the sandbox may not reach. A blocklist, not an allowlist — an allowlist would have to name every registry and docs site. Credentials do not depend on this: the sandbox only ever holds fakes.`,
   },
   "sandbox.cacheDirs": {
     label: msg`Shared cache directories`,
     ph: "/root/.bun/install/cache",
-    why: msg`Host directories shared across all sandboxes, 'mount point in container: host path'. Cache package managers only. Real test: this repo, group two's bun install—no share 2.9s, shared 1.2s. Small because repo is small; monorepo sees minutes. Disabled by default because the worst incident here was all worktrees sharing node_modules; two gates install together, groups mistake EEXIST for their own broken build. Also needs that path listed in sandbox server's allowed_host_paths.`,
+    why: msg`Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths.`,
   },
   notifyWebhook: {
     label: msg`Forward to webhook`,
     ph: msg`Empty: only this page notifies you`,
-    why: msg`Empty: only this page notifies you. Filled: each notification POSTs JSON (title / message / url)—ntfy, Bark, group bot, or what you wrote this afternoon, all work. Scrubbed before egress—this is the only channel that sends content off this machine.`,
+    why: msg`Empty, only this page notifies you. Filled, each notification POSTs JSON (title / message / url) — ntfy, Bark, a group bot, anything. Content is scrubbed first: this is the only channel that leaves the machine.`,
   },
   skillsDir: {
     label: msg`Skills staging directory`,
