@@ -188,19 +188,19 @@ MIT 协议。
 `bun run i18n:progress` 重新生成下表；表过期时 CI 会红。
 
 <!-- i18n:table -->
-**面板** · 724 条消息
+**面板** · 811 条消息
 
 | 语言 | 进度 | 条数 |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 源语言 |
-| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 724 / 724 |
-| 日本語 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
-| 한국어 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
-| Español | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
-| Français | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
-| Deutsch | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
-| Português | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
-| Русский | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
+| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
+| 日本語 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
+| 한국어 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
+| Español | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
+| Français | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
+| Deutsch | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
+| Português | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
+| Русский | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
 
 **编排器自己说的话** · 44 条，只有中英两套
 

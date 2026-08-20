@@ -284,7 +284,7 @@ function ownershipModel(all: Group[]) {
 /** Which other requirements claim this path. `、` is the separator a Chinese
  *  reader expects and a comma is not, so it is a message of its own. */
 const sameGround = (names: string[]): string => {
-  const others = names.join(t`、`);
+  const others = names.join(t`, `);
   return t`the same ground as ${others}`;
 };
 
@@ -298,7 +298,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
   const all = st.groups.filter((g) => g.project_id === projectId);
   const { groups: gs, bare, bumps, hit, rows } = ownershipModel(all);
   // Named, for the same reason as the desk header above.
-  const bareNames = bare.map((g) => g.name).join(t`、`);
+  const bareNames = bare.map((g) => g.name).join(t`, `);
   const hitCount = hit.length;
   const groupCount = gs.length;
   if (!gs.length) {
@@ -349,7 +349,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
         {rows.map((g) => {
           const mine = bumps.get(g.id) ?? new Map<string, string[]>();
           const others = [...new Set([...mine.values()].flat())];
-          const overlapping = others.join(t`、`);
+          const overlapping = others.join(t`, `);
           return (
             <div
               key={g.id}
@@ -361,7 +361,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                   <div className="truncate font-display text-base font-semibold">{g.name}</div>
                 </Tip>
                 {others.length > 0 && (
-                  <Tip label={others.join(t`、`)}>
+                  <Tip label={others.join(t`, `)}>
                     <Meta className="truncate text-bad">
                       <Trans>overlaps {overlapping}</Trans>
                     </Meta>

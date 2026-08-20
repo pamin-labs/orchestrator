@@ -26,11 +26,12 @@ import {
   TIERS,
   TIERS_ONLY,
   TIER_GRID,
+  embeddingSwitch,
   notifyState,
   runtimeSwitch,
   textOf,
 } from "./model";
-import { COUNT_UNITS, countOf, splitCount } from "./units";
+import { COUNT_UNITS, DURATION_UNITS, countOf, msOf, splitCount, splitDuration, unitLabel } from "./units";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
@@ -388,6 +389,60 @@ export function Pairs({
   );
 }
 
+/**
+ * An ordered list of durations, as rows rather than a line of JSON.
+ *
+ * `[300000,900000,3600000]` is three numbers whose whole meaning is their order:
+ * the first repeat waits the first step and the last one holds forever. As JSON
+ * it cannot be read without counting zeros, which is the complaint that put a
+ * unit on every other duration on this page — this row was simply the one shape
+ * the scalar parser had no branch for, so it fell through to a text box.
+ */
+/**
+ * The last step carries no delete: the schema wants at least one, and a missing
+ * button is an answer where a refused write is an error message.
+ */
+export function Ladder({ list, onWrite }: { list: number[]; onWrite: (v: Json) => void }) {
+  // Built before the JSX, because a ladder step has no identity but its
+  // position: two steps may legally hold the same duration, so the ordinal is
+  // the only thing that tells them apart. The stored value rides along in the
+  // key so an accepted write remounts the row it landed on.
+  const steps = list.map((ms, at) => {
+    // `nth` is a named local so the extracted message reads `Step {nth}` rather
+    // than `Step {0}`, which is a placeholder no translator can place.
+    const nth = at + 1;
+    return { at, ms, key: `${at}-${ms}`, name: t`Step ${nth}`, ...splitDuration(ms) };
+  });
+  return (
+    <div className="flex w-full flex-col gap-1">
+      {steps.map(({ at, key, name, n, unit }) => (
+        <div key={key} className="flex items-center gap-1.5">
+          <Meta className="w-[3.25rem] shrink-0">{name}</Meta>
+          <Amount
+            n={n}
+            unit={unit}
+            units={DURATION_UNITS}
+            labelOf={unitLabel}
+            label={name}
+            onCommit={(next, u) => onWrite(list.map((old, j) => (j === at ? msOf(next, u) : old)))}
+          />
+          {list.length > 1 && <RemoveRow name={name} onRemove={() => onWrite(list.filter((_, j) => j !== at))} />}
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        {/* Born as a copy of the last step rather than at zero: a ladder whose
+            steps do not grow is a ladder, and 0 is refused by the schema. */}
+        <Button size="sm" onClick={() => onWrite([...list, list.at(-1) ?? 300_000])}>
+          <Trans>Add a step</Trans>
+        </Button>
+        <Meta>
+          <Trans>The last step repeats for as long as nobody answers</Trans>
+        </Meta>
+      </div>
+    </div>
+  );
+}
+
 /** A list of one-per-line strings. Nothing here is ordered, so nothing sorts it. */
 export function Lines({ list, ph, onWrite }: { list: string[]; ph: string | undefined; onWrite: (v: Json) => void }) {
   const text = list.join("\n");
@@ -595,37 +650,126 @@ export function IndexModel({
 const LOCAL_EMBEDDINGS = ["Xenova/multilingual-e5-small", "Xenova/multilingual-e5-base", "BAAI/bge-m3"];
 
 /**
- * Local or remote, and which model — one row, because they are one decision.
+ * The whole embedding decision as one row: local or remote, which model, and —
+ * only under remote — the address and the credential name.
  *
  * Two rows would invite `mode: remote` with a local model id, which fails at the
  * first call to an endpoint that has never heard of `Xenova/…`. Same argument as
  * `IndexModel` above, same shape.
+ */
+/**
+ * The endpoint and credential were rows of their own, drawn as two empty boxes
+ * under a segment reading 本地 — fields for a mode nobody had chosen.
  *
- * Endpoint and credential stay their own rows: hiding them under `local` would make
- * a configured endpoint disappear the moment somebody switched back to compare.
+ * They cannot be gated on the *stored* mode either. `ConfigSchema` refuses
+ * `mode: remote` unless the endpoint parses and a credential is named, and a
+ * refused write stores nothing — so the stored mode is still `local` at exactly
+ * the moment the reader needs somewhere to type. The segment's own press is the
+ * gate, held here, and it survives the bounce.
  */
 export function Embedding({
   mode,
   model,
+  endpoint,
+  credential,
   onMode,
-  onModel,
+  onField,
 }: {
   mode: string;
   model: string;
+  endpoint: string;
+  credential: string;
   onMode: (v: string) => void;
-  onModel: (v: string) => void;
+  onField: (path: string, v: string) => void;
 }) {
+  const [picked, setPicked] = useState(mode);
+  useEffect(() => setPicked(mode), [mode]);
+  const remote = picked === "remote";
   return (
-    <div className="flex w-full items-center gap-2">
-      <Segments value={mode} onValueChange={onMode}>
-        <Segment value="local">
-          <Trans>Local</Trans>
-        </Segment>
-        <Segment value="remote">
-          <Trans>Remote</Trans>
-        </Segment>
-      </Segments>
-      <ModelPick value={model} options={mode === "local" ? LOCAL_EMBEDDINGS : []} onCommit={onModel} />
+    <div className="flex w-full flex-col gap-1.5">
+      <div className="flex w-full items-center gap-2">
+        <Segments
+          value={picked}
+          // The press always moves the segment, so the two fields appear; the
+          // write only goes when it would land. See `embeddingSwitch`.
+          onValueChange={(next) => {
+            if (!next) return;
+            setPicked(next);
+            if (embeddingSwitch(next, endpoint, credential)) onMode(next);
+          }}
+        >
+          <Segment value="local">
+            <Trans>Local</Trans>
+          </Segment>
+          <Segment value="remote">
+            <Trans>Remote</Trans>
+          </Segment>
+        </Segments>
+        <ModelPick
+          value={model}
+          options={remote ? [] : LOCAL_EMBEDDINGS}
+          onCommit={(v) => onField("embedding.model", v)}
+        />
+      </div>
+      {remote && (
+        <>
+          <Sub label={t`Endpoint`}>
+            <Box
+              value={endpoint}
+              placeholder="https://api.example.com/v1/embeddings"
+              aria-label={t`Endpoint`}
+              invalid={!URL.canParse(endpoint)}
+              onCommit={(v) => onField("embedding.endpoint", v)}
+            />
+          </Sub>
+          <Sub label={t`Credential name`}>
+            <Box
+              value={credential}
+              placeholder={t`The name of a row under Model account, never the key`}
+              aria-label={t`Credential name`}
+              invalid={!credential}
+              onCommit={(v) => onField("embedding.credential", v)}
+            />
+          </Sub>
+          <Missing endpoint={endpoint} credential={credential} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Which half of a remote embedding is still missing, in the panel's own words.
+ *
+ * The rule lives in `contracts` as a Zod `error` — a string the extractor cannot
+ * see and no catalog can hold, so it reached the pane in English under a Chinese
+ * row. The panel can name the missing half instead, because it is drawing the
+ * box that is empty.
+ */
+/**
+ * Read off the fields rather than off the stored mode: the mode lags a round
+ * trip behind the press, and gating on it flashed the sentence for one render
+ * after a write that had just succeeded.
+ */
+function Missing({ endpoint, credential }: { endpoint: string; credential: string }) {
+  const said = (): React.ReactNode => {
+    if (!URL.canParse(endpoint)) {
+      if (!credential) return <Trans>Fill in both and remote retrieval switches on. Until then it stays local.</Trans>;
+      return <Trans>Write the full /v1/embeddings address and remote retrieval switches on.</Trans>;
+    }
+    if (!credential) return <Trans>Name a stored credential and remote retrieval switches on.</Trans>;
+    return null;
+  };
+  const message = said();
+  return message && <span className="text-meta leading-snug text-accent">{message}</span>;
+}
+
+/** A field inside a row that already has a label: the block editors' own shape. */
+function Sub({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Meta className="w-[5.5rem] shrink-0">{label}</Meta>
+      {children}
     </div>
   );
 }

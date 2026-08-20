@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { settablePaths, defaultFor } from "../../src/platform/config/settings.ts";
 import { isSettingPath } from "../../src/contracts/config.ts";
-import { KNOBS_ELSEWHERE, SECTIONS } from "../../web/src/features/knobs/view.tsx";
+import { COPY, KNOBS_ELSEWHERE, SECTIONS } from "../../web/src/features/knobs/view.tsx";
 import {
   KNOB_SHAPE,
   fmtCount,
@@ -27,7 +27,7 @@ import {
 
 test("a duration survives the trip to the screen and back, exactly", () => {
   // Every duration in DEFAULTS, by the name the panel knows it by.
-  const shipped = [1_200_000, 10_800_000, 7_200_000, 30_000, 86_400_000];
+  const shipped = [1_200_000, 10_800_000, 7_200_000, 30_000, 86_400_000, 604_800_000];
   for (const ms of shipped) {
     const { n, unit } = splitDuration(ms);
     expect(parseDuration(String(n), unit)).toBe(ms);
@@ -40,6 +40,11 @@ test("a duration survives the trip to the screen and back, exactly", () => {
   expect(fmtDuration(7_200_000)).toBe("2 小时");
   expect(fmtDuration(30_000)).toBe("30 秒");
   expect(fmtDuration(0)).toBe("0 秒");
+  // The reason days exist at all: `eventRetentionMs` ships at seven of them, and
+  // it read as `168 小时` — a number that has to be divided before it means
+  // anything, which is the defect this whole file exists to prevent one unit down.
+  expect(fmtDuration(604_800_000)).toBe("7 天");
+  expect(readNumber("7 天", 604_800_000, "ms")).toBe(604_800_000);
   // Not a whole number of any bigger unit, so it stays honest rather than round.
   expect(fmtDuration(90_500)).toBe("90500 毫秒");
   expect(readNumber("90500 毫秒", 90_500, "ms")).toBe(90_500);
@@ -59,14 +64,19 @@ test("a bare number keeps the unit on the screen, a suffix overrides it", () => 
   expect(readNumber("20 光年", 1_200_000, "ms")).toBeNull();
 });
 
-test("the sandbox TTL is stored in seconds and still reads in hours", () => {
+test("the sandbox TTL is stored in seconds and still reads in days", () => {
   // 86400 seconds. The one knob on the page whose unit is not milliseconds; a
   // shared helper that forgot it would silently make the sandbox live 1000x too
   // long, which is a bill rather than an error message.
-  expect(showNumber(86_400, "seconds")).toBe("24 小时");
+  expect(showNumber(86_400, "seconds")).toBe("1 天");
+  expect(readNumber("1 天", 86_400, "seconds")).toBe(86_400);
+  // Still accepted in the unit it used to be printed in.
   expect(readNumber("24 小时", 86_400, "seconds")).toBe(86_400);
   expect(readNumber("30 分钟", 86_400, "seconds")).toBe(1800);
-  expect(readNumber("12", 86_400, "seconds")).toBe(43_200);
+  // A bare number keeps the unit on the screen, and the screen now says 天: the
+  // box holds `1 天`, so 12 is twelve days. Typing the old unit still says hours.
+  expect(readNumber("12", 86_400, "seconds")).toBe(12 * 86_400);
+  expect(readNumber("12 小时", 86_400, "seconds")).toBe(43_200);
 });
 
 test("token counts round-trip, including the tiers and every context window", () => {
@@ -120,9 +130,34 @@ test("every settable knob appears in a section, or the settings page cannot draw
   // already paid for once with role names: a list nobody extends silently drops
   // what it does not mention. Thirteen keys landed settable through the API and
   // invisible on the page, which is a control the boss cannot find.
-  const placed = new Set(Object.values(SECTIONS).flatMap((s) => s.paths));
+  const placed = new Set(Object.values(SECTIONS).flatMap((s) => s.groups.flatMap((g) => g.paths)));
   const missing = [...settablePaths()]
     .map(([path]) => path)
     .filter((path) => !placed.has(path) && !KNOBS_ELSEWHERE.has(path));
   expect(missing).toEqual([]);
+});
+
+test("every knob a section draws has a human label, and no knob has two controls", () => {
+  // What the boss actually reported: `intervals.notifyBackoffMs` on the page as
+  // its own dotted path beside a raw number box. `copyFor` falls back to the path
+  // when `COPY` has no row, so a knob added to a section and forgotten here is
+  // invisible as a defect to everything except a person reading the pane —
+  // thirty-five of them were.
+  const placed = Object.values(SECTIONS).flatMap((s) => s.groups.flatMap((g) => g.paths));
+  expect(placed.filter((path) => !COPY[path])).toEqual([]);
+
+  // The other half of the same complaint: a value drawn twice, once by the
+  // control built for it and once by the generic row. A path in both lists is
+  // that bug, and it shipped as `embedding.model` under a picker already showing
+  // the same string.
+  expect(placed.filter((path) => KNOBS_ELSEWHERE.has(path))).toEqual([]);
+  // A section listing the same path twice draws it twice, with two React keys
+  // that are equal.
+  expect(placed.length).toBe(new Set(placed).size);
+
+  // And nothing is excused that the server never offered: a typo in
+  // KNOBS_ELSEWHERE excuses a path that does not exist while the real one stays
+  // undrawn, which is the coverage check above passing over a hole.
+  const settable = new Set<string>([...settablePaths()].map(([path]) => path));
+  expect([...KNOBS_ELSEWHERE].filter((path) => !settable.has(path))).toEqual([]);
 });

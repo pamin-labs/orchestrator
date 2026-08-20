@@ -10,7 +10,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 /** Which requirements are running, on one line. */
 const RunningNames = ({ names }: { names: string[] }) => {
   const { t } = useLingui();
-  const running = names.join(t`、`);
+  const running = names.join(t`, `);
   return <div className="mt-1.5 truncate text-secondary text-ink-2">{t`Running: ${running}`}</div>;
 };
 

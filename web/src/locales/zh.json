@@ -13,6 +13,12 @@
     "comments": [],
     "translation": " 只读"
   },
+  "E4B4Vb": {
+    "message": ", ",
+    "placeholders": {},
+    "comments": [],
+    "translation": "、"
+  },
   "K3M7mM": {
     "message": ", {0} from the repository",
     "placeholders": {
@@ -29,11 +35,17 @@
     "comments": [],
     "translation": "，每 turn 前缀约 {0}k tokens"
   },
-  "HR9H3x": {
-    "message": "、",
+  "fwbE-9": {
+    "message": "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it.",
     "placeholders": {},
     "comments": [],
-    "translation": "、"
+    "translation": "「你还认这个凭据吗」：GitHub 的 /user、供应商的 /v1/models。比上面的 API 调用短，因为答案慢只会报「未验证」而不是失败，没有东西在等它。"
+  },
+  "8IHNy_": {
+    "message": "'We asked recently.' One sentence covering two things that were already the same number: how often the reachability probe runs while online, and how long a credential verdict stays cached for this page.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "「刚问过。」一句话覆盖两件本来就是同一个数的事：在线时可达性探测多久跑一次，以及凭据结论在这个页面上缓存多久。"
   },
   "_8U9xN": {
     "message": "({deliveredCount})",
@@ -190,6 +202,24 @@
     "comments": [],
     "translation": "{groupCount} 个需求各改各的，可以一起跑"
   },
+  "yzqNV2": {
+    "message": "{groups, plural, one {# requirement} other {# requirements}} in <0>{repoPath}</0>",
+    "placeholders": {
+      "groups": ["groups"],
+      "repoPath": ["repoPath"]
+    },
+    "comments": [],
+    "translation": "<0>{repoPath}</0> 的 {groups, plural, other {# 个需求}}"
+  },
+  "6Z11lb": {
+    "message": "{groups, plural, one {The one requirement in {repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.} other {All # requirements in {repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.}}",
+    "placeholders": {
+      "groups": ["groups"],
+      "repoPath": ["repoPath"]
+    },
+    "comments": [],
+    "translation": "{groups, plural, other {{repoPath} 的 # 个需求——连同它们的容器、卡片、记录和附件——都会被删除，且无法恢复。}}"
+  },
   "SLGxxb": {
     "message": "{hard} blocking the whole group",
     "placeholders": {
@@ -295,12 +325,12 @@
     "translation": "{months} 个月前"
   },
   "6bwnTR": {
-    "translation": "{n} 片",
     "message": "{n, plural, one {# slice} other {# slices}}",
     "placeholders": {
       "n": ["n"]
     },
-    "comments": []
+    "comments": [],
+    "translation": "{n} 片"
   },
   "jMDoJw": {
     "message": "{n} more queued behind it",
@@ -421,12 +451,12 @@
     "translation": "{total} 条等你"
   },
   "ZKgsmP": {
-    "translation": "{waiting} 片待查收",
     "message": "{waiting, plural, one {# slice awaiting acceptance} other {# slices awaiting acceptance}}",
     "placeholders": {
       "waiting": ["waiting"]
     },
-    "comments": []
+    "comments": [],
+    "translation": "{waiting} 片待查收"
   },
   "Z6Ml5d": {
     "message": "{waiting} to do",
@@ -500,6 +530,12 @@
     "comments": [],
     "translation": "要一个数字"
   },
+  "Qono6v": {
+    "message": "A paused group is waiting on you and costs a concurrency slot while it waits. This is how often it says so before 'Archive after paused' takes the slot back.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "暂停的组在等你，等的时候还占着一个并发位。这是它多久说一次，直到「暂停多久后封存」把位子收回去。"
+  },
   "JKqEIB": {
     "message": "Abandon this requirement",
     "placeholders": {},
@@ -558,6 +594,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "加一项"
+  },
+  "eMc2xs": {
+    "message": "Add a step",
+    "placeholders": {},
+    "comments": [],
+    "translation": "加一级"
   },
   "L1uMzn": {
     "message": "Add another",
@@ -769,6 +811,12 @@
     "comments": [],
     "translation": "已封存"
   },
+  "d3Hkbl": {
+    "message": "Ask again every",
+    "placeholders": {},
+    "comments": [],
+    "translation": "多久再问一次"
+  },
   "E3Jb7M": {
     "message": "Ask GitHub",
     "placeholders": {},
@@ -845,6 +893,12 @@
     "comments": [],
     "translation": "待你查收 · {since}"
   },
+  "jy-hYI": {
+    "message": "Back off after a 429",
+    "placeholders": {},
+    "comments": [],
+    "translation": "429 之后退避"
+  },
   "iByEoT": {
     "message": "Background job",
     "placeholders": {},
@@ -856,6 +910,18 @@
     "placeholders": {},
     "comments": [],
     "translation": "基线分支"
+  },
+  "rhCZA1": {
+    "message": "Base branch fallbacks",
+    "placeholders": {},
+    "comments": [],
+    "translation": "基线分支兜底"
+  },
+  "E8Hq1V": {
+    "message": "Batch window",
+    "placeholders": {},
+    "comments": [],
+    "translation": "攒单窗口"
   },
   "2wNcZ1": {
     "message": "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates.",
@@ -946,6 +1012,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "预算用尽，全组挂起"
+  },
+  "4Uu52E": {
+    "message": "Bun's own default is 10 and nobody chose it. The panel's snapshot issues nineteen statements at once, so a pool under that serves them in waves—measured as a p95 several times the median while the median barely moved. Above the statement count it buys nothing; a managed Postgres with a connection cap is the reason to lower it.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Bun 自己的默认是 10，没人选过。面板的快照一次发十九条语句，池子小于这个数就分批走——实测 p95 是中位数的好几倍，而中位数几乎没动。超过语句数再加没有收益；托管 Postgres 有连接上限才是调低它的理由。"
   },
   "EGCGvo": {
     "message": "Burn rate",
@@ -1069,6 +1141,12 @@
     "comments": [],
     "translation": "查有没有卡住的轮次"
   },
+  "ct69V6": {
+    "message": "Check runs",
+    "placeholders": {},
+    "comments": [],
+    "translation": "检查任务数"
+  },
   "pFDujJ": {
     "message": "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount.",
     "placeholders": {},
@@ -1141,6 +1219,12 @@
     "comments": [],
     "translation": "把这个组的分支和依赖装回新沙盒"
   },
+  "Rohzsq": {
+    "message": "Clone, fetch or image pull",
+    "placeholders": {},
+    "comments": [],
+    "translation": "克隆、拉取或拉镜像"
+  },
   "yz7wBu": {
     "message": "Close",
     "placeholders": {},
@@ -1207,6 +1291,12 @@
     "comments": [],
     "translation": "原话记进黑板，PM 据此安排修正。截图直接粘。"
   },
+  "oDg5xj": {
+    "message": "Comments on the pull request itself, newest first. Past this, the oldest are never read — which is a reviewer's first comment going unanswered.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "PR 本身的评论，从新到旧。超过这个数，最旧的永远读不到——那正是审阅者的第一条评论没人回。"
+  },
   "yJpTuD": {
     "message": "Compile",
     "placeholders": {},
@@ -1218,12 +1308,6 @@
     "placeholders": {},
     "comments": [],
     "translation": "同时开工的需求数"
-  },
-  "KBTDF2": {
-    "message": "Concurrent work limits and queuing",
-    "placeholders": {},
-    "comments": [],
-    "translation": "同时开工多少、谁等谁"
   },
   "fgdC0z": {
     "message": "Configuration doesn't allow the path we need to mount",
@@ -1309,6 +1393,12 @@
     "comments": [],
     "translation": "上下文窗口"
   },
+  "yNfqoK": {
+    "message": "Conversation comments",
+    "placeholders": {},
+    "comments": [],
+    "translation": "对话评论数"
+  },
   "X3zmoA": {
     "message": "Convert to a requirement; this group will automatically continue after it's implemented.",
     "placeholders": {},
@@ -1333,17 +1423,17 @@
     "comments": [],
     "translation": "成本"
   },
-  "Z71tox": {
-    "message": "Cost-controlling settings",
-    "placeholders": {},
-    "comments": [],
-    "translation": "花钱的那几个旋钮"
-  },
   "uRSTuQ": {
     "message": "Could not generate a draft; you'll need to write this one yourself.",
     "placeholders": {},
     "comments": [],
     "translation": "没能拟出来，这条得你自己写。"
+  },
+  "WYpLKV": {
+    "message": "Couldn't read the settings from the server.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "读不到服务器上的设置。"
   },
   "wBMjJ2": {
     "message": "Count",
@@ -1369,6 +1459,18 @@
     "comments": [],
     "translation": "开成需求"
   },
+  "0unVTh": {
+    "message": "Credential check",
+    "placeholders": {},
+    "comments": [],
+    "translation": "凭据检查"
+  },
+  "nZFU5n": {
+    "message": "Credential name",
+    "placeholders": {},
+    "comments": [],
+    "translation": "凭据名"
+  },
   "Xf79vI": {
     "message": "Custom gateway; usage not displayed in header",
     "placeholders": {},
@@ -1380,6 +1482,18 @@
     "placeholders": {},
     "comments": [],
     "translation": "深色"
+  },
+  "sTCUJl": {
+    "message": "Database connections",
+    "placeholders": {},
+    "comments": [],
+    "translation": "数据库连接数"
+  },
+  "_ITcnz": {
+    "message": "day",
+    "placeholders": {},
+    "comments": [],
+    "translation": "天"
   },
   "IGhWUR": {
     "message": "Decision",
@@ -1559,6 +1673,12 @@
     "comments": [],
     "translation": "改文件"
   },
+  "6vTIGm": {
+    "message": "Edits to one file",
+    "placeholders": {},
+    "comments": [],
+    "translation": "同一个文件的改动次数"
+  },
   "cxd9p_": {
     "message": "Embedding mode",
     "placeholders": {},
@@ -1619,6 +1739,12 @@
     "comments": [],
     "translation": "留空就只有这个页面会叫你。填了的话每条通知会 POST 一份 JSON（title / message / url）过去——ntfy、Bark、群机器人、你今天下午写的东西，都行。出站前会过一遍脱敏，因为这是唯一一个把内容送出这台机器的通道。"
   },
+  "FCKppt": {
+    "message": "Endpoint",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Endpoint"
+  },
   "y08yme": {
     "message": "Entire branch",
     "placeholders": {},
@@ -1663,15 +1789,6 @@
     },
     "comments": [],
     "translation": "所有容器都会没：{0} 个组的沙盒，还有 {1} 个正在跑的 turn。"
-  },
-  "LlnNm-": {
-    "message": "Every one of {repoPath}'s {groups} requirements — their containers, cards, records and attachments — is deleted, and cannot be recovered.",
-    "placeholders": {
-      "repoPath": ["repoPath"],
-      "groups": ["groups"]
-    },
-    "comments": [],
-    "translation": "{repoPath} 的 {groups} 个需求、它们的容器、卡片、记录和附件都会删掉，删了找不回来。"
   },
   "wTEow6": {
     "message": "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\nDrag in screenshots or designs, or paste. Cmd+Enter to submit",
@@ -1750,6 +1867,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "填个名字就多一行"
+  },
+  "sYbkyR": {
+    "message": "Fill in both and remote retrieval switches on. Until then it stays local.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "两个都填好，远程检索就会打开。在那之前它保持本地。"
   },
   "hpseek": {
     "message": "Filter or type a name",
@@ -1939,11 +2062,23 @@
     "comments": [],
     "translation": "去 GitHub → 这个 App → Install App"
   },
+  "3bSCnt": {
+    "message": "GitHub API call",
+    "placeholders": {},
+    "comments": [],
+    "translation": "GitHub API 调用"
+  },
   "Fe7bVR": {
     "message": "GitHub not connected yet; using our bot account for now",
     "placeholders": {},
     "comments": [],
     "translation": "还没连 GitHub，先用我们的机器人账号"
+  },
+  "kiJqw2": {
+    "message": "Give up after",
+    "placeholders": {},
+    "comments": [],
+    "translation": "超过多久就放弃"
   },
   "2GT3Hf": {
     "message": "Global",
@@ -2051,17 +2186,95 @@
     "comments": [],
     "translation": "所有沙盒共享的宿主目录，「容器里的挂载点: 宿主路径」。只放包管理器缓存。实测这个仓库第二个组的 bun install：不共享 2.9 秒，共享 1.2 秒——小是因为仓库小，到 monorepo 上是分钟级差别。默认关，因为这个仓库最惨的一次事故就是所有 worktree 共用一份 node_modules，两个闸门同时装，组把 EEXIST 当成自己的 build 坏了。另外沙盒服务端的 allowed_host_paths 也得列上这个路径。"
   },
-  "WHiZ9b": {
-    "message": "How long to wait on something outside before calling it a timeout",
+  "w9KbwD": {
+    "message": "How a checkout is read when GitHub cannot be asked",
     "placeholders": {},
     "comments": [],
-    "translation": "等外面的东西多久算超时"
+    "translation": "问不到 GitHub 时，一个 checkout 按什么读"
+  },
+  "JzXZ6B": {
+    "message": "How far down one review thread the poll reads. A long argument in a thread is the case this truncates.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一条审阅线程往下读多少。线程里吵得很长，就是它会截断的情况。"
+  },
+  "OFsFwT": {
+    "message": "How long a notification waits for company before it is sent. This is the knob between one alert an hour and one per event.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一条通知等多久同伴再发出去。这是「一小时一条」和「一事一条」之间的旋钮。"
+  },
+  "nQE4Jd": {
+    "message": "How long before a group that answered nothing is nudged again. Longer than the first wait, or the nudge becomes the noise it was meant to cut through.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一个没回应的组隔多久再催一次。要比第一次的等待更长，否则催促本身就变成了它要盖过的噪音。"
+  },
+  "-s0Ds_": {
+    "message": "How long before the same stuck report is worth saying again. Shorter turns one stuck group into a feed of its own.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "同一条「卡住」的报告隔多久才值得再说一遍。太短会把一个卡住的组变成一条自己的信息流。"
+  },
+  "fsbkOV": {
+    "message": "How long one System timing report is reused before it is computed again. The report is five window-function queries over the whole span table, run synchronously, so while it computes every other request waits behind it. The data is written by a heartbeat and is never fresher than that.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一份系统耗时报告在重算之前能复用多久。这份报告是对整张 span 表跑五个窗口函数查询，同步执行——算的时候其他请求都排在后面。数据本来就由心跳写入，不会比心跳更新。"
+  },
+  "zAEv6-": {
+    "message": "How long one turn may run, and how much it may read",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一个 turn 能跑多久，能读多少"
+  },
+  "drSXY4": {
+    "message": "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "上面那个 POST 最多花多久。答案反正会丢掉——这只是别让一个不回话的 webhook 卡住通知。"
+  },
+  "qnORSK": {
+    "message": "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "用量接口被拒之后晾多久。比拒绝持续的时间还短，轮询就只是不停地再挨一次拒绝。"
+  },
+  "zkIDNY": {
+    "message": "How many live frames may queue for one slow browser tab before frames are dropped. Up to four concurrent turns push one frame per token, so a tab that stopped reading is the one case that grows without bound. Dropping is safe—the panel re-reads its state on the next event—and the loss is counted rather than silent.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一个慢的浏览器标签页最多能积多少帧才开始丢。最多四个并发 turn，每个 token 推一帧，所以停止读取的标签页是唯一会无界增长的情况。丢帧是安全的——下一个事件到来时面板会重读状态——而且丢了多少是记下来的，不是悄悄的。"
+  },
+  "p4BjUG": {
+    "message": "How many nodes the model may name at one level. Width costs tokens in a single call, where depth costs another call.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "模型在一层里最多能点名多少个节点。宽度花的是一次调用里的 token，深度花的是又一次调用。"
+  },
+  "FTfUw0": {
+    "message": "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一次轮询向 GitHub 问多少个开着的 PR。GraphQL 查询的开销就是节点数，所以这一组里每个数字都是拿配额买来的上限。"
+  },
+  "N89lXv": {
+    "message": "How much runs at once, and when work moves on without you",
+    "placeholders": {},
+    "comments": [],
+    "translation": "同时跑多少，以及什么时候不等你就往下走"
   },
   "Axfmw8": {
     "message": "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch.",
     "placeholders": {},
     "comments": [],
     "translation": "确定性规则多久跑一遍。也是没有显式 tick 的入队要等多久才被派发。"
+  },
+  "rWXzDL": {
+    "message": "How often the shared repository map is even checked. A container round trip cost 947ms of every 30s tick, over 2,766 ticks, to answer 'unchanged' about a map whose only input is a push — so this is deliberately far longer than the tick.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "共享仓库地图多久才检查一次。每 30 秒的 tick 里有一次容器往返花掉 947ms，跑了 2,766 次，只为回答一句「没变」——而这张地图的唯一输入是一次 push，所以这个值故意比 tick 长得多。"
   },
   "k0sg9Y": {
     "message": "How to alert you",
@@ -2166,6 +2379,18 @@
     "comments": [],
     "translation": "打断，保留改动"
   },
+  "a8ydNj": {
+    "message": "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "沙盒服务器在不在，认不认我们的密钥。通常是回环，而且它的答案只是填一份报告——下面那个网络探测才卡着整个 fleet。"
+  },
+  "8O_fJP": {
+    "message": "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "到底有没有网：对每个供应商 origin 发一个 HEAD，在 watchdog 的 tick 里跑。这里故意最短——答案慢不能把一个 tick 拖住。"
+  },
   "sOqJT5": {
     "message": "It's not a duplicate, and it's not done yet — keep decomposing.",
     "placeholders": {},
@@ -2201,6 +2426,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "留着"
+  },
+  "R2SL98": {
+    "message": "Keep machine events",
+    "placeholders": {},
+    "comments": [],
+    "translation": "机器事件保留"
   },
   "7sMeHQ": {
     "message": "Key",
@@ -2238,11 +2469,29 @@
     "comments": [],
     "translation": "交给 bootstrap 重试，它会带着上面的报错读一遍仓库"
   },
+  "UO8Jaq": {
+    "message": "Levels of the tree one question may descend, and each level is a serial model call with its own 60s timeout — two per question at 3. This is the single knob on the most frequent model spend here.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一个问题最多往树下走几层，每一层都是一次串行的模型调用，各带 60 秒超时——深度 3 时一个问题两次。这是这里最频繁的模型开销上唯一的旋钮。"
+  },
   "1njn7W": {
     "message": "Light",
     "placeholders": {},
     "comments": [],
     "translation": "浅色"
+  },
+  "EQID1f": {
+    "message": "Line-level review threads per pull request. A hundred threads read through a window of twenty means the eighty oldest are never seen, and that ceiling is a property of the repository being watched rather than of the watcher.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "每个 PR 读多少条行级审阅线程。一百条线程用二十的窗口去读，最旧的八十条永远看不到；而这个上限是被观察的仓库的性质，不是观察者的。"
+  },
+  "4B00A1": {
+    "message": "Live stream backlog",
+    "placeholders": {},
+    "comments": [],
+    "translation": "实时流积压"
   },
   "ezzro3": {
     "message": "Loading changes…",
@@ -2274,11 +2523,11 @@
     "comments": [],
     "translation": "本地"
   },
-  "OripfX": {
-    "message": "Local or remote. Today neither accepts retrieval—ADR 031 field-tested rejected vectors: same-language ranking works, cross-language fails when unrelated text in one language covers truly relevant text in another, and cross-language is the only reason this exists. Reopening condition is a runnable check (bun run embedding:check), and its remote half won't run—it needs an endpoint you pick. This switch lets that rejection be disproven. Remote sends corpus, corpus holds your requirements and acceptance criteria—default is local; going remote is a decision.",
+  "rBmsAu": {
+    "translation": "本地在这台机器上算，远程发到你指定的地址。目前两者都还没用于检索——实测跨语言搜索比它要替代的关键词搜索更差。远程意味着你的需求和验收标准会离开这台机器，所以默认本地，用远程是个决定。",
+    "message": "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision.",
     "placeholders": {},
-    "comments": [],
-    "translation": "本地还是远程。今天两者都不接检索——ADR 031 实测拒绝了向量：同语言内排序是对的，跨语言时问题所在语言的一段无关文字会盖过另一种语言里真正相关的那段，而跨语言正是这个功能唯一存在的理由。它的重开条件是一条能跑的检查（`bun run embedding:check`），而这条检查的远程那一半跑不了，因为它需要你自己选的 endpoint。这个开关就是为了让那个拒绝可以被证伪。远程会把语料发出去，而语料里有你写的需求和验收标准——所以默认是本地，切远程是一次决定。"
+    "comments": []
   },
   "mTyZmU": {
     "message": "Local to this machine only, not tied to the project",
@@ -2418,6 +2667,12 @@
     "comments": [],
     "translation": "名字"
   },
+  "gaMZOo": {
+    "message": "Name a stored credential and remote retrieval switches on.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "填一个已存的凭据名，远程检索就会打开。"
+  },
   "ULmBuU": {
     "message": "Name can't be empty; use the × on the right to delete",
     "placeholders": {},
@@ -2437,6 +2692,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "要一个整数"
+  },
+  "foSFR6": {
+    "message": "Network ping",
+    "placeholders": {},
+    "comments": [],
+    "translation": "网络探测"
   },
   "d1fjbO": {
     "message": "New files are expected; if it thinks these already exist, the card was written from speculation.",
@@ -2650,12 +2911,6 @@
     "comments": [],
     "translation": "无切片"
   },
-  "J22pod": {
-    "message": "No such language",
-    "placeholders": {},
-    "comments": [],
-    "translation": "没有这种语言"
-  },
   "D8lG5Z": {
     "message": "No system activity recorded.",
     "placeholders": {},
@@ -2758,11 +3013,23 @@
     "comments": [],
     "translation": "通知"
   },
+  "rjpj-S": {
+    "message": "Nudge a silent group",
+    "placeholders": {},
+    "comments": [],
+    "translation": "多久催一次沉默的组"
+  },
   "zga9sT": {
     "message": "OK",
     "placeholders": {},
     "comments": [],
     "translation": "确定"
+  },
+  "0LY7RL": {
+    "message": "On, a question walks the PageIndex tree before it is answered. Off skips the walk before the tree is even loaded, so the query costs no model call and falls through to the lexical half — which is the A/B this switch exists for. Its own switch rather than a depth of 0, which still walks, degenerately.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "打开时，一个问题先走一遍 PageIndex 树再回答。关掉则在加载树之前就跳过，于是这次查询不花模型调用，落到字面检索那一半——这正是这个开关存在的 A/B。做成独立开关而不是深度 0，因为深度 0 仍然会走，只是退化地走。"
   },
   "gukxZ5": {
     "message": "Onboarding",
@@ -2776,6 +3043,18 @@
     "comments": [],
     "translation": "让开之后自动开工，不用再点一次"
   },
+  "NS_SrO": {
+    "message": "One branch name per line, most likely first",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一行一个分支名，最可能的写在前面"
+  },
+  "0-_m6g": {
+    "message": "One CI run can post fifty of these. Set below what your workflow produces and the fleet decides a pull request is green while a check it never saw is red.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一次 CI 就能发五十条。设得比你的 workflow 产出还低，fleet 就会认定一个 PR 是绿的，而它没看见的那条检查是红的。"
+  },
   "VvW38y": {
     "message": "One connection manages all projects",
     "placeholders": {},
@@ -2787,6 +3066,24 @@
     "placeholders": {},
     "comments": [],
     "translation": "一行一个域名，留空就都放行"
+  },
+  "U0Bgc_": {
+    "message": "One operation that moves a repository or an image across the network—a clone, a fetch, a submodule init, the sandbox SDK's own per-request budget. Minutes rather than seconds: the worst case is an image pull, which is the same shape of wait as a clone.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一次把仓库或镜像搬过网络的操作——克隆、拉取、submodule init，以及沙盒 SDK 自己的单次请求预算。是分钟不是秒：最坏情况是拉镜像，那和克隆是同一种等待。"
+  },
+  "QPXgDJ": {
+    "message": "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一次 REST 调用，它的答案就是某人要的活——开 PR、读审阅。比下面的凭据检查长，因为有东西被它卡着。"
+  },
+  "b75mRc": {
+    "message": "One unanswered notification is repeated on this ladder: the first repeat waits the first step, then the second, and it holds at the last step for as long as nobody answers. At least one step—an empty ladder means 'repeat every tick'.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一条没人回的通知按这个阶梯重复：第一次重复等第一级，然后第二级，到最后一级就一直停在那里，直到有人回。至少要有一级——空阶梯的意思是「每个 tick 都重复」。"
   },
   "P3rmDM": {
     "message": "Only running",
@@ -3046,6 +3343,12 @@
     "comments": [],
     "translation": "PM 处理中"
   },
+  "d1JOvx": {
+    "message": "Poll subscription usage",
+    "placeholders": {},
+    "comments": [],
+    "translation": "轮询订阅用量"
+  },
   "uVradX": {
     "message": "PR link not found",
     "placeholders": {},
@@ -3106,6 +3409,18 @@
     "comments": [],
     "translation": "合并请求"
   },
+  "6tMqGq": {
+    "message": "Pull requests",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Pull request"
+  },
+  "u8jL5T": {
+    "message": "Pull requests per poll",
+    "placeholders": {},
+    "comments": [],
+    "translation": "每次轮询的 PR 数"
+  },
   "8G8q1m": {
     "message": "QA",
     "placeholders": {},
@@ -3160,6 +3475,12 @@
     "comments": [],
     "translation": "从沙盒服务器自己的配置里读（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）。值不经过浏览器。"
   },
+  "SDCu3f": {
+    "message": "Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "读订阅窗口还剩多少，从工具容器里 curl。没有东西等它；顶栏只是不显示百分比而已。"
+  },
   "Z1GEoV": {
     "message": "Real data: 259 turns, median 36 steps, p90 93, max 144. The 23% over 60 steps ate 59% of the cache-read bill, because every step re-reads the full transcript. 36 is work; the tail is an agent lost, grepping. Cut the tail, median doesn't move. Changing this rotates the whole fleet through a session.",
     "placeholders": {},
@@ -3171,6 +3492,18 @@
     "placeholders": {},
     "comments": [],
     "translation": "真令牌不进沙盒"
+  },
+  "df2AOb": {
+    "message": "Recheck reachability",
+    "placeholders": {},
+    "comments": [],
+    "translation": "重新检查可达性"
+  },
+  "ImqOI5": {
+    "message": "Recheck the repo map",
+    "placeholders": {},
+    "comments": [],
+    "translation": "重新检查仓库地图"
   },
   "zu5gZ1": {
     "message": "Reconciliation",
@@ -3219,6 +3552,18 @@
     "placeholders": {},
     "comments": [],
     "translation": "释放并发槽，沙盒里的代码和 checkpoint 原地不动"
+  },
+  "1wLTrO": {
+    "message": "Remind about paused",
+    "placeholders": {},
+    "comments": [],
+    "translation": "暂停多久提醒一次"
+  },
+  "J0oIbK": {
+    "message": "Reminder ladder",
+    "placeholders": {},
+    "comments": [],
+    "translation": "提醒阶梯"
   },
   "qlAIQ1": {
     "message": "Remote",
@@ -3290,6 +3635,24 @@
     "comments": [],
     "translation": "turn 开始时会续期，所以这是「没人管了多久回收」，不是任务时长上限。"
   },
+  "jtfE4W": {
+    "message": "Repeat a stuck notice",
+    "placeholders": {},
+    "comments": [],
+    "translation": "卡住的报告重发间隔"
+  },
+  "KB5bbw": {
+    "message": "Repeat the nudge",
+    "placeholders": {},
+    "comments": [],
+    "translation": "重复催促"
+  },
+  "bEZBnp": {
+    "message": "Replies per thread",
+    "placeholders": {},
+    "comments": [],
+    "translation": "每条线程读多少回复"
+  },
   "ImOQa9": {
     "message": "Reply",
     "placeholders": {},
@@ -3319,6 +3682,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "开了 DCO 的仓库不收没有这行的提交"
+  },
+  "ooullr": {
+    "message": "Repositories",
+    "placeholders": {},
+    "comments": [],
+    "translation": "仓库"
   },
   "IreQBq": {
     "message": "Repository",
@@ -3440,6 +3809,12 @@
     "comments": [],
     "translation": "继续"
   },
+  "en3Dhq": {
+    "message": "Retrieval",
+    "placeholders": {},
+    "comments": [],
+    "translation": "检索"
+  },
   "0uV8rm": {
     "message": "Retrospective",
     "placeholders": {},
@@ -3463,6 +3838,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "回到这一轮开始前的 checkpoint，这个 turn 的改动全丢"
+  },
+  "GtbTHe": {
+    "message": "Review threads",
+    "placeholders": {},
+    "comments": [],
+    "translation": "审阅线程数"
   },
   "j5iEdc": {
     "message": "Revoke and take over",
@@ -3600,6 +3981,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "沙盒服务器"
+  },
+  "PjDN-c": {
+    "message": "Sandbox server ping",
+    "placeholders": {},
+    "comments": [],
+    "translation": "沙盒服务器探测"
   },
   "aa3gMx": {
     "message": "Sandbox setup",
@@ -3804,6 +4191,12 @@
     "comments": [],
     "translation": "看的是 {0}"
   },
+  "M8DQJW": {
+    "message": "Silence this long and the group is asked what it is doing. Not a failure — a long compile is silent too — so this is hours rather than minutes.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "沉默这么久，就会去问这个组在干什么。不是失败——编译很久也是沉默的——所以这里是小时而不是分钟。"
+  },
   "PCSkw2": {
     "message": "Skills",
     "placeholders": {},
@@ -3917,6 +4310,14 @@
     "comments": [],
     "translation": "批了才开工"
   },
+  "VZbccX": {
+    "message": "Step {nth}",
+    "placeholders": {
+      "nth": ["nth"]
+    },
+    "comments": [],
+    "translation": "第 {nth} 级"
+  },
   "zw03Lf": {
     "message": "Stop denying {d}",
     "placeholders": {
@@ -3948,6 +4349,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "停着"
+  },
+  "wOIdBt": {
+    "message": "Storage & streams",
+    "placeholders": {},
+    "comments": [],
+    "translation": "存储与流"
   },
   "bkXHcM": {
     "message": "stored as {label}",
@@ -4023,6 +4430,18 @@
     "comments": [],
     "translation": "选中的技能，正文随这一个 turn 发给 agent，只花这一次钱"
   },
+  "clowMB": {
+    "message": "The codex refresh-token exchange, run inside the utility container. Longer than the usage read because it is a process start plus an OAuth round trip, where that one wraps a curl already carrying its own limit.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "codex 的 refresh token 交换，在工具容器里跑。比用量读取长，因为它是启动一个进程加一次 OAuth 往返，而那边包的是一条自带超时的 curl。"
+  },
+  "cu7PMH": {
+    "message": "The conversation—what was said, asked and escalated—is never dropped: it is the record, and the unread cursor walks it. This bounds the rest, which the cost view reads inside a day and then never again.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "对话——说过的、问过的、升级过的——永远不删：它就是记录，未读游标要走它。这个值管的是其余部分，成本视图当天读一次，之后再也不读。"
+  },
   "oToTQd": {
     "message": "The denominator for session rotation. Both CLI agents report real values in a turn, and that takes priority; this table manages the first turn of a session. When we pinned 200k, strong models rotated constantly in the 12% of a 1M window, discarding built-up cache prefix each time.",
     "placeholders": {},
@@ -4041,11 +4460,29 @@
     "comments": [],
     "translation": "先撞上的天花板通常不是这个数：两个组不能拥有重叠路径，所以可分的模块少的项目达不到 10；再就是账号自己的限流。调高了记得看成本页的 cache 命中率——同一个订阅上并发多，节流最先在那里现形。"
   },
+  "pJvSbD": {
+    "message": "The last step repeats for as long as nobody answers",
+    "placeholders": {},
+    "comments": [],
+    "translation": "最后一级会一直重复，直到有人回"
+  },
+  "lWz20C": {
+    "message": "The name of a row under Model account, never the key",
+    "placeholders": {},
+    "comments": [],
+    "translation": "「模型账号」里那一行的名字，不是密钥本身"
+  },
   "tJoWaz": {
     "message": "The name of that line in 'Model account', not the key itself. Key in config is key in shell history and every backup.",
     "placeholders": {},
     "comments": [],
     "translation": "「模型账号」里那一行的名字，不是密钥本身。密钥写进配置文件就等于写进 shell 历史和它的每一份备份里。"
+  },
+  "3pCONH": {
+    "message": "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "「卡住」的另一半：同一个文件连着被重写这么多次。在收敛的 agent 会碰到邻近的文件；卡住的 agent 会一直重写一个文件，直到预算烧完。"
   },
   "aAIBne": {
     "message": "the same ground as {others}",
@@ -4066,6 +4503,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "全系统调用最频繁的一个模型调用：纯摘要、不做决策、不用工具、不碰黑板。第一个该从贵订阅上挪走的就是它。"
+  },
+  "2ipr2S": {
+    "message": "The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "用量接口没有文档，轮得快了就连着几小时回 429——而你自己的 /status 花的是同一份额度。五小时窗口里十分钟一次，最坏也就 3% 的误差。"
   },
   "FEr96N": {
     "message": "Theme",
@@ -4102,6 +4545,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "这份日志是空的"
+  },
+  "UVazM1": {
+    "message": "This many turns in a row that changed nothing is what the watchdog calls stuck. Below three it fires on an agent that is reading before it writes; well above it, a loop runs all afternoon before anybody hears about it.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "连着这么多个 turn 什么都没改，watchdog 就叫它卡住。低于 3 会误伤先读后写的 agent；高很多，一个死循环能跑一下午才有人知道。"
   },
   "tERiuN": {
     "message": "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward.",
@@ -4159,6 +4608,12 @@
     "comments": [],
     "translation": "这台机器上所有活动的耗时，最近一天"
   },
+  "-X1cUR": {
+    "message": "Timing report cache",
+    "placeholders": {},
+    "comments": [],
+    "translation": "耗时报告缓存"
+  },
   "rZ9HZq": {
     "message": "To do",
     "placeholders": {},
@@ -4191,6 +4646,12 @@
     "comments": [],
     "translation": "每片 token 上限"
   },
+  "SavWva": {
+    "message": "Token refresh",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Token 刷新"
+  },
   "JfT1QM": {
     "message": "tokens · project total",
     "placeholders": {},
@@ -4203,11 +4664,17 @@
     "comments": [],
     "translation": "tokens · 占比"
   },
-  "GoniZ-": {
-    "message": "Turn duration and context limits",
+  "Ms3Kz5": {
+    "translation": "按顺序试，只在别的都没答话时才用：项目自己的基线分支优先，然后是 GitHub 的 default_branch。远端连不上时就落到这里。",
+    "message": "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached.",
+    "placeholders": {},
+    "comments": []
+  },
+  "KDw4GX": {
+    "message": "Try again",
     "placeholders": {},
     "comments": [],
-    "translation": "一轮能跑多久、能读多少"
+    "translation": "重试"
   },
   "t8aCdD": {
     "message": "Turn timeout",
@@ -4226,6 +4693,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "turn 与上下文"
+  },
+  "pbsQ9q": {
+    "message": "Turns without progress",
+    "placeholders": {},
+    "comments": [],
+    "translation": "连续无进展的 turn"
   },
   "7VgwUn": {
     "message": "Type a model ID to add a row",
@@ -4278,6 +4751,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "不显示额度"
+  },
+  "TIVFfj": {
+    "message": "Usage read",
+    "placeholders": {},
+    "comments": [],
+    "translation": "用量读取"
   },
   "Qd3NOV": {
     "message": "Use 'defer' to archive without deleting; that keeps records",
@@ -4357,11 +4836,11 @@
     "comments": [],
     "translation": "等待 {span}"
   },
-  "UutRCV": {
-    "message": "Waiting and retries",
+  "kHbm1D": {
+    "message": "Waiting & storage",
     "placeholders": {},
     "comments": [],
-    "translation": "等待与重试"
+    "translation": "等待与存储"
   },
   "x11Fa2": {
     "message": "Waiting for prior slice",
@@ -4387,11 +4866,35 @@
     "comments": [],
     "translation": "等你在 GitHub 上批准…"
   },
+  "WFKlDQ": {
+    "message": "Waits on the world outside, and what this machine keeps",
+    "placeholders": {},
+    "comments": [],
+    "translation": "对外面世界的等待，以及这台机器留下什么"
+  },
   "4mi85N": {
     "message": "Wake",
     "placeholders": {},
     "comments": [],
     "translation": "唤醒"
+  },
+  "nUY40s": {
+    "message": "Walk depth",
+    "placeholders": {},
+    "comments": [],
+    "translation": "走树深度"
+  },
+  "H6Y-lN": {
+    "message": "Walk the index tree",
+    "placeholders": {},
+    "comments": [],
+    "translation": "走索引树"
+  },
+  "ik5abI": {
+    "message": "Walk width",
+    "placeholders": {},
+    "comments": [],
+    "translation": "走树宽度"
   },
   "Yk9Gp8": {
     "message": "Wants a count: 8M, 200k, 45 all work",
@@ -4423,6 +4926,12 @@
     "comments": [],
     "translation": "连过，但 GitHub 现在不认这个令牌了"
   },
+  "UK6rBV": {
+    "message": "Watchdog",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Watchdog"
+  },
   "7-b-jS": {
     "message": "Watchdog interval",
     "placeholders": {},
@@ -4434,6 +4943,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "巡检规则"
+  },
+  "r1_h83": {
+    "message": "Webhook timeout",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Webhook 超时"
   },
   "zx4BuL": {
     "message": "Week",
@@ -4483,6 +4998,12 @@
     "comments": [],
     "translation": "opensandbox-server 在哪。必须是 dns+nft 模式，否则凭据注入静默失效。它不一定在这台机器上——Tailscale 上的一台或者一台云机器都行，SDK 只跟它说 HTTP。"
   },
+  "A73faa": {
+    "message": "Which model runs what, and what it may spend",
+    "placeholders": {},
+    "comments": [],
+    "translation": "哪个模型跑什么，能花多少"
+  },
   "QXTfG1": {
     "message": "Which window",
     "placeholders": {},
@@ -4524,6 +5045,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "写一句话，拆成计划卡再回来给你批。"
+  },
+  "pO1sKo": {
+    "message": "Write the full /v1/embeddings address and remote retrieval switches on.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "写完整的 /v1/embeddings 地址，远程检索就会打开。"
   },
   "0Csw8z": {
     "message": "Writes {0} into Co-Authored-By",

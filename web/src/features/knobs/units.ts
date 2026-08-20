@@ -79,28 +79,36 @@ export const WANTS: Record<Shape, MessageDescriptor> = {
  * both at once: `PER` was keyed on the same Chinese strings the page printed, so
  * translating the label would have changed what the arithmetic looked up.
  */
-export type DurationUnit = "ms" | "s" | "min" | "h";
+export type DurationUnit = "ms" | "s" | "min" | "h" | "d";
 
 const UNIT_LABEL: Record<DurationUnit, MessageDescriptor> = {
   ms: msg`ms`,
   s: msg`sec`,
   min: msg`min`,
   h: msg`hr`,
+  d: msg`day`,
 };
 
 /** `msg` at module scope, `i18n._` at call scope: a descriptor is locale-free
  *  data, so it is safe in a table built once at import. */
 export const unitLabel = (unit: DurationUnit): string => i18n._(UNIT_LABEL[unit]);
 
-const PER: Record<DurationUnit, number> = { ms: 1, s: 1000, min: 60_000, h: 3_600_000 };
+const PER: Record<DurationUnit, number> = { ms: 1, s: 1000, min: 60_000, h: 3_600_000, d: 86_400_000 };
 
 export const msOf = (n: number, unit: DurationUnit): number => n * PER[unit];
 
 /** Smallest first: the order a unit picker should offer them in. */
-export const DURATION_UNITS: DurationUnit[] = ["ms", "s", "min", "h"];
+export const DURATION_UNITS: DurationUnit[] = ["ms", "s", "min", "h", "d"];
 
-/** Biggest first, so 1200000 reads as 20 分钟 rather than 1200000 毫秒. */
-const BIGGEST_FIRST: DurationUnit[] = ["h", "min", "s", "ms"];
+/**
+ * Biggest first, so 1200000 reads as 20 分钟 rather than 1200000 毫秒.
+ *
+ * Days are in the list because `eventRetentionMs` ships at seven of them, and
+ * `168 小时` is the same defect one unit up: a number nobody can check without
+ * dividing. Only two shipped values are a whole number of days, and both read
+ * better as one.
+ */
+const BIGGEST_FIRST: DurationUnit[] = ["d", "h", "min", "s", "ms"];
 
 /**
  * The largest unit this many milliseconds is a whole number of.
@@ -146,6 +154,11 @@ const ALIAS: Record<string, DurationUnit> = {
   hrs: "h",
   时: "h",
   小时: "h",
+  d: "d",
+  day: "d",
+  days: "d",
+  天: "d",
+  日: "d",
 };
 
 /** Text back to milliseconds. `null` = not a duration. */

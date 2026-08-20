@@ -23,6 +23,7 @@ import { browseListing, browseRow, days, entryMeta, repoRow } from "../../web/sr
 import {
   badCell,
   durationScale,
+  embeddingSwitch,
   invalidFlag,
   labelledBy,
   mateValue,
@@ -410,14 +411,30 @@ describe("a row is 已改 when either half of it is", () => {
   const on = { overridden: true };
   const off = { overridden: false };
   test.each([
-    ["neither half", off, null, false],
-    ["the first half", on, null, true],
+    ["neither half", off, [], false],
+    ["the first half", on, [], true],
     // One row, so one 已改 — the index runtime and its model are one decision.
-    ["the second half", off, on, true],
-    ["both halves untouched", off, off, false],
+    ["the second half", off, [on], true],
+    ["both halves untouched", off, [off], false],
+    // The embedding row carries three: mode, model, endpoint, credential.
+    ["the third of several halves", off, [off, off, on], true],
   ])("%s", (_case, first, second, changed) => {
     expect(rowChanged(first, second)).toBe(changed);
   });
+});
+
+test("a remote embedding is only sent once it could be stored", () => {
+  // `ConfigSchema` refuses the mode without both, and a refused write stores
+  // nothing — so sending it buys a Zod `error` from `contracts`, in English,
+  // under a Chinese row. Going back to local is never refused.
+  const url = "https://api.example.com/v1/embeddings";
+  expect(embeddingSwitch("remote", url, "openai")).toBe(true);
+  expect(embeddingSwitch("remote", url, "")).toBe(false);
+  expect(embeddingSwitch("remote", "", "openai")).toBe(false);
+  // Not a URL. A hostname is the shape somebody types when the field says
+  // "endpoint", and it is the one the schema rejects.
+  expect(embeddingSwitch("remote", "api.example.com", "openai")).toBe(false);
+  expect(embeddingSwitch("local", "", "")).toBe(true);
 });
 
 test("rows whose control cannot carry a label name themselves through their title", () => {
@@ -444,8 +461,11 @@ test("a stored value becomes the text its box holds, whatever shape it is", () =
   expect(rec([1, 2])).toEqual({});
   expect(rec(null)).toEqual({});
   expect(rec(7)).toEqual({});
-  expect(mateValue(null)).toBeNull();
-  expect(mateValue({ value: "claude-opus-5" })).toBe("claude-opus-5");
+  // Addressed by path now, because a row can have three other halves and the
+  // editor needs a named one rather than "the second".
+  expect(mateValue([], "indexModel.model")).toBeNull();
+  expect(mateValue([{ path: "indexModel.model", value: "claude-opus-5" }], "indexModel.model")).toBe("claude-opus-5");
+  expect(mateValue([{ path: "embedding.model", value: "x" }], "embedding.endpoint")).toBeNull();
 });
 
 test("a duration knob is scaled to milliseconds for the picker and back to its own unit", () => {

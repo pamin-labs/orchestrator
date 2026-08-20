@@ -268,7 +268,11 @@ test("the budget is a hard cap, not a suggestion", async () => {
 
   const tight = await queryWith(db, { grpId: 1, projectId: 1, question: "middleware token", budget: 800 });
   expect(tight.length).toBeLessThanOrEqual(800);
-});
+  // 200 sequential inserts is this test's own cost, not the query's: it runs in
+  // 3s alone and crossed Bun's 5s default the first time anything else was added
+  // to the parallel suite beside it. The budget being tested is a character
+  // count, so the wall clock here says nothing about the code under test.
+}, 20_000);
 
 test("when the budget truncates, it says how many matches were dropped", async () => {
   const db = await seeded();

@@ -12,6 +12,7 @@ import {
   CountAmount,
   IndexModel,
   LANGUAGE_SUGGESTIONS,
+  Ladder,
   Lines,
   ModelTable,
   PERCENT,
@@ -38,8 +39,8 @@ import {
   textOf,
 } from "./model";
 import { Combobox } from "../../ui/combobox";
-import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "../../ui/field";
-import { Head, Meta } from "../../ui/bits";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "../../ui/field";
+import { Empty, Head, Meta, Working } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { Segment, Toggles } from "../../ui/segment";
 import { Switch } from "../../ui/switch";
@@ -83,122 +84,202 @@ const KnobSchema = z.custom<Knob>((value) => {
 });
 const SettingsResponseSchema: z.ZodType<SettingsResponse> = z.object({ settings: z.array(KnobSchema) });
 
-export type KnobSection = "sched" | "models" | "turn" | "boxdefaults" | "notify" | "waits";
+/** Every knob pane, as the values themselves: a caller that walks them all —
+ *  the render check does — should not have to assert its way back to the type. */
+export const KNOB_SECTIONS = ["sched", "models", "turn", "waits", "notify", "boxdefaults", "repo"] as const;
+export type KnobSection = (typeof KNOB_SECTIONS)[number];
 
-/** Which rows a section shows, in the order they are shown. */
 /**
  * Knobs a section deliberately does not draw, because another control owns them.
  *
  * Exported so the coverage check can tell "owned elsewhere" from "forgotten" —
  * the second is what put thirteen keys on the API and nowhere on the page.
  */
-export const KNOBS_ELSEWHERE = new Set(["sandbox.server", "sandbox.image"]);
+/**
+ * `sandbox.server` and `sandbox.image` belong to the 沙盒 pane, which validates an
+ * address and lists what the registry actually holds.
+ *
+ * `embedding.model` and `indexModel.model` belong to the `PAIRED` row their
+ * runtime is picked on: that row already draws the model as a picker offering
+ * only what the chosen runtime can run, and a second row for the same value was
+ * a free-text box holding the same string one line below it.
+ */
+/**
+ * `embedding.endpoint` and `embedding.credential` joined them: they were two
+ * empty boxes under a segment reading 本地, which is a form for a mode nobody
+ * had chosen. The embedding row draws them when remote is pressed.
+ */
+export const KNOBS_ELSEWHERE = new Set([
+  "sandbox.server",
+  "sandbox.image",
+  "embedding.model",
+  "indexModel.model",
+  "embedding.endpoint",
+  "embedding.credential",
+]);
+
+/**
+ * A run of rows under one subject. The first group of a section is the section's
+ * own subject and carries no legend — `Head` has already named it — while a later
+ * group names itself, because eighteen rows in one undivided list is a list whose
+ * bottom half nobody reads.
+ */
+export interface KnobGroup {
+  legend?: MessageDescriptor;
+  paths: string[];
+}
 
 /**
  * `msg` at module scope, `i18n._` at call scope. A descriptor is locale-free
  * data, so a table built once at import is still right after the locale changes
  * — which a resolved string would not be: it freezes at first evaluation.
  */
-export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: MessageDescriptor; paths: string[] }> = {
-  sched: {
-    title: msg`Scheduling`,
-    note: msg`Concurrent work limits and queuing`,
-    paths: [
-      "maxGroups",
-      "leaseSlots",
-      "watchdogIntervalMs",
-      "autoAdvance",
-      "autoAcceptTiers",
-      "parkAfterPausedMs",
-      "watchdog.idleTurns",
-      "watchdog.sameFile",
-      "watchdog.reemitMs",
-      "watchdog.nudgeAfterMs",
-      "watchdog.nudgeReemitMs",
-      "watchdog.pausedNotifyMs",
-      "watchdog.repoMapEveryMs",
-      "prPoll.prs",
-      "prPoll.messages",
-      "prPoll.checks",
-      "prPoll.threads",
-      "prPoll.threadComments",
-      "baseBranchFallbacks",
-    ],
-  },
-  models: {
-    title: msg`Models & budget`,
-    note: msg`Cost-controlling settings`,
-    paths: [
-      "difficultyModel",
-      "indexModel.runtime",
-      "contextWindow",
-      "sliceBudgetTokens",
-      "language",
-      "embedding.mode",
-      "embedding.endpoint",
-      "embedding.credential",
-      "embedding.model",
-      "indexModel.model",
-      "pageindex.enabled",
-      "pageindex.depth",
-      "pageindex.width",
-    ],
-  },
-  turn: {
-    title: msg`Turns & context`,
-    note: msg`Turn duration and context limits`,
-    paths: [
-      "turnTimeoutMs",
-      "maxTurnsPerJob",
-      "sessionRotateFraction",
-      "ctxBudgetChars",
-      "unreadDigestThreshold",
-      "feedbackSedimentThreshold",
-      "gateRetries",
-      "leaseTimeoutMs",
-      "installTimeoutMs",
-      "skillsDir",
-      "telemetryCacheMs",
-      "eventRetentionMs",
-      "streamBacklog",
-    ],
-  },
-  waits: {
-    title: msg`Waiting and retries`,
-    // Everything here bounds a wait on something outside this process: GitHub, a
-    // container, the network. They were eighteen literals across seven files, and
-    // the only ones anybody could change were the three turn budgets.
-    note: msg`How long to wait on something outside before calling it a timeout`,
-    paths: [
-      "timeouts.githubApiMs",
-      "timeouts.credentialCheckMs",
-      "timeouts.sandboxPingMs",
-      "timeouts.networkPingMs",
-      "timeouts.tokenRefreshMs",
-      "timeouts.usageReadMs",
-      "timeouts.transferMs",
-      "intervals.recheckMs",
-      "intervals.usagePollMs",
-      "intervals.usageBackoffMs",
-      "dbPoolSize",
-    ],
-  },
-  notify: {
-    title: msg`Notifications`,
-    note: msg`How to alert you`,
-    paths: ["notifyWebhook", "timeouts.webhookMs", "intervals.notifyBatchMs", "intervals.notifyBackoffMs"],
-  },
-  boxdefaults: {
-    title: msg`Sandbox defaults`,
-    note: msg`Used when a project has not set its own`,
-    // Not `sandbox.server` or `sandbox.image`: the pane this section renders
-    // inside owns both, with an address row that validates and an image row that
-    // lists what the registry has. A knob row for the image is a plain text box,
-    // which is how "the image dropdown disappeared" happened — two controls for
-    // one value, and the reader found the other one.
-    paths: ["sandbox.cpu", "sandbox.memory", "sandbox.ttlSeconds", "sandbox.denyDomains", "sandbox.cacheDirs"],
-  },
-};
+export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: MessageDescriptor; groups: KnobGroup[] }> =
+  {
+    sched: {
+      title: msg`Scheduling`,
+      note: msg`How much runs at once, and when work moves on without you`,
+      groups: [
+        {
+          paths: [
+            "maxGroups",
+            "leaseSlots",
+            // Beside the slots they hold and the retries they feed, not under
+            // 轮次与上下文: a lease is a compile, and neither number bounds a turn.
+            "leaseTimeoutMs",
+            "installTimeoutMs",
+            "gateRetries",
+            "autoAdvance",
+            "autoAcceptTiers",
+            "parkAfterPausedMs",
+          ],
+        },
+        {
+          // The interval was settable and every threshold it enforces was not, so
+          // the one knob on the page changed how often the rules ran and nothing
+          // about what they decided. They are one subject and they read as one.
+          legend: msg`Watchdog`,
+          paths: [
+            "watchdogIntervalMs",
+            "watchdog.idleTurns",
+            "watchdog.sameFile",
+            "watchdog.reemitMs",
+            "watchdog.nudgeAfterMs",
+            "watchdog.nudgeReemitMs",
+            "watchdog.pausedNotifyMs",
+            "watchdog.repoMapEveryMs",
+          ],
+        },
+        {
+          legend: msg`Pull requests`,
+          paths: ["prPoll.prs", "prPoll.messages", "prPoll.checks", "prPoll.threads", "prPoll.threadComments"],
+        },
+      ],
+    },
+    models: {
+      title: msg`Models & budget`,
+      note: msg`Which model runs what, and what it may spend`,
+      groups: [
+        { paths: ["difficultyModel", "sliceBudgetTokens", "contextWindow", "indexModel.runtime", "language"] },
+        {
+          // How `orch ctx query` finds anything. Its own group because it is the
+          // one block on this pane that is not about spend at all, and because
+          // the two halves — the tree walk and the vectors — are read together.
+          legend: msg`Retrieval`,
+          paths: ["pageindex.enabled", "pageindex.depth", "pageindex.width", "embedding.mode"],
+        },
+      ],
+    },
+    turn: {
+      title: msg`Turns & context`,
+      note: msg`How long one turn may run, and how much it may read`,
+      groups: [
+        {
+          paths: [
+            "turnTimeoutMs",
+            "maxTurnsPerJob",
+            "sessionRotateFraction",
+            "ctxBudgetChars",
+            "unreadDigestThreshold",
+            "feedbackSedimentThreshold",
+          ],
+        },
+      ],
+    },
+    waits: {
+      title: msg`Waiting & storage`,
+      // Everything in the first two groups bounds a wait on something outside this
+      // process: GitHub, a container, the network. They were eighteen literals
+      // across seven files, and the only ones anybody could change were the three
+      // turn budgets. The third group is this machine's own plumbing, which sat
+      // under 轮次与上下文 where it was neither a turn nor a context.
+      note: msg`Waits on the world outside, and what this machine keeps`,
+      groups: [
+        {
+          legend: msg`Give up after`,
+          paths: [
+            "timeouts.githubApiMs",
+            "timeouts.credentialCheckMs",
+            "timeouts.sandboxPingMs",
+            "timeouts.networkPingMs",
+            "timeouts.tokenRefreshMs",
+            "timeouts.usageReadMs",
+            "timeouts.transferMs",
+          ],
+        },
+        {
+          legend: msg`Ask again every`,
+          paths: ["intervals.recheckMs", "intervals.usagePollMs", "intervals.usageBackoffMs"],
+        },
+        {
+          legend: msg`Storage & streams`,
+          paths: ["dbPoolSize", "eventRetentionMs", "streamBacklog", "telemetryCacheMs"],
+        },
+      ],
+    },
+    repo: {
+      title: msg`Repositories`,
+      note: msg`How a checkout is read when GitHub cannot be asked`,
+      // Under 拉取请求 until somebody read its own tooltip: this is tried when a
+      // project has no base branch of its own *and* the remote cannot be reached
+      // to supply `default_branch`. That is a fact about a checkout, and the last
+      // place it applies is a pull request — which is why it renders under
+      // GitHub, where the reader is already looking at repositories.
+      groups: [{ paths: ["baseBranchFallbacks"] }],
+    },
+    notify: {
+      title: msg`Notifications`,
+      note: msg`How to alert you`,
+      groups: [
+        { paths: ["notifyWebhook", "timeouts.webhookMs", "intervals.notifyBatchMs", "intervals.notifyBackoffMs"] },
+      ],
+    },
+    boxdefaults: {
+      title: msg`Sandbox defaults`,
+      note: msg`Used when a project has not set its own`,
+      // Not `sandbox.server` or `sandbox.image`: the pane this section renders
+      // inside owns both, with an address row that validates and an image row that
+      // lists what the registry has. A knob row for the image is a plain text box,
+      // which is how "the image dropdown disappeared" happened — two controls for
+      // one value, and the reader found the other one.
+      groups: [
+        {
+          // `skillsDir` is here rather than under 轮次与上下文 because it is the
+          // same fact as `sandbox.cacheDirs`: a host directory mounted into every
+          // container, which fails the same way when the sandbox server's
+          // allowed_host_paths does not list it.
+          paths: [
+            "sandbox.cpu",
+            "sandbox.memory",
+            "sandbox.ttlSeconds",
+            "sandbox.denyDomains",
+            "sandbox.cacheDirs",
+            "skillsDir",
+          ],
+        },
+      ],
+    },
+  };
 
 /**
  * Label, the reason the default is what it is, and what an empty box would mean.
@@ -210,7 +291,10 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
  */
 /** `ph` is either — `8Gi` and `127.0.0.1:8080` are examples of the value and
  *  stay verbatim, while "Empty = 1/4 of host cores" is a sentence. */
-const COPY: Record<string, { label: MessageDescriptor; why?: MessageDescriptor; ph?: MessageDescriptor | string }> = {
+export const COPY: Record<
+  string,
+  { label: MessageDescriptor; why?: MessageDescriptor; ph?: MessageDescriptor | string }
+> = {
   maxGroups: {
     label: msg`Concurrent jobs`,
     why: msg`The first ceiling usually isn't this: two groups can't own overlapping paths, so low-modularity projects can't reach 10; then account-level rate limits. Raising this, watch cache hit rate on the cost page—high concurrency on one subscription throttles there first.`,
@@ -235,13 +319,66 @@ const COPY: Record<string, { label: MessageDescriptor; why?: MessageDescriptor; 
     label: msg`Archive after paused`,
     why: msg`Archive releases the sandbox. Groups parked too long hog concurrency slots for nothing.`,
   },
+  "watchdog.idleTurns": {
+    label: msg`Turns without progress`,
+    why: msg`This many turns in a row that changed nothing is what the watchdog calls stuck. Below three it fires on an agent that is reading before it writes; well above it, a loop runs all afternoon before anybody hears about it.`,
+  },
+  "watchdog.sameFile": {
+    label: msg`Edits to one file`,
+    why: msg`The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone.`,
+  },
+  "watchdog.reemitMs": {
+    label: msg`Repeat a stuck notice`,
+    why: msg`How long before the same stuck report is worth saying again. Shorter turns one stuck group into a feed of its own.`,
+  },
+  "watchdog.nudgeAfterMs": {
+    label: msg`Nudge a silent group`,
+    why: msg`Silence this long and the group is asked what it is doing. Not a failure — a long compile is silent too — so this is hours rather than minutes.`,
+  },
+  "watchdog.nudgeReemitMs": {
+    label: msg`Repeat the nudge`,
+    why: msg`How long before a group that answered nothing is nudged again. Longer than the first wait, or the nudge becomes the noise it was meant to cut through.`,
+  },
+  "watchdog.pausedNotifyMs": {
+    label: msg`Remind about paused`,
+    why: msg`A paused group is waiting on you and costs a concurrency slot while it waits. This is how often it says so before 'Archive after paused' takes the slot back.`,
+  },
+  "watchdog.repoMapEveryMs": {
+    label: msg`Recheck the repo map`,
+    why: msg`How often the shared repository map is even checked. A container round trip cost 947ms of every 30s tick, over 2,766 ticks, to answer 'unchanged' about a map whose only input is a push — so this is deliberately far longer than the tick.`,
+  },
+  baseBranchFallbacks: {
+    label: msg`Base branch fallbacks`,
+    ph: msg`One branch name per line, most likely first`,
+    why: msg`Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached.`,
+  },
+  "prPoll.prs": {
+    label: msg`Pull requests per poll`,
+    why: msg`How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota.`,
+  },
+  "prPoll.messages": {
+    label: msg`Conversation comments`,
+    why: msg`Comments on the pull request itself, newest first. Past this, the oldest are never read — which is a reviewer's first comment going unanswered.`,
+  },
+  "prPoll.checks": {
+    label: msg`Check runs`,
+    why: msg`One CI run can post fifty of these. Set below what your workflow produces and the fleet decides a pull request is green while a check it never saw is red.`,
+  },
+  "prPoll.threads": {
+    label: msg`Review threads`,
+    why: msg`Line-level review threads per pull request. A hundred threads read through a window of twenty means the eighty oldest are never seen, and that ceiling is a property of the repository being watched rather than of the watcher.`,
+  },
+  "prPoll.threadComments": {
+    label: msg`Replies per thread`,
+    why: msg`How far down one review thread the poll reads. A long argument in a thread is the case this truncates.`,
+  },
   difficultyModel: {
     label: msg`Difficulty → Model`,
     why: msg`Dispatcher tags each slice; this table maps tags to models. Which CLI role uses which is in roles/*.yaml; here we choose model per difficulty per CLI. Changes only affect newly hired agents—model is frozen at hire time.`,
   },
   "embedding.mode": {
     label: msg`Embedding mode`,
-    why: msg`Local or remote. Today neither accepts retrieval—ADR 031 field-tested rejected vectors: same-language ranking works, cross-language fails when unrelated text in one language covers truly relevant text in another, and cross-language is the only reason this exists. Reopening condition is a runnable check (bun run embedding:check), and its remote half won't run—it needs an endpoint you pick. This switch lets that rejection be disproven. Remote sends corpus, corpus holds your requirements and acceptance criteria—default is local; going remote is a decision.`,
+    why: msg`Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision.`,
   },
   "embedding.endpoint": {
     label: msg`Remote endpoint`,
@@ -250,6 +387,18 @@ const COPY: Record<string, { label: MessageDescriptor; why?: MessageDescriptor; 
   "embedding.credential": {
     label: msg`Remote credential name`,
     why: msg`The name of that line in 'Model account', not the key itself. Key in config is key in shell history and every backup.`,
+  },
+  "pageindex.enabled": {
+    label: msg`Walk the index tree`,
+    why: msg`On, a question walks the PageIndex tree before it is answered. Off skips the walk before the tree is even loaded, so the query costs no model call and falls through to the lexical half — which is the A/B this switch exists for. Its own switch rather than a depth of 0, which still walks, degenerately.`,
+  },
+  "pageindex.depth": {
+    label: msg`Walk depth`,
+    why: msg`Levels of the tree one question may descend, and each level is a serial model call with its own 60s timeout — two per question at 3. This is the single knob on the most frequent model spend here.`,
+  },
+  "pageindex.width": {
+    label: msg`Walk width`,
+    why: msg`How many nodes the model may name at one level. Width costs tokens in a single call, where depth costs another call.`,
   },
   "indexModel.runtime": {
     label: msg`Index model`,
@@ -303,6 +452,74 @@ const COPY: Record<string, { label: MessageDescriptor; why?: MessageDescriptor; 
     label: msg`Install timeout`,
     why: msg`Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way.`,
   },
+  "timeouts.githubApiMs": {
+    label: msg`GitHub API call`,
+    why: msg`One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it.`,
+  },
+  "timeouts.credentialCheckMs": {
+    label: msg`Credential check`,
+    why: msg`'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it.`,
+  },
+  "timeouts.sandboxPingMs": {
+    label: msg`Sandbox server ping`,
+    why: msg`Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet.`,
+  },
+  "timeouts.networkPingMs": {
+    label: msg`Network ping`,
+    why: msg`Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open.`,
+  },
+  "timeouts.tokenRefreshMs": {
+    label: msg`Token refresh`,
+    why: msg`The codex refresh-token exchange, run inside the utility container. Longer than the usage read because it is a process start plus an OAuth round trip, where that one wraps a curl already carrying its own limit.`,
+  },
+  "timeouts.usageReadMs": {
+    label: msg`Usage read`,
+    why: msg`Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage.`,
+  },
+  "timeouts.transferMs": {
+    label: msg`Clone, fetch or image pull`,
+    why: msg`One operation that moves a repository or an image across the network—a clone, a fetch, a submodule init, the sandbox SDK's own per-request budget. Minutes rather than seconds: the worst case is an image pull, which is the same shape of wait as a clone.`,
+  },
+  "intervals.recheckMs": {
+    label: msg`Recheck reachability`,
+    why: msg`'We asked recently.' One sentence covering two things that were already the same number: how often the reachability probe runs while online, and how long a credential verdict stays cached for this page.`,
+  },
+  "intervals.usagePollMs": {
+    label: msg`Poll subscription usage`,
+    why: msg`The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst.`,
+  },
+  "intervals.usageBackoffMs": {
+    label: msg`Back off after a 429`,
+    why: msg`How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones.`,
+  },
+  "timeouts.webhookMs": {
+    label: msg`Webhook timeout`,
+    why: msg`How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification.`,
+  },
+  "intervals.notifyBatchMs": {
+    label: msg`Batch window`,
+    why: msg`How long a notification waits for company before it is sent. This is the knob between one alert an hour and one per event.`,
+  },
+  "intervals.notifyBackoffMs": {
+    label: msg`Reminder ladder`,
+    why: msg`One unanswered notification is repeated on this ladder: the first repeat waits the first step, then the second, and it holds at the last step for as long as nobody answers. At least one step—an empty ladder means 'repeat every tick'.`,
+  },
+  dbPoolSize: {
+    label: msg`Database connections`,
+    why: msg`Bun's own default is 10 and nobody chose it. The panel's snapshot issues nineteen statements at once, so a pool under that serves them in waves—measured as a p95 several times the median while the median barely moved. Above the statement count it buys nothing; a managed Postgres with a connection cap is the reason to lower it.`,
+  },
+  eventRetentionMs: {
+    label: msg`Keep machine events`,
+    why: msg`The conversation—what was said, asked and escalated—is never dropped: it is the record, and the unread cursor walks it. This bounds the rest, which the cost view reads inside a day and then never again.`,
+  },
+  streamBacklog: {
+    label: msg`Live stream backlog`,
+    why: msg`How many live frames may queue for one slow browser tab before frames are dropped. Up to four concurrent turns push one frame per token, so a tab that stopped reading is the one case that grows without bound. Dropping is safe—the panel re-reads its state on the next event—and the loss is counted rather than silent.`,
+  },
+  telemetryCacheMs: {
+    label: msg`Timing report cache`,
+    why: msg`How long one System timing report is reused before it is computed again. The report is five window-function queries over the whole span table, run synchronously, so while it computes every other request waits behind it. The data is written by a heartbeat and is never fresher than that.`,
+  },
   "sandbox.server": {
     label: msg`Sandbox server`,
     ph: "127.0.0.1:8080",
@@ -350,7 +567,7 @@ const PAIRS: Record<string, { kind: PairKind; keyPh: MessageDescriptor }> = {
 };
 
 /**
- * Two settings the page shows as one row, because they are one decision.
+ * Settings the page shows as one row, because they are one decision.
  *
  * The settings table splits any object with fixed keys into a path each, so the
  * server offers `indexModel.runtime` and `indexModel.model` and never
@@ -358,9 +575,32 @@ const PAIRS: Record<string, { kind: PairKind; keyPh: MessageDescriptor }> = {
  * model belongs to a CLI: two rows invite codex plus an Anthropic model, which
  * boots and then fails on every index call.
  */
-const PAIRED: Record<string, string> = {
-  "indexModel.runtime": "indexModel.model",
-  "embedding.mode": "embedding.model",
+/**
+ * The embedding row takes all three of its remote fields for a second reason.
+ *
+ * `ConfigSchema` refuses `mode: remote` unless the endpoint parses as a URL and
+ * a credential is named, so the write that flips the mode bounces until they are
+ * filled — and rows gated on the *stored* mode would still be hidden at exactly
+ * the moment somebody needs to type in them. One control owns the whole
+ * decision, and it reveals the fields on the press rather than on the write.
+ */
+const PAIRED: Record<string, string[]> = {
+  "indexModel.runtime": ["indexModel.model"],
+  "embedding.mode": ["embedding.model", "embedding.endpoint", "embedding.credential"],
+};
+
+/**
+ * Rows that only mean something under another row's value.
+ *
+ * A depth for a tree walk that is switched off, or a timeout for a webhook
+ * nobody set, is a control over something that cannot happen — and reads as a
+ * setting somebody forgot to fill in. Written as predicates rather than a value
+ * to match, because "is not empty" is as common a gate here as "equals".
+ */
+const ONLY_WHEN: Record<string, (at: (path: string) => Json | undefined) => boolean> = {
+  "pageindex.depth": (at) => at("pageindex.enabled") === true,
+  "pageindex.width": (at) => at("pageindex.enabled") === true,
+  "timeouts.webhookMs": (at) => at("notifyWebhook") !== "",
 };
 
 type Write = (write: SettingWrite) => Promise<{ ok: boolean; text: string }>;
@@ -389,7 +629,7 @@ export function Knobs({
   // The throw keeps a failed re-read from emptying the page: `readApi` has
   // already shown the refusal, and returning `null` would replace the knobs with
   // 读取中…. An error leaves the last good answer in place.
-  const { data: knobs = null } = useQuery({
+  const { data: knobs = null, isError } = useQuery({
     queryKey: ["settings"],
     queryFn: async () => {
       const d = await readApi(api.settings.$get(), SettingsResponseSchema);
@@ -427,8 +667,13 @@ export function Knobs({
       ...(indexModel !== undefined ? { model: indexModel } : {}),
     },
   };
-  const rows = (knobs ?? []).filter((k) => spec.paths.includes(k.path));
-  rows.sort((a, b) => spec.paths.indexOf(a.path) - spec.paths.indexOf(b.path));
+  // Per group, in the order the group lists them. A path the server did not send
+  // simply has no row, a row whose gate is shut is not drawn at all, and a group
+  // left with none draws nothing rather than an empty legend over a hairline.
+  const rowsOf = (paths: string[]) =>
+    paths
+      .filter((path) => ONLY_WHEN[path]?.(at) ?? true)
+      .flatMap((path) => (knobs ?? []).filter((k) => k.path === path));
 
   return (
     // The dialog's shared label column is 5rem. These labels are sentences
@@ -446,23 +691,88 @@ export function Knobs({
           {saved && <Meta className="mr-7">{savedAt(saved)}</Meta>}
         </Head>
       )}
-      {knobs === null ? (
-        <Meta className="block py-2">
+      {/* Three states, not two. A read that failed used to leave 读取中… on the
+          screen forever, which is a page claiming to be busy while nothing is in
+          flight — and the toast that said otherwise is long gone by the time
+          anybody looks. */}
+      {knobs === null && isError ? (
+        <Empty>
+          <Trans>Couldn't read the settings from the server.</Trans>{" "}
+          <Button variant="quiet" size="sm" onClick={() => void queries.refetchQueries({ queryKey: ["settings"] })}>
+            <RotateCcw className="size-3" />
+            <Trans>Try again</Trans>
+          </Button>
+        </Empty>
+      ) : knobs === null ? (
+        <Working>
           <Trans>Loading…</Trans>
-        </Meta>
+        </Working>
       ) : (
-        // The permission is a row of this list, not a block above it: two
-        // `FieldGroup`s stacked leave exactly one missing hairline where they
-        // meet, which reads as a list that lost a row.
-        <FieldGroup>
-          {section === "notify" && <Permission />}
-          {rows.map((k) => {
-            const mate = knobs.find((x) => x.path === PAIRED[k.path]) ?? null;
-            return <Row key={k.path} knob={k} mate={mate} src={src} onWrite={write} />;
-          })}
-        </FieldGroup>
+        // Space between groups, hairlines inside them: a legend that sat on the
+        // same rule as the row above it made a section boundary and a row
+        // boundary look like the same thing.
+        <div className="flex flex-col gap-5">
+          {spec.groups.map((group, i) => (
+            <Group
+              key={group.paths[0]}
+              group={group}
+              rows={rowsOf(group.paths)}
+              knobs={knobs}
+              src={src}
+              // The permission belongs to the first group's list rather than
+              // above it: two `FieldGroup`s stacked leave exactly one missing
+              // hairline where they meet, which reads as a list that lost a row.
+              permission={i === 0 && section === "notify"}
+              onWrite={write}
+            />
+          ))}
+        </div>
       )}
     </div>
+  );
+}
+
+/** One run of rows, with the legend that names it when it has one. */
+function Group({
+  group,
+  rows,
+  knobs,
+  src,
+  permission,
+  onWrite,
+}: {
+  group: KnobGroup;
+  rows: Knob[];
+  /** Every knob, not just this group's: a `PAIRED` row's other halves can sit anywhere. */
+  knobs: Knob[];
+  src: ModelSources;
+  permission: boolean;
+  onWrite: Write;
+}) {
+  if (!rows.length && !permission) return null;
+  const body = (
+    <FieldGroup>
+      {permission && <Permission />}
+      {rows.map((k) => (
+        <Row
+          key={k.path}
+          knob={k}
+          mates={(PAIRED[k.path] ?? []).flatMap((path) => knobs.filter((x) => x.path === path))}
+          src={src}
+          onWrite={onWrite}
+        />
+      ))}
+    </FieldGroup>
+  );
+  if (!group.legend) return body;
+  return (
+    <FieldSet>
+      {/* `label`, not `legend`: this names a run of rows inside a pane whose own
+          name is already in the band above, so it sits at the row scale rather
+          than competing with it. */}
+      <FieldLegend variant="label">{i18n._(group.legend)}</FieldLegend>
+      {body}
+    </FieldSet>
   );
 }
 
@@ -509,12 +819,11 @@ async function saveKnob(target: Knob, value: Json, onWrite: Write): Promise<stri
   return result.ok ? null : result.text;
 }
 
-function resetKnobs(knob: Knob, mate: Knob | null, write: (target: Knob, value: Json) => void) {
-  write(knob, knob.default);
-  if (mate) write(mate, mate.default);
+function resetKnobs(knob: Knob, mates: Knob[], write: (target: Knob, value: Json) => void) {
+  for (const target of [knob, ...mates]) write(target, target.default);
 }
 
-function Row({ knob, mate, src, onWrite }: { knob: Knob; mate: Knob | null; src: ModelSources; onWrite: Write }) {
+function Row({ knob, mates, src, onWrite }: { knob: Knob; mates: Knob[]; src: ModelSources; onWrite: Write }) {
   // What is wrong, and which box it is wrong in. A table row can hold six boxes
   // and "要一个数量" under all of them says nothing about which.
   const [bad, setBad] = useState<Complaint>(NO_COMPLAINT);
@@ -539,18 +848,18 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate: Knob | null; src:
           <Value
             id={id}
             knob={knob}
-            mate={mate}
+            mates={mates}
             src={src}
             bad={badCell(bad)}
             onWrite={(v) => void put(knob, v)}
-            onWriteMate={(v) => void put(mate ?? knob, v)}
+            onWriteMate={(path, v) => void put(mates.find((m) => m.path === path) ?? knob, v)}
             onRefuse={(why, at) => setBad({ why, at })}
             onClear={() => setBad(NO_COMPLAINT)}
           />
           {/* Neutral, not the accent: the accent means "waiting on you" and this
               is only "not the shipped value". */}
-          {rowChanged(knob, mate) && (
-            <ResetOverride onReset={() => resetKnobs(knob, mate, (target, next) => void put(target, next))} />
+          {rowChanged(knob, mates) && (
+            <ResetOverride onReset={() => resetKnobs(knob, mates, (target, next) => void put(target, next))} />
           )}
         </div>
         {bad.why && <span className="text-meta leading-snug text-accent">{bad.why}</span>}
@@ -559,30 +868,34 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate: Knob | null; src:
   );
 }
 
-function modelValue({ knob, mate, src, onWrite, onWriteMate }: Editor) {
+function modelValue({ knob, mates, src, onWrite, onWriteMate }: Editor) {
   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- this renderer intentionally owns only model knobs
   switch (knob.path) {
     case "difficultyModel":
       return <ModelTable table={ConfigSchema.shape.difficultyModel.parse(knob.value)} src={src} onWrite={onWrite} />;
     case "sliceBudgetTokens":
       return <Caps caps={ConfigSchema.shape.sliceBudgetTokens.parse(knob.value)} onWrite={onWrite} />;
-    case "embedding.mode":
+    case "embedding.mode": {
+      const shape = ConfigSchema.shape.embedding.shape;
       return (
         <Embedding
-          mode={ConfigSchema.shape.embedding.shape.mode.parse(knob.value)}
-          model={ConfigSchema.shape.embedding.shape.model.catch("").parse(mateValue(mate))}
+          mode={shape.mode.parse(knob.value)}
+          model={shape.model.catch("").parse(mateValue(mates, "embedding.model"))}
+          endpoint={shape.endpoint.catch("").parse(mateValue(mates, "embedding.endpoint"))}
+          credential={shape.credential.catch("").parse(mateValue(mates, "embedding.credential"))}
           onMode={onWrite}
-          onModel={onWriteMate}
+          onField={onWriteMate}
         />
       );
+    }
     case "indexModel.runtime":
       return (
         <IndexModel
           runtime={ConfigSchema.shape.indexModel.shape.runtime.parse(knob.value)}
-          model={ConfigSchema.shape.indexModel.shape.model.catch("").parse(mateValue(mate))}
+          model={ConfigSchema.shape.indexModel.shape.model.catch("").parse(mateValue(mates, "indexModel.model"))}
           src={src}
           onRuntime={onWrite}
-          onModel={onWriteMate}
+          onModel={(v) => onWriteMate("indexModel.model", v)}
         />
       );
     default:
@@ -622,6 +935,19 @@ function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
           onWrite={onWrite}
         />
       );
+    case "baseBranchFallbacks":
+      // A list of names, in preference order, which is exactly what a textarea
+      // preserves. It was a text box holding `["main","master"]`, where adding a
+      // third meant getting JSON right by hand.
+      return (
+        <Lines
+          list={ConfigSchema.shape.baseBranchFallbacks.parse(knob.value)}
+          ph={copyFor(knob).ph}
+          onWrite={onWrite}
+        />
+      );
+    case "intervals.notifyBackoffMs":
+      return <Ladder list={ConfigSchema.shape.intervals.shape.notifyBackoffMs.parse(knob.value)} onWrite={onWrite} />;
     default:
       return null;
   }

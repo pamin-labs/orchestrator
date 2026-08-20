@@ -9,6 +9,7 @@ import {
   Coins,
   Gauge,
   GitBranch,
+  Hourglass,
   KeyRound,
   ListChecks,
   Server,
@@ -18,7 +19,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { H2, Head, Meta, Pane } from "../../ui/bits";
+import { H2, Head, Meta, Pane, Working } from "../../ui/bits";
 import { Field, FieldContent, FieldGroup, FieldLegend, FieldSet, FieldTitle } from "../../ui/field";
 import { Tip } from "../../ui/tooltip";
 import { api, mutate, readApi } from "../../shared/api";
@@ -116,12 +117,17 @@ const NAV: Array<{ key: Section; label: MessageDescriptor; icon: typeof KeyRound
   // mounted into every group of every project.
   { key: "skills", label: msg`Skills`, icon: Sparkles },
   // The operating knobs, which used to be a yaml inside the release tarball.
-  // Three sections rather than one, because forty rows in one list is a list
-  // nobody reads to the bottom of — and the three answer different questions:
-  // how much runs at once, what it costs, how long one turn may take.
+  // Four sections rather than one, because sixty rows in one list is a list
+  // nobody reads to the bottom of — and the four answer different questions: how
+  // much runs at once, what it costs, how long one turn may take, and how long
+  // we wait on something that is not us.
   { key: "sched", label: msg`Scheduling`, icon: Gauge },
   { key: "models", label: msg`Models & budget`, icon: Coins },
   { key: "turn", label: msg`Turns & context`, icon: Timer },
+  // Four rather than three. The knob section behind this existed, held eleven
+  // settable paths, and had no nav entry and no pane — so the coverage check saw
+  // them "placed" while the boss could not reach one of them from the panel.
+  { key: "waits", label: msg`Waiting & storage`, icon: Hourglass },
   { key: "prefs", label: msg`Preferences`, icon: SlidersHorizontal },
   { key: "gates", label: msg`Gates`, icon: ListChecks, project: true },
   { key: "sandbox", label: msg`Sandbox`, icon: Box, project: true },
@@ -406,9 +412,9 @@ function SettingsPanes({
         }}
       />
     ) : (
-      <Meta className="block py-2">
+      <Working>
         <Trans>Loading…</Trans>
-      </Meta>
+      </Working>
     );
 
   const panes: Record<Section, React.ReactNode> = {
@@ -426,7 +432,15 @@ function SettingsPanes({
         onWaitForLogin={onWaitForLogin}
       />
     ),
-    github: <GithubSettings open={open} section={section} />,
+    github: (
+      <>
+        <GithubSettings open={open} section={section} />
+        {/* Which branch a checkout is based on when the remote cannot answer.
+            It sat under 拉取请求 in the scheduling pane; a base branch is a fact
+            about a repository, and this is the pane about repositories. */}
+        <Knobs section="repo" />
+      </>
+    ),
     host: <EnvPane checks={checks.filter((c) => !isCredential(c))} />,
     server: (
       <>
@@ -440,6 +454,7 @@ function SettingsPanes({
     sched: <Knobs section="sched" />,
     models: <Knobs section="models" />,
     turn: <Knobs section="turn" />,
+    waits: <Knobs section="waits" />,
     prefs: <Preferences />,
     gates: projectPane("gates"),
     sandbox: projectPane("sandbox"),

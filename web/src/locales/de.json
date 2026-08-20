@@ -13,6 +13,12 @@
     "comments": [],
     "translation": ""
   },
+  "E4B4Vb": {
+    "message": ", ",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "K3M7mM": {
     "message": ", {0} from the repository",
     "placeholders": {
@@ -29,8 +35,14 @@
     "comments": [],
     "translation": ""
   },
-  "HR9H3x": {
-    "message": "、",
+  "fwbE-9": {
+    "message": "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "8IHNy_": {
+    "message": "'We asked recently.' One sentence covering two things that were already the same number: how often the reachability probe runs while online, and how long a credential verdict stays cached for this page.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -190,6 +202,24 @@
     "comments": [],
     "translation": ""
   },
+  "yzqNV2": {
+    "message": "{groups, plural, one {# requirement} other {# requirements}} in <0>{repoPath}</0>",
+    "placeholders": {
+      "groups": ["groups"],
+      "repoPath": ["repoPath"]
+    },
+    "comments": [],
+    "translation": ""
+  },
+  "6Z11lb": {
+    "message": "{groups, plural, one {The one requirement in {repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.} other {All # requirements in {repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.}}",
+    "placeholders": {
+      "groups": ["groups"],
+      "repoPath": ["repoPath"]
+    },
+    "comments": [],
+    "translation": ""
+  },
   "SLGxxb": {
     "message": "{hard} blocking the whole group",
     "placeholders": {
@@ -295,12 +325,12 @@
     "translation": ""
   },
   "6bwnTR": {
-    "translation": "",
     "message": "{n, plural, one {# slice} other {# slices}}",
     "placeholders": {
       "n": ["n"]
     },
-    "comments": []
+    "comments": [],
+    "translation": ""
   },
   "jMDoJw": {
     "message": "{n} more queued behind it",
@@ -421,12 +451,12 @@
     "translation": ""
   },
   "ZKgsmP": {
-    "translation": "",
     "message": "{waiting, plural, one {# slice awaiting acceptance} other {# slices awaiting acceptance}}",
     "placeholders": {
       "waiting": ["waiting"]
     },
-    "comments": []
+    "comments": [],
+    "translation": ""
   },
   "Z6Ml5d": {
     "message": "{waiting} to do",
@@ -500,6 +530,12 @@
     "comments": [],
     "translation": ""
   },
+  "Qono6v": {
+    "message": "A paused group is waiting on you and costs a concurrency slot while it waits. This is how often it says so before 'Archive after paused' takes the slot back.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "JKqEIB": {
     "message": "Abandon this requirement",
     "placeholders": {},
@@ -555,6 +591,12 @@
   },
   "IVZx0R": {
     "message": "Add a row",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "eMc2xs": {
+    "message": "Add a step",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -769,6 +811,12 @@
     "comments": [],
     "translation": ""
   },
+  "d3Hkbl": {
+    "message": "Ask again every",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "E3Jb7M": {
     "message": "Ask GitHub",
     "placeholders": {},
@@ -845,6 +893,12 @@
     "comments": [],
     "translation": ""
   },
+  "jy-hYI": {
+    "message": "Back off after a 429",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "iByEoT": {
     "message": "Background job",
     "placeholders": {},
@@ -853,6 +907,18 @@
   },
   "ZWwYwM": {
     "message": "Base branch",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "rhCZA1": {
+    "message": "Base branch fallbacks",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "E8Hq1V": {
+    "message": "Batch window",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -943,6 +1009,12 @@
   },
   "lR_A13": {
     "message": "Budget exhausted; group paused",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "4Uu52E": {
+    "message": "Bun's own default is 10 and nobody chose it. The panel's snapshot issues nineteen statements at once, so a pool under that serves them in waves—measured as a p95 several times the median while the median barely moved. Above the statement count it buys nothing; a managed Postgres with a connection cap is the reason to lower it.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -1069,6 +1141,12 @@
     "comments": [],
     "translation": ""
   },
+  "ct69V6": {
+    "message": "Check runs",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "pFDujJ": {
     "message": "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount.",
     "placeholders": {},
@@ -1141,6 +1219,12 @@
     "comments": [],
     "translation": ""
   },
+  "Rohzsq": {
+    "message": "Clone, fetch or image pull",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "yz7wBu": {
     "message": "Close",
     "placeholders": {},
@@ -1207,6 +1291,12 @@
     "comments": [],
     "translation": ""
   },
+  "oDg5xj": {
+    "message": "Comments on the pull request itself, newest first. Past this, the oldest are never read — which is a reviewer's first comment going unanswered.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "yJpTuD": {
     "message": "Compile",
     "placeholders": {},
@@ -1215,12 +1305,6 @@
   },
   "I4A_L4": {
     "message": "Concurrent jobs",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
-  "KBTDF2": {
-    "message": "Concurrent work limits and queuing",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -1309,6 +1393,12 @@
     "comments": [],
     "translation": ""
   },
+  "yNfqoK": {
+    "message": "Conversation comments",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "X3zmoA": {
     "message": "Convert to a requirement; this group will automatically continue after it's implemented.",
     "placeholders": {},
@@ -1333,14 +1423,14 @@
     "comments": [],
     "translation": ""
   },
-  "Z71tox": {
-    "message": "Cost-controlling settings",
+  "uRSTuQ": {
+    "message": "Could not generate a draft; you'll need to write this one yourself.",
     "placeholders": {},
     "comments": [],
     "translation": ""
   },
-  "uRSTuQ": {
-    "message": "Could not generate a draft; you'll need to write this one yourself.",
+  "WYpLKV": {
+    "message": "Couldn't read the settings from the server.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -1369,6 +1459,18 @@
     "comments": [],
     "translation": ""
   },
+  "0unVTh": {
+    "message": "Credential check",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "nZFU5n": {
+    "message": "Credential name",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "Xf79vI": {
     "message": "Custom gateway; usage not displayed in header",
     "placeholders": {},
@@ -1377,6 +1479,18 @@
   },
   "pvnfJD": {
     "message": "Dark",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "sTCUJl": {
+    "message": "Database connections",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "_ITcnz": {
+    "message": "day",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -1559,6 +1673,12 @@
     "comments": [],
     "translation": ""
   },
+  "6vTIGm": {
+    "message": "Edits to one file",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "cxd9p_": {
     "message": "Embedding mode",
     "placeholders": {},
@@ -1619,6 +1739,12 @@
     "comments": [],
     "translation": ""
   },
+  "FCKppt": {
+    "message": "Endpoint",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "y08yme": {
     "message": "Entire branch",
     "placeholders": {},
@@ -1660,15 +1786,6 @@
     "placeholders": {
       "0": ["server.containers"],
       "1": ["server.runningTurns"]
-    },
-    "comments": [],
-    "translation": ""
-  },
-  "LlnNm-": {
-    "message": "Every one of {repoPath}'s {groups} requirements — their containers, cards, records and attachments — is deleted, and cannot be recovered.",
-    "placeholders": {
-      "repoPath": ["repoPath"],
-      "groups": ["groups"]
     },
     "comments": [],
     "translation": ""
@@ -1747,6 +1864,12 @@
   },
   "Lx8QZu": {
     "message": "Fill in a name to add a row",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "sYbkyR": {
+    "message": "Fill in both and remote retrieval switches on. Until then it stays local.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -1939,8 +2062,20 @@
     "comments": [],
     "translation": ""
   },
+  "3bSCnt": {
+    "message": "GitHub API call",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "Fe7bVR": {
     "message": "GitHub not connected yet; using our bot account for now",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "kiJqw2": {
+    "message": "Give up after",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -2051,14 +2186,92 @@
     "comments": [],
     "translation": ""
   },
-  "WHiZ9b": {
-    "message": "How long to wait on something outside before calling it a timeout",
+  "w9KbwD": {
+    "message": "How a checkout is read when GitHub cannot be asked",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "JzXZ6B": {
+    "message": "How far down one review thread the poll reads. A long argument in a thread is the case this truncates.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "OFsFwT": {
+    "message": "How long a notification waits for company before it is sent. This is the knob between one alert an hour and one per event.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "nQE4Jd": {
+    "message": "How long before a group that answered nothing is nudged again. Longer than the first wait, or the nudge becomes the noise it was meant to cut through.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "-s0Ds_": {
+    "message": "How long before the same stuck report is worth saying again. Shorter turns one stuck group into a feed of its own.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "fsbkOV": {
+    "message": "How long one System timing report is reused before it is computed again. The report is five window-function queries over the whole span table, run synchronously, so while it computes every other request waits behind it. The data is written by a heartbeat and is never fresher than that.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "zAEv6-": {
+    "message": "How long one turn may run, and how much it may read",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "drSXY4": {
+    "message": "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "qnORSK": {
+    "message": "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "zkIDNY": {
+    "message": "How many live frames may queue for one slow browser tab before frames are dropped. Up to four concurrent turns push one frame per token, so a tab that stopped reading is the one case that grows without bound. Dropping is safe—the panel re-reads its state on the next event—and the loss is counted rather than silent.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "p4BjUG": {
+    "message": "How many nodes the model may name at one level. Width costs tokens in a single call, where depth costs another call.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "FTfUw0": {
+    "message": "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "N89lXv": {
+    "message": "How much runs at once, and when work moves on without you",
     "placeholders": {},
     "comments": [],
     "translation": ""
   },
   "Axfmw8": {
     "message": "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "rWXzDL": {
+    "message": "How often the shared repository map is even checked. A container round trip cost 947ms of every 30s tick, over 2,766 ticks, to answer 'unchanged' about a map whose only input is a push — so this is deliberately far longer than the tick.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -2166,6 +2379,18 @@
     "comments": [],
     "translation": ""
   },
+  "a8ydNj": {
+    "message": "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "8O_fJP": {
+    "message": "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "sOqJT5": {
     "message": "It's not a duplicate, and it's not done yet — keep decomposing.",
     "placeholders": {},
@@ -2198,6 +2423,12 @@
   },
   "PZ_kxo": {
     "message": "Keep",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "R2SL98": {
+    "message": "Keep machine events",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -2238,8 +2469,26 @@
     "comments": [],
     "translation": ""
   },
+  "UO8Jaq": {
+    "message": "Levels of the tree one question may descend, and each level is a serial model call with its own 60s timeout — two per question at 3. This is the single knob on the most frequent model spend here.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "1njn7W": {
     "message": "Light",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "EQID1f": {
+    "message": "Line-level review threads per pull request. A hundred threads read through a window of twenty means the eighty oldest are never seen, and that ceiling is a property of the repository being watched rather than of the watcher.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "4B00A1": {
+    "message": "Live stream backlog",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -2274,11 +2523,11 @@
     "comments": [],
     "translation": ""
   },
-  "OripfX": {
-    "message": "Local or remote. Today neither accepts retrieval—ADR 031 field-tested rejected vectors: same-language ranking works, cross-language fails when unrelated text in one language covers truly relevant text in another, and cross-language is the only reason this exists. Reopening condition is a runnable check (bun run embedding:check), and its remote half won't run—it needs an endpoint you pick. This switch lets that rejection be disproven. Remote sends corpus, corpus holds your requirements and acceptance criteria—default is local; going remote is a decision.",
+  "rBmsAu": {
+    "translation": "",
+    "message": "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision.",
     "placeholders": {},
-    "comments": [],
-    "translation": ""
+    "comments": []
   },
   "mTyZmU": {
     "message": "Local to this machine only, not tied to the project",
@@ -2418,6 +2667,12 @@
     "comments": [],
     "translation": ""
   },
+  "gaMZOo": {
+    "message": "Name a stored credential and remote retrieval switches on.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "ULmBuU": {
     "message": "Name can't be empty; use the × on the right to delete",
     "placeholders": {},
@@ -2434,6 +2689,12 @@
   },
   "knuGkj": {
     "message": "Needs an integer",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "foSFR6": {
+    "message": "Network ping",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -2650,12 +2911,6 @@
     "comments": [],
     "translation": ""
   },
-  "J22pod": {
-    "message": "No such language",
-    "placeholders": {},
-    "comments": [],
-    "translation": ""
-  },
   "D8lG5Z": {
     "message": "No system activity recorded.",
     "placeholders": {},
@@ -2758,8 +3013,20 @@
     "comments": [],
     "translation": ""
   },
+  "rjpj-S": {
+    "message": "Nudge a silent group",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "zga9sT": {
     "message": "OK",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "0LY7RL": {
+    "message": "On, a question walks the PageIndex tree before it is answered. Off skips the walk before the tree is even loaded, so the query costs no model call and falls through to the lexical half — which is the A/B this switch exists for. Its own switch rather than a depth of 0, which still walks, degenerately.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -2776,6 +3043,18 @@
     "comments": [],
     "translation": ""
   },
+  "NS_SrO": {
+    "message": "One branch name per line, most likely first",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "0-_m6g": {
+    "message": "One CI run can post fifty of these. Set below what your workflow produces and the fleet decides a pull request is green while a check it never saw is red.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "VvW38y": {
     "message": "One connection manages all projects",
     "placeholders": {},
@@ -2784,6 +3063,24 @@
   },
   "oyPQFp": {
     "message": "One domain per line; empty allows all",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "U0Bgc_": {
+    "message": "One operation that moves a repository or an image across the network—a clone, a fetch, a submodule init, the sandbox SDK's own per-request budget. Minutes rather than seconds: the worst case is an image pull, which is the same shape of wait as a clone.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "QPXgDJ": {
+    "message": "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "b75mRc": {
+    "message": "One unanswered notification is repeated on this ladder: the first repeat waits the first step, then the second, and it holds at the last step for as long as nobody answers. At least one step—an empty ladder means 'repeat every tick'.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -3046,6 +3343,12 @@
     "comments": [],
     "translation": ""
   },
+  "d1JOvx": {
+    "message": "Poll subscription usage",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "uVradX": {
     "message": "PR link not found",
     "placeholders": {},
@@ -3106,6 +3409,18 @@
     "comments": [],
     "translation": ""
   },
+  "6tMqGq": {
+    "message": "Pull requests",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "u8jL5T": {
+    "message": "Pull requests per poll",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "8G8q1m": {
     "message": "QA",
     "placeholders": {},
@@ -3160,6 +3475,12 @@
     "comments": [],
     "translation": ""
   },
+  "SDCu3f": {
+    "message": "Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "Z1GEoV": {
     "message": "Real data: 259 turns, median 36 steps, p90 93, max 144. The 23% over 60 steps ate 59% of the cache-read bill, because every step re-reads the full transcript. 36 is work; the tail is an agent lost, grepping. Cut the tail, median doesn't move. Changing this rotates the whole fleet through a session.",
     "placeholders": {},
@@ -3168,6 +3489,18 @@
   },
   "A16Eqd": {
     "message": "Real tokens don't enter the sandbox",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "df2AOb": {
+    "message": "Recheck reachability",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "ImqOI5": {
+    "message": "Recheck the repo map",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -3216,6 +3549,18 @@
   },
   "iGlRgg": {
     "message": "Release the concurrency slot; code and checkpoint in the sandbox stay in place.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "1wLTrO": {
+    "message": "Remind about paused",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "J0oIbK": {
+    "message": "Reminder ladder",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -3290,6 +3635,24 @@
     "comments": [],
     "translation": ""
   },
+  "jtfE4W": {
+    "message": "Repeat a stuck notice",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "KB5bbw": {
+    "message": "Repeat the nudge",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "bEZBnp": {
+    "message": "Replies per thread",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "ImOQa9": {
     "message": "Reply",
     "placeholders": {},
@@ -3316,6 +3679,12 @@
   },
   "2R0JRN": {
     "message": "Repos with DCO enabled won't accept commits without this line",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "ooullr": {
+    "message": "Repositories",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -3440,6 +3809,12 @@
     "comments": [],
     "translation": ""
   },
+  "en3Dhq": {
+    "message": "Retrieval",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "0uV8rm": {
     "message": "Retrospective",
     "placeholders": {},
@@ -3460,6 +3835,12 @@
   },
   "Dn1cWK": {
     "message": "Return to the checkpoint before this round started; all changes in this turn are discarded.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "GtbTHe": {
+    "message": "Review threads",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -3597,6 +3978,12 @@
   },
   "umfO1F": {
     "message": "Sandbox server",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "PjDN-c": {
+    "message": "Sandbox server ping",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -3804,6 +4191,12 @@
     "comments": [],
     "translation": ""
   },
+  "M8DQJW": {
+    "message": "Silence this long and the group is asked what it is doing. Not a failure — a long compile is silent too — so this is hours rather than minutes.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "PCSkw2": {
     "message": "Skills",
     "placeholders": {},
@@ -3917,6 +4310,14 @@
     "comments": [],
     "translation": ""
   },
+  "VZbccX": {
+    "message": "Step {nth}",
+    "placeholders": {
+      "nth": ["nth"]
+    },
+    "comments": [],
+    "translation": ""
+  },
   "zw03Lf": {
     "message": "Stop denying {d}",
     "placeholders": {
@@ -3945,6 +4346,12 @@
   },
   "NnvXp5": {
     "message": "Stopped",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "wOIdBt": {
+    "message": "Storage & streams",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4023,6 +4430,18 @@
     "comments": [],
     "translation": ""
   },
+  "clowMB": {
+    "message": "The codex refresh-token exchange, run inside the utility container. Longer than the usage read because it is a process start plus an OAuth round trip, where that one wraps a curl already carrying its own limit.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "cu7PMH": {
+    "message": "The conversation—what was said, asked and escalated—is never dropped: it is the record, and the unread cursor walks it. This bounds the rest, which the cost view reads inside a day and then never again.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "oToTQd": {
     "message": "The denominator for session rotation. Both CLI agents report real values in a turn, and that takes priority; this table manages the first turn of a session. When we pinned 200k, strong models rotated constantly in the 12% of a 1M window, discarding built-up cache prefix each time.",
     "placeholders": {},
@@ -4041,8 +4460,26 @@
     "comments": [],
     "translation": ""
   },
+  "pJvSbD": {
+    "message": "The last step repeats for as long as nobody answers",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "lWz20C": {
+    "message": "The name of a row under Model account, never the key",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "tJoWaz": {
     "message": "The name of that line in 'Model account', not the key itself. Key in config is key in shell history and every backup.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "3pCONH": {
+    "message": "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4063,6 +4500,12 @@
   },
   "jFIXsB": {
     "message": "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "2ipr2S": {
+    "message": "The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4099,6 +4542,12 @@
   },
   "gu-D6k": {
     "message": "This log is empty",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "UVazM1": {
+    "message": "This many turns in a row that changed nothing is what the watchdog calls stuck. Below three it fires on an agent that is reading before it writes; well above it, a loop runs all afternoon before anybody hears about it.",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4159,6 +4608,12 @@
     "comments": [],
     "translation": ""
   },
+  "-X1cUR": {
+    "message": "Timing report cache",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "rZ9HZq": {
     "message": "To do",
     "placeholders": {},
@@ -4191,6 +4646,12 @@
     "comments": [],
     "translation": ""
   },
+  "SavWva": {
+    "message": "Token refresh",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "JfT1QM": {
     "message": "tokens · project total",
     "placeholders": {},
@@ -4203,8 +4664,14 @@
     "comments": [],
     "translation": ""
   },
-  "GoniZ-": {
-    "message": "Turn duration and context limits",
+  "Ms3Kz5": {
+    "translation": "",
+    "message": "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached.",
+    "placeholders": {},
+    "comments": []
+  },
+  "KDw4GX": {
+    "message": "Try again",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4223,6 +4690,12 @@
   },
   "SHTStO": {
     "message": "Turns & context",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "pbsQ9q": {
+    "message": "Turns without progress",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4275,6 +4748,12 @@
   },
   "ugzskn": {
     "message": "Usage not displayed",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "TIVFfj": {
+    "message": "Usage read",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4357,8 +4836,8 @@
     "comments": [],
     "translation": ""
   },
-  "UutRCV": {
-    "message": "Waiting and retries",
+  "kHbm1D": {
+    "message": "Waiting & storage",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4387,8 +4866,32 @@
     "comments": [],
     "translation": ""
   },
+  "WFKlDQ": {
+    "message": "Waits on the world outside, and what this machine keeps",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "4mi85N": {
     "message": "Wake",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "nUY40s": {
+    "message": "Walk depth",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "H6Y-lN": {
+    "message": "Walk the index tree",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "ik5abI": {
+    "message": "Walk width",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4423,6 +4926,12 @@
     "comments": [],
     "translation": ""
   },
+  "UK6rBV": {
+    "message": "Watchdog",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "7-b-jS": {
     "message": "Watchdog interval",
     "placeholders": {},
@@ -4431,6 +4940,12 @@
   },
   "dz3SYg": {
     "message": "Watchdog rule",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "r1_h83": {
+    "message": "Webhook timeout",
     "placeholders": {},
     "comments": [],
     "translation": ""
@@ -4483,6 +4998,12 @@
     "comments": [],
     "translation": ""
   },
+  "A73faa": {
+    "message": "Which model runs what, and what it may spend",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
   "QXTfG1": {
     "message": "Which window",
     "placeholders": {},
@@ -4521,6 +5042,12 @@
   },
   "sAMeNl": {
     "message": "Write a description, break into plan cards, then come back for review.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ""
+  },
+  "pO1sKo": {
+    "message": "Write the full /v1/embeddings address and remote retrieval switches on.",
     "placeholders": {},
     "comments": [],
     "translation": ""

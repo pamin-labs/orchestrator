@@ -4,8 +4,8 @@ import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
 import { api, mutate } from "../../shared/api";
 import { Gates, Sandbox, type ProjectConfig, type ProjectPatch } from "../project/view";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Plural, Trans } from "@lingui/react/macro";
+import { plural, t } from "@lingui/core/macro";
 
 export type ProjectSection = "gates" | "sandbox" | "remove";
 
@@ -72,7 +72,13 @@ function Remove({
   const go = async () => {
     const yes = await ask({
       title: t`Remove ${name}?`,
-      body: `${t`Every one of ${repoPath}'s ${groups} requirements — their containers, cards, records and attachments — is deleted, and cannot be recovered.`}\n\n${t`Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work.`}`,
+      // Plural rather than one sentence that reads `1 requirements`: the count
+      // is the evidence this confirm exists to show, and a boss removing their
+      // only requirement is the case where the sentence is read most carefully.
+      body: `${plural(groups, {
+        one: `The one requirement in ${repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.`,
+        other: `All # requirements in ${repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.`,
+      })}\n\n${t`Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work.`}`,
       yes: t`Remove`,
       danger: true,
     });
@@ -101,7 +107,14 @@ function Remove({
           <Trans>Delete</Trans>
         </dt>
         <dd className="min-w-0">
-          <span className="font-mono text-secondary">{repoPath}</span> 的 {groups} 个需求
+          {/* The one line on this page that never reached a catalog: it was a
+              Chinese literal in JSX, which the governance check reads out of the
+              transpiler's output and so never sees. It is also the only counted
+              thing in the dialog, and it said 1 个需求 either way. */}
+          <Trans>
+            <Plural value={groups} one="# requirement" other="# requirements" /> in{" "}
+            <span className="font-mono text-secondary">{repoPath}</span>
+          </Trans>
           <div className="mt-0.5 text-secondary text-ink-3">
             <Trans>
               Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable

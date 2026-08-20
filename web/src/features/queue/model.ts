@@ -35,6 +35,8 @@ const halted = (st: State, grpId: number | null) =>
   grpId != null && !st.agents.some((agent) => agent.grp_id === grpId && agent.state === "running");
 
 const cardGoal = (card: State["draftCards"][number] | undefined) =>
+  // i18n-exempt: the shape of a card an agent wrote in `output.language`, matched
+  // by prefix. Not copy this panel owns.
   (card?.body.split("\n").find((line) => line.startsWith("目标")) ?? "").replace(/^目标\s*[:：]\s*/, "") ||
   t`Plan card not submitted`;
 

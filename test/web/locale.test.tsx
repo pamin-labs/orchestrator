@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { cleanup, fireEvent, render, valueOf } from "../support/render.tsx";
+import { cleanup, fireEvent, render } from "../support/render.tsx";
 import { LocaleChoice } from "../../web/src/features/settings/locale-choice.tsx";
 import { i18n, preference, setPreference } from "../../web/src/i18n.ts";
 import { endonymOf, localeOf } from "../../src/contracts/config.ts";
@@ -37,17 +37,20 @@ test("an unset preference is the browser's language", () => {
   expect(preference()).toBe("ja");
 });
 
-/** Every language names itself: a menu that says "Chinese" is no help to
- *  somebody who cannot read the pane it is on. */
+/**
+ * Every language names itself: "Chinese" is no help to somebody who cannot read
+ * the pane it is on. A menu rather than a combobox, because a combobox is an
+ * `<input>` — it carries a caret and invites typing, and these are nine fixed
+ * values none of which the reader is meant to invent.
+ */
 test("the picker names each language in that language, and stores what is picked", async () => {
-  const { getByRole, findByText } = render(<LocaleChoice />);
-  const box = getByRole("combobox");
-  // Whatever the browser says, since nothing is stored yet.
-  expect(valueOf(box)).toBe(endonymOf(localeOf(navigator.language)));
+  const { getByRole, findByRole } = render(<LocaleChoice />);
+  // The trigger says what is active; nothing here accepts text.
+  expect(getByRole("button").textContent).toContain(endonymOf(localeOf(navigator.language)));
 
-  fireEvent.click(box);
-  fireEvent.change(box, { target: { value: "日本" } });
-  fireEvent.click(await findByText("日本語"));
+  // Radix opens on pointerdown, not click — the same way telemetry-render drives its menu.
+  fireEvent.pointerDown(getByRole("button"), { button: 0, ctrlKey: false });
+  fireEvent.click(await findByRole("menuitem", { name: "日本語" }));
 
   expect(preference()).toBe("ja");
 });
