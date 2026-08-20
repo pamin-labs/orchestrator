@@ -77,6 +77,9 @@ const steps: Step[] = [
   { name: "format", job: "quality", run: () => cmd("bun run format:check") },
   { name: "types", job: "quality", run: () => cmd("bun run typecheck") },
   { name: "lint", job: "quality", run: () => cmd("bun run lint") },
+  // Checks rather than writes, so it cannot be the thing that dirties the tree
+  // the CI step below it exists to catch.
+  { name: "translation table", job: "quality", run: () => cmd("bun run i18n:progress --check") },
   { name: "web bundle", job: "quality", run: () => cmd("bun run build:web") },
   // Through `bun run test`, not `bun test` directly: that wrapper retries an arm64
   // worker panic once and nothing else, and this is the command a developer runs

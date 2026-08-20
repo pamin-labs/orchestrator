@@ -22,7 +22,7 @@ import { isChinese } from "../../contracts/config.ts";
  * row, so a key added to EN and not yet translated is a sentence in the other
  * language rather than a build error.
  */
-const ZH: Partial<Record<SayKey, string>> = {
+export const ZH_SAY: Partial<Record<SayKey, string>> = {
   "slice.ready": "S{seq}「{title}」做完了，等你查收",
   "slice.accepted": "查收 S{seq} {title}{why}",
   "slice.sentback": "S{seq} 被 {from} 打回（第 {n} 次）",
@@ -151,7 +151,7 @@ export type SayKey = keyof typeof EN;
 export const SAY_KEYS = Object.keys(EN) as SayKey[];
 
 export function say(lang: string | undefined, key: SayKey, args: Record<string, string | number> = {}): string {
-  const table = isChinese(lang) ? ZH : EN;
+  const table = isChinese(lang) ? ZH_SAY : EN;
   const t = table[key] ?? EN[key] ?? String(key);
   return t.replace(/\{(\w+)\}/g, (_m: string, k: string) => String(args[k] ?? ""));
 }

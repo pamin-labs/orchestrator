@@ -200,6 +200,19 @@ found nothing. None was caught by a test. All were found by measuring.
 
 MIT licensed.
 
+### Languages
+
+The panel and the messages the orchestrator writes are English at the source and
+translated from there. `bun run i18n:progress` regenerates this; CI fails if it
+is stale.
+
+<!-- i18n:table -->
+| Surface | Strings | 中文 |
+| --- | ---: | ---: |
+| Panel (`web/src`) | 4 | 4 (100%) |
+| Orchestrator messages (`src/platform/text/lang.ts`) | 44 | 44 (100%) |
+<!-- /i18n:table -->
+
 ## More
 
 The [documentation index](docs/README.md) links the architecture, engineering

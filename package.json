@@ -29,6 +29,7 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "i18n:extract": "lingui extract --config scripts/lingui.config.js",
+    "i18n:progress": "bun run scripts/i18n-progress.ts",
     "audit": "fallow audit",
     "audit:all": "fallow audit --gate all",
     "audit:crap": "bun run test:coverage && fallow audit --gate all --coverage coverage/coverage-final.json",
