@@ -329,10 +329,6 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
 
   return {
     ready: (credentials[0]?.n ?? 0) > 0,
-    // Not inside `limits`, which means caps. The panel follows this for its own
-    // chrome, so a boss who sets 对外语言 does not then have to find a second
-    // switch to make the pane they are reading agree with it.
-    language: ctx.config.language,
     projects,
     groups,
     approvedBlocked: approvedBlocked.filter((b) => b.reason),

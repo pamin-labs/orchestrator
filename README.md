@@ -207,19 +207,19 @@ translated from there. `bun run i18n:progress` regenerates this; CI fails if it
 is stale.
 
 <!-- i18n:table -->
-**Panel** · 725 messages
+**Panel** · 724 messages
 
 | Language | Progress | Messages |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | source |
-| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 725 / 725 |
-| 日本語 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
-| 한국어 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
-| Español | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
-| Français | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
-| Deutsch | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
-| Português | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
-| Русский | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
+| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 724 / 724 |
+| 日本語 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
+| 한국어 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
+| Español | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
+| Français | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
+| Deutsch | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
+| Português | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
+| Русский | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 724 |
 
 **What the orchestrator says** · 44, Chinese and English only
 

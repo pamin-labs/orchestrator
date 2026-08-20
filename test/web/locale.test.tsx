@@ -1,76 +1,49 @@
 import { afterEach, expect, test } from "bun:test";
 import { cleanup, fireEvent, render, valueOf } from "../support/render.tsx";
 import { LocaleChoice } from "../../web/src/features/settings/locale-choice.tsx";
-import { applyLocale, i18n, preference, resolve, setPreference } from "../../web/src/i18n.ts";
+import { i18n, preference, setPreference } from "../../web/src/i18n.ts";
+import { endonymOf, localeOf } from "../../src/contracts/config.ts";
 
 /**
- * Which language the panel speaks, from two inputs that disagree often: a
- * per-browser preference and `output.language`, which travels with the project.
+ * Which language the panel reads in — this browser's choice and nothing else.
  *
- * The panel used to have neither — every string was Chinese — and PR #9's first
- * answer was a second switch with its own storage, which meant a boss who set
- * 对外语言 to English still read a Chinese pane and had nowhere obvious to look.
+ * It followed `output.language` at first, and that conflated two things: the
+ * knob tells the agents what to write and sits in the cache prefix, so changing
+ * it rotates every session in the fleet. Reading a pane in another language is
+ * not that and must not cost that.
  */
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
-  setPreference("follow");
   i18n.activate("zh");
 });
 
-test("an explicit preference wins over whatever the fleet speaks", () => {
-  expect(resolve("en", "中文")).toBe("en");
-  expect(resolve("zh", "English")).toBe("zh");
-});
-
-test("follow reads the free-text language the way the server does", () => {
-  // The knob suggests two dozen and accepts anything, so these are the spellings
-  // a person actually types, not an enum.
-  expect(["中文", "zh-CN", "简体中文"].map((l) => resolve("follow", l))).toEqual(["zh", "zh", "zh"]);
-  expect(["日本語", "ja_JP", "Japanese"].map((l) => resolve("follow", l))).toEqual(["ja", "ja", "ja"]);
+test("a free-text language maps to the catalog that can serve it", () => {
+  // The knob suggests two dozen spellings and accepts anything, so these are
+  // what a person actually types, not an enum.
+  expect(["中文", "zh-CN", "简体中文"].map(localeOf)).toEqual(["zh", "zh", "zh"]);
+  expect(["日本語", "ja_JP", "Japanese"].map(localeOf)).toEqual(["ja", "ja", "ja"]);
   // A language with no catalog reads in the source language rather than in
   // nothing, and a code that merely starts with one is not that language.
-  expect(["Українська", "ไทย", "Estonian", "English"].map((l) => resolve("follow", l))).toEqual([
-    "en",
-    "en",
-    "en",
-    "en",
-  ]);
+  expect(["Українська", "ไทย", "Estonian", "English"].map(localeOf)).toEqual(["en", "en", "en", "en"]);
 });
 
-/**
- * The first paint happens before `/state` answers, so "" is not a language: it
- * means the server has not said yet. Reading it as one would show every English
- * boss a frame of Chinese on every load rather than only on their first.
- */
-test("an unanswered server keeps the language the last load resolved to", async () => {
-  expect(resolve("follow", "")).toBe("zh");
-  await applyLocale("English");
-  expect(resolve("follow", "")).toBe("en");
+/** Nothing stored means the browser's own language, which is the answer every
+ *  other page this person opens already uses. */
+test("an unset preference is the browser's language", () => {
+  expect(preference()).toBe(localeOf(navigator.language));
+  setPreference("ja");
+  expect(preference()).toBe("ja");
 });
 
-test("changing the preference re-resolves without waiting for the next poll", async () => {
-  await applyLocale("English");
-  expect(i18n.locale).toBe("en");
-  // Awaited, because a catalog is a chunk now and activating one fetches it.
-  await applyLocale("中文");
-  expect(i18n.locale).toBe("zh");
-  setPreference("en");
-  await applyLocale("");
-  expect([i18n.locale, preference()]).toEqual(["en", "en"]);
-});
-
-/** The control is the only place the three states are visible at once, which is
- *  why it is segments rather than the cycling icon the theme control started as. */
-/** Every language names itself, so the list is readable to whoever needs it —
- *  "Chinese" is no help to somebody who cannot read the pane it is on, and the
- *  one entry that is a sentence rather than a name is the one that is
- *  translated. */
-test("the switch names each language in that language, and stores what is picked", async () => {
+/** Every language names itself: a menu that says "Chinese" is no help to
+ *  somebody who cannot read the pane it is on. */
+test("the picker names each language in that language, and stores what is picked", async () => {
   const { getByRole, findByText } = render(<LocaleChoice />);
   const box = getByRole("combobox");
-  expect(valueOf(box)).toBe("跟随对外语言");
+  // Whatever the browser says, since nothing is stored yet.
+  expect(valueOf(box)).toBe(endonymOf(localeOf(navigator.language)));
 
   fireEvent.click(box);
   fireEvent.change(box, { target: { value: "日本" } });

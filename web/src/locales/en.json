@@ -3565,12 +3565,6 @@
     "comments": [],
     "translation": "Running: {running}"
   },
-  "nY-16J": {
-    "message": "Same as the agents' language",
-    "placeholders": {},
-    "comments": [],
-    "translation": "Same as the agents' language"
-  },
   "gkL2ub": {
     "message": "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way.",
     "placeholders": {},

@@ -134,6 +134,11 @@ test("the built bundle mounts 耗时 without throwing", async () => {
   });
   expect(built.success).toBe(true);
 
+  // The bundle picks its language from `localStorage` and falls back to
+  // `navigator.language`, which is en-US in this document. Pinned, so this test
+  // stays about whether the artefact mounts rather than about which words it
+  // mounts in.
+  localStorage.setItem("orch.locale", "zh");
   (globalThis as { EventSource?: unknown }).EventSource = QuietSource;
   server.use(
     http.get("/api/v1/telemetry", () => HttpResponse.json(TELEMETRY)),

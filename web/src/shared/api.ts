@@ -203,9 +203,6 @@ const EMPTY: State = {
   // Assume wired until told otherwise: a mark on the header before the first
   // poll lands would flash on every reload.
   ready: true,
-  // Empty means "the server has not said yet", which `i18n.ts` reads as "keep
-  // whatever the last load resolved to" rather than as a language.
-  language: "",
   projects: [],
   groups: [],
   slices: [],

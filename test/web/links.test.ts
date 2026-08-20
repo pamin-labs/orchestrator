@@ -5,7 +5,6 @@ import type { Group, Project, Snapshot } from "../../src/contracts/panel.ts";
 
 const state = (remote: string): Snapshot => ({
   ready: true,
-  language: "中文",
   projects: [{ id: 1, name: "p", repo_path: "o/n", remote, base_branch: null } satisfies Project],
   groups: [],
   slices: [],

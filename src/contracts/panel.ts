@@ -182,9 +182,6 @@ export const UsageWindow = z.object({
 
 export const SnapshotSchema = z.object({
   ready: z.boolean(),
-  /** `output.language`, so the panel can follow it without a second setting. Free
-   *  text — `localeOf` above is what turns it into a catalog. */
-  language: z.string(),
   projects: z.array(Project),
   groups: z.array(Group),
   slices: z.array(Slice),

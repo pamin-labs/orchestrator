@@ -17,13 +17,9 @@ import { type Locale, LOCALES, localeOf } from "../../src/contracts/config.ts";
  * folder imported `ui/segment` while `shared/select.ts` imported i18n.
  */
 
-const PrefSchema = z.enum(["follow", ...LOCALES]);
-type Pref = z.infer<typeof PrefSchema>;
+const PrefSchema = z.enum(LOCALES);
 
 const KEY = "orch.locale";
-/** What `follow` resolved to last time, so a reload does not start in the wrong
- *  language and correct itself once `/state` lands. */
-const RESOLVED = "orch.locale.at";
 export const LOCALE_CHANGED = "orch:locale";
 
 /**
@@ -55,7 +51,17 @@ const read = <T>(key: string, parse: (v: string | null) => T): T => {
   }
 };
 
-export const preference = (): Pref => read(KEY, (v) => PrefSchema.catch("follow").parse(v));
+/**
+ * Which language this browser reads, and nothing else decides it.
+ *
+ * It followed `output.language` at first, which conflated two things: that knob
+ * tells the agents what to write and lives in the cache prefix, so changing it
+ * rotates every session in the fleet. Reading a pane in another language is not
+ * that, and must not cost that.
+ */
+/** Unset means the browser's own language, which is the answer every other page
+ *  this person opens already uses. */
+export const preference = (): Locale => read(KEY, (v) => PrefSchema.catch(localeOf(navigator.language)).parse(v));
 
 /**
  * Exported for the test preload, which cannot await: a preload's top-level
@@ -76,24 +82,6 @@ i18n.setMessagesCompiler(compileMessage);
 // warns on every render.
 i18n.load("en", {});
 
-/**
- * What to speak, given the stored preference and whatever the server last said.
- *
- * An empty `serverLanguage` is "not answered yet", not a language: on the first
- * paint of a first-ever load that leaves `zh`, which is what `output.language`
- * defaults to. Every later load reads the cached resolution instead, so the
- * flash happens once per browser rather than once per reload.
- */
-export function resolve(pref: Pref, serverLanguage: string): Locale {
-  if (pref !== "follow") return pref;
-  if (serverLanguage) return localeOf(serverLanguage);
-  return read(RESOLVED, (v) => PrefSchema.exclude(["follow"]).catch("zh").parse(v));
-}
-
-/** The last thing the server said, so changing the preference can re-resolve
- *  without waiting for the next `/state`. */
-let announced = "";
-
 /** Fetched once per locale per page. The entry point holds no catalog at all. */
 async function load(locale: Locale): Promise<void> {
   if (locale === "en") return;
@@ -101,31 +89,26 @@ async function load(locale: Locale): Promise<void> {
   i18n.load(locale, messages(CatalogSchema.parse(catalog.default)));
 }
 
-/** Activate, and remember what `follow` came to. A no-op when nothing moved. */
-export async function applyLocale(serverLanguage: string): Promise<void> {
-  if (serverLanguage) announced = serverLanguage;
-  const next = resolve(preference(), announced);
-  if (preference() === "follow" && announced) {
-    try {
-      localStorage.setItem(RESOLVED, next);
-    } catch {}
-  }
+/** Activate, fetching the catalog the first time it is asked for. A no-op when
+ *  the locale has not moved. */
+async function applyLocale(): Promise<void> {
+  const next = preference();
   if (i18n.locale === next) return;
   await load(next);
   i18n.activate(next);
 }
 
 /** Before the first paint, with no server answer yet. */
-export const startLocale = (): Promise<void> => applyLocale("");
+export const startLocale = (): Promise<void> => applyLocale();
 
-export function setPreference(pref: Pref): void {
+export function setPreference(pref: Locale): void {
   try {
     localStorage.setItem(KEY, pref);
   } catch {}
   // The pane that is open follows a change made anywhere else, without a second
   // copy of the value in React state.
   window.dispatchEvent(new CustomEvent(LOCALE_CHANGED));
-  void applyLocale("");
+  void applyLocale();
 }
 
-export { i18n, PrefSchema, type Pref };
+export { i18n, PrefSchema };

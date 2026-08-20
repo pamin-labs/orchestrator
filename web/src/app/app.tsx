@@ -4,7 +4,6 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
 import { countWaiting, said, STATUS_LABEL } from "../shared/select";
 import { useOrch } from "../shared/api";
-import { applyLocale } from "../i18n";
 import { cn } from "../ui/cn";
 import { Pane } from "../ui/bits";
 import { Boundary } from "./boundary";
@@ -128,12 +127,6 @@ export function App() {
       localStorage.setItem("orch.side", ui.side ? "1" : "0");
     } catch {}
   }, [ui.side]);
-  // `output.language` can be changed from the knobs pane, from a yaml, or by
-  // another browser; `/state` is where this one hears about it. `applyLocale`
-  // no-ops when the resolved locale has not moved, so the 60s refetch is free.
-  useEffect(() => {
-    void applyLocale(st.language);
-  }, [st.language]);
   useEffect(() => {
     const view = backgroundView({ view: sel.view, g: sel.g });
     if (view) setBehind(view);
