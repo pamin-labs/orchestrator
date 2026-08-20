@@ -19,18 +19,22 @@ import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../src/composition/server.ts";
+import { errText } from "../src/platform/process/text.ts";
+import { z } from "zod";
 
-interface Step {
-  api?: string;
-  body?: unknown;
-  goto?: string;
-  click?: string;
-  type?: string;
-  into?: string;
-  expect?: string;
-  missing?: string;
-  shot?: string;
-}
+/** A step file is somebody's JSON, so it is parsed rather than asserted into shape. */
+const StepSchema = z.object({
+  api: z.string().optional(),
+  body: z.json().optional(),
+  goto: z.string().optional(),
+  click: z.string().optional(),
+  type: z.string().optional(),
+  into: z.string().optional(),
+  expect: z.string().optional(),
+  missing: z.string().optional(),
+  shot: z.string().optional(),
+});
+type Step = z.infer<typeof StepSchema>;
 
 const arg = (name: string): string | undefined => {
   const i = process.argv.indexOf(`--${name}`);
@@ -49,10 +53,9 @@ mkdirSync(shotDir, { recursive: true });
 
 let steps: Step[];
 try {
-  steps = JSON.parse(readFileSync(stepsFile, "utf8"));
-  if (!Array.isArray(steps)) throw new Error("not an array");
+  steps = z.array(StepSchema).parse(JSON.parse(readFileSync(stepsFile, "utf8")));
 } catch (e) {
-  console.error(`could not read steps from ${stepsFile}: ${(e as Error).message}`);
+  console.error(`could not read steps from ${stepsFile}: ${errText(e)}`);
   process.exit(2);
 }
 
@@ -79,7 +82,7 @@ if (built.exitCode !== 0) {
 }
 
 const dataDir = mkdtempSync(join(tmpdir(), "orch-browse-"));
-const srv = start({ dataDir, port: 0, maxGroups: 0 });
+const srv = await start({ dataDir, port: 0, maxGroups: 0 });
 const browser = await chromium.launch();
 const page = await browser.newPage();
 
@@ -132,7 +135,7 @@ try {
       // whether or not the step asked for it.
       const path = join(shotDir, `fail-${i + 1}.png`);
       await page.screenshot({ path, fullPage: true }).catch(() => {});
-      console.log(`${label} FAIL: ${(e as Error).message.split("\n")[0]}`);
+      console.log(`${label} FAIL: ${errText(e).split("\n")[0]}`);
       console.log(`${label} screenshot: ${path}`);
     }
   }

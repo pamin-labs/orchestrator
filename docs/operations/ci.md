@@ -14,11 +14,16 @@ The branch ruleset is a GitHub setting and cannot read a file, so it is pushed:
 ```bash
 gh api -X PUT repos/pamin-labs/orchestrator/rulesets/20892179 \
   --input <(gh api repos/pamin-labs/orchestrator/rulesets/20892179 | jq \
-    --slurpfile checks <(grep -vE '^\s*(#|$)' .github/required-checks.txt \
-      | jq -R '{context: .}' | jq -s .) \
+    --slurpfile checks <(cat .github/required-checks.txt .github/merge-only-checks.txt \
+      | grep -vE '^\s*(#|$)' | jq -R '{context: .}' | jq -s .) \
     '(.rules[] | select(.type == "required_status_checks")
        | .parameters.required_status_checks) = $checks[0]')
 ```
+
+Both files, and only here. `release.yml` reads `required-checks.txt` alone,
+because it asserts each name is green among the **check runs of the release sha**
+and a name that only ever appears on a pull request head would block every
+release. That is what `merge-only-checks.txt` is for.
 
 Export the current ruleset before changing it — `docs/operations/snapshots/`
 holds the last one — because a wrong list here blocks every merge, and the
@@ -149,11 +154,16 @@ number derived from past patches. Tighten it from observed patch results once
 several pull requests have reported, and record each tightening in
 `docs/project/progress.md`.
 
-`codecov/patch` is a commit status, not a check run. `release.yml` gates on
-`repos/OWNER/REPO/commits/$SOURCE_SHA/check-runs`, where a commit status can
-never appear, so `codecov/patch` blocks pull-request merge only and is not a
-release gate. `test-coverage` is in the release required-check list and covers
-the "did the coverage job run green" half.
+`codecov/patch` is a **check run**, not a commit status — measured on `2ac8b99`,
+where `commits/<sha>/check-runs` lists it `success` and `commits/<sha>/status`
+returns an empty array. That empty array is why this was recorded for weeks as
+"Codecov has never uploaded"; the upload had been succeeding all along, and the
+probe was reading the wrong table.
+
+It is still not a release gate, for a different reason than the one written here
+before: `pr-report.yml` uploads only on a pull request, so no `main` commit ever
+carries it. Hence `merge-only-checks.txt`. `test` is in the release list and
+covers the "did the coverage job run green" half.
 
 ## Failure handling
 

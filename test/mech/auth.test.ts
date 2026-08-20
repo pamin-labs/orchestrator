@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { waitFor } from "@testing-library/dom";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { count } from "drizzle-orm";
 import { makeApp } from "../../src/composition/api.ts";
+import { runtime_auth } from "../../src/platform/persistence/schema.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { setTrailers } from "../../src/mech/git/ghlogin.ts";
@@ -34,19 +36,19 @@ const ClaudeSettings = z.object({ includeCoAuthoredBy: z.boolean() });
 const DeviceLoginResponse = z.object({ code: z.string(), url: z.string(), expiresAt: z.number() });
 const CodexAuthFile = z.object({ tokens: z.object({ id_token: z.string(), access_token: z.string() }) });
 
-test("the real value never leaves the process except into the vault", () => {
-  const db = openMemory();
-  saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: REAL });
+test("the real value never leaves the process except into the vault", async () => {
+  const db = await openMemory();
+  await saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: REAL });
 
   // What the settings page sees.
-  const shown = listAuth(db);
+  const shown = await listAuth(db);
   expect(shown[0]!.hint).toBe(`…${REAL.slice(-6)}`);
   expect(JSON.stringify(shown)).not.toContain(REAL);
 
   // What the sandbox sees: a token the CLI will accept as well-formed and the
   // API will reject. Measured (005): claude does not validate locally, so this
   // reaches the server and comes back 401 — which is what makes the swap work.
-  const { credentials, env } = vaultFor(db);
+  const { credentials, env } = await vaultFor(db);
   expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe(decoy("claude", "oauth_token"));
   expect(env.CLAUDE_CODE_OAUTH_TOKEN).not.toBe(REAL);
   expect(env.CLAUDE_CODE_OAUTH_TOKEN!).toStartWith("sk-ant-oat01-");
@@ -55,15 +57,15 @@ test("the real value never leaves the process except into the vault", () => {
   expect(credentials).toEqual([{ name: "claude", value: REAL, hosts: ["api.anthropic.com"] }]);
 });
 
-test("an api key goes in the header the API wants, and can name its own endpoint", () => {
-  const db = openMemory();
-  saveAuth(db, {
+test("an api key goes in the header the API wants, and can name its own endpoint", async () => {
+  const db = await openMemory();
+  await saveAuth(db, {
     runtime: "claude",
     mode: "api_key",
     secret: "sk-ant-api03-x",
     baseUrl: "https://proxy.example.com/v1",
   });
-  const { credentials, env } = vaultFor(db);
+  const { credentials, env } = await vaultFor(db);
   expect(credentials[0]!.header).toBe("x-api-key");
   // The compatible endpoint has to be bound too, or the injection never fires
   // for the host the CLI is actually talking to.
@@ -72,12 +74,12 @@ test("an api key goes in the header the API wants, and can name its own endpoint
   expect(env.ANTHROPIC_API_KEY).not.toContain("sk-ant-api03-x");
 });
 
-test("re-saving replaces rather than accumulating", () => {
-  const db = openMemory();
-  saveAuth(db, { runtime: "codex", mode: "api_key", secret: "one" });
-  saveAuth(db, { runtime: "codex", mode: "api_key", secret: "two" });
-  expect(listAuth(db).length).toBe(1);
-  expect(loadAuth(db, "codex")!.secret).toBe("two");
+test("re-saving replaces rather than accumulating", async () => {
+  const db = await openMemory();
+  await saveAuth(db, { runtime: "codex", mode: "api_key", secret: "one" });
+  await saveAuth(db, { runtime: "codex", mode: "api_key", secret: "two" });
+  expect((await listAuth(db)).length).toBe(1);
+  expect((await loadAuth(db, "codex"))!.secret).toBe("two");
 });
 
 describe("an expired credential is recognised from what the CLI actually prints", () => {
@@ -95,7 +97,7 @@ describe("an expired credential is recognised from what the CLI actually prints"
 });
 
 test("preflight names what is missing and how to fix it, rather than degrading", async () => {
-  const db = openMemory();
+  const db = await openMemory();
   const checks = await preflight({
     db,
     sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
@@ -120,7 +122,7 @@ test("preflight names what is missing and how to fix it, rather than degrading",
   for (const c of checks) if (!c.ok) expect(c.fix!.length).toBeGreaterThan(10);
   expect(report(checks)).toContain("opensandbox-server");
 
-  saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: REAL });
+  await saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: REAL });
   const after = await preflight({
     db,
     sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
@@ -152,13 +154,13 @@ describe("the egress sidecar version is checked", () => {
   });
 });
 
-test("a ChatGPT login is refreshed on the host, and the sandbox only gets a decoy", () => {
+test("a ChatGPT login is refreshed on the host, and the sandbox only gets a decoy", async () => {
   // codex has exactly two non-interactive credential paths: an API key, or an
   // auth.json in $CODEX_HOME. Its own CI guidance says to put the real file on
   // the runner — and, in the same breath, not to share it across concurrent
   // jobs. A fleet is ten concurrent jobs on one login, so the file stays here
   // and the sandbox gets something shaped like it.
-  const db = openMemory();
+  const db = await openMemory();
   const real = JSON.stringify({
     auth_mode: "chatgpt",
     tokens: {
@@ -169,9 +171,9 @@ test("a ChatGPT login is refreshed on the host, and the sandbox only gets a deco
     },
     last_refresh: new Date().toISOString(),
   });
-  saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: real });
+  await saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: real });
 
-  const files = filesFor(db);
+  const files = await filesFor(db);
   const written = files[`${CODEX_HOME}/auth.json`]!;
   expect(written).not.toContain("REAL-ACCESS");
   expect(written).not.toContain("REAL-REFRESH");
@@ -187,7 +189,7 @@ test("a ChatGPT login is refreshed on the host, and the sandbox only gets a deco
   expect(files[`${CODEX_HOME}/config.toml`]).toContain("file");
 
   // Nothing for the environment either: this one is a file plus an injection.
-  const { credentials, env } = vaultFor(db);
+  const { credentials, env } = await vaultFor(db);
   expect(credentials.find((c) => c.name === "codex")).toBeUndefined();
   expect(env.OPENAI_API_KEY).toBeUndefined();
 });
@@ -207,33 +209,33 @@ test("nothing reads a credential back out of a sandbox", async () => {
   expect(src).not.toContain(`\${CODEX_HOME}/auth.json`);
 });
 
-test("an api key for codex goes to the sidecar like everything else", () => {
-  const db = openMemory();
-  saveAuth(db, { runtime: "codex", mode: "api_key", secret: "sk-real" });
-  const { credentials, env } = vaultFor(db);
+test("an api key for codex goes to the sidecar like everything else", async () => {
+  const db = await openMemory();
+  await saveAuth(db, { runtime: "codex", mode: "api_key", secret: "sk-real" });
+  const { credentials, env } = await vaultFor(db);
   expect(credentials.find((c) => c.name === "codex")!.value).toBe("sk-real");
   expect(env.OPENAI_API_KEY).not.toContain("sk-real");
   // No credential file, which is the point: an API key is bound in the vault and
   // nothing about it is written into the container. The one file that is always
   // there is Claude Code's own settings, which carries no secret.
-  expect(Object.keys(filesFor(db))).toEqual(["/root/.claude/settings.json"]);
+  expect(Object.keys(await filesFor(db))).toEqual(["/root/.claude/settings.json"]);
 });
 
-test("Claude Code's own co-author trailer is a switch of its own", () => {
+test("Claude Code's own co-author trailer is a switch of its own", async () => {
   // Left alone the CLI appends `Co-Authored-By: Claude` to commits it makes
   // itself — on the commits an agent wrote by hand rather than the ones this
   // orchestrator squashes — and nothing in the panel could reach it.
-  const db = openMemory();
-  const read = () => ClaudeSettings.parse(JSON.parse(filesFor(db)["/root/.claude/settings.json"]!));
-  expect(read().includeCoAuthoredBy).toBe(true);
+  const db = await openMemory();
+  const read = async () => ClaudeSettings.parse(JSON.parse((await filesFor(db))["/root/.claude/settings.json"]!));
+  expect((await read()).includeCoAuthoredBy).toBe(true);
 
   // Not the git one: which tool wrote the diff and what this project puts in its
   // history are different questions, and somebody can want one without the other.
-  setTrailers(db, { coauthor: false });
-  expect(read().includeCoAuthoredBy).toBe(true);
+  await setTrailers(db, { coauthor: false });
+  expect((await read()).includeCoAuthoredBy).toBe(true);
 
-  setTrailers(db, { claudeCoauthor: false });
-  expect(read().includeCoAuthoredBy).toBe(false);
+  await setTrailers(db, { claudeCoauthor: false });
+  expect((await read()).includeCoAuthoredBy).toBe(false);
 });
 
 test("the ChatGPT login is renewed here, once, and by codex rather than by us", async () => {
@@ -320,19 +322,19 @@ test("no login runs a CLI on this machine any more", () => {
   }
 });
 
-test("the sandbox server key is stored like a secret, not in the committed yaml", () => {
+test("the sandbox server key is stored like a secret, not in the committed yaml", async () => {
   // Two ends have to agree and only one is ours. It is not a model credential —
   // nothing binds it at a sidecar — but it is still a secret, so it lives in the
   // same store rather than in config/default.yaml, which is committed.
-  const db = openMemory();
-  saveAuth(db, { runtime: SANDBOX_KEY, mode: "api_key", secret: "generated-key" });
+  const db = await openMemory();
+  await saveAuth(db, { runtime: SANDBOX_KEY, mode: "api_key", secret: "generated-key" });
 
   // Nothing tries to inject it: it is absent from the bindings table.
-  const { credentials, env } = vaultFor(db);
+  const { credentials, env } = await vaultFor(db);
   expect(credentials.find((c) => c.name === SANDBOX_KEY)).toBeUndefined();
   expect(JSON.stringify(env)).not.toContain("generated-key");
   // And the settings page sees a tail, like every other secret.
-  expect(listAuth(db).find((r) => r.runtime === SANDBOX_KEY)!.hint).toBe("…ed-key");
+  expect((await listAuth(db)).find((r) => r.runtime === SANDBOX_KEY)!.hint).toBe("…ed-key");
 });
 
 test("a secret that cannot be right is refused before it is stored", () => {
@@ -358,8 +360,8 @@ test("a secret that cannot be right is refused before it is stored", () => {
 });
 
 test("runtime and mode are one contract at the route and database boundaries", async () => {
-  const db = openMemory();
-  const app = makeApp(testContext({ db }));
+  const db = await openMemory();
+  const app = makeApp(await testContext({ db }));
 
   for (const body of [
     { runtime: "github", mode: "chatgpt", secret: "not a GitHub token" },
@@ -375,7 +377,7 @@ test("runtime and mode are one contract at the route and database boundaries", a
     );
     expect(response.status).toBe(400);
   }
-  expect(db.query<{ n: number }, []>("SELECT count(*) n FROM runtime_auth").get()!.n).toBe(0);
+  expect((await db.select({ n: count() }).from(runtime_auth))[0]!.n).toBe(0);
 
   const valid = await app(
     new Request("http://x/api/v1/auth", {
@@ -385,7 +387,7 @@ test("runtime and mode are one contract at the route and database boundaries", a
     }),
   );
   expect(valid.status).toBe(200);
-  expect(loadAuth(db, "codex")?.mode).toBe("api_key");
+  expect((await loadAuth(db, "codex"))?.mode).toBe("api_key");
   const cleared = await app(
     new Request("http://x/api/v1/auth", {
       method: "POST",
@@ -394,30 +396,30 @@ test("runtime and mode are one contract at the route and database boundaries", a
     }),
   );
   expect(cleared.status).toBe(200);
-  expect(loadAuth(db, "codex")).toBeNull();
+  expect(await loadAuth(db, "codex")).toBeNull();
 
   for (const runtime of ["github", "claude"]) {
-    fx.runtimeAuth.insert(db, { runtime, mode: "chatgpt", secret: "dead", updated_at: 1 });
+    await fx.on(db).runtimeAuth.create({ runtime, mode: "chatgpt", secret: "dead", updated_at: 1 });
   }
-  expect(loadAuth(db, "github")).toBeNull();
-  expect(loadAuth(db, "claude")).toBeNull();
-  expect(listAuth(db)).toEqual([]);
+  expect(await loadAuth(db, "github")).toBeNull();
+  expect(await loadAuth(db, "claude")).toBeNull();
+  expect(await listAuth(db)).toEqual([]);
 });
 
 test("a chatgpt login is judged by the expiry it carries, without a request", async () => {
   // The refresh token is what matters and it is not ours to test; the access
   // token says when it dies, and codex rotates it from the host. Checking that
   // offline is what keeps the settings page from costing a round trip per open.
-  const db = openMemory();
+  const db = await openMemory();
   const segment = (value: Json) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const jwt = (exp: number) => `${segment({ alg: "none", typ: "JWT" })}.${segment({ exp })}.eA`;
   const auth = (exp: number) => JSON.stringify({ tokens: { refresh_token: "r", access_token: jwt(exp) } });
 
-  saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: auth(Math.floor(Date.now() / 1000) + 86_400 * 9) });
+  await saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: auth(Math.floor(Date.now() / 1000) + 86_400 * 9) });
   const good = await preflight({ db, sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" }, probe: () => false });
   expect(good.find((c) => c.name === "credential:codex")!.ok).toBe(true);
 
-  saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: auth(Math.floor(Date.now() / 1000) - 60) });
+  await saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: auth(Math.floor(Date.now() / 1000) - 60) });
   const dead = await preflight({ db, sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" }, probe: () => false });
   const row = dead.find((c) => c.name === "credential:codex")!;
   expect(row.ok).toBe(false);
@@ -431,12 +433,12 @@ test("the codex device login shows a code with its link, and stores what the con
   //
   // The panel's half is the pair. A link on its own opens a page asking for a
   // code the boss does not have.
-  const db = openMemory();
+  const db = await openMemory();
   const sandbox = fakeSandbox((cmd) =>
     cmd.includes("codex login") ? { out: "1. Open https://chatgpt.com/device\n2. Enter code T5M2-76TFM\n" } : {},
   );
   sandbox.files.set(`${REFRESH_HOME}/auth.json`, JSON.stringify({ tokens: { refresh_token: "REAL" } }));
-  const ctx = testContext({ db, sandbox });
+  const ctx = await testContext({ db, sandbox });
   const app = makeApp(ctx);
 
   const r = await app(
@@ -462,8 +464,8 @@ test("the codex device login shows a code with its link, and stores what the con
   // arrived". This one throws where the waiting happened, and it is already a
   // dependency: `@testing-library/dom` is what `@testing-library/react` is
   // built on, and `waitFor` itself touches no DOM.
-  await waitFor(() => expect(loadAuth(db, "codex")).not.toBeNull());
-  expect(loadAuth(db, "codex")).toEqual({
+  await waitFor(async () => expect(await loadAuth(db, "codex")).not.toBeNull());
+  expect(await loadAuth(db, "codex")).toEqual({
     runtime: "codex",
     mode: "chatgpt",
     secret: JSON.stringify({ tokens: { refresh_token: "REAL" } }),
@@ -488,7 +490,7 @@ test("in a container, preflight stops answering questions about somebody else's 
   // uv`) for a host the process cannot see. Those are facts about the machine
   // running the sandbox server, and when the orchestrator ships as an image that
   // machine is somebody else's.
-  const db = openMemory();
+  const db = await openMemory();
   const input = {
     db,
     sandbox: { server: "127.0.0.1:9", apiKey: "", image: "ghcr.io/pamin-labs/orch-agent:latest" },
@@ -514,7 +516,7 @@ test("in a container, preflight stops answering questions about somebody else's 
   expect(server(inside).fix).toContain("ORCH_SANDBOX_SERVER");
 });
 
-test("the stored sandbox key does not follow the address to a place it was never accepted by", () => {
+test("the stored sandbox key does not follow the address to a place it was never accepted by", async () => {
   // `sandbox.server` is a settings knob — the panel writes it through
   // `sandbox-server/addr` and through the `sandbox.server` row, which is not in
   // `SETTING_DENIALS` — while the key is stored once and reused. Four call
@@ -522,36 +524,41 @@ test("the stored sandbox key does not follow the address to a place it was never
   // the address currently said, so moving the address was enough to have the
   // orchestrator hand the key over. The suppression on `reachable` asserted the
   // opposite; this is what makes the assertion true.
-  const db = openMemory();
-  saveAuth(db, { runtime: SANDBOX_KEY, mode: "api_key", secret: "orch-secret", baseUrl: "http://127.0.0.1:8080" });
+  const db = await openMemory();
+  await saveAuth(db, {
+    runtime: SANDBOX_KEY,
+    mode: "api_key",
+    secret: "orch-secret",
+    baseUrl: "http://127.0.0.1:8080",
+  });
 
-  expect(sandboxKeyFor(db, "127.0.0.1:8080")).toBe("orch-secret");
+  expect(await sandboxKeyFor(db, "127.0.0.1:8080")).toBe("orch-secret");
   // Written as a URL, read as an authority: a trailing slash is not a different server.
-  expect(sandboxKeyFor(db, " 127.0.0.1:8080 ")).toBe("orch-secret");
-  expect(sandboxKeyFor(db, "evil.example:8080")).toBe("");
-  expect(sandboxKeyFor(db, "127.0.0.1:9090")).toBe("");
+  expect(await sandboxKeyFor(db, " 127.0.0.1:8080 ")).toBe("orch-secret");
+  expect(await sandboxKeyFor(db, "evil.example:8080")).toBe("");
+  expect(await sandboxKeyFor(db, "127.0.0.1:9090")).toBe("");
 
   // The config/environment value still goes, and is meant to: it is not stored
   // here, and whoever writes it also writes the address in the same file.
-  expect(sandboxKeyFor(db, "evil.example:8080", "from-env")).toBe("from-env");
+  expect(await sandboxKeyFor(db, "evil.example:8080", "from-env")).toBe("from-env");
 });
 
-test("a key stored before the address travelled with it is bound at startup, once", () => {
-  const db = openMemory();
+test("a key stored before the address travelled with it is bound at startup, once", async () => {
+  const db = await openMemory();
   // No `baseUrl` — every row written before this rule existed looks like this,
   // and refusing to send it would take a working install offline on upgrade.
-  saveAuth(db, { runtime: SANDBOX_KEY, mode: "api_key", secret: "orch-old" });
-  expect(sandboxKeyFor(db, "127.0.0.1:8080")).toBe("");
+  await saveAuth(db, { runtime: SANDBOX_KEY, mode: "api_key", secret: "orch-old" });
+  expect(await sandboxKeyFor(db, "127.0.0.1:8080")).toBe("");
 
-  bindSandboxKey(db, "127.0.0.1:8080");
-  expect(sandboxKeyFor(db, "127.0.0.1:8080")).toBe("orch-old");
-  expect(sandboxKeyFor(db, "evil.example:8080")).toBe("");
+  await bindSandboxKey(db, "127.0.0.1:8080");
+  expect(await sandboxKeyFor(db, "127.0.0.1:8080")).toBe("orch-old");
+  expect(await sandboxKeyFor(db, "evil.example:8080")).toBe("");
 
   // Once: a later boot with a moved address must not re-bind a key that already
   // has one, or the whole guard would reset itself every restart.
-  bindSandboxKey(db, "evil.example:8080");
-  expect(sandboxKeyFor(db, "evil.example:8080")).toBe("");
-  expect(loadAuth(db, SANDBOX_KEY)?.baseUrl).toBe("http://127.0.0.1:8080");
+  await bindSandboxKey(db, "evil.example:8080");
+  expect(await sandboxKeyFor(db, "evil.example:8080")).toBe("");
+  expect((await loadAuth(db, SANDBOX_KEY))?.baseUrl).toBe("http://127.0.0.1:8080");
 });
 
 /**
@@ -570,29 +577,29 @@ test("a key stored before the address travelled with it is bound at startup, onc
  * at `https://gw.internal:443`.
  */
 describe("the network probe asks the providers, at the addresses they were given", () => {
-  test("a local sandbox server is not a provider and stays out of the list", () => {
-    const db = openMemory();
-    saveAuth(db, { runtime: "sandbox", mode: "api_key", secret: "k", baseUrl: "http://127.0.0.1:8080" });
+  test("a local sandbox server is not a provider and stays out of the list", async () => {
+    const db = await openMemory();
+    await saveAuth(db, { runtime: "sandbox", mode: "api_key", secret: "k", baseUrl: "http://127.0.0.1:8080" });
     // Empty is the right answer with nothing configured, and `probe` reads it as
     // online: there is no wall to detect, and `credentialMissing` covers the rest.
-    expect(probeHosts(db)).toEqual([]);
+    expect(await probeHosts(db)).toEqual([]);
   });
 
-  test("a provider's own base_url keeps its scheme and port", () => {
-    const db = openMemory();
-    saveAuth(db, { runtime: "claude", mode: "api_key", secret: "k", baseUrl: "http://gw.internal:8443/v1" });
-    expect(probeHosts(db)).toEqual(["http://gw.internal:8443"]);
+  test("a provider's own base_url keeps its scheme and port", async () => {
+    const db = await openMemory();
+    await saveAuth(db, { runtime: "claude", mode: "api_key", secret: "k", baseUrl: "http://gw.internal:8443/v1" });
+    expect(await probeHosts(db)).toEqual(["http://gw.internal:8443"]);
   });
 
-  test("a provider with no base_url is probed at its documented hosts", () => {
-    const db = openMemory();
-    saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: "k" });
-    expect(probeHosts(db)).toEqual(["https://api.openai.com", "https://chatgpt.com"]);
+  test("a provider with no base_url is probed at its documented hosts", async () => {
+    const db = await openMemory();
+    await saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: "k" });
+    expect(await probeHosts(db)).toEqual(["https://api.openai.com", "https://chatgpt.com"]);
   });
 
-  test("github is bound for cloning, so a repo host being down does not stop every agent", () => {
-    const db = openMemory();
-    saveAuth(db, { runtime: "github", mode: "api_key", secret: "k" });
-    expect(probeHosts(db)).toEqual([]);
+  test("github is bound for cloning, so a repo host being down does not stop every agent", async () => {
+    const db = await openMemory();
+    await saveAuth(db, { runtime: "github", mode: "api_key", secret: "k" });
+    expect(await probeHosts(db)).toEqual([]);
   });
 });

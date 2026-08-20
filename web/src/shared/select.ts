@@ -1,7 +1,7 @@
 import type { Escalation, Group, Slice, State } from "./api";
 import { githubRepo } from "./github";
 import { z } from "zod";
-import { jsonOr } from "../../../src/contracts/json.ts";
+import { valueOr } from "../../../src/contracts/json.ts";
 
 const OwnsSchema = z.array(z.string());
 const GatesSchema = z.record(z.string(), z.string());
@@ -46,8 +46,8 @@ export const STOPS: [string, string][] = [
   ["qa", "QA"],
 ];
 
-export const owns = (g: Group) => jsonOr(g.owns_json, OwnsSchema, []);
-export const gates = (s: Slice) => jsonOr(s.gates_json, GatesSchema, {});
+export const owns = (g: Group) => valueOr(g.owns_json, OwnsSchema, []);
+export const gates = (s: Slice) => valueOr(s.gates_json, GatesSchema, {});
 
 const needsDraftDecision = (g: Group) => g.status === "DRAFT" && !g.approved_at;
 const hasDraftDecision = (st: State, id: number) =>

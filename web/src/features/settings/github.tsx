@@ -91,25 +91,25 @@ function Connection({ status, onRefresh }: { status: GhStatus | null; onRefresh:
 
 function ConnectionStatus({ status }: { status: GhStatus | null }) {
   if (!status) return <Meta>读取中…</Meta>;
-  if (!status.connected) return <span className="text-[0.8125rem] font-medium text-accent">没连</span>;
+  if (!status.connected) return <span className="text-body font-medium text-accent">没连</span>;
   return <ConnectedStatus status={status} />;
 }
 
 function ConnectedStatus({ status }: { status: GhStatus }) {
   if (status.stale) {
-    return <span className="text-[0.8125rem] font-medium text-accent">连过，但 GitHub 现在不认这个令牌了</span>;
+    return <span className="text-body font-medium text-accent">连过，但 GitHub 现在不认这个令牌了</span>;
   }
   if (status.installed === false) {
     // Authorized and installed are different acts, and only the second one
     // can reach a repository. Saying 已连 here would be a green tick over a
     // repo list that can never fill.
     return (
-      <span className="text-[0.8125rem] font-medium text-accent">
+      <span className="text-body font-medium text-accent">
         {accountLabel(status.account, "授权了")}，但 App 还没装到任何账号上
       </span>
     );
   }
-  return <span className="text-[0.8125rem]">{accountLabel(status.account, "已连")}</span>;
+  return <span className="text-body">{accountLabel(status.account, "已连")}</span>;
 }
 
 function accountLabel(account: string | null, fallback: string) {
@@ -170,7 +170,7 @@ function ConnectionError({ status }: { status: GhStatus | null }) {
   if (status.pending) return null;
   // Why it did not land, beside the button that tries again.
   if (!status.error) return null;
-  return <p className="mt-1.5 text-[0.75rem] text-accent">{status.error}</p>;
+  return <p className="mt-1.5 text-secondary text-accent">{status.error}</p>;
 }
 
 function Installations({ status }: { status: GhStatus | null }) {
@@ -202,7 +202,7 @@ function InstallationSection({ status }: { status: GhStatus }) {
 function InstallLink({ url }: { url: string }) {
   if (url) {
     return (
-      <LinkButton href={url} className="px-2 py-0.5 text-[0.75rem]">
+      <LinkButton href={url} className="px-2 py-0.5 text-secondary">
         装到别的账号
       </LinkButton>
     );
@@ -219,7 +219,7 @@ type Installation = GhStatus["accounts"][number];
 function AccountList({ accounts }: { accounts: Installation[] }) {
   if (!accounts.length) {
     return (
-      <p className="text-[0.75rem] text-accent">一个也没有，这个连接看不见任何仓库。装的时候选所有仓库，或者挑几个。</p>
+      <p className="text-secondary text-accent">一个也没有，这个连接看不见任何仓库。装的时候选所有仓库，或者挑几个。</p>
     );
   }
   return (
@@ -237,7 +237,7 @@ function AccountList({ accounts }: { accounts: Installation[] }) {
 function AccountRow({ account }: { account: Installation }) {
   return (
     <div className="flex items-baseline gap-2 py-1.5">
-      <span className="text-[0.8125rem]">{account.account}</span>
+      <span className="text-body">{account.account}</span>
       <Badge>{account.kind === "Organization" ? "组织" : "个人"}</Badge>
       <span className="grow" />
       {/* Tabular figures: `86` and `5` share a right edge either way,
@@ -284,7 +284,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
         <Field aria-labelledby="t-author" className="items-center">
           <FieldTitle id="t-author">作者</FieldTitle>
           <FieldContent>
-            <span className="font-mono text-[0.75rem] text-ink-2">{s.identity.name}</span>
+            <span className="font-mono text-secondary text-ink-2">{s.identity.name}</span>
             <Meta>{bot ? "还没连 GitHub，先用我们的机器人账号" : "取自你连的 GitHub 账号"}</Meta>
           </FieldContent>
         </Field>

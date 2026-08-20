@@ -18,19 +18,30 @@
 #
 #   ORCH_HOST   ORCH_PORT   ORCH_DATA_DIR
 #
-# Two more exist and are deliberately not keys here: ORCH_SANDBOX_API_KEY (a
-# secret, and this file is committed) and ORCH_SKILLS_DIR (a property of where
-# this installation was unpacked).
+# Three more exist and are deliberately not keys here. ORCH_SANDBOX_API_KEY and
+# ORCH_DATABASE_URL are secrets and this file is committed; ORCH_DATABASE_URL is
+# also the one value that could not live in the database whatever we decided,
+# since it is how the database is reached. ORCH_SKILLS_DIR is a property of where
+# this installation was unpacked.
+#
+#   ORCH_DATABASE_URL=postgres://user:password@host:5432/orchestrator
+#
+# Bring your own PostgreSQL — managed, on another machine, or the one container
+# in docker/postgres-compose.yml that `bun run db:up` starts. Nothing in the
+# product knows which it got, and the schema is applied at boot either way.
 #
 # Anything you do add here still works — it is the default under whatever the
 # panel has set — but `test/config.test.ts` will fail if it disagrees with
 # `src/config.ts`, because two files quietly answering the same question
 # differently is what this file was doing before.
 
-# 面板和 agent 信箱监听在哪。默认只听本机 —— 这个服务没有登录，
-# 谁连得上谁就是老板，所以绑 0.0.0.0 等于把它交给同网段的所有人。
-# 装在容器里必须改成 0.0.0.0（否则映射出去的端口连不上），
-# 那时候请确保它前面有别的东西挡着：反向代理 + 鉴权，或者只在 Tailscale 里可达。
+# 面板和 agent 信箱监听在哪。**只接受回环地址**，schema 里就是这么写死的
+# （127.0.0.1 / localhost / ::1），填别的启动直接报错。
+# 因为这个服务没有登录 —— 谁连得上谁就是老板，绑 0.0.0.0 等于把它交给同网段的所有人。
+#
+# 这里以前写着「装在容器里必须改成 0.0.0.0」，而 schema 从来就不收 —— 照着做的人
+# 得到的是一条启动失败。容器要映射端口，用 docker 的 -p 127.0.0.1:47821:47821
+# 把宿主这一侧绑在回环上；容器内部这个进程仍然只听回环。
 host: 127.0.0.1
 port: 47821
 

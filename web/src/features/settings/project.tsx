@@ -96,11 +96,11 @@ function Remove({
       {/* Same left edge as every field row in the dialog: the boss arrives here
           from a pane of labelled values, and a column that moves between panes
           is the one thing a fixed grid is for. */}
-      <dl className="grid max-w-[34rem] grid-cols-[var(--label)_minmax(0,1fr)] gap-x-4 gap-y-3 pt-1 text-[0.8125rem]">
+      <dl className="grid max-w-[34rem] grid-cols-[var(--label)_minmax(0,1fr)] gap-x-4 gap-y-3 pt-1 text-body">
         <dt className="font-semibold text-bad">删掉</dt>
         <dd className="min-w-0">
-          <span className="font-mono text-[0.75rem]">{repoPath}</span> 的 {groups} 个需求
-          <div className="mt-0.5 text-[0.75rem] text-ink-3">
+          <span className="font-mono text-secondary">{repoPath}</span> 的 {groups} 个需求
+          <div className="mt-0.5 text-secondary text-ink-3">
             在跑的 turn 会停，容器、切片、卡片、提问、附件一起删，找不回来
           </div>
         </dd>
@@ -109,7 +109,7 @@ function Remove({
           GitHub 上的分支、PR、代码
           {/* 不做了 archives and keeps every event. This does not, and the two
               buttons are one dialog apart. */}
-          <div className="mt-0.5 text-[0.75rem] text-ink-3">想留下记录就用「不做了」封存，那个不删</div>
+          <div className="mt-0.5 text-secondary text-ink-3">想留下记录就用「不做了」封存，那个不删</div>
         </dd>
       </dl>
       <Button variant="danger" className="mt-5" disabled={busy} onClick={go}>

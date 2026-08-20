@@ -1,0 +1,45 @@
+# The database, for a deployment that does not bring its own.
+#
+# `ORCH_DATABASE_URL` is what the server reads; point it anywhere. This file is
+# the local answer — one container, one named volume — and a managed Postgres
+# somewhere else is the same connection string with a different host. Nothing in
+# the product knows which it got.
+services:
+  postgres:
+    # Pinned by digest, like every other image this repository names: a tag is a
+    # name someone else can repoint, and the database is the one container where
+    # that would be found out late.
+    image: postgres:18-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+    container_name: orchestrator-postgres
+    environment:
+      POSTGRES_DB: orchestrator
+      POSTGRES_USER: orchestrator
+      # Read from the environment, never written here: this file is committed.
+      # `docker compose` fails on an unset variable, which is the intended
+      # outcome — a default password is a password nobody changes.
+      POSTGRES_PASSWORD: ${ORCH_POSTGRES_PASSWORD:?set ORCH_POSTGRES_PASSWORD}
+    ports:
+      # Loopback-published, for the same reason the panel is: whoever reaches
+      # this reads every requirement, every decision and every token count.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Under `dataDir`, beside the turn logs, gate logs and attachments: one
+      # directory holds everything this installation owns, so a backup is one
+      # path and a move is one copy. `ORCH_DATA_DIR` already names it.
+      #
+      # `/var/lib/postgresql`, not `/var/lib/postgresql/data`: the 18 image says
+      # so on first boot and refuses to start otherwise. A single mount one level
+      # up keeps the data in a subdirectory, which is what lets a later
+      # `pg_upgrade --link` work without crossing a mount boundary.
+      # `../data`, because a relative path in compose resolves against the file's
+      # own directory and not the project root — the first cut of this quietly
+      # created `docker/data` and looked like it worked.
+      - ${ORCH_DATA_DIR:-../data}/postgres:/var/lib/postgresql
+    # Compose waits for this before starting anything that depends on it, so a
+    # first boot does not race the initdb the image runs on an empty volume.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orchestrator -d orchestrator"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped

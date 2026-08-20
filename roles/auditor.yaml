@@ -1,4 +1,7 @@
 name: auditor
+# What the flow may ask this role for. The dispatch sites look up the capability,
+# never the name, so this line is what makes a role replaceable by a yaml file.
+capabilities: [audit_branch]
 # codex: branch review on the strongest gpt, pinned by id rather than by tier —
 # a PR-level read is closer to an architecture review than to a slice review.
 runtime: codex

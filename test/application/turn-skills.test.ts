@@ -37,9 +37,10 @@ const agent = { id: 1, project_id: 1, role: "engineer" };
 async function run(repo: string, wanted: string[], inContainer: Record<string, string> = {}): Promise<Delta> {
   const sandbox = fakeSandbox();
   for (const [path, body] of Object.entries(inContainer)) sandbox.files.set(path, body);
-  const ctx = testContext({ sandbox });
-  const p = fx.project.insert(ctx.db, { name: "p", repo_path: repo });
-  fx.grp.insert(ctx.db, { project_id: p.id, name: "g" });
+  const ctx = await testContext({ sandbox });
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p", repo_path: repo });
+  await f.grp.create({ project_id: p.id, name: "g" });
   const delta: Delta = {};
   await applySkills(ctx, agent, turnJob(wanted), { grp: 1 }, delta);
   return delta;
@@ -78,13 +79,14 @@ test("the skills that do exist still arrive when one of the names does not", asy
 
 test("a skill whose file cannot be read says so instead of arriving blank", async () => {
   const repo = repoWithSkill("commit", "state the finding");
-  const ctx = testContext({
+  const ctx = await testContext({
     // The container is what holds the checkout, and it can refuse. A blank
     // section would read as "this skill has no instructions".
     sandbox: fakeSandbox(() => ({ code: 1, err: "no such container" })),
   });
-  const p = fx.project.insert(ctx.db, { name: "p", repo_path: repo });
-  fx.grp.insert(ctx.db, { project_id: p.id, name: "g" });
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p", repo_path: repo });
+  await f.grp.create({ project_id: p.id, name: "g" });
   const delta: Delta = {};
 
   await applySkills(ctx, agent, turnJob(["commit"]), { grp: 1 }, delta);

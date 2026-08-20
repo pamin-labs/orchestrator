@@ -140,7 +140,7 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
             <div
               key={`${l.at}:${l.kind}:${l.text}`}
               className={cn(
-                "whitespace-pre-wrap font-mono text-[0.6875rem] leading-relaxed",
+                "whitespace-pre-wrap font-mono text-meta leading-relaxed",
                 l.kind === "cmd" ? "text-ink" : l.kind === "end" ? "text-ink-2" : "text-ink-3",
               )}
             >
@@ -161,6 +161,6 @@ const kindOf = (text: string): Line["kind"] =>
 const Fact = ({ k, v }: { k: string; v: string }) => (
   <span className="flex items-baseline gap-1.5">
     <Meta>{k}</Meta>
-    <span className="font-mono text-[0.75rem] text-ink-2">{v}</span>
+    <span className="font-mono text-secondary text-ink-2">{v}</span>
   </span>
 );

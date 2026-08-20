@@ -1,13 +1,17 @@
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { jsonOr } from "../../contracts/json.ts";
 import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
+import { agent, grp, note, nowMs } from "../../platform/persistence/schema.ts";
 import type { Ctx } from "../../mech/ctx.ts";
+import type { Config } from "../../platform/config/load.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { claudeUsage, promptPath, UsageSchema, type Usage } from "../../runtime/claude.ts";
 import { codexUsage } from "../../runtime/codex.ts";
 import { shq } from "../../platform/process/shell.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { activeTracer } from "../../platform/observability/traces.ts";
+import { scrub } from "../../platform/observability/redaction.ts";
 import { z } from "zod";
 
 /**
@@ -176,14 +180,10 @@ const oneLine = (s: string) => s.trim().split("\n").findLast(Boolean)?.slice(0, 
  * whose summary says "this is where X lives" wins even when it shares no words
  * with the question.
  */
-export async function search(
-  tree: Tree,
-  question: string,
-  ask: Ask,
-  opts: { depth?: number; width?: number } = {},
-): Promise<string[]> {
-  const depth = opts.depth ?? 3;
-  const width = opts.width ?? 4;
+export async function search(tree: Tree, question: string, ask: Ask, walk: Config["pageindex"]): Promise<string[]> {
+  // Required rather than defaulted: a literal here is a model bill the boss can
+  // neither see nor change, and depth is serial calls per question.
+  const { depth, width } = walk;
   let frontier = tree["/"]?.children ?? [];
   const opened: string[] = [];
 
@@ -300,8 +300,22 @@ export function modelAsk(
         if (!r || r.code !== 0) {
           // The empty string is both a legitimate answer and the failure value,
           // and `summarise` counts it as `failed` without being able to tell
-          // which. The span can tell, so it says.
-          span.setStatus({ code: SpanStatusCode.ERROR, message: r ? `exit ${r.code}` : "exec threw" });
+          // which. The span can tell, so it says — **and says what the CLI said**.
+          // Measured over one 7-hour window: 36 of 36 calls failed, 738.5s of wall
+          // clock, and the only record of any of it was the two words `exit 1`. A
+          // number with no sentence beside it cannot be acted on, so the most
+          // expensive model call here failed all day and looked like a quiet one.
+          // Scrubbed, because the CLI echoes its own arguments on a bad flag.
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: r
+              ? `exit ${r.code}: ${
+                  scrub(r.err || r.out)
+                    .trim()
+                    .slice(-400) || "said nothing"
+                }`
+              : "exec threw",
+          });
           return "";
         }
         const { text, usage } = codex ? readCodex(r.out) : readClaude(r.out);
@@ -392,28 +406,59 @@ const CodexReply = z.looseObject({
  * Inert by construction: watchdog rule 2 needs `idle_turns >= 3` and rule 3 needs
  * a `loop_file`, and nothing here writes either.
  */
-export function chargeIndex(ctx: Ctx, projectId: number, spec: { runtime?: string; model: string }, u: AskUsage): void {
+export async function chargeIndex(
+  ctx: Ctx,
+  projectId: number,
+  spec: { runtime?: string; model: string },
+  u: AskUsage,
+  grpId?: number,
+): Promise<void> {
   const runtime = spec.runtime ?? "claude";
   const total = u.input + u.output + u.cacheRead + u.cacheCreate;
   if (total === 0) return;
-  const row = ctx.db
-    .query<{ id: number }, [number, string]>(
-      "SELECT id FROM agent WHERE project_id = ? AND grp_id IS NULL AND role = 'indexer' AND runtime = ?",
-    )
-    .get(projectId, runtime);
-  const id =
-    row?.id ??
-    ctx.db
-      .query<{ id: number }, [number, string, string]>(
-        `INSERT INTO agent (project_id, grp_id, role, model, runtime, state, created_at)
-         VALUES (?, NULL, 'indexer', ?, ?, 'idle', unixepoch() * 1000) RETURNING id`,
-      )
-      .get(projectId, spec.model, runtime)!.id;
-  ctx.db.run("UPDATE agent SET total_tokens = total_tokens + ?, model = ? WHERE id = ?", [total, spec.model, id]);
+  const [row] = await ctx.db
+    .select({ id: agent.id })
+    .from(agent)
+    .where(
+      and(eq(agent.project_id, projectId), isNull(agent.grp_id), eq(agent.role, "indexer"), eq(agent.runtime, runtime)),
+    );
+  let id = row?.id;
+  if (id === undefined) {
+    const [made] = await ctx.db
+      .insert(agent)
+      .values({
+        project_id: projectId,
+        grp_id: null,
+        role: "indexer",
+        model: spec.model,
+        runtime,
+        // `state` carries a schema default of the same value and is still spelled
+        // out, as the old INSERT spelled it. `created_at` uses `nowMs` so the row is
+        // stamped by the database's clock, not this process's.
+        state: "idle",
+        created_at: nowMs,
+      })
+      .returning({ id: agent.id });
+    id = made!.id;
+  }
+  await ctx.db
+    .update(agent)
+    .set({ total_tokens: sql`${agent.total_tokens} + ${total}`, model: spec.model })
+    .where(eq(agent.id, id));
+  // And onto the requirement that asked, when one did. This landed on the agent
+  // row alone, so a group's budget could not see the retrieval its own turns
+  // caused — `sliceBudgetTokens` is what stops a runaway, and the most frequent
+  // model call in the system was invisible to it. The project-scoped calls (the
+  // index rebuild) still belong to nobody, which is correct: no requirement asked.
+  if (grpId)
+    await ctx.db
+      .update(grp)
+      .set({ spent_tokens: sql`${grp.spent_tokens} + ${total}` })
+      .where(eq(grp.id, grpId));
   // The same event shape `recordCost` emits, because that is what the hourly
   // burn chart reads — an event row has no agent to join back to, so the runtime
   // has to travel in the meta or the split guesses from the model name.
-  ctx.bus.emit({
+  await ctx.bus.emit({
     author: "indexer",
     kind: "tool_summary",
     body: `index call (${total} tokens)`,
@@ -432,14 +477,21 @@ export function chargeIndex(ctx: Ctx, projectId: number, spec: { runtime?: strin
  * the whole table could only ever return whole notes and rank them by word overlap,
  * which is exactly what fails when the retro that matters calls it something else.
  */
-export function noteLeaves(db: DB, projectId: number | null): { ids: string[]; read: Read } {
-  const rows = db
-    .query<{ id: number; grp_id: number | null; kind: string; body: string }, [number | null]>(
-      `SELECT id, grp_id, kind, body FROM note
-       WHERE (project_id IS ? OR grp_id IS NOT NULL) AND kind IN ('decision','retro','journal','fact','lesson')
-       ORDER BY id DESC LIMIT 500`,
+export async function noteLeaves(db: DB, projectId: number | null): Promise<{ ids: string[]; read: Read }> {
+  const rows = await db
+    .select({ id: note.id, grp_id: note.grp_id, kind: note.kind, body: note.body })
+    .from(note)
+    .where(
+      and(
+        // `project_id IS ?` in the old text, so asking for the global scope has to
+        // match the rows whose `project_id` is NULL. `eq()` is `=` and would match
+        // none of them, which is the whole corpus when no project is in scope.
+        or(projectId === null ? isNull(note.project_id) : eq(note.project_id, projectId), isNotNull(note.grp_id)),
+        inArray(note.kind, ["decision", "retro", "journal", "fact", "lesson"]),
+      ),
     )
-    .all(projectId);
+    .orderBy(desc(note.id))
+    .limit(500);
   const byId = new Map<string, string>();
   for (const r of rows) {
     byId.set(`${NOTE_PREFIX}${r.grp_id ? `grp-${r.grp_id}` : "project"}/${r.kind}/${r.id}`, r.body);
@@ -451,10 +503,10 @@ export function noteLeaves(db: DB, projectId: number | null): { ids: string[]; r
 
 // ------------------------------------------------------------------ storage
 
-export function saveTree(db: DB, projectId: number, tree: Tree): void {
-  saveSingletonNote(db, projectId, "pageindex", JSON.stringify(tree));
+export async function saveTree(db: DB, projectId: number, tree: Tree): Promise<void> {
+  await saveSingletonNote(db, projectId, "pageindex", JSON.stringify(tree));
 }
 
-export function loadTree(db: DB, projectId: number | null): Tree | null {
-  return jsonOr(singletonNote(db, projectId, "pageindex"), TreeSchema.nullable(), null);
+export async function loadTree(db: DB, projectId: number | null): Promise<Tree | null> {
+  return jsonOr(await singletonNote(db, projectId, "pageindex"), TreeSchema.nullable(), null);
 }

@@ -648,3 +648,55 @@ test("a pinned width asks for its own window; a brush keeps the one it named", (
     askedWindowMs: 86_400_000,
   });
 });
+
+/**
+ * A fourfold step is the definition of the gap, so the fold has to happen *at*
+ * four and not one hair past it. And two stages with the same p95 arrive in
+ * whichever order the query returned them: without the total-time tie-break the
+ * table reshuffles between reads of the same data, which reads as the fleet
+ * changing when nothing did.
+ */
+test("the gap is fourfold inclusive, and equal p95s are ordered by total time", () => {
+  const exactly = splitStages([
+    stage({ name: "a", p95: 400 }),
+    stage({ name: "b", p95: 100 }),
+    stage({ name: "c", p95: 25 }),
+  ]);
+  expect(exactly.slow.map((s) => s.name)).toEqual(["a"]);
+  expect(exactly.ceiling).toBe(100);
+
+  const tied = splitStages([
+    stage({ name: "cheap", p95: 100, totalMs: 50 }),
+    stage({ name: "dear", p95: 100, totalMs: 900 }),
+  ]);
+  expect(tied.slow.map((s) => s.name)).toEqual(["dear", "cheap"]);
+});
+
+/**
+ * Two stages, the second of which never took a measurable millisecond. That is
+ * the clearest gap there is, and it is also a division by zero — the sentence
+ * above the table read 「是第二名的 Infinity 倍」. The existing case has three
+ * stages, which folds the zeros away before this branch is ever reached.
+ */
+test("a two-stage list whose runner-up is zero never quotes an infinite ratio", () => {
+  const answer = verdict(
+    splitStages([stage({ name: "turn.provider", p95: 500 }), stage({ name: "turn.prepare", p95: 0 })]),
+  );
+  expect(answer?.kind).toBe("slow");
+  expect(answer && "ratio" in answer && !Number.isFinite(answer.ratio)).toBe(false);
+});
+
+/**
+ * A window holding more buckets than the chart will draw. The clamp takes the
+ * recent end, because a fleet started this morning has its rows there — taking
+ * the first 1,500 drew the oldest stretch, which on a quiet window is a blank
+ * chart with the picker looking dead.
+ */
+test("a window past the point ceiling keeps its recent end, not its beginning", () => {
+  const m = 60_000;
+  const now = 1_000 * 24 * 60 * m;
+  const filled = fillBuckets([{ at: now - 3 * m, count: 1, p50: 10, p95: 20 }], { from: now - 2_000 * m, to: now }, m);
+  expect(filled).toHaveLength(1_501);
+  expect(filled.at(-1)!.at).toBe(Math.floor(now / m) * m);
+  expect(filled.filter((p) => p.p50 !== null)).toHaveLength(1);
+});

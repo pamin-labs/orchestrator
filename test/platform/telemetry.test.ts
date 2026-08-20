@@ -9,8 +9,10 @@ import {
   SimpleSpanProcessor,
   type ReadableSpan,
 } from "@opentelemetry/sdk-trace-node";
+import { sql } from "drizzle-orm";
 import { makeApp } from "../../src/composition/api.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import { job } from "../../src/platform/persistence/schema.ts";
 import { MAX_REQUEST_SERIES, metricViews, prometheus } from "../../src/platform/observability/metrics.ts";
 import { installTracerProvider, startTrace, traceparent } from "../../src/platform/observability/traces.ts";
 import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
@@ -49,8 +51,8 @@ const INCOMING_TRACE = "4bf92f3577b34da6a3ce929d0e0e4736";
 const INCOMING_SPAN = "00f067aa0ba902b7";
 
 test("an incoming traceparent continues that trace and the response names the new span", async () => {
-  const ctx = testContext();
-  try {
+  const ctx = await testContext();
+  {
     const response = await makeApp(ctx)(
       new Request("http://x/healthz", { headers: { traceparent: `00-${INCOMING_TRACE}-${INCOMING_SPAN}-01` } }),
     );
@@ -60,28 +62,24 @@ test("an incoming traceparent continues that trace and the response names the ne
     expect(span.parentSpanContext?.spanId).toBe(INCOMING_SPAN);
     expect(response.headers.get("traceparent")).toBe(`00-${INCOMING_TRACE}-${span.spanContext().spanId}-01`);
     expect(span.spanContext().spanId).not.toBe(INCOMING_SPAN);
-  } finally {
-    ctx.db.close();
   }
 });
 
 test("a malformed traceparent starts a fresh trace rather than adopting a broken parent", async () => {
-  const ctx = testContext();
-  try {
+  const ctx = await testContext();
+  {
     const response = await makeApp(ctx)(new Request("http://x/healthz", { headers: { traceparent: "garbage" } }));
     expect(response.headers.get("traceparent")).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
     expect(finished("GET /healthz").parentSpanContext).toBeUndefined();
-  } finally {
-    ctx.db.close();
   }
 });
 
 test("a job span joins the trace recorded on its job row", async () => {
-  const db = openMemory();
-  try {
+  const db = await openMemory();
+  {
     const scheduler = new Scheduler(db, async () => {});
-    scheduler.enqueue("watchdog", { traceId: INCOMING_TRACE, parentSpanId: INCOMING_SPAN });
-    scheduler.tick();
+    await scheduler.enqueue("watchdog", { traceId: INCOMING_TRACE, parentSpanId: INCOMING_SPAN });
+    void scheduler.tick();
     await scheduler.drain();
 
     const span = finished("job watchdog");
@@ -89,52 +87,50 @@ test("a job span joins the trace recorded on its job row", async () => {
     expect(span.parentSpanContext?.spanId).toBe(INCOMING_SPAN);
     expect(span.status.code).toBe(SpanStatusCode.OK);
     expect(span.attributes["job.status"]).toBe("done");
-  } finally {
-    db.close();
   }
 });
 
 test("a failed job records an error span", async () => {
-  const db = openMemory();
-  try {
+  const db = await openMemory();
+  {
     const scheduler = new Scheduler(db, async () => {
       throw new Error("handler exploded");
     });
-    scheduler.enqueue("watchdog", {});
-    scheduler.tick();
+    await scheduler.enqueue("watchdog", {});
+    void scheduler.tick();
     await scheduler.drain();
 
     const span = finished("job watchdog");
     expect(span.status.code).toBe(SpanStatusCode.ERROR);
     expect(span.attributes["job.status"]).toBe("failed");
-  } finally {
-    db.close();
   }
 });
 
 test("a 500 response records an error span carrying the route, not the path", async () => {
-  const ctx = testContext();
-  try {
-    ctx.db.run("DROP TABLE grp");
-    const response = await makeApp(ctx)(new Request("http://x/api/v1/state"));
-    expect(response.status).toBe(500);
+  const ctx = await testContext();
+  {
+    // Renamed and restored, not dropped: the file's database is emptied by name
+    // between tests, and a dropped table would take every later one with it.
+    await ctx.db.execute(sql`ALTER TABLE grp RENAME TO grp_gone`);
+    try {
+      const response = await makeApp(ctx)(new Request("http://x/api/v1/state"));
+      expect(response.status).toBe(500);
 
-    const span = finished("GET /api/v1/state");
-    expect(span.status.code).toBe(SpanStatusCode.ERROR);
-    expect(span.attributes["http.response.status_code"]).toBe(500);
-    expect(span.attributes["http.route"]).toBe("/api/v1/state");
-  } finally {
-    ctx.db.close();
+      const span = finished("GET /api/v1/state");
+      expect(span.status.code).toBe(SpanStatusCode.ERROR);
+      expect(span.attributes["http.response.status_code"]).toBe(500);
+      expect(span.attributes["http.route"]).toBe("/api/v1/state");
+    } finally {
+      await ctx.db.execute(sql`ALTER TABLE grp_gone RENAME TO grp`);
+    }
   }
 });
 
 test("a 2xx response records an ok span", async () => {
-  const ctx = testContext();
-  try {
+  const ctx = await testContext();
+  {
     await makeApp(ctx)(new Request("http://x/healthz"));
     expect(finished("GET /healthz").status.code).toBe(SpanStatusCode.OK);
-  } finally {
-    ctx.db.close();
   }
 });
 
@@ -172,10 +168,10 @@ test("the configured ceiling collapses excess request series instead of growing"
 const dropped = (text: string): number => Number(/^orchestrator_telemetry_dropped_total (\d+)$/m.exec(text)?.[1] ?? -1);
 
 test("a scrape reports job state, retries and telemetry loss under the orchestrator names", async () => {
-  const ctx = testContext();
-  try {
+  const ctx = await testContext();
+  {
     const scheduler = new Scheduler(ctx.db, async () => {});
-    scheduler.enqueue("watchdog", {});
+    await scheduler.enqueue("watchdog", {});
     const text = await prometheus(ctx.db);
 
     expect(text).toContain("orchestrator_http_requests_total");
@@ -192,22 +188,18 @@ test("a scrape reports job state, retries and telemetry loss under the orchestra
     // of every series a dashboard already queries.
     expect(text).not.toContain("otel_scope_name");
     expect(text).not.toContain("target_info");
-  } finally {
-    ctx.db.close();
   }
 });
 
 test("a drained queue reports zero rather than keeping the depth it last had", async () => {
-  const ctx = testContext();
-  try {
+  const ctx = await testContext();
+  {
     const scheduler = new Scheduler(ctx.db, async () => {});
-    scheduler.enqueue("watchdog", {});
+    await scheduler.enqueue("watchdog", {});
     expect(await prometheus(ctx.db)).toContain('orchestrator_jobs{state="pending"} 1');
 
-    ctx.db.run("DELETE FROM job");
+    await ctx.db.delete(job);
     expect(await prometheus(ctx.db)).toContain('orchestrator_jobs{state="pending"} 0');
-  } finally {
-    ctx.db.close();
   }
 });
 

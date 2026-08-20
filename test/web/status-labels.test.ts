@@ -21,7 +21,7 @@ const group = (status: Group["status"], approvedAt: number | null = null): Group
   name: "g",
   branch: null,
   status,
-  owns_json: "[]",
+  owns_json: [],
   budget_tokens: null,
   spent_tokens: 0,
   pr_number: null,

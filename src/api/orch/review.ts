@@ -1,6 +1,7 @@
+import { and, asc, count, eq, gt, ne, sql } from "drizzle-orm";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { acceptSlice } from "../../mech/flow/review.ts";
 import { criteriaIn, validateSelfReview } from "../../mech/util/validate.ts";
 import { sliceDiffBase } from "../../mech/git/gitops.ts";
@@ -14,6 +15,7 @@ import { mayAct, resolveGroup } from "./access.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { bossFact } from "../panel/attach.ts";
 import { GateName, gatesFor } from "../../mech/gate.ts";
+import { event, grp, slice as slices } from "../../platform/persistence/schema.ts";
 import { hold } from "../../mech/flow/intercept.ts";
 
 /**
@@ -37,25 +39,25 @@ const Verdict = z.enum(["pass", "fail"]);
 export const AuditBody = z.object({ group_id: GroupRef, verdict: Verdict, note: z.string().max(8000).optional() });
 
 export const postAudit = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== "auditor") return bad(`${a.role} does not file audit verdicts`);
-  const gid = resolveGroup(ctx, b.group_id);
+  if (a.role !== roleFor(ctx, "audit_branch")) return bad(`${a.role} does not file audit verdicts`);
+  const gid = await resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
   // The Auditor is deliberately not a member of the group it reviews, so it is
   // the one role whose group check is inverted. It is still bounded by its
   // project — a pass here opens a PR, which is a host `git push`, and that is not
   // an action to leave addressable by any group id an agent cares to name.
   if (a.grp_id === gid) return bad("an auditor may not audit its own group");
-  if (!mayAct(ctx.db, a, gid)) return message("not your project", 403);
+  if (!(await mayAct(ctx.db, a, gid))) return message("not your project", 403);
 
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: gid,
-    author: "auditor",
+    author: roleFor(ctx, "audit_branch"),
     kind: "gate_result",
     intent: "decision",
     body: `audit ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
     meta: { verdict: b.verdict },
   });
-  ctx.auditVerdict?.(gid, b.verdict === "pass", b.note ?? "");
+  await ctx.auditVerdict?.(gid, b.verdict === "pass", b.note ?? "");
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof AuditBody>>;
 
@@ -73,13 +75,13 @@ export const ReviewBody = z.object({
 });
 
 export const postReview = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== "qa" && a.role !== "auditor") return bad(`${a.role} does not file review verdicts`);
+  if (a.role !== roleFor(ctx, "review_slice") && a.role !== roleFor(ctx, "audit_branch"))
+    return bad(`${a.role} does not file review verdicts`);
 
-  const slice = ctx.db
-    .query<{ id: number; grp_id: number; seq: number; accept_spec: string }, [number]>(
-      "SELECT id, grp_id, seq, accept_spec FROM slice WHERE id = ?",
-    )
-    .get(b.slice_id);
+  const [slice] = await ctx.db
+    .select({ id: slices.id, grp_id: slices.grp_id, seq: slices.seq, accept_spec: slices.accept_spec })
+    .from(slices)
+    .where(eq(slices.id, b.slice_id));
   if (!slice) return bad(`no slice ${b.slice_id}`);
   if (slice.grp_id !== a.grp_id) return bad("that slice belongs to another group");
 
@@ -97,7 +99,7 @@ export const postReview = (async (ctx, _req, a, _p, b) => {
     );
   }
 
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: slice.grp_id,
     author: a.role,
     kind: "gate_result",
@@ -105,7 +107,7 @@ export const postReview = (async (ctx, _req, a, _p, b) => {
     body: `S${slice.seq} ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
     meta: { slice_id: slice.id, verdict: b.verdict },
   });
-  ctx.reviewVerdict?.(slice.id, b.verdict === "pass", b.note ?? "");
+  await ctx.reviewVerdict?.(slice.id, b.verdict === "pass", b.note ?? "");
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof ReviewBody>>;
 
@@ -156,8 +158,13 @@ async function sliceDiff(
  * configured gate that never ran is left out rather than offered as a link to
  * nothing.
  */
-function gateLogs(ctx: Ctx, projectId: number, sliceId: number): Array<{ name: string; path: string; size: number }> {
-  return gatesFor(ctx.db, projectId).flatMap((name) => {
+async function gateLogs(
+  ctx: Ctx,
+  projectId: number,
+  sliceId: number,
+): Promise<Array<{ name: string; path: string; size: number }>> {
+  const configured = await gatesFor(ctx.db, projectId);
+  return configured.flatMap((name) => {
     const path = join(ctx.config.dataDir, "gates", `${sliceId}-${name}.log`);
     return existsSync(path) ? [{ name, path, size: Bun.file(path).size }] : [];
   });
@@ -173,34 +180,40 @@ function gateLogs(ctx: Ctx, projectId: number, sliceId: number): Array<{ name: s
  */
 export const getEvidence = (async (ctx, _req, params) => {
   const id = params.id;
-  const sl = ctx.db
-    .query<
-      { grp_id: number; seq: number; title: string; accept_spec: string; base_sha: string | null; retries: number },
-      [number]
-    >("SELECT grp_id, seq, title, accept_spec, base_sha, retries FROM slice WHERE id = ?")
-    .get(id);
+  const [sl] = await ctx.db
+    .select({
+      grp_id: slices.grp_id,
+      seq: slices.seq,
+      title: slices.title,
+      accept_spec: slices.accept_spec,
+      base_sha: slices.base_sha,
+      retries: slices.retries,
+    })
+    .from(slices)
+    .where(eq(slices.id, id));
   if (!sl) return message("no such slice", 404);
 
   // One lookup for both halves: the diff base and the gate list are the same
   // project's answers, and asking twice is two places for them to disagree.
-  const projectId =
-    ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(sl.grp_id)
-      ?.project_id ?? 0;
+  const [owner] = await ctx.db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, sl.grp_id));
+  const projectId = owner?.project_id ?? 0;
   // Both reviewers file through the same route, so this is QA's verdict on a
   // slice and the Auditor's on a branch, in the order they were given.
-  const verdicts = ctx.db
-    .query<{ author: string; body: string; at: number }, [number]>(
-      `SELECT author, body, at FROM event
-       WHERE kind = 'gate_result' AND json_extract(meta_json, '$.slice_id') = ?
-       ORDER BY seq`,
-    )
-    .all(id);
+  const verdicts = await ctx.db
+    .select({ author: event.author, body: event.body, at: event.at })
+    .from(event)
+    // Raw on the right: jsonb containment has no Drizzle operator, and the slice
+    // id lives in `meta_json`. Built by Postgres rather than encoded here — the
+    // driver encodes a parameter bound against jsonb, so a pre-encoded document
+    // arrived as a jsonb *string* and `@>` matched nothing, silently.
+    .where(and(eq(event.kind, "gate_result"), sql`${event.meta_json} @> jsonb_build_object('slice_id', ${id}::int)`))
+    .orderBy(asc(event.seq));
 
   return json({
     ...sl,
     ...(await sliceDiff(ctx, sl.grp_id, projectId, sl.base_sha)),
     verdicts,
-    gates: gateLogs(ctx, projectId, id),
+    gates: await gateLogs(ctx, projectId, id),
   });
 }) satisfies Handler<undefined, z.infer<typeof IdParams>>;
 
@@ -244,19 +257,18 @@ export const postSliceDecision = (async (ctx, _req, params, raw) => {
   const b = { feedback: raw.feedback ? withAttachments(raw.feedback, raw.attachments) : raw.feedback };
   const id = params.id;
   const accept = params.decision === "accept";
-  const sl = ctx.db
-    .query<{ grp_id: number; seq: number; title: string }, [number]>(
-      "SELECT grp_id, seq, title FROM slice WHERE id = ?",
-    )
-    .get(id);
+  const [sl] = await ctx.db
+    .select({ grp_id: slices.grp_id, seq: slices.seq, title: slices.title })
+    .from(slices)
+    .where(eq(slices.id, id));
   if (!sl) return message("no such slice", 404);
 
   // One acceptance path, whoever accepted: see acceptSlice.
-  if (accept) acceptSlice(ctx, id, "boss");
+  if (accept) await acceptSlice(ctx, id, "boss");
 
   if (!accept) {
-    ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [id]);
-    ctx.bus.emit({
+    await ctx.db.update(slices).set({ status: "rejected" }).where(eq(slices.id, id));
+    await ctx.bus.emit({
       grpId: sl.grp_id,
       author: "boss",
       kind: "boss_say",
@@ -269,18 +281,20 @@ export const postSliceDecision = (async (ctx, _req, params, raw) => {
     // the blackboard that tells later work nothing, and three of them sediment into
     // a project rule about nothing. `lessons.ts` used to filter the placeholder's
     // words back out, one table further down.
-    if (b.feedback) bossFact(ctx, sl.grp_id, b.feedback);
+    if (b.feedback) await bossFact(ctx, sl.grp_id, b.feedback);
     // With autoAdvance on, later slices were built on the one just rejected. Fixing
     // it underneath work that assumed it is how two problems become four, so the
     // group stops and says so instead.
-    const ahead = ctx.db
-      .query<{ c: number }, [number, number]>(
-        "SELECT count(*) AS c FROM slice WHERE grp_id = ? AND seq > (SELECT seq FROM slice WHERE id = ?) AND status != 'pending'",
-      )
-      .get(sl.grp_id, id)!.c;
+    // `sl.seq` and not the subquery that was here: it read the rejected slice's
+    // own `seq`, which this handler already selected.
+    const [started] = await ctx.db
+      .select({ c: count() })
+      .from(slices)
+      .where(and(eq(slices.grp_id, sl.grp_id), gt(slices.seq, sl.seq), ne(slices.status, "pending")));
+    const ahead = started?.c ?? 0;
     if (ctx.config.autoAdvance && ahead > 0) {
-      hold(ctx.db, sl.grp_id, { reason: "escalation", from: "RUNNING" });
-      ctx.bus.emit({
+      await hold(ctx.db, sl.grp_id, { reason: "escalation", from: "RUNNING" });
+      await ctx.bus.emit({
         grpId: sl.grp_id,
         author: "orchestrator",
         kind: "escalation",
@@ -291,8 +305,8 @@ export const postSliceDecision = (async (ctx, _req, params, raw) => {
           `全组先停下：要么让它先修这一片，要么把后面几片一起退回。`,
       });
     }
-    ctx.sched.enqueue("agent_turn", { grp_id: sl.grp_id, slice_id: id, payload: { rejection: b.feedback } });
+    await ctx.sched.enqueue("agent_turn", { grp_id: sl.grp_id, slice_id: id, payload: { rejection: b.feedback } });
   }
-  ctx.sched.tick();
+  await ctx.sched.tick();
   return message("ok");
 }) satisfies Handler<z.infer<typeof SliceDecisionBody>, z.infer<typeof SliceDecision>>;

@@ -4,7 +4,10 @@ import type { Invalid, Result } from "./util/validate.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { activeTracer } from "../platform/observability/traces.ts";
 import type { DB } from "../platform/persistence/database.ts";
-import { jsonOr } from "../contracts/json.ts";
+import { valueOr } from "../contracts/json.ts";
+import { eq } from "drizzle-orm";
+import { resource } from "../platform/persistence/schema.ts";
+import { WORK } from "./sandbox/sandbox.ts";
 
 /**
  * A lease runs in the group's own sandbox, so this is no longer the host's only
@@ -77,30 +80,17 @@ export interface ResolvedCommand {
  * refuses every argument — the safe end of the failure, and the one the two
  * majority copies already picked.
  */
-export function loadResource(db: DB, name: string): ResourceDef | null {
-  const r = db
-    .query<
-      {
-        name: string;
-        template: string;
-        concurrency: number;
-        arg_schema_json: string;
-        error_regex: string | null;
-        cwd: string | null;
-        tags_json: string | null;
-      },
-      [string]
-    >("SELECT * FROM resource WHERE name = ?")
-    .get(name);
+export async function loadResource(db: DB, name: string): Promise<ResourceDef | null> {
+  const [r] = await db.select().from(resource).where(eq(resource.name, name));
   if (!r) return null;
   return {
     name: r.name,
     template: r.template,
     concurrency: r.concurrency,
-    argSchema: jsonOr(r.arg_schema_json, ResourceArgsSchema, {}),
+    argSchema: valueOr(r.arg_schema_json, ResourceArgsSchema, {}),
     ...(r.error_regex === null ? {} : { errorRegex: r.error_regex }),
     ...(r.cwd === null ? {} : { cwd: r.cwd }),
-    tags: jsonOr(r.tags_json, z.array(z.string()), []),
+    tags: valueOr(r.tags_json, z.array(z.string()), []),
   };
 }
 
@@ -332,9 +322,6 @@ export interface RunOutcome {
 /** 124 is what `timeout(1)` returns, so the number already means this. */
 export const LEASE_TIMEOUT_CODE = 124;
 
-/** Where a group's checkout lives. Mirrors mech/sandbox.ts; importing it here would be a cycle. */
-const WORK_DEFAULT = "/work";
-
 /**
  * Runs one resolved command. The sandbox supplies this; nothing runs on the host.
  *
@@ -387,7 +374,7 @@ async function runResourceInner(
   const resolved = resolveLease(def, args);
   if (!resolved.ok) return resolved;
 
-  const cwd = opts.cwd ?? resolved.cwd ?? WORK_DEFAULT;
+  const cwd = opts.cwd ?? resolved.cwd ?? WORK;
   const limit = opts.timeoutMs ?? 0;
   const { code, out: output } = await opts.exec(resolved.argv, { cwd, ...(limit ? { timeoutMs: limit } : {}) });
   if (opts.logPath) await Bun.write(opts.logPath, output);

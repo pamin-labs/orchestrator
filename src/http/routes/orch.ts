@@ -27,7 +27,7 @@ import {
   postSplit,
   SplitBody,
 } from "../../api/orch/planning.ts";
-import { postPr, PrBody } from "../../api/orch/pr.ts";
+import { postPr, postPrResolve, PrBody, PrResolveBody } from "../../api/orch/pr.ts";
 import { JournalBody, postJournal, postStatus, StatusBody } from "../../api/orch/report.ts";
 import { AuditBody, postAudit, postReview, ReviewBody } from "../../api/orch/review.ts";
 import { postSetup, SetupBody } from "../../api/panel/project.ts";
@@ -41,7 +41,7 @@ import { idempotency, idempotencyCaller, idempotencyStatus, JSON_BODY_LIMIT } fr
 export function orchRoutes(ctx: Ctx) {
   const app = new Hono<{ Variables: { agent: Caller } }>();
   app.use("*", async (c, next) => {
-    const agent = agentOf(ctx.db, c.req.raw);
+    const agent = await agentOf(ctx.db, c.req.raw);
     if (!agent) return failure("unknown or missing agent token", 401);
     c.set("agent", agent);
     return next();
@@ -91,6 +91,9 @@ export function orchRoutes(ctx: Ctx) {
       postAudit(ctx, c.req.raw, c.get("agent"), c.req.param(), c.req.valid("json")),
     )
     .post("/pr", ...jsonBody(PrBody), (c) => postPr(ctx, c.req.raw, c.get("agent"), c.req.param(), c.req.valid("json")))
+    .post("/pr/resolve", ...jsonBody(PrResolveBody), (c) =>
+      postPrResolve(ctx, c.req.raw, c.get("agent"), c.req.param(), c.req.valid("json")),
+    )
     .post("/answer", ...jsonBody(AnswerBody), (c) =>
       postAnswer2(ctx, c.req.raw, c.get("agent"), c.req.param(), c.req.valid("json")),
     )

@@ -7,6 +7,7 @@
  */
 
 import { scrub } from "../../platform/observability/redaction.ts";
+import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../../platform/config/load.ts";
 import type { Bus } from "../../platform/persistence/event-bus.ts";
 
 export type Tier = "immediate" | "batched";
@@ -59,14 +60,21 @@ export function tierFor(rule: string, severity?: string): Tier {
   return IMMEDIATE_RULES.has(rule) ? "immediate" : "batched";
 }
 
-/** 5 min, then 15, then hourly. A repeat is a reminder, not a new problem. */
-const BACKOFF_MS = [5 * 60_000, 15 * 60_000, 60 * 60_000];
+/**
+ * Defaults read off the config rather than restated: `intervals.notifyBackoffMs`
+ * is 5 min, then 15, then hourly, because a repeat is a reminder and not a new
+ * problem. Production passes the live values from `Config`; these apply where
+ * there is no one to ask, which is the tests.
+ */
+const BACKOFF_MS = DEFAULTS.intervals.notifyBackoffMs;
 
 export interface NotifierOptions {
   /** Flush the batch when this many pile up. */
   batchSize?: number;
-  /** …or when the oldest has waited this long. */
+  /** …or when the oldest has waited this long. `intervals.notifyBatchMs`. */
   batchMs?: number;
+  /** The reminder ladder, longest step last. `intervals.notifyBackoffMs`. */
+  backoffMs?: number[];
   /** Delivery. Injected everywhere: the server passes `busDeliver`, tests pass a spy. */
   deliver?: (title: string, body: string, url?: string) => void | Promise<void>;
   now?: () => number;
@@ -83,6 +91,7 @@ export class Notifier {
   private batchOpenedAt = 0;
   private readonly batchSize: number;
   private readonly batchMs: number;
+  private readonly backoffMs: number[];
   private readonly now: () => number;
   private readonly deliver: NonNullable<NotifierOptions["deliver"]>;
 
@@ -91,7 +100,10 @@ export class Notifier {
   constructor(opts: NotifierOptions = {}) {
     this.opts = opts;
     this.batchSize = opts.batchSize ?? 5;
-    this.batchMs = opts.batchMs ?? 30 * 60_000;
+    this.batchMs = opts.batchMs ?? DEFAULTS.intervals.notifyBatchMs;
+    // Never empty: an empty ladder makes the wait below `undefined` and every
+    // reminder immediate, which is the noise this class exists to stop.
+    this.backoffMs = opts.backoffMs?.length ? opts.backoffMs : BACKOFF_MS;
     this.now = opts.now ?? (() => Date.now());
     // No default. There is exactly one delivery path and the server owns it, so
     // a Notifier built without one is a test, and a test that forgot its spy
@@ -153,7 +165,7 @@ export class Notifier {
       this.lastSent.set(key, { at: t, strikes: 1 });
       return true;
     }
-    const wait = BACKOFF_MS[Math.min(prev.strikes - 1, BACKOFF_MS.length - 1)]!;
+    const wait = this.backoffMs[Math.min(prev.strikes - 1, this.backoffMs.length - 1)]!;
     if (t - prev.at < wait) return false;
     this.lastSent.set(key, { at: t, strikes: prev.strikes + 1 });
     return true;
@@ -182,12 +194,12 @@ export class Notifier {
  * Web Push would cover the closed browser too. Not here on purpose: a service
  * worker, VAPID keys, a subscription table and a round trip through FCM.
  */
-export function busDeliver(bus: Bus, webhook?: string) {
+export function busDeliver(bus: Bus, webhook?: string, timeoutMs: number = DEFAULTS.timeouts.webhookMs) {
   return async (title: string, body: string, url?: string): Promise<void> => {
     // A frame of its own rather than an ordinary event: the page raises a system
     // notification for these and nothing else, and "everything the boss might
     // want" is what turns a notification into noise.
-    bus.emit({ author: "orchestrator", kind: "notify", body, meta: { url, title } });
+    await bus.emit({ author: "orchestrator", kind: "notify", body, meta: { url, title } });
     if (!webhook) return;
     try {
       // Scrubbed, because this is the one thing here that leaves the machine.
@@ -198,7 +210,7 @@ export function busDeliver(bus: Bus, webhook?: string) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ title, message: scrub(body.slice(0, 1000)), url }),
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {
       // A failed notification must never take down the run that produced it.

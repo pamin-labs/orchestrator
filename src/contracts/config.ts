@@ -125,8 +125,18 @@ export const ConfigSchema = z.object({
   maxGroups: count,
   /** One number for the whole Runner pool, or one pool per resource tag. */
   leaseSlots: LeaseSlots,
-  /** Boss routes have no remote auth. The process may only listen on loopback. */
-  host: z.enum(["127.0.0.1", "localhost", "::1"]),
+  /**
+   * Loopback only, and the refusal says why.
+   *
+   * Boss routes have no login: whoever reaches the port is the boss. A bare enum
+   * error names three strings and leaves the reader to guess it is a policy —
+   * `config/default.yaml` told container users to set `0.0.0.0` for two releases
+   * while this refused it, and what they got was a startup failure with no reason
+   * in it. Publish a port with `-p 127.0.0.1:47821:47821` instead.
+   */
+  host: z.enum(["127.0.0.1", "localhost", "::1"], {
+    error: "host must be a loopback address: this server has no login, so anything reachable is the boss",
+  }),
   port: z.number().int().min(1).max(65535),
   /** provider -> difficulty -> model. One knob per family; adding one is a yaml block. */
   difficultyModel: z.record(z.string(), z.record(z.string(), z.string())),
@@ -140,6 +150,17 @@ export const ConfigSchema = z.object({
   /** The same complaint this many times becomes a project rule. */
   feedbackSedimentThreshold: count,
   ctxBudgetChars: count,
+  /**
+   * How far and how wide a model may walk the PageIndex tree.
+   *
+   * `depth` is serial model calls per `orch ctx query` — two per question at depth
+   * 3, each with a 60s timeout — so it is the single knob on the most frequent
+   * model spend here; `width` caps the ids the model may name at a level.
+   * `enabled` is the A/B switch, on by default: off skips the walk before the tree
+   * is loaded, so the query costs no model call and falls through to the lexical
+   * half. Its own knob rather than `depth: 0`, which still walks, degenerately.
+   */
+  pageindex: z.object({ enabled: z.boolean(), depth: count, width: count }).strict(),
   /**
    * Forward every notification to a URL, as JSON. Empty means nobody but the panel.
    *
@@ -166,6 +187,111 @@ export const ConfigSchema = z.object({
    * So the default is generous and the install streams.
    */
   installTimeoutMs: count,
+  /**
+   * How long one wait on something outside this process may take.
+   *
+   * Grouped by what is on the other end rather than by call site: these replaced
+   * thirteen literals in seven files, and a config with thirteen timeout keys is
+   * worse than the literals were, because nobody can hold it in their head. Sites
+   * waiting on the same kind of thing share a key; where two kept different
+   * numbers, the reason for the difference is on the key.
+   */
+  timeouts: z
+    .object({
+      /** One GitHub REST call, where the answer is the work somebody asked for. */
+      githubApiMs: count,
+      /**
+       * "Do you still accept this credential": GitHub's `/user`, a provider's
+       * `/v1/models`. Shorter than `githubApiMs` because both report "not
+       * verified" rather than failing, and nothing is blocked on the answer.
+       */
+      credentialCheckMs: count,
+      /** The boss's notification webhook: posted, and the answer discarded. */
+      webhookMs: count,
+      /**
+       * Is the sandbox server up, and does it take our key.
+       *
+       * Separate from `networkPingMs` because it is usually loopback, and because
+       * its answer only fills in a report while that one gates the whole fleet.
+       * That said, 3s against 2s is not a number anybody chose.
+       */
+      sandboxPingMs: count,
+      /**
+       * Is there a network at all: HEAD to every provider origin, on the watchdog
+       * tick. Short on purpose — it runs inside the tick, and a slow answer must
+       * not hold one open.
+       */
+      networkPingMs: count,
+      /**
+       * The codex refresh-token exchange, run inside the utility container.
+       *
+       * Longer than `usageReadMs` because it is a process start plus an OAuth
+       * round trip, where that one wraps a curl already carrying its own `-m`.
+       */
+      tokenRefreshMs: count,
+      /** The subscription-usage read, curl'd from the utility container. */
+      usageReadMs: count,
+      /**
+       * One operation that moves a repository or an image across the network.
+       *
+       * A clone, a fetch, a submodule init, and the sandbox SDK's own per-request
+       * budget — whose worst case is an image pull, which is the same shape of
+       * wait as a clone and was already the same number. Minutes, not seconds.
+       */
+      transferMs: count,
+    })
+    .strict(),
+  /**
+   * How long an answer about the world outside stays good before we ask again.
+   *
+   * The other half of `timeouts`: that one bounds a single wait, this one bounds
+   * how often one is started. Each of these was a literal beside the loop that
+   * read it, so the cadence of every background poll in the product was a source
+   * edit away from being changed and nothing else.
+   */
+  intervals: z
+    .object({
+      /**
+       * "We asked recently." The reachability probe's cadence while online, and
+       * how long a credential verdict stays cached for the settings page — one
+       * sentence, and both were already five minutes.
+       */
+      recheckMs: count,
+      /**
+       * How often the subscription-usage endpoint is read.
+       *
+       * It is undocumented and answers a faster poller with 429 for hours, and
+       * the boss's own `/status` spends from the same budget. Ten minutes inside
+       * a five-hour window is a 3% error at worst.
+       */
+      usagePollMs: count,
+      /** ...and how long it is left alone once it has answered 429. */
+      usageBackoffMs: count,
+      /** How long a batched notification waits for company before it is sent. */
+      notifyBatchMs: count,
+      /**
+       * The reminder ladder for one unanswered notification: the first repeat
+       * waits the first step, and it holds at the last one forever. At least one
+       * step, because an empty ladder means "repeat every tick".
+       */
+      notifyBackoffMs: z.array(count).min(1),
+    })
+    .strict(),
+  /**
+   * How many nodes one PR poll asks GitHub for.
+   *
+   * Node counts are what a GraphQL query costs and what a busy pull request
+   * overflows: a hundred line-level threads read through a window of twenty means
+   * the eighty oldest are never seen. That ceiling is a property of the repository
+   * being watched, not of the watcher, so it is a setting rather than a constant.
+   */
+  prPoll: z.object({
+    prs: count,
+    messages: count,
+    checks: count,
+    threads: count,
+    threadComments: count,
+  }),
   /** Start the next slice when QA passes, without waiting for the boss to accept. */
   autoAdvance: z.boolean(),
   /** Difficulty tags accepted automatically once all three gates pass. */
@@ -187,6 +313,74 @@ export const ConfigSchema = z.object({
    * off the expensive subscription.
    */
   indexModel: ModelRef,
+  /**
+   * How long one 系统耗时 report is reused before it is computed again.
+   *
+   * The report is five window-function queries over the whole span table, run
+   * synchronously — so while it computes, every other request and the SSE
+   * heartbeat wait behind it. The data is written by a heartbeat and is never
+   * fresher than that, so serving the same answer twice inside one tick costs
+   * nothing and stops a reloading tab from blocking the fleet.
+   */
+  telemetryCacheMs: count,
+  /**
+   * Connections the server keeps open to Postgres.
+   *
+   * Bun's own default is 10 and nobody chose it. The panel's snapshot issues
+   * nineteen statements at once, so a pool under that serves them in waves —
+   * measured as a p95 several times the median while the median barely moves.
+   * Above the statement count it buys nothing; a managed Postgres with a
+   * connection cap is the reason to lower it.
+   */
+  dbPoolSize: count,
+  /**
+   * What the watchdog calls stuck, and how often it is willing to repeat itself.
+   *
+   * The interval was settable and every threshold it enforces was not, so the one
+   * knob the panel offered changed how often the rules ran and nothing about what
+   * they decided. `idleTurns`/`sameFile` are repetition; the `*Ms` are how long a
+   * feed stays worth reading. `repoMapEveryMs` is how often the shared map is even
+   * *checked* — a container round trip costing 947ms of every 30s tick, over 2,766
+   * ticks, to answer "unchanged" about a map whose input is a push.
+   */
+  watchdog: z
+    .object({
+      idleTurns: count,
+      sameFile: count,
+      reemitMs: count,
+      nudgeAfterMs: count,
+      nudgeReemitMs: count,
+      pausedNotifyMs: count,
+      repoMapEveryMs: count,
+    })
+    .strict(),
+  /**
+   * The branch names to try when nothing else has answered.
+   *
+   * A project's own `base_branch` wins, then GitHub's `default_branch`; this is
+   * the last resort, for a repository whose remote cannot be reached. It was
+   * `["main", "master"]` in `gitops.ts` and `?? "main"` in three more places, so
+   * a fleet whose repositories all develop on `develop` had four literals to
+   * argue with and no way to say so once.
+   */
+  baseBranchFallbacks: z.array(z.string().min(1)).min(1),
+  /**
+   * How long a machine-generated event is kept.
+   *
+   * The conversation — `say`, `boss_say`, `note`, `escalation` — is never dropped:
+   * it is the record, and the unread cursor walks it. This bounds the rest, which
+   * is read inside a day (成本's chart asks for 24 hours) and then never again.
+   */
+  eventRetentionMs: count,
+  /**
+   * How many SSE frames may wait on one slow browser before frames are dropped.
+   *
+   * The chain feeding it is one `bus.live()` per token from up to four concurrent
+   * turns, so a tab that stops reading is the one case that grows without bound.
+   * Dropping is safe — the panel re-reads its state on the next event — and the
+   * loss is counted rather than silent.
+   */
+  streamBacklog: count,
   /** Unused by retrieval today; see `EmbeddingRef`. */
   embedding: EmbeddingRef,
   /**

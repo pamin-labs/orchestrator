@@ -1,5 +1,5 @@
 /**
- * Spans, in the same SQLite file as everything else they describe.
+ * Spans, in the same database as everything else they describe.
  *
  * A `SpanExporter`, **not** a `SpanProcessor`: `SpanProcessor.onEnd` runs inside
  * the operation being measured, so writing there makes tracing a tax on the thing
@@ -10,9 +10,10 @@
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { ExportResultCode, hrTimeToMilliseconds, type ExportResult } from "@opentelemetry/core";
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-node";
-import type { Statement } from "bun:sqlite";
-import { JsonObject, jsonOr } from "../../contracts/json.ts";
+import { JsonObject, valueOr } from "../../contracts/json.ts";
+import { and, asc, count, desc, eq, gte, isNull, lt, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { DB } from "../persistence/database.ts";
+import { grp, span } from "../persistence/schema.ts";
 import { recordDroppedSpans } from "./metrics.ts";
 
 /** One row of the `span` table, and the only shape that reaches the SQL. */
@@ -101,86 +102,57 @@ function toSpanRow(span: ReadableSpan): SpanRow {
   };
 }
 
+function values(row: SpanRow) {
+  return {
+    trace_id: row.traceId,
+    span_id: row.spanId,
+    parent_span_id: row.parentSpanId || null,
+    name: row.name,
+    kind: row.kind,
+    started_at: row.startedAt,
+    duration_ms: row.durationMs,
+    status: row.status,
+    status_message: row.statusMessage,
+    // Validated on the way in as well as on the way out: an OTel attribute value
+    // is whatever an instrumentation put there, and the column holds JSON.
+    attributes_json: valueOr(row.attributes, JsonObject, {}),
+    project_id: scopeId(row.attributes, "project.id"),
+    grp_id: scopeId(row.attributes, "grp.id"),
+    slice_id: scopeId(row.attributes, "slice.id"),
+  };
+}
+
 /**
- * `OR IGNORE` on the natural key, so ingest is idempotent by construction.
+ * A bind parameter ceiling, not a tuning knob: Postgres takes 65,535 per
+ * statement and each row spends thirteen. The receive route's batch is whatever
+ * a client sent, so it is the one that can reach it.
+ */
+const INSERT_CHUNK = 1_000;
+
+/**
+ * `ON CONFLICT DO NOTHING` on the natural key, so ingest is idempotent by
+ * construction.
  *
  * The same batch arriving twice writes the same rows, which is why the receive
  * route carries no `Idempotency-Key`: there is no second side effect to protect
- * against.
+ * against. One statement per chunk, and a statement is its own transaction.
  */
-const INSERT = `
-  INSERT OR IGNORE INTO span
-    (trace_id, span_id, parent_span_id, name, kind, started_at, duration_ms, status,
-     status_message, attributes_json, project_id, grp_id, slice_id)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-type InsertParams = [
-  string,
-  string,
-  string | null,
-  string,
-  string,
-  number,
-  number,
-  string,
-  string | null,
-  string,
-  number | null,
-  number | null,
-  number | null,
-];
-
-function params(row: SpanRow): InsertParams {
-  return [
-    row.traceId,
-    row.spanId,
-    row.parentSpanId || null,
-    row.name,
-    row.kind,
-    row.startedAt,
-    row.durationMs,
-    row.status,
-    row.statusMessage,
-    JSON.stringify(row.attributes),
-    scopeId(row.attributes, "project.id"),
-    scopeId(row.attributes, "grp.id"),
-    scopeId(row.attributes, "slice.id"),
-  ];
+async function insertAll(db: DB, rows: readonly SpanRow[]): Promise<void> {
+  for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
+    await db
+      .insert(span)
+      .values(rows.slice(i, i + INSERT_CHUNK).map(values))
+      .onConflictDoNothing();
+  }
 }
 
-/** One transaction per batch: a batch lands whole or not at all. */
-function insertAll(db: DB, insert: Statement<unknown, InsertParams>, rows: readonly SpanRow[]): void {
-  db.transaction(() => {
-    for (const row of rows) insert.run(...params(row));
-  })();
-}
-
-/**
- * The receive endpoint's way in, where one call is one HTTP request rather than
- * one span, so preparing per call costs nothing worth caching.
- */
-export function writeSpans(db: DB, rows: readonly SpanRow[]): void {
+/** The receive endpoint's way in, where one call is one HTTP request. */
+export async function writeSpans(db: DB, rows: readonly SpanRow[]): Promise<void> {
   if (rows.length === 0) return;
-  insertAll(db, db.prepare<unknown, InsertParams>(INSERT), rows);
+  await insertAll(db, rows);
 }
 
-interface SpanRecord {
-  trace_id: string;
-  span_id: string;
-  parent_span_id: string | null;
-  name: string;
-  kind: string;
-  started_at: number;
-  duration_ms: number;
-  status: string;
-  status_message: string | null;
-  attributes_json: string;
-  project_id: number | null;
-  grp_id: number | null;
-  slice_id: number | null;
-}
-
-function decode(row: SpanRecord): StoredSpan {
+function decode(row: typeof span.$inferSelect): StoredSpan {
   return {
     traceId: row.trace_id,
     spanId: row.span_id,
@@ -193,7 +165,7 @@ function decode(row: SpanRecord): StoredSpan {
     status: row.status === "ok" || row.status === "error" ? row.status : "unset",
     // Stored JSON is data on the way back in, so it is parsed against a schema
     // rather than asserted into shape — the same rule the write path follows.
-    attributes: jsonOr(row.attributes_json, JsonObject, {}),
+    attributes: valueOr(row.attributes_json, JsonObject, {}),
     projectId: row.project_id,
     grpId: row.grp_id,
     sliceId: row.slice_id,
@@ -206,11 +178,13 @@ function decode(row: SpanRecord): StoredSpan {
  * `(trace_id, span_id)` leads with the trace, so this is a range scan over one
  * contiguous run of rows rather than a table scan with a filter.
  */
-export function readTrace(db: DB, traceId: string): StoredSpan[] {
-  return db
-    .query<SpanRecord, [string]>("SELECT * FROM span WHERE trace_id = ? ORDER BY started_at, span_id")
-    .all(traceId)
-    .map(decode);
+export async function readTrace(db: DB, traceId: string): Promise<StoredSpan[]> {
+  const rows = await db
+    .select()
+    .from(span)
+    .where(eq(span.trace_id, traceId))
+    .orderBy(asc(span.started_at), asc(span.span_id));
+  return rows.map(decode);
 }
 
 /**
@@ -223,16 +197,16 @@ export function readTrace(db: DB, traceId: string): StoredSpan[] {
 export type ReadScope = { kind: "group"; id: number } | { kind: "project"; id: number } | { kind: "system" };
 
 /**
- * The scope predicate and its parameters, together, because they cannot be
- * correct apart.
+ * The scope predicate, built rather than spliced: every id below is a bind
+ * parameter because it reaches the statement as one.
  *
  * `group` leads with `grp_id`, the first column of `span_scope`, so it is an index
  * range scan. `project` has no index of its own and leans on the window bound
  * through `span_age` — a deliberate omission, see `Window` below.
  */
-function scopeSql(scope: ReadScope): { where: string; params: number[] } {
-  if (scope.kind === "system") return { where: "project_id IS NULL AND grp_id IS NULL", params: [] };
-  if (scope.kind === "group") return { where: "grp_id = ?", params: [scope.id] };
+function scopeWhere(scope: ReadScope): SQL {
+  if (scope.kind === "system") return and(isNull(span.project_id), isNull(span.grp_id))!;
+  if (scope.kind === "group") return eq(span.grp_id, scope.id);
   // A project's spans are the ones that say so **and** the ones belonging to one of
   // its groups, because most of them only say the latter: `turnScope` builds
   // `{ grpId, sliceId }` and no `projectId`, so `project_id` is NULL on every stage
@@ -240,26 +214,27 @@ function scopeSql(scope: ReadScope): { where: string; params: number[] } {
   // only labels spans written after it, while the rows already in the table stay
   // NULL forever. A span's project is not independent information, `grp.project_id`
   // already knows it. The writer may start setting the column too; this keeps working.
-  return {
-    where: "(project_id = ? OR grp_id IN (SELECT id FROM grp WHERE project_id = ?))",
-    params: [scope.id, scope.id],
-  };
+  return or(
+    eq(span.project_id, scope.id),
+    sql`${span.grp_id} IN (SELECT ${grp.id} FROM ${grp} WHERE ${grp.project_id} = ${scope.id})`,
+  )!;
 }
 
-/**
- * Nearest-rank percentile, in integer arithmetic.
- *
- * `ceil(n * p / 100)` written as `n - (n * (100 - p)) / 100` with SQLite's integer
- * division. Not floating point: `ceil()` is not reliably present, and
- * `CAST(n * 0.95 AS INTEGER)` truncates a value IEEE-754 may already have nudged
- * below the integer it should have been. n = 1 gives rank 1 for every percentile.
- */
-const rank = (p: number) => `n - (n * ${100 - p}) / 100`;
+/** The scope, inside the window: every read below is bounded by both. */
+const scoped = (scope: ReadScope, w: TimeWindow): SQL =>
+  and(gte(span.started_at, w.from), lt(span.started_at, w.to), scopeWhere(scope))!;
 
-/** Both percentiles this panel reports, as one aggregate over a ranked column. */
-const percentiles = (column: string) => `
-  MAX(CASE WHEN rn = ${rank(50)} THEN ${column} END) AS p50,
-  MAX(CASE WHEN rn = ${rank(95)} THEN ${column} END) AS p95`;
+/**
+ * Nearest-rank percentile, from Postgres rather than from arithmetic here.
+ *
+ * `percentile_disc(p)` is the nearest-rank definition, so the ranked CTE this
+ * replaced — `ROW_NUMBER()` and `COUNT()` over a partition, then a `MAX(CASE …)`
+ * to pick the row out again — was a hand-rolled copy of an aggregate the engine
+ * already has. Discrete, not `percentile_cont`: a reported latency has to be one
+ * that was actually measured, never the average of two that were.
+ */
+const percentile = (p: number, column: SQLWrapper) =>
+  sql`percentile_disc(${p}) WITHIN GROUP (ORDER BY ${column})`.mapWith(Number);
 
 /**
  * Which stretch of time a read covers: two instants, not a duration.
@@ -315,48 +290,54 @@ export interface StageStat {
  * anything: `turn` contains `turn.provider`, so the column adds up to more than the
  * wall clock. It orders the list; the percentiles answer "is this slow".
  */
-export function stageStats(db: DB, scope: ReadScope, window: TimeWindow = recentWindow()): StageStat[] {
+export async function stageStats(db: DB, scope: ReadScope, window: TimeWindow = recentWindow()): Promise<StageStat[]> {
   const bounds = clamp(window);
-  const { where, params } = scopeSql(scope);
-  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds. `percentiles("duration_ms")` is a module template over a column name written here as a literal.
-  return db
-    .query<
-      {
-        name: string;
-        count: number;
-        total_ms: number;
-        p50: number;
-        p95: number;
-        errors: number;
-        reason: string | null;
-      },
-      number[]
-    >(
-      // The reason is the *latest* failure rather than the commonest: a stage
-      // that has started working again should stop explaining how it used to
-      // break, and the newest message is the one a reader can still act on.
-      `WITH ranked AS (
-         SELECT name, duration_ms, status, started_at, status_message,
-                ROW_NUMBER() OVER (PARTITION BY name ORDER BY duration_ms) AS rn,
-                COUNT(*)     OVER (PARTITION BY name)                      AS n,
-                ROW_NUMBER() OVER (PARTITION BY name, status = 'error' ORDER BY started_at DESC, span_id DESC) AS recent
-         FROM span WHERE started_at >= ? AND started_at < ? AND ${where}
-       )
-       SELECT name, MAX(n) AS count, SUM(duration_ms) AS total_ms, ${percentiles("duration_ms")},
-              SUM(status = 'error') AS errors,
-              MAX(CASE WHEN status = 'error' AND recent = 1 THEN status_message END) AS reason
-       FROM ranked GROUP BY name ORDER BY total_ms DESC`,
-    )
-    .all(bounds.from, bounds.to, ...params)
-    .map((row) => ({
-      name: row.name,
-      count: row.count,
-      totalMs: row.total_ms,
-      p50: row.p50,
-      p95: row.p95,
-      errors: row.errors,
-      reason: row.reason,
-    }));
+  const [reasons, rows] = await Promise.all([
+    latestReasons(db, scope, bounds),
+    db
+      .select({
+        name: span.name,
+        count: count(),
+        total_ms: sql`SUM(${span.duration_ms})`.mapWith(Number),
+        p50: percentile(0.5, span.duration_ms),
+        p95: percentile(0.95, span.duration_ms),
+        errors: sql`COUNT(*) FILTER (WHERE ${span.status} = 'error')`.mapWith(Number),
+      })
+      .from(span)
+      .where(scoped(scope, bounds))
+      .groupBy(span.name)
+      .orderBy(desc(sql`SUM(${span.duration_ms})`)),
+  ]);
+  return rows.map((row) => ({
+    name: row.name,
+    count: row.count,
+    totalMs: row.total_ms,
+    p50: row.p50,
+    p95: row.p95,
+    errors: row.errors,
+    // Absent from the map is a stage that never failed, and a stored `null` is
+    // a failure that carried no message. Both read as "nothing to explain".
+    reason: reasons.get(row.name) ?? null,
+  }));
+}
+
+/**
+ * Why each failing stage failed last, by name — the *latest* failure rather than
+ * the commonest, because a stage that has started working again should stop
+ * explaining how it used to break.
+ *
+ * Its own query because it was a third window function, over the same rows as the
+ * other two and partitioned and ordered differently from both. `DISTINCT ON` is
+ * what Postgres offers instead: it ranks the error rows only — a fiftieth of the
+ * table on the day this was measured — and keeps the first of each name.
+ */
+async function latestReasons(db: DB, scope: ReadScope, bounds: TimeWindow): Promise<Map<string, string | null>> {
+  const rows = await db
+    .selectDistinctOn([span.name], { name: span.name, status_message: span.status_message })
+    .from(span)
+    .where(and(scoped(scope, bounds), eq(span.status, "error")))
+    .orderBy(asc(span.name), desc(span.started_at), desc(span.span_id));
+  return new Map(rows.map((row) => [row.name, row.status_message]));
 }
 
 /** One slice of a requirement, and what its turns cost. */
@@ -376,18 +357,22 @@ export interface SliceCost {
  * than the requirement's total. Only ever asked of a **group** — a project's slices
  * belong to different requirements and share only their sequence numbers.
  */
-export function sliceCosts(db: DB, grpId: number, window: TimeWindow = recentWindow()): SliceCost[] {
+export async function sliceCosts(db: DB, grpId: number, window: TimeWindow = recentWindow()): Promise<SliceCost[]> {
   const bounds = clamp(window);
-  return db
-    .query<{ slice_id: number | null; total_ms: number; count: number; errors: number }, [number, number, number]>(
-      `SELECT slice_id, SUM(duration_ms) AS total_ms, COUNT(*) AS count, SUM(status = 'error') AS errors
-       FROM span
-       WHERE started_at >= ? AND started_at < ? AND grp_id = ?
-       GROUP BY slice_id
-       ORDER BY slice_id IS NULL, slice_id`,
-    )
-    .all(bounds.from, bounds.to, grpId)
-    .map((row) => ({ sliceId: row.slice_id, totalMs: row.total_ms, count: row.count, errors: row.errors }));
+  const rows = await db
+    .select({
+      slice_id: span.slice_id,
+      total_ms: sql`SUM(${span.duration_ms})`.mapWith(Number),
+      count: count(),
+      errors: sql`COUNT(*) FILTER (WHERE ${span.status} = 'error')`.mapWith(Number),
+    })
+    .from(span)
+    .where(and(gte(span.started_at, bounds.from), lt(span.started_at, bounds.to), eq(span.grp_id, grpId)))
+    .groupBy(span.slice_id)
+    // NULLS LAST is Postgres's default for an ascending sort, and the slice-less
+    // row belongs after the numbered ones.
+    .orderBy(asc(span.slice_id));
+  return rows.map((row) => ({ sliceId: row.slice_id, totalMs: row.total_ms, count: row.count, errors: row.errors }));
 }
 
 /** One trace, as much of it as belongs to the scope that asked. */
@@ -402,37 +387,40 @@ export interface TraceSummary {
 /**
  * The scope's recent traces, for picking one to open.
  *
- * `MAX(end) - MIN(start)` *within the scope* rather than a root span, and that is
- * the correct reading rather than a shortcut: `startChildTrace` gives a turn a
- * remote parent, so no span in a requirement's own scope has a NULL parent.
- * `FIRST_VALUE` supplies the name, ordered by `span_id` so it cannot flap.
+ * `MAX(end) - MIN(start)` *within the scope* rather than a root span: `startChildTrace`
+ * gives a turn a remote parent, so no span in a requirement's own scope has a NULL
+ * parent. The name is the first span by `(started_at, span_id)`, ordered so it cannot
+ * flap. One grouped pass, not two: the ranked version needed a `recent` CTE only
+ * because a `LIMIT` cannot be pushed past a window function, and there is none left.
  */
-export function traceList(db: DB, scope: ReadScope, limit = 20, window: TimeWindow = recentWindow()): TraceSummary[] {
+export async function traceList(
+  db: DB,
+  scope: ReadScope,
+  limit = 20,
+  window: TimeWindow = recentWindow(),
+): Promise<TraceSummary[]> {
   const bounds = clamp(window);
-  const { where, params } = scopeSql(scope);
-  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds and `limit`.
-  return db
-    .query<{ trace_id: string; name: string; started_at: number; duration_ms: number; failed: number }, number[]>(
-      `SELECT trace_id, name, started_at, duration_ms, failed FROM (
-         SELECT trace_id,
-                FIRST_VALUE(name) OVER w                                          AS name,
-                MIN(started_at)   OVER p                                          AS started_at,
-                MAX(started_at + duration_ms) OVER p - MIN(started_at) OVER p      AS duration_ms,
-                MAX(status = 'error')         OVER p                              AS failed,
-                ROW_NUMBER()      OVER w                                          AS rn
-         FROM span WHERE started_at >= ? AND started_at < ? AND ${where}
-         WINDOW p AS (PARTITION BY trace_id),
-                w AS (PARTITION BY trace_id ORDER BY started_at, span_id)
-       ) WHERE rn = 1 ORDER BY started_at DESC, trace_id DESC LIMIT ?`,
-    )
-    .all(bounds.from, bounds.to, ...params, limit)
-    .map((row) => ({
-      traceId: row.trace_id,
-      name: row.name,
-      startedAt: row.started_at,
-      durationMs: row.duration_ms,
-      failed: row.failed === 1,
-    }));
+  const started = sql`MIN(${span.started_at})`;
+  const rows = await db
+    .select({
+      trace_id: span.trace_id,
+      name: sql`(array_agg(${span.name} ORDER BY ${span.started_at}, ${span.span_id}))[1]`.mapWith(String),
+      started_at: sql`MIN(${span.started_at})`.mapWith(Number),
+      duration_ms: sql`MAX(${span.started_at} + ${span.duration_ms}) - MIN(${span.started_at})`.mapWith(Number),
+      errors: sql`COUNT(*) FILTER (WHERE ${span.status} = 'error')`.mapWith(Number),
+    })
+    .from(span)
+    .where(scoped(scope, bounds))
+    .groupBy(span.trace_id)
+    .orderBy(desc(started), desc(span.trace_id))
+    .limit(limit);
+  return rows.map((row) => ({
+    traceId: row.trace_id,
+    name: row.name,
+    startedAt: row.started_at,
+    durationMs: row.duration_ms,
+    failed: row.errors > 0,
+  }));
 }
 
 /**
@@ -458,25 +446,37 @@ export interface FoldedStack {
  */
 const MAX_STACK_DEPTH = 64;
 
+/** Span ids are unique only within a trace, so the key is the pair. */
+const spanKey = (traceId: string, spanId: string) => `${traceId} ${spanId}`;
+
 /**
  * Every call path in the scope, summed — the flamegraph's data.
  *
  * A root is a span whose parent is absent *from the scope* rather than NULL:
- * anchoring on NULL returns nothing at all. The key carries `trace_id` as well as
- * the span id, because span ids are unique only within a trace. **Folded here rather
- * than in SQL**, this file's one exception: a tree walk has no index to stand on.
+ * anchoring on NULL returns nothing at all. The parent is resolved against the
+ * scoped rows themselves — the self-join this replaced keyed on `rowid`, which
+ * Postgres does not have, and it was already filtered a second time in JS by
+ * whether the parent came back in the scoped set. **Folded here rather than in
+ * SQL**, this file's one exception: a tree walk has no index to stand on.
  */
-export function foldedStacks(db: DB, scope: ReadScope, window: TimeWindow = recentWindow()): FoldedStack[] {
+export async function foldedStacks(
+  db: DB,
+  scope: ReadScope,
+  window: TimeWindow = recentWindow(),
+): Promise<FoldedStack[]> {
   const bounds = clamp(window);
-  const { where, params } = scopeSql(scope);
-  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds. This is the flat read the fold walks in JS; nothing else is interpolated.
-  const rows = db
-    .query<FoldRow, number[]>(
-      `SELECT trace_id, span_id, parent_span_id, name, duration_ms
-         FROM span WHERE started_at >= ? AND started_at < ? AND ${where}`,
-    )
-    .all(bounds.from, bounds.to, ...params);
+  const rows = await db
+    .select({
+      trace_id: span.trace_id,
+      span_id: span.span_id,
+      parent_span_id: span.parent_span_id,
+      name: span.name,
+      duration_ms: span.duration_ms,
+    })
+    .from(span)
+    .where(scoped(scope, bounds));
 
+  type FoldRow = (typeof rows)[number];
   const byId = new Map(rows.map((row) => [spanKey(row.trace_id, row.span_id), row]));
   const paths = new Map<string, string>();
   const walking = new Set<string>();
@@ -493,7 +493,7 @@ export function foldedStacks(db: DB, scope: ReadScope, window: TimeWindow = rece
     const id = spanKey(row.trace_id, row.span_id);
     const known = paths.get(id);
     if (known !== undefined) return known;
-    const parent = row.parent_span_id ? byId.get(spanKey(row.trace_id, row.parent_span_id)) : undefined;
+    const parent = row.parent_span_id === null ? undefined : byId.get(spanKey(row.trace_id, row.parent_span_id));
     // The cycle test is on the *parent*, not on this span: stopping when we are
     // about to re-enter a span already on the stack ends the ring one step
     // before it repeats a name, where testing self emits `a;b;a`.
@@ -526,17 +526,6 @@ export function foldedStacks(db: DB, scope: ReadScope, window: TimeWindow = rece
   return [...folded.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
-interface FoldRow {
-  trace_id: string;
-  span_id: string;
-  parent_span_id: string | null;
-  name: string;
-  duration_ms: number;
-}
-
-/** Span ids are unique within a trace, not across them. */
-const spanKey = (traceId: string, spanId: string): string => `${traceId} ${spanId}`;
-
 /** One bucket of the trend: when, how many, and how long they took. */
 export interface TrendPoint {
   at: number;
@@ -544,6 +533,9 @@ export interface TrendPoint {
   p50: number;
   p95: number;
 }
+
+/** An aggregate over no rows is NULL, and NULL is the answer rather than zero. */
+const maybeNumber = (value: unknown): number | null => (value === null ? null : Number(value));
 
 /**
  * The first and last instant this scope has a span for.
@@ -553,16 +545,14 @@ export interface TrendPoint {
  * tell "nothing happened" from "you have scrolled off the end". Clamped to retention
  * like every other read. `null` when the scope has no spans — not a zero-width one.
  */
-export function spanExtent(db: DB, scope: ReadScope, now = Date.now()): TimeWindow | null {
-  const { where, params } = scopeSql(scope);
-  const floor = now - SPAN_MAX_AGE_MS;
-  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` above, chosen by `scope.kind` and never assembled from a value; the retention floor and the scope ids travel in `params` and bind through `?`.
-  const row = db
-    .query<{ first: number | null; last: number | null }, number[]>(
-      `SELECT MIN(started_at) AS first, MAX(started_at + duration_ms) AS last
-         FROM span WHERE started_at >= ? AND ${where}`,
-    )
-    .get(floor, ...params);
+export async function spanExtent(db: DB, scope: ReadScope, now = Date.now()): Promise<TimeWindow | null> {
+  const [row] = await db
+    .select({
+      first: sql`MIN(${span.started_at})`.mapWith(maybeNumber),
+      last: sql`MAX(${span.started_at} + ${span.duration_ms})`.mapWith(maybeNumber),
+    })
+    .from(span)
+    .where(and(gte(span.started_at, now - SPAN_MAX_AGE_MS), scopeWhere(scope)));
   if (!row || row.first === null || row.last === null) return null;
   // A single span makes first and last equal, and a zero-width window is not a
   // range anything can be clamped inside. One second is the smallest span the
@@ -570,37 +560,43 @@ export function spanExtent(db: DB, scope: ReadScope, now = Date.now()): TimeWind
   return { from: row.first, to: Math.max(row.last, row.first + 1_000) };
 }
 
-export function trend(
+export async function trend(
   db: DB,
   scope: ReadScope,
   bucketMs = 60 * 60 * 1_000,
   window: TimeWindow = recentWindow(),
-): TrendPoint[] {
+): Promise<TrendPoint[]> {
   const bounds = clamp(window);
-  const { where, params } = scopeSql(scope);
-  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the window bounds and the four `bucketMs`. `percentiles("wall")` is the same module template over a literal column name.
-  return db
-    .query<{ at: number; count: number; p50: number; p95: number }, number[]>(
-      `WITH per_trace AS (
-         SELECT MIN(started_at) AS started_at,
-                MAX(started_at + duration_ms) - MIN(started_at) AS wall
-         FROM span WHERE started_at >= ? AND started_at < ? AND ${where}
-         GROUP BY trace_id
-       ),
-       bucketed AS (
-         SELECT CAST(started_at / ? AS INTEGER) AS bucket, wall,
-                ROW_NUMBER() OVER (PARTITION BY CAST(started_at / ? AS INTEGER) ORDER BY wall) AS rn,
-                COUNT(*)     OVER (PARTITION BY CAST(started_at / ? AS INTEGER))               AS n
-         FROM per_trace
-       )
-       SELECT bucket * ? AS at, MAX(n) AS count, ${percentiles("wall")}
-       -- any-order: at is bucket * width and bucket is the GROUP BY key, so
-       -- there is one row per value and nothing to tie. It reads like a clock
-       -- and is an index into the buckets.
-       FROM bucketed GROUP BY bucket ORDER BY at`,
-    )
-    .all(bounds.from, bounds.to, ...params, bucketMs, bucketMs, bucketMs, bucketMs)
-    .map((row) => ({ at: row.at, count: row.count, p50: row.p50, p95: row.p95 }));
+  // One row per trace: the trend is about traces, and a trace's wall clock is the
+  // stretch its spans cover rather than the sum of their durations.
+  const perTrace = db
+    .select({
+      started_at: sql<number>`MIN(${span.started_at})`.as("started_at"),
+      wall: sql<number>`MAX(${span.started_at} + ${span.duration_ms}) - MIN(${span.started_at})`.as("wall"),
+    })
+    .from(span)
+    .where(scoped(scope, bounds))
+    .groupBy(span.trace_id)
+    .as("per_trace");
+  // Integer division, which is what `bigint / bigint` already is here. Grouped and
+  // ordered by output position rather than by a second copy of the expression:
+  // Postgres matches a GROUP BY expression to a SELECT one syntactically, and the
+  // two copies carry different bind parameters, so it sees two different bucketings.
+  const at = sql`(${perTrace.started_at} / ${bucketMs}::bigint) * ${bucketMs}::bigint`;
+  const rows = await db
+    .select({
+      // any-order: `at` is bucket * width and the bucket is the GROUP BY key, so
+      // there is one row per value and nothing to tie. It reads like a clock and
+      // is an index into the buckets.
+      at: at.mapWith(Number),
+      count: count(),
+      p50: percentile(0.5, perTrace.wall),
+      p95: percentile(0.95, perTrace.wall),
+    })
+    .from(perTrace)
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
+  return rows.map((row) => ({ at: row.at, count: row.count, p50: row.p50, p95: row.p95 }));
 }
 
 /**
@@ -610,31 +606,32 @@ export function trend(
  * Called from the server's heartbeat, never from the write path: retention is
  * housekeeping on a schedule, and a span arriving is not a reason to run it.
  */
-export function trimSpans(db: DB, now = Date.now(), maxRows = SPAN_MAX_ROWS): void {
-  db.run("DELETE FROM span WHERE started_at < ?", [now - SPAN_MAX_AGE_MS]);
-  db.run(
-    `DELETE FROM span WHERE rowid IN (
-       SELECT rowid FROM span ORDER BY started_at DESC, rowid DESC LIMIT -1 OFFSET ?
-     )`,
-    [maxRows],
-  );
+export async function trimSpans(db: DB, now = Date.now(), maxRows = SPAN_MAX_ROWS): Promise<void> {
+  await db.delete(span).where(lt(span.started_at, now - SPAN_MAX_AGE_MS));
+  // By the natural key, because Postgres has no `rowid` and `ctid` moves under the
+  // vacuum this delete makes likely. A row-value `IN` is the one predicate shape
+  // `inArray` cannot build, so it is written out.
+  const surplus = db
+    .select({ trace_id: span.trace_id, span_id: span.span_id })
+    .from(span)
+    .orderBy(desc(span.started_at), desc(span.span_id))
+    .offset(maxRows);
+  await db.delete(span).where(sql`(${span.trace_id}, ${span.span_id}) IN (${surplus})`);
 }
 
 /**
  * The destination. `BatchSpanProcessor` owns everything around it.
  *
  * `export` is handed a whole batch off the SDK's flush timer, so it runs outside
- * the operation being traced. The insert is prepared once for the life of the
- * exporter, and the batch commits in one transaction.
+ * the operation being traced. The batch is written before `done` is called, which
+ * is what a callback rather than a return value is for.
  */
-export class SqliteSpanExporter implements SpanExporter {
+export class StoredSpanExporter implements SpanExporter {
   readonly #db: DB;
-  readonly #insert: Statement<unknown, InsertParams>;
   #closed = false;
 
   constructor(db: DB) {
     this.#db = db;
-    this.#insert = db.prepare<unknown, InsertParams>(INSERT);
   }
 
   /**
@@ -650,19 +647,22 @@ export class SqliteSpanExporter implements SpanExporter {
     // late flush can arrive after the database handle is gone.
     if (this.#closed) {
       recordDroppedSpans(spans.length);
-    } else {
+      done({ code: ExportResultCode.SUCCESS });
+      return;
+    }
+    void (async () => {
       try {
-        insertAll(this.#db, this.#insert, spans.map(toSpanRow));
+        await insertAll(this.#db, spans.map(toSpanRow));
       } catch {
         recordDroppedSpans(spans.length);
       }
-    }
-    done({ code: ExportResultCode.SUCCESS });
+      done({ code: ExportResultCode.SUCCESS });
+    })();
   }
 
   // `forceFlush` is optional on `SpanExporter` and is deliberately not
-  // implemented: every batch commits inside `export`, so there is never anything
-  // buffered here to flush. The queue that does need draining belongs to
+  // implemented: every batch is written inside `export`, so there is never
+  // anything buffered here to flush. The queue that does need draining belongs to
   // `BatchSpanProcessor`, and its own `forceFlush` drains it.
 
   shutdown(): Promise<void> {

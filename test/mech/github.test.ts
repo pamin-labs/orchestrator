@@ -30,9 +30,9 @@ mockHttp();
 
 const API = "https://api.github.com";
 
-function db(token = "ghp_one") {
-  const d = openMemory();
-  saveAuth(d, { runtime: "github", mode: "api_key", secret: token });
+async function db(token = "ghp_one") {
+  const d = await openMemory();
+  await saveAuth(d, { runtime: "github", mode: "api_key", secret: token });
   return d;
 }
 
@@ -44,7 +44,7 @@ test("a 404 says the login cannot reach it, and never that the repo was deleted"
   // "deleted", "org revoked access", "removed from the org" and "lost its scope"
   // are the same response. Naming one of them sends the boss to the wrong page.
   server.use(http.get(`${API}/repos/me/gone`, () => json(404, { message: "Not Found" })));
-  const r = await makeGithub(db()).request("GET", "/repos/me/gone", z.json());
+  const r = await makeGithub(await db()).request("GET", "/repos/me/gone", z.json());
   expect(r.ok).toBe(false);
   if (r.ok) throw new Error("unreachable");
   expect(r.bucket).toBe("boss");
@@ -72,7 +72,7 @@ test("a 304 costs nothing and hands back the body we already had", async () => {
         : json(304, null, { etag: 'W/"abc"', "x-ratelimit-remaining": "4999" });
     }),
   );
-  const gh = makeGithub(db());
+  const gh = makeGithub(await db());
   const Pull = z.object({ number: z.number() });
   const first = await gh.request("GET", "/repos/me/x/pulls/7", Pull);
   const second = await gh.request("GET", "/repos/me/x/pulls/7", Pull);
@@ -92,7 +92,7 @@ test("an ETag caches raw JSON so each caller can apply its own schema", async ()
       ++hits === 1 ? json(200, { a: 1, b: 2 }, { etag: 'W/"shape"' }) : json(304, null, { etag: 'W/"shape"' }),
     ),
   );
-  const gh = makeGithub(db());
+  const gh = makeGithub(await db());
 
   expect((await gh.request("GET", "/repos/me/x", z.object({ a: z.number() }))).ok).toBe(true);
   const second = await gh.request("GET", "/repos/me/x", z.object({ b: z.number() }));
@@ -101,7 +101,7 @@ test("an ETag caches raw JSON so each caller can apply its own schema", async ()
 
 test("JSON that misses the endpoint schema is a handled transient failure", async () => {
   server.use(http.get(`${API}/repos/me/x`, () => json(200, null)));
-  const r = await makeGithub(db()).request(
+  const r = await makeGithub(await db()).request(
     "GET",
     "/repos/me/x",
     z.object({ full_name: z.string(), default_branch: z.string(), clone_url: z.string() }),
@@ -114,7 +114,7 @@ test("rotating the login invalidates the ETags rather than reusing them", async 
   // Cached per token, not per URL: a new login must not be handed the previous
   // one's answers, and must not send its ETag either.
   const sent: Array<string | null> = [];
-  const d = db("ghp_one");
+  const d = await db("ghp_one");
   server.use(
     http.get(`${API}/user`, ({ request }) => {
       sent.push(request.headers.get("if-none-match"));
@@ -128,7 +128,7 @@ test("rotating the login invalidates the ETags rather than reusing them", async 
   await gh.request("GET", "/user", z.json());
   expect(sent).toEqual([null, 'W/"abc"']);
 
-  saveAuth(d, { runtime: "github", mode: "api_key", secret: "ghp_two" });
+  await saveAuth(d, { runtime: "github", mode: "api_key", secret: "ghp_two" });
   const after = await gh.request("GET", "/user", z.object({ login: z.string() }));
   expect(sent[2]).toBeNull();
   expect(after.ok && after.data.login).toContain("ghp_two");
@@ -162,7 +162,7 @@ test("a network throw is transient, not a bad credential", async () => {
       return HttpResponse.error();
     }),
   );
-  const r = await makeGithub(db()).request("GET", "/user", z.json());
+  const r = await makeGithub(await db()).request("GET", "/user", z.json());
   expect(r.ok).toBe(false);
   if (!r.ok) {
     expect(r.bucket).toBe("transient");
@@ -179,7 +179,7 @@ test("transient retries are bounded and only used for idempotent reads", async (
       return gets < 3 ? json(502, { message: "bad gateway" }) : json(200, { ok: true });
     }),
   );
-  const get = await makeGithub(db()).request("GET", "/user", z.object({ ok: z.boolean() }));
+  const get = await makeGithub(await db()).request("GET", "/user", z.object({ ok: z.boolean() }));
   expect(get.ok).toBe(true);
   expect(gets).toBe(3);
 
@@ -190,7 +190,7 @@ test("transient retries are bounded and only used for idempotent reads", async (
       return json(502, { message: "bad gateway" });
     }),
   );
-  const post = await makeGithub(db()).request("POST", "/repos/me/x/pulls", z.json(), { title: "x" });
+  const post = await makeGithub(await db()).request("POST", "/repos/me/x/pulls", z.json(), { title: "x" });
   expect(post).toMatchObject({ ok: false, status: 502, bucket: "transient" });
   expect(posts).toBe(1);
 });
@@ -200,21 +200,17 @@ test("every GitHub request carries a deadline signal", async () => {
   // *our* fetch is exactly what it is about: Octokit copies the request options
   // it is given, and a deadline that did not survive that copy would be invisible
   // from outside. MSW answers requests; it cannot say what Octokit passed down.
-  const d = db();
-  try {
-    let deadline: AbortSignal | undefined;
-    const fetchFn: GithubFetcher = async (_url, init) => {
-      deadline = init.signal;
-      return Response.json({ login: "octocat" });
-    };
-    const result = await makeGithub(d, fetchFn).request("GET", "/user", z.object({ login: z.string() }));
+  const d = await db();
+  let deadline: AbortSignal | undefined;
+  const fetchFn: GithubFetcher = async (_url, init) => {
+    deadline = init.signal;
+    return Response.json({ login: "octocat" });
+  };
+  const result = await makeGithub(d, fetchFn).request("GET", "/user", z.object({ login: z.string() }));
 
-    expect(result.ok).toBe(true);
-    expect(deadline).toBeInstanceOf(AbortSignal);
-    expect(deadline!.aborted).toBe(false);
-  } finally {
-    d.close();
-  }
+  expect(result.ok).toBe(true);
+  expect(deadline).toBeInstanceOf(AbortSignal);
+  expect(deadline!.aborted).toBe(false);
 });
 
 test("a real fetch names an abort AbortError, which is the one throw Octokit rethrows", async () => {
@@ -238,34 +234,30 @@ test("a real fetch names an abort AbortError, which is the one throw Octokit ret
 });
 
 test("caller cancellation aborts an active GitHub request without retrying", async () => {
-  const d = db();
-  try {
-    const controller = new AbortController();
-    let attempts = 0;
-    let entered!: () => void;
-    const started = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    server.use(
-      http.get(`${API}/user`, async () => {
-        attempts += 1;
-        entered();
-        // Never answered, so the only thing that can end this request is the
-        // abort — through the real `fetch`, not a stub imitating one.
-        await delay("infinite");
-        return json(200, {});
-      }),
-    );
-    const result = makeGithub(d).request("GET", "/user", z.json(), undefined, controller.signal);
+  const d = await db();
+  const controller = new AbortController();
+  let attempts = 0;
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  server.use(
+    http.get(`${API}/user`, async () => {
+      attempts += 1;
+      entered();
+      // Never answered, so the only thing that can end this request is the
+      // abort — through the real `fetch`, not a stub imitating one.
+      await delay("infinite");
+      return json(200, {});
+    }),
+  );
+  const result = makeGithub(d).request("GET", "/user", z.json(), undefined, controller.signal);
 
-    await started;
-    const reason = new Error("caller stopped");
-    controller.abort(reason);
-    expect(await result.catch((error: unknown) => error)).toBe(reason);
-    expect(attempts).toBe(1);
-  } finally {
-    d.close();
-  }
+  await started;
+  const reason = new Error("caller stopped");
+  controller.abort(reason);
+  expect(await result.catch((error: unknown) => error)).toBe(reason);
+  expect(attempts).toBe(1);
 });
 
 test("cancelling during a retry backoff costs no further request", async () => {
@@ -274,28 +266,24 @@ test("cancelling during a retry backoff costs no further request", async () => {
   // checked at the door of every attempt rather than only around the wait: a
   // retry that ran anyway would spend a request on an answer nobody is waiting
   // for, and would report GitHub's failure instead of the caller's cancellation.
-  const d = db();
-  try {
-    const controller = new AbortController();
-    const reason = new Error("caller stopped");
-    let attempts = 0;
-    server.use(
-      http.get(`${API}/user`, () => {
-        attempts += 1;
-        // Retryable, so a retry is scheduled — and cancelled before it fires.
-        // After the answer is handed back rather than during it, so what is
-        // under test is the backoff and not the response read.
-        queueMicrotask(() => controller.abort(reason));
-        return json(502, { message: "bad gateway" });
-      }),
-    );
-    const result = makeGithub(d).request("GET", "/user", z.json(), undefined, controller.signal);
+  const d = await db();
+  const controller = new AbortController();
+  const reason = new Error("caller stopped");
+  let attempts = 0;
+  server.use(
+    http.get(`${API}/user`, () => {
+      attempts += 1;
+      // Retryable, so a retry is scheduled — and cancelled before it fires.
+      // After the answer is handed back rather than during it, so what is
+      // under test is the backoff and not the response read.
+      queueMicrotask(() => controller.abort(reason));
+      return json(502, { message: "bad gateway" });
+    }),
+  );
+  const result = makeGithub(d).request("GET", "/user", z.json(), undefined, controller.signal);
 
-    expect(await result.catch((error: unknown) => error)).toBe(reason);
-    expect(attempts).toBe(1);
-  } finally {
-    d.close();
-  }
+  expect(await result.catch((error: unknown) => error)).toBe(reason);
+  expect(attempts).toBe(1);
 });
 
 test("a secondary rate limit hands back GitHub's own wait, and does not sit on it", async () => {
@@ -304,55 +292,47 @@ test("a secondary rate limit hands back GitHub's own wait, and does not sit on i
   // inside an agent turn holds a container open doing nothing. We decline the
   // sleep and keep the number: the scheduler can retry on GitHub's schedule
   // instead of guessing, which is the whole reason the plugin is installed.
-  const d = db();
-  try {
-    const started = Date.now();
-    server.use(
-      http.get(`${API}/repos/me/x/pulls/7`, () =>
-        json(403, { message: "You have exceeded a secondary rate limit" }, { "retry-after": "42" }),
-      ),
-    );
-    const r = await makeGithub(d).request("GET", "/repos/me/x/pulls/7", z.json());
+  const d = await db();
+  const started = Date.now();
+  server.use(
+    http.get(`${API}/repos/me/x/pulls/7`, () =>
+      json(403, { message: "You have exceeded a secondary rate limit" }, { "retry-after": "42" }),
+    ),
+  );
+  const r = await makeGithub(d).request("GET", "/repos/me/x/pulls/7", z.json());
 
-    expect(r.ok).toBe(false);
-    if (r.ok) throw new Error("unreachable");
-    expect(r.retryAfter).toBe(42);
-    // Still the answer it always was: waited out, not the boss's problem.
-    expect(r.bucket).toBe("transient");
-    expect(r.status).toBe(403);
-    // Promptly. A retry accepted in band would have parked here for 42 seconds.
-    expect(Date.now() - started).toBeLessThan(1000);
-  } finally {
-    d.close();
-  }
+  expect(r.ok).toBe(false);
+  if (r.ok) throw new Error("unreachable");
+  expect(r.retryAfter).toBe(42);
+  // Still the answer it always was: waited out, not the boss's problem.
+  expect(r.bucket).toBe("transient");
+  expect(r.status).toBe(403);
+  // Promptly. A retry accepted in band would have parked here for 42 seconds.
+  expect(Date.now() - started).toBeLessThan(1000);
 });
 
 test("a primary rate limit dates the wait from the reset clock", async () => {
   // No `retry-after` on a primary limit — GitHub gives an epoch to wait until,
   // and the plugin reads it off `x-ratelimit-reset` once `remaining` hits zero.
-  const d = db();
-  try {
-    const reset = Math.ceil(Date.now() / 1000) + 30;
-    server.use(
-      http.get(`${API}/repos/me/x/pulls/7`, () =>
-        json(
-          403,
-          { message: "API rate limit exceeded" },
-          { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(reset) },
-        ),
+  const d = await db();
+  const reset = Math.ceil(Date.now() / 1000) + 30;
+  server.use(
+    http.get(`${API}/repos/me/x/pulls/7`, () =>
+      json(
+        403,
+        { message: "API rate limit exceeded" },
+        { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(reset) },
       ),
-    );
-    const r = await makeGithub(d).request("GET", "/repos/me/x/pulls/7", z.json());
+    ),
+  );
+  const r = await makeGithub(d).request("GET", "/repos/me/x/pulls/7", z.json());
 
-    expect(r.ok).toBe(false);
-    if (r.ok) throw new Error("unreachable");
-    // Give or take the second the test spent getting here.
-    expect(r.retryAfter).toBeGreaterThan(25);
-    expect(r.retryAfter).toBeLessThanOrEqual(32);
-    expect(r.bucket).toBe("transient");
-  } finally {
-    d.close();
-  }
+  expect(r.ok).toBe(false);
+  if (r.ok) throw new Error("unreachable");
+  // Give or take the second the test spent getting here.
+  expect(r.retryAfter).toBeGreaterThan(25);
+  expect(r.retryAfter).toBeLessThanOrEqual(32);
+  expect(r.bucket).toBe("transient");
 });
 
 test("a status the retry plugin will not retry is asked exactly once", async () => {
@@ -362,20 +342,16 @@ test("a status the retry plugin will not retry is asked exactly once", async () 
   // it retries these three times each — burning the rate limit on answers that
   // will not change, and holding the repository three times over.
   for (const status of [404, 401, 422]) {
-    const d = db();
-    try {
-      let attempts = 0;
-      server.use(
-        http.get(`${API}/repos/me/x`, () => {
-          attempts += 1;
-          return json(status, { message: "no" });
-        }),
-      );
-      await makeGithub(d).request("GET", "/repos/me/x", z.json());
-      expect({ status, attempts }).toEqual({ status, attempts: 1 });
-    } finally {
-      d.close();
-    }
+    const d = await db();
+    let attempts = 0;
+    server.use(
+      http.get(`${API}/repos/me/x`, () => {
+        attempts += 1;
+        return json(status, { message: "no" });
+      }),
+    );
+    await makeGithub(d).request("GET", "/repos/me/x", z.json());
+    expect({ status, attempts }).toEqual({ status, attempts: 1 });
   }
 });
 
@@ -387,7 +363,7 @@ test("no credential is the boss's, and nothing is sent", async () => {
       return json(200, {});
     }),
   );
-  const r = await makeGithub(openMemory()).request("GET", "/user", z.json());
+  const r = await makeGithub(await openMemory()).request("GET", "/user", z.json());
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.bucket).toBe("boss");
   expect(called).toBe(0);
@@ -410,6 +386,20 @@ test("owner/repo comes out of whatever shape the remote is in", () => {
   expect(parseRepo("https://github.com/me/x")).toBe("me/x");
   expect(parseRepo("ssh://git@github.com/me/x.git")).toBe("me/x");
   expect(parseRepo("git@gitlab.com:me/x.git")).toBeNull();
+});
+
+/**
+ * An owner is never invented from a directory name.
+ *
+ * What survived `slugRepoPaths`, the SQLite-era repair that turned an absolute
+ * `repo_path` into `owner/name`. The repair went with the migration ladder (038);
+ * the decision inside it did not, because a guessed owner points the fleet at
+ * somebody else's repository — and none of these three is guessable.
+ */
+test("a remote nobody can turn into owner/repo is refused rather than guessed", () => {
+  expect(parseRepo("/Users/jason/code/orchestrator")).toBeNull();
+  expect(parseRepo("")).toBeNull();
+  expect(parseRepo("git@gitlab.com:me/c.git")).toBeNull();
 });
 
 /**

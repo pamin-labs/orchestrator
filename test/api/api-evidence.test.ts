@@ -2,16 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeApp } from "../../src/composition/api.ts";
-import type { Ctx } from "../../src/mech/ctx.ts";
-import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
-import { openMemory } from "../../src/platform/persistence/database.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { z } from "zod";
 import * as fx from "../support/factories.ts";
 import { tempDir } from "../support/temp.ts";
+import { testContext } from "../support/test-context.ts";
 
 /**
  * The two panels the boss reads before pressing a button.
@@ -34,32 +31,28 @@ const Evidence = z.object({
 });
 const Draft = z.object({ text: z.string() });
 
-function harness(opts: { handle?: (cmd: string) => { code?: number; out?: string }; language?: string } = {}) {
+async function harness(opts: { handle?: (cmd: string) => { code?: number; out?: string }; language?: string } = {}) {
   const dataDir = tempDir("orch-ev-");
-  const db = openMemory();
-  seedAuth(db);
-  const ctx: Ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
+  const ctx = await testContext({
     sandbox: fakeSandbox((cmd) => opts.handle?.(cmd) ?? {}),
-    waiters: new Map(),
     config: { ...loadConfig(), dataDir, ...(opts.language ? { language: opts.language } : {}) },
-  };
-  const p = fx.project.insert(db, {
+  });
+  await seedAuth(ctx.db);
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({
     name: "p",
     repo_path: "o/p",
-    config_json: JSON.stringify({ gates: ["typecheck", "test"] }),
+    config_json: { gates: ["typecheck", "test"] },
     base_branch: "main",
   });
-  fx.runningGrp.insert(db, { project_id: p.id, name: "ship-the-thing" });
+  await f.runningGrp.create({ project_id: p.id, name: "ship-the-thing" });
   const app = makeApp(ctx);
   const get = (path: string) => app(new Request(`http://x${path}`));
-  return { db, ctx, app, get, dataDir };
+  return { db: ctx.db, ctx, app, get, dataDir, f };
 }
 
-const slice = (db: ReturnType<typeof harness>["db"], baseSha: string | null) =>
-  fx.slice.insert(db, {
+const slice = (h: Awaited<ReturnType<typeof harness>>, baseSha: string | null) =>
+  h.f.slice.create({
     grp_id: 1,
     seq: 3,
     title: "S3 rename the flag",
@@ -81,21 +74,21 @@ const normalGit = (diff: string) => (cmd: string) => {
 // ------------------------------------------------------- slices/:id/evidence
 
 test("evidence for a slice that is not there is a 404, not an empty panel", async () => {
-  const h = harness();
+  const h = await harness();
   const r = await h.get("/api/v1/slices/99/evidence");
   expect(r.status).toBe(404);
 });
 
 test("evidence carries the diff, both verdicts in order, and the gate logs on disk", async () => {
-  const h = harness({ handle: normalGit("@@ -1 +1 @@\n-old\n+new\n") });
-  slice(h.db, "abc123");
+  const h = await harness({ handle: normalGit("@@ -1 +1 @@\n-old\n+new\n") });
+  await slice(h, "abc123");
   // Both reviewers file through the same route: QA on the slice, the Auditor on
   // the branch. The panel shows them in the order they were given.
   for (const [author, body] of [
     ["qa", "S3 pass: the flag is gone"],
     ["auditor", "audit pass"],
   ] as const) {
-    h.ctx.bus.emit({ grpId: 1, author, kind: "gate_result", intent: "decision", body, meta: { slice_id: 1 } });
+    await h.ctx.bus.emit({ grpId: 1, author, kind: "gate_result", intent: "decision", body, meta: { slice_id: 1 } });
   }
   mkdirSync(join(h.dataDir, "gates"), { recursive: true });
   writeFileSync(join(h.dataDir, "gates", "1-typecheck.log"), "no errors\n");
@@ -119,8 +112,8 @@ test("evidence carries the diff, both verdicts in order, and the gate logs on di
 
 test("a diff past the cap is cut and says it was cut", async () => {
   const huge = "+x\n".repeat(200_000);
-  const h = harness({ handle: normalGit(huge) });
-  slice(h.db, "abc123");
+  const h = await harness({ handle: normalGit(huge) });
+  await slice(h, "abc123");
 
   const e = Evidence.parse(await (await h.get("/api/v1/slices/1/evidence")).json());
   // Silently short is the failure mode this flag exists to prevent: the boss has
@@ -132,8 +125,8 @@ test("a diff past the cap is cut and says it was cut", async () => {
 test("a slice with no diff base renders as an empty diff rather than failing", async () => {
   // No base_sha and a checkout git cannot answer for: `sliceDiffBase` returns
   // nothing, and the panel still has a title, a verdict list and its gates.
-  const h = harness({ handle: () => ({ code: 128, out: "fatal: not a git repository" }) });
-  slice(h.db, null);
+  const h = await harness({ handle: () => ({ code: 128, out: "fatal: not a git repository" }) });
+  await slice(h, null);
 
   const e = Evidence.parse(await (await h.get("/api/v1/slices/1/evidence")).json());
   expect(e.stat).toBe("");
@@ -144,7 +137,7 @@ test("a slice with no diff base renders as an empty diff rather than failing", a
 });
 
 test("a slice whose base was rebased away is diffed against the fork, not the stale commit", async () => {
-  const h = harness({
+  const h = await harness({
     handle: (cmd) => {
       // The stored base is no longer an ancestor of HEAD — what a rebase leaves
       // behind. Diffing against it would pick up every other group's landed work.
@@ -155,7 +148,7 @@ test("a slice whose base was rebased away is diffed against the fork, not the st
       return { code: 1 };
     },
   });
-  slice(h.db, "stale99");
+  await slice(h, "stale99");
 
   const e = Evidence.parse(await (await h.get("/api/v1/slices/1/evidence")).json());
   expect(e.scope).toBe("branch");
@@ -164,9 +157,9 @@ test("a slice whose base was rebased away is diffed against the fork, not the st
 
 // ---------------------------------------------------- escalations/:id/draft
 
-function question(h: ReturnType<typeof harness>, opts: { grp: boolean; answered?: boolean }) {
-  fx.agent.insert(h.db, { project_id: 1, grp_id: opts.grp ? 1 : null });
-  fx.escalation.insert(h.db, {
+async function question(h: Awaited<ReturnType<typeof harness>>, opts: { grp: boolean; answered?: boolean }) {
+  await h.f.agent.create({ project_id: 1, grp_id: opts.grp ? 1 : null });
+  await h.f.escalation.create({
     grp_id: opts.grp ? 1 : null,
     agent_id: 1,
     severity: "blocker",
@@ -177,16 +170,16 @@ function question(h: ReturnType<typeof harness>, opts: { grp: boolean; answered?
 }
 
 test("no cheap model configured means no draft, and no error either", async () => {
-  const h = harness();
-  question(h, { grp: true });
+  const h = await harness();
+  await question(h, { grp: true });
   const r = await h.get("/api/v1/escalations/1/draft");
   expect(r.status).toBe(200);
   expect(Draft.parse(await r.json()).text).toBe("");
 });
 
 test("a question that is already answered is never redrafted", async () => {
-  const h = harness();
-  question(h, { grp: true, answered: true });
+  const h = await harness();
+  await question(h, { grp: true, answered: true });
   let called = false;
   h.ctx.askIn = () => async () => {
     called = true;
@@ -199,17 +192,17 @@ test("a question that is already answered is never redrafted", async () => {
 });
 
 test("the draft prompt carries the requirement, the asker, the slices and the blackboard", async () => {
-  const h = harness();
-  question(h, { grp: true });
-  fx.slice.insert(h.db, {
+  const h = await harness();
+  await question(h, { grp: true });
+  await h.f.slice.create({
     grp_id: 1,
     seq: 3,
     title: "rename the flag",
     difficulty: "trivial",
     status: "qa",
   });
-  fx.note.insert(h.db, { project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
-  fx.note.insert(h.db, { project_id: 1, kind: "lesson", body: "a project-wide lesson" });
+  await h.f.note.create({ project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
+  await h.f.note.create({ project_id: 1, kind: "lesson", body: "a project-wide lesson" });
   let prompt = "";
   h.ctx.askIn = () => async (p) => {
     prompt = p;
@@ -228,8 +221,8 @@ test("the draft prompt carries the requirement, the asker, the slices and the bl
 });
 
 test("a standing agent's question drafts against no requirement and no slices", async () => {
-  const h = harness({ language: "en" });
-  question(h, { grp: false });
+  const h = await harness({ language: "en" });
+  await question(h, { grp: false });
   let prompt = "";
   h.ctx.askIn = () => async (p) => {
     prompt = p;
@@ -246,13 +239,13 @@ test("a standing agent's question drafts against no requirement and no slices", 
 });
 
 test("a draft is capped, and a model that fails leaves the composer alone", async () => {
-  const h = harness();
-  question(h, { grp: true });
+  const h = await harness();
+  await question(h, { grp: true });
   h.ctx.askIn = () => async () => "x".repeat(5000);
   expect(Draft.parse(await (await h.get("/api/v1/escalations/1/draft")).json()).text).toHaveLength(1200);
 
-  const broken = harness();
-  question(broken, { grp: true });
+  const broken = await harness();
+  await question(broken, { grp: true });
   broken.ctx.askIn = () => async () => {
     throw new Error("the cheap model is unreachable");
   };

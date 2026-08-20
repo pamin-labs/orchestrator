@@ -1,7 +1,40 @@
+import {
+  and,
+  count,
+  eq,
+  exists,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  max,
+  ne,
+  notExists,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { DB } from "../../platform/persistence/database.ts";
-import { jsonOr } from "../../contracts/json.ts";
+import {
+  maxMs,
+  agent,
+  escalation,
+  event,
+  grp,
+  job,
+  lease,
+  note,
+  project,
+  runtime_auth,
+  slice,
+} from "../../platform/persistence/schema.ts";
+import { valueOr } from "../../contracts/json.ts";
 import { errText, hours, minutes } from "../../platform/process/text.ts";
-import type { Ctx } from "../../mech/ctx.ts";
+import { answered, roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { say, type SayKey } from "../../platform/text/lang.ts";
 import { hold, interrupt, park, release, unpark } from "../flow/intercept.ts";
@@ -29,8 +62,8 @@ import { serverLogPath } from "../sandbox/server.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { buildMap, indexExcludes, saveMap } from "../knowledge/repomap.ts";
-import { resumeReclaimed, type Job } from "../../platform/scheduling/scheduler.ts";
+import { buildMap, indexExcludes, loadMap, saveMap } from "../knowledge/repomap.ts";
+import { resumeReclaimed } from "../../platform/scheduling/scheduler.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
 import { probe } from "../sandbox/net.ts";
 import { activeTracer } from "../../platform/observability/traces.ts";
@@ -44,7 +77,6 @@ import {
   ANSWERLESS_GRP_STATES,
   DISPATCHABLE_GRP_STATES,
   ESCALATION_TERMINAL_STATES,
-  stateParam,
   type GrpState,
 } from "../../contracts/states.ts";
 
@@ -77,15 +109,14 @@ export interface Finding {
   severity: "advisory" | "blocker";
 }
 
-export const IDLE_TURN_LIMIT = 3;
-export const SAME_FILE_LIMIT = 5;
-const PAUSED_NOTIFY_MS = 15 * 60 * 1000;
-/** How often one standing finding may reappear in the timeline. */
-export const REEMIT_MS = 30 * 60 * 1000;
-/** How long one of the boss's own decisions may sit before it is worth a word. */
-const NUDGE_AFTER_MS = 4 * 60 * 60 * 1000;
-/** And how often to say it again. Nagging every half hour is how a feed is ignored. */
-const NUDGE_REEMIT_MS = 6 * 60 * 60 * 1000;
+/**
+ * What the watchdog calls stuck, and how often it repeats itself.
+ *
+ * Every one of these was a literal while `watchdogIntervalMs` sat beside them in
+ * the settings page — so the boss could change how often the rules ran and nothing
+ * about what they decided.
+ */
+const limits = (ctx: Pick<Ctx, "config">) => ctx.config.watchdog;
 
 /**
  * How the sandbox server was last seen running, and how hard we have tried.
@@ -250,57 +281,92 @@ export function sweepTurnLogs(dir: string, now: number): { zipped: number; dropp
  * and "arrived a minute ago" looked alike, and a forgotten requirement is as
  * stopped as a crashed one.
  */
-function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
+async function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number, nudgeAfterMs: number): Promise<Finding[]> {
   const out: Finding[] = [];
+  const cutoff = now - nudgeAfterMs;
 
-  for (const g of db
-    .query<{ id: number; name: string; at: number }, [number]>(
-      `SELECT g.id, g.name, max(n.at) AS at FROM grp g JOIN note n ON n.grp_id = g.id
-       WHERE g.status = 'DRAFT' AND g.approved_at IS NULL
-         AND json_extract(n.frontmatter_json, '$.draft_card') = 1
-       GROUP BY g.id HAVING max(n.at) < ?`,
+  // Containment, not `->> = '1'`: the card is written as JSON `true`, and SQLite's
+  // `json_extract(...) = 1` matched that only because it rendered a boolean as 1.
+  for (const g of await db
+    .select({ id: grp.id, name: grp.name, at: maxMs(note.at) })
+    .from(grp)
+    .innerJoin(note, eq(note.grp_id, grp.id))
+    .where(
+      and(
+        eq(grp.status, "DRAFT"),
+        isNull(grp.approved_at),
+        sql`${note.frontmatter_json} @> '{"draft_card": true}'::jsonb`,
+      ),
     )
-    .all(now - NUDGE_AFTER_MS)) {
+    .groupBy(grp.id)
+    .having(lt(maxMs(note.at), cutoff))) {
     out.push({
       rule: "waiting_card",
       grpId: g.id,
       severity: "advisory",
-      body: `${g.name} 的计划卡等你批 ${hours(now - g.at)} 小时了`,
+      body: `${g.name} 的计划卡等你批 ${hours(now - (g.at ?? now))} 小时了`,
     });
   }
 
-  for (const s of db
-    .query<{ grp_id: number; name: string; seq: number; awaiting_at: number }, [number]>(
-      `SELECT s.grp_id, g.name, s.seq, s.awaiting_at FROM slice s JOIN grp g ON g.id = s.grp_id
-       WHERE s.status = 'awaiting_boss' AND s.awaiting_at IS NOT NULL AND s.awaiting_at < ?`,
-    )
-    .all(now - NUDGE_AFTER_MS)) {
+  for (const s of await db
+    .select({ grp_id: slice.grp_id, name: grp.name, seq: slice.seq, awaiting_at: slice.awaiting_at })
+    .from(slice)
+    .innerJoin(grp, eq(grp.id, slice.grp_id))
+    .where(and(eq(slice.status, "awaiting_boss"), isNotNull(slice.awaiting_at), lt(slice.awaiting_at, cutoff)))) {
     out.push({
       rule: "waiting_slice",
       grpId: s.grp_id,
       severity: "advisory",
-      body: `${s.name} S${s.seq} 等你查收 ${hours(now - s.awaiting_at)} 小时了`,
+      body: `${s.name} S${s.seq} 等你查收 ${hours(now - (s.awaiting_at ?? now))} 小时了`,
     });
   }
 
   // Only the head: the queue is strictly serial, so everything behind it is
   // waiting on this one merge, and that count is the whole reason to care.
-  for (const q of db
-    .query<{ id: number; name: string; at: number; behind: number }, [number]>(
-      `SELECT g.id, g.name, g.merge_seq_at AS at,
-              (SELECT count(*) FROM grp o WHERE o.project_id = g.project_id
-                 AND o.status = 'PR_OPEN' AND o.merge_seq > g.merge_seq) AS behind
-       FROM grp g WHERE g.status = 'PR_OPEN' AND g.merge_seq_at IS NOT NULL AND g.merge_seq_at < ?
-         AND NOT EXISTS (SELECT 1 FROM grp o WHERE o.project_id = g.project_id
-                           AND o.status = 'PR_OPEN' AND o.merge_seq < g.merge_seq)`,
-    )
-    .all(now - NUDGE_AFTER_MS)) {
+  const ahead = alias(grp, "ahead");
+  const heads = await db
+    .select({ id: grp.id, name: grp.name, at: grp.merge_seq_at, project_id: grp.project_id, seq: grp.merge_seq })
+    .from(grp)
+    .where(
+      and(
+        eq(grp.status, "PR_OPEN"),
+        isNotNull(grp.merge_seq_at),
+        lt(grp.merge_seq_at, cutoff),
+        notExists(
+          db
+            .select({ id: ahead.id })
+            .from(ahead)
+            .where(
+              and(
+                eq(ahead.project_id, grp.project_id),
+                eq(ahead.status, "PR_OPEN"),
+                lt(ahead.merge_seq, grp.merge_seq),
+              ),
+            ),
+        ),
+      ),
+    );
+  for (const q of heads) {
+    // Counted per head rather than as a correlated subquery in the select list:
+    // the filter above leaves at most one head per project, so this is one small
+    // query per project and needs no raw SQL to say so. `merge_seq > head` already
+    // excludes the head itself, and a head with no place in the order has nothing
+    // countably behind it — `o.merge_seq > NULL` matched no row before either.
+    const [row] =
+      q.seq === null
+        ? []
+        : await db
+            .select({ behind: count() })
+            .from(grp)
+            .where(and(eq(grp.project_id, q.project_id), eq(grp.status, "PR_OPEN"), gt(grp.merge_seq, q.seq)));
+    const behind = row?.behind ?? 0;
     out.push({
       rule: "waiting_merge",
       grpId: q.id,
-      severity: q.behind > 0 ? "blocker" : "advisory",
+      severity: behind > 0 ? "blocker" : "advisory",
       body:
-        `${q.name} 的 PR 排在队首 ${hours(now - q.at)} 小时了` + (q.behind > 0 ? `，后面还堵着 ${q.behind} 个` : ""),
+        `${q.name} 的 PR 排在队首 ${hours(now - (q.at ?? now))} 小时了` +
+        (behind > 0 ? `，后面还堵着 ${behind} 个` : ""),
     });
   }
   return out;
@@ -313,16 +379,23 @@ function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
  * manage it — the codex session sweep and the quota read. Both are best-effort
  * and neither cares which sandbox answers.
  */
-function liveScopes(db: DB): Scope[] {
+/**
+ * A group whose container is not ours to touch: over, or deliberately set down.
+ *
+ * Written out inside the query before, so the two states that mean "leave it
+ * alone" were a string nothing checked against the lifecycle vocabulary.
+ */
+const UNREACHABLE_GRP_STATES = ["DISSOLVED", "PARKED"] as const satisfies readonly GrpState[];
+
+async function liveScopes(db: DB): Promise<Scope[]> {
   const out: Scope[] = [];
-  for (const g of db
-    .query<{ id: number }, []>(
-      "SELECT id FROM grp WHERE sandbox_id IS NOT NULL AND status NOT IN ('DISSOLVED','PARKED')",
-    )
-    .all()) {
+  for (const g of await db
+    .select({ id: grp.id })
+    .from(grp)
+    .where(and(isNotNull(grp.sandbox_id), notInArray(grp.status, [...UNREACHABLE_GRP_STATES])))) {
     out.push({ grp: g.id });
   }
-  for (const p of db.query<{ id: number }, []>("SELECT id FROM project WHERE sandbox_id IS NOT NULL").all()) {
+  for (const p of await db.select({ id: project.id }).from(project).where(isNotNull(project.sandbox_id))) {
     out.push({ project: p.id });
   }
   return out;
@@ -337,7 +410,7 @@ function liveScopes(db: DB): Scope[] {
  * nothing may depend on it.
  */
 export async function newestRollout(ctx: Ctx): Promise<string | null> {
-  for (const s of liveScopes(ctx.db)) {
+  for (const s of await liveScopes(ctx.db)) {
     const r = await execIn(ctx, s, NEWEST_ROLLOUT).catch(() => null);
     if (r?.code === 0 && r.out.trim()) return r.out;
   }
@@ -361,7 +434,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     // 30 seconds, and `emit` keys on (rule, grpId) for half an hour. The findings
     // collected before the throw go with it — `rules` emits at its end and never
     // got there, so without this they never reach the feed.
-    return emit(
+    return await emit(
       deps.ctx,
       [
         ...findings,
@@ -389,9 +462,112 @@ const EVERY_TICK = null;
 /** Hourly, for a seven-day retention window. */
 const HOURLY = new Cron("0 * * * *");
 
-type Cadence = typeof EVERY_TICK | Cron;
+/**
+ * A plain interval, for a rule whose period is a setting rather than a clock time.
+ *
+ * `HOURLY` wants to land on the hour; the repo-map check just wants to stop
+ * asking every thirty seconds. A cron pattern built from milliseconds would be a
+ * translation with nothing to gain.
+ */
+type Every = { everyMs: number };
+
+type Cadence = typeof EVERY_TICK | Cron | Every;
 
 const RAN_KEY = (rule: string) => `watchdog.ran.${rule}`;
+
+/** The repo map's stamp, in the database because process memory forgets on restart. */
+const MAP_KEY = (projectId: number) => `watchdog.repo_map.${projectId}`;
+
+/**
+ * Everything the repo map is a function of, in one 41-byte round trip.
+ *
+ * The project checkout is only ever a clean checkout of the base branch — agents
+ * work in group containers — so its HEAD is a faithful stamp of the contents the
+ * map reads. The exclude list and the repository's name are the map's other two
+ * inputs and neither moves HEAD, so both go in. Empty means the container could
+ * not be read, which the caller must treat as "unknown", never as "unchanged".
+ */
+type MapProject = { id: number; repo_path: string; remote: string | null };
+
+/**
+ * One project's map, rebuilt only when something it is made of moved.
+ *
+ * The stamp comes first because both round trips below used to happen before the
+ * rule knew whether anything had changed, and the second one carries every
+ * tracked file's contents out of the container. An idle project paid four
+ * container execs and 0.8 MB every thirty seconds for a map identical to the
+ * stored one.
+ */
+async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise<void> {
+  const stamp = p.remote ? await mapStamp(ctx, p.id, p.repo_path) : "";
+  // An unreadable stamp used to mean "do the work anyway", on the reasoning that a
+  // container which will not answer must not freeze the map. Measured over 2,766
+  // ticks: it froze nothing and cost **6,351 seconds** — 95% of the whole watchdog
+  // tick. The container that cannot answer `rev-parse` is the same one
+  // `treeHeads` reads file contents from, so every one of those rebuilds produced
+  // a *paths-only* map and stored it over a better one, at 5.3s a tick, for as
+  // long as the container stayed down.
+  // Once, if there is nothing stored yet — a paths-only map beats no map, and it
+  // is the repetition that cost the 6,351 seconds, not the first build.
+  if (p.remote && !stamp && (await loadMap(ctx.db, p.id)).length > 0) {
+    if (mapWarned.has(p.id)) return;
+    mapWarned.add(p.id);
+    findings.push({
+      rule: "repo-map",
+      grpId: null,
+      severity: "advisory",
+      body: `仓库地图停在上一次的版本：${p.repo_path} 的容器读不到 HEAD，重建只会得到一份没有符号的地图`,
+    });
+    return;
+  }
+  if (stamp && (await readSetting(ctx.db, MAP_KEY(p.id))) === stamp) return;
+  const { files, why } = p.remote
+    ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))
+    : { files: [], why: "这个项目没记下 remote，没有可以镜像的地址" };
+  // Said once per project: never means the map silently stops being refreshed,
+  // and every tick is a feed nobody reads. Said with git's own words, because
+  // naming possible causes in prose is a guess printed as a diagnosis.
+  if (!files.length) {
+    if (mapWarned.has(p.id)) return;
+    mapWarned.add(p.id);
+    findings.push({
+      rule: "repo-map",
+      grpId: null,
+      severity: "advisory",
+      body: `仓库地图没法刷新了：${p.repo_path} —— ${why ?? "没有原因可说，这本身就是个 bug"}`,
+    });
+    return;
+  }
+  mapWarned.delete(p.id);
+  // Symbols need file *contents*, and the only copy is in the project's own
+  // container. Whole files, not the indexer's head: a parser needs the whole
+  // declaration, so a truncated file silently loses its last one and no larger
+  // cap fixes that. Empty is legitimate and means a paths-only map. This is the
+  // 0.8 MB the stamp exists to spend only when it buys something.
+  const heads = await treeHeads(ctx, { project: p.id }, null).catch(() => new Map<string, string>());
+  const named = await buildMap(
+    p.repo_path,
+    () => files,
+    await indexExcludes(ctx.db, p.id),
+    (rel) => heads.get(rel),
+  );
+  if (await saveMap(ctx.db, p.id, named)) {
+    await ctx.bus.emit({
+      author: roleFor(ctx, "compress_context"),
+      kind: "state_change",
+      body: `repo map refreshed (${files.length} files, ${heads.size} read for symbols)`,
+    });
+  }
+  // After the map is stored, never before: a tick that refreshed nothing must not
+  // record that it did.
+  if (stamp) await writeSetting(ctx.db, MAP_KEY(p.id), stamp);
+}
+
+async function mapStamp(ctx: Ctx, projectId: number, repoPath: string): Promise<string> {
+  const head = await sandboxGit(ctx, { project: projectId })(["rev-parse", "HEAD"], WORK);
+  if (head.code !== 0) return "";
+  return Bun.hash([head.out.trim(), repoPath, ...(await indexExcludes(ctx.db, projectId))].join("\n")).toString(16);
+}
 
 /**
  * Due when the cadence's next run after the last one has arrived.
@@ -400,15 +576,16 @@ const RAN_KEY = (rule: string) => `watchdog.ran.${rule}`;
  * `nextRun` is croner's documented way to ask this of a pattern — a `Cron` built
  * without a callback schedules nothing, so these are parsed patterns, not timers.
  */
-function due(db: WatchdogDeps["ctx"]["db"], rule: string, cadence: Cadence, now: number): boolean {
+async function due(db: WatchdogDeps["ctx"]["db"], rule: string, cadence: Cadence, now: number): Promise<boolean> {
   if (cadence === EVERY_TICK) return true;
-  const stored = readSetting(db, RAN_KEY(rule));
+  const stored = await readSetting(db, RAN_KEY(rule));
   // Tested before the conversion, because `Number(null)` is 0: reading the absent
   // row as a number made a rule that had never run look like one that ran at the
   // epoch. The absent row has to be checked as absent.
   if (stored === null) return true;
   const last = Number(stored);
   if (!Number.isFinite(last)) return true;
+  if ("everyMs" in cadence) return now - last >= cadence.everyMs;
   return (cadence.nextRun(new Date(last))?.getTime() ?? Infinity) <= now;
 }
 
@@ -437,7 +614,7 @@ interface Rule {
 function stepper(deps: WatchdogDeps, now: () => number, findings: Finding[]) {
   const db = deps.ctx.db;
   return async function step(rule: Rule, run: () => Promise<void>): Promise<void> {
-    if (!due(db, rule.id, rule.every, now())) return;
+    if (!(await due(db, rule.id, rule.every, now()))) return;
     try {
       await activeTracer().startActiveSpan(`watchdog.${rule.name}`, async (span) => {
         try {
@@ -462,7 +639,7 @@ function stepper(deps: WatchdogDeps, now: () => number, findings: Finding[]) {
       // After the run and whatever its outcome: a rule that throws every time would
       // otherwise never record, and would retry on every tick.
       if (rule.every !== EVERY_TICK) {
-        writeSetting(db, RAN_KEY(rule.id), String(now()));
+        await writeSetting(db, RAN_KEY(rule.id), String(now()));
       }
     }
   };
@@ -477,9 +654,9 @@ async function networkReady(
   now: () => number,
   t: Translate,
 ): Promise<boolean> {
-  const net = await (deps.probe ?? probe)(deps.ctx.db, now());
+  const net = await (deps.probe ?? probe)(deps.ctx.db, now(), undefined, deps.ctx.config);
   if (!net.changed) return net.online;
-  const held = net.online ? 0 : holdForOffline(deps.ctx, now());
+  const held = net.online ? 0 : await holdForOffline(deps.ctx, now());
   const body = net.online ? t("net.back") : t("net.lost", { n: held });
   // The finding is the only announcement. There was a `bus.emit` here as well,
   // with the same sentence and no dedup, so the feed carried the line twice in
@@ -493,7 +670,7 @@ async function networkReady(
     severity: net.online ? "advisory" : "blocker",
     body,
   });
-  if (net.online) deps.ctx.sched.tick();
+  if (net.online) await deps.ctx.sched.tick();
   return net.online;
 }
 
@@ -506,15 +683,32 @@ interface BaseGroup {
 }
 
 async function nudgeMovedBases(ctx: Ctx, findings: Finding[], now: () => number): Promise<void> {
-  const groups = ctx.db
-    .query<BaseGroup, []>(
-      `SELECT g.id, g.name, p.repo_path AS repo, g.rebase_seen AS seen, g.project_id
-       FROM grp g JOIN project p ON p.id = g.project_id
-       WHERE g.status IN ('RUNNING','PR_OPEN') AND g.sandbox_id IS NOT NULL
-         AND NOT EXISTS (SELECT 1 FROM job j WHERE j.grp_id = g.id AND j.state = 'pending'
-                           AND j.kind = 'agent_turn' AND j.payload_json LIKE '%"conflict":true%')`,
-    )
-    .all();
+  const groups = await ctx.db
+    .select({ id: grp.id, name: grp.name, repo: project.repo_path, seen: grp.rebase_seen, project_id: grp.project_id })
+    .from(grp)
+    .innerJoin(project, eq(project.id, grp.project_id))
+    .where(
+      and(
+        inArray(grp.status, ["RUNNING", "PR_OPEN"]),
+        isNotNull(grp.sandbox_id),
+        // Containment rather than the old `LIKE '%"conflict":true%'`: the column is
+        // `jsonb`, so there is no text to match, and the LIKE was reading a
+        // serialisation it did not control.
+        notExists(
+          ctx.db
+            .select({ id: job.id })
+            .from(job)
+            .where(
+              and(
+                eq(job.grp_id, grp.id),
+                eq(job.state, "pending"),
+                eq(job.kind, "agent_turn"),
+                sql`${job.payload_json} @> '{"conflict":true}'::jsonb`,
+              ),
+            ),
+        ),
+      ),
+    );
   // One request per *project*, not per group: ten groups on one project spent ten
   // identical calls of one rate limit every tick, fetching the same string.
   const heads = new Map<number, BaseHead | null>();
@@ -540,8 +734,8 @@ async function nudgeMovedBase(
   if ((await git(["merge-base", "--is-ancestor", movement.sha, "HEAD"], WORK)).code === 0) return;
   // Enqueue first, record after: `rebase_seen` is the claim that this movement was
   // handled, and a throw between the two left the claim standing with no nudge sent.
-  queueRebase(ctx, group, movement, findings);
-  ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [movement.sha, now(), group.id]);
+  await queueRebase(ctx, group, movement, findings);
+  await ctx.db.update(grp).set({ rebase_seen: movement.sha, rebase_seen_at: now() }).where(eq(grp.id, group.id));
 }
 
 interface BaseHead {
@@ -570,20 +764,20 @@ async function knowsCommit(git: GitIn, sha: string): Promise<boolean> {
   return (await git(["cat-file", "-e", `${sha}^{commit}`], WORK)).code === 0;
 }
 
-function queueRebase(
+async function queueRebase(
   ctx: Ctx,
   group: BaseGroup,
   movement: { baseRef: string; sha: string },
   findings: Finding[],
-): void {
+): Promise<void> {
   const { baseRef, sha } = movement;
   const remoteBranch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : null;
   const fetchStep = remoteBranch ? `\`git fetch origin ${remoteBranch}\` then ` : "";
-  ctx.sched.enqueue("agent_turn", {
+  await ctx.sched.enqueue("agent_turn", {
     grp_id: group.id,
     priority: 4,
     payload: {
-      role: "engineer",
+      role: roleFor(ctx, "write_code"),
       conflict: true,
       rejection:
         `${baseRef} moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
@@ -606,7 +800,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   const t = (k: SayKey, a?: Parameters<typeof say>[2]) => say(ctx.config.language, k, a);
   const now = deps.now ?? (() => Date.now());
   const step = stepper(deps, now, findings);
-  if (!(await networkReady(deps, findings, now, t))) return emit(ctx, findings, now);
+  if (!(await networkReady(deps, findings, now, t))) return await emit(ctx, findings, now);
 
   // Liveness first: one row per state, each saying who pushes it (invariants.ts).
   // The rules below are the other question — "is this healthy" — and keeping the
@@ -614,7 +808,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // every rule below: these two run *before* all twenty-four, so a throw here
   // escaped to `runWatchdog` and skipped every one of them.
   await step({ id: "0a", name: "invariants", every: EVERY_TICK }, async () => {
-    runInvariants(ctx);
+    await runInvariants(ctx);
   });
 
   // A group the boss approved while a boundary held it. `orch owns` sweeps too, but
@@ -626,12 +820,10 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
 
   // 1. Turn wall-clock timeout.
   await step({ id: "1", name: "turn_timeout", every: EVERY_TICK }, async () => {
-    const stale = ctx.db
-      .query<{ id: number; grp_id: number | null; started_at: number }, [number]>(
-        `SELECT id, grp_id, started_at FROM job
-         WHERE state = 'running' AND kind = 'agent_turn' AND started_at < ?`,
-      )
-      .all(now() - cfg.turnTimeoutMs);
+    const stale = await ctx.db
+      .select({ id: job.id, grp_id: job.grp_id, started_at: job.started_at })
+      .from(job)
+      .where(and(eq(job.state, "running"), eq(job.kind, "agent_turn"), lt(job.started_at, now() - cfg.turnTimeoutMs)));
     for (const j of stale) {
       findings.push({
         rule: "turn_timeout",
@@ -645,11 +837,10 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
 
   // 2. Consecutive turns that wrote nothing to the blackboard.
   await step({ id: "2", name: "no_progress", every: EVERY_TICK }, async () => {
-    const idle = ctx.db
-      .query<{ id: number; grp_id: number | null; role: string; idle_turns: number }, [number]>(
-        "SELECT id, grp_id, role, idle_turns FROM agent WHERE idle_turns >= ?",
-      )
-      .all(IDLE_TURN_LIMIT);
+    const idle = await ctx.db
+      .select({ id: agent.id, grp_id: agent.grp_id, role: agent.role, idle_turns: agent.idle_turns })
+      .from(agent)
+      .where(gte(agent.idle_turns, limits(ctx).idleTurns));
     for (const a of idle) {
       findings.push({
         rule: "no_progress",
@@ -657,17 +848,22 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         severity: "advisory",
         body: t("wd.no_progress", { role: a.role, n: a.idle_turns }),
       });
-      ctx.db.run("UPDATE agent SET state = 'blocked', idle_turns = 0 WHERE id = ?", [a.id]);
+      await ctx.db.update(agent).set({ state: "blocked", idle_turns: 0 }).where(eq(agent.id, a.id));
     }
   });
 
   // 3. The same agent rewriting the same file over and over.
   await step({ id: "3", name: "circling", every: EVERY_TICK }, async () => {
-    const looping = ctx.db
-      .query<{ id: number; grp_id: number | null; role: string; loop_file: string; loop_count: number }, [number]>(
-        "SELECT id, grp_id, role, loop_file, loop_count FROM agent WHERE loop_count >= ? AND loop_file IS NOT NULL",
-      )
-      .all(SAME_FILE_LIMIT);
+    const looping = await ctx.db
+      .select({
+        id: agent.id,
+        grp_id: agent.grp_id,
+        role: agent.role,
+        loop_file: agent.loop_file,
+        loop_count: agent.loop_count,
+      })
+      .from(agent)
+      .where(and(gte(agent.loop_count, limits(ctx).sameFile), isNotNull(agent.loop_file)));
     for (const a of looping) {
       findings.push({
         rule: "circling",
@@ -675,21 +871,22 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         severity: "advisory",
         // Architect, not the writer: going round in circles on one file is usually
         // a design problem, and asking the writer to try harder does not fix it.
-        body: t("wd.circling", { role: a.role, file: a.loop_file, n: a.loop_count }),
+        // `loop_file` is still typed nullable — the predicate is a runtime fact and
+        // not a type — so this reads it rather than asserting past it.
+        body: t("wd.circling", { role: a.role, file: a.loop_file ?? "", n: a.loop_count }),
       });
-      ctx.db.run("UPDATE agent SET loop_count = 0 WHERE id = ?", [a.id]);
+      await ctx.db.update(agent).set({ loop_count: 0 }).where(eq(agent.id, a.id));
     }
   });
 
   // 4. A lease that keeps failing while the code has not changed.
   await step({ id: "4", name: "env_suspect", every: EVERY_TICK }, async () => {
-    const envSuspect = ctx.db
-      .query<{ resource: string; grp_id: number | null; head_sha: string | null; c: number }, []>(
-        `SELECT resource, grp_id, head_sha, count(*) AS c FROM lease
-         WHERE state = 'failed' AND head_sha IS NOT NULL
-         GROUP BY resource, grp_id, head_sha HAVING c >= 2`,
-      )
-      .all();
+    const envSuspect = await ctx.db
+      .select({ resource: lease.resource, grp_id: lease.grp_id, head_sha: lease.head_sha, c: count() })
+      .from(lease)
+      .where(and(eq(lease.state, "failed"), isNotNull(lease.head_sha)))
+      .groupBy(lease.resource, lease.grp_id, lease.head_sha)
+      .having(gte(count(), 2));
     for (const l of envSuspect) {
       findings.push({
         rule: "env_suspect",
@@ -699,21 +896,35 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         // and letting the writer keep editing code is how hours disappear.
         body: t("wd.env_suspect", { resource: l.resource, n: l.c }),
       });
-      ctx.db.run("UPDATE lease SET head_sha = NULL WHERE resource = ? AND state = 'failed' AND head_sha = ?", [
-        l.resource,
-        l.head_sha,
-      ]);
+      await ctx.db
+        .update(lease)
+        .set({ head_sha: null })
+        .where(
+          and(
+            eq(lease.resource, l.resource),
+            eq(lease.state, "failed"),
+            l.head_sha === null ? isNull(lease.head_sha) : eq(lease.head_sha, l.head_sha),
+          ),
+        );
     }
   });
 
   // 5. Budget.
   await step({ id: "5", name: "budget", every: EVERY_TICK }, async () => {
-    const budgets = ctx.db
-      .query<{ id: number; name: string; budget_tokens: number; spent_tokens: number; status: GrpState }, []>(
-        "SELECT id, name, budget_tokens, spent_tokens, status FROM grp WHERE budget_tokens IS NOT NULL",
-      )
-      .all();
+    const budgets = await ctx.db
+      .select({
+        id: grp.id,
+        name: grp.name,
+        budget_tokens: grp.budget_tokens,
+        spent_tokens: grp.spent_tokens,
+        status: grp.status,
+      })
+      .from(grp)
+      .where(isNotNull(grp.budget_tokens));
     for (const g of budgets) {
+      // Nullable by type, never null here — the predicate above says so, and a
+      // division by a missing budget would read as an exhausted one.
+      if (g.budget_tokens === null) continue;
       const frac = g.spent_tokens / g.budget_tokens;
       if (frac >= 1 && g.status !== "PAUSED") {
         findings.push({
@@ -722,13 +933,13 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           severity: "blocker",
           body: t("wd.budget_exhausted", { name: g.name, tokens: g.spent_tokens }),
         });
-        hold(ctx.db, g.id, { reason: "budget", settled: true });
+        await hold(ctx.db, g.id, { reason: "budget", settled: true });
         // A notification says it stopped; it does not put a decision in front of
         // anyone. Without a row in the queue the group sat suspended, 继续 did
         // nothing the scheduler would honour, and the only visible state was a
         // paused group with no reason attached. `budget:` prefixes the question so
         // raising the cap can close exactly this row.
-        raise(ctx.db, {
+        await raise(ctx.db, {
           grpId: g.id,
           brief: "预算烧穿了，加不加",
           chain: "boss",
@@ -751,14 +962,13 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // 6. Quota came back. docs/project/plan.md §11 says a rate-limited group waits for the reset,
   // and waiting is only useful if something is watching the clock.
   await step({ id: "6", name: "rate_limit_resumed", every: EVERY_TICK }, async () => {
-    const throttled = ctx.db
-      .query<{ id: number; name: string }, [number]>(
-        "SELECT id, name FROM grp WHERE status = 'PAUSED' AND rl_resets_at IS NOT NULL AND rl_resets_at <= ?",
-      )
-      .all(now());
+    const throttled = await ctx.db
+      .select({ id: grp.id, name: grp.name })
+      .from(grp)
+      .where(and(eq(grp.status, "PAUSED"), isNotNull(grp.rl_resets_at), lte(grp.rl_resets_at, now())));
     for (const g of throttled) {
-      release(ctx, g.id);
-      ctx.bus.emit({
+      await release(ctx, g.id);
+      await ctx.bus.emit({
         grpId: g.id,
         author: "orchestrator",
         kind: "state_change",
@@ -781,7 +991,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // survives a restart and is not shared with a second tick.
   await step({ id: "7d2b", name: "container_sessions_swept", every: HOURLY }, async () => {
     await pMap(
-      liveScopes(ctx.db),
+      await liveScopes(ctx.db),
       (s) => execIn(ctx, s, `find ${CODEX_HOME}/sessions -type f -mtime +7 -delete 2>/dev/null || true`),
       // `stopOnError: false` is what `allSettled` meant here: one container that
       // refuses must not cancel the sweep of the other nine.
@@ -803,50 +1013,11 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // Deterministic and cheap — `git ls-files` plus one tree-sitter parse per file,
   // grammars loaded once per process — and only written when the render changed,
   // so a quiet repo costs one comparison. Seven groups were grepping for this.
-  await step({ id: "7e", name: "repo_map", every: EVERY_TICK }, async () => {
-    for (const p of ctx.db
-      .query<{ id: number; repo_path: string; remote: string | null }, []>("SELECT id, repo_path, remote FROM project")
-      .all()) {
-      const { files, why } = p.remote
-        ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))
-        : { files: [], why: "这个项目没记下 remote，没有可以镜像的地址" };
-      // Said once per project: never means the map silently stops being refreshed,
-      // and every tick is a feed nobody reads. Said with git's own words, because
-      // naming possible causes in prose is a guess printed as a diagnosis.
-      if (!files.length) {
-        if (!mapWarned.has(p.id)) {
-          mapWarned.add(p.id);
-          findings.push({
-            rule: "repo-map",
-            grpId: null,
-            severity: "advisory",
-            body: `仓库地图没法刷新了：${p.repo_path} —— ${why ?? "没有原因可说，这本身就是个 bug"}`,
-          });
-        }
-        continue;
-      }
-      mapWarned.delete(p.id);
-      // Symbols need file *contents*, and the only copy is in the project's own
-      // container. Whole files, not the indexer's head: a parser needs the whole
-      // declaration, so a truncated file silently loses its last one and no larger
-      // cap fixes that. Empty is legitimate and means a paths-only map.
-
-      // ponytail: the whole corpus crosses the exec every tick (0.8 MB → 4.0 MB
-      // here). Gate the exec on the tree's head sha if a large repo makes it hurt.
-      const heads = await treeHeads(ctx, { project: p.id }, null).catch(() => new Map<string, string>());
-      const named = await buildMap(
-        p.repo_path,
-        () => files,
-        indexExcludes(ctx.db, p.id),
-        (rel) => heads.get(rel),
-      );
-      if (saveMap(ctx.db, p.id, named)) {
-        ctx.bus.emit({
-          author: "librarian",
-          kind: "state_change",
-          body: `repo map refreshed (${files.length} files, ${heads.size} read for symbols)`,
-        });
-      }
+  await step({ id: "7e", name: "repo_map", every: { everyMs: cfg.watchdog.repoMapEveryMs } }, async () => {
+    for (const p of await ctx.db
+      .select({ id: project.id, repo_path: project.repo_path, remote: project.remote })
+      .from(project)) {
+      await refreshMap(ctx, p, findings);
     }
   });
 
@@ -856,29 +1027,58 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // group IS the fault, whatever the last turn's exit code said. One automatic
   // retry, then the boss.
   await step({ id: "8", name: "stalled", every: EVERY_TICK }, async () => {
-    const stalled = ctx.db
-      .query<Job, [string]>(
-        `SELECT j.id, j.kind, j.grp_id, j.agent_id, j.slice_id, j.payload_json, j.priority, j.state, j.error
-         FROM job j JOIN grp g ON g.id = j.grp_id
-         WHERE g.status IN ('RUNNING', 'PLANNING') AND j.kind = 'agent_turn'
-           AND j.id = (SELECT max(id) FROM job WHERE grp_id = j.grp_id AND kind = 'agent_turn')
-           AND NOT EXISTS (SELECT 1 FROM job k WHERE k.grp_id = j.grp_id
-                           AND k.state IN (SELECT value FROM json_each(?)))`,
-      )
-      .all(stateParam(ACTIVE_JOB_STATES));
+    // Every state a turn can be dispatched from, not a list retyped here. It said
+    // RUNNING and PLANNING, which was the same set until PR feedback stopped moving
+    // groups out of PR_OPEN — and a PM turn that dies answering a review would then
+    // have been covered by nothing at all.
+    const newest = alias(job, "newest");
+    const queued = alias(job, "queued");
+    const stalled = await ctx.db
+      .select({
+        id: job.id,
+        kind: job.kind,
+        grp_id: job.grp_id,
+        agent_id: job.agent_id,
+        slice_id: job.slice_id,
+        payload_json: job.payload_json,
+        priority: job.priority,
+        state: job.state,
+        error: job.error,
+      })
+      .from(job)
+      .innerJoin(grp, eq(grp.id, job.grp_id))
+      .where(
+        and(
+          inArray(grp.status, [...DISPATCHABLE_GRP_STATES]),
+          eq(job.kind, "agent_turn"),
+          eq(
+            job.id,
+            ctx.db
+              .select({ id: max(newest.id) })
+              .from(newest)
+              .where(and(eq(newest.grp_id, job.grp_id), eq(newest.kind, "agent_turn"))),
+          ),
+          notExists(
+            ctx.db
+              .select({ id: queued.id })
+              .from(queued)
+              .where(and(eq(queued.grp_id, job.grp_id), inArray(queued.state, [...ACTIVE_JOB_STATES]))),
+          ),
+        ),
+      );
     for (const j of stalled) {
       // A rebase that beat the Engineer twice is a design question, not a harder
       // rebase, so the next thing to try is the role that can say whether the slice
       // still makes sense. `conflict` marks a turn that was *told* to rebase (rule
       // 15), not one that failed to — hence `state === 'failed'` as well: a turn
       // that ended `done` is a stall, which is the branch below.
-      const payload = jsonOr(j.payload_json, z.looseObject({ conflict: z.boolean().optional() }), {});
+      const payload = valueOr(j.payload_json, z.looseObject({ conflict: z.boolean().optional() }), {});
       if (payload.conflict === true && j.state === "failed") {
-        ctx.sched.enqueue("agent_turn", {
+        await ctx.sched.enqueue("agent_turn", {
           grp_id: j.grp_id,
           priority: 6,
           payload: {
-            role: "architect",
+            role: roleFor(ctx, "cut_boundary"),
             rejection:
               `The Engineer could not rebase this branch onto main. Decide what it means: is the slice still ` +
               `what we want now that main has moved, does the boundary need re-cutting, or should it be dropped? ` +
@@ -889,7 +1089,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       }
       // Same one-shot guard as a restart: a turn that fails again after being put
       // back is not going to succeed on the third try either.
-      if (resumeReclaimed(ctx.sched, [j]) > 0) continue;
+      if ((await resumeReclaimed(ctx.sched, [j])) > 0) continue;
       findings.push({
         rule: "stalled",
         grpId: j.grp_id,
@@ -906,16 +1106,23 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // no status a dissolved group has is dispatchable — so it sits pending forever,
   // counted in every "what is queued" view the boss reads.
   await step({ id: "9", name: "orphan_jobs", every: EVERY_TICK }, async () => {
-    const orphanQueued = ctx.db.run(
-      `UPDATE job SET state = 'cancelled', ended_at = ?, error = 'the group was dissolved'
-       WHERE state = 'pending' AND grp_id IN (SELECT id FROM grp WHERE status = 'DISSOLVED')`,
-      [now()],
-    );
-    if (orphanQueued.changes > 0) {
-      ctx.bus.emit({
+    // `returning` rather than a row count: it is the one form both drivers under
+    // `DB` report the same way, and the ids cost nothing on a set this size.
+    const orphanQueued = await ctx.db
+      .update(job)
+      .set({ state: "cancelled", ended_at: now(), error: "the group was dissolved" })
+      .where(
+        and(
+          eq(job.state, "pending"),
+          inArray(job.grp_id, ctx.db.select({ id: grp.id }).from(grp).where(eq(grp.status, "DISSOLVED"))),
+        ),
+      )
+      .returning({ id: job.id });
+    if (orphanQueued.length > 0) {
+      await ctx.bus.emit({
         author: "orchestrator",
         kind: "state_change",
-        body: `cancelled ${orphanQueued.changes} job(s) queued for a dissolved group`,
+        body: `cancelled ${orphanQueued.length} job(s) queued for a dissolved group`,
       });
     }
   });
@@ -925,41 +1132,41 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // group can stop *after* a question was handed to its PM. The symptom is the
   // worst kind: a stopped group, and a 待办 count of zero.
   await step({ id: "11", name: "stranded_question", every: EVERY_TICK }, async () => {
-    const stranded = ctx.db
-      .query<{ id: number }, [string, string, string]>(
-        // Blockers only, same reason route() lifts only blockers: an advisory that
-        // nobody answers costs nothing, and a clearance denial is a JSON blob about
-        // a tool call rather than a decision anyone can take.
-        `SELECT e.id FROM escalation e JOIN grp g ON g.id = e.grp_id
-         WHERE e.answer IS NULL AND e.severity = 'blocker'
-           AND e.chain_state != 'boss'
-           AND e.chain_state NOT IN (SELECT value FROM json_each(?))
-           AND g.status NOT IN (SELECT value FROM json_each(?))
-           AND g.status NOT IN (SELECT value FROM json_each(?))`,
-      )
-      .all(
-        stateParam(ESCALATION_TERMINAL_STATES),
-        stateParam(DISPATCHABLE_GRP_STATES),
-        // Rule 16 revokes these. Without the second clause this routes them to the
-        // boss — notification and all — and rule 16 kills the question afterwards.
-        stateParam(ANSWERLESS_GRP_STATES),
+    // Blockers only, same reason route() lifts only blockers: an advisory that
+    // nobody answers costs nothing, and a clearance denial is a JSON blob about
+    // a tool call rather than a decision anyone can take.
+    const stranded = await ctx.db
+      .select({ id: escalation.id })
+      .from(escalation)
+      .innerJoin(grp, eq(grp.id, escalation.grp_id))
+      .where(
+        and(
+          isNull(escalation.answer),
+          eq(escalation.severity, "blocker"),
+          ne(escalation.chain_state, "boss"),
+          notInArray(escalation.chain_state, [...ESCALATION_TERMINAL_STATES]),
+          notInArray(grp.status, [...DISPATCHABLE_GRP_STATES]),
+          // Rule 16 revokes these. Without the second clause this routes them to the
+          // boss — notification and all — and rule 16 kills the question afterwards.
+          notInArray(grp.status, [...ANSWERLESS_GRP_STATES]),
+        ),
       );
-    for (const e of stranded) route({ ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) }, e.id);
+    for (const e of stranded) await route({ ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) }, e.id);
   });
 
   // 10. The group it was waiting on has landed. `orch blocked` stops the caller,
   // and without this it waits forever: nothing else in the system knows that one
   // group's merge is another group's green light.
   await step({ id: "10", name: "unblocked", every: EVERY_TICK }, async () => {
-    const waiting = ctx.db
-      .query<{ id: number; name: string; blocked_on: number }, []>(
-        `SELECT g.id, g.name, g.blocked_on FROM grp g JOIN grp b ON b.id = g.blocked_on
-         WHERE g.blocked_on IS NOT NULL AND b.status = 'DISSOLVED'`,
-      )
-      .all();
+    const target = alias(grp, "target");
+    const waiting = await ctx.db
+      .select({ id: grp.id, name: grp.name, blocked_on: grp.blocked_on })
+      .from(grp)
+      .innerJoin(target, eq(target.id, grp.blocked_on))
+      .where(and(isNotNull(grp.blocked_on), eq(target.status, "DISSOLVED")));
     for (const g of waiting) {
-      release(ctx, g.id);
-      ctx.bus.emit({
+      await release(ctx, g.id);
+      await ctx.bus.emit({
         grpId: g.id,
         author: "orchestrator",
         kind: "state_change",
@@ -978,28 +1185,26 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
 
   // 7. Paused too long: notify, then park to stop holding a slot.
   await step({ id: "7", name: "paused_too_long", every: EVERY_TICK }, async () => {
-    const paused = ctx.db
-      .query<{ id: number; name: string; paused_at: number }, []>(
-        // `rl_resets_at IS NULL`: a group waiting for quota is not waiting for the boss,
-        // and parking it would retire its sessions minutes before it could resume.
-        // `blocked_on IS NULL` for the same reason: it is waiting on another group,
-        // not on anyone here, and parking would retire the sessions that are about to
-        // be woken.
-        `SELECT id, name, paused_at FROM grp
-         WHERE status = 'PAUSED' AND paused_at IS NOT NULL AND rl_resets_at IS NULL AND blocked_on IS NULL`,
-      )
-      .all();
+    // `rl_resets_at IS NULL`: a group waiting for quota is not waiting for the boss,
+    // and parking it would retire its sessions minutes before it could resume.
+    // `blocked_on IS NULL` for the same reason: it is waiting on another group,
+    // not on anyone here, and parking would retire the sessions that are about to
+    // be woken.
+    const paused = await ctx.db
+      .select({ id: grp.id, name: grp.name, paused_at: grp.paused_at })
+      .from(grp)
+      .where(and(eq(grp.status, "PAUSED"), isNotNull(grp.paused_at), isNull(grp.rl_resets_at), isNull(grp.blocked_on)));
     for (const g of paused) {
-      const waited = now() - g.paused_at;
+      const waited = now() - (g.paused_at ?? now());
       if (waited >= cfg.parkAfterPausedMs) {
-        park(ctx, g.id, `waited ${minutes(waited)} min for you`);
+        await park(ctx, g.id, `waited ${minutes(waited)} min for you`);
         findings.push({
           rule: "parked",
           grpId: g.id,
           severity: "advisory",
           body: t("wd.parked", { name: g.name, min: minutes(waited) }),
         });
-      } else if (waited >= PAUSED_NOTIFY_MS) {
+      } else if (waited >= limits(ctx).pausedNotifyMs) {
         findings.push({
           rule: "waiting_on_you",
           grpId: g.id,
@@ -1016,16 +1221,34 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // stopped, not merely "no open blocker": most parked groups never had a blocker,
   // and reviving those would undo the parking on the same tick that did it.
   await step({ id: "12", name: "unparked", every: EVERY_TICK }, async () => {
-    const revivable = ctx.db
-      .query<{ id: number; name: string }, []>(
-        `SELECT g.id, g.name FROM grp g WHERE g.status = 'PARKED' AND g.paused_at IS NOT NULL
-           AND EXISTS (SELECT 1 FROM escalation e
-                       WHERE e.grp_id = g.id AND e.severity = 'blocker'
-                         AND e.answer IS NOT NULL AND e.answered_at > g.paused_at)
-           AND NOT EXISTS (SELECT 1 FROM escalation e
-                           WHERE e.grp_id = g.id AND e.answer IS NULL AND e.severity = 'blocker')`,
-      )
-      .all();
+    const revivable = await ctx.db
+      .select({ id: grp.id, name: grp.name })
+      .from(grp)
+      .where(
+        and(
+          eq(grp.status, "PARKED"),
+          isNotNull(grp.paused_at),
+          exists(
+            ctx.db
+              .select({ id: escalation.id })
+              .from(escalation)
+              .where(
+                and(
+                  eq(escalation.grp_id, grp.id),
+                  eq(escalation.severity, "blocker"),
+                  isNotNull(escalation.answer),
+                  gt(escalation.answered_at, grp.paused_at),
+                ),
+              ),
+          ),
+          notExists(
+            ctx.db
+              .select({ id: escalation.id })
+              .from(escalation)
+              .where(and(eq(escalation.grp_id, grp.id), isNull(escalation.answer), eq(escalation.severity, "blocker"))),
+          ),
+        ),
+      );
     for (const g of revivable) {
       await unpark(ctx, g.id);
       findings.push({ rule: "unparked", grpId: g.id, severity: "advisory", body: t("wd.unparked", { name: g.name }) });
@@ -1038,16 +1261,17 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // 14. Parked and forgotten. It will not come back on its own and will not ask
   // again, so the one thing owed is a reminder that says how long.
   await step({ id: "14", name: "waiting_parked", every: EVERY_TICK }, async () => {
-    for (const g of ctx.db
-      .query<{ id: number; name: string; paused_at: number }, [number]>(
-        "SELECT id, name, paused_at FROM grp WHERE status = 'PARKED' AND paused_at IS NOT NULL AND paused_at < ?",
-      )
-      .all(now() - NUDGE_AFTER_MS)) {
+    for (const g of await ctx.db
+      .select({ id: grp.id, name: grp.name, paused_at: grp.paused_at })
+      .from(grp)
+      .where(
+        and(eq(grp.status, "PARKED"), isNotNull(grp.paused_at), lt(grp.paused_at, now() - limits(ctx).nudgeAfterMs)),
+      )) {
       findings.push({
         rule: "waiting_parked",
         grpId: g.id,
         severity: "advisory",
-        body: `${g.name} 封存了 ${hours(now() - g.paused_at)} 小时，唤醒还是不做了？`,
+        body: `${g.name} 封存了 ${hours(now() - (g.paused_at ?? now()))} 小时，唤醒还是不做了？`,
       });
     }
   });
@@ -1058,11 +1282,10 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // real `docker pause`, so the container and its disk both stay (docs/adr/005).
   // Only kill frees anything.
   await step({ id: "17", name: "sandbox_swept", every: EVERY_TICK }, async () => {
-    for (const g of ctx.db
-      .query<{ id: number; name: string }, []>(
-        `SELECT id, name FROM grp WHERE status = 'DISSOLVED' AND sandbox_id IS NOT NULL`,
-      )
-      .all()) {
+    for (const g of await ctx.db
+      .select({ id: grp.id, name: grp.name })
+      .from(grp)
+      .where(and(eq(grp.status, "DISSOLVED"), isNotNull(grp.sandbox_id)))) {
       await killSandbox(ctx, { grp: g.id });
       findings.push({
         rule: "sandbox_swept",
@@ -1079,17 +1302,23 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // would have to remember, and forgetting looks healthy here. A fact about the
   // row, checked here, whichever path stored it.
   await step({ id: "17b", name: "sandbox_stale_credential", every: EVERY_TICK }, async () => {
-    const newestCredential =
-      ctx.db.query<{ at: number | null }, []>("SELECT max(updated_at) at FROM runtime_auth").get()?.at ?? 0;
+    const [credential] = await ctx.db.select({ at: maxMs(runtime_auth.updated_at) }).from(runtime_auth);
+    const newestCredential = credential?.at ?? 0;
     if (newestCredential) {
-      for (const g of ctx.db
-        .query<{ id: number; name: string }, [number]>(
-          // Not the dissolved ones: the sweep above already took theirs, and
-          // killing the same container twice is a finding the boss cannot act on.
-          `SELECT id, name FROM grp
-           WHERE sandbox_id IS NOT NULL AND status <> 'DISSOLVED' AND coalesce(sandbox_at, 0) < ?`,
-        )
-        .all(newestCredential)) {
+      // Not the dissolved ones: the sweep above already took theirs, and killing
+      // the same container twice is a finding the boss cannot act on. A null
+      // `sandbox_at` is older than any credential, which is what the `coalesce`
+      // said before there was a way to spell it as a condition.
+      for (const g of await ctx.db
+        .select({ id: grp.id, name: grp.name })
+        .from(grp)
+        .where(
+          and(
+            isNotNull(grp.sandbox_id),
+            ne(grp.status, "DISSOLVED"),
+            or(isNull(grp.sandbox_at), lt(grp.sandbox_at, newestCredential)),
+          ),
+        )) {
         await killSandbox(ctx, { grp: g.id });
         findings.push({
           rule: "sandbox_stale_credential",
@@ -1098,18 +1327,19 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           body: `${g.name} 的沙盒绑的是旧凭据，回收了，下一轮重建`,
         });
       }
-      for (const p of ctx.db
-        .query<{ id: number }, [number]>(
-          `SELECT id FROM project WHERE sandbox_id IS NOT NULL AND coalesce(sandbox_at, 0) < ?`,
-        )
-        .all(newestCredential)) {
+      for (const p of await ctx.db
+        .select({ id: project.id })
+        .from(project)
+        .where(
+          and(isNotNull(project.sandbox_id), or(isNull(project.sandbox_at), lt(project.sandbox_at, newestCredential))),
+        )) {
         await killSandbox(ctx, { project: p.id });
       }
       // The utility container matters most: its sidecar holds the GitHub token, so
       // a rotated login leaves it pushing with the old one — and a push refused for
       // authentication is the boss-bucket failure 007 §6 says must never present as
       // an agent problem.
-      const util = utilSandbox(ctx.db);
+      const util = await utilSandbox(ctx.db);
       if (util.id && util.at < newestCredential) await killSandbox(ctx, UTIL);
     }
   });
@@ -1121,16 +1351,15 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // utility container would guarantee the same omission a third time.
   await step({ id: "18", name: "sandbox_expiring", every: EVERY_TICK }, async () => {
     const alive: Scope[] = [
-      ...ctx.db
-        .query<{ id: number }, []>(
-          `SELECT id FROM grp WHERE status IN ('RUNNING','PR_OPEN','PAUSED') AND sandbox_id IS NOT NULL`,
-        )
-        .all()
-        .map((g) => ({ grp: g.id })),
-      ...ctx.db
-        .query<{ id: number }, []>("SELECT id FROM project WHERE sandbox_id IS NOT NULL")
-        .all()
-        .map((p) => ({ project: p.id })),
+      ...(
+        await ctx.db
+          .select({ id: grp.id })
+          .from(grp)
+          .where(and(inArray(grp.status, ["RUNNING", "PR_OPEN", "PAUSED"]), isNotNull(grp.sandbox_id)))
+      ).map((g) => ({ grp: g.id })),
+      ...(await ctx.db.select({ id: project.id }).from(project).where(isNotNull(project.sandbox_id))).map((p) => ({
+        project: p.id,
+      })),
       UTIL,
     ];
     for (const scope of alive) await renewSandbox(ctx, scope);
@@ -1145,7 +1374,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     if (present) serverRestarts = 0;
     switch (serverAction(present, seenServerArgv, serverRestarts, now(), nextServerTry)) {
       case "give_up":
-        nextServerTry = now() + REEMIT_MS;
+        nextServerTry = now() + limits(ctx).reemitMs;
         findings.push({
           rule: "server_gone",
           grpId: null,
@@ -1179,22 +1408,27 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // recovers. A group at PR_OPEN or DISSOLVED has no caller left to unblock —
   // answering would change nothing, so the queue must stop asking.
   await step({ id: "16", name: "stale_ask", every: EVERY_TICK }, async () => {
-    for (const e of ctx.db
-      .query<{ id: number; grp_id: number; name: string }, [string, string]>(
-        `SELECT e.id, e.grp_id, g.name FROM escalation e JOIN grp g ON g.id = e.grp_id
-         WHERE e.chain_state NOT IN (SELECT value FROM json_each(?))
-           AND g.status IN (SELECT value FROM json_each(?))`,
-      )
-      .all(stateParam(ESCALATION_TERMINAL_STATES), stateParam(ANSWERLESS_GRP_STATES))) {
-      ctx.db.run(
-        `UPDATE escalation SET chain_state = 'revoked', answered_by = 'orchestrator',
-           answer = ?, answered_at = unixepoch() * 1000 WHERE id = ?`,
-        ["这条需求已经走到 PR，问题过期了，没人再等这个答复。", e.id],
-      );
+    for (const e of await ctx.db
+      .select({ id: escalation.id, grp_id: escalation.grp_id, name: grp.name })
+      .from(escalation)
+      .innerJoin(grp, eq(grp.id, escalation.grp_id))
+      .where(
+        and(
+          notInArray(escalation.chain_state, [...ESCALATION_TERMINAL_STATES]),
+          inArray(grp.status, [...ANSWERLESS_GRP_STATES]),
+        ),
+      )) {
+      await ctx.db
+        .update(escalation)
+        .set({
+          chain_state: "revoked",
+          answered_by: "orchestrator",
+          answer: "这条需求已经走到 PR，问题过期了，没人再等这个答复。",
+          answered_at: now(),
+        })
+        .where(eq(escalation.id, e.id));
       // Whatever asked is long gone, but a waiter left hanging keeps a job row alive.
-      const w = ctx.waiters.get(`escalation:${e.id}`);
-      ctx.waiters.delete(`escalation:${e.id}`);
-      w?.("stale: the group reached PR");
+      answered(ctx, e.id, "stale: the group reached PR");
       findings.push({
         rule: "stale_ask",
         grpId: e.grp_id,
@@ -1207,10 +1441,10 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // 13. The three places that wait on the boss, with a clock on each. They are
   // supposed to wait; what was missing is that they waited in silence.
   await step({ id: "13", name: "boss_clocks", every: EVERY_TICK }, async () => {
-    for (const w of waitingOnBoss(ctx.db, now())) findings.push(w);
+    for (const w of await waitingOnBoss(ctx.db, now(), limits(ctx).nudgeAfterMs)) findings.push(w);
   });
 
-  return emit(ctx, findings, now);
+  return await emit(ctx, findings, now);
 }
 
 /**
@@ -1219,21 +1453,28 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
  * already does. The returned list is filtered to the same set, not just the
  * emitted events: it is what the caller pushes to the boss's phone.
  */
-function emit(ctx: Ctx, findings: Finding[], now: () => number): Finding[] {
+async function emit(ctx: Ctx, findings: Finding[], now: () => number): Promise<Finding[]> {
   const fresh: Finding[] = [];
   for (const f of findings) {
-    const last = ctx.db
-      .query<{ at: number }, [string, number | null, number | null]>(
-        `SELECT max(at) AS at FROM event
-         WHERE kind = 'escalation' AND author = 'watchdog'
-           AND json_extract(meta_json, '$.rule') = ?
-           AND (grp_id IS ? OR (grp_id IS NULL AND ? IS NULL))`,
-      )
-      .get(f.rule, f.grpId ?? null, f.grpId ?? null);
-    const window = f.rule.startsWith("waiting_") ? NUDGE_REEMIT_MS : REEMIT_MS;
+    // `IS NULL` where the finding has no group, not `= NULL`: the old statement
+    // said `grp_id IS ?`, which is SQLite's null-safe equality and has no operator
+    // form here — a finding about no group must match the rows about no group.
+    const [last] = await ctx.db
+      .select({ at: maxMs(event.at) })
+      .from(event)
+      .where(
+        and(
+          eq(event.kind, "escalation"),
+          eq(event.author, "watchdog"),
+          sql`${event.meta_json}->>'rule' = ${f.rule}`,
+          f.grpId === null ? isNull(event.grp_id) : eq(event.grp_id, f.grpId),
+        ),
+      );
+    const l = limits(ctx);
+    const window = f.rule.startsWith("waiting_") ? l.nudgeReemitMs : l.reemitMs;
     if (last?.at && now() - last.at < window) continue;
     fresh.push(f);
-    ctx.bus.emit({
+    await ctx.bus.emit({
       grpId: f.grpId,
       author: "watchdog",
       kind: "escalation",
@@ -1254,25 +1495,31 @@ function emit(ctx: Ctx, findings: Finding[], now: () => number): Finding[] {
  * is cancelled and re-queued and **the group's status is not touched** — the
  * scheduler's offline gate holds the work, and the queue drains when it lifts.
  */
-export function holdForOffline(ctx: Ctx, now: number): number {
-  const running = ctx.db
-    .query<Job & { started_at: number | null }, []>(
-      `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state
-       FROM job WHERE state = 'running' AND kind = 'agent_turn'`,
-    )
-    .all();
+export async function holdForOffline(ctx: Ctx, now: number): Promise<number> {
+  const running = await ctx.db
+    .select({
+      id: job.id,
+      kind: job.kind,
+      grp_id: job.grp_id,
+      agent_id: job.agent_id,
+      slice_id: job.slice_id,
+      payload_json: job.payload_json,
+      priority: job.priority,
+      state: job.state,
+    })
+    .from(job)
+    .where(and(eq(job.state, "running"), eq(job.kind, "agent_turn")));
   if (running.length === 0) return 0;
 
   for (const j of running) {
     abortJob(j.id);
-    ctx.db.run("UPDATE job SET state = 'cancelled', ended_at = ?, error = ? WHERE id = ?", [
-      now,
-      "offline: the host lost its network",
-      j.id,
-    ]);
+    await ctx.db
+      .update(job)
+      .set({ state: "cancelled", ended_at: now, error: "offline: the host lost its network" })
+      .where(eq(job.id, j.id));
   }
   // An agent that believes it is mid-turn is skipped forever by everything else.
-  ctx.db.run("UPDATE agent SET state = 'idle' WHERE state = 'running'");
+  await ctx.db.update(agent).set({ state: "idle" }).where(eq(agent.state, "running"));
   // `resumeReclaimed` exempts an `offline:` error from the one-retry rule for the
   // same reason it exempts `orphaned:`: the turn did nothing wrong.
   return resumeReclaimed(
@@ -1287,26 +1534,32 @@ export function holdForOffline(ctx: Ctx, now: number): number {
  * "Wrote nothing" means no file changed, no task moved and no note was written —
  * three things we can check without asking the agent how it is getting on.
  */
-export function recordTurnOutcome(
+export async function recordTurnOutcome(
   ctx: Ctx,
   agentId: number,
   filesTouched: string[],
   wroteNote: boolean,
   movedTask: boolean,
-): void {
+): Promise<void> {
   const productive = filesTouched.length > 0 || wroteNote || movedTask;
-  if (productive) ctx.db.run("UPDATE agent SET idle_turns = 0 WHERE id = ?", [agentId]);
-  else ctx.db.run("UPDATE agent SET idle_turns = idle_turns + 1 WHERE id = ?", [agentId]);
+  await ctx.db
+    .update(agent)
+    .set({ idle_turns: productive ? 0 : sql`${agent.idle_turns} + 1` })
+    .where(eq(agent.id, agentId));
 
   // One file, alone, repeatedly: the signature of an agent guessing.
   const single = filesTouched.length === 1 ? filesTouched[0]! : null;
   if (!single) {
-    ctx.db.run("UPDATE agent SET loop_file = NULL, loop_count = 0 WHERE id = ?", [agentId]);
+    await ctx.db.update(agent).set({ loop_file: null, loop_count: 0 }).where(eq(agent.id, agentId));
     return;
   }
-  const prev = ctx.db
-    .query<{ loop_file: string | null }, [number]>("SELECT loop_file FROM agent WHERE id = ?")
-    .get(agentId)?.loop_file;
-  if (prev === single) ctx.db.run("UPDATE agent SET loop_count = loop_count + 1 WHERE id = ?", [agentId]);
-  else ctx.db.run("UPDATE agent SET loop_file = ?, loop_count = 1 WHERE id = ?", [single, agentId]);
+  const [row] = await ctx.db.select({ loop_file: agent.loop_file }).from(agent).where(eq(agent.id, agentId));
+  if (row?.loop_file === single) {
+    await ctx.db
+      .update(agent)
+      .set({ loop_count: sql`${agent.loop_count} + 1` })
+      .where(eq(agent.id, agentId));
+  } else {
+    await ctx.db.update(agent).set({ loop_file: single, loop_count: 1 }).where(eq(agent.id, agentId));
+  }
 }

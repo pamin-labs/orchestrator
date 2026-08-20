@@ -92,8 +92,8 @@ async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
     };
   const secret = (await getFile(ctx, UTIL, `${REFRESH_HOME}/auth.json`)) ?? "";
   if (!secret.trim()) return { ok: false, detail: "codex login finished but produced no credential" };
-  saveAuth(ctx.db, { runtime: "codex", mode: "chatgpt", secret: secret.trim() });
-  ctx.sched.tick();
+  await saveAuth(ctx.db, { runtime: "codex", mode: "chatgpt", secret: secret.trim() });
+  void ctx.sched.tick().catch(() => {});
   return { ok: true, detail: "stored" };
 }
 
@@ -235,8 +235,8 @@ async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
         ? "claude setup-token asked for the code and never printed a token — the code may have been wrong or expired"
         : "claude setup-token printed no token — run it under a pty in the image and see what changed",
     };
-  saveAuth(ctx.db, { runtime: "claude", mode: "oauth_token", secret: token });
-  ctx.sched.tick();
+  await saveAuth(ctx.db, { runtime: "claude", mode: "oauth_token", secret: token });
+  void ctx.sched.tick().catch(() => {});
   return { ok: true, detail: "stored" };
 }
 

@@ -1,8 +1,11 @@
+import { transaction } from "../../platform/persistence/database.ts";
+import { eq } from "drizzle-orm";
 import { LeaseArgsSchema, loadResource, resolveLease } from "../../mech/lease.ts";
 import { z } from "zod";
 import { IdParams } from "../../contracts/fields.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";
+import { agent, lease as leases, nowMs } from "../../platform/persistence/schema.ts";
 
 /**
  * The one way an agent runs something it did not write.
@@ -26,25 +29,36 @@ export const LeaseBody = z.object({
 export const LeaseLogQuery = z.object({ grep: z.string().max(4000).optional() });
 
 export const postLease = (async (ctx, _req, a, _p, b) => {
-  const def = loadResource(ctx.db, b.resource);
+  const def = await loadResource(ctx.db, b.resource);
   if (!def) return bad(`unknown resource ${b.resource}. Ask the boss to add a template.`);
 
   const r = resolveLease(def, b.args);
   if (!r.ok) return bad(r.error);
 
-  const row = ctx.db.transaction(() => {
-    const lease = ctx.db
-      .query<{ id: number }, [string, number | null, number, string, string]>(
-        `INSERT INTO lease (resource, grp_id, agent_id, args_json, resolved_cmd, enqueued_at)
-         VALUES (?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
-      )
-      .get(b.resource, a.grp_id, a.id, JSON.stringify(b.args), r.argv.join(" "))!;
+  // `transaction()` and not `ctx.db.transaction`: only this one publishes the
+  // handle that `writeHandle` reads, and the `enqueue` below is what makes the
+  // lease and its follow-up turn the single unit hard constraint 8 requires.
+  const row = await transaction(ctx.db, async (tx) => {
+    const [lease] = await tx
+      .insert(leases)
+      .values({
+        resource: b.resource,
+        grp_id: a.grp_id,
+        agent_id: a.id,
+        args_json: b.args,
+        resolved_cmd: r.argv.join(" "),
+        // `nowMs`, not `Date.now()`: the clock stays the database's. Every other
+        // queue row is stamped by it, and this one would otherwise be ordered
+        // against a different clock the moment the host's drifts.
+        enqueued_at: nowMs,
+      })
+      .returning({ id: leases.id });
 
-    ctx.db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [a.id]);
-    ctx.sched.enqueue("lease", { grp_id: a.grp_id, agent_id: a.id, payload: { lease_id: lease.id } });
-    return lease;
-  })();
-  ctx.sched.tick();
+    await tx.update(agent).set({ state: "waiting_lease" }).where(eq(agent.id, a.id));
+    await ctx.sched.enqueue("lease", { grp_id: a.grp_id, agent_id: a.id, payload: { lease_id: lease!.id } });
+    return lease!;
+  });
+  await ctx.sched.tick();
   return message(`lease #${row.id} queued. End this turn; its durable result will wake you in a new turn.`);
 }) satisfies AgentHandler<z.infer<typeof LeaseBody>>;
 
@@ -52,11 +66,10 @@ export const getLeaseLog = (async (ctx, _req, a, params, { grep }) => {
   // Whose lease this is. Unchecked, any sandbox could read any group's build log
   // by counting up from 1 — the `/orch/v1/` prefix gate on the mailbox is about
   // which routes are reachable, not about who is reaching them.
-  const row = ctx.db
-    .query<{ log_path: string | null; grp_id: number | null }, [number]>(
-      "SELECT log_path, grp_id FROM lease WHERE id = ?",
-    )
-    .get(params.id);
+  const [row] = await ctx.db
+    .select({ log_path: leases.log_path, grp_id: leases.grp_id })
+    .from(leases)
+    .where(eq(leases.id, params.id));
   if (!row?.log_path) return message("no log", 404);
   if (row.grp_id !== a.grp_id) return message("not this group's lease", 403);
   const raw = await Bun.file(row.log_path).text();

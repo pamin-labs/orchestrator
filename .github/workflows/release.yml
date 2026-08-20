@@ -129,7 +129,7 @@ jobs:
             esac
             mkdir -p "dist/$root/web" "dist/$root/src/orch"
             bun build --compile --minify --target="$bun_target" --define "__ORCH_VERSION__=\"$RELEASE_VERSION\"" src/composition/server.ts --outfile "dist/$root/$exe"
-            cp -R roles config "dist/$root/"
+            cp -R roles config drizzle "dist/$root/"
             cp -R web/dist "dist/$root/web/dist"
             cp web/index.html web/icon.png web/favicon-32.png web/apple-touch-icon.png "dist/$root/web/"
             cp dist/orch-cli.ts "dist/$root/src/orch/cli.ts"
@@ -163,6 +163,10 @@ jobs:
             )
             for path in "${required[@]}"; do test -e "$root/$path" || { echo "::error::$target archive is missing $path"; exit 1; }; done
             test -d "$root/roles" || { echo "::error::$target archive is missing roles"; exit 1; }
+            # The schema. `migrate()` reads this folder at boot, so an archive
+            # without it starts and then cannot open its own database.
+            test -n "$(find "$root/drizzle" -name migration.sql -print -quit 2>/dev/null)" || {
+              echo "::error::$target archive is missing drizzle migrations"; exit 1; }
             test "$(bun "$root/src/orch/cli.ts" --version)" = "$RELEASE_VERSION"
             # shellcheck disable=SC2016 # Same as above: a JavaScript template literal inside `bun -e`, with the path arriving through `ROOT` in the environment.
             ROOT="$root" bun -e 'const p=await Bun.file(`${process.env.ROOT}/package.json`).json();if(p.version!==process.env.RELEASE_VERSION)process.exit(1)'

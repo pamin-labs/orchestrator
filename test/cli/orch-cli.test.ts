@@ -209,3 +209,51 @@ test("a numeric flag arrives as a string and the schema takes it", () => {
     expect(Id.safeParse(junk).success).toBe(false);
   }
 });
+
+test("pr resolve reaches the route, and the thread id is a flag rather than a position", async () => {
+  // A verb with a route and no command is a route an agent cannot reach: the
+  // mailbox replays what `orch` sends, so anything not declared here does not
+  // exist as far as a sandbox is concerned.
+  const withNote = await run([
+    "pr",
+    "resolve",
+    "--thread",
+    "THREAD_ABC",
+    "--group",
+    "7",
+    "--note",
+    "rebased onto the new helper",
+  ]);
+  expect(withNote.sent[0]).toMatchObject({
+    method: "POST",
+    path: "/orch/v1/pr/resolve",
+    body: { group_id: "7", thread_id: "THREAD_ABC", note: "rebased onto the new helper" },
+  });
+
+  // Named, not positional. Two ids of the same shape next to each other is an
+  // order nothing checks: a group id in the thread field resolves nothing and
+  // reports a thread that does not exist, which reads as GitHub's fault.
+  const swapped = await run(["pr", "resolve", "THREAD_ABC", "7"]);
+  expect(swapped.code).toBe(2);
+  expect(swapped.sent).toEqual([]);
+
+  // The group defaults to the caller's, so an agent replying to a review of its
+  // own PR types one flag.
+  process.env.ORCH_GRP_ID = "4";
+  try {
+    const mine = await run(["pr", "resolve", "--thread", "THREAD_ABC"]);
+    expect(mine.sent[0]?.body).toMatchObject({ group_id: "4", thread_id: "THREAD_ABC" });
+  } finally {
+    delete process.env.ORCH_GRP_ID;
+  }
+
+  // And no thread is a refusal that names the flag, not a request with an empty id.
+  const bare = await run(["pr", "resolve"]);
+  expect(bare.code).toBe(2);
+  expect(bare.stderr).toContain("--thread");
+  expect(bare.sent).toEqual([]);
+
+  // The subcommand does not shadow `orch pr <group_id>`.
+  const open = await run(["pr", "9", "--title", "fix(x): y"], "body");
+  expect(open.sent[0]).toMatchObject({ path: "/orch/v1/pr", body: { group_id: "9", title: "fix(x): y" } });
+});

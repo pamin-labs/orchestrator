@@ -1,9 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync, rmSync } from "node:fs";
+import { and, count, eq } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
+import { openMemory } from "../../src/platform/persistence/database.ts";
 import { start, type Started } from "../../src/composition/server.ts";
 import { SnapshotSchema } from "../../src/contracts/panel.ts";
 import { z } from "zod";
 import type { Json } from "../../src/contracts/json.ts";
+import { agent, event, job, note, slice, task } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import { tempDir } from "../support/temp.ts";
 
@@ -17,6 +21,9 @@ const PackageJson = z.object({ scripts: z.record(z.string(), z.string()) });
 
 let srv: Started;
 let dataDir: string;
+
+/** The four first-class tables are counted by name below; this is the only reason. */
+const rowsIn = async (table: PgTable) => (await srv.ctx.db.select({ c: count() }).from(table))[0]?.c;
 
 function canListen(): boolean {
   try {
@@ -35,7 +42,7 @@ function canListen(): boolean {
 // Official conditional suite: an HTTP smoke test needs a listening socket.
 // Restricted agent sandboxes cannot provide one; CI and normal hosts still run it.
 describe.skipIf(!canListen())("HTTP smoke", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     dataDir = tempDir("orch-smoke-");
     // No `git init` here any more: a project is a GitHub repository, not a
     // directory on this machine, so dataDir is only ever the server's own store.
@@ -46,7 +53,10 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
     // talks to another group's server and fails on a response that was never theirs.
     // Four groups were red at once on this, which reads as a project-wide breakage
     // and is really just this line. srv.url carries whatever the OS handed out.
-    srv = start({ dataDir, port: 0, maxGroups: 0 });
+    // The suite's own database, handed in: `start()` would otherwise need a
+    // connection string and a server, and skipping when it has neither is a
+    // green tick over the only test that boots the real process.
+    srv = await start({ dataDir, port: 0, maxGroups: 0 }, await openMemory());
   });
 
   afterAll(async () => {
@@ -104,13 +114,16 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
     // reaches the network fails on a train. What it stands in for — the repo list
     // and `POST /api/v1/projects` — is covered against an injected client in
     // test/ghlogin.test.ts. Everything after this line is still real HTTP.
-    const p = fx.project.insert(srv.ctx.db, {
-      name: "demo",
-      repo_path: "example/demo",
-      remote: "https://github.com/example/demo.git",
-      config_json: '{"gates":[]}',
-      base_branch: "main",
-    });
+    const p = await fx.project.create(
+      {
+        name: "demo",
+        repo_path: "example/demo",
+        remote: "https://github.com/example/demo.git",
+        config_json: { gates: [] },
+        base_branch: "main",
+      },
+      { transient: { db: srv.ctx.db } },
+    );
     expect(p.id).toBeGreaterThan(0);
 
     const idea = z
@@ -125,32 +138,32 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
 
     // The dispatcher turn is queued and stays queued: no slot, no spend.
     await Bun.sleep(50);
-    const jobs = srv.ctx.db.query<{ state: string; kind: string }, []>("SELECT state, kind FROM job").all();
+    const jobs = await srv.ctx.db.select({ state: job.state, kind: job.kind }).from(job);
     // One queued turn: the Dispatcher's planning pass. It stays pending — no slot,
     // no spend. The Librarian's onboarding pass is not here any more: it read the
     // host checkout, and a project has none until a group clones (007 §2).
     expect(jobs.length).toBe(1);
     expect(jobs.filter((j) => j.kind !== "agent_turn" || j.state !== "pending")).toEqual([]);
-    expect(srv.ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM agent").get()!.c).toBe(0);
+    expect(await rowsIn(agent)).toBe(0);
 
     // docs/project/plan.md §12 asks the smoke run to assert the four first-class tables, because
     // "the request was accepted" and "the request was recorded" are different claims and
     // only the second one matters after a restart.
-    const count = (t: string) => srv.ctx.db.query<{ c: number }, []>(`SELECT count(*) AS c FROM ${t}`).get()!.c;
-    expect(count("job")).toBe(1);
+    expect(await rowsIn(job)).toBe(1);
     // event: the project, the idea, the group's channel opening — the append-only half.
-    expect(count("event")).toBeGreaterThanOrEqual(1);
+    expect(await rowsIn(event)).toBeGreaterThanOrEqual(1);
     // note: the idea itself is a fact, plus whatever registration wrote (gates, PR
     // preflight). The idea being a note is what lets a later group find it.
-    expect(count("note")).toBeGreaterThanOrEqual(1);
-    const ideaNote = srv.ctx.db
-      .query<{ body: string }, [number]>("SELECT body FROM note WHERE grp_id = ? AND kind = 'fact'")
-      .get(idea.grp_id);
+    expect(await rowsIn(note)).toBeGreaterThanOrEqual(1);
+    const [ideaNote] = await srv.ctx.db
+      .select({ body: note.body })
+      .from(note)
+      .where(and(eq(note.grp_id, idea.grp_id), eq(note.kind, "fact")));
     expect(ideaNote?.body).toContain("rate limiting");
     // task: none yet, and that is the point — tasks exist only after the boss approves a
     // card, so a task here would mean work started without approval.
-    expect(count("task")).toBe(0);
-    expect(count("slice")).toBe(0);
+    expect(await rowsIn(task)).toBe(0);
+    expect(await rowsIn(slice)).toBe(0);
   });
 
   test("a malformed DRAFT card is refused over the wire, status unchanged", async () => {
@@ -175,12 +188,22 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
     const r = await fetch(`${srv.url}/api/v1/stream?since=0`, { signal: ac.signal });
     expect(r.headers.get("content-type")).toContain("text/event-stream");
 
+    // Read until the replay arrives rather than assuming the first chunk holds
+    // it: the connect frame is written immediately and the replay is a query, so
+    // they stopped sharing a chunk the moment the database left this process.
     const reader = r.body!.getReader();
-    const chunk = new TextDecoder().decode((await reader.read()).value);
+    const decoder = new TextDecoder();
+    const deadline = Date.now() + 5_000;
+    let seen = "";
+    while (!seen.includes("boss_say") && Date.now() < deadline) {
+      const next = await reader.read();
+      if (next.done) break;
+      seen += decoder.decode(next.value);
+    }
     // Replay from a cursor is what lets a reconnecting browser catch up without
     // keeping any state of its own.
-    expect(chunk).toContain("data: ");
-    expect(chunk).toContain("boss_say");
+    expect(seen).toContain("data: ");
+    expect(seen).toContain("boss_say");
     ac.abort();
   });
 

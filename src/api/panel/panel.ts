@@ -1,3 +1,4 @@
+import { and, desc, eq, notInArray, or, sql } from "drizzle-orm";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -17,6 +18,7 @@ import { bad, json } from "../../http/respond.ts";
 import { expandHome } from "./attach.ts";
 import { errText } from "../../platform/process/text.ts";
 import type { PanelNote } from "../../contracts/notes.ts";
+import { grp, note as notes, project } from "../../platform/persistence/schema.ts";
 
 /**
  * Three read-mostly panels: the blackboard, the skill tick boxes, and the
@@ -43,43 +45,49 @@ export const NotesQuery = z.object({
 });
 
 export const getNotes = (async (ctx, _req, _params, query) => {
-  const { project, group, kind } = query;
-  const where: string[] = [];
-  // What this actually binds: two `Number()`s and a `kind` string. `any[]` let a
-  // fourth push of anything at all through, on a query whose bindings are the
-  // only thing between a query string and the table.
-  const args: (string | number)[] = [];
-  if (group) {
-    where.push("n.grp_id = ?");
-    args.push(group);
-  } else if (project) {
-    // Project scope includes the standing notes (onboarding, lessons) that belong
-    // to no group, which is exactly where they matter.
-    where.push("(n.project_id = ? OR g.project_id = ?)");
-    args.push(project, project);
-  }
-  if (kind) {
-    where.push("n.kind = ?");
-    args.push(kind);
-  }
-  // The draft card is a note too, and it already has its own screen.
-  where.push("coalesce(json_extract(n.frontmatter_json, '$.draft_card'), 0) != 1");
-  // Nor are the index's own rows notes: `pageindex` is a serialised tree and
-  // `map` is a rendered directory listing, both stored here because `note` was
-  // the table that already existed. Neither is anything the boss reads.
-  where.push("n.kind NOT IN ('pageindex', 'map')");
-
-  // fallow-ignore-next-line security-sink -- every element of `where` is pushed as a source literal a few lines above, and each one carries `?` for its value; the values themselves travel in `args` and are bound by `.all(...args)`. The interpolation joins clauses, never data.
-  const rows = ctx.db
-    .query<PanelNote, (string | number)[]>(
-      `SELECT n.id, n.grp_id AS grpId, n.kind, n.body, n.at, n.export_path AS exportPath,
-              n.frontmatter_json AS frontmatter, g.name AS "group"
-       FROM note n LEFT JOIN grp g ON g.id = n.grp_id
-       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-       ORDER BY n.at DESC, n.id DESC LIMIT 300`,
+  const { project: projectId, group, kind } = query;
+  const scope = group
+    ? eq(notes.grp_id, group)
+    : // Project scope includes the standing notes (onboarding, lessons) that belong
+      // to no group, which is exactly where they matter.
+      projectId
+      ? or(eq(notes.project_id, projectId), eq(grp.project_id, projectId))
+      : undefined;
+  const rows = await ctx.db
+    .select({
+      id: notes.id,
+      grpId: notes.grp_id,
+      kind: notes.kind,
+      body: notes.body,
+      at: notes.at,
+      exportPath: notes.export_path,
+      frontmatter: notes.frontmatter_json,
+      group: grp.name,
+    })
+    .from(notes)
+    .leftJoin(grp, eq(grp.id, notes.grp_id))
+    .where(
+      and(
+        scope,
+        kind ? eq(notes.kind, kind) : undefined,
+        // The draft card is a note too, and it already has its own screen.
+        // Raw: jsonb containment has no Drizzle operator. `@>` and not `->>` so a
+        // row that never had the key is matched by the same expression as one
+        // that has it set to something else.
+        sql`not (${notes.frontmatter_json} @> '{"draft_card": true}'::jsonb)`,
+        // Nor are the index's own rows notes: `pageindex` is a serialised tree and
+        // `map` is a rendered directory listing, both stored here because `note` was
+        // the table that already existed. Neither is anything the boss reads.
+        notInArray(notes.kind, ["pageindex", "map"]),
+      ),
     )
-    .all(...args);
-  return json({ notes: rows });
+    .orderBy(desc(notes.at), desc(notes.id))
+    .limit(300);
+  // `frontmatter` is a string on the wire and the column is `jsonb`, so it is
+  // re-encoded here rather than in `contracts/notes.ts`: the panel parses it with
+  // its own schema, and the shape it parses is not this route's to change.
+  const notesOut: PanelNote[] = rows.map((r) => ({ ...r, frontmatter: JSON.stringify(r.frontmatter) }));
+  return json({ notes: notesOut });
 }) satisfies Handler<z.infer<typeof NotesQuery>>;
 
 /**
@@ -100,13 +108,15 @@ export const getNotes = (async (ctx, _req, _params, query) => {
 export const SkillsQuery = z.object({ project: z.coerce.number().int().positive().optional() });
 
 export const getSkills = (async (ctx, _req, _params, { project: id }) => {
-  const repo = id
-    ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(id)?.repo_path
-    : undefined;
-  if (id !== undefined) projectSkillsPending(ctx, id, repo);
-  const off = new Set(skillsOff(ctx.db));
+  const [found] = id
+    ? await ctx.db.select({ repo_path: project.repo_path }).from(project).where(eq(project.id, id))
+    : [];
+  const repo = found?.repo_path;
+  if (id !== undefined) await projectSkillsPending(ctx, id, repo);
+  const off = new Set(await skillsOff(ctx.db));
+  const listed = await projectSkills(ctx.db, id);
   return json({
-    skills: listSkills(repo, projectSkills(ctx.db, id)).map(({ name, rel, description, scope }) => ({
+    skills: listSkills(repo, listed).map(({ name, rel, description, scope }) => ({
       name,
       path: rel,
       description,
@@ -142,8 +152,8 @@ export const postSkill = (async (ctx, _req, _p, b) => {
   // No name is a rescan: the boss installed or removed a skill outside this
   // process, so both halves of the list are stale — the staged copy of this
   // machine's, and the cached inventory of every checkout's.
-  if (b.name) setSkillOff(ctx.db, b.name, b.on === false);
-  const { staged, failed } = restageSkills(ctx.db, ctx.config.skillsDir);
+  if (b.name) await setSkillOff(ctx.db, b.name, b.on === false);
+  const { staged, failed } = await restageSkills(ctx.db, ctx.config.skillsDir);
   // The mount is a staging path now, not either CLI's own directory, so a
   // changed set is not visible until the links are rebuilt. Every live
   // container, because a standing agent's container has no checkout and so no
@@ -161,7 +171,7 @@ export const postSkill = (async (ctx, _req, _p, b) => {
   // cache alone rather than clear it.
   if (b.project) {
     const listed = await listProjectSkills(ctx, b.project);
-    if (listed !== null) cacheProjectSkills(ctx.db, b.project, listed);
+    if (listed !== null) await cacheProjectSkills(ctx.db, b.project, listed);
   }
   return json({ staged: staged.length, failed });
 }) satisfies Handler<z.infer<typeof SkillBody>>;
@@ -177,12 +187,7 @@ export const getDirs = (async (ctx, _req, _params, query) => {
   } catch (e) {
     return bad(`${path}: ${errText(e)}`);
   }
-  const taken = new Set(
-    ctx.db
-      .query<{ repo_path: string }, []>("SELECT repo_path FROM project")
-      .all()
-      .map((r) => r.repo_path),
-  );
+  const taken = new Set((await ctx.db.select({ repo_path: project.repo_path }).from(project)).map((r) => r.repo_path));
   const dirs = entries
     .filter((d) => d.isDirectory() && !d.name.startsWith("."))
     .map((d) => {

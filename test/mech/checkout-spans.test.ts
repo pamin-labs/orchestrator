@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-node";
+import { asc, eq } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
-import { SqliteSpanExporter } from "../../src/platform/observability/span-store.ts";
+import { span } from "../../src/platform/persistence/schema.ts";
+import { StoredSpanExporter } from "../../src/platform/observability/span-store.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
 import { listTree, treeHeads } from "../../src/mech/git/checkout.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
@@ -21,46 +24,44 @@ import { testContext } from "../support/test-context.ts";
 /** The record separator `treeHeads` prints before each path. */
 const MARKER = "==";
 
-function traced(handler: Parameters<typeof fakeSandbox>[0]) {
-  const db = openMemory();
-  const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(new SqliteSpanExporter(db))] });
+async function traced(handler: Parameters<typeof fakeSandbox>[0]) {
+  const db = await openMemory();
+  const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(new StoredSpanExporter(db))] });
   installTracerProvider(provider);
-  return { db, provider, ctx: testContext({ db, sandbox: fakeSandbox(handler) }) };
+  return { db, provider, ctx: await testContext({ db, sandbox: fakeSandbox(handler) }) };
 }
 
 /**
  * The spans that were written, by name — deliberately not in time order.
  *
  * `ORDER BY started_at` is not a total order: a parent and the child it opens
- * immediately can share a millisecond, and which SQLite returns first is then the
- * storage engine's choice. That failed this file about one run in ten with the two
- * rows transposed, and the transposition meant nothing.
+ * immediately can share a millisecond, and which row the storage engine returns
+ * first is then its own choice. That failed this file about one run in ten with
+ * the two rows transposed, and the transposition meant nothing.
  *
  * Nesting has its own helper below, which reads parent ids rather than a clock.
  */
-const spans = (db: DB) =>
-  db.query<{ name: string; status: string }, []>("SELECT name, status FROM span ORDER BY name").all();
+const spans = (db: DB) => db.select({ name: span.name, status: span.status }).from(span).orderBy(asc(span.name));
 
 /** Which span each one hangs off, by name, so nesting is assertable without ids. */
-const parents = (db: DB) =>
-  Object.fromEntries(
-    db
-      .query<{ name: string; parent: string | null }, []>(
-        "SELECT c.name, p.name AS parent FROM span c LEFT JOIN span p ON p.span_id = c.parent_span_id",
-      )
-      .all()
-      .map((r) => [r.name, r.parent]),
-  );
+const parents = async (db: DB) => {
+  const parent = alias(span, "parent");
+  const rows = await db
+    .select({ name: span.name, parent: parent.name })
+    .from(span)
+    .leftJoin(parent, eq(parent.span_id, span.parent_span_id));
+  return Object.fromEntries(rows.map((r) => [r.name, r.parent]));
+};
 
 test("reading the corpus out of a container is timed", async () => {
-  const t = traced(() => ({ out: `${MARKER}a.ts\nexport const a = 1\n` }));
+  const t = await traced(() => ({ out: `${MARKER}a.ts\nexport const a = 1\n` }));
   try {
     const heads = await treeHeads(t.ctx, { grp: 1 }, 64);
     await t.provider.forceFlush();
     expect([...heads.keys()]).toEqual(["a.ts"]);
     // The container round trip nests under the read that made it, so "the index
     // rule is slow" resolves one level further than it used to.
-    expect(parents(t.db)).toEqual({ "git.tree_heads": null, "sandbox.exec": "git.tree_heads" });
+    expect(await parents(t.db)).toEqual({ "git.tree_heads": null, "sandbox.exec": "git.tree_heads" });
   } finally {
     installTracerProvider(new NodeTracerProvider());
   }
@@ -72,7 +73,7 @@ test("a container that refuses marks the span, and still answers empty", async (
   // exception. What changes is that the round trip it spent failing no longer
   // looks, in the one surface built to answer "which stage is slow", exactly like
   // one that succeeded.
-  const t = traced(() => ({ code: 128, err: "not a git repository" }));
+  const t = await traced(() => ({ code: 128, err: "not a git repository" }));
   try {
     expect(await treeHeads(t.ctx, { grp: 1 }, 64)).toEqual(new Map());
     await t.provider.forceFlush();
@@ -80,7 +81,7 @@ test("a container that refuses marks the span, and still answers empty", async (
     // so `sandbox.exec` succeeded — a command that exits non-zero inside a
     // healthy container is not a transport failure. `execIn` marks its span only
     // for exit 126, which it reserves for a container it could not reach at all.
-    expect(spans(t.db)).toEqual([
+    expect(await spans(t.db)).toEqual([
       { name: "git.tree_heads", status: "error" },
       { name: "sandbox.exec", status: "unset" },
     ]);
@@ -101,7 +102,7 @@ test("a container that refuses marks the span, and still answers empty", async (
  */
 
 test("a failed ls-tree marks the span, and an empty repository does not", async () => {
-  const failing = traced((cmd) =>
+  const failing = await traced((cmd) =>
     cmd.includes("ls-tree") ? { code: 128, out: "fatal: not a valid object name" } : {},
   );
   try {
@@ -111,19 +112,19 @@ test("a failed ls-tree marks the span, and an empty repository does not", async 
     await failing.provider.forceFlush();
     expect(r.files).toEqual([]);
     expect(r.why).toContain("exited 128");
-    expect(spans(failing.db).find((s) => s.name === "git.ls_tree")?.status).toBe("error");
+    expect((await spans(failing.db)).find((s) => s.name === "git.ls_tree")?.status).toBe("error");
   } finally {
     installTracerProvider(new NodeTracerProvider());
   }
 
-  const empty = traced(() => ({ out: "" }));
+  const empty = await traced(() => ({ out: "" }));
   try {
     const r = await listTree(empty.ctx, "owner/repo", "main");
     await empty.provider.forceFlush();
     // Still a sentence for the caller, because "nothing here" is worth saying.
     expect(r.why).toContain("lists no files");
     // But the command ran and the ref resolved, so the span is not a failure.
-    expect(spans(empty.db).find((s) => s.name === "git.ls_tree")?.status).not.toBe("error");
+    expect((await spans(empty.db)).find((s) => s.name === "git.ls_tree")?.status).not.toBe("error");
   } finally {
     installTracerProvider(new NodeTracerProvider());
   }

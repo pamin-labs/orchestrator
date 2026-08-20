@@ -30,3 +30,4 @@ coverage/
 # files across four requirements before they were removed. `comment-moves.md` is
 # ours, not the fleet's, and is tracked.
 docs/journal/*/
+data/postgres/

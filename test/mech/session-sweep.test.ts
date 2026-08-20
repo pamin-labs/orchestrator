@@ -67,16 +67,17 @@ test("a home with no sessions directory sweeps nothing rather than throwing", ()
   expect(sweepCodexSessions("/nonexistent/codex-home", NOW)).toBe(0);
 });
 
-function fleet(handle: (cmd: string) => { code?: number; out?: string }) {
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p", repo_path: "me/x", sandbox_id: "sb-p" });
-  fx.runningGrp.insert(db, { name: "g", project_id: p.id, sandbox_id: "sb-g" });
+async function fleet(handle: (cmd: string) => { code?: number; out?: string }) {
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p", repo_path: "me/x", sandbox_id: "sb-p" });
+  await f.runningGrp.create({ name: "g", project_id: p.id, sandbox_id: "sb-g" });
   const sandbox = fakeSandbox((cmd) => handle(cmd));
-  return { db, ctx: testContext({ db, sandbox }), sandbox };
+  return { db, ctx: await testContext({ db, sandbox }), sandbox };
 }
 
 test("the quota read takes the first sandbox that answers and stops asking", async () => {
-  const f = fleet(() => ({ code: 0, out: '{"rate_limits":{}}\n' }));
+  const f = await fleet(() => ({ code: 0, out: '{"rate_limits":{}}\n' }));
 
   expect(await newestRollout(f.ctx)).toBe('{"rate_limits":{}}\n');
   expect(f.sandbox.commands.length).toBe(1);
@@ -86,7 +87,7 @@ test("a container that cannot answer is skipped, and the next one is asked", asy
   // The quota is the account's, not the container's, so one dead sandbox is not
   // a reason to report no quota at all.
   let first = true;
-  const f = fleet(() => {
+  const f = await fleet(() => {
     if (first) {
       first = false;
       return { code: 1, out: "" };
@@ -99,29 +100,31 @@ test("a container that cannot answer is skipped, and the next one is asked", asy
 });
 
 test("a sandbox that answers empty is not mistaken for an answer", async () => {
-  const f = fleet(() => ({ code: 0, out: "   \n" }));
+  const f = await fleet(() => ({ code: 0, out: "   \n" }));
 
   expect(await newestRollout(f.ctx)).toBeNull();
 });
 
 test("a fleet with nothing running asks nothing and reports nothing", async () => {
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p", repo_path: "me/x" });
-  fx.runningGrp.insert(db, { name: "g", project_id: p.id });
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p", repo_path: "me/x" });
+  await f.runningGrp.create({ name: "g", project_id: p.id });
   const sandbox = fakeSandbox();
 
-  expect(await newestRollout(testContext({ db, sandbox }))).toBeNull();
+  expect(await newestRollout(await testContext({ db, sandbox }))).toBeNull();
   expect(sandbox.commands).toEqual([]);
 });
 
 test("a dissolved group's sandbox row is not reached into", async () => {
   // `DISSOLVED` and `PARKED` still carry a `sandbox_id` until the reaper gets to
   // them, and exec'ing into one costs a full container timeout on every tick.
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p", repo_path: "me/x" });
-  fx.grp.insert(db, { name: "g", project_id: p.id, status: "DISSOLVED", sandbox_id: "sb-g" });
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p", repo_path: "me/x" });
+  await f.grp.create({ name: "g", project_id: p.id, status: "DISSOLVED", sandbox_id: "sb-g" });
   const sandbox = fakeSandbox(() => ({ code: 0, out: "rollout" }));
 
-  expect(await newestRollout(testContext({ db, sandbox }))).toBeNull();
+  expect(await newestRollout(await testContext({ db, sandbox }))).toBeNull();
   expect(sandbox.commands).toEqual([]);
 });

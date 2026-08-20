@@ -1,7 +1,9 @@
+import { and, eq, inArray, ne } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { grp } from "../../platform/persistence/schema.ts";
 import { projectConfig } from "../util/rows.ts";
 import { GRP_STATES } from "../../contracts/states.ts";
-import { jsonOr } from "../../contracts/json.ts";
+import { jsonOr, valueOr } from "../../contracts/json.ts";
 import { z } from "zod";
 
 /**
@@ -33,12 +35,13 @@ const DEFAULT_SHARED = [
   "config/**",
 ];
 
-export function parseOwns(json: string | null): string[] {
-  return jsonOr(json, z.array(z.string()), []);
+/** `owns_json` is `jsonb`, so what arrives is the value the driver parsed. */
+export function parseOwns(owns: unknown): string[] {
+  return valueOr(owns, z.array(z.string()), []);
 }
 
-export function sharedFor(db: DB, projectId: number): string[] {
-  const shared = projectConfig(db, projectId).shared;
+export async function sharedFor(db: DB, projectId: number): Promise<string[]> {
+  const shared = (await projectConfig(db, projectId)).shared;
   return shared ? [...DEFAULT_SHARED, ...shared] : DEFAULT_SHARED;
 }
 
@@ -141,20 +144,18 @@ export interface StartCheck {
  * sites had drifted apart by one state each — two missed DRAFT, so a requirement
  * awaiting approval owned its paths to the panel and nothing to `orch blocked`.
  *
- * Derived from `GRP_STATES` so a new state joins by existing. Interpolated into
- * SQL because these are compile-time constants from an `as const` array.
+ * Derived from `GRP_STATES` so a new state joins by existing. Both are plain
+ * lists now: every reader binds them through `inArray` rather than pasting them
+ * into SQL text.
  */
-const sql = (states: readonly string[]) => `(${states.map((s) => `'${s}'`).join(", ")})`;
 
 /** Groups whose agents can be writing files this second. */
 export const WRITING = ["RUNNING", "PAUSING", "PAUSED", "PARKED", "PR_OPEN"] as const;
-const WRITING_SQL = sql(WRITING);
 
 /** Groups whose declared paths are spoken for: everything that has not dissolved. */
 export const CLAIMING = GRP_STATES.filter((s) => s !== "DISSOLVED");
-export const CLAIMING_SQL = sql(CLAIMING);
 
-type OtherOwner = { id: number; name: string; owns_json: string };
+type OtherOwner = { id: number; name: string; owns_json: unknown };
 const startOk = (): StartCheck => ({ ok: true, conflicts: [], sharedClaimed: [] });
 
 function undeclaredStart(owns: string[], others: OtherOwner[]): StartCheck | null {
@@ -171,12 +172,12 @@ function undeclaredStart(owns: string[], others: OtherOwner[]): StartCheck | nul
   };
 }
 
-function sharedStart(db: DB, grpId: number, projectId: number, owns: string[]): StartCheck | null {
-  const granted = parseOwns(
-    db.query<{ shared_grant: string | null }, [number]>("SELECT shared_grant FROM grp WHERE id = ?").get(grpId)
-      ?.shared_grant ?? null,
-  );
-  const shared = sharedFor(db, projectId).filter((path) => !granted.includes(path));
+async function sharedStart(db: DB, grpId: number, projectId: number, owns: string[]): Promise<StartCheck | null> {
+  // `shared_grant` is `text`, not `jsonb`: the JSON is still text here and is
+  // parsed rather than read straight off the row like `owns_json` is.
+  const [row] = await db.select({ shared_grant: grp.shared_grant }).from(grp).where(eq(grp.id, grpId));
+  const granted = jsonOr(row?.shared_grant, z.array(z.string()), []);
+  const shared = (await sharedFor(db, projectId)).filter((path) => !granted.includes(path));
   const claimed = claimsShared(owns, shared).filter((path) => !granted.includes(path));
   if (claimed.length === 0) return null;
   return {
@@ -197,21 +198,30 @@ function ownerConflicts(owns: string[], others: OtherOwner[]): OwnershipConflict
   );
 }
 
-export function canStart(db: DB, grpId: number): StartCheck {
-  const me = db
-    .query<{ project_id: number; owns_json: string; name: string }, [number]>(
-      "SELECT project_id, owns_json, name FROM grp WHERE id = ?",
-    )
-    .get(grpId);
-  if (!me) return { ok: false, conflicts: [], sharedClaimed: [], reason: "no such group" };
+export async function canStart(db: DB, grpId: number): Promise<StartCheck> {
+  const [me] = await db
+    .select({
+      project_id: grp.project_id,
+      owns_json: grp.owns_json,
+      name: grp.name,
+    })
+    .from(grp)
+    .where(eq(grp.id, grpId));
+  if (!me)
+    return {
+      ok: false,
+      conflicts: [],
+      sharedClaimed: [],
+      reason: "no such group",
+    };
 
-  // fallow-ignore-next-line security-sink -- `WRITING_SQL` is the frozen state-list literal from `contracts/states.ts`; both ids are bound through the `?` placeholders.
-  const others = db
-    .query<OtherOwner, [number, number]>(
-      `SELECT id, name, owns_json FROM grp
-       WHERE project_id = ? AND id != ? AND status IN ${WRITING_SQL}`,
-    )
-    .all(me.project_id, grpId);
+  // `inArray(grp.status, WRITING)` binds the five states as placeholders, so the
+  // state list no longer reaches SQL as interpolated text and the `security-sink`
+  // suppression this query carried is gone with it.
+  const others = await db
+    .select({ id: grp.id, name: grp.name, owns_json: grp.owns_json })
+    .from(grp)
+    .where(and(eq(grp.project_id, me.project_id), ne(grp.id, grpId), inArray(grp.status, WRITING)));
 
   const owns = parseOwns(me.owns_json);
   const undeclared = undeclaredStart(owns, others);
@@ -220,7 +230,7 @@ export function canStart(db: DB, grpId: number): StartCheck {
   // A path this group was granted by name. Shared files belong to no group, and
   // that stays true for everyone else — but a defect in one has to be fixable by
   // somebody, and the requirement opened for exactly that was refused here forever.
-  const shared = sharedStart(db, grpId, me.project_id, owns);
+  const shared = await sharedStart(db, grpId, me.project_id, owns);
   if (shared) return shared;
 
   const conflicts = ownerConflicts(owns, others);

@@ -13,7 +13,7 @@ import { testContext } from "../support/test-context.ts";
  * predicate: what a route sees is the whole middleware stack in registration order,
  * and a check exported as a function stays green while nothing calls it.
  */
-const app = makeApp(testContext());
+const app = makeApp(await testContext());
 const ErrorResponse = z.object({ error: z.string() });
 const write = (headers: Record<string, string>, method = "POST") =>
   app(new Request("http://127.0.0.1:47821/api/v1/auth", { method, headers }));

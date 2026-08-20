@@ -1,3 +1,4 @@
+import { and, count, eq, ne } from "drizzle-orm";
 import { dirname, join } from "node:path";
 import { addNote } from "../../mech/util/rows.ts";
 import { z } from "zod";
@@ -11,6 +12,7 @@ import { shq } from "../../platform/process/shell.ts";
 import type { JournalKind } from "../../mech/util/validate.ts";
 import { validateJournal } from "../../mech/util/validate.ts";
 import { Id, Prose } from "../../contracts/fields.ts";
+import { agent, grp as grps, note as notes, slice } from "../../platform/persistence/schema.ts";
 
 /**
  * What an agent says about itself: the one-line status, and the journal.
@@ -25,7 +27,7 @@ import { Id, Prose } from "../../contracts/fields.ts";
 export const StatusBody = z.object({ text: z.string().max(200).default("") });
 
 export const postStatus = (async (ctx, _req, a, _p, b) => {
-  ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [b.text, a.id]);
+  await ctx.db.update(agent).set({ activity: b.text }).where(eq(agent.id, a.id));
   ctx.bus.live({ grpId: a.grp_id, agentId: a.id, role: a.role, kind: "status", body: b.text });
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof StatusBody>>;
@@ -86,35 +88,34 @@ async function exportJournal(
 ): Promise<string | null> {
   if (!caller.grp_id || !group || !["journal", "retro", "decision"].includes(kind)) return null;
 
-  const count = ctx.db
-    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM note WHERE grp_id = ?")
-    .get(caller.grp_id)!.c;
-  const path = join("docs", "journal", group.name, `${String(count + 1).padStart(3, "0")}-${kind}.md`);
+  const [written] = await ctx.db.select({ c: count() }).from(notes).where(eq(notes.grp_id, caller.grp_id));
+  const existing = written?.c ?? 0;
+  const path = join("docs", "journal", group.name, `${String(existing + 1).padStart(3, "0")}-${kind}.md`);
   const yaml = frontmatterBlock(frontmatter);
   await execIn(ctx, { grp: caller.grp_id }, `mkdir -p ${shq(`${WORK}/${dirname(path)}`)}`);
   await putFile(ctx, { grp: caller.grp_id }, `${WORK}/${path}`, `---\n${yaml}\n---\n${body}\n`);
   return path;
 }
 
-function queueCompletedRetro(ctx: Ctx, groupId: number | null, kind: JournalKind): void {
+async function queueCompletedRetro(ctx: Ctx, groupId: number | null, kind: JournalKind): Promise<void> {
   if (kind !== "retro" || !groupId) return;
-  const open = ctx.db
-    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'")
-    .get(groupId)!.c;
-  if (open !== 0) return;
-  ctx.sched.enqueue("reconcile", { grp_id: groupId, priority: 5 });
-  ctx.sched.tick();
+  const [unfinished] = await ctx.db
+    .select({ c: count() })
+    .from(slice)
+    .where(and(eq(slice.grp_id, groupId), ne(slice.status, "accepted")));
+  if ((unfinished?.c ?? 0) !== 0) return;
+  await ctx.sched.enqueue("reconcile", { grp_id: groupId, priority: 5 });
+  await ctx.sched.tick();
 }
 
 export const postJournal = (async (ctx, _req, a, _p, b) => {
   const v = validateJournal({ kind: b.kind, body: b.body, ...(b.files ? { files: b.files } : {}) });
   if (!v.ok) return bad(v.error);
 
-  const grp = a.grp_id
-    ? ctx.db
-        .query<{ name: string; project_id: number }, [number]>("SELECT name, project_id FROM grp WHERE id = ?")
-        .get(a.grp_id)
-    : null;
+  const [found] = a.grp_id
+    ? await ctx.db.select({ name: grps.name, project_id: grps.project_id }).from(grps).where(eq(grps.id, a.grp_id))
+    : [];
+  const grp = found ?? null;
 
   const frontmatter = {
     group: grp?.name ?? null,
@@ -128,27 +129,27 @@ export const postJournal = (async (ctx, _req, a, _p, b) => {
   // can grep them; the rest stay on the blackboard only.
   const exportPath = await exportJournal(ctx, a, grp, v.kind, v.body, frontmatter);
 
-  addNote(ctx.db, {
+  await addNote(ctx.db, {
     projectId: grp?.project_id ?? null,
     grpId: a.grp_id,
     sliceId: b.slice_id ?? null,
     kind: v.kind,
     lang: ctx.config.language,
     body: v.body,
-    frontmatterJson: JSON.stringify(frontmatter),
+    frontmatter,
     exportPath,
     ...(b.supersedes === undefined ? {} : { supersedes: b.supersedes }),
   });
   // The lessons list is capped where it is written, not where it is read: an
   // ever-growing list becomes the very context cost it exists to prevent.
-  if (v.kind === "lesson") evictOldestLessons(ctx.db, grp?.project_id ?? null);
+  if (v.kind === "lesson") await evictOldestLessons(ctx.db, grp?.project_id ?? null);
 
   // A retro is what PR-level review was waiting for. Without this the flow
   // dead-ends: the PM writes the retro nobody asked for again, and the branch sits
   // finished and unreviewed until someone nudges it by hand.
-  queueCompletedRetro(ctx, a.grp_id, v.kind);
+  await queueCompletedRetro(ctx, a.grp_id, v.kind);
 
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: a.grp_id,
     author: a.role,
     kind: "note",

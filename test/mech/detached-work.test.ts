@@ -25,20 +25,37 @@ test("detached work whose record is gone does not surface against an unrelated c
   const onReject = (error: Error) => seen.push(error.message);
   process.on("unhandledRejection", onReject);
   try {
-    const db = openMemory();
-    const ctx = testContext({
+    const db = await openMemory();
+    const f = fx.on(db);
+    // Resolved the moment the push is attempted, so the record can be taken away
+    // while the detached chain is between its command and its report — the window
+    // the `.catch` in `acceptSlice` exists for. A timer here would be a guess.
+    let pushed!: () => void;
+    const pushAttempted = new Promise<void>((resolve) => {
+      pushed = resolve;
+    });
+    const ctx = await testContext({
       db,
       // The push is refused, so the failure path — the one that reports, and so
       // the one that writes — is the path under test.
-      sandbox: fakeSandbox((cmd) => (cmd.includes("push") ? { code: 1, out: "denied" } : {})),
+      sandbox: fakeSandbox((cmd) => {
+        if (!cmd.includes("push")) return {};
+        pushed();
+        return { code: 1, out: "denied" };
+      }),
     });
-    const p = fx.project.insert(db, { name: "p", remote: "https://github.com/me/x.git" });
-    const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1", branch: "orch/g1" });
-    fx.slice.insert(db, { grp_id: g.id, seq: 1, title: "s", accept_spec: "a", status: "qa" });
+    const p = await f.project.create({ name: "p", remote: "https://github.com/me/x.git" });
+    const g = await f.runningGrp.create({ project_id: p.id, name: "g1", branch: "orch/g1" });
+    await f.slice.create({ grp_id: g.id, seq: 1, title: "s", accept_spec: "a", status: "qa" });
 
-    acceptSlice(ctx, 1, "boss");
-    // The record goes away while the detached work is still in flight.
-    db.close();
+    const accepting = acceptSlice(ctx, 1, "boss");
+    await pushAttempted;
+    // The record goes away while the detached work is still in flight. Not
+    // `close()` — `the test database.close()` exits the process — and emptying the tables is
+    // the case the detached `.catch` names anyway: `event.grp_id` is a foreign
+    // key to a group that has been dropped, so the report throws.
+    await openMemory();
+    await accepting;
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 300);
     });

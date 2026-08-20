@@ -78,7 +78,11 @@ const steps: Step[] = [
   { name: "types", job: "quality", run: () => cmd("bun run typecheck") },
   { name: "lint", job: "quality", run: () => cmd("bun run lint") },
   { name: "web bundle", job: "quality", run: () => cmd("bun run build:web") },
-  { name: "tests", job: "test", run: () => cmd("bun test --parallel") },
+  // Through `bun run test`, not `bun test` directly: that wrapper retries an arm64
+  // worker panic once and nothing else, and this is the command a developer runs
+  // before every commit on the machine where that panic happens. CI keeps calling
+  // `bun test` — it is x64, cannot hit it, and a retry there would only hide.
+  { name: "tests", job: "test", run: () => cmd("bun run test") },
   // The audit reads CRAP from the coverage map, so the coverage run has to
   // happen first — `audit:crap` is the pair, and running plain `audit` here
   // would repeat the mistake CI made for weeks.

@@ -2,7 +2,9 @@ import { create, insertMultiple, search } from "@orama/orama";
 import { stemmer as arabic } from "@orama/stemmers/arabic";
 import { stemmer as english } from "@orama/stemmers/english";
 import { stemmer as russian } from "@orama/stemmers/russian";
+import { and, count, gt, isNotNull, notInArray, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { note } from "../../platform/persistence/schema.ts";
 import { type Doc, type Hit, KIND_WEIGHT } from "./ctx.ts";
 import { terms } from "./terms.ts";
 
@@ -51,27 +53,47 @@ interface Stamp {
   maxAt: number;
 }
 
-const stampOf = (db: DB): Stamp =>
-  db
-    .query<Stamp, []>(
-      "SELECT count(*) AS count, coalesce(max(id), 0) AS maxId, coalesce(max(at), 0) AS maxAt FROM note",
-    )
-    .get()!;
+/**
+ * `coalesce` around the two maxima has no builder and stays `sql`: `max()` over an
+ * empty table is NULL, and every reader of a stamp compares it against a number.
+ */
+const stampOf = async (db: DB): Promise<Stamp> => {
+  const [row] = await db
+    .select({
+      count: count(),
+      maxId: sql<number>`coalesce(max(${note.id}), 0)`,
+      maxAt: sql<number>`coalesce(max(${note.at}), 0)`,
+    })
+    .from(note);
+  return row!;
+};
 
-const rowsAfter = (db: DB, afterId: number): Row[] =>
+const rowsAfter = (db: DB, afterId: number): Promise<Row[]> =>
   db
-    .query<Row, [number]>(
-      `SELECT id, kind, body, export_path AS exportPath, at, slice_id AS sliceId,
-              grp_id AS grpId, project_id AS projectId
-         FROM note
-        WHERE kind NOT IN ('pageindex', 'map') AND id > ?
-          -- What a later note overturned is not an answer. Filtered at the source
-          -- rather than after scoring, because a superseded decision carries the
-          -- highest weight in the table and would win on its way out.
-          AND id NOT IN (SELECT supersedes FROM note WHERE supersedes IS NOT NULL)
-        ORDER BY id`,
+    .select({
+      id: note.id,
+      kind: note.kind,
+      body: note.body,
+      exportPath: note.export_path,
+      at: note.at,
+      sliceId: note.slice_id,
+      grpId: note.grp_id,
+      projectId: note.project_id,
+    })
+    .from(note)
+    .where(
+      and(
+        notInArray(note.kind, ["pageindex", "map"]),
+        gt(note.id, afterId),
+        // What a later note overturned is not an answer. Filtered at the source
+        // rather than after scoring, because a superseded decision carries the
+        // highest weight in the table and would win on its way out. The inner
+        // `IS NOT NULL` is load-bearing: one NULL in a `NOT IN` list makes the
+        // whole predicate NULL and the query returns nothing.
+        notInArray(note.id, db.select({ supersedes: note.supersedes }).from(note).where(isNotNull(note.supersedes))),
+      ),
     )
-    .all(afterId);
+    .orderBy(note.id);
 
 type Index = ReturnType<typeof emptyIndex>;
 
@@ -119,7 +141,7 @@ function emptyIndex() {
 
 export interface NoteIndex {
   /** Notes matching the question, best first, already scoped and re-weighted. */
-  search(question: string, scope: { grpId: number | null; projectId: number | null }, now: number): Hit[];
+  search(question: string, scope: { grpId: number | null; projectId: number | null }, now: number): Promise<Hit[]>;
 }
 
 /**
@@ -134,8 +156,8 @@ export function makeNoteIndex(db: DB): NoteIndex {
   let stamp: Stamp = { count: -1, maxId: -1, maxAt: -1 };
   const docs = new Map<string, Row>();
 
-  const refresh = (): Index => {
-    const now = stampOf(db);
+  const refresh = async (): Promise<Index> => {
+    const now = await stampOf(db);
     const rewritten = now.count < stamp.count || (now.maxAt !== stamp.maxAt && now.maxId === stamp.maxId);
     if (index && rewritten) index = null;
     if (!index) {
@@ -143,18 +165,16 @@ export function makeNoteIndex(db: DB): NoteIndex {
       docs.clear();
       stamp = { count: now.count, maxId: 0, maxAt: now.maxAt };
     }
-    const fresh = rowsAfter(db, stamp.maxId);
+    const fresh = await rowsAfter(db, stamp.maxId);
     if (fresh.length) {
-      const inserted = insertMultiple(
+      // Orama's signature is `Promise<string[]> | string[]`, and it is awaited
+      // rather than dropped: the failure an unawaited insert produces is notes
+      // indexed a moment after the search that needed them — silent, and
+      // indistinguishable from a bad query.
+      await insertMultiple(
         index,
         fresh.map((row) => ({ id: String(row.id), body: row.body, kind: row.kind })),
       );
-      // Orama's signature is `Promise<string[]> | string[]`: it goes async only
-      // when a component or plugin does, and every one here is synchronous.
-      // Checked rather than `void`-ed, because the failure a floating promise
-      // produces is notes that were indexed a moment after the search that
-      // needed them — silent, and indistinguishable from a bad query.
-      if (inserted instanceof Promise) throw new Error("note index went async on insert; components here are sync");
       for (const row of fresh) docs.set(String(row.id), row);
     }
     stamp = now;
@@ -162,10 +182,9 @@ export function makeNoteIndex(db: DB): NoteIndex {
   };
 
   return {
-    search(question, scope, now) {
+    async search(question, scope, now) {
       if (!terms(question).length) return [];
-      const found = search(refresh(), { term: question, properties: ["body"], limit: CANDIDATES });
-      if (found instanceof Promise) throw new Error("note index went async; every component here is synchronous");
+      const found = await search(await refresh(), { term: question, properties: ["body"], limit: CANDIDATES });
       const hits: Hit[] = [];
       for (const hit of found.hits) {
         const doc = docs.get(String(hit.id));

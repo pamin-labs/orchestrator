@@ -325,7 +325,7 @@ export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: s
   const fallback = { ...BOT };
   // Cached: this runs on every checkout, and the answer changes only when the
   // connected account does. `credentialChanged` clears it.
-  const cached = jsonOr(ctx.db && readSetting(ctx.db, IDENTITY_KEY), Identity.nullable(), null);
+  const cached = jsonOr(ctx.db ? await readSetting(ctx.db, IDENTITY_KEY) : undefined, Identity.nullable(), null);
   if (cached) return cached;
   const r = await ctx.gh?.request("GET", "/user", User);
   if (!r?.ok || !r.data?.login || !r.data?.id) return fallback;
@@ -333,7 +333,7 @@ export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: s
     name: r.data.name || r.data.login,
     email: `${r.data.id}+${r.data.login}@users.noreply.github.com`,
   };
-  if (ctx.db) writeSetting(ctx.db, IDENTITY_KEY, JSON.stringify(who));
+  if (ctx.db) await writeSetting(ctx.db, IDENTITY_KEY, JSON.stringify(who));
   return who;
 }
 
@@ -388,8 +388,8 @@ export interface Trailers extends Pick<TrailerPrefs, "signoff" | "coauthor"> {
 
 /** Takes the database, not a `Ctx`: the sandbox writes Claude Code's own
  *  co-author setting from the same row, and it has no `Ctx` to hand. */
-export function trailers(db: DB | undefined): TrailerPrefs {
-  const saved = jsonOr(db && readSetting(db, TRAILERS_KEY), TrailerPrefsPatch, {});
+export async function trailers(db: DB | undefined): Promise<TrailerPrefs> {
+  const saved = jsonOr(db ? await readSetting(db, TRAILERS_KEY) : undefined, TrailerPrefsPatch, {});
   return {
     signoff: saved.signoff ?? TRAILER_DEFAULTS.signoff,
     coauthor: saved.coauthor ?? TRAILER_DEFAULTS.coauthor,
@@ -397,24 +397,24 @@ export function trailers(db: DB | undefined): TrailerPrefs {
   };
 }
 
-export function setTrailers(db: DB, next: Partial<TrailerPrefs>): TrailerPrefs {
-  const merged = { ...trailers(db), ...next };
-  writeSetting(db, TRAILERS_KEY, JSON.stringify(merged));
+export async function setTrailers(db: DB, next: Partial<TrailerPrefs>): Promise<TrailerPrefs> {
+  const merged = { ...(await trailers(db)), ...next };
+  await writeSetting(db, TRAILERS_KEY, JSON.stringify(merged));
   return merged;
 }
 
 /** The stored settings, in the shape the commit helpers take. One converter, so
  *  the bot identity cannot drift between the fallback author and the trailer. */
-export function gitTrailers(db: DB | undefined): {
+export async function gitTrailers(db: DB | undefined): Promise<{
   signoff: boolean;
   coauthor: boolean;
   bot: { name: string; email: string };
-} {
-  return { ...trailers(db), bot: { ...BOT } };
+}> {
+  return { ...(await trailers(db)), bot: { ...BOT } };
 }
 
 /** Cleared when the GitHub credential changes, or it outlives the account. */
 const IDENTITY_KEY = "git_identity";
-export const forgetIdentity = (ctx: Ctx): void => {
-  if (ctx.db) writeSetting(ctx.db, IDENTITY_KEY, null);
+export const forgetIdentity = async (ctx: Ctx): Promise<void> => {
+  if (ctx.db) await writeSetting(ctx.db, IDENTITY_KEY, null);
 };

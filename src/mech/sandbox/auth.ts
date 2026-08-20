@@ -1,7 +1,9 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
+import { runtime_auth } from "../../platform/persistence/schema.ts";
 import { trailers } from "../git/ghlogin.ts";
 import { forgetHolds } from "../git/repository.ts";
 import { maskValue } from "../../platform/observability/redaction.ts";
@@ -104,7 +106,7 @@ export function wrongShape({ runtime, mode, secret }: RuntimeAuth): string | nul
   return expected && !v.startsWith(expected[0]) ? expected[1] : null;
 }
 
-export function saveAuth(db: DB, a: RuntimeAuth): void {
+export async function saveAuth(db: DB, a: RuntimeAuth): Promise<void> {
   const auth = RuntimeAuthSchema.parse(a);
   // Registered the moment it is stored, so the masker knows this value before
   // anything has a chance to print it. Same order as `::add-mask::`.
@@ -112,13 +114,14 @@ export function saveAuth(db: DB, a: RuntimeAuth): void {
   // Nothing learned from the old credential still applies; without this a
   // reconnect changes nothing visible until the hold's clock lapses.
   forgetHolds(auth.runtime);
-  db.run(
-    `INSERT INTO runtime_auth (runtime, mode, secret, base_url, updated_at)
-     VALUES (?, ?, ?, ?, unixepoch() * 1000)
-     ON CONFLICT(runtime) DO UPDATE SET mode = excluded.mode, secret = excluded.secret,
-       base_url = excluded.base_url, updated_at = excluded.updated_at`,
-    [auth.runtime, auth.mode, auth.secret, auth.baseUrl ?? null],
-  );
+  const row = {
+    runtime: auth.runtime,
+    mode: auth.mode,
+    secret: auth.secret,
+    base_url: auth.baseUrl ?? null,
+    updated_at: Date.now(),
+  };
+  await db.insert(runtime_auth).values(row).onConflictDoUpdate({ target: runtime_auth.runtime, set: row });
 }
 
 /**
@@ -129,8 +132,8 @@ export function saveAuth(db: DB, a: RuntimeAuth): void {
  * quota belongs to a different account than the one the fleet spends. No row is
  * false for the same reason: it would report an account nothing here touches.
  */
-export function subscriptionAccount(db: DB, runtime: string): boolean {
-  const a = loadAuth(db, runtime);
+export async function subscriptionAccount(db: DB, runtime: string): Promise<boolean> {
+  const a = await loadAuth(db, runtime);
   if (!a || a.mode === "api_key") return false;
   if (!a.baseUrl) return true;
   try {
@@ -159,11 +162,11 @@ export const hostClaudeHome = (home = homedir()): string => process.env.CLAUDE_C
  * credentials that exist count — probing a provider nobody configured reports
  * the machine offline for a wall it will never hit.
  */
-export function probeHosts(db: DB): string[] {
+export async function probeHosts(db: DB): Promise<string[]> {
   const out = new Set<string>();
-  for (const a of db
-    .query<{ runtime: string; base_url: string | null }, []>("SELECT runtime, base_url FROM runtime_auth")
-    .all()) {
+  for (const a of await db
+    .select({ runtime: runtime_auth.runtime, base_url: runtime_auth.base_url })
+    .from(runtime_auth)) {
     // Only runtimes this file actually binds. `runtime_auth` also holds rows that
     // are not model providers — `sandbox` is the local server, with a `base_url`
     // of `http://127.0.0.1:8080` — and the `base_url` branch used to run before
@@ -227,8 +230,8 @@ const authorityOf = (url: string): string | null => {
  * address enough to hand the stored key to it. The config/environment value is
  * not filtered: whoever sets it also sets the address, so no boundary is crossed.
  */
-export function sandboxKeyFor(db: DB, server: string, fromConfig?: string): string {
-  const stored = loadAuth(db, SANDBOX_KEY);
+export async function sandboxKeyFor(db: DB, server: string, fromConfig?: string): Promise<string> {
+  const stored = await loadAuth(db, SANDBOX_KEY);
   const bound = stored?.baseUrl ? authorityOf(stored.baseUrl) : null;
   if (stored && bound && bound === server.trim()) return stored.secret;
   // An unbound row is one stored before the address travelled with it. `bindSandboxKey`
@@ -245,16 +248,22 @@ export function sandboxKeyFor(db: DB, server: string, fromConfig?: string): stri
  * live path — change the knob and the next probe hands the key over with
  * nothing restarting. Bind at write time if that ceiling starts to matter.
  */
-export function bindSandboxKey(db: DB, server: string): void {
-  const stored = loadAuth(db, SANDBOX_KEY);
+export async function bindSandboxKey(db: DB, server: string): Promise<void> {
+  const stored = await loadAuth(db, SANDBOX_KEY);
   if (!stored || stored.baseUrl) return;
-  saveAuth(db, { ...stored, baseUrl: `http://${server.trim()}` });
+  await saveAuth(db, { ...stored, baseUrl: `http://${server.trim()}` });
 }
 
-export function loadAuth(db: DB, runtime: string): RuntimeAuth | null {
-  const r = db
-    .query<StoredAuthRow, [string]>("SELECT runtime, mode, secret, base_url FROM runtime_auth WHERE runtime = ?")
-    .get(runtime);
+export async function loadAuth(db: DB, runtime: string): Promise<RuntimeAuth | null> {
+  const [r] = await db
+    .select({
+      runtime: runtime_auth.runtime,
+      mode: runtime_auth.mode,
+      secret: runtime_auth.secret,
+      base_url: runtime_auth.base_url,
+    })
+    .from(runtime_auth)
+    .where(eq(runtime_auth.runtime, runtime));
   return r ? parseStoredAuth(r) : null;
 }
 
@@ -264,30 +273,35 @@ export function loadAuth(db: DB, runtime: string): RuntimeAuth | null {
  * Never the secret. A masked tail is enough to tell two tokens apart, which is
  * the only question a human asks of one they already pasted.
  */
-export function listAuth(
+export async function listAuth(
   db: DB,
-): Array<{ runtime: string; mode: AuthMode; hint: string; baseUrl?: string; updatedAt: number }> {
-  return db
-    .query<{ runtime: string; mode: string; secret: string; base_url: string | null; updated_at: number }, []>(
-      "SELECT runtime, mode, secret, base_url, updated_at FROM runtime_auth ORDER BY runtime",
-    )
-    .all()
-    .flatMap((r) => {
-      const auth = parseStoredAuth(r);
-      if (!auth) return [];
-      return [
-        {
-          runtime: auth.runtime,
-          mode: auth.mode,
-          // A token's tail identifies it. A pasted auth.json's tail is `11Z" }`,
-          // which identifies nothing — for that one the account it logged in as is
-          // the only thing worth showing.
-          hint: auth.mode === "chatgpt" ? chatgptHint(auth.secret) : `…${auth.secret.slice(-6)}`,
-          ...(auth.baseUrl ? { baseUrl: auth.baseUrl } : {}),
-          updatedAt: r.updated_at,
-        },
-      ];
-    });
+): Promise<Array<{ runtime: string; mode: AuthMode; hint: string; baseUrl?: string; updatedAt: number }>> {
+  const rows = await db
+    .select({
+      runtime: runtime_auth.runtime,
+      mode: runtime_auth.mode,
+      secret: runtime_auth.secret,
+      base_url: runtime_auth.base_url,
+      updated_at: runtime_auth.updated_at,
+    })
+    .from(runtime_auth)
+    .orderBy(runtime_auth.runtime);
+  return rows.flatMap((r) => {
+    const auth = parseStoredAuth(r);
+    if (!auth) return [];
+    return [
+      {
+        runtime: auth.runtime,
+        mode: auth.mode,
+        // A token's tail identifies it. A pasted auth.json's tail is `11Z" }`,
+        // which identifies nothing — for that one the account it logged in as is
+        // the only thing worth showing.
+        hint: auth.mode === "chatgpt" ? chatgptHint(auth.secret) : `…${auth.secret.slice(-6)}`,
+        ...(auth.baseUrl ? { baseUrl: auth.baseUrl } : {}),
+        updatedAt: r.updated_at,
+      },
+    ];
+  });
 }
 
 /** Where codex looks for its login inside a sandbox. */
@@ -301,9 +315,9 @@ export const CODEX_HOME = "/root/.codex";
  * the way out. The real auth.json in every sandbox is what codex's own CI
  * guidance warns against — each copy refreshes, and they invalidate each other.
  */
-export function filesFor(db: DB): Record<string, string> {
-  const files: Record<string, string> = { ...gitFilesFor(db), ...claudeFilesFor(db) };
-  const a = loadAuth(db, "codex");
+export async function filesFor(db: DB): Promise<Record<string, string>> {
+  const files: Record<string, string> = { ...(await gitFilesFor(db)), ...(await claudeFilesFor(db)) };
+  const a = await loadAuth(db, "codex");
   if (a?.mode !== "chatgpt") return files;
   const parsed = parseAuth(a.secret);
   if (!parsed) return files;
@@ -321,8 +335,8 @@ export function filesFor(db: DB): Record<string, string> {
  * user,project,local` is what makes this file read at all, and `/root/.claude`
  * is the container's HOME, holding nothing but what we put in it.
  */
-function claudeFilesFor(db: DB): Record<string, string> {
-  const { claudeCoauthor } = trailers(db);
+async function claudeFilesFor(db: DB): Promise<Record<string, string>> {
+  const { claudeCoauthor } = await trailers(db);
   return { "/root/.claude/settings.json": `${JSON.stringify({ includeCoAuthoredBy: claudeCoauthor }, null, 2)}\n` };
 }
 
@@ -337,10 +351,10 @@ const GIT_USER = "x-access-token";
  * replace (005). git gets a stored credential whose password is a decoy,
  * swapped for the real one on the way out. Nothing real is ever inside.
  */
-function gitFilesFor(db: DB): Record<string, string> {
+async function gitFilesFor(db: DB): Promise<Record<string, string>> {
   // Only when a GitHub credential is configured: a public repository clones
   // anonymously, and handing git a credential it will fail with makes that a 401.
-  if (!loadAuth(db, "github")) return {};
+  if (!(await loadAuth(db, "github"))) return {};
   return {
     "/root/.git-credentials": BINDINGS.github!.hosts.map(
       (h) => `https://${GIT_USER}:${decoy("github", "api_key")}@${h}\n`,
@@ -372,7 +386,7 @@ let refreshing = false;
  * one keeps what we had, and surfaces later as the 401 that pauses the group.
  */
 async function currentChatgptToken(db: DB, io: CodexHomeIO | null, now = Date.now()): Promise<string | null> {
-  const a = loadAuth(db, "codex");
+  const a = await loadAuth(db, "codex");
   if (a?.mode !== "chatgpt") return null;
   let parsed = parseAuth(a.secret);
   if (!parsed) return null;
@@ -385,7 +399,7 @@ async function currentChatgptToken(db: DB, io: CodexHomeIO | null, now = Date.no
         // One writer. The container is where the refresh happens; this row is
         // the only copy anything reads, and the container's `auth.json` is
         // scratch that gets reseeded from here. Nothing else ever refreshes it.
-        saveAuth(db, { ...a, secret: JSON.stringify(next) });
+        await saveAuth(db, { ...a, secret: JSON.stringify(next) });
         parsed = next;
       }
     } finally {
@@ -415,10 +429,11 @@ export async function vaultBindings(
   io: CodexHomeIO | null,
   opts: VaultOpts = {},
 ): Promise<{ credentials: Credential[]; env: Record<string, string> }> {
-  const base = vaultFor(db, opts);
+  const base = await vaultFor(db, opts);
   const token = await currentChatgptToken(db, io);
   if (!token) return base;
-  const a = loadAuth(db, "codex")!;
+  const a = await loadAuth(db, "codex");
+  if (!a) return base;
   return {
     // A ChatGPT login can still be pointed at a gateway — someone running their
     // own front end has one login and a different address for it.
@@ -446,11 +461,30 @@ export interface VaultOpts {
 }
 
 /** Real credentials for the vault, and the fakes that go in the environment. */
-export function vaultFor(db: DB, opts: VaultOpts = {}): { credentials: Credential[]; env: Record<string, string> } {
+export async function vaultFor(
+  db: DB,
+  opts: VaultOpts = {},
+): Promise<{ credentials: Credential[]; env: Record<string, string> }> {
   const credentials: Credential[] = [];
   const env: Record<string, string> = {};
+  // One read for every binding rather than one per runtime: this runs on the way
+  // into a container, and four round trips for four rows is three too many.
+  const rows = await db
+    .select({
+      runtime: runtime_auth.runtime,
+      mode: runtime_auth.mode,
+      secret: runtime_auth.secret,
+      base_url: runtime_auth.base_url,
+    })
+    .from(runtime_auth);
+  const stored = new Map<string, RuntimeAuth>(
+    rows.flatMap((r): Array<[string, RuntimeAuth]> => {
+      const a = parseStoredAuth(r);
+      return a ? [[a.runtime, a]] : [];
+    }),
+  );
   for (const runtime of Object.keys(BINDINGS)) {
-    const a = loadAuth(db, runtime);
+    const a = stored.get(runtime);
     if (!a) continue;
     const credential = vaultCredential(a, opts);
     if (credential) credentials.push(credential);

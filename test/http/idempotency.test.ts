@@ -5,7 +5,9 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { makeApp } from "../../src/composition/api.ts";
 import { IdempotencyRecoveryBody, IdempotencyStatusQuery } from "../../src/http/idempotency/schema.ts";
-import { type DB, migrate, migrationMentioning, openMemory } from "../../src/platform/persistence/database.ts";
+import { count as countRows, eq, and } from "drizzle-orm";
+import { type DB, openMemory } from "../../src/platform/persistence/database.ts";
+import { idempotency_request } from "../../src/platform/persistence/schema.ts";
 import {
   idempotency,
   idempotencyCaller,
@@ -62,13 +64,13 @@ async function recover(
   );
 }
 
-function count(db: DB): number {
-  return db.query<{ count: number }, []>("SELECT count(*) AS count FROM idempotency_request").get()!.count;
+async function count(db: DB): Promise<number> {
+  return (await db.select({ count: countRows() }).from(idempotency_request))[0]?.count ?? 0;
 }
 
 test("keys are mandatory, while callers own independent key spaces", async () => {
-  const db = openMemory();
-  try {
+  const db = await openMemory();
+  {
     const app = new Hono();
     let writes = 0;
     withRecoveryRoutes(app, db);
@@ -81,19 +83,17 @@ test("keys are mandatory, while callers own independent key spaces", async () =>
     expect(WriteResponse.parse(await (await request(app, "shared", "agent-one")).json()).write).toBe(1);
     expect(WriteResponse.parse(await (await request(app, "shared", "agent-two")).json()).write).toBe(2);
     expect(WriteResponse.parse(await (await request(app, "shared", "agent-one")).json()).write).toBe(1);
-    expect(count(db)).toBe(2);
+    expect(await count(db)).toBe(2);
 
     const oversized = await request(app, "x".repeat(129));
     expect(oversized.status).toBe(400);
     expect(await oversized.json()).toMatchObject({ code: "invalid_idempotency_key" });
-  } finally {
-    db.close();
   }
 });
 
 test("an in-progress request blocks its duplicate, then becomes replayable", async () => {
-  const db = openMemory();
-  try {
+  const db = await openMemory();
+  {
     const app = new Hono();
     let writes = 0;
     let entered!: () => void;
@@ -136,17 +136,15 @@ test("an in-progress request blocks its duplicate, then becomes replayable", asy
     expect(replay.headers.get("idempotency-replayed")).toBe("true");
     expect(WriteResponse.parse(await replay.json()).write).toBe(1);
     expect(writes).toBe(1);
-  } finally {
-    db.close();
   }
 });
 
 test("unknown outcomes require an explicit reconciled result and never execute again", async () => {
-  const db = openMemory();
-  try {
+  const db = await openMemory();
+  {
     const body = JSON.stringify({ value: 1 });
     const hash = new Bun.CryptoHasher("sha256").update(body).digest("hex");
-    fx.idempotencyRequest.insert(db, {
+    await fx.on(db).idempotencyRequest.create({
       key: "stale",
       payload_hash: hash,
       updated_at: Date.now() - 11 * 60 * 1_000,
@@ -218,18 +216,26 @@ test("unknown outcomes require an explicit reconciled result and never execute a
       ).status,
     ).toBe(404);
 
-    db.run("UPDATE idempotency_request SET updated_at = 0 WHERE caller = 'boss' AND key = 'retry-throw'");
+    await db
+      .update(idempotency_request)
+      .set({ updated_at: 0 })
+      .where(and(eq(idempotency_request.caller, "boss"), eq(idempotency_request.key, "retry-throw")));
     const cleanupApp = new Hono();
     withRecoveryRoutes(cleanupApp, db);
     cleanupApp.post("/write", (c) => c.json({ write: 1 }));
     expect((await request(cleanupApp, "cleanup-trigger")).status).toBe(200);
     expect(
-      db
-        .query<{ state: string }, []>(
-          "SELECT state FROM idempotency_request WHERE caller = 'boss' AND route = '/write' AND key = 'retry-throw'",
-        )
-        .get(),
-    ).toEqual({ state: "failed" });
+      await db
+        .select({ state: idempotency_request.state })
+        .from(idempotency_request)
+        .where(
+          and(
+            eq(idempotency_request.caller, "boss"),
+            eq(idempotency_request.route, "/write"),
+            eq(idempotency_request.key, "retry-throw"),
+          ),
+        ),
+    ).toEqual([{ state: "failed" }]);
 
     const contentless = await recover(thrownApp, {
       caller: "boss",
@@ -241,12 +247,17 @@ test("unknown outcomes require an explicit reconciled result and never execute a
     expect(contentless.status).toBe(400);
     expect(await contentless.json()).toMatchObject({ code: "invalid_recovery_status" });
     expect(
-      db
-        .query<{ state: string }, []>(
-          "SELECT state FROM idempotency_request WHERE caller = 'boss' AND route = '/write' AND key = 'retry-throw'",
-        )
-        .get(),
-    ).toEqual({ state: "failed" });
+      await db
+        .select({ state: idempotency_request.state })
+        .from(idempotency_request)
+        .where(
+          and(
+            eq(idempotency_request.caller, "boss"),
+            eq(idempotency_request.route, "/write"),
+            eq(idempotency_request.key, "retry-throw"),
+          ),
+        ),
+    ).toEqual([{ state: "failed" }]);
 
     const resolvedFailure = await recover(thrownApp, {
       caller: "boss",
@@ -261,19 +272,18 @@ test("unknown outcomes require an explicit reconciled result and never execute a
     expect(replayedResolution.status).toBe(503);
     expect(await replayedResolution.json()).toEqual({ error: "operator confirmed the upstream outcome" });
     expect(throws).toBe(1);
-  } finally {
-    db.close();
   }
 });
 
 test("the panel resolves an agent caller while the agent can only inspect its own record", async () => {
-  const ctx = testContext();
+  const ctx = await testContext();
   const token = "tok-idempotency-agent";
   const caller = idempotencyCaller(new Request("http://x", { headers: { "x-orch-token": token } }));
-  const p = fx.project.insert(ctx.db, { name: "p" });
-  const g = fx.runningGrp.insert(ctx.db, { project_id: p.id, name: "g" });
-  fx.agent.insert(ctx.db, { project_id: p.id, grp_id: g.id, token });
-  fx.idempotencyRequest.insert(ctx.db, {
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p" });
+  const g = await f.runningGrp.create({ project_id: p.id, name: "g" });
+  await f.agent.create({ project_id: p.id, grp_id: g.id, token });
+  await f.idempotencyRequest.create({
     caller,
     route: "/orch/v1/status",
     key: "agent-unknown",
@@ -290,7 +300,7 @@ test("the panel resolves an agent caller while the agent can only inspect its ow
     body: { reconciled: true },
   });
 
-  try {
+  {
     const unresolved = await app(new Request("http://127.0.0.1/api/v1/idempotency/status"));
     expect(await unresolved.json()).toMatchObject({
       records: [{ caller, route: "/orch/v1/status", key: "agent-unknown", state: "failed", recoverable: true }],
@@ -351,14 +361,12 @@ test("the panel resolves an agent caller while the agent can only inspect its ow
       }),
     );
     expect(selfResolve.status).toBe(404);
-  } finally {
-    ctx.db.close();
   }
 });
 
 test("attachment uploads replay the stored result without writing another file", async () => {
   const dir = tempDir("orch-idempotency-attach-");
-  const ctx = testContext();
+  const ctx = await testContext();
   ctx.config.dataDir = dir;
   try {
     const form = new FormData();
@@ -385,56 +393,6 @@ test("attachment uploads replay the stored result without writing another file",
     expect(await replay.json()).toEqual(firstBody);
     expect(readdirSync(join(dir, "attachments"))).toHaveLength(1);
   } finally {
-    ctx.db.close();
     rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("migration 041 upgrades N-1 atomically and is replay-safe", () => {
-  const db = openMemory();
-  try {
-    const migration = migrationMentioning("idempotency_request");
-    fx.project.insert(db, { name: "kept", repo_path: "acme/kept" });
-    db.run("DELETE FROM migration WHERE n = ?", [migration]);
-    db.run("DROP INDEX idempotency_request_age");
-    db.run("DROP TABLE idempotency_request");
-
-    migrate(db);
-    migrate(db);
-    expect(db.query<{ name: string }, []>("SELECT name FROM project").get()!.name).toBe("kept");
-    expect(
-      db.query<{ count: number }, [number]>("SELECT count(*) AS count FROM migration WHERE n = ?").get(migration)!
-        .count,
-    ).toBe(1);
-    expect(
-      db
-        .query<{ name: string }, []>(
-          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'idempotency_request'",
-        )
-        .get()!.name,
-    ).toBe("idempotency_request");
-  } finally {
-    db.close();
-  }
-});
-
-test("a failed migration does not stamp a version or replace existing data", () => {
-  const db = openMemory();
-  try {
-    const migration = migrationMentioning("idempotency_request");
-    db.run("DELETE FROM migration WHERE n = ?", [migration]);
-    db.run("DROP INDEX idempotency_request_age");
-    db.run("DROP TABLE idempotency_request");
-    db.run("CREATE TABLE idempotency_request (marker TEXT NOT NULL)");
-    db.run("INSERT INTO idempotency_request VALUES ('keep')");
-
-    expect(() => migrate(db)).toThrow();
-    expect(
-      db.query<{ count: number }, [number]>("SELECT count(*) AS count FROM migration WHERE n = ?").get(migration)!
-        .count,
-    ).toBe(0);
-    expect(db.query<{ marker: string }, []>("SELECT marker FROM idempotency_request").get()!.marker).toBe("keep");
-  } finally {
-    db.close();
   }
 });

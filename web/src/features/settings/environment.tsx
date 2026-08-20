@@ -35,7 +35,7 @@ function EnvironmentCheck({ check }: { check: HostCheck }) {
     <div className="py-2">
       <div className="flex items-baseline gap-2">
         <CheckIcon ok={check.ok} />
-        <span className={cn("text-[0.8125rem]", !check.ok && "text-accent")}>{check.name}</span>
+        <span className={cn("text-body", !check.ok && "text-accent")}>{check.name}</span>
         <Meta className="min-w-0 truncate">{check.detail}</Meta>
       </div>
       <CheckFix check={check} />
@@ -55,7 +55,7 @@ function CheckFix({ check }: { check: HostCheck }) {
   // Only the broken one gets the room: the command that fixes it.
   if (check.ok || !check.fix) return null;
   return (
-    <span className="mt-1 ml-5 block rounded-md bg-sunk px-2 py-1 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
+    <span className="mt-1 ml-5 block rounded-md bg-sunk px-2 py-1 font-mono text-meta leading-relaxed text-ink-2">
       {check.fix}
     </span>
   );
@@ -153,7 +153,7 @@ function StatusSummary({ server }: { server: ServerInfo | null }) {
       ) : (
         <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-accent" />
       )}
-      <span className={cn("text-[0.8125rem]", !state.ok && "text-accent")}>{state.zh}</span>
+      <span className={cn("text-body", !state.ok && "text-accent")}>{state.zh}</span>
     </>
   );
 }
@@ -184,7 +184,7 @@ function ServerWhy({ why, state }: { why: string | null; state: string }) {
   // `sunk` too: a frame around one sentence, on the surface reserved for what a
   // machine produced.
   if (!why || why === state) return null;
-  return <p className="mt-1 ml-5 text-[0.75rem] leading-relaxed text-ink-2">{why}</p>;
+  return <p className="mt-1 ml-5 text-secondary leading-relaxed text-ink-2">{why}</p>;
 }
 
 function ServerIdentity({ value }: { value: string }) {
@@ -195,7 +195,7 @@ function ServerIdentity({ value }: { value: string }) {
 function ServerLog({ log }: { log: string }) {
   if (!log) return null;
   return (
-    <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-sunk px-3 py-2 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
+    <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-sunk px-3 py-2 font-mono text-meta leading-relaxed text-ink-2">
       {log}
     </pre>
   );
@@ -285,13 +285,11 @@ function PathNotice({ checks }: { checks: HostCheck[] }) {
 function DriftNotice({ detail, fix }: { detail: string; fix: string }) {
   return (
     <div className="mt-2.5 rounded-md bg-sunk px-3 py-2">
-      <div className="text-[0.8125rem] text-accent">{detail}</div>
-      <p className="mt-1 text-[0.75rem] text-ink-3">
+      <div className="text-body text-accent">{detail}</div>
+      <p className="mt-1 text-secondary text-ink-3">
         容器不报错，只挂个空目录，勾上的技能就这么没了。把这行写进配置，然后重启：
       </p>
-      <pre className="mt-1.5 overflow-x-auto font-mono text-[0.6875rem] leading-relaxed text-ink-2 select-all">
-        {fix}
-      </pre>
+      <pre className="mt-1.5 overflow-x-auto font-mono text-meta leading-relaxed text-ink-2 select-all">{fix}</pre>
     </div>
   );
 }
@@ -391,7 +389,7 @@ function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefres
             why this warns rather than refuses: on the open internet the
             api_key and every container payload cross it in the clear. */}
         {server?.inClear && (
-          <span className="text-[0.75rem] text-accent">
+          <span className="text-secondary text-accent">
             不在本机，也不在加密内网，走的还是明文 http。密钥和容器流量都是裸的，用 https 或者 Tailscale。
           </span>
         )}

@@ -37,7 +37,7 @@ export function CardHeader({ className, ...rest }: React.HTMLAttributes<HTMLDivE
 }
 
 export function CardTitle({ className, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("font-display text-[1.0625rem] font-semibold", className)} {...rest} />;
+  return <div className={cn("font-display text-card font-semibold", className)} {...rest} />;
 }
 
 export function CardBody({ className, ...rest }: React.HTMLAttributes<HTMLDivElement>) {

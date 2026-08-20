@@ -41,6 +41,25 @@
      rows. Never below 15px: both faces get weak there. */
   --font-display: ui-serif, "New York", "Songti SC", Charter, Georgia, serif;
 
+  /* The type scale, named. It was eleven literal rem values spread over 262 call
+     sites and 43 files, while `docs/design/ui.md` described seven — so the
+     document and the product had not agreed for a long time and nothing could
+     tell. Every value here is what was already rendering: this gives the scale
+     names, it does not move a pixel. `--text-base` deliberately replaces
+     Tailwind's 1rem default, because 0.875 is this product's reading size and
+     nothing here used the built-in scale. */
+  --text-tag: 0.5625rem;
+  --text-pill: 0.625rem;
+  --text-meta: 0.6875rem;
+  --text-secondary: 0.75rem;
+  --text-body: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-name: 0.9375rem;
+  --text-lead: 1rem;
+  --text-card: 1.0625rem;
+  --text-title: 1.25rem;
+  --text-figure: 1.375rem;
+
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
 }
 

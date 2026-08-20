@@ -139,7 +139,7 @@ export function NotesBoard({
   if (!notes) return <Meta>读记录…</Meta>;
   if (!notes.length) {
     return (
-      <div className="text-[0.8125rem] text-ink-3">
+      <div className="text-body text-ink-3">
         还没有记录。agent 每个 turn 写 journal，组解散前写 retro，retro 归纳成教训注入后续组。
       </div>
     );
@@ -217,7 +217,7 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
         </div>
         {n.group && (
           <Tip label={n.group}>
-            <div className="truncate text-[0.75rem] text-ink-2">{n.group}</div>
+            <div className="truncate text-secondary text-ink-2">{n.group}</div>
           </Tip>
         )}
       </div>
@@ -247,14 +247,14 @@ function Body({ text }: { text: string }) {
   const long = text.split("\n").length > 4 || text.length > 320;
   return (
     <div className="mt-1.5">
-      <div className={cn("text-[0.8125rem] leading-[1.7] text-ink-2", !open && long && "line-clamp-4")}>
+      <div className={cn("text-body leading-[1.7] text-ink-2", !open && long && "line-clamp-4")}>
         <WithAttachments body={text} />
       </div>
       {long && (
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="mt-0.5 cursor-pointer font-mono text-[0.6875rem] text-ink-3 hover:text-accent"
+          className="mt-0.5 cursor-pointer font-mono text-meta text-ink-3 hover:text-accent"
         >
           {open ? "收起" : "展开"}
         </button>

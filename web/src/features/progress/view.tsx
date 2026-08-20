@@ -128,7 +128,7 @@ function List({
   empty: string;
 }) {
   const { page, rest, more, total } = usePaged(groups, 25);
-  if (!groups.length) return <div className="text-[0.8125rem] text-ink-3">{empty}</div>;
+  if (!groups.length) return <div className="text-body text-ink-3">{empty}</div>;
   return (
     <>
       {page.map((g) => (
@@ -166,15 +166,15 @@ function rowFacts(st: State, group: Group): RowFacts {
 
 function rowBody(group: Group, facts: RowFacts): React.ReactNode {
   if (group.status === "PLANNING")
-    return <span className="text-[0.75rem] text-ink-3">Dispatcher 在深挖，还没有切片</span>;
-  if (heldApproved(group)) return <span className="text-[0.75rem] text-ink-3">已批准，边界让开就自动开工</span>;
+    return <span className="text-secondary text-ink-3">Dispatcher 在深挖，还没有切片</span>;
+  if (heldApproved(group)) return <span className="text-secondary text-ink-3">已批准，边界让开就自动开工</span>;
   if (group.status === "DRAFT") {
     const goal = facts.card
       ? (facts.card.body.split("\n").find((line) => line.startsWith("目标")) ?? "计划卡待批")
       : "计划卡还没交";
-    return <span className="block truncate text-[0.75rem] text-ink-2">{goal}</span>;
+    return <span className="block truncate text-secondary text-ink-2">{goal}</span>;
   }
-  if (!facts.slices.length) return <span className="text-[0.75rem] text-ink-3">无切片</span>;
+  if (!facts.slices.length) return <span className="text-secondary text-ink-3">无切片</span>;
   return (
     <div className="flex flex-wrap items-stretch gap-1.5">
       {facts.slices.map((slice) => (
@@ -187,7 +187,7 @@ function rowBody(group: Group, facts: RowFacts): React.ReactNode {
 function RunningActivity({ agent }: { agent: RowFacts["doing"] }) {
   if (!agent) return null;
   return (
-    <div className="mt-1 truncate font-mono text-[0.6875rem] text-ink-2">
+    <div className="mt-1 truncate font-mono text-meta text-ink-2">
       {agent.role} ▸ {agent.activity}
     </div>
   );
@@ -236,7 +236,7 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
     >
       <div className="min-w-0">
         <div className="flex items-baseline gap-2">
-          <span className="truncate font-display text-[0.9375rem] font-semibold">{g.name}</span>
+          <span className="truncate font-display text-name font-semibold">{g.name}</span>
           {facts.doing && <i className="breathe size-1.5 shrink-0 rounded-full bg-ok" />}
         </div>
         <Meta>
@@ -284,7 +284,7 @@ function Seg({ s }: { s: Slice }) {
       <span className={cn("w-32 shrink-0 rounded-[0.3125rem] border px-1.5 py-1", sliceBorder(s, failed))}>
         <span
           className={cn(
-            "flex items-center gap-1 font-mono text-[0.625rem] text-ink-3",
+            "flex items-center gap-1 font-mono text-pill text-ink-3",
             waiting && "font-semibold text-accent",
           )}
         >
@@ -292,7 +292,7 @@ function Seg({ s }: { s: Slice }) {
           <span className="grow" />
           {sliceMark(s)}
         </span>
-        <span className="mt-px block truncate text-[0.6875rem] text-ink-2">{s.title}</span>
+        <span className="mt-px block truncate text-meta text-ink-2">{s.title}</span>
         {/* The layers review.ts actually records. `self` was drawn here for a while
             and recorded nowhere, so the first tick sat grey forever — and the layer
             it stood in for, reconcile, is the one docs/project/plan.md §7 calls worth more than
@@ -312,7 +312,7 @@ function Seg({ s }: { s: Slice }) {
 function Done({ rows }: { rows: Archived[] }) {
   const { page, rest, more, total } = usePaged(rows, 25);
   if (!rows.length) {
-    return <div className="text-[0.8125rem] text-ink-3">还没有交付过。合入 main 之后的需求归档到这里。</div>;
+    return <div className="text-body text-ink-3">还没有交付过。合入 main 之后的需求归档到这里。</div>;
   }
   return (
     <>
@@ -321,7 +321,7 @@ function Done({ rows }: { rows: Archived[] }) {
           key={a.id}
           className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 border-t border-rule-soft first:border-t-0 px-2 py-2"
         >
-          <span className="min-w-0 truncate text-[0.8125rem] text-ink-2">
+          <span className="min-w-0 truncate text-body text-ink-2">
             {a.name}
             {a.pr_number ? <Meta className="ml-2">#{a.pr_number}</Meta> : null}
           </span>

@@ -1,3 +1,4 @@
+import { count, eq, isNotNull } from "drizzle-orm";
 import {
   allowedImage,
   remoteInClear,
@@ -23,7 +24,7 @@ import { preflight } from "../../mech/ops/preflight.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
-import type { GrpState } from "../../contracts/states.ts";
+import { grp as grps, job } from "../../platform/persistence/schema.ts";
 
 /**
  * What this machine can and cannot do, and the sidecar that decides it.
@@ -44,22 +45,20 @@ import type { GrpState } from "../../contracts/states.ts";
 export const SandboxQuery = z.object({ grp: z.coerce.number().int().positive() });
 
 export const getSandbox = (async (ctx, _req, _params, { grp: grpId }) => {
-  const grp = ctx.db
-    .query<
-      {
-        id: number;
-        name: string;
-        status: GrpState;
-        project_id: number;
-        sandbox_id: string | null;
-        sandbox_at: number | null;
-        branch: string | null;
-      },
-      [number]
-    >("SELECT id, name, status, project_id, sandbox_id, sandbox_at, branch FROM grp WHERE id = ?")
-    .get(grpId);
+  const [grp] = await ctx.db
+    .select({
+      id: grps.id,
+      name: grps.name,
+      status: grps.status,
+      project_id: grps.project_id,
+      sandbox_id: grps.sandbox_id,
+      sandbox_at: grps.sandbox_at,
+      branch: grps.branch,
+    })
+    .from(grps)
+    .where(eq(grps.id, grpId));
   if (!grp) return message("no such group", 404);
-  const spec = specFor(ctx, grp.project_id);
+  const spec = await specFor(ctx, grp.project_id);
   return json({
     group: { id: grp.id, name: grp.name, status: grp.status, branch: grp.branch },
     sandbox: {
@@ -84,6 +83,7 @@ export const getPreflight = (async (ctx) =>
       db: ctx.db,
       sandbox: ctx.config.sandbox,
       skillsDir: ctx.config.skillsDir,
+      cfg: ctx.config,
     }),
   })) satisfies Handler;
 
@@ -111,7 +111,7 @@ export const postImage = (async (ctx, _req, _p, b) => {
   // The same rule the container build applies, applied where the boss can read
   // it. Without this the refusal arrives as a container that will not create.
   if (image && !allowedImage(image)) return bad(`${image} 不是我们发布的镜像，也不是本机构建的`);
-  const why = setDefaultImage(ctx.db, ctx.config, image);
+  const why = await setDefaultImage(ctx.db, ctx.config, image);
   if (why) return bad(why);
   return message("ok");
 }) satisfies Handler<z.infer<typeof ImageBody>>;
@@ -132,12 +132,13 @@ export const postImage = (async (ctx, _req, _p, b) => {
  */
 export const getSandboxServer = (async (ctx) => {
   const live = runningServer();
-  const count = (sql: string) => ctx.db.query<{ c: number }, []>(sql).get()!.c;
   // Inspect, never ensure. Which of the cases this is decides which button the
   // panel may show — and a GET that starts a process is a page that changes the
   // machine by being looked at.
   const state = await inspectServer(ctx);
-  const drift = driftingPaths(ctx);
+  const drift = await driftingPaths(ctx);
+  const [containers] = await ctx.db.select({ c: count() }).from(grps).where(isNotNull(grps.sandbox_id));
+  const [runningTurns] = await ctx.db.select({ c: count() }).from(job).where(eq(job.state, "running"));
   return json({
     running: state.kind !== "down",
     addr: serverAddr(ctx),
@@ -150,15 +151,15 @@ export const getSandboxServer = (async (ctx) => {
     argv: live?.argv ?? [],
     // Ours only. Restarting a server we did not start takes down whatever else
     // on this machine was using it, and nothing here can see what that was.
-    restartable: !!ourArgv(ctx.db),
+    restartable: !!(await ourArgv(ctx.db)),
     // The silent one: a mount of a path missing from `allowed_host_paths`
     // succeeds and delivers an empty directory.
     drift,
     // Its own last words, when there are any. Shown rather than summarised: the
     // reason a start fails is almost always in here verbatim.
     log: state.kind === "down" ? serverLogTail(ctx, 8) : "",
-    containers: count("SELECT count(*) AS c FROM grp WHERE sandbox_id IS NOT NULL"),
-    runningTurns: count("SELECT count(*) AS c FROM job WHERE state = 'running'"),
+    containers: containers?.c ?? 0,
+    runningTurns: runningTurns?.c ?? 0,
   });
 }) satisfies Handler;
 
@@ -167,7 +168,7 @@ export const postSandboxServerRestart = (async (ctx) => {
   // server is one we started; this is the same rule enforced where it matters,
   // because a request can arrive from anywhere and "restart" here means killing
   // a machine-wide process that may be somebody's own.
-  const argv = ourArgv(ctx.db);
+  const argv = await ourArgv(ctx.db);
   if (!argv) {
     return bad(
       "这个沙盒服务器不是我们起的，不会去动它 —— 它可能是你自己起的，配的是别的东西。要重启就自己重启，之后这里会认得它。",
@@ -179,7 +180,7 @@ export const postSandboxServerRestart = (async (ctx) => {
   // on the same problem.
   resetServerRestarts();
   if (err) return bad(err);
-  ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "沙盒服务器重启了，容器都没了" });
+  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "沙盒服务器重启了，容器都没了" });
   return json({ ok: true });
 }) satisfies Handler;
 
@@ -195,7 +196,7 @@ export const postSandboxServerAddr = (async (ctx, _req, _p, b) => {
   if (addr && !/^(https?:\/\/)?[\w.-]+(:\d{2,5})?$/.test(addr)) {
     return bad("填 host:port，或者 https://host:port。比如 127.0.0.1:8081、sandbox.tail1234.ts.net:8080");
   }
-  setServerAddr(ctx, addr);
+  await setServerAddr(ctx, addr);
   return json({ ok: true, addr: serverAddr(ctx) });
 }) satisfies Handler<z.infer<typeof AddrBody>>;
 
@@ -203,7 +204,7 @@ export const postSandboxServerAddr = (async (ctx, _req, _p, b) => {
 export const postSandboxServerStart = (async (ctx) => {
   const st = await ensureServer(ctx);
   if (st.kind === "down") return bad(st.why);
-  ctx.bus.emit({
+  await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
     body: st.kind === "started" ? `沙盒服务器起好了（pid ${st.pid}）` : "沙盒服务器本来就在跑，直接用了",

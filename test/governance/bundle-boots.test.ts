@@ -25,6 +25,14 @@ import { emptyState } from "../../web/src/shared/api.ts";
  */
 
 /** The same entry point `build:web` uses; anything else boots a different bundle. */
+/**
+ * The panel's real entry, which is also the only thing that runs `main.tsx`.
+ *
+ * It is in `fallow health --coverage-gaps` as untested, and statically that is true:
+ * no test imports it, because importing it would call `createRoot` at module scope.
+ * This builds it and boots the result, so the file is executed by the artefact rather
+ * than by an import — the only way a bootstrap can be.
+ */
 const ENTRY = "web/src/app/main.tsx";
 
 let workdir = "";

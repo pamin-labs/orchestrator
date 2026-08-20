@@ -1,4 +1,7 @@
 name: dispatcher
+# What the flow may ask this role for. The dispatch sites look up the capability,
+# never the name, so this line is what makes a role replaceable by a yaml file.
+capabilities: [plan_requirement]
 effort: xhigh
 tier: hard
 # Turns one sentence from the boss into a DRAFT card the boss can approve in 20s.

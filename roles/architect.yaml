@@ -1,4 +1,7 @@
 name: architect
+# What the flow may ask this role for. The dispatch sites look up the capability,
+# never the name, so this line is what makes a role replaceable by a yaml file.
+capabilities: [cut_boundary]
 effort: high
 tier: hard
 # Cross-group and standing. One architect, or parallel groups drift apart.

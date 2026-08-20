@@ -1,4 +1,7 @@
 name: librarian
+# What the flow may ask this role for. The dispatch sites look up the capability,
+# never the name, so this line is what makes a role replaceable by a yaml file.
+capabilities: [compress_context]
 # codex: cheapest tier of the cheaper account. Compresses; never judges.
 runtime: codex
 effort: low

@@ -1,4 +1,7 @@
 name: cos
+# What the flow may ask this role for. The dispatch sites look up the capability,
+# never the name, so this line is what makes a role replaceable by a yaml file.
+capabilities: [triage_boss_feedback]
 effort: high
 tier: hard
 # The boss's only interface to the system. Everything else routes through here.

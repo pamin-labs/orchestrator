@@ -251,18 +251,18 @@ export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; 
               setView({ from: 0, to: 1 });
             }}
             className={cn(
-              "shrink-0 cursor-pointer rounded-md bg-sunk px-1.5 py-0.5 font-mono text-[0.625rem] text-ink-2",
+              "shrink-0 cursor-pointer rounded-md bg-sunk px-1.5 py-0.5 font-mono text-pill text-ink-2",
               "transition-colors hover:text-ink",
             )}
           >
             ← 回到全部
           </button>
         )}
-        {zoomed !== null && <span className="shrink-0 text-[0.6875rem] text-ink-3">看的是 {humanName(zoomed)}</span>}
+        {zoomed !== null && <span className="shrink-0 text-meta text-ink-3">看的是 {humanName(zoomed)}</span>}
         {zoomed === null && zoom < 1 && (
-          <span className="shrink-0 text-[0.6875rem] text-ink-3">放大到 {(1 / zoom).toFixed(0)}×</span>
+          <span className="shrink-0 text-meta text-ink-3">放大到 {(1 / zoom).toFixed(0)}×</span>
         )}
-        <div ref={details} className="min-w-0 truncate font-mono text-[0.6875rem] text-ink-2" />
+        <div ref={details} className="min-w-0 truncate font-mono text-meta text-ink-2" />
       </div>
       <div className="mb-1">
         <Minimap view={view} limit={WHOLE} label="看的是哪一段" onPan={setView} />
@@ -280,7 +280,7 @@ export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; 
               // paragraph, so it takes no focus ring and no text selection.
               "select-none",
               "[&_.d3-flame-graph-label]:truncate [&_.d3-flame-graph-label]:px-1",
-              "[&_.d3-flame-graph-label]:font-mono [&_.d3-flame-graph-label]:text-[0.6875rem]",
+              "[&_.d3-flame-graph-label]:font-mono [&_.d3-flame-graph-label]:text-meta",
               // 20px, which is `CELL_PX`. Written out rather than interpolated:
               // Tailwind reads class names out of the source at build time, so a
               // template literal produces a class that exists in the DOM and in no

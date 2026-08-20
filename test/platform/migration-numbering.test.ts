@@ -1,36 +1,37 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { Glob } from "bun";
 
 /**
- * The number in a migration's comment is the version it will be recorded as.
+ * No comment cites a migration by number, because nothing carries one.
  *
- * `migrate()` stamps the `migration` table with the array index, so the comment
- * beside each entry is the only place a reader learns which version they are
- * looking at. Seventeen of forty had drifted — an entry inserted mid-array
- * renumbers everything below it, and nothing noticed — so `// 036` sat on
- * version 28 and `// 022` appeared twice.
+ * This file used to check that each entry in the hand-written `MIGRATIONS` array
+ * was numbered by its own index — seventeen of forty had drifted, because an
+ * entry inserted mid-array renumbers everything below it. Drizzle owns migrations
+ * now and names them by folder, so the numbers are gone and the six comments that
+ * still cited one ("migration 039 moved the row across") pointed at nothing a
+ * reader could look up. The stale-pointer class survives; its shape changed.
  */
+const sources = () => [
+  ...new Glob("src/**/*.ts").scanSync("."),
+  ...new Glob("test/**/*.ts").scanSync("."),
+  ...new Glob("web/src/**/*.tsx").scanSync("."),
+];
 
-test("every migration's comment number is its array index", async () => {
-  const source = await Bun.file("src/platform/persistence/database.ts").text();
-  const body = source.slice(source.indexOf("const MIGRATIONS"));
-  const numbered = [...body.matchAll(/^ {2}\/\/ (\d{3}) — /gm)].map((m) => m[1]!);
-  expect(numbered.length).toBeGreaterThan(30);
-  const wrong = numbered
-    .map((seen, i) => ({ seen, expected: String(i + 1).padStart(3, "0") }))
-    .filter((row) => row.seen !== row.expected);
-  expect(wrong).toEqual([]);
-});
-
-test("a migration number mentioned in prose points at a migration that exists", async () => {
-  // Renumbering the headings is only half of it: the prose cross-references
-  // ("dropped by migration 024", "042 put `trace_id` on jobs") are the other half,
-  // and they go stale silently — nothing reads them but a person.
-  const source = await Bun.file("src/platform/persistence/database.ts").text();
-  const body = source.slice(source.indexOf("const MIGRATIONS"));
-  const total = [...body.matchAll(/^ {2}\/\/ (\d{3}) — /gm)].length;
-  const mentioned = [...body.matchAll(/migration (\d{3})|^ *\/\/ (\d{3}) (?!— )/gm)]
-    .map((m) => Number(m[1] ?? m[2]))
-    .filter((n) => Number.isFinite(n));
-  expect(mentioned.length).toBeGreaterThan(0);
-  expect(mentioned.filter((n) => n < 1 || n > total)).toEqual([]);
+test("no comment points at a migration number that nobody can look up", () => {
+  // Two globs, not one with braces in both halves: `{src,test}/**/*.{ts,tsx}`
+  // silently matches nothing in Bun, and a scanner over no files is a test that
+  // passes for ever. The count below is what says it looked.
+  const scanned = sources();
+  expect(scanned.length).toBeGreaterThan(200);
+  const cited = scanned.flatMap((path) =>
+    readFileSync(path, "utf8")
+      .split("\n")
+      .flatMap((line, i) =>
+        /migration \d{3}\b/i.test(line) && !path.endsWith("migration-numbering.test.ts")
+          ? [`${path}:${i + 1}  ${line.trim().slice(0, 70)}`]
+          : [],
+      ),
+  );
+  expect(cited).toEqual([]);
 });

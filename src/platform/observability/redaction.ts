@@ -4,7 +4,7 @@
  * `claude setup-token` prints the token it just minted, and the login streams the
  * CLI's output to the panel so the boss can see the link — so the token went on
  * screen in full, and on a failure into the `event` table with the last 300
- * characters of output. Migration 035 already promised this; it was a promise
+ * characters of output. The schema already promised this; it was a promise
  * with nothing enforcing it.
  */
 /**

@@ -1,10 +1,9 @@
-import type { SQLQueryBindings } from "bun:sqlite";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT } from "../../platform/config/load.ts";
+import { type Config, ROOT } from "../../platform/config/load.ts";
 import { gitTrailers } from "./ghlogin.ts";
-import type { Ctx } from "../../mech/ctx.ts";
+import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { say } from "../../platform/text/lang.ts";
 import { squashWip } from "./gitops.ts";
@@ -13,10 +12,13 @@ import type { Github } from "./github.ts";
 import { pages } from "./paging.ts";
 import { parseRepo } from "../../contracts/repository.ts";
 import { WORK } from "../sandbox/sandbox.ts";
-import { jsonOr } from "../../contracts/json.ts";
+import { valueOr, jsonOr } from "../../contracts/json.ts";
+import { and, asc, desc, eq, isNotNull, ne } from "drizzle-orm";
+import { event, grp as grps, note, project, slice } from "../../platform/persistence/schema.ts";
 import pMap from "p-map";
 import { z } from "zod";
 import type { GrpState } from "../../contracts/states.ts";
+import { baseBranchOf } from "../util/rows.ts";
 
 const GateResults = z.record(z.string(), z.string());
 const PullNumber = z.object({ number: z.number().int().positive() });
@@ -41,8 +43,8 @@ const PackageVersion = z.object({ version: z.string() });
  * the schema changes to hold `owner/repo` directly, this function is the only
  * thing that changes — everything below already speaks `owner/repo`.
  */
-function repoSlug(db: DB, projectId: number): string | null {
-  const p = db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId);
+async function repoSlug(db: DB, projectId: number): Promise<string | null> {
+  const [p] = await db.select({ remote: project.remote }).from(project).where(eq(project.id, projectId));
   return p?.remote ? parseRepo(p.remote) : null;
 }
 
@@ -57,13 +59,12 @@ export interface OpenPrInput {
 /** Open the PR once the audit passes. Returns its number, or null with a reason. */
 export async function openPr(input: OpenPrInput): Promise<{ number: number } | { error: string }> {
   const { ctx, gh, grpId } = input;
-  const grp = ctx.db
-    .query<{ branch: string | null; pr_number: number | null; project_id: number }, [number]>(
-      "SELECT branch, pr_number, project_id FROM grp WHERE id = ?",
-    )
-    .get(grpId);
+  const [grp] = await ctx.db
+    .select({ branch: grps.branch, pr_number: grps.pr_number, project_id: grps.project_id })
+    .from(grps)
+    .where(eq(grps.id, grpId));
   if (!grp?.branch) return { error: "group has no branch" };
-  const slug = repoSlug(ctx.db, grp.project_id);
+  const slug = await repoSlug(ctx.db, grp.project_id);
   if (!slug) return { error: "project has no GitHub remote: a PR has nowhere to go" };
 
   if (grp.pr_number) {
@@ -86,8 +87,14 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   // string, so `git log` in the merged repository carried `## Slices (3, all
   // accepted)`, a gate table and `Opened by orchestrator` — a description
   // written for a review page, pasted into the one place that outlives it.
-  const sq = await squashWip(sandbox, WORK, commitMessage(ctx.db, grpId, input.title), gitTrailers(ctx.db));
-  ctx.bus.emit({
+  const sq = await squashWip(
+    sandbox,
+    WORK,
+    await commitMessage(ctx.db, grpId, input.title),
+    ctx.config.baseBranchFallbacks,
+    await gitTrailers(ctx.db),
+  );
+  await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "commit",
@@ -130,8 +137,8 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   }
   if (!number) return { error: "opened, but GitHub's answer had no PR number in it" };
 
-  ctx.db.run("UPDATE grp SET pr_number = ? WHERE id = ?", [number, grpId]);
-  ctx.bus.emit({
+  await ctx.db.update(grps).set({ pr_number: number }).where(eq(grps.id, grpId));
+  await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "state_change",
@@ -214,46 +221,46 @@ export function checkPrMessage(title: string, body: string): string | null {
  * With no body it stays one line, which is the right shape for a commit nobody
  * described — better than pasting the pull request's headings into a log.
  */
-export function commitMessage(db: DB, grpId: number, title: string): string {
-  const summary = db
-    .query<{ pr_summary: string | null }, [number]>("SELECT pr_summary FROM grp WHERE id = ?")
-    .get(grpId)?.pr_summary;
+export async function commitMessage(db: DB, grpId: number, title: string): Promise<string> {
+  const [row] = await db.select({ pr_summary: grps.pr_summary }).from(grps).where(eq(grps.id, grpId));
+  const summary = row?.pr_summary;
   return summary?.trim() ? `${title}\n\n${summary.trim()}` : title;
 }
 
-export function prTitle(db: DB, grpId: number): string {
-  const g = db
-    .query<{ name: string; pr_title: string | null }, [number]>("SELECT name, pr_title FROM grp WHERE id = ?")
-    .get(grpId);
+export async function prTitle(db: DB, grpId: number): Promise<string> {
+  const [g] = await db.select({ name: grps.name, pr_title: grps.pr_title }).from(grps).where(eq(grps.id, grpId));
   return g?.pr_title?.trim() || `orch: ${g?.name ?? "changes"}`;
 }
 
-export function prBody(db: DB, grpId: number): string {
-  // One row shape per call and always the same bindings, so only the first type
-  // argument is worth writing. It used to take `unknown[]` and cast twice to get
-  // there, which threw away what `db.query` already declares.
-  const q = <T>(sql: string, ...p: SQLQueryBindings[]): T[] => db.query<T, SQLQueryBindings[]>(sql).all(...p);
+export async function prBody(db: DB, grpId: number): Promise<string> {
   const out: string[] = [];
 
   // The Scribe's, and first, because it is the only part written by something
   // that read the diff. Everything below is the record: true, assembled from the
   // database, and unable to say what the change actually does.
-  const summary = q<{ pr_summary: string | null }>("SELECT pr_summary FROM grp WHERE id = ?", grpId)[0]?.pr_summary;
+  const [g] = await db
+    .select({ name: grps.name, branch: grps.branch, spent_tokens: grps.spent_tokens, pr_summary: grps.pr_summary })
+    .from(grps)
+    .where(eq(grps.id, grpId));
+  const summary = g?.pr_summary;
   if (summary?.trim()) out.push(summary.trim());
 
-  const idea = q<{ body: string }>(
-    "SELECT body FROM event WHERE grp_id = ? AND kind = 'boss_say' ORDER BY seq LIMIT 1",
-    grpId,
-  )[0];
+  const [idea] = await db
+    .select({ body: event.body })
+    .from(event)
+    .where(and(eq(event.grp_id, grpId), eq(event.kind, "boss_say")))
+    .orderBy(asc(event.seq))
+    .limit(1);
   if (idea) out.push(`## Asked for\n\n${idea.body.trim().slice(0, 1000)}`);
 
-  const slices = q<{ seq: number; title: string; accept_spec: string; gates_json: string }>(
-    "SELECT seq, title, accept_spec, gates_json FROM slice WHERE grp_id = ? ORDER BY seq",
-    grpId,
-  );
+  const slices = await db
+    .select({ seq: slice.seq, title: slice.title, accept_spec: slice.accept_spec, gates_json: slice.gates_json })
+    .from(slice)
+    .where(eq(slice.grp_id, grpId))
+    .orderBy(asc(slice.seq));
   if (slices.length) {
     const lines = slices.map((s) => {
-      const passed = Object.entries(jsonOr(s.gates_json, GateResults, {}))
+      const passed = Object.entries(valueOr(s.gates_json, GateResults, {}))
         .filter(([, v]) => v === "pass")
         .map(([k]) => k);
       return (
@@ -265,10 +272,11 @@ export function prBody(db: DB, grpId: number): string {
     out.push(`## Slices (${slices.length}, all accepted)\n\n${lines.join("\n")}`);
   }
 
-  const decisions = q<{ body: string; export_path: string | null }>(
-    "SELECT body, export_path FROM note WHERE grp_id = ? AND kind = 'decision' ORDER BY id",
-    grpId,
-  );
+  const decisions = await db
+    .select({ body: note.body, export_path: note.export_path })
+    .from(note)
+    .where(and(eq(note.grp_id, grpId), eq(note.kind, "decision")))
+    .orderBy(asc(note.id));
   if (decisions.length) {
     const lines = decisions.map((d) => {
       const first = d.body.trim().split("\n")[0]!.slice(0, 200);
@@ -277,16 +285,14 @@ export function prBody(db: DB, grpId: number): string {
     out.push(`## Decisions\n\n${lines.join("\n")}`);
   }
 
-  const retro = q<{ body: string }>(
-    "SELECT body FROM note WHERE grp_id = ? AND kind = 'retro' ORDER BY id DESC LIMIT 1",
-    grpId,
-  )[0];
+  const [retro] = await db
+    .select({ body: note.body })
+    .from(note)
+    .where(and(eq(note.grp_id, grpId), eq(note.kind, "retro")))
+    .orderBy(desc(note.id))
+    .limit(1);
   if (retro) out.push(`## Retro\n\n${retro.body.trim().slice(0, 2000)}`);
 
-  const g = q<{ name: string; branch: string | null; spent_tokens: number }>(
-    "SELECT name, branch, spent_tokens FROM grp WHERE id = ?",
-    grpId,
-  )[0];
   if (g) {
     out.push(
       `---\n\`${g.branch ?? "?"}\` · ${slices.length} slice(s) · ${g.spent_tokens} tokens · ` +
@@ -306,7 +312,28 @@ export interface Feedback {
   grpId: number;
   prNumber: number;
   comments: Array<{ author: string; body: string; at: number }>;
-  failingChecks: string[];
+  /**
+   * Unresolved line-level review threads: which file, which line, what was said.
+   *
+   * The thread is the unit because resolution is a property of the thread, not of
+   * any one comment in it. Optional because only GraphQL can answer it — see
+   * `loadPollDetails`.
+   */
+  /**
+   * `id` is GitHub's node id, and it is here so it can be quoted back: `orch pr
+   * resolve` names a thread by it. Without it an agent that fixed what a reviewer
+   * asked for had no way to say which thread it fixed, so every one stayed open.
+   */
+  threads?: Array<{ id: string; path: string; line: number | null; comments: Feedback["comments"] }>;
+  /**
+   * Which checks are failing, and enough of what they said to act on.
+   *
+   * The name alone was all the PM got — "failing checks: build" is a fact with no
+   * next step in it. `summary` is the check's own `output`, truncated; `url` is
+   * where the rest of it is. Neither is in the change signature: a summary that
+   * carries a duration or a timestamp would otherwise be news on every tick.
+   */
+  failingChecks: Array<{ name: string; summary?: string | undefined; url?: string | undefined }>;
   /** GitHub says it is in main. The group winds itself up; nobody clicks anything. */
   merged?: boolean;
   /** Closed without merging. The group stops and leaves the queue rather than block it. */
@@ -347,9 +374,20 @@ const IssueCommentRest = z.object({
 const ReviewRest = z.object({
   user: z.object({ login: z.string().optional() }).nullable().optional(),
   body: z.string().optional(),
+  /** APPROVED / CHANGES_REQUESTED / COMMENTED / DISMISSED. Both transports carry it or they drift. */
+  state: z.string().optional(),
   submitted_at: z.string().optional(),
 });
-const CheckRest = z.object({ name: z.string().optional(), conclusion: z.string().nullable().optional() });
+const CheckRest = z.object({
+  name: z.string().optional(),
+  conclusion: z.string().nullable().optional(),
+  details_url: z.string().optional(),
+  /** What the gate itself wrote. Both transports carry it or REST and GraphQL drift. */
+  output: z
+    .object({ title: z.string().nullable().optional(), summary: z.string().nullable().optional() })
+    .nullable()
+    .optional(),
+});
 const StatusRest = z.object({ context: z.string().optional(), state: z.string().optional() });
 
 /**
@@ -380,11 +418,28 @@ function transitionFeedback(group: WatchedGroup, prNumber: number, state: string
   return null;
 }
 
-function newComments(issue: IssueComment[], reviews: Review[], seenAt: number): Feedback["comments"] {
-  return [
-    ...issue.map((comment) => ({ author: comment.user?.login, body: comment.body, at: comment.created_at })),
-    ...reviews.map((review) => ({ author: review.user?.login, body: review.body, at: review.submitted_at })),
-  ]
+/**
+ * A verdict is not a comment.
+ *
+ * `state` was never read, so an approval and a request for changes were the same
+ * string to everything downstream. And an approval usually carries no body at all,
+ * so the `body` filter below dropped it: the one event a PM waits for was the one
+ * event that never arrived.
+ */
+const VERDICTS: Record<string, string> = {
+  APPROVED: "approved this pull request",
+  CHANGES_REQUESTED: "requested changes",
+  DISMISSED: "had a review dismissed",
+};
+
+/** The verdict, then whatever was written under it. A `COMMENTED` review is only the body. */
+function reviewBody(review: Review): string {
+  return [VERDICTS[String(review.state ?? "").toUpperCase()] ?? "", review.body].filter(Boolean).join(": ");
+}
+
+/** Normalised, truncated, and only what was said after the cursor. Both readers below. */
+function saidSince(said: Thread["comments"], seenAt: number): Feedback["comments"] {
+  return said
     .map((comment) => ({
       author: comment.author ?? "?",
       body: String(comment.body ?? "").slice(0, 1000),
@@ -393,18 +448,76 @@ function newComments(issue: IssueComment[], reviews: Review[], seenAt: number): 
     .filter((comment) => comment.body && comment.at > seenAt);
 }
 
-function failedChecks(checks: Check[], statuses: Status[]): string[] {
+function newComments(issue: IssueComment[], reviews: Review[], seenAt: number): Feedback["comments"] {
+  return saidSince(
+    [
+      ...issue.map((comment) => ({ author: comment.user?.login, body: comment.body, at: comment.created_at })),
+      ...reviews.map((review) => ({ author: review.user?.login, body: reviewBody(review), at: review.submitted_at })),
+    ],
+    seenAt,
+  );
+}
+
+/**
+ * Threads still open, carrying only what was said since the cursor.
+ *
+ * A resolved or outdated thread is dropped rather than re-raised: it was already
+ * dealt with, and waking a group with it is how a PR that is finished keeps
+ * costing turns.
+ */
+function newThreads(threads: Thread[], seenAt: number): NonNullable<Feedback["threads"]> {
+  return threads
+    .filter((thread) => !thread.resolved)
+    .map((thread) => ({
+      id: thread.id,
+      path: thread.path,
+      line: thread.line,
+      comments: saidSince(thread.comments, seenAt),
+    }))
+    .filter((thread) => thread.comments.length > 0);
+}
+
+/** The check's own words: its title, its summary, or nothing if it wrote neither. */
+function evidence(check: Check): string | undefined {
+  return [check.output?.title, check.output?.summary].filter(Boolean).join(": ").slice(0, 300) || undefined;
+}
+
+function failedChecks(checks: Check[], statuses: Status[]): Feedback["failingChecks"] {
   return [
-    ...checks.map((check) => ({ name: check.name, result: check.conclusion })),
-    ...statuses.map((status) => ({ name: status.context, result: status.state })),
+    ...checks.map((check) => ({
+      name: check.name,
+      result: check.conclusion,
+      summary: evidence(check),
+      url: check.details_url,
+    })),
+    // The older Status API has no `output`; it carries a one-line `description`,
+    // and reading that would be a second shape for the same idea. Names only here.
+    ...statuses.map((status) => ({
+      name: status.context,
+      result: status.state,
+      summary: undefined,
+      url: undefined,
+    })),
   ]
     .filter((check) => ["FAILURE", "ERROR", "TIMED_OUT"].includes(String(check.result ?? "").toUpperCase()))
-    .map((check) => String(check.name ?? "check"));
+    .map((check) => ({ name: String(check.name ?? "check"), summary: check.summary, url: check.url }));
+}
+
+/** One line-level thread as the poll reads it, before the cursor is applied. */
+interface Thread {
+  /** GitHub's node id: what `resolveReviewThread` takes, and what the agent quotes. */
+  id: string;
+  path: string;
+  line: number | null;
+  /** Outdated counts as resolved: the lines it was filed against are no longer there. */
+  resolved: boolean;
+  comments: Array<{ author?: string | undefined; body?: string | undefined; at?: string | undefined }>;
 }
 
 interface PollDetails {
   issue: IssueComment[];
   reviews: Review[];
+  threads: Thread[];
   checks: Check[];
   statuses: Status[];
 }
@@ -436,30 +549,41 @@ async function loadPollDetails(
     ),
   ]);
   if (!issue.ok || !reviews.ok || !runs.ok || !statuses.ok) return null;
-  return { issue: issue.data, reviews: reviews.data, checks: runs.data, statuses: statuses.data };
+  // No threads on this path, deliberately. `/pulls/{n}/comments` carries the
+  // review comments but nothing about resolution — REST has no thread at all —
+  // and an unresolved-only rule cannot be built out of an answer that never says
+  // which ones are resolved. Re-raising settled threads every tick is worse than
+  // the fallback being quieter than GraphQL, which is what an empty list is.
+  return { issue: issue.data, reviews: reviews.data, threads: [], checks: runs.data, statuses: statuses.data };
 }
 
-function changedFeedback(
+async function changedFeedback(
   db: DB,
   group: WatchedGroup,
   prNumber: number,
   details: PollDetails,
   mergeable: boolean | null | undefined,
   mergeableState: string | undefined,
-): Feedback | null {
+): Promise<Feedback | null> {
   const comments = newComments(details.issue, details.reviews, group.pr_seen_at);
+  const threads = newThreads(details.threads, group.pr_seen_at);
   const failingChecks = failedChecks(details.checks, details.statuses);
   const conflicting = mergeable === false || mergeableState === "dirty";
-  const signature = [...failingChecks, ...(conflicting ? ["merge conflict"] : [])].sort().join(",");
+  const names = failingChecks.map((check) => check.name);
+  const signature = [...names, ...(conflicting ? ["merge conflict"] : [])].sort().join(",");
   const checksChanged = signature !== (group.pr_checks_sig ?? "");
-  if (comments.length === 0 && !checksChanged) return null;
+  if (comments.length === 0 && threads.length === 0 && !checksChanged) return null;
 
-  const newest = comments.reduce((value, comment) => Math.max(value, comment.at), group.pr_seen_at);
-  db.run("UPDATE grp SET pr_seen_at = ?, pr_checks_sig = ? WHERE id = ?", [newest, signature, group.id]);
+  // Thread comments move the cursor too, or the same open thread is news on every
+  // tick for as long as it stays open.
+  const said = [...comments, ...threads.flatMap((thread) => thread.comments)];
+  const newest = said.reduce((value, comment) => Math.max(value, comment.at), group.pr_seen_at);
+  await db.update(grps).set({ pr_seen_at: newest, pr_checks_sig: signature }).where(eq(grps.id, group.id));
   return {
     grpId: group.id,
     prNumber,
     comments,
+    threads,
     failingChecks: checksChanged ? failingChecks : [],
     conflicting,
   };
@@ -495,7 +619,7 @@ async function pollPr(db: DB, gh: Github, group: WatchedGroup): Promise<Feedback
     new Date(Math.max(0, group.pr_seen_at)).toISOString(),
   );
   if (!details) return null;
-  return changedFeedback(db, group, prNumber, details, parsed.mergeable, parsed.mergeable_state);
+  return await changedFeedback(db, group, prNumber, details, parsed.mergeable, parsed.mergeable_state);
 }
 
 export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
@@ -504,7 +628,7 @@ export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
   // whether the cost is one slow route or the number of groups.
   return activeTracer().startActiveSpan("pr.poll", async (span) => {
     try {
-      return await pollPrsInner(ctx.db, gh);
+      return await pollPrsInner(ctx.db, gh, ctx.config.prPoll);
     } finally {
       span.end();
     }
@@ -526,17 +650,21 @@ export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
  * endpoint having no `since` and returning oldest-first, which stopped waking the
  * PM once a PR passed a hundred reviews.
  */
-const GRAPH_QUERY = `query($owner:String!,$name:String!,$prs:Int!,$msgs:Int!,$checks:Int!){
+const GRAPH_QUERY = `query($owner:String!,$name:String!,$prs:Int!,$messages:Int!,$checks:Int!,$threads:Int!,$threadComments:Int!){
   repository(owner:$owner,name:$name){
     pullRequests(states:[OPEN,MERGED,CLOSED],first:$prs,orderBy:{field:UPDATED_AT,direction:DESC}){
       nodes{
         number state merged mergeable headRefOid
-        comments(last:$msgs){ nodes{ author{login} body createdAt } }
-        reviews(last:$msgs){ nodes{ author{login} body submittedAt } }
+        comments(last:$messages){ nodes{ author{login} body createdAt } }
+        reviews(last:$messages){ nodes{ author{login} body state submittedAt } }
+        reviewThreads(last:$threads){ nodes{
+          id isResolved isOutdated path line
+          comments(first:$threadComments){ nodes{ author{login} body createdAt } }
+        } }
         commits(last:1){ nodes{ commit{ statusCheckRollup{
           contexts(last:$checks){ nodes{
             __typename
-            ... on CheckRun { name conclusion }
+            ... on CheckRun { name conclusion detailsUrl output{ title summary } }
             ... on StatusContext { context state }
           } }
         } } } }
@@ -545,13 +673,46 @@ const GRAPH_QUERY = `query($owner:String!,$name:String!,$prs:Int!,$msgs:Int!,$ch
   }
 }`;
 
+/**
+ * Where GraphQL puts a failure: inside a 200, beside whatever data it did produce.
+ *
+ * Every reader below checks this instead of the status, and a partial answer must
+ * not read as a complete one.
+ */
+const GraphErrors = z
+  .array(z.object({ message: z.string().optional() }))
+  .nullable()
+  .optional();
+
 const GraphActor = z.object({ login: z.string().optional() }).nullable().optional();
 const GraphContext = z.object({
   __typename: z.string().optional(),
   name: z.string().optional(),
   conclusion: z.string().nullable().optional(),
+  detailsUrl: z.string().optional(),
+  output: z
+    .object({ title: z.string().nullable().optional(), summary: z.string().nullable().optional() })
+    .nullable()
+    .optional(),
   context: z.string().optional(),
   state: z.string().optional(),
+});
+const GraphThread = z.object({
+  id: z.string().optional(),
+  isResolved: z.boolean().optional(),
+  isOutdated: z.boolean().optional(),
+  path: z.string().optional(),
+  /** Null once the diff has moved under the thread, which GitHub reports separately as outdated. */
+  line: z.number().nullable().optional(),
+  comments: z
+    .object({
+      nodes: z
+        .array(z.object({ author: GraphActor, body: z.string().optional(), createdAt: z.string().optional() }))
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
 });
 const GraphPrNode = z.object({
   number: z.number().int().positive(),
@@ -571,10 +732,21 @@ const GraphPrNode = z.object({
   reviews: z
     .object({
       nodes: z
-        .array(z.object({ author: GraphActor, body: z.string().optional(), submittedAt: z.string().optional() }))
+        .array(
+          z.object({
+            author: GraphActor,
+            body: z.string().optional(),
+            state: z.string().optional(),
+            submittedAt: z.string().optional(),
+          }),
+        )
         .nullable()
         .optional(),
     })
+    .nullable()
+    .optional(),
+  reviewThreads: z
+    .object({ nodes: z.array(GraphThread).nullable().optional() })
     .nullable()
     .optional(),
   commits: z
@@ -620,10 +792,7 @@ const GraphReply = z.object({
     .optional(),
   // A GraphQL failure is a 200 with this filled in, so the caller checks it rather
   // than the status. Any error at all sends the repository back to REST.
-  errors: z
-    .array(z.object({ message: z.string().optional() }))
-    .nullable()
-    .optional(),
+  errors: GraphErrors,
 });
 
 /** What one PR looks like once the query's shape is flattened. */
@@ -634,10 +803,23 @@ interface Polled {
   details: PollDetails;
 }
 
-/** How many of each the query asks for. Node counts decide the point cost. */
-const GRAPH_PRS = 30;
-const GRAPH_MSGS = 20;
-const GRAPH_CHECKS = 100;
+/** How many of each the query asks for; the numbers are `prPoll` in the settings. */
+type PollCounts = Config["prPoll"];
+
+/** The threads a PR node carries, in the shape `newThreads` filters. */
+function graphThreads(pr: z.infer<typeof GraphPrNode>): Thread[] {
+  return (pr.reviewThreads?.nodes ?? []).map((thread) => ({
+    id: thread.id ?? "",
+    path: thread.path ?? "",
+    line: thread.line ?? null,
+    resolved: !!(thread.isResolved || thread.isOutdated),
+    comments: (thread.comments?.nodes ?? []).map((c) => ({
+      author: c.author?.login,
+      body: c.body,
+      at: c.createdAt,
+    })),
+  }));
+}
 
 /** One node of the query, flattened into the shape the REST readers already take. */
 function flattenGraphPr(pr: z.infer<typeof GraphPrNode>): Polled {
@@ -657,15 +839,17 @@ function flattenGraphPr(pr: z.infer<typeof GraphPrNode>): Polled {
       reviews: (pr.reviews?.nodes ?? []).map((r) => ({
         user: { login: r.author?.login },
         body: r.body,
+        state: r.state,
         submitted_at: r.submittedAt,
       })),
+      threads: graphThreads(pr),
       // One rollup, two REST endpoints. A `CheckRun` carries `name`/`conclusion`
       // and a `StatusContext` carries `context`/`state`, which are the two shapes
       // `failedChecks` already reads — and it uppercases, so GraphQL's `FAILURE`
       // needs no translation.
       checks: contexts
         .filter((c) => c.__typename === "CheckRun")
-        .map((c) => ({ name: c.name, conclusion: c.conclusion })),
+        .map((c) => ({ name: c.name, conclusion: c.conclusion, details_url: c.detailsUrl, output: c.output })),
       statuses: contexts
         .filter((c) => c.__typename === "StatusContext")
         .map((c) => ({ context: c.context, state: c.state })),
@@ -673,14 +857,30 @@ function flattenGraphPr(pr: z.infer<typeof GraphPrNode>): Polled {
   };
 }
 
-async function pollViaGraph(gh: Github, repo: string, signal?: AbortSignal): Promise<Map<number, Polled> | null> {
+async function pollViaGraph(
+  gh: Github,
+  repo: string,
+  counts: PollCounts,
+  signal?: AbortSignal,
+): Promise<Map<number, Polled> | null> {
   const [owner, name] = repo.split("/");
   if (!owner || !name) return null;
   const reply = await gh.request(
     "POST",
     "/graphql",
     GraphReply,
-    { query: GRAPH_QUERY, variables: { owner, name, prs: GRAPH_PRS, msgs: GRAPH_MSGS, checks: GRAPH_CHECKS } },
+    {
+      query: GRAPH_QUERY,
+      variables: {
+        owner,
+        name,
+        prs: counts.prs,
+        messages: counts.messages,
+        checks: counts.checks,
+        threads: counts.threads,
+        threadComments: counts.threadComments,
+      },
+    },
     signal,
   );
   // `errors` beside a partial `data` is GraphQL's own shape for "some of this
@@ -692,14 +892,121 @@ async function pollViaGraph(gh: Github, repo: string, signal?: AbortSignal): Pro
   return new Map(nodes.filter((pr): pr is NonNullable<typeof pr> => !!pr).map((pr) => [pr.number, flattenGraphPr(pr)]));
 }
 
-async function pollPrsInner(db: DB, gh: Github): Promise<Feedback[]> {
-  const groups = db
-    .query<WatchedGroup, []>(
-      `SELECT g.id, g.status, g.pr_number, g.pr_seen_at, g.pr_checks_sig, p.remote
-       FROM grp g JOIN project p ON p.id = g.project_id
-       WHERE g.status != 'DISSOLVED' AND g.pr_number IS NOT NULL`,
-    )
-    .all();
+/**
+ * Where one review thread lives, asked of GitHub rather than taken from the caller.
+ *
+ * `orch pr resolve` refuses a thread on another PR and a thread outside the
+ * group's boundary, and the id an agent quotes cannot answer either question. Both
+ * answers come from here, so neither is something the agent gets to assert.
+ */
+const THREAD_QUERY = `query($id:ID!){ node(id:$id){ ... on PullRequestReviewThread {
+  path pullRequest{ number repository{ nameWithOwner } }
+} } }`;
+
+const ThreadReply = z.object({
+  data: z
+    .object({
+      node: z
+        .object({
+          path: z.string().optional(),
+          pullRequest: z
+            .object({
+              number: z.number().int().positive(),
+              repository: z.object({ nameWithOwner: z.string().optional() }).nullable().optional(),
+            })
+            .nullable()
+            .optional(),
+        })
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+  errors: GraphErrors,
+});
+
+/** A thread's own account of where it is: `owner/repo`, PR number, file. */
+export interface ReviewThreadAt {
+  repo: string;
+  prNumber: number;
+  path: string;
+}
+
+/** Null for every reason there is — unknown id, wrong node type, a GraphQL error. */
+export async function reviewThreadAt(
+  gh: Github,
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<ReviewThreadAt | null> {
+  const reply = await gh.request(
+    "POST",
+    "/graphql",
+    ThreadReply,
+    { query: THREAD_QUERY, variables: { id: threadId } },
+    signal,
+  );
+  if (!reply.ok || reply.data.errors?.length) return null;
+  const node = reply.data.data?.node;
+  const pr = node?.pullRequest;
+  // `node(id:)` answers null for an id of any other type, and the inline fragment
+  // leaves an empty object for one that is not a review thread. Both land here.
+  return node?.path && pr?.number && pr.repository?.nameWithOwner
+    ? { repo: pr.repository.nameWithOwner, prNumber: pr.number, path: node.path }
+    : null;
+}
+
+const RESOLVE_MUTATION = `mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ id isResolved } } }`;
+
+const ResolveReply = z.object({
+  data: z
+    .object({
+      resolveReviewThread: z
+        .object({ thread: z.object({ isResolved: z.boolean().optional() }).nullable().optional() })
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+  errors: GraphErrors,
+});
+
+/**
+ * Close the thread. Returns why it did not, or null when it did.
+ *
+ * `github.ts` gives every non-GET `retries: 0`, which is what a mutation wants:
+ * this one is idempotent, but the transport cannot know that and the next
+ * mutation written here will not be.
+ */
+export async function resolveReviewThread(gh: Github, threadId: string, signal?: AbortSignal): Promise<string | null> {
+  const reply = await gh.request(
+    "POST",
+    "/graphql",
+    ResolveReply,
+    { query: RESOLVE_MUTATION, variables: { id: threadId } },
+    signal,
+  );
+  if (!reply.ok) return reply.message;
+  const said = (reply.data.errors ?? []).map((e) => e.message).filter(Boolean);
+  if (said.length) return said.join("; ");
+  // A 200 with neither an error nor a thread is GitHub declining without saying
+  // so; reporting it as success leaves the agent believing a thread it can still
+  // see open was closed.
+  return reply.data.data?.resolveReviewThread?.thread ? null : "GitHub answered the resolve with no thread in it";
+}
+
+async function pollPrsInner(db: DB, gh: Github, counts: PollCounts): Promise<Feedback[]> {
+  const groups = await db
+    .select({
+      id: grps.id,
+      status: grps.status,
+      pr_number: grps.pr_number,
+      pr_seen_at: grps.pr_seen_at,
+      pr_checks_sig: grps.pr_checks_sig,
+      remote: project.remote,
+    })
+    .from(grps)
+    .innerJoin(project, eq(project.id, grps.project_id))
+    .where(and(ne(grps.status, "DISSOLVED"), isNotNull(grps.pr_number)));
   // Concurrent, because these are N independent conversations with GitHub and
   // nothing here reads another group's answer. Serially, ten open PRs cost five
   // requests each inside one 30-second tick — about 7.5 seconds of it spent
@@ -720,7 +1027,7 @@ async function pollPrsInner(db: DB, gh: Github): Promise<Feedback[]> {
   await pMap(
     repos.filter((r): r is string => !!r),
     async (repo) => {
-      const one = await pollViaGraph(gh, repo).catch(() => null);
+      const one = await pollViaGraph(gh, repo, counts).catch(() => null);
       if (one) graphed.set(repo, one);
     },
     { concurrency: PR_FANOUT },
@@ -747,7 +1054,7 @@ async function pollOne(
   const transition = transitionFeedback(group, target.prNumber, have.state);
   if (transition) return transition;
   if (group.status !== "PR_OPEN") return null;
-  return changedFeedback(db, group, target.prNumber, have.details, have.mergeable, undefined);
+  return await changedFeedback(db, group, target.prNumber, have.details, have.mergeable, undefined);
 }
 
 /**
@@ -760,48 +1067,79 @@ async function pollOne(
 const PR_FANOUT = 4;
 
 /** Hand PR feedback to the PM: replying to a review needs judgement, polling does not. */
-export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
+export async function dispatchFeedback(ctx: Ctx, f: Feedback): Promise<void> {
+  // Named from the project. `main` was written into the rebase instruction below,
+  // so a group on `develop` was told to fetch a branch its repository has not got.
+  const base = await baseBranchOf(ctx.db, f.grpId, ctx.config.baseBranchFallbacks);
   const lines = [
     ...f.comments.map((c) => `${c.author}: ${c.body}`),
-    ...(f.failingChecks.length ? [`failing checks: ${f.failingChecks.join(", ")}`] : []),
+    // The file and the line first: a review thread is an instruction about one
+    // place in the diff, and without them the PM is told to fix something it
+    // cannot find.
+    ...(f.threads ?? []).map(
+      (t) => `[${t.id}] ${t.path}:${t.line ?? "?"} — ${t.comments.map((c) => `${c.author}: ${c.body}`).join(" / ")}`,
+    ),
+    // The id is quoted back, so it leads the line: the event body is truncated at
+    // 2000 characters and a review comment is up to 1000 of them.
+    ...(f.threads?.length
+      ? [
+          "Fixed one? `orch pr resolve --thread <id>` closes it. A thread about design, another " +
+            "group's files, or a premise that changed goes to `orch ask-boss` and stays open — " +
+            "the boss decides it. Unsure: leave it open.",
+        ]
+      : []),
+    ...(f.failingChecks.length ? [`failing checks: ${f.failingChecks.map((c) => c.name).join(", ")}`] : []),
+    // What the gate said, under the list of names. "failing checks: build" told
+    // the PM a fact with no next step in it, and the summary is the step.
+    ...f.failingChecks
+      .filter((c) => c.summary || c.url)
+      .map((c) => `${c.name}: ${[c.summary, c.url].filter(Boolean).join(" — ")}`),
     ...(f.conflicting ? ["the branch no longer merges cleanly into main"] : []),
   ].join("\n");
 
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: f.grpId,
     author: "pr-watcher",
     kind: "say",
     intent: "request",
     body: `PR #${f.prNumber} has feedback:\n${lines}`.slice(0, 2000),
-    meta: { pr: f.prNumber, comments: f.comments.length, failingChecks: f.failingChecks },
+    meta: { pr: f.prNumber, comments: f.comments.length, failingChecks: f.failingChecks.map((c) => c.name) },
   });
-  ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ? AND status = 'PR_OPEN'", [f.grpId]);
+  // Deliberately not moved out of PR_OPEN. That flip made the group deaf to
+  // everything said next: `pollPr` returns null for any other status, and nothing
+  // moved it back — PR_OPEN is written by a fresh branch gate, a reopen from
+  // PAUSED, or the boss, and the `reconcile` repair in `invariants.ts` skips any
+  // group that has a PR. So the second review comment was never read, while the
+  // group still held `merge_seq` at the head of a strictly serial queue.
+  //
+  // The flip was never needed either: PR_OPEN is in `DISPATCHABLE_GRP_STATES`, so
+  // the turn below runs from it unchanged.
   // A conflict is work, not a judgement call: the PM would only forward it. Reading
   // a review and deciding what to concede is the PM's; `git rebase` is not.
-  ctx.sched.enqueue("agent_turn", {
+  await ctx.sched.enqueue("agent_turn", {
     grp_id: f.grpId,
     payload: f.conflicting
       ? {
-          role: "engineer",
+          role: roleFor(ctx, "write_code"),
           rotate: true,
           // The fork in the road, stated, because no check here can tell the two
           // apart: a textual clash is this turn's work, and a premise that no
           // longer holds is a design question the Architect owns.
           conflict: true,
           rejection:
-            `PR #${f.prNumber} no longer merges into main. Rebase onto it before anything else:\n` +
-            `\`git fetch origin main\` then \`git rebase origin/main\`, resolve every conflict, re-run the ` +
+            `PR #${f.prNumber} no longer merges into ${base}. Rebase onto it before anything else:\n` +
+            `\`git fetch origin ${base}\` then \`git rebase origin/${base}\`, resolve every conflict, re-run the ` +
             `gates, and stop there — the orchestrator takes the branch from your checkout and pushes it, ` +
-            `so do not look for a way to push. Keep both sides' intent — main moved for a reason and so ` +
+            `so do not look for a way to push. Keep both sides' intent — ${base} moved for a reason and so ` +
             `did this branch.\n\n` +
-            `If main removed or reshaped something this slice was built on, STOP — do not invent a way to ` +
+            `If ${base} removed or reshaped something this slice was built on, STOP — do not invent a way to ` +
             `keep compiling. Say which premise is gone with \`orch ask-boss\`; that reaches the Architect, ` +
             `who decides whether this slice still makes sense. Guessing produces code that builds and is ` +
             `pointed the wrong way, which nothing downstream can catch.\n${lines}`,
         }
-      : { role: "pm", rejection: `PR #${f.prNumber} feedback:\n${lines}` },
+      : { role: roleFor(ctx, "lead_group"), rejection: `PR #${f.prNumber} feedback:\n${lines}` },
   });
-  ctx.sched.tick();
+  await ctx.sched.tick();
 }
 
 /** Report an authenticated token whose repository role still cannot push. */

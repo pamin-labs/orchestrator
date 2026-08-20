@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import { modelAsk, type AskUsage } from "../../src/mech/knowledge/pageindex.ts";
 import { testContext } from "../support/test-context.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
+import { InMemorySpanExporter, NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-node";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { installTracerProvider } from "../../src/platform/observability/traces.ts";
 
 /**
  * The one-shot model call the index is built and queried with.
@@ -16,9 +19,9 @@ import { fakeSandbox } from "../support/fake-sandbox.ts";
 
 const SCOPE = { project: 1 };
 
-function asked(handle: (cmd: string) => { code?: number; out?: string }) {
+async function asked(handle: (cmd: string) => { code?: number; out?: string }) {
   const sandbox = fakeSandbox((cmd) => handle(cmd));
-  return { ctx: testContext({ sandbox }), sandbox };
+  return { ctx: await testContext({ sandbox }), sandbox };
 }
 
 const CLAUDE_OK = JSON.stringify({
@@ -29,7 +32,7 @@ const CLAUDE_OK = JSON.stringify({
 test("the prompt goes in on stdin through a file that is removed whatever the exit code", async () => {
   // The exec API has no stdin. A prompt left behind in /tmp of a long-lived
   // container is one file per query, forever, and it holds the boss's question.
-  const { ctx, sandbox } = asked(() => ({ out: CLAUDE_OK }));
+  const { ctx, sandbox } = await asked(() => ({ out: CLAUDE_OK }));
 
   await modelAsk(ctx, { model: "haiku" }, SCOPE)("where does notify live?");
 
@@ -42,7 +45,7 @@ test("the prompt goes in on stdin through a file that is removed whatever the ex
 });
 
 test("claude is asked for JSON so the call reports what it spent", async () => {
-  const { ctx, sandbox } = asked(() => ({ out: CLAUDE_OK }));
+  const { ctx, sandbox } = await asked(() => ({ out: CLAUDE_OK }));
   const spent: AskUsage[] = [];
 
   const text = await modelAsk(ctx, { model: "haiku" }, SCOPE, 60_000, (u) => spent.push(u))("q");
@@ -62,7 +65,7 @@ test("codex is run read-only and its answer is picked out of the stream", async 
     JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "src/mech/notify.ts" } }),
     JSON.stringify({ type: "turn.completed", usage: { input_tokens: 20, output_tokens: 4 } }),
   ].join("\n");
-  const { ctx, sandbox } = asked(() => ({ out: stream }));
+  const { ctx, sandbox } = await asked(() => ({ out: stream }));
   const spent: AskUsage[] = [];
 
   const text = await modelAsk(ctx, { runtime: "codex", model: "gpt-5" }, SCOPE, 60_000, (u) => spent.push(u))("q");
@@ -77,7 +80,7 @@ test("codex is run read-only and its answer is picked out of the stream", async 
 test("a CLI that fails degrades to the empty answer rather than taking retrieval down", async () => {
   // Both LLM steps fall back to the lexical map. An exception here would take
   // out `orch ctx query` for every agent, on a step that is an optimisation.
-  const { ctx } = asked(() => ({ code: 1, out: "boom" }));
+  const { ctx } = await asked(() => ({ code: 1, out: "boom" }));
   const spent: AskUsage[] = [];
 
   expect(await modelAsk(ctx, { model: "haiku" }, SCOPE, 60_000, (u) => spent.push(u))("q")).toBe("");
@@ -86,7 +89,7 @@ test("a CLI that fails degrades to the empty answer rather than taking retrieval
 });
 
 test("a container that cannot be reached is an empty answer, not a throw", async () => {
-  const ctx = testContext({
+  const ctx = await testContext({
     sandbox: {
       ...fakeSandbox(),
       exec: async () => {
@@ -101,7 +104,28 @@ test("a container that cannot be reached is an empty answer, not a throw", async
 test("claude's own error, reported on stdout with exit 0, is not treated as an answer", async () => {
   // The exit code is not the check and neither is the parse: the CLI prints some
   // of its failures as plain text and exits 0.
-  const { ctx } = asked(() => ({ out: "Error: credit balance is too low" }));
+  const { ctx } = await asked(() => ({ out: "Error: credit balance is too low" }));
 
   expect(await modelAsk(ctx, { model: "haiku" }, SCOPE)("q")).toBe("");
+});
+
+test("a failed call records what the CLI said, not only that it failed", async () => {
+  // Measured over one 7-hour window on the real database: 36 of 36 `index.ask`
+  // calls failed, 738.5s of wall clock between them, and every one recorded
+  // `exit 1` and nothing else. The panel reads `status_message`, so the most
+  // expensive model call in the system failed all day and read as a quiet one —
+  // and afterwards there was no way to tell from the data why.
+  const exporter = new InMemorySpanExporter();
+  installTracerProvider(new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] }));
+  try {
+    const { ctx } = await asked(() => ({ code: 1, err: "codex: unknown model gpt-5.6-luna" }));
+    expect(await modelAsk(ctx, { runtime: "codex", model: "gpt-5.6-luna" }, SCOPE)("q")).toBe("");
+
+    const ask = exporter.getFinishedSpans().find((s) => s.name === "index.ask");
+    expect(ask?.status.code).toBe(SpanStatusCode.ERROR);
+    expect(ask?.status.message).toContain("exit 1");
+    expect(ask?.status.message).toContain("unknown model gpt-5.6-luna");
+  } finally {
+    installTracerProvider(new NodeTracerProvider());
+  }
 });

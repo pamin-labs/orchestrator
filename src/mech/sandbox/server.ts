@@ -194,6 +194,14 @@ async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promi
 }
 
 /**
+ * The egress sidecar's image. v1.1.4 403s every scoped package fetch while a
+ * credential is bound (ADR 005), so the tag is a decision, not a default.
+ * Named because `.github/workflows/nightly.yml` pulls it before the server asks
+ * for it, and a tag restated in a workflow is one tag and one stale copy.
+ */
+export const EGRESS_IMAGE = "opensandbox/egress:v1.1.6";
+
+/**
  * The values in a generated config that have to agree with *us*, and no others.
  *
  * Regex rather than a TOML parser, like `allowedHostPaths` above: six known
@@ -215,7 +223,7 @@ export function patchConfig(
     ["server", "port", `port = ${Number(at.port) || 8080}`],
     ["server", "api_key", `api_key = "${at.key}"`],
     ["storage", "allowed_host_paths", `allowed_host_paths = [${at.allowed.map((p) => `"${p}"`).join(", ")}]`],
-    ["egress", "image", `image = "opensandbox/egress:v1.1.6"`],
+    ["egress", "image", `image = "${EGRESS_IMAGE}"`],
     ["egress", "mode", `mode = "dns+nft"`],
   ] as const) {
     out = setIn(out, section, k, line);
@@ -231,14 +239,14 @@ export function patchConfig(
  * real credentials. Stored where every other secret is, so `connection()` finds
  * it without anyone copying anything.
  */
-function ourKey(ctx: Ctx): string {
-  const held = loadAuth(ctx.db, SANDBOX_KEY)?.secret;
+async function ourKey(ctx: Ctx): Promise<string> {
+  const held = (await loadAuth(ctx.db, SANDBOX_KEY))?.secret;
   if (held) return held;
   const made = `orch-${crypto.randomUUID().replaceAll("-", "")}`;
   // Bound to the address of the server this key is being generated *for*.
   // Stored without it, `sandboxKeyFor` would treat it as belonging nowhere and
   // the server we just started would be talked to unauthenticated.
-  saveAuth(ctx.db, {
+  await saveAuth(ctx.db, {
     runtime: SANDBOX_KEY,
     mode: "api_key",
     secret: made,
@@ -307,14 +315,14 @@ const timedOut = (ms: number, last: string, tail: string): string =>
  */
 export async function inspectServer(ctx: Ctx): Promise<ServerState> {
   const server = serverAddr(ctx);
-  const key = sandboxKeyFor(ctx.db, ctx.config.sandbox.server, ctx.config.sandbox.apiKey);
+  const key = await sandboxKeyFor(ctx.db, ctx.config.sandbox.server, ctx.config.sandbox.apiKey);
   const live = runningServer();
   const p = await probe(server, key);
 
   if (p.kind === "ok") {
     // Ours only if we recorded this pid. A pid from a previous boot still counts
     // — the process outlives us — but a different one means ours died.
-    const mine = !!live && readSetting(ctx.db, PID_KEY) === live.pid;
+    const mine = !!live && (await readSetting(ctx.db, PID_KEY)) === live.pid;
     return mine ? { kind: "ours", pid: live.pid } : { kind: "theirs", pid: live?.pid ?? "?" };
   }
   // Answering at all means the address is taken, whether or not `ps` can see by
@@ -346,7 +354,7 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
   const plan = startPlan(await inspectServer(ctx), server, !!Bun.which("uvx"));
   if (plan.kind !== "start") return plan;
 
-  const startKey = ourKey(ctx);
+  const startKey = await ourKey(ctx);
   let config: string;
   try {
     config = await writeConfig(ctx, startKey);
@@ -390,8 +398,8 @@ async function startServer(ctx: Ctx, server: string, key: string, config: string
     const out = Bun.file(log);
     const p = Bun.spawn(argv, { stdout: out, stderr: out, stdin: "ignore" });
     p.unref();
-    writeSetting(ctx.db, PID_KEY, String(p.pid));
-    writeSetting(ctx.db, ARGV_KEY, JSON.stringify(argv));
+    await writeSetting(ctx.db, PID_KEY, String(p.pid));
+    await writeSetting(ctx.db, ARGV_KEY, JSON.stringify(argv));
     const up = await waitUp(ctx, p, server, key);
     if (!up.ok) return { kind: "down", why: up.why, log };
     return { kind: "started", pid: String(p.pid), config };
@@ -404,18 +412,19 @@ async function startServer(ctx: Ctx, server: string, key: string, config: string
  * Point us at a different server. Empty clears the override back to the default.
  *
  * Through the settings table like every other config path. It had a row of its
- * own (`sandbox_server_addr`) from before there was one, and migration 039 moved
- * it — a value with two homes has a precedence order that lives only in code.
+ * own (`sandbox_server_addr`) from before there was one, and it moved — a value
+ * with two homes has a precedence order that lives only in code.
  */
-export function setServerAddr(ctx: Ctx, addr: string): string | null {
+export async function setServerAddr(ctx: Ctx, addr: string): Promise<string | null> {
   return putSetting(ctx.db, ctx.config, "sandbox.server", addr.trim() || null);
 }
 
 /** The argv we started it with, for the panel's restart button. Ours only. */
-export function ourArgv(db: DB): string[] | null {
+export async function ourArgv(db: DB): Promise<string[] | null> {
   const live = runningServer();
-  if (!live || readSetting(db, PID_KEY) !== live.pid) return null;
-  const argv = jsonOr(readSetting(db, ARGV_KEY), z.array(z.string()), []);
+  if (!live || (await readSetting(db, PID_KEY)) !== live.pid) return null;
+  // Still `jsonOr`: `setting.v` is text holding JSON, not a `jsonb` column.
+  const argv = jsonOr(await readSetting(db, ARGV_KEY), z.array(z.string()), []);
   return argv.length ? argv : live.argv;
 }
 
@@ -426,10 +435,11 @@ export function ourArgv(db: DB): string[] | null {
  * fail — it succeeds and delivers an empty directory, so the only symptom is
  * every agent having no skills while the process is healthy and nothing errors.
  */
-export function driftingPaths(ctx: Ctx): { want: string[]; config: string } | null {
+export async function driftingPaths(ctx: Ctx): Promise<{ want: string[]; config: string } | null> {
   const allowed = allowedHostPaths();
   if (!allowed) return null;
-  const want = [resolve(ctx.config.skillsDir), ...Object.values(specFor(ctx, null).cacheDirs)].filter(
+  const spec = await specFor(ctx, null);
+  const want = [resolve(ctx.config.skillsDir), ...Object.values(spec.cacheDirs)].filter(
     (p) => p && !coveredBy(allowed.paths, p),
   );
   return want.length ? { want: [...new Set(want)], config: allowed.config } : null;

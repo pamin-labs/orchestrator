@@ -6,8 +6,10 @@ import type { Ctx } from "../../mech/ctx.ts";
 import { CODEX_HOME, decoy, loadAuth, subscriptionAccount } from "../sandbox/auth.ts";
 import { execIn, UTIL } from "../sandbox/sandbox.ts";
 import { shq } from "../../platform/process/shell.ts";
-import { jsonOr } from "../../contracts/json.ts";
+import { jsonOr, valueOr } from "../../contracts/json.ts";
 import { z } from "zod";
+import { eq, sql } from "drizzle-orm";
+import { usage_snapshot as usageSnapshot } from "../../platform/persistence/schema.ts";
 
 /**
  * How much of the claude subscription's windows is gone.
@@ -32,7 +34,7 @@ const ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
 const BETA = "oauth-2025-04-20";
 
 /**
- * Ten minutes, which is as often as this endpoint will actually answer.
+ * `intervals.usagePollMs` is as often as this endpoint will actually answer.
  *
  * It was one minute, reasoning that the windows move in hours and a minute-fresh
  * number costs one request. That ignores the endpoint's own budget: it answers a
@@ -44,21 +46,17 @@ const BETA = "oauth-2025-04-20";
 /**
  * The boss's own `/status` in the CLI spends from the same budget, so polling hard
  * also makes their check fail. Ten minutes inside a five-hour window is a 3% error
- * at worst.
+ * at worst — which is the default, and it is a setting because the right number
+ * here is a property of an account's own throttle rather than of this code.
  */
-export const POLL_EVERY_MS = 10 * 60_000;
-
 /**
- * After a 429, back off hard.
- *
- * The endpoint answers a too-frequent read with 429 and it is not ours to tune,
- * so the polite response to being told to slow down is to slow down. Ten minutes
- * was not enough to clear it — the throttle is per account and the boss's own CLI
- * is spending from it too — and a retry that earns another 429 restarts the
- * lockout. The header keeps showing the last good reading meanwhile, which is
- * what it should do: the window moves in hours.
+ * `intervals.usageBackoffMs` is what a 429 buys, and it is deliberately much
+ * longer. The endpoint is not ours to tune, so the polite response to being told
+ * to slow down is to slow down: ten minutes was not enough to clear it — the
+ * throttle is per account and the boss's own CLI spends from it too — and a retry
+ * that earns another 429 restarts the lockout. The header keeps showing the last
+ * good reading meanwhile, which is what it should do: the window moves in hours.
  */
-const BACKOFF_MS = 45 * 60_000;
 
 /** Only the two windows are consumed; the response has a dozen more fields. */
 const SubscriptionWindow = z.object({
@@ -123,8 +121,8 @@ export function toRateLimit(value: unknown): RateLimitInfo | null {
  * platform-specific one in the file — `security` is macOS, the file fallback is
  * Linux, and Windows had neither.
  */
-function usageToken(db: DB): string | null {
-  const a = loadAuth(db, "claude");
+async function usageToken(db: DB): Promise<string | null> {
+  const a = await loadAuth(db, "claude");
   return a?.mode === "oauth_token" ? a.secret : null;
 }
 
@@ -137,6 +135,9 @@ function usageToken(db: DB): string | null {
  * API-key user, who is billed per token and has nothing to run out of.
  */
 type UsageRead = { rl: RateLimitInfo } | { error: string };
+
+/** Only the reason is read back out of the stored row; the rest is the header's. */
+const StoredReading = z.object({ error: z.string().nullish() });
 
 /**
  * Asked from the utility container, with a decoy, like everything else.
@@ -162,7 +163,7 @@ async function fetchClaudeUsage(ctx: Ctx): Promise<UsageRead> {
     ctx,
     UTIL,
     `curl -s -m 10 -w '\n%{http_code}' -H ${shq(auth)} -H ${shq(`anthropic-beta: ${BETA}`)} ${shq(ENDPOINT)}`,
-    { timeoutMs: 30_000 },
+    { timeoutMs: ctx.config.timeouts.usageReadMs },
   );
   if (r.code !== 0) return { error: "unreachable" };
   const lines = r.out.trimEnd().split("\n");
@@ -179,7 +180,7 @@ async function fetchClaudeUsage(ctx: Ctx): Promise<UsageRead> {
 }
 
 /**
- * Refresh the claude row of usage_snapshot, at most every POLL_EVERY_MS.
+ * Refresh the claude row of usage_snapshot, at most every `intervals.usagePollMs`.
  *
  * Called from the watchdog tick, which already runs on a clock nobody has to
  * remember to wind. Returns whether it wrote, for the test.
@@ -190,29 +191,35 @@ export async function pollClaudeUsage(ctx: Ctx, now = Date.now()): Promise<boole
   // this host is logged into — and this endpoint only reports on the provider's
   // own subscriptions. An API key or a gateway therefore gets no bar, and any row
   // left over from before the switch is deleted rather than left to age.
-  if (!subscriptionAccount(db, "claude")) {
-    db.run("DELETE FROM usage_snapshot WHERE runtime = 'claude'");
+  if (!(await subscriptionAccount(db, "claude"))) {
+    await db.delete(usageSnapshot).where(eq(usageSnapshot.runtime, "claude"));
     return false;
   }
-  const last = db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'").get()?.at;
-  const prev = db.query<{ json: string }, []>("SELECT json FROM usage_snapshot WHERE runtime = 'claude'").get()?.json;
-  const throttled = !!prev && prev.includes('"error":"rate_limited"');
-  if (last && now - last < (throttled ? BACKOFF_MS : POLL_EVERY_MS)) return false;
+  const [snapshot] = await db
+    .select({ at: usageSnapshot.at, json: usageSnapshot.json })
+    .from(usageSnapshot)
+    .where(eq(usageSnapshot.runtime, "claude"));
+  const last = snapshot?.at;
+  // The stored reading is `jsonb` and comes back parsed, so the reason is a field
+  // to read rather than a substring to look for.
+  const throttled = valueOr(snapshot?.json, StoredReading, {}).error === "rate_limited";
+  const { usagePollMs, usageBackoffMs } = ctx.config.intervals;
+  if (last && now - last < (throttled ? usageBackoffMs : usagePollMs)) return false;
   // The settings-page credential, which is also the one `subscriptionAccount`
   // just checked. An api_key or a ChatGPT-style login has no OAuth token to ask
   // with, and that writes nothing rather than an error: a missing gauge is not
   // news the header can act on.
-  const token = usageToken(db);
+  const token = await usageToken(db);
   if (!token) return false;
 
   // Stamped before the attempt, not after a success. The watchdog ticks every 30s,
   // so an interval that only applied to successes meant a failing endpoint was
   // retried twice a minute — and this one answers a failure with 429, which that
   // would then keep feeding. Observed live while testing.
-  stamp(db, now, { error: "unreachable" });
+  await stamp(db, now, { error: "unreachable" });
   try {
     const read = await fetchClaudeUsage(ctx);
-    stamp(db, now, read);
+    await stamp(db, now, read);
     return "rl" in read;
   } catch {
     // An undocumented endpoint is allowed to disappear. The header says it cannot
@@ -229,15 +236,27 @@ export async function pollClaudeUsage(ctx: Ctx, now = Date.now()): Promise<boole
  * would read as "no data" when what we have is data from a minute ago. A success
  * clears the reason.
  */
-function stamp(db: DB, now: number, read: UsageRead): void {
-  const patch = "rl" in read ? JSON.stringify(read.rl) : JSON.stringify({ error: read.error });
-  const update = "rl" in read ? JSON.stringify({ ...read.rl, error: null }) : patch;
-  db.run(
-    `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', ?, ?)
-     ON CONFLICT (runtime) DO UPDATE SET
-       json = json_patch(usage_snapshot.json, ?), at = excluded.at`,
-    ["rl" in read ? patch : "{}", now, update],
-  );
+async function stamp(db: DB, now: number, read: UsageRead): Promise<void> {
+  const fresh = "rl" in read ? { ...read.rl, error: null } : { error: read.error };
+  // Raw only for the merge: `||` concatenates the stored reading with the new one
+  // and `jsonb_strip_nulls` drops the keys set to null, which is what SQLite's
+  // `json_patch` did — a read that failed keeps the last good numbers and adds a
+  // reason beside them, and a read that worked clears the reason. Drizzle has no
+  // form for an expression reading the row it is updating.
+  await db
+    .insert(usageSnapshot)
+    // Spread, not the value: `RateLimitInfo` is an interface, and an interface has
+    // no implicit index signature to satisfy the column's `Json`.
+    .values({ runtime: "claude", json: "rl" in read ? { ...read.rl } : {}, at: now })
+    .onConflictDoUpdate({
+      target: usageSnapshot.runtime,
+      // `to_jsonb` of the value, not a string of it: a parameter bound against jsonb
+      // is encoded by the driver, so pre-encoding stores a jsonb string.
+      // `::jsonb` on the parameter, not `JSON.stringify` before it: the driver
+      // encodes a value bound against jsonb, and pre-encoding stores a string of
+      // the document. Cast because a bare parameter has no type to infer from.
+      set: { json: sql`jsonb_strip_nulls(${usageSnapshot.json} || ${fresh}::jsonb)`, at: now },
+    });
 }
 
 /**
@@ -371,8 +390,8 @@ export async function pollUsage(
   await pollClaudeUsage(ctx, now);
   // Same rule as claude, stated rather than inferred: an api_key session's rollout
   // file happens to carry no `rate_limits`, so this used to be right by accident.
-  if (!subscriptionAccount(db, "codex")) {
-    db.run("DELETE FROM usage_snapshot WHERE runtime = 'codex'");
+  if (!(await subscriptionAccount(db, "codex"))) {
+    await db.delete(usageSnapshot).where(eq(usageSnapshot.runtime, "codex"));
     return;
   }
   // The sandboxes first: that is where the fleet's own sessions are now, and the
@@ -383,15 +402,18 @@ export async function pollUsage(
   // sharing, and the watchdog ticks every 30s. A quota gauge does not need to be
   // a second of container time twice a minute.
   let rl: RateLimitInfo | null = null;
-  const last = db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'codex'").get()?.at;
-  if (last && now - last < POLL_EVERY_MS) return;
+  const [recent] = await db
+    .select({ at: usageSnapshot.at })
+    .from(usageSnapshot)
+    .where(eq(usageSnapshot.runtime, "codex"));
+  const last = recent?.at;
+  if (last && now - last < ctx.config.intervals.usagePollMs) return;
   const rollout = await fromSandbox?.().catch(() => null);
   if (rollout) rl = rateLimitsIn(rollout, now);
   if (!rl) rl = codexUsage(dataDir, now);
   if (!rl) return;
-  db.run(
-    `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('codex', ?, ?)
-     ON CONFLICT (runtime) DO UPDATE SET json = excluded.json, at = excluded.at`,
-    [JSON.stringify(rl), now],
-  );
+  await db
+    .insert(usageSnapshot)
+    .values({ runtime: "codex", json: { ...rl }, at: now })
+    .onConflictDoUpdate({ target: usageSnapshot.runtime, set: { json: { ...rl }, at: now } });
 }

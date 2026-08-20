@@ -74,31 +74,32 @@ test("reconcile accepts normalized suffix claims without hiding unrelated files"
 });
 
 test("idempotency replays every JSON payload and conflicts on changed payloads", async () => {
+  // One database for the whole property, not one per case. `openMemory` empties
+  // nineteen tables on every call, so a hundred cases meant a hundred `TRUNCATE`s
+  // to test a middleware that keys on a uuid and therefore cannot collide with
+  // its own earlier cases anyway. Locally that was 20% of this file; on CI, with
+  // coverage instrumentation and four cores, it was the 30s timeout.
+  const db = await openMemory();
   await fc.assert(
     fc.asyncProperty(fc.uuid(), fc.jsonValue(), async (key, value) => {
-      const db = openMemory();
-      try {
-        const payload = JsonValue.parse(value);
-        const app = new Hono();
-        let writes = 0;
-        app.use("*", idempotency(db));
-        app.post("/write", async (c) => json({ write: ++writes, value: JsonValue.parse(await c.req.json()) }));
-        const send = (body: Json) =>
-          app.request("/write", {
-            method: "POST",
-            headers: { "content-type": "application/json", "idempotency-key": key },
-            body: JSON.stringify(body),
-          });
+      const payload = JsonValue.parse(value);
+      const app = new Hono();
+      let writes = 0;
+      app.use("*", idempotency(db));
+      app.post("/write", async (c) => json({ write: ++writes, value: JsonValue.parse(await c.req.json()) }));
+      const send = (body: Json) =>
+        app.request("/write", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": key },
+          body: JSON.stringify(body),
+        });
 
-        const first = JsonValue.parse(await (await send(payload)).json());
-        const replay = await send(payload);
-        expect(JsonValue.parse(await replay.json())).toEqual(first);
-        expect(replay.headers.get("idempotency-replayed")).toBe("true");
-        expect(writes).toBe(1);
-        expect((await send({ changed: true, value: payload })).status).toBe(409);
-      } finally {
-        db.close();
-      }
+      const first = JsonValue.parse(await (await send(payload)).json());
+      const replay = await send(payload);
+      expect(JsonValue.parse(await replay.json())).toEqual(first);
+      expect(replay.headers.get("idempotency-replayed")).toBe("true");
+      expect(writes).toBe(1);
+      expect((await send({ changed: true, value: payload })).status).toBe(409);
     }),
     propertyOptions,
   );

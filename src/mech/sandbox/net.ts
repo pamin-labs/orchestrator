@@ -1,4 +1,5 @@
 import type { DB } from "../../platform/persistence/database.ts";
+import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "../../platform/config/load.ts";
 import { probeHosts } from "./auth.ts";
 
 /**
@@ -38,20 +39,19 @@ export function resetNet(): void {
   lastProbe = 0;
 }
 
-const TIMEOUT_MS = 2000;
-
 /**
- * How often the probe goes out while things are working.
+ * How often the probe goes out while things are working: `intervals.recheckMs`.
  *
  * The watchdog ticks every 30s, and probing on each is 5760 unauthenticated requests
  * a day to learn what a turn would have told us anyway. Once every five minutes is
  * 288, and the worst case it buys is a five-minute window where turns are dispatched
  * into a network already gone — one failed turn each, and those are re-queued.
- * While offline it probes every tick: noticing the moment it returns is all that
- * matters then.
  */
-export const PROBE_EVERY_MS = 5 * 60_000;
-
+/**
+ * While offline it probes every tick regardless: noticing the moment it returns is
+ * all that matters then. The wait on one HEAD is `timeouts.networkPingMs`, short
+ * because this runs inside the tick and must not hold one open.
+ */
 let lastProbe = 0;
 
 /**
@@ -68,27 +68,32 @@ export async function probe(
   db: DB,
   now: number,
   fetchFn: SandboxFetcher = fetch,
+  /**
+   * Reads the config defaults rather than restating them; production passes
+   * `ctx.config`, so these numbers only apply where there is no `Config` to ask.
+   */
+  cfg: Config = DEFAULTS,
 ): Promise<{ online: boolean; changed: boolean }> {
   // Only while it is working. Offline, every tick — the answer that matters then
   // is "is it back", and nothing else on the tick is running anyway.
-  if (state.online && now - lastProbe < PROBE_EVERY_MS) return { online: true, changed: false };
+  if (state.online && now - lastProbe < cfg.intervals.recheckMs) return { online: true, changed: false };
   lastProbe = now;
 
-  const origins = probeHosts(db);
+  const origins = await probeHosts(db);
   // Nothing configured yet: there is no wall to detect, and gating every turn on
   // an empty probe would stop a fleet that has not been set up rather than say so.
   // `credentialMissing` in the scheduler is what covers that case.
-  const online = origins.length === 0 ? true : await reachable(origins, fetchFn);
+  const online = origins.length === 0 ? true : await reachable(origins, fetchFn, cfg.timeouts.networkPingMs);
   const changed = online !== state.online;
   if (changed) state = { online, since: now };
   return { online, changed };
 }
 
-async function reachable(origins: string[], fetchFn: SandboxFetcher): Promise<boolean> {
+async function reachable(origins: string[], fetchFn: SandboxFetcher, timeoutMs: number): Promise<boolean> {
   const tries = origins.map(async (origin) => {
     // HEAD, not GET: nothing here wants the body, and some of these endpoints
     // charge for one. A 404 or a 405 is still a reachable host.
-    await fetchFn(`${origin}/`, { method: "HEAD", signal: AbortSignal.timeout(TIMEOUT_MS) });
+    await fetchFn(`${origin}/`, { method: "HEAD", signal: AbortSignal.timeout(timeoutMs) });
     return true;
   });
   const answers = await Promise.allSettled(tries);

@@ -1,4 +1,7 @@
 name: engineer
+# What the flow may ask this role for. The dispatch sites look up the capability,
+# never the name, so this line is what makes a role replaceable by a yaml file.
+capabilities: [write_code]
 # codex: leads the coding-agent benchmarks, and this role burns more quota than
 # every other one combined — leaving it on claude is what kept that account pinned.
 # Its sandbox cannot hold the group's file ownership, so the executor reconciles

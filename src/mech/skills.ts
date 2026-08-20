@@ -65,7 +65,7 @@ export function frontmatterDescription(text: string): string {
 /**
  * `relBase` is separate from `base` because the two answer different questions:
  * `base` is where to look under `root`, `relBase` is the conventional path that
- * goes into `rel` and is matched against older message text (migration 026). A
+ * goes into `rel` and is matched against older message text. A
  * user who moved `~/.claude` with `$CLAUDE_CONFIG_DIR` changes the first and must
  * not change the second.
  */
@@ -220,9 +220,9 @@ export function skillNames(text: string, repoPath?: string | null, project: Skil
  */
 const PROJECT_KEY = (id: number) => `skills.project.${id}`;
 
-export function projectSkills(db: DB, projectId: number | null | undefined): SkillRef[] {
+export async function projectSkills(db: DB, projectId: number | null | undefined): Promise<SkillRef[]> {
   if (!projectId) return [];
-  return jsonOr(readSetting(db, PROJECT_KEY(projectId)), z.array(SkillRefSchema), []);
+  return jsonOr(await readSetting(db, PROJECT_KEY(projectId)), z.array(SkillRefSchema), []);
 }
 
 /**
@@ -233,7 +233,11 @@ export function projectSkills(db: DB, projectId: number | null | undefined): Ski
  * a removed skill stays listed forever. The one case it will not write is a
  * container that never ran the script, which the caller sees as a failed exec.
  */
-export function cacheProjectSkills(db: DB, projectId: number | null | undefined, stdout: string): SkillRef[] {
+export async function cacheProjectSkills(
+  db: DB,
+  projectId: number | null | undefined,
+  stdout: string,
+): Promise<SkillRef[]> {
   if (!projectId) return [];
   const out: SkillRef[] = [];
   for (const line of stdout.split("\n")) {
@@ -252,13 +256,13 @@ export function cacheProjectSkills(db: DB, projectId: number | null | undefined,
     // the same shape everywhere else.
     out.push({ name, file: `/work/${rel}`, rel, description: frontmatterDescription(head), scope: "project" });
   }
-  writeSetting(db, PROJECT_KEY(projectId), JSON.stringify(out));
+  await writeSetting(db, PROJECT_KEY(projectId), JSON.stringify(out));
   return out;
 }
 
 /** A removed project should not leave its skills behind in `setting`. */
-export function forgetProjectSkills(db: DB, projectId: number): void {
-  writeSetting(db, PROJECT_KEY(projectId), null);
+export async function forgetProjectSkills(db: DB, projectId: number): Promise<void> {
+  await writeSetting(db, PROJECT_KEY(projectId), null);
 }
 
 const OFF_KEY = "skills.off";
@@ -269,20 +273,20 @@ const OFF_KEY = "skills.off";
  * The off-list, not the on-list: a skill installed tomorrow is available tomorrow
  * without anyone going back to tick it.
  */
-export function skillsOff(db: DB): string[] {
-  return jsonOr(readSetting(db, OFF_KEY), z.array(z.string()), []);
+export async function skillsOff(db: DB): Promise<string[]> {
+  return jsonOr(await readSetting(db, OFF_KEY), z.array(z.string()), []);
 }
 
-export function setSkillOff(db: DB, name: string, off: boolean): string[] {
-  const next = skillsOff(db).filter((n) => n !== name);
+export async function setSkillOff(db: DB, name: string, off: boolean): Promise<string[]> {
+  const next = (await skillsOff(db)).filter((n) => n !== name);
   if (off) next.push(name);
-  writeSetting(db, OFF_KEY, JSON.stringify(next));
+  await writeSetting(db, OFF_KEY, JSON.stringify(next));
   return next;
 }
 
 /** Stage what is ticked. Called at boot and after every tick. */
-export function restageSkills(db: DB, dir: string): ReturnType<typeof stageSkills> {
-  const off = new Set(skillsOff(db));
+export async function restageSkills(db: DB, dir: string): Promise<ReturnType<typeof stageSkills>> {
+  const off = new Set(await skillsOff(db));
   return stageSkills(
     dir,
     listSkills().filter((s) => !off.has(s.name)),
@@ -353,11 +357,11 @@ const skillsWarned = new Set<number>();
 export function resetSkillsWarned(): void {
   skillsWarned.clear();
 }
-export function projectSkillsPending(ctx: Ctx, projectId: number, repoPath?: string | null): void {
+export async function projectSkillsPending(ctx: Ctx, projectId: number, repoPath?: string | null): Promise<void> {
   if (!repoPath || repoPath.startsWith("/") || skillsWarned.has(projectId)) return;
-  if (projectSkills(ctx.db, projectId).length) return;
+  if ((await projectSkills(ctx.db, projectId)).length) return;
   skillsWarned.add(projectId);
-  ctx.bus.emit({
+  await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
     body:

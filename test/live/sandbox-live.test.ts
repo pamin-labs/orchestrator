@@ -1,5 +1,7 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { grp as grpTable, project as projectTable } from "../../src/platform/persistence/schema.ts";
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -7,8 +9,8 @@ import { makeApp } from "../../src/composition/api.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { createCheckout, keepBranch, sandboxGit, utilGit } from "../../src/mech/git/checkout.ts";
 import { startMailbox } from "../../src/mech/sandbox/mailbox.ts";
-import { CODEX_HOME } from "../../src/mech/sandbox/auth.ts";
-import { ConnectionConfig, SandboxManager } from "@alibaba-group/opensandbox";
+import { CODEX_HOME, SANDBOX_KEY, sandboxKeyFor, saveAuth } from "../../src/mech/sandbox/auth.ts";
+import { ensureServer } from "../../src/mech/sandbox/server.ts";
 import {
   bindCredentials,
   closeAll,
@@ -19,6 +21,7 @@ import {
   MAILBOX_DIR,
   putFile,
   REAL,
+  serverKeyOnDisk,
   SKILL_SYNC,
   UTIL,
   WORK,
@@ -36,77 +39,120 @@ import { testContext } from "../support/test-context.ts";
  * cannot reach this machine.
  */
 /**
- * Skipped unless a server is up, and it says so rather than passing quietly — a
- * green suite that silently skipped the only test of the real thing is the failure
- * this whole design exists to avoid.
+ * The suite starts its own server, and skips only for a reason it detected.
  *
- *   uvx opensandbox-server --config <toml>   # [egress] mode = "dns+nft", image >= v1.1.6
- *   docker build -f docker/agent.Dockerfile -t orch/agent:1 .
+ * Probing 8080 and skipping when nothing answered made "nobody started a server"
+ * indistinguishable from "this machine cannot run containers", and only the
+ * second is a reason to skip the only test of the real thing. `ensureServer` is
+ * the same call the orchestrator makes at boot.
+ *
+ * On with `ORCH_LIVE_SANDBOX=1`, which nightly sets and fails if anything skips.
  */
-
+/*
+ *   docker pull ghcr.io/pamin-labs/orch-agent:latest   # public, no login
+ *   docker pull opensandbox/egress:v1.1.6              # v1.1.4 403s scoped fetches
+ */
 const cfg = loadConfig();
 
+/** On by explicit request only. Anything else, including unset, is off. */
+const ENABLED = process.env.ORCH_LIVE_SANDBOX === "1";
+
 /**
- * Usable, not merely listening.
+ * The daemon, not the binary.
  *
- * The first version of this asked whether the port answered, which it does even
- * when the API key is wrong — so the tests ran and failed on 401 instead of
- * skipping. "Can I drive it" is the only question worth asking.
+ * `docker --version` answers on a machine whose daemon is not running, and the
+ * symptom of trusting it is a server that starts, listens, and fails every
+ * create. Same probe as preflight's docker check.
  */
-async function serverUp(): Promise<boolean> {
+function dockerUp(): boolean {
   try {
-    const m = SandboxManager.create({
-      connectionConfig: new ConnectionConfig({
-        domain: cfg.sandbox.server,
-        protocol: "http",
-        ...(cfg.sandbox.apiKey ? { apiKey: cfg.sandbox.apiKey } : {}),
-        requestTimeoutSeconds: 5,
-      }),
-    });
-    await m.listSandboxInfos({ pageSize: 1 });
-    await m.close();
-    return true;
+    return Bun.spawnSync(["docker", "info"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
   } catch {
     return false;
   }
 }
 
-function ctx(port = cfg.port) {
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
-  fx.runningGrp.insert(db, { project_id: p.id, name: "live" });
+/**
+ * A server, and the key to drive it with.
+ *
+ * The key is what made this skip on a machine where everything worked:
+ * `ORCH_SANDBOX_API_KEY` is normally unset, a server already on 8080 has one,
+ * and every call came back 401. `serverKeyOnDisk` reads it from that server's
+ * own config, seeded into the boot database so `ensureServer` does not generate
+ * a second key the running config has never heard of.
+ */
+async function boot(): Promise<{ key: string; started: string | null } | { why: string }> {
+  if (!ENABLED) return { why: "ORCH_LIVE_SANDBOX is not 1" };
+  if (!dockerUp()) return { why: "docker daemon 不应答 —— 起不了容器，这几个测试没有意义" };
+
+  const db = await openMemory();
+  const held = serverKeyOnDisk();
+  const known = cfg.sandbox.apiKey || (held?.server === cfg.sandbox.server ? held.key : "");
+  if (known)
+    await saveAuth(db, {
+      runtime: SANDBOX_KEY,
+      mode: "api_key",
+      secret: known,
+      baseUrl: `http://${cfg.sandbox.server}`,
+    });
+
+  // Every "no" this returns is a different sentence and each names what to do,
+  // which is the whole reason to go through it rather than probe a port.
+  const state = await ensureServer(await testContext({ db, config: cfg }));
+  if (state.kind === "down" || state.kind === "stuck") return { why: state.why };
+  return {
+    key: await sandboxKeyFor(db, cfg.sandbox.server, cfg.sandbox.apiKey),
+    started: state.kind === "started" ? state.pid : null,
+  };
+}
+
+const booted = await boot();
+const ready = "key" in booted;
+const live = ready ? test : test.skip;
+if (!ready) console.log(`\n[sandbox-live] skipped: ${booted.why}\n`);
+
+// Only ever the one we started. A server that was already there is somebody
+// else's — possibly the orchestrator this checkout is being developed against —
+// and killing it is not this file's business.
+afterAll(() => {
+  if (ready && booted.started) process.kill(Number(booted.started));
+});
+
+async function ctx(port = cfg.port) {
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  await f.runningGrp.create({ project_id: p.id, name: "live" });
   return testContext({
     db,
     sandbox: REAL,
     // An ephemeral port, not the configured one: this test serves the routes
     // itself, and a fixed port collides with a real orchestrator or with the
     // previous run's socket still in TIME_WAIT.
-    config: { ...cfg, port },
+    config: { ...cfg, port, sandbox: { ...cfg.sandbox, apiKey: ready ? booted.key : "" } },
   });
 }
-
-const up = await serverUp();
-const live = up ? test : test.skip;
-if (!up)
-  console.log(
-    `\n[sandbox-live] skipped: cannot drive opensandbox-server on ${cfg.sandbox.server}` +
-      ` (not running, or ORCH_SANDBOX_API_KEY is unset/wrong)\n`,
-  );
 
 live(
   "a sandbox is a boundary: it gets a checkout, runs its gates, and cannot touch this machine",
   async () => {
-    const c = ctx();
+    const c = await ctx();
     const scope = { grp: 1 } as const;
     try {
       // Provisioning: the mailbox and a matching `orch` land before anything else.
+      // Asserted with the output attached, not on the code alone. One run in seven
+      // gave `Received: 126` here and nothing else — the shell's "found but could
+      // not execute", against a command that only runs `test` and `ls` — and the
+      // two streams that would have named it had been discarded by the matcher.
+      // A container is the one place where re-running is not a way to find out.
       const orch = await execIn(c, scope, "test -x /usr/local/bin/orch && ls /var/orch");
-      expect(orch.code).toBe(0);
-      expect(orch.out).toContain("req");
+      const said = (r: { code: number; out: string; err: string }) => `code=${r.code} out=${r.out} err=${r.err}`;
+      expect(orch.code, said(orch)).toBe(0);
+      expect(orch.out, said(orch)).toContain("req");
 
       // The toolchain the gates need. `tsc` is why node is in the image at all.
       const tools = await execIn(c, scope, "bun --version && node --version && git --version");
-      expect(tools.code).toBe(0);
+      expect(tools.code, said(tools)).toBe(0);
 
       // The host is not reachable. This is the whole point: whatever the agent
       // does, it does inside here.
@@ -145,7 +191,7 @@ live(
   "an agent reaches the orchestrator through the mailbox, with no route to this machine",
   async () => {
     const port = 40000 + Math.floor(Math.random() * 20000);
-    const c = ctx(port);
+    const c = await ctx(port);
     const scope = { grp: 1 } as const;
     // A real orchestrator, on the port the mailbox replays to.
     const app = makeApp(c);
@@ -188,10 +234,10 @@ live(
     // first time at the boss's first slice boundary.
     //
     // A public repository, so this asserts the mechanism and not a token.
-    const c = ctx();
+    const c = await ctx();
     const grp = { grp: 1 } as const;
     const remote = "https://github.com/octocat/Hello-World.git";
-    c.db.run("UPDATE project SET remote = ?, base_branch = 'master' WHERE id = 1", [remote]);
+    await c.db.update(projectTable).set({ remote, base_branch: "master" }).where(eq(projectTable.id, 1));
     try {
       // Not a sandbox in the 005 sense: no agent, so none of an agent's furniture.
       const bare = await execIn(
@@ -213,10 +259,15 @@ live(
 
       await createCheckout(c, grp, { remote, branch: "orch/live", base: "origin/master" });
       await execIn(c, grp, "echo probe > PROBE.md && git add -A && git commit -qm 'wip: probe'", { cwd: WORK });
-      c.db.run("UPDATE grp SET branch = 'orch/live' WHERE id = 1");
+      await c.db.update(grpTable).set({ branch: "orch/live" }).where(eq(grpTable.id, 1));
 
       expect(await keepBranch(c, 1)).toEqual({ ok: true });
-      const landed = await execIn(c, UTIL, `git -C ${mirror} log -1 --format=%s refs/heads/orch/live`);
+      // `refs/orch/`, not `refs/heads/`: the mirror's `+refs/heads/*:refs/heads/*`
+      // prune deletes by destination, so a local-only branch under `refs/heads/` is
+      // gone before `pushBranch` can send it. `pushBranch` is what promotes it, and
+      // to the *remote*'s `refs/heads/`. This asserted the location it had before
+      // that fix, so it read as "the utility container cannot take a commit".
+      const landed = await execIn(c, UTIL, `git -C ${mirror} log -1 --format=%s refs/orch/orch/live`);
       expect(landed.out.trim()).toBe("wip: probe");
     } finally {
       await killSandbox(c, grp).catch(() => {});
@@ -242,7 +293,7 @@ live(
     //
     // postman-echo rather than GitHub: this needs a host that says what it
     // received, and no credential of the boss's is involved.
-    const c = ctx();
+    const c = await ctx();
     const scope = { grp: 1 } as const;
     const real = "REAL-INJECTED-BY-SIDECAR";
     const decoy = "DECOY-NEVER-INJECTED";
@@ -274,7 +325,7 @@ live(
 live(
   "every skill reaches both CLIs, and the ones the boss ticked stay read-only",
   async () => {
-    const c = ctx();
+    const c = await ctx();
     const scope = { grp: 1 } as const;
     // One skill of our own, so this asserts the mount rather than whatever the
     // machine running it happens to have installed.
@@ -335,11 +386,9 @@ live(
       expect(w.out).not.toContain("rc=0");
       // And the listing travels back out, which is what the settings page and
       // `/name` read. It cannot come from this machine: the checkout is in here.
-      const found = cacheProjectSkills(c.db, 1, synced.out)
-        .map((s) => s.name)
-        .sort();
+      const found = (await cacheProjectSkills(c.db, 1, synced.out)).map((skill) => skill.name).sort();
       expect(found).toEqual(["repo-agents", "repo-codex"]);
-      expect(cacheProjectSkills(c.db, 1, synced.out)[0]!.description).toBe("shipped by the repository");
+      expect((await cacheProjectSkills(c.db, 1, synced.out))[0]!.description).toBe("shipped by the repository");
     } finally {
       rmSync(join(dir, "live-check"), { recursive: true, force: true });
       await killSandbox(c, scope).catch(() => {});
@@ -358,7 +407,7 @@ live(
     // `git status --porcelain`, `ls`, and a skills inventory all arrived as a
     // single line — and every caller that splits on newlines silently matched
     // nothing. A wrong answer shaped exactly like an empty one.
-    const c = ctx();
+    const c = await ctx();
     const scope = { grp: 1 } as const;
     try {
       expect((await execIn(c, scope, `printf 'a\\nbb\\nccc\\n'`)).out.split("\n")).toEqual(["a", "bb", "ccc"]);

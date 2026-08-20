@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
+import { count, getTableName, sql } from "drizzle-orm";
+import { z } from "zod";
+import { valueOr } from "../../src/contracts/json.ts";
 import { dropSlices, openMemory, SLICE_REFS, type DB } from "../../src/platform/persistence/database.ts";
+import { job, note, slice, task } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 
 /**
@@ -8,50 +12,52 @@ import * as fx from "../support/factories.ts";
  * run died on `FOREIGN KEY constraint failed`, which names neither the table nor
  * the row, and the boss's only move was to click again.
  */
-function seed(db: DB): number {
-  const p = fx.project.insert(db, { id: 1, name: "p" });
-  const g = fx.grp.insert(db, { id: 7, project_id: p.id, name: "g" });
-  const s = fx.slice.insert(db, { grp_id: g.id, seq: 1, title: "t", accept_spec: "a" });
-  const s2 = fx.slice.insert(db, { grp_id: g.id, seq: 2, title: "t2", accept_spec: "a2", depends_on: s.id });
-  fx.task.insert(db, { grp_id: g.id, slice_id: s.id, title: "task" });
-  fx.job.insert(db, { kind: "gate", grp_id: g.id, slice_id: s.id });
-  fx.note.insert(db, { grp_id: g.id, slice_id: s.id, kind: "journal", body: "x" });
+async function seed(db: DB): Promise<number> {
+  const f = fx.on(db);
+  const p = await f.project.create({ id: 1, name: "p" });
+  const g = await f.grp.create({ id: 7, project_id: p.id, name: "g" });
+  const s = await f.slice.create({ grp_id: g.id, seq: 1, title: "t", accept_spec: "a" });
+  const s2 = await f.slice.create({ grp_id: g.id, seq: 2, title: "t2", accept_spec: "a2", depends_on: s.id });
+  await f.task.create({ grp_id: g.id, slice_id: s.id, title: "task" });
+  await f.job.create({ kind: "gate", grp_id: g.id, slice_id: s.id });
+  await f.note.create({ grp_id: g.id, slice_id: s.id, kind: "journal", body: "x" });
   void s2;
   return g.id;
 }
 
-test("dropping a group's slices clears every reference to them first", () => {
-  const db = openMemory();
-  dropSlices(db, seed(db));
+test("dropping a group's slices clears every reference to them first", async () => {
+  const db = await openMemory();
+  await dropSlices(db, await seed(db));
 
-  expect(db.query<{ n: number }, []>("SELECT count(*) n FROM slice").get()!.n).toBe(0);
+  const rows = async (table: typeof slice | typeof task) => (await db.select({ n: count() }).from(table))[0]?.n;
+  expect(await rows(slice)).toBe(0);
   // The plan goes with the slices.
-  expect(db.query<{ n: number }, []>("SELECT count(*) n FROM task").get()!.n).toBe(0);
+  expect(await rows(task)).toBe(0);
   // What happened does not: a job and a journal entry survive, pointing at nothing.
-  expect(db.query<{ n: number; s: number | null }, []>("SELECT count(*) n, max(slice_id) s FROM job").get()).toEqual({
-    n: 1,
-    s: null,
-  });
-  expect(db.query<{ n: number; s: number | null }, []>("SELECT count(*) n, max(slice_id) s FROM note").get()).toEqual({
-    n: 1,
-    s: null,
-  });
+  expect(await db.select({ n: count(), s: count(job.slice_id) }).from(job)).toEqual([{ n: 1, s: 0 }]);
+  expect(await db.select({ n: count(), s: count(note.slice_id) }).from(note)).toEqual([{ n: 1, s: 0 }]);
 });
 
-test("every foreign key onto slice has a policy in SLICE_REFS", () => {
-  const db = openMemory();
-  const tables = db
-    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'")
-    .all()
-    .map((r) => r.name);
+/** Postgres has no `PRAGMA foreign_key_list`; the catalog says the same thing. */
+const ForeignKeys = z.array(z.object({ tbl: z.string(), col: z.string() }));
 
-  const missing: string[] = [];
-  for (const t of tables) {
-    for (const fk of db.query<{ table: string; from: string }, []>(`PRAGMA foreign_key_list(${t})`).all()) {
-      if (fk.table !== "slice") continue;
-      if (!SLICE_REFS[t]?.[fk.from]) missing.push(`${t}.${fk.from}`);
-    }
-  }
+test("every foreign key onto slice has a policy in SLICE_REFS", async () => {
+  const db = await openMemory();
+  // `pg_catalog`, not `information_schema`: those views join across every relation
+  // in the database, and the suite now shares one database across 193 namespaces —
+  // 6,534 relations, where this took over five seconds and timed the test out.
+  const result = await db.execute(sql`
+    SELECT c.relname AS tbl, a.attname AS col
+    FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_class f ON f.oid = con.confrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = ANY (con.conkey)
+    WHERE con.contype = 'f' AND n.nspname = current_schema() AND f.relname = 'slice'`);
+  const found = valueOr(result, ForeignKeys, []);
+  expect(found.length).toBeGreaterThan(0);
+
+  const covered = new Set(SLICE_REFS.map((ref) => `${getTableName(ref.table)}.${ref.column.name}`));
   // A new table with a slice_id is exactly how this bug came back the first time.
-  expect(missing).toEqual([]);
+  expect(found.map((fk) => `${fk.tbl}.${fk.col}`).filter((ref) => !covered.has(ref))).toEqual([]);
 });

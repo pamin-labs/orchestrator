@@ -8,9 +8,14 @@ import {
   indexTargets,
   indexThrew,
   INDEX_THROW_BACKOFF_MS,
+  navigatorEnabled,
+  reportServerState,
+  routeRequest,
   reportRejection,
 } from "../../src/composition/server.ts";
-import { openMemory } from "../../src/platform/persistence/database.ts";
+import { count, desc, eq, like, sql } from "drizzle-orm";
+import { type DB, openMemory } from "../../src/platform/persistence/database.ts";
+import * as tbl from "../../src/platform/persistence/schema.ts";
 import { testContext } from "../support/test-context.ts";
 import { makeGithub } from "../../src/mech/git/github.ts";
 import type { Feedback } from "../../src/mech/git/prwatch.ts";
@@ -23,20 +28,19 @@ import * as fx from "../support/factories.ts";
  * only way to exercise a branch was to run the process and wait.
  */
 
-function project(db: ReturnType<typeof openMemory>, name = "p"): number {
-  return fx.project.insert(db, { name }).id;
+async function project(db: DB, name = "p"): Promise<number> {
+  return (await fx.on(db).project.create({ name })).id;
 }
 
-function group(db: ReturnType<typeof openMemory>, projectId: number, name = "g"): number {
-  return fx.grp.insert(db, { project_id: projectId, name }).id;
+async function group(db: DB, projectId: number, name = "g"): Promise<number> {
+  return (await fx.on(db).grp.create({ project_id: projectId, name })).id;
 }
 
 /** A real notifier whose delivery goes nowhere, so nothing here pushes to the boss. */
 const silent = new Notifier({ deliver: () => {} });
 
 /** A real client whose transport never answers, so no test can reach GitHub. */
-const offlineGithub = (db: ReturnType<typeof openMemory>) =>
-  makeGithub(db, () => Promise.reject(new Error("no network in tests")));
+const offlineGithub = (db: DB) => makeGithub(db, () => Promise.reject(new Error("no network in tests")));
 
 /** A promise that stays pending for the whole test. */
 const never = () => new Promise<void>(() => {});
@@ -49,82 +53,82 @@ const feedback = (over: Partial<Feedback>): Feedback => ({
   ...over,
 });
 
-test("an index call is billed to the project, whichever scope asked for it", () => {
-  const db = openMemory();
-  const p = project(db);
-  const g = group(db, p);
+test("an index call is billed to the project, whichever scope asked for it", async () => {
+  const db = await openMemory();
+  const p = await project(db);
+  const g = await group(db, p);
 
-  expect(chargedProject(db, { project: p })).toBe(p);
+  expect(await chargedProject(db, { project: p })).toBe(p);
   // A group-scoped call bills the group's project, or the most frequent model
   // call in the system is invisible in every cost total.
-  expect(chargedProject(db, { grp: g })).toBe(p);
+  expect(await chargedProject(db, { grp: g })).toBe(p);
   // Nothing in the utility container asks a model — it has no agent in it, which
   // is the entire reason it may hold real tokens.
-  expect(chargedProject(db, { util: true })).toBeUndefined();
-  expect(chargedProject(db, { grp: 9999 })).toBeUndefined();
+  expect(await chargedProject(db, { util: true })).toBeUndefined();
+  expect(await chargedProject(db, { grp: 9999 })).toBeUndefined();
 });
 
-test("a merge wins over a close arriving in the same poll", () => {
-  const ctx = testContext();
-  const p = project(ctx.db);
-  const g = group(ctx.db, p);
-  ctx.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = ?", [g]);
+test("a merge wins over a close arriving in the same poll", async () => {
+  const ctx = await testContext();
+  const p = await project(ctx.db);
+  const g = await group(ctx.db, p);
+  await ctx.db.update(tbl.grp).set({ status: "PR_OPEN" }).where(eq(tbl.grp.id, g));
 
   // GitHub reports both on a PR that merged and closed between two polls.
   // Reading `closed` first would stop a group whose work is already on main.
-  applyPrOutcome(ctx, feedback({ grpId: g, merged: true, closed: true }), "http://x", silent);
+  await applyPrOutcome(ctx, feedback({ grpId: g, merged: true, closed: true }), "http://x", silent);
 
-  const state = ctx.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(g)?.status;
+  const state = (await ctx.db.select({ status: tbl.grp.status }).from(tbl.grp).where(eq(tbl.grp.id, g)))[0]?.status;
   expect(state).not.toBe("PR_OPEN");
-  const asked = ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM escalation").get()!.c;
+  const asked = (await ctx.db.select({ c: count() }).from(tbl.escalation))[0]?.c;
   expect(asked).toBe(0);
 });
 
-test("a close without a merge stops the group and asks the boss", () => {
-  const ctx = testContext();
-  const p = project(ctx.db);
-  const g = group(ctx.db, p);
-  ctx.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = ?", [g]);
+test("a close without a merge stops the group and asks the boss", async () => {
+  const ctx = await testContext();
+  const p = await project(ctx.db);
+  const g = await group(ctx.db, p);
+  await ctx.db.update(tbl.grp).set({ status: "PR_OPEN" }).where(eq(tbl.grp.id, g));
 
-  applyPrOutcome(ctx, feedback({ grpId: g, prNumber: 12, closed: true }), "http://x", silent);
+  await applyPrOutcome(ctx, feedback({ grpId: g, prNumber: 12, closed: true }), "http://x", silent);
 
-  const esc = ctx.db.query<{ question: string; chain_state: string }, []>("SELECT * FROM escalation").get();
+  const [esc] = await ctx.db
+    .select({ question: tbl.escalation.question, chain_state: tbl.escalation.chain_state })
+    .from(tbl.escalation);
   expect(esc?.chain_state).toBe("boss");
   // Nothing reopens it automatically: the close was deliberate, and undoing a
   // deliberate act because a poller disagreed is the worst kind of helpful.
   expect(esc?.question).toContain("重开");
 });
 
-test("an index pass only marks the tree fresh when it did work and none of it failed", () => {
-  const ctx = testContext();
-  const p = project(ctx.db);
+test("an index pass only marks the tree fresh when it did work and none of it failed", async () => {
+  const ctx = await testContext();
+  const p = await project(ctx.db);
 
-  recordIndexResult(ctx, p, "sha-1", { calls: 3, failed: 0, files: 9 });
-  const said = ctx.db.query<{ body: string }, []>("SELECT body FROM event ORDER BY seq DESC").get();
+  await recordIndexResult(ctx, p, "sha-1", { calls: 3, failed: 0, files: 9 });
+  const [said] = await ctx.db.select({ body: tbl.event.body }).from(tbl.event).orderBy(desc(tbl.event.seq));
   expect(said?.body).toContain("3 node(s), 9 files");
 
   // Every call failed: that is the model being down, not the repository being
   // broken, and it is reported once rather than every pass.
-  recordIndexResult(ctx, p, "sha-2", { calls: 2, failed: 2, files: 4 });
-  recordIndexResult(ctx, p, "sha-3", { calls: 2, failed: 2, files: 4 });
-  const blockers = ctx.db
-    .query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE severity = 'blocker'")
-    .get()!.c;
-  expect(blockers).toBe(1);
+  await recordIndexResult(ctx, p, "sha-2", { calls: 2, failed: 2, files: 4 });
+  await recordIndexResult(ctx, p, "sha-3", { calls: 2, failed: 2, files: 4 });
+  const [blockers] = await ctx.db.select({ c: count() }).from(tbl.event).where(eq(tbl.event.severity, "blocker"));
+  expect(blockers?.c).toBe(1);
 });
 
-test("a pass with no calls says nothing at all", () => {
-  const ctx = testContext();
-  const p = project(ctx.db);
-  const before = ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event").get()!.c;
+test("a pass with no calls says nothing at all", async () => {
+  const ctx = await testContext();
+  const p = await project(ctx.db);
+  const before = (await ctx.db.select({ c: count() }).from(tbl.event))[0]?.c;
 
-  recordIndexResult(ctx, p, "sha-1", { calls: 0, failed: 0, files: 0 });
+  await recordIndexResult(ctx, p, "sha-1", { calls: 0, failed: 0, files: 0 });
 
-  expect(ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event").get()!.c).toBe(before);
+  expect((await ctx.db.select({ c: count() }).from(tbl.event))[0]?.c).toBe(before);
 });
 
-test("a repeating rejection reaches the feed once, not every tick", () => {
-  const ctx = testContext();
+test("a repeating rejection reaches the feed once, not every tick", async () => {
+  const ctx = await testContext();
   const boom = new Error("the same detached chain");
 
   const first = reportRejection(ctx.bus, boom, "");
@@ -134,19 +138,29 @@ test("a repeating rejection reaches the feed once, not every tick", () => {
   const different = reportRejection(ctx.bus, new Error("a different one"), second);
   expect(different).not.toBe(second);
 
-  const feed = ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE severity = 'blocker'").get()!.c;
+  // Waited for: `reportRejection` returns the key synchronously and emits behind
+  // it, and the emit is a round trip now — so counting straight after was
+  // counting whichever writes had happened to land.
+  const blockers = async () =>
+    (await ctx.db.select({ c: count() }).from(tbl.event).where(eq(tbl.event.severity, "blocker")))[0]?.c ?? 0;
+  const deadline = Date.now() + 5_000;
+  let feed = await blockers();
+  while (feed < 2 && Date.now() < deadline) {
+    await Bun.sleep(1);
+    feed = await blockers();
+  }
   // Two distinct causes, three rejections. Without the check a single recurring
   // bug is a blocker line every thirty seconds and the feed stops being readable.
   expect(feed).toBe(2);
 });
 
-test("the heartbeat queues one watchdog, not one per tick", () => {
-  const ctx = testContext();
+test("the heartbeat queues one watchdog, not one per tick", async () => {
+  const ctx = await testContext();
   const enqueued: string[] = [];
   const deps = {
     ctx,
     db: ctx.db,
-    sched: { enqueue: (kind: string) => enqueued.push(kind), tick: () => 0 },
+    sched: { enqueue: async (kind: string) => enqueued.push(kind), tick: async () => {} },
     gh: offlineGithub(ctx.db),
     url: "http://x",
     notifier: silent,
@@ -155,27 +169,27 @@ test("the heartbeat queues one watchdog, not one per tick", () => {
     inFlight: { index: never(), poll: never() },
   };
 
-  heartbeat(deps);
+  await heartbeat(deps);
   expect(enqueued).toEqual(["watchdog"]);
 
   // A second pending watchdog would only re-examine the same groups, and the
   // queue is not where that should pile up.
-  fx.job.insert(ctx.db, { kind: "watchdog", state: "pending" });
-  heartbeat(deps);
+  await fx.on(ctx.db).job.create({ kind: "watchdog", state: "pending" });
+  await heartbeat(deps);
   expect(enqueued).toEqual(["watchdog"]);
 });
 
-test("the heartbeat starts no network work while the last round is still out", () => {
-  const ctx = testContext();
+test("the heartbeat starts no network work while the last round is still out", async () => {
+  const ctx = await testContext();
   // Neither promise resolves during the test: that is the point — a tick landing
   // on top of an unfinished one must not start a second index or poll.
   const held = never();
   const inFlight = { index: held, poll: held };
 
-  heartbeat({
+  await heartbeat({
     ctx,
     db: ctx.db,
-    sched: { enqueue: () => 0, tick: () => 0 },
+    sched: { enqueue: async () => 0, tick: async () => {} },
     gh: offlineGithub(ctx.db),
     url: "http://x",
     notifier: silent,
@@ -187,13 +201,17 @@ test("the heartbeat starts no network work while the last round is still out", (
   expect(inFlight.poll).toBe(held);
 });
 
-test("a rejection is still reported when the record itself is what failed", () => {
-  const ctx = testContext();
-  // The record is what failed: a closed database is the real shape of that, and
-  // the console line is still the report.
-  ctx.db.close();
-
-  expect(() => reportRejection(ctx.bus, new Error("original"), "")).not.toThrow();
+test("a rejection is still reported when the record itself is what failed", async () => {
+  const ctx = await testContext();
+  // The record is what failed. A closed handle was the shape of that on SQLite;
+  // one database serves the whole file, so the table is taken away instead —
+  // same write, same failure, and put back before anything else looks.
+  await ctx.db.execute(sql`ALTER TABLE event RENAME TO event_gone`);
+  try {
+    expect(() => reportRejection(ctx.bus, new Error("original"), "")).not.toThrow();
+  } finally {
+    await ctx.db.execute(sql`ALTER TABLE event_gone RENAME TO event`);
+  }
 });
 
 /**
@@ -206,40 +224,44 @@ test("a rejection is still reported when the record itself is what failed", () =
  *
  * A stamp that moves is the only evidence the thing which failed might now work.
  */
-test("an index model that answers nothing is not asked again until credentials change", () => {
-  const ctx = testContext();
-  const p = project(ctx.db);
+test("an index model that answers nothing is not asked again until credentials change", async () => {
+  const ctx = await testContext();
+  const p = await project(ctx.db);
   // A remote, because a project without one is skipped for a different reason and
   // the assertion below would hold without proving anything.
-  ctx.db.run("UPDATE project SET remote = ? WHERE id = ?", ["git@example.com:o/r.git", p]);
-  expect(indexPaused(ctx.db, p)).toBe(false);
+  await ctx.db.update(tbl.project).set({ remote: "git@example.com:o/r.git" }).where(eq(tbl.project.id, p));
+  expect(await indexPaused(ctx.db, p)).toBe(false);
   // Non-empty first, or the assertion below would hold for the wrong reason.
-  expect(indexTargets(ctx.db).map((t) => t.id)).toEqual([p]);
+  expect((await indexTargets(ctx.db)).map((t) => t.id)).toEqual([p]);
 
-  recordIndexResult(ctx, p, "sha-1", { calls: 12, failed: 12, files: 30 });
-  expect(indexPaused(ctx.db, p)).toBe(true);
+  await recordIndexResult(ctx, p, "sha-1", { calls: 12, failed: 12, files: 30 });
+  expect(await indexPaused(ctx.db, p)).toBe(true);
   // And the pass is not entered — the flag gating only the warning is the bug.
-  expect(indexTargets(ctx.db).map((t) => t.id)).toEqual([]);
+  expect((await indexTargets(ctx.db)).map((t) => t.id)).toEqual([]);
 
   // Signing a runtime in moves the stamp, so it is worth one more attempt — and
   // a failure after that is news rather than a repeat, so it is said again.
-  ctx.db.run("INSERT INTO runtime_auth (runtime, mode, secret, updated_at) VALUES (?, ?, ?, ?)", [
-    "codex",
-    "api_key",
-    "s",
-    Date.now(),
-  ]);
-  expect(indexPaused(ctx.db, p)).toBe(false);
+  await fx.on(ctx.db).runtimeAuth.create({ runtime: "codex", mode: "api_key", secret: "s", updated_at: Date.now() });
+  expect(await indexPaused(ctx.db, p)).toBe(false);
 
-  recordIndexResult(ctx, p, "sha-2", { calls: 12, failed: 12, files: 30 });
-  expect(indexPaused(ctx.db, p)).toBe(true);
-  expect(ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE severity = 'blocker'").get()!.c).toBe(
-    2,
-  );
+  await recordIndexResult(ctx, p, "sha-2", { calls: 12, failed: 12, files: 30 });
+  expect(await indexPaused(ctx.db, p)).toBe(true);
+  // The bodies, not the count. `warnModelDown` dedups on `max(runtime_auth.updated_at)`,
+  // so exactly two are expected: one before any credential exists and one after
+  // signing this one in. CI once saw three and a bare count could only say "3",
+  // which names neither the extra event nor who wrote it.
+  const blockers = await ctx.db
+    .select({ body: tbl.event.body })
+    .from(tbl.event)
+    .where(eq(tbl.event.severity, "blocker"));
+  expect(blockers.map((b) => b.body)).toEqual([
+    "PageIndex 建不起来：12 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。",
+    "PageIndex 建不起来：12 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。",
+  ]);
 
   // A pass that worked clears it outright.
-  recordIndexResult(ctx, p, "sha-3", { calls: 4, failed: 0, files: 9 });
-  expect(indexPaused(ctx.db, p)).toBe(false);
+  await recordIndexResult(ctx, p, "sha-3", { calls: 4, failed: 0, files: 9 });
+  expect(await indexPaused(ctx.db, p)).toBe(false);
 });
 
 /**
@@ -254,27 +276,90 @@ test("an index model that answers nothing is not asked again until credentials c
  * A throw is not a credential problem, so it does not wait on a credential: it backs
  * off, and says the reason once per distinct reason.
  */
-test("an index pass that throws backs off and says the reason once", () => {
-  const ctx = testContext();
-  const p = project(ctx.db);
-  ctx.db.run("UPDATE project SET remote = ? WHERE id = ?", ["git@example.com:o/r.git", p]);
+test("an index pass that throws backs off and says the reason once", async () => {
+  const ctx = await testContext();
+  const p = await project(ctx.db);
+  await ctx.db.update(tbl.project).set({ remote: "git@example.com:o/r.git" }).where(eq(tbl.project.id, p));
   const t0 = 1_000_000;
-  expect(indexTargets(ctx.db, t0).map((t) => t.id)).toEqual([p]);
+  expect((await indexTargets(ctx.db, t0)).map((t) => t.id)).toEqual([p]);
 
-  indexThrew(ctx, new Error("socket closed"), t0);
-  expect(indexTargets(ctx.db, t0 + 1_000)).toEqual([]);
+  await indexThrew(ctx, new Error("socket closed"), t0);
+  expect(await indexTargets(ctx.db, t0 + 1_000)).toEqual([]);
   // Still inside the window at the last moment before it lapses.
-  expect(indexTargets(ctx.db, t0 + INDEX_THROW_BACKOFF_MS - 1)).toEqual([]);
-  expect(indexTargets(ctx.db, t0 + INDEX_THROW_BACKOFF_MS).map((t) => t.id)).toEqual([p]);
+  expect(await indexTargets(ctx.db, t0 + INDEX_THROW_BACKOFF_MS - 1)).toEqual([]);
+  expect((await indexTargets(ctx.db, t0 + INDEX_THROW_BACKOFF_MS)).map((t) => t.id)).toEqual([p]);
 
-  const said = () =>
-    ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE body LIKE '%索引刷新出错%'").get()!.c;
-  expect(said()).toBe(1);
+  const said = async () =>
+    (await ctx.db.select({ c: count() }).from(tbl.event).where(like(tbl.event.body, "%索引刷新出错%")))[0]?.c;
+  expect(await said()).toBe(1);
   // The same socket failure is one piece of news however often it happens.
-  indexThrew(ctx, new Error("socket closed"), t0);
-  indexThrew(ctx, new Error("socket closed"), t0);
-  expect(said()).toBe(1);
+  await indexThrew(ctx, new Error("socket closed"), t0);
+  await indexThrew(ctx, new Error("socket closed"), t0);
+  expect(await said()).toBe(1);
   // A different one is worth saying.
-  indexThrew(ctx, new Error("no such container"), t0);
-  expect(said()).toBe(2);
+  await indexThrew(ctx, new Error("no such container"), t0);
+  expect(await said()).toBe(2);
+});
+
+test("an empty index model turns the tree walk off rather than calling an empty one", async () => {
+  // The one path told to run before anything else, and its cost was never
+  // compared against not having it. Measured on a 500-note corpus: the lexical
+  // half answers three questions in 12.6ms and the walk adds two model calls per
+  // question for 192 more characters — about 1%, because the budget was already
+  // full. So the switch has to exist before the claim can be argued with.
+  expect(navigatorEnabled({ model: "gpt-5.6-luna" })).toBe(true);
+  // Whitespace is not a model id. It arrives from a yaml and from the settings
+  // page, and " " reaching `codex exec -m` is a turn that fails rather than a
+  // navigator that is off.
+  expect([navigatorEnabled({ model: "" }), navigatorEnabled({ model: "   " })]).toEqual([false, false]);
+});
+
+test("a sandbox server nobody can drive raises a question instead of being restarted", async () => {
+  // Four of the five states are reported and never acted on. `stuck` is the one
+  // that matters: a running, undrivable server may be somebody else's, and "we
+  // cannot drive it" is not evidence that nobody can — so it reaches the boss
+  // rather than being killed by an installation that did not start it.
+  const ctx = await testContext();
+  await reportServerState(ctx, { kind: "stuck", pid: "42", why: "handshake refused" });
+
+  const raised = await ctx.db
+    .select({ kind: tbl.event.kind, severity: tbl.event.severity, body: tbl.event.body })
+    .from(tbl.event);
+  expect(raised).toHaveLength(1);
+  expect(raised[0]).toMatchObject({ kind: "escalation", severity: "blocker" });
+  expect(raised[0]?.body).toContain("handshake refused");
+});
+
+test("a server this process already drives is not news", async () => {
+  // `ours` had no branch at all and fell out of the chain silently. That was the
+  // right outcome reached by accident — reconnecting to our own process is not an
+  // event — and it stays the outcome now that the branch is written down.
+  const ctx = await testContext();
+  for (const state of [
+    { kind: "ours", pid: "1" },
+    { kind: "theirs", pid: "2" },
+    { kind: "down", why: "no binary" },
+  ] as const) {
+    await reportServerState(ctx, state);
+  }
+  expect((await ctx.db.select({ c: count() }).from(tbl.event))[0]?.c).toBe(0);
+});
+
+test("/metrics is loopback-only, and the rule is not a path prefix", async () => {
+  // ADR 012 keeps `/metrics` on loopback, and `PrometheusExporter` is deliberately
+  // unused because it opens a port on every interface and would walk around this.
+  // The refusal is 404, not 403: a scanner learns nothing from "exists, denied".
+  const local = () => "127.0.0.1";
+  const remote = () => "10.0.0.7";
+  expect(routeRequest("/metrics", local)).toBe("app");
+  expect(routeRequest("/metrics", remote)).toBe("refuse");
+  // A unix socket has no address at all, and that is not a reason to refuse it.
+  expect(routeRequest("/metrics", () => undefined)).toBe("app");
+});
+
+test("the panel's own paths are served, and everything else falls through to a file", async () => {
+  expect(routeRequest("/", () => undefined)).toBe("index");
+  expect(routeRequest("/api/v1/state", () => undefined)).toBe("app");
+  expect(routeRequest("/orch/v1/status", () => undefined)).toBe("app");
+  expect(routeRequest("/dist/main.js", () => undefined)).toBe("file");
 });

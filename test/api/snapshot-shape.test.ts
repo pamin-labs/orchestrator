@@ -1,14 +1,10 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import { Bus } from "../../src/platform/persistence/event-bus.ts";
-import { openMemory } from "../../src/platform/persistence/database.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { snapshot } from "../../src/api/panel/snapshot.ts";
 import * as S from "../../src/contracts/panel.ts";
-import type { Ctx } from "../../src/mech/ctx.ts";
 import { seedAuth } from "../support/seed-auth.ts";
-import { loadConfig } from "../../src/platform/config/load.ts";
 import * as fx from "../support/factories.ts";
+import { testContext } from "../support/test-context.ts";
 
 /**
  * The panel payload is what the SQL actually produced.
@@ -25,32 +21,27 @@ import * as fx from "../support/factories.ts";
  * it on every poll would cost real time on a page that re-reads it on every state
  * change, and would catch nothing this does not.
  */
-test("every row the panel is sent matches the shape it is declared as", () => {
-  const db = openMemory();
-  seedAuth(db);
-  const ctx: Ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
-    waiters: new Map(),
-    config: loadConfig(),
-  };
+test("every row the panel is sent matches the shape it is declared as", async () => {
+  const ctx = await testContext();
+  const db = ctx.db;
+  await seedAuth(db);
+  const f = fx.on(db);
 
   // One of everything the payload can carry, so no list is empty — an empty
   // array parses against any element schema and would make this vacuous.
-  const p = fx.project.insert(db, { name: "p", repo_path: "o/p", remote: "g", base_branch: "main" });
-  const g = fx.runningGrp.insert(db, {
+  const p = await f.project.create({ name: "p", repo_path: "o/p", remote: "g", base_branch: "main" });
+  const g = await f.runningGrp.create({
     project_id: p.id,
     name: "g1",
     branch: "orch/g1",
     budget_tokens: 100,
   });
-  fx.grp.insert(db, { project_id: p.id, name: "g2", status: "DISSOLVED" });
-  const first = fx.slice.insert(db, { grp_id: g.id, seq: 1, title: "S1", status: "gate" });
-  fx.task.insert(db, { grp_id: g.id, slice_id: first.id, title: "t", status: "pending" });
-  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, state: "idle" });
-  fx.channel.insert(db, { project_id: p.id, grp_id: g.id });
-  fx.escalation.insert(db, {
+  await f.grp.create({ project_id: p.id, name: "g2", status: "DISSOLVED" });
+  const first = await f.slice.create({ grp_id: g.id, seq: 1, title: "S1", status: "gate" });
+  await f.task.create({ grp_id: g.id, slice_id: first.id, title: "t", status: "pending" });
+  await f.agent.create({ project_id: p.id, grp_id: g.id, state: "idle" });
+  await f.channel.create({ project_id: p.id, grp_id: g.id });
+  await f.escalation.create({
     grp_id: g.id,
     severity: "blocker",
     brief: "b",
@@ -58,7 +49,7 @@ test("every row the panel is sent matches the shape it is declared as", () => {
     chain_state: "boss",
   });
 
-  const s = snapshot(ctx);
+  const s = await snapshot(ctx);
   const Snapshot = z.object({
     ready: z.boolean(),
     projects: z.array(S.Project),
@@ -85,4 +76,29 @@ test("every row the panel is sent matches the shape it is declared as", () => {
   expect(s.slices.length).toBeGreaterThan(0);
   expect(s.agents.length).toBeGreaterThan(0);
   expect(s.escalations.length).toBeGreaterThan(0);
+});
+
+test("an answered question with no group and no answer text parses", async () => {
+  // `Answered` declared `grp_id` and `answer` non-null, and the query promises
+  // neither: a standing agent's question belongs to no group, and `answered` is
+  // also reached by `revoked` and by the chain running out, neither of which
+  // writes an answer. `db.query<Answered>` is a cast, so both NULLs crossed the
+  // wire typed as values — the browser's `answeredFor` filters on `grp_id` and
+  // simply never matched, which is a row the boss cannot take back.
+  const ctx = await testContext();
+  await seedAuth(ctx.db);
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p" });
+  await f.escalation.create({
+    grp_id: null,
+    question: "a standing agent asked this",
+    chain_state: "answered",
+    answered_by: "cos",
+  });
+
+  const answered = (await snapshot(ctx)).answered;
+  const row = z.array(S.Answered).safeParse(answered);
+  expect(row.success ? [] : row.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual([]);
+  expect(answered).toHaveLength(1);
+  expect(p.id).toBeGreaterThan(0);
 });

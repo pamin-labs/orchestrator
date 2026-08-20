@@ -22,8 +22,9 @@ import {
   stageSkills,
   type SkillRef,
 } from "../../src/mech/skills.ts";
-import { openMemory, rewriteSkillPaths, type DB } from "../../src/platform/persistence/database.ts";
-import * as fx from "../support/factories.ts";
+import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
+import { eq } from "drizzle-orm";
+import { event as eventTable } from "../../src/platform/persistence/schema.ts";
 import { testContext } from "../support/test-context.ts";
 import { tempDir } from "../support/temp.ts";
 
@@ -128,17 +129,17 @@ test("a dangling skill is skipped, not fatal", () => {
   expect(existsSync(join(data, "gone"))).toBe(false);
 });
 
-test("what is stored is the off list, so a skill installed tomorrow is on tomorrow", () => {
+test("what is stored is the off list, so a skill installed tomorrow is on tomorrow", async () => {
   // Storing the on list instead would mean every new skill arrives invisible to
   // every agent until someone goes back to the settings page and ticks it.
-  const db = openMemory();
-  expect(skillsOff(db)).toEqual([]);
-  setSkillOff(db, "impeccable", true);
-  expect(skillsOff(db)).toEqual(["impeccable"]);
-  setSkillOff(db, "impeccable", true);
-  expect(skillsOff(db)).toEqual(["impeccable"]);
-  setSkillOff(db, "impeccable", false);
-  expect(skillsOff(db)).toEqual([]);
+  const db = await openMemory();
+  expect(await skillsOff(db)).toEqual([]);
+  await setSkillOff(db, "impeccable", true);
+  expect(await skillsOff(db)).toEqual(["impeccable"]);
+  await setSkillOff(db, "impeccable", true);
+  expect(await skillsOff(db)).toEqual(["impeccable"]);
+  await setSkillOff(db, "impeccable", false);
+  expect(await skillsOff(db)).toEqual([]);
 });
 
 test("a skill's path is where the agent can actually read it", () => {
@@ -157,23 +158,6 @@ test("a skill's path is where the agent can actually read it", () => {
   expect(pathInSandbox({ ...base, rel: ".claude/skills/impeccable/SKILL.md", scope: "project" })).toBe(
     "/work/.claude/skills/impeccable/SKILL.md",
   );
-});
-
-test("old messages stop pointing at a machine the agent cannot see", () => {
-  // The stored bodies are re-injected into later turns, so a path that resolved
-  // on the host is an instruction to read a file that is not there.
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
-  fx.note.insert(db, {
-    project_id: p.id,
-    body: "按 .claude/skills/impeccable/SKILL.md 来做，再看 .agents/skills/ponytail/SKILL.md",
-  });
-  fx.event.insert(db, { author: "boss", kind: "boss_say", body: "用 .claude/skills/tdd/SKILL.md" });
-  rewriteSkillPaths(db);
-  expect(db.query<{ body: string }, []>("SELECT body FROM note").get()!.body).toBe(
-    "按 /impeccable 来做，再看 /ponytail",
-  );
-  expect(db.query<{ body: string }, []>("SELECT body FROM event").get()!.body).toBe("用 /tdd");
 });
 
 test("a skill's description survives every shape real skills are written in", () => {
@@ -222,25 +206,24 @@ test("a skill whose name is not a regex is still matched by its name", () => {
  * used to be reported as *unreachable*, which is a different thing and sends the
  * boss to check a path that was never going to be there.
  */
-function pendingCtx(projectId: number, repoPath: string) {
-  const db = openMemory();
-  const ctx = testContext({ db });
+async function pendingCtx(projectId: number, repoPath: string) {
+  const db = await openMemory();
+  const ctx = await testContext({ db });
   return { db, ctx, repoPath, projectId };
 }
 
-const said = (db: DB): string[] =>
-  db
-    .query<{ body: string }, []>("SELECT body FROM event WHERE kind = 'state_change'")
-    .all()
-    .map((r) => r.body);
+const said = async (db: DB): Promise<string[]> =>
+  (await db.select({ body: eventTable.body }).from(eventTable).where(eq(eventTable.kind, "state_change"))).map(
+    (r) => r.body,
+  );
 
-test("a repo whose skills have not been listed yet is explained once, not every poll", () => {
-  const t = pendingCtx(101, "me/x");
+test("a repo whose skills have not been listed yet is explained once, not every poll", async () => {
+  const t = await pendingCtx(101, "me/x");
 
-  projectSkillsPending(t.ctx, t.projectId, t.repoPath);
-  projectSkillsPending(t.ctx, t.projectId, t.repoPath);
+  await projectSkillsPending(t.ctx, t.projectId, t.repoPath);
+  await projectSkillsPending(t.ctx, t.projectId, t.repoPath);
 
-  const bodies = said(t.db);
+  const bodies = await said(t.db);
   expect(bodies.length).toBe(1);
   // Says the directories it looks in, so a boss who keeps skills elsewhere finds
   // out here rather than by them never appearing.
@@ -248,31 +231,31 @@ test("a repo whose skills have not been listed yet is explained once, not every 
   expect(bodies[0]).toContain(".agents/skills");
 });
 
-test("a local checkout has nothing to wait for and is not reported", () => {
+test("a local checkout has nothing to wait for and is not reported", async () => {
   // `repo_path` still holds a host directory for older projects, and those are
   // scanned directly — there is no container the listing has to arrive from.
-  const t = pendingCtx(102, "/Users/me/code/x");
+  const t = await pendingCtx(102, "/Users/me/code/x");
 
-  projectSkillsPending(t.ctx, t.projectId, t.repoPath);
+  await projectSkillsPending(t.ctx, t.projectId, t.repoPath);
 
-  expect(said(t.db)).toEqual([]);
+  expect(await said(t.db)).toEqual([]);
 });
 
-test("a project with no remote recorded says nothing at all", () => {
-  const t = pendingCtx(103, "me/x");
+test("a project with no remote recorded says nothing at all", async () => {
+  const t = await pendingCtx(103, "me/x");
 
-  projectSkillsPending(t.ctx, 103, null);
-  projectSkillsPending(t.ctx, 103, "");
+  await projectSkillsPending(t.ctx, 103, null);
+  await projectSkillsPending(t.ctx, 103, "");
 
-  expect(said(t.db)).toEqual([]);
+  expect(await said(t.db)).toEqual([]);
 });
 
-test("once the listing has arrived the pending note is not emitted", () => {
-  const t = pendingCtx(104, "me/x");
-  cacheProjectSkills(t.db, t.projectId, "ORCHSKILL .claude/skills/deploy/SKILL.md ZA==");
-  expect(projectSkills(t.db, t.projectId).length).toBe(1);
+test("once the listing has arrived the pending note is not emitted", async () => {
+  const t = await pendingCtx(104, "me/x");
+  await cacheProjectSkills(t.db, t.projectId, "ORCHSKILL .claude/skills/deploy/SKILL.md ZA==");
+  expect((await projectSkills(t.db, t.projectId)).length).toBe(1);
 
-  projectSkillsPending(t.ctx, t.projectId, t.repoPath);
+  await projectSkillsPending(t.ctx, t.projectId, t.repoPath);
 
-  expect(said(t.db)).toEqual([]);
+  expect(await said(t.db)).toEqual([]);
 });

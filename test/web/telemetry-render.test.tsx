@@ -4,6 +4,7 @@ import { inFlight, mockHttp, server } from "../support/http.ts";
 import { HttpResponse, http } from "msw";
 import { SystemTiming, Telemetry } from "../../web/src/features/telemetry/view.tsx";
 import type { Telemetry as Report } from "../../web/src/shared/api.ts";
+import { wheelWindow } from "../../web/src/features/telemetry/model.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { WithQueries } from "./queries.tsx";
 
@@ -331,7 +332,7 @@ test("every frame is labelled, in a colour that reads against it", async () => {
   const rules = host?.getAttribute("class") ?? "";
   expect(rules).toContain("[&_.d3-flame-graph-label]:text-ink");
   expect(rules).toContain("[&_.d3-flame-graph-label]:truncate");
-  expect(rules).toContain("[&_.d3-flame-graph-label]:text-[0.6875rem]");
+  expect(rules).toContain("[&_.d3-flame-graph-label]:text-meta");
 });
 
 test("the self-time toggle offers both readings", async () => {
@@ -893,4 +894,75 @@ test("the host page asks for the host's spans and nothing else", async () => {
 
   expect(asked.filter((url) => url.includes("scope=system"))).toHaveLength(1);
   expect(asked.filter((url) => url.includes("id="))).toHaveLength(0);
+});
+
+/**
+ * The wheel, as arithmetic. Here rather than in `telemetry-model.test.ts`
+ * because it reads a real element's box, and that file deliberately runs
+ * without a document. `SIZE` is the stubbed viewport: 900 wide, left edge 0.
+ */
+const INSET = { left: 60, right: 20 };
+const PLOT = SIZE.width - INSET.left - INSET.right;
+const scroll = (over: { deltaX?: number; deltaY?: number; clientX: number }) =>
+  Object.assign(new WheelEvent("wheel", { deltaX: over.deltaX ?? 0, deltaY: over.deltaY ?? 0 }), {
+    clientX: over.clientX,
+  });
+
+/**
+ * recharts reserves the y axis on the left and a margin on the right, and the
+ * element that catches the wheel is the whole box. Measuring the pointer against
+ * the box rather than the plot anchored every zoom left of where the reader was
+ * pointing, so the frame under the cursor slid away as they zoomed at it.
+ */
+test("a zoom anchors on the pointer, corrected for the axis gutter", () => {
+  const el = document.createElement("div");
+  // Dead centre of the plot, which sits 60px in: 60 + 820/2.
+  const next = wheelWindow(
+    scroll({ deltaY: -100, clientX: INSET.left + PLOT / 2 }),
+    el,
+    { from: 0, to: 1_000 },
+    { from: 0, to: 1_000 },
+    1,
+    INSET,
+  );
+  expect(next).not.toBeNull();
+  expect(next!.to - next!.from).toBeLessThan(1_000);
+  expect(next!.from + (next!.to - next!.from) / 2).toBeCloseTo(500, 0);
+});
+
+/**
+ * A trackpad's two-finger swipe is a horizontal wheel. Treated as a zoom it
+ * jittered the scale on every pan; it has to move the window and leave the width
+ * the reader chose alone.
+ */
+test("a horizontal wheel pans by its own distance and keeps the width", () => {
+  const el = document.createElement("div");
+  const next = wheelWindow(
+    scroll({ deltaX: 82, clientX: 400 }),
+    el,
+    { from: 200, to: 600 },
+    { from: 0, to: 1_000 },
+    1,
+    INSET,
+  );
+  // 82px across an 820px plot is a tenth of the 400-wide window.
+  expect(next).toEqual({ from: 240, to: 640 });
+});
+
+/**
+ * The axis labels and the margin are inside the element that catches the wheel,
+ * so a scroll over them is a real gesture at a negative fraction of the plot.
+ * Pointing at the gutter means pointing at the edge, not somewhere off-chart.
+ */
+test("a scroll over the gutter anchors at the edge rather than outside it", () => {
+  const el = document.createElement("div");
+  const next = wheelWindow(
+    scroll({ deltaY: -100, clientX: 10 }),
+    el,
+    { from: 200, to: 600 },
+    { from: 0, to: 1_000 },
+    1,
+    INSET,
+  );
+  expect(next!.from).toBe(200);
 });

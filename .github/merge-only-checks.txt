@@ -1,0 +1,16 @@
+# Checks that must pass to merge, but are not release gates.
+#
+# `required-checks.txt` feeds two consumers: the branch ruleset, and `release.yml`,
+# which asserts each name is green among the *check runs of the release sha*. A
+# name that only ever appears on a pull request head would therefore block every
+# release, so it cannot live in that file — it lives here, and only the ruleset
+# reads this one.
+#
+# One name per line; `#` comments and blank lines ignored.
+
+# codecov/patch — posted by `pr-report.yml`, which uploads only after `test`
+# passes on a pull request. Nothing posts it on a `main` commit, so a release sha
+# never has it. Measured on 2ac8b99: it arrives as a **check run**, not a commit
+# status, which is why `commits/<sha>/status` reported an empty array and this was
+# recorded for weeks as "Codecov has never uploaded".
+codecov/patch

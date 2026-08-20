@@ -78,14 +78,14 @@ export function MenuItem({
       onSelect={onSelect}
       disabled={disabled ?? false}
       className={cn(
-        "cursor-pointer rounded-md px-2 py-1.5 text-[0.8125rem] outline-none",
+        "cursor-pointer rounded-md px-2 py-1.5 text-body outline-none",
         "data-[highlighted]:bg-sunk",
         "data-[disabled]:cursor-default data-[disabled]:text-ink-3",
         danger ? "text-bad" : "text-ink",
       )}
     >
       {children}
-      {hint && <span className="mt-px block text-[0.6875rem] font-normal text-ink-3">{hint}</span>}
+      {hint && <span className="mt-px block text-meta font-normal text-ink-3">{hint}</span>}
     </M.Item>
   );
 }

@@ -148,9 +148,22 @@ export type SayKey = keyof typeof EN;
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys erases the literal keys that EN owns
 export const SAY_KEYS = Object.keys(EN) as SayKey[];
 
-export function say(lang: string | undefined, key: SayKey, args: Record<string, string | number> = {}): string {
+/**
+ * Whether the boss reads Chinese, from `output.language`.
+ *
+ * Exported because a second copy of this question got a different answer:
+ * `escalation.ts` asked `language === "en"`, and the default is `"中文"`, so its
+ * English branch was unreachable for every spelling including `"English"`. The
+ * setting is free text — the panel offers two, a yaml can say anything — so the
+ * test is what it looks like, and everything not Chinese is English.
+ */
+export function isChinese(lang: string | undefined): boolean {
   const l = lang ?? "";
-  const table = l.startsWith("中") || l.toLowerCase().startsWith("zh") ? ZH : EN;
+  return l.startsWith("中") || l.toLowerCase().startsWith("zh");
+}
+
+export function say(lang: string | undefined, key: SayKey, args: Record<string, string | number> = {}): string {
+  const table = isChinese(lang) ? ZH : EN;
   const t = table[key] ?? EN[key] ?? String(key);
   return t.replace(/\{(\w+)\}/g, (_m: string, k: string) => String(args[k] ?? ""));
 }

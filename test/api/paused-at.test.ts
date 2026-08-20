@@ -1,11 +1,23 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { asc, eq, isNotNull, and } from "drizzle-orm";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { credentialChanged } from "../../src/api/panel/authflow.ts";
 import { release } from "../../src/mech/flow/intercept.ts";
+import { escalation, grp } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
+
+/**
+ * Every statement that writes the `grp` table, whole.
+ *
+ * The columns below used to be written as raw `UPDATE grp SET ...`; they are
+ * Drizzle builders now, so a scan for the SQL text matches nothing and passes for
+ * the wrong reason. Matched from `.update(<grp>)` to the semicolon that ends the
+ * statement, because a builder is wrapped across five lines as often as not.
+ */
+const GRP_WRITES = /\.update\((?:grp|grps|grpTable)\)[\s\S]{0,600}?;/g;
 
 /** Every `.ts` under `src/`. */
 function sources(dir = new URL("../../src", import.meta.url).pathname): string[] {
@@ -31,9 +43,8 @@ test("nothing pauses a group without stamping when it happened", () => {
   // instead of the night it matters: three callers had already drifted.
   const offenders: string[] = [];
   for (const file of sources()) {
-    const text = readFileSync(file, "utf8");
-    // A statement, not a line: these are wrapped across three lines as often as not.
-    for (const m of text.matchAll(/UPDATE grp SET[^"`']*?status = '(PAUSED|PAUSING)'[^"`']*/g)) {
+    for (const m of readFileSync(file, "utf8").matchAll(GRP_WRITES)) {
+      if (!/status: "(PAUSED|PAUSING)"/.test(m[0])) continue;
       // `pause_reason` for the same reason one column over: a resume is now
       // scoped to a cause, so a row paused without one is a row no resume can
       // ever be about — invisible in the other direction.
@@ -53,45 +64,45 @@ test("signing in restarts what the credential stopped, and nothing else", async 
   // budget, and restarted a rate-limited one still carrying `rl_resets_at` that
   // nothing would clear afterwards, because watchdog rule 6 only scans rows it
   // still finds PAUSED.
-  const db = openMemory();
-  fx.project.insert(db, { name: "p" });
+  const db = await openMemory();
+  const f = fx.on(db);
+  await f.project.create({ name: "p" });
   const mk = (name: string, reason: string) =>
-    fx.grp.insert(db, { project_id: 1, name, status: "PAUSED", paused_at: 1, pause_reason: reason });
-  mk("boss-paused", "boss");
-  mk("burnt", "budget");
-  mk("throttled", "ratelimit");
-  mk("codex-token", "auth:codex");
-  mk("github-token", "auth:github");
+    f.grp.create({ project_id: 1, name, status: "PAUSED", paused_at: 1, pause_reason: reason });
+  await mk("boss-paused", "boss");
+  await mk("burnt", "budget");
+  await mk("throttled", "ratelimit");
+  await mk("codex-token", "auth:codex");
+  await mk("github-token", "auth:github");
 
-  const ctx = testContext({ db });
+  const ctx = await testContext({ db });
   await credentialChanged(ctx, "github");
 
-  const running = db
-    .query<{ name: string }, []>("SELECT name FROM grp WHERE status = 'RUNNING' ORDER BY name")
-    .all()
-    .map((r) => r.name);
-  expect(running).toEqual(["github-token"]);
+  const running = await db.select({ name: grp.name }).from(grp).where(eq(grp.status, "RUNNING")).orderBy(asc(grp.name));
+  expect(running.map((r) => r.name)).toEqual(["github-token"]);
   // And the reason is cleared with the pause, or the next sign-in resumes it twice.
-  expect(
-    db
-      .query<{ n: number }, []>("SELECT count(*) AS n FROM grp WHERE status = 'RUNNING' AND pause_reason IS NOT NULL")
-      .get()!.n,
-  ).toBe(0);
+  const stillReasoned = await db
+    .select({ id: grp.id })
+    .from(grp)
+    .where(and(eq(grp.status, "RUNNING"), isNotNull(grp.pause_reason)));
+  expect(stillReasoned).toHaveLength(0);
 });
 
 test("signing in answers only the literal runtime's escalation", async () => {
-  const db = openMemory();
+  const db = await openMemory();
+  const f = fx.on(db);
   for (const question of ["a_b 的凭据不好使了", "axb 的凭据不好使了"]) {
-    fx.escalation.insert(db, { question, chain_state: "boss" });
+    await f.escalation.create({ question, chain_state: "boss" });
   }
-  const ctx = testContext({ db });
+  const ctx = await testContext({ db });
 
   await credentialChanged(ctx, "a_b");
 
   expect(
-    db
-      .query<{ question: string; chain_state: string }, []>("SELECT question, chain_state FROM escalation ORDER BY id")
-      .all(),
+    await db
+      .select({ question: escalation.question, chain_state: escalation.chain_state })
+      .from(escalation)
+      .orderBy(asc(escalation.id)),
   ).toEqual([
     { question: "a_b 的凭据不好使了", chain_state: "answered" },
     { question: "axb 的凭据不好使了", chain_state: "boss" },
@@ -107,25 +118,26 @@ test("nothing stops or starts a group without going through hold/release", () =>
   const offenders: string[] = [];
   for (const file of sources()) {
     if (file.endsWith("/flow/intercept.ts")) continue;
-    for (const m of readFileSync(file, "utf8").matchAll(/UPDATE grp SET[^"`']*/g)) {
+    for (const m of readFileSync(file, "utf8").matchAll(GRP_WRITES)) {
       // Stopping a group, or starting one that was stopped. Entering RUNNING
       // from PR_OPEN or from an approved DRAFT is a different transition and
       // touches none of these columns, so it is not this rule's business.
-      const stops = /status = '(PAUSED|PAUSING)'/.test(m[0]);
-      const starts = /status = 'RUNNING'/.test(m[0]) && /paused_at|pause_reason/.test(m[0]);
+      const stops = /status: "(PAUSED|PAUSING)"/.test(m[0]);
+      const starts = /status: "RUNNING"/.test(m[0]) && /paused_at|pause_reason/.test(m[0]);
       if (stops || starts) offenders.push(`${file.split("/src/")[1]}: ${m[0].slice(0, 70)}`);
     }
   }
   expect(offenders).toEqual([]);
 });
 
-test("a resume clears what the stop was about, and leaves PARKED alone", () => {
+test("a resume clears what the stop was about, and leaves PARKED alone", async () => {
   // Two of the four resume sites cleared `rl_resets_at`, one cleared `blocked_on`,
   // two cleared neither — so a group could come back RUNNING still carrying the
   // reason it stopped, and watchdog rule 6 only scans rows it still finds PAUSED.
-  const db = openMemory();
-  fx.project.insert(db, { name: "p" });
-  fx.grp.insert(db, {
+  const db = await openMemory();
+  const f = fx.on(db);
+  await f.project.create({ name: "p" });
+  await f.grp.create({
     project_id: 1,
     name: "g",
     status: "PAUSED",
@@ -134,23 +146,23 @@ test("a resume clears what the stop was about, and leaves PARKED alone", () => {
     rl_resets_at: 999,
   });
   // `blocked_on` is a foreign key, so the group it waits on has to exist.
-  fx.runningGrp.insert(db, { project_id: 1, name: "other" });
-  db.run("UPDATE grp SET blocked_on = 2 WHERE id = 1");
-  const ctx = testContext({ db });
+  await f.runningGrp.create({ project_id: 1, name: "other" });
+  await db.update(grp).set({ blocked_on: 2 }).where(eq(grp.id, 1));
+  const ctx = await testContext({ db });
 
-  release(ctx, 1);
-  const g = db
-    .query<{ status: string; rl: number | null; waits: number | null; why: string | null }, []>(
-      "SELECT status, rl_resets_at AS rl, blocked_on AS waits, pause_reason AS why FROM grp WHERE id = 1",
-    )
-    .get()!;
+  await release(ctx, 1);
+  const [g] = await db
+    .select({ status: grp.status, rl: grp.rl_resets_at, waits: grp.blocked_on, why: grp.pause_reason })
+    .from(grp)
+    .where(eq(grp.id, 1));
   expect(g).toEqual({ status: "RUNNING", rl: null, waits: null, why: null });
 
   // PARKED is not a state `release` leaves: a parked group's base may have moved,
   // so it comes back through `unpark`, which rebases first.
-  db.run("UPDATE grp SET status = 'PARKED', pause_reason = 'escalation' WHERE id = 1");
-  release(ctx, 1);
-  expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PARKED");
-  release(ctx, 1, { from: ["PARKED"] });
-  expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
+  await db.update(grp).set({ status: "PARKED", pause_reason: "escalation" }).where(eq(grp.id, 1));
+  const statusNow = async () => (await db.select({ status: grp.status }).from(grp).where(eq(grp.id, 1)))[0]?.status;
+  await release(ctx, 1);
+  expect(await statusNow()).toBe("PARKED");
+  await release(ctx, 1, { from: ["PARKED"] });
+  expect(await statusNow()).toBe("RUNNING");
 });

@@ -7,7 +7,7 @@ import { cn } from "./cn";
  * but routine (打断, 封存).
  */
 export const buttonStyles = cva(
-  "inline-flex items-center gap-1.5 rounded-md border text-[0.8125rem] leading-tight whitespace-nowrap " +
+  "inline-flex items-center gap-1.5 rounded-md border text-body leading-tight whitespace-nowrap " +
     "transition-colors duration-150 ease-out-quint disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer",
   {
     variants: {
@@ -17,7 +17,7 @@ export const buttonStyles = cva(
         danger: "border-bad bg-bad text-paper font-medium hover:brightness-110",
         quiet: "border-transparent bg-transparent text-ink-3 hover:text-ink hover:bg-sunk",
       },
-      size: { default: "px-2.5 py-1", sm: "px-2 py-0.5 text-[0.75rem]" },
+      size: { default: "px-2.5 py-1", sm: "px-2 py-0.5 text-secondary" },
     },
     defaultVariants: { variant: "default", size: "default" },
   },

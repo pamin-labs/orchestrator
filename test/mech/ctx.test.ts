@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
+import { note as noteTable } from "../../src/platform/persistence/schema.ts";
 import { query, DEFAULT_BUDGET } from "../../src/mech/knowledge/ctx.ts";
 import { terms } from "../../src/mech/knowledge/terms.ts";
 import { makeNoteIndex } from "../../src/mech/knowledge/note-index.ts";
@@ -18,6 +20,22 @@ const queryWith = (db: DB, rest: Omit<Parameters<typeof query>[0], "db" | "index
  * filtered while 这个 sailed through as a content word — and it is one of the most
  * common tokens in any Chinese sentence.
  */
+/**
+ * A one-letter Latin token is noise; a one-character Han token is often a word.
+ *
+ * The length rule reads the *script* rather than the count, which is the whole of
+ * why it is not `length > 1`. Dropping it entirely changed nothing any test could
+ * see — measured by mutation — while putting every stray `a`, `x` and digit from a
+ * path or a diff into the index as a term.
+ */
+test("length is judged by script, not by counting characters", () => {
+  // Latin singles and bare digits go; a Han single stays, because 钱, 锁 and 图 are
+  // words a query would reasonably be. 中 is not one of them here — it is on the
+  // rented stop list, which is a different rule and would hide this one.
+  expect(terms("a b x 7 _ 钱 锁")).toEqual(["钱", "锁"]);
+  expect(terms("run x() twice")).toEqual(["run", "twice"]);
+});
+
 test("a multi-character token whose every character is a stop word is filtered", () => {
   expect(terms("这个接口应该返回错误码")).toEqual(["接口", "应该", "返回", "错误", "码"]);
   expect(terms("那个页面什么都没有")).not.toContain("那个");
@@ -115,94 +133,95 @@ test("every script the corpus might be written in produces terms", () => {
  * through a hand-written BM25.
  */
 
-function indexed(rows: Array<{ kind: string; body: string; at?: number }>) {
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
-  for (const row of rows) fx.note.insert(db, { project_id: p.id, kind: row.kind, body: row.body, at: row.at ?? 0 });
+async function indexed(rows: Array<{ kind: string; body: string; at?: number }>) {
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  for (const row of rows) await f.note.create({ project_id: p.id, kind: row.kind, body: row.body, at: row.at ?? 0 });
   const hits = (question: string, now = 0) => makeNoteIndex(db).search(question, { grpId: null, projectId: p.id }, now);
   return { db, hits };
 }
 
-test("a rare term beats a common one", () => {
+test("a rare term beats a common one", async () => {
   // Every document mentions middleware, so it carries almost no information;
   // "legacy" is what distinguishes them.
-  const { hits } = indexed([
+  const { hits } = await indexed([
     { kind: "journal", body: "middleware middleware middleware middleware" },
     { kind: "journal", body: "middleware and the legacy header fallback" },
   ]);
-  expect(hits("middleware legacy fallback")[0]!.doc.body).toContain("legacy");
+  expect((await hits("middleware legacy fallback"))[0]!.doc.body).toContain("legacy");
 });
 
-test("a long document does not win merely by containing more words", () => {
+test("a long document does not win merely by containing more words", async () => {
   // Naive keyword counting scores these equally; length normalisation does not.
   const noise = "unrelated words ".repeat(200);
-  const { hits } = indexed([
+  const { hits } = await indexed([
     { kind: "journal", body: `${noise} token check middleware` },
     { kind: "journal", body: "token check moved into middleware" },
   ]);
-  expect(hits("token check middleware")[0]!.doc.body).toBe("token check moved into middleware");
+  expect((await hits("token check middleware"))[0]!.doc.body).toBe("token check moved into middleware");
 });
 
-test("a decision outranks a journal that matches equally well", () => {
+test("a decision outranks a journal that matches equally well", async () => {
   // What was settled and why is the highest-value thing to recall, and no search
   // library can know that — which is why the weight is applied after it.
   const body = "token check moved into middleware";
-  const { hits } = indexed([
+  const { hits } = await indexed([
     { kind: "journal", body },
     { kind: "decision", body },
   ]);
-  expect(hits("token middleware")[0]!.doc.kind).toBe("decision");
+  expect((await hits("token middleware"))[0]!.doc.kind).toBe("decision");
 });
 
-test("recency breaks a tie, but only mildly", () => {
+test("recency breaks a tie, but only mildly", async () => {
   const now = 10 * 86_400_000;
   const body = "token check middleware";
-  expect(
-    indexed([
-      { kind: "journal", body, at: 0 },
-      { kind: "journal", body, at: now },
-    ]).hits("token", now)[0]!.doc.at,
-  ).toBe(now);
+  const fresher = await indexed([
+    { kind: "journal", body, at: 0 },
+    { kind: "journal", body, at: now },
+  ]);
+  expect((await fresher.hits("token", now))[0]!.doc.at).toBe(now);
 
   // An old decision still beats a fresh journal: age is a nudge, not a verdict.
-  expect(
-    indexed([
-      { kind: "decision", body, at: 0 },
-      { kind: "journal", body, at: now },
-    ]).hits("token", now)[0]!.doc.kind,
-  ).toBe("decision");
+  const settled = await indexed([
+    { kind: "decision", body, at: 0 },
+    { kind: "journal", body, at: now },
+  ]);
+  expect((await settled.hits("token", now))[0]!.doc.kind).toBe("decision");
 });
 
-test("a question of only stopwords finds nothing rather than everything", () => {
-  const { hits } = indexed([{ kind: "journal", body: "x" }]);
-  expect(hits("the and of")).toEqual([]);
+test("a question of only stopwords finds nothing rather than everything", async () => {
+  const { hits } = await indexed([{ kind: "journal", body: "x" }]);
+  expect(await hits("the and of")).toEqual([]);
 });
 
-test("a note written after the index was built is still found", () => {
+test("a note written after the index was built is still found", async () => {
   // The index is kept, not rebuilt per query, so freshness is a property rather
   // than an accident: without the stamp check, everything written during a
   // server's life would be invisible until it restarted.
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
   const index = makeNoteIndex(db);
   const ask = () => index.search("kestrel", { grpId: null, projectId: p.id }, 0);
-  expect(ask()).toEqual([]);
+  expect(await ask()).toEqual([]);
 
-  fx.note.insert(db, { project_id: p.id, kind: "decision", body: "the kestrel decision", at: 0 });
-  expect(ask()).toHaveLength(1);
+  await f.note.create({ project_id: p.id, kind: "decision", body: "the kestrel decision", at: 0 });
+  expect(await ask()).toHaveLength(1);
 
   // And a rewritten note, which `saveSingletonNote` does, is re-read rather than
   // served from the copy the index took the first time.
-  db.run("UPDATE note SET body = 'the osprey decision', at = 1 WHERE project_id = ?", [p.id]);
-  expect(ask()).toEqual([]);
-  expect(index.search("osprey", { grpId: null, projectId: p.id }, 0)).toHaveLength(1);
+  await db.update(noteTable).set({ body: "the osprey decision", at: 1 }).where(eq(noteTable.project_id, p.id));
+  expect(await ask()).toEqual([]);
+  expect(await index.search("osprey", { grpId: null, projectId: p.id }, 0)).toHaveLength(1);
 });
 
-function seeded(): DB {
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
-  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
-  fx.slice.insert(db, {
+async function seeded(): Promise<DB> {
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  const g = await f.runningGrp.create({ project_id: p.id, name: "g1" });
+  await f.slice.create({
     grp_id: g.id,
     seq: 1,
     title: "zh support",
@@ -210,30 +229,30 @@ function seeded(): DB {
     status: "running",
   });
   const note = (kind: string, body: string, at: number) =>
-    fx.note.insert(db, { project_id: p.id, grp_id: g.id, kind, body, at });
-  note("decision", "lang 参数用 lang?: string + map 回退，不用字面量联合", 100);
-  note("journal", "无关的日常记录", 200);
+    f.note.create({ project_id: p.id, grp_id: g.id, kind, body, at });
+  await note("decision", "lang 参数用 lang?: string + map 回退，不用字面量联合", 100);
+  await note("journal", "无关的日常记录", 200);
   return db;
 }
 
-test("the group's acceptance criteria come back whatever the question was", () => {
-  const out = queryWith(seeded(), { grpId: 1, projectId: 1, question: "totally unrelated" });
+test("the group's acceptance criteria come back whatever the question was", async () => {
+  const out = await queryWith(await seeded(), { grpId: 1, projectId: 1, question: "totally unrelated" });
   // They are the frame for every question inside a slice; an agent that has to
   // search for them will guess instead.
   expect(out).toContain("S1 [running] zh support");
   expect(out).toContain("你好 x");
 });
 
-test("a matching decision is retrieved and labelled", () => {
-  const out = queryWith(seeded(), { grpId: 1, projectId: 1, question: "lang 参数怎么定的" });
+test("a matching decision is retrieved and labelled", async () => {
+  const out = await queryWith(await seeded(), { grpId: 1, projectId: 1, question: "lang 参数怎么定的" });
   expect(out).toContain("## decision");
   expect(out).toContain("字面量联合");
 });
 
-test("the budget is a hard cap, not a suggestion", () => {
-  const db = seeded();
+test("the budget is a hard cap, not a suggestion", async () => {
+  const db = await seeded();
   for (let i = 0; i < 200; i++) {
-    fx.note.insert(db, {
+    await fx.on(db).note.create({
       project_id: 1,
       grp_id: 1,
       kind: "journal",
@@ -242,19 +261,19 @@ test("the budget is a hard cap, not a suggestion", () => {
     });
   }
 
-  const out = queryWith(db, { grpId: 1, projectId: 1, question: "middleware token check" });
+  const out = await queryWith(db, { grpId: 1, projectId: 1, question: "middleware token check" });
   // An unbounded answer costs more than the file the agent was about to read,
   // which defeats the whole point of the verb.
   expect(out.length).toBeLessThanOrEqual(DEFAULT_BUDGET);
 
-  const tight = queryWith(db, { grpId: 1, projectId: 1, question: "middleware token", budget: 800 });
+  const tight = await queryWith(db, { grpId: 1, projectId: 1, question: "middleware token", budget: 800 });
   expect(tight.length).toBeLessThanOrEqual(800);
 });
 
-test("when the budget truncates, it says how many matches were dropped", () => {
-  const db = seeded();
+test("when the budget truncates, it says how many matches were dropped", async () => {
+  const db = await seeded();
   for (let i = 0; i < 30; i++) {
-    fx.note.insert(db, {
+    await fx.on(db).note.create({
       project_id: 1,
       grp_id: 1,
       kind: "journal",
@@ -262,15 +281,15 @@ test("when the budget truncates, it says how many matches were dropped", () => {
       at: i,
     });
   }
-  const out = queryWith(db, { grpId: 1, projectId: 1, question: "middleware token", budget: 2000 });
+  const out = await queryWith(db, { grpId: 1, projectId: 1, question: "middleware token", budget: 2000 });
   // Silent truncation reads as "that is everything there is", which is worse than
   // a smaller answer that admits what it left out.
   expect(out).toContain("more matches omitted");
 });
 
-test("an export path is shown so the agent can go read the file itself", () => {
-  const db = seeded();
-  fx.note.insert(db, {
+test("an export path is shown so the agent can go read the file itself", async () => {
+  const db = await seeded();
+  await fx.on(db).note.create({
     project_id: 1,
     grp_id: 1,
     kind: "retro",
@@ -278,48 +297,56 @@ test("an export path is shown so the agent can go read the file itself", () => {
     export_path: "docs/journal/g1/003-retro.md",
     at: 300,
   });
-  const out = queryWith(db, { grpId: 1, projectId: 1, question: "返工 验收标准" });
+  const out = await queryWith(db, { grpId: 1, projectId: 1, question: "返工 验收标准" });
   expect(out).toContain("docs/journal/g1/003-retro.md");
 });
 
-test("the index's own rows are not answers to a question", () => {
+test("the index's own rows are not answers to a question", async () => {
   // `note` is where the PageIndex tree and the repo map live too, both keyed by
   // project and both rewritten whenever the repo changes — so an `ORDER BY at
   // DESC` window kept them at the top, `KIND_WEIGHT` had no entry for either so
   // they scored ×1.0, and one hit handed the agent a whole serialised tree that
   // ate the entire character budget.
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
-  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  await f.runningGrp.create({ project_id: p.id, name: "g1" });
   const tree = JSON.stringify({ "src/auth.ts": { summary: "auth auth auth token token" } });
-  fx.note.insert(db, { project_id: p.id, kind: "pageindex", body: tree, at: 9 });
-  fx.note.insert(db, { project_id: p.id, kind: "map", body: "src/\n  auth.ts — token", at: 9 });
-  fx.note.insert(db, { project_id: p.id, kind: "decision", body: "token 校验放在中间件", at: 8 });
+  await f.note.create({ project_id: p.id, kind: "pageindex", body: tree, at: 9 });
+  await f.note.create({ project_id: p.id, kind: "map", body: "src/\n  auth.ts — token", at: 9 });
+  await f.note.create({ project_id: p.id, kind: "decision", body: "token 校验放在中间件", at: 8 });
 
-  const out = queryWith(db, { grpId: 1, projectId: 1, question: "token", budget: 4000 });
+  const out = await queryWith(db, { grpId: 1, projectId: 1, question: "token", budget: 4000 });
   expect(out).toContain("token 校验放在中间件");
   expect(out).not.toContain("pageindex");
   expect(out).not.toContain("summary");
 });
 
-test("a note quoted in the where section is not quoted again below it", () => {
+test("a note quoted in the where section is not quoted again below it", async () => {
   // `pageIndexContext` spells out the body of every note the model picked, and the
   // lexical search then finds the same notes — two copies of one note inside one
   // 16k budget, on the query whose whole point is to be cheaper than grepping.
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
   const body = "the validation library this fleet uses is zod, settled in 2026-03";
-  const note = fx.note.insert(db, { project_id: p.id, kind: "decision", body });
+  const note = await f.note.create({ project_id: p.id, kind: "decision", body });
   const where = `## tree\n\n### decision #${note.id}\n${body}`;
   const count = (haystack: string) => haystack.split(body).length - 1;
 
   // Without the list, the same note does arrive twice. That is the defect.
-  expect(count(queryWith(db, { grpId: null, projectId: p.id, question: "validation library", where }))).toBe(2);
+  expect(count(await queryWith(db, { grpId: null, projectId: p.id, question: "validation library", where }))).toBe(2);
 
   // With it, once.
   expect(
     count(
-      queryWith(db, { grpId: null, projectId: p.id, question: "validation library", where, whereNotes: [note.id] }),
+      await queryWith(db, {
+        grpId: null,
+        projectId: p.id,
+        question: "validation library",
+        where,
+        whereNotes: [note.id],
+      }),
     ),
   ).toBe(1);
 });
@@ -331,16 +358,16 @@ test("a note quoted in the where section is not quoted again below it", () => {
  * note saying `tests`, and Russian and Arabic — where inflection is the norm rather
  * than the exception — could barely be searched at all.
  */
-test("an inflected query finds the word it is a form of", () => {
-  const { hits } = indexed([
+test("an inflected query finds the word it is a form of", async () => {
+  const { hits } = await indexed([
     { kind: "journal", body: "the gate runs the tests before every merge" },
     { kind: "journal", body: "тесты проверяют граничные случаи" },
     { kind: "journal", body: "الاختبارات تغطي الحالات الحدية" },
     { kind: "journal", body: "the deploy script copies the bundle" },
   ]);
-  expect(hits("testing")[0]?.doc.body).toContain("tests");
-  expect(hits("тестов")[0]?.doc.body).toContain("тесты");
-  expect(hits("اختبار")[0]?.doc.body).toContain("الاختبارات");
+  expect((await hits("testing"))[0]?.doc.body).toContain("tests");
+  expect((await hits("тестов"))[0]?.doc.body).toContain("тесты");
+  expect((await hits("اختبار"))[0]?.doc.body).toContain("الاختبارات");
 });
 
 /**
@@ -362,13 +389,13 @@ test("terms() itself does not stem", () => {
  * stemmer returns each of these unchanged, which is what makes the dispatch safe
  * even where it has nothing to offer.
  */
-test("a script with no stemmer is indexed as it was written", () => {
-  const { hits } = indexed([
+test("a script with no stemmer is indexed as it was written", async () => {
+  const { hits } = await indexed([
     { kind: "journal", body: "沙盒容器是怎么创建的" },
     { kind: "journal", body: "テストが浅すぎる" },
   ]);
-  expect(hits("沙盒容器")[0]?.doc.body).toContain("沙盒");
-  expect(hits("テスト")[0]?.doc.body).toContain("テスト");
+  expect((await hits("沙盒容器"))[0]?.doc.body).toContain("沙盒");
+  expect((await hits("テスト"))[0]?.doc.body).toContain("テスト");
 });
 
 /**
@@ -380,16 +407,17 @@ test("a script with no stemmer is indexed as it was written", () => {
  * the blackboard and gets the reversed one back, ranked above everything, with
  * nothing in the answer saying it no longer holds.
  */
-test("a superseded decision is not what the blackboard answers with", () => {
-  const db = openMemory();
-  const p = fx.project.insert(db, { name: "p" });
-  const old = fx.note.insert(db, {
+test("a superseded decision is not what the blackboard answers with", async () => {
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  const old = await f.note.create({
     project_id: p.id,
     kind: "decision",
     body: "gate order is typecheck then lint then test",
     at: 0,
   });
-  fx.note.insert(db, {
+  await f.note.create({
     project_id: p.id,
     kind: "decision",
     body: "gate order is lint then typecheck then test",
@@ -397,6 +425,37 @@ test("a superseded decision is not what the blackboard answers with", () => {
     supersedes: old.id,
   });
 
-  const hits = makeNoteIndex(db).search("gate order", { grpId: null, projectId: p.id }, 2);
+  const hits = await makeNoteIndex(db).search("gate order", { grpId: null, projectId: p.id }, 2);
   expect(hits.map((h) => h.doc.body)).toEqual(["gate order is lint then typecheck then test"]);
+});
+
+test("a question sharing no word with its answer is what lexical retrieval cannot do", async () => {
+  // The measurement that decides whether the model walk on top of this is worth
+  // its two calls per question. Lexical scoring is exact-term matching, so it is
+  // near-perfect when the asker already knows the vocabulary and blind when they
+  // do not — and this asserts the blind spot rather than describing it, because
+  // the argument for the walk rests entirely on it.
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  const g = await f.runningGrp.create({ project_id: p.id, name: "g1" });
+  for (let n = 0; n < 30; n++) {
+    await f.note.create({ project_id: p.id, grp_id: g.id, kind: "journal", body: `Ran the gates, all green. ${n}` });
+  }
+  await f.note.create({
+    project_id: p.id,
+    grp_id: g.id,
+    kind: "decision",
+    body: "We chose zod over ajv for boundary parsing because it ships types.",
+  });
+
+  const ask = async (question: string) =>
+    (await query({ db, index: makeNoteIndex(db), grpId: g.id, projectId: p.id, question })).includes(
+      "chose zod over ajv",
+    );
+
+  // Same words: found. No shared word: not found, and no ranking change fixes
+  // that — it is the property of the algorithm, not a tuning failure.
+  expect(await ask("zod or ajv?")).toBe(true);
+  expect(await ask("which validation library did we pick?")).toBe(false);
 });

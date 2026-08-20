@@ -648,8 +648,8 @@ function Group({
   children: React.ReactNode;
 }) {
   // A project's origin is a place you can go, so it is a link rather than a
-  // hover string. The tooltip is the fallback for a row migration 037 could not
-  // convert — it still holds a path, and that is still where it points.
+  // hover string. The tooltip is the fallback for a row whose host path was
+  // never converted — it still holds one, and that is still where it points.
   const href = repoHref(hint);
   const line = <Meta className="mb-1.5 block truncate px-2">{note}</Meta>;
   return (
@@ -663,7 +663,7 @@ function Group({
           href={href}
           target="_blank"
           rel="noreferrer"
-          className="mb-1.5 block truncate px-2 text-[0.6875rem] text-ink-3 hover:text-accent hover:underline"
+          className="mb-1.5 block truncate px-2 text-meta text-ink-3 hover:text-accent hover:underline"
         >
           {hint}
         </a>
@@ -693,7 +693,7 @@ function Item({
       onClick={go}
       aria-current={on}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[0.8125rem]",
+        "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-body",
         "transition-colors",
         // Weight as well as fill: hover is also a tint, and two states that differ
         // only by opacity are two states nobody can tell apart.

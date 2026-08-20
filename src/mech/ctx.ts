@@ -1,7 +1,8 @@
 import type { DB } from "../platform/persistence/database.ts";
 import type { Bus } from "../platform/persistence/event-bus.ts";
 import type { Scheduler } from "../platform/scheduling/scheduler.ts";
-import type { Config } from "../platform/config/load.ts";
+import type { Capability, Config, Roles } from "../platform/config/load.ts";
+import { loadRoles, roleWith } from "../platform/config/load.ts";
 
 /**
  * The handle everything below the HTTP layer is given.
@@ -17,7 +18,7 @@ export interface Ctx {
   db: DB;
   bus: Bus;
   sched: Scheduler;
-  /** Resolves a blocking `ask-boss` call. */
+  /** Resolves a blocking `ask-boss` call. Written through `awaitAnswer`/`answered`. */
   waiters: Map<string, (value: string) => void>;
   /**
    * Retrieval for `orch ctx query`. Absent in unit tests that never search.
@@ -41,9 +42,9 @@ export interface Ctx {
    */
   askIn?: (scope: import("./sandbox/sandbox.ts").Scope) => import("./knowledge/pageindex.ts").Ask;
   /** Wired by the server: advances the review pipeline on a QA verdict. */
-  reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
+  reviewVerdict?: (sliceId: number, pass: boolean, note: string) => Promise<void>;
   /** Wired by the server: the Auditor's PR-level verdict. */
-  auditVerdict?: (grpId: number, pass: boolean, note: string) => void;
+  auditVerdict?: (grpId: number, pass: boolean, note: string) => Promise<void>;
   /**
    * Wired by the server: squash, push, open the PR.
    *
@@ -65,9 +66,17 @@ export interface Ctx {
    * the event — otherwise mailing the Architect before an Architect exists is a
    * silent no-op, and the sender waits on a reply that can never come.
    */
-  hire?: (grpId: number | null, role: string, projectId?: number | null) => number | null;
+  hire?: (grpId: number | null, role: string, projectId?: number | null) => Promise<number | null>;
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
+  /**
+   * The roles this installation has, wired by the server.
+   *
+   * `roleFor` reads it to answer "who reviews a slice" without any call site
+   * naming a role. Optional so a unit test that never dispatches need not build
+   * one; the fallback is the installed `roles/`, which is what those tests mean.
+   */
+  roles?: Roles;
   /**
    * The one config object, not a copy of the parts a handler was trusted with.
    *
@@ -84,4 +93,40 @@ export interface Ctx {
    * exercise; a partial production state would only force fake fallbacks and casts.
    */
   config: Config;
+  /**
+   * What this build calls itself, for the CLI provisioned into a sandbox.
+   *
+   * Passed in rather than imported: `platform/process/version.ts` is the release
+   * identity and mechanisms may not reach it, so composition — which may — hands
+   * it down. A sandbox reporting a different version from the server that made
+   * it is a support conversation nobody can win.
+   */
+  version?: string;
+}
+
+/** The role that has this capability. Throws when no role, or more than one, declares it. */
+export function roleFor(ctx: Pick<Ctx, "roles">, cap: Capability): string {
+  return roleWith(ctx.roles ?? loadRoles(), cap);
+}
+
+/**
+ * The two halves of a blocking `ask-boss`, so the key has one owner.
+ *
+ * `awaitAnswer` must be called before the escalation is visible to anything that
+ * can answer it: `route()` hands a question to a stand-in that can answer inside
+ * the same tick, and an answer arriving before the waiter exists is dropped by
+ * the `?.` below — the asking agent then blocks for the rest of its life.
+ */
+const waiterKey = (id: number): string => `escalation:${id}`;
+
+export const awaitAnswer = (ctx: Pick<Ctx, "waiters">, id: number): Promise<string> =>
+  new Promise<string>((resolve) => {
+    ctx.waiters.set(waiterKey(id), resolve);
+  });
+
+/** Hand the answer to whoever is blocked on it. Nobody waiting is normal: it may be a turn. */
+export function answered(ctx: Pick<Ctx, "waiters">, id: number, text: string): void {
+  const waiter = ctx.waiters.get(waiterKey(id));
+  ctx.waiters.delete(waiterKey(id));
+  waiter?.(text);
 }
