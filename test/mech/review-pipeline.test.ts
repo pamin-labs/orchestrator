@@ -513,7 +513,11 @@ test("writing the retro resumes PR-level review instead of dead-ending", async (
   // Every slice accepted but no retro: review asks for one and stops.
   await h.post("/api/v1/slices/1/accept");
   await h.sched.drain();
-  expect(h.specs.at(-1)!.prompt).toContain("no retro");
+  // Any of them, not the last one. `drain` dispatches every pending turn, and
+  // which finishes last is the scheduler's business — this failed once on CI's
+  // four cores and never on ten. What the test is about is that review asks for
+  // the retro rather than dead-ending, which is a claim about the prompt existing.
+  expect(h.specs.filter((s) => s.prompt.includes("no retro"))).not.toEqual([]);
 
   const before = (await h.db.select({ c: count() }).from(jobTable).where(eq(jobTable.kind, "reconcile")))[0]!.c;
   await h.post("/orch/v1/journal", { kind: "retro", body: "S1 返工一次，验收标准写模糊了" }, "tok-eng");
