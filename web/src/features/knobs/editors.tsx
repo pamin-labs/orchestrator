@@ -126,9 +126,14 @@ export function DurationAmount({
   invalid?: boolean;
   onWrite: (ms: number) => void;
 }) {
-  const [draft, setDraft] = useState(() => fmtDuration(ms));
+  // The *resolved* text, not `ms`: the unit is translated, so the same number
+  // reads `20 min` and `20 мин`. Keyed on `ms`, the effect saw nothing move when
+  // the panel changed language and the field kept the previous language's unit —
+  // beside a label that had already changed.
+  const shown = fmtDuration(ms);
+  const [draft, setDraft] = useState(shown);
   // A value the server snapped to something else re-reads on the way back.
-  useEffect(() => setDraft(fmtDuration(ms)), [ms]);
+  useEffect(() => setDraft(shown), [shown]);
 
   const send = (raw: string) => {
     // The unit already on screen is what a bare number means, which is what
