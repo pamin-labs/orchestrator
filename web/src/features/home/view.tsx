@@ -5,6 +5,7 @@ import { H2, Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { cardStyles } from "../../ui/card";
 import { Queue } from "../queue/view";
+import { Trans } from "@lingui/react/macro";
 
 /**
  * Every project at once, plus what wants the boss across all of them.
@@ -39,7 +40,9 @@ export function Home({
     <>
       {anyWork && <Queue st={st} projectId={null} onOpen={onOpen} refresh={refresh} />}
       <div className="max-w-[44rem]">
-        <H2 className={cn(anyWork && "mt-9")}>项目</H2>
+        <H2 className={cn(anyWork && "mt-9")}>
+          <Trans>Projects</Trans>
+        </H2>
         <div className="flex flex-col gap-2.5">
           {homeRows(st).map((p) => {
             const { n, state, bits, live, meta } = projectRow(st, p.id);
@@ -84,7 +87,7 @@ export function Home({
                   // Nothing has ever been asked of this project, so the row is where to
                   // ask. `relative` puts it above the stretched name, not on it.
                   <Button className="relative" onClick={() => onNew(p.id)}>
-                    ＋ 新需求
+                    <Trans>+ New requirement</Trans>
                   </Button>
                 ) : (
                   meta.length > 0 && <Meta className="whitespace-nowrap">{meta.join(" · ")}</Meta>
@@ -95,7 +98,7 @@ export function Home({
         </div>
         {/* Adding a project happens once. It does not outrank the rows it adds to. */}
         <Button variant="quiet" className="mt-2.5" onClick={onAdd}>
-          ＋ 添加项目
+          <Trans>+ Add project</Trans>
         </Button>
       </div>
     </>

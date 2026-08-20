@@ -84,7 +84,7 @@ export function Skills({ projectId }: { projectId: number | null }) {
             ? `勾中的 ${tally.staged}/${tally.user} 个进沙盒` +
               (tally.repo ? `，仓库自带 ${tally.repo} 个` : "") +
               `，每 turn 前缀约 ${tally.k}k tokens`
-            : "读取中…"
+            : t`Loading…`
         }
       >
         <Button variant="quiet" size="sm" disabled={busy === "*"} onClick={rescan}>
@@ -126,7 +126,11 @@ export function Skills({ projectId }: { projectId: number | null }) {
               <span className="font-mono text-secondary text-ink">{r.name}</span>
               {/* Only the exception is marked. 全局 on every other row was a word
                   repeated a hundred and seventy-eight times to say "normal". */}
-              {fixed && <Badge className="shrink-0 self-center">随仓库</Badge>}
+              {fixed && (
+                <Badge className="shrink-0 self-center">
+                  <Trans>Repo-wide</Trans>
+                </Badge>
+              )}
               <span className="min-w-0 flex-1 truncate text-meta text-ink-3">{r.description}</span>
             </label>
           );

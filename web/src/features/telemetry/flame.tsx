@@ -16,6 +16,8 @@ import { Minimap } from "./minimap";
 import { useWheel } from "../../shared/use-wheel";
 import { duration } from "../../shared/format";
 import { type FlameNode, humanName, isRenamed, type TimeWindow, WHOLE, wheelWindow } from "./model";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /**
  * One flame row, and the type that sits in it. 20 holds the 0.6875rem meta size
@@ -255,7 +257,7 @@ export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; 
               "transition-colors hover:text-ink",
             )}
           >
-            ← 回到全部
+            <Trans>← Back to all</Trans>
           </button>
         )}
         {zoomed !== null && <span className="shrink-0 text-meta text-ink-3">看的是 {humanName(zoomed)}</span>}
@@ -265,7 +267,7 @@ export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; 
         <div ref={details} className="min-w-0 truncate font-mono text-meta text-ink-2" />
       </div>
       <div className="mb-1">
-        <Minimap view={view} limit={WHOLE} label="看的是哪一段" onPan={setView} />
+        <Minimap view={view} limit={WHOLE} label={t`Which window`} onPan={setView} />
       </div>
 
       {/* The viewport. The chart inside it is rendered `1/zoom` times wider and

@@ -1,6 +1,7 @@
 import * as P from "@radix-ui/react-popover";
 import * as T from "@radix-ui/react-tooltip";
 import { CircleHelp } from "lucide-react";
+import { t } from "@lingui/core/macro";
 
 /**
  * `title=` is the browser's tooltip: a second of delay, no styling, no keyboard
@@ -51,7 +52,7 @@ export function Help({ children }: { children: React.ReactNode }) {
   return (
     <P.Root>
       <P.Trigger
-        aria-label="为什么是这个值"
+        aria-label={t`Why this value`}
         className="cursor-pointer rounded-full text-ink-3 transition-colors duration-150
                    hover:text-ink data-[state=open]:text-ink"
       >

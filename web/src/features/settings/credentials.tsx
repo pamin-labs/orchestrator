@@ -12,6 +12,8 @@ import {
   ClaudeLoginFlowSchema as ClaudeLoginSchema,
   CodexLoginFlowSchema as CodexLoginSchema,
 } from "../../../../src/contracts/login-flow";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 export interface Runtime {
   key: "claude" | "codex";
@@ -61,7 +63,7 @@ export function CredPane({
 }) {
   return (
     <>
-      <Head title="模型账号" note="真令牌不进沙盒" />
+      <Head title={t`Model account`} note={t`Real tokens don't enter the sandbox`} />
       {RUNTIMES.map((runtime) => (
         <CredentialRow
           key={runtime.key}
@@ -227,13 +229,13 @@ function Credential(props: CredentialProps) {
               props.onSaved();
             }}
           >
-            清掉
+            <Trans>Clear</Trans>
           </Button>
         )}
         {/* Only once there is something to save, same as every other field here. */}
         {dirty && (
           <Button variant="go" size="sm" disabled={form.busy} onClick={() => void save()}>
-            存下
+            <Trans>Save</Trans>
           </Button>
         )}
       </div>
@@ -280,7 +282,12 @@ function CredentialHeader({ state }: { state: CredentialState }) {
 
 function CredentialStatus({ state }: { state: CredentialState }) {
   const { props, form } = state;
-  if (!props.current) return <span className="text-secondary font-medium text-accent">没配</span>;
+  if (!props.current)
+    return (
+      <span className="text-secondary font-medium text-accent">
+        <Trans>Not configured</Trans>
+      </span>
+    );
   const labels = Object.fromEntries(props.runtime.modes.map((mode) => [mode.mode, mode.label]));
   return (
     <>
@@ -350,7 +357,7 @@ function SecretField({ state }: { state: CredentialState }) {
           id={`${props.runtime.key}-secret`}
           type="password"
           className="min-w-0 flex-1 font-mono"
-          placeholder={secretPlaceholder(props, form, "粘贴进来，存下之后看不到")}
+          placeholder={secretPlaceholder(props, form, t`Paste it; hidden after saving`)}
           value={form.secret}
           onChange={(e) => changeForm({ secret: e.target.value })}
         />
@@ -377,7 +384,7 @@ function ChatgptSecretField({ state, signIn }: { state: CredentialState; signIn:
       <Textarea
         id={`${props.runtime.key}-secret`}
         className="min-h-16"
-        placeholder={secretPlaceholder(props, form, "~/.codex/auth.json 的完整内容")}
+        placeholder={secretPlaceholder(props, form, t`Full contents of ~/.codex/auth.json`)}
         value={form.secret}
         onChange={(e) => changeForm({ secret: e.target.value })}
       />
@@ -399,7 +406,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
     <>
       {login.device && (
         <Field orientation="vertical">
-          <DeviceCode code={login.device.code} url={login.device.url} go="去 ChatGPT 输入" />
+          <DeviceCode code={login.device.code} url={login.device.url} go={t`Go to ChatGPT to enter code`} />
           <div className="mt-1.5 flex items-baseline gap-2">
             {/* The real expiry, not a remembered one. `15 分钟` was written into
                 the copy while `expiresAt` sat two lines up driving the timer
@@ -414,7 +421,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
                 changeLogin({ device: null });
               }}
             >
-              取消
+              <Trans>Cancel</Trans>
             </Button>
           </div>
         </Field>
@@ -425,7 +432,9 @@ function LoginProgress({ state }: { state: CredentialState }) {
           <Field>
             {/* Not a FieldLabel: there is no control on this row to focus, and a
                 label pointing at nothing is what a screen reader reads out. */}
-            <FieldTitle className="text-ink-3">登录页</FieldTitle>
+            <FieldTitle className="text-ink-3">
+              <Trans>Login page</Trans>
+            </FieldTitle>
             {/* One line: the address is 400 characters of PKCE and nobody reads
                 it. It stays selectable for the case where the browser that opened
                 it is not the one you want to log in with. */}
@@ -436,7 +445,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
                 rel="noopener"
                 className="shrink-0 text-secondary text-accent underline"
               >
-                打开登录页
+                <Trans>Open login page</Trans>
               </a>
               <Meta className="min-w-0 truncate">{login.link}</Meta>
             </span>
@@ -447,13 +456,13 @@ function LoginProgress({ state }: { state: CredentialState }) {
               thing to do next is beside the evidence for doing it. */}
           <Field orientation="vertical">
             <FieldLabel htmlFor="claude-code" className="text-ink-3">
-              页面给的码
+              <Trans>Code from page</Trans>
             </FieldLabel>
             <InputGroup>
               <Input
                 id="claude-code"
                 className="min-w-0 flex-1 font-mono"
-                placeholder="批准完那一页会给一串码，贴这儿"
+                placeholder={t`After approval, copy the code from that page`}
                 value={login.paste}
                 onChange={(e) => changeLogin({ paste: e.target.value })}
                 onKeyDown={(e) => {
@@ -461,7 +470,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
                 }}
               />
               <Button size="sm" disabled={form.busy || !login.paste.trim()} onClick={() => void sendCode()}>
-                交上去
+                <Trans>Submit</Trans>
               </Button>
             </InputGroup>
             {/* No validity line here: this flow hands back no expiry, and the
@@ -476,7 +485,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
                   changeLogin({ link: null, paste: "" });
                 }}
               >
-                取消
+                <Trans>Cancel</Trans>
               </Button>
             </div>
           </Field>
@@ -492,7 +501,7 @@ function CredentialSettings({ state }: { state: CredentialState }) {
     <>
       <Field>
         <FieldLabel htmlFor={`${props.runtime.key}-url`} className="text-ink-3">
-          API 地址
+          <Trans>API address</Trans>
         </FieldLabel>
         <FieldContent className="flex-col items-stretch gap-1">
           <Input
@@ -506,7 +515,11 @@ function CredentialSettings({ state }: { state: CredentialState }) {
               only ever read from the provider's own endpoint, so a gateway
               account has no window to show and the header would look broken
               rather than deliberate. */}
-          {form.mode !== "api_key" && form.baseUrl.trim() && <Meta className="block">自建网关，头部不显示额度</Meta>}
+          {form.mode !== "api_key" && form.baseUrl.trim() && (
+            <Meta className="block">
+              <Trans>Custom gateway; usage not displayed in header</Trans>
+            </Meta>
+          )}
         </FieldContent>
       </Field>
 
@@ -532,7 +545,9 @@ function CredentialSettings({ state }: { state: CredentialState }) {
                 props.onSaved();
               }}
             />
-            <Meta>Claude Code 自己提交时写进 Co-Authored-By</Meta>
+            <Meta>
+              <Trans>Claude Code writes this in Co-Authored-By when committing</Trans>
+            </Meta>
           </FieldContent>
         </Field>
       )}
@@ -549,9 +564,11 @@ function CredentialSettings({ state }: { state: CredentialState }) {
  */
 function Login({ busy, waiting, onClick }: { busy: boolean; waiting: boolean; onClick: () => void }) {
   return (
-    <Tip label="在工具容器里跑一次官方 CLI 的登录，拿到的凭据存在这儿。本机什么都不用装。仅限官方账号；自建网关走 API key。">
+    <Tip
+      label={t`Run the official CLI's login once in the tool container; store the credential here. No setup needed locally. Official accounts only; custom gateways use API key.`}
+    >
       <Button size="sm" disabled={busy || waiting} onClick={onClick}>
-        {busy || waiting ? "等你在浏览器里批准…" : "登录"}
+        {busy || waiting ? t`Waiting for you to approve in the browser…` : t`Log in`}
       </Button>
     </Tip>
   );

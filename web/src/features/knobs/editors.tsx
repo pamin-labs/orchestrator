@@ -31,6 +31,8 @@ import {
   textOf,
 } from "./model";
 import { COUNT_UNITS, countOf, splitCount } from "./units";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 export const PERCENT = ["%"] as const;
 
@@ -101,6 +103,7 @@ export function Amount<U extends string>({
   units,
   invalid,
   label,
+  labelOf,
   onCommit,
 }: {
   n: number;
@@ -108,8 +111,12 @@ export function Amount<U extends string>({
   units: readonly U[];
   invalid?: boolean;
   label: string;
+  /** How a unit is spelled on screen. `k` and `M` are spelled the way they are
+   *  stored; a duration is not, since its key is ASCII and its label is not. */
+  labelOf?: (unit: U) => string;
   onCommit: (n: number, unit: U) => void;
 }) {
+  const show = labelOf ?? ((u: U) => String(u));
   // Held locally so that changing the unit keeps the digits already typed, and
   // so a value the server snapped to a different unit re-splits on the way back.
   const [draft, setDraft] = useState(String(n));
@@ -146,8 +153,8 @@ export function Amount<U extends string>({
         }}
       />
       {/* One unit is not a choice, it is a suffix. */}
-      {units.length === 1 ? (
-        <Meta>{units[0]}</Meta>
+      {units.length === 1 && units[0] !== undefined ? (
+        <Meta>{show(units[0])}</Meta>
       ) : (
         <Segments
           value={unit}
@@ -161,12 +168,12 @@ export function Amount<U extends string>({
             const selected = units.find((candidate) => candidate === wanted);
             if (selected !== undefined) send(draft, selected);
           }}
-          aria-label={`${label} 的单位`}
+          aria-label={t`Unit for ${label}`}
           className="shrink-0"
         >
           {units.filter(Boolean).map((u) => (
             <Segment key={u} value={u}>
-              {u}
+              {show(u)}
             </Segment>
           ))}
         </Segments>
@@ -224,8 +231,8 @@ function ModelPick({
       {...(disabled !== undefined ? { disabled } : {})}
       value={value}
       options={options}
-      placeholder="模型 id"
-      empty="还没有别的模型，直接写就行"
+      placeholder={t`Model ID`}
+      empty={t`No other models yet; just type`}
       onCommit={onCommit}
     />
   );
@@ -277,7 +284,7 @@ export function Box({
 function RemoveRow({ name, onRemove }: { name: string; onRemove?: () => void }) {
   if (!onRemove) return <span className="w-7 shrink-0" />;
   return (
-    <Tip label="删掉这一行">
+    <Tip label={t`Delete this row`}>
       <Button variant="quiet" size="sm" aria-label={`删掉 ${name}`} className="shrink-0" onClick={onRemove}>
         <X className="size-3" />
       </Button>
@@ -317,7 +324,7 @@ export function Pairs({
   const vw = kind === "text" ? "" : "w-[9rem] flex-none";
   const commit = (k: string, raw: string) => {
     if (kind === "text") return onWrite({ ...map, [k]: raw });
-    if (!/^\d+$/.test(raw)) return onRefuse("要一个整数", k);
+    if (!/^\d+$/.test(raw)) return onRefuse(t`Needs an integer`, k);
     const n = Number(raw);
     onWrite({ ...map, [k]: n });
   };
@@ -332,7 +339,7 @@ export function Pairs({
             className="w-[13rem] flex-none"
             onCommit={(next) => {
               const name = next.trim();
-              if (!name) return onRefuse("名字不能空着，要删就按右边的 ×", k);
+              if (!name) return onRefuse(t`Name can't be empty; use the × on the right to delete`, k);
               // Rebuilt in place rather than deleted and re-added, so a rename
               // does not send the row to the bottom of the list mid-edit.
               onWrite(Object.fromEntries(entries.map(([ek, ev]) => [ek === k ? name : ek, ev])));
@@ -355,7 +362,7 @@ export function Pairs({
           key={`add-${entries.length}`}
           value=""
           placeholder={keyPh}
-          aria-label="加一项"
+          aria-label={t`Add a row`}
           className="w-[13rem] flex-none"
           // Same reason as the window table: an integer knob here is
           // `z.number().int().positive()`, so a row born at 0 is a row the
@@ -365,7 +372,9 @@ export function Pairs({
             if (name) onWrite({ ...map, [name]: kind === "text" ? "" : 1 });
           }}
         />
-        <Meta>填个名字就多一行</Meta>
+        <Meta>
+          <Trans>Fill in a name to add a row</Trans>
+        </Meta>
       </div>
     </div>
   );
@@ -502,7 +511,7 @@ export function Windows({
             }}
           />
         </div>
-        <Meta>{free.length ? "选一个模型就多一行" : "填个模型 id 就多一行"}</Meta>
+        <Meta>{free.length ? t`Pick a model to add a row` : t`Type a model ID to add a row`}</Meta>
       </div>
     </div>
   );
@@ -601,8 +610,12 @@ export function Embedding({
   return (
     <div className="flex w-full items-center gap-2">
       <Segments value={mode} onValueChange={onMode}>
-        <Segment value="local">本地</Segment>
-        <Segment value="remote">远程</Segment>
+        <Segment value="local">
+          <Trans>Local</Trans>
+        </Segment>
+        <Segment value="remote">
+          <Trans>Remote</Trans>
+        </Segment>
       </Segments>
       <ModelPick value={model} options={mode === "local" ? LOCAL_EMBEDDINGS : []} onCommit={onModel} />
     </div>
@@ -641,13 +654,15 @@ export function Permission() {
   return (
     <>
       <Field aria-labelledby="notify-perm">
-        <FieldTitle id="notify-perm">浏览器许可</FieldTitle>
+        <FieldTitle id="notify-perm">
+          <Trans>Browser permission</Trans>
+        </FieldTitle>
         <FieldContent>
           {said ? (
             <Meta>{said}</Meta>
           ) : (
             <Button size="sm" onClick={() => void Notification.requestPermission().then(setState)}>
-              允许通知
+              <Trans>Allow notifications</Trans>
             </Button>
           )}
         </FieldContent>
@@ -657,7 +672,9 @@ export function Permission() {
           one thing left to press. */}
       {state === "granted" && (
         <Field aria-labelledby="notify-want">
-          <FieldTitle id="notify-want">弹到桌面</FieldTitle>
+          <FieldTitle id="notify-want">
+            <Trans>Desktop pop-ups</Trans>
+          </FieldTitle>
           <FieldContent className="flex-col items-start gap-1">
             <Switch
               aria-labelledby="notify-want"
@@ -668,7 +685,9 @@ export function Permission() {
                 setNotifyWanted(next);
               }}
             />
-            <Meta>关掉之后仍然会在页面里提示，标签页标题也照样带计数——只是不再弹出窗口。</Meta>
+            <Meta>
+              <Trans>Turned off, but page alerts and tab title counts still work—just no pop-ups.</Trans>
+            </Meta>
           </FieldContent>
         </Field>
       )}

@@ -1,9 +1,2050 @@
 {
+  "nzne76": {
+    "message": "(following)",
+    "placeholders": {},
+    "comments": [],
+    "translation": "(following)"
+  },
+  "ojmzcv": {
+    "message": "(need one merge first)",
+    "placeholders": {},
+    "comments": [],
+    "translation": "(need one merge first)"
+  },
+  "ItRr_m": {
+    "message": ") to rebuild the frontend.",
+    "placeholders": {},
+    "comments": [],
+    "translation": ") to rebuild the frontend."
+  },
+  "iDg-Sc": {
+    "message": "← Back to all",
+    "placeholders": {},
+    "comments": [],
+    "translation": "← Back to all"
+  },
+  "7SCMDC": {
+    "message": "← Back to full timeline",
+    "placeholders": {},
+    "comments": [],
+    "translation": "← Back to full timeline"
+  },
+  "7TnWLj": {
+    "message": "+ Add project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "+ Add project"
+  },
+  "BZ0E0E": {
+    "message": "+ New requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "+ New requirement"
+  },
+  "gXeitk": {
+    "message": "1/4 of host cores",
+    "placeholders": {},
+    "comments": [],
+    "translation": "1/4 of host cores"
+  },
+  "z5YXOD": {
+    "message": "127.0.0.1:8080 or https://host:port",
+    "placeholders": {},
+    "comments": [],
+    "translation": "127.0.0.1:8080 or https://host:port"
+  },
+  "27QmIv": {
+    "message": "A number",
+    "placeholders": {},
+    "comments": [],
+    "translation": "A number"
+  },
+  "JKqEIB": {
+    "message": "Abandon this requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Abandon this requirement"
+  },
+  "aS0jtz": {
+    "message": "Abandoned",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Abandoned"
+  },
+  "g3UF2V": {
+    "message": "Accept",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Accept"
+  },
+  "rGeVDg": {
+    "message": "Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable"
+  },
+  "m16xKo": {
+    "message": "Add",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Add"
+  },
+  "IVZx0R": {
+    "message": "Add a row",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Add a row"
+  },
+  "L1uMzn": {
+    "message": "Add another",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Add another"
+  },
+  "pUuiHT": {
+    "message": "Add requirements or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Add requirements or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes"
+  },
+  "I5lKdd": {
+    "message": "Add your first project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Add your first project"
+  },
+  "hp8OtS": {
+    "message": "Added",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Added"
+  },
+  "Z4OdvO": {
+    "message": "Adding…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Adding…"
+  },
+  "Du6bPw": {
+    "message": "Address",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Address"
+  },
+  "QWsB_B": {
+    "message": "After approval, copy the code from that page",
+    "placeholders": {},
+    "comments": [],
+    "translation": "After approval, copy the code from that page"
+  },
+  "ckPR99": {
+    "message": "AI is thinking on your behalf",
+    "placeholders": {},
+    "comments": [],
+    "translation": "AI is thinking on your behalf"
+  },
+  "iPLTO_": {
+    "message": "AI-drafted response",
+    "placeholders": {},
+    "comments": [],
+    "translation": "AI-drafted response"
+  },
+  "N40H-G": {
+    "message": "All",
+    "placeholders": {},
+    "comments": [],
+    "translation": "All"
+  },
+  "IN8luu": {
+    "message": "All done",
+    "placeholders": {},
+    "comments": [],
+    "translation": "All done"
+  },
+  "LJR_kp": {
+    "message": "All pass",
+    "placeholders": {},
+    "comments": [],
+    "translation": "All pass"
+  },
+  "llj5Cv": {
+    "message": "All under 1ms",
+    "placeholders": {},
+    "comments": [],
+    "translation": "All under 1ms"
+  },
+  "iN398g": {
+    "message": "Allow notifications",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Allow notifications"
+  },
+  "jAqydi": {
+    "message": "Answered on your behalf",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Answered on your behalf"
+  },
+  "9f6OQn": {
+    "message": "API address",
+    "placeholders": {},
+    "comments": [],
+    "translation": "API address"
+  },
+  "aAIQg2": {
+    "message": "Appearance",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Appearance"
+  },
+  "Rc_cvo": {
+    "message": "Approve and start",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Approve and start"
+  },
+  "NINEl7": {
+    "message": "Approved · Awaiting boundary",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Approved · Awaiting boundary"
+  },
+  "lwZzkx": {
+    "message": "Approved, blocked by boundaries",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Approved, blocked by boundaries"
+  },
+  "1TJ6zo": {
+    "message": "Approved; starts automatically when boundaries clear",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Approved; starts automatically when boundaries clear"
+  },
+  "WuvFQ1": {
+    "message": "Architect decides on tech choices and architectural boundaries; if they can't answer, they'll come back.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Architect decides on tech choices and architectural boundaries; if they can't answer, they'll come back."
+  },
+  "B495Gs": {
+    "message": "Archive",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Archive"
+  },
+  "E3Jb7M": {
+    "message": "Ask GitHub",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Ask GitHub"
+  },
+  "igVDFt": {
+    "message": "Attach",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Attach"
+  },
+  "VbeIOx": {
+    "message": "Author",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Author"
+  },
+  "NxjG-h": {
+    "message": "Authorized",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Authorized"
+  },
+  "lLw1fO": {
+    "message": "Awaiting Architect to split boundaries",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Awaiting Architect to split boundaries"
+  },
+  "HXRIvm": {
+    "message": "Awaiting merge",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Awaiting merge"
+  },
+  "JhyKBZ": {
+    "message": "Awaiting your decision",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Awaiting your decision"
+  },
+  "sZkxOT": {
+    "message": "Awaiting your review",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Awaiting your review"
+  },
+  "ZWwYwM": {
+    "message": "Base branch",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Base branch"
+  },
+  "TRRBw1": {
+    "message": "Blocked domains",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Blocked domains"
+  },
+  "FXHmjT": {
+    "message": "Bootstrap failed",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Bootstrap failed"
+  },
+  "pHs8kZ": {
+    "message": "Both go to Dispatcher; it will revise the card and bring it back for your approval.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Both go to Dispatcher; it will revise the card and bring it back for your approval."
+  },
+  "ssuwjF": {
+    "message": "Branch",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Branch"
+  },
+  "JYj5R2": {
+    "message": "Browse files",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Browse files"
+  },
+  "Rff84-": {
+    "message": "Browser can't read the clipboard directly. Click in the input and use Cmd+V; images work too.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Browser can't read the clipboard directly. Click in the input and use Cmd+V; images work too."
+  },
+  "OK_Dka": {
+    "message": "Browser permission",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Browser permission"
+  },
+  "SMnY7U": {
+    "message": "Budget exhausted",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Budget exhausted"
+  },
+  "lR_A13": {
+    "message": "Budget exhausted; group paused",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Budget exhausted; group paused"
+  },
+  "EGCGvo": {
+    "message": "Burn rate",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Burn rate"
+  },
+  "AcvZ26": {
+    "message": "By account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "By account"
+  },
+  "-oC-Mm": {
+    "message": "By requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "By requirement"
+  },
+  "EZ_s8N": {
+    "message": "By tier",
+    "placeholders": {},
+    "comments": [],
+    "translation": "By tier"
+  },
+  "nhDPTQ": {
+    "message": "Cache hit rate",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Cache hit rate"
+  },
+  "MfNfKv": {
+    "message": "Can modify which files",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Can modify which files"
+  },
+  "9EAnVu": {
+    "message": "Can't count",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Can't count"
+  },
+  "Ce3qIj": {
+    "message": "Can't determine until first group clones; fill in settings later",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Can't determine until first group clones; fill in settings later"
+  },
+  "ZCtEMi": {
+    "message": "Can't read log",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Can't read log"
+  },
+  "B4V6vP": {
+    "message": "Can't read remote branches; storing what you entered",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Can't read remote branches; storing what you entered"
+  },
+  "dEgA5A": {
+    "message": "Cancel",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Cancel"
+  },
+  "fFlTkL": {
+    "message": "Cancel all queued turns; return the occupied slot to another group.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Cancel all queued turns; return the occupied slot to another group."
+  },
+  "NGyoqv": {
+    "message": "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
+  },
+  "Mrhygm": {
+    "message": "cards pending review",
+    "placeholders": {},
+    "comments": [],
+    "translation": "cards pending review"
+  },
+  "3YmduU": {
+    "message": "Change base branch",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Change base branch"
+  },
+  "jyyksH": {
+    "message": "Change its access",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Change its access"
+  },
+  "Sg6yCv": {
+    "message": "Changes exceed 400k characters; tail not retrieved. Remaining changes are in the sandbox checkout.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Changes exceed 400k characters; tail not retrieved. Remaining changes are in the sandbox checkout."
+  },
+  "X0ekHE": {
+    "message": "Choose account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Choose account"
+  },
+  "uh1jVI": {
+    "message": "Choose attachments",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Choose attachments"
+  },
+  "W6HUan": {
+    "message": "Choose repository",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Choose repository"
+  },
+  "3zc7HP": {
+    "message": "Claude Code writes this in Co-Authored-By when committing",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Claude Code writes this in Co-Authored-By when committing"
+  },
+  "xCJdfg": {
+    "message": "Clear",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Clear"
+  },
+  "xiP_vW": {
+    "message": "Click a row to add",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Click a row to add"
+  },
+  "4QJHUD": {
+    "message": "Click to add to the end",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Click to add to the end"
+  },
+  "DEcU1o": {
+    "message": "Clipboard is empty",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Clipboard is empty"
+  },
+  "9UQ730": {
+    "message": "Clone",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Clone"
+  },
+  "Zi3sT-": {
+    "message": "Clone this group's branch and dependencies into a new sandbox",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Clone this group's branch and dependencies into a new sandbox"
+  },
+  "yz7wBu": {
+    "message": "Close",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Close"
+  },
+  "78_KBG": {
+    "message": "Cmd+Enter to send to PM",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Cmd+Enter to send to PM"
+  },
+  "EJR83A": {
+    "message": "Code comes from here",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Code comes from here"
+  },
+  "KEXT7L": {
+    "message": "Code from page",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Code from page"
+  },
+  "H86f9p": {
+    "message": "Collapse",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Collapse"
+  },
+  "pPC42a": {
+    "message": "Collapse event stream",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Collapse event stream"
+  },
+  "sjVfrA": {
+    "message": "Command",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Command"
+  },
+  "jwNwc7": {
+    "message": "Comments are recorded in the notes; PM will schedule a correction task and the group continues.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Comments are recorded in the notes; PM will schedule a correction task and the group continues."
+  },
+  "Y9nBMs": {
+    "message": "Comments are recorded in the notes; the PM will schedule corrections accordingly. Paste screenshots directly.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Comments are recorded in the notes; the PM will schedule corrections accordingly. Paste screenshots directly."
+  },
+  "fgdC0z": {
+    "message": "Configuration doesn't allow the path we need to mount",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Configuration doesn't allow the path we need to mount"
+  },
+  "rZnbcL": {
+    "message": "Confirm abandonment",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Confirm abandonment"
+  },
+  "3jod3l": {
+    "message": "Connect GitHub",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Connect GitHub"
+  },
+  "QHcLEN": {
+    "message": "Connected",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Connected"
+  },
+  "d8N7O4": {
+    "message": "Connected, but this GitHub App isn't installed on any account, so no repos are visible.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Connected, but this GitHub App isn't installed on any account, so no repos are visible."
+  },
+  "9zb2WA": {
+    "message": "Connecting",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Connecting"
+  },
+  "ZPjg5y": {
+    "message": "Connection lost; reconnecting",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Connection lost; reconnecting"
+  },
+  "onXU-K": {
+    "message": "Container hasn't started yet. Clone and dependency installation output will appear here line by line.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Container hasn't started yet. Clone and dependency installation output will appear here line by line."
+  },
+  "ILtacM": {
+    "message": "Container running",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Container running"
+  },
+  "uZQeFw": {
+    "message": "Container will be discarded. The next turn will rebuild it: re-clone the branch, reinstall dependencies. Uncommitted changes will be lost.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Container will be discarded. The next turn will rebuild it: re-clone the branch, reinstall dependencies. Uncommitted changes will be lost."
+  },
+  "uZpbS_": {
+    "message": "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:"
+  },
+  "X3zmoA": {
+    "message": "Convert to a requirement; this group will automatically continue after it's implemented.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Convert to a requirement; this group will automatically continue after it's implemented."
+  },
+  "he3ygx": {
+    "message": "Copy",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Copy"
+  },
+  "uRSTuQ": {
+    "message": "Could not generate a draft; you'll need to write this one yourself.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Could not generate a draft; you'll need to write this one yourself."
+  },
+  "wBMjJ2": {
+    "message": "Count",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Count"
+  },
+  "MLnrdw": {
+    "message": "Create requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Create requirement"
+  },
+  "Xf79vI": {
+    "message": "Custom gateway; usage not displayed in header",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Custom gateway; usage not displayed in header"
+  },
+  "awVk4j": {
+    "message": "Decomposing",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Decomposing"
+  },
+  "ovBPCi": {
+    "message": "Default",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Default"
+  },
+  "sa8w4z": {
+    "message": "Default image",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Default image"
+  },
+  "KD-j-V": {
+    "message": "Delegate to Architect",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Delegate to Architect"
+  },
+  "cnGeoo": {
+    "message": "Delete",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Delete"
+  },
+  "fMW4pP": {
+    "message": "Delete this row",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Delete this row"
+  },
+  "_YCR6Z": {
+    "message": "Desk",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Desk"
+  },
+  "odCJNJ": {
+    "message": "Desktop pop-ups",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Desktop pop-ups"
+  },
+  "E_QGRL": {
+    "message": "Disabled",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Disabled"
+  },
+  "jPuGs1": {
+    "message": "Disabled skills aren't in the sandbox; the agent can't find it. Enable it in settings, or cancel this insertion?",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Disabled skills aren't in the sandbox; the agent can't find it. Enable it in settings, or cancel this insertion?"
+  },
+  "s2IVgM": {
+    "message": "Discard all changes in the current turn and return to the start of this round.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Discard all changes in the current turn and return to the start of this round."
+  },
+  "-K0AvT": {
+    "message": "Disconnect",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Disconnect"
+  },
+  "0E35Mj": {
+    "message": "Dispatcher is analyzing; no slices yet",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Dispatcher is analyzing; no slices yet"
+  },
+  "zaa-ai": {
+    "message": "Dispatcher is writing the plan card; it will appear here when done.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Dispatcher is writing the plan card; it will appear here when done."
+  },
+  "hdg82H": {
+    "message": "Don't proceed",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Don't proceed"
+  },
+  "DPfwMq": {
+    "message": "Done",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Done"
+  },
+  "UVoqL5": {
+    "message": "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
+  },
+  "atgcA4": {
+    "message": "e.g. 2000000",
+    "placeholders": {},
+    "comments": [],
+    "translation": "e.g. 2000000"
+  },
+  "EBg0i_": {
+    "message": "Edit file",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Edit file"
+  },
+  "N2S1rs": {
+    "message": "Empty",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Empty"
+  },
+  "uGI3gC": {
+    "message": "Empty = allow all outbound (see README)",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Empty = allow all outbound (see README)"
+  },
+  "b6dC-N": {
+    "message": "Empty = server has no authentication",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Empty = server has no authentication"
+  },
+  "Pw_vMX": {
+    "message": "Empty directory",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Empty directory"
+  },
+  "QbiIMp": {
+    "message": "Empty: bootstrap detects from repo",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Empty: bootstrap detects from repo"
+  },
+  "y08yme": {
+    "message": "Entire branch",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Entire branch"
+  },
+  "N-tqDR": {
+    "message": "Entire group is paused",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Entire group is paused"
+  },
+  "_X5VUz": {
+    "message": "Entire group is suspended",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Entire group is suspended"
+  },
+  "AVlZoM": {
+    "message": "Environment",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Environment"
+  },
+  "0ZQgVt": {
+    "message": "Environment setup output",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Environment setup output"
+  },
+  "cfg2rE": {
+    "message": "Event stream",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Event stream"
+  },
+  "wTEow6": {
+    "message": "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\nDrag in screenshots or designs, or paste. Cmd+Enter to submit",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\nDrag in screenshots or designs, or paste. Cmd+Enter to submit"
+  },
+  "1A3EXy": {
+    "message": "Expand",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Expand"
+  },
+  "pzSUaH": {
+    "message": "Expand event stream: who said what to whom, newest first",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Expand event stream: who said what to whom, newest first"
+  },
+  "qcloGZ": {
+    "message": "Fail",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Fail"
+  },
+  "v4wgrk": {
+    "message": "Failed to add",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Failed to add"
+  },
+  "WYmRTB": {
+    "message": "Failed to open",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Failed to open"
+  },
+  "17ylhM": {
+    "message": "Fetching login code…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Fetching login code…"
+  },
+  "7SSxh3": {
+    "message": "Files and folders OK; click a name to enter a folder.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Files and folders OK; click a name to enter a folder."
+  },
+  "ffafQN": {
+    "message": "Fill config/default.yaml with github.appSlug; this becomes a direct link.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Fill config/default.yaml with github.appSlug; this becomes a direct link."
+  },
+  "-jN6EB": {
+    "message": "Fill in",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Fill in"
+  },
+  "Lx8QZu": {
+    "message": "Fill in a name to add a row",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Fill in a name to add a row"
+  },
+  "hpseek": {
+    "message": "Filter or type a name",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Filter or type a name"
+  },
+  "YuPiJe": {
+    "message": "Filter this log",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Filter this log"
+  },
+  "Vr0_8R": {
+    "message": "Filter this log…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Filter this log…"
+  },
+  "MtAXCN": {
+    "message": "Fix this",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Fix this"
+  },
+  "CDchO1": {
+    "message": "Flame distribution",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Flame distribution"
+  },
+  "kNqMMd": {
+    "message": "Folder",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Folder"
+  },
+  "zUUrSA": {
+    "message": "Follow this machine's default",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Follow this machine's default"
+  },
+  "EumT_c": {
+    "message": "Follow window",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Follow window"
+  },
+  "PKd9Kr": {
+    "message": "Follow window—updates as window changes, fits without crowding",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Follow window—updates as window changes, fits without crowding"
+  },
+  "QwS_6h": {
+    "message": "From your connected GitHub account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "From your connected GitHub account"
+  },
+  "4FtUNJ": {
+    "message": "Frontend and server versions may be out of sync. Restart the service (",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Frontend and server versions may be out of sync. Restart the service ("
+  },
+  "ibQa3C": {
+    "message": "Full contents of ~/.codex/auth.json",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Full contents of ~/.codex/auth.json"
+  },
+  "_C32np": {
+    "message": "Gates",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Gates"
+  },
+  "MfrlTO": {
+    "message": "Gates / Install commands",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Gates / Install commands"
+  },
+  "vmpFiS": {
+    "message": "Generate a draft from this group's notes without sending it.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Generate a draft from this group's notes without sending it."
+  },
+  "7ctz7h": {
+    "message": "Generate another",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Generate another"
+  },
+  "8ojtRr": {
+    "message": "Generated from this group's notes; not yet sent to anyone. You can edit after filling it in.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Generated from this group's notes; not yet sent to anyone. You can edit after filling it in."
+  },
+  "Bk16Bl": {
+    "message": "Git repo",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Git repo"
+  },
+  "jbs0jI": {
+    "message": "GitHub → this App → Install App",
+    "placeholders": {},
+    "comments": [],
+    "translation": "GitHub → this App → Install App"
+  },
+  "Fe7bVR": {
+    "message": "GitHub not connected yet; using our bot account for now",
+    "placeholders": {},
+    "comments": [],
+    "translation": "GitHub not connected yet; using our bot account for now"
+  },
+  "2GT3Hf": {
+    "message": "Global",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Global"
+  },
+  "Nhs_sw": {
+    "message": "Go merge PR ↗",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Go merge PR ↗"
+  },
+  "aQBZnK": {
+    "message": "Go to ChatGPT to enter code",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Go to ChatGPT to enter code"
+  },
+  "tgcm5H": {
+    "message": "Go to GitHub → this App → Install App, then choose which repos it can access.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Go to GitHub → this App → Install App, then choose which repos it can access."
+  },
+  "gamgPa": {
+    "message": "Go to GitHub to enter code",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Go to GitHub to enter code"
+  },
+  "1WuwiM": {
+    "message": "Go to settings",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Go to settings"
+  },
+  "OkNnU_": {
+    "message": "Go to settings to check GitHub",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Go to settings to check GitHub"
+  },
+  "76gPWk": {
+    "message": "Got it",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Got it"
+  },
+  "uvVKhA": {
+    "message": "Gray text shows defaults",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Gray text shows defaults"
+  },
+  "mHnn7C": {
+    "message": "Group is paused",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Group is paused"
+  },
+  "771hIp": {
+    "message": "Has objections",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Has objections"
+  },
+  "eahmyG": {
+    "message": "Hide this stage",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Hide this stage"
+  },
+  "WtafLn": {
+    "message": "Hiding:",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Hiding:"
+  },
+  "agP50o": {
+    "message": "hr",
+    "placeholders": {},
+    "comments": [],
+    "translation": "hr"
+  },
+  "PmknJS": {
+    "message": "HTTP request",
+    "placeholders": {},
+    "comments": [],
+    "translation": "HTTP request"
+  },
+  "QSzGDE": {
+    "message": "Idle",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Idle"
+  },
+  "hG89Ed": {
+    "message": "Image",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Image"
+  },
+  "OIuB5D": {
+    "translation": "Image",
+    "message": "Image",
+    "context": "a picture, not a container image",
+    "placeholders": {},
+    "comments": []
+  },
+  "ukOFaT": {
+    "message": "Including downstream",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Including downstream"
+  },
+  "yftYSC": {
+    "message": "Insert skill",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Insert skill"
+  },
+  "CfGTMN": {
+    "message": "Install dependencies",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Install dependencies"
+  },
+  "4INO0l": {
+    "message": "Install on GitHub",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Install on GitHub"
+  },
+  "ZOcvbt": {
+    "message": "Install to another account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Install to another account"
+  },
+  "Sp4xyr": {
+    "message": "Installed on these accounts",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Installed on these accounts"
+  },
+  "3dioPi": {
+    "message": "Interface language",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Interface language"
+  },
+  "pD0NCH": {
+    "message": "Interrupt and rollback",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Interrupt and rollback"
+  },
+  "Jv5HTk": {
+    "message": "Interrupt, keep changes",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Interrupt, keep changes"
+  },
+  "sOqJT5": {
+    "message": "It's not a duplicate, and it's not done yet — keep decomposing.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "It's not a duplicate, and it's not done yet — keep decomposing."
+  },
+  "sN5SzN": {
+    "message": "Just describe what you need. A plan card will be generated for approval before any code is written.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Just describe what you need. A plan card will be generated for approval before any code is written."
+  },
+  "OSBXx5": {
+    "message": "Just now",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Just now"
+  },
+  "PZ_kxo": {
+    "message": "Keep",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Keep"
+  },
+  "7sMeHQ": {
+    "message": "Key",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Key"
+  },
+  "6jt8EG": {
+    "message": "Last 24 hours, per hour",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Last 24 hours, per hour"
+  },
+  "CoUyaF": {
+    "message": "Let AI generate one",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Let AI generate one"
+  },
+  "XonalD": {
+    "message": "Let bootstrap retry; it will review the repository with the error above in context",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Let bootstrap retry; it will review the repository with the error above in context"
+  },
+  "ezzro3": {
+    "message": "Loading changes…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Loading changes…"
+  },
+  "32n8fF": {
+    "message": "Loading log…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Loading log…"
+  },
+  "dsRqVs": {
+    "message": "Loading notes…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Loading notes…"
+  },
+  "Pwqkdw": {
+    "message": "Loading…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Loading…"
+  },
+  "d5zxa4": {
+    "message": "Local",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Local"
+  },
+  "mTyZmU": {
+    "message": "Local to this machine only, not tied to the project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Local to this machine only, not tied to the project"
+  },
+  "sQia9P": {
+    "message": "Log in",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Log in"
+  },
+  "6SIbcf": {
+    "message": "Login code copied",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Login code copied"
+  },
+  "58Go3p": {
+    "message": "Login page",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Login page"
+  },
+  "g9KxkF": {
+    "message": "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\".",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
+  },
+  "v8o-Rn": {
+    "message": "Memory",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Memory"
+  },
+  "c6FNGk": {
+    "message": "Message this group",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Message this group"
+  },
+  "HJMQTa": {
+    "message": "Message this group…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Message this group…"
+  },
+  "lWkKSO": {
+    "message": "min",
+    "placeholders": {},
+    "comments": [],
+    "translation": "min"
+  },
+  "ahFhPa": {
+    "message": "Model account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Model account"
+  },
+  "IzB3v0": {
+    "message": "Model ID",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Model ID"
+  },
+  "tgWuMB": {
+    "message": "Modified",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Modified"
+  },
+  "2FYpfJ": {
+    "message": "More",
+    "placeholders": {},
+    "comments": [],
+    "translation": "More"
+  },
+  "TpHstq": {
+    "message": "ms",
+    "placeholders": {},
+    "comments": [],
+    "translation": "ms"
+  },
+  "6YtxFj": {
+    "message": "Name",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Name"
+  },
+  "ULmBuU": {
+    "message": "Name can't be empty; use the × on the right to delete",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Name can't be empty; use the × on the right to delete"
+  },
+  "knuGkj": {
+    "message": "Needs an integer",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Needs an integer"
+  },
+  "d1fjbO": {
+    "message": "New files are expected; if it thinks these already exist, the card was written from speculation.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "New files are expected; if it thinks these already exist, the card was written from speculation."
+  },
+  "6Vgn9k": {
+    "message": "New projects use this; leave blank to follow config",
+    "placeholders": {},
+    "comments": [],
+    "translation": "New projects use this; leave blank to follow config"
+  },
+  "FDivSs": {
+    "message": "New requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "New requirement"
+  },
+  "xsayrv": {
+    "message": "No activity in this window.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No activity in this window."
+  },
+  "ZILws9": {
+    "message": "No activity yet.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No activity yet."
+  },
+  "bntSi-": {
+    "message": "No budget limit",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No budget limit"
+  },
+  "kknhfj": {
+    "message": "No changes",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No changes"
+  },
+  "-WlVYy": {
+    "message": "No container yet",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No container yet"
+  },
+  "4SBV0R": {
+    "message": "No data yet",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No data yet"
+  },
+  "2BdXR9": {
+    "message": "No deliveries yet. Requirements are archived here after merging to main.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No deliveries yet. Requirements are archived here after merging to main."
+  },
+  "kRwdtK": {
+    "message": "No diff available. The slice didn't record a baseline commit, or the sandbox has been reclaimed.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No diff available. The slice didn't record a baseline commit, or the sandbox has been reclaimed."
+  },
+  "ekZ9la": {
+    "message": "No events",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No events"
+  },
+  "112a8L": {
+    "message": "No gates enabled; LLM review has no floor.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No gates enabled; LLM review has no floor."
+  },
+  "4TVVsS": {
+    "message": "No matches",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No matches"
+  },
+  "d_Z5TM": {
+    "message": "No matching branches",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No matching branches"
+  },
+  "Au729R": {
+    "message": "No matching images",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No matching images"
+  },
+  "tSkn3p": {
+    "message": "No matching lines",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No matching lines"
+  },
+  "8Unj92": {
+    "message": "No matching projects",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No matching projects"
+  },
   "WA4QLO": {
     "message": "No matching skills",
     "placeholders": {},
     "comments": [],
     "translation": ""
+  },
+  "pkh1lU": {
+    "message": "No notes yet. Agents write journals each turn; retrospectives are written before the group dissolves and distilled into lessons for later groups.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No notes yet. Agents write journals each turn; retrospectives are written before the group dissolves and distilled into lessons for later groups."
+  },
+  "7NntGT": {
+    "message": "No one working yet. Approve a plan card and each agent's current task appears here.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No one working yet. Approve a plan card and each agent's current task appears here."
+  },
+  "Owb59A": {
+    "message": "No open questions. This group is not waiting on you right now.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No open questions. This group is not waiting on you right now."
+  },
+  "8UMyhm": {
+    "message": "No other models yet; just type",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No other models yet; just type"
+  },
+  "FyCSgf": {
+    "message": "No other requirements for this project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No other requirements for this project"
+  },
+  "FCR3S_": {
+    "message": "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
+  },
+  "musiyS": {
+    "message": "No pending items",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No pending items"
+  },
+  "FnBLw7": {
+    "message": "No reason recorded",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No reason recorded"
+  },
+  "u1OZfk": {
+    "message": "No requirements in progress. Click + for a new one in the top right.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No requirements in progress. Click + for a new one in the top right."
+  },
+  "K_5cdM": {
+    "message": "No requirements yet",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No requirements yet"
+  },
+  "rmVNA-": {
+    "message": "No runnable commands found.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No runnable commands found."
+  },
+  "LAGAld": {
+    "message": "No slice",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No slice"
+  },
+  "Dje3yF": {
+    "message": "No slices",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No slices"
+  },
+  "D8lG5Z": {
+    "message": "No system activity recorded.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No system activity recorded."
+  },
+  "A2To5D": {
+    "message": "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
+  },
+  "FWdQE5": {
+    "message": "No, keep going",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No, keep going"
+  },
+  "-f7hCL": {
+    "message": "None selected",
+    "placeholders": {},
+    "comments": [],
+    "translation": "None selected"
+  },
+  "e9k3F8": {
+    "message": "None; this connection sees no repositories. Install with all repos, or select specific ones.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "None; this connection sees no repositories. Install with all repos, or select specific ones."
+  },
+  "OxtmTI": {
+    "message": "Not checked out",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Not checked out"
+  },
+  "SDND4q": {
+    "message": "Not configured",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Not configured"
+  },
+  "S33tz3": {
+    "message": "Not connected",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Not connected"
+  },
+  "qB4FXu": {
+    "message": "Not enough data for two hours.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Not enough data for two hours."
+  },
+  "QEXVOr": {
+    "message": "Not enough data for two periods.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Not enough data for two periods."
+  },
+  "nw77tA": {
+    "message": "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
+  },
+  "sF_cxU": {
+    "message": "Not satisfied",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Not satisfied"
+  },
+  "pJLF3J": {
+    "message": "Not started yet; waiting for prior slices to be accepted.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Not started yet; waiting for prior slices to be accepted."
+  },
+  "1DBGsz": {
+    "message": "Notes",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Notes"
+  },
+  "iDNBZe": {
+    "message": "Notifications",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Notifications"
+  },
+  "zga9sT": {
+    "message": "OK",
+    "placeholders": {},
+    "comments": [],
+    "translation": "OK"
+  },
+  "u3JJbf": {
+    "message": "Once boundaries are cleared, work starts automatically; no need to click again.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Once boundaries are cleared, work starts automatically; no need to click again."
+  },
+  "VvW38y": {
+    "message": "One connection manages all projects",
+    "placeholders": {},
+    "comments": [],
+    "translation": "One connection manages all projects"
+  },
+  "P3rmDM": {
+    "message": "Only running",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Only running"
+  },
+  "Tl9TR8": {
+    "message": "Only this stage",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Only this stage"
+  },
+  "AptlFm": {
+    "message": "Open a new PR",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Open a new PR"
+  },
+  "cfVQvA": {
+    "message": "Open login page",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Open login page"
+  },
+  "ixlGqr": {
+    "message": "Open new PR",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Open new PR"
+  },
+  "XNVZiJ": {
+    "message": "Open PR ↗",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Open PR ↗"
+  },
+  "UYUgdb": {
+    "message": "Order",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Order"
+  },
+  "ucgZ0o": {
+    "message": "Organization",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Organization"
+  },
+  "_IX_7x": {
+    "message": "Other",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Other"
+  },
+  "F8JUQI": {
+    "message": "P50",
+    "placeholders": {},
+    "comments": [],
+    "translation": "P50"
+  },
+  "QwetJl": {
+    "message": "P95",
+    "placeholders": {},
+    "comments": [],
+    "translation": "P95"
+  },
+  "wFwgKk": {
+    "message": "Pass",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Pass"
+  },
+  "HzVv6g": {
+    "message": "Paste",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Paste"
+  },
+  "GIvsjD": {
+    "message": "Paste it; hidden after saving",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Paste it; hidden after saving"
+  },
+  "IgrLD_": {
+    "message": "Pause",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Pause"
+  },
+  "UbRKMZ": {
+    "message": "Pending",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Pending"
+  },
+  "pAEgM9": {
+    "message": "pending merges",
+    "placeholders": {},
+    "comments": [],
+    "translation": "pending merges"
+  },
+  "HlzhUv": {
+    "message": "Per delivered requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Per delivered requirement"
+  },
+  "jAIAes": {
+    "message": "Per-run duration",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Per-run duration"
+  },
+  "7MuXko": {
+    "message": "Personal",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Personal"
+  },
+  "d15suO": {
+    "message": "Personal account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Personal account"
+  },
+  "Yj_Oy0": {
+    "message": "Pick a model to add a row",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Pick a model to add a row"
+  },
+  "GdgCoi": {
+    "message": "Plan",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Plan"
+  },
+  "A4x6D_": {
+    "message": "Plan card",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Plan card"
+  },
+  "5dUEVS": {
+    "message": "Plan card not submitted",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Plan card not submitted"
+  },
+  "GszIEh": {
+    "message": "Plan card not submitted yet",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Plan card not submitted yet"
+  },
+  "IRufNX": {
+    "message": "Plan card pending approval",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Plan card pending approval"
+  },
+  "nIqmlE": {
+    "message": "Planner suggests abandoning",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Planner suggests abandoning"
+  },
+  "uVradX": {
+    "message": "PR link not found",
+    "placeholders": {},
+    "comments": [],
+    "translation": "PR link not found"
+  },
+  "o4QBBj": {
+    "message": "PR pending merge",
+    "placeholders": {},
+    "comments": [],
+    "translation": "PR pending merge"
+  },
+  "Q6hhn8": {
+    "message": "Preferences",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Preferences"
+  },
+  "zwBp5t": {
+    "message": "Private",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Private"
+  },
+  "wyaIXF": {
+    "message": "Project name…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Project name…"
+  },
+  "-0B-ue": {
+    "message": "Projects",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Projects"
+  },
+  "bfgr_e": {
+    "message": "Question",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Question"
+  },
+  "K6TkGP": {
+    "message": "questions",
+    "placeholders": {},
+    "comments": [],
+    "translation": "questions"
+  },
+  "enzGAL": {
+    "message": "Questions",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Questions"
+  },
+  "8wu9lr": {
+    "message": "Queued",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Queued"
+  },
+  "nwqkBq": {
+    "message": "Read from server",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Read from server"
+  },
+  "ozwmb2": {
+    "message": "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser."
+  },
+  "A16Eqd": {
+    "message": "Real tokens don't enter the sandbox",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Real tokens don't enter the sandbox"
+  },
+  "gcoiFh": {
+    "message": "Reconnect",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Reconnect"
+  },
+  "lCF0wC": {
+    "message": "Refresh",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Refresh"
+  },
+  "XeJdpK": {
+    "message": "Reject this slice",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Reject this slice"
+  },
+  "ekCRTP": {
+    "message": "Rejected",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Rejected"
+  },
+  "GvcBZh": {
+    "message": "Rejected, awaiting fix",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Rejected, awaiting fix"
+  },
+  "iGlRgg": {
+    "message": "Release the concurrency slot; code and checkpoint in the sandbox stay in place.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Release the concurrency slot; code and checkpoint in the sandbox stay in place."
+  },
+  "qlAIQ1": {
+    "message": "Remote",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Remote"
+  },
+  "t_YqKh": {
+    "message": "Remove",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Remove"
+  },
+  "a3M6tu": {
+    "message": "Remove limit",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Remove limit"
+  },
+  "HxssvP": {
+    "message": "Remove project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Remove project"
+  },
+  "Bh5Msf": {
+    "message": "Remove this project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Remove this project"
+  },
+  "APfagk": {
+    "message": "Removing…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Removing…"
+  },
+  "ImOQa9": {
+    "message": "Reply",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Reply"
+  },
+  "ORouxy": {
+    "message": "Reply. Sending this will unblock the waiting agent. Cmd+Enter to send",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Reply. Sending this will unblock the waiting agent. Cmd+Enter to send"
+  },
+  "6AURG0": {
+    "message": "Reply… Cmd+Enter to send",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Reply… Cmd+Enter to send"
+  },
+  "kJ-0qS": {
+    "message": "Repo-wide",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Repo-wide"
+  },
+  "2R0JRN": {
+    "message": "Repos with DCO enabled won't accept commits without this line",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Repos with DCO enabled won't accept commits without this line"
+  },
+  "IreQBq": {
+    "message": "Repository",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Repository"
+  },
+  "gZu9-9": {
+    "message": "Request changes",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Request changes"
+  },
+  "2LQdMJ": {
+    "message": "Requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Requirement"
+  },
+  "limQr5": {
+    "message": "Requirement name…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Requirement name…"
+  },
+  "JOKdLk": {
+    "message": "requirements",
+    "placeholders": {},
+    "comments": [],
+    "translation": "requirements"
   },
   "Igjjz3": {
     "message": "Rescan",
@@ -11,16 +2052,660 @@
     "comments": [],
     "translation": ""
   },
+  "L-rMC9": {
+    "message": "Reset to default",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Reset to default"
+  },
+  "LRRbF6": {
+    "message": "Reset to the image in config",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Reset to the image in config"
+  },
+  "8shPUI": {
+    "message": "Resetting soon",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Resetting soon"
+  },
+  "6z9W13": {
+    "message": "Restart",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Restart"
+  },
+  "KP35U0": {
+    "message": "Restart container",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Restart container"
+  },
+  "UGguP3": {
+    "message": "Restart the sandbox server?",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Restart the sandbox server?"
+  },
+  "vAZ1vN": {
+    "message": "Restarted; containers will restart on demand",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Restarted; containers will restart on demand"
+  },
+  "fvg2KT": {
+    "message": "Restarting…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Restarting…"
+  },
+  "YMXEj_": {
+    "message": "Restore all",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Restore all"
+  },
+  "v39wLo": {
+    "message": "Resume",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Resume"
+  },
+  "PHOwUf": {
+    "message": "Retry this view",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Retry this view"
+  },
+  "E9s4Hf": {
+    "message": "Return for re-decomposition",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Return for re-decomposition"
+  },
+  "Dn1cWK": {
+    "message": "Return to the checkpoint before this round started; all changes in this turn are discarded.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Return to the checkpoint before this round started; all changes in this turn are discarded."
+  },
+  "j5iEdc": {
+    "message": "Revoke and take over",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Revoke and take over"
+  },
+  "CDes-i": {
+    "message": "Roll back to the checkpoint when the question was asked; all subsequent changes are discarded. You'll answer it again.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Roll back to the checkpoint when the question was asked; all subsequent changes are discarded. You'll answer it again."
+  },
+  "sRVwZe": {
+    "message": "Run the official CLI's login once in the tool container; store the credential here. No setup needed locally. Official accounts only; custom gateways use API key.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Run the official CLI's login once in the tool container; store the credential here. No setup needed locally. Official accounts only; custom gateways use API key."
+  },
+  "siNdHG": {
+    "message": "Run top-to-bottom; drag to reorder",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Run top-to-bottom; drag to reorder"
+  },
+  "vMT9um": {
+    "message": "Sandbox",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Sandbox"
+  },
+  "owfKdV": {
+    "message": "Sandbox configuration",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Sandbox configuration"
+  },
+  "umfO1F": {
+    "message": "Sandbox server",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Sandbox server"
+  },
+  "tfDRzk": {
+    "message": "Save",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Save"
+  },
   "BlLxpG": {
     "message": "Search skills",
     "placeholders": {},
     "comments": [],
     "translation": ""
   },
+  "NPfgIB": {
+    "message": "sec",
+    "placeholders": {},
+    "comments": [],
+    "translation": "sec"
+  },
+  "ylXj1N": {
+    "message": "Selected",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Selected"
+  },
+  "QwCX4t": {
+    "message": "Self",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Self"
+  },
+  "JlFcis": {
+    "message": "Send",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Send"
+  },
+  "zkYz4A": {
+    "message": "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch."
+  },
+  "GD78ah": {
+    "message": "Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact."
+  },
+  "68dnxO": {
+    "message": "Send to PM",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Send to PM"
+  },
+  "sGH11W": {
+    "message": "Server",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Server"
+  },
+  "NfZUor": {
+    "message": "Set",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Set"
+  },
+  "Ufp8L2": {
+    "message": "Set a token limit for this requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Set a token limit for this requirement"
+  },
+  "Tz0i8g": {
+    "message": "Settings",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Settings"
+  },
+  "P14X5y": {
+    "message": "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S"
+  },
+  "Q8KZbZ": {
+    "message": "Shared across all projects",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Shared across all projects"
+  },
+  "tp12TV": {
+    "message": "Shared across requirements",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Shared across requirements"
+  },
+  "5uNrb2": {
+    "message": "Shared cache",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Shared cache"
+  },
   "PCSkw2": {
     "message": "Skills",
     "placeholders": {},
     "comments": [],
     "translation": ""
+  },
+  "0wEveb": {
+    "message": "Slice",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Slice"
+  },
+  "7YvQJV": {
+    "message": "Slice baseline was lost in rebase; showing the entire branch relative to origin/main",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Slice baseline was lost in rebase; showing the entire branch relative to origin/main"
+  },
+  "j6GhP0": {
+    "message": "Slice durations",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Slice durations"
+  },
+  "hpEGHk": {
+    "message": "slices pending",
+    "placeholders": {},
+    "comments": [],
+    "translation": "slices pending"
+  },
+  "SXB6Df": {
+    "message": "Someone else is handling it",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Someone else is handling it"
+  },
+  "CmwZGb": {
+    "message": "Spec",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Spec"
+  },
+  "gJB9TK": {
+    "message": "Stage durations",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Stage durations"
+  },
+  "4nHCWw": {
+    "message": "Standing post",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Standing post"
+  },
+  "tXkhj_": {
+    "message": "Start",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Start"
+  },
+  "9nFRkK": {
+    "message": "Start from this branch",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Start from this branch"
+  },
+  "JEGlfK": {
+    "message": "Started",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Started"
+  },
+  "YgkVxJ": {
+    "message": "Started at",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Started at"
+  },
+  "JD3In6": {
+    "message": "Starting…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Starting…"
+  },
+  "0CzbA_": {
+    "message": "Starts after approval",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Starts after approval"
+  },
+  "i-G7HL": {
+    "message": "Stop dispatching; branch is kept but not merged. A retrospective is still required.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Stop dispatching; branch is kept but not merged. A retrospective is still required."
+  },
+  "lAF6km": {
+    "message": "Stop here (archive)",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Stop here (archive)"
+  },
+  "Js8gEk": {
+    "message": "Stop the current turn; keep changes. The next turn will be informed.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Stop the current turn; keep changes. The next turn will be informed."
+  },
+  "hQRttt": {
+    "message": "Submit",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Submit"
+  },
+  "xaDWAI": {
+    "message": "Switch project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Switch project"
+  },
+  "hIzFSH": {
+    "message": "Switch requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Switch requirement"
+  },
+  "D-NlUC": {
+    "message": "System",
+    "placeholders": {},
+    "comments": [],
+    "translation": "System"
+  },
+  "Yf3EgL": {
+    "message": "System timing",
+    "placeholders": {},
+    "comments": [],
+    "translation": "System timing"
+  },
+  "22d3SP": {
+    "message": "The browser can't read this. Drag folders in instead.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "The browser can't read this. Drag folders in instead."
+  },
+  "KL0N71": {
+    "message": "The chosen skill is sent with this turn; it only costs for this one turn.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "The chosen skill is sent with this turn; it only costs for this one turn."
+  },
+  "Bn1Nxe": {
+    "message": "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
+  },
+  "GbXn7n": {
+    "message": "The service that launches containers",
+    "placeholders": {},
+    "comments": [],
+    "translation": "The service that launches containers"
+  },
+  "FEr96N": {
+    "message": "Theme",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Theme"
+  },
+  "Ez2cT0": {
+    "message": "These paths from the card don't exist in the repo",
+    "placeholders": {},
+    "comments": [],
+    "translation": "These paths from the card don't exist in the repo"
+  },
+  "50AYjp": {
+    "message": "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch."
+  },
+  "gu-D6k": {
+    "message": "This log is empty",
+    "placeholders": {},
+    "comments": [],
+    "translation": "This log is empty"
+  },
+  "tERiuN": {
+    "message": "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward."
+  },
+  "Ap7MoR": {
+    "message": "This project hasn't run any activity yet.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "This project hasn't run any activity yet."
+  },
+  "_BU99I": {
+    "message": "This requirement has been archived or no longer exists.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "This requirement has been archived or no longer exists."
+  },
+  "OqyUgx": {
+    "message": "This requirement hasn't run any activity yet.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "This requirement hasn't run any activity yet."
+  },
+  "QzBCQU": {
+    "message": "This slice hasn't produced changes yet and has no verdict.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "This slice hasn't produced changes yet and has no verdict."
+  },
+  "px6rle": {
+    "message": "This view crashed",
+    "placeholders": {},
+    "comments": [],
+    "translation": "This view crashed"
+  },
+  "LhMjLm": {
+    "message": "Time",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Time"
+  },
+  "TtMxW4": {
+    "message": "Timing for all activity on this machine, last 24h",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Timing for all activity on this machine, last 24h"
+  },
+  "ecUA8p": {
+    "message": "Today",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Today"
+  },
+  "JfT1QM": {
+    "message": "tokens · project total",
+    "placeholders": {},
+    "comments": [],
+    "translation": "tokens · project total"
+  },
+  "ufMpSR": {
+    "message": "tokens · share",
+    "placeholders": {},
+    "comments": [],
+    "translation": "tokens · share"
+  },
+  "3IqNQS": {
+    "message": "Turned off, but page alerts and tab title counts still work—just no pop-ups.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Turned off, but page alerts and tab title counts still work—just no pop-ups."
+  },
+  "7VgwUn": {
+    "message": "Type a model ID to add a row",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Type a model ID to add a row"
+  },
+  "EUHN7i": {
+    "message": "Undefined",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Undefined"
+  },
+  "HkKS_w": {
+    "message": "Unit for {label}",
+    "placeholders": {
+      "label": ["label"]
+    },
+    "comments": [],
+    "translation": "Unit for {label}"
+  },
+  "TlHpRw": {
+    "message": "Unreadable",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Unreadable"
+  },
+  "Qd3NOV": {
+    "message": "Use 'defer' to archive without deleting; that keeps records",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Use 'defer' to archive without deleting; that keeps records"
+  },
+  "M15PCh": {
+    "message": "Use draft",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Use draft"
+  },
+  "BVhEN_": {
+    "message": "Use this only if you can't reopen an old PR on GitHub. Use when the branch has been force-pushed or deleted: it will re-open using the current branch and rejoin the merge queue.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Use this only if you can't reopen an old PR on GitHub. Use when the branch has been force-pushed or deleted: it will re-open using the current branch and rejoin the merge queue."
+  },
+  "5SUvzT": {
+    "message": "Use when the container is stuck, missing dependencies, or credentials changed. The next turn will re-clone and reinstall; the branch in the host repo stays.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Use when the container is stuck, missing dependencies, or credentials changed. The next turn will re-clone and reinstall; the branch in the host repo stays."
+  },
+  "rj9VmJ": {
+    "message": "View log",
+    "placeholders": {},
+    "comments": [],
+    "translation": "View log"
+  },
+  "uUehLT": {
+    "message": "Waiting",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Waiting"
+  },
+  "x11Fa2": {
+    "message": "Waiting for prior slice",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Waiting for prior slice"
+  },
+  "N6oHir": {
+    "message": "Waiting for you",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Waiting for you"
+  },
+  "OxAtzf": {
+    "message": "Waiting for you to approve in the browser…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Waiting for you to approve in the browser…"
+  },
+  "cdTn1o": {
+    "message": "Waiting for you to approve on GitHub…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Waiting for you to approve on GitHub…"
+  },
+  "4mi85N": {
+    "message": "Wake",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Wake"
+  },
+  "d8ExK5": {
+    "message": "Was connected, but GitHub no longer recognizes this token",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Was connected, but GitHub no longer recognizes this token"
+  },
+  "zx4BuL": {
+    "message": "Week",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Week"
+  },
+  "JvMxE7": {
+    "message": "Weight:",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Weight:"
+  },
+  "-YrETt": {
+    "message": "What",
+    "placeholders": {},
+    "comments": [],
+    "translation": "What"
+  },
+  "oM0GrX": {
+    "message": "What's not satisfactory. Cmd+Enter to reject",
+    "placeholders": {},
+    "comments": [],
+    "translation": "What's not satisfactory. Cmd+Enter to reject"
+  },
+  "Wv9_yD": {
+    "message": "When the limit is reached, the group pauses until you decide whether to increase it.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "When the limit is reached, the group pauses until you decide whether to increase it."
+  },
+  "QXTfG1": {
+    "message": "Which window",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Which window"
+  },
+  "Na8oCP": {
+    "message": "Who · Model",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Who · Model"
+  },
+  "DYs__Q": {
+    "message": "Why this value",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Why this value"
+  },
+  "6R0Qtt": {
+    "message": "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM"
+  },
+  "pmUArF": {
+    "message": "Workspace",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Workspace"
+  },
+  "sAMeNl": {
+    "message": "Write a description, break into plan cards, then come back for review.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Write a description, break into plan cards, then come back for review."
+  },
+  "Hpf_lH": {
+    "message": "Wrong direction",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Wrong direction"
+  },
+  "d0a7Yx": {
+    "message": "You can edit the card and re-approve.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "You can edit the card and re-approve."
   }
 }

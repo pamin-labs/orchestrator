@@ -1,9 +1,2050 @@
 {
+  "nzne76": {
+    "message": "(following)",
+    "placeholders": {},
+    "comments": [],
+    "translation": "（跟随）"
+  },
+  "ojmzcv": {
+    "message": "(need one merge first)",
+    "placeholders": {},
+    "comments": [],
+    "translation": "（合入一个才有）"
+  },
+  "ItRr_m": {
+    "message": ") to rebuild the frontend.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "）会重建前端。"
+  },
+  "iDg-Sc": {
+    "message": "← Back to all",
+    "placeholders": {},
+    "comments": [],
+    "translation": "← 回到全部"
+  },
+  "7SCMDC": {
+    "message": "← Back to full timeline",
+    "placeholders": {},
+    "comments": [],
+    "translation": "← 回到整段时间"
+  },
+  "7TnWLj": {
+    "message": "+ Add project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "＋ 添加项目"
+  },
+  "BZ0E0E": {
+    "message": "+ New requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "＋ 新需求"
+  },
+  "gXeitk": {
+    "message": "1/4 of host cores",
+    "placeholders": {},
+    "comments": [],
+    "translation": "宿主核数的 1/4"
+  },
+  "z5YXOD": {
+    "message": "127.0.0.1:8080 or https://host:port",
+    "placeholders": {},
+    "comments": [],
+    "translation": "127.0.0.1:8080 或 https://host:port"
+  },
+  "27QmIv": {
+    "message": "A number",
+    "placeholders": {},
+    "comments": [],
+    "translation": "要一个数字"
+  },
+  "JKqEIB": {
+    "message": "Abandon this requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "作废这个需求"
+  },
+  "aS0jtz": {
+    "message": "Abandoned",
+    "placeholders": {},
+    "comments": [],
+    "translation": "作废"
+  },
+  "g3UF2V": {
+    "message": "Accept",
+    "placeholders": {},
+    "comments": [],
+    "translation": "查收"
+  },
+  "rGeVDg": {
+    "message": "Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable",
+    "placeholders": {},
+    "comments": [],
+    "translation": "在跑的 turn 会停，容器、切片、卡片、提问、附件一起删，找不回来"
+  },
+  "m16xKo": {
+    "message": "Add",
+    "placeholders": {},
+    "comments": [],
+    "translation": "加进来"
+  },
+  "IVZx0R": {
+    "message": "Add a row",
+    "placeholders": {},
+    "comments": [],
+    "translation": "加一项"
+  },
+  "L1uMzn": {
+    "message": "Add another",
+    "placeholders": {},
+    "comments": [],
+    "translation": "再加一个"
+  },
+  "pUuiHT": {
+    "message": "Add requirements or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes",
+    "placeholders": {},
+    "comments": [],
+    "translation": "补充要求，或者写退回理由。截图、设计稿直接粘，/ 插技能路径。⌘Enter 要求修改"
+  },
+  "I5lKdd": {
+    "message": "Add your first project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "添加第一个项目"
+  },
+  "hp8OtS": {
+    "message": "Added",
+    "placeholders": {},
+    "comments": [],
+    "translation": "已添加"
+  },
+  "Z4OdvO": {
+    "message": "Adding…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "添加中…"
+  },
+  "Du6bPw": {
+    "message": "Address",
+    "placeholders": {},
+    "comments": [],
+    "translation": "地址"
+  },
+  "QWsB_B": {
+    "message": "After approval, copy the code from that page",
+    "placeholders": {},
+    "comments": [],
+    "translation": "批准完那一页会给一串码，贴这儿"
+  },
+  "ckPR99": {
+    "message": "AI is thinking on your behalf",
+    "placeholders": {},
+    "comments": [],
+    "translation": "AI 在替你想"
+  },
+  "iPLTO_": {
+    "message": "AI-drafted response",
+    "placeholders": {},
+    "comments": [],
+    "translation": "AI 替你拟的答复"
+  },
+  "N40H-G": {
+    "message": "All",
+    "placeholders": {},
+    "comments": [],
+    "translation": "全部"
+  },
+  "IN8luu": {
+    "message": "All done",
+    "placeholders": {},
+    "comments": [],
+    "translation": "都做完了"
+  },
+  "LJR_kp": {
+    "message": "All pass",
+    "placeholders": {},
+    "comments": [],
+    "translation": "全过"
+  },
+  "llj5Cv": {
+    "message": "All under 1ms",
+    "placeholders": {},
+    "comments": [],
+    "translation": "都不到 1ms"
+  },
+  "iN398g": {
+    "message": "Allow notifications",
+    "placeholders": {},
+    "comments": [],
+    "translation": "允许通知"
+  },
+  "jAqydi": {
+    "message": "Answered on your behalf",
+    "placeholders": {},
+    "comments": [],
+    "translation": "替你答过"
+  },
+  "9f6OQn": {
+    "message": "API address",
+    "placeholders": {},
+    "comments": [],
+    "translation": "API 地址"
+  },
+  "aAIQg2": {
+    "message": "Appearance",
+    "placeholders": {},
+    "comments": [],
+    "translation": "外观"
+  },
+  "Rc_cvo": {
+    "message": "Approve and start",
+    "placeholders": {},
+    "comments": [],
+    "translation": "批准开工"
+  },
+  "NINEl7": {
+    "message": "Approved · Awaiting boundary",
+    "placeholders": {},
+    "comments": [],
+    "translation": "已批·等边界"
+  },
+  "lwZzkx": {
+    "message": "Approved, blocked by boundaries",
+    "placeholders": {},
+    "comments": [],
+    "translation": "已批准，边界挡着"
+  },
+  "1TJ6zo": {
+    "message": "Approved; starts automatically when boundaries clear",
+    "placeholders": {},
+    "comments": [],
+    "translation": "已批准，边界让开就自动开工"
+  },
+  "WuvFQ1": {
+    "message": "Architect decides on tech choices and architectural boundaries; if they can't answer, they'll come back.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "技术选型和架构边界归 Architect 判断，它答不了会自己回来"
+  },
+  "B495Gs": {
+    "message": "Archive",
+    "placeholders": {},
+    "comments": [],
+    "translation": "封存"
+  },
+  "E3Jb7M": {
+    "message": "Ask GitHub",
+    "placeholders": {},
+    "comments": [],
+    "translation": "问 GitHub 要"
+  },
+  "igVDFt": {
+    "message": "Attach",
+    "placeholders": {},
+    "comments": [],
+    "translation": "附件"
+  },
+  "VbeIOx": {
+    "message": "Author",
+    "placeholders": {},
+    "comments": [],
+    "translation": "作者"
+  },
+  "NxjG-h": {
+    "message": "Authorized",
+    "placeholders": {},
+    "comments": [],
+    "translation": "授权了"
+  },
+  "lLw1fO": {
+    "message": "Awaiting Architect to split boundaries",
+    "placeholders": {},
+    "comments": [],
+    "translation": "等 Architect 切边界"
+  },
+  "HXRIvm": {
+    "message": "Awaiting merge",
+    "placeholders": {},
+    "comments": [],
+    "translation": "等你合入"
+  },
+  "JhyKBZ": {
+    "message": "Awaiting your decision",
+    "placeholders": {},
+    "comments": [],
+    "translation": "待你决策"
+  },
+  "sZkxOT": {
+    "message": "Awaiting your review",
+    "placeholders": {},
+    "comments": [],
+    "translation": "待你查收"
+  },
+  "ZWwYwM": {
+    "message": "Base branch",
+    "placeholders": {},
+    "comments": [],
+    "translation": "基线分支"
+  },
+  "TRRBw1": {
+    "message": "Blocked domains",
+    "placeholders": {},
+    "comments": [],
+    "translation": "禁止访问"
+  },
+  "FXHmjT": {
+    "message": "Bootstrap failed",
+    "placeholders": {},
+    "comments": [],
+    "translation": "装失败了"
+  },
+  "pHs8kZ": {
+    "message": "Both go to Dispatcher; it will revise the card and bring it back for your approval.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "两个都发给 Dispatcher，它改完卡再回来给你批。"
+  },
+  "ssuwjF": {
+    "message": "Branch",
+    "placeholders": {},
+    "comments": [],
+    "translation": "分支"
+  },
+  "JYj5R2": {
+    "message": "Browse files",
+    "placeholders": {},
+    "comments": [],
+    "translation": "翻文件"
+  },
+  "Rff84-": {
+    "message": "Browser can't read the clipboard directly. Click in the input and use Cmd+V; images work too.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "浏览器不让直接读剪贴板。点进输入框按 ⌘V，图片也认。"
+  },
+  "OK_Dka": {
+    "message": "Browser permission",
+    "placeholders": {},
+    "comments": [],
+    "translation": "浏览器许可"
+  },
+  "SMnY7U": {
+    "message": "Budget exhausted",
+    "placeholders": {},
+    "comments": [],
+    "translation": "预算用尽"
+  },
+  "lR_A13": {
+    "message": "Budget exhausted; group paused",
+    "placeholders": {},
+    "comments": [],
+    "translation": "预算用尽，全组挂起"
+  },
+  "EGCGvo": {
+    "message": "Burn rate",
+    "placeholders": {},
+    "comments": [],
+    "translation": "烧得多快"
+  },
+  "AcvZ26": {
+    "message": "By account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "按账号"
+  },
+  "-oC-Mm": {
+    "message": "By requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "按需求"
+  },
+  "EZ_s8N": {
+    "message": "By tier",
+    "placeholders": {},
+    "comments": [],
+    "translation": "按难度"
+  },
+  "nhDPTQ": {
+    "message": "Cache hit rate",
+    "placeholders": {},
+    "comments": [],
+    "translation": "cache 命中"
+  },
+  "MfNfKv": {
+    "message": "Can modify which files",
+    "placeholders": {},
+    "comments": [],
+    "translation": "能改哪些文件"
+  },
+  "9EAnVu": {
+    "message": "Can't count",
+    "placeholders": {},
+    "comments": [],
+    "translation": "数不出来"
+  },
+  "Ce3qIj": {
+    "message": "Can't determine until first group clones; fill in settings later",
+    "placeholders": {},
+    "comments": [],
+    "translation": "第一个组克隆完才猜得出来，到时候填进设置"
+  },
+  "ZCtEMi": {
+    "message": "Can't read log",
+    "placeholders": {},
+    "comments": [],
+    "translation": "读不到日志"
+  },
+  "B4V6vP": {
+    "message": "Can't read remote branches; storing what you entered",
+    "placeholders": {},
+    "comments": [],
+    "translation": "读不到远端分支，这里按你填的存"
+  },
+  "dEgA5A": {
+    "message": "Cancel",
+    "placeholders": {},
+    "comments": [],
+    "translation": "取消"
+  },
+  "fFlTkL": {
+    "message": "Cancel all queued turns; return the occupied slot to another group.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "排队的 turn 全取消，占的路径交还给别的组"
+  },
+  "NGyoqv": {
+    "message": "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "排队的 turn 全取消，占的路径交还给别的组。代码、分支和记录都留着"
+  },
+  "Mrhygm": {
+    "message": "cards pending review",
+    "placeholders": {},
+    "comments": [],
+    "translation": "张卡待批"
+  },
+  "3YmduU": {
+    "message": "Change base branch",
+    "placeholders": {},
+    "comments": [],
+    "translation": "改基线分支"
+  },
+  "jyyksH": {
+    "message": "Change its access",
+    "placeholders": {},
+    "comments": [],
+    "translation": "去改它能看哪些"
+  },
+  "Sg6yCv": {
+    "message": "Changes exceed 400k characters; tail not retrieved. Remaining changes are in the sandbox checkout.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "改动超过 400k 字符，尾部没取回来，剩下的在沙盒的 checkout 里"
+  },
+  "X0ekHE": {
+    "message": "Choose account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "选账号"
+  },
+  "uh1jVI": {
+    "message": "Choose attachments",
+    "placeholders": {},
+    "comments": [],
+    "translation": "选附件"
+  },
+  "W6HUan": {
+    "message": "Choose repository",
+    "placeholders": {},
+    "comments": [],
+    "translation": "选择仓库"
+  },
+  "3zc7HP": {
+    "message": "Claude Code writes this in Co-Authored-By when committing",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Claude Code 自己提交时写进 Co-Authored-By"
+  },
+  "xCJdfg": {
+    "message": "Clear",
+    "placeholders": {},
+    "comments": [],
+    "translation": "清掉"
+  },
+  "xiP_vW": {
+    "message": "Click a row to add",
+    "placeholders": {},
+    "comments": [],
+    "translation": "点一行就添加"
+  },
+  "4QJHUD": {
+    "message": "Click to add to the end",
+    "placeholders": {},
+    "comments": [],
+    "translation": "点一下加到最后一道"
+  },
+  "DEcU1o": {
+    "message": "Clipboard is empty",
+    "placeholders": {},
+    "comments": [],
+    "translation": "剪贴板是空的"
+  },
+  "9UQ730": {
+    "message": "Clone",
+    "placeholders": {},
+    "comments": [],
+    "translation": "克隆"
+  },
+  "Zi3sT-": {
+    "message": "Clone this group's branch and dependencies into a new sandbox",
+    "placeholders": {},
+    "comments": [],
+    "translation": "把这个组的分支和依赖装回新沙盒"
+  },
+  "yz7wBu": {
+    "message": "Close",
+    "placeholders": {},
+    "comments": [],
+    "translation": "关掉"
+  },
+  "78_KBG": {
+    "message": "Cmd+Enter to send to PM",
+    "placeholders": {},
+    "comments": [],
+    "translation": "⌘Enter 发给 PM"
+  },
+  "EJR83A": {
+    "message": "Code comes from here",
+    "placeholders": {},
+    "comments": [],
+    "translation": "代码从这儿来"
+  },
+  "KEXT7L": {
+    "message": "Code from page",
+    "placeholders": {},
+    "comments": [],
+    "translation": "页面给的码"
+  },
+  "H86f9p": {
+    "message": "Collapse",
+    "placeholders": {},
+    "comments": [],
+    "translation": "收起"
+  },
+  "pPC42a": {
+    "message": "Collapse event stream",
+    "placeholders": {},
+    "comments": [],
+    "translation": "收起事件流"
+  },
+  "sjVfrA": {
+    "message": "Command",
+    "placeholders": {},
+    "comments": [],
+    "translation": "命令"
+  },
+  "jwNwc7": {
+    "message": "Comments are recorded in the notes; PM will schedule a correction task and the group continues.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "原话记进黑板，PM 安排一条修正 task，组继续跑"
+  },
+  "Y9nBMs": {
+    "message": "Comments are recorded in the notes; the PM will schedule corrections accordingly. Paste screenshots directly.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "原话记进黑板，PM 据此安排修正。截图直接粘。"
+  },
+  "fgdC0z": {
+    "message": "Configuration doesn't allow the path we need to mount",
+    "placeholders": {},
+    "comments": [],
+    "translation": "配置里没允许我们要挂的路径"
+  },
+  "rZnbcL": {
+    "message": "Confirm abandonment",
+    "placeholders": {},
+    "comments": [],
+    "translation": "确认作废"
+  },
+  "3jod3l": {
+    "message": "Connect GitHub",
+    "placeholders": {},
+    "comments": [],
+    "translation": "连接 GitHub"
+  },
+  "QHcLEN": {
+    "message": "Connected",
+    "placeholders": {},
+    "comments": [],
+    "translation": "已连"
+  },
+  "d8N7O4": {
+    "message": "Connected, but this GitHub App isn't installed on any account, so no repos are visible.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "连上了，但这个 GitHub App 还没装到任何账号上，所以一个仓库也看不见。"
+  },
+  "9zb2WA": {
+    "message": "Connecting",
+    "placeholders": {},
+    "comments": [],
+    "translation": "连接中"
+  },
+  "ZPjg5y": {
+    "message": "Connection lost; reconnecting",
+    "placeholders": {},
+    "comments": [],
+    "translation": "连接断了，重连中"
+  },
+  "onXU-K": {
+    "message": "Container hasn't started yet. Clone and dependency installation output will appear here line by line.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "容器还没说话。克隆和装依赖会在这里逐行出现。"
+  },
+  "ILtacM": {
+    "message": "Container running",
+    "placeholders": {},
+    "comments": [],
+    "translation": "容器在跑"
+  },
+  "uZQeFw": {
+    "message": "Container will be discarded. The next turn will rebuild it: re-clone the branch, reinstall dependencies. Uncommitted changes will be lost.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。"
+  },
+  "uZpbS_": {
+    "message": "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:",
+    "placeholders": {},
+    "comments": [],
+    "translation": "容器不报错，只挂个空目录，勾上的技能就这么没了。把这行写进配置，然后重启："
+  },
+  "X3zmoA": {
+    "message": "Convert to a requirement; this group will automatically continue after it's implemented.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "开成一条需求去做，这一组等它落地后自动继续"
+  },
+  "he3ygx": {
+    "message": "Copy",
+    "placeholders": {},
+    "comments": [],
+    "translation": "复制"
+  },
+  "uRSTuQ": {
+    "message": "Could not generate a draft; you'll need to write this one yourself.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没能拟出来，这条得你自己写。"
+  },
+  "wBMjJ2": {
+    "message": "Count",
+    "placeholders": {},
+    "comments": [],
+    "translation": "次数"
+  },
+  "MLnrdw": {
+    "message": "Create requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "开成需求"
+  },
+  "Xf79vI": {
+    "message": "Custom gateway; usage not displayed in header",
+    "placeholders": {},
+    "comments": [],
+    "translation": "自建网关，头部不显示额度"
+  },
+  "awVk4j": {
+    "message": "Decomposing",
+    "placeholders": {},
+    "comments": [],
+    "translation": "正在拆解"
+  },
+  "ovBPCi": {
+    "message": "Default",
+    "placeholders": {},
+    "comments": [],
+    "translation": "默认"
+  },
+  "sa8w4z": {
+    "message": "Default image",
+    "placeholders": {},
+    "comments": [],
+    "translation": "默认镜像"
+  },
+  "KD-j-V": {
+    "message": "Delegate to Architect",
+    "placeholders": {},
+    "comments": [],
+    "translation": "转 Architect"
+  },
+  "cnGeoo": {
+    "message": "Delete",
+    "placeholders": {},
+    "comments": [],
+    "translation": "删掉"
+  },
+  "fMW4pP": {
+    "message": "Delete this row",
+    "placeholders": {},
+    "comments": [],
+    "translation": "删掉这一行"
+  },
+  "_YCR6Z": {
+    "message": "Desk",
+    "placeholders": {},
+    "comments": [],
+    "translation": "工位"
+  },
+  "odCJNJ": {
+    "message": "Desktop pop-ups",
+    "placeholders": {},
+    "comments": [],
+    "translation": "弹到桌面"
+  },
+  "E_QGRL": {
+    "message": "Disabled",
+    "placeholders": {},
+    "comments": [],
+    "translation": "未启用"
+  },
+  "jPuGs1": {
+    "message": "Disabled skills aren't in the sandbox; the agent can't find it. Enable it in settings, or cancel this insertion?",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没勾选的技能不在沙盒里，agent 自己找不到它。去设置里勾上，还是取消这次插入？"
+  },
+  "s2IVgM": {
+    "message": "Discard all changes in the current turn and return to the start of this round.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "丢弃当前 turn 的全部改动，退回到这一轮开始前。"
+  },
+  "-K0AvT": {
+    "message": "Disconnect",
+    "placeholders": {},
+    "comments": [],
+    "translation": "断开"
+  },
+  "0E35Mj": {
+    "message": "Dispatcher is analyzing; no slices yet",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Dispatcher 在深挖，还没有切片"
+  },
+  "zaa-ai": {
+    "message": "Dispatcher is writing the plan card; it will appear here when done.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Dispatcher 正在写计划卡，写完出现在这里"
+  },
+  "hdg82H": {
+    "message": "Don't proceed",
+    "placeholders": {},
+    "comments": [],
+    "translation": "不做了"
+  },
+  "DPfwMq": {
+    "message": "Done",
+    "placeholders": {},
+    "comments": [],
+    "translation": "已交付"
+  },
+  "UVoqL5": {
+    "message": "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn",
+    "placeholders": {},
+    "comments": [],
+    "translation": "掉到 50% 以下＝prompt 组装被改坏，每个 turn 贵 3-5 倍"
+  },
+  "atgcA4": {
+    "message": "e.g. 2000000",
+    "placeholders": {},
+    "comments": [],
+    "translation": "例如 2000000"
+  },
+  "EBg0i_": {
+    "message": "Edit file",
+    "placeholders": {},
+    "comments": [],
+    "translation": "改文件"
+  },
+  "N2S1rs": {
+    "message": "Empty",
+    "placeholders": {},
+    "comments": [],
+    "translation": "空着"
+  },
+  "uGI3gC": {
+    "message": "Empty = allow all outbound (see README)",
+    "placeholders": {},
+    "comments": [],
+    "translation": "留空 = 出站不拦（README 那节）"
+  },
+  "b6dC-N": {
+    "message": "Empty = server has no authentication",
+    "placeholders": {},
+    "comments": [],
+    "translation": "留空 = 服务器没开鉴权"
+  },
+  "Pw_vMX": {
+    "message": "Empty directory",
+    "placeholders": {},
+    "comments": [],
+    "translation": "空目录"
+  },
+  "QbiIMp": {
+    "message": "Empty: bootstrap detects from repo",
+    "placeholders": {},
+    "comments": [],
+    "translation": "留空由 bootstrap 读仓库判断"
+  },
+  "y08yme": {
+    "message": "Entire branch",
+    "placeholders": {},
+    "comments": [],
+    "translation": "整条分支"
+  },
+  "N-tqDR": {
+    "message": "Entire group is paused",
+    "placeholders": {},
+    "comments": [],
+    "translation": "全组停着"
+  },
+  "_X5VUz": {
+    "message": "Entire group is suspended",
+    "placeholders": {},
+    "comments": [],
+    "translation": "全组已挂起"
+  },
+  "AVlZoM": {
+    "message": "Environment",
+    "placeholders": {},
+    "comments": [],
+    "translation": "环境"
+  },
+  "0ZQgVt": {
+    "message": "Environment setup output",
+    "placeholders": {},
+    "comments": [],
+    "translation": "装环境的输出"
+  },
+  "cfg2rE": {
+    "message": "Event stream",
+    "placeholders": {},
+    "comments": [],
+    "translation": "事件流"
+  },
+  "wTEow6": {
+    "message": "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\nDrag in screenshots or designs, or paste. Cmd+Enter to submit",
+    "placeholders": {},
+    "comments": [],
+    "translation": "例：登录页加「记住我」，勾了之后 30 天不用重新登录。\n截图、设计稿拖进来或粘贴。⌘Enter 提交"
+  },
+  "1A3EXy": {
+    "message": "Expand",
+    "placeholders": {},
+    "comments": [],
+    "translation": "展开"
+  },
+  "pzSUaH": {
+    "message": "Expand event stream: who said what to whom, newest first",
+    "placeholders": {},
+    "comments": [],
+    "translation": "展开事件流：谁跟谁说了什么，按时间倒序"
+  },
+  "qcloGZ": {
+    "message": "Fail",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没过"
+  },
+  "v4wgrk": {
+    "message": "Failed to add",
+    "placeholders": {},
+    "comments": [],
+    "translation": "加不进来"
+  },
+  "WYmRTB": {
+    "message": "Failed to open",
+    "placeholders": {},
+    "comments": [],
+    "translation": "开不出来"
+  },
+  "17ylhM": {
+    "message": "Fetching login code…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "去拿登录码…"
+  },
+  "7SSxh3": {
+    "message": "Files and folders OK; click a name to enter a folder.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "文件和目录都行，点名字进目录"
+  },
+  "ffafQN": {
+    "message": "Fill config/default.yaml with github.appSlug; this becomes a direct link.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "config/default.yaml 里填上 github.appSlug，这里就是个直达链接。"
+  },
+  "-jN6EB": {
+    "message": "Fill in",
+    "placeholders": {},
+    "comments": [],
+    "translation": "填进输入框"
+  },
+  "Lx8QZu": {
+    "message": "Fill in a name to add a row",
+    "placeholders": {},
+    "comments": [],
+    "translation": "填个名字就多一行"
+  },
+  "hpseek": {
+    "message": "Filter or type a name",
+    "placeholders": {},
+    "comments": [],
+    "translation": "筛一下，或者直接打名字"
+  },
+  "YuPiJe": {
+    "message": "Filter this log",
+    "placeholders": {},
+    "comments": [],
+    "translation": "过滤这份日志"
+  },
+  "Vr0_8R": {
+    "message": "Filter this log…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "过滤这份日志…"
+  },
+  "MtAXCN": {
+    "message": "Fix this",
+    "placeholders": {},
+    "comments": [],
+    "translation": "要改一处"
+  },
+  "CDchO1": {
+    "message": "Flame distribution",
+    "placeholders": {},
+    "comments": [],
+    "translation": "耗时分布"
+  },
+  "kNqMMd": {
+    "message": "Folder",
+    "placeholders": {},
+    "comments": [],
+    "translation": "目录"
+  },
+  "zUUrSA": {
+    "message": "Follow this machine's default",
+    "placeholders": {},
+    "comments": [],
+    "translation": "跟这台机器的默认"
+  },
+  "EumT_c": {
+    "message": "Follow window",
+    "placeholders": {},
+    "comments": [],
+    "translation": "跟随窗口"
+  },
+  "PKd9Kr": {
+    "message": "Follow window—updates as window changes, fits without crowding",
+    "placeholders": {},
+    "comments": [],
+    "translation": "窗口一变就跟着变，够画又不挤"
+  },
+  "QwS_6h": {
+    "message": "From your connected GitHub account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "取自你连的 GitHub 账号"
+  },
+  "4FtUNJ": {
+    "message": "Frontend and server versions may be out of sync. Restart the service (",
+    "placeholders": {},
+    "comments": [],
+    "translation": "界面和服务端版本可能不一致。重启服务（"
+  },
+  "ibQa3C": {
+    "message": "Full contents of ~/.codex/auth.json",
+    "placeholders": {},
+    "comments": [],
+    "translation": "~/.codex/auth.json 的完整内容"
+  },
+  "_C32np": {
+    "message": "Gates",
+    "placeholders": {},
+    "comments": [],
+    "translation": "闸门"
+  },
+  "MfrlTO": {
+    "message": "Gates / Install commands",
+    "placeholders": {},
+    "comments": [],
+    "translation": "闸门 / 安装命令"
+  },
+  "vmpFiS": {
+    "message": "Generate a draft from this group's notes without sending it.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "用这一组的黑板现算一份草稿，不会发出去"
+  },
+  "7ctz7h": {
+    "message": "Generate another",
+    "placeholders": {},
+    "comments": [],
+    "translation": "再拟一份"
+  },
+  "8ojtRr": {
+    "message": "Generated from this group's notes; not yet sent to anyone. You can edit after filling it in.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "按这一组的黑板现算的，还没发给任何人。填进输入框后你可以改"
+  },
+  "Bk16Bl": {
+    "message": "Git repo",
+    "placeholders": {},
+    "comments": [],
+    "translation": "git 仓库"
+  },
+  "jbs0jI": {
+    "message": "GitHub → this App → Install App",
+    "placeholders": {},
+    "comments": [],
+    "translation": "去 GitHub → 这个 App → Install App"
+  },
+  "Fe7bVR": {
+    "message": "GitHub not connected yet; using our bot account for now",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没连 GitHub，先用我们的机器人账号"
+  },
+  "2GT3Hf": {
+    "message": "Global",
+    "placeholders": {},
+    "comments": [],
+    "translation": "全局"
+  },
+  "Nhs_sw": {
+    "message": "Go merge PR ↗",
+    "placeholders": {},
+    "comments": [],
+    "translation": "去合并 PR ↗"
+  },
+  "aQBZnK": {
+    "message": "Go to ChatGPT to enter code",
+    "placeholders": {},
+    "comments": [],
+    "translation": "去 ChatGPT 输入"
+  },
+  "tgcm5H": {
+    "message": "Go to GitHub → this App → Install App, then choose which repos it can access.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "去 GitHub → 这个 App → Install App，选要给它看的仓库。"
+  },
+  "gamgPa": {
+    "message": "Go to GitHub to enter code",
+    "placeholders": {},
+    "comments": [],
+    "translation": "去 GitHub 输入"
+  },
+  "1WuwiM": {
+    "message": "Go to settings",
+    "placeholders": {},
+    "comments": [],
+    "translation": "去设置"
+  },
+  "OkNnU_": {
+    "message": "Go to settings to check GitHub",
+    "placeholders": {},
+    "comments": [],
+    "translation": "去设置看 GitHub"
+  },
+  "76gPWk": {
+    "message": "Got it",
+    "placeholders": {},
+    "comments": [],
+    "translation": "知道了"
+  },
+  "uvVKhA": {
+    "message": "Gray text shows defaults",
+    "placeholders": {},
+    "comments": [],
+    "translation": "灰字是默认值"
+  },
+  "mHnn7C": {
+    "message": "Group is paused",
+    "placeholders": {},
+    "comments": [],
+    "translation": "组停着不动"
+  },
+  "771hIp": {
+    "message": "Has objections",
+    "placeholders": {},
+    "comments": [],
+    "translation": "有反对意见"
+  },
+  "eahmyG": {
+    "message": "Hide this stage",
+    "placeholders": {},
+    "comments": [],
+    "translation": "不看这一段"
+  },
+  "WtafLn": {
+    "message": "Hiding:",
+    "placeholders": {},
+    "comments": [],
+    "translation": "不看："
+  },
+  "agP50o": {
+    "message": "hr",
+    "placeholders": {},
+    "comments": [],
+    "translation": "小时"
+  },
+  "PmknJS": {
+    "message": "HTTP request",
+    "placeholders": {},
+    "comments": [],
+    "translation": "接口请求"
+  },
+  "QSzGDE": {
+    "message": "Idle",
+    "placeholders": {},
+    "comments": [],
+    "translation": "空闲"
+  },
+  "hG89Ed": {
+    "message": "Image",
+    "placeholders": {},
+    "comments": [],
+    "translation": "镜像"
+  },
+  "OIuB5D": {
+    "translation": "图",
+    "message": "Image",
+    "context": "a picture, not a container image",
+    "placeholders": {},
+    "comments": []
+  },
+  "ukOFaT": {
+    "message": "Including downstream",
+    "placeholders": {},
+    "comments": [],
+    "translation": "含下游"
+  },
+  "yftYSC": {
+    "message": "Insert skill",
+    "placeholders": {},
+    "comments": [],
+    "translation": "插技能"
+  },
+  "CfGTMN": {
+    "message": "Install dependencies",
+    "placeholders": {},
+    "comments": [],
+    "translation": "装依赖"
+  },
+  "4INO0l": {
+    "message": "Install on GitHub",
+    "placeholders": {},
+    "comments": [],
+    "translation": "去 GitHub 装上"
+  },
+  "ZOcvbt": {
+    "message": "Install to another account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "装到别的账号"
+  },
+  "Sp4xyr": {
+    "message": "Installed on these accounts",
+    "placeholders": {},
+    "comments": [],
+    "translation": "装在哪些账号上"
+  },
+  "3dioPi": {
+    "message": "Interface language",
+    "placeholders": {},
+    "comments": [],
+    "translation": "界面语言"
+  },
+  "pD0NCH": {
+    "message": "Interrupt and rollback",
+    "placeholders": {},
+    "comments": [],
+    "translation": "打断并回滚"
+  },
+  "Jv5HTk": {
+    "message": "Interrupt, keep changes",
+    "placeholders": {},
+    "comments": [],
+    "translation": "打断，保留改动"
+  },
+  "sOqJT5": {
+    "message": "It's not a duplicate, and it's not done yet — keep decomposing.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "不是重复，也不算已经做完了 —— 接着拆。"
+  },
+  "sN5SzN": {
+    "message": "Just describe what you need. A plan card will be generated for approval before any code is written.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "说清要什么就够。产出计划卡待批，批准前不写代码。"
+  },
+  "OSBXx5": {
+    "message": "Just now",
+    "placeholders": {},
+    "comments": [],
+    "translation": "刚刚"
+  },
+  "PZ_kxo": {
+    "message": "Keep",
+    "placeholders": {},
+    "comments": [],
+    "translation": "留着"
+  },
+  "7sMeHQ": {
+    "message": "Key",
+    "placeholders": {},
+    "comments": [],
+    "translation": "密钥"
+  },
+  "6jt8EG": {
+    "message": "Last 24 hours, per hour",
+    "placeholders": {},
+    "comments": [],
+    "translation": "近 24 小时，按小时"
+  },
+  "CoUyaF": {
+    "message": "Let AI generate one",
+    "placeholders": {},
+    "comments": [],
+    "translation": "让 AI 拟一份"
+  },
+  "XonalD": {
+    "message": "Let bootstrap retry; it will review the repository with the error above in context",
+    "placeholders": {},
+    "comments": [],
+    "translation": "交给 bootstrap 重试，它会带着上面的报错读一遍仓库"
+  },
+  "ezzro3": {
+    "message": "Loading changes…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "读改动…"
+  },
+  "32n8fF": {
+    "message": "Loading log…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "读日志…"
+  },
+  "dsRqVs": {
+    "message": "Loading notes…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "读记录…"
+  },
+  "Pwqkdw": {
+    "message": "Loading…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "读取中…"
+  },
+  "d5zxa4": {
+    "message": "Local",
+    "placeholders": {},
+    "comments": [],
+    "translation": "本地"
+  },
+  "mTyZmU": {
+    "message": "Local to this machine only, not tied to the project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "只在这台机器上，不跟着项目走"
+  },
+  "sQia9P": {
+    "message": "Log in",
+    "placeholders": {},
+    "comments": [],
+    "translation": "登录"
+  },
+  "6SIbcf": {
+    "message": "Login code copied",
+    "placeholders": {},
+    "comments": [],
+    "translation": "登录码复制好了"
+  },
+  "58Go3p": {
+    "message": "Login page",
+    "placeholders": {},
+    "comments": [],
+    "translation": "登录页"
+  },
+  "g9KxkF": {
+    "message": "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\".",
+    "placeholders": {},
+    "comments": [],
+    "translation": "日志在服务端内存里，最多 500 行，重启就没了。结论那条在「记录」里。"
+  },
+  "v8o-Rn": {
+    "message": "Memory",
+    "placeholders": {},
+    "comments": [],
+    "translation": "内存"
+  },
+  "c6FNGk": {
+    "message": "Message this group",
+    "placeholders": {},
+    "comments": [],
+    "translation": "跟这个组说话"
+  },
+  "HJMQTa": {
+    "message": "Message this group…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "跟这个组说话…"
+  },
+  "lWkKSO": {
+    "message": "min",
+    "placeholders": {},
+    "comments": [],
+    "translation": "分钟"
+  },
+  "ahFhPa": {
+    "message": "Model account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "模型账号"
+  },
+  "IzB3v0": {
+    "message": "Model ID",
+    "placeholders": {},
+    "comments": [],
+    "translation": "模型 id"
+  },
+  "tgWuMB": {
+    "message": "Modified",
+    "placeholders": {},
+    "comments": [],
+    "translation": "已改"
+  },
+  "2FYpfJ": {
+    "message": "More",
+    "placeholders": {},
+    "comments": [],
+    "translation": "更多"
+  },
+  "TpHstq": {
+    "message": "ms",
+    "placeholders": {},
+    "comments": [],
+    "translation": "毫秒"
+  },
+  "6YtxFj": {
+    "message": "Name",
+    "placeholders": {},
+    "comments": [],
+    "translation": "名字"
+  },
+  "ULmBuU": {
+    "message": "Name can't be empty; use the × on the right to delete",
+    "placeholders": {},
+    "comments": [],
+    "translation": "名字不能空着，要删就按右边的 ×"
+  },
+  "knuGkj": {
+    "message": "Needs an integer",
+    "placeholders": {},
+    "comments": [],
+    "translation": "要一个整数"
+  },
+  "d1fjbO": {
+    "message": "New files are expected; if it thinks these already exist, the card was written from speculation.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "新建的文件正常；如果它以为这些已经存在，这张卡是照着想象写的。"
+  },
+  "6Vgn9k": {
+    "message": "New projects use this; leave blank to follow config",
+    "placeholders": {},
+    "comments": [],
+    "translation": "新项目默认用它，留空跟配置文件"
+  },
+  "FDivSs": {
+    "message": "New requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "新需求"
+  },
+  "xsayrv": {
+    "message": "No activity in this window.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "这段时间没有活动。"
+  },
+  "ZILws9": {
+    "message": "No activity yet.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没有跑过任何活。"
+  },
+  "bntSi-": {
+    "message": "No budget limit",
+    "placeholders": {},
+    "comments": [],
+    "translation": "无预算上限"
+  },
+  "kknhfj": {
+    "message": "No changes",
+    "placeholders": {},
+    "comments": [],
+    "translation": "无改动"
+  },
+  "-WlVYy": {
+    "message": "No container yet",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没有容器"
+  },
+  "4SBV0R": {
+    "message": "No data yet",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没数据"
+  },
+  "2BdXR9": {
+    "message": "No deliveries yet. Requirements are archived here after merging to main.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没有交付过。合入 main 之后的需求归档到这里。"
+  },
+  "kRwdtK": {
+    "message": "No diff available. The slice didn't record a baseline commit, or the sandbox has been reclaimed.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没有 diff 可读。这一片没有记下基线 commit，或者沙盒已经回收了。"
+  },
+  "ekZ9la": {
+    "message": "No events",
+    "placeholders": {},
+    "comments": [],
+    "translation": "无事件"
+  },
+  "112a8L": {
+    "message": "No gates enabled; LLM review has no floor.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一道都没开，LLM 审阅底下就没有地板。"
+  },
+  "4TVVsS": {
+    "message": "No matches",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没有匹配的"
+  },
+  "d_Z5TM": {
+    "message": "No matching branches",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没有匹配的分支"
+  },
+  "Au729R": {
+    "message": "No matching images",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没有匹配的镜像"
+  },
+  "tSkn3p": {
+    "message": "No matching lines",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没有匹配的行"
+  },
+  "8Unj92": {
+    "message": "No matching projects",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没有匹配的项目"
+  },
   "WA4QLO": {
     "message": "No matching skills",
     "placeholders": {},
     "comments": [],
     "translation": "没有匹配的技能"
+  },
+  "pkh1lU": {
+    "message": "No notes yet. Agents write journals each turn; retrospectives are written before the group dissolves and distilled into lessons for later groups.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没有记录。agent 每个 turn 写 journal，组解散前写 retro，retro 归纳成教训注入后续组。"
+  },
+  "7NntGT": {
+    "message": "No one working yet. Approve a plan card and each agent's current task appears here.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没有人上工。批准一张计划卡，这里就会列出每个 agent 在做什么。"
+  },
+  "Owb59A": {
+    "message": "No open questions. This group is not waiting on you right now.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没有开着的问题。这一组的人现在不等你。"
+  },
+  "8UMyhm": {
+    "message": "No other models yet; just type",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没有别的模型，直接写就行"
+  },
+  "FyCSgf": {
+    "message": "No other requirements for this project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "这个项目没有别的需求"
+  },
+  "FCR3S_": {
+    "message": "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没有停着的需求。预算用尽、或等你答问题超过 2 小时会封存到这里，工作不丢。"
+  },
+  "musiyS": {
+    "message": "No pending items",
+    "placeholders": {},
+    "comments": [],
+    "translation": "无待办"
+  },
+  "FnBLw7": {
+    "message": "No reason recorded",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没有记下原因"
+  },
+  "u1OZfk": {
+    "message": "No requirements in progress. Click + for a new one in the top right.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没有在办的需求。右上角 ＋ 新需求。"
+  },
+  "K_5cdM": {
+    "message": "No requirements yet",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没有需求"
+  },
+  "rmVNA-": {
+    "message": "No runnable commands found.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没探到可跑的命令。"
+  },
+  "LAGAld": {
+    "message": "No slice",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没归到切片"
+  },
+  "Dje3yF": {
+    "message": "No slices",
+    "placeholders": {},
+    "comments": [],
+    "translation": "无切片"
+  },
+  "D8lG5Z": {
+    "message": "No system activity recorded.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没有记下任何系统活动。"
+  },
+  "A2To5D": {
+    "message": "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。"
+  },
+  "FWdQE5": {
+    "message": "No, keep going",
+    "placeholders": {},
+    "comments": [],
+    "translation": "不，接着做"
+  },
+  "-f7hCL": {
+    "message": "None selected",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没选"
+  },
+  "e9k3F8": {
+    "message": "None; this connection sees no repositories. Install with all repos, or select specific ones.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一个也没有，这个连接看不见任何仓库。装的时候选所有仓库，或者挑几个。"
+  },
+  "OxtmTI": {
+    "message": "Not checked out",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没切"
+  },
+  "SDND4q": {
+    "message": "Not configured",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没配"
+  },
+  "S33tz3": {
+    "message": "Not connected",
+    "placeholders": {},
+    "comments": [],
+    "translation": "没连"
+  },
+  "qB4FXu": {
+    "message": "Not enough data for two hours.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还不够两个小时的数据。"
+  },
+  "QEXVOr": {
+    "message": "Not enough data for two periods.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还不够两个时段的数据。"
+  },
+  "nw77tA": {
+    "message": "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "不在本机，也不在加密内网，走的还是明文 http。密钥和容器流量都是裸的，用 https 或者 Tailscale。"
+  },
+  "sF_cxU": {
+    "message": "Not satisfied",
+    "placeholders": {},
+    "comments": [],
+    "translation": "不满意"
+  },
+  "pJLF3J": {
+    "message": "Not started yet; waiting for prior slices to be accepted.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "还没开工，等前面的切片查收。"
+  },
+  "1DBGsz": {
+    "message": "Notes",
+    "placeholders": {},
+    "comments": [],
+    "translation": "记录"
+  },
+  "iDNBZe": {
+    "message": "Notifications",
+    "placeholders": {},
+    "comments": [],
+    "translation": "通知"
+  },
+  "zga9sT": {
+    "message": "OK",
+    "placeholders": {},
+    "comments": [],
+    "translation": "确定"
+  },
+  "u3JJbf": {
+    "message": "Once boundaries are cleared, work starts automatically; no need to click again.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "让开之后自动开工，不用再点一次"
+  },
+  "VvW38y": {
+    "message": "One connection manages all projects",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一个连接管所有项目"
+  },
+  "P3rmDM": {
+    "message": "Only running",
+    "placeholders": {},
+    "comments": [],
+    "translation": "只看在跑的"
+  },
+  "Tl9TR8": {
+    "message": "Only this stage",
+    "placeholders": {},
+    "comments": [],
+    "translation": "只看这一段"
+  },
+  "AptlFm": {
+    "message": "Open a new PR",
+    "placeholders": {},
+    "comments": [],
+    "translation": "开一个新 PR"
+  },
+  "cfVQvA": {
+    "message": "Open login page",
+    "placeholders": {},
+    "comments": [],
+    "translation": "打开登录页"
+  },
+  "ixlGqr": {
+    "message": "Open new PR",
+    "placeholders": {},
+    "comments": [],
+    "translation": "开新 PR"
+  },
+  "XNVZiJ": {
+    "message": "Open PR ↗",
+    "placeholders": {},
+    "comments": [],
+    "translation": "打开 PR ↗"
+  },
+  "UYUgdb": {
+    "message": "Order",
+    "placeholders": {},
+    "comments": [],
+    "translation": "顺序"
+  },
+  "ucgZ0o": {
+    "message": "Organization",
+    "placeholders": {},
+    "comments": [],
+    "translation": "组织"
+  },
+  "_IX_7x": {
+    "message": "Other",
+    "placeholders": {},
+    "comments": [],
+    "translation": "其他"
+  },
+  "F8JUQI": {
+    "message": "P50",
+    "placeholders": {},
+    "comments": [],
+    "translation": "一般"
+  },
+  "QwetJl": {
+    "message": "P95",
+    "placeholders": {},
+    "comments": [],
+    "translation": "最慢"
+  },
+  "wFwgKk": {
+    "message": "Pass",
+    "placeholders": {},
+    "comments": [],
+    "translation": "过"
+  },
+  "HzVv6g": {
+    "message": "Paste",
+    "placeholders": {},
+    "comments": [],
+    "translation": "粘贴"
+  },
+  "GIvsjD": {
+    "message": "Paste it; hidden after saving",
+    "placeholders": {},
+    "comments": [],
+    "translation": "粘贴进来，存下之后看不到"
+  },
+  "IgrLD_": {
+    "message": "Pause",
+    "placeholders": {},
+    "comments": [],
+    "translation": "暂停"
+  },
+  "UbRKMZ": {
+    "message": "Pending",
+    "placeholders": {},
+    "comments": [],
+    "translation": "待查收"
+  },
+  "pAEgM9": {
+    "message": "pending merges",
+    "placeholders": {},
+    "comments": [],
+    "translation": "个待合入"
+  },
+  "HlzhUv": {
+    "message": "Per delivered requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "每个已交付需求"
+  },
+  "jAIAes": {
+    "message": "Per-run duration",
+    "placeholders": {},
+    "comments": [],
+    "translation": "每次运行的耗时"
+  },
+  "7MuXko": {
+    "message": "Personal",
+    "placeholders": {},
+    "comments": [],
+    "translation": "个人"
+  },
+  "d15suO": {
+    "message": "Personal account",
+    "placeholders": {},
+    "comments": [],
+    "translation": "个人账号"
+  },
+  "Yj_Oy0": {
+    "message": "Pick a model to add a row",
+    "placeholders": {},
+    "comments": [],
+    "translation": "选一个模型就多一行"
+  },
+  "GdgCoi": {
+    "message": "Plan",
+    "placeholders": {},
+    "comments": [],
+    "translation": "计划"
+  },
+  "A4x6D_": {
+    "message": "Plan card",
+    "placeholders": {},
+    "comments": [],
+    "translation": "计划卡"
+  },
+  "5dUEVS": {
+    "message": "Plan card not submitted",
+    "placeholders": {},
+    "comments": [],
+    "translation": "计划卡未提交"
+  },
+  "GszIEh": {
+    "message": "Plan card not submitted yet",
+    "placeholders": {},
+    "comments": [],
+    "translation": "计划卡还没交"
+  },
+  "IRufNX": {
+    "message": "Plan card pending approval",
+    "placeholders": {},
+    "comments": [],
+    "translation": "计划卡待批"
+  },
+  "nIqmlE": {
+    "message": "Planner suggests abandoning",
+    "placeholders": {},
+    "comments": [],
+    "translation": "规划岗建议作废"
+  },
+  "uVradX": {
+    "message": "PR link not found",
+    "placeholders": {},
+    "comments": [],
+    "translation": "未找到 PR 链接"
+  },
+  "o4QBBj": {
+    "message": "PR pending merge",
+    "placeholders": {},
+    "comments": [],
+    "translation": "PR 待合入"
+  },
+  "Q6hhn8": {
+    "message": "Preferences",
+    "placeholders": {},
+    "comments": [],
+    "translation": "偏好"
+  },
+  "zwBp5t": {
+    "message": "Private",
+    "placeholders": {},
+    "comments": [],
+    "translation": "私有"
+  },
+  "wyaIXF": {
+    "message": "Project name…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "项目名…"
+  },
+  "-0B-ue": {
+    "message": "Projects",
+    "placeholders": {},
+    "comments": [],
+    "translation": "项目"
+  },
+  "bfgr_e": {
+    "message": "Question",
+    "placeholders": {},
+    "comments": [],
+    "translation": "提问"
+  },
+  "K6TkGP": {
+    "message": "questions",
+    "placeholders": {},
+    "comments": [],
+    "translation": "个提问"
+  },
+  "enzGAL": {
+    "message": "Questions",
+    "placeholders": {},
+    "comments": [],
+    "translation": "问题"
+  },
+  "8wu9lr": {
+    "message": "Queued",
+    "placeholders": {},
+    "comments": [],
+    "translation": "排队中"
+  },
+  "nwqkBq": {
+    "message": "Read from server",
+    "placeholders": {},
+    "comments": [],
+    "translation": "从服务器读"
+  },
+  "ozwmb2": {
+    "message": "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "从沙盒服务器自己的配置里读（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）。值不经过浏览器。"
+  },
+  "A16Eqd": {
+    "message": "Real tokens don't enter the sandbox",
+    "placeholders": {},
+    "comments": [],
+    "translation": "真令牌不进沙盒"
+  },
+  "gcoiFh": {
+    "message": "Reconnect",
+    "placeholders": {},
+    "comments": [],
+    "translation": "重新连接"
+  },
+  "lCF0wC": {
+    "message": "Refresh",
+    "placeholders": {},
+    "comments": [],
+    "translation": "刷新"
+  },
+  "XeJdpK": {
+    "message": "Reject this slice",
+    "placeholders": {},
+    "comments": [],
+    "translation": "退回这一片"
+  },
+  "ekCRTP": {
+    "message": "Rejected",
+    "placeholders": {},
+    "comments": [],
+    "translation": "退回"
+  },
+  "GvcBZh": {
+    "message": "Rejected, awaiting fix",
+    "placeholders": {},
+    "comments": [],
+    "translation": "已退回，等它修"
+  },
+  "iGlRgg": {
+    "message": "Release the concurrency slot; code and checkpoint in the sandbox stay in place.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "释放并发槽，沙盒里的代码和 checkpoint 原地不动"
+  },
+  "qlAIQ1": {
+    "message": "Remote",
+    "placeholders": {},
+    "comments": [],
+    "translation": "远程"
+  },
+  "t_YqKh": {
+    "message": "Remove",
+    "placeholders": {},
+    "comments": [],
+    "translation": "移除"
+  },
+  "a3M6tu": {
+    "message": "Remove limit",
+    "placeholders": {},
+    "comments": [],
+    "translation": "取消上限"
+  },
+  "HxssvP": {
+    "message": "Remove project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "移除项目"
+  },
+  "Bh5Msf": {
+    "message": "Remove this project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "移除这个项目"
+  },
+  "APfagk": {
+    "message": "Removing…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "移除中…"
+  },
+  "ImOQa9": {
+    "message": "Reply",
+    "placeholders": {},
+    "comments": [],
+    "translation": "回答"
+  },
+  "ORouxy": {
+    "message": "Reply. Sending this will unblock the waiting agent. Cmd+Enter to send",
+    "placeholders": {},
+    "comments": [],
+    "translation": "答复。发出去直接解开被阻塞的 agent。⌘Enter 发送"
+  },
+  "6AURG0": {
+    "message": "Reply… Cmd+Enter to send",
+    "placeholders": {},
+    "comments": [],
+    "translation": "回答…  ⌘↵ 发送"
+  },
+  "kJ-0qS": {
+    "message": "Repo-wide",
+    "placeholders": {},
+    "comments": [],
+    "translation": "随仓库"
+  },
+  "2R0JRN": {
+    "message": "Repos with DCO enabled won't accept commits without this line",
+    "placeholders": {},
+    "comments": [],
+    "translation": "开了 DCO 的仓库不收没有这行的提交"
+  },
+  "IreQBq": {
+    "message": "Repository",
+    "placeholders": {},
+    "comments": [],
+    "translation": "仓库"
+  },
+  "gZu9-9": {
+    "message": "Request changes",
+    "placeholders": {},
+    "comments": [],
+    "translation": "要求修改"
+  },
+  "2LQdMJ": {
+    "message": "Requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "需求"
+  },
+  "limQr5": {
+    "message": "Requirement name…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "需求名…"
+  },
+  "JOKdLk": {
+    "message": "requirements",
+    "placeholders": {},
+    "comments": [],
+    "translation": "个需求"
   },
   "Igjjz3": {
     "message": "Rescan",
@@ -11,16 +2052,660 @@
     "comments": [],
     "translation": "重新扫描"
   },
+  "L-rMC9": {
+    "message": "Reset to default",
+    "placeholders": {},
+    "comments": [],
+    "translation": "恢复默认"
+  },
+  "LRRbF6": {
+    "message": "Reset to the image in config",
+    "placeholders": {},
+    "comments": [],
+    "translation": "改回配置文件里的了"
+  },
+  "8shPUI": {
+    "message": "Resetting soon",
+    "placeholders": {},
+    "comments": [],
+    "translation": "即将重置"
+  },
+  "6z9W13": {
+    "message": "Restart",
+    "placeholders": {},
+    "comments": [],
+    "translation": "重开"
+  },
+  "KP35U0": {
+    "message": "Restart container",
+    "placeholders": {},
+    "comments": [],
+    "translation": "重开容器"
+  },
+  "UGguP3": {
+    "message": "Restart the sandbox server?",
+    "placeholders": {},
+    "comments": [],
+    "translation": "重启沙盒服务器？"
+  },
+  "vAZ1vN": {
+    "message": "Restarted; containers will restart on demand",
+    "placeholders": {},
+    "comments": [],
+    "translation": "重启了，容器会按需重开"
+  },
+  "fvg2KT": {
+    "message": "Restarting…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "重启中…"
+  },
+  "YMXEj_": {
+    "message": "Restore all",
+    "placeholders": {},
+    "comments": [],
+    "translation": "全部恢复"
+  },
+  "v39wLo": {
+    "message": "Resume",
+    "placeholders": {},
+    "comments": [],
+    "translation": "继续"
+  },
+  "PHOwUf": {
+    "message": "Retry this view",
+    "placeholders": {},
+    "comments": [],
+    "translation": "重试这个视图"
+  },
+  "E9s4Hf": {
+    "message": "Return for re-decomposition",
+    "placeholders": {},
+    "comments": [],
+    "translation": "退回重拆"
+  },
+  "Dn1cWK": {
+    "message": "Return to the checkpoint before this round started; all changes in this turn are discarded.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "回到这一轮开始前的 checkpoint，这个 turn 的改动全丢"
+  },
+  "j5iEdc": {
+    "message": "Revoke and take over",
+    "placeholders": {},
+    "comments": [],
+    "translation": "撤销并接管"
+  },
+  "CDes-i": {
+    "message": "Roll back to the checkpoint when the question was asked; all subsequent changes are discarded. You'll answer it again.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "回滚到提问时的 checkpoint，之后的改动作废，由你重新回答。"
+  },
+  "sRVwZe": {
+    "message": "Run the official CLI's login once in the tool container; store the credential here. No setup needed locally. Official accounts only; custom gateways use API key.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "在工具容器里跑一次官方 CLI 的登录，拿到的凭据存在这儿。本机什么都不用装。仅限官方账号；自建网关走 API key。"
+  },
+  "siNdHG": {
+    "message": "Run top-to-bottom; drag to reorder",
+    "placeholders": {},
+    "comments": [],
+    "translation": "从上往下跑，拖着改顺序"
+  },
+  "vMT9um": {
+    "message": "Sandbox",
+    "placeholders": {},
+    "comments": [],
+    "translation": "沙盒"
+  },
+  "owfKdV": {
+    "message": "Sandbox configuration",
+    "placeholders": {},
+    "comments": [],
+    "translation": "沙盒要用的"
+  },
+  "umfO1F": {
+    "message": "Sandbox server",
+    "placeholders": {},
+    "comments": [],
+    "translation": "沙盒服务器"
+  },
+  "tfDRzk": {
+    "message": "Save",
+    "placeholders": {},
+    "comments": [],
+    "translation": "存下"
+  },
   "BlLxpG": {
     "message": "Search skills",
     "placeholders": {},
     "comments": [],
     "translation": "搜技能"
   },
+  "NPfgIB": {
+    "message": "sec",
+    "placeholders": {},
+    "comments": [],
+    "translation": "秒"
+  },
+  "ylXj1N": {
+    "message": "Selected",
+    "placeholders": {},
+    "comments": [],
+    "translation": "已选"
+  },
+  "QwCX4t": {
+    "message": "Self",
+    "placeholders": {},
+    "comments": [],
+    "translation": "自身"
+  },
+  "JlFcis": {
+    "message": "Send",
+    "placeholders": {},
+    "comments": [],
+    "translation": "发送"
+  },
+  "zkYz4A": {
+    "message": "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "整个需求退回 Dispatcher 重新深挖，已写的代码留在分支上"
+  },
+  "GD78ah": {
+    "message": "Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact"
+  },
+  "68dnxO": {
+    "message": "Send to PM",
+    "placeholders": {},
+    "comments": [],
+    "translation": "发给 PM"
+  },
+  "sGH11W": {
+    "message": "Server",
+    "placeholders": {},
+    "comments": [],
+    "translation": "服务器"
+  },
+  "NfZUor": {
+    "message": "Set",
+    "placeholders": {},
+    "comments": [],
+    "translation": "设定"
+  },
+  "Ufp8L2": {
+    "message": "Set a token limit for this requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "给这个需求设 token 上限"
+  },
+  "Tz0i8g": {
+    "message": "Settings",
+    "placeholders": {},
+    "comments": [],
+    "translation": "设置"
+  },
+  "P14X5y": {
+    "message": "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S",
+    "placeholders": {},
+    "comments": [],
+    "translation": "设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S"
+  },
+  "Q8KZbZ": {
+    "message": "Shared across all projects",
+    "placeholders": {},
+    "comments": [],
+    "translation": "所有项目共用"
+  },
+  "tp12TV": {
+    "message": "Shared across requirements",
+    "placeholders": {},
+    "comments": [],
+    "translation": "跨需求共用"
+  },
+  "5uNrb2": {
+    "message": "Shared cache",
+    "placeholders": {},
+    "comments": [],
+    "translation": "共享缓存"
+  },
   "PCSkw2": {
     "message": "Skills",
     "placeholders": {},
     "comments": [],
     "translation": "技能"
+  },
+  "0wEveb": {
+    "message": "Slice",
+    "placeholders": {},
+    "comments": [],
+    "translation": "切片"
+  },
+  "7YvQJV": {
+    "message": "Slice baseline was lost in rebase; showing the entire branch relative to origin/main",
+    "placeholders": {},
+    "comments": [],
+    "translation": "切片基线被 rebase 冲掉了，这里是整条分支相对 origin/main 的改动"
+  },
+  "j6GhP0": {
+    "message": "Slice durations",
+    "placeholders": {},
+    "comments": [],
+    "translation": "各切片耗时"
+  },
+  "hpEGHk": {
+    "message": "slices pending",
+    "placeholders": {},
+    "comments": [],
+    "translation": "片待查收"
+  },
+  "SXB6Df": {
+    "message": "Someone else is handling it",
+    "placeholders": {},
+    "comments": [],
+    "translation": "别人在处理"
+  },
+  "CmwZGb": {
+    "message": "Spec",
+    "placeholders": {},
+    "comments": [],
+    "translation": "规格"
+  },
+  "gJB9TK": {
+    "message": "Stage durations",
+    "placeholders": {},
+    "comments": [],
+    "translation": "各环节耗时"
+  },
+  "4nHCWw": {
+    "message": "Standing post",
+    "placeholders": {},
+    "comments": [],
+    "translation": "常驻岗"
+  },
+  "tXkhj_": {
+    "message": "Start",
+    "placeholders": {},
+    "comments": [],
+    "translation": "起一个"
+  },
+  "9nFRkK": {
+    "message": "Start from this branch",
+    "placeholders": {},
+    "comments": [],
+    "translation": "从这个分支开"
+  },
+  "JEGlfK": {
+    "message": "Started",
+    "placeholders": {},
+    "comments": [],
+    "translation": "起来了"
+  },
+  "YgkVxJ": {
+    "message": "Started at",
+    "placeholders": {},
+    "comments": [],
+    "translation": "开出来"
+  },
+  "JD3In6": {
+    "message": "Starting…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "起中…"
+  },
+  "0CzbA_": {
+    "message": "Starts after approval",
+    "placeholders": {},
+    "comments": [],
+    "translation": "批了才开工"
+  },
+  "i-G7HL": {
+    "message": "Stop dispatching; branch is kept but not merged. A retrospective is still required.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "停止派发，分支保留不合入，仍然要写 retro"
+  },
+  "lAF6km": {
+    "message": "Stop here (archive)",
+    "placeholders": {},
+    "comments": [],
+    "translation": "就停在这里（封存）"
+  },
+  "Js8gEk": {
+    "message": "Stop the current turn; keep changes. The next turn will be informed.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "停止当前 turn，改动留着，下一个 turn 会被告知"
+  },
+  "hQRttt": {
+    "message": "Submit",
+    "placeholders": {},
+    "comments": [],
+    "translation": "提交"
+  },
+  "xaDWAI": {
+    "message": "Switch project",
+    "placeholders": {},
+    "comments": [],
+    "translation": "切换项目"
+  },
+  "hIzFSH": {
+    "message": "Switch requirement",
+    "placeholders": {},
+    "comments": [],
+    "translation": "切换需求"
+  },
+  "D-NlUC": {
+    "message": "System",
+    "placeholders": {},
+    "comments": [],
+    "translation": "系统"
+  },
+  "Yf3EgL": {
+    "message": "System timing",
+    "placeholders": {},
+    "comments": [],
+    "translation": "系统耗时"
+  },
+  "22d3SP": {
+    "message": "The browser can't read this. Drag folders in instead.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "浏览器读不到这些内容。文件夹得拖进来。"
+  },
+  "KL0N71": {
+    "message": "The chosen skill is sent with this turn; it only costs for this one turn.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "选中的技能，正文随这一个 turn 发给 agent，只花这一次钱"
+  },
+  "Bn1Nxe": {
+    "message": "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。"
+  },
+  "GbXn7n": {
+    "message": "The service that launches containers",
+    "placeholders": {},
+    "comments": [],
+    "translation": "开容器的那个服务"
+  },
+  "FEr96N": {
+    "message": "Theme",
+    "placeholders": {},
+    "comments": [],
+    "translation": "主题"
+  },
+  "Ez2cT0": {
+    "message": "These paths from the card don't exist in the repo",
+    "placeholders": {},
+    "comments": [],
+    "translation": "卡里这些路径仓库里没有"
+  },
+  "50AYjp": {
+    "message": "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "这句话作为最高优先级 fact，整个需求退回 Dispatcher 重新深挖。已写的代码留在分支上。"
+  },
+  "gu-D6k": {
+    "message": "This log is empty",
+    "placeholders": {},
+    "comments": [],
+    "translation": "这份日志是空的"
+  },
+  "tERiuN": {
+    "message": "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "这个进程不是我们起的，可能是你自己在用的那个。要重启就自己重启，之后这里会认得它。"
+  },
+  "Ap7MoR": {
+    "message": "This project hasn't run any activity yet.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "这个项目还没跑过任何活。"
+  },
+  "_BU99I": {
+    "message": "This requirement has been archived or no longer exists.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "这个需求已经归档或不存在了。"
+  },
+  "OqyUgx": {
+    "message": "This requirement hasn't run any activity yet.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "这个需求还没跑过任何活。"
+  },
+  "QzBCQU": {
+    "message": "This slice hasn't produced changes yet and has no verdict.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "这一片还没跑出改动，也还没有判词。"
+  },
+  "px6rle": {
+    "message": "This view crashed",
+    "placeholders": {},
+    "comments": [],
+    "translation": "这个视图崩了"
+  },
+  "LhMjLm": {
+    "message": "Time",
+    "placeholders": {},
+    "comments": [],
+    "translation": "耗时"
+  },
+  "TtMxW4": {
+    "message": "Timing for all activity on this machine, last 24h",
+    "placeholders": {},
+    "comments": [],
+    "translation": "这台机器上所有活动的耗时，最近一天"
+  },
+  "ecUA8p": {
+    "message": "Today",
+    "placeholders": {},
+    "comments": [],
+    "translation": "今天"
+  },
+  "JfT1QM": {
+    "message": "tokens · project total",
+    "placeholders": {},
+    "comments": [],
+    "translation": "tokens · 这个项目累计"
+  },
+  "ufMpSR": {
+    "message": "tokens · share",
+    "placeholders": {},
+    "comments": [],
+    "translation": "tokens · 占比"
+  },
+  "3IqNQS": {
+    "message": "Turned off, but page alerts and tab title counts still work—just no pop-ups.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "关掉之后仍然会在页面里提示，标签页标题也照样带计数——只是不再弹出窗口。"
+  },
+  "7VgwUn": {
+    "message": "Type a model ID to add a row",
+    "placeholders": {},
+    "comments": [],
+    "translation": "填个模型 id 就多一行"
+  },
+  "EUHN7i": {
+    "message": "Undefined",
+    "placeholders": {},
+    "comments": [],
+    "translation": "未划定"
+  },
+  "HkKS_w": {
+    "message": "Unit for {label}",
+    "placeholders": {
+      "label": ["label"]
+    },
+    "comments": [],
+    "translation": "{label} 的单位"
+  },
+  "TlHpRw": {
+    "message": "Unreadable",
+    "placeholders": {},
+    "comments": [],
+    "translation": "读不到"
+  },
+  "Qd3NOV": {
+    "message": "Use 'defer' to archive without deleting; that keeps records",
+    "placeholders": {},
+    "comments": [],
+    "translation": "想留下记录就用「不做了」封存，那个不删"
+  },
+  "M15PCh": {
+    "message": "Use draft",
+    "placeholders": {},
+    "comments": [],
+    "translation": "用草稿"
+  },
+  "BVhEN_": {
+    "message": "Use this only if you can't reopen an old PR on GitHub. Use when the branch has been force-pushed or deleted: it will re-open using the current branch and rejoin the merge queue.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "能在 GitHub 上重开旧 PR 就不用这个。分支被强推或删过才用：会用当前分支重提一个，回到合入队列。"
+  },
+  "5SUvzT": {
+    "message": "Use when the container is stuck, missing dependencies, or credentials changed. The next turn will re-clone and reinstall; the branch in the host repo stays.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "容器卡住、少挂了东西、或换过凭据时用。下一个 turn 重新 clone + 装依赖，分支在宿主仓库里不会丢"
+  },
+  "rj9VmJ": {
+    "message": "View log",
+    "placeholders": {},
+    "comments": [],
+    "translation": "看日志"
+  },
+  "uUehLT": {
+    "message": "Waiting",
+    "placeholders": {},
+    "comments": [],
+    "translation": "等"
+  },
+  "x11Fa2": {
+    "message": "Waiting for prior slice",
+    "placeholders": {},
+    "comments": [],
+    "translation": "等前序切片"
+  },
+  "N6oHir": {
+    "message": "Waiting for you",
+    "placeholders": {},
+    "comments": [],
+    "translation": "有事等你"
+  },
+  "OxAtzf": {
+    "message": "Waiting for you to approve in the browser…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "等你在浏览器里批准…"
+  },
+  "cdTn1o": {
+    "message": "Waiting for you to approve on GitHub…",
+    "placeholders": {},
+    "comments": [],
+    "translation": "等你在 GitHub 上批准…"
+  },
+  "4mi85N": {
+    "message": "Wake",
+    "placeholders": {},
+    "comments": [],
+    "translation": "唤醒"
+  },
+  "d8ExK5": {
+    "message": "Was connected, but GitHub no longer recognizes this token",
+    "placeholders": {},
+    "comments": [],
+    "translation": "连过，但 GitHub 现在不认这个令牌了"
+  },
+  "zx4BuL": {
+    "message": "Week",
+    "placeholders": {},
+    "comments": [],
+    "translation": "周"
+  },
+  "JvMxE7": {
+    "message": "Weight:",
+    "placeholders": {},
+    "comments": [],
+    "translation": "分量："
+  },
+  "-YrETt": {
+    "message": "What",
+    "placeholders": {},
+    "comments": [],
+    "translation": "在做什么"
+  },
+  "oM0GrX": {
+    "message": "What's not satisfactory. Cmd+Enter to reject",
+    "placeholders": {},
+    "comments": [],
+    "translation": "哪里不满意。⌘Enter 退回"
+  },
+  "Wv9_yD": {
+    "message": "When the limit is reached, the group pauses until you decide whether to increase it.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "用满就挂起，等你决定加不加。"
+  },
+  "QXTfG1": {
+    "message": "Which window",
+    "placeholders": {},
+    "comments": [],
+    "translation": "看的是哪一段"
+  },
+  "Na8oCP": {
+    "message": "Who · Model",
+    "placeholders": {},
+    "comments": [],
+    "translation": "谁 · 模型"
+  },
+  "DYs__Q": {
+    "message": "Why this value",
+    "placeholders": {},
+    "comments": [],
+    "translation": "为什么是这个值"
+  },
+  "6R0Qtt": {
+    "message": "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM",
+    "placeholders": {},
+    "comments": [],
+    "translation": "下一个 turn 开头就会读到。截图直接粘，/ 插技能路径。⌘Enter 发给 PM"
+  },
+  "pmUArF": {
+    "message": "Workspace",
+    "placeholders": {},
+    "comments": [],
+    "translation": "工作区"
+  },
+  "sAMeNl": {
+    "message": "Write a description, break into plan cards, then come back for review.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "写一句话，拆成计划卡再回来给你批。"
+  },
+  "Hpf_lH": {
+    "message": "Wrong direction",
+    "placeholders": {},
+    "comments": [],
+    "translation": "方向错了"
+  },
+  "d0a7Yx": {
+    "message": "You can edit the card and re-approve.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "卡可以直接改再批"
   }
 }

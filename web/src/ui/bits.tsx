@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "./button";
 import { cn } from "./cn";
+import { t } from "@lingui/core/macro";
 
 /**
  * Section label.
@@ -119,7 +120,7 @@ export function Clamp({ lines = 2, children }: { lines?: number; children: React
       </div>
       {(over || open) && (
         <Button variant="quiet" size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? "收起" : "展开"}
+          {open ? t`Collapse` : t`Expand`}
         </Button>
       )}
     </>

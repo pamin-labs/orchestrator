@@ -37,6 +37,8 @@ import {
   trendScale,
   wheelWindow,
 } from "./model";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 /**
  * 耗时 — where a scope's wall clock went.
@@ -150,9 +152,9 @@ function BucketPicker({
   onPick: (ms: number | null) => void;
 }) {
   return (
-    <Menu label={`每格 ${bucketLabel(value)}${pinned ? "" : "（跟随）"}`}>
-      <MenuItem hint="窗口一变就跟着变，够画又不挤" onSelect={() => onPick(null)}>
-        跟随窗口
+    <Menu label={`每格 ${bucketLabel(value)}${pinned ? "" : t`(following)`}`}>
+      <MenuItem hint={t`Follow window—updates as window changes, fits without crowding`} onSelect={() => onPick(null)}>
+        <Trans>Follow window</Trans>
       </MenuItem>
       {BUCKETS.map((ms) => {
         const fits = bucketFits(windowMs, ms);
@@ -236,17 +238,25 @@ function StageTable({
         {/* A head is not only a definition; it is what makes a header row look
             like one — three labelled cells beside one blank read as a header that
             failed to render, not as a self-evident column. */}
-        <div>在做什么</div>
+        <div>
+          <Trans>What</Trans>
+        </div>
         {/* Nouns, and the shortest ones that still separate the two durations:
             what it usually costs against what it costs on a bad day. The exact
             statistic stays one hover away for anybody who wants it. */}
         <Tip label={P50_LABEL}>
-          <div className="text-right underline decoration-dotted underline-offset-2">一般</div>
+          <div className="text-right underline decoration-dotted underline-offset-2">
+            <Trans>P50</Trans>
+          </div>
         </Tip>
         <Tip label={P95_LABEL}>
-          <div className="text-right underline decoration-dotted underline-offset-2">最慢</div>
+          <div className="text-right underline decoration-dotted underline-offset-2">
+            <Trans>P95</Trans>
+          </div>
         </Tip>
-        <div className="text-right">次数</div>
+        <div className="text-right">
+          <Trans>Count</Trans>
+        </div>
       </div>
       {/* Grouped by kind and shut by default, inside a box that does not grow:
           twenty-four rules summing to 1.1s is one line. Grouping comes from the
@@ -355,7 +365,7 @@ function StageTable({
                                only half a reader can act on. Under a `Tip`
                                because it is the newest failure's own words and
                                can be long — the row stays a row. */
-                            <Tip label={stage.reason ?? "没有记下原因"}>
+                            <Tip label={stage.reason ?? t`No reason recorded`}>
                               <span className="shrink-0 font-mono text-pill text-bad">{stage.errors} 失败</span>
                             </Tip>
                           )}
@@ -367,8 +377,12 @@ function StageTable({
                     </ContextMenu.Trigger>
                     <ContextMenu.Portal>
                       <ContextMenu.Content className={MENU}>
-                        <MenuAction onSelect={() => onPick([stage.name])}>只看这一段</MenuAction>
-                        <MenuAction onSelect={() => onExclude(stage.name)}>不看这一段</MenuAction>
+                        <MenuAction onSelect={() => onPick([stage.name])}>
+                          <Trans>Only this stage</Trans>
+                        </MenuAction>
+                        <MenuAction onSelect={() => onExclude(stage.name)}>
+                          <Trans>Hide this stage</Trans>
+                        </MenuAction>
                       </ContextMenu.Content>
                     </ContextMenu.Portal>
                   </ContextMenu.Root>
@@ -393,7 +407,7 @@ function StageTable({
               0ms 以内" reads as a broken number rather than as a fast stage. */}
           {showRest
             ? `收起另外 ${fast.length} 个`
-            : `展开另外 ${fast.length} 个（${ceiling < 1 ? "都不到 1ms" : `都在 ${duration(ceiling)} 以内`}）`}
+            : `展开另外 ${fast.length} 个（${ceiling < 1 ? t`All under 1ms` : `都在 ${duration(ceiling)} 以内`}）`}
         </button>
       )}
     </div>
@@ -442,14 +456,18 @@ function FlameBlock({ folded, picked }: { folded: Report["flame"]; picked: reado
       // Named for the question it answers, not for the chart it is: this is every
       // run in the scope stacked together, the trend beside it is one number per
       // bucket over time, and two charts of the same spans need that said.
-      title="耗时分布"
+      title={t`Flame distribution`}
       aside={
         <Segments value={self ? "self" : "total"} onValueChange={(next) => setSelf(next === "self")}>
           {/* Not two skins on one chart: 自身 makes a frame as wide as the time it
               spent itself, 含下游 as wide as everything it called. A parent that
               only waits is full width under one and a sliver under the other. */}
-          <Segment value="self">自身</Segment>
-          <Segment value="total">含下游</Segment>
+          <Segment value="self">
+            <Trans>Self</Trans>
+          </Segment>
+          <Segment value="total">
+            <Trans>Including downstream</Trans>
+          </Segment>
         </Segments>
       }
     >
@@ -525,7 +543,7 @@ function Trend({
         {/* Which of the two absences it is. "Nothing was recorded here" and
             "nothing has been recorded yet" send the reader to different places,
             and the window is what tells them apart. */}
-        {trend.length === 0 ? "这段时间没有活动。" : "还不够两个时段的数据。"}
+        {trend.length === 0 ? t`No activity in this window.` : t`Not enough data for two periods.`}
       </div>
     );
   }
@@ -717,7 +735,7 @@ function TrendBlock({
 }) {
   return (
     <Block
-      title="每次运行的耗时"
+      title={t`Per-run duration`}
       aside={
         <BucketPicker
           value={bucketMs}
@@ -737,14 +755,14 @@ function TrendBlock({
       />
       {/* The same strip the flamegraph has, against the whole stretch the data
           covers — which is what a `Brush` could not be. */}
-      <Minimap view={window} limit={limit} label="看的是哪一段" onPan={onWindow} />
+      <Minimap view={window} limit={limit} label={t`Which window`} onPan={onWindow} />
       {chosen !== null && (
         <button
           type="button"
           onClick={() => onWindow(null)}
           className="cursor-pointer self-start text-secondary text-ink-3 transition-colors hover:text-ink"
         >
-          ← 回到整段时间
+          <Trans>← Back to full timeline</Trans>
         </button>
       )}
     </Block>
@@ -786,7 +804,7 @@ export function Telemetry({
   scope,
   windowMs,
   trend: showTrend = false,
-  empty = "还没有跑过任何活。",
+  empty = t`No activity yet.`,
 }: {
   scope: TelemetryScope;
   windowMs?: number;
@@ -838,7 +856,7 @@ export function Telemetry({
   const limit = report?.dataWindow ?? extent ?? report?.window ?? shownWindow;
 
   if (!report) {
-    return <div className="py-4 text-secondary text-ink-3">{loading ? "读取中…" : empty}</div>;
+    return <div className="py-4 text-secondary text-ink-3">{loading ? t`Loading…` : empty}</div>;
   }
   if (!hasSpans(report.stages, report.traces)) {
     return <div className="py-4 text-secondary text-ink-3">{empty}</div>;
@@ -876,7 +894,7 @@ export function Telemetry({
         {/* Titled like its neighbours: three titled blocks and one bare table read
             as a layout that lost a heading, whatever the columns say for
             themselves. */}
-        <Block title="各环节耗时">
+        <Block title={t`Stage durations`}>
           <Stages stages={shown} picked={picked} onPick={pick} onExclude={exclude} />
           {excluded.length > 0 && <Excluded names={excluded} onClear={restoreAll} onRestore={restore} />}
         </Block>
@@ -899,7 +917,9 @@ function Slices({ slices }: { slices: Report["slices"] }) {
   const total = slices.reduce((sum, row) => sum + row.totalMs, 0) || 1;
   return (
     <section className="flex flex-col gap-y-2">
-      <h3 className="border-b border-rule pb-1 text-body font-medium text-ink">各切片耗时</h3>
+      <h3 className="border-b border-rule pb-1 text-body font-medium text-ink">
+        <Trans>Slice durations</Trans>
+      </h3>
       <div className="flex flex-col gap-y-1.5">
         {slices.map((row) => (
           <div key={row.sliceId ?? "none"} className="grid grid-cols-[6rem_minmax(0,1fr)_4rem] items-center gap-x-3">
@@ -907,7 +927,7 @@ function Slices({ slices }: { slices: Report["slices"] }) {
                 roster belong to no slice, and leaving them out would make these add
                 up to less than the requirement with nothing explaining the gap. */}
             <span className="truncate text-secondary text-ink-2">
-              {row.sliceId === null ? "没归到切片" : `切片 ${row.sliceId}`}
+              {row.sliceId === null ? t`No slice` : `切片 ${row.sliceId}`}
             </span>
             <div className="h-1.5 rounded-full bg-sunk">
               <div
@@ -939,7 +959,9 @@ function Excluded({
 }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-secondary text-ink-3">
-      <span>不看：</span>
+      <span>
+        <Trans>Hiding:</Trans>
+      </span>
       {names.map((name) => (
         <button
           key={name}
@@ -951,7 +973,7 @@ function Excluded({
         </button>
       ))}
       <button type="button" onClick={onClear} className="cursor-pointer underline transition-colors hover:text-ink">
-        全部恢复
+        <Trans>Restore all</Trans>
       </button>
     </div>
   );
@@ -971,8 +993,8 @@ const HOST: TelemetryScope = { kind: "system" };
 export function SystemTiming() {
   return (
     <>
-      <Head title="系统耗时" note="这台机器上所有活动的耗时，最近一天" />
-      <Telemetry scope={HOST} trend empty="还没有记下任何系统活动。" />
+      <Head title={t`System timing`} note={t`Timing for all activity on this machine, last 24h`} />
+      <Telemetry scope={HOST} trend empty={t`No system activity recorded.`} />
     </>
   );
 }

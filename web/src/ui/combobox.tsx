@@ -3,6 +3,7 @@ import { Command } from "cmdk";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "./cn";
+import { t } from "@lingui/core/macro";
 
 /**
  * One control for a value that comes from a list: type to filter, click or Enter
@@ -49,7 +50,7 @@ export function Combobox({
   value,
   options,
   placeholder,
-  empty = "没有匹配的分支",
+  empty = t`No matching branches`,
   disabled,
   width,
   free,
@@ -167,7 +168,7 @@ export function Combobox({
             >
               {!shown.length && (
                 <div className="px-2 py-2 text-secondary text-ink-3">
-                  {options.length ? empty : "读不到远端分支，这里按你填的存"}
+                  {options.length ? empty : t`Can't read remote branches; storing what you entered`}
                 </div>
               )}
               {shown.map((o) => (

@@ -4,6 +4,8 @@ import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
 import { api, mutate } from "../../shared/api";
 import { Gates, Sandbox, type ProjectConfig, type ProjectPatch } from "../project/view";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 export type ProjectSection = "gates" | "sandbox" | "remove";
 
@@ -73,7 +75,7 @@ function Remove({
       body:
         `${repoPath} 的 ${groups} 个需求、它们的容器、卡片、记录和附件都会删掉，删了找不回来。\n\n` +
         `GitHub 上什么都不动：分支还在，PR 还在，代码一行不少。移除的只是这台机器上的这份工作。`,
-      yes: "移除",
+      yes: t`Remove`,
       danger: true,
     });
     if (!yes) return;
@@ -88,7 +90,7 @@ function Remove({
 
   return (
     <>
-      <Head title="移除项目" />
+      <Head title={t`Remove project`} />
       {/* Two columns, one measure: what goes, what stays. It was one paragraph of
           running prose across the full panel, and a destructive decision read as
           an essay puts all the weight on the button being red. The confirm still
@@ -97,23 +99,31 @@ function Remove({
           from a pane of labelled values, and a column that moves between panes
           is the one thing a fixed grid is for. */}
       <dl className="grid max-w-[34rem] grid-cols-[var(--label)_minmax(0,1fr)] gap-x-4 gap-y-3 pt-1 text-body">
-        <dt className="font-semibold text-bad">删掉</dt>
+        <dt className="font-semibold text-bad">
+          <Trans>Delete</Trans>
+        </dt>
         <dd className="min-w-0">
           <span className="font-mono text-secondary">{repoPath}</span> 的 {groups} 个需求
           <div className="mt-0.5 text-secondary text-ink-3">
-            在跑的 turn 会停，容器、切片、卡片、提问、附件一起删，找不回来
+            <Trans>
+              Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable
+            </Trans>
           </div>
         </dd>
-        <dt className="font-semibold text-ok">留着</dt>
+        <dt className="font-semibold text-ok">
+          <Trans>Keep</Trans>
+        </dt>
         <dd className="min-w-0 text-ink-2">
           GitHub 上的分支、PR、代码
           {/* 不做了 archives and keeps every event. This does not, and the two
               buttons are one dialog apart. */}
-          <div className="mt-0.5 text-secondary text-ink-3">想留下记录就用「不做了」封存，那个不删</div>
+          <div className="mt-0.5 text-secondary text-ink-3">
+            <Trans>Use 'defer' to archive without deleting; that keeps records</Trans>
+          </div>
         </dd>
       </dl>
       <Button variant="danger" className="mt-5" disabled={busy} onClick={go}>
-        {busy ? "移除中…" : "移除这个项目"}
+        {busy ? t`Removing…` : t`Remove this project`}
       </Button>
     </>
   );

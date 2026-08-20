@@ -14,6 +14,8 @@ import { owns } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { activityOf } from "../../shared/activity";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 /**
  * Per docs/project/plan.md §8: current slice, turn count, the live last line, model, spend.
@@ -28,7 +30,11 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
   const rows = st.agents.filter((a) => !a.grp_id || ids.has(a.grp_id));
   const [idle, setIdle] = useState(false);
   if (!rows.length) {
-    return <Empty>还没有人上工。批准一张计划卡，这里就会列出每个 agent 在做什么。</Empty>;
+    return (
+      <Empty>
+        <Trans>No one working yet. Approve a plan card and each agent's current task appears here.</Trans>
+      </Empty>
+    );
   }
   // Newest live frame per agent: the tail of what it is printing right now.
   const last = new Map<number, string>();
@@ -45,7 +51,7 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
   const groups = [...new Set(shown.map((a) => a.grp_id))]
     .map((id) => ({
       id,
-      name: id == null ? "常驻岗" : (st.groups.find((g) => g.id === id)?.name ?? `#${id}`),
+      name: id == null ? t`Standing post` : (st.groups.find((g) => g.id === id)?.name ?? `#${id}`),
       agents: shown.filter((a) => a.grp_id === id),
     }))
     .sort((a, b) => {
@@ -56,14 +62,16 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
-        <h2 className="text-secondary font-semibold tracking-[0.02em] text-ink-2">工位</h2>
+        <h2 className="text-secondary font-semibold tracking-[0.02em] text-ink-2">
+          <Trans>Desk</Trans>
+        </h2>
         <Meta>
           在跑 {running.length} · 共 {rows.length}
         </Meta>
         <span className="grow" />
         {running.length > 0 && rows.length > running.length && (
           <Button variant="quiet" size="sm" onClick={() => setIdle((v) => !v)}>
-            {idle ? "只看在跑的" : `连空闲的一起看（${rows.length - running.length}）`}
+            {idle ? t`Only running` : `连空闲的一起看（${rows.length - running.length}）`}
           </Button>
         )}
       </div>
@@ -74,8 +82,12 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
             sticky because the pane scrolls and a heading that scrolls away stops
             being a heading. */}
         <div className={cn(DESK_ROW, "sticky top-0 z-10 border-b border-rule bg-paper pb-1.5 text-meta text-ink-3")}>
-          <span>谁 · 模型</span>
-          <span>在做什么</span>
+          <span>
+            <Trans>Who · Model</Trans>
+          </span>
+          <span>
+            <Trans>What</Trans>
+          </span>
           <span className="text-right">turn</span>
           <span className="text-right max-[52rem]:hidden">tokens</span>
         </div>
@@ -155,7 +167,7 @@ function Desks({
                 .filter((a) => a.state === "running")
                 .map((a) => a.role)
                 .join(" · ")
-            : "空闲"}
+            : t`Idle`}
         </Meta>
         <span className="grow" />
         {(() => {
@@ -285,8 +297,12 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
         className="grid grid-cols-[13rem_minmax(0,1fr)] gap-x-5 border-b border-rule pb-1.5 text-meta
                       text-ink-3 max-[52rem]:grid-cols-1"
       >
-        <span>需求</span>
-        <span>能改哪些文件</span>
+        <span>
+          <Trans>Requirement</Trans>
+        </span>
+        <span>
+          <Trans>Can modify which files</Trans>
+        </span>
       </div>
 
       <Pane>
@@ -325,7 +341,9 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                     ),
                   )
                 ) : (
-                  <Badge tone="warn">未划定</Badge>
+                  <Badge tone="warn">
+                    <Trans>Undefined</Trans>
+                  </Badge>
                 )}
               </span>
             </div>
@@ -372,15 +390,22 @@ function costSummary(cost: Cost) {
   const per = cost.delivered.count ? cost.delivered.tokens / cost.delivered.count : null;
   return {
     per: per == null ? "—" : K(per),
-    perNote: per == null ? "（合入一个才有）" : `（${cost.delivered.count} 个）`,
-    cache: cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`,
+    perNote: per == null ? t`(need one merge first)` : `（${cost.delivered.count} 个）`,
+    cache: cost.cacheRatio == null ? t`No data yet` : `${Math.round(cost.cacheRatio * 100)}%`,
     cacheClass: cost.cacheRatio == null ? "text-ink-3" : cost.cacheRatio < 0.5 ? "text-warn" : "text-ink",
   };
 }
 
 export function CostView({ cost }: { cost: Cost | null }) {
   if (!cost?.total?.tokens) {
-    return <Empty>还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。</Empty>;
+    return (
+      <Empty>
+        <Trans>
+          No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag
+          determines which model.
+        </Trans>
+      </Empty>
+    );
   }
   const { turns, cold, why, className: rotationClass } = rotationModel(cost);
   const { standing, standingTotal, groups, sum, top } = attributionModel(cost);
@@ -405,11 +430,19 @@ export function CostView({ cost }: { cost: Cost | null }) {
             reach five rows. */}
         <Tabs defaultValue="grp" className="flex min-h-0 min-w-0 flex-col">
           <TabList>
-            <Tab value="grp">按需求</Tab>
-            <Tab value="tier">按难度</Tab>
-            <Tab value="acct">按账号</Tab>
+            <Tab value="grp">
+              <Trans>By requirement</Trans>
+            </Tab>
+            <Tab value="tier">
+              <Trans>By tier</Trans>
+            </Tab>
+            <Tab value="acct">
+              <Trans>By account</Trans>
+            </Tab>
             <span className="grow" />
-            <Meta className="self-center pb-1.5 max-[52rem]:hidden">tokens · 占比</Meta>
+            <Meta className="self-center pb-1.5 max-[52rem]:hidden">
+              <Trans>tokens · share</Trans>
+            </Meta>
           </TabList>
           <TabPanel value="grp" className="flex min-h-0 flex-1 flex-col">
             <Pane className="[&>*:first-child_button]:border-t-0">
@@ -425,8 +458,8 @@ export function CostView({ cost }: { cost: Cost | null }) {
               ))}
               {standing.length > 0 && (
                 <Node
-                  label="常驻岗"
-                  note="跨需求共用"
+                  label={t`Standing post`}
+                  note={t`Shared across requirements`}
                   tokens={standingTotal}
                   top={top}
                   share={standingTotal / sum}
@@ -457,15 +490,18 @@ export function CostView({ cost }: { cost: Cost | null }) {
           <div className="mb-5">
             <div className="flex items-baseline gap-1.5">
               <b className="font-mono text-figure font-semibold leading-none">{K(cost.total.tokens)}</b>
-              <span className="text-secondary text-ink-3">tokens · 这个项目累计</span>
+              <span className="text-secondary text-ink-3">
+                <Trans>tokens · project total</Trans>
+              </span>
             </div>
             <div className="mt-1.5 text-secondary text-ink-2">
-              每个已交付需求 <b className="font-mono font-semibold text-ink">{summary.per}</b>
+              <Trans>Per delivered requirement</Trans> <b className="font-mono font-semibold text-ink">{summary.per}</b>
               <span className="text-ink-3">{summary.perNote}</span>
             </div>
-            <Tip label="掉到 50% 以下＝prompt 组装被改坏，每个 turn 贵 3-5 倍">
+            <Tip label={t`Drop below 50% = prompt assembly broken, 3-5× more expensive per turn`}>
               <div className="mt-0.5 w-fit text-secondary text-ink-2 underline decoration-dotted">
-                cache 命中 <b className={cn("font-mono font-semibold", summary.cacheClass)}>{summary.cache}</b>
+                <Trans>Cache hit rate</Trans>{" "}
+                <b className={cn("font-mono font-semibold", summary.cacheClass)}>{summary.cache}</b>
               </div>
             </Tip>
             {/* The second half of the same question, over the same sample as the
@@ -487,13 +523,13 @@ export function CostView({ cost }: { cost: Cost | null }) {
               </Tip>
             )}
           </div>
-          <Rail title="烧得多快" note="近 24 小时，按小时">
+          <Rail title={t`Burn rate`} note={t`Last 24 hours, per hour`}>
             <BurnChart data={cost.byHour} />
           </Rail>
-          <Rail title="按账号" note="">
+          <Rail title={t`By account`} note="">
             <SplitDonut rows={cost.byRuntime} />
           </Rail>
-          <Rail title="按难度" note="">
+          <Rail title={t`By tier`} note="">
             <SplitDonut rows={cost.byDifficulty} />
           </Rail>
         </aside>

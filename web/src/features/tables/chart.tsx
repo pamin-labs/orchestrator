@@ -1,6 +1,7 @@
 import { Area, AreaChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { K } from "../../shared/format";
 import { AXIS, CHART_CARD, ChartTooltip } from "../../ui/chart";
+import { Trans } from "@lingui/react/macro";
 
 /**
  * The two charts 成本 earns, and nothing else.
@@ -20,7 +21,11 @@ import { AXIS, CHART_CARD, ChartTooltip } from "../../ui/chart";
 /** Hourly burn, stacked by which subscription paid for it. */
 export function BurnChart({ data }: { data: { hour: string; claude: number; codex: number }[] }) {
   if (data.length < 2) {
-    return <div className="py-4 text-secondary text-ink-3">还不够两个小时的数据。</div>;
+    return (
+      <div className="py-4 text-secondary text-ink-3">
+        <Trans>Not enough data for two hours.</Trans>
+      </div>
+    );
   }
   return (
     <div className="h-[8.5rem]">

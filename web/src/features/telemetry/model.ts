@@ -8,6 +8,7 @@
  */
 
 import type { Folded, Stage, TraceRow, Trend } from "../../shared/api";
+import { t } from "@lingui/core/macro";
 
 /**
  * One frame of the flamegraph: a name, what it cost, and what it called.
@@ -30,7 +31,7 @@ export interface FlameNode {
  * its children, and the map is keyed by full path so two different parents'
  * identically named children never merge.
  */
-export function flameTree(folded: readonly Folded[], rootName = "全部"): FlameNode {
+export function flameTree(folded: readonly Folded[], rootName = t`All`): FlameNode {
   const root: FlameNode = { name: rootName, value: 0, children: [] };
   const byPath = new Map<string, FlameNode>();
 
@@ -173,13 +174,13 @@ const KIND_NAMES: Record<string, string> = {
 const HTTP = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) /;
 
 export function spanKind(name: string): { key: string; label: string } {
-  if (HTTP.test(name)) return { key: "http", label: "接口请求" };
+  if (HTTP.test(name)) return { key: "http", label: t`HTTP request` };
   const prefix = name.split(".")[0] ?? "";
   const label = KIND_NAMES[prefix];
   // A prefix nobody has named keeps its own, so a new family of spans is its own
   // group on the day it ships rather than being swept into 其他.
   if (label) return { key: prefix, label };
-  return name.includes(".") ? { key: prefix, label: prefix } : { key: "other", label: "其他" };
+  return name.includes(".") ? { key: prefix, label: prefix } : { key: "other", label: t`Other` };
 }
 
 /** One kind of work, with everything under it and what it cost together. */

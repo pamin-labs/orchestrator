@@ -3,6 +3,8 @@ import { Button, LinkButton } from "../../ui/button";
 import { z } from "zod";
 import { api } from "../../shared/api";
 import type { InferResponseType } from "hono/client";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 export const ModeSchema = z.enum(["oauth_token", "api_key", "chatgpt"]);
 export type Mode = z.infer<typeof ModeSchema>;
@@ -57,10 +59,10 @@ export function DeviceCode({ code, url, go }: { code: string; url: string; go: s
         variant="quiet"
         onClick={() => {
           void navigator.clipboard.writeText(code);
-          toast.success("登录码复制好了");
+          toast.success(t`Login code copied`);
         }}
       >
-        复制
+        <Trans>Copy</Trans>
       </Button>
       <span className="grow" />
       <LinkButton href={url} className="px-2 py-0.5 text-secondary">

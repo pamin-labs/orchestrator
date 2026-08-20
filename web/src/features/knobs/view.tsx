@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { api, mutate, readApi } from "../../shared/api";
-import { DURATION_UNITS, KNOB_SHAPE, WANTS, msOf, readNumber, showNumber, splitDuration } from "./units";
+import { DURATION_UNITS, KNOB_SHAPE, WANTS, msOf, readNumber, showNumber, splitDuration, unitLabel } from "./units";
 import type { ModelSources } from "./models";
 import {
   Amount,
@@ -48,6 +48,8 @@ import { z } from "zod";
 import type { Json } from "../../../../src/contracts/json";
 import { ConfigSchema, SettingWriteSchema, type SettingWrite } from "../../../../src/contracts/config";
 import type { InferResponseType } from "hono/client";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 /**
  * The operating knobs, as rows.
@@ -432,7 +434,9 @@ export function Knobs({
         </Head>
       )}
       {knobs === null ? (
-        <Meta className="block py-2">读取中…</Meta>
+        <Meta className="block py-2">
+          <Trans>Loading…</Trans>
+        </Meta>
       ) : (
         // The permission is a row of this list, not a block above it: two
         // `FieldGroup`s stacked leave exactly one missing hairline where they
@@ -465,10 +469,10 @@ function KnobLabel({ knob, id }: { knob: Knob; id: string }) {
 
 function ResetOverride({ onReset }: { onReset: () => void }) {
   return (
-    <Tip label="恢复默认">
-      <Button variant="quiet" size="sm" aria-label="恢复默认" className="shrink-0" onClick={onReset}>
+    <Tip label={t`Reset to default`}>
+      <Button variant="quiet" size="sm" aria-label={t`Reset to default`} className="shrink-0" onClick={onReset}>
         <RotateCcw className="size-3" />
-        已改
+        <Trans>Modified</Trans>
       </Button>
     </Tip>
   );
@@ -667,6 +671,7 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
         n={n}
         unit={unit}
         units={DURATION_UNITS}
+        labelOf={unitLabel}
         label={copyFor(knob).zh}
         invalid={bad === ""}
         onCommit={(next, u) => onWrite(Math.round(msOf(next, u) / scale))}
@@ -705,7 +710,7 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
       onUnchanged={onClear}
       onCommit={(raw) => {
         const n = readNumber(raw, now, shape);
-        if (n === null) return onRefuse(shape ? WANTS[shape] : "要一个数字", "");
+        if (n === null) return onRefuse(shape ? WANTS[shape] : t`A number`, "");
         onWrite(n);
       }}
     />

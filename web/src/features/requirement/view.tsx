@@ -83,6 +83,8 @@ import {
   tickTextClass,
   type StepState,
 } from "./model";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 /**
  * Confirm, then act, then refresh — the shape every consequential control here
@@ -158,7 +160,7 @@ export function Requirement({
         <Tabs value={active} {...tabProps(onTab)} className="mt-3 flex min-h-0 flex-1 flex-col">
           <TabList>
             <Tab value="slice" count={slices.length}>
-              切片
+              <Trans>Slice</Trans>
             </Tab>
             {/* Only the ones on the boss are 待你决策. The rest are open questions
                 the chain is still holding, and counting them under that heading
@@ -167,16 +169,20 @@ export function Requirement({
               {askTabLabel(mine.length)}
             </Tab>
             <Tab value="notes" {...countProps(notes)}>
-              记录
+              <Trans>Notes</Trans>
             </Tab>
             {/* No count: a container is one or none, and a badge reading 1 next
                 to 工作区 says nothing the tab does not already. */}
-            <Tab value="work">工作区</Tab>
+            <Tab value="work">
+              <Trans>Workspace</Trans>
+            </Tab>
             {/* No count either, and for a stronger reason than 工作区's: the number
                 of spans a requirement has produced is not a quantity anybody is
                 waiting on, and a badge reading 1,482 beside 耗时 would be the
                 loudest number on the tab strip while meaning the least. */}
-            <Tab value="time">耗时</Tab>
+            <Tab value="time">
+              <Trans>Time</Trans>
+            </Tab>
           </TabList>
 
           <TabPanel value="slice" className="flex min-h-0 flex-1 flex-col">
@@ -215,7 +221,7 @@ export function Requirement({
               waterfall are what answer "where did the wall clock go". */}
           <TabPanel value="time" className="flex min-h-0 flex-1 flex-col">
             <Pane>
-              <Telemetry scope={{ kind: "group", id: g.id }} empty="这个需求还没跑过任何活。" />
+              <Telemetry scope={{ kind: "group", id: g.id }} empty={t`This requirement hasn't run any activity yet.`} />
             </Pane>
           </TabPanel>
         </Tabs>
@@ -259,7 +265,9 @@ function SliceList({
   if (!slices.length) {
     return (
       <Pane>
-        <Working>正在拆解</Working>
+        <Working>
+          <Trans>Decomposing</Trans>
+        </Working>
       </Pane>
     );
   }
@@ -321,7 +329,9 @@ function AskLanes({
           saw a question cut mid-sentence and no way to reply to it. */}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 pr-1">
         {noQuestions(mine.length + others.length, answered.length) && (
-          <div className="text-body text-ink-3">没有开着的问题。这一组的人现在不等你。</div>
+          <div className="text-body text-ink-3">
+            <Trans>No open questions. This group is not waiting on you right now.</Trans>
+          </div>
         )}
         {sub === "mine" && mine.length > 0 && (
           <div className="overflow-hidden rounded-lg border border-accent">
@@ -386,19 +396,19 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {/* The same marks the gate tracks use. Progress on this page is which
             step passed, never a bar that fills. */}
-        <Step label="克隆" state={cloneStep(cmd, failed)} />
-        <Step label="装依赖" state={installStep(cmd, failed, until)} />
+        <Step label={t`Clone`} state={cloneStep(cmd, failed)} />
+        <Step label={t`Install dependencies`} state={installStep(cmd, failed, until)} />
         <Meta className="min-w-0 flex-1 truncate">{bootCmd(cmd)}</Meta>
         <Meta className={cn(failed && "text-bad")}>{bootClock(failed, bootSecs(since, until, now))}</Meta>
         <Button variant="quiet" size="sm" aria-expanded={!shut} onClick={() => setShut((v) => !v)}>
-          {shut ? "看日志" : "收起"}
+          {shut ? t`View log` : t`Collapse`}
         </Button>
       </div>
       {!shut && lines.length > 0 && (
         <div
           ref={box}
           role="log"
-          aria-label="装环境的输出"
+          aria-label={t`Environment setup output`}
           onScroll={(e) => {
             const el = e.currentTarget;
             pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
@@ -415,7 +425,11 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
           ))}
         </div>
       )}
-      {failed && <Meta className="mt-1.5 block">交给 bootstrap 重试，它会带着上面的报错读一遍仓库</Meta>}
+      {failed && (
+        <Meta className="mt-1.5 block">
+          <Trans>Let bootstrap retry; it will review the repository with the error above in context</Trans>
+        </Meta>
+      )}
     </div>
   );
 }
@@ -459,12 +473,24 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
             up by itself. */}
         {url && <LinkButton href={url}>{prLabel(inQueue)}</LinkButton>}
         {canNewPr(g) && <NewPr grpId={g.id} refresh={refresh} />}
-        {showQueued(inQueue, g) && <Badge>排队中</Badge>}
-        {g.status === "RUNNING" && <Button onClick={() => act("pause")}>暂停</Button>}
-        {canResume(g, overBudget(g)) && <Button onClick={() => act("resume")}>继续</Button>}
+        {showQueued(inQueue, g) && (
+          <Badge>
+            <Trans>Queued</Trans>
+          </Badge>
+        )}
+        {g.status === "RUNNING" && (
+          <Button onClick={() => act("pause")}>
+            <Trans>Pause</Trans>
+          </Button>
+        )}
+        {canResume(g, overBudget(g)) && (
+          <Button onClick={() => act("resume")}>
+            <Trans>Resume</Trans>
+          </Button>
+        )}
         {g.status === "PARKED" && (
           <Button variant="go" onClick={() => act("wake")}>
-            唤醒
+            <Trans>Wake</Trans>
           </Button>
         )}
         <HeaderMenu g={g} refresh={refresh} />
@@ -481,73 +507,76 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
 function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
   const running = isRunning(g);
   return (
-    <Menu label="更多">
+    <Menu label={t`More`}>
       {running && (
         <MenuItem
-          hint="停止当前 turn，改动留着，下一个 turn 会被告知"
+          hint={t`Stop the current turn; keep changes. The next turn will be informed.`}
           onSelect={async () => {
             await groupAction(g.id, "interrupt", { mode: "keep" });
             refresh();
           }}
         >
-          打断，保留改动
+          <Trans>Interrupt, keep changes</Trans>
         </MenuItem>
       )}
       {running && (
         <MenuItem
           danger
-          hint="回到这一轮开始前的 checkpoint，这个 turn 的改动全丢"
+          hint={t`Return to the checkpoint before this round started; all changes in this turn are discarded.`}
           onSelect={confirmThen(
             {
-              title: "打断并回滚",
-              body: "丢弃当前 turn 的全部改动，退回到这一轮开始前。",
-              yes: "打断并回滚",
+              title: t`Interrupt and rollback`,
+              body: t`Discard all changes in the current turn and return to the start of this round.`,
+              yes: t`Interrupt and rollback`,
               danger: true,
             },
             () => groupAction(g.id, "interrupt", { mode: "rollback" }),
             refresh,
           )}
         >
-          打断并回滚
+          <Trans>Interrupt and rollback</Trans>
         </MenuItem>
       )}
       {canPark(g) && (
-        <MenuItem hint="释放并发槽，沙盒里的代码和 checkpoint 原地不动" onSelect={() => actThen(g, "park", refresh)}>
-          封存
+        <MenuItem
+          hint={t`Release the concurrency slot; code and checkpoint in the sandbox stay in place.`}
+          onSelect={() => actThen(g, "park", refresh)}
+        >
+          <Trans>Archive</Trans>
         </MenuItem>
       )}
       <MenuItem
-        hint="容器卡住、少挂了东西、或换过凭据时用。下一个 turn 重新 clone + 装依赖，分支在宿主仓库里不会丢"
+        hint={t`Use when the container is stuck, missing dependencies, or credentials changed. The next turn will re-clone and reinstall; the branch in the host repo stays.`}
         onSelect={confirmThen(
           {
-            title: "重开容器",
+            title: t`Restart container`,
             body: `${g.name} 的容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。`,
-            yes: "重开",
+            yes: t`Restart`,
           },
           () => groupAction(g.id, "rebuild"),
           refresh,
         )}
       >
-        重开容器
+        <Trans>Restart container</Trans>
       </MenuItem>
       {/* 退回重拆 sends it back to the Dispatcher, which writes another card for
           work nobody wants. A requirement that turned out to be a duplicate, or
           that someone already fixed, needs to leave the board instead. */}
       <MenuItem
         danger
-        hint="排队的 turn 全取消，占的路径交还给别的组。代码、分支和记录都留着"
+        hint={t`Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept.`}
         onSelect={confirmThen(
           {
-            title: "不做了",
+            title: t`Don't proceed`,
             body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录留着，组不会再被拉起。`,
-            yes: "不做了",
+            yes: t`Don't proceed`,
             danger: true,
           },
           () => groupAction(g.id, "drop"),
           refresh,
         )}
       >
-        不做了
+        <Trans>Don't proceed</Trans>
       </MenuItem>
     </Menu>
   );
@@ -621,7 +650,7 @@ function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => v
             refresh();
           }}
         >
-          查收
+          <Trans>Accept</Trans>
         </Button>
         <RejectSlice sliceId={s.id} refresh={refresh} />
       </span>
@@ -630,7 +659,7 @@ function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => v
   if (s.status === "pending") {
     return (
       <div className="border-t border-rule-soft py-2 pl-14 pr-3 text-secondary text-ink-3">
-        还没开工，等前面的切片查收。
+        <Trans>Not started yet; waiting for prior slices to be accepted.</Trans>
       </div>
     );
   }
@@ -668,18 +697,18 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
       variant="go"
       onClick={confirmThen(
         {
-          title: "开一个新 PR",
-          body: "能在 GitHub 上重开旧 PR 就不用这个。分支被强推或删过才用：会用当前分支重提一个，回到合入队列。",
-          yes: "开新 PR",
+          title: t`Open a new PR`,
+          body: t`Use this only if you can't reopen an old PR on GitHub. Use when the branch has been force-pushed or deleted: it will re-open using the current branch and rejoin the merge queue.`,
+          yes: t`Open new PR`,
         },
         async () => {
           const r = await groupAction(grpId, "newpr");
-          if (!r.ok) await ask({ title: "开不出来", body: r.text, yes: "知道了" });
+          if (!r.ok) await ask({ title: t`Failed to open`, body: r.text, yes: t`Got it` });
         },
         refresh,
       )}
     >
-      开新 PR
+      <Trans>Open new PR</Trans>
     </Button>
   );
 }
@@ -693,14 +722,16 @@ function RejectSlice({ sliceId, refresh }: { sliceId: number; refresh: () => voi
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button onClick={() => setOpen(true)}>不满意</Button>
+      <Button onClick={() => setOpen(true)}>
+        <Trans>Not satisfied</Trans>
+      </Button>
       <ComposerDialog
         open={open}
         onOpenChange={setOpen}
-        title="退回这一片"
-        hint="原话记进黑板，PM 据此安排修正。截图直接粘。"
-        placeholder="哪里不满意。⌘Enter 退回"
-        submit="退回"
+        title={t`Reject this slice`}
+        hint={t`Comments are recorded in the notes; the PM will schedule corrections accordingly. Paste screenshots directly.`}
+        placeholder={t`What's not satisfactory. Cmd+Enter to reject`}
+        submit={t`Rejected`}
         rows={4}
         onSubmit={async ({ text, attachments }) => {
           const r = await sliceDecision(sliceId, "reject", { feedback: text, attachments });
@@ -726,16 +757,16 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
         className="cursor-pointer font-mono text-meta text-ink-3 underline decoration-dotted hover:text-ink"
         onClick={async () => {
           const v = await ask({
-            title: "给这个需求设 token 上限",
-            body: "用满就挂起，等你决定加不加。",
-            yes: "设定",
-            field: "例如 2000000",
+            title: t`Set a token limit for this requirement`,
+            body: t`When the limit is reached, the group pauses until you decide whether to increase it.`,
+            yes: t`Set`,
+            field: t`e.g. 2000000`,
           });
           const n = Number(String(v ?? "").replace(/[^\d]/g, ""));
           if (n > 0) await setBudget(g, n, refresh);
         }}
       >
-        无预算上限
+        <Trans>No budget limit</Trans>
       </button>
     );
   }
@@ -767,7 +798,9 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
   return (
     <Card tone="mine" className="mt-2.5">
       <CardBody>
-        <CardTitle className="text-name text-accent">预算用尽，全组挂起</CardTitle>
+        <CardTitle className="text-name text-accent">
+          <Trans>Budget exhausted; group paused</Trans>
+        </CardTitle>
         <div className="mt-0.5 text-secondary text-ink-2">
           已花 {K(g.spent_tokens)} tokens，上限 {K(g.budget_tokens)}。 加上限才动得了，「继续」不生效。
         </div>
@@ -775,9 +808,11 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
           <Button variant="go" onClick={() => setBudget(g, doubled, refresh)}>
             翻倍到 {K(doubled)}
           </Button>
-          <Button onClick={() => setBudget(g, null, refresh)}>取消上限</Button>
+          <Button onClick={() => setBudget(g, null, refresh)}>
+            <Trans>Remove limit</Trans>
+          </Button>
           <Button variant="quiet" onClick={() => actThen(g, "park", refresh)}>
-            就停在这里（封存）
+            <Trans>Stop here (archive)</Trans>
           </Button>
         </div>
       </CardBody>
@@ -810,16 +845,16 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
               size="sm"
               onClick={confirmThen(
                 {
-                  title: "撤销并接管",
-                  body: "回滚到提问时的 checkpoint，之后的改动作废，由你重新回答。",
-                  yes: "撤销并接管",
+                  title: t`Revoke and take over`,
+                  body: t`Roll back to the checkpoint when the question was asked; all subsequent changes are discarded. You'll answer it again.`,
+                  yes: t`Revoke and take over`,
                   danger: true,
                 },
                 () => mutate(api.escalations[":id"].revoke.$post({ param: { id: String(a.id) } })),
                 refresh,
               )}
             >
-              撤销并接管
+              <Trans>Revoke and take over</Trans>
             </Button>
           </div>
           {/* An exchange, laid out as one: what was asked on the left, what was
@@ -856,9 +891,11 @@ function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
         className="mt-2 flex w-full cursor-pointer items-center gap-2 rounded-md border border-rule
                    bg-paper px-3 py-2 text-left text-body text-ink-3 transition-colors hover:border-ink-3"
       >
-        跟这个组说话…
+        <Trans>Message this group…</Trans>
         <span className="grow" />
-        <Meta>⌘Enter 发给 PM</Meta>
+        <Meta>
+          <Trans>Cmd+Enter to send to PM</Trans>
+        </Meta>
       </button>
     );
   }
@@ -924,43 +961,49 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
 
   return (
     <>
-      <H2 className="mt-6">跟这个组说话</H2>
+      <H2 className="mt-6">
+        <Trans>Message this group</Trans>
+      </H2>
       <Composer
         rows={2}
         projectId={projectId}
-        placeholder="下一个 turn 开头就会读到。截图直接粘，/ 插技能路径。⌘Enter 发给 PM"
-        submit="发给 PM"
+        placeholder={t`Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM`}
+        submit={t`Send to PM`}
         onSubmit={(d) => send(d)}
         actions={({ text, attachments, busy, clear }) => (
           <>
-            <span className="mr-1 text-secondary text-ink-3 max-[40rem]:hidden">分量：</span>
-            <Tip label="原话记进黑板，PM 安排一条修正 task，组继续跑">
+            <span className="mr-1 text-secondary text-ink-3 max-[40rem]:hidden">
+              <Trans>Weight:</Trans>
+            </span>
+            <Tip
+              label={t`Comments are recorded in the notes; PM will schedule a correction task and the group continues.`}
+            >
               <Button
                 size="sm"
                 disabled={busy || !text}
                 onClick={async () => (await send({ text, attachments }, "patch")) && clear()}
               >
-                要改一处
+                <Trans>Fix this</Trans>
               </Button>
             </Tip>
             <SendAs
-              label="方向错了"
-              tip="整个需求退回 Dispatcher 重新深挖，已写的代码留在分支上"
+              label={t`Wrong direction`}
+              tip={t`Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch.`}
               spec={{
-                title: "退回重新拆解",
-                body: "这句话作为最高优先级 fact，整个需求退回 Dispatcher 重新深挖。已写的代码留在分支上。",
-                yes: "退回重拆",
+                title: t`Return for re-decomposition`,
+                body: t`This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch.`,
+                yes: t`Return for re-decomposition`,
               }}
               disabled={busy || !text}
               run={async () => (await send({ text, attachments }, "respec")) && clear()}
             />
             <SendAs
-              label="不做了"
-              tip="停止派发，分支保留不合入，仍然要写 retro"
+              label={t`Don't proceed`}
+              tip={t`Stop dispatching; branch is kept but not merged. A retrospective is still required.`}
               spec={{
-                title: "作废这个需求",
-                body: "停止派发，分支保留不合入。仍然要求写 retro。",
-                yes: "作废",
+                title: t`Abandon this requirement`,
+                body: t`Stop dispatching; branch is kept but not merged. A retrospective is still required.`,
+                yes: t`Abandoned`,
                 danger: true,
               }}
               disabled={busy || !text}
@@ -997,9 +1040,15 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           caught. */}
       {unknown.length > 0 && (
         <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-secondary">
-          <b className="font-semibold text-warn">卡里这些路径仓库里没有</b>{" "}
+          <b className="font-semibold text-warn">
+            <Trans>These paths from the card don't exist in the repo</Trans>
+          </b>{" "}
           <span className="font-mono">{unknown.join("、")}</span>
-          <div className="mt-1 text-ink-3">新建的文件正常；如果它以为这些已经存在，这张卡是照着想象写的。</div>
+          <div className="mt-1 text-ink-3">
+            <Trans>
+              New files are expected; if it thinks these already exist, the card was written from speculation.
+            </Trans>
+          </div>
         </div>
       )}
       {/* A planner found this is already covered, and the server checked the
@@ -1009,20 +1058,32 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
       {!filed ? (
         // Nothing to approve yet. An empty textarea and an approve button asks the
         // boss to sign off on nothing, which is why this screen read as "我该干嘛".
-        <Working>Dispatcher 正在写计划卡，写完出现在这里</Working>
+        <Working>
+          <Trans>Dispatcher is writing the plan card; it will appear here when done.</Trans>
+        </Working>
       ) : g.approved_at ? (
         // Already decided. Showing 批准开工 again asks for a click that changes
         // nothing and reads as "the last one was ignored" — which is what it was.
         // 退回重拆 below is still the way out: it withdraws the approval.
         <>
           <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-body">
-            <b className="font-semibold text-warn">已批准，边界挡着</b> {blockedReason(st, g.id)}
+            <b className="font-semibold text-warn">
+              <Trans>Approved, blocked by boundaries</Trans>
+            </b>{" "}
+            {blockedReason(st, g.id)}
           </div>
-          <Working>让开之后自动开工，不用再点一次</Working>
+          <Working>
+            <Trans>Once boundaries are cleared, work starts automatically; no need to click again.</Trans>
+          </Working>
         </>
       ) : (
         <>
-          <Textarea rows={cardRows(filed)} value={card} onChange={(e) => setCard(e.target.value)} aria-label="计划卡" />
+          <Textarea
+            rows={cardRows(filed)}
+            value={card}
+            onChange={(e) => setCard(e.target.value)}
+            aria-label={t`Plan card`}
+          />
           <div className="mt-3 flex items-baseline gap-3">
             <Button
               variant="go"
@@ -1036,9 +1097,11 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
                 refresh();
               }}
             >
-              批准开工
+              <Trans>Approve and start</Trans>
             </Button>
-            <span className="text-secondary text-ink-3">卡可以直接改再批</span>
+            <span className="text-secondary text-ink-3">
+              <Trans>You can edit the card and re-approve.</Trans>
+            </span>
           </div>
         </>
       )}
@@ -1051,7 +1114,9 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
 function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: () => void }) {
   return (
     <div className="my-3 rounded-md border border-warn/40 bg-sunk px-3 py-2.5">
-      <div className="text-body font-semibold text-warn">规划岗建议作废</div>
+      <div className="text-body font-semibold text-warn">
+        <Trans>Planner suggests abandoning</Trans>
+      </div>
       <div className="my-1 break-words whitespace-pre-wrap text-body">{body}</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button
@@ -1059,29 +1124,33 @@ function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: (
           size="sm"
           onClick={confirmThen(
             {
-              title: "作废这条需求",
+              title: t`Abandon this requirement`,
               body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
-              yes: "作废",
+              yes: t`Abandoned`,
               danger: true,
             },
             () => groupAction(g.id, "drop", { why: firstLine(body) }),
             refresh,
           )}
         >
-          确认作废
+          <Trans>Confirm abandonment</Trans>
         </Button>
         <Button
           size="sm"
           onClick={async () => {
             await mutate(
               api.say.$post({
-                json: { group_id: g.id, body: "不是重复，也不算已经做完了 —— 接着拆。", as: "respec" },
+                json: {
+                  group_id: g.id,
+                  body: t`It's not a duplicate, and it's not done yet — keep decomposing.`,
+                  as: "respec",
+                },
               }),
             );
             refresh();
           }}
         >
-          不，接着做
+          <Trans>No, keep going</Trans>
         </Button>
       </div>
     </div>
@@ -1106,18 +1175,18 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
       <Composer
         rows={2}
         projectId={projectId}
-        placeholder="补充要求，或者写退回理由。截图、设计稿直接粘，/ 插技能路径。⌘Enter 要求修改"
-        submit="要求修改"
+        placeholder={t`Add requirements or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes`}
+        submit={t`Request changes`}
         onSubmit={(d) => send(d, "patch")}
         actions={({ text, attachments, busy, clear }) => (
           <>
             <SendAs
-              label="退回重拆"
-              tip="整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact"
+              label={t`Return for re-decomposition`}
+              tip={t`Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact.`}
               spec={{
-                title: "退回重新拆解",
-                body: "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。",
-                yes: "退回重拆",
+                title: t`Return for re-decomposition`,
+                body: t`The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact.`,
+                yes: t`Return for re-decomposition`,
               }}
               disabled={busy || !text}
               run={async () => (await send({ text, attachments }, "respec")) && clear()}
@@ -1126,12 +1195,12 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
                 one outweighs 批准开工, which is the answer this screen usually wants.
                 The confirm carries the weight instead. */}
             <SendAs
-              label="不做了"
-              tip="排队的 turn 全取消，占的路径交还给别的组"
+              label={t`Don't proceed`}
+              tip={t`Cancel all queued turns; return the occupied slot to another group.`}
               spec={{
-                title: "不做了",
+                title: t`Don't proceed`,
                 body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
-                yes: "不做了",
+                yes: t`Don't proceed`,
                 danger: true,
               }}
               disabled={busy}
@@ -1143,7 +1212,9 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
           </>
         )}
       />
-      <div className="mt-1.5 text-secondary text-ink-3">两个都发给 Dispatcher，它改完卡再回来给你批。</div>
+      <div className="mt-1.5 text-secondary text-ink-3">
+        <Trans>Both go to Dispatcher; it will revise the card and bring it back for your approval.</Trans>
+      </div>
     </div>
   );
 }
@@ -1173,7 +1244,10 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
     if (draft.busy) return;
     setDraft({ busy: true });
     void readApi(api.escalations[":id"].draft.$get({ param: { id: String(e.id) } }), AnswerDraftSchema).then((r) =>
-      setDraft({ busy: false, text: r?.text?.trim() || "没能拟出来，这条得你自己写。" }),
+      setDraft({
+        busy: false,
+        text: r?.text?.trim() || t`Could not generate a draft; you'll need to write this one yourself.`,
+      }),
     );
   };
   return (
@@ -1188,9 +1262,13 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
           closed row is for. */}
       <AccordionTrigger className="block px-4 py-2.5 transition-colors hover:bg-accent-soft">
         <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-meta">
-          <span className="text-ink-2">{e.asker ?? "系统"}</span>
+          <span className="text-ink-2">{e.asker ?? t`System`}</span>
           <span className="text-ink-3">{waited(e.created_at)}</span>
-          {e.severity === "blocker" && <span className="font-semibold text-bad">全组停着</span>}
+          {e.severity === "blocker" && (
+            <span className="font-semibold text-bad">
+              <Trans>Entire group is paused</Trans>
+            </span>
+          )}
         </div>
         {!open && <div className="mt-1 line-clamp-2 max-w-[72ch] text-body text-ink-2">{nl(e.question)}</div>}
       </AccordionTrigger>
@@ -1207,18 +1285,22 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             verbatim and runs to fifteen — the decision is usually made by line
             three, with the rest there to check the reasoning against. */}
         <Asked body={e.question} />
-        {draft.busy && <Typing label="AI 在替你想" />}
+        {draft.busy && <Typing label={t`AI is thinking on your behalf`} />}
         {draft.text && (
           // On your side of the exchange, because that is what it is: a reply
           // nobody has sent. Dashed, so it cannot be mistaken for one that went.
           <div className="my-2 ml-auto max-w-[46rem] rounded-2xl rounded-tr-sm border border-dashed border-rule bg-paper px-3.5 py-2">
             <div className="flex items-baseline gap-2">
-              <Tip label="按这一组的黑板现算的，还没发给任何人。填进输入框后你可以改">
-                <Meta className="cursor-help">AI 替你拟的答复</Meta>
+              <Tip
+                label={t`Generated from this group's notes; not yet sent to anyone. You can edit after filling it in.`}
+              >
+                <Meta className="cursor-help">
+                  <Trans>AI-drafted response</Trans>
+                </Meta>
               </Tip>
               <span className="grow" />
               <Button size="sm" onClick={() => setSeed((p) => ({ n: p.n + 1, text: draft.text! }))}>
-                填进输入框
+                <Trans>Fill in</Trans>
               </Button>
             </div>
             <div className="mt-1 whitespace-pre-wrap break-words text-body text-ink-2">
@@ -1231,8 +1313,8 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             key={seed.n}
             initial={seed.text}
             rows={2}
-            placeholder="答复。发出去直接解开被阻塞的 agent。⌘Enter 发送"
-            submit="回答"
+            placeholder={t`Reply. Sending this will unblock the waiting agent. Cmd+Enter to send`}
+            submit={t`Reply`}
             onSubmit={async ({ text, attachments }) => {
               const r = await mutate(
                 api.escalations[":id"].answer.$post({
@@ -1245,12 +1327,14 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             }}
             actions={({ text, busy }) => (
               <>
-                <Tip label="用这一组的黑板现算一份草稿，不会发出去">
+                <Tip label={t`Generate a draft from this group's notes without sending it.`}>
                   <Button size="sm" variant="quiet" disabled={draft.busy} onClick={askDraft}>
-                    {draft.text ? "再拟一份" : "让 AI 拟一份"}
+                    {draft.text ? t`Generate another` : t`Let AI generate one`}
                   </Button>
                 </Tip>
-                <Tip label="技术选型和架构边界归 Architect 判断，它答不了会自己回来">
+                <Tip
+                  label={t`Architect decides on tech choices and architectural boundaries; if they can't answer, they'll come back.`}
+                >
                   <Button
                     size="sm"
                     onClick={async () => {
@@ -1263,7 +1347,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                       refresh();
                     }}
                   >
-                    转 Architect
+                    <Trans>Delegate to Architect</Trans>
                   </Button>
                 </Tip>
                 {/* The commonest blocker here is one no answer resolves — a config file
@@ -1273,7 +1357,9 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
 
                   Not `go`: two filled violet buttons side by side is two primaries,
                   and answering is the primary here. */}
-                <Tip label="开成一条需求去做，这一组等它落地后自动继续">
+                <Tip
+                  label={t`Convert to a requirement; this group will automatically continue after it's implemented.`}
+                >
                   <Button
                     size="sm"
                     disabled={busy}
@@ -1288,7 +1374,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                       if (r.ok) toast.success(r.text);
                     }}
                   >
-                    开成需求
+                    <Trans>Create requirement</Trans>
                   </Button>
                 </Tip>
               </>
@@ -1328,7 +1414,7 @@ function Held({ rows }: { rows: Escalation[] }) {
         // writing back are the whole content.
         <div key={e.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
           <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-meta text-ink-3">
-            <span className="text-ink-2">{e.asker ?? "系统"}</span>
+            <span className="text-ink-2">{e.asker ?? t`System`}</span>
             <span>{waited(e.created_at)}</span>
           </div>
           <Asked body={e.question} className="mt-1.5" tone="text-ink-2" />

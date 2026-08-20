@@ -10,6 +10,8 @@ import { cn } from "../../ui/cn";
 import { Empty, Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 /**
  * What this group's container is, and what it is saying right now.
@@ -83,13 +85,13 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <Meta>{info?.sandbox.id ? "容器在跑" : "还没有容器"}</Meta>
+        <Meta>{info?.sandbox.id ? t`Container running` : t`No container yet`}</Meta>
         {info && (
           <>
-            <Fact k="镜像" v={info.sandbox.image} />
-            <Fact k="规格" v={`${info.sandbox.cpu || "默认"} core · ${info.sandbox.memory}`} />
-            <Fact k="分支" v={info.group.branch ?? "还没切"} />
-            {info.sandbox.at && <Fact k="开出来" v={clock(info.sandbox.at)} />}
+            <Fact k={t`Image`} v={info.sandbox.image} />
+            <Fact k={t`Spec`} v={`${info.sandbox.cpu || t`Default`} core · ${info.sandbox.memory}`} />
+            <Fact k={t`Branch`} v={info.group.branch ?? t`Not checked out`} />
+            {info.sandbox.at && <Fact k={t`Started at`} v={clock(info.sandbox.at)} />}
             <Fact k="TTL" v={`${Math.round(info.sandbox.ttlSeconds / 3600)}h`} />
           </>
         )}
@@ -100,11 +102,11 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
           disabled={busy}
           onClick={async () => {
             const go = await ask({
-              title: "重开容器",
+              title: t`Restart container`,
               // No duration here: nothing times a rebuild, and clone plus install
               // already says what it costs.
-              body: "容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。",
-              yes: "重开",
+              body: t`Container will be discarded. The next turn will rebuild it: re-clone the branch, reinstall dependencies. Uncommitted changes will be lost.`,
+              yes: t`Restart`,
             });
             if (!go) return;
             // The confirm is outside: the transition covers the rebuild and the
@@ -115,7 +117,7 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
             });
           }}
         >
-          重开容器
+          <Trans>Restart container</Trans>
         </Button>
       </div>
 
@@ -134,7 +136,11 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
           line, and the scroll rules are the same ones Pane applies. */}
       <div ref={tail} className="min-h-0 flex-1 overflow-y-auto rounded-md border border-rule bg-sunk px-3 py-2">
         {!lines.length ? (
-          <Empty>容器还没说话。克隆和装依赖会在这里逐行出现。</Empty>
+          <Empty>
+            <Trans>
+              Container hasn't started yet. Clone and dependency installation output will appear here line by line.
+            </Trans>
+          </Empty>
         ) : (
           lines.map((l) => (
             <div
@@ -149,7 +155,11 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
           ))
         )}
       </div>
-      <Meta className="mt-1.5 block">日志在服务端内存里，最多 500 行，重启就没了。结论那条在「记录」里。</Meta>
+      <Meta className="mt-1.5 block">
+        <Trans>
+          Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in "Notes".
+        </Trans>
+      </Meta>
     </div>
   );
 }

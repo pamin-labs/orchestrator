@@ -37,6 +37,8 @@ import type { Section } from "./model";
 import { AuthRowSchema, HostCheckSchema, type AuthRow, type HostCheck } from "./auth";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 const AuthResponseSchema: z.ZodType<InferResponseType<typeof api.auth.$get, 200>> = z.object({
   runtimes: z.array(AuthRowSchema),
@@ -180,7 +182,7 @@ export function SettingsDialog({
         >
           <Dialog.Title className="sr-only">{NAV.find((n) => n.key === here)!.zh}</Dialog.Title>
           <Dialog.Close
-            aria-label="关掉"
+            aria-label={t`Close`}
             className="absolute top-3 right-3 grid size-6.5 cursor-pointer place-items-center rounded-md
                        text-ink-3 transition-colors hover:bg-sunk hover:text-ink"
           >
@@ -401,7 +403,9 @@ function SettingsPanes({
         }}
       />
     ) : (
-      <Meta className="block py-2">读取中…</Meta>
+      <Meta className="block py-2">
+        <Trans>Loading…</Trans>
+      </Meta>
     );
 
   const panes: Record<Section, React.ReactNode> = {
@@ -503,20 +507,24 @@ export function SandboxServerSettings({
 function Preferences() {
   return (
     <>
-      <Head title="偏好" note="只在这台机器上，不跟着项目走" />
+      <Head title={t`Preferences`} note={t`Local to this machine only, not tied to the project`} />
       {/* Two subjects in one pane, so each says which it is. A `<fieldset>` with a
           `<legend>` rather than a heading over a div: the grouping is the
           accessible fact, and a reader hears 通知 with the switch inside it rather
           than a bare 开. Notifications were their own nav item for one knob and a
           browser permission — both of which are exactly what this pane is. */}
       <FieldSet className="mb-6">
-        <FieldLegend>外观</FieldLegend>
+        <FieldLegend>
+          <Trans>Appearance</Trans>
+        </FieldLegend>
         <FieldGroup>
           {/* A toggle group has nothing a `<label>` can point at, so the
               row names itself: `Field` is already `role="group"`, and
               this is the one attribute that gives that group a name. */}
           <Field aria-labelledby="pref-theme">
-            <FieldTitle id="pref-theme">主题</FieldTitle>
+            <FieldTitle id="pref-theme">
+              <Trans>Theme</Trans>
+            </FieldTitle>
             <FieldContent>
               <ThemeChoice />
             </FieldContent>
@@ -525,7 +533,9 @@ function Preferences() {
               the project and tells the agents what to write, this one is only
               this browser's chrome. The pane already says so at the top. */}
           <Field aria-labelledby="pref-locale">
-            <FieldTitle id="pref-locale">界面语言</FieldTitle>
+            <FieldTitle id="pref-locale">
+              <Trans>Interface language</Trans>
+            </FieldTitle>
             <FieldContent>
               <LocaleChoice />
             </FieldContent>
@@ -533,7 +543,9 @@ function Preferences() {
         </FieldGroup>
       </FieldSet>
       <FieldSet>
-        <FieldLegend>通知</FieldLegend>
+        <FieldLegend>
+          <Trans>Notifications</Trans>
+        </FieldLegend>
         <Knobs section="notify" bare />
       </FieldSet>
     </>
@@ -585,8 +597,8 @@ function SettingsNavigation({
       <SettingsGroup
         items={items}
         project={false}
-        label="服务器"
-        note="所有项目共用"
+        label={t`Server`}
+        note={t`Shared across all projects`}
         section={section}
         nags={nags}
         onSection={onSection}
@@ -597,7 +609,7 @@ function SettingsNavigation({
         <SettingsGroup
           items={items}
           project
-          label="项目"
+          label={t`Projects`}
           {...(projectName !== undefined ? { note: projectName } : {})}
           {...(project ? { hint: project.repoPath } : {})}
           section={section}
@@ -713,7 +725,7 @@ function Item({
       <Icon size={14} strokeWidth={1.75} className="shrink-0" />
       <span className="truncate">{n.zh}</span>
       <span className="grow" />
-      {nag && <i className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="有事等你" />}
+      {nag && <i className="size-1.5 shrink-0 rounded-full bg-accent" aria-label={t`Waiting for you`} />}
     </button>
   );
 }

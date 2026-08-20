@@ -1,4 +1,4 @@
-/**
+import { t } from "@lingui/core/macro"; /**
  * What the two pickers work out before they draw a row.
  *
  * Both surfaces are lists of one-line rows whose whole content is a decision:
@@ -52,9 +52,9 @@ export function browseListing(dirs: Listing | null): { parts: string[]; rows: [E
  */
 export function entryMeta(entry: Entry, selected: boolean, pick: boolean): string {
   const choices: [boolean, string][] = [
-    [selected, "已选"],
-    [!!entry.taken, "已添加"],
-    [!!entry.repo && !pick, "git 仓库"],
+    [selected, t`Selected`],
+    [!!entry.taken, t`Added`],
+    [!!entry.repo && !pick, t`Git repo`],
     [entry.size != null, `${Math.max(1, Math.round((entry.size ?? 0) / 1024))}k`],
   ];
   return choices.find(([matches]) => matches)?.[1] ?? "";
@@ -77,10 +77,10 @@ export function browseRow(entry: Entry, isDir: boolean, pick: boolean, selected:
 }
 
 /** "今天" / "3 天前" / "2 个月前". Age, at the resolution anyone acts on. */
-export function days(t: number): string {
-  if (!t) return "";
-  const d = Math.round((Date.now() - t) / 86_400_000);
-  return d < 1 ? "今天" : d < 30 ? `${d} 天前` : `${Math.round(d / 30)} 个月前`;
+export function days(at: number): string {
+  if (!at) return "";
+  const d = Math.round((Date.now() - at) / 86_400_000);
+  return d < 1 ? t`Today` : d < 30 ? `${d} 天前` : `${Math.round(d / 30)} 个月前`;
 }
 
 /** A repository as it is shown by GitHub, and what this panel has done with it. */
@@ -110,7 +110,7 @@ export function repoRow(repo: RepoLine, busy: string): RepoMarks {
   const adding = busy === repo.fullName;
   return {
     name: repo.fullName.split("/")[1] ?? repo.fullName,
-    meta: adding ? "添加中…" : repo.taken ? "已添加" : days(repo.pushedAt),
+    meta: adding ? t`Adding…` : repo.taken ? t`Added` : days(repo.pushedAt),
     action: repo.taken ? `去 ${repo.taken.name} →` : `添加 · ${repo.defaultBranch}`,
     adding,
   };

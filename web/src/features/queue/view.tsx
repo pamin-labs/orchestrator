@@ -11,6 +11,8 @@ import { KIND_ZH } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { foldQueueItems, queueClusters, queueItems, type QueueCluster, type QueueItem } from "./model";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 /**
  * Everything waiting on the boss, ordered by what ignoring it costs.
@@ -42,7 +44,11 @@ export function Queue({
   // things that would refill it and promising a notification. A queue that fills
   // itself does not need a paragraph saying it will.
   if (!items.length) {
-    return <div className="text-body text-ok">都处理完了</div>;
+    return (
+      <div className="text-body text-ok">
+        <Trans>All done</Trans>
+      </div>
+    );
   }
 
   const blocks = queueClusters(items).map((cluster) => ({
@@ -182,7 +188,8 @@ function ClusterIdentity({ st, c, standing, hard }: { st: State; c: QueueCluster
   );
 }
 
-const clusterName = (st: State, grpId: number, standing: boolean) => (standing ? "常驻岗" : groupName(st, grpId));
+const clusterName = (st: State, grpId: number, standing: boolean) =>
+  standing ? t`Standing post` : groupName(st, grpId);
 const clusterWaiting = (hard: number, total: number) => (hard > 0 ? `${hard} 条卡着全组` : `${total} 条等你`);
 const clusterTokens = (tokens: number | undefined) => (tokens ? ` · ${K(tokens)} tokens` : "");
 
@@ -224,7 +231,11 @@ function ClusterTickets({
  */
 function MergeAction({ items }: { items: QueueItem[] }) {
   const href = items.find((item) => item.href)?.href;
-  return href ? <LinkButton href={href}>去合并 PR ↗</LinkButton> : null;
+  return href ? (
+    <LinkButton href={href}>
+      <Trans>Go merge PR ↗</Trans>
+    </LinkButton>
+  ) : null;
 }
 
 function Ticket({
@@ -309,15 +320,15 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
   };
   if (fyi) {
     return (
-      <Button variant="go" disabled={busy} onClick={() => send("知道了")}>
-        知道了
+      <Button variant="go" disabled={busy} onClick={() => send(t`Got it`)}>
+        <Trans>Got it</Trans>
       </Button>
     );
   }
   if (!open)
     return (
       <Button variant="go" onClick={() => setOpen(true)}>
-        回答
+        <Trans>Reply</Trans>
       </Button>
     );
   return (
@@ -334,11 +345,11 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
             () => send(text),
           )
         }
-        placeholder="回答…  ⌘↵ 发送"
+        placeholder={t`Reply… Cmd+Enter to send`}
         className="w-[20rem] resize-none rounded-md border border-rule bg-paper px-2 py-1.5 text-body outline-none focus:border-accent"
       />
       <Button variant="go" disabled={busy || !text.trim()} onClick={() => send(text)}>
-        发送
+        <Trans>Send</Trans>
       </Button>
     </span>
   );
@@ -384,7 +395,7 @@ function Draft({ escId, onUse }: { escId: number; onUse: (t: string) => void }) 
   return (
     <Tip label={text}>
       <Button size="sm" onClick={() => onUse(text)}>
-        用草稿
+        <Trans>Use draft</Trans>
       </Button>
     </Tip>
   );

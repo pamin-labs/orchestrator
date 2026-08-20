@@ -3,6 +3,8 @@ import type { State } from "../../shared/api";
 import { groupedRows, type PanelFrame } from "../../shared/stream";
 import { clock } from "../../shared/format";
 import { cn } from "../../ui/cn";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 const FRAME_TONE: Record<PanelFrame["cls"], string> = {
   say: "text-ink",
@@ -68,7 +70,7 @@ export function Timeline({
   projectId: number | null;
 }) {
   let ids: Set<number> | null = null;
-  let label = "全部";
+  let label = t`All`;
   if (grpId) {
     ids = new Set([grpId]);
     label = st.groups.find((g) => g.id === grpId)?.name ?? "";
@@ -94,9 +96,13 @@ export function Timeline({
   return (
     <div>
       <h2 className="mb-2.5 flex items-baseline gap-1.5 text-secondary font-semibold text-ink-2">
-        事件流 <span className="truncate font-normal text-ink-3">{label}</span>
+        <Trans>Event stream</Trans> <span className="truncate font-normal text-ink-3">{label}</span>
       </h2>
-      {!shown.length && <div className="text-secondary text-ink-3">无事件</div>}
+      {!shown.length && (
+        <div className="text-secondary text-ink-3">
+          <Trans>No events</Trans>
+        </div>
+      )}
       <div className="[&>*:first-child]:border-t-0">
         {groupedRows(shown).map(({ f, showHeader, showDivider }) => (
           <TimelineRow key={f.id} f={f} showHeader={showHeader} showDivider={showDivider} />

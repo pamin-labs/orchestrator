@@ -5,6 +5,7 @@ import { Tip } from "./tooltip";
 import { splitAttachments, type Attached } from "./attach";
 import { nl } from "../shared/prose";
 import { cn } from "./cn";
+import { t } from "@lingui/core/macro";
 
 /**
  * A message, and the files that came with it.
@@ -105,7 +106,7 @@ function Attachments({ files }: { files: Attached[] }) {
               />
             )}
             <Dialog.Close
-              aria-label="关掉"
+              aria-label={t`Close`}
               className="absolute right-4 top-4 grid size-8 cursor-pointer place-items-center rounded-md bg-paper/90 text-ink hover:bg-paper"
             >
               <X size={16} strokeWidth={2} />

@@ -1,5 +1,6 @@
 import type { State } from "../../shared/api";
 import { K } from "../../shared/format";
+import { t } from "@lingui/core/macro";
 
 /**
  * Why one thing on the boss's list outranks another.
@@ -28,13 +29,13 @@ export const REASONS = {
    * group is suspended — so claiming "an agent is waiting" would be a lie the row tells
    * to look urgent.
    */
-  suspended: (): Reason => ({ why: "全组已挂起", points: 80 }),
+  suspended: (): Reason => ({ why: t`Entire group is suspended`, points: 80 }),
   /** Nothing is running on this requirement, so the whole thing is stopped. */
-  halted: (): Reason => ({ why: "组停着不动", points: 60 }),
+  halted: (): Reason => ({ why: t`Group is paused`, points: 60 }),
   /** A queue head blocks everything behind it. */
   blocking: (n: number): Reason => ({ why: `后面还排着 ${n} 个`, points: 12 * n }),
   /** DRAFT blocks dispatch entirely: nothing in this requirement has started. */
-  unstarted: (): Reason => ({ why: "批了才开工", points: 45 }),
+  unstarted: (): Reason => ({ why: t`Starts after approval`, points: 45 }),
   /** Money already spent and now sitting idle. */
   // Tokens, not dollars. codex reports no cost at all, so with usd here every
   // requirement that ran on it scored zero for sunk cost — the reason silently

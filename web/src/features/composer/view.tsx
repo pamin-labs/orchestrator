@@ -35,6 +35,8 @@ import {
   type Skill,
   type Slash,
 } from "./model";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 export type { Draft, Skill };
 
@@ -161,7 +163,9 @@ export function SkillMenu({ matches, onPick }: { matches: Skill[]; onPick: (sk: 
   return (
     <div className="mx-2 mb-1 overflow-hidden rounded-md border border-rule bg-paper shadow-[0_6px_20px_var(--shade)]">
       <div className="flex items-baseline gap-2 border-b border-rule-soft px-2 py-1 text-meta text-ink-3">
-        <span className="min-w-0 grow">选中的技能，正文随这一个 turn 发给 agent，只花这一次钱</span>
+        <span className="min-w-0 grow">
+          <Trans>The chosen skill is sent with this turn; it only costs for this one turn.</Trans>
+        </span>
         <span className="shrink-0 font-mono">{matches.length}</span>
       </div>
       <div className="max-h-56 overflow-y-auto">
@@ -175,10 +179,16 @@ export function SkillMenu({ matches, onPick }: { matches: Skill[]; onPick: (sk: 
             <span className="font-mono text-secondary text-ink">{sk.name}</span>
             {/* Where it came from matters: a project skill is versioned with the
                 code, a user one is the boss's own and shadowed by the project's. */}
-            <span className="shrink-0 font-mono text-tag text-ink-3">{sk.scope === "project" ? "项目" : "全局"}</span>
+            <span className="shrink-0 font-mono text-tag text-ink-3">
+              {sk.scope === "project" ? t`Projects` : t`Global`}
+            </span>
             {/* Still offerable — the text is injected either way — but the agent
                 cannot reach for this one by itself until it is ticked. */}
-            {!sk.on && <span className="shrink-0 font-mono text-tag text-ink-3">未启用</span>}
+            {!sk.on && (
+              <span className="shrink-0 font-mono text-tag text-ink-3">
+                <Trans>Disabled</Trans>
+              </span>
+            )}
             <span className="min-w-0 flex-1 truncate text-meta text-ink-3">{sk.description}</span>
             <span className="shrink-0 font-mono text-pill text-ink-3">Tab</span>
           </button>
@@ -273,7 +283,7 @@ function SkillButton({ skills, onClick }: { skills: Skill[] | null; onClick: () 
   if (!skills?.length) return null;
   return (
     <Button variant="quiet" size="sm" onClick={onClick}>
-      <SquareSlash size={12} strokeWidth={1.75} /> 插技能
+      <SquareSlash size={12} strokeWidth={1.75} /> <Trans>Insert skill</Trans>
     </Button>
   );
 }
@@ -383,8 +393,8 @@ export function Composer({
     // on its own afterwards, and that difference is invisible from the picker.
     const go = await ask({
       title: `${sk.name} 没启用`,
-      body: "没勾选的技能不在沙盒里，agent 自己找不到它。去设置里勾上，还是取消这次插入？",
-      yes: "去设置",
+      body: t`Disabled skills aren't in the sandbox; the agent can't find it. Enable it in settings, or cancel this insertion?`,
+      yes: t`Go to settings`,
     });
     takeSlash("");
     if (go) gotoSkills();
@@ -422,7 +432,7 @@ export function Composer({
   const fromDisk = (paths: string[]) =>
     startTransition(async () => {
       const r = await api.attach.local.$post({ json: { paths } }).catch(() => null);
-      if (!r) return void toast.error("加不进来", { duration: 8000 });
+      if (!r) return void toast.error(t`Failed to add`, { duration: 8000 });
       const result = await readJson(r, AttachmentsSchema);
       if (!result.ok) return void toast.error(result.text, { duration: 8000 });
       addFiles(result.data.files);
@@ -443,7 +453,7 @@ export function Composer({
           form: { file: picked.map(({ file }) => file), rel: picked.map(({ rel }) => rel) },
         });
       } catch {
-        return void toast.error("浏览器读不到这些内容。文件夹得拖进来。", { duration: 8000 });
+        return void toast.error(t`The browser can't read this. Drag folders in instead.`, { duration: 8000 });
       }
       // A file that silently fails to attach is worse than one never added: the text
       // goes out referencing a path, and the agent is told to Read something missing.
@@ -472,10 +482,12 @@ export function Composer({
       // clipboard `catch` below and reported them as "the browser will not let us
       // read the clipboard" — the wrong sentence for a file the server rejected.
       if (images.length) upload(images);
-      else if (empty) toast.error("剪贴板是空的");
+      else if (empty) toast.error(t`Clipboard is empty`);
     } catch {
       // Safari and a denied permission both land here.
-      toast.error("浏览器不让直接读剪贴板。点进输入框按 ⌘V，图片也认。", { duration: 8000 });
+      toast.error(t`Browser can't read the clipboard directly. Click in the input and use Cmd+V; images work too.`, {
+        duration: 8000,
+      });
     }
   };
 
@@ -554,10 +566,10 @@ export function Composer({
       <div className="flex flex-wrap items-center gap-1.5 border-t border-rule-soft px-2 py-1.5">
         <FilePicker open={picking} onOpenChange={setPicking} onPick={fromDisk} />
         <Button variant="quiet" size="sm" onClick={() => setPicking(true)}>
-          <Paperclip size={12} strokeWidth={1.75} /> 附件
+          <Paperclip size={12} strokeWidth={1.75} /> <Trans>Attach</Trans>
         </Button>
         <Button variant="quiet" size="sm" onClick={pasteClipboard}>
-          <ClipboardPaste size={12} strokeWidth={1.75} /> 粘贴
+          <ClipboardPaste size={12} strokeWidth={1.75} /> <Trans>Paste</Trans>
         </Button>
         <SkillButton skills={skills} onClick={openSkills} />
         <span className="grow" />
@@ -618,7 +630,7 @@ export function ComposerDialog({
                 }}
                 actions={() => (
                   <Button size="sm" onClick={() => onOpenChange(false)}>
-                    取消
+                    <Trans>Cancel</Trans>
                   </Button>
                 )}
               />

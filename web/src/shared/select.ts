@@ -2,6 +2,7 @@ import type { Escalation, Group, Slice, State } from "./api";
 import { githubRepo } from "./github";
 import { z } from "zod";
 import { valueOr } from "../../../src/contracts/json.ts";
+import { t } from "@lingui/core/macro";
 
 const OwnsSchema = z.array(z.string());
 const GatesSchema = z.record(z.string(), z.string());
@@ -14,7 +15,8 @@ const GatesSchema = z.record(z.string(), z.string());
  */
 export const heldApproved = (g: Group) => g.status === "DRAFT" && !!g.approved_at;
 
-export const statusLabel = (g: Group) => (heldApproved(g) ? "已批·等边界" : (STATUS_ZH[g.status] ?? g.status));
+export const statusLabel = (g: Group) =>
+  heldApproved(g) ? t`Approved · Awaiting boundary` : (STATUS_ZH[g.status] ?? g.status);
 
 export const STATUS_ZH: Record<string, string> = {
   PLANNING: "拆解中",
@@ -108,14 +110,14 @@ export function projectState(st: State, p: number): { zh: string; mine: boolean;
 
 const emptyProjectState = (st: State, p: number) =>
   (st.archived ?? []).some((a) => a.project_id === p)
-    ? { zh: "都做完了", mine: false }
-    : { zh: "空着", mine: false, fresh: true };
+    ? { zh: t`All done`, mine: false }
+    : { zh: t`Empty`, mine: false, fresh: true };
 
 function activeProjectState(groups: Group[]) {
   const live = groups.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;
   if (live) return { zh: `${live} 个在跑`, mine: false, live: true };
   const held = groups.filter((g) => ["PAUSED", "PARKED"].includes(g.status)).length;
-  return held ? { zh: `${held} 个停着`, mine: false } : { zh: "都做完了", mine: false };
+  return held ? { zh: `${held} 个停着`, mine: false } : { zh: t`All done`, mine: false };
 }
 
 /** Where the PR lives, so "go and merge it" is one click rather than a hunt. */

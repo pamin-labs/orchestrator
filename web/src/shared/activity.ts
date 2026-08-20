@@ -1,4 +1,5 @@
 import type { Agent } from "./api";
+import { t } from "@lingui/core/macro";
 
 /**
  * What the agent is doing, in the fewest words that are still true.
@@ -29,9 +30,9 @@ export function activityOf(a: Agent): [string, string] {
   const raw = a.activity ?? a.state;
   // File edits arrive as their own item type and never look like a command.
   const edit = /^(file_change|Edit|Write|NotebookEdit):\s*/.exec(raw);
-  if (edit) return ["改文件", raw.slice(edit[0].length)];
+  if (edit) return [t`Edit file`, raw.slice(edit[0].length)];
   const read = /^(Read|Grep|Glob):\s*/.exec(raw);
-  if (read) return ["翻文件", raw.slice(read[0].length)];
+  if (read) return [t`Browse files`, raw.slice(read[0].length)];
   const cmd = raw.replace(/^(command_execution|Bash):\s*/, "");
   for (const [re, verb] of VERBS) {
     if (re.test(cmd)) return [verb, cmd.replace(re, "").replace(/^\s*/, "")];

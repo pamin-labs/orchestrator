@@ -94,7 +94,7 @@ test("the gates that run are listed in run order, numbered, above the ones that 
   getByText("命令");
   // A detected command nobody turned on sits under its own heading, unnumbered,
   // and is offered as an unpressed toggle rather than as text.
-  getByText("关掉的");
+  getByText("未启用");
   getByText("点一下加到最后一道");
   const off = getAllByRole("button", { pressed: false });
   expect(off.map((row) => row.textContent)).toEqual(["typecheckbun run typecheck"]);
@@ -116,7 +116,7 @@ test("a project with no gates on is told what that costs, and one with no comman
   const bare = render(<Gates d={config({ config: {}, resources: [] })} patch={() => {}} />);
   bare.getByText("没探到可跑的命令。");
   expect(bare.queryAllByText(/一道都没开/)).toHaveLength(0);
-  expect(bare.queryAllByText("关掉的")).toHaveLength(0);
+  expect(bare.queryAllByText("未启用")).toHaveLength(0);
   expect(bare.queryAllByRole("button")).toHaveLength(0);
 });
 

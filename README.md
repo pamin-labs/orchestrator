@@ -209,7 +209,7 @@ is stale.
 <!-- i18n:table -->
 | Surface | Strings | 中文 |
 | --- | ---: | ---: |
-| Panel (`web/src`) | 4 | 4 (100%) |
+| Panel (`web/src`) | 451 | 451 (100%) |
 | Orchestrator messages (`src/platform/text/lang.ts`) | 44 | 44 (100%) |
 <!-- /i18n:table -->
 

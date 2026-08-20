@@ -1,4 +1,5 @@
 import type { Usage } from "../../shared/api";
+import { t } from "@lingui/core/macro";
 
 const WARN_AT = 80;
 
@@ -27,7 +28,7 @@ export type RingInput = { v?: number; at?: number; read?: number; stale: boolean
 export function until(unixSecs?: number): string {
   if (!unixSecs) return "";
   const ms = unixSecs * 1000 - Date.now();
-  if (ms <= 0) return "即将重置";
+  if (ms <= 0) return t`Resetting soon`;
   const min = Math.floor(ms / 60_000);
   const h = Math.floor(min / 60);
   const d = Math.floor(h / 24);
@@ -51,7 +52,7 @@ export const ringArc = (v?: number) => (v === undefined ? null : `${(Math.min(10
  * not been refreshed" stop being the same sentence.
  */
 export function ringTip(p: RingInput): string {
-  if (p.v === undefined) return WHY[p.why ?? ""] ?? "读不到";
+  if (p.v === undefined) return WHY[p.why ?? ""] ?? t`Unreadable`;
   const age = p.read ? Math.round((Date.now() - p.read) / 60_000) : 0;
   return `${Math.round(p.v)}%${p.at ? ` · ${until(p.at)}后重置` : ""}${age >= 15 ? ` · ${age}m 前` : ""}`;
 }

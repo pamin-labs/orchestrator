@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { t } from "@lingui/core/macro";
 
 /** Not exported: the derived types are the contract, this is how they are built. */
 const AttachedSchema = z.object({
@@ -84,7 +85,12 @@ export const skillsForSlash = (skills: Skill[] | null, slash: Slash | null): Ski
         (sk) => !slash.q || sk.name.toLowerCase().includes(slash.q) || sk.path.toLowerCase().includes(slash.q),
       );
 
-const kindOf = (type: string) => (type === "inode/directory" ? "目录" : type.startsWith("image/") ? "图" : "附件");
+const kindOf = (type: string) =>
+  type === "inode/directory"
+    ? t`Folder`
+    : type.startsWith("image/")
+      ? t({ message: "Image", context: "a picture, not a container image" })
+      : t`Attach`;
 
 /**
  * A name for each file, written into the text where it was added.

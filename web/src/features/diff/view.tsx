@@ -7,6 +7,7 @@ import { Meta } from "../../ui/bits";
 import { Tip } from "../../ui/tooltip";
 import { type Cell, markSpans, type SideName, sideTone, type Tone } from "./model";
 import { cn } from "../../ui/cn";
+import { Trans } from "@lingui/react/macro";
 
 /**
  * The diff, as the one thing the boss actually reads before accepting.
@@ -309,7 +310,11 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
             />
           ))}
           {truncated && (
-            <Meta className="block px-3.5 py-2">改动超过 400k 字符，尾部没取回来，剩下的在沙盒的 checkout 里</Meta>
+            <Meta className="block px-3.5 py-2">
+              <Trans>
+                Changes exceed 400k characters; tail not retrieved. Remaining changes are in the sandbox checkout.
+              </Trans>
+            </Meta>
           )}
         </div>
       </Panel>

@@ -1,3 +1,7 @@
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../../i18n";
+
 /**
  * The units the boss reads in, and the numbers the server stores.
  *
@@ -70,17 +74,33 @@ export const WANTS: Record<Shape, string> = {
   percent: "要 0 到 100 之间的百分比，比如 60%",
 };
 
-export type DurationUnit = "毫秒" | "秒" | "分钟" | "小时";
+/**
+ * The key is ASCII and the label is translated, because this union used to be
+ * both at once: `PER` was keyed on the same Chinese strings the page printed, so
+ * translating the label would have changed what the arithmetic looked up.
+ */
+export type DurationUnit = "ms" | "s" | "min" | "h";
 
-const PER: Record<DurationUnit, number> = { 毫秒: 1, 秒: 1000, 分钟: 60_000, 小时: 3_600_000 };
+const UNIT_LABEL: Record<DurationUnit, MessageDescriptor> = {
+  ms: msg`ms`,
+  s: msg`sec`,
+  min: msg`min`,
+  h: msg`hr`,
+};
+
+/** `msg` at module scope, `i18n._` at call scope: a descriptor is locale-free
+ *  data, so it is safe in a table built once at import. */
+export const unitLabel = (unit: DurationUnit): string => i18n._(UNIT_LABEL[unit]);
+
+const PER: Record<DurationUnit, number> = { ms: 1, s: 1000, min: 60_000, h: 3_600_000 };
 
 export const msOf = (n: number, unit: DurationUnit): number => n * PER[unit];
 
 /** Smallest first: the order a unit picker should offer them in. */
-export const DURATION_UNITS: DurationUnit[] = ["毫秒", "秒", "分钟", "小时"];
+export const DURATION_UNITS: DurationUnit[] = ["ms", "s", "min", "h"];
 
 /** Biggest first, so 1200000 reads as 20 分钟 rather than 1200000 毫秒. */
-const BIGGEST_FIRST: DurationUnit[] = ["小时", "分钟", "秒", "毫秒"];
+const BIGGEST_FIRST: DurationUnit[] = ["h", "min", "s", "ms"];
 
 /**
  * The largest unit this many milliseconds is a whole number of.
@@ -92,14 +112,14 @@ export function splitDuration(ms: number): { n: number; unit: DurationUnit } {
   for (const unit of BIGGEST_FIRST) {
     const n = ms / PER[unit];
     // Zero is a whole number of hours too; it should read as 0 秒.
-    if (Number.isInteger(n) && (n !== 0 || unit === "秒")) return { n, unit };
+    if (Number.isInteger(n) && (n !== 0 || unit === "s")) return { n, unit };
   }
-  return { n: ms, unit: "毫秒" };
+  return { n: ms, unit: "ms" };
 }
 
 export function fmtDuration(ms: number): string {
   const { n, unit } = splitDuration(ms);
-  return `${n} ${unit}`;
+  return `${n} ${unitLabel(unit)}`;
 }
 
 /**
@@ -107,22 +127,22 @@ export function fmtDuration(ms: number): string {
  * prints. A bare number keeps the unit already on screen.
  */
 const ALIAS: Record<string, DurationUnit> = {
-  ms: "毫秒",
-  毫秒: "毫秒",
-  s: "秒",
-  sec: "秒",
-  secs: "秒",
-  秒: "秒",
-  m: "分钟",
-  min: "分钟",
-  mins: "分钟",
-  分: "分钟",
-  分钟: "分钟",
-  h: "小时",
-  hr: "小时",
-  hrs: "小时",
-  时: "小时",
-  小时: "小时",
+  ms: "ms",
+  毫秒: "ms",
+  s: "s",
+  sec: "s",
+  secs: "s",
+  秒: "s",
+  m: "min",
+  min: "min",
+  mins: "min",
+  分: "min",
+  分钟: "min",
+  h: "h",
+  hr: "h",
+  hrs: "h",
+  时: "h",
+  小时: "h",
 };
 
 /** Text back to milliseconds. `null` = not a duration. */

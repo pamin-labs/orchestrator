@@ -12,13 +12,19 @@ import { Field, FieldContent, FieldGroup, FieldLabel, InputGroup } from "../../u
 import { Tip } from "../../ui/tooltip";
 import { ImageRow } from "../project/view";
 import type { AuthRow, HostCheck } from "./auth";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 /** Can this machine build a sandbox at all. Four facts, one line each. */
 export function EnvPane({ checks }: { checks: HostCheck[] }) {
   return (
     <>
-      <Head title="环境" note="沙盒要用的" />
-      {!checks.length && <Meta className="block py-2">读取中…</Meta>}
+      <Head title={t`Environment`} note={t`Sandbox configuration`} />
+      {!checks.length && (
+        <Meta className="block py-2">
+          <Trans>Loading…</Trans>
+        </Meta>
+      )}
       {/* One idiom for row rules across the dialog: the list draws them, not the
           rows, so there is no `first:` exception to forget. */}
       <div className="divide-y divide-rule-soft">
@@ -116,7 +122,7 @@ export function ServerPane(props: {
 }) {
   return (
     <>
-      <Head title="沙盒服务器" note="开容器的那个服务" />
+      <Head title={t`Sandbox server`} note={t`The service that launches containers`} />
       <ServerStatus server={props.server} onRefresh={props.onRefreshServer} />
       {/* Silent when wrong, so it is loud here: a path missing from the
           allowlist mounts an empty directory rather than failing. */}
@@ -144,7 +150,12 @@ function ServerStatus({ server, onRefresh }: { server: ServerInfo | null; onRefr
 }
 
 function StatusSummary({ server }: { server: ServerInfo | null }) {
-  if (!server) return <Meta>读取中…</Meta>;
+  if (!server)
+    return (
+      <Meta>
+        <Trans>Loading…</Trans>
+      </Meta>
+    );
   const state = SERVER_STATE[server.state];
   return (
     <>
@@ -206,9 +217,11 @@ function ServerControl({ server, onRefresh }: { server: ServerInfo | null; onRef
   if (server.state === "down") return <StartButton onRefresh={onRefresh} />;
   if (server.restartable) return <RestartButton server={server} onRefresh={onRefresh} />;
   return (
-    <Tip label="这个进程不是我们起的，可能是你自己在用的那个。要重启就自己重启，之后这里会认得它。">
+    <Tip
+      label={t`This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward.`}
+    >
       <Button size="sm" disabled>
-        重启
+        <Trans>Restart</Trans>
       </Button>
     </Tip>
   );
@@ -223,11 +236,11 @@ function StartButton({ onRefresh }: { onRefresh: () => void }) {
     startTransition(async () => {
       const response = await mutate(api["sandbox-server"].start.$post());
       onRefresh();
-      if (response.ok) toast.success("起来了");
+      if (response.ok) toast.success(t`Started`);
     });
   return (
     <Button size="sm" variant="go" disabled={busy} onClick={start}>
-      {busy ? "起中…" : "起一个"}
+      {busy ? t`Starting…` : t`Start`}
     </Button>
   );
 }
@@ -236,13 +249,13 @@ function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: (
   const [busy, startTransition] = useTransition();
   const restart = async () => {
     const yes = await ask({
-      title: "重启沙盒服务器？",
+      title: t`Restart the sandbox server?`,
       // The evidence beside the button: this is not a service bounce, it is
       // every container going away and every turn inside them dying with it.
       body:
         `所有容器都会没：${server.containers} 个组的沙盒，还有 ${server.runningTurns} 个正在跑的 turn。` +
         `\n\n没跑完的 turn 就白跑了，组会自己重开容器接着做，代码和分支不受影响。`,
-      yes: "重启",
+      yes: t`Restart`,
       danger: true,
     });
     if (!yes) return;
@@ -252,12 +265,12 @@ function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: (
     startTransition(async () => {
       const response = await mutate(api["sandbox-server"].restart.$post());
       onRefresh();
-      if (response.ok) toast.success("重启了，容器会按需重开");
+      if (response.ok) toast.success(t`Restarted; containers will restart on demand`);
     });
   };
   return (
     <Button size="sm" disabled={busy} onClick={restart}>
-      {busy ? "重启中…" : "重启"}
+      {busy ? t`Restarting…` : t`Restart`}
     </Button>
   );
 }
@@ -265,7 +278,7 @@ function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: (
 function ServerDrift({ server, checks }: { server: ServerInfo | null; checks: HostCheck[] }) {
   const drift = server ? server.drift : null;
   return drift ? (
-    <DriftNotice detail="配置里没允许我们要挂的路径" fix={allowedPathsLine(drift.want)} />
+    <DriftNotice detail={t`Configuration doesn't allow the path we need to mount`} fix={allowedPathsLine(drift.want)} />
   ) : (
     <PathNotice checks={checks} />
   );
@@ -287,7 +300,10 @@ function DriftNotice({ detail, fix }: { detail: string; fix: string }) {
     <div className="mt-2.5 rounded-md bg-sunk px-3 py-2">
       <div className="text-body text-accent">{detail}</div>
       <p className="mt-1 text-secondary text-ink-3">
-        容器不报错，只挂个空目录，勾上的技能就这么没了。把这行写进配置，然后重启：
+        <Trans>
+          Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then
+          restart:
+        </Trans>
       </p>
       <pre className="mt-1.5 overflow-x-auto font-mono text-meta leading-relaxed text-ink-2 select-all">{fix}</pre>
     </div>
@@ -327,7 +343,7 @@ function ServerFields(props: ServerPaneProps) {
       // answer, and a write that was accepted is not a write that stored
       // this exact string.
       props.onRefreshImages();
-      toast.success(image ? `以后新项目都用 ${image}` : "改回配置文件里的了");
+      toast.success(image ? `以后新项目都用 ${image}` : t`Reset to the image in config`);
     });
 
   return (
@@ -340,10 +356,10 @@ function ServerFields(props: ServerPaneProps) {
           the same way it gets the remote's default branch without being
           asked. The per-project row overrides it and is usually left alone. */}
       <ImageRow
-        label="默认镜像"
+        label={t`Default image`}
         value={props.image}
         busy={busy}
-        placeholder="新项目默认用它，留空跟配置文件"
+        placeholder={t`New projects use this; leave blank to follow config`}
         onSave={saveImage}
       />
       <KeyRow
@@ -367,21 +383,23 @@ function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefres
     // different port, and an edit-and-restart is not a fix you make while
     // reading this.
     <Field>
-      <FieldLabel htmlFor="sb-addr">地址</FieldLabel>
+      <FieldLabel htmlFor="sb-addr">
+        <Trans>Address</Trans>
+      </FieldLabel>
       {/* A column, because the warning under the box is a third child and a
           two-column grid put it in the label gutter. */}
       <FieldContent className="flex-col items-stretch gap-1">
         <Input
           id="sb-addr"
           className="font-mono"
-          placeholder="127.0.0.1:8080 或 https://host:port"
+          placeholder={t`127.0.0.1:8080 or https://host:port`}
           defaultValue={server ? server.addr : ""}
           onKeyDown={async (event) => {
             if (event.key !== "Enter") return;
             const addr = event.currentTarget.value;
             const response = await mutate(api["sandbox-server"].addr.$post({ json: { addr } }));
             onRefresh();
-            if (response.ok) toast.success(addr.trim() ? `改成 ${addr.trim()} 了` : "改回配置文件里的了");
+            if (response.ok) toast.success(addr.trim() ? `改成 ${addr.trim()} 了` : t`Reset to the image in config`);
           }}
         />
         {/* The server does not have to be on this machine — a Tailscale peer
@@ -390,7 +408,10 @@ function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefres
             api_key and every container payload cross it in the clear. */}
         {server?.inClear && (
           <span className="text-secondary text-accent">
-            不在本机，也不在加密内网，走的还是明文 http。密钥和容器流量都是裸的，用 https 或者 Tailscale。
+            <Trans>
+              Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are
+              exposed; use HTTPS or Tailscale.
+            </Trans>
           </span>
         )}
       </FieldContent>
@@ -399,7 +420,7 @@ function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefres
 }
 
 function keyPlaceholder(current?: AuthRow) {
-  return current ? `已存 ${current.hint}，粘新的就换掉` : "留空 = 服务器没开鉴权";
+  return current ? `已存 ${current.hint}，粘新的就换掉` : t`Empty = server has no authentication`;
 }
 
 function KeyRow({
@@ -417,7 +438,9 @@ function KeyRow({
 }) {
   return (
     <Field>
-      <FieldLabel htmlFor="sandbox-key">密钥</FieldLabel>
+      <FieldLabel htmlFor="sandbox-key">
+        <Trans>Key</Trans>
+      </FieldLabel>
       <InputGroup>
         <Input
           id="sandbox-key"
@@ -428,13 +451,15 @@ function KeyRow({
           onChange={(event) => onChange(event.target.value)}
         />
         {/* The server owns this value, so it is read rather than invented. */}
-        <Tip label="从沙盒服务器自己的配置里读（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）。值不经过浏览器。">
+        <Tip
+          label={t`Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser.`}
+        >
           <Button
             size="sm"
             disabled={busy}
             onClick={() => onSend({ runtime: "sandbox", mode: "api_key", adopt: true })}
           >
-            从服务器读
+            <Trans>Read from server</Trans>
           </Button>
         </Tip>
         <ClearKeyButton {...(current ? { current } : {})} busy={busy} onSend={onSend} />
@@ -458,7 +483,7 @@ function ClearKeyButton({
   if (!current) return null;
   return (
     <Button size="sm" variant="quiet" disabled={busy} onClick={() => onSend({ runtime: "sandbox", clear: true })}>
-      清掉
+      <Trans>Clear</Trans>
     </Button>
   );
 }
@@ -476,7 +501,7 @@ function SaveKeyButton({ value, busy, onSend }: { value: string; busy: boolean; 
       disabled={busy}
       onClick={() => onSend({ runtime: "sandbox", mode: "api_key", secret: key })}
     >
-      存下
+      <Trans>Save</Trans>
     </Button>
   );
 }

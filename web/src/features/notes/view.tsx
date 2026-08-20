@@ -13,6 +13,8 @@ import { WithAttachments } from "../../ui/attachments";
 import { z } from "zod";
 import { jsonOr } from "../../../../src/contracts/json.ts";
 import { NotesResponseSchema, type PanelNote as Note } from "../../../../src/contracts/notes";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 /**
  * The blackboard's static half.
@@ -136,11 +138,19 @@ export function NotesBoard({
   tab?: string | null;
   onTab?: (t: string) => void;
 }) {
-  if (!notes) return <Meta>读记录…</Meta>;
+  if (!notes)
+    return (
+      <Meta>
+        <Trans>Loading notes…</Trans>
+      </Meta>
+    );
   if (!notes.length) {
     return (
       <div className="text-body text-ink-3">
-        还没有记录。agent 每个 turn 写 journal，组解散前写 retro，retro 归纳成教训注入后续组。
+        <Trans>
+          No notes yet. Agents write journals each turn; retrospectives are written before the group dissolves and
+          distilled into lessons for later groups.
+        </Trans>
       </div>
     );
   }
@@ -256,7 +266,7 @@ function Body({ text }: { text: string }) {
           onClick={() => setOpen((v) => !v)}
           className="mt-0.5 cursor-pointer font-mono text-meta text-ink-3 hover:text-accent"
         >
-          {open ? "收起" : "展开"}
+          {open ? t`Collapse` : t`Expand`}
         </button>
       )}
     </div>

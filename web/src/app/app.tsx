@@ -62,6 +62,8 @@ import {
   viewClass,
   waitingProject,
 } from "../features/navigation/model";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 type UiKey = "adding" | "pickProject" | "pickReq" | "picking" | "side";
 
@@ -228,22 +230,34 @@ export function App() {
     empty: () => (
       <Card className="max-w-[40rem]">
         <CardBody>
-          <CardTitle>还没有需求</CardTitle>
-          <div className="mt-1 text-secondary text-ink-3">写一句话，拆成计划卡再回来给你批。</div>
+          <CardTitle>
+            <Trans>No requirements yet</Trans>
+          </CardTitle>
+          <div className="mt-1 text-secondary text-ink-3">
+            <Trans>Write a description, break into plan cards, then come back for review.</Trans>
+          </div>
           <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-rule-soft pt-3 text-secondary">
-            <dt className="text-ink-3">仓库</dt>
+            <dt className="text-ink-3">
+              <Trans>Repository</Trans>
+            </dt>
             <dd className="truncate font-mono text-meta">{project?.repo_path}</dd>
-            <dt className="text-ink-3">从这个分支开</dt>
-            <dd className="font-mono text-meta">{project?.base_branch || "问 GitHub 要"}</dd>
-            <dt className="text-ink-3">闸门 / 安装命令</dt>
-            <dd className="text-ink-2">第一个组克隆完才猜得出来，到时候填进设置</dd>
+            <dt className="text-ink-3">
+              <Trans>Start from this branch</Trans>
+            </dt>
+            <dd className="font-mono text-meta">{project?.base_branch || t`Ask GitHub`}</dd>
+            <dt className="text-ink-3">
+              <Trans>Gates / Install commands</Trans>
+            </dt>
+            <dd className="text-ink-2">
+              <Trans>Can't determine until first group clones; fill in settings later</Trans>
+            </dd>
           </dl>
           <div className="mt-3 flex items-center gap-2">
             <Button variant="go" onClick={() => setAdding(true)}>
-              ＋ 新需求
+              <Trans>+ New requirement</Trans>
             </Button>
             <Button variant="quiet" onClick={() => go({ view: "sandbox" })}>
-              改基线分支
+              <Trans>Change base branch</Trans>
             </Button>
           </div>
         </CardBody>
@@ -263,7 +277,11 @@ export function App() {
         />
       );
     },
-    missing: () => <div className="text-body text-ink-3">这个需求已经归档或不存在了。</div>,
+    missing: () => (
+      <div className="text-body text-ink-3">
+        <Trans>This requirement has been archived or no longer exists.</Trans>
+      </div>
+    ),
     desk: () => <Desk st={st} frames={frames} projectId={idOrZero(sel.p)} />,
     notes: () => <Notes projectId={idOrZero(sel.p)} tab={sel.t} onTab={(tab) => go({ t: tab })} />,
     owns: () => <Owns st={st} projectId={idOrZero(sel.p)} />,
@@ -276,7 +294,11 @@ export function App() {
     // moves, which is the reason the number should not have been here at all.
     time: () => (
       <Pane>
-        <Telemetry scope={{ kind: "project", id: idOrZero(sel.p) }} trend empty="这个项目还没跑过任何活。" />
+        <Telemetry
+          scope={{ kind: "project", id: idOrZero(sel.p) }}
+          trend
+          empty={t`This project hasn't run any activity yet.`}
+        />
       </Pane>
     ),
     cost: () => <CostView cost={cost} />,
@@ -290,18 +312,18 @@ export function App() {
       <Switcher
         open={ui.pickProject}
         onOpenChange={setPickProject}
-        label="切换项目"
-        placeholder="项目名…"
-        empty="没有匹配的项目"
+        label={t`Switch project`}
+        placeholder={t`Project name…`}
+        empty={t`No matching projects`}
         items={st.projects.map((item) => projectItem(item, countWaiting(st, item.id)))}
         onPick={(id) => go({ p: id, g: null, view: "board" })}
       />
       <Switcher
         open={ui.pickReq}
         onOpenChange={setPickReq}
-        label="切换需求"
-        placeholder="需求名…"
-        empty="这个项目没有别的需求"
+        label={t`Switch requirement`}
+        placeholder={t`Requirement name…`}
+        empty={t`No other requirements for this project`}
         items={groups.map((group) => requirementItem(group, STATUS_ZH[group.status] ?? group.status))}
         onPick={(id) => go({ view: "req", g: id })}
       />
@@ -393,12 +415,14 @@ export function App() {
             >
               待办 {waiting}
             </Button>,
-            <span className="font-mono text-meta text-ink-3">无待办</span>,
+            <span className="font-mono text-meta text-ink-3">
+              <Trans>No pending items</Trans>
+            </span>,
           )}
           {choose(
             showNewRequirement(sel.p, st.projects.length),
             <Button size="sm" className="ml-1" onClick={() => setAdding(true)}>
-              ＋ 新需求
+              <Trans>+ New requirement</Trans>
             </Button>,
             null,
           )}
@@ -409,7 +433,7 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => setSide((value) => !value)}
-                  aria-label="事件流"
+                  aria-label={t`Event stream`}
                   className={cn(
                     "grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
                     sideClass(ui.side),
@@ -420,11 +444,11 @@ export function App() {
               </Tip>,
               null,
             )}
-            <Tip label="设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S">
+            <Tip label={t`Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S`}>
               <button
                 type="button"
                 onClick={() => go({ view: "github" })}
-                aria-label="设置"
+                aria-label={t`Settings`}
                 className={cn(
                   "relative grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
                   settingsClass(!!section),

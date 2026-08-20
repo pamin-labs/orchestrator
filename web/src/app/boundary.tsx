@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Card, CardBody, CardTitle } from "../ui/card";
+import { Trans } from "@lingui/react/macro";
 
 /**
  * One view throwing must not leave a dead page.
@@ -23,18 +24,24 @@ export class Boundary extends Component<{ children: ReactNode }, { err: Error | 
     return (
       <Card className="max-w-[44rem]">
         <CardBody>
-          <CardTitle className="text-bad">这个视图崩了</CardTitle>
+          <CardTitle className="text-bad">
+            <Trans>This view crashed</Trans>
+          </CardTitle>
           <div className="mt-1 text-secondary text-ink-2">
-            界面和服务端版本可能不一致。重启服务（<span className="font-mono">bun run dev</span>）会重建前端。
+            <Trans>Frontend and server versions may be out of sync. Restart the service (</Trans>
+            <span className="font-mono">bun run dev</span>
+            <Trans>) to rebuild the frontend.</Trans>
           </div>
           <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-sunk p-2 font-mono text-meta text-ink-2">
             {err.message}
           </pre>
           <div className="mt-3 flex gap-1.5">
             <Button variant="go" onClick={() => location.reload()}>
-              刷新
+              <Trans>Refresh</Trans>
             </Button>
-            <Button onClick={() => this.setState({ err: null })}>重试这个视图</Button>
+            <Button onClick={() => this.setState({ err: null })}>
+              <Trans>Retry this view</Trans>
+            </Button>
           </div>
         </CardBody>
       </Card>

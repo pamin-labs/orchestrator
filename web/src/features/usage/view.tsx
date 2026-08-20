@@ -3,6 +3,7 @@ import { R, type RingInput, ringView, staleMark } from "./model";
 import type { Usage } from "../../shared/api";
 import { cn } from "../../ui/cn";
 import { Tip } from "../../ui/tooltip";
+import { t } from "@lingui/core/macro";
 
 /**
  * How much of each subscription is left, in the header.
@@ -54,7 +55,7 @@ function UsageRow({ usage }: { usage: Usage }) {
     <Fragment>
       <span className="truncate text-right text-ink-3">{usage.runtime}</span>
       <Ring label="5h" {...windowRing(usage, "five")} {...shared} />
-      <Ring label="周" {...windowRing(usage, "week")} {...shared} />
+      <Ring label={t`Week`} {...windowRing(usage, "week")} {...shared} />
     </Fragment>
   );
 }

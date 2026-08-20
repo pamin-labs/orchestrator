@@ -2,6 +2,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
 import { Button } from "./button";
 import { Textarea } from "./bits";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 /**
  * Confirmations are ours, not the browser's.
@@ -88,9 +90,11 @@ export function AskCard({
       </div>
       <div className="flex items-center gap-2 border-t border-rule p-3.5">
         <span className="grow" />
-        <Button onClick={() => onDone(null)}>取消</Button>
+        <Button onClick={() => onDone(null)}>
+          <Trans>Cancel</Trans>
+        </Button>
         <Button variant={spec.danger ? "danger" : "go"} onClick={() => onDone(spec.field ? text : true)}>
-          {spec.yes ?? "确定"}
+          {spec.yes ?? t`OK`}
         </Button>
       </div>
     </Dialog.Content>

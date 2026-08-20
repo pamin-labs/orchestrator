@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { render, waitFor } from "@testing-library/react";
+import { render, waitFor } from "../support/render.tsx";
 import { http, HttpResponse } from "msw";
 import { inFlight, mockHttp, server } from "../support/http.ts";
 import { Composer } from "../../web/src/features/composer/view.tsx";

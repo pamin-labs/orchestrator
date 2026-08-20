@@ -2,6 +2,7 @@ import type { Escalation, Group, Slice, State } from "../../shared/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "./rank";
 import { pending, prUrl } from "../../shared/select";
 import { brief } from "../../shared/prose";
+import { t } from "@lingui/core/macro";
 
 export interface QueueItem {
   key: string;
@@ -35,7 +36,7 @@ const halted = (st: State, grpId: number | null) =>
 
 const cardGoal = (card: State["draftCards"][number] | undefined) =>
   (card?.body.split("\n").find((line) => line.startsWith("目标")) ?? "").replace(/^目标\s*[:：]\s*/, "") ||
-  "计划卡未提交";
+  t`Plan card not submitted`;
 
 function cardSummary(card: State["draftCards"][number] | undefined, drop: State["dropProposals"][number] | undefined) {
   if (drop) return drop.body.split("\n")[0] ?? "";
@@ -48,7 +49,7 @@ function cardItem(st: State, group: Group, now: number): QueueItem {
   const tokens = spent(st, group.id);
   const item: QueueItem = {
     key: `c${group.id}`,
-    kind: drop ? "作废" : "计划",
+    kind: drop ? t`Abandoned` : t`Plan`,
     where: group.name,
     what: cardSummary(card, drop),
     who: "dispatcher",
@@ -62,7 +63,7 @@ function cardItem(st: State, group: Group, now: number): QueueItem {
     escId: null,
     fyi: false,
   };
-  if (st.lateObjections.some((objection) => objection.grpId === group.id)) item.flag = "有反对意见";
+  if (st.lateObjections.some((objection) => objection.grpId === group.id)) item.flag = t`Has objections`;
   return item;
 }
 
@@ -70,7 +71,7 @@ function sliceItem(st: State, slice: Slice, now: number): QueueItem {
   const stopped = halted(st, slice.grp_id);
   return {
     key: `s${slice.id}`,
-    kind: "切片",
+    kind: t`Slice`,
     where: groupName(st, slice.grp_id),
     what: slice.title,
     who: "qa",
@@ -88,8 +89,8 @@ function sliceItem(st: State, slice: Slice, now: number): QueueItem {
 
 const mergeGroup = (st: State, grpId: number) => st.groups.find((group) => group.id === grpId);
 const mergeHref = (st: State, group: Group | undefined) => (group ? prUrl(st, group) : null);
-const mergeWhat = (branch: string | null) => branch ?? "等你合入";
-const mergeSub = (href: string | null) => (href ? "" : "未找到 PR 链接");
+const mergeWhat = (branch: string | null) => branch ?? t`Awaiting merge`;
+const mergeSub = (href: string | null) => (href ? "" : t`PR link not found`);
 const blockingReason = (behind: number) => (behind > 0 ? REASONS.blocking(behind) : null);
 const queuedBehind = (st: State, projectId: number | undefined) =>
   Math.max(0, st.groups.filter((group) => group.status === "PR_OPEN" && group.project_id === projectId).length - 1);
@@ -133,17 +134,17 @@ function askReason(st: State, escalation: Escalation, now: number) {
 
 const askWhat = (escalation: Escalation) => escalation.brief?.trim() || brief(escalation.question);
 const askWhere = (st: State, escalation: Escalation) =>
-  escalation.grp_id ? groupName(st, escalation.grp_id) : "常驻岗";
-const askWho = (escalation: Escalation) => escalation.asker ?? "系统";
+  escalation.grp_id ? groupName(st, escalation.grp_id) : t`Standing post`;
+const askWho = (escalation: Escalation) => escalation.asker ?? t`System`;
 const askAbout = (escalation: Escalation) => escalation.kind ?? "other";
-const askFlag = (hard: boolean) => (hard ? "全组已暂停" : null);
+const askFlag = (hard: boolean) => (hard ? t`Group is paused` : null);
 const isFyi = (escalation: Escalation, hard: boolean) => !escalation.grp_id && !hard;
 
 function askItem(st: State, escalation: Escalation, now: number): QueueItem {
   const hard = escalation.severity === "blocker";
   return {
     key: `a${escalation.id}`,
-    kind: "提问",
+    kind: t`Question`,
     what: askWhat(escalation),
     who: askWho(escalation),
     hard,

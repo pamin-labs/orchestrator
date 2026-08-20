@@ -9,6 +9,8 @@ import { cn } from "../../ui/cn";
 import { browseListing, browseRow, repoRow, type Entry } from "./model";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 const EntrySchema = z.object({
   name: z.string(),
@@ -116,7 +118,11 @@ function BrowseRows(props: {
   return (
     <div className="max-h-[46vh] overflow-y-auto">
       {props.err && <div className="p-3.5 text-secondary text-bad">{props.err}</div>}
-      {props.here && !props.rows.length && <div className="p-3.5 text-secondary text-ink-3">空目录</div>}
+      {props.here && !props.rows.length && (
+        <div className="p-3.5 text-secondary text-ink-3">
+          <Trans>Empty directory</Trans>
+        </div>
+      )}
       {props.rows.map(([entry, isDir]) => (
         <BrowseRow
           key={entry.path}
@@ -270,13 +276,15 @@ function RepoHeader({
   return (
     <div className="flex items-baseline gap-2 border-b border-rule p-3">
       {title}
-      <span className="min-w-0 grow truncate text-secondary text-ink-3">点一行就添加</span>
+      <span className="min-w-0 grow truncate text-secondary text-ink-3">
+        <Trans>Click a row to add</Trans>
+      </span>
       {data && data.installations.length > 1 ? (
-        <Menu label={here ? here.account : "选账号"}>
+        <Menu label={here ? here.account : t`Choose account`}>
           {data.installations.map((installation) => (
             <MenuItem
               key={installation.id}
-              hint={installation.kind === "Organization" ? "组织" : "个人账号"}
+              hint={installation.kind === "Organization" ? t`Organization` : t`Personal account`}
               onSelect={() => selectInstallation(installation.id)}
             >
               {installation.account}
@@ -295,7 +303,9 @@ function RepoError({ error, onSettings }: { error: string; onSettings: () => voi
   return (
     <div className="space-y-2 border-b border-rule-soft p-3.5">
       <p className="text-body text-bad">{error}</p>
-      <Button onClick={onSettings}>去设置看 GitHub</Button>
+      <Button onClick={onSettings}>
+        <Trans>Go to settings to check GitHub</Trans>
+      </Button>
     </div>
   );
 }
@@ -317,11 +327,17 @@ function RepoInstallEmpty({ data, empty }: { data: RepoList | null; empty: boole
   if (!empty) return null;
   return (
     <div className="space-y-2 p-3.5 text-body text-ink-2">
-      <p>连上了，但这个 GitHub App 还没装到任何账号上，所以一个仓库也看不见。</p>
+      <p>
+        <Trans>Connected, but this GitHub App isn't installed on any account, so no repos are visible.</Trans>
+      </p>
       {data?.installUrl ? (
-        <LinkButton href={data.installUrl}>去 GitHub 装上</LinkButton>
+        <LinkButton href={data.installUrl}>
+          <Trans>Install on GitHub</Trans>
+        </LinkButton>
       ) : (
-        <p className="text-secondary text-ink-3">去 GitHub → 这个 App → Install App，选要给它看的仓库。</p>
+        <p className="text-secondary text-ink-3">
+          <Trans>Go to GitHub → this App → Install App, then choose which repos it can access.</Trans>
+        </p>
       )}
     </div>
   );
@@ -334,7 +350,11 @@ function RepoListEmpty({ data, account }: { data: RepoList | null; account: stri
   return (
     <div className="space-y-2 p-3.5 text-body text-ink-2">
       <p>{account} 下面，这个 App 一个仓库都看不到。装的时候可能只勾了几个。</p>
-      {data.installUrl && <LinkButton href={data.installUrl}>去改它能看哪些</LinkButton>}
+      {data.installUrl && (
+        <LinkButton href={data.installUrl}>
+          <Trans>Change its access</Trans>
+        </LinkButton>
+      )}
     </div>
   );
 }
@@ -391,7 +411,11 @@ function RepoItem({ repo, busy, select }: { repo: Repo; busy: string; select: (r
     >
       <span className="flex min-w-0 items-baseline gap-2">
         <span className="truncate font-medium">{marks.name}</span>
-        {repo.private && <Badge>私有</Badge>}
+        {repo.private && (
+          <Badge>
+            <Trans>Private</Trans>
+          </Badge>
+        )}
       </span>
       <RepoEdge marks={marks} />
     </Command.Item>
@@ -402,7 +426,11 @@ function RepositoryList({ data, busy, select }: { data: RepoList | null; busy: s
   const repos = data?.repos ?? [];
   return (
     <Command.List>
-      {!!repos.length && <Command.Empty className="p-3.5 text-secondary text-ink-3">没有匹配的</Command.Empty>}
+      {!!repos.length && (
+        <Command.Empty className="p-3.5 text-secondary text-ink-3">
+          <Trans>No matches</Trans>
+        </Command.Empty>
+      )}
       {repos.map((repo) => (
         <RepoItem key={repo.fullName} repo={repo} busy={busy} select={select} />
       ))}
@@ -417,7 +445,11 @@ function RepoFooter({ data, onCancel }: { data: RepoList | null; onCancel: (() =
       <span className="min-w-0 grow truncate text-secondary text-ink-3">
         {data?.repos.length ? `${data.repos.length} 个仓库，最近动过的在前` : ""}
       </span>
-      {onCancel && <Button onClick={onCancel}>取消</Button>}
+      {onCancel && (
+        <Button onClick={onCancel}>
+          <Trans>Cancel</Trans>
+        </Button>
+      )}
     </div>
   );
 }
@@ -474,7 +506,7 @@ function Repos({
   };
 
   return (
-    <Command label="选择仓库" className="flex min-h-0 flex-col">
+    <Command label={t`Choose repository`} className="flex min-h-0 flex-col">
       <RepoHeader
         title={title}
         data={d}
@@ -488,7 +520,7 @@ function Repos({
         <Command.Input
           value={q}
           onValueChange={setQ}
-          placeholder="筛一下，或者直接打名字"
+          placeholder={t`Filter or type a name`}
           className="w-full border-b border-rule-soft bg-transparent px-3.5 py-2.5 text-base
                      text-ink placeholder:text-ink-3 focus:outline-none"
         />
@@ -520,7 +552,11 @@ export function Picker({
   return (
     <Shell open={open} onOpenChange={onOpenChange}>
       <Repos
-        title={<Dialog.Title className="shrink-0 font-display text-card font-semibold">选择仓库</Dialog.Title>}
+        title={
+          <Dialog.Title className="shrink-0 font-display text-card font-semibold">
+            <Trans>Choose repository</Trans>
+          </Dialog.Title>
+        }
         onAdded={leave}
         onOpenProject={leave}
         onSettings={() => {
@@ -543,7 +579,11 @@ export function FirstProject({
   return (
     <div className="max-w-[40rem] overflow-hidden rounded-xl border border-rule bg-paper">
       <Repos
-        title={<h2 className="shrink-0 font-display text-card font-semibold">添加第一个项目</h2>}
+        title={
+          <h2 className="shrink-0 font-display text-card font-semibold">
+            <Trans>Add your first project</Trans>
+          </h2>
+        }
         onAdded={onAdded}
         onOpenProject={onAdded}
         onSettings={onSettings}
@@ -568,8 +608,8 @@ export function FilePicker({
   return (
     <Shell open={open} onOpenChange={onOpenChange}>
       <Browse
-        title="选附件"
-        hint="文件和目录都行，点名字进目录"
+        title={t`Choose attachments`}
+        hint={t`Files and folders OK; click a name to enter a folder.`}
         files
         pick
         chosen={(p) => sel.includes(p)}
@@ -580,9 +620,11 @@ export function FilePicker({
         footer={() => (
           <>
             <span className="min-w-0 grow truncate text-secondary text-ink-3">
-              {sel.length ? `选了 ${sel.length} 个` : "还没选"}
+              {sel.length ? `选了 ${sel.length} 个` : t`None selected`}
             </span>
-            <Button onClick={() => onOpenChange(false)}>取消</Button>
+            <Button onClick={() => onOpenChange(false)}>
+              <Trans>Cancel</Trans>
+            </Button>
             <Button
               variant="go"
               disabled={!sel.length}
@@ -591,7 +633,7 @@ export function FilePicker({
                 onOpenChange(false);
               }}
             >
-              加进来
+              <Trans>Add</Trans>
             </Button>
           </>
         )}

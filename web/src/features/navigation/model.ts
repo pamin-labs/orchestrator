@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { State } from "../../shared/api";
 import { SectionSchema, type Section } from "../settings/model";
+import { t } from "@lingui/core/macro";
 
 const ViewSchema = z.enum([
   "home",
@@ -87,8 +88,10 @@ export const viewActive = (view: View, candidate: View): boolean =>
   view === candidate || (view === "req" && candidate === "progress");
 export const viewClass = (active: boolean): string =>
   active ? "border-accent font-medium text-ink" : "border-transparent text-ink-3 hover:text-ink";
-export const connectionText = (live: string): string => (live === "retry" ? "连接断了，重连中" : "连接中");
-export const sideText = (side: boolean): string => (side ? "收起事件流" : "展开事件流：谁跟谁说了什么，按时间倒序");
+export const connectionText = (live: string): string =>
+  live === "retry" ? t`Connection lost; reconnecting` : t`Connecting`;
+export const sideText = (side: boolean): string =>
+  side ? t`Collapse event stream` : t`Expand event stream: who said what to whom, newest first`;
 export const sideClass = (side: boolean): string => (side ? "text-ink" : "text-ink-3 hover:text-ink");
 export const settingsClass = (active: boolean): string => (active ? "text-ink" : "text-ink-3 hover:text-ink");
 export const scrollClass = (view: View): string =>

@@ -1,4 +1,5 @@
 import type { PanelFrame } from "../../shared/stream";
+import { t } from "@lingui/core/macro";
 
 /**
  * What a sandbox rebuild looks like from the frame buffer.
@@ -39,7 +40,7 @@ export function bootstrapOf(frames: PanelFrame[], grpId: number): Bootstrap {
   const cmd = lines.find((f) => f.text.startsWith("$ "))?.text.slice(2) ?? null;
   return {
     running: (!!began || !!lines.length) && !done,
-    failed: !!done?.text.startsWith("装失败了"),
+    failed: !!done?.text.startsWith(t`Bootstrap failed`),
     cmd,
     lines,
     since: since || lines[0]?.at || 0,

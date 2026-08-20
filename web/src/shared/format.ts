@@ -1,4 +1,4 @@
-/**
+import { t } from "@lingui/core/macro"; /**
  * Token counts, in the unit that fits.
  *
  * Stopped at k, so a real project's total printed as "1834k" — wrong as a unit and
@@ -49,5 +49,5 @@ export const duration = (ms: number) => {
 /** How long something has been waiting, in the coarsest unit that still says it. */
 export const waited = (ms: number) => {
   const m = Math.round((Date.now() - ms) / 60000);
-  return m < 1 ? "刚刚" : m < 60 ? `等待 ${m}m` : `等待 ${Math.round(m / 60)}h`;
+  return m < 1 ? t`Just now` : m < 60 ? `等待 ${m}m` : `等待 ${Math.round(m / 60)}h`;
 };
