@@ -35,7 +35,7 @@ jobs:
     outputs:
       source-sha: ${{ steps.source.outputs.sha }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -106,7 +106,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.checks.outputs.source-sha }}
           persist-credentials: false
@@ -205,13 +205,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.checks.outputs.source-sha }}
           persist-credentials: false
-      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', scan-type: fs, scan-ref: ., format: spdx-json, output: orchestrator-source.spdx.json, exit-code: '0' }
-      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', scan-type: fs, scan-ref: ., format: cyclonedx, output: orchestrator-source.cdx.json, exit-code: '0' }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with: { name: source-sboms, path: 'orchestrator-source.*.json', if-no-files-found: error, retention-days: 1 }
@@ -225,11 +225,11 @@ jobs:
       fail-fast: true
       matrix: { platform: [amd64, arm64] }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: '${{ needs.checks.outputs.source-sha }}', persist-credentials: false }
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
       - id: image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: docker/agent.Dockerfile
@@ -263,14 +263,14 @@ jobs:
             '{source_sha:$source_sha,platform:$platform,image_digest:$image_digest,image_id:$image_id}' \
             > "image-manifest-$PLATFORM.json"
       - name: scan verified image
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orch-agent:verify-${{ matrix.platform }}
           trivy-config: trivy.yaml
           format: table
       - name: create verified image SPDX SBOM
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orch-agent:verify-${{ matrix.platform }}
@@ -278,7 +278,7 @@ jobs:
           output: orchestrator-agent-${{ matrix.platform }}.spdx.json
           exit-code: '0'
       - name: create verified image CycloneDX SBOM
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orch-agent:verify-${{ matrix.platform }}
@@ -326,8 +326,8 @@ jobs:
         with: { name: 'image-archive-${{ matrix.platform }}', path: image }
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { name: 'image-evidence-${{ matrix.platform }}', path: image }
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
       - name: push only the image that passed verification
         env:
@@ -379,8 +379,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { path: /tmp/digests, pattern: 'image-digest-*', merge-multiple: true }
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
       - name: create multi-platform manifest
         id: manifest
@@ -449,15 +449,15 @@ jobs:
             --arg digest "$digest" \
             '{source_sha:$source_sha,image:$image,digest:$digest,platforms:["linux/amd64","linux/arm64"]}' \
             > "$GITHUB_WORKSPACE/registry-image-manifest.json"
-      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', trivy-config: trivy.yaml, format: table }
-      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', format: spdx-json, output: registry-image.spdx.json, exit-code: '0' }
-      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', format: cyclonedx, output: registry-image.cdx.json, exit-code: '0' }
-      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with: { subject-name: '${{ env.REGISTRY }}/orch-agent', subject-digest: '${{ steps.manifest.outputs.digest }}', push-to-registry: true }
-      - uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3
+      - uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3
         with: { subject-name: '${{ env.REGISTRY }}/orch-agent', subject-digest: '${{ steps.manifest.outputs.digest }}', sbom-path: registry-image.spdx.json, push-to-registry: true }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -520,7 +520,7 @@ jobs:
       - name: verify checksums
         working-directory: dist
         run: sha256sum --check SHA256SUMS
-      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: dist/*
       - name: atomically bind release tag to verified source
@@ -558,8 +558,8 @@ jobs:
       contents: read
       packages: write # Advance latest only after the immutable GitHub release exists.
     steps:
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
       - name: promote the published manifest to latest
         env:
