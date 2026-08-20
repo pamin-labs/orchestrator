@@ -486,6 +486,34 @@ M7 — executable engineering governance and versioned protocol.
   prints `code`, `out` and `err`. A container is the one place where re-running is
   not a way to find out. No cause is named here, because naming one would be a
   guess printed as a diagnosis.
+- **Where an idle fleet's 24 hours actually went**, read back from the 98,056
+  spans the pre-migration database still holds. No agent turn ran in that window
+  at all — 7,707 watchdog jobs, **zero** `agent_turn` — so every second below is
+  the cost of doing nothing:
+
+  | span | calls | total | mean |
+  |---|---|---|---|
+  | `watchdog.repo_map` | 2,766 | **6,351s** | 2,296ms |
+  | `sandbox.exec` | 6,382 | 6,046s | 947ms |
+  | `git.ls_tree` | 1,184 | 3,819s | 3,226ms |
+  | `git.ensure_mirror` | 1,184 | 2,608s | 2,203ms |
+  | `index.ask` | 36 | 738s | 20,513ms |
+
+  `watchdog.repo_map` is 95% of the whole watchdog tick, and `git.ls_tree` and
+  `git.ensure_mirror` are nested inside it — their call counts (1,184) match the
+  1,185 ticks whose stamp could not be read exactly. Fixing that one branch
+  removes all three, about **6,300s per 24 idle hours**.
+
+  Two things this measurement leaves open, deliberately. The gate's own
+  `rev-parse` still costs ~947ms of container exec on every tick, ~2,600s a day,
+  because it reads the *project* container while the map is built from the
+  *mirror* — a redesign, not a branch. And `ensureMirror` still fetches
+  unconditionally, which is the blocker already recorded below.
+- **Wave 5.6 has no subject and `assemble.ts` was not touched.** Its instruction is
+  to confirm where a turn's wall clock goes *before* changing prompt assembly.
+  There are no turn spans in this history because no turn ran, so the prohibition
+  is the operative half. Hard constraint #1 and `cache-position.test.ts` are
+  untouched, as the plan requires.
 
 ## Blockers and deviations
 
