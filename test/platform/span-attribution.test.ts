@@ -96,6 +96,11 @@ test("a turn's stages are stored as one nested trace under the job that ran them
     "turn.checkpoint",
     "turn.prepare",
     "turn.provider",
+    // The fourth quarter. `runAgentTurn`'s own comment named four stages and only
+    // three were timed, and the missing one is ten serial awaits, two of which
+    // enter a container — so "the turn took nine minutes" could resolve to the
+    // provider or to here, with no way to tell which.
+    "turn.settle",
   ]);
 
   // The nesting is the point: without an active-context bridge from the job span
@@ -104,7 +109,7 @@ test("a turn's stages are stored as one nested trace under the job that ran them
   const turn = byName(spans, "turn");
   expect(job.parentSpanId).toBeNull();
   expect(turn.parentSpanId).toBe(job.spanId);
-  for (const stage of ["turn.prepare", "turn.checkpoint", "turn.provider"]) {
+  for (const stage of ["turn.prepare", "turn.checkpoint", "turn.provider", "turn.settle"]) {
     expect(byName(spans, stage).parentSpanId).toBe(turn.spanId);
   }
 

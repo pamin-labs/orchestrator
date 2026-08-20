@@ -277,7 +277,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<voi
         span.setAttributes({ "agent.role": turn.agent.role, "agent.runtime": turn.agent.runtime ?? turn.role.runtime });
         const before = await checkpointTurn(deps, job, turn, scope);
         const result = await invokeTurn(deps, job, turn, scope);
-        await finishTurn(deps, job, turn, before, result);
+        await finishTurn(deps, job, turn, before, result, scope);
       } catch (error) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
         throw error;
@@ -570,7 +570,36 @@ function turnEvents(ctx: Ctx, job: Job<"agent_turn">, agent: AgentRow, onAbort: 
   };
 }
 
+/**
+ * The fourth quarter of a turn, which was the one nobody could see.
+ *
+ * The comment on `runAgentTurn` names four stages and three had spans. This is
+ * ten serial awaits and two of them enter a container — `preserveTurnBranch`
+ * bundles the branch into the mirror, `reconcileOwnership` runs git against the
+ * checkout — so "the turn took nine minutes" could resolve to the provider, or
+ * here, and there was no way to tell which.
+ */
 async function finishTurn(
+  deps: ExecDeps,
+  job: Job<"agent_turn">,
+  turn: PreparedTurn,
+  before: string | null,
+  result: TurnResult,
+  scope: SpanScope,
+): Promise<void> {
+  return activeTracer().startActiveSpan("turn.settle", { attributes: scopeAttributes(scope) }, async (span) => {
+    try {
+      await settleTurn(deps, job, turn, before, result);
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+async function settleTurn(
   deps: ExecDeps,
   job: Job<"agent_turn">,
   turn: PreparedTurn,

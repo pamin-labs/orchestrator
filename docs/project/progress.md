@@ -509,11 +509,18 @@ M7 — executable engineering governance and versioned protocol.
   push, so it is asked on `watchdog.repoMapEveryMs` (five minutes) instead of on
   every 30s tick, which is ~90% of that gone and a knob in the panel. And
   `ensureMirror` no longer fetches for callers that do not read refs.
-- **Wave 5.6 has no subject and `assemble.ts` was not touched.** Its instruction is
-  to confirm where a turn's wall clock goes *before* changing prompt assembly.
-  There are no turn spans in this history because no turn ran, so the prohibition
-  is the operative half. Hard constraint #1 and `cache-position.test.ts` are
-  untouched, as the plan requires.
+- **Wave 5.6: the instrument was incomplete, and that is what got fixed.** Its
+  instruction is to confirm where a turn's wall clock goes *before* changing prompt
+  assembly, and no turn ran in the span history, so there was nothing to read.
+  Reading the code instead found the real gap: `runAgentTurn`'s own comment names
+  four stages — prepare, checkpoint, the provider call, settling the result — and
+  only three had spans. The missing quarter is ten serial awaits, two of which
+  enter a container (`preserveTurnBranch` bundles the branch into the mirror,
+  `reconcileOwnership` runs git against the checkout), so "the turn took nine
+  minutes" could resolve to the provider or to `finishTurn` with no way to tell.
+  `turn.settle` closes it. `assemble.ts`, hard constraint #1 and
+  `cache-position.test.ts` are untouched, as the plan requires — the next fleet
+  that runs a turn will have the four numbers the decision needs.
 - `ensureMirror` fetched unconditionally, so all three callers paid a network
   round trip none of them had asked for — measured, **1,184 fetches costing 2,608
   seconds in one day**. Two never needed it: `pushBranch` only sends `refs/orch/*`
