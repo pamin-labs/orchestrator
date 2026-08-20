@@ -54,13 +54,17 @@ const has = async (bin: string): Promise<boolean> => (await $`command -v ${bin}`
  * function over the threshold for no reason a reader would recognise.
  */
 async function unsigned(): Promise<string[]> {
-  const author = (await $`git config user.name`.text()).trim();
-  const email = (await $`git config user.email`.text()).trim();
   const shas = (await $`git rev-list --no-merges origin/main..HEAD`.text()).trim().split("\n").filter(Boolean);
   const missing: string[] = [];
   for (const sha of shas) {
+    // Each commit's own author, which is what `dco` compares. Read from
+    // `git config` instead, this reported every commit somebody else wrote as
+    // unsigned the moment a branch carried one — and the fix it printed,
+    // `rebase --signoff`, would have put this machine's name on their work.
+    const author = (await $`git log -1 --format=${"%an <%ae>"} ${sha}`.text()).trim();
+    if (author.endsWith("[bot]@users.noreply.github.com>")) continue;
     const body = await $`git log -1 --format=%B ${sha}`.text();
-    if (!body.includes(`Signed-off-by: ${author} <${email}>`)) missing.push(sha.slice(0, 9));
+    if (!body.toLowerCase().includes(`signed-off-by: ${author}`.toLowerCase())) missing.push(sha.slice(0, 9));
   }
   return missing;
 }
