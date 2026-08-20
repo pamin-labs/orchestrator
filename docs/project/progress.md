@@ -523,6 +523,19 @@ M7 — executable engineering governance and versioned protocol.
   and only `listTree` — the caller that reads refs — takes the second. The
   question the old comment asked, "whether that is worth a cache", turned out to
   be the wrong question: two of the three callers wanted no cache and no fetch.
+- **The query-plan check the plan's table asks for now exists, and its SQLite
+  answer did not transfer.** `progress.md` recorded indexes being tried and
+  rejected — on SQLite, where `span_scope (grp_id, slice_id, started_at)` trapped
+  the planner behind an unconstrained middle column and the real cost was sorting.
+  PostgreSQL plans the system scope as `Index Scan Backward using span_age`, three
+  buffer hits, 0.022ms, and drops out at the LIMIT. `test/platform/span-query-plan.test.ts`
+  asserts the plan on 20,000 rows at the real 94% unscoped skew, and was shown
+  failing by dropping `span_age` — which becomes `Seq Scan` plus `Sort`.
+
+  That proof cost something worth writing down: the per-file test database is a
+  template *copy that is kept*, and `openMemory` only empties rows. A `DROP INDEX`
+  therefore outlived its own run and every later run of that file inherited it,
+  until the database was dropped. Noted at `openMemory`.
 
 ## Blockers and deviations
 

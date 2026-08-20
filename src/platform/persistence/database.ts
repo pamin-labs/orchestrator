@@ -269,6 +269,9 @@ const clearBackends = (db: DB): Promise<unknown> =>
  * subject is two of them; each name is another pool, so it is for the handful
  * that need it rather than a way to avoid sharing.
  */
+// The copy is kept, so a test that changes the *schema* — a `DROP INDEX` proving a
+// query-plan guard can fail — outlives its run and every later run of that file
+// inherits it. This empties rows; dropping the database is the repair.
 export async function openMemory(logger?: Logger, isolate = ""): Promise<DB> {
   const mine = nameFor(isolate);
   let mineReady = ready.get(mine);
