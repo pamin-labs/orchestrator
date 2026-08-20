@@ -66,14 +66,6 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           use_oidc: true
-          # Only the file named. Left to search, the CLI also finds
-          # `coverage-final.json` beside it — an Istanbul map whose keys are the
-          # runner's absolute paths, which match no file in the repository. Every
-          # upload since this workflow was written parsed to `files: 0` and the
-          # commit came back `state: error`, so `codecov/patch` was being decided
-          # on an empty report and sometimes not posted at all — which is a
-          # required check that silently is not there.
-          disable_search: true
           files: reports/lcov.info
           override_commit: ${{ github.event.workflow_run.head_sha }}
           override_branch: ${{ github.event.workflow_run.head_branch }}
@@ -86,7 +78,6 @@ jobs:
         with:
           use_oidc: true
           report_type: test_results
-          disable_search: true
           files: reports/junit.xml
           override_commit: ${{ github.event.workflow_run.head_sha }}
           override_branch: ${{ github.event.workflow_run.head_branch }}
