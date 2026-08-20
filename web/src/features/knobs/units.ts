@@ -95,8 +95,6 @@ const unitLabel = (unit: DurationUnit): string => i18n._(UNIT_LABEL[unit]);
 
 const PER: Record<DurationUnit, number> = { ms: 1, s: 1000, min: 60_000, h: 3_600_000, d: 86_400_000 };
 
-
-
 /**
  * Biggest first, so 1200000 reads as 20 分钟 rather than 1200000 毫秒.
  *

@@ -41,6 +41,7 @@ import {
 } from "./model";
 import { Combobox } from "../../ui/combobox";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "../../ui/field";
+import { cn } from "../../ui/cn";
 import { Empty, Head, Meta, Working } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { Segment, Toggles } from "../../ui/segment";
@@ -756,13 +757,27 @@ function Group({
   onWrite: Write;
 }) {
   if (!rows.length && !permission) return null;
+  // Two columns once a group is long enough to scroll for. Every row here is a
+  // label and one narrow control, so half the width was empty and the reader
+  // paid for it in scrolling — 调度 was thirteen rows in a dialog that shows
+  // nine. A tab would have shortened it too, by hiding half of it behind a
+  // click; this hides nothing.
+  const wide = rows.length > 6 && !permission;
+  // A row whose editor is more than one control — a map, a pair table, a ladder,
+  // a list of lines — takes the whole width. In a two-column grid it sets the
+  // height of its row, so the single control beside it sits above a hole the
+  // size of the map. `object` and `array` are exactly those editors.
+  const tall = (k: Knob) => k.type === "object" || k.type === "array";
   const body = (
-    <FieldGroup>
+    <FieldGroup className={wide ? "grid grid-cols-2 gap-x-10 divide-y-0 [--label:9.5rem]" : undefined}>
       {permission && <Permission />}
       {rows.map((k) => (
         <Row
           key={k.path}
           knob={k}
+          // The hairline is per row rather than from `divide-y`, which in a grid
+          // draws between grid *items* and would rule the two columns apart.
+          className={wide ? cn("border-rule-soft border-b", tall(k) && "col-span-2") : undefined}
           mates={(PAIRED[k.path] ?? []).flatMap((path) => knobs.filter((x) => x.path === path))}
           src={src}
           onWrite={onWrite}
@@ -829,7 +844,19 @@ function resetKnobs(knob: Knob, mates: Knob[], write: (target: Knob, value: Json
   for (const target of [knob, ...mates]) write(target, target.default);
 }
 
-function Row({ knob, mates, src, onWrite }: { knob: Knob; mates: Knob[]; src: ModelSources; onWrite: Write }) {
+function Row({
+  knob,
+  mates,
+  src,
+  className,
+  onWrite,
+}: {
+  knob: Knob;
+  mates: Knob[];
+  src: ModelSources;
+  className?: string | undefined;
+  onWrite: Write;
+}) {
   // What is wrong, and which box it is wrong in. A table row can hold six boxes
   // and "要一个数量" under all of them says nothing about which.
   const [bad, setBad] = useState<Complaint>(NO_COMPLAINT);
@@ -841,7 +868,7 @@ function Row({ knob, mates, src, onWrite }: { knob: Knob; mates: Knob[]; src: Mo
   };
 
   return (
-    <Field data-invalid={invalidFlag(bad)} aria-labelledby={labelledBy(knob.path, knob.type, id)}>
+    <Field className={className} data-invalid={invalidFlag(bad)} aria-labelledby={labelledBy(knob.path, knob.type, id)}>
       {/* The `?` is a sibling of the label, not a child of it: inside a
           `<label htmlFor>` every click on it would also focus the field it
           explains, which is a control that moves the cursor somewhere else. */}
