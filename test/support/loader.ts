@@ -46,7 +46,7 @@ export const touchesPanel = ((path: string): boolean => {
 const load = createRequire(import.meta.url) as <T>(id: string) => T;
 const instrument = covering
   ? load<typeof import("./coverage.ts")>("./coverage.ts").instrumented
-  : (source: string, _path: string) => source;
+  : (source: string, _path: string, _map?: string | null) => source;
 
 /**
  * Only `web/src` can hold a macro, so only `web/src` leaves Bun's native load
@@ -55,15 +55,28 @@ const instrument = covering
  */
 const filter = covering ? /\.tsx?$/ : /[\\/]web[\\/]src[\\/].+\.tsx?$/;
 
+/** `(code, path, map)`, in the argument order `instrument` takes them. */
+const expanded = (source: string, path: string): [string, string, string | null] => {
+  const { code, map } = expandMacros(source, path);
+  return [code, path, map];
+};
+
 if (touchesPanel || covering)
   Bun.plugin({
     name: "source-loader",
     setup(build) {
       build.onLoad({ filter, namespace: "file" }, async ({ path }) => ({
-        // Instrumented first. The statement map has to describe the file on
-        // disk, and babel reprints whatever it is handed — expanding first
-        // would leave every line number in the map pointing at a generated one.
-        contents: expandMacros(instrument(await Bun.file(path).text(), path), path),
+        // Expanded first, then instrumented over the map it produced.
+        //
+        // The other order does not survive contact: oxc rewrites the initialiser
+        // of `const { t } = useLingui()` into a sequence expression, and the
+        // macro then refuses the file — "`useLingui` macro must be used in
+        // variable declaration", in all 21 panel files that call it, but only
+        // under `ORCH_COVERAGE=1`, so a green `bun run test` says nothing about
+        // it. The statement map still has to describe the file on disk; that is
+        // what `inputSourceMap` is for, and oxc composes it during
+        // instrumentation rather than after.
+        contents: instrument(...expanded(await Bun.file(path).text(), path)),
         loader: path.endsWith(".tsx") ? "tsx" : "ts",
       }));
     },

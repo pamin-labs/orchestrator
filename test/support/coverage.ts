@@ -45,9 +45,20 @@ const load = createRequire(import.meta.url) as <T>(id: string) => T;
 const oxcInstrument: typeof oxcInstrumentFn =
   load<typeof import("oxc-coverage-instrument")>("oxc-coverage-instrument").instrument;
 
-/** Instrumented if it is ours, handed back untouched if it is not. */
-export function instrumented(source: string, path: string): string {
-  return isSubject(path) ? oxcInstrument(source, path).code : source;
+/**
+ * Instrumented if it is ours, handed back untouched if it is not.
+ *
+ * `inputSourceMap` is how a file that something else already rewrote still gets
+ * counters against its own lines: `composeInputSourceMap` folds the map in
+ * during instrumentation, so the emitted `statementMap` carries original-source
+ * positions keyed by the original path. Macro expansion runs first and hands
+ * its map here — without it the panel's coverage would describe generated code,
+ * and `fallow audit` reads that map to decide which function it is looking at.
+ */
+export function instrumented(source: string, path: string, inputSourceMap?: string | null): string {
+  if (!isSubject(path)) return source;
+  const options = inputSourceMap ? { inputSourceMap, composeInputSourceMap: true } : undefined;
+  return oxcInstrument(source, path, options).code;
 }
 
 declare global {

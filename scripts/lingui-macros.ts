@@ -25,9 +25,22 @@ const ROOT = new URL("../", import.meta.url).pathname;
  * ones never reach a macro — paying for babel's module graph there is the cost
  * ADR 015 measured and refused.
  */
-let expand: ((source: string, path: string) => string) | undefined;
+let expand: ((source: string, path: string) => Expanded) | undefined;
 
-function boot(): (source: string, path: string) => string {
+/**
+ * The code, and the map back to what is on disk.
+ *
+ * The map is not decoration: coverage instrumentation runs *after* this, so
+ * without it every counter in `web/src` would be recorded against a generated
+ * line. `oxc-coverage-instrument` takes it as `inputSourceMap`, which is the
+ * documented way to instrument a file something else has already rewritten.
+ */
+export interface Expanded {
+  code: string;
+  map: string | null;
+}
+
+function boot(): (source: string, path: string) => Expanded {
   const { transformSync } = load<typeof import("@babel/core")>("@babel/core");
   const macro = load<{ default: unknown }>("@lingui/babel-plugin-lingui-macro").default;
   // Resolved once. The plugin otherwise calls `@lingui/conf`'s `getConfig()`
@@ -49,12 +62,16 @@ function boot(): (source: string, path: string) => string {
       configFile: false,
       babelrc: false,
       browserslistConfigFile: false,
-      sourceMaps: false,
+      sourceMaps: true,
+      // Absolute, because the map's `sources[0]` becomes the key the composed
+      // coverage map is filed under. Left to babel it is a bare basename, and
+      // every panel file lands in the report as `view.tsx` with no directory.
+      sourceFileName: path,
       parserOpts: { plugins: [...plugins] },
       plugins: [[macro, { linguiConfig }]],
     });
     if (out?.code == null) throw new Error(`lingui: babel returned no code for ${path}`);
-    return out.code;
+    return { code: out.code, map: out.map ? JSON.stringify(out.map) : null };
   };
 }
 
@@ -68,12 +85,20 @@ function boot(): (source: string, path: string) => string {
 const CACHE = `${ROOT}.cache/lingui`;
 const VERSION = "6.6.0";
 
+/** A cache entry is a file on disk; a truncated write is a miss, not a crash. */
+function isExpanded(value: unknown): value is Expanded {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("code" in value) || typeof value.code !== "string") return false;
+  return "map" in value && (value.map === null || typeof value.map === "string");
+}
+
 /** The substring scan is the whole gate: no macro import, no parse. */
-export function expandMacros(source: string, path: string): string {
-  if (!source.includes("@lingui/")) return source;
-  const key = `${CACHE}/${Bun.hash(`${VERSION}:${path}:${source}`).toString(36)}.txt`;
+export function expandMacros(source: string, path: string): Expanded {
+  if (!source.includes("@lingui/")) return { code: source, map: null };
+  const key = `${CACHE}/${Bun.hash(`${VERSION}:${path}:${source}`).toString(36)}.json`;
   try {
-    return readFileSync(key, "utf8");
+    const cached: unknown = JSON.parse(readFileSync(key, "utf8"));
+    if (isExpanded(cached)) return cached;
   } catch {
     // A miss is the normal path on the first run and after any edit.
   }
@@ -81,7 +106,7 @@ export function expandMacros(source: string, path: string): string {
   const out = expand(source, path);
   try {
     mkdirSync(CACHE, { recursive: true });
-    writeFileSync(key, out);
+    writeFileSync(key, JSON.stringify(out));
   } catch {
     // An unwritable cache is a slow build, not a broken one.
   }
@@ -92,7 +117,7 @@ export const linguiMacros: BunPlugin = {
   name: "lingui-macros",
   setup(build) {
     build.onLoad({ filter: /[\\/]web[\\/]src[\\/].+\.tsx?$/, namespace: "file" }, async ({ path }) => ({
-      contents: expandMacros(await Bun.file(path).text(), path),
+      contents: expandMacros(await Bun.file(path).text(), path).code,
       loader: path.endsWith(".tsx") ? "tsx" : "ts",
     }));
   },
