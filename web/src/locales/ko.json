@@ -5,19 +5,19 @@
       "0": ["bare.length"]
     },
     "comments": [],
-    "translation": ""
+    "translation": " (아직 배정되지 않은 {0}개)"
   },
   "6yx4Js": {
     "message": " read-only",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": " 읽기 전용"
   },
   "E4B4Vb": {
     "message": ", ",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": ", "
   },
   "K3M7mM": {
     "message": ", {0} from the repository",
@@ -25,7 +25,7 @@
       "0": ["tally.repo"]
     },
     "comments": [],
-    "translation": ""
+    "translation": ", 저장소 제공 {0}개"
   },
   "dG1ff6": {
     "message": ", about {0}k tokens of prefix per turn",
@@ -33,13 +33,13 @@
       "0": ["tally.k"]
     },
     "comments": [],
-    "translation": ""
+    "translation": ", 턴당 프리픽스 약 {0}k 토큰"
   },
   "fwbE-9": {
     "message": "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "'이 자격 증명이 아직 유효한가': GitHub의 /user, 공급자의 /v1/models. 응답이 느려도 실패가 아니라 '미검증'으로 보고되고 기다리는 것이 없으므로 짧게 잡는다."
   },
   "_8U9xN": {
     "message": "({deliveredCount})",
@@ -47,31 +47,31 @@
       "deliveredCount": ["deliveredCount"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "({deliveredCount})"
   },
   "nzne76": {
     "message": "(following)",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "(자동)"
   },
   "ojmzcv": {
     "message": "(need one merge first)",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "(먼저 병합 1회 필요)"
   },
   "VoS0K3": {
     "message": "(no reply was left)",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "(답변 없음)"
   },
   "ItRr_m": {
     "message": ") to rebuild the frontend.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": ")로 프런트엔드를 다시 빌드합니다."
   },
   "njveiC": {
     "message": "{0} (per the remote)",
@@ -79,7 +79,7 @@
       "0": ["d.baseBranchNow"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{0} (원격 기준)"
   },
   "OX4rbn": {
     "message": "{0} failed",
@@ -87,7 +87,7 @@
       "0": ["group.errors", "stage.errors"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{0}개 실패"
   },
   "jp78K0": {
     "message": "{0} files",
@@ -95,7 +95,7 @@
       "0": ["stats.files"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "파일 {0}개"
   },
   "3yj9TL": {
     "message": "{0} is not enabled",
@@ -103,7 +103,7 @@
       "0": ["sk.name"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{0}이(가) 비활성화됨"
   },
   "qk-JJq": {
     "message": "{0} objected after the fact",
@@ -111,7 +111,7 @@
       "0": ["o.author"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{0}이(가) 사후에 이의를 제기함"
   },
   "Lpw5j3": {
     "message": "{0} repositories",
@@ -119,7 +119,7 @@
       "0": ["account.repos"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "저장소 {0}개"
   },
   "RGwZnD": {
     "message": "{0} repositories, most recently touched first",
@@ -127,7 +127,7 @@
       "0": ["data.repos.length"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "저장소 {0}개, 최근 변경순"
   },
   "0d4OLA": {
     "message": "{0} requirements have no boundary right now: {bareNames}.",
@@ -136,7 +136,7 @@
       "bareNames": ["bareNames"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "지금 요건 {0}개에 경계가 없습니다: {bareNames}."
   },
   "fvImQM": {
     "message": "{0} selected",
@@ -144,7 +144,7 @@
       "0": ["sel.length"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{0}개 선택됨"
   },
   "Oa9KS5": {
     "message": "{0}/{1} ticked reach the sandbox",
@@ -153,7 +153,7 @@
       "1": ["tally.user"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "체크한 {0}/{1}이 샌드박스에 전달됩니다"
   },
   "ovCU-t": {
     "message": "{accountName}, but the App is not installed on any account yet",
@@ -161,7 +161,7 @@
       "accountName": ["accountName"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{accountName}, 다만 App이 아직 어떤 계정에도 설치되지 않았습니다"
   },
   "lwVyiD": {
     "message": "{d} days ago",
@@ -169,7 +169,7 @@
       "d": ["d"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{d}일 전"
   },
   "ToWm35": {
     "message": "{d}d{hoursLeft}h",
@@ -178,7 +178,7 @@
       "hoursLeft": ["hoursLeft"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{d}일 {hoursLeft}시간"
   },
   "EKD809": {
     "message": "{fails} failed",
@@ -186,7 +186,7 @@
       "fails": ["fails"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{fails}개 실패"
   },
   "Uia4Si": {
     "message": "{groupCount} requirements touch different files and can run together",
@@ -194,7 +194,7 @@
       "groupCount": ["groupCount"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "요건 {groupCount}개는 서로 다른 파일을 건드려 함께 실행할 수 있습니다"
   },
   "yzqNV2": {
     "message": "{groups, plural, one {# requirement} other {# requirements}} in <0>{repoPath}</0>",
@@ -203,7 +203,7 @@
       "repoPath": ["repoPath"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "<0>{repoPath}</0>에 {groups, plural, other {요건 #개}}"
   },
   "6Z11lb": {
     "message": "{groups, plural, one {The one requirement in {repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.} other {All # requirements in {repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.}}",
@@ -212,7 +212,7 @@
       "repoPath": ["repoPath"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{groups, plural, other {{repoPath}의 요건 #개 — 컨테이너, 카드, 기록, 첨부 — 가 삭제되며 복구할 수 없습니다.}}"
   },
   "SLGxxb": {
     "message": "{hard} blocking the whole group",
@@ -220,7 +220,7 @@
       "hard": ["hard"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{hard}개가 그룹 전체를 막고 있음"
   },
   "XsbupZ": {
     "message": "{held} stopped",
@@ -228,7 +228,7 @@
       "held": ["held"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{held}개 중지됨"
   },
   "UhKOdj": {
     "message": "{hiddenCount} more",
@@ -236,7 +236,7 @@
       "hiddenCount": ["hiddenCount"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{hiddenCount}개 더"
   },
   "uxap8y": {
     "message": "{hiddenLines} more lines",
@@ -244,7 +244,7 @@
       "hiddenLines": ["hiddenLines"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{hiddenLines}줄 더"
   },
   "x8HsHs": {
     "message": "{hint} stored; paste a new one to replace it",
@@ -252,7 +252,7 @@
       "hint": ["hint"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{hint} 저장됨. 바꾸려면 새 값을 붙여넣으세요"
   },
   "sAMdmd": {
     "message": "{hitCount} requirements want the same files and cannot run together",
@@ -260,7 +260,7 @@
       "hitCount": ["hitCount"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "요건 {hitCount}개가 같은 파일을 원해 함께 실행할 수 없습니다"
   },
   "ptspfq": {
     "message": "{hours} hr",
@@ -268,7 +268,7 @@
       "hours": ["hours"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{hours}시간"
   },
   "XGeH7z": {
     "message": "{idleCount} more are idle and costing nothing.",
@@ -276,7 +276,7 @@
       "idleCount": ["idleCount"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{idleCount}개는 유휴 상태로 비용이 없습니다."
   },
   "RagQ2k": {
     "message": "{lines} lines",
@@ -284,7 +284,7 @@
       "lines": ["lines"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{lines}줄"
   },
   "vEb1r_": {
     "message": "{live} running",
@@ -292,7 +292,7 @@
       "live": ["live"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{live}개 실행 중"
   },
   "XVt4Q9": {
     "message": "{minutes} min",
@@ -300,7 +300,7 @@
       "minutes": ["minutes"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{minutes}분"
   },
   "_rP3HI": {
     "message": "{minutes}m ago",
@@ -308,7 +308,7 @@
       "minutes": ["minutes"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{minutes}분 전"
   },
   "AaBSwk": {
     "message": "{months} months ago",
@@ -316,7 +316,7 @@
       "months": ["months"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{months}개월 전"
   },
   "6bwnTR": {
     "message": "{n, plural, one {# slice} other {# slices}}",
@@ -324,7 +324,7 @@
       "n": ["n"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{n, plural, other {슬라이스 #개}}"
   },
   "jMDoJw": {
     "message": "{n} more queued behind it",
@@ -332,7 +332,7 @@
       "n": ["n"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "뒤에 {n}개 대기 중"
   },
   "vAjsAJ": {
     "message": "{n} to do",
@@ -340,7 +340,7 @@
       "n": ["n"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{n}건 처리 대기"
   },
   "wse8Qp": {
     "message": "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept.",
@@ -348,7 +348,7 @@
       "name": ["name"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{name}이(가) 보드에서 빠지고 대기 중인 턴은 모두 취소됩니다. 코드와 기록은 남습니다."
   },
   "tsV_Qe": {
     "message": "{name} leaves the board and every queued turn is cancelled. The code and the record are kept; the group is never started again.",
@@ -356,7 +356,7 @@
       "name": ["name"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{name}이(가) 보드에서 빠지고 대기 중인 턴은 모두 취소됩니다. 코드와 기록은 남지만 이 그룹은 다시 시작되지 않습니다."
   },
   "_5qRdG": {
     "message": "{name} produced no output.",
@@ -364,7 +364,7 @@
       "name": ["name"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{name}이(가) 출력을 내지 않았습니다."
   },
   "90vXwF": {
     "message": "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost.",
@@ -372,7 +372,7 @@
       "name": ["name"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{name}의 컨테이너를 버리고 다음 턴에서 다시 만듭니다: 브랜치 재클론, 의존성 재설치. 커밋하지 않은 변경은 사라집니다."
   },
   "RbC_Rt": {
     "message": "{rest} more of {total}",
@@ -381,7 +381,7 @@
       "total": ["total"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{total}개 중 {rest}개 더"
   },
   "Vtu-1i": {
     "message": "{rest} more of {total}",
@@ -391,7 +391,7 @@
       "total": ["total"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{total}개 중 {rest}개 더"
   },
   "0cOMML": {
     "message": "{rest} more requirements",
@@ -399,7 +399,7 @@
       "rest": ["rest"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "요건 {rest}개 더"
   },
   "aG-IqM": {
     "message": "{runningCount} running · {total} total",
@@ -408,7 +408,7 @@
       "total": ["total"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{runningCount}개 실행 중 · 총 {total}개"
   },
   "WgyR3J": {
     "message": "{sessionTokens} tokens this session · {0}",
@@ -417,7 +417,7 @@
       "sessionTokens": ["sessionTokens"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "이번 세션 {sessionTokens} 토큰 · {0}"
   },
   "4DAwh9": {
     "message": "{spent} / {cap} tokens. Spending it all suspends the whole group.",
@@ -426,7 +426,7 @@
       "cap": ["cap"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{spent} / {cap} 토큰. 다 쓰면 그룹 전체가 중단됩니다."
   },
   "TY7CY9": {
     "message": "{storedHint} stored; paste a new one to replace it",
@@ -434,7 +434,7 @@
       "storedHint": ["storedHint"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{storedHint} 저장됨. 바꾸려면 새 값을 붙여넣으세요"
   },
   "r3inYp": {
     "message": "{total} waiting on you",
@@ -442,7 +442,7 @@
       "total": ["total"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{total}개가 당신을 기다림"
   },
   "ZKgsmP": {
     "message": "{waiting, plural, one {# slice awaiting acceptance} other {# slices awaiting acceptance}}",
@@ -450,7 +450,7 @@
       "waiting": ["waiting"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{waiting, plural, other {수락 대기 슬라이스 #개}}"
   },
   "Z6Ml5d": {
     "message": "{waiting} to do",
@@ -458,7 +458,7 @@
       "waiting": ["waiting"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{waiting}건 처리 대기"
   },
   "K17yUk": {
     "message": "{who} is hanging on your answer",
@@ -466,7 +466,7 @@
       "who": ["who"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{who}이(가) 당신의 답을 기다립니다"
   },
   "l9xcKR": {
     "message": "{width} per bucket",
@@ -474,79 +474,79 @@
       "width": ["width"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "구간당 {width}"
   },
   "iDg-Sc": {
     "message": "← Back to all",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "← 전체로 돌아가기"
   },
   "7SCMDC": {
     "message": "← Back to full timeline",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "← 전체 타임라인으로"
   },
   "7TnWLj": {
     "message": "+ Add project",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "+ 프로젝트 추가"
   },
   "BZ0E0E": {
     "message": "+ New requirement",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "+ 새 요건"
   },
   "gXeitk": {
     "message": "1/4 of host cores",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "호스트 코어의 1/4"
   },
   "z5YXOD": {
     "message": "127.0.0.1:8080 or https://host:port",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "127.0.0.1:8080 또는 https://host:port"
   },
   "27QmIv": {
     "message": "A number",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "숫자"
   },
   "Qono6v": {
     "message": "A paused group is waiting on you and costs a concurrency slot while it waits. This is how often it says so before 'Archive after paused' takes the slot back.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일시정지된 그룹은 당신을 기다리며 그동안 동시 실행 슬롯을 하나 차지합니다. '일시정지 후 보관'이 슬롯을 회수하기 전까지 이 간격으로 알립니다."
   },
   "JKqEIB": {
     "message": "Abandon this requirement",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 요건 포기"
   },
   "aS0jtz": {
     "message": "Abandoned",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "포기됨"
   },
   "g3UF2V": {
     "message": "Accept",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "수락"
   },
   "aaJj_a": {
     "message": "Acceptance criteria",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "수락 기준"
   },
   "AgzP9y": {
     "message": "accepted {done}/{total}",
@@ -555,19 +555,19 @@
       "total": ["total"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "수락 {done}/{total}"
   },
   "rGeVDg": {
     "message": "Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "실행 중인 턴이 멈추고 컨테이너·슬라이스·카드·질문·첨부가 삭제되어 복구 불가"
   },
   "m16xKo": {
     "message": "Add",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "추가"
   },
   "un9nqz": {
     "message": "Add · {0}",
@@ -575,97 +575,97 @@
       "0": ["repo.defaultBranch"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "추가 · {0}"
   },
   "IVZx0R": {
     "message": "Add a row",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "행 추가"
   },
   "eMc2xs": {
     "message": "Add a step",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "단계 추가"
   },
   "L1uMzn": {
     "message": "Add another",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "하나 더 추가"
   },
   "pUuiHT": {
     "message": "Add requirements or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "요건을 추가하거나 반려 이유를 적으세요. 스크린샷·디자인 붙여넣기 가능, /로 스킬 삽입. Cmd+Enter로 수정 요청"
   },
   "I5lKdd": {
     "message": "Add your first project",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "첫 프로젝트 추가"
   },
   "hp8OtS": {
     "message": "Added",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "추가됨"
   },
   "Z4OdvO": {
     "message": "Adding…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "추가 중…"
   },
   "Du6bPw": {
     "message": "Address",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "주소"
   },
   "4qtNFg": {
     "message": "After a slice fails several times straight, escalate to a person instead of retrying the same path.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "슬라이스가 연속으로 몇 번 실패하면 같은 길을 재시도하지 않고 사람에게 넘깁니다."
   },
   "QWsB_B": {
     "message": "After approval, copy the code from that page",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "승인 후 그 페이지의 코드를 복사하세요"
   },
   "ckPR99": {
     "message": "AI is thinking on your behalf",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "AI가 당신 대신 생각하는 중"
   },
   "iPLTO_": {
     "message": "AI-drafted response",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "AI가 초안한 답변"
   },
   "N40H-G": {
     "message": "All",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "전체"
   },
   "IN8luu": {
     "message": "All done",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모두 완료"
   },
   "LJR_kp": {
     "message": "All pass",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모두 통과"
   },
   "pjnIc0": {
     "message": "all under {0}",
@@ -673,19 +673,19 @@
       "0": ["duration(ceiling)"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "모두 {0} 미만"
   },
   "NDQ395": {
     "message": "all under 1ms",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모두 1ms 미만"
   },
   "iN398g": {
     "message": "Allow notifications",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "알림 허용"
   },
   "krhPNz": {
     "message": "already spent {tokens} tokens",
@@ -693,19 +693,19 @@
       "tokens": ["tokens"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "이미 {tokens} 토큰 사용"
   },
   "g7v2T-": {
     "message": "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "끝나지 않은 턴은 버려지고, 그룹이 컨테이너를 다시 띄워 스스로 이어갑니다. 코드와 브랜치는 그대로입니다."
   },
   "jAqydi": {
     "message": "Answered on your behalf",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "대신 답변함"
   },
   "MNAzbz": {
     "message": "answered on your behalf by {0}",
@@ -713,97 +713,97 @@
       "0": ["a.answered_by"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{0}이(가) 대신 답변"
   },
   "9f6OQn": {
     "message": "API address",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "API 주소"
   },
   "iq3W-B": {
     "message": "API key",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "API 키"
   },
   "aAIQg2": {
     "message": "Appearance",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모양"
   },
   "Rc_cvo": {
     "message": "Approve and start",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "승인하고 시작"
   },
   "NINEl7": {
     "message": "Approved · Awaiting boundary",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "승인됨 · 경계 대기"
   },
   "lwZzkx": {
     "message": "Approved, blocked by boundaries",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "승인됨, 경계에 막힘"
   },
   "1TJ6zo": {
     "message": "Approved; starts automatically when boundaries clear",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "승인됨. 경계가 풀리면 자동으로 시작합니다"
   },
   "WuvFQ1": {
     "message": "Architect decides on tech choices and architectural boundaries; if they can't answer, they'll come back.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기술 선택과 아키텍처 경계는 아키텍트가 정합니다. 답할 수 없으면 되돌려 보냅니다."
   },
   "5wzDEp": {
     "message": "Architect working",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아키텍트 작업 중"
   },
   "B495Gs": {
     "message": "Archive",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "보관"
   },
   "MfgJ_x": {
     "message": "Archive after paused",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일시정지 후 보관"
   },
   "MuXcC1": {
     "message": "Archive releases the sandbox. Groups parked too long hog concurrency slots for nothing.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "보관하면 샌드박스가 풀립니다. 너무 오래 세워둔 그룹은 동시 실행 슬롯만 낭비합니다."
   },
   "TdfEV7": {
     "message": "Archived",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "보관됨"
   },
   "E3Jb7M": {
     "message": "Ask GitHub",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub에 문의"
   },
   "tZ6Kgm": {
     "message": "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모델별 가정 컨텍스트 길이. 세션 첫 턴에만 쓰고 이후에는 CLI가 실제 값을 알려줍니다. 너무 작게 잡으면 큰 컨텍스트 모델이 계속 재시작하며 매번 캐시를 버립니다."
   },
   "X3C4bT": {
     "message": "At most {maxGroups} groups at once. When it is full, approved requirements queue for a slot rather than being stuck.",
@@ -811,61 +811,61 @@
       "maxGroups": ["maxGroups"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "동시에 최대 {maxGroups}개 그룹. 꽉 차면 승인된 요건은 막히는 게 아니라 슬롯을 기다립니다."
   },
   "igVDFt": {
     "message": "Attach",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "첨부"
   },
   "VbeIOx": {
     "message": "Author",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "작성자"
   },
   "NxjG-h": {
     "message": "Authorized",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "인가됨"
   },
   "eeYL-D": {
     "message": "Auto-accept tiers",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "자동 수락 등급"
   },
   "ekwKKq": {
     "message": "Auto-advance when approved",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "승인되면 자동 진행"
   },
   "lLw1fO": {
     "message": "Awaiting Architect to split boundaries",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아키텍트의 경계 분할 대기"
   },
   "HXRIvm": {
     "message": "Awaiting merge",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "병합 대기"
   },
   "JhyKBZ": {
     "message": "Awaiting your decision",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "당신의 결정 대기"
   },
   "sZkxOT": {
     "message": "Awaiting your review",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "당신의 검토 대기"
   },
   "12aYg9": {
     "message": "Awaiting your review · {since}",
@@ -873,223 +873,223 @@
       "since": ["since"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "당신의 검토 대기 · {since}"
   },
   "jy-hYI": {
     "message": "Back off after a 429",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "429 이후 대기"
   },
   "iByEoT": {
     "message": "Background job",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "백그라운드 작업"
   },
   "ZWwYwM": {
     "message": "Base branch",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기준 브랜치"
   },
   "rhCZA1": {
     "message": "Base branch fallbacks",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기준 브랜치 대체 후보"
   },
   "E8Hq1V": {
     "message": "Batch window",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "묶어 보내는 간격"
   },
   "2wNcZ1": {
     "message": "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "큰 프로젝트는 몇 시간씩 컴파일합니다. 상한이 없으면 멈춘 빌드 하나가 리스 슬롯을 영원히 차지합니다. 슬롯은 전역이고 희소해서, 죽은 명령 하나가 전체 함대의 게이트를 멈춥니다."
   },
   "TRRBw1": {
     "message": "Blocked domains",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "차단 도메인"
   },
   "FXHmjT": {
     "message": "Bootstrap failed",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "부트스트랩 실패"
   },
   "pHs8kZ": {
     "message": "Both go to Dispatcher; it will revise the card and bring it back for your approval.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "둘 다 디스패처로 갑니다. 카드를 고쳐 다시 승인 요청으로 돌아옵니다."
   },
   "V-7bTV": {
     "message": "Boundary",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "경계"
   },
   "ssuwjF": {
     "message": "Branch",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "브랜치"
   },
   "6tDDor": {
     "message": "Branches, PRs and code on GitHub",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub의 브랜치, PR, 코드"
   },
   "JYj5R2": {
     "message": "Browse files",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "파일 보기"
   },
   "RjfPYJ": {
     "message": "Browser allowed it. The panel will still notify in the background; only closing the entire browser stops notifications—reopen it to catch up.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "브라우저가 허용했습니다. 패널은 백그라운드에서도 알립니다. 브라우저를 완전히 닫을 때만 알림이 멈추며, 다시 열면 밀린 것을 따라잡습니다."
   },
   "Rff84-": {
     "message": "Browser can't read the clipboard directly. Click in the input and use Cmd+V; images work too.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "브라우저가 클립보드를 직접 읽을 수 없습니다. 입력창을 클릭하고 Cmd+V를 쓰세요. 이미지도 됩니다."
   },
   "juV9T0": {
     "message": "Browser denied it. To enable, change it in site settings (left of address bar), then refresh.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "브라우저가 거부했습니다. 켜려면 주소창 왼쪽의 사이트 설정에서 바꾼 뒤 새로고침하세요."
   },
   "OK_Dka": {
     "message": "Browser permission",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "브라우저 권한"
   },
   "SMnY7U": {
     "message": "Budget exhausted",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "예산 소진"
   },
   "lR_A13": {
     "message": "Budget exhausted; group paused",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "예산 소진, 그룹 일시정지"
   },
   "EGCGvo": {
     "message": "Burn rate",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "소모 속도"
   },
   "AcvZ26": {
     "message": "By account",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "계정별"
   },
   "-oC-Mm": {
     "message": "By requirement",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "요건별"
   },
   "EZ_s8N": {
     "message": "By tier",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "등급별"
   },
   "nhDPTQ": {
     "message": "Cache hit rate",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "캐시 적중률"
   },
   "MfNfKv": {
     "message": "Can modify which files",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "수정 가능한 파일"
   },
   "9EAnVu": {
     "message": "Can't count",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "셀 수 없음"
   },
   "Ce3qIj": {
     "message": "Can't determine until first group clones; fill in settings later",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "첫 그룹이 클론하기 전까지는 알 수 없습니다. 설정은 나중에 채우세요"
   },
   "ZCtEMi": {
     "message": "Can't read log",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로그를 읽을 수 없음"
   },
   "B4V6vP": {
     "message": "Can't read remote branches; storing what you entered",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "원격 브랜치를 읽을 수 없어 입력한 값을 그대로 저장합니다"
   },
   "dEgA5A": {
     "message": "Cancel",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "취소"
   },
   "fFlTkL": {
     "message": "Cancel all queued turns; return the occupied slot to another group.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "대기 중인 턴을 모두 취소하고 차지하던 슬롯을 다른 그룹에 돌려줍니다."
   },
   "NGyoqv": {
     "message": "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "대기 중인 턴을 모두 취소하고 차지하던 슬롯을 다른 그룹에 돌려줍니다. 코드, 브랜치, 기록은 남습니다."
   },
   "H7Gmds": {
     "message": "Cannot reach the usage endpoint",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "사용량 엔드포인트에 접근할 수 없음"
   },
   "Mrhygm": {
     "message": "cards pending review",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "검토 대기 카드"
   },
   "3YmduU": {
     "message": "Change base branch",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기준 브랜치 변경"
   },
   "jyyksH": {
     "message": "Change its access",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "접근 권한 변경"
   },
   "ZlaWei": {
     "message": "Changed to {next}",
@@ -1097,415 +1097,415 @@
       "next": ["next"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{next}(으)로 변경됨"
   },
   "Sg6yCv": {
     "message": "Changes exceed 400k characters; tail not retrieved. Remaining changes are in the sandbox checkout.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "변경이 40만 자를 넘어 뒷부분은 가져오지 않았습니다. 나머지는 샌드박스 체크아웃에 있습니다."
   },
   "h3zWxL": {
     "message": "Check for stuck turns",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "멈춘 턴 점검 주기"
   },
   "ct69V6": {
     "message": "Check runs",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "체크 실행"
   },
   "pFDujJ": {
     "message": "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "체크한 스킬이 여기에 복제되어 각 샌드박스에 읽기 전용으로 마운트됩니다. 여기를 바꾸면 샌드박스 서버의 allowed_host_paths도 맞춰야 하며, 안 맞으면 컨테이너가 뜨지 않습니다. 조용히 빈 마운트가 되는 것보다 요란하게 실패하는 편이 낫습니다."
   },
   "X0ekHE": {
     "message": "Choose account",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "계정 선택"
   },
   "uh1jVI": {
     "message": "Choose attachments",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "첨부 선택"
   },
   "W6HUan": {
     "message": "Choose repository",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "저장소 선택"
   },
   "Tp8NKR": {
     "message": "Claim task",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "작업 맡기"
   },
   "3zc7HP": {
     "message": "Claude Code writes this in Co-Authored-By when committing",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "Claude Code가 커밋할 때 Co-Authored-By에 적는 값입니다"
   },
   "xCJdfg": {
     "message": "Clear",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "지우기"
   },
   "xiP_vW": {
     "message": "Click a row to add",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "행을 클릭해 추가"
   },
   "4QJHUD": {
     "message": "Click to add to the end",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "클릭하면 끝에 추가"
   },
   "DEcU1o": {
     "message": "Clipboard is empty",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "클립보드가 비었습니다"
   },
   "9UQ730": {
     "message": "Clone",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "클론"
   },
   "Zi3sT-": {
     "message": "Clone this group's branch and dependencies into a new sandbox",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 그룹의 브랜치와 의존성을 새 샌드박스로 클론합니다"
   },
   "Rohzsq": {
     "message": "Clone, fetch or image pull",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "클론·페치·이미지 받기"
   },
   "yz7wBu": {
     "message": "Close",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "닫기"
   },
   "78_KBG": {
     "message": "Cmd+Enter to send to PM",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "Cmd+Enter로 PM에게 전송"
   },
   "EJR83A": {
     "message": "Code comes from here",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "코드는 여기서 옵니다"
   },
   "KEXT7L": {
     "message": "Code from page",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "페이지의 코드"
   },
   "XiiU4P": {
     "message": "Code index",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "코드 인덱스"
   },
   "SuAuIo": {
     "message": "Code repository",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "코드 저장소"
   },
   "H86f9p": {
     "message": "Collapse",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "접기"
   },
   "pPC42a": {
     "message": "Collapse event stream",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이벤트 스트림 접기"
   },
   "sjVfrA": {
     "message": "Command",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "명령"
   },
   "jwNwc7": {
     "message": "Comments are recorded in the notes; PM will schedule a correction task and the group continues.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "댓글은 노트에 남습니다. PM이 수정 작업을 잡고 그룹은 계속 진행합니다."
   },
   "Y9nBMs": {
     "message": "Comments are recorded in the notes; the PM will schedule corrections accordingly. Paste screenshots directly.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "댓글은 노트에 남고 PM이 그에 맞춰 수정을 잡습니다. 스크린샷은 바로 붙여넣으세요."
   },
   "oDg5xj": {
     "message": "Comments on the pull request itself, newest first. Past this, the oldest are never read — which is a reviewer's first comment going unanswered.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "풀 리퀘스트 자체의 댓글, 최신순. 이 뒤로는 오래된 것이 읽히지 않습니다 — 리뷰어의 첫 댓글이 묻히는 지점입니다."
   },
   "yJpTuD": {
     "message": "Compile",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "빌드"
   },
   "I4A_L4": {
     "message": "Concurrent jobs",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "동시 작업 수"
   },
   "fgdC0z": {
     "message": "Configuration doesn't allow the path we need to mount",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "마운트해야 할 경로를 설정이 허용하지 않습니다"
   },
   "rZnbcL": {
     "message": "Confirm abandonment",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "포기 확인"
   },
   "3jod3l": {
     "message": "Connect GitHub",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub 연결"
   },
   "QHcLEN": {
     "message": "Connected",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "연결됨"
   },
   "d8N7O4": {
     "message": "Connected, but this GitHub App isn't installed on any account, so no repos are visible.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "연결은 됐지만 이 GitHub App이 어떤 계정에도 설치되지 않아 저장소가 보이지 않습니다."
   },
   "9zb2WA": {
     "message": "Connecting",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "연결 중"
   },
   "ZPjg5y": {
     "message": "Connection lost; reconnecting",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "연결이 끊겨 재연결 중"
   },
   "onXU-K": {
     "message": "Container hasn't started yet. Clone and dependency installation output will appear here line by line.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨테이너가 아직 시작되지 않았습니다. 클론과 의존성 설치 출력이 여기에 한 줄씩 나옵니다."
   },
   "ILtacM": {
     "message": "Container running",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨테이너 실행 중"
   },
   "uZQeFw": {
     "message": "Container will be discarded. The next turn will rebuild it: re-clone the branch, reinstall dependencies. Uncommitted changes will be lost.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨테이너를 버립니다. 다음 턴에서 다시 만듭니다: 브랜치 재클론, 의존성 재설치. 커밋하지 않은 변경은 사라집니다."
   },
   "uZpbS_": {
     "message": "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨테이너는 오류를 내지 않고 빈 디렉터리를 마운트합니다 — 켜둔 스킬이 사라집니다. 설정에 이 줄을 넣고 재시작하세요:"
   },
   "2k_Nqp": {
     "message": "context full",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨텍스트 가득"
   },
   "Z8i0dd": {
     "message": "Context response limit",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨텍스트 응답 상한"
   },
   "LXIm4m": {
     "message": "Context window",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨텍스트 길이"
   },
   "yNfqoK": {
     "message": "Conversation comments",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "대화 댓글"
   },
   "X3zmoA": {
     "message": "Convert to a requirement; this group will automatically continue after it's implemented.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "요건으로 바꿉니다. 구현이 끝나면 이 그룹은 자동으로 이어집니다."
   },
   "he3ygx": {
     "message": "Copy",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "복사"
   },
   "-mL8Bu": {
     "message": "CoS working",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "CoS 작업 중"
   },
   "I99Miw": {
     "message": "Cost",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "비용"
   },
   "uRSTuQ": {
     "message": "Could not generate a draft; you'll need to write this one yourself.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "초안을 만들지 못했습니다. 이건 직접 써야 합니다."
   },
   "WYpLKV": {
     "message": "Couldn't read the settings from the server.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "서버에서 설정을 읽지 못했습니다."
   },
   "wBMjJ2": {
     "message": "Count",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "개수"
   },
   "FSbpS7": {
     "message": "CPU",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "CPU"
   },
   "zgY24c": {
     "message": "Create new sandbox",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "새 샌드박스 만들기"
   },
   "MLnrdw": {
     "message": "Create requirement",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "요건 만들기"
   },
   "0unVTh": {
     "message": "Credential check",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "자격 증명 확인"
   },
   "nZFU5n": {
     "message": "Credential name",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "자격 증명 이름"
   },
   "Xf79vI": {
     "message": "Custom gateway; usage not displayed in header",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "커스텀 게이트웨이라 사용량이 헤더에 뜨지 않습니다"
   },
   "pvnfJD": {
     "message": "Dark",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "다크"
   },
   "sTCUJl": {
     "message": "Database connections",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "데이터베이스 연결 수"
   },
   "wQ5vD-": {
     "message": "Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "열어두는 데이터베이스 연결 수. 패널 스냅샷이 한 번에 스무 개쯤 필요해서, 그보다 적으면 파도치듯 기다립니다. 더 늘려도 이득은 없습니다. Postgres가 연결 수를 제한할 때만 낮추세요."
   },
   "_ITcnz": {
     "message": "day",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일"
   },
   "IGhWUR": {
     "message": "Decision",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "결정"
   },
   "awVk4j": {
     "message": "Decomposing",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "분해 중"
   },
   "ovBPCi": {
     "message": "Default",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기본값"
   },
   "sa8w4z": {
     "message": "Default image",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기본 이미지"
   },
   "KD-j-V": {
     "message": "Delegate to Architect",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아키텍트에게 넘기기"
   },
   "cnGeoo": {
     "message": "Delete",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "삭제"
   },
   "Y7JDFq": {
     "message": "Delete {name}",
@@ -1513,109 +1513,109 @@
       "name": ["name"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{name} 삭제"
   },
   "fMW4pP": {
     "message": "Delete this row",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 행 삭제"
   },
   "8CuBBq": {
     "message": "Denied domains",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "거부 도메인"
   },
   "m-QFRw": {
     "message": "Design choice",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "설계 선택"
   },
   "_YCR6Z": {
     "message": "Desk",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "데스크"
   },
   "i76F1q": {
     "message": "Desk wall",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "데스크 보드"
   },
   "odCJNJ": {
     "message": "Desktop pop-ups",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "데스크톱 알림"
   },
   "ZitRhf": {
     "message": "Difficulty → Model",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "난이도 → 모델"
   },
   "E_QGRL": {
     "message": "Disabled",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "꺼짐"
   },
   "jPuGs1": {
     "message": "Disabled skills aren't in the sandbox; the agent can't find it. Enable it in settings, or cancel this insertion?",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "꺼진 스킬은 샌드박스에 없어 에이전트가 찾지 못합니다. 설정에서 켜시겠어요, 아니면 삽입을 취소할까요?"
   },
   "s2IVgM": {
     "message": "Discard all changes in the current turn and return to the start of this round.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이번 턴의 변경을 모두 버리고 이 라운드 처음으로 돌립니다."
   },
   "-K0AvT": {
     "message": "Disconnect",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "연결 해제"
   },
   "0E35Mj": {
     "message": "Dispatcher is analyzing; no slices yet",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "디스패처가 분석 중. 아직 슬라이스 없음"
   },
   "zaa-ai": {
     "message": "Dispatcher is writing the plan card; it will appear here when done.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "디스패처가 계획 카드를 쓰는 중입니다. 다 되면 여기에 나옵니다."
   },
   "auRefc": {
     "message": "Dissolved",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "해산됨"
   },
   "Zmmpji": {
     "message": "Domains the sandbox may not reach. A blocklist, not an allowlist — an allowlist would have to name every registry and docs site. Credentials do not depend on this: the sandbox only ever holds fakes.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스가 닿으면 안 되는 도메인. 허용 목록이 아니라 차단 목록입니다 — 허용 목록이면 레지스트리와 문서 사이트를 전부 적어야 합니다. 자격 증명은 여기에 기대지 않습니다. 샌드박스가 쥐는 건 언제나 가짜뿐입니다."
   },
   "hdg82H": {
     "message": "Don't proceed",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "진행하지 않기"
   },
   "DPfwMq": {
     "message": "Done",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "완료"
   },
   "UV3I5p": {
     "message": "Double to {doubledLabel}",
@@ -1623,133 +1623,133 @@
       "doubledLabel": ["doubledLabel"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{doubledLabel}(으)로 두 배"
   },
   "UVoqL5": {
     "message": "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "50% 아래로 떨어지면 프롬프트 조립이 깨진 것입니다. 턴당 비용이 3~5배가 됩니다"
   },
   "atgcA4": {
     "message": "e.g. 2000000",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "예: 2000000"
   },
   "EBg0i_": {
     "message": "Edit file",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "파일 편집"
   },
   "6vTIGm": {
     "message": "Edits to one file",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "한 파일에 대한 편집"
   },
   "cxd9p_": {
     "message": "Embedding mode",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "임베딩 모드"
   },
   "N2S1rs": {
     "message": "Empty",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "비어 있음"
   },
   "MKUpla": {
     "message": "Empty = 1/4 of host cores",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "비우면 = 호스트 코어의 1/4"
   },
   "9bsxX8": {
     "message": "Empty = 1/4 of host cores. SDK's own default is 1; tsc --noEmit here takes 7.6s (3.2s on 6 cores).",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "비우면 = 호스트 코어의 1/4. SDK 기본값은 1이지만, 여기서는 tsc --noEmit이 7.6초 걸립니다(코어 6개면 3.2초)."
   },
   "uGI3gC": {
     "message": "Empty = allow all outbound (see README)",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "비우면 = 모든 아웃바운드 허용(README 참고)"
   },
   "b6dC-N": {
     "message": "Empty = server has no authentication",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "비우면 = 서버에 인증 없음"
   },
   "Pw_vMX": {
     "message": "Empty directory",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "빈 디렉터리"
   },
   "oMqqTK": {
     "message": "Empty, only this page notifies you. Filled, each notification POSTs JSON (title / message / url) — ntfy, Bark, a group bot, anything. Content is scrubbed first: this is the only channel that leaves the machine.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "비우면 이 페이지에서만 알립니다. 채우면 알림마다 JSON(title / message / url)을 POST합니다 — ntfy, Bark, 단체 봇 무엇이든. 내용은 먼저 걸러집니다. 기기 밖으로 나가는 유일한 통로입니다."
   },
   "QbiIMp": {
     "message": "Empty: bootstrap detects from repo",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "비우면: 부트스트랩이 저장소에서 알아냅니다"
   },
   "Zvw8A0": {
     "message": "Empty: only this page notifies you",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "비우면: 이 페이지에서만 알림"
   },
   "FCKppt": {
     "message": "Endpoint",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "엔드포인트"
   },
   "y08yme": {
     "message": "Entire branch",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "브랜치 전체"
   },
   "N-tqDR": {
     "message": "Entire group is paused",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "그룹 전체가 일시정지"
   },
   "_X5VUz": {
     "message": "Entire group is suspended",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "그룹 전체가 중단됨"
   },
   "AVlZoM": {
     "message": "Environment",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "환경"
   },
   "0ZQgVt": {
     "message": "Environment setup output",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "환경 구성 출력"
   },
   "cfg2rE": {
     "message": "Event stream",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이벤트 스트림"
   },
   "sqPg_r": {
     "message": "Every container goes: sandboxes for {0} groups, and {1} turns currently running.",
@@ -1758,187 +1758,187 @@
       "1": ["server.runningTurns"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "컨테이너는 모두 잡힙니다: 그룹 {0}개의 샌드박스와 현재 실행 중인 턴 {1}개."
   },
   "wTEow6": {
     "message": "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\nDrag in screenshots or designs, or paste. Cmd+Enter to submit",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "예: 로그인 페이지에 \"로그인 유지\" 체크박스를 추가하고, 체크하면 30일간 로그인 상태를 유지한다.\n스크린샷이나 디자인을 끌어다 놓거나 붙여넣으세요. Cmd+Enter로 제출"
   },
   "gdOWTF": {
     "message": "Exceeded, watchdog kills it. Real max single-turn was 8.2 minutes.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "넘으면 watchdog이 죽입니다. 실측 최장 단일 턴은 8.2분이었습니다."
   },
   "1A3EXy": {
     "message": "Expand",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "펼치기"
   },
   "pzSUaH": {
     "message": "Expand event stream: who said what to whom, newest first",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이벤트 스트림 펼치기: 누가 누구에게 무엇을 말했는지, 최신순"
   },
   "qcloGZ": {
     "message": "Fail",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "실패"
   },
   "v4wgrk": {
     "message": "Failed to add",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "추가하지 못했습니다"
   },
   "WYmRTB": {
     "message": "Failed to open",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "열지 못했습니다"
   },
   "lcnOMu": {
     "message": "Feedback threshold to become a rule",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "규칙이 되는 피드백 횟수"
   },
   "17ylhM": {
     "message": "Fetching login code…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로그인 코드를 받는 중…"
   },
   "7SSxh3": {
     "message": "Files and folders OK; click a name to enter a folder.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "파일과 폴더는 잘 읽힙니다. 이름을 클릭하면 폴더로 들어갑니다."
   },
   "ffafQN": {
     "message": "Fill config/default.yaml with github.appSlug; this becomes a direct link.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "config/default.yaml에 github.appSlug를 채우면 여기가 바로 가는 링크가 됩니다."
   },
   "-jN6EB": {
     "message": "Fill in",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "입력"
   },
   "Lx8QZu": {
     "message": "Fill in a name to add a row",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이름을 넣으면 행을 추가합니다"
   },
   "sYbkyR": {
     "message": "Fill in both and remote retrieval switches on. Until then it stays local.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "둘 다 채우면 원격 조회로 바뀝니다. 그전까지는 로컬입니다."
   },
   "hpseek": {
     "message": "Filter or type a name",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "검색하거나 이름을 입력"
   },
   "YuPiJe": {
     "message": "Filter this log",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 로그 검색"
   },
   "Vr0_8R": {
     "message": "Filter this log…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 로그 검색…"
   },
   "MtAXCN": {
     "message": "Fix this",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이거 고치기"
   },
   "CDchO1": {
     "message": "Flame distribution",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "프레임 분포"
   },
   "kNqMMd": {
     "message": "Folder",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "폴더"
   },
   "wKpKmW": {
     "message": "Follow the system",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시스템 설정 따르기"
   },
   "zUUrSA": {
     "message": "Follow this machine's default",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 기기의 기본값 따르기"
   },
   "EumT_c": {
     "message": "Follow window",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "창에 맞춤"
   },
   "PKd9Kr": {
     "message": "Follow window—updates as window changes, fits without crowding",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "창에 맞춤 — 창 크기가 바뀌면 따라 갱신되고, 빽빽해지지 않습니다"
   },
   "iVUkW7": {
     "message": "Forward to webhook",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "웹훅으로 전달"
   },
   "QwS_6h": {
     "message": "From your connected GitHub account",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "연결된 GitHub 계정에서"
   },
   "4FtUNJ": {
     "message": "Frontend and server versions may be out of sync. Restart the service (",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "프런트엔드와 서버 버전이 어긋났을 수 있습니다. 서비스를 재시작하세요 ("
   },
   "rP26c9": {
     "message": "Full /v1/embeddings address, OpenAI-shaped. Write full, not just hostname—which path a provider uses is pure guesswork. Used only when mode is remote.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "/v1/embeddings 전체 주소, OpenAI 형식. 호스트명만 말고 전부 적으세요 — 어떤 경로를 쓰는지는 공급자마다 달라 추측할 수 없습니다. 모드가 원격일 때만 씁니다."
   },
   "ibQa3C": {
     "message": "Full contents of ~/.codex/auth.json",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "~/.codex/auth.json 전체 내용"
   },
   "a0aFcA": {
     "message": "Gate",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "게이트"
   },
   "e59Xgm": {
     "message": "gate {0}",
@@ -1946,109 +1946,109 @@
       "0": ["verdict.text"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "게이트 {0}"
   },
   "1tD4eM": {
     "message": "Gate check",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "게이트 점검"
   },
   "UO4ecX": {
     "message": "Gate concurrency",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "게이트 동시 실행 수"
   },
   "TqKtef": {
     "message": "gate name",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "게이트 이름"
   },
   "Qt1E-q": {
     "message": "Gate retries",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "게이트 재시도"
   },
   "_C32np": {
     "message": "Gates",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "게이트"
   },
   "MfrlTO": {
     "message": "Gates / Install commands",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "게이트 / 설치 명령"
   },
   "vmpFiS": {
     "message": "Generate a draft from this group's notes without sending it.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 그룹의 노트로 초안만 만듭니다. 보내지는 않습니다."
   },
   "7ctz7h": {
     "message": "Generate another",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "다시 생성"
   },
   "8ojtRr": {
     "message": "Generated from this group's notes; not yet sent to anyone. You can edit after filling it in.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 그룹의 노트로 만들었습니다. 아직 아무에게도 보내지 않았고, 채운 뒤 수정할 수 있습니다."
   },
   "dB6rtS": {
     "message": "Git ops",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "Git 작업"
   },
   "Bk16Bl": {
     "message": "Git repo",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "Git 저장소"
   },
   "RkXlPZ": {
     "message": "GitHub",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub"
   },
   "jbs0jI": {
     "message": "GitHub → this App → Install App",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub → 이 App → Install App"
   },
   "3bSCnt": {
     "message": "GitHub API call",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub API 호출"
   },
   "Fe7bVR": {
     "message": "GitHub not connected yet; using our bot account for now",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub이 아직 연결되지 않아 당분간 봇 계정을 씁니다"
   },
   "2GT3Hf": {
     "message": "Global",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "전역"
   },
   "Nhs_sw": {
     "message": "Go merge PR ↗",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "PR 병합하러 가기 ↗"
   },
   "_Hk7AP": {
     "message": "Go to {0} →",
@@ -2056,61 +2056,61 @@
       "0": ["repo.taken.name"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{0}(으)로 →"
   },
   "aQBZnK": {
     "message": "Go to ChatGPT to enter code",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "ChatGPT에서 코드 입력"
   },
   "tgcm5H": {
     "message": "Go to GitHub → this App → Install App, then choose which repos it can access.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub → 이 App → Install App 순으로 가서, 접근할 저장소를 고르세요."
   },
   "gamgPa": {
     "message": "Go to GitHub to enter code",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub에서 코드 입력"
   },
   "1WuwiM": {
     "message": "Go to settings",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "설정으로"
   },
   "OkNnU_": {
     "message": "Go to settings to check GitHub",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "설정에서 GitHub 확인"
   },
   "76gPWk": {
     "message": "Got it",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "확인"
   },
   "uvVKhA": {
     "message": "Gray text shows defaults",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "회색 글자는 기본값입니다"
   },
   "mHnn7C": {
     "message": "Group is paused",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "그룹이 일시정지되었습니다"
   },
   "771hIp": {
     "message": "Has objections",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이의 있음"
   },
   "-cW5rN": {
     "message": "Hide the other {restCount}",
@@ -2118,542 +2118,542 @@
       "restCount": ["restCount"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "나머지 {restCount}개 숨기기"
   },
   "eahmyG": {
     "message": "Hide this stage",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 단계 숨기기"
   },
   "WtafLn": {
     "message": "Hiding:",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "숨김:"
   },
   "Ynnk8P": {
     "message": "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모든 샌드박스가 마운트하는 호스트 디렉터리. '컨테이너 안 경로: 호스트 경로' 형식입니다. 패키지 매니저 캐시 전용으로만 쓰세요 — 빌드가 쓰는 곳을 공유하면 두 그룹이 충돌합니다. 경로는 샌드박스 서버의 allowed_host_paths에도 있어야 합니다."
   },
   "w9KbwD": {
     "message": "How a checkout is read when GitHub cannot be asked",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub에 물을 수 없을 때 체크아웃을 읽는 방법"
   },
   "JzXZ6B": {
     "message": "How far down one review thread the poll reads. A long argument in a thread is the case this truncates.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "리뷰 스레드 하나를 어디까지 읽을지. 스레드 안의 긴 논쟁이 여기서 잘립니다."
   },
   "EqDlPr": {
     "message": "How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "'최근에 물어봤다'가 얼마나 유효한지. 도달성 프로브의 주기이자, 이 페이지에서 자격 증명 판정을 캐시하는 시간입니다."
   },
   "OFsFwT": {
     "message": "How long a notification waits for company before it is sent. This is the knob between one alert an hour and one per event.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "알림 하나가 동료를 기다리는 시간. 한 시간에 한 번이냐 이벤트마다 한 번이냐를 가르는 손잡이입니다."
   },
   "bExEWF": {
     "message": "How long an unanswered notification waits before each repeat. It holds at the last step for as long as nobody answers. At least one step: an empty ladder repeats every tick.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "답 없는 알림이 다음 재알림까지 기다리는 시간. 아무도 답하지 않으면 마지막 단계에 머뭅니다. 최소 한 단계는 있어야 하며, 비면 매 틱마다 반복합니다."
   },
   "nQE4Jd": {
     "message": "How long before a group that answered nothing is nudged again. Longer than the first wait, or the nudge becomes the noise it was meant to cut through.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아무 답도 없던 그룹을 다시 찌를 때까지의 시간. 첫 대기보다 길게 잡으세요. 짧으면 찌르기 자체가 줄이려던 소음이 됩니다."
   },
   "-s0Ds_": {
     "message": "How long before the same stuck report is worth saying again. Shorter turns one stuck group into a feed of its own.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "같은 '멈췄다' 보고를 다시 말할 가치가 생기기까지의 시간. 짧게 잡으면 멈춘 그룹 하나가 그 자체로 피드가 됩니다."
   },
   "10Jfdd": {
     "message": "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "'시스템 소요시간' 리포트 하나를 재사용하는 시간. 계산이 무거워 그동안 다른 요청이 뒤에서 기다립니다. 원본 데이터도 어차피 하트비트에만 갱신됩니다."
   },
   "zAEv6-": {
     "message": "How long one turn may run, and how much it may read",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "한 턴이 돌 수 있는 시간과 읽을 수 있는 양"
   },
   "drSXY4": {
     "message": "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "위 POST에 허용하는 시간. 응답은 어차피 버립니다 — 답하지 않는 웹훅이 알림을 붙잡지 못하게 할 뿐입니다."
   },
   "blRinx": {
     "message": "How long the rest of a group's events are kept. The conversation itself — what was said, asked and escalated — is never dropped.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "그룹의 나머지 이벤트를 보관하는 기간. 대화 자체 — 무엇을 말하고 묻고 올렸는지 — 는 절대 버리지 않습니다."
   },
   "qnORSK": {
     "message": "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "사용량 엔드포인트가 거절한 뒤 그냥 두는 시간. 거절이 유효한 기간보다 짧으면, 폴링이 새 거절만 계속 벌어옵니다."
   },
   "tOvJXf": {
     "message": "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "동시에 돌 수 있는 게이트 수. 리스는 실제 컴파일이나 테스트라서 열 개를 함께 돌리면 기계가 갈립니다. 브라우저는 따로 1개로 제한됩니다 — 하나하나가 진짜 Chromium입니다."
   },
   "_XSiMm": {
     "message": "How many live frames wait for one slow tab before they are dropped. A tab that stopped reading is the only thing here that grows without bound. Dropping is safe: the panel re-reads its state on the next event.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "느린 탭 하나 때문에 라이브 프레임을 몇 개까지 쌓아두다 버릴지. 여기서 무한히 불어나는 건 읽기를 멈춘 탭뿐입니다. 버려도 안전합니다 — 패널은 다음 이벤트에서 상태를 다시 읽습니다."
   },
   "p4BjUG": {
     "message": "How many nodes the model may name at one level. Width costs tokens in a single call, where depth costs another call.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "한 계층에서 모델이 댈 수 있는 노드 수. 폭은 한 번의 호출 안에서 토큰을 쓰고, 깊이는 호출을 하나 더 씁니다."
   },
   "FTfUw0": {
     "message": "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "폴링 한 번에 GitHub에 묻는 열린 PR 수. GraphQL 비용은 노드 수라서, 이 그룹의 모든 숫자는 쿼터로 산 상한입니다."
   },
   "N89lXv": {
     "message": "How much runs at once, and when work moves on without you",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "얼마나 동시에 돌지, 언제 당신 없이 진행할지"
   },
   "Axfmw8": {
     "message": "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "결정론적 규칙을 도는 주기. 명시적 틱이 없을 때 대기 중인 작업이 발진까지 기다리는 시간이기도 합니다."
   },
   "RvduWd": {
     "message": "How often the shared repository map is re-checked. Deliberately far longer than the watchdog tick: the map only changes on a push, and checking costs a container round trip.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "공유 저장소 맵을 다시 확인하는 주기. watchdog 틱보다 일부러 훨씬 길게 잡았습니다 — 맵은 푸시할 때만 바뀌고, 확인에는 컨테이너 왕복 비용이 듭니다."
   },
   "k0sg9Y": {
     "message": "How to alert you",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "어떻게 알릴지"
   },
   "agP50o": {
     "message": "hr",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시간"
   },
   "PmknJS": {
     "message": "HTTP request",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "HTTP 요청"
   },
   "QSzGDE": {
     "message": "Idle",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "유휴"
   },
   "hG89Ed": {
     "message": "Image",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이미지"
   },
   "OIuB5D": {
     "message": "Image",
     "context": "a picture, not a container image",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "그림"
   },
   "_LCAwL": {
     "message": "In progress",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "진행 중"
   },
   "ukOFaT": {
     "message": "Including downstream",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "하위 포함"
   },
   "e1XJKo": {
     "message": "Index model",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "인덱스 모델"
   },
   "yftYSC": {
     "message": "Insert skill",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "스킬 삽입"
   },
   "CfGTMN": {
     "message": "Install dependencies",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "의존성 설치"
   },
   "4INO0l": {
     "message": "Install on GitHub",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub에 설치"
   },
   "RKidZJ": {
     "message": "Install timeout",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "설치 제한 시간"
   },
   "ZOcvbt": {
     "message": "Install to another account",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "다른 계정에 설치"
   },
   "Sp4xyr": {
     "message": "Installed on these accounts",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 계정들에 설치됨"
   },
   "pD0NCH": {
     "message": "Interrupt and rollback",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "중단하고 롤백"
   },
   "Jv5HTk": {
     "message": "Interrupt, keep changes",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "중단하되 변경은 유지"
   },
   "a8ydNj": {
     "message": "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스 서버가 떠 있고 우리 키를 받는지. 보통 루프백이고, 그 답은 리포트를 채울 뿐입니다 — 아래의 네트워크 핑은 전체 함대의 게이트입니다."
   },
   "8O_fJP": {
     "message": "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "네트워크가 아예 있는지. 각 공급자 오리진에 HEAD를 던지며 watchdog 틱 안에서 돕니다. 여기서 가장 짧게 잡은 건 의도적입니다 — 느린 답이 틱을 붙잡아선 안 됩니다."
   },
   "sOqJT5": {
     "message": "It's not a duplicate, and it's not done yet — keep decomposing.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "중복도 아니고 아직 끝난 것도 아닙니다 — 계속 분해하세요."
   },
   "-siMqD": {
     "message": "Journal",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기록"
   },
   "sN5SzN": {
     "message": "Just describe what you need. A plan card will be generated for approval before any code is written.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "필요한 것을 그냥 적으세요. 코드를 쓰기 전에 승인용 계획 카드를 만듭니다."
   },
   "OSBXx5": {
     "message": "Just now",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "방금"
   },
   "UQYK3R": {
     "message": "Just started",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "막 시작함"
   },
   "PZ_kxo": {
     "message": "Keep",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "유지"
   },
   "R2SL98": {
     "message": "Keep machine events",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기계 이벤트 보관"
   },
   "7sMeHQ": {
     "message": "Key",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "키"
   },
   "6jt8EG": {
     "message": "Last 24 hours, per hour",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "최근 24시간, 시간별"
   },
   "D8G2YM": {
     "message": "Lease timeout",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "리스 제한 시간"
   },
   "nJwqRr": {
     "message": "Lesson",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "교훈"
   },
   "CoUyaF": {
     "message": "Let AI generate one",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "AI에게 맡기기"
   },
   "XonalD": {
     "message": "Let bootstrap retry; it will review the repository with the error above in context",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "부트스트랩이 다시 시도하게 합니다 — 위 오류를 감안해 저장소를 다시 살핍니다"
   },
   "UO8Jaq": {
     "message": "Levels of the tree one question may descend, and each level is a serial model call with its own 60s timeout — two per question at 3. This is the single knob on the most frequent model spend here.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "질문 하나가 내려갈 수 있는 트리 단계 수. 각 단계는 60초 타임아웃이 붙은 직렬 모델 호출이고, 3이면 질문당 두 번입니다. 여기서 가장 잦은 모델 비용을 쥔 유일한 손잡이입니다."
   },
   "1njn7W": {
     "message": "Light",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "라이트"
   },
   "Rbr0M8": {
     "message": "Line-level review threads read per pull request. Set it below what the repository actually produces and the oldest threads are never seen.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "PR 하나에서 읽는 줄 단위 리뷰 스레드 수. 저장소가 실제로 만드는 수보다 작게 잡으면 가장 오래된 스레드는 영영 읽히지 않습니다."
   },
   "4B00A1": {
     "message": "Live stream backlog",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "라이브 스트림 백로그"
   },
   "ezzro3": {
     "message": "Loading changes…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "변경 불러오는 중…"
   },
   "32n8fF": {
     "message": "Loading log…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로그 불러오는 중…"
   },
   "dsRqVs": {
     "message": "Loading notes…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "노트 불러오는 중…"
   },
   "Pwqkdw": {
     "message": "Loading…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "불러오는 중…"
   },
   "d5zxa4": {
     "message": "Local",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로컬"
   },
   "rBmsAu": {
     "message": "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로컬은 이 기기에서 돌고, 원격은 당신이 고른 엔드포인트로 텍스트를 보냅니다. 아직 둘 다 검색에는 쓰지 않습니다 — 실측 결과, 언어를 넘나드는 검색이 대체하려던 키워드 검색보다 나빴습니다. 원격은 요건과 수락 기준이 이 기기를 떠난다는 뜻이라, 기본은 로컬이고 원격은 결정입니다."
   },
   "mTyZmU": {
     "message": "Local to this machine only, not tied to the project",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 기기에만 적용되며 프로젝트와는 무관합니다"
   },
   "sQia9P": {
     "message": "Log in",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로그인"
   },
   "gmtnyc": {
     "message": "Log in within the container; no need to install codex locally",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨테이너 안에서 로그인합니다. 로컬에 codex를 설치할 필요 없습니다"
   },
   "6SIbcf": {
     "message": "Login code copied",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로그인 코드를 복사했습니다"
   },
   "58Go3p": {
     "message": "Login page",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로그인 페이지"
   },
   "g9KxkF": {
     "message": "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\".",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로그는 서버 메모리에 최대 500줄만 남고 재시작하면 사라집니다. 결론은 \"노트\"에 있습니다."
   },
   "N8fWMI": {
     "message": "Management directive",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "경영 지시"
   },
   "PeDZSK": {
     "message": "Max channel messages to cram into one delta per turn.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "한 턴의 델타에 밀어넣을 채널 메시지 상한."
   },
   "4QISGp": {
     "message": "Max steps per turn",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "턴당 최대 단계 수"
   },
   "v8o-Rn": {
     "message": "Memory",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "메모리"
   },
   "x98TuZ": {
     "message": "Memory ceiling per sandbox.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스당 메모리 상한."
   },
   "c6FNGk": {
     "message": "Message this group",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 그룹에 메시지"
   },
   "HJMQTa": {
     "message": "Message this group…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 그룹에 메시지…"
   },
   "lWkKSO": {
     "message": "min",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "분"
   },
   "ahFhPa": {
     "message": "Model account",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모델 계정"
   },
   "IzB3v0": {
     "message": "Model ID",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모델 ID"
   },
   "fXGixv": {
     "message": "Model processing",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모델 처리"
   },
   "TSPGm_": {
     "message": "Models & budget",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모델과 예산"
   },
   "tgWuMB": {
     "message": "Modified",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "수정됨"
   },
   "2FYpfJ": {
     "message": "More",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "더 보기"
   },
   "oGk85-": {
     "message": "mount point",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "마운트 지점"
   },
   "TpHstq": {
     "message": "ms",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "ms"
   },
   "6YtxFj": {
     "message": "Name",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이름"
   },
   "gaMZOo": {
     "message": "Name a stored credential and remote retrieval switches on.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "저장된 자격 증명을 지정하면 원격 조회로 바뀝니다."
   },
   "ULmBuU": {
     "message": "Name can't be empty; use the × on the right to delete",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이름은 비울 수 없습니다. 삭제는 오른쪽 ×로"
   },
   "YXbnlE": {
     "message": "Name for {k}",
@@ -2661,31 +2661,31 @@
       "k": ["k"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{k}의 이름"
   },
   "knuGkj": {
     "message": "Needs an integer",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "정수여야 합니다"
   },
   "foSFR6": {
     "message": "Network ping",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "네트워크 핑"
   },
   "d1fjbO": {
     "message": "New files are expected; if it thinks these already exist, the card was written from speculation.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "새 파일이 생겨야 정상입니다. 이미 있다고 여긴다면 그 카드는 추측으로 쓴 것입니다."
   },
   "6Vgn9k": {
     "message": "New projects use this; leave blank to follow config",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "새 프로젝트가 이걸 씁니다. 비우면 설정을 따릅니다"
   },
   "leV-m0": {
     "message": "New projects will use {image}",
@@ -2693,385 +2693,385 @@
       "image": ["image"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "새 프로젝트는 {image}를 씁니다"
   },
   "FDivSs": {
     "message": "New requirement",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "새 요건"
   },
   "QeZdOC": {
     "message": "newly hired",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "갓 합류"
   },
   "xsayrv": {
     "message": "No activity in this window.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 구간에는 활동이 없습니다."
   },
   "ZILws9": {
     "message": "No activity yet.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아직 활동이 없습니다."
   },
   "pr2q9d": {
     "message": "No boundaries drawn yet. The Architect decides which paths each group may write before work starts; groups without one run into the same files.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아직 경계가 그어지지 않았습니다. 어느 그룹이 어떤 경로에 쓸 수 있는지는 작업 전에 아키텍트가 정합니다. 경계 없는 그룹들은 같은 파일에서 부딪칩니다."
   },
   "bntSi-": {
     "message": "No budget limit",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "예산 제한 없음"
   },
   "kknhfj": {
     "message": "No changes",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "변경 없음"
   },
   "-WlVYy": {
     "message": "No container yet",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아직 컨테이너 없음"
   },
   "4SBV0R": {
     "message": "No data yet",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아직 데이터 없음"
   },
   "2BdXR9": {
     "message": "No deliveries yet. Requirements are archived here after merging to main.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아직 납품이 없습니다. 요건은 main에 병합된 뒤 여기에 보관됩니다."
   },
   "kRwdtK": {
     "message": "No diff available. The slice didn't record a baseline commit, or the sandbox has been reclaimed.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "diff가 없습니다. 슬라이스가 기준 커밋을 기록하지 않았거나 샌드박스가 회수되었습니다."
   },
   "ekZ9la": {
     "message": "No events",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이벤트 없음"
   },
   "112a8L": {
     "message": "No gates enabled; LLM review has no floor.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "게이트가 하나도 켜져 있지 않습니다. LLM 리뷰에 바닥이 없습니다."
   },
   "4TVVsS": {
     "message": "No matches",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일치 항목 없음"
   },
   "d_Z5TM": {
     "message": "No matching branches",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일치하는 브랜치 없음"
   },
   "Au729R": {
     "message": "No matching images",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일치하는 이미지 없음"
   },
   "tSkn3p": {
     "message": "No matching lines",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일치하는 줄 없음"
   },
   "8Unj92": {
     "message": "No matching projects",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일치하는 프로젝트 없음"
   },
   "WA4QLO": {
     "message": "No matching skills",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일치하는 스킬 없음"
   },
   "pkh1lU": {
     "message": "No notes yet. Agents write journals each turn; retrospectives are written before the group dissolves and distilled into lessons for later groups.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아직 노트가 없습니다. 에이전트는 매 턴 일지를 쓰고, 그룹이 해산하기 전에 회고를 남겨 다음 그룹을 위한 교훈으로 정리합니다."
   },
   "7NntGT": {
     "message": "No one working yet. Approve a plan card and each agent's current task appears here.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아직 아무도 일하지 않습니다. 계획 카드를 승인하면 각 에이전트의 현재 작업이 여기에 나옵니다."
   },
   "Owb59A": {
     "message": "No open questions. This group is not waiting on you right now.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "열린 질문이 없습니다. 이 그룹은 지금 당신을 기다리지 않습니다."
   },
   "8UMyhm": {
     "message": "No other models yet; just type",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "다른 모델은 아직 없습니다. 그냥 입력하세요"
   },
   "FyCSgf": {
     "message": "No other requirements for this project",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 프로젝트에 다른 요건 없음"
   },
   "FCR3S_": {
     "message": "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일시정지된 요건이 없습니다. 예산이 바닥나거나 당신의 답을 2시간 넘게 기다리면 그룹이 여기서 멈추며, 작업은 남습니다."
   },
   "musiyS": {
     "message": "No pending items",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "대기 중인 항목 없음"
   },
   "FnBLw7": {
     "message": "No reason recorded",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기록된 이유 없음"
   },
   "u1OZfk": {
     "message": "No requirements in progress. Click + for a new one in the top right.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "진행 중인 요건이 없습니다. 오른쪽 위 +로 새로 만드세요."
   },
   "K_5cdM": {
     "message": "No requirements yet",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아직 요건 없음"
   },
   "rmVNA-": {
     "message": "No runnable commands found.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "실행할 수 있는 명령을 찾지 못했습니다."
   },
   "LAGAld": {
     "message": "No slice",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "슬라이스 없음"
   },
   "Dje3yF": {
     "message": "No slices",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "슬라이스 없음"
   },
   "D8lG5Z": {
     "message": "No system activity recorded.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기록된 시스템 활동이 없습니다."
   },
   "A2To5D": {
     "message": "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아직 토큰을 쓰지 않았습니다. 계획 카드를 승인하면 비용이 요건별·에이전트별로 나뉩니다. 어떤 모델을 쓸지는 난이도 태그가 정합니다."
   },
   "FWdQE5": {
     "message": "No, keep going",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아니요, 계속"
   },
   "-f7hCL": {
     "message": "None selected",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "선택 없음"
   },
   "e9k3F8": {
     "message": "None; this connection sees no repositories. Install with all repos, or select specific ones.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "없음. 이 연결로는 저장소가 보이지 않습니다. 전체 저장소로 설치하거나 개별로 고르세요."
   },
   "OxtmTI": {
     "message": "Not checked out",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "체크아웃되지 않음"
   },
   "SDND4q": {
     "message": "Not configured",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "설정 안 됨"
   },
   "S33tz3": {
     "message": "Not connected",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "연결 안 됨"
   },
   "qB4FXu": {
     "message": "Not enough data for two hours.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "두 시간치 데이터가 부족합니다."
   },
   "QEXVOr": {
     "message": "Not enough data for two periods.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "두 구간치 데이터가 부족합니다."
   },
   "nw77tA": {
     "message": "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로컬도 아니고 암호화된 네트워크도 아닙니다 — 트래픽이 평문 HTTP입니다. 키와 컨테이너 통신이 노출됩니다. HTTPS나 Tailscale을 쓰세요."
   },
   "0H5_2R": {
     "message": "Not running",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "실행 중 아님"
   },
   "sF_cxU": {
     "message": "Not satisfied",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "미충족"
   },
   "pJLF3J": {
     "message": "Not started yet; waiting for prior slices to be accepted.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아직 시작하지 않았습니다. 앞의 슬라이스가 수락되기를 기다리는 중입니다."
   },
   "1DBGsz": {
     "message": "Notes",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "노트"
   },
   "Z2qRB3": {
     "message": "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub 쪽은 아무것도 바뀌지 않습니다. 브랜치도 PR도 그대로이고 코드는 한 줄도 건드리지 않습니다. 지워지는 건 이 기기에 있는 작업 사본입니다."
   },
   "iDNBZe": {
     "message": "Notifications",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "알림"
   },
   "rjpj-S": {
     "message": "Nudge a silent group",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "말 없는 그룹 찌르기"
   },
   "zga9sT": {
     "message": "OK",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "확인"
   },
   "oAiwdE": {
     "message": "On, a group starts the next slice without waiting for you. Off, it finishes one and stops. The cost: later slices build on an earlier one, so reverting it pauses the whole group.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "켜면 그룹이 당신을 기다리지 않고 다음 슬라이스로 갑니다. 끄면 하나 끝내고 멈춥니다. 대가는, 뒤 슬라이스가 앞 슬라이스 위에 쌓이므로 앞의 것을 되돌리면 그룹 전체가 멈춘다는 점입니다."
   },
   "TMRMoB": {
     "message": "On, a question walks the index tree before it is answered — one model call. Off skips the walk entirely and falls through to keyword search, which is the comparison this switch is for.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "켜면 질문이 답하기 전에 인덱스 트리를 걷습니다 — 모델 호출 한 번. 끄면 아예 걷지 않고 키워드 검색으로 떨어집니다. 이 스위치는 그 비교를 위해 있습니다."
   },
   "gukxZ5": {
     "message": "Onboarding",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "온보딩"
   },
   "u3JJbf": {
     "message": "Once boundaries are cleared, work starts automatically; no need to click again.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "경계가 풀리면 작업이 자동으로 시작됩니다. 다시 누를 필요 없습니다."
   },
   "NS_SrO": {
     "message": "One branch name per line, most likely first",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "한 줄에 브랜치 하나, 가능성 높은 순서로"
   },
   "0-_m6g": {
     "message": "One CI run can post fifty of these. Set below what your workflow produces and the fleet decides a pull request is green while a check it never saw is red.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "CI 한 번에 이런 게 쉰 개씩 올라오기도 합니다. 워크플로가 실제로 만드는 수보다 작게 잡으면, 본 적 없는 체크가 빨간데도 함대는 PR을 초록으로 판단합니다."
   },
   "VvW38y": {
     "message": "One connection manages all projects",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "연결 하나로 모든 프로젝트를 관리합니다"
   },
   "oyPQFp": {
     "message": "One domain per line; empty allows all",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "한 줄에 도메인 하나. 비우면 전부 허용"
   },
   "zbIkyx": {
     "message": "One network operation that moves a repository or an image — clone, fetch, submodule init, image pull. Minutes rather than seconds.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "저장소나 이미지를 옮기는 네트워크 작업 하나 — 클론, 페치, 서브모듈 초기화, 이미지 받기. 초가 아니라 분 단위입니다."
   },
   "QPXgDJ": {
     "message": "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "누군가 요청한 일 자체인 REST 호출 하나 — PR 열기, 리뷰 읽기. 아래의 자격 증명 확인보다 긴 이유는 무언가가 그것을 기다리며 멈춰 있기 때문입니다."
   },
   "P3rmDM": {
     "message": "Only running",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "실행 중만"
   },
   "Tl9TR8": {
     "message": "Only this stage",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 단계만"
   },
   "HWAICJ": {
     "message": "Open {0}",
@@ -3079,31 +3079,31 @@
       "0": ["props.entry.name"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{0} 열기"
   },
   "AptlFm": {
     "message": "Open a new PR",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "새 PR 열기"
   },
   "cfVQvA": {
     "message": "Open login page",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로그인 페이지 열기"
   },
   "ixlGqr": {
     "message": "Open new PR",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "새 PR 열기"
   },
   "XNVZiJ": {
     "message": "Open PR ↗",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "PR 열기 ↗"
   },
   "eOzpoB": {
     "message": "Optional, self-hosted gateway → {0}",
@@ -3111,31 +3111,31 @@
       "0": ["props.runtime.urlEnv"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "선택. 직접 호스팅한 게이트웨이 → {0}"
   },
   "UYUgdb": {
     "message": "Order",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "순서"
   },
   "ucgZ0o": {
     "message": "Organization",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "조직"
   },
   "_IX_7x": {
     "message": "Other",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기타"
   },
   "f6Pzgf": {
     "message": "Output language",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "대외 언어"
   },
   "Tqquyz": {
     "message": "overlaps {overlapping}",
@@ -3143,184 +3143,184 @@
       "overlapping": ["overlapping"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{overlapping}와(과) 겹침"
   },
   "oDAEQq": {
     "message": "Ownership",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "소유"
   },
   "kyU0Ic": {
     "message": "p50",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "p50"
   },
   "F8JUQI": {
     "message": "P50",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "P50"
   },
   "Q7geBa": {
     "message": "p95",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "p95"
   },
   "QwetJl": {
     "message": "P95",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "P95"
   },
   "2lGEAi": {
     "message": "Panel language",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "화면 언어"
   },
   "wFwgKk": {
     "message": "Pass",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "통과"
   },
   "HzVv6g": {
     "message": "Paste",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "붙여넣기"
   },
   "GIvsjD": {
     "message": "Paste it; hidden after saving",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "붙여넣으세요. 저장하면 가려집니다"
   },
   "IgrLD_": {
     "message": "Pause",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일시정지"
   },
   "URAE3q": {
     "message": "Paused",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일시정지됨"
   },
   "5NGrnX": {
     "message": "Pausing",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "정지하는 중"
   },
   "UbRKMZ": {
     "message": "Pending",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "대기 중"
   },
   "pAEgM9": {
     "message": "pending merges",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "병합 대기"
   },
   "2WtL62": {
     "message": "Pending review",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "검토 대기"
   },
   "HlzhUv": {
     "message": "Per delivered requirement",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "납품한 요건당"
   },
   "jAIAes": {
     "message": "Per-run duration",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "1회 실행 시간"
   },
   "7MuXko": {
     "message": "Personal",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "개인"
   },
   "d15suO": {
     "message": "Personal account",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "개인 계정"
   },
   "Yj_Oy0": {
     "message": "Pick a model to add a row",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모델을 고르면 행을 추가합니다"
   },
   "GdgCoi": {
     "message": "Plan",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "계획"
   },
   "A4x6D_": {
     "message": "Plan card",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "계획 카드"
   },
   "5dUEVS": {
     "message": "Plan card not submitted",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "계획 카드 미제출"
   },
   "GszIEh": {
     "message": "Plan card not submitted yet",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "계획 카드가 아직 제출되지 않았습니다"
   },
   "IRufNX": {
     "message": "Plan card pending approval",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "계획 카드가 승인 대기 중"
   },
   "nIqmlE": {
     "message": "Planner suggests abandoning",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "플래너가 포기를 권합니다"
   },
   "dUh9QW": {
     "message": "Planning",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "계획 중"
   },
   "zS5SHl": {
     "message": "PM working",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "PM 작업 중"
   },
   "d1JOvx": {
     "message": "Poll subscription usage",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "구독 사용량 조회 주기"
   },
   "5LTB0L": {
-    "translation": "",
+    "translation": "폴링 주기",
     "message": "Polling intervals",
     "placeholders": {},
     "comments": []
@@ -3329,235 +3329,235 @@
     "message": "PR link not found",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "PR 링크를 찾을 수 없음"
   },
   "NKLZS6": {
     "message": "PR open",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "PR 열림"
   },
   "o4QBBj": {
     "message": "PR pending merge",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "PR 병합 대기"
   },
   "Q6hhn8": {
     "message": "Preferences",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "환경설정"
   },
   "R7zmES": {
     "message": "prefix changed",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "프리픽스가 바뀜"
   },
   "ivCmTG": {
     "message": "Prepare this turn",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이번 턴 준비"
   },
   "zwBp5t": {
     "message": "Private",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "비공개"
   },
   "wyaIXF": {
     "message": "Project name…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "프로젝트 이름…"
   },
   "-0B-ue": {
     "message": "Projects",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "프로젝트"
   },
   "0TrDeg": {
     "message": "Pull request",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "풀 리퀘스트"
   },
   "6tMqGq": {
     "message": "Pull requests",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "풀 리퀘스트"
   },
   "u8jL5T": {
     "message": "Pull requests per poll",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "폴링당 PR 수"
   },
   "8G8q1m": {
     "message": "QA",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "QA"
   },
   "a8JQGm": {
     "message": "Query index",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "인덱스 조회"
   },
   "bfgr_e": {
     "message": "Question",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "질문"
   },
   "K6TkGP": {
     "message": "questions",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "개 질문"
   },
   "enzGAL": {
     "message": "Questions",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "질문"
   },
   "8wu9lr": {
     "message": "Queued",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "대기열"
   },
   "9KFZ12": {
     "message": "Rate limited reading usage; it recovers by itself shortly",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "사용량 조회가 레이트 리밋에 걸렸습니다. 잠시 뒤 저절로 회복됩니다"
   },
   "nwqkBq": {
     "message": "Read from server",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "서버에서 읽기"
   },
   "ozwmb2": {
     "message": "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스 서버 자체 설정(OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml)에서 읽습니다. 값이 브라우저를 거치지 않습니다."
   },
   "SDCu3f": {
     "message": "Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "구독 창이 얼마나 남았는지 읽습니다. 유틸리티 컨테이너에서 curl로 가져옵니다. 이걸 기다려 막히는 건 없고, 실패하면 헤더에 퍼센트가 안 뜰 뿐입니다."
   },
   "A16Eqd": {
     "message": "Real tokens don't enter the sandbox",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "진짜 토큰은 샌드박스에 들어가지 않습니다"
   },
   "df2AOb": {
     "message": "Recheck reachability",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "도달성 재확인"
   },
   "ImqOI5": {
     "message": "Recheck the repo map",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "저장소 맵 재확인"
   },
   "zu5gZ1": {
     "message": "Reconciliation",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "정합 맞추기"
   },
   "gcoiFh": {
     "message": "Reconnect",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "다시 연결"
   },
   "lCF0wC": {
     "message": "Refresh",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "새로고침"
   },
   "L1TJ_J": {
     "message": "Refreshed locally",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로컬에서 갱신됨"
   },
   "XeJdpK": {
     "message": "Reject this slice",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 슬라이스 반려"
   },
   "ekCRTP": {
     "message": "Rejected",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "반려됨"
   },
   "GvcBZh": {
     "message": "Rejected, awaiting fix",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "반려됨, 수정 대기"
   },
   "iGlRgg": {
     "message": "Release the concurrency slot; code and checkpoint in the sandbox stay in place.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "동시 실행 슬롯을 놓아줍니다. 샌드박스 안의 코드와 체크포인트는 그대로 남습니다."
   },
   "1wLTrO": {
     "message": "Remind about paused",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "일시정지 알림 주기"
   },
   "J0oIbK": {
     "message": "Reminder ladder",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "재알림 단계"
   },
   "qlAIQ1": {
     "message": "Remote",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "원격"
   },
   "Orq9Yq": {
     "message": "Remote credential name",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "원격 자격 증명 이름"
   },
   "M2XeNm": {
     "message": "Remote endpoint",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "원격 엔드포인트"
   },
   "t_YqKh": {
     "message": "Remove",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "제거"
   },
   "w61W3L": {
     "message": "Remove {0}",
@@ -3565,7 +3565,7 @@
       "0": ["f.name"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{0} 제거"
   },
   "Tcxuis": {
     "message": "Remove {name}?",
@@ -3573,145 +3573,145 @@
       "name": ["name"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{name}을(를) 제거할까요?"
   },
   "a3M6tu": {
     "message": "Remove limit",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "제한 없애기"
   },
   "HxssvP": {
     "message": "Remove project",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "프로젝트 제거"
   },
   "Bh5Msf": {
     "message": "Remove this project",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 프로젝트 제거"
   },
   "APfagk": {
     "message": "Removing…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "제거 중…"
   },
   "Dkm2X3": {
     "message": "Renewed when a turn starts, so this is 'recover after idle', not 'task time limit'.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "턴이 시작될 때마다 갱신되므로, 이건 '작업 제한 시간'이 아니라 '멈춘 뒤 복구'입니다."
   },
   "jtfE4W": {
     "message": "Repeat a stuck notice",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "멈춤 알림 재발송"
   },
   "KB5bbw": {
     "message": "Repeat the nudge",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "찌르기 반복"
   },
   "bEZBnp": {
     "message": "Replies per thread",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "스레드당 답글 수"
   },
   "ImOQa9": {
     "message": "Reply",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "답장"
   },
   "ORouxy": {
     "message": "Reply. Sending this will unblock the waiting agent. Cmd+Enter to send",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "답장합니다. 보내면 기다리던 에이전트가 풀립니다. Cmd+Enter로 전송"
   },
   "6AURG0": {
     "message": "Reply… Cmd+Enter to send",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "답장… Cmd+Enter로 전송"
   },
   "kJ-0qS": {
     "message": "Repo-wide",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "저장소 전체"
   },
   "2R0JRN": {
     "message": "Repos with DCO enabled won't accept commits without this line",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "DCO를 켠 저장소는 이 줄이 없는 커밋을 받지 않습니다"
   },
   "ooullr": {
     "message": "Repositories",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "저장소"
   },
   "IreQBq": {
     "message": "Repository",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "저장소"
   },
   "gZu9-9": {
     "message": "Request changes",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "수정 요청"
   },
   "2LQdMJ": {
     "message": "Requirement",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "요건"
   },
   "limQr5": {
     "message": "Requirement name…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "요건 이름…"
   },
   "JOKdLk": {
     "message": "requirements",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "개 요건"
   },
   "YzaGjb": {
     "message": "Requirements running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "동시에 도는 요건 수. 보통은 다른 천장에 먼저 부딪힙니다 — 두 그룹은 겹치는 경로를 가질 수 없고, 계정 하나에는 자체 레이트 리밋이 있습니다. 올릴 때는 비용 페이지의 캐시 적중률을 보세요."
   },
   "Igjjz3": {
     "message": "Rescan",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "다시 스캔"
   },
   "L-rMC9": {
     "message": "Reset to default",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "기본값으로"
   },
   "LRRbF6": {
     "message": "Reset to the image in config",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "설정의 이미지로 되돌리기"
   },
   "9pugJF": {
     "message": "resets in {span}",
@@ -3719,37 +3719,37 @@
       "span": ["span"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{span} 후 초기화"
   },
   "8shPUI": {
     "message": "Resetting soon",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "곧 초기화"
   },
   "NGM47O": {
     "message": "Resource lease",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "리소스 리스"
   },
   "6z9W13": {
     "message": "Restart",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "재시작"
   },
   "KP35U0": {
     "message": "Restart container",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨테이너 재시작"
   },
   "UGguP3": {
     "message": "Restart the sandbox server?",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스 서버를 재시작할까요?"
   },
   "qxbfmr": {
     "message": "Restarted {cold} times across {turns} turns: {why}. Each restart rebuilds the cache prefix from scratch",
@@ -3759,133 +3759,133 @@
       "why": ["why"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{turns}턴 동안 {cold}번 재시작: {why}. 재시작할 때마다 캐시 프리픽스를 처음부터 다시 만듭니다"
   },
   "vAZ1vN": {
     "message": "Restarted; containers will restart on demand",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "재시작했습니다. 컨테이너는 필요할 때 다시 뜹니다"
   },
   "fvg2KT": {
     "message": "Restarting…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "재시작 중…"
   },
   "YMXEj_": {
     "message": "Restore all",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "전체 복원"
   },
   "v39wLo": {
     "message": "Resume",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "재개"
   },
   "en3Dhq": {
     "message": "Retrieval",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "검색"
   },
   "0uV8rm": {
     "message": "Retrospective",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "회고"
   },
   "PHOwUf": {
     "message": "Retry this view",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 화면 다시 시도"
   },
   "E9s4Hf": {
     "message": "Return for re-decomposition",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "다시 분해하도록 되돌리기"
   },
   "Dn1cWK": {
     "message": "Return to the checkpoint before this round started; all changes in this turn are discarded.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 라운드가 시작되기 전 체크포인트로 되돌립니다. 이번 턴의 변경은 모두 버려집니다."
   },
   "GtbTHe": {
     "message": "Review threads",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "리뷰 스레드"
   },
   "j5iEdc": {
     "message": "Revoke and take over",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "회수하고 직접 처리"
   },
   "Xwlwdm": {
     "message": "Risk",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "리스크"
   },
   "CDes-i": {
     "message": "Roll back to the checkpoint when the question was asked; all subsequent changes are discarded. You'll answer it again.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "질문이 나온 시점의 체크포인트로 되돌립니다. 이후 변경은 모두 버려지고, 질문에 다시 답하게 됩니다."
   },
   "F7ezNA": {
     "message": "Roughly 4k token. This answer lands in the transcript, and every remaining turn in the session re-reads it—so a generous answer keeps billing long after the question is answered.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "대략 4k 토큰. 이 답은 트랜스크립트에 남고 세션의 남은 모든 턴이 다시 읽습니다 — 후한 답은 질문이 끝난 뒤로도 오래 청구됩니다."
   },
   "1dxPir": {
     "message": "Routine watchdog",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "정기 watchdog"
   },
   "yar4DV": {
     "message": "Run claude setup-token in the container",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨테이너 안에서 claude setup-token 실행"
   },
   "xJmqHS": {
     "message": "Run one turn",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "한 턴 실행"
   },
   "eqQ5YA": {
     "message": "Run tests",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "테스트 실행"
   },
   "sRVwZe": {
     "message": "Run the official CLI's login once in the tool container; store the credential here. No setup needed locally. Official accounts only; custom gateways use API key.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "도구 컨테이너에서 공식 CLI 로그인을 한 번만 실행하고 자격 증명을 여기에 저장합니다. 로컬 설정은 필요 없습니다. 공식 계정 전용이며, 커스텀 게이트웨이는 API 키를 쓰세요."
   },
   "siNdHG": {
     "message": "Run top-to-bottom; drag to reorder",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "위에서 아래로 실행합니다. 끌어서 순서를 바꾸세요"
   },
   "RiQMUh": {
     "message": "Running",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "실행 중"
   },
   "fXl-5j": {
     "message": "running {live}/{maxGroups}",
@@ -3894,25 +3894,25 @@
       "maxGroups": ["maxGroups"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "실행 중 {live}/{maxGroups}"
   },
   "EbMFqt": {
     "message": "Running, but we can't control it",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "돌고 있지만 우리가 제어할 수 없습니다"
   },
   "pOVGLp": {
     "message": "Running, not started by us; using as-is",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "돌고 있습니다. 우리가 띄운 게 아니라 그대로 씁니다"
   },
   "qvRmoc": {
     "message": "Running, started by us",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "돌고 있습니다. 우리가 띄웠습니다"
   },
   "jbpU5H": {
     "message": "Running: {running}",
@@ -3920,73 +3920,73 @@
       "running": ["running"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "실행 중: {running}"
   },
   "gkL2ub": {
     "message": "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "리스와 같은 자릿수, 같은 성격 — 진짜 컴파일입니다. 너무 빡빡하면 '타임아웃'이 아니라 '이 프로젝트가 망가졌다'처럼 실패하고, 어느 쪽이든 그룹은 멈춥니다."
   },
   "vMT9um": {
     "message": "Sandbox",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스"
   },
   "owfKdV": {
     "message": "Sandbox configuration",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스 설정"
   },
   "PwjUOx": {
     "message": "Sandbox defaults",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스 기본값"
   },
   "8BR6r3": {
     "message": "Sandbox operation",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스 작업"
   },
   "umfO1F": {
     "message": "Sandbox server",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스 서버"
   },
   "PjDN-c": {
     "message": "Sandbox server ping",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스 서버 핑"
   },
   "aa3gMx": {
     "message": "Sandbox setup",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스 준비"
   },
   "AP_viH": {
     "message": "Sandbox TTL",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "샌드박스 수명"
   },
   "tfDRzk": {
     "message": "Save",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "저장"
   },
   "LE_-Fg": {
     "message": "Save checkpoint",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "체크포인트 저장"
   },
   "1QknGr": {
     "message": "Saved {at}",
@@ -3994,79 +3994,79 @@
       "at": ["at"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{at}에 저장됨"
   },
   "DbZMYM": {
     "message": "Scheduling",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "스케줄링"
   },
   "BlLxpG": {
     "message": "Search skills",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "스킬 검색"
   },
   "NPfgIB": {
     "message": "sec",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "초"
   },
   "ylXj1N": {
     "message": "Selected",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "선택됨"
   },
   "QwCX4t": {
     "message": "Self",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "자기"
   },
   "F5fjPA": {
     "message": "Self-review",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "셀프 리뷰"
   },
   "JlFcis": {
     "message": "Send",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "보내기"
   },
   "pi1oME": {
     "message": "Send message",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "메시지 보내기"
   },
   "zkYz4A": {
     "message": "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "요건 전체를 디스패처로 돌려보내 더 파고들게 합니다. 이미 쓴 코드는 브랜치에 남습니다."
   },
   "GD78ah": {
     "message": "Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "요건 전체를 디스패처로 돌려보내 더 파고들게 합니다. 이 댓글이 최우선 사실이 됩니다."
   },
   "68dnxO": {
     "message": "Send to PM",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "PM에게 보내기"
   },
   "BaMSK4": {
     "message": "sent back",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "반려됨"
   },
   "9wpFIo": {
     "message": "sent back {0} times",
@@ -4074,73 +4074,73 @@
       "0": ["evidence.retries"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{0}번 반려됨"
   },
   "sGH11W": {
     "message": "Server",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "서버"
   },
   "xiUKAL": {
     "message": "Session restarts",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "세션 재시작"
   },
   "c343B7": {
     "message": "Session rotation threshold",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "세션 교대 임계값"
   },
   "NfZUor": {
     "message": "Set",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "설정됨"
   },
   "Ufp8L2": {
     "message": "Set a token limit for this requirement",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 요건에 토큰 상한 설정"
   },
   "Tz0i8g": {
     "message": "Settings",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "설정"
   },
   "P14X5y": {
     "message": "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "설정: 계정, 환경, 스킬, 테마, 이 프로젝트의 게이트와 샌드박스 ⌘S"
   },
   "Q8KZbZ": {
     "message": "Shared across all projects",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모든 프로젝트가 공유"
   },
   "tp12TV": {
     "message": "Shared across requirements",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "요건 간 공유"
   },
   "5uNrb2": {
     "message": "Shared cache",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "공유 캐시"
   },
   "G02uWI": {
     "message": "Shared cache directories",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "공유 캐시 디렉터리"
   },
   "WlQcZD": {
     "message": "Show the idle ones too ({idleCount})",
@@ -4148,7 +4148,7 @@
       "idleCount": ["idleCount"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "유휴 항목도 보기 ({idleCount})"
   },
   "pdfIyL": {
     "message": "Show the other {restCount} ({restCeiling})",
@@ -4157,7 +4157,7 @@
       "restCeiling": ["restCeiling"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "나머지 {restCount}개 보기 ({restCeiling})"
   },
   "TLSF4A": {
     "message": "showing {0}",
@@ -4165,31 +4165,31 @@
       "0": ["humanName(zoomed)"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "표시 중 {0}"
   },
   "M8DQJW": {
     "message": "Silence this long and the group is asked what it is doing. Not a failure — a long compile is silent too — so this is hours rather than minutes.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이만큼 조용하면 그룹에게 뭘 하고 있는지 묻습니다. 실패가 아닙니다 — 긴 컴파일도 조용하니까요 — 그래서 분이 아니라 시간 단위입니다."
   },
   "PCSkw2": {
     "message": "Skills",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "스킬"
   },
   "1_SmjL": {
     "message": "Skills staging directory",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "스킬 스테이징 디렉터리"
   },
   "0wEveb": {
     "message": "Slice",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "슬라이스"
   },
   "NB__BG": {
     "message": "slice {id}",
@@ -4197,37 +4197,37 @@
       "id": ["id"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "슬라이스 {id}"
   },
   "7YvQJV": {
     "message": "Slice baseline was lost in rebase; showing the entire branch relative to origin/main",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "리베이스에서 슬라이스 기준이 사라졌습니다. origin/main 기준으로 브랜치 전체를 보여줍니다"
   },
   "j6GhP0": {
     "message": "Slice durations",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "슬라이스 소요 시간"
   },
   "hpEGHk": {
     "message": "slices pending",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "개 슬라이스 대기"
   },
   "SXB6Df": {
     "message": "Someone else is handling it",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "다른 사람이 처리 중"
   },
   "CmwZGb": {
     "message": "Spec",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "명세"
   },
   "HXfn_B": {
     "message": "Spent {spent} tokens against a {cap} limit. Only raising the limit moves it — \"resume\" does nothing.",
@@ -4236,55 +4236,55 @@
       "cap": ["cap"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "상한 {cap}에 {spent} 토큰을 썼습니다. 상한을 올리는 것 말고는 움직이지 않으며, \"재개\"는 아무것도 하지 않습니다."
   },
   "gJB9TK": {
     "message": "Stage durations",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "단계별 소요 시간"
   },
   "4nHCWw": {
     "message": "Standing post",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "상시 직무"
   },
   "tXkhj_": {
     "message": "Start",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시작"
   },
   "9nFRkK": {
     "message": "Start from this branch",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 브랜치에서 시작"
   },
   "JEGlfK": {
     "message": "Started",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시작됨"
   },
   "YgkVxJ": {
     "message": "Started at",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시작 시각"
   },
   "JD3In6": {
     "message": "Starting…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시작하는 중…"
   },
   "0CzbA_": {
     "message": "Starts after approval",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "승인 후 시작"
   },
   "VZbccX": {
     "message": "Step {nth}",
@@ -4292,13 +4292,13 @@
       "nth": ["nth"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{nth}단계"
   },
   "g9LjVn": {
     "message": "Steps one turn may take before it is cut off. Most turns finish in about 36; the long tail is an agent lost rather than working, and it costs the most because every step re-reads the transcript. Changing it restarts every session.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "잘리기 전까지 한 턴이 밟을 수 있는 단계 수. 대부분의 턴은 36 언저리에서 끝납니다. 긴 꼬리는 일하는 게 아니라 길을 잃은 에이전트이고, 매 단계가 트랜스크립트를 다시 읽어 가장 비쌉니다. 바꾸면 모든 세션이 재시작됩니다."
   },
   "zw03Lf": {
     "message": "Stop denying {d}",
@@ -4306,37 +4306,37 @@
       "d": ["d"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{d} 차단 해제"
   },
   "i-G7HL": {
     "message": "Stop dispatching; branch is kept but not merged. A retrospective is still required.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "더 이상 배정하지 않습니다. 브랜치는 남기되 병합하지 않으며, 회고는 여전히 필요합니다."
   },
   "lAF6km": {
     "message": "Stop here (archive)",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "여기서 멈춤 (보관)"
   },
   "Js8gEk": {
     "message": "Stop the current turn; keep changes. The next turn will be informed.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이번 턴을 멈추고 변경은 남깁니다. 다음 턴에 그 사실을 알립니다."
   },
   "NnvXp5": {
     "message": "Stopped",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "중지됨"
   },
   "wOIdBt": {
     "message": "Storage & streams",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "저장과 스트림"
   },
   "bkXHcM": {
     "message": "stored as {label}",
@@ -4344,109 +4344,109 @@
       "label": ["label"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{label}(으)로 저장됨"
   },
   "hQRttt": {
     "message": "Submit",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "제출"
   },
   "8L04Mw": {
     "message": "Submit task",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "작업 제출"
   },
   "WVzGc2": {
     "message": "Subscription",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "구독"
   },
   "2UUIn6": {
     "message": "Swap sessions when context hits this much of the window. Fallback trigger; real rotation is slice-end—clean semantic boundary, cheap handoff.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨텍스트가 창의 이 비율에 닿으면 세션을 교대합니다. 이건 보험이고, 실제 교대는 슬라이스가 끝날 때입니다 — 의미의 경계가 깔끔하고 인수인계가 쌉니다."
   },
   "xaDWAI": {
     "message": "Switch project",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "프로젝트 전환"
   },
   "hIzFSH": {
     "message": "Switch requirement",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "요건 전환"
   },
   "D-NlUC": {
     "message": "System",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시스템"
   },
   "Yf3EgL": {
     "message": "System timing",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시스템 소요시간"
   },
   "UC1Nrp": {
     "message": "Take note",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "메모하기"
   },
   "22d3SP": {
     "message": "The browser can't read this. Drag folders in instead.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "브라우저가 읽을 수 없습니다. 폴더를 끌어다 놓으세요."
   },
   "KL0N71": {
     "message": "The chosen skill is sent with this turn; it only costs for this one turn.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "고른 스킬은 이번 턴에만 실려 가고, 비용도 이 한 턴 분입니다."
   },
   "YujIH9": {
     "message": "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "유틸리티 컨테이너에서 도는 codex 리프레시 토큰 교환. 사용량 조회보다 긴 이유는 프로세스를 띄우고 OAuth 왕복을 하기 때문입니다."
   },
   "Bn1Nxe": {
     "message": "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "요건 전체가 디스패처로 돌아가 다시 파헤쳐집니다. 이 댓글이 최우선 사실이 됩니다."
   },
   "pJvSbD": {
     "message": "The last step repeats for as long as nobody answers",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "아무도 답하지 않으면 마지막 단계가 계속 반복됩니다"
   },
   "lWz20C": {
     "message": "The name of a row under Model account, never the key",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "'모델 계정'에 있는 행의 이름이지 키 자체가 아닙니다"
   },
   "tJoWaz": {
     "message": "The name of that line in 'Model account', not the key itself. Key in config is key in shell history and every backup.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "'모델 계정'에 있는 그 줄의 이름이지 키 자체가 아닙니다. 설정에 키를 적으면 셸 기록과 모든 백업에도 키가 남습니다."
   },
   "3pCONH": {
     "message": "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "'멈춤'의 나머지 절반: 같은 파일을 이만큼 연속으로 다시 쓴 경우. 수렴하는 에이전트는 이웃 파일도 건드립니다. 멈춘 에이전트는 예산이 바닥날 때까지 파일 하나만 계속 고쳐 씁니다."
   },
   "aAIBne": {
     "message": "the same ground as {others}",
@@ -4454,97 +4454,97 @@
       "others": ["others"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{others}와(과) 같은 자리"
   },
   "GbXn7n": {
     "message": "The service that launches containers",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨테이너를 띄우는 서비스"
   },
   "jFIXsB": {
     "message": "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시스템 전체에서 가장 많이 불리는 모델 호출. 순수 요약이며 판단도, 도구도, 블랙보드도 없습니다. 비싼 구독에서 가장 먼저 빼야 할 것입니다."
   },
   "2ipr2S": {
     "message": "The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 사용량 엔드포인트는 문서화되어 있지 않고, 빨리 두드리면 몇 시간씩 429를 돌려줍니다 — 게다가 당신의 /status도 같은 예산에서 씁니다. 5시간 창에서 10분이면 최악이라도 3% 오차입니다."
   },
   "FEr96N": {
     "message": "Theme",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "테마"
   },
   "Ez2cT0": {
     "message": "These paths from the card don't exist in the repo",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "카드에 적힌 이 경로들이 저장소에 없습니다"
   },
   "bW6uxF": {
     "message": "This account has no window",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 계정에는 창이 없습니다"
   },
   "y6-5EW": {
     "message": "This browser doesn't support it",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 브라우저는 지원하지 않습니다"
   },
   "50AYjp": {
     "message": "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 댓글이 최우선 사실이 되고, 요건 전체가 디스패처로 돌아가 다시 파헤쳐집니다. 코드는 브랜치에 남습니다."
   },
   "gu-D6k": {
     "message": "This log is empty",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 로그는 비었습니다"
   },
   "tERiuN": {
     "message": "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 프로세스는 우리가 띄운 게 아닙니다 — 당신이 쓰고 있는 것일 수 있습니다. 필요하면 직접 재시작하세요. 그 뒤에는 우리가 알아봅니다."
   },
   "Ap7MoR": {
     "message": "This project hasn't run any activity yet.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 프로젝트에서는 아직 아무 활동도 없었습니다."
   },
   "_BU99I": {
     "message": "This requirement has been archived or no longer exists.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 요건은 보관되었거나 더 이상 존재하지 않습니다."
   },
   "OqyUgx": {
     "message": "This requirement hasn't run any activity yet.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 요건에서는 아직 아무 활동도 없었습니다."
   },
   "QzBCQU": {
     "message": "This slice hasn't produced changes yet and has no verdict.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 슬라이스는 아직 변경을 내놓지 않았고 판정도 없습니다."
   },
   "px6rle": {
     "message": "This view crashed",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 화면이 죽었습니다"
   },
   "rTvIpI": {
     "message": "This window needs {count} buckets, more than fits",
@@ -4552,16 +4552,16 @@
       "count": ["count"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "이 구간에는 {count}개 버킷이 필요해 담기지 않습니다"
   },
   "LhMjLm": {
     "message": "Time",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시간"
   },
   "R9PvNq": {
-    "translation": "",
+    "translation": "타임아웃",
     "message": "Timeouts",
     "placeholders": {},
     "comments": []
@@ -4570,19 +4570,19 @@
     "message": "Timing for all activity on this machine, last 24h",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 기기의 모든 활동 소요 시간, 최근 24시간"
   },
   "-X1cUR": {
     "message": "Timing report cache",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "소요시간 리포트 캐시"
   },
   "rZ9HZq": {
     "message": "To do",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "할 일"
   },
   "5AQw5M": {
     "message": "to do {waiting}",
@@ -4590,109 +4590,109 @@
       "waiting": ["waiting"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "할 일 {waiting}"
   },
   "ecUA8p": {
     "message": "Today",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "오늘"
   },
   "TP9_K5": {
     "message": "Token",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "토큰"
   },
   "5gZgOo": {
     "message": "Token ceiling for one slice. Set it above your worst finished slice and below the outliers — it exists to stop an agent that is lost, not to trim a slow day. New slices only.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "슬라이스 하나의 토큰 상한. 끝까지 간 최악의 슬라이스보다는 위, 이상치보다는 아래로 두세요. 길 잃은 에이전트를 멈추기 위한 것이지, 느린 날을 깎으려는 게 아닙니다. 새 슬라이스에만 적용됩니다."
   },
   "bCeP-N": {
     "message": "Token limit per slice",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "슬라이스당 토큰 상한"
   },
   "SavWva": {
     "message": "Token refresh",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "토큰 갱신"
   },
   "JfT1QM": {
     "message": "tokens · project total",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "토큰 · 프로젝트 합계"
   },
   "ufMpSR": {
     "message": "tokens · share",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "토큰 · 비중"
   },
   "Ms3Kz5": {
     "message": "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "위에서부터 시도하며, 다른 것이 답하지 못할 때만 씁니다. 프로젝트 자신의 기준 브랜치가 우선이고 그다음이 GitHub의 default_branch입니다. 원격에 닿지 못하는 저장소가 마지막으로 기대는 곳입니다."
   },
   "KDw4GX": {
     "message": "Try again",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "다시 시도"
   },
   "t8aCdD": {
     "message": "Turn timeout",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "턴 제한 시간"
   },
   "3IqNQS": {
     "message": "Turned off, but page alerts and tab title counts still work—just no pop-ups.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "꺼져 있지만 페이지 안 알림과 탭 제목의 개수는 그대로 동작합니다 — 팝업만 안 뜹니다."
   },
   "SHTStO": {
     "message": "Turns & context",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "턴과 컨텍스트"
   },
   "T2T6vx": {
     "message": "Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "watchdog이 '멈췄다'고 판단하기까지, 아무것도 바꾸지 못한 연속 턴 수. 3보다 작으면 아직 읽고 있을 뿐인 에이전트에 발동합니다. 너무 크면 루프가 오후 내내 들키지 않고 돕니다."
   },
   "pbsQ9q": {
     "message": "Turns without progress",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "진전 없는 턴 수"
   },
   "x_GTNI": {
     "message": "Two sources only: our releases (ghcr.io/pamin-labs/…) and local builds with no registry prefix. Agents run your code inside this image, so an untrusted one hands away the boundary — and the panel cannot tell.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "출처는 둘뿐입니다: 우리 릴리스(ghcr.io/pamin-labs/…)와 레지스트리 접두사가 없는 로컬 빌드. 에이전트는 이 이미지 안에서 당신의 코드를 돌립니다. 신뢰할 수 없는 이미지는 경계 자체를 넘겨주는 것이며, 패널은 그것을 알아채지 못합니다."
   },
   "7VgwUn": {
     "message": "Type a model ID to add a row",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "모델 ID를 입력하면 행을 추가합니다"
   },
   "EUHN7i": {
     "message": "Undefined",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "정의되지 않음"
   },
   "y3j75X": {
     "message": "Under {account}, this App can see no repository at all. It may have been installed with only a few ticked.",
@@ -4700,7 +4700,7 @@
       "account": ["account"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{account}에서는 이 App이 저장소를 하나도 볼 수 없습니다. 일부만 체크한 채 설치되었을 수 있습니다."
   },
   "HkKS_w": {
     "message": "Unit for {label}",
@@ -4708,73 +4708,73 @@
       "label": ["label"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{label}의 단위"
   },
   "3FDDuB": {
     "message": "Unread digest threshold",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "안 읽음 요약 임계값"
   },
   "TlHpRw": {
     "message": "Unreadable",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "읽을 수 없음"
   },
   "ZC8_wd": {
     "message": "Update code index",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "코드 인덱스 갱신"
   },
   "ugzskn": {
     "message": "Usage not displayed",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "사용량 표시 없음"
   },
   "TIVFfj": {
     "message": "Usage read",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "사용량 조회"
   },
   "Qd3NOV": {
     "message": "Use 'defer' to archive without deleting; that keeps records",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "지우지 않고 보관하려면 '보류'를 쓰세요. 기록이 남습니다"
   },
   "M15PCh": {
     "message": "Use draft",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "초안 사용"
   },
   "BVhEN_": {
     "message": "Use this only if you can't reopen an old PR on GitHub. Use when the branch has been force-pushed or deleted: it will re-open using the current branch and rejoin the merge queue.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub에서 예전 PR을 다시 열 수 없을 때만 쓰세요. 브랜치가 force-push되었거나 삭제된 경우용입니다: 현재 브랜치로 다시 열고 병합 대기열에 복귀시킵니다."
   },
   "5SUvzT": {
     "message": "Use when the container is stuck, missing dependencies, or credentials changed. The next turn will re-clone and reinstall; the branch in the host repo stays.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "컨테이너가 멈췄거나, 의존성이 빠졌거나, 자격 증명이 바뀌었을 때 쓰세요. 다음 턴에서 다시 클론하고 다시 설치합니다. 호스트 저장소의 브랜치는 그대로입니다."
   },
   "i4-1iz": {
     "message": "Used when a project has not set its own",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "프로젝트가 따로 정하지 않았을 때 쓰입니다"
   },
   "AflkL3": {
     "message": "Valid for one year",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "1년간 유효"
   },
   "Rc58yh": {
     "message": "Valid until {0}",
@@ -4782,19 +4782,19 @@
       "0": ["clock(login.device.expiresAt)"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{0}까지 유효"
   },
   "VfbDAF": {
     "message": "View diff",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "diff 보기"
   },
   "rj9VmJ": {
     "message": "View log",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "로그 보기"
   },
   "Slm0IK": {
     "message": "waited {short}",
@@ -4802,13 +4802,13 @@
       "short": ["short"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{short} 기다림"
   },
   "uUehLT": {
     "message": "Waiting",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "대기 중"
   },
   "6JJGGH": {
     "message": "waiting {span}",
@@ -4816,241 +4816,241 @@
       "span": ["span"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{span} 대기 중"
   },
   "kHbm1D": {
     "message": "Waiting & storage",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "대기와 저장"
   },
   "x11Fa2": {
     "message": "Waiting for prior slice",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "앞 슬라이스 대기"
   },
   "N6oHir": {
     "message": "Waiting for you",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "당신 대기"
   },
   "OxAtzf": {
     "message": "Waiting for you to approve in the browser…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "브라우저에서 승인하기를 기다립니다…"
   },
   "cdTn1o": {
     "message": "Waiting for you to approve on GitHub…",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "GitHub에서 승인하기를 기다립니다…"
   },
   "WFKlDQ": {
     "message": "Waits on the world outside, and what this machine keeps",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "바깥 세상을 기다리는 시간과, 이 기기가 남기는 것"
   },
   "4mi85N": {
     "message": "Wake",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "깨우기"
   },
   "nUY40s": {
     "message": "Walk depth",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "탐색 깊이"
   },
   "H6Y-lN": {
     "message": "Walk the index tree",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "인덱스 트리 걷기"
   },
   "ik5abI": {
     "message": "Walk width",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "탐색 너비"
   },
   "Yk9Gp8": {
     "message": "Wants a count: 8M, 200k, 45 all work",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "개수를 넣으세요: 8M, 200k, 45 모두 됩니다"
   },
   "5dkBFM": {
     "message": "Wants a duration: 20 min, 45s, 3 hr all work",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시간을 넣으세요: 20 min, 45s, 3 hr 모두 됩니다"
   },
   "X7LT6N": {
     "message": "Wants a duration: 24 hr, 30 min both work",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "시간을 넣으세요: 24 hr, 30 min 둘 다 됩니다"
   },
   "vEanQX": {
     "message": "Wants a percentage between 0 and 100, like 60%",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "0에서 100 사이의 퍼센트를 넣으세요, 예: 60%"
   },
   "d8ExK5": {
     "message": "Was connected, but GitHub no longer recognizes this token",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "연결되어 있었지만 GitHub이 이 토큰을 더 이상 인정하지 않습니다"
   },
   "UK6rBV": {
     "message": "Watchdog",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "watchdog"
   },
   "7-b-jS": {
     "message": "Watchdog interval",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "watchdog 주기"
   },
   "dz3SYg": {
     "message": "Watchdog rule",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "watchdog 규칙"
   },
   "r1_h83": {
     "message": "Webhook timeout",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "웹훅 제한 시간"
   },
   "zx4BuL": {
     "message": "Week",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "주"
   },
   "JvMxE7": {
     "message": "Weight:",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "가중치:"
   },
   "-YrETt": {
     "message": "What",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "내용"
   },
   "KqKxLA": {
     "message": "What the agents write in: journals, channel messages, questions, summaries. Any language works; the list only saves typing. Code, commits, branch names, PRs and errors stay English. Changing it restarts every session in the fleet.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "에이전트가 쓸 때의 언어입니다: 일지, 채널 메시지, 질문, 요약. 어떤 언어든 됩니다 — 목록은 타이핑을 줄여줄 뿐입니다. 코드, 커밋, 브랜치 이름, PR, 오류는 영어로 유지됩니다. 바꾸면 함대의 모든 세션이 재시작됩니다."
   },
   "2JOwRq": {
     "message": "What this browser reads. What the agents write is the output language, under Models & budget — and this follows it unless you pick one here.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "이 브라우저가 읽는 언어입니다. 에이전트가 쓰는 언어는 '모델과 예산'의 대외 언어이며, 여기서 고르지 않으면 그것을 따릅니다."
   },
   "oM0GrX": {
     "message": "What's not satisfactory. Cmd+Enter to reject",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "무엇이 부족한지. Cmd+Enter로 반려"
   },
   "Wv9_yD": {
     "message": "When the limit is reached, the group pauses until you decide whether to increase it.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "상한에 닿으면 그룹은 멈추고, 올릴지 말지 당신이 정할 때까지 기다립니다."
   },
   "1IcqqV": {
     "message": "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "같은 것이 N번 나왔다면, N+1번째 불평이 아니라 프로젝트 규칙이 되어야 합니다."
   },
   "EM-n9s": {
     "message": "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "opensandbox-server가 있는 곳입니다. dns+nft 모드여야 하며, 아니면 자격 증명 주입이 조용히 실패합니다. 이 기기일 필요는 없습니다 — Tailscale 피어든 클라우드 머신이든, SDK는 HTTP로만 말합니다."
   },
   "bB-bvr": {
     "message": "Which model handles each difficulty, per CLI. Which role uses which CLI is in roles/*.yaml. Only affects newly hired agents — a model is frozen at hire time.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "어떤 난이도를 어떤 모델이 맡을지, CLI별로. 어떤 역할이 어떤 CLI를 쓰는지는 roles/*.yaml에 있습니다. 새로 뽑은 에이전트에만 적용됩니다 — 모델은 채용 시점에 고정됩니다."
   },
   "A73faa": {
     "message": "Which model runs what, and what it may spend",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "어떤 모델이 무엇을 맡고, 얼마나 쓸 수 있는지"
   },
   "K1fXIN": {
     "message": "Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "네 게이트를 모두 통과한 뒤 당신의 최종 확인을 건너뛸 수 있는 난이도. 기본은 쉬움과 보통이고, 어려운 것은 여전히 당신을 기다립니다."
   },
   "QXTfG1": {
     "message": "Which window",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "어떤 창"
   },
   "Na8oCP": {
     "message": "Who · Model",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "담당 · 모델"
   },
   "DYs__Q": {
     "message": "Why this value",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "왜 이 값인가"
   },
   "6R0Qtt": {
     "message": "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "다음 턴 시작에 읽힙니다. 스크린샷은 바로 붙여넣고, /로 스킬 삽입. Cmd+Enter로 PM에게 전송"
   },
   "bLt_0J": {
     "message": "Workflow",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "워크플로"
   },
   "pmUArF": {
     "message": "Workspace",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "워크스페이스"
   },
   "sAMeNl": {
     "message": "Write a description, break into plan cards, then come back for review.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "설명을 쓰고 계획 카드로 쪼갠 뒤, 확인을 받으러 돌아옵니다."
   },
   "pO1sKo": {
     "message": "Write the full /v1/embeddings address and remote retrieval switches on.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "/v1/embeddings 전체 주소를 적으면 원격 조회로 바뀝니다."
   },
   "0Csw8z": {
     "message": "Writes {0} into Co-Authored-By",
@@ -5058,19 +5058,19 @@
       "0": ["s.bot.name"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "Co-Authored-By에 {0}을(를) 씁니다"
   },
   "Hpf_lH": {
     "message": "Wrong direction",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "방향이 틀림"
   },
   "d0a7Yx": {
     "message": "You can edit the card and re-approve.",
     "placeholders": {},
     "comments": [],
-    "translation": ""
+    "translation": "카드를 고친 뒤 다시 승인할 수 있습니다."
   },
   "3vIJJY": {
     "message": "zoomed to {zoomLevel}×",
@@ -5078,6 +5078,6 @@
       "zoomLevel": ["zoomLevel"]
     },
     "comments": [],
-    "translation": ""
+    "translation": "{zoomLevel}×로 확대"
   }
 }

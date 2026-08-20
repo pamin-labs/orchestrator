@@ -213,13 +213,13 @@ is stale.
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | source |
 | 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
-| 日本語 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
-| 한국어 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
-| Español | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
-| Français | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
-| Deutsch | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
-| Português | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
-| Русский | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 811 |
+| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
+| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
+| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
+| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
+| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
+| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
+| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
 
 **What the orchestrator says** · 44, Chinese and English only
 
