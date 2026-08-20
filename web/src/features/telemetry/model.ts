@@ -9,6 +9,10 @@
 
 import type { Folded, Stage, TraceRow, Trend } from "../../shared/api";
 import { t } from "@lingui/core/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../../i18n";
+import { said } from "../../shared/select";
 
 /**
  * One frame of the flamegraph: a name, what it cost, and what it called.
@@ -119,22 +123,22 @@ export function verdict(split: StageSplit): Verdict | null {
  * through to the identifier** — the set of names grows every time somebody adds a
  * stage, and a missing entry must degrade to a name the reader can search for.
  */
-const HUMAN: Record<string, string> = {
-  "sandbox.create": "开一个新环境",
-  "sandbox.init": "环境装配",
-  turn: "跑一轮",
-  "turn.prepare": "准备这一轮",
-  "turn.provider": "模型在想",
-  "turn.checkpoint": "存一次档",
-  "job watchdog": "例行巡检",
-  "job agent_turn": "跑一轮",
-  "watchdog.repo_map": "更新代码索引",
-  "watchdog.turn_timeout": "查有没有卡住的轮次",
-  "GET /api/v1/auth/github": "连 GitHub",
+const HUMAN: Record<string, MessageDescriptor> = {
+  "sandbox.create": msg`Create new sandbox`,
+  "sandbox.init": msg`Sandbox setup`,
+  turn: msg`Run one turn`,
+  "turn.prepare": msg`Prepare this turn`,
+  "turn.provider": msg`Model processing`,
+  "turn.checkpoint": msg`Save checkpoint`,
+  "job watchdog": msg`Routine watchdog`,
+  "job agent_turn": msg`Run one turn`,
+  "watchdog.repo_map": msg`Update code index`,
+  "watchdog.turn_timeout": msg`Check for stuck turns`,
+  "GET /api/v1/auth/github": msg`Connect GitHub`,
 };
 
 /** The words for a span name, or the span name when nobody has written any. */
-export const humanName = (id: string): string => HUMAN[id] ?? id;
+export const humanName = (id: string): string => said(HUMAN[id], id);
 
 /** Whether this name has words of its own, and therefore an identifier worth keeping on hover. */
 export const isRenamed = (id: string): boolean => id in HUMAN;
@@ -146,8 +150,8 @@ export const isRenamed = (id: string): boolean => id in HUMAN;
  * wants to know what usually happens and what happens on a bad day, and those
  * are the words for it.
  */
-export const P50_LABEL = "一半的情况";
-export const P95_LABEL = "最慢的那几次";
+export const P50_LABEL = msg`p50`;
+export const P95_LABEL = msg`p95`;
 
 /**
  * What kind of work a span name is, from its own prefix.
@@ -157,17 +161,17 @@ export const P95_LABEL = "最慢的那几次";
  * names already encode the kind. The fallback bucket is part of the design — a
  * span with no prefix at all still has to land somewhere a reader can find it.
  */
-const KIND_NAMES: Record<string, string> = {
-  watchdog: "巡检规则",
-  sandbox: "容器操作",
-  git: "代码仓库",
-  github: "GitHub",
-  turn: "跑一轮",
-  job: "后台任务",
-  index: "代码索引",
-  lease: "借用资源",
-  gate: "闸门检查",
-  pr: "合并请求",
+const KIND_NAMES: Record<string, MessageDescriptor> = {
+  watchdog: msg`Watchdog rule`,
+  sandbox: msg`Sandbox operation`,
+  git: msg`Code repository`,
+  github: msg`GitHub`,
+  turn: msg`Run one turn`,
+  job: msg`Background job`,
+  index: msg`Code index`,
+  lease: msg`Resource lease`,
+  gate: msg`Gate check`,
+  pr: msg`Pull request`,
 };
 
 /** HTTP spans are named `METHOD /route`, which is a prefix of a different shape. */
@@ -179,7 +183,7 @@ export function spanKind(name: string): { key: string; label: string } {
   const label = KIND_NAMES[prefix];
   // A prefix nobody has named keeps its own, so a new family of spans is its own
   // group on the day it ships rather than being swept into 其他.
-  if (label) return { key: prefix, label };
+  if (label) return { key: prefix, label: i18n._(label) };
   return name.includes(".") ? { key: prefix, label: prefix } : { key: "other", label: t`Other` };
 }
 

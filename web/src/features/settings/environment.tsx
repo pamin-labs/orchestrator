@@ -14,6 +14,9 @@ import { ImageRow } from "../project/view";
 import type { AuthRow, HostCheck } from "./auth";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../../i18n";
 
 /** Can this machine build a sandbox at all. Four facts, one line each. */
 export function EnvPane({ checks }: { checks: HostCheck[] }) {
@@ -85,12 +88,12 @@ export const ServerInfoSchema: z.ZodType<InferResponseType<(typeof api)["sandbox
 export type ServerInfo = z.infer<typeof ServerInfoSchema>;
 
 /** One line each, because the difference between them is what to do next. */
-const SERVER_STATE: Record<ServerInfo["state"], { zh: string; ok: boolean }> = {
-  ours: { zh: "在跑，我们起的", ok: true },
-  started: { zh: "刚起好", ok: true },
-  theirs: { zh: "在跑，不是我们起的，直接用", ok: true },
-  stuck: { zh: "在跑，但我们驱动不了", ok: false },
-  down: { zh: "没在跑", ok: false },
+const SERVER_STATE: Record<ServerInfo["state"], { said: MessageDescriptor; ok: boolean }> = {
+  ours: { said: msg`Running, started by us`, ok: true },
+  started: { said: msg`Just started`, ok: true },
+  theirs: { said: msg`Running, not started by us; using as-is`, ok: true },
+  stuck: { said: msg`Running, but we can't control it`, ok: false },
+  down: { said: msg`Not running`, ok: false },
 };
 
 /**
@@ -164,7 +167,7 @@ function StatusSummary({ server }: { server: ServerInfo | null }) {
       ) : (
         <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-accent" />
       )}
-      <span className={cn("text-body", !state.ok && "text-accent")}>{state.zh}</span>
+      <span className={cn("text-body", !state.ok && "text-accent")}>{i18n._(state.said)}</span>
     </>
   );
 }
@@ -181,7 +184,7 @@ function ServerDetails({ server }: { server: ServerInfo | null }) {
   const ident = serverIdentity(server);
   return (
     <>
-      <ServerWhy why={server.why} state={SERVER_STATE[server.state].zh} />
+      <ServerWhy why={server.why} state={i18n._(SERVER_STATE[server.state].said)} />
       <ServerIdentity value={ident} />
       <ServerLog log={server.log} />
     </>

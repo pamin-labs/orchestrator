@@ -39,6 +39,9 @@ import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../../i18n";
 
 const AuthResponseSchema: z.ZodType<InferResponseType<typeof api.auth.$get, 200>> = z.object({
   runtimes: z.array(AuthRowSchema),
@@ -76,25 +79,25 @@ const EMPTY_PREFLIGHT = { checks: [] as HostCheck[] };
 /** Host facts only. The credential rows are the 账号 section, said once. */
 const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
 
-const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: true }> = [
+const NAV: Array<{ key: Section; label: MessageDescriptor; icon: typeof KeyRound; project?: true }> = [
   // 凭据 named the storage, not the thing: what is picked here is which account
   // the fleet works as, and the boss thinks of it as an account. 模型账号 rather
   // than 模型, because which model runs a turn is `roles/*.yaml` and
   // `difficultyModel` — one word for two things sends people here for the wrong
   // control.
-  { key: "cred", zh: "模型账号", icon: KeyRound },
+  { key: "cred", label: msg`Model account`, icon: KeyRound },
   // Its own section, not a row in 模型账号. Those are interchangeable, metered,
   // one per role and about to be six; this is one connection, not metered, with
   // a two-step flow and a repository list. Named GitHub rather than 代码源
   // because there is only GitHub, and the day there is a second one, renaming a
   // nav item is one string.
-  { key: "github", zh: "GitHub", icon: GitBranch },
+  { key: "github", label: msg`GitHub`, icon: GitBranch },
   // What this machine has, which is a different question from how a container is
   // configured: docker and uv are facts about the host, read-only, and the answer
   // to "why will nothing start". Folded into 沙盒 once and taken back out — that
   // pane is about the server and its defaults, and a prerequisite is not a
   // setting.
-  { key: "host", zh: "环境", icon: MonitorCog },
+  { key: "host", label: msg`Environment`, icon: MonitorCog },
   // The server *and* what it is told to build, in one pane. These were two
   // sections, and the comment on the second one already said it belonged "under
   // 沙盒服务器, the same subject one level down" — while the rendering put five
@@ -102,29 +105,29 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   // `sandbox.image` were knob rows *and* purpose-built rows here, so one value
   // had two controls in two places, and the knob version of the image is a plain
   // text box while this one lists what the registry actually has.
-  { key: "server", zh: "沙盒", icon: Server },
+  { key: "server", label: msg`Sandbox`, icon: Server },
   // Not a setting, and it sits here anyway. It was an accordion at the foot of
   // the landing page, which is the page for what waits on the boss — and how
   // long `GET /state` took never waits on anybody. This dialog is where you come
   // to look at the machine and then leave, which is exactly the visit this pane
   // gets: once, on the day the panel feels slow.
-  { key: "timing", zh: "系统耗时", icon: Activity },
+  { key: "timing", label: msg`System timing`, icon: Activity },
   // This machine's skills, not this project's: the same staged directory is
   // mounted into every group of every project.
-  { key: "skills", zh: "技能", icon: Sparkles },
+  { key: "skills", label: msg`Skills`, icon: Sparkles },
   // The operating knobs, which used to be a yaml inside the release tarball.
   // Three sections rather than one, because forty rows in one list is a list
   // nobody reads to the bottom of — and the three answer different questions:
   // how much runs at once, what it costs, how long one turn may take.
-  { key: "sched", zh: "调度", icon: Gauge },
-  { key: "models", zh: "模型与预算", icon: Coins },
-  { key: "turn", zh: "turn 与上下文", icon: Timer },
-  { key: "prefs", zh: "偏好", icon: SlidersHorizontal },
-  { key: "gates", zh: "闸门", icon: ListChecks, project: true },
-  { key: "sandbox", zh: "沙盒", icon: Box, project: true },
+  { key: "sched", label: msg`Scheduling`, icon: Gauge },
+  { key: "models", label: msg`Models & budget`, icon: Coins },
+  { key: "turn", label: msg`Turns & context`, icon: Timer },
+  { key: "prefs", label: msg`Preferences`, icon: SlidersHorizontal },
+  { key: "gates", label: msg`Gates`, icon: ListChecks, project: true },
+  { key: "sandbox", label: msg`Sandbox`, icon: Box, project: true },
   // Last, alone, and the only irreversible thing in this dialog. Nowhere near
   // the switches somebody flips while working.
-  { key: "remove", zh: "移除项目", icon: Trash2, project: true },
+  { key: "remove", label: msg`Remove project`, icon: Trash2, project: true },
 ];
 
 const PROJECT_SECTIONS = new Set<Section>(["gates", "sandbox", "remove"]);
@@ -180,7 +183,7 @@ export function SettingsDialog({
                      rounded-xl border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in
                      max-[44rem]:grid-cols-1 max-[44rem]:grid-rows-[auto_minmax(0,1fr)]"
         >
-          <Dialog.Title className="sr-only">{NAV.find((n) => n.key === here)!.zh}</Dialog.Title>
+          <Dialog.Title className="sr-only">{i18n._(NAV.find((n) => n.key === here)!.label)}</Dialog.Title>
           <Dialog.Close
             aria-label={t`Close`}
             className="absolute top-3 right-3 grid size-6.5 cursor-pointer place-items-center rounded-md
@@ -703,7 +706,7 @@ function Item({
   nag,
   go,
 }: {
-  n: { key: Section; zh: string; icon: typeof KeyRound };
+  n: { key: Section; label: MessageDescriptor; icon: typeof KeyRound };
   on: boolean;
   nag: boolean;
   go: () => void;
@@ -723,7 +726,7 @@ function Item({
       )}
     >
       <Icon size={14} strokeWidth={1.75} className="shrink-0" />
-      <span className="truncate">{n.zh}</span>
+      <span className="truncate">{i18n._(n.label)}</span>
       <span className="grow" />
       {nag && <i className="size-1.5 shrink-0 rounded-full bg-accent" aria-label={t`Waiting for you`} />}
     </button>

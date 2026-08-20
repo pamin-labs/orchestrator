@@ -33,6 +33,9 @@ import {
 import { COUNT_UNITS, countOf, splitCount } from "./units";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../../i18n";
 
 export const PERCENT = ["%"] as const;
 
@@ -629,10 +632,10 @@ export function Embedding({
  * anything worth being notified about gets 拒绝, and that decision is sticky.
  */
 /** What each answer means, and where the reader has to go to change it. */
-const NOTIFY_SAID: Record<NotifyState, string> = {
-  unsupported: "这个浏览器不支持",
-  granted: "浏览器已放行。面板在后台也会弹，浏览器整个关掉才收不到——那时重新打开会补上。",
-  denied: "被浏览器拒了。要开的话在地址栏左边的站点设置里改，然后刷新。",
+const NOTIFY_SAID: Record<NotifyState, MessageDescriptor | ""> = {
+  unsupported: msg`This browser doesn't support it`,
+  granted: msg`Browser allowed it. The panel will still notify in the background; only closing the entire browser stops notifications—reopen it to catch up.`,
+  denied: msg`Browser denied it. To enable, change it in site settings (left of address bar), then refresh.`,
   // The only state with anything left to press.
   ask: "",
 };
@@ -650,7 +653,8 @@ export function Permission() {
   const supported = typeof Notification !== "undefined";
   const [state, setState] = useState(supported ? Notification.permission : "denied");
   const [want, setWant] = useState(notifyWanted);
-  const said = NOTIFY_SAID[notifyState(supported, state)];
+  const message = NOTIFY_SAID[notifyState(supported, state)];
+  const said = message === "" ? "" : i18n._(message);
   return (
     <>
       <Field aria-labelledby="notify-perm">

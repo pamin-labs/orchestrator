@@ -5,6 +5,7 @@ import { activityOf } from "../../shared/activity";
 import { gates, heldApproved, STOPS } from "../../shared/select";
 import { waited } from "../../shared/format";
 import { t } from "@lingui/core/macro";
+import { i18n } from "../../i18n";
 
 /**
  * What the requirement page decides, with no JSX around it.
@@ -124,7 +125,7 @@ export const showTasks = (tasks: State["tasks"], s: Slice): boolean =>
 
 /** The recorded gate track, plus the boss's own column — not a gate, but read as one. */
 export const tickStops = (waiting: boolean): [string, string][] => [
-  ...STOPS,
+  ...STOPS.map(([key, label]): [string, string] => [key, i18n._(label)]),
   ["boss", waiting ? t`Pending` : t`Accept`],
 ];
 

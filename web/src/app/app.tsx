@@ -2,7 +2,7 @@ import { PanelRight, SlidersHorizontal } from "lucide-react";
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
-import { countWaiting, STATUS_ZH } from "../shared/select";
+import { countWaiting, said, STATUS_LABEL } from "../shared/select";
 import { useOrch } from "../shared/api";
 import { applyLocale } from "../i18n";
 import { cn } from "../ui/cn";
@@ -64,6 +64,7 @@ import {
 } from "../features/navigation/model";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
+import { i18n } from "../i18n";
 
 type UiKey = "adding" | "pickProject" | "pickReq" | "picking" | "side";
 
@@ -324,7 +325,7 @@ export function App() {
         label={t`Switch requirement`}
         placeholder={t`Requirement name…`}
         empty={t`No other requirements for this project`}
-        items={groups.map((group) => requirementItem(group, STATUS_ZH[group.status] ?? group.status))}
+        items={groups.map((group) => requirementItem(group, said(STATUS_LABEL[group.status], group.status)))}
         onPick={(id) => go({ view: "req", g: id })}
       />
       {choose(
@@ -390,7 +391,7 @@ export function App() {
                     viewClass(viewActive(view, key)),
                   )}
                 >
-                  {label}
+                  {i18n._(label)}
                 </button>
               ))}
             </span>,

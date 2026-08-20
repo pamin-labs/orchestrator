@@ -2,7 +2,13 @@ import type { Escalation, Group, Slice, State } from "./api";
 import { githubRepo } from "./github";
 import { z } from "zod";
 import { valueOr } from "../../../src/contracts/json.ts";
-import { t } from "@lingui/core/macro";
+import { msg, t } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../i18n";
+
+/** A label from a table, or the raw value when the table has no row for it —
+ *  a state the server added and this build has never heard of. */
+export const said = (m: MessageDescriptor | undefined, fallback: string): string => (m ? i18n._(m) : fallback);
 
 const OwnsSchema = z.array(z.string());
 const GatesSchema = z.record(z.string(), z.string());
@@ -16,23 +22,28 @@ const GatesSchema = z.record(z.string(), z.string());
 export const heldApproved = (g: Group) => g.status === "DRAFT" && !!g.approved_at;
 
 export const statusLabel = (g: Group) =>
-  heldApproved(g) ? t`Approved · Awaiting boundary` : (STATUS_ZH[g.status] ?? g.status);
+  heldApproved(g) ? t`Approved · Awaiting boundary` : said(STATUS_LABEL[g.status], g.status);
 
-export const STATUS_ZH: Record<string, string> = {
-  PLANNING: "拆解中",
-  DRAFT: "待批",
-  RUNNING: "在跑",
-  PAUSING: "正在停",
-  PAUSED: "已暂停",
-  PARKED: "已封存",
-  PR_OPEN: "PR 开着",
-  DISSOLVED: "已解散",
+/**
+ * `msg` at module scope, `i18n._` at call scope. A descriptor is locale-free
+ * data, so a table built once at import stays right after the locale changes;
+ * a resolved string would freeze at whatever was active on first evaluation.
+ */
+export const STATUS_LABEL: Record<string, MessageDescriptor> = {
+  PLANNING: msg`Planning`,
+  DRAFT: msg`Pending review`,
+  RUNNING: msg`Running`,
+  PAUSING: msg`Pausing`,
+  PAUSED: msg`Paused`,
+  PARKED: msg`Archived`,
+  PR_OPEN: msg`PR open`,
+  DISSOLVED: msg`Dissolved`,
 };
-export const WHERE_ZH: Record<string, string> = {
-  pm: "PM 处理中",
-  architect: "Architect 处理中",
-  cos: "CoS 处理中",
-  boss: "待你决策",
+export const WHERE_LABEL: Record<string, MessageDescriptor> = {
+  pm: msg`PM working`,
+  architect: msg`Architect working`,
+  cos: msg`CoS working`,
+  boss: msg`Awaiting your decision`,
 };
 /**
  * The layers actually recorded, in order.
@@ -41,11 +52,11 @@ export const WHERE_ZH: Record<string, string> = {
  * and taught the boss to ignore the row. It is back because `orch task done --review`
  * now records it — docs/project/plan.md §7 layer 1, the only one where the writer is the reviewer.
  */
-export const STOPS: [string, string][] = [
-  ["self", "自评"],
-  ["reconcile", "对账"],
-  ["gate", "测试"],
-  ["qa", "QA"],
+export const STOPS: [string, MessageDescriptor][] = [
+  ["self", msg`Self-review`],
+  ["reconcile", msg`Reconciliation`],
+  ["gate", msg`Gate`],
+  ["qa", msg`QA`],
 ];
 
 export const owns = (g: Group) => valueOr(g.owns_json, OwnsSchema, []);
@@ -142,9 +153,9 @@ export const asksOf = (st: State, id: number): Escalation[] =>
 export const mineOf = (asks: Escalation[]): Escalation[] => asks.filter((e) => e.chain_state === "boss");
 
 /** What a question is about, in the boss's words. `other` gets no label. */
-export const KIND_ZH: Record<string, string> = {
-  env: "环境",
-  spec: "验收口径",
-  boundary: "边界",
-  design: "设计取舍",
+export const KIND_LABEL: Record<string, MessageDescriptor> = {
+  env: msg`Environment`,
+  spec: msg`Acceptance criteria`,
+  boundary: msg`Boundary`,
+  design: msg`Design choice`,
 };

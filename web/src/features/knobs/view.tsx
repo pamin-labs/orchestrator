@@ -50,6 +50,9 @@ import { ConfigSchema, SettingWriteSchema, type SettingWrite } from "../../../..
 import type { InferResponseType } from "hono/client";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../../i18n";
 
 /**
  * The operating knobs, as rows.
@@ -91,10 +94,15 @@ export type KnobSection = "sched" | "models" | "turn" | "boxdefaults" | "notify"
  */
 export const KNOBS_ELSEWHERE = new Set(["sandbox.server", "sandbox.image"]);
 
-export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] }> = {
+/**
+ * `msg` at module scope, `i18n._` at call scope. A descriptor is locale-free
+ * data, so a table built once at import is still right after the locale changes
+ * — which a resolved string would not be: it freezes at first evaluation.
+ */
+export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: MessageDescriptor; paths: string[] }> = {
   sched: {
-    zh: "调度",
-    note: "同时开工多少、谁等谁",
+    title: msg`Scheduling`,
+    note: msg`Concurrent work limits and queuing`,
     paths: [
       "maxGroups",
       "leaseSlots",
@@ -118,8 +126,8 @@ export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: st
     ],
   },
   models: {
-    zh: "模型与预算",
-    note: "花钱的那几个旋钮",
+    title: msg`Models & budget`,
+    note: msg`Cost-controlling settings`,
     paths: [
       "difficultyModel",
       "indexModel.runtime",
@@ -137,8 +145,8 @@ export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: st
     ],
   },
   turn: {
-    zh: "turn 与上下文",
-    note: "一轮能跑多久、能读多少",
+    title: msg`Turns & context`,
+    note: msg`Turn duration and context limits`,
     paths: [
       "turnTimeoutMs",
       "maxTurnsPerJob",
@@ -156,11 +164,11 @@ export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: st
     ],
   },
   waits: {
-    zh: "等待与重试",
+    title: msg`Waiting and retries`,
     // Everything here bounds a wait on something outside this process: GitHub, a
     // container, the network. They were eighteen literals across seven files, and
     // the only ones anybody could change were the three turn budgets.
-    note: "等外面的东西多久算超时",
+    note: msg`How long to wait on something outside before calling it a timeout`,
     paths: [
       "timeouts.githubApiMs",
       "timeouts.credentialCheckMs",
@@ -176,13 +184,13 @@ export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: st
     ],
   },
   notify: {
-    zh: "通知",
-    note: "有事叫你的方式",
+    title: msg`Notifications`,
+    note: msg`How to alert you`,
     paths: ["notifyWebhook", "timeouts.webhookMs", "intervals.notifyBatchMs", "intervals.notifyBackoffMs"],
   },
   boxdefaults: {
-    zh: "沙盒默认值",
-    note: "没自己设的项目用这些",
+    title: msg`Sandbox defaults`,
+    note: msg`Used when a project has not set its own`,
     // Not `sandbox.server` or `sandbox.image`: the pane this section renders
     // inside owns both, with an address row that validates and an image row that
     // lists what the registry has. A knob row for the image is a plain text box,
@@ -200,141 +208,145 @@ export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: st
  * that wraps to three lines pushes its own value out of line with the value
  * above it, which is the whole reason the values are in a column.
  */
-const COPY: Record<string, { zh: string; why?: string; ph?: string }> = {
+/** `ph` is either — `8Gi` and `127.0.0.1:8080` are examples of the value and
+ *  stay verbatim, while "Empty = 1/4 of host cores" is a sentence. */
+const COPY: Record<string, { label: MessageDescriptor; why?: MessageDescriptor; ph?: MessageDescriptor | string }> = {
   maxGroups: {
-    zh: "同时开工的需求数",
-    why: "先撞上的天花板通常不是这个数：两个组不能拥有重叠路径，所以可分的模块少的项目达不到 10；再就是账号自己的限流。调高了记得看成本页的 cache 命中率——同一个订阅上并发多，节流最先在那里现形。",
+    label: msg`Concurrent jobs`,
+    why: msg`The first ceiling usually isn't this: two groups can't own overlapping paths, so low-modularity projects can't reach 10; then account-level rate limits. Raising this, watch cache hit rate on the cost page—high concurrency on one subscription throttles there first.`,
   },
   leaseSlots: {
-    zh: "闸门并发",
-    why: "一个 lease 是一次真的编译或测试。十个同时跑会把机器拖垮，而且卡死的 lease 会占着槽位到超时。browser 单独给 1，因为每个都是一个真的 Chromium——不分池的话所有闸门都得排在一次截图后面。",
+    label: msg`Gate concurrency`,
+    why: msg`A lease is real compilation or testing. Ten concurrent will trash the machine; dead leases hold slots until timeout. Browser gets 1 alone—each is a real Chromium—or all gates queue behind one screenshot.`,
   },
   watchdogIntervalMs: {
-    zh: "看门狗周期",
-    why: "确定性规则多久跑一遍。也是没有显式 tick 的入队要等多久才被派发。",
+    label: msg`Watchdog interval`,
+    why: msg`How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch.`,
   },
   autoAdvance: {
-    zh: "批了就往下做",
-    why: "关掉的话一个组做完一片就停到早上，等于放弃了这套系统存在的理由。代价说清楚：某一片方向错了，后面几片是在它基础上做的——你退回那一片时全组会停下并说明，而不是悄悄在已完成的工作底下改地基。",
+    label: msg`Auto-advance when approved`,
+    why: msg`Disabled: a group finishes a slice and stops until morning, defeating the whole purpose of this system. Cost stated clearly: if a slice goes wrong, the next ones are built on it—when you revert that slice, the whole group pauses and explains, not silently under-rewriting completed work.`,
   },
   autoAcceptTiers: {
-    zh: "自动查收",
-    why: "四道闸（自评 / 对账 / 跑测试 / QA）全过之后，省掉的是第五层「你亲自看一眼」。默认 trivial 和 normal，hard 仍然等你——那一眼在最便宜的两档上最不值钱。",
+    label: msg`Auto-accept tiers`,
+    why: msg`After passing all four gates (self-review / audit / test run / QA), the fifth—your manual eye—is skipped. Defaults to trivial and normal; hard still waits for you. That glance is least valuable on the two cheapest tiers.`,
   },
   parkAfterPausedMs: {
-    zh: "暂停多久后封存",
-    why: "封存会退掉沙盒。挂起太久的组占着并发名额而没人在推它。",
+    label: msg`Archive after paused`,
+    why: msg`Archive releases the sandbox. Groups parked too long hog concurrency slots for nothing.`,
   },
   difficultyModel: {
-    zh: "难度 → 模型",
-    why: "Dispatcher 给每片打难度标签，这张表把标签换成模型。哪个角色用哪个 CLI 写在 roles/*.yaml，这里只管「那个 CLI 上，这个难度用哪个模型」。改了只影响之后新雇的 agent——模型在雇的时候就冻进 agent 行了。",
+    label: msg`Difficulty → Model`,
+    why: msg`Dispatcher tags each slice; this table maps tags to models. Which CLI role uses which is in roles/*.yaml; here we choose model per difficulty per CLI. Changes only affect newly hired agents—model is frozen at hire time.`,
   },
   "embedding.mode": {
-    zh: "向量检索",
-    why: "本地还是远程。今天两者都不接检索——ADR 031 实测拒绝了向量：同语言内排序是对的，跨语言时问题所在语言的一段无关文字会盖过另一种语言里真正相关的那段，而跨语言正是这个功能唯一存在的理由。它的重开条件是一条能跑的检查（`bun run embedding:check`），而这条检查的远程那一半跑不了，因为它需要你自己选的 endpoint。这个开关就是为了让那个拒绝可以被证伪。远程会把语料发出去，而语料里有你写的需求和验收标准——所以默认是本地，切远程是一次决定。",
+    label: msg`Embedding mode`,
+    why: msg`Local or remote. Today neither accepts retrieval—ADR 031 field-tested rejected vectors: same-language ranking works, cross-language fails when unrelated text in one language covers truly relevant text in another, and cross-language is the only reason this exists. Reopening condition is a runnable check (bun run embedding:check), and its remote half won't run—it needs an endpoint you pick. This switch lets that rejection be disproven. Remote sends corpus, corpus holds your requirements and acceptance criteria—default is local; going remote is a decision.`,
   },
   "embedding.endpoint": {
-    zh: "远程 endpoint",
-    why: "OpenAI 形状的 /v1/embeddings 完整地址。写全而不是只写主机名，因为「这家用哪个路径」是个只能靠猜的问题。仅在模式为远程时使用。",
+    label: msg`Remote endpoint`,
+    why: msg`Full /v1/embeddings address, OpenAI-shaped. Write full, not just hostname—which path a provider uses is pure guesswork. Used only when mode is remote.`,
   },
   "embedding.credential": {
-    zh: "远程凭据名",
-    why: "「模型账号」里那一行的名字，不是密钥本身。密钥写进配置文件就等于写进 shell 历史和它的每一份备份里。",
+    label: msg`Remote credential name`,
+    why: msg`The name of that line in 'Model account', not the key itself. Key in config is key in shell history and every backup.`,
   },
   "indexModel.runtime": {
-    zh: "索引模型",
-    why: "全系统调用最频繁的一个模型调用：纯摘要、不做决策、不用工具、不碰黑板。第一个该从贵订阅上挪走的就是它。",
+    label: msg`Index model`,
+    why: msg`The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription.`,
   },
   contextWindow: {
-    zh: "上下文窗口",
-    why: "轮换 session 的分母。两个 CLI 在 turn 里都会报真实值，那个值优先；这张表管的是一个 session 的第一个 turn。写死成 200k 的那阵子，强模型一直在 1M 窗口的 12% 处轮换，每轮换一次就扔掉一次花钱建起来的缓存前缀。",
+    label: msg`Context window`,
+    why: msg`The denominator for session rotation. Both CLI agents report real values in a turn, and that takes priority; this table manages the first turn of a session. When we pinned 200k, strong models rotated constantly in the 12% of a 1M window, discarding built-up cache prefix each time.`,
   },
   sliceBudgetTokens: {
-    zh: "每片 token 上限",
-    why: "取自本仓库 16 个真实切片：trivial 均值 4.0M（有一个 12.0M 跑飞的），normal 均值 7.3M 尾部 16.1M。卡在「跑完的最坏一片」之上、「跑飞那一片」之下——这个上限是给已经迷路的 agent 用的，不是给今天状态不好的那个。改了只影响新切片。",
+    label: msg`Token limit per slice`,
+    why: msg`From 16 real slices here: trivial average 4.0M (one outlier 12.0M), normal average 7.3M, tail 16.1M. Cap above 'worst finished slice', below 'the outlier'—this ceiling is for already-lost agents, not today's bad run. Changes affect new slices only.`,
   },
   language: {
-    zh: "对外语言",
-    why:
-      "管 journal / 频道消息 / 问你的问题 / 状态摘要。这些都是 agent 写的，所以写什么语言都行——列表只是省打字，不是能选的全部。" +
-      "代码、commit message、分支名、PR、错误信息永远是英文。" +
-      "orchestrator 自己那二十几条状态文案只有中文和英文两套，别的语言它们会退回英文——agent 写的东西不受影响。" +
-      "改这一项会让全舰队轮换一次 session——它在缓存前缀里。",
+    label: msg`Output language`,
+    why: msg`Governs journals, channel messages, the questions it asks you, and status summaries. An agent writes those, so any language works — the list only saves typing, it is not the set. Code, commit messages, branch names, PRs and error messages stay English. The orchestrator's own two dozen status lines exist in Chinese and English only; any other language falls back to English, which does not affect what the agents write. Changing this rotates every session in the fleet — it is part of the cache prefix.`,
   },
   turnTimeoutMs: {
-    zh: "单轮墙钟上限",
-    why: "超过就由看门狗打断。实测最长的一次单轮是 8.2 分钟。",
+    label: msg`Turn timeout`,
+    why: msg`Exceeded, watchdog kills it. Real max single-turn was 8.2 minutes.`,
   },
   maxTurnsPerJob: {
-    zh: "单轮最多几步",
-    why: "实测 259 个真实 turn：中位数 36 步，p90 是 93，最大 144——而超过 60 步的那 23% 吃掉了整个 cache-read 账单的 59%，因为每一步都要重读整条 transcript。36 是活儿，尾巴是一个已经迷路、正在 grep 的 agent。砍尾巴不动中位数。改这一项会让全舰队轮换一次 session。",
+    label: msg`Max steps per turn`,
+    why: msg`Real data: 259 turns, median 36 steps, p90 93, max 144. The 23% over 60 steps ate 59% of the cache-read bill, because every step re-reads the full transcript. 36 is work; the tail is an agent lost, grepping. Cut the tail, median doesn't move. Changing this rotates the whole fleet through a session.`,
   },
   sessionRotateFraction: {
-    zh: "换会话的水位",
-    why: "上下文用到窗口的这么多就换一个会话。兜底触发器，真正的轮换点是切片做完——那是个干净的语义边界，交接也便宜。",
+    label: msg`Session rotation threshold`,
+    why: msg`Swap sessions when context hits this much of the window. Fallback trigger; real rotation is slice-end—clean semantic boundary, cheap handoff.`,
   },
   ctxBudgetChars: {
-    zh: "ctx 答案上限",
-    why: "约等于 4k token。这个答案会落进 transcript，而 transcript 这个会话剩下的每一轮都要重读一遍——所以慷慨的答案在问题被回答完很久之后还在收费。",
+    label: msg`Context response limit`,
+    why: msg`Roughly 4k token. This answer lands in the transcript, and every remaining turn in the session re-reads it—so a generous answer keeps billing long after the question is answered.`,
   },
-  unreadDigestThreshold: { zh: "未读摘要条数", why: "一轮最多把多少条频道消息塞进 delta。" },
+  unreadDigestThreshold: {
+    label: msg`Unread digest threshold`,
+    why: msg`Max channel messages to cram into one delta per turn.`,
+  },
   feedbackSedimentThreshold: {
-    zh: "几次抱怨变规则",
-    why: "同一件事说到第 N 次，它就该是项目的一条规则，而不是第 N+1 次抱怨。",
+    label: msg`Feedback threshold to become a rule`,
+    why: msg`When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint.`,
   },
-  gateRetries: { zh: "闸门重试次数", why: "同一片连着几次没过就升级给人，而不是一直重试同一条路。" },
+  gateRetries: {
+    label: msg`Gate retries`,
+    why: msg`After a slice fails several times straight, escalate to a person instead of retrying the same path.`,
+  },
   leaseTimeoutMs: {
-    zh: "单条闸门上限",
-    why: "大项目的一次编译是小时级；完全没有上限的话，一个挂死的 build 会永远占着 lease 槽位，而槽位是全局的、少的——一条卡死的命令能让整个舰队再也过不了闸门。",
+    label: msg`Lease timeout`,
+    why: msg`Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates.`,
   },
   installTimeoutMs: {
-    zh: "装依赖上限",
-    why: "和 lease 同一个量级，因为是同一类东西——真的在编译。卡太紧的失败长得像「这个项目坏了」而不像「超时了」，而组在两种情况下都一样卡住。",
+    label: msg`Install timeout`,
+    why: msg`Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way.`,
   },
   "sandbox.server": {
-    zh: "沙盒服务器",
+    label: msg`Sandbox server`,
     ph: "127.0.0.1:8080",
-    why: "opensandbox-server 在哪。必须是 dns+nft 模式，否则凭据注入静默失效。它不一定在这台机器上——Tailscale 上的一台或者一台云机器都行，SDK 只跟它说 HTTP。",
+    why: msg`Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP.`,
   },
   "sandbox.image": {
-    zh: "默认镜像",
-    why: "只认两个来源：我们发布的 ghcr.io/pamin-labs/…，和没有 registry 前缀的本机 build。这里面跑的是 agent，而 agent 手里有你的代码——换一个来路不明的镜像就是把整条边界交给别人，而且从面板上看不出任何异常。",
+    label: msg`Default image`,
+    why: msg`Only two sources: our releases (ghcr.io/pamin-labs/…) and local builds without registry prefix. Agents run here with your code—swap in an untrusted image and you've handed the boundary to someone else, invisibly from the panel.`,
   },
   "sandbox.cpu": {
-    zh: "CPU",
-    ph: "留空 = 宿主核数的 1/4",
-    why: '留空 = 宿主核数的 1/4。SDK 自己的默认值是 "1"，这个仓库的 tsc --noEmit 因此要 7.6 秒（6 核是 3.2 秒）。',
+    label: msg`CPU`,
+    ph: msg`Empty = 1/4 of host cores`,
+    why: msg`Empty = 1/4 of host cores. SDK's own default is 1; tsc --noEmit here takes 7.6s (3.2s on 6 cores).`,
   },
-  "sandbox.memory": { zh: "内存", ph: "8Gi", why: "每个沙盒的内存上限。" },
+  "sandbox.memory": { label: msg`Memory`, ph: "8Gi", why: msg`Memory ceiling per sandbox.` },
   "sandbox.ttlSeconds": {
-    zh: "沙盒存活时间",
-    why: "turn 开始时会续期，所以这是「没人管了多久回收」，不是任务时长上限。",
+    label: msg`Sandbox TTL`,
+    why: msg`Renewed when a turn starts, so this is 'recover after idle', not 'task time limit'.`,
   },
   "sandbox.denyDomains": {
-    zh: "禁止访问的域名",
-    ph: "一行一个域名，留空就都放行",
-    why: "黑名单而不是白名单——白名单才是穷举不完的那个（每个 registry、每个文档站）。凭据安全不靠它：真 token 在 sidecar 里，沙盒里是格式合法的假值。",
+    label: msg`Denied domains`,
+    ph: msg`One domain per line; empty allows all`,
+    why: msg`Blacklist, not whitelist—whitelist is the one that's incomplete (every registry, every docs site). Credential security doesn't rely on it: real tokens live in the sidecar, sandbox gets format-valid fakes.`,
   },
   "sandbox.cacheDirs": {
-    zh: "共享缓存目录",
+    label: msg`Shared cache directories`,
     ph: "/root/.bun/install/cache",
-    why: "所有沙盒共享的宿主目录，「容器里的挂载点: 宿主路径」。只放包管理器缓存。实测这个仓库第二个组的 bun install：不共享 2.9 秒，共享 1.2 秒——小是因为仓库小，到 monorepo 上是分钟级差别。默认关，因为这个仓库最惨的一次事故就是所有 worktree 共用一份 node_modules，两个闸门同时装，组把 EEXIST 当成自己的 build 坏了。另外沙盒服务端的 allowed_host_paths 也得列上这个路径。",
+    why: msg`Host directories shared across all sandboxes, 'mount point in container: host path'. Cache package managers only. Real test: this repo, group two's bun install—no share 2.9s, shared 1.2s. Small because repo is small; monorepo sees minutes. Disabled by default because the worst incident here was all worktrees sharing node_modules; two gates install together, groups mistake EEXIST for their own broken build. Also needs that path listed in sandbox server's allowed_host_paths.`,
   },
   notifyWebhook: {
-    zh: "转发到 webhook",
-    ph: "留空就只有这个页面会叫你",
-    why: "留空就只有这个页面会叫你。填了的话每条通知会 POST 一份 JSON（title / message / url）过去——ntfy、Bark、群机器人、你今天下午写的东西，都行。出站前会过一遍脱敏，因为这是唯一一个把内容送出这台机器的通道。",
+    label: msg`Forward to webhook`,
+    ph: msg`Empty: only this page notifies you`,
+    why: msg`Empty: only this page notifies you. Filled: each notification POSTs JSON (title / message / url)—ntfy, Bark, group bot, or what you wrote this afternoon, all work. Scrubbed before egress—this is the only channel that sends content off this machine.`,
   },
   skillsDir: {
-    zh: "技能暂存目录",
-    why: "勾中的技能复制到这里，每个沙盒只读挂上去。改这里要同步改沙盒服务端的 allowed_host_paths，否则开容器直接失败——而那是响的失败，比一个静默的空目录好得多。",
+    label: msg`Skills staging directory`,
+    why: msg`Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount.`,
   },
 };
 
 /** The two rows whose value is a map, and what an unnamed key box suggests. */
-const PAIRS: Record<string, { kind: PairKind; keyPh: string }> = {
-  leaseSlots: { kind: "int", keyPh: "闸门名" },
-  "sandbox.cacheDirs": { kind: "text", keyPh: "挂载点" },
+const PAIRS: Record<string, { kind: PairKind; keyPh: MessageDescriptor }> = {
+  leaseSlots: { kind: "int", keyPh: msg`gate name` },
+  "sandbox.cacheDirs": { kind: "text", keyPh: msg`mount point` },
 };
 
 /**
@@ -427,7 +439,7 @@ export function Knobs({
       {bare ? (
         saved && <Meta className="mb-1 block">已保存 {saved}</Meta>
       ) : (
-        <Head title={spec.zh} note={spec.note}>
+        <Head title={i18n._(spec.title)} note={i18n._(spec.note)}>
           {/* Clear of the dialog's close button, which is absolutely positioned
               over this band and was sitting on the last character of the time. */}
           {saved && <Meta className="mr-7">已保存 {saved}</Meta>}
@@ -454,14 +466,22 @@ export function Knobs({
 }
 
 /** Label and reason for a knob, falling back to the raw path. */
-const copyFor = (k: Knob) => COPY[k.path] ?? { zh: k.path, why: undefined, ph: undefined };
+/** Resolved here rather than in the table: a descriptor is what survives a
+ *  locale change, and this runs on every render. */
+const said = (m: MessageDescriptor | string | undefined): string | undefined =>
+  m === undefined || typeof m === "string" ? m : i18n._(m);
+
+const copyFor = (k: Knob): { label: string; why: string | undefined; ph: string | undefined } => {
+  const c = COPY[k.path];
+  return { label: c ? i18n._(c.label) : k.path, why: said(c?.why), ph: said(c?.ph) };
+};
 
 function KnobLabel({ knob, id }: { knob: Knob; id: string }) {
   const copy = copyFor(knob);
   const title = selfNamed(knob.path, knob.type);
   return (
     <div className="flex min-w-0 items-baseline gap-1.5">
-      {title ? <FieldTitle id={id}>{copy.zh}</FieldTitle> : <FieldLabel htmlFor={id}>{copy.zh}</FieldLabel>}
+      {title ? <FieldTitle id={id}>{copy.label}</FieldTitle> : <FieldLabel htmlFor={id}>{copy.label}</FieldLabel>}
       {copy.why && <Help>{copy.why}</Help>}
     </div>
   );
@@ -581,7 +601,7 @@ function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
       <Pairs
         map={rec(knob.value)}
         kind={pairs.kind}
-        keyPh={keyPh(knob, pairs.keyPh)}
+        keyPh={keyPh(knob, i18n._(pairs.keyPh))}
         bad={bad}
         onWrite={onWrite}
         onRefuse={onRefuse}
@@ -672,14 +692,14 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
         unit={unit}
         units={DURATION_UNITS}
         labelOf={unitLabel}
-        label={copyFor(knob).zh}
+        label={copyFor(knob).label}
         invalid={bad === ""}
         onCommit={(next, u) => onWrite(Math.round(msOf(next, u) / scale))}
       />
     );
   }
   if (shape === "count") {
-    return <CountAmount value={now} label={copyFor(knob).zh} invalid={bad === ""} onWrite={onWrite} />;
+    return <CountAmount value={now} label={copyFor(knob).label} invalid={bad === ""} onWrite={onWrite} />;
   }
   // Stored as a fraction of one and read as a percentage, which is the row
   // where a typo is quietest: `6` typed over `60%` is a legal fraction and
@@ -691,7 +711,7 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
         n={Math.round(now * 1000) / 10}
         unit="%"
         units={PERCENT}
-        label={copyFor(knob).zh}
+        label={copyFor(knob).label}
         invalid={bad === ""}
         onCommit={(pct) => {
           if (pct <= 0 || pct > 100) return onRefuse(WANTS.percent, "");

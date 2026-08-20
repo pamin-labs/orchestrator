@@ -329,7 +329,7 @@ test("a known span name reads as what it is", () => {
   expect(humanName("sandbox.create")).toBe("开一个新环境");
   expect(humanName("turn.provider")).toBe("模型在想");
   expect(humanName("watchdog.repo_map")).toBe("更新代码索引");
-  expect(humanName("GET /api/v1/auth/github")).toBe("连 GitHub");
+  expect(humanName("GET /api/v1/auth/github")).toBe("连接 GitHub");
 });
 
 test("an unmapped name falls through to itself, never to nothing", () => {

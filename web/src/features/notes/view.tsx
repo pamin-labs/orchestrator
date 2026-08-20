@@ -15,6 +15,10 @@ import { jsonOr } from "../../../../src/contracts/json.ts";
 import { NotesResponseSchema, type PanelNote as Note } from "../../../../src/contracts/notes";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../../i18n";
+import { said } from "../../shared/select";
 
 /**
  * The blackboard's static half.
@@ -30,29 +34,30 @@ import { t } from "@lingui/core/macro";
  * so the whole body is shown rather than truncated: a 6-line note with a "more" link
  * would be a click to see two extra lines.
  */
-const KINDS: [string, string][] = [
-  ["journal", "日志"],
-  ["decision", "决策"],
-  ["retro", "复盘"],
-  ["lesson", "教训"],
-  ["onboarding", "入职包"],
-  ["risk", "风险"],
-  ["fact", "老板说的"],
+const KINDS: [string, MessageDescriptor][] = [
+  ["journal", msg`Journal`],
+  ["decision", msg`Decision`],
+  ["retro", msg`Retrospective`],
+  ["lesson", msg`Lesson`],
+  ["onboarding", msg`Onboarding`],
+  ["risk", msg`Risk`],
+  ["fact", msg`Management directive`],
 ];
 
-const ZH = new Map(KINDS.map(([k, zh]) => [k, zh]));
+const KIND_LABEL = new Map(KINDS);
 const FrontmatterSchema = z.object({
   files: z.array(z.string()).optional(),
   gate: z.string().nullable().optional(),
 });
-const GATES: Record<string, { text: string; className?: string }> = {
-  pass: { text: "过", className: "text-ok" },
-  fail: { text: "没过", className: "text-bad" },
+const GATES: Record<string, { text: MessageDescriptor; className?: string }> = {
+  pass: { text: msg`Pass`, className: "text-ok" },
+  fail: { text: msg`Fail`, className: "text-bad" },
 };
 
 function Evidence({ note, gate, files }: { note: Note; gate: string | null; files: string[] }) {
   if (![gate, note.exportPath, ...files].some(Boolean)) return null;
-  const verdict = gate ? (GATES[gate] ?? { text: gate }) : null;
+  const found = gate ? GATES[gate] : undefined;
+  const verdict = gate ? { ...found, text: found ? i18n._(found.text) : gate } : null;
   return (
     <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
       {verdict && <Meta className={verdict.className}>闸门 {verdict.text}</Meta>}
@@ -167,9 +172,9 @@ export function NotesBoard({
       className="flex min-h-0 flex-1 flex-col"
     >
       <TabList>
-        {present.map(([k, zh]) => (
+        {present.map(([k, label]) => (
           <Tab key={k} value={k} count={notes.filter((n) => n.kind === k).length}>
-            {zh}
+            {i18n._(label)}
           </Tab>
         ))}
       </TabList>
@@ -222,7 +227,7 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-2">
-          {showKind && <Badge>{ZH.get(n.kind) ?? n.kind}</Badge>}
+          {showKind && <Badge>{said(KIND_LABEL.get(n.kind), n.kind)}</Badge>}
           <Meta>{clock(n.at)}</Meta>
         </div>
         {n.group && (

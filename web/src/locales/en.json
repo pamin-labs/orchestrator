@@ -53,6 +53,12 @@
     "comments": [],
     "translation": "127.0.0.1:8080 or https://host:port"
   },
+  "F9ED3s": {
+    "message": "A lease is real compilation or testing. Ten concurrent will trash the machine; dead leases hold slots until timeout. Browser gets 1 alone—each is a real Chromium—or all gates queue behind one screenshot.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "A lease is real compilation or testing. Ten concurrent will trash the machine; dead leases hold slots until timeout. Browser gets 1 alone—each is a real Chromium—or all gates queue behind one screenshot."
+  },
   "27QmIv": {
     "message": "A number",
     "placeholders": {},
@@ -76,6 +82,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Accept"
+  },
+  "aaJj_a": {
+    "translation": "Acceptance criteria",
+    "message": "Acceptance criteria",
+    "placeholders": {},
+    "comments": []
   },
   "rGeVDg": {
     "message": "Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable",
@@ -131,11 +143,23 @@
     "comments": [],
     "translation": "Address"
   },
+  "4qtNFg": {
+    "message": "After a slice fails several times straight, escalate to a person instead of retrying the same path.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "After a slice fails several times straight, escalate to a person instead of retrying the same path."
+  },
   "QWsB_B": {
     "message": "After approval, copy the code from that page",
     "placeholders": {},
     "comments": [],
     "translation": "After approval, copy the code from that page"
+  },
+  "-sExAR": {
+    "message": "After passing all four gates (self-review / audit / test run / QA), the fifth—your manual eye—is skipped. Defaults to trivial and normal; hard still waits for you. That glance is least valuable on the two cheapest tiers.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "After passing all four gates (self-review / audit / test run / QA), the fifth—your manual eye—is skipped. Defaults to trivial and normal; hard still waits for you. That glance is least valuable on the two cheapest tiers."
   },
   "ckPR99": {
     "message": "AI is thinking on your behalf",
@@ -191,6 +215,12 @@
     "comments": [],
     "translation": "API address"
   },
+  "iq3W-B": {
+    "translation": "API key",
+    "message": "API key",
+    "placeholders": {},
+    "comments": []
+  },
   "aAIQg2": {
     "message": "Appearance",
     "placeholders": {},
@@ -227,11 +257,35 @@
     "comments": [],
     "translation": "Architect decides on tech choices and architectural boundaries; if they can't answer, they'll come back."
   },
+  "5wzDEp": {
+    "translation": "Architect working",
+    "message": "Architect working",
+    "placeholders": {},
+    "comments": []
+  },
   "B495Gs": {
     "message": "Archive",
     "placeholders": {},
     "comments": [],
     "translation": "Archive"
+  },
+  "MfgJ_x": {
+    "message": "Archive after paused",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Archive after paused"
+  },
+  "MuXcC1": {
+    "message": "Archive releases the sandbox. Groups parked too long hog concurrency slots for nothing.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Archive releases the sandbox. Groups parked too long hog concurrency slots for nothing."
+  },
+  "TdfEV7": {
+    "translation": "Archived",
+    "message": "Archived",
+    "placeholders": {},
+    "comments": []
   },
   "E3Jb7M": {
     "message": "Ask GitHub",
@@ -257,6 +311,18 @@
     "comments": [],
     "translation": "Authorized"
   },
+  "eeYL-D": {
+    "message": "Auto-accept tiers",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Auto-accept tiers"
+  },
+  "ekwKKq": {
+    "message": "Auto-advance when approved",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Auto-advance when approved"
+  },
   "lLw1fO": {
     "message": "Awaiting Architect to split boundaries",
     "placeholders": {},
@@ -281,11 +347,29 @@
     "comments": [],
     "translation": "Awaiting your review"
   },
+  "iByEoT": {
+    "translation": "Background job",
+    "message": "Background job",
+    "placeholders": {},
+    "comments": []
+  },
   "ZWwYwM": {
     "message": "Base branch",
     "placeholders": {},
     "comments": [],
     "translation": "Base branch"
+  },
+  "2wNcZ1": {
+    "message": "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates."
+  },
+  "iCmtBj": {
+    "message": "Blacklist, not whitelist—whitelist is the one that's incomplete (every registry, every docs site). Credential security doesn't rely on it: real tokens live in the sidecar, sandbox gets format-valid fakes.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Blacklist, not whitelist—whitelist is the one that's incomplete (every registry, every docs site). Credential security doesn't rely on it: real tokens live in the sidecar, sandbox gets format-valid fakes."
   },
   "TRRBw1": {
     "message": "Blocked domains",
@@ -305,6 +389,12 @@
     "comments": [],
     "translation": "Both go to Dispatcher; it will revise the card and bring it back for your approval."
   },
+  "V-7bTV": {
+    "translation": "Boundary",
+    "message": "Boundary",
+    "placeholders": {},
+    "comments": []
+  },
   "ssuwjF": {
     "message": "Branch",
     "placeholders": {},
@@ -317,11 +407,23 @@
     "comments": [],
     "translation": "Browse files"
   },
+  "RjfPYJ": {
+    "translation": "Browser allowed it. The panel will still notify in the background; only closing the entire browser stops notifications—reopen it to catch up.",
+    "message": "Browser allowed it. The panel will still notify in the background; only closing the entire browser stops notifications—reopen it to catch up.",
+    "placeholders": {},
+    "comments": []
+  },
   "Rff84-": {
     "message": "Browser can't read the clipboard directly. Click in the input and use Cmd+V; images work too.",
     "placeholders": {},
     "comments": [],
     "translation": "Browser can't read the clipboard directly. Click in the input and use Cmd+V; images work too."
+  },
+  "juV9T0": {
+    "translation": "Browser denied it. To enable, change it in site settings (left of address bar), then refresh.",
+    "message": "Browser denied it. To enable, change it in site settings (left of address bar), then refresh.",
+    "placeholders": {},
+    "comments": []
   },
   "OK_Dka": {
     "message": "Browser permission",
@@ -443,6 +545,18 @@
     "comments": [],
     "translation": "Changes exceed 400k characters; tail not retrieved. Remaining changes are in the sandbox checkout."
   },
+  "h3zWxL": {
+    "translation": "Check for stuck turns",
+    "message": "Check for stuck turns",
+    "placeholders": {},
+    "comments": []
+  },
+  "pFDujJ": {
+    "message": "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
+  },
   "X0ekHE": {
     "message": "Choose account",
     "placeholders": {},
@@ -460,6 +574,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Choose repository"
+  },
+  "Tp8NKR": {
+    "translation": "Claim task",
+    "message": "Claim task",
+    "placeholders": {},
+    "comments": []
   },
   "3zc7HP": {
     "message": "Claude Code writes this in Co-Authored-By when committing",
@@ -527,6 +647,18 @@
     "comments": [],
     "translation": "Code from page"
   },
+  "XiiU4P": {
+    "translation": "Code index",
+    "message": "Code index",
+    "placeholders": {},
+    "comments": []
+  },
+  "SuAuIo": {
+    "translation": "Code repository",
+    "message": "Code repository",
+    "placeholders": {},
+    "comments": []
+  },
   "H86f9p": {
     "message": "Collapse",
     "placeholders": {},
@@ -556,6 +688,24 @@
     "placeholders": {},
     "comments": [],
     "translation": "Comments are recorded in the notes; the PM will schedule corrections accordingly. Paste screenshots directly."
+  },
+  "yJpTuD": {
+    "translation": "Compile",
+    "message": "Compile",
+    "placeholders": {},
+    "comments": []
+  },
+  "I4A_L4": {
+    "message": "Concurrent jobs",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Concurrent jobs"
+  },
+  "KBTDF2": {
+    "message": "Concurrent work limits and queuing",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Concurrent work limits and queuing"
   },
   "fgdC0z": {
     "message": "Configuration doesn't allow the path we need to mount",
@@ -623,6 +773,18 @@
     "comments": [],
     "translation": "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:"
   },
+  "Z8i0dd": {
+    "message": "Context response limit",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Context response limit"
+  },
+  "LXIm4m": {
+    "message": "Context window",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Context window"
+  },
   "X3zmoA": {
     "message": "Convert to a requirement; this group will automatically continue after it's implemented.",
     "placeholders": {},
@@ -634,6 +796,24 @@
     "placeholders": {},
     "comments": [],
     "translation": "Copy"
+  },
+  "-mL8Bu": {
+    "translation": "CoS working",
+    "message": "CoS working",
+    "placeholders": {},
+    "comments": []
+  },
+  "I99Miw": {
+    "translation": "Cost",
+    "message": "Cost",
+    "placeholders": {},
+    "comments": []
+  },
+  "Z71tox": {
+    "message": "Cost-controlling settings",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Cost-controlling settings"
   },
   "uRSTuQ": {
     "message": "Could not generate a draft; you'll need to write this one yourself.",
@@ -647,6 +827,18 @@
     "comments": [],
     "translation": "Count"
   },
+  "FSbpS7": {
+    "message": "CPU",
+    "placeholders": {},
+    "comments": [],
+    "translation": "CPU"
+  },
+  "zgY24c": {
+    "translation": "Create new sandbox",
+    "message": "Create new sandbox",
+    "placeholders": {},
+    "comments": []
+  },
   "MLnrdw": {
     "message": "Create requirement",
     "placeholders": {},
@@ -658,6 +850,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Custom gateway; usage not displayed in header"
+  },
+  "IGhWUR": {
+    "translation": "Decision",
+    "message": "Decision",
+    "placeholders": {},
+    "comments": []
   },
   "awVk4j": {
     "message": "Decomposing",
@@ -695,17 +893,41 @@
     "comments": [],
     "translation": "Delete this row"
   },
+  "8CuBBq": {
+    "message": "Denied domains",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Denied domains"
+  },
+  "m-QFRw": {
+    "translation": "Design choice",
+    "message": "Design choice",
+    "placeholders": {},
+    "comments": []
+  },
   "_YCR6Z": {
     "message": "Desk",
     "placeholders": {},
     "comments": [],
     "translation": "Desk"
   },
+  "i76F1q": {
+    "translation": "Desk wall",
+    "message": "Desk wall",
+    "placeholders": {},
+    "comments": []
+  },
   "odCJNJ": {
     "message": "Desktop pop-ups",
     "placeholders": {},
     "comments": [],
     "translation": "Desktop pop-ups"
+  },
+  "ZitRhf": {
+    "message": "Difficulty → Model",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Difficulty → Model"
   },
   "E_QGRL": {
     "message": "Disabled",
@@ -718,6 +940,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Disabled skills aren't in the sandbox; the agent can't find it. Enable it in settings, or cancel this insertion?"
+  },
+  "ag87Md": {
+    "message": "Disabled: a group finishes a slice and stops until morning, defeating the whole purpose of this system. Cost stated clearly: if a slice goes wrong, the next ones are built on it—when you revert that slice, the whole group pauses and explains, not silently under-rewriting completed work.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Disabled: a group finishes a slice and stops until morning, defeating the whole purpose of this system. Cost stated clearly: if a slice goes wrong, the next ones are built on it—when you revert that slice, the whole group pauses and explains, not silently under-rewriting completed work."
   },
   "s2IVgM": {
     "message": "Discard all changes in the current turn and return to the start of this round.",
@@ -742,6 +970,18 @@
     "placeholders": {},
     "comments": [],
     "translation": "Dispatcher is writing the plan card; it will appear here when done."
+  },
+  "woNhUu": {
+    "message": "Dispatcher tags each slice; this table maps tags to models. Which CLI role uses which is in roles/*.yaml; here we choose model per difficulty per CLI. Changes only affect newly hired agents—model is frozen at hire time.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Dispatcher tags each slice; this table maps tags to models. Which CLI role uses which is in roles/*.yaml; here we choose model per difficulty per CLI. Changes only affect newly hired agents—model is frozen at hire time."
+  },
+  "auRefc": {
+    "translation": "Dissolved",
+    "message": "Dissolved",
+    "placeholders": {},
+    "comments": []
   },
   "hdg82H": {
     "message": "Don't proceed",
@@ -773,11 +1013,29 @@
     "comments": [],
     "translation": "Edit file"
   },
+  "cxd9p_": {
+    "message": "Embedding mode",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Embedding mode"
+  },
   "N2S1rs": {
     "message": "Empty",
     "placeholders": {},
     "comments": [],
     "translation": "Empty"
+  },
+  "MKUpla": {
+    "message": "Empty = 1/4 of host cores",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Empty = 1/4 of host cores"
+  },
+  "9bsxX8": {
+    "message": "Empty = 1/4 of host cores. SDK's own default is 1; tsc --noEmit here takes 7.6s (3.2s on 6 cores).",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Empty = 1/4 of host cores. SDK's own default is 1; tsc --noEmit here takes 7.6s (3.2s on 6 cores)."
   },
   "uGI3gC": {
     "message": "Empty = allow all outbound (see README)",
@@ -802,6 +1060,18 @@
     "placeholders": {},
     "comments": [],
     "translation": "Empty: bootstrap detects from repo"
+  },
+  "Zvw8A0": {
+    "message": "Empty: only this page notifies you",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Empty: only this page notifies you"
+  },
+  "e-UjWf": {
+    "message": "Empty: only this page notifies you. Filled: each notification POSTs JSON (title / message / url)—ntfy, Bark, group bot, or what you wrote this afternoon, all work. Scrubbed before egress—this is the only channel that sends content off this machine.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Empty: only this page notifies you. Filled: each notification POSTs JSON (title / message / url)—ntfy, Bark, group bot, or what you wrote this afternoon, all work. Scrubbed before egress—this is the only channel that sends content off this machine."
   },
   "y08yme": {
     "message": "Entire branch",
@@ -845,6 +1115,12 @@
     "comments": [],
     "translation": "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\nDrag in screenshots or designs, or paste. Cmd+Enter to submit"
   },
+  "gdOWTF": {
+    "message": "Exceeded, watchdog kills it. Real max single-turn was 8.2 minutes.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Exceeded, watchdog kills it. Real max single-turn was 8.2 minutes."
+  },
   "1A3EXy": {
     "message": "Expand",
     "placeholders": {},
@@ -874,6 +1150,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Failed to open"
+  },
+  "lcnOMu": {
+    "message": "Feedback threshold to become a rule",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Feedback threshold to become a rule"
   },
   "17ylhM": {
     "message": "Fetching login code…",
@@ -959,6 +1241,18 @@
     "comments": [],
     "translation": "Follow window—updates as window changes, fits without crowding"
   },
+  "iVUkW7": {
+    "message": "Forward to webhook",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Forward to webhook"
+  },
+  "pwC1m3": {
+    "message": "From 16 real slices here: trivial average 4.0M (one outlier 12.0M), normal average 7.3M, tail 16.1M. Cap above 'worst finished slice', below 'the outlier'—this ceiling is for already-lost agents, not today's bad run. Changes affect new slices only.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "From 16 real slices here: trivial average 4.0M (one outlier 12.0M), normal average 7.3M, tail 16.1M. Cap above 'worst finished slice', below 'the outlier'—this ceiling is for already-lost agents, not today's bad run. Changes affect new slices only."
+  },
   "QwS_6h": {
     "message": "From your connected GitHub account",
     "placeholders": {},
@@ -971,11 +1265,47 @@
     "comments": [],
     "translation": "Frontend and server versions may be out of sync. Restart the service ("
   },
+  "rP26c9": {
+    "message": "Full /v1/embeddings address, OpenAI-shaped. Write full, not just hostname—which path a provider uses is pure guesswork. Used only when mode is remote.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Full /v1/embeddings address, OpenAI-shaped. Write full, not just hostname—which path a provider uses is pure guesswork. Used only when mode is remote."
+  },
   "ibQa3C": {
     "message": "Full contents of ~/.codex/auth.json",
     "placeholders": {},
     "comments": [],
     "translation": "Full contents of ~/.codex/auth.json"
+  },
+  "a0aFcA": {
+    "translation": "Gate",
+    "message": "Gate",
+    "placeholders": {},
+    "comments": []
+  },
+  "1tD4eM": {
+    "translation": "Gate check",
+    "message": "Gate check",
+    "placeholders": {},
+    "comments": []
+  },
+  "UO4ecX": {
+    "message": "Gate concurrency",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Gate concurrency"
+  },
+  "TqKtef": {
+    "message": "gate name",
+    "placeholders": {},
+    "comments": [],
+    "translation": "gate name"
+  },
+  "Qt1E-q": {
+    "message": "Gate retries",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Gate retries"
   },
   "_C32np": {
     "message": "Gates",
@@ -1007,11 +1337,23 @@
     "comments": [],
     "translation": "Generated from this group's notes; not yet sent to anyone. You can edit after filling it in."
   },
+  "dB6rtS": {
+    "translation": "Git ops",
+    "message": "Git ops",
+    "placeholders": {},
+    "comments": []
+  },
   "Bk16Bl": {
     "message": "Git repo",
     "placeholders": {},
     "comments": [],
     "translation": "Git repo"
+  },
+  "RkXlPZ": {
+    "translation": "GitHub",
+    "message": "GitHub",
+    "placeholders": {},
+    "comments": []
   },
   "jbs0jI": {
     "message": "GitHub → this App → Install App",
@@ -1073,6 +1415,12 @@
     "comments": [],
     "translation": "Got it"
   },
+  "qIobaT": {
+    "message": "Governs journals, channel messages, the questions it asks you, and status summaries. An agent writes those, so any language works — the list only saves typing, it is not the set. Code, commit messages, branch names, PRs and error messages stay English. The orchestrator's own two dozen status lines exist in Chinese and English only; any other language falls back to English, which does not affect what the agents write. Changing this rotates every session in the fleet — it is part of the cache prefix.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Governs journals, channel messages, the questions it asks you, and status summaries. An agent writes those, so any language works — the list only saves typing, it is not the set. Code, commit messages, branch names, PRs and error messages stay English. The orchestrator's own two dozen status lines exist in Chinese and English only; any other language falls back to English, which does not affect what the agents write. Changing this rotates every session in the fleet — it is part of the cache prefix."
+  },
   "uvVKhA": {
     "message": "Gray text shows defaults",
     "placeholders": {},
@@ -1103,6 +1451,30 @@
     "comments": [],
     "translation": "Hiding:"
   },
+  "lehVJ0": {
+    "message": "Host directories shared across all sandboxes, 'mount point in container: host path'. Cache package managers only. Real test: this repo, group two's bun install—no share 2.9s, shared 1.2s. Small because repo is small; monorepo sees minutes. Disabled by default because the worst incident here was all worktrees sharing node_modules; two gates install together, groups mistake EEXIST for their own broken build. Also needs that path listed in sandbox server's allowed_host_paths.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Host directories shared across all sandboxes, 'mount point in container: host path'. Cache package managers only. Real test: this repo, group two's bun install—no share 2.9s, shared 1.2s. Small because repo is small; monorepo sees minutes. Disabled by default because the worst incident here was all worktrees sharing node_modules; two gates install together, groups mistake EEXIST for their own broken build. Also needs that path listed in sandbox server's allowed_host_paths."
+  },
+  "WHiZ9b": {
+    "message": "How long to wait on something outside before calling it a timeout",
+    "placeholders": {},
+    "comments": [],
+    "translation": "How long to wait on something outside before calling it a timeout"
+  },
+  "Axfmw8": {
+    "message": "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
+  },
+  "k0sg9Y": {
+    "message": "How to alert you",
+    "placeholders": {},
+    "comments": [],
+    "translation": "How to alert you"
+  },
   "agP50o": {
     "message": "hr",
     "placeholders": {},
@@ -1128,17 +1500,23 @@
     "translation": "Image"
   },
   "OIuB5D": {
-    "translation": "Image",
     "message": "Image",
     "context": "a picture, not a container image",
     "placeholders": {},
-    "comments": []
+    "comments": [],
+    "translation": "Image"
   },
   "ukOFaT": {
     "message": "Including downstream",
     "placeholders": {},
     "comments": [],
     "translation": "Including downstream"
+  },
+  "e1XJKo": {
+    "message": "Index model",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Index model"
   },
   "yftYSC": {
     "message": "Insert skill",
@@ -1157,6 +1535,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Install on GitHub"
+  },
+  "RKidZJ": {
+    "message": "Install timeout",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Install timeout"
   },
   "ZOcvbt": {
     "message": "Install to another account",
@@ -1194,6 +1578,12 @@
     "comments": [],
     "translation": "It's not a duplicate, and it's not done yet — keep decomposing."
   },
+  "-siMqD": {
+    "translation": "Journal",
+    "message": "Journal",
+    "placeholders": {},
+    "comments": []
+  },
   "sN5SzN": {
     "message": "Just describe what you need. A plan card will be generated for approval before any code is written.",
     "placeholders": {},
@@ -1205,6 +1595,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Just now"
+  },
+  "UQYK3R": {
+    "translation": "Just started",
+    "message": "Just started",
+    "placeholders": {},
+    "comments": []
   },
   "PZ_kxo": {
     "message": "Keep",
@@ -1223,6 +1619,18 @@
     "placeholders": {},
     "comments": [],
     "translation": "Last 24 hours, per hour"
+  },
+  "D8G2YM": {
+    "message": "Lease timeout",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Lease timeout"
+  },
+  "nJwqRr": {
+    "translation": "Lesson",
+    "message": "Lesson",
+    "placeholders": {},
+    "comments": []
   },
   "CoUyaF": {
     "message": "Let AI generate one",
@@ -1266,6 +1674,12 @@
     "comments": [],
     "translation": "Local"
   },
+  "OripfX": {
+    "message": "Local or remote. Today neither accepts retrieval—ADR 031 field-tested rejected vectors: same-language ranking works, cross-language fails when unrelated text in one language covers truly relevant text in another, and cross-language is the only reason this exists. Reopening condition is a runnable check (bun run embedding:check), and its remote half won't run—it needs an endpoint you pick. This switch lets that rejection be disproven. Remote sends corpus, corpus holds your requirements and acceptance criteria—default is local; going remote is a decision.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Local or remote. Today neither accepts retrieval—ADR 031 field-tested rejected vectors: same-language ranking works, cross-language fails when unrelated text in one language covers truly relevant text in another, and cross-language is the only reason this exists. Reopening condition is a runnable check (bun run embedding:check), and its remote half won't run—it needs an endpoint you pick. This switch lets that rejection be disproven. Remote sends corpus, corpus holds your requirements and acceptance criteria—default is local; going remote is a decision."
+  },
   "mTyZmU": {
     "message": "Local to this machine only, not tied to the project",
     "placeholders": {},
@@ -1277,6 +1691,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Log in"
+  },
+  "gmtnyc": {
+    "translation": "Log in within the container; no need to install codex locally",
+    "message": "Log in within the container; no need to install codex locally",
+    "placeholders": {},
+    "comments": []
   },
   "6SIbcf": {
     "message": "Login code copied",
@@ -1296,11 +1716,35 @@
     "comments": [],
     "translation": "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
   },
+  "N8fWMI": {
+    "translation": "Management directive",
+    "message": "Management directive",
+    "placeholders": {},
+    "comments": []
+  },
+  "PeDZSK": {
+    "message": "Max channel messages to cram into one delta per turn.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Max channel messages to cram into one delta per turn."
+  },
+  "4QISGp": {
+    "message": "Max steps per turn",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Max steps per turn"
+  },
   "v8o-Rn": {
     "message": "Memory",
     "placeholders": {},
     "comments": [],
     "translation": "Memory"
+  },
+  "x98TuZ": {
+    "message": "Memory ceiling per sandbox.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Memory ceiling per sandbox."
   },
   "c6FNGk": {
     "message": "Message this group",
@@ -1332,6 +1776,18 @@
     "comments": [],
     "translation": "Model ID"
   },
+  "fXGixv": {
+    "translation": "Model processing",
+    "message": "Model processing",
+    "placeholders": {},
+    "comments": []
+  },
+  "TSPGm_": {
+    "message": "Models & budget",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Models & budget"
+  },
   "tgWuMB": {
     "message": "Modified",
     "placeholders": {},
@@ -1343,6 +1799,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "More"
+  },
+  "oGk85-": {
+    "message": "mount point",
+    "placeholders": {},
+    "comments": [],
+    "translation": "mount point"
   },
   "TpHstq": {
     "message": "ms",
@@ -1626,6 +2088,12 @@
     "comments": [],
     "translation": "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
   },
+  "0H5_2R": {
+    "translation": "Not running",
+    "message": "Not running",
+    "placeholders": {},
+    "comments": []
+  },
   "sF_cxU": {
     "message": "Not satisfied",
     "placeholders": {},
@@ -1656,6 +2124,12 @@
     "comments": [],
     "translation": "OK"
   },
+  "gukxZ5": {
+    "translation": "Onboarding",
+    "message": "Onboarding",
+    "placeholders": {},
+    "comments": []
+  },
   "u3JJbf": {
     "message": "Once boundaries are cleared, work starts automatically; no need to click again.",
     "placeholders": {},
@@ -1668,6 +2142,12 @@
     "comments": [],
     "translation": "One connection manages all projects"
   },
+  "oyPQFp": {
+    "message": "One domain per line; empty allows all",
+    "placeholders": {},
+    "comments": [],
+    "translation": "One domain per line; empty allows all"
+  },
   "P3rmDM": {
     "message": "Only running",
     "placeholders": {},
@@ -1679,6 +2159,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Only this stage"
+  },
+  "8YP-N2": {
+    "message": "Only two sources: our releases (ghcr.io/pamin-labs/…) and local builds without registry prefix. Agents run here with your code—swap in an untrusted image and you've handed the boundary to someone else, invisibly from the panel.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Only two sources: our releases (ghcr.io/pamin-labs/…) and local builds without registry prefix. Agents run here with your code—swap in an untrusted image and you've handed the boundary to someone else, invisibly from the panel."
   },
   "AptlFm": {
     "message": "Open a new PR",
@@ -1722,11 +2208,35 @@
     "comments": [],
     "translation": "Other"
   },
+  "f6Pzgf": {
+    "message": "Output language",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Output language"
+  },
+  "oDAEQq": {
+    "translation": "Ownership",
+    "message": "Ownership",
+    "placeholders": {},
+    "comments": []
+  },
+  "kyU0Ic": {
+    "translation": "p50",
+    "message": "p50",
+    "placeholders": {},
+    "comments": []
+  },
   "F8JUQI": {
     "message": "P50",
     "placeholders": {},
     "comments": [],
     "translation": "P50"
+  },
+  "Q7geBa": {
+    "translation": "p95",
+    "message": "p95",
+    "placeholders": {},
+    "comments": []
   },
   "QwetJl": {
     "message": "P95",
@@ -1758,6 +2268,18 @@
     "comments": [],
     "translation": "Pause"
   },
+  "URAE3q": {
+    "translation": "Paused",
+    "message": "Paused",
+    "placeholders": {},
+    "comments": []
+  },
+  "5NGrnX": {
+    "translation": "Pausing",
+    "message": "Pausing",
+    "placeholders": {},
+    "comments": []
+  },
   "UbRKMZ": {
     "message": "Pending",
     "placeholders": {},
@@ -1769,6 +2291,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "pending merges"
+  },
+  "2WtL62": {
+    "translation": "Pending review",
+    "message": "Pending review",
+    "placeholders": {},
+    "comments": []
   },
   "HlzhUv": {
     "message": "Per delivered requirement",
@@ -1836,11 +2364,29 @@
     "comments": [],
     "translation": "Planner suggests abandoning"
   },
+  "dUh9QW": {
+    "translation": "Planning",
+    "message": "Planning",
+    "placeholders": {},
+    "comments": []
+  },
+  "zS5SHl": {
+    "translation": "PM working",
+    "message": "PM working",
+    "placeholders": {},
+    "comments": []
+  },
   "uVradX": {
     "message": "PR link not found",
     "placeholders": {},
     "comments": [],
     "translation": "PR link not found"
+  },
+  "NKLZS6": {
+    "translation": "PR open",
+    "message": "PR open",
+    "placeholders": {},
+    "comments": []
   },
   "o4QBBj": {
     "message": "PR pending merge",
@@ -1853,6 +2399,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Preferences"
+  },
+  "ivCmTG": {
+    "translation": "Prepare this turn",
+    "message": "Prepare this turn",
+    "placeholders": {},
+    "comments": []
   },
   "zwBp5t": {
     "message": "Private",
@@ -1871,6 +2423,24 @@
     "placeholders": {},
     "comments": [],
     "translation": "Projects"
+  },
+  "0TrDeg": {
+    "translation": "Pull request",
+    "message": "Pull request",
+    "placeholders": {},
+    "comments": []
+  },
+  "8G8q1m": {
+    "translation": "QA",
+    "message": "QA",
+    "placeholders": {},
+    "comments": []
+  },
+  "a8JQGm": {
+    "translation": "Query index",
+    "message": "Query index",
+    "placeholders": {},
+    "comments": []
   },
   "bfgr_e": {
     "message": "Question",
@@ -1908,11 +2478,23 @@
     "comments": [],
     "translation": "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser."
   },
+  "Z1GEoV": {
+    "message": "Real data: 259 turns, median 36 steps, p90 93, max 144. The 23% over 60 steps ate 59% of the cache-read bill, because every step re-reads the full transcript. 36 is work; the tail is an agent lost, grepping. Cut the tail, median doesn't move. Changing this rotates the whole fleet through a session.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Real data: 259 turns, median 36 steps, p90 93, max 144. The 23% over 60 steps ate 59% of the cache-read bill, because every step re-reads the full transcript. 36 is work; the tail is an agent lost, grepping. Cut the tail, median doesn't move. Changing this rotates the whole fleet through a session."
+  },
   "A16Eqd": {
     "message": "Real tokens don't enter the sandbox",
     "placeholders": {},
     "comments": [],
     "translation": "Real tokens don't enter the sandbox"
+  },
+  "zu5gZ1": {
+    "translation": "Reconciliation",
+    "message": "Reconciliation",
+    "placeholders": {},
+    "comments": []
   },
   "gcoiFh": {
     "message": "Reconnect",
@@ -1925,6 +2507,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Refresh"
+  },
+  "L1TJ_J": {
+    "translation": "Refreshed locally",
+    "message": "Refreshed locally",
+    "placeholders": {},
+    "comments": []
   },
   "XeJdpK": {
     "message": "Reject this slice",
@@ -1956,6 +2544,18 @@
     "comments": [],
     "translation": "Remote"
   },
+  "Orq9Yq": {
+    "message": "Remote credential name",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Remote credential name"
+  },
+  "M2XeNm": {
+    "message": "Remote endpoint",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Remote endpoint"
+  },
   "t_YqKh": {
     "message": "Remove",
     "placeholders": {},
@@ -1985,6 +2585,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Removing…"
+  },
+  "Dkm2X3": {
+    "message": "Renewed when a turn starts, so this is 'recover after idle', not 'task time limit'.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Renewed when a turn starts, so this is 'recover after idle', not 'task time limit'."
   },
   "ImOQa9": {
     "message": "Reply",
@@ -2070,6 +2676,12 @@
     "comments": [],
     "translation": "Resetting soon"
   },
+  "NGM47O": {
+    "translation": "Resource lease",
+    "message": "Resource lease",
+    "placeholders": {},
+    "comments": []
+  },
   "6z9W13": {
     "message": "Restart",
     "placeholders": {},
@@ -2112,6 +2724,12 @@
     "comments": [],
     "translation": "Resume"
   },
+  "0uV8rm": {
+    "translation": "Retrospective",
+    "message": "Retrospective",
+    "placeholders": {},
+    "comments": []
+  },
   "PHOwUf": {
     "message": "Retry this view",
     "placeholders": {},
@@ -2136,11 +2754,47 @@
     "comments": [],
     "translation": "Revoke and take over"
   },
+  "Xwlwdm": {
+    "translation": "Risk",
+    "message": "Risk",
+    "placeholders": {},
+    "comments": []
+  },
   "CDes-i": {
     "message": "Roll back to the checkpoint when the question was asked; all subsequent changes are discarded. You'll answer it again.",
     "placeholders": {},
     "comments": [],
     "translation": "Roll back to the checkpoint when the question was asked; all subsequent changes are discarded. You'll answer it again."
+  },
+  "F7ezNA": {
+    "message": "Roughly 4k token. This answer lands in the transcript, and every remaining turn in the session re-reads it—so a generous answer keeps billing long after the question is answered.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Roughly 4k token. This answer lands in the transcript, and every remaining turn in the session re-reads it—so a generous answer keeps billing long after the question is answered."
+  },
+  "1dxPir": {
+    "translation": "Routine watchdog",
+    "message": "Routine watchdog",
+    "placeholders": {},
+    "comments": []
+  },
+  "yar4DV": {
+    "translation": "Run claude setup-token in the container",
+    "message": "Run claude setup-token in the container",
+    "placeholders": {},
+    "comments": []
+  },
+  "xJmqHS": {
+    "translation": "Run one turn",
+    "message": "Run one turn",
+    "placeholders": {},
+    "comments": []
+  },
+  "eqQ5YA": {
+    "translation": "Run tests",
+    "message": "Run tests",
+    "placeholders": {},
+    "comments": []
   },
   "sRVwZe": {
     "message": "Run the official CLI's login once in the tool container; store the credential here. No setup needed locally. Official accounts only; custom gateways use API key.",
@@ -2154,6 +2808,36 @@
     "comments": [],
     "translation": "Run top-to-bottom; drag to reorder"
   },
+  "RiQMUh": {
+    "translation": "Running",
+    "message": "Running",
+    "placeholders": {},
+    "comments": []
+  },
+  "EbMFqt": {
+    "translation": "Running, but we can't control it",
+    "message": "Running, but we can't control it",
+    "placeholders": {},
+    "comments": []
+  },
+  "pOVGLp": {
+    "translation": "Running, not started by us; using as-is",
+    "message": "Running, not started by us; using as-is",
+    "placeholders": {},
+    "comments": []
+  },
+  "qvRmoc": {
+    "translation": "Running, started by us",
+    "message": "Running, started by us",
+    "placeholders": {},
+    "comments": []
+  },
+  "gkL2ub": {
+    "message": "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way."
+  },
   "vMT9um": {
     "message": "Sandbox",
     "placeholders": {},
@@ -2166,17 +2850,53 @@
     "comments": [],
     "translation": "Sandbox configuration"
   },
+  "PwjUOx": {
+    "message": "Sandbox defaults",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Sandbox defaults"
+  },
+  "8BR6r3": {
+    "translation": "Sandbox operation",
+    "message": "Sandbox operation",
+    "placeholders": {},
+    "comments": []
+  },
   "umfO1F": {
     "message": "Sandbox server",
     "placeholders": {},
     "comments": [],
     "translation": "Sandbox server"
   },
+  "aa3gMx": {
+    "translation": "Sandbox setup",
+    "message": "Sandbox setup",
+    "placeholders": {},
+    "comments": []
+  },
+  "AP_viH": {
+    "message": "Sandbox TTL",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Sandbox TTL"
+  },
   "tfDRzk": {
     "message": "Save",
     "placeholders": {},
     "comments": [],
     "translation": "Save"
+  },
+  "LE_-Fg": {
+    "translation": "Save checkpoint",
+    "message": "Save checkpoint",
+    "placeholders": {},
+    "comments": []
+  },
+  "DbZMYM": {
+    "message": "Scheduling",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Scheduling"
   },
   "BlLxpG": {
     "message": "Search skills",
@@ -2202,11 +2922,23 @@
     "comments": [],
     "translation": "Self"
   },
+  "F5fjPA": {
+    "translation": "Self-review",
+    "message": "Self-review",
+    "placeholders": {},
+    "comments": []
+  },
   "JlFcis": {
     "message": "Send",
     "placeholders": {},
     "comments": [],
     "translation": "Send"
+  },
+  "pi1oME": {
+    "translation": "Send message",
+    "message": "Send message",
+    "placeholders": {},
+    "comments": []
   },
   "zkYz4A": {
     "message": "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch.",
@@ -2231,6 +2963,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Server"
+  },
+  "c343B7": {
+    "message": "Session rotation threshold",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Session rotation threshold"
   },
   "NfZUor": {
     "message": "Set",
@@ -2274,11 +3012,23 @@
     "comments": [],
     "translation": "Shared cache"
   },
+  "G02uWI": {
+    "message": "Shared cache directories",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Shared cache directories"
+  },
   "PCSkw2": {
     "message": "Skills",
     "placeholders": {},
     "comments": [],
     "translation": ""
+  },
+  "1_SmjL": {
+    "message": "Skills staging directory",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Skills staging directory"
   },
   "0wEveb": {
     "message": "Slice",
@@ -2388,6 +3138,24 @@
     "comments": [],
     "translation": "Submit"
   },
+  "8L04Mw": {
+    "translation": "Submit task",
+    "message": "Submit task",
+    "placeholders": {},
+    "comments": []
+  },
+  "WVzGc2": {
+    "translation": "Subscription",
+    "message": "Subscription",
+    "placeholders": {},
+    "comments": []
+  },
+  "2UUIn6": {
+    "message": "Swap sessions when context hits this much of the window. Fallback trigger; real rotation is slice-end—clean semantic boundary, cheap handoff.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Swap sessions when context hits this much of the window. Fallback trigger; real rotation is slice-end—clean semantic boundary, cheap handoff."
+  },
   "xaDWAI": {
     "message": "Switch project",
     "placeholders": {},
@@ -2412,6 +3180,12 @@
     "comments": [],
     "translation": "System timing"
   },
+  "UC1Nrp": {
+    "translation": "Take note",
+    "message": "Take note",
+    "placeholders": {},
+    "comments": []
+  },
   "22d3SP": {
     "message": "The browser can't read this. Drag folders in instead.",
     "placeholders": {},
@@ -2424,17 +3198,41 @@
     "comments": [],
     "translation": "The chosen skill is sent with this turn; it only costs for this one turn."
   },
+  "oToTQd": {
+    "message": "The denominator for session rotation. Both CLI agents report real values in a turn, and that takes priority; this table manages the first turn of a session. When we pinned 200k, strong models rotated constantly in the 12% of a 1M window, discarding built-up cache prefix each time.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "The denominator for session rotation. Both CLI agents report real values in a turn, and that takes priority; this table manages the first turn of a session. When we pinned 200k, strong models rotated constantly in the 12% of a 1M window, discarding built-up cache prefix each time."
+  },
   "Bn1Nxe": {
     "message": "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact.",
     "placeholders": {},
     "comments": [],
     "translation": "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
   },
+  "DJSa8p": {
+    "message": "The first ceiling usually isn't this: two groups can't own overlapping paths, so low-modularity projects can't reach 10; then account-level rate limits. Raising this, watch cache hit rate on the cost page—high concurrency on one subscription throttles there first.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "The first ceiling usually isn't this: two groups can't own overlapping paths, so low-modularity projects can't reach 10; then account-level rate limits. Raising this, watch cache hit rate on the cost page—high concurrency on one subscription throttles there first."
+  },
+  "tJoWaz": {
+    "message": "The name of that line in 'Model account', not the key itself. Key in config is key in shell history and every backup.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "The name of that line in 'Model account', not the key itself. Key in config is key in shell history and every backup."
+  },
   "GbXn7n": {
     "message": "The service that launches containers",
     "placeholders": {},
     "comments": [],
     "translation": "The service that launches containers"
+  },
+  "jFIXsB": {
+    "message": "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
   },
   "FEr96N": {
     "message": "Theme",
@@ -2447,6 +3245,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "These paths from the card don't exist in the repo"
+  },
+  "y6-5EW": {
+    "translation": "This browser doesn't support it",
+    "message": "This browser doesn't support it",
+    "placeholders": {},
+    "comments": []
   },
   "50AYjp": {
     "message": "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch.",
@@ -2514,6 +3318,18 @@
     "comments": [],
     "translation": "Today"
   },
+  "TP9_K5": {
+    "translation": "Token",
+    "message": "Token",
+    "placeholders": {},
+    "comments": []
+  },
+  "bCeP-N": {
+    "message": "Token limit per slice",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Token limit per slice"
+  },
   "JfT1QM": {
     "message": "tokens · project total",
     "placeholders": {},
@@ -2526,11 +3342,29 @@
     "comments": [],
     "translation": "tokens · share"
   },
+  "GoniZ-": {
+    "message": "Turn duration and context limits",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Turn duration and context limits"
+  },
+  "t8aCdD": {
+    "message": "Turn timeout",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Turn timeout"
+  },
   "3IqNQS": {
     "message": "Turned off, but page alerts and tab title counts still work—just no pop-ups.",
     "placeholders": {},
     "comments": [],
     "translation": "Turned off, but page alerts and tab title counts still work—just no pop-ups."
+  },
+  "SHTStO": {
+    "message": "Turns & context",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Turns & context"
   },
   "7VgwUn": {
     "message": "Type a model ID to add a row",
@@ -2552,11 +3386,29 @@
     "comments": [],
     "translation": "Unit for {label}"
   },
+  "3FDDuB": {
+    "message": "Unread digest threshold",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Unread digest threshold"
+  },
   "TlHpRw": {
     "message": "Unreadable",
     "placeholders": {},
     "comments": [],
     "translation": "Unreadable"
+  },
+  "ZC8_wd": {
+    "translation": "Update code index",
+    "message": "Update code index",
+    "placeholders": {},
+    "comments": []
+  },
+  "ugzskn": {
+    "translation": "Usage not displayed",
+    "message": "Usage not displayed",
+    "placeholders": {},
+    "comments": []
   },
   "Qd3NOV": {
     "message": "Use 'defer' to archive without deleting; that keeps records",
@@ -2582,6 +3434,24 @@
     "comments": [],
     "translation": "Use when the container is stuck, missing dependencies, or credentials changed. The next turn will re-clone and reinstall; the branch in the host repo stays."
   },
+  "i4-1iz": {
+    "message": "Used when a project has not set its own",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Used when a project has not set its own"
+  },
+  "AflkL3": {
+    "translation": "Valid for one year",
+    "message": "Valid for one year",
+    "placeholders": {},
+    "comments": []
+  },
+  "VfbDAF": {
+    "translation": "View diff",
+    "message": "View diff",
+    "placeholders": {},
+    "comments": []
+  },
   "rj9VmJ": {
     "message": "View log",
     "placeholders": {},
@@ -2593,6 +3463,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Waiting"
+  },
+  "UutRCV": {
+    "message": "Waiting and retries",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Waiting and retries"
   },
   "x11Fa2": {
     "message": "Waiting for prior slice",
@@ -2630,6 +3506,18 @@
     "comments": [],
     "translation": "Was connected, but GitHub no longer recognizes this token"
   },
+  "7-b-jS": {
+    "message": "Watchdog interval",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Watchdog interval"
+  },
+  "dz3SYg": {
+    "translation": "Watchdog rule",
+    "message": "Watchdog rule",
+    "placeholders": {},
+    "comments": []
+  },
   "zx4BuL": {
     "message": "Week",
     "placeholders": {},
@@ -2660,6 +3548,18 @@
     "comments": [],
     "translation": "When the limit is reached, the group pauses until you decide whether to increase it."
   },
+  "1IcqqV": {
+    "message": "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint."
+  },
+  "EM-n9s": {
+    "message": "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP."
+  },
   "QXTfG1": {
     "message": "Which window",
     "placeholders": {},
@@ -2683,6 +3583,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM"
+  },
+  "bLt_0J": {
+    "translation": "Workflow",
+    "message": "Workflow",
+    "placeholders": {},
+    "comments": []
   },
   "pmUArF": {
     "message": "Workspace",

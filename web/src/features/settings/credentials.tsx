@@ -14,13 +14,18 @@ import {
 } from "../../../../src/contracts/login-flow";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
+import { msg } from "@lingui/core/macro";
+import { i18n } from "../../i18n";
+import type { MessageDescriptor } from "@lingui/core";
 
 export interface Runtime {
   key: "claude" | "codex";
   label: string;
   /** The mode this machine can obtain by running the CLI itself. */
   login?: Mode;
-  modes: Array<{ mode: Mode; label: string; how: string; cost: string }>;
+  /** `msg` at module scope, `i18n._` at call scope: this table is built once at
+   *  import, and a resolved string would freeze at whatever locale was active. */
+  modes: Array<{ mode: Mode; label: MessageDescriptor; how: MessageDescriptor | string; cost: MessageDescriptor }>;
   urlEnv: string;
 }
 
@@ -31,8 +36,13 @@ export const RUNTIMES: Runtime[] = [
     login: "oauth_token",
     urlEnv: "ANTHROPIC_BASE_URL",
     modes: [
-      { mode: "oauth_token", label: "订阅", how: "容器里跑 claude setup-token", cost: "一年有效" },
-      { mode: "api_key", label: "API 密钥", how: "console.anthropic.com", cost: "不显示额度" },
+      {
+        mode: "oauth_token",
+        label: msg`Subscription`,
+        how: msg`Run claude setup-token in the container`,
+        cost: msg`Valid for one year`,
+      },
+      { mode: "api_key", label: msg`API key`, how: "console.anthropic.com", cost: msg`Usage not displayed` },
     ],
   },
   {
@@ -41,8 +51,13 @@ export const RUNTIMES: Runtime[] = [
     login: "chatgpt",
     urlEnv: "OPENAI_BASE_URL",
     modes: [
-      { mode: "chatgpt", label: "订阅", how: "在容器里登录，本机不用装 codex", cost: "本机统一刷新" },
-      { mode: "api_key", label: "API 密钥", how: "platform.openai.com", cost: "不显示额度" },
+      {
+        mode: "chatgpt",
+        label: msg`Subscription`,
+        how: msg`Log in within the container; no need to install codex locally`,
+        cost: msg`Refreshed locally`,
+      },
+      { mode: "api_key", label: msg`API key`, how: "platform.openai.com", cost: msg`Usage not displayed` },
     ],
   },
 ];
@@ -251,7 +266,7 @@ function CredentialIntro({ state }: { state: CredentialState }) {
   if (props.current && props.current.mode === form.mode) return null;
   return (
     <Meta className="mb-1.5 block">
-      {spec.how} · {spec.cost}
+      {typeof spec.how === "string" ? spec.how : i18n._(spec.how)} · {i18n._(spec.cost)}
     </Meta>
   );
 }
@@ -272,7 +287,7 @@ function CredentialHeader({ state }: { state: CredentialState }) {
       >
         {props.runtime.modes.map((m) => (
           <Segment key={m.mode} value={m.mode}>
-            {m.label}
+            {i18n._(m.label)}
           </Segment>
         ))}
       </Segments>
@@ -288,7 +303,7 @@ function CredentialStatus({ state }: { state: CredentialState }) {
         <Trans>Not configured</Trans>
       </span>
     );
-  const labels = Object.fromEntries(props.runtime.modes.map((mode) => [mode.mode, mode.label]));
+  const labels = Object.fromEntries(props.runtime.modes.map((mode) => [mode.mode, i18n._(mode.label)]));
   return (
     <>
       {/* Which mode is stored is only worth a word when it is not the one
@@ -309,7 +324,7 @@ function secretPlaceholder(props: CredentialProps, form: CredentialForm, fallbac
   return `已存 ${props.current.hint}，粘新的就换掉`;
 }
 
-const SECRET_LABEL = { oauth_token: "令牌", api_key: "API 密钥" } as const;
+const SECRET_LABEL = { oauth_token: msg`Token`, api_key: msg`API key` } as const;
 
 function SecretField({ state }: { state: CredentialState }) {
   const { props, form, changeForm, changeLogin, updatedAt } = state;
@@ -350,7 +365,7 @@ function SecretField({ state }: { state: CredentialState }) {
       {/* The label is what this mode calls the thing. It said `token` under an
           API key too, which is two words for one field. */}
       <FieldLabel htmlFor={`${props.runtime.key}-secret`} className="text-ink-3">
-        {SECRET_LABEL[mode]}
+        {i18n._(SECRET_LABEL[mode])}
       </FieldLabel>
       <InputGroup>
         <Input

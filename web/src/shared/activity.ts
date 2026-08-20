@@ -1,5 +1,8 @@
 import type { Agent } from "./api";
 import { t } from "@lingui/core/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../i18n";
 
 /**
  * What the agent is doing, in the fewest words that are still true.
@@ -11,18 +14,18 @@ import { t } from "@lingui/core/macro";
  *
  * Anything unmatched keeps its command verbatim: a wrong category is worse than none.
  */
-const VERBS: [RegExp, string][] = [
-  [/^orch ctx query/, "查索引"],
-  [/^orch task (list|claim)/, "领任务"],
-  [/^orch task done/, "交任务"],
-  [/^orch (note|journal)/, "记笔记"],
-  [/^orch (ask-boss|mail|reply)/, "发消息"],
-  [/^orch (status|owns|lease|draft|slice)/, "走流程"],
-  [/^(bun|npm|pnpm|yarn) (test|run test)|^(pytest|go test|cargo test)/, "跑测试"],
-  [/^(bunx tsc|tsc |bun run build|npm run build)/, "编译"],
-  [/^git (diff|status|log|show|blame)/, "看改动"],
-  [/^git (add|commit|push|checkout|stash|restore)/, "动分支"],
-  [/^(rg|grep|ag|find|ls|fd|sed -n|cat|head|tail|wc)\b/, "翻文件"],
+const VERBS: [RegExp, MessageDescriptor][] = [
+  [/^orch ctx query/, msg`Query index`],
+  [/^orch task (list|claim)/, msg`Claim task`],
+  [/^orch task done/, msg`Submit task`],
+  [/^orch (note|journal)/, msg`Take note`],
+  [/^orch (ask-boss|mail|reply)/, msg`Send message`],
+  [/^orch (status|owns|lease|draft|slice)/, msg`Workflow`],
+  [/^(bun|npm|pnpm|yarn) (test|run test)|^(pytest|go test|cargo test)/, msg`Run tests`],
+  [/^(bunx tsc|tsc |bun run build|npm run build)/, msg`Compile`],
+  [/^git (diff|status|log|show|blame)/, msg`View diff`],
+  [/^git (add|commit|push|checkout|stash|restore)/, msg`Git ops`],
+  [/^(rg|grep|ag|find|ls|fd|sed -n|cat|head|tail|wc)\b/, msg`Browse files`],
 ];
 
 /** [what it is for, the part that says which thing]. */
@@ -35,7 +38,7 @@ export function activityOf(a: Agent): [string, string] {
   if (read) return [t`Browse files`, raw.slice(read[0].length)];
   const cmd = raw.replace(/^(command_execution|Bash):\s*/, "");
   for (const [re, verb] of VERBS) {
-    if (re.test(cmd)) return [verb, cmd.replace(re, "").replace(/^\s*/, "")];
+    if (re.test(cmd)) return [i18n._(verb), cmd.replace(re, "").replace(/^\s*/, "")];
   }
   return ["", cmd];
 }

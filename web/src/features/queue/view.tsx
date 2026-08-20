@@ -7,12 +7,13 @@ import { AnswerDraftSchema, api, mutate, readApi } from "../../shared/api";
 import { usePaged } from "../../shared/page";
 import type { State } from "../../shared/api";
 import { groupName } from "./rank";
-import { KIND_ZH } from "../../shared/select";
+import { KIND_LABEL } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { foldQueueItems, queueClusters, queueItems, type QueueCluster, type QueueItem } from "./model";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
+import { i18n } from "../../i18n";
 
 /**
  * Everything waiting on the boss, ordered by what ignoring it costs.
@@ -281,7 +282,8 @@ function TicketMeta({ item, n }: { item: QueueItem; n: number }) {
 }
 
 function TicketAbout({ item }: { item: QueueItem }) {
-  return item.about && KIND_ZH[item.about] ? <span className="text-ink-2">{KIND_ZH[item.about]}</span> : null;
+  const kind = item.about ? KIND_LABEL[item.about] : undefined;
+  return kind ? <span className="text-ink-2">{i18n._(kind)}</span> : null;
 }
 
 function TicketReply({ item, standing, refresh }: { item: QueueItem; standing: boolean; refresh: () => void }) {

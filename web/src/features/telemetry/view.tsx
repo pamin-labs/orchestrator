@@ -39,6 +39,7 @@ import {
 } from "./model";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
+import { i18n } from "../../i18n";
 
 /**
  * 耗时 — where a scope's wall clock went.
@@ -244,12 +245,12 @@ function StageTable({
         {/* Nouns, and the shortest ones that still separate the two durations:
             what it usually costs against what it costs on a bad day. The exact
             statistic stays one hover away for anybody who wants it. */}
-        <Tip label={P50_LABEL}>
+        <Tip label={i18n._(P50_LABEL)}>
           <div className="text-right underline decoration-dotted underline-offset-2">
             <Trans>P50</Trans>
           </div>
         </Tip>
-        <Tip label={P95_LABEL}>
+        <Tip label={i18n._(P95_LABEL)}>
           <div className="text-right underline decoration-dotted underline-offset-2">
             <Trans>P95</Trans>
           </div>
@@ -605,7 +606,7 @@ function Trend({
           <Area
             type="monotone"
             dataKey="p50"
-            name={P50_LABEL}
+            name={i18n._(P50_LABEL)}
             stroke="var(--color-ink-3)"
             fill="var(--color-sunk)"
             dot={{ r: 1.5 }}
@@ -614,7 +615,7 @@ function Trend({
           <Area
             type="monotone"
             dataKey="p95"
-            name={P95_LABEL}
+            name={i18n._(P95_LABEL)}
             stroke="var(--color-warn)"
             fill="transparent"
             dot={{ r: 1.5 }}

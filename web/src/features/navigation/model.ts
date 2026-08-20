@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { State } from "../../shared/api";
 import { SectionSchema, type Section } from "../settings/model";
 import { t } from "@lingui/core/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
 
 const ViewSchema = z.enum([
   "home",
@@ -52,18 +54,18 @@ const DIALOG: Partial<Record<View, Section>> = {
   sandbox: "sandbox",
 };
 
-export const VIEWS: [View, string][] = [
-  ["progress", "需求"],
-  ["desk", "工位墙"],
-  ["notes", "记录"],
-  ["owns", "所有权"],
-  ["cost", "成本"],
+export const VIEWS: [View, MessageDescriptor][] = [
+  ["progress", msg`Requirement`],
+  ["desk", msg`Desk wall`],
+  ["notes", msg`Notes`],
+  ["owns", msg`Ownership`],
+  ["cost", msg`Cost`],
   // Top level, beside the other four. It was a tab inside 需求, one rank down,
   // which put "where did this project's wall clock go" underneath "which
   // requirements are running" — but a project's spans are every route and
   // container operation that named it, most of them belonging to no requirement
   // at all. It is a sibling question, not a detail of that one.
-  ["time", "耗时"],
+  ["time", msg`Time`],
 ];
 
 export const choose = <T>(condition: boolean, yes: T, no: T): T => (condition ? yes : no);

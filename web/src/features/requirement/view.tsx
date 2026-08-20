@@ -24,7 +24,7 @@ import {
   type State,
 } from "../../shared/api";
 import type { PanelFrame } from "../../shared/stream";
-import { asksOf, gates, mineOf, prUrl, statusLabel, WHERE_ZH } from "../../shared/select";
+import { asksOf, gates, mineOf, prUrl, said, statusLabel, WHERE_LABEL } from "../../shared/select";
 import { K, waited } from "../../shared/format";
 import { nl } from "../../shared/prose";
 import { cn } from "../../ui/cn";
@@ -1418,7 +1418,7 @@ function Held({ rows }: { rows: Escalation[] }) {
             <span>{waited(e.created_at)}</span>
           </div>
           <Asked body={e.question} className="mt-1.5" tone="text-ink-2" />
-          <Typing label={WHERE_ZH[e.chain_state] ?? e.chain_state} />
+          <Typing label={said(WHERE_LABEL[e.chain_state], e.chain_state)} />
         </div>
       ))}
     </div>
