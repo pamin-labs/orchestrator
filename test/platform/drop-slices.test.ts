@@ -43,14 +43,17 @@ const ForeignKeys = z.array(z.object({ tbl: z.string(), col: z.string() }));
 
 test("every foreign key onto slice has a policy in SLICE_REFS", async () => {
   const db = await openMemory();
+  // `pg_catalog`, not `information_schema`: those views join across every relation
+  // in the database, and the suite now shares one database across 193 namespaces —
+  // 6,534 relations, where this took over five seconds and timed the test out.
   const result = await db.execute(sql`
-    SELECT tc.table_name AS tbl, kcu.column_name AS col
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu ON kcu.constraint_name = tc.constraint_name
-    JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name
-    WHERE tc.constraint_type = 'FOREIGN KEY'
-      AND tc.table_schema = 'public'
-      AND ccu.table_name = 'slice'`);
+    SELECT c.relname AS tbl, a.attname AS col
+    FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_class f ON f.oid = con.confrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = ANY (con.conkey)
+    WHERE con.contype = 'f' AND n.nspname = current_schema() AND f.relname = 'slice'`);
   const found = valueOr(result, ForeignKeys, []);
   expect(found.length).toBeGreaterThan(0);
 

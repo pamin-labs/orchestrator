@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { SQL } from "bun";
 import { errText } from "../../src/platform/process/text.ts";
 import { z } from "zod";
 import { valueOr } from "../../src/contracts/json.ts";
@@ -8,7 +9,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ROOT } from "../../src/platform/config/load.ts";
-import { applyMigrations, openMemory } from "../../src/platform/persistence/database.ts";
+import { applyMigrations, open, openMemory } from "../../src/platform/persistence/database.ts";
 import { event, project } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 
@@ -23,7 +24,13 @@ const Introspection = z.array(z.object({ table_name: z.string() }));
 
 const tableNames = async () => {
   const db = await openMemory();
-  const rows = await db.execute(sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`);
+  const rows = await db.execute(
+    // `pg_catalog`, not `information_schema`: the suite shares one database across
+    // 193 namespaces, and those views join over every relation in it.
+    sql`SELECT c.relname AS table_name FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = current_schema() AND c.relkind = 'r'`,
+  );
   return valueOr(rows, Introspection, []).map((r) => r.table_name);
 };
 
@@ -48,17 +55,32 @@ test("the schema has the four first-class tables plus support tables", async () 
  * replaces — and getting it wrong means a restart failing on `CREATE TABLE`.
  */
 test("migrating a database that is already migrated changes nothing", async () => {
-  // The worker's own database, already migrated by the template it was copied
-  // from — which is the state every restart finds.
-  const db = await openMemory();
-  const Count = z.array(z.object({ n: z.number() }));
-  const applied = async () =>
-    valueOr(await db.execute(sql`SELECT count(*)::int AS n FROM drizzle."__drizzle_migrations"`), Count, [])[0]?.n ?? 0;
-  const first = await applied();
-  expect(first).toBeGreaterThan(0);
-  await applyMigrations(db);
-  expect(await applied()).toBe(first);
-});
+  // A real database, not this file's namespace: the suite builds a namespace by
+  // replaying the SQL and keeps no ledger, so the thing under test — the migrator
+  // deciding it has nothing to apply — only exists on the path a deployment takes.
+  // That is the state every restart finds, and it is `open()` that finds it.
+  const url =
+    process.env["ORCH_TEST_DATABASE_URL"] ?? "postgres://orchestrator:orchestrator@127.0.0.1:5433/orchestrator";
+  const probe = "orch_test_migrate_twice";
+  const admin = new SQL({ url, max: 1 });
+  const on = new URL(`/${probe}`, url).toString();
+  try {
+    await admin.unsafe(`DROP DATABASE IF EXISTS "${probe}" WITH (FORCE)`);
+    await admin.unsafe(`CREATE DATABASE "${probe}"`);
+    const db = await open(1, on);
+    const Count = z.array(z.object({ n: z.number() }));
+    const applied = async () =>
+      valueOr(await db.execute(sql`SELECT count(*)::int AS n FROM drizzle."__drizzle_migrations"`), Count, [])[0]?.n ??
+      0;
+    const first = await applied();
+    expect(first).toBeGreaterThan(0);
+    await applyMigrations(db);
+    expect(await applied()).toBe(first);
+  } finally {
+    await admin.unsafe(`DROP DATABASE IF EXISTS "${probe}" WITH (FORCE)`).catch(() => {});
+    await admin.end();
+  }
+}, 30_000);
 
 test("agent tokens are unique, and NULL is not a duplicate", async () => {
   const db = await openMemory();

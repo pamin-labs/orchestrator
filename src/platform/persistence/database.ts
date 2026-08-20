@@ -136,17 +136,14 @@ const TEST_DATABASE_URL = "ORCH_TEST_DATABASE_URL";
 const testServer = (): string =>
   process.env[TEST_DATABASE_URL] ?? "postgres://orchestrator:orchestrator@127.0.0.1:5433/orchestrator";
 
-const on = (database: string): string => new URL(`/${database}`, testServer()).toString();
-
 /**
- * Named by the schema it holds, so a change makes a new one.
+ * Named by the migrations it holds, so a change makes a new one.
  *
- * The databases copied from it are named the same way: a copy taken from an
- * older template is a database whose tables are not the ones this build expects,
- * and reusing one by name gave "relation does not exist" long after the mistake.
+ * A namespace built from an older tag holds tables that are not the ones this
+ * build expects, and reusing one by name gave "relation does not exist" long
+ * after the mistake.
  */
 const SCHEMA_TAG = schemaTag();
-const TEMPLATE = `orch_test_template_${SCHEMA_TAG}`;
 
 function schemaTag(): string {
   const hash = new Bun.CryptoHasher("sha256");
@@ -155,78 +152,50 @@ function schemaTag(): string {
 }
 
 /**
- * One database per test *file*, not per worker.
- *
- * A worker runs many files, and an abandoned `Scheduler` keeps dispatching from
- * a finished job's detached `.finally` — into whatever file is running by then.
- * Sharing a database made that an ordering flake with a different victim each
- * run. A copy is 9MB and the server holds them in tmpfs, so isolation is
- * structural rather than something each test has to remember.
- */
-/**
- * The half of the name that identifies the *file*, and survives a schema change.
+ * The half of the name that identifies the *file*, and survives a tag change.
  *
  * Exported for the guard: if this stops agreeing with the name, reclamation
  * silently matches nothing and the generations pile up again with nothing to say.
  */
 export const suffixFor = (isolate: string) => Bun.hash(`${Bun.main}${isolate}`).toString(36);
 
-const nameFor = (isolate: string) => `orch_test_${SCHEMA_TAG}_${suffixFor(isolate)}`;
-
-/** Any constant. Session-scoped, so a killed worker does not hold it. */
-const LOCK = 0x0_7c_11_5e;
-
 /**
- * A migrated database to copy, built once by whichever worker gets there first.
+ * One PostgreSQL **schema** per test file, in one shared database.
  *
- * `CREATE DATABASE ... TEMPLATE` is PostgreSQL's own answer to "give every test
- * worker its own database", and it is the reason this is not PGlite: that engine
- * is in-process, so a worker cannot share one and each costs 1.2GB of WASM heap —
- * ten of them swapped a 32GB machine. Two workers racing here is normal; the
- * loser's `CREATE` fails on the name and it uses what the winner built.
+ * An abandoned `Scheduler` dispatches into whatever file is running by then, so
+ * isolation has to be structural. A *database* per file was the first way and it
+ * cost: `template0` is 7,521 kB against 808 kB of our own tables, so **87% of
+ * every copy was the system catalogue** — 1.6 GB across 193 files, in a tmpfs.
+ * A schema isolates the same for the 808 kB, and migrating into one takes 54ms
+ * against 59ms to copy a database, so the template and its advisory lock went too.
  */
-async function ensureTemplate(admin: SQL): Promise<void> {
-  const existing = await admin<{ present: number }[]>`SELECT 1 AS present FROM pg_database WHERE datname = ${TEMPLATE}`;
-  if (existing.length > 0) return;
-  // Built under another name and renamed, so that the template existing means it
-  // is migrated. Created in place, a process that died between the CREATE and
-  // the migrations left an empty one — and every copy after it was a database
-  // whose tables did not exist.
-  const building = `${TEMPLATE}_building`;
-  await admin.unsafe(`DROP DATABASE IF EXISTS "${building}" WITH (FORCE)`);
-  await admin.unsafe(`CREATE DATABASE "${building}"`);
-  const client = new SQL(on(building));
-  const db = bunSqlDrizzle({ client });
-  await bunSqlMigrate(db, { migrationsFolder: MIGRATIONS });
-  await terminalStateGuard(db);
-  // Closed, and it matters: `CREATE DATABASE ... TEMPLATE` refuses while any
-  // session is connected to the source.
-  await client.end();
-  await admin.unsafe(`ALTER DATABASE "${building}" RENAME TO "${TEMPLATE}"`);
-}
+const nameFor = (isolate: string) => `t_${SCHEMA_TAG}_${suffixFor(isolate)}`;
+
+/** Every connection lands in its own namespace, and the pool cannot drift off it. */
+const urlFor = (ns: string): string => {
+  const url = new URL(testServer());
+  url.searchParams.set("options", `-csearch_path=${ns}`);
+  return url.toString();
+};
 
 /**
- * This file's databases from older schemas, dropped as this file's is created.
+ * This file's namespaces from older migrations, dropped as this one is made.
  *
- * The name carries the schema's hash, so a schema change orphans every one and
- * nothing collected it: **197 databases, 1,799 MB**, 858 MB of it schemas no
- * longer in the tree, in a tmpfs — 3 GB resident. One file's own, not a sweep:
- * `DROP DATABASE` forces a checkpoint, so 97 serial ones took minutes and pinned
- * a core, serial because the admin handle is `max: 1` for the advisory lock.
+ * The name carries the tag, so changing the migrations orphans every one of them
+ * and nothing collected it: 197 databases and 1,799 MB before this existed.
+ * One file's own, not a sweep — a sweep of a whole generation ran serially on the
+ * one connection and took minutes.
  */
 async function dropMyOldGenerations(admin: SQL, mine: string, suffix: string): Promise<void> {
   // `right(...)` rather than a `LIKE` pattern: the names are full of underscores
   // and `_` is LIKE's single-character wildcard, so the pattern that reads as
-  // exact is not, and escaping it is a backslash three languages have opinions on.
+  // exact is not one, and escaping it is a backslash three languages have views on.
   const tail = `_${suffix}`;
-  const stale = await admin<{ datname: string }[]>`
-    SELECT datname FROM pg_database
-    WHERE starts_with(datname, 'orch_test_') AND right(datname, ${tail.length}) = ${tail} AND datname <> ${mine}`;
-  for (const { datname } of stale) {
-    // `FORCE`, because a worker from an older run may still be connected, and
-    // best-effort, because losing that race costs memory and nothing else.
-    await admin.unsafe(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`).catch(() => {});
-  }
+  const stale = await admin<{ nspname: string }[]>`
+    SELECT nspname FROM pg_namespace
+    WHERE starts_with(nspname, 't_') AND right(nspname, ${tail.length}) = ${tail} AND nspname <> ${mine}`;
+  // `CASCADE`, and best-effort: losing a race here costs memory and nothing else.
+  for (const { nspname } of stale) await admin.unsafe(`DROP SCHEMA IF EXISTS "${nspname}" CASCADE`).catch(() => {});
 }
 
 const ready = new Map<string, Promise<SQL>>();
@@ -235,7 +204,7 @@ const ready = new Map<string, Promise<SQL>>();
  * Hand the connections back. Registered by the test preload, not by a caller.
  *
  * Each test file evaluates this module afresh and opens its own pool, so a run
- * of 188 files leaves 188 of them behind — and the server refuses the next
+ * of 193 files leaves 193 of them behind — and the server refuses the next
  * connection long before the suite is finished.
  */
 export async function closeTestDatabases(): Promise<void> {
@@ -249,6 +218,26 @@ export async function applyMigrations(db: DB): Promise<void> {
   // class to say "bring this up to date".
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `DB` is the shared supertype; the migrator names the concrete driver class this always is
   await bunSqlMigrate(db as Parameters<typeof bunSqlMigrate>[0], { migrationsFolder: MIGRATIONS });
+}
+
+/**
+ * The migrations, replayed into whichever namespace the connection is pointed at.
+ *
+ * Not `bunSqlMigrate`: that keeps its own ledger table and would need one per
+ * namespace to decide what to skip, and there is nothing to skip — the namespace
+ * is either absent or complete, because the tag is the hash of these files.
+ */
+async function buildNamespace(client: SQL): Promise<void> {
+  for (const dir of readdirSync(MIGRATIONS).sort()) {
+    const file = join(MIGRATIONS, dir, "migration.sql");
+    // Drizzle writes this separator between statements, and the extended protocol
+    // carries one statement per round trip.
+    for (const statement of readFileSync(file, "utf8").split("--> statement-breakpoint")) {
+      const one = statement.trim();
+      if (one) await client.unsafe(one);
+    }
+  }
+  await terminalStateGuard(bunSqlDrizzle({ client }));
 }
 
 /**
@@ -277,85 +266,82 @@ async function emptied(db: DB, statement: string): Promise<void> {
       return;
     } catch (error) {
       if (attempt >= 40 || !/deadlock|lock timeout|lock_timeout/i.test(errText(error, 2_000))) throw error;
-      // Only once the wait has already failed. Unconditionally clearing the
-      // database's other backends looks tidier and is wrong: the login flows keep
-      // working after their request returns, on purpose, so the common path would
-      // cancel legitimate work and report it against the next test —
-      // `canceling statement due to user request`, seen once in six runs. A
-      // statement that has held a lock through the retries is a different thing.
-      if (attempt === 20) await clearBackends(db);
+      // Only once the wait has already failed. Unconditionally clearing the other
+      // backends looks tidier and is wrong: the login flows keep working after
+      // their request returns, on purpose, so the common path would cancel
+      // legitimate work and report it against the next test. A statement still
+      // holding a lock through the retries is a different thing.
+      if (attempt === 20) await clearBackends(db, mineNamespace(db));
       await Bun.sleep(10);
     }
   }
 }
 
-/** Whatever is still holding a lock in this database, after waiting did not work. */
-const clearBackends = (db: DB): Promise<unknown> =>
+/** Which namespace a handle is pointed at, so cancellation stays inside this file's. */
+const namespaces = new WeakMap<DB, string>();
+const mineNamespace = (db: DB): string => namespaces.get(db) ?? "";
+
+/**
+ * Whatever is still holding a lock in this file's namespace, after waiting failed.
+ *
+ * Scoped by `search_path`, not by database: every test file now shares one
+ * database, so cancelling by `datname` would reach into every other worker.
+ */
+const clearBackends = (db: DB, ns: string): Promise<unknown> =>
   db.execute(sql`
     SELECT pg_cancel_backend(pid), CASE WHEN state = 'idle in transaction' THEN pg_terminate_backend(pid) END
     FROM pg_stat_activity
-    WHERE datname = current_database() AND pid <> pg_backend_pid()`);
+    WHERE datname = current_database() AND pid <> pg_backend_pid()
+      AND position(${ns} in coalesce(query, '')) > 0`);
 
 /**
- * A database for one test file, emptied rather than rebuilt.
+ * A namespace for one test file, emptied rather than rebuilt.
  *
- * A template copy, made once per file; each call truncates it. `RESTART IDENTITY`
- * matters as much as the delete — hundreds of assertions here name row 1 — and
- * each call gets its own Drizzle wrapper, because several modules cache per
- * database *object*. `isolate` names a second database, for the rare test whose
- * subject is two of them; each name is another pool, so it is for the handful
- * that need it rather than a way to avoid sharing.
+ * Built once per file; each call truncates it. `RESTART IDENTITY` matters as much
+ * as the delete — hundreds of assertions name row 1 — and each call gets its own
+ * Drizzle wrapper, because several modules cache per database *object*. Kept
+ * between runs, so a test that changes the *shape* outlives its own run; dropping
+ * the namespace is the repair. `isolate` names a second one.
  */
-// The copy is kept, so a test that changes the *schema* — a `DROP INDEX` proving a
-// query-plan guard can fail — outlives its run and every later run of that file
-// inherits it. This empties rows; dropping the database is the repair.
 export async function openMemory(logger?: Logger, isolate = ""): Promise<DB> {
   const mine = nameFor(isolate);
   let mineReady = ready.get(mine);
   if (!mineReady) {
     mineReady = (async () => {
-      // `max: 1`, because the lock below is per *session*: on a pool, the
-      // acquire, the work and the release each take whichever connection is
-      // free, so two workers were inside at once and Postgres reported the
-      // collision as a deadlock rather than as a lock nobody held.
       const admin = new SQL({ url: testServer(), max: 1 });
-      // One worker at a time through here. Postgres refuses to copy a template
-      // another session is connected to, so two workers arriving together made one
-      // of them throw — and a worker that throws during setup loses its whole file
-      // silently, which is how two files became one with nothing reported.
-      await admin`SELECT pg_advisory_lock(${LOCK})`;
       try {
-        await ensureTemplate(admin);
-        const found = await admin<{ present: number }[]>`SELECT 1 AS present FROM pg_database WHERE datname = ${mine}`;
-        // Left in place between runs rather than dropped: `openMemory` empties it,
-        // and dropping one a sibling still holds is how a worker kills a peer.
-        if (found.length === 0) await admin.unsafe(`CREATE DATABASE "${mine}" TEMPLATE "${TEMPLATE}"`);
-        // Not `ALTER DATABASE ... SET lock_timeout`: that reaches every statement
-        // on every connection, and the login flows keep writing after their
-        // request returns — one in six runs died on `canceling statement due to
-        // lock timeout` in a *test*, not in the truncate it was meant for.
-        await admin.unsafe(`ALTER DATABASE "${mine}" RESET lock_timeout`);
+        // No advisory lock: nothing is copied any more, and the name belongs to
+        // one file, which `--parallel` gives one process. Two workers cannot be
+        // here for the same namespace at all.
+        const found = await admin<{ present: number }[]>`SELECT 1 AS present FROM pg_namespace WHERE nspname = ${mine}`;
+        const client = new SQL({ url: urlFor(mine), max: 24 });
+        if (found.length === 0) {
+          await admin.unsafe(`CREATE SCHEMA "${mine}"`);
+          await buildNamespace(client);
+        }
         await dropMyOldGenerations(admin, mine, suffixFor(isolate));
+        // Above the widest fan-out a single request makes: the panel's snapshot
+        // issues nineteen statements at once, and a pool under that had them
+        // waiting on each other — a request that never returned rather than a
+        // slow one.
+        return client;
       } finally {
-        await admin`SELECT pg_advisory_unlock(${LOCK})`;
         await admin.end();
       }
-      // Above the widest fan-out a single request makes: the panel's snapshot issues
-      // nineteen statements at once, and a pool under that had them waiting on each
-      // other — a request that never returned rather than one that was slow.
-      return new SQL({ url: on(mine), max: 24 });
     })();
     ready.set(mine, mineReady);
   }
   // `logger` is Drizzle's own hook, for the two tests that count statements.
   const db = bunSqlDrizzle(logger ? { client: await mineReady, logger } : { client: await mineReady });
-  const names = Object.values<unknown>(schema)
-    .filter((v): v is PgTable => is(v, PgTable))
-    .map((t) => `"${getTableName(t)}"`)
-    .join(", ");
+  namespaces.set(db, mine);
+  const names = TABLES.map((t) => `"${t}"`).join(", ");
   await emptied(db, `TRUNCATE ${names} RESTART IDENTITY CASCADE`);
   return db;
 }
+
+const TABLES = Object.values<unknown>(schema)
+  .filter((v): v is PgTable => is(v, PgTable))
+  .map((t) => getTableName(t));
 
 /**
  * The `setting` key/value table, read and written in one place.
