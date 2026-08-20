@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import * as schema from "../../src/platform/persistence/schema.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import {
   applyOverrides,
@@ -169,4 +170,42 @@ test("writing a setting does not edit what the default means", async () => {
   // Which is what makes clearing it mean anything.
   await putSetting(db, cfg, "sandbox.image", null);
   expect(cfg.sandbox.image).toBe(shipped);
+});
+
+/**
+ * A refused setting must not survive the refusal.
+ *
+ * `embedding.mode` and its endpoint are two fields with one rule between them,
+ * and the panel writes the mode the moment the segment is pressed. The write
+ * stored the row and *then* validated, so pressing 远程 left
+ * `cfg.embedding.mode = "remote"` in the database with no endpoint — and the
+ * next boot refused to start on it. The only control that could have corrected
+ * the value was in the panel that would not come up.
+ */
+test("a value the whole config rejects is neither stored nor applied", async () => {
+  const db = await openMemory();
+  const cfg = loadConfig();
+  const before = structuredClone(cfg.embedding);
+
+  const why = await putSetting(db, cfg, "embedding.mode", "remote");
+
+  expect(why).toContain("endpoint");
+  // Not stored: a row nobody can apply is a boot this database cannot survive.
+  expect(await overrides(db)).toEqual({});
+  // Not applied: the fleet reading this object is still on the old value.
+  expect(cfg.embedding).toEqual(before);
+});
+
+/**
+ * The same value arriving from somewhere this process does not control — an
+ * older release, a hand-edited row, a restore — is skipped rather than thrown.
+ */
+test("a stored override that no longer applies is skipped, not fatal", async () => {
+  const db = await openMemory();
+  const cfg = loadConfig();
+  await db.insert(schema.setting).values({ k: "cfg.embedding.mode", v: JSON.stringify("remote") });
+
+  await applyOverrides(db, cfg);
+
+  expect(cfg.embedding.mode).toBe("local");
 });
