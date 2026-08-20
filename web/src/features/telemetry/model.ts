@@ -8,7 +8,6 @@
  */
 
 import type { Folded, Stage, TraceRow, Trend } from "../../shared/api";
-import i18n from "../../i18n";
 
 /**
  * One frame of the flamegraph: a name, what it cost, and what it called.
@@ -31,7 +30,7 @@ export interface FlameNode {
  * its children, and the map is keyed by full path so two different parents'
  * identically named children never merge.
  */
-export function flameTree(folded: readonly Folded[], rootName = i18n.t("telemetry.model.rootName", "全部")): FlameNode {
+export function flameTree(folded: readonly Folded[], rootName = "全部"): FlameNode {
   const root: FlameNode = { name: rootName, value: 0, children: [] };
   const byPath = new Map<string, FlameNode>();
 
@@ -119,25 +118,22 @@ export function verdict(split: StageSplit): Verdict | null {
  * through to the identifier** — the set of names grows every time somebody adds a
  * stage, and a missing entry must degrade to a name the reader can search for.
  */
-const HUMAN: Record<string, { key: string; text: string }> = {
-  "sandbox.create": { key: "sandboxCreate", text: "开一个新环境" },
-  "sandbox.init": { key: "sandboxInit", text: "环境装配" },
-  turn: { key: "turn", text: "跑一轮" },
-  "turn.prepare": { key: "turnPrepare", text: "准备这一轮" },
-  "turn.provider": { key: "turnProvider", text: "模型在想" },
-  "turn.checkpoint": { key: "turnCheckpoint", text: "存一次档" },
-  "job watchdog": { key: "jobWatchdog", text: "例行巡检" },
-  "job agent_turn": { key: "jobAgentTurn", text: "跑一轮" },
-  "watchdog.repo_map": { key: "watchdogRepoMap", text: "更新代码索引" },
-  "watchdog.turn_timeout": { key: "watchdogTurnTimeout", text: "查有没有卡住的轮次" },
-  "GET /api/v1/auth/github": { key: "getAuthGithub", text: "连 GitHub" },
+const HUMAN: Record<string, string> = {
+  "sandbox.create": "开一个新环境",
+  "sandbox.init": "环境装配",
+  turn: "跑一轮",
+  "turn.prepare": "准备这一轮",
+  "turn.provider": "模型在想",
+  "turn.checkpoint": "存一次档",
+  "job watchdog": "例行巡检",
+  "job agent_turn": "跑一轮",
+  "watchdog.repo_map": "更新代码索引",
+  "watchdog.turn_timeout": "查有没有卡住的轮次",
+  "GET /api/v1/auth/github": "连 GitHub",
 };
 
 /** The words for a span name, or the span name when nobody has written any. */
-export const humanName = (id: string): string => {
-  const entry = HUMAN[id];
-  return entry ? i18n.t(`telemetry.model.human.${entry.key}`, entry.text) : id;
-};
+export const humanName = (id: string): string => HUMAN[id] ?? id;
 
 /** Whether this name has words of its own, and therefore an identifier worth keeping on hover. */
 export const isRenamed = (id: string): boolean => id in HUMAN;
@@ -149,8 +145,8 @@ export const isRenamed = (id: string): boolean => id in HUMAN;
  * wants to know what usually happens and what happens on a bad day, and those
  * are the words for it.
  */
-export const p50Label = (): string => i18n.t("telemetry.model.p50Label", "一半的情况");
-export const p95Label = (): string => i18n.t("telemetry.model.p95Label", "最慢的那几次");
+export const P50_LABEL = "一半的情况";
+export const P95_LABEL = "最慢的那几次";
 
 /**
  * What kind of work a span name is, from its own prefix.
@@ -160,32 +156,30 @@ export const p95Label = (): string => i18n.t("telemetry.model.p95Label", "最慢
  * names already encode the kind. The fallback bucket is part of the design — a
  * span with no prefix at all still has to land somewhere a reader can find it.
  */
-const KIND_NAMES: Record<string, { key: string; text: string }> = {
-  watchdog: { key: "watchdog", text: "巡检规则" },
-  sandbox: { key: "sandbox", text: "容器操作" },
-  git: { key: "git", text: "代码仓库" },
-  github: { key: "github", text: "GitHub" },
-  turn: { key: "turn", text: "跑一轮" },
-  job: { key: "job", text: "后台任务" },
-  index: { key: "index", text: "代码索引" },
-  lease: { key: "lease", text: "借用资源" },
-  gate: { key: "gate", text: "闸门检查" },
-  pr: { key: "pr", text: "合并请求" },
+const KIND_NAMES: Record<string, string> = {
+  watchdog: "巡检规则",
+  sandbox: "容器操作",
+  git: "代码仓库",
+  github: "GitHub",
+  turn: "跑一轮",
+  job: "后台任务",
+  index: "代码索引",
+  lease: "借用资源",
+  gate: "闸门检查",
+  pr: "合并请求",
 };
 
 /** HTTP spans are named `METHOD /route`, which is a prefix of a different shape. */
 const HTTP = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) /;
 
 export function spanKind(name: string): { key: string; label: string } {
-  if (HTTP.test(name)) return { key: "http", label: i18n.t("telemetry.model.kind.http", "接口请求") };
+  if (HTTP.test(name)) return { key: "http", label: "接口请求" };
   const prefix = name.split(".")[0] ?? "";
-  const entry = KIND_NAMES[prefix];
+  const label = KIND_NAMES[prefix];
   // A prefix nobody has named keeps its own, so a new family of spans is its own
   // group on the day it ships rather than being swept into 其他.
-  if (entry) return { key: prefix, label: i18n.t(`telemetry.model.kind.${entry.key}`, entry.text) };
-  return name.includes(".")
-    ? { key: prefix, label: prefix }
-    : { key: "other", label: i18n.t("telemetry.model.kind.other", "其他") };
+  if (label) return { key: prefix, label };
+  return name.includes(".") ? { key: prefix, label: prefix } : { key: "other", label: "其他" };
 }
 
 /** One kind of work, with everything under it and what it cost together. */

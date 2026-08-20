@@ -1,6 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
 import { Button } from "./button";
 import { Textarea } from "./bits";
 
@@ -69,15 +68,14 @@ export function AskCard({
   onText: (v: string) => void;
   onDone: (v: string | true | null) => void;
 }) {
-  const { t } = useTranslation();
   return (
     <Dialog.Content
       className="fixed left-1/2 top-1/3 z-50 w-[min(28rem,92vw)] -translate-x-1/2 rounded-xl
                  border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in"
     >
       <div className="p-3.5">
-        <Dialog.Title className="mb-1.5 font-display text-[1.0625rem] font-semibold">{spec.title}</Dialog.Title>
-        {spec.body && <Dialog.Description className="text-[0.8125rem] text-ink-2">{spec.body}</Dialog.Description>}
+        <Dialog.Title className="mb-1.5 font-display text-card font-semibold">{spec.title}</Dialog.Title>
+        {spec.body && <Dialog.Description className="text-body text-ink-2">{spec.body}</Dialog.Description>}
         {spec.field && (
           <Textarea
             rows={3}
@@ -90,9 +88,9 @@ export function AskCard({
       </div>
       <div className="flex items-center gap-2 border-t border-rule p-3.5">
         <span className="grow" />
-        <Button onClick={() => onDone(null)}>{t("ui.confirm.cancel", "取消")}</Button>
+        <Button onClick={() => onDone(null)}>取消</Button>
         <Button variant={spec.danger ? "danger" : "go"} onClick={() => onDone(spec.field ? text : true)}>
-          {spec.yes ?? t("ui.confirm.ok", "确定")}
+          {spec.yes ?? "确定"}
         </Button>
       </div>
     </Dialog.Content>

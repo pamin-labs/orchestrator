@@ -139,10 +139,10 @@ const DEFAULT_IMAGE_PATH = "sandbox.image";
  *
  * It had its own row, its own reader and its own writer, from before every
  * config path was settable. Two homes for one value is a precedence order that
- * lives only in code — migration 039 moved the row across, and this is the
+ * lives only in code — the row moved into the settings table, and this is the
  * writer that keeps it there.
  */
-export function setDefaultImage(db: DB, cfg: Config, ref: string): string | null {
+export async function setDefaultImage(db: DB, cfg: Config, ref: string): Promise<string | null> {
   const image = ref.trim();
   return putSetting(db, cfg, DEFAULT_IMAGE_PATH, image || null);
 }

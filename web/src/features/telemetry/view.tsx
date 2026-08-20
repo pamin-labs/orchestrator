@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
-import i18n from "../../i18n";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
@@ -23,8 +21,8 @@ import { AccordionBody, AccordionItem, AccordionTrigger, MultiAccordion } from "
 import { Menu, MenuItem } from "../../ui/menu";
 import {
   BUCKETS,
-  p50Label,
-  p95Label,
+  P50_LABEL,
+  P95_LABEL,
   type TimeWindow,
   bucketFits,
   fillBuckets,
@@ -51,7 +49,7 @@ import {
 
 /** One menu surface, because the stage rows and the waterfall both raise one. */
 const MENU =
-  "z-50 min-w-44 rounded-lg border border-rule bg-paper p-1 text-[0.8125rem] text-ink shadow-[0_10px_30px_var(--shade)]";
+  "z-50 min-w-44 rounded-lg border border-rule bg-paper p-1 text-body text-ink shadow-[0_10px_30px_var(--shade)]";
 
 /**
  * How a row looks, given two independent states.
@@ -94,7 +92,7 @@ function Block({ title, aside, children }: { title?: string; aside?: React.React
         // picture rather than discovered under it — and the rule already draws
         // the line those two things sit on, so nothing new is added to carry it.
         <div className="flex min-w-0 items-baseline justify-between gap-x-3 border-b border-rule pb-1">
-          <h3 className="min-w-0 truncate text-[0.8125rem] font-medium text-ink">{title}</h3>
+          <h3 className="min-w-0 truncate text-body font-medium text-ink">{title}</h3>
           {aside}
         </div>
       )}
@@ -129,10 +127,7 @@ if (typeof scalePoint !== "function") throw new Error("d3-scale's scalePoint was
 const DAY_MS = 24 * 3_600_000;
 
 /** How wide a bucket reads, in the units the picker offers. */
-const bucketLabel = (ms: number) =>
-  ms < 3_600_000
-    ? i18n.t("telemetry.view.minutes", "{{n}} 分钟", { n: ms / 60_000 })
-    : i18n.t("telemetry.view.hours", "{{n}} 小时", { n: ms / 3_600_000 });
+const bucketLabel = (ms: number) => (ms < 3_600_000 ? `${ms / 60_000} 分钟` : `${ms / 3_600_000} 小时`);
 
 /**
  * Which bucket width the trend is using, and a way to choose another.
@@ -154,16 +149,10 @@ function BucketPicker({
   windowMs: number;
   onPick: (ms: number | null) => void;
 }) {
-  const { t } = useTranslation();
   return (
-    <Menu
-      label={t("telemetry.view.bucketLabelMenu", "每格 {{bucket}}{{pinned}}", {
-        bucket: bucketLabel(value),
-        pinned: pinned ? "" : t("telemetry.view.following", "（跟随）"),
-      })}
-    >
-      <MenuItem hint={t("telemetry.view.followHint", "窗口一变就跟着变，够画又不挤")} onSelect={() => onPick(null)}>
-        {t("telemetry.view.followWindow", "跟随窗口")}
+    <Menu label={`每格 ${bucketLabel(value)}${pinned ? "" : "（跟随）"}`}>
+      <MenuItem hint="窗口一变就跟着变，够画又不挤" onSelect={() => onPick(null)}>
+        跟随窗口
       </MenuItem>
       {BUCKETS.map((ms) => {
         const fits = bucketFits(windowMs, ms);
@@ -171,13 +160,7 @@ function BucketPicker({
           <MenuItem
             key={ms}
             disabled={!fits}
-            hint={
-              fits
-                ? undefined
-                : t("telemetry.view.tooManyCells", "这段时间要 {{n}} 格，画不下", {
-                    n: Math.round(windowMs / ms).toLocaleString(),
-                  })
-            }
+            hint={fits ? undefined : `这段时间要 ${Math.round(windowMs / ms).toLocaleString()} 格，画不下`}
             onSelect={() => onPick(ms)}
           >
             {bucketLabel(ms)}
@@ -189,7 +172,7 @@ function BucketPicker({
 }
 
 /** A number column that stays comparable down the page. */
-const NUM = "text-right font-mono text-[0.6875rem] tabular-nums";
+const NUM = "text-right font-mono text-meta tabular-nums";
 
 /**
  * One stage: how long, how often, and how bad the tail is.
@@ -247,28 +230,23 @@ function StageTable({
   // answer rather than an answer, and `ui.md` gives absence a sentence rather
   // than equal billing.
   const { slow, fast, ceiling } = splitStages(stages);
-  const { t } = useTranslation();
   return (
     <div>
-      <div className={cn("grid gap-x-3 border-b border-rule pb-1 text-[0.6875rem] text-ink-3", COLS)}>
+      <div className={cn("grid gap-x-3 border-b border-rule pb-1 text-meta text-ink-3", COLS)}>
         {/* A head is not only a definition; it is what makes a header row look
             like one — three labelled cells beside one blank read as a header that
             failed to render, not as a self-evident column. */}
-        <div>{t("telemetry.view.stagesCol.what", "在做什么")}</div>
+        <div>在做什么</div>
         {/* Nouns, and the shortest ones that still separate the two durations:
             what it usually costs against what it costs on a bad day. The exact
             statistic stays one hover away for anybody who wants it. */}
-        <Tip label={p50Label()}>
-          <div className="text-right underline decoration-dotted underline-offset-2">
-            {t("telemetry.view.stagesCol.p50", "一般")}
-          </div>
+        <Tip label={P50_LABEL}>
+          <div className="text-right underline decoration-dotted underline-offset-2">一般</div>
         </Tip>
-        <Tip label={p95Label()}>
-          <div className="text-right underline decoration-dotted underline-offset-2">
-            {t("telemetry.view.stagesCol.p95", "最慢")}
-          </div>
+        <Tip label={P95_LABEL}>
+          <div className="text-right underline decoration-dotted underline-offset-2">最慢</div>
         </Tip>
-        <div className="text-right">{t("telemetry.view.stagesCol.count", "次数")}</div>
+        <div className="text-right">次数</div>
       </div>
       {/* Grouped by kind and shut by default, inside a box that does not grow:
           twenty-four rules summing to 1.1s is one line. Grouping comes from the
@@ -295,11 +273,9 @@ function StageTable({
                     strokeWidth={2}
                     className="shrink-0 self-center text-ink-3 transition-transform duration-150 group-data-[state=open]:rotate-90"
                   />
-                  <span className="truncate text-[0.8125rem] text-ink">{group.label}</span>
+                  <span className="truncate text-body text-ink">{group.label}</span>
                   {group.errors > 0 && (
-                    <span className="shrink-0 font-mono text-[0.625rem] text-bad">
-                      {t("telemetry.view.failuresCount", "{{n}} 失败", { n: group.errors })}
-                    </span>
+                    <span className="shrink-0 font-mono text-pill text-bad">{group.errors} 失败</span>
                   )}
                 </span>
                 {/* A shut group still answers "did this cost anything", which is
@@ -367,22 +343,20 @@ function StageTable({
                 does not, and the waterfall below still shows it plainly. */}
                           {isRenamed(stage.name) ? (
                             <Tip label={stage.name}>
-                              <span className="whitespace-nowrap text-[0.8125rem] text-ink underline decoration-dotted underline-offset-2">
+                              <span className="whitespace-nowrap text-body text-ink underline decoration-dotted underline-offset-2">
                                 {humanName(stage.name)}
                               </span>
                             </Tip>
                           ) : (
-                            <span className="whitespace-nowrap font-mono text-[0.75rem] text-ink">{stage.name}</span>
+                            <span className="whitespace-nowrap font-mono text-secondary text-ink">{stage.name}</span>
                           )}
                           {stage.errors > 0 && (
                             /* The count says a stage is broken; the reason is the
                                only half a reader can act on. Under a `Tip`
                                because it is the newest failure's own words and
                                can be long — the row stays a row. */
-                            <Tip label={stage.reason ?? t("telemetry.view.noReason", "没有记下原因")}>
-                              <span className="shrink-0 font-mono text-[0.625rem] text-bad">
-                                {t("telemetry.view.failuresCount", "{{n}} 失败", { n: stage.errors })}
-                              </span>
+                            <Tip label={stage.reason ?? "没有记下原因"}>
+                              <span className="shrink-0 font-mono text-pill text-bad">{stage.errors} 失败</span>
                             </Tip>
                           )}
                         </div>
@@ -393,12 +367,8 @@ function StageTable({
                     </ContextMenu.Trigger>
                     <ContextMenu.Portal>
                       <ContextMenu.Content className={MENU}>
-                        <MenuAction onSelect={() => onPick([stage.name])}>
-                          {t("telemetry.view.onlyThisStage", "只看这一段")}
-                        </MenuAction>
-                        <MenuAction onSelect={() => onExclude(stage.name)}>
-                          {t("telemetry.view.hideThisStage", "不看这一段")}
-                        </MenuAction>
+                        <MenuAction onSelect={() => onPick([stage.name])}>只看这一段</MenuAction>
+                        <MenuAction onSelect={() => onExclude(stage.name)}>不看这一段</MenuAction>
                       </ContextMenu.Content>
                     </ContextMenu.Portal>
                   </ContextMenu.Root>
@@ -417,19 +387,13 @@ function StageTable({
         <button
           type="button"
           onClick={() => onShowRest(!showRest)}
-          className="cursor-pointer pt-1.5 text-left text-[0.75rem] text-ink-3 transition-colors hover:text-ink"
+          className="cursor-pointer pt-1.5 text-left text-secondary text-ink-3 transition-colors hover:text-ink"
         >
           {/* Under a millisecond the quoted ceiling rounds to "0ms", and "都在
               0ms 以内" reads as a broken number rather than as a fast stage. */}
           {showRest
-            ? t("telemetry.view.collapseRest", "收起另外 {{n}} 个", { n: fast.length })
-            : t("telemetry.view.expandRest", "展开另外 {{n}} 个（{{ceiling}}）", {
-                n: fast.length,
-                ceiling:
-                  ceiling < 1
-                    ? t("telemetry.view.underOneMs", "都不到 1ms")
-                    : t("telemetry.view.withinCeiling", "都在 {{d}} 以内", { d: duration(ceiling) }),
-              })}
+            ? `收起另外 ${fast.length} 个`
+            : `展开另外 ${fast.length} 个（${ceiling < 1 ? "都不到 1ms" : `都在 ${duration(ceiling)} 以内`}）`}
         </button>
       )}
     </div>
@@ -467,7 +431,6 @@ function MenuAction({ onSelect, children }: { onSelect: () => void; children: Re
  */
 function FlameBlock({ folded, picked }: { folded: Report["flame"]; picked: readonly string[] }) {
   const [self, setSelf] = useState(true);
-  const { t } = useTranslation();
   const tree = useMemo(() => flameTree(folded), [folded]);
   const depth = flameDepth(tree);
 
@@ -479,14 +442,14 @@ function FlameBlock({ folded, picked }: { folded: Report["flame"]; picked: reado
       // Named for the question it answers, not for the chart it is: this is every
       // run in the scope stacked together, the trend beside it is one number per
       // bucket over time, and two charts of the same spans need that said.
-      title={t("telemetry.view.flameDistribution", "耗时分布")}
+      title="耗时分布"
       aside={
         <Segments value={self ? "self" : "total"} onValueChange={(next) => setSelf(next === "self")}>
           {/* Not two skins on one chart: 自身 makes a frame as wide as the time it
               spent itself, 含下游 as wide as everything it called. A parent that
               only waits is full width under one and a sliver under the other. */}
-          <Segment value="self">{t("telemetry.view.self", "自身")}</Segment>
-          <Segment value="total">{t("telemetry.view.includingDownstream", "含下游")}</Segment>
+          <Segment value="self">自身</Segment>
+          <Segment value="total">含下游</Segment>
         </Segments>
       }
     >
@@ -527,7 +490,6 @@ function Trend({
   /** Drag and wheel write the same thing, and every block reads it. */
   onWindow: (next: TimeWindow | null) => void;
 }) {
-  const { t } = useTranslation();
   const box = useRef<HTMLDivElement>(null);
   useWheel(box, (event) => {
     const el = box.current;
@@ -559,13 +521,11 @@ function Trend({
       // Inside the chart's own box, at the chart's own height: a slot the size of
       // the thing that is missing says which thing is missing. `sunk` is already
       // this page's surface for what a machine produced.
-      <div className="grid h-[7.5rem] place-items-center rounded-md bg-sunk text-center text-[0.75rem] text-ink-3">
+      <div className="grid h-[7.5rem] place-items-center rounded-md bg-sunk text-center text-secondary text-ink-3">
         {/* Which of the two absences it is. "Nothing was recorded here" and
             "nothing has been recorded yet" send the reader to different places,
             and the window is what tells them apart. */}
-        {trend.length === 0
-          ? t("telemetry.view.noActivityInWindow", "这段时间没有活动。")
-          : t("telemetry.view.tooFewPoints", "还不够两个时段的数据。")}
+        {trend.length === 0 ? "这段时间没有活动。" : "还不够两个时段的数据。"}
       </div>
     );
   }
@@ -627,7 +587,7 @@ function Trend({
           <Area
             type="monotone"
             dataKey="p50"
-            name={p50Label()}
+            name={P50_LABEL}
             stroke="var(--color-ink-3)"
             fill="var(--color-sunk)"
             dot={{ r: 1.5 }}
@@ -636,7 +596,7 @@ function Trend({
           <Area
             type="monotone"
             dataKey="p95"
-            name={p95Label()}
+            name={P95_LABEL}
             stroke="var(--color-warn)"
             fill="transparent"
             dot={{ r: 1.5 }}
@@ -648,6 +608,8 @@ function Trend({
   );
 }
 
+/** Matches the server's own cache window; a shorter one would ask and be handed the same answer. */
+const TELEMETRY_STALE_MS = 15_000;
 /**
  * The read, and the trace opened on top of it.
  *
@@ -705,6 +667,13 @@ function useTelemetry(
       return answer;
     },
     placeholderData: keepPreviousData,
+    // The one query that overrides the global `staleTime: 0`, and the reason is in
+    // the report rather than in taste: the spans it reads are written by a
+    // heartbeat, so an answer cannot be fresher than that tick — while re-asking
+    // costs five synchronous window-function queries the server runs on its only
+    // thread. Alt-tabbing back was re-paying that for a number that had not moved.
+    staleTime: TELEMETRY_STALE_MS,
+    refetchOnWindowFocus: false,
   });
   const report: Report | null = data ?? null;
 
@@ -746,10 +715,9 @@ function TrendBlock({
   chosen: TimeWindow | null;
   onWindow: (next: TimeWindow | null) => void;
 }) {
-  const { t } = useTranslation();
   return (
     <Block
-      title={t("telemetry.view.perRunDuration", "每次运行的耗时")}
+      title="每次运行的耗时"
       aside={
         <BucketPicker
           value={bucketMs}
@@ -769,14 +737,14 @@ function TrendBlock({
       />
       {/* The same strip the flamegraph has, against the whole stretch the data
           covers — which is what a `Brush` could not be. */}
-      <Minimap view={window} limit={limit} label={t("telemetry.view.whichWindow", "看的是哪一段")} onPan={onWindow} />
+      <Minimap view={window} limit={limit} label="看的是哪一段" onPan={onWindow} />
       {chosen !== null && (
         <button
           type="button"
           onClick={() => onWindow(null)}
-          className="cursor-pointer self-start text-[0.75rem] text-ink-3 transition-colors hover:text-ink"
+          className="cursor-pointer self-start text-secondary text-ink-3 transition-colors hover:text-ink"
         >
-          {t("telemetry.view.backToFullWindow", "← 回到整段时间")}
+          ← 回到整段时间
         </button>
       )}
     </Block>
@@ -818,7 +786,7 @@ export function Telemetry({
   scope,
   windowMs,
   trend: showTrend = false,
-  empty,
+  empty = "还没有跑过任何活。",
 }: {
   scope: TelemetryScope;
   windowMs?: number;
@@ -826,8 +794,6 @@ export function Telemetry({
   trend?: boolean;
   empty?: string;
 }) {
-  const { t } = useTranslation();
-  const emptyText = empty ?? t("telemetry.view.noActivityYet", "还没有跑过任何活。");
   const { picked, excluded, pick, exclude, restore, restoreAll } = useSelection();
   /**
    * The stretch of time the page is showing, when the reader has chosen one.
@@ -872,14 +838,10 @@ export function Telemetry({
   const limit = report?.dataWindow ?? extent ?? report?.window ?? shownWindow;
 
   if (!report) {
-    return (
-      <div className="py-4 text-[0.75rem] text-ink-3">
-        {loading ? t("telemetry.view.loading", "读取中…") : emptyText}
-      </div>
-    );
+    return <div className="py-4 text-secondary text-ink-3">{loading ? "读取中…" : empty}</div>;
   }
   if (!hasSpans(report.stages, report.traces)) {
-    return <div className="py-4 text-[0.75rem] text-ink-3">{emptyText}</div>;
+    return <div className="py-4 text-secondary text-ink-3">{empty}</div>;
   }
 
   const shown = report.stages.filter((stage) => !excluded.includes(stage.name));
@@ -914,7 +876,7 @@ export function Telemetry({
         {/* Titled like its neighbours: three titled blocks and one bare table read
             as a layout that lost a heading, whatever the columns say for
             themselves. */}
-        <Block title={t("telemetry.view.stageDurations", "各环节耗时")}>
+        <Block title="各环节耗时">
           <Stages stages={shown} picked={picked} onPick={pick} onExclude={exclude} />
           {excluded.length > 0 && <Excluded names={excluded} onClear={restoreAll} onRestore={restore} />}
         </Block>
@@ -933,24 +895,19 @@ export function Telemetry({
  * the requirement's spans, so a width really is a share of one total.
  */
 function Slices({ slices }: { slices: Report["slices"] }) {
-  const { t } = useTranslation();
   if (slices.length < 2) return null;
   const total = slices.reduce((sum, row) => sum + row.totalMs, 0) || 1;
   return (
     <section className="flex flex-col gap-y-2">
-      <h3 className="border-b border-rule pb-1 text-[0.8125rem] font-medium text-ink">
-        {t("telemetry.view.sliceDurations", "各切片耗时")}
-      </h3>
+      <h3 className="border-b border-rule pb-1 text-body font-medium text-ink">各切片耗时</h3>
       <div className="flex flex-col gap-y-1.5">
         {slices.map((row) => (
           <div key={row.sliceId ?? "none"} className="grid grid-cols-[6rem_minmax(0,1fr)_4rem] items-center gap-x-3">
             {/* NULL is a row, not a filter: planning turns, the draft card and the
                 roster belong to no slice, and leaving them out would make these add
                 up to less than the requirement with nothing explaining the gap. */}
-            <span className="truncate text-[0.75rem] text-ink-2">
-              {row.sliceId === null
-                ? t("telemetry.view.noSlice", "没归到切片")
-                : t("telemetry.view.sliceN", "切片 {{id}}", { id: row.sliceId })}
+            <span className="truncate text-secondary text-ink-2">
+              {row.sliceId === null ? "没归到切片" : `切片 ${row.sliceId}`}
             </span>
             <div className="h-1.5 rounded-full bg-sunk">
               <div
@@ -980,10 +937,9 @@ function Excluded({
   onClear: () => void;
   onRestore: (name: string) => void;
 }) {
-  const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.75rem] text-ink-3">
-      <span>{t("telemetry.view.hiding", "不看：")}</span>
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-secondary text-ink-3">
+      <span>不看：</span>
       {names.map((name) => (
         <button
           key={name}
@@ -995,7 +951,7 @@ function Excluded({
         </button>
       ))}
       <button type="button" onClick={onClear} className="cursor-pointer underline transition-colors hover:text-ink">
-        {t("telemetry.view.restoreAll", "全部恢复")}
+        全部恢复
       </button>
     </div>
   );
@@ -1013,14 +969,10 @@ const HOST: TelemetryScope = { kind: "system" };
  * slower"), the host's is "is it slow now".
  */
 export function SystemTiming() {
-  const { t } = useTranslation();
   return (
     <>
-      <Head
-        title={t("telemetry.view.systemTiming", "系统耗时")}
-        note={t("telemetry.view.systemTimingNote", "这台机器上所有活动的耗时，最近一天")}
-      />
-      <Telemetry scope={HOST} trend empty={t("telemetry.view.noSystemActivity", "还没有记下任何系统活动。")} />
+      <Head title="系统耗时" note="这台机器上所有活动的耗时，最近一天" />
+      <Telemetry scope={HOST} trend empty="还没有记下任何系统活动。" />
     </>
   );
 }

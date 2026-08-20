@@ -1,6 +1,8 @@
 import { afterAll, beforeEach } from "bun:test";
 import { rmSync } from "node:fs";
 import { createdRoot } from "./temp.ts";
+import { closeTestDatabases } from "../../src/platform/persistence/database.ts";
+import { stopSchedulers } from "./test-context.ts";
 import { resetRepoHolds } from "../../src/mech/git/repository.ts";
 import { resetNet } from "../../src/mech/sandbox/net.ts";
 import { resetSandboxHold } from "../../src/mech/sandbox/sandbox.ts";
@@ -30,6 +32,7 @@ beforeEach(() => {
   resetNet();
   resetServerRestarts();
   resetSkillsWarned();
+  stopSchedulers();
 });
 
 /**
@@ -42,7 +45,10 @@ beforeEach(() => {
  * after its assertions. `tempDir` puts everything under one parent so this stays
  * one call rather than a registry that each call site has to remember to join.
  */
-afterAll(() => {
+afterAll(async () => {
   const root = createdRoot();
   if (root) rmSync(root, { recursive: true, force: true });
+  // The file's pool, handed back. Each file evaluates the persistence module
+  // afresh and opens its own; 188 of them outlives the server's connection cap.
+  await closeTestDatabases();
 });

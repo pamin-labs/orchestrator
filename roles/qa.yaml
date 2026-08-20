@@ -1,4 +1,7 @@
 name: qa
+# What the flow may ask this role for. The dispatch sites look up the capability,
+# never the name, so this line is what makes a role replaceable by a yaml file.
+capabilities: [review_slice]
 # codex: slice review is not a decision. The narrow tool whitelist that used to
 # bound its reading has no equivalent here, so the slice budget is what bounds it.
 runtime: codex

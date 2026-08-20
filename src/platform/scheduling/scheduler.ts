@@ -1,12 +1,25 @@
 import { z } from "zod";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
+import { writeHandle } from "../../platform/persistence/database.ts";
 import type { DB } from "../../platform/persistence/database.ts";
-import { jsonOr } from "../../contracts/json.ts";
+import { JsonValue, valueOr } from "../../contracts/json.ts";
+import {
+  agent,
+  grp,
+  job as jobTable,
+  lease,
+  resource,
+  runtime_auth,
+  slice,
+  usage_snapshot,
+} from "../../platform/persistence/schema.ts";
 import { isRunning, track, untrack } from "../../platform/process/running-turns.ts";
 import { type GrpState, isDispatchableGrpState, type JobState } from "../../contracts/states.ts";
 import { requestContext } from "../../platform/observability/request-context.ts";
 import { observeJob } from "../../platform/observability/metrics.ts";
 import { startChildTrace, withActiveSpan } from "../../platform/observability/traces.ts";
 import { errText } from "../../platform/process/text.ts";
+import type { Json } from "../../contracts/json.ts";
 
 export type { JobState } from "../../contracts/states.ts";
 
@@ -64,7 +77,7 @@ export interface StoredJob {
   grp_id: number | null;
   agent_id: number | null;
   slice_id: number | null;
-  payload_json: string;
+  payload_json: Json;
   priority: number;
   state: JobState;
   error?: string | null;
@@ -112,7 +125,8 @@ function enqueueTrace<K extends JobKind>(fields: EnqueueFields<K>) {
 
 function decodeJob(row: StoredJob): Job {
   const kind = JobKindSchema.parse(row.kind);
-  const raw: unknown = JSON.parse(row.payload_json);
+  // `payload_json` is `jsonb`, so the driver has already parsed it.
+  const raw: unknown = row.payload_json;
   switch (kind) {
     case "agent_turn":
       return { ...row, kind, payload: JobPayloadSchemas.agent_turn.parse(raw) };
@@ -130,6 +144,25 @@ function decodeJob(row: StoredJob): Job {
       return { ...row, kind, payload: JobPayloadSchemas.reconcile.parse(raw) };
   }
 }
+
+/** The columns every dispatch read needs, named once so the two agree. */
+const JOB_FIELDS = {
+  id: jobTable.id,
+  kind: jobTable.kind,
+  grp_id: jobTable.grp_id,
+  agent_id: jobTable.agent_id,
+  slice_id: jobTable.slice_id,
+  payload_json: jobTable.payload_json,
+  priority: jobTable.priority,
+  state: jobTable.state,
+  correlation_id: jobTable.correlation_id,
+  trace_id: jobTable.trace_id,
+  parent_span_id: jobTable.parent_span_id,
+};
+
+/** Why a stored payload could not be decoded, in the one wording both writers use. */
+const payloadError = (kind: string, error: unknown): string =>
+  `invalid ${kind} payload: ${error instanceof Error ? error.message : String(error)}`;
 
 export interface SchedulerOptions {
   /** Max groups with an in-flight agent_turn. Default 3 (see docs/project/plan.md §11). */
@@ -163,12 +196,12 @@ export interface SchedulerOptions {
   /**
    * Has GitHub stopped accepting us for this project?
    *
-   * The fourth gate of the same shape, and the first that is **per project**:
-   * `online`, `sandboxReady` and `providerHeld` are facts about the machine or
-   * account; a dead GitHub credential is a fact about one repository, and one
-   * project's revoked access must not stop another. `github.ts` passes it.
+   * The fourth gate of the same shape and the first that is **per project**: one
+   * project's revoked access must not stop another. Awaited, unlike the three
+   * above, because it is an in-memory map plus one primary-key read beside three
+   * the admission check already awaits — not the probe those refuse to block on.
    */
-  repoHeld?: (projectId: number) => boolean;
+  repoHeld?: (projectId: number) => boolean | Promise<boolean>;
 }
 
 const DEFAULT_POOL = "default";
@@ -252,8 +285,8 @@ export class Scheduler {
   private readonly now: () => number;
   private readonly online: () => boolean;
   private readonly sandboxReady: () => boolean;
-  private readonly repoHeld: (projectId: number) => boolean;
-  private draining = false;
+  private readonly repoHeld: (projectId: number) => boolean | Promise<boolean>;
+  private ticking: Promise<void> | undefined;
   private accepting = true;
 
   private readonly db: DB;
@@ -272,80 +305,111 @@ export class Scheduler {
     this.repoHeld = opts.repoHeld ?? (() => false);
   }
 
-  enqueue<K extends JobKind>(kind: K, fields: EnqueueFields<K> = {}): number {
+  async enqueue<K extends JobKind>(kind: K, fields: EnqueueFields<K> = {}): Promise<number> {
+    // A closed queue writes nothing. `0` is not an id any row has.
+    if (!this.accepting) return 0;
     const payload = JobPayloadSchemas[kind].parse(fields.payload ?? {});
     const trace = enqueueTrace(fields);
-    const row = this.db
-      .query<
-        { id: number },
-        [
-          string,
-          number | null,
-          number | null,
-          number | null,
-          string,
-          number,
-          number,
-          string,
-          string,
-          string | null,
-          number | null,
-        ]
-      >(
-        `INSERT INTO job
-           (kind, grp_id, agent_id, slice_id, payload_json, priority, enqueued_at,
-            correlation_id, trace_id, parent_span_id, trace_flags)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      )
-      .get(
+    // The open transaction when there is one: a job enqueued inside a transaction
+    // that then rolls back is work nobody asked for, and on the single-connection
+    // driver writing round it deadlocks.
+    const [row] = await writeHandle(this.db)
+      .insert(jobTable)
+      .values({
         kind,
-        fields.grp_id ?? null,
-        fields.agent_id ?? null,
-        fields.slice_id ?? null,
-        JSON.stringify(payload),
-        fields.priority ?? 0,
-        this.now(),
-        trace.correlationId,
-        trace.traceId,
-        trace.parentSpanId,
-        trace.traceFlags,
-      )!;
-    return row.id;
+        grp_id: fields.grp_id ?? null,
+        agent_id: fields.agent_id ?? null,
+        slice_id: fields.slice_id ?? null,
+        // The column is `jsonb`, so the validated payload goes in as a value.
+        payload_json: JsonValue.parse(payload),
+        priority: fields.priority ?? 0,
+        enqueued_at: this.now(),
+        correlation_id: trace.correlationId,
+        trace_id: trace.traceId,
+        parent_span_id: trace.parentSpanId,
+        trace_flags: trace.traceFlags,
+      })
+      .returning({ id: jobTable.id });
+    return row!.id;
   }
 
-  /** Dispatch everything currently eligible. Safe to call often; never reentrant. */
-  tick(): void {
-    if (!this.accepting || this.draining) return;
-    this.draining = true;
-    try {
-      for (const job of this.eligible()) this.start(job);
-    } finally {
-      this.draining = false;
-    }
+  /**
+   * Dispatch everything currently eligible. Safe to call often.
+   *
+   * Queued behind whatever tick is already running rather than dropped, and the
+   * caller waits for its own sweep. Dispatch became asynchronous, so two ticks
+   * overlapping is now the ordinary case — a finished job ticks from a detached
+   * chain while `drain` is between rounds — and the old "already running, return"
+   * guard made `drain` return with a dispatchable job still `pending`.
+   */
+  tick(): Promise<void> {
+    if (!this.accepting) return Promise.resolve();
+    const next = (this.ticking ?? Promise.resolve()).then(() => this.sweep());
+    // The sequencing handle must never reject: the next caller's sweep runs after
+    // this one whether or not it threw. The caller still gets the failure.
+    this.ticking = next.catch(() => {});
+    return next;
   }
 
-  /** Stop admitting queued work while allowing in-flight jobs to settle. */
+  private async sweep(): Promise<void> {
+    const idle = this.inflight.size === 0;
+    const ready = await this.eligible();
+    for (const job of ready) await this.start(job);
+    // A sweep that found nothing *while nothing was running* is the only proof
+    // the queue is empty: one that found nothing because the pool was full says
+    // the opposite. `drain` reads this and nothing else does.
+    this.quiet = idle && ready.length === 0;
+  }
+
+  private quiet = false;
+
+  /**
+   * Stop admitting work. In-flight jobs settle; nothing new is queued or run.
+   *
+   * A finished job enqueues its follow-up and ticks from a detached `.finally`,
+   * so a scheduler nobody holds any more keeps writing — into a handle that is
+   * closing at shutdown, and into the next test's database in a suite. Closing
+   * the queue is what makes an abandoned one inert rather than merely idle.
+   */
   quiesce(): void {
     this.accepting = false;
   }
 
-  /** Resolve once every in-flight job has settled and nothing new is eligible. */
+  /**
+   * Resolve once every in-flight job has settled and nothing new is eligible.
+   *
+   * It waits for a sweep that found nothing *while nothing was running*. A job
+   * can finish between a sweep and the check, so "no work in flight" on its own
+   * returned with the follow-up still `pending` — the pool had been full when
+   * the last sweep looked, which is the opposite of an empty queue.
+   */
   async drain(): Promise<void> {
+    this.quiet = false;
     for (;;) {
-      this.tick();
-      if (this.inflight.size === 0) return;
-      await Promise.race(this.inflight.values()).catch(() => {});
+      await this.tick();
+      if (this.quiet) return;
+      // A closed queue never goes quiet, because `tick` stops sweeping, so
+      // waiting for proof it is empty would spin. What is running still has to
+      // settle — that is what `quiesce` promises — but nothing can arrive behind
+      // it, so an empty one is the end.
+      if (!this.accepting && this.inflight.size === 0) return;
+      if (this.inflight.size > 0) await Promise.race(this.inflight.values()).catch(() => {});
     }
   }
 
   /** park / respec: drop a group's queued work without touching what is running. */
-  cancelPending(grpId: number, reason = "cancelled"): number {
-    const r = this.db.run(
-      `UPDATE job SET state = 'cancelled', ended_at = ?, error = ?
-       WHERE grp_id = ? AND state = 'pending'`,
-      [this.now(), reason, grpId],
-    );
-    return r.changes;
+  async cancelPending(grpId: number, reason = "cancelled"): Promise<number> {
+    // `.returning()` rather than a driver row count: `DB` is either driver and the
+    // two do not report one under the same name.
+    // The open transaction, for the reason `enqueue` gives: cancelling inside one
+    // that then rolls back must not leave the cancellation behind, and writing
+    // round it deadlocks on the single-connection driver.
+    const cancelled = await writeHandle(this.db)
+      .update(jobTable)
+      .set({ state: "cancelled", ended_at: this.now(), error: reason })
+      .where(and(eq(jobTable.grp_id, grpId), eq(jobTable.state, "pending")))
+      .returning({ id: jobTable.id });
+    return cancelled.length;
   }
 
   /**
@@ -356,40 +420,38 @@ export class Scheduler {
    * N−1 — a check before dequeue rather than a property of an edge, which is why
    * this is not a workflow engine (ADR 003). `claimCapacity` holds the rules.
    */
-  private eligible(): Job[] {
-    const rows = this.db
-      .query<StoredJob, []>(
-        `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state,
-                correlation_id, trace_id, parent_span_id
-         FROM job WHERE state = 'pending' ORDER BY priority DESC, id`,
-      )
-      .all();
+  private async eligible(): Promise<Job[]> {
+    const rows = await this.db
+      .select(JOB_FIELDS)
+      .from(jobTable)
+      .where(eq(jobTable.state, "pending"))
+      .orderBy(desc(jobTable.priority), asc(jobTable.id));
     if (rows.length === 0) return [];
-    const pending = this.decode(rows);
+    const pending = await this.decode(rows);
 
     // Standing agents (Architect, CoS, Librarian) have no group, but their turns
     // cost the same money and CPU as anyone's — so they take a slot too. Letting
     // them bypass the pool was how a "no slots" configuration still spawned agents.
-    const { busyGroups, taken } = this.capacity();
-    this.loadAdmission(pending);
+    const { busyGroups, taken } = await this.capacity();
+    await this.loadAdmission(pending);
 
     const out: Job[] = [];
     for (const job of pending) {
-      if (this.claimCapacity(job, busyGroups, taken)) out.push(job);
+      if (await this.claimCapacity(job, busyGroups, taken)) out.push(job);
     }
     return out;
   }
 
-  private claimCapacity(job: Job, busyGroups: Set<number>, taken: Record<string, number>): boolean {
+  private async claimCapacity(job: Job, busyGroups: Set<number>, taken: Record<string, number>): Promise<boolean> {
     if (job.kind === "lease") return this.claimLeaseCapacity(job, taken);
     if (FREE_KINDS.has(job.kind)) return true;
     return this.claimWriterCapacity(job, busyGroups);
   }
 
-  private claimWriterCapacity(job: Job, busyGroups: Set<number>): boolean {
+  private async claimWriterCapacity(job: Job, busyGroups: Set<number>): Promise<boolean> {
     const slot = slotOf(job);
     if (!this.writerSlotAvailable(slot, busyGroups)) return false;
-    if (!this.groupAdmitsJob(job) || !this.jobReady(job)) return false;
+    if (!this.groupAdmitsJob(job) || !(await this.jobReady(job))) return false;
     busyGroups.add(slot);
     return true;
   }
@@ -398,16 +460,16 @@ export class Scheduler {
     return job.grp_id === null || this.admits(job);
   }
 
-  private jobReady(job: Job): boolean {
-    return job.kind !== "agent_turn" || this.agentTurnReady(job);
+  private async jobReady(job: Job): Promise<boolean> {
+    return job.kind !== "agent_turn" || (await this.agentTurnReady(job));
   }
 
-  private capacity(): { busyGroups: Set<number>; taken: Record<string, number> } {
+  private async capacity(): Promise<{ busyGroups: Set<number>; taken: Record<string, number> }> {
     const busyGroups = new Set<number>();
     const taken: Record<string, number> = {};
-    for (const job of this.runningJobs()) {
+    for (const job of await this.runningJobs()) {
       if (job.kind === "lease") {
-        for (const pool of this.poolsOf(job)) taken[pool] = (taken[pool] ?? 0) + 1;
+        for (const pool of await this.poolsOf(job)) taken[pool] = (taken[pool] ?? 0) + 1;
       } else if (!FREE_KINDS.has(job.kind)) {
         busyGroups.add(slotOf(job));
       }
@@ -415,10 +477,10 @@ export class Scheduler {
     return { busyGroups, taken };
   }
 
-  private claimLeaseCapacity(job: Job<"lease">, taken: Record<string, number>): boolean {
+  private async claimLeaseCapacity(job: Job<"lease">, taken: Record<string, number>): Promise<boolean> {
     // Every pool the resource is tagged with has to have room: a lease that is
     // both `browser` and `heavy` waits for whichever is tighter.
-    const wanted = this.poolsOf(job);
+    const wanted = await this.poolsOf(job);
     const limits = this.pools();
     // `repo:<project>` must not inherit `default`, which ships as 2. The pool is
     // keyed per project so that it can be one — falling back to `default` is what
@@ -435,9 +497,9 @@ export class Scheduler {
     return !busyGroups.has(slot) && busyGroups.size < this.maxGroups();
   }
 
-  private agentTurnReady(job: Job<"agent_turn">): boolean {
+  private async agentTurnReady(job: Job<"agent_turn">): Promise<boolean> {
     if (!this.online() || !this.sandboxReady()) return false;
-    return !this.providerHeld(job) && !this.credentialMissing(job) && !this.repoLockedOut(job);
+    return !(await this.providerHeld(job)) && !(await this.credentialMissing(job)) && !(await this.repoLockedOut(job));
   }
 
   /**
@@ -447,16 +509,16 @@ export class Scheduler {
    * unknown tag falls back to `default` rather than to "unlimited": a typo in a
    * tag name must not silently uncap the pool it meant to name.
    */
-  private poolsOf(job: Job<"lease">): string[] {
+  private async poolsOf(job: Job<"lease">): Promise<string[]> {
     const leaseId = job.payload.lease_id ?? 0;
     if (!leaseId) return [DEFAULT_POOL];
-    const row = this.db
-      .query<{ tags_json: string; project_id: number | null }, [number]>(
-        `SELECT r.tags_json, (SELECT project_id FROM grp WHERE id = l.grp_id) AS project_id
-         FROM lease l JOIN resource r ON r.name = l.resource WHERE l.id = ?`,
-      )
-      .get(leaseId);
-    const tags = jsonOr(row?.tags_json, z.array(z.string()), []);
+    const [row] = await this.db
+      .select({ tags_json: resource.tags_json, project_id: grp.project_id })
+      .from(lease)
+      .innerJoin(resource, eq(resource.name, lease.resource))
+      .leftJoin(grp, eq(grp.id, lease.grp_id))
+      .where(eq(lease.id, leaseId));
+    const tags = valueOr(row?.tags_json, z.array(z.string()), []);
     if (!tags.length) return [DEFAULT_POOL];
     // `repo` is one pool per repository, not one pool globally: two projects'
     // gates have nothing to race over, and serialising them would make every
@@ -464,31 +526,21 @@ export class Scheduler {
     return tags.map((t) => (t === REPO_POOL ? `${REPO_POOL}:${row?.project_id ?? 0}` : t));
   }
 
-  private runningJobs(): Job[] {
-    return this.decode(
-      this.db
-        .query<StoredJob, []>(
-          `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state,
-                  correlation_id, trace_id, parent_span_id
-           FROM job WHERE state = 'running'`,
-        )
-        .all(),
-    );
+  private async runningJobs(): Promise<Job[]> {
+    return this.decode(await this.db.select(JOB_FIELDS).from(jobTable).where(eq(jobTable.state, "running")));
   }
 
   /** Invalid persisted control data is a failed job, never an omitted instruction. */
-  private decode(rows: StoredJob[]): Job[] {
+  private async decode(rows: StoredJob[]): Promise<Job[]> {
     const jobs: Job[] = [];
     for (const row of rows) {
       try {
         jobs.push(decodeJob(row));
       } catch (error) {
-        this.db.run("UPDATE job SET state = 'failed', ended_at = ?, error = ? WHERE id = ? AND state = ?", [
-          this.now(),
-          `invalid ${row.kind} payload: ${error instanceof Error ? error.message : String(error)}`,
-          row.id,
-          row.state,
-        ]);
+        await this.db
+          .update(jobTable)
+          .set({ state: "failed", ended_at: this.now(), error: payloadError(row.kind, error) })
+          .where(and(eq(jobTable.id, row.id), eq(jobTable.state, row.state)));
       }
     }
     return jobs;
@@ -502,14 +554,13 @@ export class Scheduler {
    * is never picked up, so no process, no retry loop, no quota spent proving the
    * wall. Lifts by the CLI's own reset clock; an unhired job has no provider yet.
    */
-  private providerHeld(job: Job<"agent_turn">): boolean {
+  private async providerHeld(job: Job<"agent_turn">): Promise<boolean> {
     if (!job.agent_id) return false;
-    const row = this.db
-      .query<{ hold_until: number | null }, [number]>(
-        `SELECT u.hold_until FROM agent a JOIN usage_snapshot u ON u.runtime = a.runtime
-         WHERE a.id = ?`,
-      )
-      .get(job.agent_id);
+    const [row] = await this.db
+      .select({ hold_until: usage_snapshot.hold_until })
+      .from(agent)
+      .innerJoin(usage_snapshot, eq(usage_snapshot.runtime, agent.runtime))
+      .where(eq(agent.id, job.agent_id));
     return !!row?.hold_until && row.hold_until > this.now();
   }
 
@@ -521,15 +572,16 @@ export class Scheduler {
    * a queue of failures that all say 401. An unhired job has not chosen a
    * provider, so the question becomes whether *any* credential exists.
    */
-  private credentialMissing(job: Job<"agent_turn">): boolean {
-    const runtime = job.agent_id
-      ? (this.db.query<{ runtime: string }, [number]>("SELECT runtime FROM agent WHERE id = ?").get(job.agent_id)
-          ?.runtime ?? null)
-      : null;
-    const n = runtime
-      ? this.db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM runtime_auth WHERE runtime = ?").get(runtime)
-      : this.db.query<{ n: number }, []>("SELECT count(*) AS n FROM runtime_auth").get();
-    return (n?.n ?? 0) === 0;
+  private async credentialMissing(job: Job<"agent_turn">): Promise<boolean> {
+    const [found] = job.agent_id
+      ? await this.db.select({ runtime: agent.runtime }).from(agent).where(eq(agent.id, job.agent_id))
+      : [];
+    const runtime = found?.runtime ?? null;
+    const [row] = await this.db
+      .select({ n: count() })
+      .from(runtime_auth)
+      .where(runtime ? eq(runtime_auth.runtime, runtime) : undefined);
+    return (row?.n ?? 0) === 0;
   }
 
   /**
@@ -540,12 +592,10 @@ export class Scheduler {
    * holding those would stop work that would have succeeded. A job with no group
    * belongs to no project — defaulting to held would stop housekeeping.
    */
-  private repoLockedOut(job: Job<"agent_turn">): boolean {
+  private async repoLockedOut(job: Job<"agent_turn">): Promise<boolean> {
     if (!job.grp_id) return false;
-    const row = this.db
-      .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
-      .get(job.grp_id);
-    return !!row && this.repoHeld(row.project_id);
+    const [row] = await this.db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, job.grp_id));
+    return !!row && (await this.repoHeld(row.project_id));
   }
 
   /** Admission check: group status is a barrier, budget is a hard stop. */
@@ -563,31 +613,30 @@ export class Scheduler {
    * Held only for one `eligible()` call: a cache outliving the tick would be a
    * second copy of the group table, and the check exists because those rows move.
    */
-  private loadAdmission(pending: readonly Job[]): void {
+  private async loadAdmission(pending: readonly Job[]): Promise<void> {
     const grpIds = [...new Set(pending.map((j) => j.grp_id).filter((id): id is number => id !== null))];
     const sliceIds = [...new Set(pending.map((j) => j.slice_id).filter((id): id is number => id !== null))];
-    this.grpRows = new Map(
-      (grpIds.length === 0
+    const [grpRows, sliceRows] = await Promise.all([
+      grpIds.length === 0
         ? []
         : this.db
-            .query<{ id: number; status: GrpState; budget_tokens: number | null; spent_tokens: number }, string[]>(
-              `SELECT id, status, budget_tokens, spent_tokens FROM grp
-                WHERE id IN (SELECT value FROM json_each(?))`,
-            )
-            .all(JSON.stringify(grpIds))
-      ).map((r) => [r.id, r]),
-    );
-    this.sliceRows = new Map(
-      (sliceIds.length === 0
+            .select({
+              id: grp.id,
+              status: grp.status,
+              budget_tokens: grp.budget_tokens,
+              spent_tokens: grp.spent_tokens,
+            })
+            .from(grp)
+            .where(inArray(grp.id, grpIds)),
+      sliceIds.length === 0
         ? []
         : this.db
-            .query<{ id: number; budget_tokens: number | null; spent_tokens: number }, string[]>(
-              `SELECT id, budget_tokens, spent_tokens FROM slice
-                WHERE id IN (SELECT value FROM json_each(?))`,
-            )
-            .all(JSON.stringify(sliceIds))
-      ).map((r) => [r.id, r]),
-    );
+            .select({ id: slice.id, budget_tokens: slice.budget_tokens, spent_tokens: slice.spent_tokens })
+            .from(slice)
+            .where(inArray(slice.id, sliceIds)),
+    ]);
+    this.grpRows = new Map(grpRows.map((r) => [r.id, r]));
+    this.sliceRows = new Map(sliceRows.map((r) => [r.id, r]));
   }
 
   private grpRows = new Map<number, { status: GrpState; budget_tokens: number | null; spent_tokens: number }>();
@@ -606,12 +655,13 @@ export class Scheduler {
     return !slice || hasBudget(slice);
   }
 
-  private start(job: Job): void {
-    const claimed = this.db.run("UPDATE job SET state = 'running', started_at = ? WHERE id = ? AND state = 'pending'", [
-      this.now(),
-      job.id,
-    ]);
-    if (claimed.changes === 0) return; // someone else took it
+  private async start(job: Job): Promise<void> {
+    const claimed = await this.db
+      .update(jobTable)
+      .set({ state: "running", started_at: this.now() })
+      .where(and(eq(jobTable.id, job.id), eq(jobTable.state, "pending")))
+      .returning({ id: jobTable.id });
+    if (claimed.length === 0) return; // someone else took it
 
     const trace = startChildTrace(job.trace_id, job.parent_span_id, job.trace_flags);
     const lifecycle = new AbortController();
@@ -634,27 +684,23 @@ export class Scheduler {
     // that group's project, and the column is looked up rather than left NULL:
     // the panel's project scope filters on it, and a span exported over OTLP
     // reaches a collector that has never heard of our `grp` table.
-    const scope = {
-      grpId: job.grp_id,
-      sliceId: job.slice_id,
-      projectId:
-        job.grp_id === null
-          ? null
-          : (this.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.grp_id)
-              ?.project_id ?? null),
-    };
+    const owning =
+      job.grp_id === null
+        ? []
+        : await this.db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, job.grp_id));
+    const scope = { grpId: job.grp_id, sliceId: job.slice_id, projectId: owning[0]?.project_id ?? null };
     // `withActiveSpan` is what makes the executor's spans children of this one.
     // Without it they would each come out a root and the trace would be a pile
     // of unrelated spans rather than a breakdown of where the job's time went.
     const p = requestContext
       .run(context, () => withActiveSpan(trace, () => this.exec({ ...job, state: "running" })))
-      .then(() => {
+      .then(async () => {
         observeJob(job.kind, true, trace, scope);
-        this.settle(job.id, "done");
+        await this.settle(job.id, "done");
       })
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
         observeJob(job.kind, false, trace, scope);
-        this.settle(job.id, "failed", errText(error));
+        await this.settle(job.id, "failed", errText(error));
       })
       // `settle` writes to the database, so the handler above can throw as well —
       // a handle closed during shutdown, a job row that is no longer there. This
@@ -674,21 +720,17 @@ export class Scheduler {
         // is a real property and an on-the-spot enqueue would send the first job
         // before the second exists. Guarded like the `catch` above it: this chain
         // is detached and can land after the database is closed on shutdown.
-        try {
-          this.tick();
-        } catch {}
+        void this.tick().catch(() => {});
       });
     this.inflight.set(job.id, p);
   }
 
   /** A job never stays in `running`: it always lands in a terminal state. */
-  private settle(id: number, state: JobState, error?: string): void {
-    this.db.run("UPDATE job SET state = ?, ended_at = ?, error = ? WHERE id = ? AND state = 'running'", [
-      state,
-      this.now(),
-      error ?? null,
-      id,
-    ]);
+  private async settle(id: number, state: JobState, error?: string): Promise<void> {
+    await this.db
+      .update(jobTable)
+      .set({ state, ended_at: this.now(), error: error ?? null })
+      .where(and(eq(jobTable.id, id), eq(jobTable.state, "running")));
   }
 }
 
@@ -700,38 +742,34 @@ export class Scheduler {
  * turn may — liveness is the stream, not a process table, since the CLI is not
  * our child. Returned so the caller can requeue: the slot alone is not enough.
  */
-function failOrphan(db: DB, row: RunningJob, endedAt: number, reason: string): Job | null {
-  db.run(`UPDATE job SET state = 'failed', ended_at = ?, error = ? WHERE id = ? AND state = 'running'`, [
-    endedAt,
-    reason,
-    row.id,
-  ]);
+async function failOrphan(db: DB, row: RunningJob, endedAt: number, reason: string): Promise<Job | null> {
+  await db
+    .update(jobTable)
+    .set({ state: "failed", ended_at: endedAt, error: reason })
+    .where(and(eq(jobTable.id, row.id), eq(jobTable.state, "running")));
   try {
     return { ...decodeJob(row), state: "failed", error: reason };
   } catch (error) {
-    db.run("UPDATE job SET error = ? WHERE id = ?", [
-      `invalid ${row.kind} payload: ${error instanceof Error ? error.message : String(error)}`,
-      row.id,
-    ]);
+    await db
+      .update(jobTable)
+      .set({ error: payloadError(row.kind, error) })
+      .where(eq(jobTable.id, row.id));
     return null;
   }
 }
 
-export function reclaimOrphans(
+export async function reclaimOrphans(
   db: DB,
   opts: { maxAgeMs?: number; alive?: (jobId: number) => boolean; now?: () => number } = {},
-): Job[] {
+): Promise<Job[]> {
   const maxAge = opts.maxAgeMs ?? 3_600_000;
   const now = opts.now ?? (() => Date.now());
   const alive = opts.alive ?? isRunning;
 
-  const running = db
-    .query<RunningJob, []>(
-      `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state, started_at,
-              correlation_id, trace_id, parent_span_id
-       FROM job WHERE state = 'running'`,
-    )
-    .all();
+  const running = await db
+    .select({ ...JOB_FIELDS, started_at: jobTable.started_at })
+    .from(jobTable)
+    .where(eq(jobTable.state, "running"));
 
   const reclaimed: Job[] = [];
   let stopped = false;
@@ -745,13 +783,13 @@ export function reclaimOrphans(
       : "orphaned: nothing is reading this turn any more";
     // The reason travels with the row: resumeReclaimed distinguishes a turn
     // that died by itself from one the server abandoned on shutdown.
-    const job = failOrphan(db, j, now(), why);
+    const job = await failOrphan(db, j, now(), why);
     if (job) reclaimed.push(job);
   }
 
   // Agents believe they are mid-turn too, and a blocked agent is skipped forever.
   if (stopped) {
-    db.run("UPDATE agent SET state = 'idle' WHERE state = 'running'");
+    await db.update(agent).set({ state: "idle" }).where(eq(agent.state, "running"));
   }
   return reclaimed;
 }
@@ -773,7 +811,7 @@ function reclaimedJob(row: Job | StoredJob): Job | null {
   }
 }
 
-function resumeJob(sched: Scheduler, j: Job): boolean {
+async function resumeJob(sched: Scheduler, j: Job): Promise<boolean> {
   if (FREE_KINDS.has(j.kind)) return false;
   // `resumed` stops a turn that takes the server down with it from being
   // resurrected forever — but an orphan died because the *server* went away, not
@@ -785,7 +823,7 @@ function resumeJob(sched: Scheduler, j: Job): boolean {
   // Every kind that reaches here resumes with its own payload plus the stamp:
   // the free kinds were filtered above, and gate/reconcile payloads are
   // `Resumable` only, so the spread loses nothing.
-  sched.enqueue(j.kind, {
+  await sched.enqueue(j.kind, {
     grp_id: j.grp_id,
     agent_id: j.agent_id,
     slice_id: j.slice_id,
@@ -798,11 +836,11 @@ function resumeJob(sched: Scheduler, j: Job): boolean {
   return true;
 }
 
-export function resumeReclaimed(sched: Scheduler, jobs: readonly (Job | StoredJob)[]): number {
+export async function resumeReclaimed(sched: Scheduler, jobs: readonly (Job | StoredJob)[]): Promise<number> {
   let requeued = 0;
   for (const row of jobs) {
     const job = reclaimedJob(row);
-    if (job && resumeJob(sched, job)) requeued++;
+    if (job && (await resumeJob(sched, job))) requeued++;
   }
   return requeued;
 }

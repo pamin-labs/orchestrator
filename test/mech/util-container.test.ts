@@ -18,15 +18,17 @@ import { UTIL, isUtil, utilSandbox } from "../../src/mech/sandbox/sandbox.ts";
  * one line of `auth.ts`, and exactly why it is asserted here rather than described.
  */
 
-function withGithub() {
-  const db = openMemory();
-  saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_write_capable" });
+async function withGithub() {
+  const db = await openMemory();
+  await saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_write_capable" });
   return db;
 }
 
-test("a group's binding covers a fetch and stops at the packfile push", () => {
-  const db = withGithub();
-  const bound = vaultFor(db, { repo: "https://github.com/me/x.git" }).credentials.find((c) => c.name === "github")!;
+test("a group's binding covers a fetch and stops at the packfile push", async () => {
+  const db = await withGithub();
+  const bound = (await vaultFor(db, { repo: "https://github.com/me/x.git" })).credentials.find(
+    (c) => c.name === "github",
+  )!;
 
   // Both requests a fetch makes. Without the first, a private repository cannot
   // even be discovered; without the second, the clone gets no objects.
@@ -43,15 +45,15 @@ test("a group's binding covers a fetch and stops at the packfile push", () => {
   for (const p of bound.paths!) expect(p).not.toEndWith("*");
 });
 
-test("the utility container's binding is not the group's", () => {
+test("the utility container's binding is not the group's", async () => {
   // 007: "its egress bindings are not the group containers' — only it is bound
   // for GitHub writes." No repo, no path filter, so the push it exists to make
   // is the one request in the system that gets a credential on a write path.
-  const db = withGithub();
-  const util = vaultFor(db).credentials.find((c) => c.name === "github")!;
+  const db = await withGithub();
+  const util = (await vaultFor(db)).credentials.find((c) => c.name === "github")!;
   expect(util.paths).toBeUndefined();
 
-  const group = vaultFor(db, { repo: "git@github.com:me/x.git" }).credentials.find((c) => c.name === "github")!;
+  const group = (await vaultFor(db, { repo: "git@github.com:me/x.git" })).credentials.find((c) => c.name === "github")!;
   expect(group.paths).toBeDefined();
   // Same token, two bindings. If these ever come out equal, the split is gone.
   expect(util.value).toBe(group.value);
@@ -70,11 +72,11 @@ test("the paths follow the remote's own spelling, not a guess at it", () => {
   expect(readOnlyGitPaths("https://gitlab.com/me/x.git")).toBeNull();
 });
 
-test("the utility container is one per orchestrator and owns no row", () => {
+test("the utility container is one per orchestrator and owns no row", async () => {
   // It belongs to no group and no project, so its id lives beside the other
   // server-scope settings. Nothing there yet means it has never been built,
   // which is the ordinary state — it is made on the first push.
-  const db = openMemory();
+  const db = await openMemory();
   expect({ util: isUtil(UTIL), group: isUtil({ grp: 1 }) }).toEqual({ util: true, group: false });
-  expect(utilSandbox(db)).toEqual({ id: null, at: 0 });
+  expect(await utilSandbox(db)).toEqual({ id: null, at: 0 });
 });

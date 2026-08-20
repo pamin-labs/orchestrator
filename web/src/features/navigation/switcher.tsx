@@ -69,11 +69,11 @@ export function Switcher({
     >
       <Command.Input
         placeholder={placeholder}
-        className="w-full border-b border-rule bg-transparent px-3.5 py-2.5 text-[0.875rem]
+        className="w-full border-b border-rule bg-transparent px-3.5 py-2.5 text-base
                    text-ink placeholder:text-ink-3 focus:outline-none"
       />
       <Command.List className="max-h-[50vh] overflow-y-auto p-1.5">
-        <Command.Empty className="px-2 py-3 text-[0.75rem] text-ink-3">{empty}</Command.Empty>
+        <Command.Empty className="px-2 py-3 text-secondary text-ink-3">{empty}</Command.Empty>
         {items.map((it) => {
           const row = switchRow(it);
           return (
@@ -85,21 +85,21 @@ export function Switcher({
                 onOpenChange(false);
               }}
               className={cn(
-                "flex cursor-pointer items-baseline gap-2 rounded-md px-2 py-1.5 text-[0.8125rem]",
+                "flex cursor-pointer items-baseline gap-2 rounded-md px-2 py-1.5 text-body",
                 "data-[selected=true]:bg-sunk",
               )}
             >
               {/* Every cell states whether it may wrap. Without that the name broke
                   mid-word and the count stacked one character per line. */}
-              <span className="shrink-0 whitespace-nowrap font-display text-[1rem] font-semibold">{it.name}</span>
+              <span className="shrink-0 whitespace-nowrap font-display text-lead font-semibold">{it.name}</span>
               {row.meta && (
-                <span className="min-w-0 grow truncate font-mono text-[0.6875rem] text-ink-3" dir={row.dir}>
+                <span className="min-w-0 grow truncate font-mono text-meta text-ink-3" dir={row.dir}>
                   {row.meta}
                 </span>
               )}
               {!row.meta && <span className="grow" />}
               {row.badge && (
-                <span className="shrink-0 whitespace-nowrap font-mono text-[0.6875rem] text-accent">{row.badge}</span>
+                <span className="shrink-0 whitespace-nowrap font-mono text-meta text-accent">{row.badge}</span>
               )}
             </Command.Item>
           );

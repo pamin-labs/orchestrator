@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import { makeApp } from "../../src/composition/api.ts";
-import { readinessPeriodMs } from "../../src/composition/server.ts";
+import { missingBinaries, readinessPeriodMs } from "../../src/composition/server.ts";
 import { ErrorResponseSchema } from "../../src/contracts/protocol.ts";
+import { asc, sql } from "drizzle-orm";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import { job } from "../../src/platform/persistence/schema.ts";
 import { runtimeStatus } from "../../src/platform/observability/metrics.ts";
 import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { refreshRuntimeReadiness, shutdownRuntime } from "../../src/composition/server.ts";
@@ -12,7 +14,7 @@ import { testContext } from "../support/test-context.ts";
 test("health, cached readiness, metrics, and correlation describe the running process", async () => {
   const status = runtimeStatus(false);
   status.checks = [{ name: "sandbox", ok: false, detail: "not reachable" }];
-  const app = makeApp(testContext(), status);
+  const app = makeApp(await testContext(), status);
 
   const health = await app(new Request("http://x/healthz", { headers: { "x-request-id": "request-123" } }));
   expect(health.status).toBe(200);
@@ -61,7 +63,7 @@ test("readiness refreshes through failure and recovery without a real server", a
 test("shutdown admission refuses new mutations with the public error contract", async () => {
   const status = runtimeStatus();
   status.accepting = false;
-  const app = makeApp(testContext(), status);
+  const app = makeApp(await testContext(), status);
   const response = await app(
     new Request("http://x/api/v1/ideas", {
       method: "POST",
@@ -75,21 +77,30 @@ test("shutdown admission refuses new mutations with the public error contract", 
 });
 
 test("unexpected failures keep details in logs and return a stable generic body", async () => {
-  const ctx = testContext();
-  ctx.db.run("DROP TABLE grp");
-  const response = await makeApp(ctx)(new Request("http://x/api/v1/state"));
-  const body = ErrorResponseSchema.parse(await response.json());
-  expect(response.status).toBe(500);
-  expect(body).toMatchObject({ error: "internal server error", code: "internal_error" });
-  expect(JSON.stringify(body)).not.toContain("no such table");
+  const ctx = await testContext();
+  // Renamed rather than dropped, and put back: one database serves the whole
+  // process, and a table this file removed is a table every later `openMemory()`
+  // cannot truncate. The query fails the same way either road.
+  await ctx.db.execute(sql`ALTER TABLE grp RENAME TO grp_gone`);
+  try {
+    const response = await makeApp(ctx)(new Request("http://x/api/v1/state"));
+    const body = ErrorResponseSchema.parse(await response.json());
+    expect(response.status).toBe(500);
+    expect(body).toMatchObject({ error: "internal server error", code: "internal_error" });
+    expect(JSON.stringify(body)).not.toContain("does not exist");
+    expect(JSON.stringify(body)).not.toContain("grp");
+  } finally {
+    await ctx.db.execute(sql`ALTER TABLE grp_gone RENAME TO grp`);
+  }
 });
 
 test("a quiesced scheduler drains only work already in flight", async () => {
-  const db = openMemory();
-  try {
-    const p = fx.project.insert(db, { name: "quiesce", repo_path: "acme/quiesce" });
-    fx.runningGrp.insert(db, { project_id: p.id, name: "workers" });
-    fx.runtimeAuth.insert(db, { mode: "api_key", secret: "test" });
+  const db = await openMemory();
+  {
+    const f = fx.on(db);
+    const p = await f.project.create({ name: "quiesce", repo_path: "acme/quiesce" });
+    await f.runningGrp.create({ project_id: p.id, name: "workers" });
+    await f.runtimeAuth.create({ mode: "api_key", secret: "test" });
     let entered!: () => void;
     let release!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -104,9 +115,9 @@ test("a quiesced scheduler drains only work already in flight", async () => {
       entered();
       await held;
     });
-    const first = scheduler.enqueue("agent_turn", { grp_id: 1 });
-    scheduler.enqueue("agent_turn", { grp_id: 1 });
-    scheduler.tick();
+    const first = await scheduler.enqueue("agent_turn", { grp_id: 1 });
+    await scheduler.enqueue("agent_turn", { grp_id: 1 });
+    void scheduler.tick();
     await started;
 
     scheduler.quiesce();
@@ -114,14 +125,10 @@ test("a quiesced scheduler drains only work already in flight", async () => {
     await scheduler.drain();
 
     expect(ran).toEqual([first]);
-    expect(
-      db
-        .query<{ state: string }, []>("SELECT state FROM job ORDER BY id")
-        .all()
-        .map((row) => row.state),
-    ).toEqual(["done", "pending"]);
-  } finally {
-    db.close();
+    expect((await db.select({ state: job.state }).from(job).orderBy(asc(job.id))).map((row) => row.state)).toEqual([
+      "done",
+      "pending",
+    ]);
   }
 });
 
@@ -140,7 +147,9 @@ test("shutdown drains gracefully before closing resources", async () => {
     gracefulStop: async () => {
       calls.push("graceful-stop");
     },
-    reclaim: () => calls.push("reclaim"),
+    reclaim: async () => {
+      calls.push("reclaim");
+    },
     abort: () => calls.push("abort"),
     forceStop: async () => {
       calls.push("force-stop");
@@ -168,7 +177,9 @@ test("forced shutdown reclaims before aborting and closes after the forced drain
     gracefulStop: async () => {
       calls.push("graceful-stop");
     },
-    reclaim: () => calls.push("reclaim"),
+    reclaim: async () => {
+      calls.push("reclaim");
+    },
     abort: () => calls.push("abort"),
     forceStop: async () => {
       calls.push("force-stop");
@@ -191,8 +202,8 @@ test("forced shutdown reclaims before aborting and closes after the forced drain
 });
 
 test("unmatched request paths cannot create unbounded metrics labels", async () => {
-  const ctx = testContext();
-  try {
+  const ctx = await testContext();
+  {
     const app = makeApp(ctx);
     const responses = await Promise.all(
       Array.from({ length: 40 }, (_, i) => app(new Request(`http://x/secret-token-${i}`))),
@@ -201,8 +212,6 @@ test("unmatched request paths cannot create unbounded metrics labels", async () 
     const metrics = await (await app(new Request("http://x/metrics"))).text();
     expect(metrics).toContain('route="unmatched",status="404"');
     expect(metrics).not.toContain("secret-token-");
-  } finally {
-    ctx.db.close();
   }
 });
 
@@ -227,4 +236,29 @@ test("the self-check period follows the watchdog's interval, within bounds", () 
   expect(readinessPeriodMs(600_000)).toBe(30_000);
   expect(readinessPeriodMs(5_000)).toBe(5_000);
   expect(readinessPeriodMs(30_000)).toBe(30_000);
+});
+
+/**
+ * The host needs no binary of its own, which is a product claim and not a constant.
+ *
+ * `README.md` asks for Docker and nothing else, and `start()` refuses to boot for
+ * anything `missingBinaries()` names. Since ADR 007 the answer is nothing: git runs
+ * in the group's container and the CLIs in the sandbox. So a host binary added back
+ * changes what a user must install, and this is where they are made to notice.
+ */
+test("a headless box needs nothing on PATH that this process checks for", () => {
+  expect(missingBinaries()).toEqual([]);
+});
+
+test("the boss's watchdog interval is followed; only the readiness probe is clamped", () => {
+  // Worth pinning because the two look alike: `readinessPeriodMs` bounds a
+  // `spawnSync` self-check to 5–30s, and it is *derived* from the interval rather
+  // than replacing it. A reading that confuses them concludes the panel's own knob
+  // is silently overridden, which would be worth fixing — and is not what happens.
+  expect(readinessPeriodMs(60_000)).toBe(30_000);
+  expect(readinessPeriodMs(1_000)).toBe(5_000);
+  // And the clamp is one-directional in neither: a value already inside the band
+  // is returned as it stands, which is what makes it a bound rather than a fixed
+  // period wearing a parameter.
+  expect(readinessPeriodMs(15_000)).toBe(15_000);
 });

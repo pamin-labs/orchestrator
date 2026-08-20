@@ -1,10 +1,27 @@
+import { and, count, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { DB } from "../platform/persistence/database.ts";
+import {
+  maxMs,
+  agent as agents,
+  event as events,
+  grp as grps,
+  job as jobs,
+  note as notes,
+  project as projects,
+  slice as slices,
+  task as tasks,
+  usage_snapshot,
+} from "../platform/persistence/schema.ts";
+import type { Json } from "../contracts/json.ts";
+
+/** A turn that is over, however it ended. The complement of `ACTIVE_JOB_STATES`. */
+const FINISHED_JOB_STATES = ["done", "failed", "cancelled"] as const;
 import { mkdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { imagePaths } from "../mech/util/attachment-text.ts";
 import type { Config, RoleDef } from "../platform/config/load.ts";
 import { contextWindowFor, DEFAULT_PROVIDER, modelFor } from "../platform/config/load.ts";
-import type { Ctx } from "../mech/ctx.ts";
+import { roleFor, type Ctx } from "../mech/ctx.ts";
 
 function mintToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
@@ -26,14 +43,14 @@ import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts"
 import { gitTrailers } from "../mech/git/ghlogin.ts";
 import { changedSince, checkpoint, porcelainEntries, porcelainPaths, STATUS_Z } from "../mech/git/gitops.ts";
 import { lessonsFor } from "../mech/knowledge/lessons.ts";
-import { gzipTurnLog, REEMIT_MS, recordTurnOutcome, runWatchdog } from "../mech/ops/watchdog.ts";
+import { gzipTurnLog, recordTurnOutcome, runWatchdog } from "../mech/ops/watchdog.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { scopeAttributes, type SpanScope } from "../platform/observability/metrics.ts";
 import { activeTracer } from "../platform/observability/traces.ts";
 import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
 import { MAILBOX_DIR, putBytes, runnerFor, type Scope, WORK } from "../mech/sandbox/sandbox.ts";
-import { projectOfAgent } from "../mech/util/rows.ts";
-import { jsonOr } from "../contracts/json.ts";
+import { projectOfAgent, projectOfGrp } from "../mech/util/rows.ts";
+import { valueOr } from "../contracts/json.ts";
 import { clip, errText } from "../platform/process/text.ts";
 import { runLease } from "./lease-job.ts";
 import { assemble, buildStable, type Delta, needsRotation, type StablePrompt } from "../prompt/assemble.ts";
@@ -110,83 +127,97 @@ export function makeExecutor(deps: ExecDeps): Executor {
 }
 
 /** Find or hire the agent this job belongs to. */
-function resolveAgent(deps: ExecDeps, job: Job<"agent_turn">): AgentRow {
-  const assigned = assignedAgent(deps.ctx.db, job.agent_id);
+async function resolveAgent(deps: ExecDeps, job: Job<"agent_turn">): Promise<AgentRow> {
+  const assigned = await assignedAgent(deps.ctx.db, job.agent_id);
   if (assigned) return assigned;
-  const roleName = job.payload.role ?? "engineer";
-  // fallow-ignore-next-line security-sink -- `SELECT_AGENT_BASE` is a module-level column-list literal; the group id and the role name are bound through the `?` placeholders.
-  const existing = deps.ctx.db
-    .query<AgentRow, [number | null, string]>(
-      `${SELECT_AGENT_BASE} WHERE grp_id IS ? AND role = ? AND state != 'retired'`,
-    )
-    .get(job.grp_id, roleName);
+  const roleName = job.payload.role ?? roleFor(deps.ctx, "write_code");
+  // `IS ?` matched a NULL group; `eq` never does, so a group-less standing role
+  // would be hired again on every turn.
+  const [existing] = await deps.ctx.db
+    .select(AGENT_COLUMNS)
+    .from(agents)
+    .where(
+      and(
+        job.grp_id === null ? isNull(agents.grp_id) : eq(agents.grp_id, job.grp_id),
+        eq(agents.role, roleName),
+        ne(agents.state, "retired"),
+      ),
+    );
   if (existing) return existing;
-  return hire(deps, job.grp_id, roleName, job.slice_id, payloadProjectId(deps.ctx.db, job));
+  return await hire(deps, job.grp_id, roleName, job.slice_id, await payloadProjectId(deps.ctx.db, job));
 }
 
-function assignedAgent(db: DB, agentId: number | null): AgentRow | null {
+async function assignedAgent(db: DB, agentId: number | null): Promise<AgentRow | null> {
   if (!agentId) return null;
-  return db.query<AgentRow, [number]>(SELECT_AGENT).get(agentId) ?? null;
+  const [row] = await db.select(AGENT_COLUMNS).from(agents).where(eq(agents.id, agentId));
+  return row ?? null;
 }
 
-function payloadProjectId(db: DB, job: Job<"agent_turn">): number | null {
+async function payloadProjectId(db: DB, job: Job<"agent_turn">): Promise<number | null> {
   if (job.payload.project_id) return job.payload.project_id;
   if (!job.payload.audit) return null;
-  return (
-    db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.payload.audit)
-      ?.project_id ?? null
-  );
+  return await projectOfGrp(db, job.payload.audit);
 }
 
-const SELECT_AGENT_BASE = `SELECT id, grp_id, project_id, role, model, runtime, session_id, session_tokens, cwd, token, stable_hash, context_window FROM agent`;
-const SELECT_AGENT = `${SELECT_AGENT_BASE} WHERE id = ?`;
+/** The columns an `AgentRow` is, named once. */
+const AGENT_COLUMNS = {
+  id: agents.id,
+  grp_id: agents.grp_id,
+  project_id: agents.project_id,
+  role: agents.role,
+  model: agents.model,
+  runtime: agents.runtime,
+  session_id: agents.session_id,
+  session_tokens: agents.session_tokens,
+  cwd: agents.cwd,
+  token: agents.token,
+  stable_hash: agents.stable_hash,
+  context_window: agents.context_window,
+};
 
-export function hire(
+export async function hire(
   deps: ExecDeps,
   grpId: number | null,
   roleName: string,
   sliceId?: number | null,
   projectId?: number | null,
-): AgentRow {
+): Promise<AgentRow> {
   const { ctx, cfg, roles } = deps;
   const role = roles.get(roleName);
   if (!role) throw new Error(`no role definition for ${roleName} (add roles/${roleName}.yaml)`);
 
-  const difficulty = sliceId
-    ? (ctx.db.query<{ difficulty: string }, [number]>("SELECT difficulty FROM slice WHERE id = ?").get(sliceId)
-        ?.difficulty ?? null)
-    : null;
-  const grp = grpId
-    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-    : null;
+  const [slice] = sliceId
+    ? await ctx.db.select({ difficulty: slices.difficulty }).from(slices).where(eq(slices.id, sliceId))
+    : [];
+  const projectOfGroup = await projectOfGrp(ctx.db, grpId);
 
-  const row = ctx.db
-    .query<{ id: number }, [number | null, number | null, string, string, string, string, string]>(
-      `INSERT INTO agent (project_id, grp_id, role, model, runtime, token, cwd, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
-    )
-    .get(
-      grp?.project_id ?? projectId ?? null,
-      grpId,
-      roleName,
-      modelFor(cfg, role, difficulty),
+  const [row] = await ctx.db
+    .insert(agents)
+    .values({
+      project_id: projectOfGroup ?? projectId ?? null,
+      grp_id: grpId,
+      role: roleName,
+      model: modelFor(cfg, role, slice?.difficulty ?? null),
       // Recorded, not looked up later: the scheduler has to know which account a
       // queued turn would spend without loading roles/*.yaml, and the role could
       // be re-pointed at another provider while this agent is mid-slice.
-      role.runtime ?? DEFAULT_PROVIDER,
-      mintToken(),
+      runtime: role.runtime ?? DEFAULT_PROVIDER,
+      token: mintToken(),
       // Every agent works in its sandbox's checkout; there is no host path left
       // for one to sit in.
-      WORK,
-    )!;
+      cwd: WORK,
+      created_at: Date.now(),
+    })
+    .returning(AGENT_COLUMNS);
+  if (!row) throw new Error(`could not hire ${roleName}: the insert returned no row`);
 
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "state_change",
     body: say(ctx.config.language, "hired", { role: roleName }),
   });
-  return ctx.db.query<AgentRow, [number]>(SELECT_AGENT).get(row.id)!;
+  return row;
 }
 
 interface TurnGroup {
@@ -194,7 +225,7 @@ interface TurnGroup {
   name: string;
   project_id: number;
   branch: string | null;
-  owns_json: string;
+  owns_json: Json;
 }
 
 interface PreparedTurn {
@@ -216,17 +247,14 @@ interface PreparedTurn {
  * not answer the question that motivates the table — which *stage* of which
  * group's turns is the slow one.
  */
-function turnScope(deps: ExecDeps, job: Job<"agent_turn">): SpanScope {
+async function turnScope(deps: ExecDeps, job: Job<"agent_turn">): Promise<SpanScope> {
   // Looked up rather than left NULL: `scopeAttributes` only emits `project.id`
   // when given one, so the panel's project scope matched nothing. The read path
   // derives it through `grp`, but a span exported over OTLP reaches a collector
   // that never heard of our `grp` table, where this column is the only thing
-  // saying which project the work belonged to. One PK lookup per turn.
-  const projectId =
-    job.grp_id === null
-      ? null
-      : (deps.ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.grp_id)
-          ?.project_id ?? null);
+  // saying which project the work belonged to. Resolved once and handed to each
+  // stage — four spans asking separately is four round trips per turn.
+  const projectId = job.grp_id === null ? null : await projectOfGrp(deps.ctx.db, job.grp_id);
   return { grpId: job.grp_id, sliceId: job.slice_id, projectId };
 }
 
@@ -239,16 +267,17 @@ function turnScope(deps: ExecDeps, job: Job<"agent_turn">): SpanScope {
  * is not actionable; nine of which eight were the provider is.
  */
 async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<void> {
+  const scope = await turnScope(deps, job);
   return activeTracer().startActiveSpan(
     "turn",
-    { attributes: { "job.kind": job.kind, ...scopeAttributes(turnScope(deps, job)) } },
+    { attributes: { "job.kind": job.kind, ...scopeAttributes(scope) } },
     async (span) => {
       try {
-        const turn = await prepareTurn(deps, job);
+        const turn = await prepareTurn(deps, job, scope);
         span.setAttributes({ "agent.role": turn.agent.role, "agent.runtime": turn.agent.runtime ?? turn.role.runtime });
-        const before = await checkpointTurn(deps, job, turn);
-        const result = await invokeTurn(deps, job, turn);
-        await finishTurn(deps, job, turn, before, result);
+        const before = await checkpointTurn(deps, job, turn, scope);
+        const result = await invokeTurn(deps, job, turn, scope);
+        await finishTurn(deps, job, turn, before, result, scope);
       } catch (error) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
         throw error;
@@ -259,30 +288,27 @@ async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<voi
   );
 }
 
-async function prepareTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<PreparedTurn> {
-  return activeTracer().startActiveSpan(
-    "turn.prepare",
-    { attributes: scopeAttributes(turnScope(deps, job)) },
-    async (span) => {
-      try {
-        return await buildPreparedTurn(deps, job);
-      } catch (error) {
-        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
-        throw error;
-      } finally {
-        span.end();
-      }
-    },
-  );
+async function prepareTurn(deps: ExecDeps, job: Job<"agent_turn">, scope: SpanScope): Promise<PreparedTurn> {
+  return activeTracer().startActiveSpan("turn.prepare", { attributes: scopeAttributes(scope) }, async (span) => {
+    try {
+      return await buildPreparedTurn(deps, job);
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
 }
 
 async function buildPreparedTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<PreparedTurn> {
-  const agent = resolveAgent(deps, job);
+  const agent = await resolveAgent(deps, job);
   const role = deps.roles.get(agent.role);
   if (!role) throw new Error(`no role definition for ${agent.role}`);
-  const group = turnGroup(deps.ctx.db, job.grp_id);
+  const group = await turnGroup(deps.ctx.db, job.grp_id);
   const scope: Scope = job.grp_id ? { grp: job.grp_id } : { project: agent.project_id ?? 0 };
-  const stable = buildStableFor(deps, agent, role, group, turnRepoPath(deps.ctx.db, agent, group), job);
+  const repoPath = await turnRepoPath(deps.ctx.db, agent, group);
+  const stable = await buildStableFor(deps, agent, role, group, repoPath, job);
   const why = rotationReason(agent, deps.cfg, stable, job.payload.rotate === true);
   const rotate = why !== null && why !== "new";
   const sessionId = rotate || !agent.session_id ? crypto.randomUUID() : agent.session_id;
@@ -290,22 +316,27 @@ async function buildPreparedTurn(deps: ExecDeps, job: Job<"agent_turn">): Promis
   return { agent, role, group, scope, stable, delta, rotate, why, sessionId };
 }
 
-function turnGroup(db: DB, groupId: number | null): TurnGroup | null {
+async function turnGroup(db: DB, groupId: number | null): Promise<TurnGroup | null> {
   if (!groupId) return null;
-  return (
-    db
-      .query<TurnGroup, [number]>("SELECT id, name, project_id, branch, owns_json FROM grp WHERE id = ?")
-      .get(groupId) ?? null
-  );
+  const [row] = await db
+    .select({
+      id: grps.id,
+      name: grps.name,
+      project_id: grps.project_id,
+      branch: grps.branch,
+      owns_json: grps.owns_json,
+    })
+    .from(grps)
+    .where(eq(grps.id, groupId));
+  return row ?? null;
 }
 
-function turnRepoPath(db: DB, agent: AgentRow, group: TurnGroup | null): string {
+async function turnRepoPath(db: DB, agent: AgentRow, group: TurnGroup | null): Promise<string> {
   if (!group && agent.grp_id) return WORK;
-  const projectId = group?.project_id ?? projectOfAgent(db, agent.id);
-  return (
-    db.query<{ repo_path: string }, [number | null]>("SELECT repo_path FROM project WHERE id = ?").get(projectId)
-      ?.repo_path ?? WORK
-  );
+  const projectId = group?.project_id ?? (await projectOfAgent(db, agent.id));
+  if (projectId === null) return WORK;
+  const [row] = await db.select({ repo_path: projects.repo_path }).from(projects).where(eq(projects.id, projectId));
+  return row?.repo_path ?? WORK;
 }
 
 function rotationReason(agent: AgentRow, cfg: Config, stable: StablePrompt, explicit: boolean): RotateReason | null {
@@ -323,26 +354,27 @@ function rotationReason(agent: AgentRow, cfg: Config, stable: StablePrompt, expl
  * group's first turn this span is where that cost shows up. A dedicated span
  * inside `ensureSandbox` would separate the two, and needs `src/mech/sandbox/`.
  */
-async function checkpointTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<string | null> {
-  return activeTracer().startActiveSpan(
-    "turn.checkpoint",
-    { attributes: scopeAttributes(turnScope(deps, job)) },
-    async (span) => {
-      try {
-        return await takeCheckpoint(deps, job, turn);
-      } catch (error) {
-        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
-        throw error;
-      } finally {
-        span.end();
-      }
-    },
-  );
+async function checkpointTurn(
+  deps: ExecDeps,
+  job: Job<"agent_turn">,
+  turn: PreparedTurn,
+  scope: SpanScope,
+): Promise<string | null> {
+  return activeTracer().startActiveSpan("turn.checkpoint", { attributes: scopeAttributes(scope) }, async (span) => {
+    try {
+      return await takeCheckpoint(deps, job, turn);
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
 }
 
 async function takeCheckpoint(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<string | null> {
   if (!job.grp_id) {
-    markAgentRunning(deps.ctx.db, turn);
+    await markAgentRunning(deps.ctx.db, turn);
     return null;
   }
   try {
@@ -353,38 +385,46 @@ async function takeCheckpoint(deps: ExecDeps, job: Job<"agent_turn">, turn: Prep
   const before = await checkpoint(
     sandboxGit(deps.ctx, turn.scope),
     WORK,
-    checkpointLabel(deps.ctx.db, job),
-    gitTrailers(deps.ctx.db),
+    await checkpointLabel(deps.ctx.db, job),
+    await gitTrailers(deps.ctx.db),
   );
-  if (before) recordCheckpoint(deps.ctx.db, job, before);
-  markAgentRunning(deps.ctx.db, turn);
+  if (before) await recordCheckpoint(deps.ctx.db, job, before);
+  await markAgentRunning(deps.ctx.db, turn);
   return before;
 }
 
-function recordCheckpoint(db: DB, job: Job<"agent_turn">, before: string): void {
+async function recordCheckpoint(db: DB, job: Job<"agent_turn">, before: string): Promise<void> {
   if (job.slice_id) {
-    db.run("UPDATE slice SET base_sha = coalesce(base_sha, ?) WHERE id = ?", [before, job.slice_id]);
+    // `coalesce` in the SET, not a read-then-write: the first checkpoint of a
+    // slice is its baseline and every later one must leave it alone.
+    await db
+      .update(slices)
+      .set({ base_sha: sql`coalesce(${slices.base_sha}, ${before})` })
+      .where(eq(slices.id, job.slice_id));
   }
-  db.run("UPDATE job SET checkpoint_sha = ? WHERE id = ?", [before, job.id]);
+  await db.update(jobs).set({ checkpoint_sha: before }).where(eq(jobs.id, job.id));
 }
 
-function markAgentRunning(db: DB, turn: PreparedTurn): void {
-  db.run(
-    turn.rotate
-      ? "UPDATE agent SET state = 'running', session_id = ?, session_tokens = 0 WHERE id = ?"
-      : "UPDATE agent SET state = 'running', session_id = ? WHERE id = ?",
-    [turn.sessionId, turn.agent.id],
-  );
+async function markAgentRunning(db: DB, turn: PreparedTurn): Promise<void> {
+  await db
+    .update(agents)
+    .set({ state: "running", session_id: turn.sessionId, ...(turn.rotate ? { session_tokens: 0 } : {}) })
+    .where(eq(agents.id, turn.agent.id));
 }
 
 /** The provider call itself — usually most of a turn, and the one worth isolating. */
-async function invokeTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<TurnResult> {
+async function invokeTurn(
+  deps: ExecDeps,
+  job: Job<"agent_turn">,
+  turn: PreparedTurn,
+  scope: SpanScope,
+): Promise<TurnResult> {
   return activeTracer().startActiveSpan(
     "turn.provider",
     {
       attributes: {
         "agent.runtime": turn.agent.runtime ?? turn.role.runtime,
-        ...scopeAttributes(turnScope(deps, job)),
+        ...scopeAttributes(scope),
       },
     },
     async (span) => {
@@ -412,13 +452,14 @@ async function callProvider(deps: ExecDeps, job: Job<"agent_turn">, turn: Prepar
   mkdirSync(logDir, { recursive: true });
   const logPath = join(logDir, `${job.id}.jsonl`);
   const prompt = await turnPrompt(deps, job, turn);
+  const spec = await turnSpec(ctx, cfg, job, turn, prompt, logPath);
   const provider = providerFor(turn.agent.runtime ?? turn.role.runtime);
   const run: Provider["run"] = deps.runTurn ?? provider.run;
   let result: TurnResult;
   let stopTurn: (() => void) | undefined;
   try {
     result = await run(
-      turnSpec(ctx, cfg, job, turn, prompt, logPath),
+      spec,
       turnEvents(ctx, job, turn.agent, (stop) => {
         stopTurn = stop;
         track(job.id, stop);
@@ -426,7 +467,10 @@ async function callProvider(deps: ExecDeps, job: Job<"agent_turn">, turn: Prepar
     );
   } finally {
     if (stopTurn) untrack(job.id, stopTurn);
-    ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ? AND state = 'running'", [turn.agent.id]);
+    await ctx.db
+      .update(agents)
+      .set({ state: "idle" })
+      .where(and(eq(agents.id, turn.agent.id), eq(agents.state, "running")));
     gzipTurnLog(logPath);
   }
   return result;
@@ -457,7 +501,15 @@ export function sessionFor(turn: {
   return turn.rotate || !turn.agent.session_id ? { newSessionId: turn.sessionId } : { resumeSessionId: turn.sessionId };
 }
 
-function turnSpec(ctx: Ctx, cfg: Config, job: Job<"agent_turn">, turn: PreparedTurn, prompt: string, logPath: string) {
+async function turnSpec(
+  ctx: Ctx,
+  cfg: Config,
+  job: Job<"agent_turn">,
+  turn: PreparedTurn,
+  prompt: string,
+  logPath: string,
+) {
+  const vault = await vaultFor(ctx.db);
   return {
     stable: turn.stable,
     prompt,
@@ -473,7 +525,7 @@ function turnSpec(ctx: Ctx, cfg: Config, job: Job<"agent_turn">, turn: PreparedT
       ORCH_MAILBOX_TIMEOUT_MS: String(cfg.turnTimeoutMs),
       ORCH_TOKEN: turn.agent.token ?? "",
       ORCH_GRP_ID: String(job.grp_id ?? ""),
-      ...vaultFor(ctx.db).env,
+      ...vault.env,
       CODEX_HOME,
     },
   };
@@ -494,7 +546,16 @@ function turnEvents(ctx: Ctx, job: Job<"agent_turn">, agent: AgentRow, onAbort: 
     onThinking: (text: string) => live("thinking", text),
     onTool: (tool: { name: string; detail: string }) => {
       if (tool.detail === tool.name) return;
-      ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [tool.detail, agent.id]);
+      // Deliberately not awaited. This arrives from the provider's synchronous
+      // stream consumer, and the activity line is a live hint — a round trip per
+      // tool call would put the database in the middle of the token stream. The
+      // failure is announced rather than dropped: a stale activity field looks
+      // exactly like an agent that has stopped doing anything.
+      void ctx.db
+        .update(agents)
+        .set({ activity: tool.detail })
+        .where(eq(agents.id, agent.id))
+        .catch((e: unknown) => live("status", `could not record activity: ${errText(e)}`));
       ctx.bus.live({
         grpId: job.grp_id,
         projectId: agent.project_id ?? null,
@@ -509,29 +570,58 @@ function turnEvents(ctx: Ctx, job: Job<"agent_turn">, agent: AgentRow, onAbort: 
   };
 }
 
+/**
+ * The fourth quarter of a turn, which was the one nobody could see.
+ *
+ * The comment on `runAgentTurn` names four stages and three had spans. This is
+ * ten serial awaits and two of them enter a container — `preserveTurnBranch`
+ * bundles the branch into the mirror, `reconcileOwnership` runs git against the
+ * checkout — so "the turn took nine minutes" could resolve to the provider, or
+ * here, and there was no way to tell which.
+ */
 async function finishTurn(
   deps: ExecDeps,
   job: Job<"agent_turn">,
   turn: PreparedTurn,
   before: string | null,
   result: TurnResult,
+  scope: SpanScope,
 ): Promise<void> {
-  recordRuntimeSession(deps.ctx.db, turn, result);
+  return activeTracer().startActiveSpan("turn.settle", { attributes: scopeAttributes(scope) }, async (span) => {
+    try {
+      await settleTurn(deps, job, turn, before, result);
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+async function settleTurn(
+  deps: ExecDeps,
+  job: Job<"agent_turn">,
+  turn: PreparedTurn,
+  before: string | null,
+  result: TurnResult,
+): Promise<void> {
+  await recordRuntimeSession(deps.ctx.db, turn, result);
   await preserveTurnBranch(deps.ctx, job, turn.group);
-  recordCost(deps, turn.agent, job, result, turn.stable.hash, turn.why);
-  recordProgress(deps, turn.agent, job, result);
+  await recordCost(deps, turn.agent, job, result, turn.stable.hash, turn.why);
+  await recordProgress(deps, turn.agent, job, result);
   await narrate(deps, turn.agent, job, before, result);
-  handleRateLimit(deps, turn.agent, job, result);
-  handleAuthFailure(deps, turn.agent, job, result);
-  recordSubscriptionUsage(deps, providerFor(turn.agent.runtime ?? turn.role.runtime).name, result);
+  await handleRateLimit(deps, turn.agent, job, result);
+  await handleAuthFailure(deps, turn.agent, job, result);
+  await recordSubscriptionUsage(deps, providerFor(turn.agent.runtime ?? turn.role.runtime).name, result);
   await reconcileOwnership(deps, turn.agent, job, turn.group);
-  repairLostSession(deps.ctx, job, turn, result);
+  await repairLostSession(deps.ctx, job, turn, result);
   if (!result.ok) throw new Error(`turn failed (${result.terminalReason}): ${clip(result.text)}`);
 }
 
-function recordRuntimeSession(db: DB, turn: PreparedTurn, result: TurnResult): void {
+async function recordRuntimeSession(db: DB, turn: PreparedTurn, result: TurnResult): Promise<void> {
   if (result.sessionId && result.sessionId !== turn.sessionId) {
-    db.run("UPDATE agent SET session_id = ? WHERE id = ?", [result.sessionId, turn.agent.id]);
+    await db.update(agents).set({ session_id: result.sessionId }).where(eq(agents.id, turn.agent.id));
   }
 }
 
@@ -539,7 +629,7 @@ async function preserveTurnBranch(ctx: Ctx, job: Job<"agent_turn">, group: TurnG
   if (!job.grp_id || !group?.branch) return;
   const kept = await keepBranch(ctx, job.grp_id);
   if (kept.ok || !kept.reason || /empty bundle/i.test(kept.reason)) return;
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
@@ -547,10 +637,15 @@ async function preserveTurnBranch(ctx: Ctx, job: Job<"agent_turn">, group: TurnG
   });
 }
 
-function repairLostSession(ctx: Ctx, job: Job<"agent_turn">, turn: PreparedTurn, result: TurnResult): void {
+async function repairLostSession(
+  ctx: Ctx,
+  job: Job<"agent_turn">,
+  turn: PreparedTurn,
+  result: TurnResult,
+): Promise<void> {
   if (result.ok || !LOST_SESSION.test(result.text)) return;
-  ctx.db.run("UPDATE agent SET session_id = NULL, stable_hash = NULL WHERE id = ?", [turn.agent.id]);
-  ctx.bus.emit({
+  await ctx.db.update(agents).set({ session_id: null, stable_hash: null }).where(eq(agents.id, turn.agent.id));
+  await ctx.bus.emit({
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
@@ -570,44 +665,47 @@ export const LOST_SESSION = /no rollout found for thread|No conversation found w
  * ended**, not the one about to start — the checkpoint commits the previous
  * turn's output, so the incoming job's role filed the Engineer's diff as `qa`.
  */
-function checkpointLabel(db: DB, job: Job<"agent_turn">): string {
-  const prev = db
-    .query<{ payload_json: string | null; slice_id: number | null }, [number]>(
-      `SELECT payload_json, slice_id FROM job WHERE grp_id = ? AND kind = 'agent_turn'
-         AND state IN ('done', 'failed', 'cancelled') ORDER BY id DESC LIMIT 1`,
+async function checkpointLabel(db: DB, job: Job<"agent_turn">): Promise<string> {
+  const [prev] = await db
+    .select({ payload_json: jobs.payload_json, slice_id: jobs.slice_id })
+    .from(jobs)
+    .where(
+      and(eq(jobs.grp_id, job.grp_id!), eq(jobs.kind, "agent_turn"), inArray(jobs.state, [...FINISHED_JOB_STATES])),
     )
-    .get(job.grp_id!);
-  const role = jsonOr(prev?.payload_json, AgentTurnPayloadSchema, {}).role ?? "agent";
+    .orderBy(desc(jobs.id))
+    .limit(1);
+  const role = valueOr(prev?.payload_json, AgentTurnPayloadSchema, {}).role ?? "agent";
   if (!prev?.slice_id) return `${role} turn`;
   const sliceId = prev.slice_id;
-  const seq = db.query<{ seq: number }, [number]>("SELECT seq FROM slice WHERE id = ?").get(sliceId)?.seq;
+  const [slice] = await db.select({ seq: slices.seq }).from(slices).where(eq(slices.id, sliceId));
   // The task that turn had claimed. Not "not done": by the time this runs it
   // usually is done, which is what left every checkpoint labelled with the next
   // task instead of the one in the commit.
-  const task = db
-    .query<{ title: string }, [number]>(
-      "SELECT title FROM task WHERE slice_id = ? ORDER BY (status = 'done') DESC, id DESC LIMIT 1",
-    )
-    .get(sliceId)?.title;
-  const head = seq ? `S${seq}: ${role}` : `${role} turn`;
-  return task ? `${head} — ${task.slice(0, 60)}` : head;
+  const [task] = await db
+    .select({ title: tasks.title })
+    .from(tasks)
+    .where(eq(tasks.slice_id, sliceId))
+    .orderBy(desc(sql`(${tasks.status} = 'done')`), desc(tasks.id))
+    .limit(1);
+  const head = slice?.seq ? `S${slice.seq}: ${role}` : `${role} turn`;
+  return task ? `${head} — ${task.title.slice(0, 60)}` : head;
 }
 
-function buildStableFor(
+async function buildStableFor(
   deps: ExecDeps,
   agent: AgentRow,
   role: RoleDef,
-  grp: { name: string; owns_json?: string } | null | undefined,
+  grp: { name: string; owns_json?: Json } | null | undefined,
   repoPath: string,
   job: Job<"agent_turn">,
 ) {
   const { ctx, cfg } = deps;
 
-  const projectId = projectOfAgent(ctx.db, agent.id);
+  const projectId = await projectOfAgent(ctx.db, agent.id);
 
-  const onboarding = noteBody(ctx.db, projectId, "onboarding");
+  const onboarding = await noteBody(ctx.db, projectId, "onboarding");
   // Owned by `report.ts`, next to the eviction that decides which survive.
-  const lessons = lessonsFor(ctx.db, projectId);
+  const lessons = await lessonsFor(ctx.db, projectId);
   const effort = clampEffort(agent.runtime ?? role.runtime, role.effort);
 
   return buildStable({
@@ -660,7 +758,7 @@ export async function stageAttachments(
     } catch (e) {
       // Said out loud rather than left as a path that goes nowhere: an attachment
       // the agent cannot open is exactly the failure this function exists for.
-      deps.ctx.bus.emit({
+      await deps.ctx.bus.emit({
         grpId,
         author: "orchestrator",
         kind: "state_change",
@@ -681,14 +779,16 @@ export async function stageAttachments(
  * filled in by mech/ops/subusage.ts on the watchdog's clock, since its stream carries
  * a status but never a percentage.
  */
-function recordSubscriptionUsage(deps: ExecDeps, provider: string, r: TurnResult): void {
+async function recordSubscriptionUsage(deps: ExecDeps, provider: string, r: TurnResult): Promise<void> {
   const rl = r.rateLimit;
   if (!rl || rl.fiveHourPercent === undefined) return;
-  deps.ctx.db.run(
-    `INSERT INTO usage_snapshot (runtime, json, at) VALUES (?, ?, ?)
-     ON CONFLICT (runtime) DO UPDATE SET json = excluded.json, at = excluded.at`,
-    [provider, JSON.stringify(rl), Date.now()],
-  );
+  const at = Date.now();
+  // `json` is jsonb: the value goes in, not `JSON.stringify` of it, or the column
+  // holds a JSON string whose every reader then has to parse twice.
+  await deps.ctx.db
+    .insert(usage_snapshot)
+    .values({ runtime: provider, json: rl, at })
+    .onConflictDoUpdate({ target: usage_snapshot.runtime, set: { json: rl, at } });
 }
 
 /**
@@ -703,7 +803,7 @@ export async function reconcileOwnership(
   deps: { ctx: Ctx },
   agent: { role: string },
   job: { grp_id: number | null },
-  grp: { owns_json?: string } | null | undefined,
+  grp: { owns_json?: Json } | null | undefined,
 ): Promise<void> {
   const owns = parseOwns(grp?.owns_json ?? null);
   if (!owns.length || !job.grp_id) return;
@@ -714,7 +814,7 @@ export async function reconcileOwnership(
     // Said out loud. This is the only file-ownership enforcement there is since
     // 005 deleted the deny-list, and `engineer.yaml` promises it to the agent —
     // so skipping silently means the boundary is off and everything reads normal.
-    deps.ctx.bus.emit({
+    await deps.ctx.bus.emit({
       grpId: job.grp_id,
       author: "orchestrator",
       kind: "state_change",
@@ -751,7 +851,7 @@ export async function reconcileOwnership(
   // Anything still outside the group's paths, not "did we manage to remove one".
   // A partial rollback used to reach the success announcement below.
   if (left.size) {
-    deps.ctx.bus.emit({
+    await deps.ctx.bus.emit({
       grpId: job.grp_id,
       author: "orchestrator",
       kind: "state_change",
@@ -763,7 +863,7 @@ export async function reconcileOwnership(
     });
     return;
   }
-  deps.ctx.bus.emit({
+  await deps.ctx.bus.emit({
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
@@ -777,35 +877,46 @@ export async function reconcileOwnership(
   });
 }
 
-function recordCost(
+async function recordCost(
   deps: ExecDeps,
   agent: AgentRow,
   job: Job,
   r: TurnResult,
   stableHash: string,
   rotate: RotateReason | null,
-): void {
+): Promise<void> {
   const { ctx } = deps;
   const total = r.usage.input + r.usage.output + r.usage.cacheRead + r.usage.cacheCreate;
   // session_tokens tracks context occupancy, not billing: output and cacheRead
   // don't sit in the next turn's prompt, so counting them makes overTokenBudget
   // trip every turn once a session has run long (see grp7 risk note).
   const contextTokens = r.usage.input + r.usage.cacheCreate;
-  ctx.db.run(
-    `UPDATE agent SET session_tokens = session_tokens + ?, total_tokens = total_tokens + ?,
-     stable_hash = ?, context_window = coalesce(?, context_window)
-     WHERE id = ?`,
-    [contextTokens, total, stableHash, r.contextWindow ?? null, agent.id],
-  );
+  // Read-modify-write in the statement, not in TypeScript: two turns of the same
+  // group settle concurrently and the loser would overwrite the winner's total.
+  await ctx.db
+    .update(agents)
+    .set({
+      session_tokens: sql`${agents.session_tokens} + ${contextTokens}`,
+      total_tokens: sql`${agents.total_tokens} + ${total}`,
+      stable_hash: stableHash,
+      ...(r.contextWindow ? { context_window: r.contextWindow } : {}),
+    })
+    .where(eq(agents.id, agent.id));
   if (job.slice_id) {
-    ctx.db.run("UPDATE slice SET spent_tokens = spent_tokens + ? WHERE id = ?", [total, job.slice_id]);
+    await ctx.db
+      .update(slices)
+      .set({ spent_tokens: sql`${slices.spent_tokens} + ${total}` })
+      .where(eq(slices.id, job.slice_id));
   }
   if (job.grp_id) {
-    ctx.db.run("UPDATE grp SET spent_tokens = spent_tokens + ? WHERE id = ?", [total, job.grp_id]);
+    await ctx.db
+      .update(grps)
+      .set({ spent_tokens: sql`${grps.spent_tokens} + ${total}` })
+      .where(eq(grps.id, job.grp_id));
   }
   // cacheRead vs input is the only visible signal that the prompt cache is
   // still working. A sudden drop means someone broke assemble.ts.
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: job.grp_id,
     author: agent.role,
     kind: "tool_summary",
@@ -830,18 +941,20 @@ function recordCost(
  * ourselves — a file changed, a task moved, a note appeared — because an agent
  * asked whether it made progress always says yes.
  */
-function recordProgress(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): void {
+async function recordProgress(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): Promise<void> {
   const { ctx } = deps;
   const since = Date.now() - 5 * 60_000;
-  const wroteNote =
-    ctx.db
-      .query<{ c: number }, [number | null, number]>("SELECT count(*) AS c FROM note WHERE grp_id IS ? AND at > ?")
-      .get(job.grp_id, since)!.c > 0;
-  const movedTask =
-    ctx.db
-      .query<{ c: number }, [number]>("SELECT count(*) AS c FROM task WHERE owner_agent_id = ? AND status = 'done'")
-      .get(agent.id)!.c > 0;
-  recordTurnOutcome(ctx, agent.id, r.filesTouched, wroteNote, movedTask);
+  // `IS ?` matched a NULL group; `eq` never does, and a standing agent with no
+  // group would then always read as having written nothing.
+  const [notesWritten] = await ctx.db
+    .select({ c: count() })
+    .from(notes)
+    .where(and(job.grp_id === null ? isNull(notes.grp_id) : eq(notes.grp_id, job.grp_id), gt(notes.at, since)));
+  const [tasksMoved] = await ctx.db
+    .select({ c: count() })
+    .from(tasks)
+    .where(and(eq(tasks.owner_agent_id, agent.id), eq(tasks.status, "done")));
+  await recordTurnOutcome(ctx, agent.id, r.filesTouched, (notesWritten?.c ?? 0) > 0, (tasksMoved?.c ?? 0) > 0);
 }
 
 export function cacheRatio(r: TurnResult): number {
@@ -857,7 +970,7 @@ export function cacheRatio(r: TurnResult): number {
 async function narrate(deps: ExecDeps, agent: AgentRow, job: Job, before: string | null, r: TurnResult): Promise<void> {
   const { ctx } = deps;
   for (const t of r.toolSummaries.slice(0, 12)) {
-    ctx.bus.emit({ grpId: job.grp_id, author: agent.role, kind: "tool_summary", body: t.detail });
+    await ctx.bus.emit({ grpId: job.grp_id, author: agent.role, kind: "tool_summary", body: t.detail });
   }
 
   let files = r.filesTouched;
@@ -866,7 +979,7 @@ async function narrate(deps: ExecDeps, agent: AgentRow, job: Job, before: string
     if (changed.length) files = changed;
   }
   if (files.length) {
-    ctx.bus.emit({
+    await ctx.bus.emit({
       grpId: job.grp_id,
       author: agent.role,
       kind: "commit",
@@ -884,12 +997,12 @@ async function narrate(deps: ExecDeps, agent: AgentRow, job: Job, before: string
  * one thing that cannot help, so the group stops and the question points at the
  * settings page — this is a decision only the boss can make.
  */
-function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): void {
+async function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): Promise<void> {
   if (r.ok || !isAuthFailure(r.text)) return;
   const { ctx } = deps;
   const runtime = agent.runtime ?? DEFAULT_PROVIDER;
   if (job.grp_id) {
-    hold(ctx.db, job.grp_id, { reason: `auth:${runtime}`, settled: true, from: "RUNNING" });
+    await hold(ctx.db, job.grp_id, { reason: `auth:${runtime}`, settled: true, from: "RUNNING" });
   }
   if (
     raise(ctx.db, {
@@ -905,7 +1018,7 @@ function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnRes
   ) {
     return;
   }
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "escalation",
@@ -915,7 +1028,7 @@ function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnRes
   });
 }
 
-function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): void {
+async function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): Promise<void> {
   const rl = r.rateLimit;
   if (!rl || rl.status === "allowed") return;
   const { ctx } = deps;
@@ -927,12 +1040,14 @@ function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResul
   // CLI stops being dispatched until the reset, standing ones included. Nine other
   // groups each spending a turn to discover the same wall is the waste this
   // prevents — and a held job is never started, so it costs nothing to wait.
-  ctx.db.run(
-    `INSERT INTO usage_snapshot (runtime, json, at, hold_until) VALUES (?, ?, ?, ?)
-     ON CONFLICT (runtime) DO UPDATE SET hold_until = excluded.hold_until, at = excluded.at`,
-    [agent.runtime ?? DEFAULT_PROVIDER, JSON.stringify(rl), Date.now(), resetsMs],
-  );
-  ctx.bus.emit({
+  const at = Date.now();
+  // Only `hold_until` and `at` on conflict, as before: the stored `json` is the
+  // last usage report, and a rate-limit notice is not one.
+  await ctx.db
+    .insert(usage_snapshot)
+    .values({ runtime: agent.runtime ?? DEFAULT_PROVIDER, json: rl, at, hold_until: resetsMs })
+    .onConflictDoUpdate({ target: usage_snapshot.runtime, set: { hold_until: resetsMs, at } });
+  await ctx.bus.emit({
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
@@ -940,7 +1055,7 @@ function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResul
     meta: rl,
   });
   if (job.grp_id) {
-    hold(ctx.db, job.grp_id, { reason: "ratelimit", settled: true, until: resetsMs });
+    await hold(ctx.db, job.grp_id, { reason: "ratelimit", settled: true, until: resetsMs });
   }
 }
 
@@ -961,8 +1076,8 @@ async function runGateJob(deps: ExecDeps, job: Job<"gate">): Promise<void> {
   if (!job.slice_id) return;
   const rd = { ctx: deps.ctx, cfg: deps.cfg };
   const out = await runDeterministicReview(rd, job.slice_id);
-  if (out.pass) handToQa(rd, job.slice_id);
-  else sendBack(rd, job.slice_id, out.feedback, "gate");
+  if (out.pass) await handToQa(rd, job.slice_id);
+  else await sendBack(rd, job.slice_id, out.feedback, "gate");
 }
 
 /**
@@ -972,7 +1087,7 @@ async function runGateJob(deps: ExecDeps, job: Job<"gate">): Promise<void> {
 async function runWatchdogJob(deps: ExecDeps): Promise<void> {
   const findings = await runWatchdog({ ctx: deps.ctx, cfg: deps.cfg });
   for (const finding of findings) publishWatchdogFinding(deps.ctx, finding);
-  for (const item of runStandup(deps.ctx.db)) publishStandupItem(deps.ctx, item);
+  for (const item of await runStandup(deps.ctx.db)) await publishStandupItem(deps.ctx, item);
 }
 
 function publishWatchdogFinding(
@@ -982,13 +1097,17 @@ function publishWatchdogFinding(
   ctx.onFinding?.(finding.rule, finding.severity, finding.body, finding.grpId);
 }
 
-export function publishStandupItem(ctx: Ctx, item: { kind: string; body: string; grpIds: number[] }): void {
-  const seen = ctx.db
-    .query<{ at: number }, [string]>(`SELECT max(at) AS at FROM event WHERE author = 'standup' AND body = ?`)
-    .get(item.body);
-  if (seen?.at && Date.now() - seen.at < REEMIT_MS) return;
+export async function publishStandupItem(
+  ctx: Ctx,
+  item: { kind: string; body: string; grpIds: number[] },
+): Promise<void> {
+  const [seen] = await ctx.db
+    .select({ at: maxMs(events.at) })
+    .from(events)
+    .where(and(eq(events.author, "standup"), eq(events.body, item.body)));
+  if (seen?.at && Date.now() - seen.at < ctx.config.watchdog.reemitMs) return;
   const groupId = item.grpIds[0] ?? null;
-  ctx.bus.emit({
+  await ctx.bus.emit({
     grpId: groupId,
     author: "standup",
     kind: "state_change",
@@ -1000,26 +1119,34 @@ export function publishStandupItem(ctx: Ctx, item: { kind: string; body: string;
 
 /** Called by the server when the Auditor files a PR-level verdict. */
 export function makeAuditVerdict(deps: ExecDeps) {
-  return (grpId: number, pass: boolean, note: string): void =>
-    auditVerdict({ ctx: deps.ctx, cfg: deps.cfg }, grpId, pass, note);
+  return async (grpId: number, pass: boolean, note: string): Promise<void> =>
+    await auditVerdict({ ctx: deps.ctx, cfg: deps.cfg }, grpId, pass, note);
 }
 
 /** Called by the server when QA files a verdict. */
 export function makeReviewVerdict(deps: ExecDeps) {
-  return (sliceId: number, pass: boolean, note: string): void => {
+  return async (sliceId: number, pass: boolean, note: string): Promise<void> => {
     const rd = { ctx: deps.ctx, cfg: deps.cfg };
-    if (pass) handToBoss(rd, sliceId);
-    else sendBack(rd, sliceId, note || "QA rejected the slice", "qa");
+    if (pass) await handToBoss(rd, sliceId);
+    else await sendBack(rd, sliceId, note || "QA rejected the slice", roleFor(deps.ctx, "review_slice"));
   };
 }
 
 /** Newest note of a kind. `id DESC` for the same reason the lessons query has it. */
-function noteBody(db: DB, projectId: number | null, kind: string): string | null {
-  return (
-    db
-      .query<{ body: string }, [number | null, string]>(
-        "SELECT body FROM note WHERE (project_id IS ? OR project_id IS NULL) AND kind = ? ORDER BY at DESC, id DESC LIMIT 1",
-      )
-      .get(projectId, kind)?.body ?? null
-  );
+async function noteBody(db: DB, projectId: number | null, kind: string): Promise<string | null> {
+  // The project's own, or a global one. `IS ?` was doing both halves at once; the
+  // NULL branch has to be spelled out now, and `or` keeps globals visible to a
+  // project that has no note of its own.
+  const [row] = await db
+    .select({ body: notes.body })
+    .from(notes)
+    .where(
+      and(
+        or(projectId === null ? isNull(notes.project_id) : eq(notes.project_id, projectId), isNull(notes.project_id)),
+        eq(notes.kind, kind),
+      ),
+    )
+    .orderBy(desc(notes.at), desc(notes.id))
+    .limit(1);
+  return row?.body ?? null;
 }

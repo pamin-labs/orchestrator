@@ -1,8 +1,7 @@
 import type { Escalation, Group, Slice, State } from "./api";
 import { githubRepo } from "./github";
 import { z } from "zod";
-import { jsonOr } from "../../../src/contracts/json.ts";
-import i18n from "../i18n";
+import { valueOr } from "../../../src/contracts/json.ts";
 
 const OwnsSchema = z.array(z.string());
 const GatesSchema = z.record(z.string(), z.string());
@@ -15,24 +14,23 @@ const GatesSchema = z.record(z.string(), z.string());
  */
 export const heldApproved = (g: Group) => g.status === "DRAFT" && !!g.approved_at;
 
-export const statusLabel = (g: Group) =>
-  heldApproved(g) ? i18n.t("shared.select.status.heldApproved", "已批·等边界") : (STATUS_ZH[g.status] ?? g.status);
+export const statusLabel = (g: Group) => (heldApproved(g) ? "已批·等边界" : (STATUS_ZH[g.status] ?? g.status));
 
 export const STATUS_ZH: Record<string, string> = {
-  PLANNING: i18n.t("shared.select.status.planning", "拆解中"),
-  DRAFT: i18n.t("shared.select.status.draft", "待批"),
-  RUNNING: i18n.t("shared.select.status.running", "在跑"),
-  PAUSING: i18n.t("shared.select.status.pausing", "正在停"),
-  PAUSED: i18n.t("shared.select.status.paused", "已暂停"),
-  PARKED: i18n.t("shared.select.status.parked", "已封存"),
-  PR_OPEN: i18n.t("shared.select.status.prOpen", "PR 开着"),
-  DISSOLVED: i18n.t("shared.select.status.dissolved", "已解散"),
+  PLANNING: "拆解中",
+  DRAFT: "待批",
+  RUNNING: "在跑",
+  PAUSING: "正在停",
+  PAUSED: "已暂停",
+  PARKED: "已封存",
+  PR_OPEN: "PR 开着",
+  DISSOLVED: "已解散",
 };
 export const WHERE_ZH: Record<string, string> = {
-  pm: i18n.t("shared.select.where.pm", "PM 处理中"),
-  architect: i18n.t("shared.select.where.architect", "Architect 处理中"),
-  cos: i18n.t("shared.select.where.cos", "CoS 处理中"),
-  boss: i18n.t("shared.select.where.boss", "待你决策"),
+  pm: "PM 处理中",
+  architect: "Architect 处理中",
+  cos: "CoS 处理中",
+  boss: "待你决策",
 };
 /**
  * The layers actually recorded, in order.
@@ -42,14 +40,14 @@ export const WHERE_ZH: Record<string, string> = {
  * now records it — docs/project/plan.md §7 layer 1, the only one where the writer is the reviewer.
  */
 export const STOPS: [string, string][] = [
-  ["self", i18n.t("shared.select.stops.self", "自评")],
-  ["reconcile", i18n.t("shared.select.stops.reconcile", "对账")],
-  ["gate", i18n.t("shared.select.stops.gate", "测试")],
-  ["qa", i18n.t("shared.select.stops.qa", "QA")],
+  ["self", "自评"],
+  ["reconcile", "对账"],
+  ["gate", "测试"],
+  ["qa", "QA"],
 ];
 
-export const owns = (g: Group) => jsonOr(g.owns_json, OwnsSchema, []);
-export const gates = (s: Slice) => jsonOr(s.gates_json, GatesSchema, {});
+export const owns = (g: Group) => valueOr(g.owns_json, OwnsSchema, []);
+export const gates = (s: Slice) => valueOr(s.gates_json, GatesSchema, {});
 
 const needsDraftDecision = (g: Group) => g.status === "DRAFT" && !g.approved_at;
 const hasDraftDecision = (st: State, id: number) =>
@@ -103,24 +101,21 @@ export const countWaiting = (st: State, p: number | null) =>
  */
 export function projectState(st: State, p: number): { zh: string; mine: boolean; live?: boolean; fresh?: boolean } {
   const n = countWaiting(st, p);
-  if (n) return { zh: i18n.t("shared.select.project.pendingCount", "{{n}} 件待办", { n }), mine: true };
+  if (n) return { zh: `${n} 件待办`, mine: true };
   const gs = st.groups.filter((g) => g.project_id === p);
   return gs.length ? activeProjectState(gs) : emptyProjectState(st, p);
 }
 
 const emptyProjectState = (st: State, p: number) =>
   (st.archived ?? []).some((a) => a.project_id === p)
-    ? { zh: i18n.t("shared.select.project.allDone", "都做完了"), mine: false }
-    : { zh: i18n.t("shared.select.project.empty", "空着"), mine: false, fresh: true };
+    ? { zh: "都做完了", mine: false }
+    : { zh: "空着", mine: false, fresh: true };
 
 function activeProjectState(groups: Group[]) {
   const live = groups.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;
-  if (live)
-    return { zh: i18n.t("shared.select.project.liveCount", "{{n}} 个在跑", { n: live }), mine: false, live: true };
+  if (live) return { zh: `${live} 个在跑`, mine: false, live: true };
   const held = groups.filter((g) => ["PAUSED", "PARKED"].includes(g.status)).length;
-  return held
-    ? { zh: i18n.t("shared.select.project.heldCount", "{{n}} 个停着", { n: held }), mine: false }
-    : { zh: i18n.t("shared.select.project.allDone", "都做完了"), mine: false };
+  return held ? { zh: `${held} 个停着`, mine: false } : { zh: "都做完了", mine: false };
 }
 
 /** Where the PR lives, so "go and merge it" is one click rather than a hunt. */
@@ -146,8 +141,8 @@ export const mineOf = (asks: Escalation[]): Escalation[] => asks.filter((e) => e
 
 /** What a question is about, in the boss's words. `other` gets no label. */
 export const KIND_ZH: Record<string, string> = {
-  env: i18n.t("shared.select.kind.env", "环境"),
-  spec: i18n.t("shared.select.kind.spec", "验收口径"),
-  boundary: i18n.t("shared.select.kind.boundary", "边界"),
-  design: i18n.t("shared.select.kind.design", "设计取舍"),
+  env: "环境",
+  spec: "验收口径",
+  boundary: "边界",
+  design: "设计取舍",
 };

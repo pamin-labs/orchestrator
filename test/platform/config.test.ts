@@ -278,3 +278,24 @@ test("a remote embedding needs an endpoint and a credential name; local needs ne
       .success,
   ).toBe(true);
 });
+
+/**
+ * The yaml holds boot parameters and nothing else.
+ *
+ * Everything else is in 设置, because those are decisions made while watching the
+ * thing run and a restart costs more than the change — and because this file
+ * ships inside the release, so editing it means editing the download. The rule
+ * was written in the file's own header and enforced by nobody: a key added here
+ * passes the check above as long as it matches its code default.
+ */
+test("every key in the yaml is one a startup cannot ask the database for", () => {
+  const yaml = z.record(z.string(), z.json()).parse(Bun.YAML.parse(readFileSync("config/default.yaml", "utf8")));
+  // The real criterion, not a list of three names: a value needed before the
+  // database is open is exactly one a container has to be able to set without
+  // one, so it takes an environment variable. `fromEnv` is where those live.
+  const env = readFileSync("src/platform/config/load.ts", "utf8");
+  const missing = Object.keys(yaml).filter(
+    (key) => !env.includes(`ORCH_${key.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase()}`),
+  );
+  expect(missing).toEqual([]);
+});

@@ -10,6 +10,7 @@ import {
 import { makeApp } from "../../src/composition/api.ts";
 import { ErrorResponseSchema } from "../../src/contracts/protocol.ts";
 import { readTrace } from "../../src/platform/observability/span-store.ts";
+import { span } from "../../src/platform/persistence/schema.ts";
 import { testContext } from "../support/test-context.ts";
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -49,7 +50,7 @@ async function otlpPayload(): Promise<{ body: string; spans: ReadableSpan[] }> {
 }
 
 test("the receiver stores a real OTLP payload and reads back as one trace", async () => {
-  const ctx = testContext();
+  const ctx = await testContext();
   const { body, spans } = await otlpPayload();
 
   const response = await makeApp(ctx)(
@@ -58,7 +59,7 @@ test("the receiver stores a real OTLP payload and reads back as one trace", asyn
 
   expect(response.status).toBe(200);
   const traceId = spans[0]!.spanContext().traceId;
-  const stored = readTrace(ctx.db, traceId);
+  const stored = await readTrace(ctx.db, traceId);
   expect(stored.map((s) => s.name).sort()).toEqual(["POST /api/v1/ideas", "job agent_turn"]);
 
   const server = stored.find((s) => s.kind === "server")!;
@@ -76,7 +77,7 @@ test("the receiver stores a real OTLP payload and reads back as one trace", asyn
 });
 
 test("the same export arriving twice writes the same rows", async () => {
-  const ctx = testContext();
+  const ctx = await testContext();
   const { body, spans } = await otlpPayload();
   const app = makeApp(ctx);
   const send = () => app(new Request("http://x/api/v1/traces", { method: "POST", headers: JSON_HEADERS, body }));
@@ -84,11 +85,11 @@ test("the same export arriving twice writes the same rows", async () => {
   expect((await send()).status).toBe(200);
   expect((await send()).status).toBe(200);
 
-  expect(readTrace(ctx.db, spans[0]!.spanContext().traceId)).toHaveLength(2);
+  expect(await readTrace(ctx.db, spans[0]!.spanContext().traceId)).toHaveLength(2);
 });
 
 test("a malformed payload is refused with a stable error code and stores nothing", async () => {
-  const ctx = testContext();
+  const ctx = await testContext();
   const body = JSON.stringify({
     resourceSpans: [{ scopeSpans: [{ spans: [{ traceId: "nope", spanId: "also-nope", name: "x" }] }] }],
   });
@@ -99,11 +100,11 @@ test("a malformed payload is refused with a stable error code and stores nothing
 
   expect(response.status).toBe(400);
   expect(ErrorResponseSchema.parse(await response.json()).code).toBe("validation_failed");
-  expect(ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM span").get()!.c).toBe(0);
+  expect(await ctx.db.select({ spanId: span.span_id }).from(span)).toHaveLength(0);
 });
 
 test("a real protobuf export is refused on content type, before any parsing", async () => {
-  const ctx = testContext();
+  const ctx = await testContext();
   const { spans } = await otlpPayload();
   // Built by the library, not embedded. This endpoint speaks OTLP/JSON only —
   // the transformer has no request decoder — so a protobuf sender has to be told
@@ -121,11 +122,11 @@ test("a real protobuf export is refused on content type, before any parsing", as
   );
 
   expect(response.status).toBe(415);
-  expect(ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM span").get()!.c).toBe(0);
+  expect(await ctx.db.select({ spanId: span.span_id }).from(span)).toHaveLength(0);
 });
 
 test("a JSON content type carrying a charset is accepted", async () => {
-  const ctx = testContext();
+  const ctx = await testContext();
   const { body, spans } = await otlpPayload();
 
   // The media-type contract is a regex over the type alone, so the parameterised
@@ -139,16 +140,16 @@ test("a JSON content type carrying a charset is accepted", async () => {
   );
 
   expect(response.status).toBe(200);
-  expect(readTrace(ctx.db, spans[0]!.spanContext().traceId)).toHaveLength(2);
+  expect(await readTrace(ctx.db, spans[0]!.spanContext().traceId)).toHaveLength(2);
 });
 
 test("an empty export is accepted and writes nothing", async () => {
-  const ctx = testContext();
+  const ctx = await testContext();
 
   const response = await makeApp(ctx)(
     new Request("http://x/api/v1/traces", { method: "POST", headers: JSON_HEADERS, body: "{}" }),
   );
 
   expect(response.status).toBe(200);
-  expect(ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM span").get()!.c).toBe(0);
+  expect(await ctx.db.select({ spanId: span.span_id }).from(span)).toHaveLength(0);
 });

@@ -1,9 +1,12 @@
+import { eq } from "drizzle-orm";
 import type { Bus } from "../../platform/persistence/event-bus.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Frame, StoredEvent } from "../../contracts/events.ts";
 import type { SSEStreamingApi } from "hono/streaming";
 import { z } from "zod";
+import { recordDroppedFrames } from "../../platform/observability/metrics.ts";
+import { grp } from "../../platform/persistence/schema.ts";
 
 /**
  * One SSE stream, everything the panel draws off it.
@@ -27,32 +30,62 @@ function cursorFor(req: Request, since: number): number {
   return Math.max(since, header.success ? header.data : 0);
 }
 
-function projectResolver(db: DB): (grpId: number | null | undefined) => number | null {
+function projectResolver(db: DB): (grpId: number | null | undefined) => Promise<number | null> {
   // grp -> project is immutable, so live tokens do not query once per token.
   const projects = new Map<number, number | null>();
-  return (grpId) => {
+  return async (grpId) => {
     if (grpId == null) return null;
     if (!projects.has(grpId)) {
-      projects.set(
-        grpId,
-        db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)?.project_id ??
-          null,
-      );
+      const [row] = await db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId));
+      projects.set(grpId, row?.project_id ?? null);
     }
     return projects.get(grpId) ?? null;
   };
 }
 
+/**
+ * One writer per connection, with a ceiling and a visible loss.
+ *
+ * It was `writes = writes.then(() => send(frame))` — unbounded, and fed by one
+ * `bus.live()` per token from up to four concurrent turns. A browser that stopped
+ * reading held the stream's backpressure and every later frame accumulated as a
+ * closure with no cap and no drop policy. One rejection also poisoned the chain
+ * permanently: each subsequent `.then` produced another rejected promise, and the
+ * `void enqueue(...)` at the call site left every one of them unhandled.
+ */
+export function boundedWriter(send: (frame: Frame) => Promise<void>, limit: number) {
+  let queued = 0;
+  let chain: Promise<void> = Promise.resolve();
+  const write = (run: () => Promise<void>): Promise<void> => {
+    // A slow client is not a broken one: drop the frame, count it, and keep the
+    // connection. The panel re-reads its state on the next event either way.
+    if (queued >= limit) {
+      recordDroppedFrames(1);
+      return chain;
+    }
+    queued += 1;
+    // `catch` before the next link, so a dead socket ends this frame rather than
+    // every frame after it.
+    chain = chain
+      .then(run)
+      .catch(() => {})
+      .finally(() => {
+        queued -= 1;
+      });
+    return chain;
+  };
+  return { write, enqueue: (frame: Frame) => write(() => send(frame)), settled: () => chain };
+}
+
 function frameSender(db: DB, stream: SSEStreamingApi): (frame: Frame) => Promise<void> {
   const projectOf = projectResolver(db);
-  return (frame) =>
-    stream.writeSSE({
-      data: JSON.stringify({
-        ...frame,
-        projectId: (frame.type === "live" ? frame.projectId : null) ?? projectOf(frame.grpId),
-      }),
+  return async (frame) => {
+    const projectId = (frame.type === "live" ? frame.projectId : null) ?? (await projectOf(frame.grpId));
+    await stream.writeSSE({
+      data: JSON.stringify({ ...frame, projectId }),
       ...(frame.type === "event" ? { id: String(frame.seq) } : {}),
     });
+  };
 }
 
 async function sendEvents(
@@ -70,11 +103,11 @@ async function sendEvents(
 }
 
 async function replay(bus: Bus, cursor: number, stopped: () => boolean, enqueue: Enqueue): Promise<number> {
-  if (cursor === 0) return sendEvents(bus.latest(REPLAY_PAGE), cursor, stopped, enqueue);
+  if (cursor === 0) return sendEvents(await bus.latest(REPLAY_PAGE), cursor, stopped, enqueue);
 
   let lastSeq = cursor;
   while (!stopped()) {
-    const page = bus.since(lastSeq, REPLAY_PAGE);
+    const page = await bus.since(lastSeq, REPLAY_PAGE);
     lastSeq = await sendEvents(page, lastSeq, stopped, enqueue);
     if (page.length < REPLAY_PAGE) break;
   }
@@ -126,8 +159,8 @@ export async function getStream(
   req.signal.addEventListener("abort", stop, { once: true });
 
   const send = frameSender(ctx.db, stream);
-  let writes = Promise.resolve();
-  const enqueue = (frame: Frame) => (writes = writes.then(() => send(frame)));
+  const writer = boundedWriter(send, ctx.config.streamBacklog);
+  const enqueue = writer.enqueue;
 
   // Subscribe before replay. Events persisted while a long catch-up is running
   // are buffered, then deduped against the final replay cursor.
@@ -149,10 +182,8 @@ export async function getStream(
   replaying = false;
 
   if (!stopped) {
-    beat = setInterval(() => {
-      writes = writes.then(() => stream.write(": ping\n\n")).then(() => {});
-    }, SSE_HEARTBEAT_MS);
+    beat = setInterval(() => void writer.write(async () => void (await stream.write(": ping\n\n"))), SSE_HEARTBEAT_MS);
   }
   await done;
-  await writes;
+  await writer.settled();
 }

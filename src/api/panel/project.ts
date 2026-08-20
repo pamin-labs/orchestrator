@@ -1,9 +1,12 @@
+import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { unionAll } from "drizzle-orm/pg-core";
+import { roleFor } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { SandboxOverrideSchema, StoredProjectConfigSchema } from "../../contracts/config.ts";
-import { JsonObject, JsonValue, jsonOr } from "../../contracts/json.ts";
+import { JsonObject, JsonValue, valueOr } from "../../contracts/json.ts";
 import { runInstall } from "../../mech/flow/start.ts";
 import { GateName } from "../../mech/gate.ts";
 import { baseBranch, listBranches, removeMirror } from "../../mech/git/checkout.ts";
@@ -16,10 +19,26 @@ import { projectConfig } from "../../mech/util/rows.ts";
 import { errText } from "../../platform/process/text.ts";
 import type { Result } from "../../mech/util/validate.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
-import { ACTIVE_JOB_STATES, stateParam } from "../../contracts/states.ts";
+import { ACTIVE_JOB_STATES } from "../../contracts/states.ts";
 import { IdParams } from "../../contracts/fields.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
+import {
+  agent,
+  channel,
+  cursor,
+  escalation,
+  event,
+  grp,
+  job,
+  lease,
+  member,
+  note,
+  project,
+  resource,
+  slice,
+  task,
+} from "../../platform/persistence/schema.ts";
 
 /**
  * A repository this fleet works on: added, configured, and removed.
@@ -59,21 +78,32 @@ export const SetupBody = z.object({ cmd: InstallCommand.optional(), none: z.bool
  * `null` is "it needs nothing", which is an answer too: an absent key is only
  * ever "nobody has looked".
  */
-function rememberInstall(db: DB, projectId: number, cmd: string | null): void {
-  db.run("UPDATE project SET config_json = json_set(config_json, '$.install', ?) WHERE id = ?", [cmd, projectId]);
+async function rememberInstall(db: DB, projectId: number, cmd: string | null): Promise<void> {
+  await db
+    .update(project)
+    // Raw: `jsonb_set` has no Drizzle operator, and the point of it is to leave
+    // the rest of `config_json` alone rather than read, merge and write it back.
+    // `to_jsonb` and not a JSON string bound as a parameter: the driver encodes
+    // one for a jsonb target, so pre-encoding stored `"\"bun install\""`. The
+    // coalesce is the other half — `to_jsonb(NULL)` is NULL and `jsonb_set` with
+    // a NULL value wipes the column, so "needs nothing" would erase the config.
+    .set({
+      config_json: sql`jsonb_set(${project.config_json}, '{install}', coalesce(to_jsonb(${cmd}::text), 'null'::jsonb))`,
+    })
+    .where(eq(project.id, projectId));
 }
 
 export const postSetup = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== "bootstrap") return bad(`${a.role} does not set this project up`);
-  const projectId = a.grp_id
-    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(a.grp_id)
-        ?.project_id
-    : undefined;
+  if (a.role !== roleFor(ctx, "bootstrap_env")) return bad(`${a.role} does not set this project up`);
+  const [owner] = a.grp_id
+    ? await ctx.db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, a.grp_id))
+    : [];
+  const projectId = owner?.project_id;
   if (!a.grp_id || !projectId) return bad("this agent has no group");
 
   if (b.none) {
-    rememberInstall(ctx.db, projectId, null);
-    ctx.bus.emit({ grpId: a.grp_id, author: a.role, kind: "state_change", body: "这个仓库不需要装什么" });
+    await rememberInstall(ctx.db, projectId, null);
+    await ctx.bus.emit({ grpId: a.grp_id, author: a.role, kind: "state_change", body: "这个仓库不需要装什么" });
     return message("ok");
   }
 
@@ -83,7 +113,7 @@ export const postSetup = (async (ctx, _req, a, _p, b) => {
   // and an agent's own attempt is the one most likely to need watching.
   const r = await runInstall(ctx, a.grp_id, cmd);
   if (!r.ok) return bad(`install failed:\n${r.tail}`);
-  rememberInstall(ctx.db, projectId, cmd);
+  await rememberInstall(ctx.db, projectId, cmd);
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof SetupBody>>;
 
@@ -117,20 +147,25 @@ export const postProject = (async (ctx, req, _p, b) => {
   const baseBranch = r.data.default_branch || null;
   const name = (b.name ?? "").trim() || repoPath.split("/")[1] || repoPath;
 
-  const dup = ctx.db.query<{ name: string }, [string]>("SELECT name FROM project WHERE repo_path = ?").get(repoPath);
+  const [dup] = await ctx.db.select({ name: project.name }).from(project).where(eq(project.repo_path, repoPath));
   if (dup) return bad(`${repoPath} is already registered as "${dup.name}"`);
 
   const gates = b.gates ?? [];
-  const row = ctx.db
-    .query<{ id: number }, [string, string, string, string, string | null]>(
-      `INSERT INTO project (name, repo_path, remote, config_json, base_branch, created_at)
-       VALUES (?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
-    )
-    .get(name, repoPath, remote, JSON.stringify({ gates }), baseBranch)!;
+  const [row] = await ctx.db
+    .insert(project)
+    .values({
+      name,
+      repo_path: repoPath,
+      remote,
+      config_json: { gates },
+      base_branch: baseBranch,
+      created_at: Date.now(),
+    })
+    .returning({ id: project.id });
 
   // Said rather than silently guessed at: nothing was looked at, because there is
   // nothing to look at until a group clones (007 §2).
-  ctx.bus.emit({
+  await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
     body:
@@ -143,7 +178,7 @@ export const postProject = (async (ctx, req, _p, b) => {
   // only step left. No extra request: the answer above carries it.
   const blocked = pushBlocked(r.data.permissions, repoPath);
   if (blocked) {
-    ctx.bus.emit({
+    await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
@@ -151,12 +186,33 @@ export const postProject = (async (ctx, req, _p, b) => {
     });
   }
 
-  ctx.sched.tick();
-  return json({ id: row.id, gates });
+  await ctx.sched.tick();
+  return json({ id: row!.id, gates });
 }) satisfies Handler<z.infer<typeof ProjectBody>>;
 
 /**
- * Rows to clear for one project, in an order SQLite will accept.
+ * The four sets everything below is scoped by, as subqueries rather than ids read
+ * back into this process. Functions and not values: a builder is consumed by the
+ * statement it goes into, and every one of these is used more than once.
+ */
+function scopes(db: DB, id: number) {
+  const groups = () => db.select({ id: grp.id }).from(grp).where(eq(grp.project_id, id));
+  const agents = () =>
+    db
+      .select({ id: agent.id })
+      .from(agent)
+      .where(or(eq(agent.project_id, id), inArray(agent.grp_id, groups())));
+  const channels = () =>
+    db
+      .select({ id: channel.id })
+      .from(channel)
+      .where(or(eq(channel.project_id, id), inArray(channel.grp_id, groups())));
+  const slices = () => db.select({ id: slice.id }).from(slice).where(inArray(slice.grp_id, groups()));
+  return { groups, agents, channels, slices };
+}
+
+/**
+ * Rows to clear for one project, in an order the database will accept.
  *
  * Nothing declares `ON DELETE CASCADE`, so the order is the whole correctness of
  * this: children before parents, and the two easy to miss are `escalation` → `note`
@@ -165,32 +221,31 @@ export const postProject = (async (ctx, req, _p, b) => {
  * A list rather than one long function, because the next table with a `grp_id` has
  * to appear here and a list makes that a one-line change.
  */
-const G = "SELECT id FROM grp WHERE project_id = ?1";
-
-const A = `SELECT id FROM agent WHERE project_id = ?1 OR grp_id IN (${G})`;
-
-const C = `SELECT id FROM channel WHERE project_id = ?1 OR grp_id IN (${G})`;
-
-const S = `SELECT id FROM slice WHERE grp_id IN (${G})`;
-
-const PROJECT_ROWS: string[] = [
-  `DELETE FROM cursor WHERE channel_id IN (${C}) OR agent_id IN (${A})`,
-  `DELETE FROM member WHERE channel_id IN (${C}) OR agent_id IN (${A})`,
-  `DELETE FROM lease WHERE grp_id IN (${G}) OR agent_id IN (${A})`,
-  `DELETE FROM job WHERE grp_id IN (${G}) OR agent_id IN (${A}) OR slice_id IN (${S})`,
-  `DELETE FROM escalation WHERE grp_id IN (${G}) OR agent_id IN (${A})`,
-  `DELETE FROM event WHERE grp_id IN (${G}) OR channel_id IN (${C})`,
-  `DELETE FROM note WHERE project_id = ?1 OR grp_id IN (${G}) OR slice_id IN (${S})`,
-  `DELETE FROM task WHERE grp_id IN (${G}) OR slice_id IN (${S})`,
-  `DELETE FROM slice WHERE grp_id IN (${G})`,
-  `DELETE FROM channel WHERE id IN (${C})`,
-  `DELETE FROM agent WHERE id IN (${A})`,
-  // `grp.blocked_on` points at another grp. Clearing it first is what lets the
-  // whole set go in one statement.
-  `UPDATE grp SET blocked_on = NULL WHERE blocked_on IN (${G})`,
-  `DELETE FROM grp WHERE project_id = ?1`,
-  `DELETE FROM project WHERE id = ?1`,
-];
+function projectRows(db: DB, id: number) {
+  const { groups, agents, channels, slices } = scopes(db, id);
+  return [
+    db.delete(cursor).where(or(inArray(cursor.channel_id, channels()), inArray(cursor.agent_id, agents()))),
+    db.delete(member).where(or(inArray(member.channel_id, channels()), inArray(member.agent_id, agents()))),
+    db.delete(lease).where(or(inArray(lease.grp_id, groups()), inArray(lease.agent_id, agents()))),
+    db
+      .delete(job)
+      .where(or(inArray(job.grp_id, groups()), inArray(job.agent_id, agents()), inArray(job.slice_id, slices()))),
+    db.delete(escalation).where(or(inArray(escalation.grp_id, groups()), inArray(escalation.agent_id, agents()))),
+    db.delete(event).where(or(inArray(event.grp_id, groups()), inArray(event.channel_id, channels()))),
+    db
+      .delete(note)
+      .where(or(eq(note.project_id, id), inArray(note.grp_id, groups()), inArray(note.slice_id, slices()))),
+    db.delete(task).where(or(inArray(task.grp_id, groups()), inArray(task.slice_id, slices()))),
+    db.delete(slice).where(inArray(slice.grp_id, groups())),
+    db.delete(channel).where(inArray(channel.id, channels())),
+    db.delete(agent).where(inArray(agent.id, agents())),
+    // `grp.blocked_on` points at another grp. Clearing it first is what lets the
+    // whole set go in one statement.
+    db.update(grp).set({ blocked_on: null }).where(inArray(grp.blocked_on, groups())),
+    db.delete(grp).where(eq(grp.project_id, id)),
+    db.delete(project).where(eq(project.id, id)),
+  ];
+}
 
 /**
  * Remove a project: everything of ours, nothing of GitHub's.
@@ -212,13 +267,12 @@ const PROJECT_ROWS: string[] = [
  */
 export const deleteProject = (async (ctx, _req, params) => {
   const id = params.id;
-  const p = ctx.db
-    .query<{ name: string; repo_path: string; remote: string | null }, [number]>(
-      "SELECT name, repo_path, remote FROM project WHERE id = ?",
-    )
-    .get(id);
+  const [p] = await ctx.db
+    .select({ name: project.name, repo_path: project.repo_path, remote: project.remote })
+    .from(project)
+    .where(eq(project.id, id));
   if (!p) return message("no such project", 404);
-  const grps = ctx.db.query<{ id: number }, [number]>("SELECT id FROM grp WHERE project_id = ?").all(id);
+  const grps = await ctx.db.select({ id: grp.id }).from(grp).where(eq(grp.project_id, id));
 
   // 1. Nothing new starts, and what is running is actually stopped.
   //
@@ -232,25 +286,23 @@ export const deleteProject = (async (ctx, _req, params) => {
   // Both scopes: a project's standing agents (Architect, CoS, Dispatcher) have
   // `grp_id` NULL and `project_id` set, so a `grp_id IN (…)` filter left every
   // one of their turns running against a project that was being erased.
-  const doomed = ctx.db
-    .query<{ id: number }, [string, number]>(
-      `SELECT id FROM job
-        WHERE state IN (SELECT value FROM json_each(?1))
-          AND (grp_id IN (SELECT id FROM grp WHERE project_id = ?2)
-               OR agent_id IN (SELECT id FROM agent WHERE project_id = ?2))`,
-    )
-    .all(stateParam(ACTIVE_JOB_STATES), id);
+  // Scoped by the project's own groups and agents, not by `scopes()`: a standing
+  // agent's turn belongs to this project through `agent.project_id` alone, and the
+  // wider set would also sweep in an agent that only shares a group with one.
+  const running = () =>
+    and(
+      inArray(job.state, [...ACTIVE_JOB_STATES]),
+      or(
+        inArray(job.grp_id, ctx.db.select({ id: grp.id }).from(grp).where(eq(grp.project_id, id))),
+        inArray(job.agent_id, ctx.db.select({ id: agent.id }).from(agent).where(eq(agent.project_id, id))),
+      ),
+    );
+  const doomed = await ctx.db.select({ id: job.id }).from(job).where(running());
   let stopped = 0;
   for (const j of doomed) if (abortJob(j.id)) stopped++;
-  ctx.db.run(
-    `UPDATE job SET state = 'cancelled', ended_at = unixepoch() * 1000, error = 'project removed'
-      WHERE state IN (SELECT value FROM json_each(?1))
-        AND (grp_id IN (SELECT id FROM grp WHERE project_id = ?2)
-             OR agent_id IN (SELECT id FROM agent WHERE project_id = ?2))`,
-    [stateParam(ACTIVE_JOB_STATES), id],
-  );
+  await ctx.db.update(job).set({ state: "cancelled", ended_at: Date.now(), error: "project removed" }).where(running());
   if (stopped) {
-    ctx.bus.emit({
+    await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
       body: `${p.name}：${stopped} 个在跑的 turn 先掐掉了，再删数据`,
@@ -279,14 +331,15 @@ export const deleteProject = (async (ctx, _req, params) => {
 
   // 3. Files, read out of the bodies that name them before those bodies go.
   const root = resolve(join(ctx.config.dataDir, "attachments"));
-  const said = ctx.db
-    .query<{ body: string }, [number]>(
-      `SELECT body FROM note WHERE project_id = ?1 OR grp_id IN (${G})
-       UNION ALL SELECT body FROM event WHERE grp_id IN (${G})`,
-    )
-    .all(id)
-    .map((r) => r.body)
-    .join("\n");
+  const { groups } = scopes(ctx.db, id);
+  const wrote = await unionAll(
+    ctx.db
+      .select({ body: note.body })
+      .from(note)
+      .where(or(eq(note.project_id, id), inArray(note.grp_id, groups()))),
+    ctx.db.select({ body: event.body }).from(event).where(inArray(event.grp_id, groups())),
+  );
+  const said = wrote.map((r) => r.body).join("\n");
   for (const m of said.matchAll(/^- (?:\[[^\]]+\] )?(\S+?)(?: \(image\))?$/gm)) {
     const path = resolve(m[1]!);
     // Only inside the attachments directory: these strings come out of prose an
@@ -296,9 +349,9 @@ export const deleteProject = (async (ctx, _req, params) => {
   }
 
   // 4. Rows, in one transaction: a half-removed project is worse than either end.
-  ctx.db.transaction(() => {
-    for (const sql of PROJECT_ROWS) ctx.db.run(sql, [id]);
-  })();
+  await ctx.bus.transaction(async (tx) => {
+    for (const statement of projectRows(tx, id)) await statement;
+  });
 
   // 5. State that outlives the row. `holds` is keyed by `owner/repo` and would
   // hold a repository nobody has any more; clearing all of them costs at most
@@ -306,14 +359,14 @@ export const deleteProject = (async (ctx, _req, params) => {
   // The skills cache is keyed by project id, and ids are reused by SQLite —
   // leaving it would hand the next project this one's skill list.
   forgetHolds("github");
-  forgetProjectSkills(ctx.db, id);
+  await forgetProjectSkills(ctx.db, id);
 
-  ctx.bus.emit({
+  await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
     body: `移除了项目 ${p.name}（${p.repo_path}）：${grps.length} 个需求、容器和记录都清掉了。GitHub 上什么都没动。`,
   });
-  ctx.sched.tick();
+  await ctx.sched.tick();
   return json({ ok: true, groups: grps.length, failed });
 }) satisfies Handler<undefined, z.infer<typeof IdParams>>;
 
@@ -342,8 +395,8 @@ export const ProjectConfigBody = z
 type StoredConfigPatch = Omit<z.infer<typeof ProjectConfigBody>, "baseBranch">;
 type StoredProjectConfig = z.infer<typeof StoredProjectConfigSchema>;
 
-function mergeProjectConfig(raw: string, patch: StoredConfigPatch): Result<{ config: StoredProjectConfig }> {
-  const current = jsonOr(raw, JsonObject.nullable(), null);
+function mergeProjectConfig(raw: unknown, patch: StoredConfigPatch): Result<{ config: StoredProjectConfig }> {
+  const current = valueOr(raw, JsonObject.nullable(), null);
   if (!current) return { ok: false, error: "项目配置必须是一个 JSON 对象；拒绝用一次局部修改覆盖整份配置" };
 
   for (const [key, value] of Object.entries(patch)) {
@@ -367,13 +420,13 @@ function mergeProjectConfig(raw: string, patch: StoredConfigPatch): Result<{ con
 
 export const patchProjectConfig = (async (ctx, _req, params, data) => {
   const id = params.id;
-  const row = ctx.db.query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?").get(id);
+  const [row] = await ctx.db.select({ config_json: project.config_json }).from(project).where(eq(project.id, id));
   if (!row) return message("no such project", 404);
   const { baseBranch: nextBase, ...patch } = data;
   // `baseBranch` is a column, not a config_json key: it is read on every clone,
   // rebase and diff. Empty means "ask the remote".
   const changesConfig = Object.keys(patch).length > 0;
-  const parsed = jsonOr(row.config_json, JsonObject.nullable(), null);
+  const parsed = valueOr(row.config_json, JsonObject.nullable(), null);
   let config: StoredProjectConfig = parsed ?? {};
   if (changesConfig) {
     // Validate the whole merge so an unrelated patch cannot bless a malformed
@@ -385,43 +438,46 @@ export const patchProjectConfig = (async (ctx, _req, params, data) => {
 
   // Validate first, then write both homes as one act. A rejected image used to
   // return 422 after `base_branch` had already changed.
-  ctx.db.transaction(() => {
+  await ctx.bus.transaction(async (tx) => {
     if ("baseBranch" in data) {
       const want = (nextBase ?? "").trim();
       // Pinned when the boss names one, cleared when the box is emptied. Without
       // that flag `baseBranch` cannot tell a choice from a cached lookup, and it
       // overwrote both — so picking a branch here lasted until the next tick.
       // Emptying the box is the way back to following the remote's default.
-      ctx.db.run("UPDATE project SET base_branch = ?, base_branch_pinned = ? WHERE id = ?", [
-        want || null,
-        want ? 1 : 0,
-        id,
-      ]);
+      await tx
+        .update(project)
+        .set({ base_branch: want || null, base_branch_pinned: !!want })
+        .where(eq(project.id, id));
     }
     if (changesConfig) {
-      ctx.db.run("UPDATE project SET config_json = ? WHERE id = ?", [JSON.stringify(config), id]);
+      await tx.update(project).set({ config_json: config }).where(eq(project.id, id));
     }
-  })();
+  });
   return json(config);
 }) satisfies Handler<z.infer<typeof ProjectConfigBody>, z.infer<typeof IdParams>>;
 
 export const getProjectConfig = (async (ctx, _req, params) => {
-  const row = ctx.db
-    .query<{ repo_path: string; base_branch: string | null; base_branch_pinned: number }, [number]>(
-      "SELECT repo_path, base_branch, base_branch_pinned FROM project WHERE id = ?",
-    )
-    .get(params.id);
+  const [row] = await ctx.db
+    .select({
+      repo_path: project.repo_path,
+      base_branch: project.base_branch,
+      base_branch_pinned: project.base_branch_pinned,
+    })
+    .from(project)
+    .where(eq(project.id, params.id));
   if (!row) return message("no such project", 404);
-  const config = projectConfig(ctx.db, params.id);
-  const resources = ctx.db
-    .query<{ name: string; template: string }, []>("SELECT name, template FROM resource ORDER BY name")
-    .all();
+  const config = await projectConfig(ctx.db, params.id);
+  const resources = await ctx.db
+    .select({ name: resource.name, template: resource.template })
+    .from(resource)
+    .orderBy(resource.name);
   return json({
     repoPath: row.repo_path,
     config,
     resources,
     baseBranch: row.base_branch,
-    basePinned: row.base_branch_pinned === 1,
+    basePinned: row.base_branch_pinned,
     // What it resolves to right now, so an empty box is not a mystery.
     baseBranchNow: await baseBranch(ctx, params.id),
     // What the remote has, so the box is a choice rather than a memory test.

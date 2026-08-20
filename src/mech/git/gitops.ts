@@ -36,8 +36,8 @@ export type GitRunner = (argv: string[], cwd?: string) => Promise<GitRun>;
  * `origin/main` does not fail as *this repository has no base branch*, it fails as
  * `fatal: ambiguous argument 'origin/main'` mid-rebase, mid-squash or mid-diff.
  */
-export async function baseRef(git: GitRunner, worktree: string): Promise<string | null> {
-  const name = await detectBaseBranch(git, worktree);
+export async function baseRef(git: GitRunner, worktree: string, fallbacks: readonly string[]): Promise<string | null> {
+  const name = await detectBaseBranch(git, worktree, fallbacks);
   // `HEAD` is that function's way of saying it found nothing, and it is the one
   // answer that resolves anyway: `git rebase HEAD` succeeds and does nothing,
   // `git diff HEAD` is empty. Silent wrong answers, both.
@@ -52,8 +52,8 @@ export async function baseRef(git: GitRunner, worktree: string): Promise<string 
 }
 
 /** Rebase the group's branch onto the latest base. Used at start and on unpark. */
-export async function rebaseOntoBase(git: GitRunner, worktree: string): Promise<GitRun> {
-  const base = await baseRef(git, worktree);
+export async function rebaseOntoBase(git: GitRunner, worktree: string, fallbacks: readonly string[]): Promise<GitRun> {
+  const base = await baseRef(git, worktree, fallbacks);
   // Non-zero, so the caller's existing failure path carries it: unpark escalates
   // to the boss and leaves the group parked rather than waking it onto nothing.
   if (!base) return { code: 1, out: "no base branch: nothing named main, master or origin/HEAD resolves here" };
@@ -85,15 +85,20 @@ async function abortStaleRebase(git: GitRunner, worktree: string): Promise<boole
  * `origin/main` made those ask git for `origin/origin/main`. Asked in the right
  * order: the remote's own HEAD, then main/master on the remote, then locally.
  */
-async function existingBase(git: GitRunner, worktree: string, prefix = ""): Promise<string | null> {
-  for (const branch of ["main", "master"]) {
+async function existingBase(
+  git: GitRunner,
+  worktree: string,
+  fallbacks: readonly string[],
+  prefix = "",
+): Promise<string | null> {
+  for (const branch of fallbacks) {
     const found = await git(["rev-parse", "--verify", "--quiet", `${prefix}${branch}`], worktree);
     if (found.code === 0) return branch;
   }
   return null;
 }
 
-async function originBase(git: GitRunner, worktree: string): Promise<string | null> {
+async function originBase(git: GitRunner, worktree: string, fallbacks: readonly string[]): Promise<string | null> {
   const head = await git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], worktree);
   const local = head.code === 0 ? head.out.trim().replace("refs/remotes/origin/", "") : "";
   if (local) return local;
@@ -102,16 +107,20 @@ async function originBase(git: GitRunner, worktree: string): Promise<string | nu
   const remote = await git(["ls-remote", "--symref", "origin", "HEAD"], worktree);
   const named = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(remote.out)?.[1];
   if (remote.code === 0 && named) return named;
-  return existingBase(git, worktree, "origin/");
+  return existingBase(git, worktree, fallbacks, "origin/");
 }
 
-export async function detectBaseBranch(git: GitRunner, worktree: string): Promise<string> {
+export async function detectBaseBranch(
+  git: GitRunner,
+  worktree: string,
+  fallbacks: readonly string[],
+): Promise<string> {
   const remotes = await git(["remote"], worktree);
   if (remotes.code === 0 && remotes.out.includes("origin")) {
-    const remote = await originBase(git, worktree);
+    const remote = await originBase(git, worktree, fallbacks);
     if (remote) return remote;
   }
-  return (await existingBase(git, worktree)) ?? "HEAD";
+  return (await existingBase(git, worktree, fallbacks)) ?? "HEAD";
 }
 
 /**
@@ -234,9 +243,10 @@ export async function squashWip(
   git: GitRunner,
   worktree: string,
   message: string,
+  fallbacks: readonly string[],
   trailers: Trailers = DEFAULT_TRAILERS,
 ): Promise<SquashResult> {
-  const base = await baseRef(git, worktree);
+  const base = await baseRef(git, worktree, fallbacks);
   if (!base) return { squashed: 0, reason: "no base branch to squash against" };
   const mb = await git(["merge-base", base, "HEAD"], worktree);
   if (mb.code !== 0 || !mb.out.trim()) return { squashed: 0, reason: `no merge base with ${base}` };
@@ -315,8 +325,9 @@ export async function sliceDiffBase(
   // base branch from GitHub, which survives a rename of the default branch that
   // a clone's `origin/HEAD` does not. Without one, ask the clone.
   projectRef?: string,
+  fallbacks: readonly string[] = [],
 ): Promise<{ base: string; scope: "slice" | "branch" } | null> {
-  const ref = projectRef ?? (await baseRef(git, worktree));
+  const ref = projectRef ?? (await baseRef(git, worktree, fallbacks));
   if (!ref) return baseSha ? { base: baseSha, scope: "slice" } : null;
   const forkRun = await git(["merge-base", ref, "HEAD"], worktree);
   const fork = forkRun.code === 0 ? forkRun.out.trim() : "";

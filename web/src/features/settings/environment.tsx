@@ -2,9 +2,7 @@ import type { InferResponseType } from "hono/client";
 import { Check, CircleAlert } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { useTranslation } from "react-i18next";
 import { z } from "zod";
-import i18n from "../../i18n";
 import { api, mutate } from "../../shared/api";
 import { cn } from "../../ui/cn";
 import { Head, Input, Meta } from "../../ui/bits";
@@ -17,11 +15,10 @@ import type { AuthRow, HostCheck } from "./auth";
 
 /** Can this machine build a sandbox at all. Four facts, one line each. */
 export function EnvPane({ checks }: { checks: HostCheck[] }) {
-  const { t } = useTranslation();
   return (
     <>
-      <Head title={t("settings.environment.title")} note={t("settings.environment.note")} />
-      {!checks.length && <Meta className="block py-2">{t("settings.loading")}</Meta>}
+      <Head title="环境" note="沙盒要用的" />
+      {!checks.length && <Meta className="block py-2">读取中…</Meta>}
       {/* One idiom for row rules across the dialog: the list draws them, not the
           rows, so there is no `first:` exception to forget. */}
       <div className="divide-y divide-rule-soft">
@@ -38,7 +35,7 @@ function EnvironmentCheck({ check }: { check: HostCheck }) {
     <div className="py-2">
       <div className="flex items-baseline gap-2">
         <CheckIcon ok={check.ok} />
-        <span className={cn("text-[0.8125rem]", !check.ok && "text-accent")}>{check.name}</span>
+        <span className={cn("text-body", !check.ok && "text-accent")}>{check.name}</span>
         <Meta className="min-w-0 truncate">{check.detail}</Meta>
       </div>
       <CheckFix check={check} />
@@ -58,7 +55,7 @@ function CheckFix({ check }: { check: HostCheck }) {
   // Only the broken one gets the room: the command that fixes it.
   if (check.ok || !check.fix) return null;
   return (
-    <span className="mt-1 ml-5 block rounded-md bg-sunk px-2 py-1 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
+    <span className="mt-1 ml-5 block rounded-md bg-sunk px-2 py-1 font-mono text-meta leading-relaxed text-ink-2">
       {check.fix}
     </span>
   );
@@ -81,24 +78,14 @@ export const ServerInfoSchema: z.ZodType<InferResponseType<(typeof api)["sandbox
 });
 export type ServerInfo = z.infer<typeof ServerInfoSchema>;
 
-/**
- * One line each, because the difference between them is what to do next.
- *
- * A function rather than a static record: the label has to come from whichever
- * locale is live right now, not whichever one was live when this module first
- * loaded.
- */
-const SERVER_STATE_OK: Record<ServerInfo["state"], boolean> = {
-  ours: true,
-  started: true,
-  theirs: true,
-  stuck: false,
-  down: false,
+/** One line each, because the difference between them is what to do next. */
+const SERVER_STATE: Record<ServerInfo["state"], { zh: string; ok: boolean }> = {
+  ours: { zh: "在跑，我们起的", ok: true },
+  started: { zh: "刚起好", ok: true },
+  theirs: { zh: "在跑，不是我们起的，直接用", ok: true },
+  stuck: { zh: "在跑，但我们驱动不了", ok: false },
+  down: { zh: "没在跑", ok: false },
 };
-const serverState = (state: ServerInfo["state"]): { label: string; ok: boolean } => ({
-  label: i18n.t(`settings.environment.state.${state}`),
-  ok: SERVER_STATE_OK[state],
-});
 
 /**
  * Is the container server up, is its config still right, and how we reach it.
@@ -127,10 +114,9 @@ export function ServerPane(props: {
   onRefreshImages: () => void;
   onSaved: () => void;
 }) {
-  const { t } = useTranslation();
   return (
     <>
-      <Head title={t("settings.environment.serverTitle")} note={t("settings.environment.serverNote")} />
+      <Head title="沙盒服务器" note="开容器的那个服务" />
       <ServerStatus server={props.server} onRefresh={props.onRefreshServer} />
       {/* Silent when wrong, so it is loud here: a path missing from the
           allowlist mounts an empty directory rather than failing. */}
@@ -158,9 +144,8 @@ function ServerStatus({ server, onRefresh }: { server: ServerInfo | null; onRefr
 }
 
 function StatusSummary({ server }: { server: ServerInfo | null }) {
-  const { t } = useTranslation();
-  if (!server) return <Meta>{t("settings.loading")}</Meta>;
-  const state = serverState(server.state);
+  if (!server) return <Meta>读取中…</Meta>;
+  const state = SERVER_STATE[server.state];
   return (
     <>
       {state.ok ? (
@@ -168,7 +153,7 @@ function StatusSummary({ server }: { server: ServerInfo | null }) {
       ) : (
         <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-accent" />
       )}
-      <span className={cn("text-[0.8125rem]", !state.ok && "text-accent")}>{state.label}</span>
+      <span className={cn("text-body", !state.ok && "text-accent")}>{state.zh}</span>
     </>
   );
 }
@@ -185,7 +170,7 @@ function ServerDetails({ server }: { server: ServerInfo | null }) {
   const ident = serverIdentity(server);
   return (
     <>
-      <ServerWhy why={server.why} state={serverState(server.state).label} />
+      <ServerWhy why={server.why} state={SERVER_STATE[server.state].zh} />
       <ServerIdentity value={ident} />
       <ServerLog log={server.log} />
     </>
@@ -199,7 +184,7 @@ function ServerWhy({ why, state }: { why: string | null; state: string }) {
   // `sunk` too: a frame around one sentence, on the surface reserved for what a
   // machine produced.
   if (!why || why === state) return null;
-  return <p className="mt-1 ml-5 text-[0.75rem] leading-relaxed text-ink-2">{why}</p>;
+  return <p className="mt-1 ml-5 text-secondary leading-relaxed text-ink-2">{why}</p>;
 }
 
 function ServerIdentity({ value }: { value: string }) {
@@ -210,28 +195,26 @@ function ServerIdentity({ value }: { value: string }) {
 function ServerLog({ log }: { log: string }) {
   if (!log) return null;
   return (
-    <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-sunk px-3 py-2 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
+    <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-sunk px-3 py-2 font-mono text-meta leading-relaxed text-ink-2">
       {log}
     </pre>
   );
 }
 
 function ServerControl({ server, onRefresh }: { server: ServerInfo | null; onRefresh: () => void }) {
-  const { t } = useTranslation();
   if (!server) return null;
   if (server.state === "down") return <StartButton onRefresh={onRefresh} />;
   if (server.restartable) return <RestartButton server={server} onRefresh={onRefresh} />;
   return (
-    <Tip label={t("settings.environment.restartTip")}>
+    <Tip label="这个进程不是我们起的，可能是你自己在用的那个。要重启就自己重启，之后这里会认得它。">
       <Button size="sm" disabled>
-        {t("settings.environment.restart")}
+        重启
       </Button>
     </Tip>
   );
 }
 
 function StartButton({ onRefresh }: { onRefresh: () => void }) {
-  const { t } = useTranslation();
   // The re-read is inside the pending window now. Clearing the flag before
   // `onRefresh()` let the button go live again while the line beside it still
   // said what it said before the server was started.
@@ -240,28 +223,26 @@ function StartButton({ onRefresh }: { onRefresh: () => void }) {
     startTransition(async () => {
       const response = await mutate(api["sandbox-server"].start.$post());
       onRefresh();
-      if (response.ok) toast.success(t("settings.environment.startedToast"));
+      if (response.ok) toast.success("起来了");
     });
   return (
     <Button size="sm" variant="go" disabled={busy} onClick={start}>
-      {busy ? t("settings.environment.starting") : t("settings.environment.start")}
+      {busy ? "起中…" : "起一个"}
     </Button>
   );
 }
 
 function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: () => void }) {
-  const { t } = useTranslation();
   const [busy, startTransition] = useTransition();
   const restart = async () => {
     const yes = await ask({
-      title: t("settings.environment.restartConfirmTitle"),
+      title: "重启沙盒服务器？",
       // The evidence beside the button: this is not a service bounce, it is
       // every container going away and every turn inside them dying with it.
-      body: t("settings.environment.restartConfirmBody", {
-        containers: server.containers,
-        turns: server.runningTurns,
-      }),
-      yes: t("settings.environment.restartConfirmYes"),
+      body:
+        `所有容器都会没：${server.containers} 个组的沙盒，还有 ${server.runningTurns} 个正在跑的 turn。` +
+        `\n\n没跑完的 turn 就白跑了，组会自己重开容器接着做，代码和分支不受影响。`,
+      yes: "重启",
       danger: true,
     });
     if (!yes) return;
@@ -271,21 +252,20 @@ function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: (
     startTransition(async () => {
       const response = await mutate(api["sandbox-server"].restart.$post());
       onRefresh();
-      if (response.ok) toast.success(t("settings.environment.restartedToast"));
+      if (response.ok) toast.success("重启了，容器会按需重开");
     });
   };
   return (
     <Button size="sm" disabled={busy} onClick={restart}>
-      {busy ? t("settings.environment.restarting") : t("settings.environment.restart")}
+      {busy ? "重启中…" : "重启"}
     </Button>
   );
 }
 
 function ServerDrift({ server, checks }: { server: ServerInfo | null; checks: HostCheck[] }) {
-  const { t } = useTranslation();
   const drift = server ? server.drift : null;
   return drift ? (
-    <DriftNotice detail={t("settings.environment.driftDetail")} fix={allowedPathsLine(drift.want)} />
+    <DriftNotice detail="配置里没允许我们要挂的路径" fix={allowedPathsLine(drift.want)} />
   ) : (
     <PathNotice checks={checks} />
   );
@@ -303,14 +283,13 @@ function PathNotice({ checks }: { checks: HostCheck[] }) {
 }
 
 function DriftNotice({ detail, fix }: { detail: string; fix: string }) {
-  const { t } = useTranslation();
   return (
     <div className="mt-2.5 rounded-md bg-sunk px-3 py-2">
-      <div className="text-[0.8125rem] text-accent">{detail}</div>
-      <p className="mt-1 text-[0.75rem] text-ink-3">{t("settings.environment.driftHint")}</p>
-      <pre className="mt-1.5 overflow-x-auto font-mono text-[0.6875rem] leading-relaxed text-ink-2 select-all">
-        {fix}
-      </pre>
+      <div className="text-body text-accent">{detail}</div>
+      <p className="mt-1 text-secondary text-ink-3">
+        容器不报错，只挂个空目录，勾上的技能就这么没了。把这行写进配置，然后重启：
+      </p>
+      <pre className="mt-1.5 overflow-x-auto font-mono text-meta leading-relaxed text-ink-2 select-all">{fix}</pre>
     </div>
   );
 }
@@ -319,7 +298,6 @@ type ServerPaneProps = Parameters<typeof ServerPane>[0];
 type AuthJson = NonNullable<Parameters<typeof api.auth.$post>[0]>["json"];
 
 function ServerFields(props: ServerPaneProps) {
-  const { t } = useTranslation();
   const [key, setKey] = useState("");
   const [busy, startTransition] = useTransition();
 
@@ -349,9 +327,7 @@ function ServerFields(props: ServerPaneProps) {
       // answer, and a write that was accepted is not a write that stored
       // this exact string.
       props.onRefreshImages();
-      toast.success(
-        image ? t("settings.environment.imageSavedToast", { image }) : t("settings.environment.resetToast"),
-      );
+      toast.success(image ? `以后新项目都用 ${image}` : "改回配置文件里的了");
     });
 
   return (
@@ -364,10 +340,10 @@ function ServerFields(props: ServerPaneProps) {
           the same way it gets the remote's default branch without being
           asked. The per-project row overrides it and is usually left alone. */}
       <ImageRow
-        label={t("settings.environment.defaultImageLabel")}
+        label="默认镜像"
         value={props.image}
         busy={busy}
-        placeholder={t("settings.environment.defaultImagePlaceholder")}
+        placeholder="新项目默认用它，留空跟配置文件"
         onSave={saveImage}
       />
       <KeyRow
@@ -385,34 +361,27 @@ function ServerFields(props: ServerPaneProps) {
 }
 
 function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefresh: () => void }) {
-  const { t } = useTranslation();
   return (
     // The other way out of "that one is not ours", and the reason this is a
     // control rather than a yaml key: the fix for a taken port is a
     // different port, and an edit-and-restart is not a fix you make while
     // reading this.
     <Field>
-      <FieldLabel htmlFor="sb-addr">{t("settings.environment.addrLabel")}</FieldLabel>
+      <FieldLabel htmlFor="sb-addr">地址</FieldLabel>
       {/* A column, because the warning under the box is a third child and a
           two-column grid put it in the label gutter. */}
       <FieldContent className="flex-col items-stretch gap-1">
         <Input
           id="sb-addr"
           className="font-mono"
-          placeholder={t("settings.environment.addrPlaceholder")}
+          placeholder="127.0.0.1:8080 或 https://host:port"
           defaultValue={server ? server.addr : ""}
           onKeyDown={async (event) => {
             if (event.key !== "Enter") return;
             const addr = event.currentTarget.value;
             const response = await mutate(api["sandbox-server"].addr.$post({ json: { addr } }));
             onRefresh();
-            if (response.ok) {
-              toast.success(
-                addr.trim()
-                  ? t("settings.environment.addrSavedToast", { addr: addr.trim() })
-                  : t("settings.environment.resetToast"),
-              );
-            }
+            if (response.ok) toast.success(addr.trim() ? `改成 ${addr.trim()} 了` : "改回配置文件里的了");
           }}
         />
         {/* The server does not have to be on this machine — a Tailscale peer
@@ -420,7 +389,9 @@ function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefres
             why this warns rather than refuses: on the open internet the
             api_key and every container payload cross it in the clear. */}
         {server?.inClear && (
-          <span className="text-[0.75rem] text-accent">{t("settings.environment.addrClearWarning")}</span>
+          <span className="text-secondary text-accent">
+            不在本机，也不在加密内网，走的还是明文 http。密钥和容器流量都是裸的，用 https 或者 Tailscale。
+          </span>
         )}
       </FieldContent>
     </Field>
@@ -428,9 +399,7 @@ function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefres
 }
 
 function keyPlaceholder(current?: AuthRow) {
-  return current
-    ? i18n.t("settings.environment.keyPlaceholderCurrent", { hint: current.hint })
-    : i18n.t("settings.environment.keyPlaceholderEmpty");
+  return current ? `已存 ${current.hint}，粘新的就换掉` : "留空 = 服务器没开鉴权";
 }
 
 function KeyRow({
@@ -446,10 +415,9 @@ function KeyRow({
   onChange: (value: string) => void;
   onSend: (json: AuthJson) => void;
 }) {
-  const { t } = useTranslation();
   return (
     <Field>
-      <FieldLabel htmlFor="sandbox-key">{t("settings.environment.keyLabel")}</FieldLabel>
+      <FieldLabel htmlFor="sandbox-key">密钥</FieldLabel>
       <InputGroup>
         <Input
           id="sandbox-key"
@@ -460,13 +428,13 @@ function KeyRow({
           onChange={(event) => onChange(event.target.value)}
         />
         {/* The server owns this value, so it is read rather than invented. */}
-        <Tip label={t("settings.environment.readFromServerTip")}>
+        <Tip label="从沙盒服务器自己的配置里读（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）。值不经过浏览器。">
           <Button
             size="sm"
             disabled={busy}
             onClick={() => onSend({ runtime: "sandbox", mode: "api_key", adopt: true })}
           >
-            {t("settings.environment.readFromServer")}
+            从服务器读
           </Button>
         </Tip>
         <ClearKeyButton {...(current ? { current } : {})} busy={busy} onSend={onSend} />
@@ -485,19 +453,17 @@ function ClearKeyButton({
   busy: boolean;
   onSend: (json: AuthJson) => void;
 }) {
-  const { t } = useTranslation();
   // A key nobody told the server about locks the whole fleet out, and until
   // this button existed there was no way back from the panel that put it there.
   if (!current) return null;
   return (
     <Button size="sm" variant="quiet" disabled={busy} onClick={() => onSend({ runtime: "sandbox", clear: true })}>
-      {t("settings.environment.clear")}
+      清掉
     </Button>
   );
 }
 
 function SaveKeyButton({ value, busy, onSend }: { value: string; busy: boolean; onSend: (json: AuthJson) => void }) {
-  const { t } = useTranslation();
   const key = value.trim();
   // Only once there is something to save, same as every other field in this
   // dialog. A button that is always there and usually does nothing trains you
@@ -510,7 +476,7 @@ function SaveKeyButton({ value, busy, onSend }: { value: string; busy: boolean; 
       disabled={busy}
       onClick={() => onSend({ runtime: "sandbox", mode: "api_key", secret: key })}
     >
-      {t("settings.environment.save")}
+      存下
     </Button>
   );
 }

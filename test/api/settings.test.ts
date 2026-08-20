@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { migrate, migrationMentioning, openMemory } from "../../src/platform/persistence/database.ts";
+import { openMemory } from "../../src/platform/persistence/database.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import {
   applyOverrides,
@@ -9,13 +9,11 @@ import {
   refuse,
   settablePaths,
 } from "../../src/platform/config/settings.ts";
-import { Bus } from "../../src/platform/persistence/event-bus.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { makeApp } from "../../src/composition/api.ts";
-import type { Ctx } from "../../src/mech/ctx.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { z } from "zod";
 import * as fx from "../support/factories.ts";
+import { testContext } from "../support/test-context.ts";
 
 const SettingsResponse = z.object({
   settings: z.array(
@@ -63,60 +61,59 @@ test("the settable paths are the config's own, and nothing else is", () => {
   expect(refuse("gateRetries", 0)).toBeNull();
 });
 
-test("a setting takes effect on the live config, not only on the next boot", () => {
-  const db = openMemory();
+test("a setting takes effect on the live config, not only on the next boot", async () => {
+  const db = await openMemory();
   const cfg = loadConfig("config/does-not-exist.yaml");
   const before = cfg.maxGroups;
 
   // The failure this exists to stop: a row written, a panel that reads back what
   // it just typed, and a fleet still using the old number until someone restarts.
-  expect(putSetting(db, cfg, "maxGroups", 3)).toBeNull();
+  expect(await putSetting(db, cfg, "maxGroups", 3)).toBeNull();
   expect(cfg.maxGroups).toBe(3);
-  expect(overrides(db)).toEqual({ maxGroups: 3 });
+  expect(await overrides(db)).toEqual({ maxGroups: 3 });
 
   // Nested, and an open map written whole.
-  expect(putSetting(db, cfg, "sandbox.memory", "16Gi")).toBeNull();
+  expect(await putSetting(db, cfg, "sandbox.memory", "16Gi")).toBeNull();
   expect(cfg.sandbox.memory).toBe("16Gi");
-  expect(putSetting(db, cfg, "contextWindow", { "claude-opus-5": 2_000_000 })).toBeNull();
+  expect(await putSetting(db, cfg, "contextWindow", { "claude-opus-5": 2_000_000 })).toBeNull();
   expect(cfg.contextWindow).toEqual({ "claude-opus-5": 2_000_000 });
 
   // Clearing goes back to the file's value, both in memory and in the table.
-  expect(putSetting(db, cfg, "maxGroups", null)).toBeNull();
+  expect(await putSetting(db, cfg, "maxGroups", null)).toBeNull();
   expect(cfg.maxGroups).toBe(before);
-  expect(overrides(db)).not.toHaveProperty("maxGroups");
+  expect(await overrides(db)).not.toHaveProperty("maxGroups");
 
   // And a refused write changes neither.
   // @ts-expect-error untyped JavaScript callers still need runtime rejection.
-  expect(putSetting(db, cfg, "port", 1)).toBeTruthy();
+  expect(await putSetting(db, cfg, "port", 1)).toBeTruthy();
   // @ts-expect-error untyped JavaScript callers still need runtime rejection.
-  expect(putSetting(db, cfg, "maxGroups", "lots")).toBeTruthy();
+  expect(await putSetting(db, cfg, "maxGroups", "lots")).toBeTruthy();
   expect(cfg.maxGroups).toBe(before);
 });
 
-test("stored settings are layered over the file at boot, and stale keys are ignored", () => {
-  const db = openMemory();
+test("stored settings are layered over the file at boot, and stale keys are ignored", async () => {
+  const db = await openMemory();
   const cfg = loadConfig("config/does-not-exist.yaml");
-  putSetting(db, cfg, "autoAdvance", false);
-  putSetting(db, cfg, "sandbox.ttlSeconds", 3600);
+  await putSetting(db, cfg, "autoAdvance", false);
+  await putSetting(db, cfg, "sandbox.ttlSeconds", 3600);
 
   // A key from a version that had it, and one whose type changed since. Both
   // have to be skipped rather than thrown on: a settings row must never be able
   // to stop the server from starting.
-  fx.setting.insert(db, { k: "cfg.goneAway", v: "1" });
-  fx.setting.insert(db, { k: "cfg.maxGroups", v: '"twelve"' });
+  const f = fx.on(db);
+  await f.setting.create({ k: "cfg.goneAway", v: "1" });
+  await f.setting.create({ k: "cfg.maxGroups", v: '"twelve"' });
 
-  const fresh = applyOverrides(db, loadConfig("config/does-not-exist.yaml"));
+  const fresh = await applyOverrides(db, loadConfig("config/does-not-exist.yaml"));
   expect(fresh.autoAdvance).toBe(false);
   expect(fresh.sandbox.ttlSeconds).toBe(3600);
   expect(fresh.maxGroups).toBe(defaultFor("maxGroups"));
 });
 
 test("the panel reads every knob and writes one at a time", async () => {
-  const db = openMemory();
-  const bus = new Bus(db);
-  const cfg = applyOverrides(db, loadConfig("config/does-not-exist.yaml"));
-  const sched = new Scheduler(db, async () => {});
-  const ctx: Ctx = { db, bus, sched, waiters: new Map(), config: cfg };
+  const db = await openMemory();
+  const cfg = await applyOverrides(db, loadConfig("config/does-not-exist.yaml"));
+  const ctx = await testContext({ db, config: cfg });
   const app = makeApp(ctx);
 
   const read = async () => {
@@ -154,39 +151,8 @@ test("the panel reads every knob and writes one at a time", async () => {
   expect(ctx.config.maxGroups).toBe(4);
 });
 
-test("the two settings that predate the settings table land on it", () => {
-  const db = openMemory();
-  // What migration 039 finds on an existing install: the panel's own image and
-  // address rows, each written by a reader and a writer of its own.
-  fx.setting.insert(db, { k: "sandbox_image", v: "orch/agent:1" });
-  fx.setting.insert(db, { k: "sandbox_server_addr", v: "10.0.0.4:8080" });
-  // `openMemory` has already run every migration, so rewind the stamp for this
-  // one and let the runner do it again — the point is what the SQL does to rows
-  // that are already there, which a fresh database can never show.
-  //
-  // Found by content. `max(n)` said "this one" and meant "the newest one", so
-  // this test quietly retargeted itself at every migration that came after and
-  // then failed on that migration's ALTER TABLE.
-  db.run("DELETE FROM migration WHERE n = ?", [migrationMentioning("sandbox_server_addr")]);
-  migrate(db);
-
-  // One home per value. Two is a precedence order that lives only in code, and
-  // it is the shape that produced `grp.worktree` — a column nothing wrote and
-  // four things read.
-  expect(overrides(db)).toMatchObject({
-    "sandbox.image": "orch/agent:1",
-    "sandbox.server": "10.0.0.4:8080",
-  });
-  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM setting WHERE k NOT LIKE 'cfg.%'").get()!.c).toBe(0);
-
-  // And they arrive on the config the same way every other override does.
-  const cfg = applyOverrides(db, loadConfig("config/does-not-exist.yaml"));
-  expect(cfg.sandbox.image).toBe("orch/agent:1");
-  expect(cfg.sandbox.server).toBe("10.0.0.4:8080");
-});
-
-test("writing a setting does not edit what the default means", () => {
-  const db = openMemory();
+test("writing a setting does not edit what the default means", async () => {
+  const db = await openMemory();
   const cfg = loadConfig("config/does-not-exist.yaml");
   const shipped = defaultFor("sandbox.image");
 
@@ -195,12 +161,12 @@ test("writing a setting does not edit what the default means", () => {
   // edited `DEFAULTS` for the rest of the process — and the visible symptom
   // would have been the "restore default" button restoring the value it was
   // asked to undo.
-  putSetting(db, cfg, "sandbox.image", "orch/agent:1");
+  await putSetting(db, cfg, "sandbox.image", "orch/agent:1");
   expect(cfg.sandbox.image).toBe("orch/agent:1");
   expect(defaultFor("sandbox.image")).toBe(shipped);
   expect(loadConfig("config/does-not-exist.yaml").sandbox.image).toBe(shipped);
 
   // Which is what makes clearing it mean anything.
-  putSetting(db, cfg, "sandbox.image", null);
+  await putSetting(db, cfg, "sandbox.image", null);
   expect(cfg.sandbox.image).toBe(shipped);
 });

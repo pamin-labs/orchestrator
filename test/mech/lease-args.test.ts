@@ -7,7 +7,10 @@ import {
   type ResourceDef,
   runResource,
   LEASE_TIMEOUT_CODE,
+  loadResource,
 } from "../../src/mech/lease.ts";
+import { openMemory } from "../../src/platform/persistence/database.ts";
+import * as fx from "../support/factories.ts";
 
 describe("lease arguments are flat JSON scalars before resource-specific validation", () => {
   test.each([
@@ -241,4 +244,64 @@ test("the refusal still says what to write instead", () => {
   const r = resolveLease(def, { mode: "quick" });
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.error).toBe("mode must be one of: fast, full");
+});
+
+/**
+ * A resource row read out of the database, including when the row is broken.
+ *
+ * Three files used to read this and disagreed about what a broken `arg_schema_json`
+ * means — two defaulted to `{}` and the third parsed it unguarded, which is the one
+ * `POST /orch/v1/lease` reaches: a malformed row threw out of the handler and became
+ * a 500 with a JSON syntax error in it.
+ */
+/**
+ * `{}` is the safe end and the reason is structural: an empty schema is a boundary
+ * that refuses every argument, so a corrupt row makes the resource unusable rather
+ * than unguarded. Mutation put the fallback to a permissive schema and nothing
+ * failed — `loadResource` had no test at all.
+ */
+test("a resource whose schema column is corrupt refuses every argument", async () => {
+  const db = await openMemory();
+  // `jsonb` rejects unparseable text at the column, so corrupt now means what it
+  // can still mean: well-formed JSON that is not a schema. The fallback under
+  // test is the same one — `valueOr` returning `{}` rather than throwing.
+  await fx.on(db).resource.create({
+    name: "gate",
+    template: "bun run {target}",
+    arg_schema_json: { target: "a string, not an arg spec" },
+  });
+
+  const def = (await loadResource(db, "gate"))!;
+  expect(def.argSchema).toEqual({});
+  // An empty schema means no argument is declared, so any argument is unknown.
+  expect(resolveLease(def, { target: "release" }).ok).toBe(false);
+  // And the resource is still *loadable*: refusing to read it would take the whole
+  // lease endpoint down for one bad row rather than one resource.
+  expect(def.template).toBe("bun run {target}");
+});
+
+/**
+ * A row that is not there is `null`, not a throw.
+ *
+ * An agent naming a resource that does not exist is an ordinary mistake — the agent
+ * reads the refusal and picks another — and the caller turns this into that message.
+ */
+test("an unknown resource is absent rather than an error", async () => {
+  expect(await loadResource(await openMemory(), "nope")).toBeNull();
+});
+
+/**
+ * The optional columns are absent rather than null when unset.
+ *
+ * `errorRegex` and `cwd` are spread conditionally, so a resource that sets neither
+ * has neither key — a `cwd: null` reaching the runner would be a directory named
+ * "null" rather than the default.
+ */
+test("unset optional columns do not become null values", async () => {
+  const db = await openMemory();
+  await fx.on(db).resource.create({ name: "plain", template: "true", arg_schema_json: {} });
+  const def = (await loadResource(db, "plain"))!;
+  expect("cwd" in def).toBe(false);
+  expect("errorRegex" in def).toBe(false);
+  expect(def.tags).toEqual([]);
 });

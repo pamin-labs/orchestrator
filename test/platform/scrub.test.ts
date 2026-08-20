@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
+import { desc } from "drizzle-orm";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import { event } from "../../src/platform/persistence/schema.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { forgetSecrets, scrub } from "../../src/platform/observability/redaction.ts";
 
@@ -20,26 +22,26 @@ test("a token that was printed but not yet stored is still masked", () => {
   expect(out).toContain("Store this token securely");
 });
 
-test("a stored credential is masked by value, whatever shape it has", () => {
+test("a stored credential is masked by value, whatever shape it has", async () => {
   forgetSecrets();
-  const db = openMemory();
+  const db = await openMemory();
   const refresh = "rt-9d1c250a-e61b-44d9-88ed-5944d1962f5e-and-then-some";
-  saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: `{"tokens":{"refresh_token":"${refresh}"}}` });
+  await saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: `{"tokens":{"refresh_token":"${refresh}"}}` });
   // Registered whole and in parts: the sidecar injects one token out of the file,
   // so the file never travels but that token does.
   expect(scrub(`refreshing with ${refresh}`)).not.toContain(refresh);
 });
 
-test("an event is scrubbed before it is written, not on the way out", () => {
+test("an event is scrubbed before it is written, not on the way out", async () => {
   forgetSecrets();
-  const db = openMemory();
+  const db = await openMemory();
   const bus = new Bus(db);
   // The failure path put the last 300 characters of CLI output in `detail`, and
   // `event` is append-only: what lands here cannot be taken back.
-  bus.emit({ author: "orchestrator", kind: "state_change", body: `claude 登录没成：${MINTED}` });
-  const row = db.query<{ body: string }, []>("SELECT body FROM event ORDER BY seq DESC LIMIT 1").get()!;
-  expect(row.body).not.toContain("sk-ant");
-  expect(row.body).toContain("claude 登录没成");
+  await bus.emit({ author: "orchestrator", kind: "state_change", body: `claude 登录没成：${MINTED}` });
+  const [row] = await db.select({ body: event.body }).from(event).orderBy(desc(event.seq)).limit(1);
+  expect(row?.body).not.toContain("sk-ant");
+  expect(row?.body).toContain("claude 登录没成");
 });
 
 test("ordinary output is left alone", () => {

@@ -19,6 +19,7 @@ import type { EmbeddingRef } from "../src/contracts/config.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import { open } from "../src/platform/persistence/database.ts";
 import { loadAuth } from "../src/mech/sandbox/auth.ts";
+import { z } from "zod";
 
 /**
  * The corpus, in the shape the failure has: the same two topics in both languages,
@@ -91,9 +92,18 @@ async function localEmbed(model: string): Promise<Embed> {
     // (ADR 031) and a literal one would be a type error in a repository that has
     // decided not to install it. The failure path below is the documented one.
     const mod = "@huggingface/transformers";
-    const { pipeline } = (await import(mod)) as {
-      pipeline: (task: string, model: string, opts: object) => Promise<typeof pipe>;
-    };
+    // Checked, not asserted: an `as` here is a claim about a package this
+    // repository has decided not to install, so nothing would ever verify it and
+    // a shape change would surface as a call to `undefined`.
+    const loaded: unknown = await import(mod);
+    const { pipeline } = z
+      .object({
+        pipeline: z.custom<(task: string, model: string, opts: object) => Promise<typeof pipe>>(
+          (v) => typeof v === "function",
+          { message: `${mod} exports no pipeline()` },
+        ),
+      })
+      .parse(loaded);
     pipe = await pipeline("feature-extraction", model, { dtype: "q8" });
   } catch {
     throw new Error(
@@ -120,7 +130,8 @@ function remoteEmbed(endpoint: string, model: string, key: string): Embed {
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) throw new Error(`${endpoint} answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const body = (await res.json()) as { data?: { embedding: number[] }[] };
+    const payload: unknown = await res.json();
+    const body = z.object({ data: z.array(z.object({ embedding: z.array(z.number()) })).optional() }).parse(payload);
     const vectors = body.data?.map((d) => d.embedding);
     if (!vectors?.length) throw new Error(`${endpoint} returned no embeddings`);
     return vectors;
@@ -150,7 +161,7 @@ async function configured(embedding: EmbeddingRef): Promise<Embed> {
     console.log(`local: ${embedding.model}\n`);
     return localEmbed(embedding.model);
   }
-  const auth = loadAuth(open(), embedding.credential);
+  const auth = await loadAuth(await open(), embedding.credential);
   if (!auth)
     throw new Error(`no credential named "${embedding.credential}" in runtime_auth — add it in settings first.`);
   console.log(`remote: ${embedding.model} at ${embedding.endpoint}\n`);

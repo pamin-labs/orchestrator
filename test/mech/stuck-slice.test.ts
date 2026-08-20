@@ -7,6 +7,8 @@ import { sendBack } from "../../src/mech/flow/review.ts";
 import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { Scheduler, type Job } from "../../src/platform/scheduling/scheduler.ts";
+import { eq } from "drizzle-orm";
+import { slice, task } from "../../src/platform/persistence/schema.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
@@ -27,9 +29,9 @@ import * as fx from "../support/factories.ts";
  * permanently.
  */
 
-function harness() {
-  const db: DB = openMemory();
-  seedAuth(db);
+async function harness() {
+  const db: DB = await openMemory();
+  await seedAuth(db);
   const bus = new Bus(db);
   const ran: Job[] = [];
   const sched = new Scheduler(db, async (j) => void ran.push(j));
@@ -42,27 +44,31 @@ function harness() {
     waiters: new Map(),
     config: cfg,
   };
-  const p = fx.project.insert(db, { name: "p" });
-  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
-  fx.slice.insert(db, { grp_id: g.id, seq: 1, title: "s1", accept_spec: "it works", status: "running" });
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  const g = await f.runningGrp.create({ project_id: p.id, name: "g1" });
+  await f.slice.create({ grp_id: g.id, seq: 1, title: "s1", accept_spec: "it works", status: "running" });
   return { db, ctx, cfg, sched, app: makeApp(ctx), deps: { ctx, cfg, git: async () => ({ code: 0, out: "" }) } };
 }
 
 /** A writer that has already delivered this card once. */
-function delivered(db: DB, opts: { owner: "live" | "retired" } = { owner: "live" }) {
-  const agentId = fx.agent.insert(db, {
-    project_id: 1,
-    grp_id: 1,
-    token: "tok-old",
-    state: opts.owner === "retired" ? "retired" : "idle",
-  }).id;
-  fx.task.insert(db, {
+async function delivered(db: DB, opts: { owner: "live" | "retired" } = { owner: "live" }) {
+  const f = fx.on(db);
+  const agentId = (
+    await f.agent.create({
+      project_id: 1,
+      grp_id: 1,
+      token: "tok-old",
+      state: opts.owner === "retired" ? "retired" : "idle",
+    })
+  ).id;
+  await f.task.create({
     grp_id: 1,
     slice_id: 1,
     title: "t1",
     status: "done",
     owner_agent_id: agentId,
-    claim_json: '{"files":["src/one.ts"],"summary":"did it"}',
+    claim_json: { files: ["src/one.ts"], summary: "did it" },
   });
   return agentId;
 }
@@ -81,32 +87,28 @@ const post = (app: (r: Request) => Promise<Response>, path: string, body: Json, 
   );
 
 test("a slice sent back gets its card back", async () => {
-  const h = harness();
-  delivered(h.db);
+  const h = await harness();
+  await delivered(h.db);
 
-  sendBack(h.deps, 1, "gate said no", "gate");
+  await sendBack(h.deps, 1, "gate said no", "gate");
 
-  const t = h.db
-    .query<{ status: string; owner: number | null; claim_json: string | null }, []>(
-      "SELECT status, owner_agent_id AS owner, claim_json FROM task WHERE id = 1",
-    )
-    .get()!;
+  const t = (await h.db.select().from(task).where(eq(task.id, 1)))[0]!;
   expect(t.status).toBe("pending");
-  expect(t.owner).toBeNull();
+  expect(t.owner_agent_id).toBeNull();
   // claim_json survives on purpose: reconcile only reads it off `done` rows, so it
   // is inert here, and it is the record of what the last attempt already put on the
   // branch. getTasks shows it back so the retry checks before rewriting.
-  expect(t.claim_json).toContain("src/one.ts");
+  expect(t.claim_json).toEqual({ files: ["src/one.ts"], summary: "did it" });
 });
 
 test("the writer can claim and close the card it was handed back", async () => {
-  const h = harness();
-  delivered(h.db);
-  sendBack(h.deps, 1, "gate said no", "gate");
+  const h = await harness();
+  await delivered(h.db);
+  await sendBack(h.deps, 1, "gate said no", "gate");
 
   // The retry is a fresh session, so it is a fresh agent row. Ownership used to be
   // the old row's id, which nothing could ever release.
-  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, token: "tok-new" });
+  await fx.on(h.db).agent.create({ project_id: 1, grp_id: 1, token: "tok-new" });
 
   expect(await (await post(h.app, "/orch/v1/task/claim", { task_id: 1 }, "tok-new")).json()).toEqual({ message: "ok" });
   const done = await post(
@@ -120,16 +122,16 @@ test("the writer can claim and close the card it was handed back", async () => {
     "tok-new",
   );
   expect(await done.json()).toEqual({ message: "ok" });
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM slice WHERE id = 1").get()!.status).toBe("gate");
+  expect((await h.db.select().from(slice).where(eq(slice.id, 1)))[0]!.status).toBe("gate");
 });
 
 test("a card whose owner retired is not locked away from the group", async () => {
-  const h = harness();
+  const h = await harness();
   // Mid-flight, not done: exactly grp18's slice 36. The repair below cannot see it
   // (its slice still has an open task), so the endpoints have to answer for it.
-  delivered(h.db, { owner: "retired" });
-  h.db.run("UPDATE task SET status = 'in_progress' WHERE id = 1");
-  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, token: "tok-new" });
+  await delivered(h.db, { owner: "retired" });
+  await h.db.update(task).set({ status: "in_progress" }).where(eq(task.id, 1));
+  await fx.on(h.db).agent.create({ project_id: 1, grp_id: 1, token: "tok-new" });
 
   const done = await post(
     h.app,
@@ -144,32 +146,28 @@ test("a card whose owner retired is not locked away from the group", async () =>
   expect(await done.json()).toEqual({ message: "ok" });
 });
 
-test("the invariant repair reopens a running slice nobody can work on", () => {
-  const h = harness();
-  delivered(h.db, { owner: "retired" });
+test("the invariant repair reopens a running slice nobody can work on", async () => {
+  const h = await harness();
+  await delivered(h.db, { owner: "retired" });
 
   // No sendBack here: this is the row that was already stranded before the fix, or
   // by any other path that flips a slice back without looking at its cards.
-  runInvariants(h.ctx);
+  await runInvariants(h.ctx);
 
-  const t = h.db
-    .query<{ status: string; owner: number | null }, []>(
-      "SELECT status, owner_agent_id AS owner FROM task WHERE id = 1",
-    )
-    .get()!;
+  const t = (await h.db.select().from(task).where(eq(task.id, 1)))[0]!;
   expect(t.status).toBe("pending");
-  expect(t.owner).toBeNull();
+  expect(t.owner_agent_id).toBeNull();
 
   // Idempotent: a second tick must not disturb a slice that is being worked now.
-  h.db.run("UPDATE task SET status = 'in_progress' WHERE id = 1");
-  runInvariants(h.ctx);
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM task WHERE id = 1").get()!.status).toBe("in_progress");
+  await h.db.update(task).set({ status: "in_progress" }).where(eq(task.id, 1));
+  await runInvariants(h.ctx);
+  expect((await h.db.select().from(task).where(eq(task.id, 1)))[0]!.status).toBe("in_progress");
 });
 
 test("a reopened card says what it already delivered, and how to close it", async () => {
-  const h = harness();
-  delivered(h.db);
-  sendBack(h.deps, 1, "gate said no", "gate");
+  const h = await harness();
+  await delivered(h.db);
+  await sendBack(h.deps, 1, "gate said no", "gate");
 
   const list = await (
     await h.app(new Request("http://x/orch/v1/task", { headers: { "x-orch-token": "tok-old" } }))

@@ -1,42 +1,50 @@
 import { expect, test } from "bun:test";
 import { existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { Bus } from "../../src/platform/persistence/event-bus.ts";
-import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
+import { eq } from "drizzle-orm";
+import type { DB } from "../../src/platform/persistence/database.ts";
 import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Scope } from "../../src/mech/sandbox/sandbox.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
+import {
+  agent,
+  channel,
+  cursor,
+  escalation,
+  event,
+  grp,
+  job,
+  member,
+  note,
+  project,
+  slice,
+  task,
+} from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import { z } from "zod";
 import { tempDir } from "../support/temp.ts";
+import { testContext } from "../support/test-context.ts";
 
 /**
  * Removing a project is the one place this codebase deletes rather than
  * archives, so what it reaches has to be checked rather than assumed: a
  * leftover row or a leftover container is invisible until it costs something.
  */
-function harness(dataDir?: string) {
-  const db: DB = openMemory();
-  seedAuth(db);
+async function harness(dataDir?: string) {
   const killed: Scope[] = [];
   /** What the row situation was at the moment each container was killed. */
   const rowsWhenKilled: number[] = [];
   const asked: string[] = [];
   const base = fakeSandbox();
-  const ctx: Ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
-    waiters: new Map(),
+  const ctx = await testContext({
     sandbox: {
       ...base,
       kill: async (c: Ctx, scope: Scope) => {
         killed.push(scope);
-        rowsWhenKilled.push(db.query<{ c: number }, []>("SELECT count(*) AS c FROM project").get()!.c);
+        rowsWhenKilled.push((await c.db.select({ id: project.id }).from(project)).length);
         return base.kill(c, scope);
       },
     },
@@ -50,38 +58,46 @@ function harness(dataDir?: string) {
       },
     },
     config: { ...loadConfig(), ...(dataDir ? { dataDir } : {}) },
-  };
+  });
+  const db = ctx.db;
+  await seedAuth(db);
 
+  const f = fx.on(db);
   for (const name of ["doomed", "keeper"]) {
-    fx.project.insert(db, {
+    await f.project.create({
       name,
       repo_path: `acme/${name}`,
       remote: `https://github.com/acme/${name}.git`,
     });
   }
-  return { db, ctx, app: makeApp(ctx), killed, rowsWhenKilled, asked, commands: base.commands };
+  return { db, ctx, app: makeApp(ctx), killed, rowsWhenKilled, asked, commands: base.commands, f };
 }
 
+type Harness = Awaited<ReturnType<typeof harness>>;
+
 /** A project with one of everything hanging off it. */
-function populate(db: DB, projectId: number, tag: string): number {
-  const grp = fx.runningGrp.insert(db, { project_id: projectId, name: `g-${tag}`, sandbox_id: `sb-${tag}` }).id;
-  const slice = fx.slice.insert(db, { grp_id: grp, seq: 1, title: "s", accept_spec: "a" }).id;
-  const agent = fx.agent.insert(db, {
-    project_id: projectId,
-    grp_id: grp,
-    model: "sonnet",
-    token: `tok-${grp}`,
-  }).id;
-  const channel = fx.channel.insert(db, { project_id: projectId, grp_id: grp }).id;
-  fx.member.insert(db, { channel_id: channel, agent_id: agent });
-  fx.cursor.insert(db, { channel_id: channel, agent_id: agent, last_seq: 0 });
-  fx.task.insert(db, { grp_id: grp, slice_id: slice, title: "t", status: "pending" });
-  fx.note.insert(db, { project_id: projectId, grp_id: grp, slice_id: slice });
-  fx.event.insert(db, { grp_id: grp, channel_id: channel, author: "boss", body: "e" });
-  fx.escalation.insert(db, { grp_id: grp, agent_id: agent, chain_state: "boss" });
-  fx.job.insert(db, { state: "pending", grp_id: grp, slice_id: slice, agent_id: agent, priority: 5 });
-  fx.job.insert(db, { state: "running", grp_id: grp, priority: 5 });
-  return grp;
+async function populate(h: Harness, projectId: number, tag: string): Promise<number> {
+  const f = h.f;
+  const grpId = (await f.runningGrp.create({ project_id: projectId, name: `g-${tag}`, sandbox_id: `sb-${tag}` })).id;
+  const sliceId = (await f.slice.create({ grp_id: grpId, seq: 1, title: "s", accept_spec: "a" })).id;
+  const agentId = (
+    await f.agent.create({
+      project_id: projectId,
+      grp_id: grpId,
+      model: "sonnet",
+      token: `tok-${grpId}`,
+    })
+  ).id;
+  const channelId = (await f.channel.create({ project_id: projectId, grp_id: grpId })).id;
+  await f.member.create({ channel_id: channelId, agent_id: agentId });
+  await f.cursor.create({ channel_id: channelId, agent_id: agentId, last_seq: 0 });
+  await f.task.create({ grp_id: grpId, slice_id: sliceId, title: "t", status: "pending" });
+  await f.note.create({ project_id: projectId, grp_id: grpId, slice_id: sliceId });
+  await f.event.create({ grp_id: grpId, channel_id: channelId, author: "boss", body: "e" });
+  await f.escalation.create({ grp_id: grpId, agent_id: agentId, chain_state: "boss" });
+  await f.job.create({ state: "pending", grp_id: grpId, slice_id: sliceId, agent_id: agentId, priority: 5 });
+  await f.job.create({ state: "running", grp_id: grpId, priority: 5 });
+  return grpId;
 }
 
 const del = (app: (r: Request) => Promise<Response>, path: string) =>
@@ -92,42 +108,56 @@ const del = (app: (r: Request) => Promise<Response>, path: string) =>
     }),
   );
 
-const count = (db: DB, table: string, where: string, arg: number) =>
-  db.query<{ c: number }, [number]>(`SELECT count(*) AS c FROM ${table} WHERE ${where}`).get(arg)!.c;
+/** Every table that hangs off a group, counted in one object so a diff names the table. */
+const underGroup = async (db: DB, id: number) => ({
+  grp: (await db.select({ x: grp.id }).from(grp).where(eq(grp.id, id))).length,
+  slice: (await db.select({ x: slice.id }).from(slice).where(eq(slice.grp_id, id))).length,
+  task: (await db.select({ x: task.id }).from(task).where(eq(task.grp_id, id))).length,
+  agent: (await db.select({ x: agent.id }).from(agent).where(eq(agent.grp_id, id))).length,
+  channel: (await db.select({ x: channel.id }).from(channel).where(eq(channel.grp_id, id))).length,
+  note: (await db.select({ x: note.id }).from(note).where(eq(note.grp_id, id))).length,
+  event: (await db.select({ x: event.seq }).from(event).where(eq(event.grp_id, id))).length,
+  escalation: (await db.select({ x: escalation.id }).from(escalation).where(eq(escalation.grp_id, id))).length,
+  job: (await db.select({ x: job.id }).from(job).where(eq(job.grp_id, id))).length,
+});
+
+const projects = async (db: DB, id?: number) =>
+  (
+    await (id === undefined
+      ? db.select({ x: project.id }).from(project)
+      : db.select({ x: project.id }).from(project).where(eq(project.id, id)))
+  ).length;
 
 test("a removed project takes its groups, slices and events with it — and leaves its neighbour alone", async () => {
-  const h = harness();
-  const doomed = populate(h.db, 1, "doomed");
-  const keeper = populate(h.db, 2, "keeper");
+  const h = await harness();
+  const doomed = await populate(h, 1, "doomed");
+  const keeper = await populate(h, 2, "keeper");
 
   const r = await del(h.app, "/api/v1/projects/1");
   expect(r.status).toBe(200);
 
   // Every table that hangs off a project or a group. Nothing declares ON DELETE
   // CASCADE, so each of these is a statement that had to be written and ordered.
-  expect(count(h.db, "project", "id = ?", 1)).toBe(0);
-  for (const [table, where] of [
-    ["grp", "id = ?"],
-    ["slice", "grp_id = ?"],
-    ["task", "grp_id = ?"],
-    ["agent", "grp_id = ?"],
-    ["channel", "grp_id = ?"],
-    ["note", "grp_id = ?"],
-    ["event", "grp_id = ?"],
-    ["escalation", "grp_id = ?"],
-    ["job", "grp_id = ?"],
-  ] as const) {
-    expect(`${table}: ${count(h.db, table, where, doomed)}`).toBe(`${table}: 0`);
-  }
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM member").get()!.c).toBe(1);
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM cursor").get()!.c).toBe(1);
+  expect(await projects(h.db, 1)).toBe(0);
+  expect(await underGroup(h.db, doomed)).toEqual({
+    grp: 0,
+    slice: 0,
+    task: 0,
+    agent: 0,
+    channel: 0,
+    note: 0,
+    event: 0,
+    escalation: 0,
+    job: 0,
+  });
+  expect(await h.db.select({ x: member.agent_id }).from(member)).toHaveLength(1);
+  expect(await h.db.select({ x: cursor.agent_id }).from(cursor)).toHaveLength(1);
 
   // The other project is untouched — every statement is scoped by project id,
   // and a removal that took a neighbour's rows would be unrecoverable.
-  expect(count(h.db, "project", "id = ?", 2)).toBe(1);
-  expect(count(h.db, "grp", "id = ?", keeper)).toBe(1);
-  expect(count(h.db, "slice", "grp_id = ?", keeper)).toBe(1);
-  expect(count(h.db, "event", "grp_id = ?", keeper)).toBe(1);
+  expect(await projects(h.db, 2)).toBe(1);
+  const kept = await underGroup(h.db, keeper);
+  expect({ grp: kept.grp, slice: kept.slice, event: kept.event }).toEqual({ grp: 1, slice: 1, event: 1 });
 
   // Removing something that is already gone is a 404, not a second removal.
   expect((await del(h.app, "/api/v1/projects/1")).status).toBe(404);
@@ -137,9 +167,9 @@ test("containers are killed before the rows that name them", async () => {
   // Backwards, the sandbox id is deleted first and the container lives until its
   // TTL with nobody able to name it. `rowsWhenKilled` is how that is asserted
   // without reaching into the driver: the project row still existed each time.
-  const h = harness();
-  populate(h.db, 1, "doomed");
-  populate(h.db, 1, "second");
+  const h = await harness();
+  await populate(h, 1, "doomed");
+  await populate(h, 1, "second");
 
   await del(h.app, "/api/v1/projects/1");
 
@@ -147,7 +177,7 @@ test("containers are killed before the rows that name them", async () => {
   expect(grps).toHaveLength(2);
   expect(h.killed.some((s) => "project" in s)).toBe(true);
   expect(h.rowsWhenKilled.filter((n) => n !== 2)).toEqual([]);
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM project").get()!.c).toBe(1);
+  expect(await projects(h.db)).toBe(1);
 
   // And the bare mirror the utility container keeps for this project's branches:
   // the one leftover that no row points at, so nothing would ever find it again.
@@ -158,9 +188,9 @@ test("nothing in the removal path writes to GitHub", async () => {
   // The constraint that is not negotiable: removing a project removes our copy.
   // A boss whose branches vanished from GitHub was robbed by a cleanup button,
   // so this asserts no request at all — not merely no DELETE.
-  const h = harness();
-  populate(h.db, 1, "doomed");
-  h.db.run("UPDATE grp SET branch = 'orch/x', pr_number = 7 WHERE project_id = 1");
+  const h = await harness();
+  await populate(h, 1, "doomed");
+  await h.db.update(grp).set({ branch: "orch/x", pr_number: 7 }).where(eq(grp.project_id, 1));
 
   await del(h.app, "/api/v1/projects/1");
   expect(h.asked).toEqual([]);
@@ -174,11 +204,11 @@ test("attachments of the removed project go, and files it never named stay", asy
   const outside = join(dataDir, "not-an-attachment.txt");
   for (const f of [mine, other, outside]) writeFileSync(f, "x");
 
-  const h = harness(dataDir);
-  const grp = populate(h.db, 1, "doomed");
-  fx.note.insert(h.db, {
+  const h = await harness(dataDir);
+  const grpId = await populate(h, 1, "doomed");
+  await h.f.note.create({
     project_id: 1,
-    grp_id: grp,
+    grp_id: grpId,
     body: `看这个\n\n附件（路径如下）：\n- [图1] ${mine} (image)\n- ${outside}`,
   });
 
@@ -200,10 +230,10 @@ test("the restart button gets the two numbers it has to show, and never a guess"
   // so those two counts are the evidence beside the button (硬约束 5). They come
   // from the database, which is the half that is the same on every machine —
   // whether a server happens to be running here is not.
-  const h = harness();
-  const grp = populate(h.db, 1, "doomed");
-  h.db.run("UPDATE grp SET sandbox_id = 'sb-x' WHERE id = ?", [grp]);
-  h.db.run("UPDATE job SET state = 'running' WHERE grp_id = ?", [grp]);
+  const h = await harness();
+  const grpId = await populate(h, 1, "doomed");
+  await h.db.update(grp).set({ sandbox_id: "sb-x" }).where(eq(grp.id, grpId));
+  await h.db.update(job).set({ state: "running" }).where(eq(job.grp_id, grpId));
 
   const b = z
     .object({

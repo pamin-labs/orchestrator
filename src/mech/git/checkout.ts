@@ -4,6 +4,8 @@ import { activeTracer } from "../../platform/observability/traces.ts";
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
+import { and, eq, isNull } from "drizzle-orm";
+import { grp as grps, project } from "../../platform/persistence/schema.ts";
 import { execIn, execLines, getBytes, putBytes, SKILL_SYNC, UTIL, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { cacheProjectSkills } from "../skills.ts";
@@ -35,12 +37,47 @@ const Branches = z.array(z.object({ name: z.string() }));
  * remote's HEAD says", resolved once and written back; re-detected when the
  * stored name is gone from the remote, and announced when it changes.
  */
+/**
+ * A rename or transfer on github.com, written back rather than followed.
+ *
+ * GitHub redirects `GET /repos/old/name`, but a `POST` to open a pull request
+ * does not survive one — and the old URL keeps working only until somebody
+ * claims the freed name.
+ */
+async function followRename(
+  ctx: Ctx,
+  projectId: number,
+  was: string,
+  repo: z.infer<typeof Repo> | undefined,
+): Promise<void> {
+  if (!repo?.full_name || repo.full_name === was) return;
+  await ctx.db
+    .update(project)
+    .set({
+      repo_path: repo.full_name,
+      // The clone URL only when there is one: `coalesce(?, remote)` kept the
+      // stored remote when GitHub answered without one.
+      ...(repo.clone_url === undefined ? {} : { remote: repo.clone_url }),
+    })
+    .where(eq(project.id, projectId));
+  await ctx.bus?.emit({
+    grpId: null,
+    author: "orchestrator",
+    kind: "state_change",
+    severity: "advisory",
+    body: `仓库在 GitHub 上改名了：${was} → ${repo.full_name}。已经跟着改，克隆和 PR 都指新的。`,
+  });
+}
+
 export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
-  const row = ctx.db
-    .query<{ repo_path: string; base_branch: string | null; base_branch_pinned: number }, [number]>(
-      "SELECT repo_path, base_branch, base_branch_pinned FROM project WHERE id = ?",
-    )
-    .get(projectId);
+  const [row] = await ctx.db
+    .select({
+      repo_path: project.repo_path,
+      base_branch: project.base_branch,
+      base_branch_pinned: project.base_branch_pinned,
+    })
+    .from(project)
+    .where(eq(project.id, projectId));
   if (!row) return "main";
 
   // Never host git: `repo_path` is `owner/name`, not a directory, and `Bun.spawn`
@@ -48,28 +85,11 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
   // time rather than only when the column is empty: the shared client sends
   // `If-None-Match`, and a 304 does not count against the rate limit.
   const r = await ctx.gh?.request("GET", `/repos/${row.repo_path}`, Repo);
-  // A rename or transfer on github.com goes stale here too. Written back rather
-  // than left to the redirect: GitHub redirects `GET /repos/old/name`, but a `POST`
-  // to open a pull request does not survive one, and the old URL keeps working only
-  // until somebody claims the freed name.
-  if (r?.ok && r.data?.full_name && r.data.full_name !== row.repo_path) {
-    ctx.db.run("UPDATE project SET repo_path = ?, remote = coalesce(?, remote) WHERE id = ?", [
-      r.data.full_name,
-      r.data.clone_url ?? null,
-      projectId,
-    ]);
-    ctx.bus?.emit({
-      grpId: null,
-      author: "orchestrator",
-      kind: "state_change",
-      severity: "advisory",
-      body: `仓库在 GitHub 上改名了：${row.repo_path} → ${r.data.full_name}。已经跟着改，克隆和 PR 都指新的。`,
-    });
-  }
+  if (r?.ok) await followRename(ctx, projectId, row.repo_path, r.data);
   const found = (r?.ok && r.data?.default_branch) || null;
   // Nothing to compare against: keep what is stored rather than resetting a
   // project that develops on `develop` to `main` because the network blinked.
-  if (!found) return row.base_branch ?? "main";
+  if (!found) return row.base_branch ?? ctx.config.baseBranchFallbacks[0] ?? "main";
   // A branch the boss picked in settings is an answer, not a cache of GitHub's.
   // This used to overwrite it every call — and this runs on the heartbeat, so a
   // choice survived about thirty seconds.
@@ -79,13 +99,22 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
     // same tick only one writes and only one announces it. Both used to: the
     // event feed carried the identical line twice, 29 seconds apart, because
     // each had read the old value before either wrote.
-    const wrote = ctx.db
-      .query("UPDATE project SET base_branch = ? WHERE id = ? AND base_branch IS ? RETURNING id")
-      .all(found, projectId, row.base_branch);
+    // `IS` in SQLite compared NULL to NULL; `eq` does not, so a project that has
+    // never had a base branch needs `IS NULL` to match itself.
+    const wrote = await ctx.db
+      .update(project)
+      .set({ base_branch: found })
+      .where(
+        and(
+          eq(project.id, projectId),
+          row.base_branch === null ? isNull(project.base_branch) : eq(project.base_branch, row.base_branch),
+        ),
+      )
+      .returning({ id: project.id });
     // Only when it *changed*, not when it was first learned: it changes what
     // every later diff means.
     if (wrote.length > 0 && row.base_branch) {
-      ctx.bus?.emit({
+      await ctx.bus?.emit({
         grpId: null,
         author: "orchestrator",
         kind: "state_change",
@@ -106,9 +135,8 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
  * more than a hundred branches has more than this control should render.
  */
 export async function listBranches(ctx: Ctx, projectId: number): Promise<string[]> {
-  const repo = ctx.db
-    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-    .get(projectId)?.repo_path;
+  const [row] = await ctx.db.select({ repo_path: project.repo_path }).from(project).where(eq(project.id, projectId));
+  const repo = row?.repo_path;
   if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return [];
   const r = await ctx.gh?.request("GET", `/repos/${repo}/branches?per_page=100`, Branches);
   if (!r?.ok) return [];
@@ -160,8 +188,8 @@ export function httpsRemote(url: string): string {
  * and it was a way for two answers to disagree — a group could clone one
  * repository while its PR opened on another.
  */
-export function remoteFor(db: DB, projectId: number): string | null {
-  const row = db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId);
+export async function remoteFor(db: DB, projectId: number): Promise<string | null> {
+  const [row] = await db.select({ remote: project.remote }).from(project).where(eq(project.id, projectId));
   return row?.remote ? httpsRemote(row.remote) : null;
 }
 
@@ -228,7 +256,7 @@ async function createCheckoutInner(ctx: Ctx, scope: Scope, spec: CheckoutSpec): 
   // happens to be rebuilt. `SKILL_SYNC` cannot fail this command; see its own note.
   const already = await execIn(ctx, scope, `${SKILL_SYNC}; test -d ${WORK}/.git && echo yes`);
   if (already.out.includes("yes")) {
-    cacheProjectSkills(ctx.db, spec.projectId, already.out);
+    await cacheProjectSkills(ctx.db, spec.projectId, already.out);
     return;
   }
 
@@ -239,7 +267,10 @@ async function createCheckoutInner(ctx: Ctx, scope: Scope, spec: CheckoutSpec): 
   // `--filter=blob:none`, never `--depth=1`: `rebaseOntoBase` and `merge-base
   // --is-ancestor` need the real history.
   const cloneCmd = `git clone --progress --filter=blob:none ${shq(spec.remote)} ${WORK}`;
-  const clone = await streamed(ctx, scope, cloneCmd, { timeoutMs: 600_000, env: { GIT_TERMINAL_PROMPT: "0" } });
+  const clone = await streamed(ctx, scope, cloneCmd, {
+    timeoutMs: ctx.config.timeouts.transferMs,
+    env: { GIT_TERMINAL_PROMPT: "0" },
+  });
   if (clone.code !== 0) throw new Error(`git clone failed: ${clone.out.slice(-400)}`);
 
   // Two places the branch can be:
@@ -276,7 +307,7 @@ async function createCheckoutInner(ctx: Ctx, scope: Scope, spec: CheckoutSpec): 
   // against an empty `/work`, so this is the run that actually links and lists a
   // repository's own skills — every later turn's probe just keeps it current.
   const synced = await execIn(ctx, scope, SKILL_SYNC);
-  cacheProjectSkills(ctx.db, spec.projectId, synced.out);
+  await cacheProjectSkills(ctx.db, spec.projectId, synced.out);
 }
 
 /**
@@ -292,13 +323,13 @@ async function initSubmodules(ctx: Ctx, scope: Scope): Promise<void> {
   if (has.out.trim() !== "yes") return;
   const r = await execIn(ctx, scope, `git -c protocol.file.allow=user submodule update --init`, {
     cwd: WORK,
-    timeoutMs: 600_000,
+    timeoutMs: ctx.config.timeouts.transferMs,
   });
   if (r.code !== 0 && "grp" in scope) {
     // Not fatal: a repository whose submodules will not init is still a
     // repository the group can work in, and the agent bucket (007 §6) is where a
     // failed init belongs — it is something a turn can be given and act on.
-    ctx.bus.emit({
+    await ctx.bus.emit({
       grpId: scope.grp,
       author: "orchestrator",
       kind: "state_change",
@@ -336,7 +367,7 @@ export async function utilGit(ctx: Ctx, argv: string[], cwd?: string): Promise<{
   const cmd = `git -c core.hooksPath=/dev/null ${verb} ${argv.slice(1).map(shq).join(" ")}`;
   const r = await execIn(ctx, UTIL, cmd, {
     ...(cwd ? { cwd } : {}),
-    timeoutMs: 600_000,
+    timeoutMs: ctx.config.timeouts.transferMs,
     env: { GIT_TERMINAL_PROMPT: "0" },
   });
   return { code: r.code, out: `${r.out}${r.err}`.trimEnd() };
@@ -354,25 +385,37 @@ const mirrorPath = (remote: string): string => `/repos/${remote.replace(/[^\w.-]
  * — `--mirror` does — so without it the mirror freezes; `--prune` drops dead branches.
  */
 async function ensureMirror(ctx: Ctx, remote: string): Promise<string> {
-  // Called by `keepBranch`, `pushBranch` and `listTree` with no freshness check at
-  // all, so an unconditional `fetch --prune` runs on every turn and every tick.
-  // Whether that is worth a cache is a question about a number nobody had.
   return gitSpan("git.ensure_mirror", {}, () => ensureMirrorInner(ctx, remote));
 }
 
 async function ensureMirrorInner(ctx: Ctx, remote: string): Promise<string> {
   const path = mirrorPath(remote);
   const there = await execIn(ctx, UTIL, `test -d ${shq(path)} && echo yes`);
-  if (there.out.trim() === "yes") {
+  if (there.out.trim() === "yes") return path;
+  const made = await utilGit(ctx, ["clone", "--bare", "--filter=blob:none", remote, path]);
+  if (made.code !== 0) throw new Error(`utility container could not mirror ${remote}: ${made.out.slice(-300)}`);
+  return path;
+}
+
+/**
+ * The mirror, and its refs current with the remote. Only for a caller that reads them.
+ *
+ * This used to be inside `ensureMirror`, so all three callers paid a network
+ * round trip they had not asked for: measured, 1,184 fetches costing **2,608
+ * seconds** in one day. Two of them never needed it. `keepBranch` fetches a local
+ * bundle and already retries with an explicit `fetch origin` on the one failure
+ * that means the mirror is behind; `pushBranch` only sends `refs/orch/*` outward.
+ * `listTree` is the caller that reads refs, so it is the caller that pays.
+ */
+async function freshMirror(ctx: Ctx, remote: string): Promise<string> {
+  const path = await ensureMirror(ctx, remote);
+  return gitSpan("git.fetch_mirror", {}, async () => {
     // Best-effort: a mirror that cannot reach the remote right now is stale, and
     // stale is what the caller already reports. Refusing here would turn one
     // unreachable network into an empty file list.
     await utilGit(ctx, ["fetch", "--prune", "origin", "+refs/heads/*:refs/heads/*"], path);
     return path;
-  }
-  const made = await utilGit(ctx, ["clone", "--bare", "--filter=blob:none", remote, path]);
-  if (made.code !== 0) throw new Error(`utility container could not mirror ${remote}: ${made.out.slice(-300)}`);
-  return path;
+  });
 }
 
 /**
@@ -446,7 +489,7 @@ async function listTreeInner(
   const ref = branch.replace(/^origin\//, "");
   let mirror: string;
   try {
-    mirror = await ensureMirror(ctx, remote);
+    mirror = await freshMirror(ctx, remote);
   } catch (e) {
     const why = errText(e);
     return { files: [], why, failed: why };
@@ -590,22 +633,23 @@ export async function keepBranch(ctx: Ctx, grpId: number): Promise<{ ok: boolean
   return branchOp("git.keep_branch", grpId, () => keep(ctx, grpId));
 }
 
-function branchRemote(
+async function branchRemote(
   db: DB,
   grpId: number,
-): { ok: true; branch: string; projectId: number; remote: string } | { ok: false; reason: string } {
-  const grp = db
-    .query<{ branch: string | null; project_id: number }, [number]>("SELECT branch, project_id FROM grp WHERE id = ?")
-    .get(grpId);
+): Promise<{ ok: true; branch: string; projectId: number; remote: string } | { ok: false; reason: string }> {
+  const [grp] = await db
+    .select({ branch: grps.branch, project_id: grps.project_id })
+    .from(grps)
+    .where(eq(grps.id, grpId));
   if (!grp?.branch) return { ok: false, reason: "group has no branch" };
-  const remote = remoteFor(db, grp.project_id);
+  const remote = await remoteFor(db, grp.project_id);
   return remote
     ? { ok: true, branch: grp.branch, projectId: grp.project_id, remote }
     : { ok: false, reason: "project has no remote" };
 }
 
 async function keep(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: string }> {
-  const found = branchRemote(ctx.db, grpId);
+  const found = await branchRemote(ctx.db, grpId);
   if (!found.ok) return found;
   const { branch, remote, projectId } = found;
   const base = await baseRefFor(ctx, projectId);
@@ -661,7 +705,7 @@ async function push(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: st
   // may still be unpushed from an earlier turn, so this carries on.
   if (!kept.ok && !/empty bundle/i.test(kept.reason ?? "")) return kept;
 
-  const found = branchRemote(ctx.db, grpId);
+  const found = await branchRemote(ctx.db, grpId);
   if (!found.ok) return found;
   const mirror = await ensureMirror(ctx, found.remote);
 
@@ -685,8 +729,8 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
   // `on`, not `grpId`, for exactly one of them: `event.grp_id` is a foreign key
   // to `grp`, so an event about a group that is not in the table cannot be
   // written against it. That one goes out unscoped and names the id in its body.
-  const report = (why: string, on: number | null = grpId): void => {
-    ctx.bus.emit({
+  const report = async (why: string, on: number | null = grpId): Promise<void> => {
+    await ctx.bus.emit({
       grpId: on,
       author: "orchestrator",
       kind: "state_change",
@@ -695,19 +739,16 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
     });
   };
 
-  const grp = ctx.db
-    .query<{ name: string; project_id: number; branch: string | null }, [number]>(
-      "SELECT name, project_id, branch FROM grp WHERE id = ?",
-    )
-    .get(grpId);
+  const [grp] = await ctx.db
+    .select({ name: grps.name, project_id: grps.project_id, branch: grps.branch })
+    .from(grps)
+    .where(eq(grps.id, grpId));
   if (!grp) return report(`grp 表里找不到组 ${grpId}`, null);
   // Still two questions, not one: a project that is gone and a project with no
   // remote recorded send the reader to different places.
-  const project = ctx.db
-    .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
-    .get(grp.project_id);
-  if (!project) return report(`项目不在了（project ${grp.project_id} 查不到）`);
-  const remote = remoteFor(ctx.db, grp.project_id);
+  const [found] = await ctx.db.select({ remote: project.remote }).from(project).where(eq(project.id, grp.project_id));
+  if (!found) return report(`项目不在了（project ${grp.project_id} 查不到）`);
+  const remote = await remoteFor(ctx.db, grp.project_id);
   if (!remote) return report(`project ${grp.project_id} 没记下 remote，无从 clone`);
   await createCheckout(
     ctx,

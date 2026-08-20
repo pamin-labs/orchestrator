@@ -8,6 +8,15 @@ import type { OrchType } from "../http/routes/orch.ts";
 import { VERSION } from "../platform/process/version.ts";
 import { dispatchCommand } from "./commands/dispatch.ts";
 
+/**
+ * The port is restated here rather than read from config, deliberately.
+ *
+ * This file is provisioned into a sandbox on its own (`sandbox.ts` -> `provision`)
+ * and run there by `bun run`; a config loader would find no yaml under `ORCH_ROOT`
+ * and answer with its own defaults — this same literal, by a longer route and a
+ * whole schema. `composition/server.ts` sets `ORCH_URL` for what it spawns, and in
+ * a sandbox `ORCH_MAILBOX` takes every request to the file transport below.
+ */
 const URL_BASE = process.env.ORCH_URL ?? "http://127.0.0.1:47821";
 const TOKEN = process.env.ORCH_TOKEN ?? "";
 const MAILBOX = process.env.ORCH_MAILBOX ?? "";

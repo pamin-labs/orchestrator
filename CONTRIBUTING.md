@@ -105,6 +105,12 @@ One pull request should deliver one coherent outcome. Fill every plan field in
 the template; use `N/A: reason` where a field truly does not apply. Include the
 exact commands and relevant output proving the change, plus a rollback path.
 
+**The title follows the commit convention above**, because squash is enabled and
+`squash_merge_commit_title` is `PR_TITLE` — so on a squash the title *is* the
+subject of the commit that lands on `main`, and a title written as a headline
+becomes a commit nobody can read the log for. Same prefix, same scope, same rule
+that it states the finding rather than the diff.
+
 CI is read-only and will not format, fix, or push your branch. Run formatting,
 types, lint, tests, audit, and workflow checks locally as applicable. Respond to
 review findings with a fix or an evidence-backed disposition. The merge remains

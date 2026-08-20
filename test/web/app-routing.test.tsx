@@ -101,3 +101,60 @@ test("editing the hash directly moves the panel too", async () => {
 
   await waitFor(() => expect(view.container.textContent).toContain("two"));
 });
+
+/**
+ * ⌘S opens settings, against the component rather than against the rule.
+ *
+ * `navigationShortcut` is a pure function and has its own tests; what those cannot
+ * see is whether anything listens to it. The listener is a `window` keydown, which is
+ * the class that could not be reached at all before `dom.ts` was fixed — so a
+ * shortcut that stopped being wired would have looked exactly like one that worked.
+ */
+test("a shortcut reaches the panel, not just the rule that decodes it", async () => {
+  location.hash = "#p=1&v=cost";
+  const view = panel();
+  await waitFor(() => expect(view.container.textContent).toContain("one"));
+
+  act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true })));
+  await waitFor(() => expect(location.hash).toContain("v=settings"));
+});
+
+/**
+ * A chord the rule refuses changes nothing, and must not be swallowed either.
+ *
+ * The handler calls `preventDefault` before acting, so a listener that acted on
+ * everything would eat the browser's own ⌘R and ⌘F on this page.
+ */
+test("a chord that is not a shortcut is left to the browser", async () => {
+  location.hash = "#p=1&v=cost";
+  const view = panel();
+  await waitFor(() => expect(view.container.textContent).toContain("one"));
+
+  const event = new KeyboardEvent("keydown", { key: "r", metaKey: true, cancelable: true });
+  act(() => void window.dispatchEvent(event));
+  expect(event.defaultPrevented).toBe(false);
+  expect(location.hash).toBe("#p=1&v=cost");
+});
+
+/**
+ * The side panel stays where the boss put it, across a reload.
+ *
+ * `readSide` is pure and tested; the write is an effect in `app.tsx` and was not.
+ * Only one of the two halves failing is enough — a panel that reads the preference
+ * and never writes it comes up right once and then reverts on every reload, which
+ * reads as the toggle not working rather than as the write being absent.
+ *
+ * ⌘B is the toggle, which is also the third of the four shortcuts reaching real code.
+ */
+test("toggling the side panel is remembered", async () => {
+  localStorage.setItem("orch.side", "1");
+  location.hash = "#p=1&v=cost";
+  const view = panel();
+  await waitFor(() => expect(view.container.textContent).toContain("one"));
+
+  act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true })));
+  await waitFor(() => expect(localStorage.getItem("orch.side")).toBe("0"));
+
+  act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true })));
+  await waitFor(() => expect(localStorage.getItem("orch.side")).toBe("1"));
+});

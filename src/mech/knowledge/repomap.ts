@@ -76,8 +76,8 @@ export function indexable(rel: string, exclude: string[] = []): boolean {
  * ours to keep guessing at — the same arrangement `detect.ts` uses for gates:
  * best-effort detection, written where it can be edited.
  */
-export function indexExcludes(db: DB, projectId: number): string[] {
-  return projectConfig(db, projectId).index?.exclude ?? [];
+export async function indexExcludes(db: DB, projectId: number): Promise<string[]> {
+  return (await projectConfig(db, projectId)).index?.exclude ?? [];
 }
 
 export interface MapNode {
@@ -181,7 +181,7 @@ export function mapFor(nodes: MapNode[], question: string, maxChars: number): st
 }
 
 /** Store the map as a project note, and only when it actually changed. */
-export function saveMap(db: DB, projectId: number, nodes: MapNode[]): boolean {
+export async function saveMap(db: DB, projectId: number, nodes: MapNode[]): Promise<boolean> {
   return saveSingletonNote(db, projectId, "map", JSON.stringify(nodes));
 }
 
@@ -189,7 +189,7 @@ export function saveMap(db: DB, projectId: number, nodes: MapNode[]): boolean {
  * A map written by an older build is text, not JSON, and reads back as no map at
  * all rather than as a corrupt one — the rule refreshes it on the next tick.
  */
-export function loadMap(db: DB, projectId: number | null): MapNode[] {
+export async function loadMap(db: DB, projectId: number | null): Promise<MapNode[]> {
   if (!projectId) return [];
-  return jsonOr(singletonNote(db, projectId, "map"), z.array(MapNodeSchema), []);
+  return jsonOr(await singletonNote(db, projectId, "map"), z.array(MapNodeSchema), []);
 }

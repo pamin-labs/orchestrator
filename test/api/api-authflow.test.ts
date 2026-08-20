@@ -1,16 +1,14 @@
 import { expect, test } from "bun:test";
 import { makeApp } from "../../src/composition/api.ts";
-import type { Ctx } from "../../src/mech/ctx.ts";
+import { asc, eq } from "drizzle-orm";
 import type { Json } from "../../src/contracts/json.ts";
-import { Bus } from "../../src/platform/persistence/event-bus.ts";
-import { loadConfig } from "../../src/platform/config/load.ts";
-import { openMemory } from "../../src/platform/persistence/database.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { loadAuth } from "../../src/mech/sandbox/auth.ts";
 import type { DeviceFlowFetcher } from "../../src/mech/git/ghlogin.ts";
 import { finishGithubLogin, githubDeviceLogin } from "../../src/api/panel/authflow.ts";
+import { escalation, event } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
+import { testContext } from "../support/test-context.ts";
 
 /**
  * Two credential flows, and the one property both of them owe the panel.
@@ -23,16 +21,9 @@ import { fakeSandbox } from "../support/fake-sandbox.ts";
 
 const CLAUDE_TOKEN = "sk-ant-oat01-abcdefghijklmnop";
 
-function harness(handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({})) {
-  const db = openMemory();
-  const ctx: Ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
-    sandbox: fakeSandbox((cmd) => handle(cmd)),
-    waiters: new Map(),
-    config: loadConfig(),
-  };
+async function harness(handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({})) {
+  const ctx = await testContext({ sandbox: fakeSandbox((cmd) => handle(cmd)) });
+  const db = ctx.db;
   const app = makeApp(ctx);
   const post = (path: string, body?: Json) =>
     app(
@@ -42,26 +33,27 @@ function harness(handle: (cmd: string) => { code?: number; out?: string; err?: s
         headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       }),
     );
-  return { db, ctx, app, post };
+  return { db, ctx, app, post, f: fx.on(db) };
 }
 
+type Harness = Awaited<ReturnType<typeof harness>>;
+
 /** Reset the one module slot each flow holds, so order between tests cannot matter. */
-const reset = async (h: ReturnType<typeof harness>) => {
+const reset = async (h: Harness) => {
   await h.post("/api/v1/auth/claude/login/cancel");
 };
 
-const said = (h: ReturnType<typeof harness>) =>
-  h.db
-    .query<{ body: string }, []>("SELECT body FROM event WHERE kind = 'state_change' ORDER BY seq")
-    .all()
-    .map((r) => r.body);
+const said = async (h: Harness) =>
+  (
+    await h.db.select({ body: event.body }).from(event).where(eq(event.kind, "state_change")).orderBy(asc(event.seq))
+  ).map((r) => r.body);
 
 // -------------------------------------------------------- claude setup-token
 
 test("the claude login hands back the link and nothing else", async () => {
   // The real CLI prints its URL and then the token on a later line. Neither the
   // response nor the panel's own state may carry the second one.
-  const h = harness((cmd) =>
+  const h = await harness((cmd) =>
     cmd.includes("setup-token")
       ? { code: 0, out: `Open https://claude.ai/oauth/authorize?x=1 to continue\n${CLAUDE_TOKEN}\n` }
       : { code: 0 },
@@ -75,12 +67,12 @@ test("the claude login hands back the link and nothing else", async () => {
   expect(text).not.toContain(CLAUDE_TOKEN);
   expect(text).not.toContain("sk-ant");
   // Stored where a credential belongs, and read back masked from there.
-  expect(loadAuth(h.db, "claude")?.secret).toBe(CLAUDE_TOKEN);
+  expect((await loadAuth(h.db, "claude"))?.secret).toBe(CLAUDE_TOKEN);
   await reset(h);
 });
 
 test("a CLI that prints no link is a 422 that says how to check the image", async () => {
-  const h = harness(() => ({ code: 1, err: "no pty" }));
+  const h = await harness(() => ({ code: 1, err: "no pty" }));
   await reset(h);
 
   const r = await h.post("/api/v1/auth/claude/login");
@@ -88,13 +80,13 @@ test("a CLI that prints no link is a 422 that says how to check the image", asyn
   const text = await r.text();
   expect(text).toContain("claude setup-token");
   // No credential, and no half-started flow left holding the slot.
-  expect(loadAuth(h.db, "claude")).toBeNull();
+  expect(await loadAuth(h.db, "claude")).toBeNull();
   expect((await h.post("/api/v1/auth/claude/login/code", { code: "WDJB" })).status).toBe(422);
   await reset(h);
 });
 
 test("a code with no login waiting for it is refused, and so is an empty one", async () => {
-  const h = harness();
+  const h = await harness();
   await reset(h);
   const empty = await h.post("/api/v1/auth/claude/login/code", { code: "   " });
   expect(empty.status).toBe(422);
@@ -127,7 +119,7 @@ function scripted(answers: Json[]): DeviceFlowFetcher & { calls: () => number } 
 }
 
 /** The next thing the panel is told, as a promise, so nothing has to be slept on. */
-function nextSaid(h: ReturnType<typeof harness>): Promise<string> {
+function nextSaid(h: Harness): Promise<string> {
   return new Promise((resolve) => {
     const off = h.ctx.bus.subscribe((frame) => {
       if (frame.type === "event" && frame.kind === "state_change") {
@@ -139,7 +131,7 @@ function nextSaid(h: ReturnType<typeof harness>): Promise<string> {
 }
 
 test("the device flow mints once, reuses a live code, and never returns the one it trades", async () => {
-  const h = harness();
+  const h = await harness();
   // GitHub refusing to mint is the state the button starts in when the app is
   // misconfigured: a 422 carrying GitHub's own reason, and nothing stored.
   const refused = await githubDeviceLogin(
@@ -148,7 +140,7 @@ test("the device flow mints once, reuses a live code, and never returns the one 
   );
   expect(refused.status).toBe(422);
   expect(await refused.text()).toContain("this app cannot use the device flow");
-  expect(loadAuth(h.db, "github")).toBeNull();
+  expect(await loadAuth(h.db, "github")).toBeNull();
 
   const denied = nextSaid(h);
   const first = await githubDeviceLogin(h.ctx, scripted([DEVICE, { error: "access_denied" }]));
@@ -174,10 +166,10 @@ test("the device flow mints once, reuses a live code, and never returns the one 
 });
 
 test("a poll that lands stores the token, kills the sandboxes and says so without the token", async () => {
-  const h = harness();
-  const p = fx.project.insert(h.db, { name: "p", repo_path: "o/p" });
-  const g = fx.grp.insert(h.db, { project_id: p.id, name: "g1", status: "PAUSED", sandbox_id: "sb-1" });
-  fx.escalation.insert(h.db, {
+  const h = await harness();
+  const p = await h.f.project.create({ name: "p", repo_path: "o/p" });
+  const g = await h.f.grp.create({ project_id: p.id, name: "g1", status: "PAUSED", sandbox_id: "sb-1" });
+  await h.f.escalation.create({
     grp_id: g.id,
     severity: "blocker",
     question: "github 的凭据没配",
@@ -196,19 +188,18 @@ test("a poll that lands stores the token, kills the sandboxes and says so withou
     scripted([{ access_token: "gho_secret_token" }]),
   );
 
-  expect(loadAuth(h.db, "github")?.secret).toBe("gho_secret_token");
+  expect((await loadAuth(h.db, "github"))?.secret).toBe("gho_secret_token");
   // The credential that was missing is the credential that was asked about, so
   // the question closes itself rather than sitting on the boss's queue.
-  expect(h.db.query<{ answer: string | null }, []>("SELECT answer FROM escalation WHERE id = 1").get()!.answer).toBe(
-    "reconfigured",
-  );
-  const lines = said(h);
+  const [asked] = await h.db.select({ answer: escalation.answer }).from(escalation).where(eq(escalation.id, 1));
+  expect(asked?.answer).toBe("reconfigured");
+  const lines = await said(h);
   expect(lines).toContain("GitHub 连上了");
   expect(lines.join("\n")).not.toContain("gho_secret_token");
 });
 
 test("a poll GitHub denies is reported by reason, not by exchange", async () => {
-  const h = harness();
+  const h = await harness();
   await finishGithubLogin(
     h.ctx,
     {
@@ -221,8 +212,8 @@ test("a poll GitHub denies is reported by reason, not by exchange", async () => 
     scripted([{ error: "access_denied" }]),
   );
 
-  expect(loadAuth(h.db, "github")).toBeNull();
-  const lines = said(h).join("\n");
+  expect(await loadAuth(h.db, "github")).toBeNull();
+  const lines = (await said(h)).join("\n");
   expect(lines).toContain("拒绝了这次授权");
   expect(lines).not.toContain("dev-secret-code");
 });

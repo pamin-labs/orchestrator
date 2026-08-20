@@ -1,4 +1,7 @@
 name: scribe
+# What the flow may ask this role for. The dispatch sites look up the capability,
+# never the name, so this line is what makes a role replaceable by a yaml file.
+capabilities: [write_pr_message]
 # The cheapest turn in the system and the most visible output. It reads a diff
 # that is already finished and writes two paragraphs about it — no judgement, no
 # tool loop, no code. Low effort on purpose: a stronger model does not write a

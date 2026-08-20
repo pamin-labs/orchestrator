@@ -1,6 +1,5 @@
 import type { State } from "../../shared/api";
 import { K } from "../../shared/format";
-import i18n from "../../i18n";
 
 /**
  * Why one thing on the boss's list outranks another.
@@ -23,42 +22,33 @@ export interface Reason {
 
 export const REASONS = {
   /** An agent is literally hanging on the answer: `orch ask-boss` blocks its caller. */
-  blocked: (who: string): Reason => ({
-    why: i18n.t("queue.rank.reasons.blocked", "{{who}} 挂着等你答", { who }),
-    points: 100,
-  }),
+  blocked: (who: string): Reason => ({ why: `${who} 挂着等你答`, points: 100 }),
   /**
    * A blocker the system raised, not an agent. Nothing is hanging on the answer — the
    * group is suspended — so claiming "an agent is waiting" would be a lie the row tells
    * to look urgent.
    */
-  suspended: (): Reason => ({ why: i18n.t("queue.rank.reasons.suspended", "全组已挂起"), points: 80 }),
+  suspended: (): Reason => ({ why: "全组已挂起", points: 80 }),
   /** Nothing is running on this requirement, so the whole thing is stopped. */
-  halted: (): Reason => ({ why: i18n.t("queue.rank.reasons.halted", "组停着不动"), points: 60 }),
+  halted: (): Reason => ({ why: "组停着不动", points: 60 }),
   /** A queue head blocks everything behind it. */
-  blocking: (n: number): Reason => ({
-    why: i18n.t("queue.rank.reasons.blocking", "后面还排着 {{n}} 个", { n }),
-    points: 12 * n,
-  }),
+  blocking: (n: number): Reason => ({ why: `后面还排着 ${n} 个`, points: 12 * n }),
   /** DRAFT blocks dispatch entirely: nothing in this requirement has started. */
-  unstarted: (): Reason => ({ why: i18n.t("queue.rank.reasons.unstarted", "批了才开工"), points: 45 }),
+  unstarted: (): Reason => ({ why: "批了才开工", points: 45 }),
   /** Money already spent and now sitting idle. */
   // Tokens, not dollars. codex reports no cost at all, so with usd here every
   // requirement that ran on it scored zero for sunk cost — the reason silently
   // stopped applying to five of the eight roles. 1M tokens is roughly where a
   // requirement starts being worth not abandoning.
   sunk: (tokens: number): Reason => ({
-    why: i18n.t("queue.rank.reasons.sunk", "已经花了 {{tokens}} tokens", { tokens: K(tokens) }),
+    why: `已经花了 ${K(tokens)} tokens`,
     points: Math.min(30, (tokens / 1e6) * 10),
   }),
   /** The clock. docs/project/plan.md's whole argument for slicing work up. */
   waited: (ms: number): Reason => {
     const h = ms / 3_600_000;
     return {
-      why:
-        h >= 1
-          ? i18n.t("queue.rank.reasons.waitedHours", "等了 {{h}}h", { h: Math.round(h) })
-          : i18n.t("queue.rank.reasons.waitedMinutes", "等了 {{m}}m", { m: Math.max(1, Math.round(h * 60)) }),
+      why: h >= 1 ? `等了 ${Math.round(h)}h` : `等了 ${Math.max(1, Math.round(h * 60))}m`,
       points: Math.min(40, h * 8),
     };
   },

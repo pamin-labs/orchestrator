@@ -1,11 +1,13 @@
+import { and, count, eq, inArray, isNull, ne, notInArray, or } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { z } from "zod";
 import { Id } from "../../contracts/fields.ts";
-import { jsonOr } from "../../contracts/json.ts";
+import { valueOr } from "../../contracts/json.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";
+import { agent, slice, task } from "../../platform/persistence/schema.ts";
 import {
   AlreadyDoneClaimSchema,
   ChangedFilesClaimSchema,
@@ -15,7 +17,8 @@ import {
 } from "../../mech/flow/reconcile.ts";
 import { recordGate } from "../../mech/gate.ts";
 import { validateSelfReview } from "../../mech/util/validate.ts";
-import type { SliceState, TaskState } from "../../contracts/states.ts";
+import type { SliceState } from "../../contracts/states.ts";
+import { baseBranchOf } from "../../mech/util/rows.ts";
 
 /**
  * The task card and the two verbs that move it.
@@ -24,6 +27,16 @@ import type { SliceState, TaskState } from "../../contracts/states.ts";
  * the slice-close state machine — claim shape, parent status, the self-review a
  * closing task owes, and the gate job that follows.
  */
+
+/** Agents whose row outlived them: a retired owner is not an owner. */
+const retiredAgents = (db: DB) => db.select({ id: agent.id }).from(agent).where(eq(agent.state, "retired"));
+
+/** Slices whose cards are open. A slice runs at a time; the rest are not started. */
+const workableSlices = (db: DB) =>
+  db
+    .select({ id: slice.id })
+    .from(slice)
+    .where(notInArray(slice.status, ["pending", "accepted"]));
 
 export const getTasks = (async (ctx, req, a) => {
   // The caller's own group, not the one it asked for. Every other `/orch/v1` route
@@ -35,31 +48,25 @@ export const getTasks = (async (ctx, req, a) => {
   // Only the slice being worked, plus anything not tied to a slice. Showing the
   // whole plan's tasks let the writer mark future slices done, which pushed
   // slices that had never started into review.
-  const rows = ctx.db
-    .query<
-      {
-        id: number;
-        title: string;
-        status: TaskState;
-        slice_id: number | null;
-        owner: string | null;
-        claim_json: string | null;
-      },
-      [number]
-    >(
-      // The owner is only shown when it is someone who can still act. A retired
-      // row rendered as `engineer` reads as "another engineer has this", and the
-      // writer's own name for itself is `engineer` too — so the list said the card
-      // was taken, by nobody, forever.
-      `SELECT t.id, t.title, t.status, t.slice_id, t.claim_json,
-              (SELECT a.role FROM agent a WHERE a.id = t.owner_agent_id AND a.state != 'retired') AS owner
-       FROM task t
-       WHERE t.grp_id = ?
-         AND (t.slice_id IS NULL
-              OR t.slice_id IN (SELECT id FROM slice WHERE grp_id = t.grp_id AND status NOT IN ('pending','accepted')))
-       ORDER BY t.id`,
-    )
-    .all(grp);
+  // The owner is only shown when it is someone who can still act. A retired row
+  // rendered as `engineer` reads as "another engineer has this", and the writer's
+  // own name for itself is `engineer` too — so the list said the card was taken,
+  // by nobody, forever. The join carries that condition: `agent.id` is the primary
+  // key, so it matches at most one row and the retired one drops out as NULL.
+  const rows = await ctx.db
+    .select({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      slice_id: task.slice_id,
+      claim_json: task.claim_json,
+      owner: agent.role,
+    })
+    .from(task)
+    .leftJoin(agent, and(eq(agent.id, task.owner_agent_id), ne(agent.state, "retired")))
+    .leftJoin(slice, eq(slice.id, task.slice_id))
+    .where(and(eq(task.grp_id, grp), or(isNull(task.slice_id), notInArray(slice.status, ["pending", "accepted"]))))
+    .orderBy(task.id);
   // Why the list is short, in the list itself.
   //
   // Slices run in order, so a later slice sits `pending` and its cards are filtered
@@ -69,14 +76,13 @@ export const getTasks = (async (ctx, req, a) => {
   // escalation, a suspended group and 12 minutes of the boss's queue — for a state
   // that was correct the whole time. Prompt wording cannot fix this; the answer has
   // to be where the question is asked.
-  const later = ctx.db
-    .query<{ seq: number; n: number }, [number]>(
-      `SELECT s.seq AS seq, count(t.id) AS n
-       FROM slice s JOIN task t ON t.slice_id = s.id
-       WHERE s.grp_id = ? AND s.status = 'pending'
-       GROUP BY s.id ORDER BY s.seq`,
-    )
-    .all(grp);
+  const later = await ctx.db
+    .select({ seq: slice.seq, n: count(task.id) })
+    .from(slice)
+    .innerJoin(task, eq(task.slice_id, slice.id))
+    .where(and(eq(slice.grp_id, grp), eq(slice.status, "pending")))
+    .groupBy(slice.id)
+    .orderBy(slice.seq);
   const gated = later.length
     ? `\n${later.map((l) => `S${l.seq}: ${l.n} cards, not yet open`).join("\n")}\n` +
       "Later slices open one at a time, after the slice before them is accepted. " +
@@ -90,17 +96,20 @@ export const getTasks = (async (ctx, req, a) => {
   // earlier commit. `--already-done` is the exit and it exists; it only gets used if
   // it is named here, next to the card, for the same reason the note above exists.
   const reopened = rows.filter((r) => r.status === "pending" && r.claim_json);
+  // The project's own base. `main` was in the string, so a group on `develop` was
+  // told to diff against a branch its repository has not got.
+  const base = await baseBranchOf(ctx.db, grp, ctx.config.baseBranchFallbacks);
   const redo = reopened.length
     ? "\n" +
       reopened
         .map((r) => {
-          const claim: TaskClaim | null = jsonOr(r.claim_json, TaskClaimSchema.nullable(), null);
+          const claim: TaskClaim | null = valueOr(r.claim_json, TaskClaimSchema.nullable(), null);
           const files = claim ? extractClaimedFiles([claim]).slice(0, 6).join(", ") : "";
           return `task ${r.id} was delivered once already${files ? `, touching ${files}` : ""}`;
         })
         .join("\n") +
-      "\nCheck the branch before you rewrite anything — `git log origin/main..HEAD` and " +
-      "`git diff origin/main...HEAD`. If the work is still there and still right, claim the card " +
+      `\nCheck the branch before you rewrite anything — \`git log origin/${base}..HEAD\` and ` +
+      `\`git diff origin/${base}...HEAD\`. If the work is still there and still right, claim the card ` +
       'and close it with `--already-done "<what is on the branch>"` instead of doing it twice.'
     : "";
   if (rows.length === 0) return message(`no tasks are open in this group right now${gated}`);
@@ -129,15 +138,19 @@ export const postTaskClaim = (async (ctx, _req, a, _p, b) => {
   // and starts another — leaves its own cards locked to a session that no longer
   // exists. Nothing could ever unlock them, which is how a live group ends up with
   // work it is not allowed to touch.
-  const r = ctx.db.run(
-    `UPDATE task SET owner_agent_id = ?, status = 'in_progress'
-     WHERE id = ? AND grp_id = ? AND (owner_agent_id IS NULL
-                       OR owner_agent_id IN (SELECT id FROM agent WHERE state = 'retired'))
-       AND (slice_id IS NULL
-            OR slice_id IN (SELECT id FROM slice WHERE id = task.slice_id AND status NOT IN ('pending','accepted')))`,
-    [a.id, b.task_id, a.grp_id],
-  );
-  return r.changes ? message("ok") : bad("already claimed, or its slice is not being worked yet");
+  const claimed = await ctx.db
+    .update(task)
+    .set({ owner_agent_id: a.id, status: "in_progress" })
+    .where(
+      and(
+        eq(task.id, b.task_id),
+        eq(task.grp_id, a.grp_id),
+        or(isNull(task.owner_agent_id), inArray(task.owner_agent_id, retiredAgents(ctx.db))),
+        or(isNull(task.slice_id), inArray(task.slice_id, workableSlices(ctx.db))),
+      ),
+    )
+    .returning({ id: task.id });
+  return claimed.length ? message("ok") : bad("already claimed, or its slice is not being worked yet");
 }) satisfies AgentHandler<z.infer<typeof TaskRef>>;
 
 const TaskDoneBase = {
@@ -158,17 +171,28 @@ type TaskCompletion = {
   seq: number | null;
 };
 
-function taskCompletion(db: DB, taskId: number, grpId: number): TaskCompletion | null {
-  return (
-    db
-      .query<TaskCompletion, [number, number]>(
-        `SELECT t.slice_id, s.status AS slice_status, s.accept_spec, s.seq,
-                (SELECT count(*) FROM task o
-                 WHERE o.slice_id = t.slice_id AND o.status != 'done' AND o.id != t.id) AS open
-         FROM task t LEFT JOIN slice s ON s.id = t.slice_id WHERE t.id = ? AND t.grp_id = ?`,
-      )
-      .get(taskId, grpId) ?? null
-  );
+// Two statements, not one: `open` counted the slice's other tasks through a
+// subquery correlated on both `t.slice_id` and `t.id`. Uncorrelated it is an
+// ordinary count over the slice this task turned out to belong to, and this runs
+// once per `task done` — a round trip nobody is waiting on.
+async function taskCompletion(db: DB, taskId: number, grpId: number): Promise<TaskCompletion | null> {
+  const [row] = await db
+    .select({
+      slice_id: task.slice_id,
+      slice_status: slice.status,
+      accept_spec: slice.accept_spec,
+      seq: slice.seq,
+    })
+    .from(task)
+    .leftJoin(slice, eq(slice.id, task.slice_id))
+    .where(and(eq(task.id, taskId), eq(task.grp_id, grpId)));
+  if (!row) return null;
+  if (row.slice_id === null) return { ...row, open: 0 };
+  const [counted] = await db
+    .select({ open: count(task.id) })
+    .from(task)
+    .where(and(eq(task.slice_id, row.slice_id), ne(task.status, "done"), ne(task.id, taskId)));
+  return { ...row, open: counted?.open ?? 0 };
 }
 
 function reviewError(taskId: number, completion: TaskCompletion | null, review: string | undefined): string | null {
@@ -182,16 +206,25 @@ function reviewError(taskId: number, completion: TaskCompletion | null, review: 
   );
 }
 
-function advanceCompletedSlice(ctx: Ctx, caller: Caller, completion: TaskCompletion | null, review?: string): boolean {
+// `db` and not `ctx.db`: this runs inside the caller's transaction, and on this
+// driver `ctx.db` is a different connection — the gate row and the slice status
+// would land outside the transaction that decided to write them.
+async function advanceCompletedSlice(
+  ctx: Ctx,
+  db: DB,
+  caller: Caller,
+  completion: TaskCompletion | null,
+  review?: string,
+): Promise<boolean> {
   if (completion?.slice_id == null || completion.open !== 0) return false;
   const sliceId = completion.slice_id;
   const note = review?.trim();
-  if (note) recordGate(ctx.db, sliceId, "self", "pass");
-  ctx.db.run("UPDATE slice SET status = 'gate' WHERE id = ?", [sliceId]);
+  if (note) await recordGate(db, sliceId, "self", "pass");
+  await db.update(slice).set({ status: "gate" }).where(eq(slice.id, sliceId));
   // Deterministic gate work should not wait behind model turns.
-  ctx.sched.enqueue("gate", { grp_id: caller.grp_id, slice_id: sliceId, priority: 5 });
+  await ctx.sched.enqueue("gate", { grp_id: caller.grp_id, slice_id: sliceId, priority: 5 });
   if (note) {
-    ctx.bus.emit({
+    await ctx.bus.emit({
       grpId: caller.grp_id,
       author: caller.role,
       kind: "gate_result",
@@ -208,7 +241,7 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
   // A task belonging to a slice that has not started cannot be completed: the
   // writer works one slice at a time, and letting it close future tasks pushed
   // unstarted slices into review.
-  const completion = taskCompletion(ctx.db, b.task_id, a.grp_id);
+  const completion = await taskCompletion(ctx.db, b.task_id, a.grp_id);
   if (completion?.slice_status && ["pending", "accepted"].includes(completion.slice_status)) {
     return bad(
       `task ${b.task_id} belongs to a slice that is not being worked (${completion.slice_status}). ` +
@@ -239,18 +272,34 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
   // someone else is retired, in which case the card outlived its claimant and the
   // group's current writer is the only one who can finish it. Same reason as claim.
   const claim: TaskClaim = "already_done" in b ? { already_done: b.already_done } : b.claim;
-  const advanced = ctx.db.transaction(() => {
-    const done = ctx.db.run(
-      `UPDATE task SET status = 'done', claim_json = ?, owner_agent_id = ?
-       WHERE id = ? AND grp_id = ? AND (owner_agent_id IS NULL OR owner_agent_id = ?
-                         OR owner_agent_id IN (SELECT id FROM agent WHERE state = 'retired'))`,
-      [JSON.stringify(claim), a.id, b.task_id, a.grp_id, a.id],
-    );
-    if (done.changes === 0) return null;
+  // Read outside the closure: the guard at the top of the handler narrows
+  // `a.grp_id` to a number, and that narrowing does not survive into a callback.
+  // `eq()` refuses a possibly-null value against a NOT NULL column, where the
+  // bound statement accepted one and matched nothing.
+  const grpId = a.grp_id;
+  const advanced = await ctx.bus.transaction(async (tx) => {
+    // `.returning()` and not a row count: RETURNING emits one row per updated row
+    // and this WHERE matches at most one, so the length is the answer.
+    const done = await tx
+      .update(task)
+      .set({ status: "done", claim_json: claim, owner_agent_id: a.id })
+      .where(
+        and(
+          eq(task.id, b.task_id),
+          eq(task.grp_id, grpId),
+          or(
+            isNull(task.owner_agent_id),
+            eq(task.owner_agent_id, a.id),
+            inArray(task.owner_agent_id, retiredAgents(tx)),
+          ),
+        ),
+      )
+      .returning({ id: task.id });
+    if (done.length === 0) return null;
     // A slice enters review only when nothing is left open in it. Reviewing a
     // half-finished slice burns the reviewer on work that is about to change.
-    const shouldTick = advanceCompletedSlice(ctx, a, completion, b.review);
-    ctx.bus.emit({
+    const shouldTick = await advanceCompletedSlice(ctx, tx, a, completion, b.review);
+    await ctx.bus.emit({
       grpId: a.grp_id,
       author: a.role,
       kind: "state_change",
@@ -258,8 +307,8 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
       meta: { task_id: b.task_id, claim },
     });
     return shouldTick;
-  })();
+  });
   if (advanced === null) return bad(`task ${b.task_id} is not yours, or does not exist`);
-  if (advanced) ctx.sched.tick();
+  if (advanced) await ctx.sched.tick();
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof TaskDoneBody>>;

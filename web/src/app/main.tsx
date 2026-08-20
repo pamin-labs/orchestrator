@@ -2,7 +2,6 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./app";
 import { startTheme } from "../ui/theme";
-import "../i18n";
 
 // Before the first paint: React mounting in the wrong theme and correcting
 // itself is a flash of the other one on every load.

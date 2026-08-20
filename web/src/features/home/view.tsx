@@ -1,4 +1,3 @@
-import { useTranslation } from "react-i18next";
 import { homeRows, projectRow } from "./model";
 import type { State } from "../../shared/api";
 import { cn } from "../../ui/cn";
@@ -32,7 +31,6 @@ export function Home({
   onAdd: () => void;
   refresh: () => void;
 }) {
-  const { t } = useTranslation();
   // 都处理完了 reports on work that got processed. With no requirement anywhere
   // there is none, and a green line claiming otherwise is the first thing a fresh
   // install reads.
@@ -41,7 +39,7 @@ export function Home({
     <>
       {anyWork && <Queue st={st} projectId={null} onOpen={onOpen} refresh={refresh} />}
       <div className="max-w-[44rem]">
-        <H2 className={cn(anyWork && "mt-9")}>{t("home.view.title", "项目")}</H2>
+        <H2 className={cn(anyWork && "mt-9")}>项目</H2>
         <div className="flex flex-col gap-2.5">
           {homeRows(st).map((p) => {
             const { n, state, bits, live, meta } = projectRow(st, p.id);
@@ -64,31 +62,29 @@ export function Home({
                     type="button"
                     onClick={() => onEnter(p.id)}
                     className={cn(
-                      "cursor-pointer text-left font-display text-[1.0625rem] font-semibold",
+                      "cursor-pointer text-left font-display text-card font-semibold",
                       "after:absolute after:inset-0 after:rounded-xl",
                       "focus-visible:outline-none focus-visible:after:ring-3 focus-visible:after:ring-accent-soft",
                     )}
                   >
                     {p.name}
                   </button>
-                  <div className="mt-px truncate font-mono text-[0.6875rem] text-ink-3">{p.repo_path}</div>
+                  <div className="mt-px truncate font-mono text-meta text-ink-3">{p.repo_path}</div>
                   {n ? (
-                    <div className="mt-1 text-[0.8125rem] font-semibold text-accent">{bits.join(" · ")}</div>
+                    <div className="mt-1 text-body font-semibold text-accent">{bits.join(" · ")}</div>
                   ) : (
                     // 空着 is said by the button beside it, in a form you can act on.
-                    !state.fresh && <div className="mt-1 text-[0.75rem] text-ink-3">{state.zh}</div>
+                    !state.fresh && <div className="mt-1 text-secondary text-ink-3">{state.zh}</div>
                   )}
                   {live.length > 0 && (
-                    <div className="mt-1.5 truncate text-[0.75rem] text-ink-2">
-                      {t("home.view.running", "在跑：{{names}}", { names: live.join("、") })}
-                    </div>
+                    <div className="mt-1.5 truncate text-secondary text-ink-2">在跑：{live.join("、")}</div>
                   )}
                 </div>
                 {state.fresh ? (
                   // Nothing has ever been asked of this project, so the row is where to
                   // ask. `relative` puts it above the stretched name, not on it.
                   <Button className="relative" onClick={() => onNew(p.id)}>
-                    {t("home.view.newRequirement", "＋ 新需求")}
+                    ＋ 新需求
                   </Button>
                 ) : (
                   meta.length > 0 && <Meta className="whitespace-nowrap">{meta.join(" · ")}</Meta>
@@ -99,7 +95,7 @@ export function Home({
         </div>
         {/* Adding a project happens once. It does not outrank the rows it adds to. */}
         <Button variant="quiet" className="mt-2.5" onClick={onAdd}>
-          {t("home.view.addProject", "＋ 添加项目")}
+          ＋ 添加项目
         </Button>
       </div>
     </>

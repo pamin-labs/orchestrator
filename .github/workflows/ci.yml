@@ -80,6 +80,13 @@ jobs:
     name: test
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # The suite runs against a real PostgreSQL, the same engine the product uses:
+    # each worker copies a migrated template into its own database. A second
+    # engine for tests would mean the shape a test sees is not the shape a
+    # deployment gets, which it was — one returned `{rows, …}` where the other
+    # returns an array. Locally this is `bun run db:up`.
+    env:
+      ORCH_TEST_DATABASE_URL: postgres://orchestrator:orchestrator@127.0.0.1:5433/orchestrator
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -89,6 +96,15 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      # The compose file, not a `services:` block restating half of it. A service
+      # container takes no `command`, so it silently ran on PostgreSQL's default
+      # connection limit while the compose file raises it and says why: each
+      # worker holds a pool wide enough for the panel snapshot's nineteen
+      # concurrent statements, and four workers took the default over —
+      # `sorry, too many clients already`, on the run that opened this branch's
+      # pull request. Every setting for this server lives in that one file.
+      - name: the suite's postgres, from the file that configures it
+        run: bun run db:test:up
       # Before anything that can fail. `upload-artifact` runs on `always()` so a
       # red job still hands its evidence over — but it cannot upload a directory
       # that a failing step never got to create, and it then reports "no files

@@ -22,7 +22,7 @@ export const AXIS = { stroke: "var(--color-ink-3)", fontSize: 10, fontFamily: "v
  * one needs the surface without the contents.
  */
 export const CHART_CARD =
-  "rounded-md border border-rule bg-paper px-2 py-1 font-mono text-[0.6875rem] text-ink shadow-[0_6px_20px_var(--shade)]";
+  "rounded-md border border-rule bg-paper px-2 py-1 font-mono text-meta text-ink shadow-[0_6px_20px_var(--shade)]";
 
 /**
  * A chart's hover card, in the panel's own type rather than recharts' default.

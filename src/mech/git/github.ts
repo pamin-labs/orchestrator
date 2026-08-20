@@ -8,6 +8,8 @@ import { say } from "../../platform/text/lang.ts";
 import { loadAuth } from "../sandbox/auth.ts";
 import { raise } from "../flow/escalate.ts";
 import { jsonOr } from "../../contracts/json.ts";
+import { and, isNull, ne, sql } from "drizzle-orm";
+import { escalation } from "../../platform/persistence/schema.ts";
 import { clearRepositoryHold, holdRepository } from "./repository.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { errText } from "../../platform/process/text.ts";
@@ -16,6 +18,7 @@ import { activeTracer } from "../../platform/observability/traces.ts";
 import type { Json } from "../../contracts/json.ts";
 import { recordCache, recordRetry } from "../../platform/observability/metrics.ts";
 import { currentRequestId, requestContext } from "../../platform/observability/request-context.ts";
+import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../../platform/config/load.ts";
 
 /**
  * GitHub, as eight endpoints of ordinary JSON — over somebody else's transport.
@@ -27,7 +30,14 @@ import { currentRequestId, requestContext } from "../../platform/observability/r
  */
 
 const API = "https://api.github.com";
-const TIMEOUT_MS = 15_000;
+/**
+ * One GitHub call's wall clock, from `timeouts.githubApiMs`.
+ *
+ * Reads the config default rather than restating it; production passes the live
+ * value in through `makeGithub`, so this number only ever applies where there is
+ * no `Config` to ask — which today is the tests.
+ */
+const DEFAULT_TIMEOUT_MS = DEFAULTS.timeouts.githubApiMs;
 /**
  * ETags kept, before the least recently used is dropped.
  *
@@ -151,13 +161,13 @@ function slugInPath(path: string): string | null {
  * rather than a flag, the way `handleAuthFailure` does it, so it survives a
  * restart and so answering it is what re-arms the warning.
  */
-function holdRepo(db: DB, lang: string | undefined, slug: string, why: string, now: number): void {
+async function holdRepo(db: DB, lang: string | undefined, slug: string, why: string, now: number): Promise<void> {
   holdRepository(slug, now);
   // `chain_state` matters as much as `answer`, and `raise` states it once for
   // every caller: `clearEscalation` revokes rather than answers, so a guard that
   // looks at `answer` alone treats a revoked question as still open — and a
   // project that recovered once could never file a second warning.
-  raise(db, {
+  await raise(db, {
     // `why` goes in verbatim. It is the message built below, which deliberately
     // does not guess which of the four causes it was — and a wrapper that
     // "helpfully" summarised it as "token expired" would put the guess back.
@@ -177,14 +187,21 @@ function holdRepo(db: DB, lang: string | undefined, slug: string, why: string, n
  * to dismiss a 待办 item about it. Revoked rather than answered: nobody answered
  * it, and `dropGroup` already uses `revoked` for a question the world made moot.
  */
-export function clearEscalation(db: DB, slug: string): void {
+export async function clearEscalation(db: DB, slug: string): Promise<void> {
   const prefix = `GitHub ${slug}:`;
-  db.run(
-    `UPDATE escalation SET chain_state = 'revoked', answered_at = unixepoch() * 1000
-     WHERE answer IS NULL AND chain_state != 'revoked'
-       AND substr(question, 1, length(?)) = ?`,
-    [prefix, prefix],
-  );
+  await db
+    .update(escalation)
+    .set({ chain_state: "revoked", answered_at: Date.now() })
+    .where(
+      and(
+        isNull(escalation.answer),
+        ne(escalation.chain_state, "revoked"),
+        // `starts_with`, not `like`: a repository named `my_repo` puts a LIKE
+        // wildcard in the prefix, and the question it matches then belongs to a
+        // different repository. Drizzle has no operator for an exact prefix.
+        sql`starts_with(${escalation.question}, ${prefix})`,
+      ),
+    );
 }
 
 type CacheEntry = { etag: string; data: Json };
@@ -221,6 +238,7 @@ type GithubState = {
   kit: InstanceType<typeof GithubKit>;
   notes: Notes;
   lang: string | undefined;
+  timeoutMs: number;
   cache: QuickLRU<string, CacheEntry>;
   remaining: number | null;
 };
@@ -321,14 +339,14 @@ function header(answer: Answer, name: string): string | null {
   return typeof value === "string" ? value : null;
 }
 
-function observeResponse(state: GithubState, path: string, answer: Answer): void {
+async function observeResponse(state: GithubState, path: string, answer: Answer): Promise<void> {
   const left = header(answer, "x-ratelimit-remaining");
   if (left !== null) state.remaining = Number(left);
   const slug = slugInPath(path);
   if (!slug) return;
   const ok = answer.status >= 200 && answer.status < 300;
   if (!ok && answer.status !== 304) return;
-  if (clearRepositoryHold(slug)) clearEscalation(state.db, slug);
+  if (clearRepositoryHold(slug)) await clearEscalation(state.db, slug);
 }
 
 function cachedResult<T>(input: RequestInput<T>, answer: Answer, hit: CacheEntry | undefined): GhResult<T> | null {
@@ -355,13 +373,13 @@ function bodyText(data: unknown): string {
   }
 }
 
-function httpFailure(state: GithubState, input: RequestInput<unknown>, answer: Answer): GhFail {
+async function httpFailure(state: GithubState, input: RequestInput<unknown>, answer: Answer): Promise<GhFail> {
   const text = bodyText(answer.data);
   const bucket = classify(answer.status, text);
   const why =
     answer.status === 404 ? unreachable(input.path) : `GitHub ${answer.status} on ${input.path}: ${message(text)}`;
   const slug = slugInPath(input.path);
-  if (bucket === "boss" && slug) holdRepo(state.db, state.lang, slug, why, Date.now());
+  if (bucket === "boss" && slug) await holdRepo(state.db, state.lang, slug, why, Date.now());
   return failure(input.method, input.path, bucket, answer.status, why);
 }
 
@@ -407,17 +425,17 @@ function storeCache(state: GithubState, input: RequestInput<unknown>, answer: An
   state.cache.set(key, { etag, data });
 }
 
-function finish<T>(
+async function finish<T>(
   state: GithubState,
   input: RequestInput<T>,
   answer: Answer,
   key: string,
   hit: CacheEntry | undefined,
-): GhResult<T> {
-  observeResponse(state, input.path, answer);
+): Promise<GhResult<T>> {
+  await observeResponse(state, input.path, answer);
   const cached = cachedResult(input, answer, hit);
   if (cached) return cached;
-  if (answer.status >= 400) return httpFailure(state, input, answer);
+  if (answer.status >= 400) return await httpFailure(state, input, answer);
   const value = decoded(input, answer);
   if (!value.ok) return value;
   storeCache(state, input, answer, key, value.raw);
@@ -546,11 +564,11 @@ async function requestGithub<T>(state: GithubState, input: RequestInput<T>): Pro
 async function requestGithubInner<T>(state: GithubState, input: RequestInput<T>): Promise<GhResult<T>> {
   const callerSignal = input.callerSignal ?? requestContext.getStore()?.signal;
   const activeSignal = callerSignal
-    ? AbortSignal.any([callerSignal, AbortSignal.timeout(TIMEOUT_MS)])
-    : AbortSignal.timeout(TIMEOUT_MS);
+    ? AbortSignal.any([callerSignal, AbortSignal.timeout(state.timeoutMs)])
+    : AbortSignal.timeout(state.timeoutMs);
   if (callerSignal?.aborted) throw callerSignal.reason;
 
-  const token = loadAuth(state.db, "github")?.secret;
+  const token = (await loadAuth(state.db, "github"))?.secret;
   if (!token) return failure(input.method, input.path, "boss", 0, "no GitHub credential: connect GitHub in settings");
   const { key, hit } = cacheLookup(state, input, token);
   const sent = await send(state, input, token, hit, activeSignal);
@@ -558,7 +576,7 @@ async function requestGithubInner<T>(state: GithubState, input: RequestInput<T>)
   if (!("answer" in sent)) {
     return failure(input.method, input.path, "transient", 0, transportMessage(sent.error));
   }
-  const result = finish(state, { ...input, callerSignal }, sent.answer, key, hit);
+  const result = await finish(state, { ...input, callerSignal }, sent.answer, key, hit);
   // GitHub's own wait, when the throttling plugin found one, so a scheduler can
   // retry on its number rather than guessing at one.
   return result.ok || sent.retryAfter === undefined ? result : { ...result, retryAfter: sent.retryAfter };
@@ -569,6 +587,8 @@ export function makeGithub(
   fetchFn: GithubFetcher = fetch,
   /** `output.language`, for the one sentence the boss reads. */
   lang?: string,
+  /** `timeouts.githubApiMs`. Omitted only where there is no `Config` to read. */
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Github {
   /**
    * ETags, keyed by token as well as URL.
@@ -604,7 +624,15 @@ export function makeGithub(
       onSecondaryRateLimit: (retryAfter, options) => noteRetryAfter(notes, options, retryAfter),
     },
   });
-  const state: GithubState = { db, kit, notes, lang, cache: new QuickLRU({ maxSize: CACHE_ENTRIES }), remaining: null };
+  const state: GithubState = {
+    db,
+    kit,
+    notes,
+    lang,
+    timeoutMs,
+    cache: new QuickLRU({ maxSize: CACHE_ENTRIES }),
+    remaining: null,
+  };
 
   return {
     remaining: () => state.remaining,

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -22,14 +23,24 @@ import { AgentTurnPayloadSchema, Scheduler } from "../../src/platform/scheduling
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
+import { desc, eq, count } from "drizzle-orm";
+import {
+  agent as agentTable,
+  channel as channelTable,
+  event as eventTable,
+  grp as grpTable,
+  job as jobTable,
+  note as noteTable,
+  project as projectTable,
+} from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 
-function harness(
+async function harness(
   handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({}),
   calls?: string[],
 ) {
-  const db = openMemory();
-  seedAuth(db);
+  const db = await openMemory();
+  await seedAuth(db);
   const _cfg = loadConfig();
   const sandbox = fakeSandbox((cmd) => {
     calls?.push(cmd);
@@ -49,8 +60,9 @@ function harness(
   // The remote is what `owner/repo` is derived from, and since 007 step 5 it is
   // also what the clone and the push use — one answer, not two columns that can
   // disagree.
-  const p = fx.project.insert(db, { name: "p", remote: "git@github.com:me/x.git" });
-  fx.grp.insert(db, { project_id: p.id, name: "g1", status: "PR_OPEN", branch: "orch/g1" });
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p", remote: "git@github.com:me/x.git" });
+  await f.grp.create({ project_id: p.id, name: "g1", status: "PR_OPEN", branch: "orch/g1" });
   return { db, ctx, sandbox };
 }
 
@@ -67,11 +79,12 @@ const boom = (status: number, message: string, bucket: "boss" | "agent" | "trans
  * dropped. Anything not in the table answers empty rather than undefined, which
  * is what a PR with no comments and no checks actually looks like.
  */
-const gh = (script: Record<string, GhResult<Json>>, calls: string[] = []): Github => ({
+const gh = (script: Record<string, GhResult<Json>>, calls: string[] = [], bodies: Json[] = []): Github => ({
   remaining: () => 4999,
-  async request(method, path, schema) {
+  async request(method, path, schema, body) {
     const key = `${method} ${path.split("?")[0]}`;
     calls.push(key);
+    if (body !== undefined) bodies.push(body);
     const answer =
       script[key] ??
       (key.endsWith("/comments") || key.endsWith("/reviews")
@@ -96,14 +109,14 @@ const pr = (over: Record<string, Json> = {}) =>
 const okGit = async () => ({ code: 0, out: "" });
 
 test("opening a PR records its number once", async () => {
-  const h = harness();
+  const h = await harness();
   // The create answer carries the number, so there is no second lookup.
   const calls: string[] = [];
   const runner = gh({ "POST /repos/me/x/pulls": ok({ number: 42 }) }, calls);
   const base = { ctx: h.ctx, git: okGit, repo: "/tmp/p", grpId: 1, title: "t", body: "b" };
   const r = await openPr({ ...base, gh: runner });
   expect(r).toEqual({ number: 42 });
-  expect(h.db.query<{ pr_number: number }, []>("SELECT pr_number FROM grp").get()!.pr_number).toBe(42);
+  expect((await h.db.select({ pr_number: grpTable.pr_number }).from(grpTable))[0]!.pr_number).toBe(42);
   expect(calls).toEqual(["POST /repos/me/x/pulls"]);
 
   // Calling again is a no-op rather than a second PR — but it does refresh the
@@ -115,8 +128,8 @@ test("opening a PR records its number once", async () => {
 });
 
 test("refreshing an existing PR reports GitHub rejection", async () => {
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_number = 42 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 42 }).where(eq(grpTable.id, 1));
   const result = await openPr({
     ctx: h.ctx,
     gh: gh({ "PATCH /repos/me/x/pulls/42": boom(422, "title rejected") }),
@@ -127,30 +140,33 @@ test("refreshing an existing PR reports GitHub rejection", async () => {
   expect(result).toEqual({ error: "title rejected" });
 });
 
-test("the PR body is built from the record, not from a sentence", () => {
-  const h = harness();
-  fx.event.insert(h.db, { grp_id: 1, author: "boss", kind: "boss_say", body: "the timeline flickers", seq: 1 });
-  fx.acceptedSlice.insert(h.db, {
+test("the PR body is built from the record, not from a sentence", async () => {
+  const h = await harness();
+  const f = fx.on(h.db);
+  await f.event.create({ grp_id: 1, author: "boss", kind: "boss_say", body: "the timeline flickers", seq: 1 });
+  await f.acceptedSlice.create({
     grp_id: 1,
     seq: 1,
     title: "stable keys",
     accept_spec: "no row remounts",
-    gates_json: '{"self":"pass","gate":"pass","qa":"fail"}',
+    gates_json: { self: "pass", gate: "pass", qa: "fail" },
   });
-  fx.note.insert(h.db, {
+  await f.note.create({
     grp_id: 1,
     kind: "decision",
     body: "key was at+index",
     export_path: "docs/journal/g1/003.md",
   });
-  fx.note.insert(h.db, { grp_id: 1, kind: "retro", body: "memo alone was not enough" });
+  await f.note.create({ grp_id: 1, kind: "retro", body: "memo alone was not enough" });
 
-  const body = prBody(h.ctx.db, 1);
+  const body = await prBody(h.ctx.db, 1);
   expect(body).toContain("the timeline flickers");
   expect(body).toContain("**S1 stable keys**");
   expect(body).toContain("no row remounts");
-  // Only what actually passed; a failed layer must not be listed as green.
-  expect(body).toContain("self, gate pass");
+  // Only what actually passed; a failed layer must not be listed as green. The
+  // order is `jsonb`'s key order — shortest first, then bytewise — and not the
+  // order the fixture wrote, because `jsonb` does not keep insertion order.
+  expect(body).toContain("gates: gate, self pass");
   expect(body).not.toContain("qa pass");
   expect(body).toContain("(docs/journal/g1/003.md)");
   expect(body).toContain("memo alone was not enough");
@@ -158,7 +174,7 @@ test("the PR body is built from the record, not from a sentence", () => {
 });
 
 test("a failed PR creation reports why instead of vanishing", async () => {
-  const h = harness();
+  const h = await harness();
   const r = await openPr({
     ctx: h.ctx,
     gh: gh({
@@ -176,7 +192,7 @@ test("a create refused because the PR already exists finds the one that is there
   // A retry after a half-finished attempt: the branch is pushed and the PR is
   // open, but nothing wrote the number down. Without the lookup the group would
   // be told it has no PR and could never get one.
-  const h = harness();
+  const h = await harness();
   const r = await openPr({
     ctx: h.ctx,
     gh: gh({
@@ -191,8 +207,8 @@ test("a create refused because the PR already exists finds the one that is there
 });
 
 test("a project with no GitHub remote says so instead of building a URL out of nothing", async () => {
-  const h = harness();
-  h.db.run("UPDATE project SET remote = NULL");
+  const h = await harness();
+  await h.db.update(projectTable).set({ remote: null });
   const r = await openPr({
     ctx: h.ctx,
     gh: gh({}),
@@ -208,7 +224,7 @@ test("the branch reaches the remote before GitHub is asked to open a PR", async 
   // a head it has never heard of. If this order ever flips, every PR fails on a
   // real remote.
   const calls: string[] = [];
-  const h = harness(() => ({}), calls);
+  const h = await harness(() => ({}), calls);
   const r = await openPr({
     ctx: h.ctx,
     gh: gh({ "POST /repos/me/x/pulls": ok({ number: 9 }) }, calls),
@@ -230,7 +246,7 @@ test("a push that fails names the branch, and no PR is attempted", async () => {
   // Only the push fails. Taking the branch out of the group's container is a
   // local fetch from a bundle with no remote to be refused by — which is the
   // point of splitting them: the group holds no credential that can push.
-  const h = harness((cmd) =>
+  const h = await harness((cmd) =>
     cmd.includes("push") ? { code: 1, out: "remote: Permission to x/y denied\nfatal: unable to access" } : {},
   );
   const r = await openPr({
@@ -252,7 +268,7 @@ test("the utility container never checks anything out, and never runs a hook", a
   // no way to produce a working tree from repository content. CVE-2024-32002 and
   // CVE-2025-48384 are what a checkout here would be worth.
   const calls: string[] = [];
-  const h = harness(() => ({}), calls);
+  const h = await harness(() => ({}), calls);
   await openPr({
     ctx: h.ctx,
     gh: gh({ "POST /repos/me/x/pulls": ok({ number: 9 }) }),
@@ -274,7 +290,7 @@ test("the utility container never checks anything out, and never runs a hook", a
 test("the utility container refuses a verb that is not one of its four", async () => {
   // The list is the boundary, so reaching past it has to throw rather than
   // return an exit code somebody can ignore.
-  const h = harness();
+  const h = await harness();
   // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
   await expect(utilGit(h.ctx, ["checkout", "main"])).rejects.toThrow(/may not run 'git checkout'/);
   // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
@@ -282,8 +298,8 @@ test("the utility container refuses a verb that is not one of its four", async (
 });
 
 test("only new comments and failing checks come back", async () => {
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_number = 7, pr_seen_at = 1000 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 7, pr_seen_at: 1000 }).where(eq(grpTable.id, 1));
   // REST field names, not `gh`'s GraphQL projection: `user.login` and
   // `created_at`, and a lower-case `conclusion` where `gh` upper-cased it.
   const payload = {
@@ -302,7 +318,7 @@ test("only new comments and failing checks come back", async () => {
   const fs = await pollPrs(h.ctx, gh(payload));
   expect(fs.length).toBe(1);
   expect(fs[0]!.comments.map((c) => c.author)).toEqual(["bob"]);
-  expect(fs[0]!.failingChecks).toEqual(["ci"]);
+  expect(fs[0]!.failingChecks.map((c) => c.name)).toEqual(["ci"]);
 
   // The cursor advanced and the failing set is unchanged, so a PR that stays red
   // with nothing new said does not wake the PM every 30 seconds.
@@ -319,12 +335,12 @@ test("only new comments and failing checks come back", async () => {
       "GET /repos/me/x/commits/deadbee/status": ok({ statuses: [{ context: "lint", state: "failure" }] }),
     }),
   );
-  expect(third[0]!.failingChecks.sort()).toEqual(["ci", "lint"]);
+  expect(third[0]!.failingChecks.map((c) => c.name).sort()).toEqual(["ci", "lint"]);
 });
 
 test("feedback from a deleted GitHub user is still delivered", async () => {
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_number = 7, pr_seen_at = 1000 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 7, pr_seen_at: 1000 }).where(eq(grpTable.id, 1));
   const fs = await pollPrs(
     h.ctx,
     gh({
@@ -344,8 +360,8 @@ test("feedback from a deleted GitHub user is still delivered", async () => {
 test("a checks request that fails is not a PR that went green", async () => {
   // The four requests replacing one `gh pr view` are all-or-nothing on purpose:
   // an empty failing set is news, and a 502 must not be reported as one.
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_number = 7, pr_checks_sig = 'ci' WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 7, pr_checks_sig: "ci" }).where(eq(grpTable.id, 1));
   const fs = await pollPrs(
     h.ctx,
     gh({
@@ -355,12 +371,12 @@ test("a checks request that fails is not a PR that went green", async () => {
   );
   expect(fs).toEqual([]);
   // And the cursor did not move, so the next tick asks again.
-  expect(h.db.query<{ s: string }, []>("SELECT pr_checks_sig AS s FROM grp").get()!.s).toBe("ci");
+  expect((await h.db.select({ s: grpTable.pr_checks_sig }).from(grpTable))[0]!.s).toBe("ci");
 });
 
 test("a PR closed on GitHub stops its group and lets the queue past; reopening puts it back", async () => {
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_number = 7, merge_seq = 1 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 7, merge_seq: 1 }).where(eq(grpTable.id, 1));
   const view = (state: string) => gh({ "GET /repos/me/x/pulls/7": pr({ state }) });
 
   const closed = await pollPrs(h.ctx, view("closed"));
@@ -368,7 +384,7 @@ test("a PR closed on GitHub stops its group and lets the queue past; reopening p
 
   // The group has to actually be paused for the reopen half to be reachable —
   // that is what the server does with this feedback.
-  h.db.run("UPDATE grp SET status = 'PAUSED', merge_seq = NULL WHERE id = 1");
+  await h.db.update(grpTable).set({ status: "PAUSED", merge_seq: null }).where(eq(grpTable.id, 1));
   // Still closed: nothing new to say, and no second escalation.
   expect(await pollPrs(h.ctx, view("closed"))).toEqual([]);
 
@@ -377,8 +393,8 @@ test("a PR closed on GitHub stops its group and lets the queue past; reopening p
 });
 
 test("a quiet PR produces nothing at all", async () => {
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_number = 7 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 7 }).where(eq(grpTable.id, 1));
   const fs = await pollPrs(h.ctx, gh({ "GET /repos/me/x/pulls/7": pr() }));
   expect(fs).toEqual([]);
 });
@@ -387,34 +403,66 @@ test("mergeable still being computed is not a conflict", async () => {
   // REST answers `mergeable: null` while GitHub works it out in the background.
   // Reading that as CONFLICTING would send an Engineer to rebase a branch that
   // merges perfectly well, every time a PR is polled right after a push.
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_number = 7 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 7 }).where(eq(grpTable.id, 1));
   const fs = await pollPrs(h.ctx, gh({ "GET /repos/me/x/pulls/7": pr({ mergeable: null }) }));
   expect(fs).toEqual([]);
 });
 
-test("feedback reopens the group and hands it to the PM", () => {
-  const h = harness();
-  dispatchFeedback(h.ctx, {
+test("a group handed PR feedback is still listening for the next comment", async () => {
+  // It was not. `dispatchFeedback` moved the group to RUNNING and nothing moved it
+  // back: `PR_OPEN` is written by a fresh branch gate, a reopen from PAUSED, or the
+  // boss, and the `reconcile` repair in invariants.ts excludes any group that has a
+  // PR. `pollPr` returns null for anything not PR_OPEN, so the second reviewer
+  // comment was never read — while the group still held `merge_seq` at the head of
+  // a strictly serial queue, stopping everything behind it.
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 7, merge_seq: 1 }).where(eq(grpTable.id, 1));
+
+  await dispatchFeedback(h.ctx, {
     grpId: 1,
     prNumber: 7,
     comments: [{ author: "bob", body: "needs a test", at: 2000 }],
-    failingChecks: ["ci"],
+    failingChecks: [],
   });
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("RUNNING");
-  const job = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job").get()!;
+
+  const second = await pollPrs(
+    h.ctx,
+    gh({
+      "GET /repos/me/x/pulls/7": pr({}),
+      "GET /repos/me/x/issues/7/comments": ok([
+        { user: { login: "bob" }, body: "and a name", created_at: new Date(9000).toISOString() },
+      ]),
+    }),
+  );
+  expect(second.flatMap((f) => f.comments.map((c) => c.body))).toContain("and a name");
+});
+
+test("feedback hands the group to the PM without taking it out of PR_OPEN", async () => {
+  const h = await harness();
+  await dispatchFeedback(h.ctx, {
+    grpId: 1,
+    prNumber: 7,
+    comments: [{ author: "bob", body: "needs a test", at: 2000 }],
+    failingChecks: [{ name: "ci" }],
+  });
+  // Deliberately still PR_OPEN: it is already in DISPATCHABLE_GRP_STATES, so the
+  // turn runs either way, and leaving it there is what keeps the PR being polled.
+  expect((await h.db.select({ status: grpTable.status }).from(grpTable))[0]!.status).toBe("PR_OPEN");
+  const [job] = await h.db.select({ payload_json: jobTable.payload_json }).from(jobTable);
   // Replying to a review needs judgement; noticing it did not.
-  const payload = AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json));
+  const payload = AgentTurnPayloadSchema.parse(job!.payload_json);
   expect(payload.role).toBe("pm");
   expect(payload.rejection).toContain("needs a test");
 });
 
 test("the lessons list is capped where it is written", async () => {
-  const h = harness();
+  const h = await harness();
   const app = makeApp(h.ctx);
-  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, role: "librarian", token: "tok-lib" });
+  const f = fx.on(h.db);
+  await f.agent.create({ project_id: 1, grp_id: 1, role: "librarian", token: "tok-lib" });
   for (let i = 0; i < LESSON_CAP; i++) {
-    fx.note.insert(h.db, { project_id: 1, kind: "lesson", body: `lesson ${i}`, at: i });
+    await f.note.create({ project_id: 1, kind: "lesson", body: `lesson ${i}`, at: i });
   }
 
   const r = await app(
@@ -435,50 +483,52 @@ test("the lessons list is capped where it is written", async () => {
   // was then whichever row SQLite felt like returning. The id is monotonic and
   // agrees with `at` wherever `at` distinguishes anything, so it is the
   // tiebreak that says "later" rather than a second opinion about it.
-  const rows = h.db
-    .query<{ body: string }, []>("SELECT body FROM note WHERE kind = 'lesson' ORDER BY at DESC, id DESC")
-    .all();
+  const rows = await h.db
+    .select({ body: noteTable.body })
+    .from(noteTable)
+    .where(eq(noteTable.kind, "lesson"))
+    .orderBy(desc(noteTable.at), desc(noteTable.id));
   // A list that keeps growing becomes the very context cost it exists to prevent.
   expect(rows.length).toBe(LESSON_CAP);
   expect(rows[0]!.body).toBe("the newest lesson");
   expect(rows.filter((x) => x.body === "lesson 0")).toEqual([]);
 });
 
-test("eviction leaves other note kinds alone", () => {
-  const h = harness();
-  fx.note.insert(h.db, { project_id: 1, kind: "retro", body: "keep me" });
+test("eviction leaves other note kinds alone", async () => {
+  const h = await harness();
+  const f = fx.on(h.db);
+  await f.note.create({ project_id: 1, kind: "retro", body: "keep me" });
   for (let i = 0; i < LESSON_CAP + 5; i++) {
-    fx.note.insert(h.db, { project_id: 1, kind: "lesson", body: `l${i}`, at: i });
+    await f.note.create({ project_id: 1, kind: "lesson", body: `l${i}`, at: i });
   }
 
-  expect(evictOldestLessons(h.ctx.db, 1)).toBe(5);
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'retro'").get()!.c).toBe(1);
+  expect(await evictOldestLessons(h.ctx.db, 1)).toBe(5);
+  expect((await h.db.select({ c: count() }).from(noteTable).where(eq(noteTable.kind, "retro")))[0]!.c).toBe(1);
 });
 
-test("landing archives the group without deleting its history", () => {
-  const h = harness();
-  fx.channel.insert(h.db, { project_id: 1, grp_id: 1 });
-  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, session_id: "live", token: "tok-x" });
-  h.ctx.bus.emit({ grpId: 1, author: "engineer", kind: "say", body: "why we did it this way" });
+test("landing archives the group without deleting its history", async () => {
+  const h = await harness();
+  const f = fx.on(h.db);
+  await f.channel.create({ project_id: 1, grp_id: 1 });
+  await f.agent.create({ project_id: 1, grp_id: 1, session_id: "live", token: "tok-x" });
+  await h.ctx.bus.emit({ grpId: 1, author: "engineer", kind: "say", body: "why we did it this way" });
 
-  landed(h.db, 1);
+  await landed(h.db, 1);
 
-  const a = h.db
-    .query<{ state: string; session_id: string | null; token: string | null }, []>(
-      "SELECT state, session_id, token FROM agent",
-    )
-    .get()!;
-  expect(a.state).toBe("retired");
-  expect(a.session_id).toBeNull();
+  const [a] = await h.db
+    .select({ state: agentTable.state, session_id: agentTable.session_id, token: agentTable.token })
+    .from(agentTable);
+  expect(a!.state).toBe("retired");
+  expect(a!.session_id).toBeNull();
   // The token is revoked with the group, so a stale process cannot act as it.
-  expect(a.token).toBeNull();
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM channel").get()!.status).toBe("archived");
+  expect(a!.token).toBeNull();
+  expect((await h.db.select({ status: channelTable.status }).from(channelTable))[0]!.status).toBe("archived");
   // Archiving must never mean deleting: a later group grepping this is the only
   // long-term memory the system has.
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event").get()!.c).toBeGreaterThan(0);
+  expect((await h.db.select({ c: count() }).from(eventTable))[0]!.c).toBeGreaterThan(0);
 });
 
-test("read access is caught at registration, and it names the level", () => {
+test("read access is caught at registration, and it names the level", async () => {
   // `viewerPermission: READ` in gh's projection is `permissions: {pull: true}` in
   // REST's, and the boss reads the same sentence either way. Naming the level is
   // what makes it actionable — "no push access" alone does not say what to ask
@@ -502,19 +552,19 @@ test("read access is caught at registration, and it names the level", () => {
 test("a branch that stopped merging wakes the Engineer, not the PM", async () => {
   // Nothing watched for this: a PR that went stale sat at PR_OPEN with an empty
   // queue, and the only way anyone found out was the boss opening GitHub.
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_number = 7 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 7 }).where(eq(grpTable.id, 1));
   const stale = gh({ "GET /repos/me/x/pulls/7": pr({ mergeable: false, mergeable_state: "dirty" }) });
   const fs = await pollPrs(h.ctx, stale);
   expect(fs[0]!.conflicting).toBe(true);
 
-  dispatchFeedback(h.ctx, fs[0]!);
-  const p = AgentTurnPayloadSchema.parse(
-    JSON.parse(
-      h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job ORDER BY id DESC LIMIT 1").get()!
-        .payload_json,
-    ),
-  );
+  await dispatchFeedback(h.ctx, fs[0]!);
+  const [latest] = await h.db
+    .select({ payload_json: jobTable.payload_json })
+    .from(jobTable)
+    .orderBy(desc(jobTable.id))
+    .limit(1);
+  const p = AgentTurnPayloadSchema.parse(latest!.payload_json);
   // Reading a review and deciding what to concede is the PM's. `git rebase` is not.
   expect(p.role).toBe("engineer");
   expect(p.rejection).toContain("rebase");
@@ -531,8 +581,8 @@ test("a PR that merged after its group was knocked back is still seen", async ()
   // invisible: grp16's PR went in, nothing wound the group up, and it kept hiring
   // turns for a branch already byte-identical to main. A pr_number is what is worth
   // polling on.
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_number = 2, status = 'RUNNING' WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 2, status: "RUNNING" }).where(eq(grpTable.id, 1));
   // REST has no MERGED state: a merged PR is `closed` with `merged: true`, and
   // reading only `state` would file every merge as a close.
   const merged = gh({ "GET /repos/me/x/pulls/2": pr({ state: "closed", merged: true }) });
@@ -541,25 +591,25 @@ test("a PR that merged after its group was knocked back is still seen", async ()
   expect(fs[0]!.merged).toBe(true);
 
   // DISSOLVED is the one status that stops mattering: it has already been wound up.
-  h.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 1");
+  await h.db.update(grpTable).set({ status: "DISSOLVED" }).where(eq(grpTable.id, 1));
   const gone = await pollPrs(h.ctx, merged);
   expect(gone).toHaveLength(0);
 });
 
-test("every pull request says what opened it", () => {
+test("every pull request says what opened it", async () => {
   // A reviewer deciding whether to trust a diff should know what produced it,
   // and a pull request that hides it is the kind of thing that gets a project
   // banned from a repository rather than asked about.
   //
   // One line, at the bottom, no badge — the body above it is already the
   // evidence, and docs/design/ui.md's rule holds here too: say it once.
-  const h = harness();
-  const body = prBody(h.ctx.db, 1);
+  const h = await harness();
+  const body = await prBody(h.ctx.db, 1);
   expect(body).toContain("https://github.com/pamin-labs/orchestrator");
   expect(body.split("\n").filter((l) => l.includes("orchestrator]("))).toHaveLength(1);
 });
 
-test("the message the Scribe files is the convention, enforced", () => {
+test("the message the Scribe files is the convention, enforced", async () => {
   // Every rule here is one `roles/scribe.yaml` states, and it lists these four
   // refusals by name. A prompt that permits what the validator rejects teaches
   // the model to write something that gets thrown away — at the end of the only
@@ -577,43 +627,46 @@ test("the message the Scribe files is the convention, enforced", () => {
   expect(checkPrMessage("fix(sandbox): the mount was empty", "fixed it")).toContain("one line is not that");
 });
 
-test("the commit gets the Scribe's message and the pull request gets the record", () => {
+test("the commit gets the Scribe's message and the pull request gets the record", async () => {
   // These were the same string: the squashed commit carried `## Slices (3, all
   // accepted)`, a gate table and `Opened by orchestrator` into `git log` — a
   // description written for a review page, pasted into the one place that
   // outlives it.
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_title = ?, pr_summary = ? WHERE id = 1", [
-    "fix(mailbox): the prefix check and the fetch read different strings",
-    "One `if` guards the sandbox boundary and it compared the raw path.",
-  ]);
+  const h = await harness();
+  await h.db
+    .update(grpTable)
+    .set({
+      pr_title: "fix(mailbox): the prefix check and the fetch read different strings",
+      pr_summary: "One `if` guards the sandbox boundary and it compared the raw path.",
+    })
+    .where(eq(grpTable.id, 1));
 
-  expect(prTitle(h.ctx.db, 1)).toStartWith("fix(mailbox):");
-  const commit = commitMessage(h.ctx.db, 1, prTitle(h.ctx.db, 1));
+  expect(await prTitle(h.ctx.db, 1)).toStartWith("fix(mailbox):");
+  const commit = await commitMessage(h.ctx.db, 1, await prTitle(h.ctx.db, 1));
   expect(commit).toContain("One `if` guards");
   expect(commit).not.toContain("Opened by");
   expect(commit).not.toContain("##");
 
   // The pull request keeps both, the Scribe's part first: it is the only section
   // written by something that read the diff.
-  const body = prBody(h.ctx.db, 1);
+  const body = await prBody(h.ctx.db, 1);
   expect(body).toStartWith("One `if` guards");
   expect(body).toContain("Opened by");
 });
 
-test("with no Scribe message the branch is still publishable", () => {
+test("with no Scribe message the branch is still publishable", async () => {
   // The fallback, and the point of it: a finished branch sitting at the head of
   // a strictly serial merge queue stops every group behind it, so "nobody wrote
   // a title" may not be a reason to hold it. `orch:` is now the mark of that,
   // not the normal case it used to be for every PR this project opened.
-  const h = harness();
-  expect(prTitle(h.ctx.db, 1)).toBe("orch: g1");
-  expect(commitMessage(h.ctx.db, 1, "orch: g1")).toBe("orch: g1");
+  const h = await harness();
+  expect(await prTitle(h.ctx.db, 1)).toBe("orch: g1");
+  expect(await commitMessage(h.ctx.db, 1, "orch: g1")).toBe("orch: g1");
 });
 
 /** The body of a GraphQL reply, for one open PR, shaped like the query asks. */
 const graphBody = (
-  over: { comments?: Json[]; reviews?: Json[]; contexts?: Json[]; pr?: Record<string, Json> } = {},
+  over: { comments?: Json[]; reviews?: Json[]; threads?: Json[]; contexts?: Json[]; pr?: Record<string, Json> } = {},
 ) => ({
   data: {
     repository: {
@@ -627,6 +680,7 @@ const graphBody = (
             headRefOid: "deadbee",
             comments: { nodes: over.comments ?? [] },
             reviews: { nodes: over.reviews ?? [] },
+            reviewThreads: { nodes: over.threads ?? [] },
             commits: {
               nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: over.contexts ?? [] } } } }],
             },
@@ -651,8 +705,8 @@ const graphReply = (over: Parameters<typeof graphBody>[0] = {}) => ok(graphBody(
  * not count against it.
  */
 test("an open PR is polled with one GraphQL request and no REST detail calls", async () => {
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_number = 5, pr_seen_at = 0 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 5, pr_seen_at: 0 }).where(eq(grpTable.id, 1));
   const calls: string[] = [];
   const client = gh(
     {
@@ -669,7 +723,7 @@ test("an open PR is polled with one GraphQL request and no REST detail calls", a
   expect(fs).toHaveLength(1);
   expect(fs[0]!.comments.map((c) => c.body)).toEqual(["please rename this"]);
   // GraphQL's `FAILURE` needs no translation: `failedChecks` uppercases.
-  expect(fs[0]!.failingChecks).toEqual(["test"]);
+  expect(fs[0]!.failingChecks.map((c) => c.name)).toEqual(["test"]);
   expect(calls).toEqual(["POST /graphql"]);
 });
 
@@ -680,8 +734,8 @@ test("an open PR is polled with one GraphQL request and no REST detail calls", a
  * bet a fleet on.
  */
 test("a GraphQL error sends that repository back to the REST path", async () => {
-  const h = harness();
-  h.db.run("UPDATE grp SET pr_number = 5, pr_seen_at = 0 WHERE id = 1");
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 5, pr_seen_at: 0 }).where(eq(grpTable.id, 1));
   const calls: string[] = [];
   const client = gh(
     {
@@ -702,7 +756,268 @@ test("a GraphQL error sends that repository back to the REST path", async () => 
 
   const fs = await pollPrs(h.ctx, client);
 
-  expect(fs[0]!.failingChecks).toEqual(["test"]);
+  expect(fs[0]!.failingChecks.map((c) => c.name)).toEqual(["test"]);
   expect(calls).toContain("POST /graphql");
   expect(calls).toContain("GET /repos/me/x/pulls/5");
+});
+
+test("a review with a verdict and no body is feedback, not silence", async () => {
+  // An approval carries no body, and the filter was on the body — so the one
+  // event a PM waits for was the one event that never arrived.
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 7, pr_seen_at: 1000 }).where(eq(grpTable.id, 1));
+  const fs = await pollPrs(
+    h.ctx,
+    gh({
+      "GET /repos/me/x/pulls/7": pr(),
+      "GET /repos/me/x/pulls/7/reviews": ok([
+        { user: { login: "alice" }, state: "APPROVED", body: "", submitted_at: new Date(2000).toISOString() },
+      ]),
+    }),
+  );
+  expect(fs[0]!.comments.map((c) => c.body)).toEqual(["approved this pull request"]);
+});
+
+test("a request for changes reads differently from a comment saying the same words", async () => {
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 5, pr_seen_at: 0 }).where(eq(grpTable.id, 1));
+  const fs = await pollPrs(
+    h.ctx,
+    gh({
+      "POST /graphql": graphReply({
+        reviews: [
+          {
+            author: { login: "a" },
+            state: "CHANGES_REQUESTED",
+            body: "rename this",
+            submittedAt: "2026-08-18T10:00:00Z",
+          },
+          { author: { login: "b" }, state: "COMMENTED", body: "rename this", submittedAt: "2026-08-18T10:01:00Z" },
+        ],
+      }),
+    }),
+  );
+  expect(fs[0]!.comments.map((c) => c.body)).toEqual(["requested changes: rename this", "rename this"]);
+});
+
+/** One line-level thread, with the two flags that decide whether it is still work. */
+const thread = (over: Record<string, Json> = {}): Json => ({
+  id: "T1",
+  isResolved: false,
+  isOutdated: false,
+  path: "src/mech/git/prwatch.ts",
+  line: 42,
+  comments: {
+    nodes: [{ author: { login: "reviewer" }, body: "this needs a guard", createdAt: "2026-08-18T10:00:00Z" }],
+  },
+  ...over,
+});
+
+test("an unresolved review thread arrives with the file and the line it is about", async () => {
+  // Nothing asked GitHub for these at all, so a review filed entirely as
+  // line-level comments — which is how a review is normally filed — reached the
+  // group as an empty poll.
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 5, pr_seen_at: 0 }).where(eq(grpTable.id, 1));
+  const fs = await pollPrs(h.ctx, gh({ "POST /graphql": graphReply({ threads: [thread()] }) }));
+
+  expect(fs[0]!.threads).toEqual([
+    {
+      id: "T1",
+      path: "src/mech/git/prwatch.ts",
+      line: 42,
+      comments: [{ author: "reviewer", body: "this needs a guard", at: Date.parse("2026-08-18T10:00:00Z") }],
+    },
+  ]);
+  // And the PM is told where, not just what — plus the id, which is the only
+  // handle `orch pr resolve` takes. Without it the thread can be fixed and never
+  // closed, which is the state every thread was in.
+  await dispatchFeedback(h.ctx, fs[0]!);
+  const [job] = await h.db.select({ payload_json: jobTable.payload_json }).from(jobTable);
+  const rejection = AgentTurnPayloadSchema.parse(job!.payload_json).rejection ?? "";
+  expect(rejection).toContain("[T1] src/mech/git/prwatch.ts:42");
+  expect(rejection).toContain("orch pr resolve --thread");
+  // And what to do with the ones it must not close itself.
+  expect(rejection).toContain("orch ask-boss");
+});
+
+test("a settled thread is not raised again, whichever way it was settled", async () => {
+  // Resolved and outdated are the two ways a thread stops being work. Re-raising
+  // either wakes a group every 30 seconds over something already dealt with.
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 5, pr_seen_at: 0 }).where(eq(grpTable.id, 1));
+  const settled = await pollPrs(
+    h.ctx,
+    gh({
+      "POST /graphql": graphReply({
+        threads: [thread({ id: "T1", isResolved: true }), thread({ id: "T2", isOutdated: true, line: null })],
+      }),
+    }),
+  );
+  expect(settled).toEqual([]);
+
+  // And the cursor moves past a thread that was open, so the same thread is not
+  // news on the next tick.
+  const first = await pollPrs(h.ctx, gh({ "POST /graphql": graphReply({ threads: [thread()] }) }));
+  expect(first).toHaveLength(1);
+  const again = await pollPrs(h.ctx, gh({ "POST /graphql": graphReply({ threads: [thread()] }) }));
+  expect(again).toEqual([]);
+});
+
+/** The GraphQL request body, which is the only place the query text is visible. */
+const GraphRequest = z.object({
+  query: z.string(),
+  variables: z.object({
+    prs: z.number(),
+    messages: z.number(),
+    checks: z.number(),
+    threads: z.number(),
+    threadComments: z.number(),
+  }),
+});
+
+test("how much of a PR one poll reads is a setting, not five numbers in the source", async () => {
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 5 }).where(eq(grpTable.id, 1));
+  // Moved off the defaults first: a literal that happens to equal a default is
+  // indistinguishable from a setting until the setting changes.
+  h.ctx.config.prPoll = { prs: 3, messages: 7, checks: 11, threads: 13, threadComments: 17 };
+  const bodies: Json[] = [];
+  await pollPrs(h.ctx, gh({ "POST /graphql": graphReply() }, [], bodies));
+
+  const sent = GraphRequest.parse(bodies[0]);
+  // The thread selection itself, because a fake client answers a fixture whatever
+  // it was asked for: without this, deleting the field from the query is green.
+  expect(sent.query).toContain("reviewThreads(last:$threads)");
+  expect(sent.variables).toEqual(h.ctx.config.prPoll);
+});
+
+test("a failing check arrives with what it said, not just that it is red", async () => {
+  // `failing checks: build` is a fact with no next step in it. The check's own
+  // `output` is the step, and it costs nothing: the rollup already had it.
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 5 }).where(eq(grpTable.id, 1));
+  const fs = await pollPrs(
+    h.ctx,
+    gh({
+      "POST /graphql": graphReply({
+        contexts: [
+          {
+            __typename: "CheckRun",
+            name: "build",
+            conclusion: "FAILURE",
+            detailsUrl: "https://github.com/me/x/runs/1",
+            output: { title: "tsc failed", summary: "2 errors in src/mech/git/prwatch.ts" },
+          },
+          // The older Status API has no output; it must still be reported by name.
+          { __typename: "StatusContext", context: "legacy", state: "FAILURE" },
+        ],
+      }),
+    }),
+  );
+
+  expect(fs[0]!.failingChecks).toEqual([
+    {
+      name: "build",
+      summary: "tsc failed: 2 errors in src/mech/git/prwatch.ts",
+      url: "https://github.com/me/x/runs/1",
+    },
+    { name: "legacy", summary: undefined, url: undefined },
+  ]);
+
+  await dispatchFeedback(h.ctx, fs[0]!);
+  const [job] = await h.db.select({ payload_json: jobTable.payload_json }).from(jobTable);
+  expect(AgentTurnPayloadSchema.parse(job!.payload_json).rejection).toContain(
+    "build: tsc failed: 2 errors in src/mech/git/prwatch.ts — https://github.com/me/x/runs/1",
+  );
+});
+
+test("a check that keeps failing with a new summary is not news twice", async () => {
+  // The signature is the names. A summary carrying a duration or a run number
+  // would otherwise wake the group every 30 seconds over the same red build.
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 5 }).where(eq(grpTable.id, 1));
+  const red = (summary: string) =>
+    gh({
+      "POST /graphql": graphReply({
+        contexts: [{ __typename: "CheckRun", name: "build", conclusion: "FAILURE", output: { summary } }],
+      }),
+    });
+
+  expect(await pollPrs(h.ctx, red("failed in 41s"))).toHaveLength(1);
+  expect(await pollPrs(h.ctx, red("failed in 39s"))).toEqual([]);
+});
+
+test("a project that develops on develop is not told to rebase onto main", async () => {
+  // `main` was written into four agent-facing strings — the rebase instruction
+  // here, the boss's "main moved" button, the reopened-card advice and the
+  // scribe's diff range. A group whose repository has no `main` was told to fetch
+  // one, and the failure lands inside an agent's turn as a git error it cannot
+  // act on rather than anywhere the boss looks.
+  const h = await harness();
+  await h.db.update(projectTable).set({ base_branch: "develop" }).where(eq(projectTable.id, 1));
+  await dispatchFeedback(h.ctx, { grpId: 1, prNumber: 7, comments: [], failingChecks: [], conflicting: true });
+
+  const payload = AgentTurnPayloadSchema.parse(
+    (await h.db.select({ payload_json: jobTable.payload_json }).from(jobTable))[0]!.payload_json,
+  );
+  expect(payload.rejection).toContain("git rebase origin/develop");
+  expect(payload.rejection).not.toContain("origin/main");
+});
+
+test("a check that timed out or errored is red too, not just one that said FAILURE", async () => {
+  // A CI job killed by its own timeout, or an action that could not start, leaves
+  // the PR red on GitHub with no `FAILURE` anywhere in the rollup. Counting only
+  // FAILURE means the group is never told, and the branch sits at the head of a
+  // serial merge queue waiting for feedback that will not come.
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 5 }).where(eq(grpTable.id, 1));
+  const fs = await pollPrs(
+    h.ctx,
+    gh({
+      "POST /graphql": graphReply({
+        contexts: [
+          { __typename: "CheckRun", name: "e2e", conclusion: "TIMED_OUT" },
+          { __typename: "CheckRun", name: "build", conclusion: "ERROR" },
+          { __typename: "CheckRun", name: "lint", conclusion: "SUCCESS" },
+        ],
+      }),
+    }),
+  );
+  expect(fs[0]!.failingChecks.map((c) => c.name)).toEqual(["e2e", "build"]);
+});
+
+test("a branch GitHub already calls dirty is conflicting while mergeable is still null", async () => {
+  // `mergeable` is null for a few seconds after every push, and on a conflicting
+  // branch `mergeable_state` says `dirty` first. Reading only `mergeable` means
+  // the poll that lands in that window says nothing, and nothing polls again
+  // until something else changes — so the boss's card never asks for the rebase.
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 7 }).where(eq(grpTable.id, 1));
+  const fs = await pollPrs(h.ctx, gh({ "GET /repos/me/x/pulls/7": pr({ mergeable: null, mergeable_state: "dirty" }) }));
+  expect(fs[0]!.conflicting).toBe(true);
+});
+
+test("the same red checks in a different order are not news, and not repeated", async () => {
+  // GitHub returns the rollup in whatever order it likes. Comparing the list as
+  // it arrives makes a reordering look like a change, and the PM gets a turn
+  // every 30 seconds over a build that has been red the whole time — and every
+  // reply to a reviewer arrives with the same failing check attached again.
+  const h = await harness();
+  await h.db.update(grpTable).set({ pr_number: 5 }).where(eq(grpTable.id, 1));
+  const red = (names: string[], comments: Json[] = []) =>
+    gh({
+      "POST /graphql": graphReply({
+        contexts: names.map((name) => ({ __typename: "CheckRun", name, conclusion: "FAILURE" })),
+        comments,
+      }),
+    });
+
+  expect(await pollPrs(h.ctx, red(["build", "test"]))).toHaveLength(1);
+  expect(await pollPrs(h.ctx, red(["test", "build"]))).toEqual([]);
+
+  const said = [{ author: { login: "bob" }, body: "rebase please", createdAt: "2026-08-18T10:00:00Z" }];
+  const third = await pollPrs(h.ctx, red(["test", "build"], said));
+  expect(third[0]!.comments.map((c) => c.body)).toEqual(["rebase please"]);
+  expect(third[0]!.failingChecks).toEqual([]);
 });

@@ -59,3 +59,51 @@ jobs:
           scan-ref: .
           trivy-config: trivy.yaml
           format: table
+
+  sandbox-live:
+    name: sandbox-live
+    runs-on: ubuntu-24.04
+    # Six containers, each with an image, a clone and a toolchain in it. The
+    # budget is for a cold runner that pulls two images and installs a Python
+    # package before the first one starts.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      # opensandbox-server is a Python package, and the tests start it with
+      # `uvx`. Without uv on PATH they detect that and skip — a green tick on a
+      # job named sandbox-live, over nothing.
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+      # ubuntu-24.04 ships a running docker daemon, and the agent image is
+      # published public (anonymous pull verified), so there is no install and no
+      # registry secret. Both tags are read from the modules that name them: this
+      # job fetches them *before* the server asks, because an image named in a
+      # config is not an image docker has, and a tag pinned in two places is one
+      # tag and one stale copy that this job would be the last to notice.
+      - name: pull the images every sandbox is built from
+        run: |
+          # shellcheck disable=SC2016 # `${...}` is a JavaScript template literal read by `bun -e`, not a shell expansion. The single quotes are what keep the shell out of it, which is the point.
+          bun -e 'import { DEFAULTS_FOR_CHECK as c } from "./src/platform/config/load.ts";
+                  import { EGRESS_IMAGE } from "./src/mech/sandbox/server.ts";
+                  console.log(`${c.sandbox.image}\n${EGRESS_IMAGE}`)' \
+            | while read -r image; do docker pull "$image"; done
+      # The first `uvx` of a package downloads and installs it, and the tests
+      # give the server 45s from spawn to first answer. Paid here instead.
+      - run: uvx opensandbox-server --help
+      # `tee`, and a check that nothing skipped. The tests skip themselves when
+      # this machine cannot run containers, which is right on a laptop and is
+      # this job failing to do its one job — and a skip is not a non-zero exit.
+      - name: the six live tests, and proof they ran
+        env:
+          ORCH_LIVE_SANDBOX: "1"
+        run: |
+          set -o pipefail
+          bun run test test/live/ 2>&1 | tee "$RUNNER_TEMP/live.log"
+          if grep -q ' skip' "$RUNNER_TEMP/live.log"; then
+            echo '::error::live sandbox tests skipped — the reason is printed above'
+            exit 1
+          fi

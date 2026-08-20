@@ -109,8 +109,36 @@ One family: `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui`. Mono
 (`ui-monospace`) for identifiers, paths, branches, money, token counts. Fixed rem
 scale, ratio ~1.18, no fluid clamps: product UI is read at one DPI.
 
-Sizes in use: 0.625 (pills), 0.6875 (meta), 0.75 (secondary), 0.8125 (body /
-controls), 0.875 (base), 0.9375 (group name), 1.375 (the one big number in 成本).
+The scale has names, in `web/style.css`, and nothing writes a rem literal:
+
+| token | rem | for |
+|---|---|---|
+| `text-tag` | 0.5625 | the smallest label that still has to be read |
+| `text-pill` | 0.625 | pills |
+| `text-meta` | 0.6875 | meta |
+| `text-secondary` | 0.75 | secondary |
+| `text-body` | 0.8125 | body / controls |
+| `text-base` | 0.875 | base |
+| `text-name` | 0.9375 | group name |
+| `text-lead` | 1 | the line above a section |
+| `text-card` | 1.0625 | card heading |
+| `text-title` | 1.25 | page heading |
+| `text-figure` | 1.375 | the one big number in 成本 |
+
+Layout widths and grid templates stay inline, deliberately. The scale above was
+eleven values over 262 call sites — one shared ruler that had drifted. The layout
+literals are about twenty values over one to five sites each
+(`grid-cols-[minmax(0,1fr)_auto]`, `max-w-[76rem]`), which is a page deciding its
+own proportions, not a constant with several copies. Naming
+`grid-cols-[2rem_minmax(0,1fr)_auto]` would move the definition away from the
+only grid that has it. `css-token-drift` still reports them as advisory; reopen
+this if one width reaches the double figures the type scale did.
+
+Eleven, not the seven this sentence used to claim. Four of them —
+0.5625, 1, 1.0625, 1.25 — were in the product and not in this document, across
+262 call sites in 43 files, and neither side could tell. Naming them changed no
+pixel; it made the disagreement impossible to have again, and
+`test/governance/type-scale.test.ts` fails on the next rem literal.
 
 ## Layout
 

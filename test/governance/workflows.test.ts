@@ -14,6 +14,8 @@ const WorkflowSchema = z.object({
       if: z.string().optional(),
       needs: z.union([z.string(), z.array(z.string())]).optional(),
       "timeout-minutes": z.number().optional(),
+      // Asserted as absent: the suite's postgres is configured by its compose file.
+      services: JsonMap.optional(),
       "runs-on": z.union([z.string(), z.array(z.string())]).optional(),
       permissions: StringMap.optional(),
       strategy: z.looseObject({ matrix: JsonMap.optional() }).optional(),
@@ -64,11 +66,19 @@ function expectDryRunOnlyJobs(workflow: Workflow, names: readonly string[]): voi
  * Asserting a hardcoded copy here would make this the fourth place the list
  * lives, which is the problem rather than a check on it.
  */
-function requiredChecks(): string[] {
-  return readFileSync(".github/required-checks.txt", "utf8")
+const namesIn = (file: string): string[] =>
+  readFileSync(file, "utf8")
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "" && !line.startsWith("#"));
+
+function requiredChecks(): string[] {
+  return namesIn(".github/required-checks.txt");
+}
+
+/** Merge gates that are not release gates. See the file's own header for why. */
+function mergeOnlyChecks(): string[] {
+  return namesIn(".github/merge-only-checks.txt");
 }
 
 describe("workflow governance", () => {
@@ -148,6 +158,25 @@ describe("workflow governance", () => {
     expect(fallow).toContain("--format github-annotations");
     expect(fallow).toContain("--format github-summary");
     expect(fallow).toContain('exit "$audit_status"');
+  });
+
+  test("the suite's postgres is configured in one file, and CI reads that file", async () => {
+    // A `services:` block cannot take a `command`, so the copy in `ci.yml` ran on
+    // PostgreSQL's default `max_connections=100` while the compose file set 600 —
+    // and `sorry, too many clients already` is what four workers holding a pool of
+    // 24 each got. Two descriptions of one server is one description too many.
+    const ci = await load("ci");
+    expect(ci.jobs["test"]?.services).toBeUndefined();
+    expect(ci.jobs["test"]!.steps.some((step) => step.run?.includes("db:test:up"))).toBe(true);
+
+    // And the setting that failure was about is stated where the server is
+    // configured — the value moves as the pool and worker count do, so what is
+    // pinned is that it is set at all, and set there rather than in the workflow.
+    const compose = readFileSync("docker/postgres-test-compose.yml", "utf8");
+    expect(compose).toMatch(/max_connections=\d+/);
+    // No *setting* of it in the workflow — prose about why may mention the name,
+    // but a second `name=value` is the second owner this test exists to refuse.
+    expect(readFileSync(".github/workflows/ci.yml", "utf8")).not.toMatch(/max_connections\s*=/);
   });
 
   test("CI only uploads the report evidence a privileged second stage consumes", async () => {
@@ -354,6 +383,17 @@ describe("workflow governance", () => {
     // in the place testing that there is only one.
     expect(checkGate).toContain(".github/required-checks.txt");
     expect(checkGate).toContain("required-checks.txt is empty");
+    // And reads only that one. `merge-only-checks.txt` holds names that appear on
+    // a pull request head and nowhere else — `codecov/patch` is posted by
+    // `pr-report.yml`, so no `main` commit carries it. Requiring one here would
+    // block every release on a check that can never be green for a release sha.
+    expect(checkGate).not.toContain("merge-only-checks.txt");
+    for (const name of mergeOnlyChecks()) expect(requiredChecks(), name).not.toContain(name);
+    expect(mergeOnlyChecks()).toContain("codecov/patch");
+    // The ruleset is the one consumer of both, and it lives in a document because
+    // a GitHub setting cannot read a file.
+    const ops = readFileSync("docs/operations/ci.md", "utf8");
+    expect(ops).toContain(".github/required-checks.txt .github/merge-only-checks.txt");
     expect(requiredChecks().length).toBeGreaterThan(5);
     expect(checkGate).toContain("commits/$SOURCE_SHA/check-runs?per_page=100");
     expect(checkGate).toContain('"completed:success"');
@@ -430,6 +470,36 @@ describe("workflow governance", () => {
       "${{ !inputs.dry_run }}",
     );
     expectDryRunOnlyJobs(workflow, ["image-push", "manifest", "publish", "promote-latest"]);
+
+    // And nothing outside those four publishes. Naming the four is a list that a
+    // fifth job walks past; this asks the question the dry run is actually for —
+    // "does a step that writes to a registry, a release or an attestation store
+    // sit anywhere a dry run still reaches it?" A dry run that published once is
+    // the one failure here that cannot be taken back, and the run itself cannot
+    // be used to check this, because a passing dry run proves only that today's
+    // steps are guarded.
+    const PUBLISHES = [
+      "docker push",
+      "gh release create",
+      "imagetools create",
+      "docker/login-action",
+      "actions/attest-build-provenance",
+      "actions/attest-sbom",
+      "push: true",
+    ];
+    for (const [name, job] of Object.entries(workflow.jobs)) {
+      const body = job.steps.map((step) => `${step.uses ?? ""} ${step.run ?? ""} ${JSON.stringify(step.with ?? {})}`);
+      const guardedStep = (i: number) => job.steps[i]?.if === "${{ !inputs.dry_run }}";
+      body.forEach((text, i) => {
+        const verb = PUBLISHES.find((p) => text.includes(p));
+        if (!verb) return;
+        expect({ job: name, verb, guarded: job.if === "${{ !inputs.dry_run }}" || guardedStep(i) }).toEqual({
+          job: name,
+          verb,
+          guarded: true,
+        });
+      });
+    }
     expect(release).toContain('has("buildx.build.provenance")');
     expect(release).toContain("docker image inspect --format '{{.Id}}'");
     expect(release).toContain("trivy-config: trivy.yaml");
@@ -474,18 +544,49 @@ describe("workflow governance", () => {
     expect(workflow.jobs.publish?.needs).toEqual(["checks", "release-evidence", "manifest"]);
   });
 
-  test("release uses the supported immutable action revisions", async () => {
+  /**
+   * Every third-party action is pinned to a commit, and the shape is what is checked.
+   *
+   * This listed six SHAs verbatim, so it asserted the *versions* rather than the
+   * property: every Dependabot pull request failed it, on an assertion that says the
+   * same thing Dependabot exists to do. Seen on #8. It also covered six of the nine
+   * third-party actions in this workflow and said nothing about the other three.
+   */
+  /**
+   * **Letting Dependabot move a pin is safe here, and the pin is not what stops it.**
+   *
+   * A SHA is "the only way to use an action as an immutable release" (GitHub's
+   * security hardening guide), and what it defends against is a *tag being moved* —
+   * a compromised account repointing `v5`, which takes effect with no action from us.
+   * A bump is a pull request, and this repository's ruleset requires an approving
+   * review with no auto-merge, so the change is deliberate rather than silent.
+   */
+  /**
+   * The cost, from the same page: an action pinned to a SHA gets no Dependabot
+   * *security alerts*, only version updates. That is the trade, not a free win.
+   */
+  test("every third-party action in release is pinned to a commit", async () => {
     const release = await source("release");
-    for (const action of [
-      "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
-      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-      "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
-      "aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8",
-      "actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661",
-      "actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f",
-    ]) {
-      expect(release).toContain(action);
+    const tagged: string[] = [];
+    for (const match of release.matchAll(/uses:\s+([^\s#]+)/g)) {
+      const ref = match[1]!;
+      // A local composite action has no revision to pin; `./` is the whole of it.
+      if (ref.startsWith("./")) continue;
+      if (!/@[0-9a-f]{40}$/.test(ref)) tagged.push(ref);
     }
+    // The refs, not a count: the fix is to pin exactly these.
+    expect(tagged).toEqual([]);
+  });
+
+  /**
+   * Bun comes from the composite action, twice, and never from the marketplace one.
+   *
+   * The version lives in one place that way. This is separate from the pinning rule
+   * because Dependabot cannot fix it: `oven-sh/setup-bun` appearing here is a change
+   * somebody made, not a revision that moved.
+   */
+  test("release installs bun through the repository's own action", async () => {
+    const release = await source("release");
     expect(release.match(/\.\/\.github\/actions\/setup-bun/g)).toHaveLength(2);
     expect(release).not.toContain("oven-sh/setup-bun@");
   });
@@ -604,4 +705,22 @@ test("no job asks for a larger runner, which is charged even on a public reposit
     }
   }
   expect(offenders).toEqual([]);
+});
+
+/**
+ * Everything the server reads from `ROOT` has to be inside the archive.
+ *
+ * The release is one compiled binary plus the files beside it, and the binary
+ * cannot tell that one is missing until it is running. `drizzle/` is the newest
+ * of them and the worst to lose: the server starts, then cannot open its own
+ * database, on a machine where nobody has the repository to compare against.
+ */
+test("the release archive carries every directory the server resolves from ROOT", () => {
+  const release = readFileSync(".github/workflows/release.yml", "utf8");
+  const copied = /cp -R ([^"]+) "dist\/\$root\/"/.exec(release)?.[1]?.trim().split(/\s+/) ?? [];
+  const fromRoot = [...readFileSync("src/platform/persistence/database.ts", "utf8").matchAll(/join\(ROOT, "([^/"]+)/g)]
+    .map((m) => m[1])
+    .filter((d): d is string => d !== undefined);
+  expect(fromRoot.length).toBeGreaterThan(0);
+  for (const dir of fromRoot) expect({ dir, carried: copied.includes(dir) }).toEqual({ dir, carried: true });
 });

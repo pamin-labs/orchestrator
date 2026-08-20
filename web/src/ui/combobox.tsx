@@ -2,7 +2,6 @@ import * as P from "@radix-ui/react-popover";
 import { Command } from "cmdk";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { cn } from "./cn";
 
 /**
@@ -50,7 +49,7 @@ export function Combobox({
   value,
   options,
   placeholder,
-  empty,
+  empty = "没有匹配的分支",
   disabled,
   width,
   free,
@@ -73,8 +72,6 @@ export function Combobox({
   free?: boolean;
   onCommit: (v: string) => void;
 }) {
-  const { t } = useTranslation();
-  const emptyText = empty ?? t("ui.combobox.noMatchingBranch", "没有匹配的分支");
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const box = useRef<HTMLInputElement>(null);
@@ -123,7 +120,7 @@ export function Combobox({
                   setOpen(false);
                 }
               }}
-              className="w-full rounded-lg border border-rule bg-paper px-2.5 py-1.5 pr-7 font-mono text-[0.8125rem]
+              className="w-full rounded-lg border border-rule bg-paper px-2.5 py-1.5 pr-7 font-mono text-body
                          text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none
                          disabled:opacity-50"
             />
@@ -169,8 +166,8 @@ export function Combobox({
               }}
             >
               {!shown.length && (
-                <div className="px-2 py-2 text-[0.75rem] text-ink-3">
-                  {options.length ? emptyText : t("ui.combobox.cannotReadRemote", "读不到远端分支，这里按你填的存")}
+                <div className="px-2 py-2 text-secondary text-ink-3">
+                  {options.length ? empty : "读不到远端分支，这里按你填的存"}
                 </div>
               )}
               {shown.map((o) => (
@@ -186,7 +183,7 @@ export function Combobox({
                   }}
                   onSelect={() => commit(o)}
                   className={cn(
-                    "cursor-pointer rounded-md px-2 py-1.5 font-mono text-[0.75rem] text-ink",
+                    "cursor-pointer rounded-md px-2 py-1.5 font-mono text-secondary text-ink",
                     "data-[selected=true]:bg-sunk",
                     o === value.trim() && "text-accent",
                   )}

@@ -2,7 +2,16 @@ import { expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkSkillsMount, lineQueue, lsofCwd, type Counter } from "../../src/mech/sandbox/sandbox.ts";
+import { eq } from "drizzle-orm";
+import type { Ctx } from "../../src/mech/ctx.ts";
+import {
+  checkSkillsMount,
+  isSidecarStartFailure,
+  lineQueue,
+  lsofCwd,
+  type Counter,
+} from "../../src/mech/sandbox/sandbox.ts";
+import { event } from "../../src/platform/persistence/schema.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { testContext } from "../support/test-context.ts";
 import { tempDir } from "../support/temp.ts";
@@ -45,20 +54,17 @@ function container(answer: () => string | Promise<never>): Counter & { asked: st
   };
 }
 
-const blockers = (ctx: ReturnType<typeof testContext>): string[] =>
-  ctx.db
-    .query<{ body: string }, []>("SELECT body FROM event WHERE kind = 'state_change'")
-    .all()
-    .map((r) => r.body);
+const blockers = async (ctx: Ctx): Promise<string[]> =>
+  (await ctx.db.select({ body: event.body }).from(event).where(eq(event.kind, "state_change"))).map((r) => r.body);
 
 test("skills on the host and none in the container is called a blocker, with both counts", async () => {
-  const ctx = testContext({ db: openMemory() });
+  const ctx = await testContext({ db: await openMemory() });
   const host = staged(3);
   const sb = container(() => "0\n");
 
   await checkSkillsMount(ctx.bus, sb, host, "/opt/orch/skills");
 
-  const [said] = blockers(ctx);
+  const [said] = await blockers(ctx);
   expect(said).toContain(host);
   expect(said).toContain("3");
   expect(said).toContain("/opt/orch/skills");
@@ -70,7 +76,7 @@ test("skills on the host and none in the container is called a blocker, with bot
 });
 
 test("a mount that actually carried the skills says nothing", async () => {
-  const ctx = testContext({ db: openMemory() });
+  const ctx = await testContext({ db: await openMemory() });
 
   await checkSkillsMount(
     ctx.bus,
@@ -79,29 +85,29 @@ test("a mount that actually carried the skills says nothing", async () => {
     "/opt/orch/skills",
   );
 
-  expect(blockers(ctx)).toEqual([]);
+  expect(await blockers(ctx)).toEqual([]);
 });
 
 test("a boss who has ticked no skills gets no noise", async () => {
   // Nothing staged means `skillMounts` mounted nothing, so an empty directory
   // inside is the correct outcome and not a finding.
-  const ctx = testContext({ db: openMemory() });
+  const ctx = await testContext({ db: await openMemory() });
   const sb = container(() => "0\n");
 
   await checkSkillsMount(ctx.bus, sb, staged(0), "/opt/orch/skills");
 
-  expect(blockers(ctx)).toEqual([]);
+  expect(await blockers(ctx)).toEqual([]);
   // And it costs no exec: one `ls` per host path per process is the budget.
   expect(sb.asked).toEqual([]);
 });
 
 test("a host path that is not there is not a mount problem", async () => {
-  const ctx = testContext({ db: openMemory() });
+  const ctx = await testContext({ db: await openMemory() });
   const sb = container(() => "0\n");
 
   await checkSkillsMount(ctx.bus, sb, join(tmpdir(), "orch-mount-never-existed"), "/opt/orch/skills");
 
-  expect(blockers(ctx)).toEqual([]);
+  expect(await blockers(ctx)).toEqual([]);
   expect(sb.asked).toEqual([]);
 });
 
@@ -109,7 +115,7 @@ test("a count that is not a number is not read as zero", async () => {
   // `ls` on a path the container cannot stat prints to stderr and leaves stdout
   // empty. `Number("")` is 0, and reporting that as an empty mount would raise a
   // blocker about a container that simply could not answer.
-  const ctx = testContext({ db: openMemory() });
+  const ctx = await testContext({ db: await openMemory() });
 
   await checkSkillsMount(
     ctx.bus,
@@ -118,13 +124,13 @@ test("a count that is not a number is not read as zero", async () => {
     "/opt/orch/skills",
   );
 
-  expect(blockers(ctx)).toEqual([]);
+  expect(await blockers(ctx)).toEqual([]);
 });
 
 test("a container that throws on the count leaves no finding and no exception", async () => {
   // This runs on the create path of every sandbox. A throw here fails the
   // creation over a diagnostic.
-  const ctx = testContext({ db: openMemory() });
+  const ctx = await testContext({ db: await openMemory() });
   const sb: Counter = {
     commands: {
       run: async () => {
@@ -135,11 +141,11 @@ test("a container that throws on the count leaves no finding and no exception", 
 
   await checkSkillsMount(ctx.bus, sb, staged(2), "/opt/orch/skills");
 
-  expect(blockers(ctx)).toEqual([]);
+  expect(await blockers(ctx)).toEqual([]);
 });
 
 test("the same host path is only checked once per process", async () => {
-  const ctx = testContext({ db: openMemory() });
+  const ctx = await testContext({ db: await openMemory() });
   const host = staged(2);
   const sb = container(() => "0\n");
 
@@ -147,7 +153,7 @@ test("the same host path is only checked once per process", async () => {
   await checkSkillsMount(ctx.bus, sb, host, "/opt/orch/skills");
 
   expect(sb.asked.length).toBe(1);
-  expect(blockers(ctx).length).toBe(1);
+  expect((await blockers(ctx)).length).toBe(1);
 });
 
 test("lsof's cwd is read by its field tag, so a path with spaces survives", () => {
@@ -222,4 +228,22 @@ test("a command that printed nothing ends rather than hanging", async () => {
   q.end();
 
   expect(await drained(q)).toEqual([]);
+});
+
+test("a sidecar that lost a port race is retried, and nothing else is", () => {
+  // The cause is a lost port race — `failed to bind host port 0.0.0.0:57714/tcp:
+  // address already in use`, five times in one `data/opensandbox-server.log` — but
+  // that sentence stays in the server's log. What the client is handed, and what
+  // reached this suite as `code=126`, is the short one. A classifier written
+  // against the Docker text would have matched nothing and retried nothing, which
+  // is the whole reason this test quotes both.
+  expect(isSidecarStartFailure("container unavailable: Egress sidecar container failed to start.")).toBe(true);
+  expect(isSidecarStartFailure(new Error("Egress sidecar container failed to start"))).toBe(true);
+  expect(isSidecarStartFailure(new Error("failed to bind host port 0.0.0.0:57714/tcp: address already in use"))).toBe(
+    false,
+  );
+  // Retrying anything else would be retrying a real refusal: the image is missing,
+  // the daemon is down, the mount is outside `allowed_host_paths`.
+  expect(isSidecarStartFailure(new Error("No such image: ghcr.io/pamin-labs/orch-agent:latest"))).toBe(false);
+  expect(isSidecarStartFailure(new Error("path is not under any allowed prefix"))).toBe(false);
 });

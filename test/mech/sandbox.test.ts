@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
-import { open, openMemory } from "../../src/platform/persistence/database.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { VERSION } from "../../src/platform/process/version.ts";
+import { eq } from "drizzle-orm";
+import type { Json } from "../../src/contracts/json.ts";
+import { openMemory } from "../../src/platform/persistence/database.ts";
+import { project } from "../../src/platform/persistence/schema.ts";
 import {
+  agentCli,
   allowedImage,
   hostPathForDaemon,
   addrInConfig,
@@ -34,13 +41,16 @@ import { tempDir } from "../support/temp.ts";
  * stream depends on, and the remote a sandbox is asked to clone.
  */
 
-function ctx(config: Partial<NonNullable<Ctx["config"]>> = {}): Ctx {
-  const db = open(":memory:");
-  fx.project.insert(db, { name: "p" });
-  const ctx = testContext({ db });
+async function ctx(config: Partial<NonNullable<Ctx["config"]>> = {}): Promise<Ctx> {
+  const db = await openMemory();
+  await fx.on(db).project.create({ name: "p" });
+  const ctx = await testContext({ db });
   ctx.config = { ...ctx.config, ...config };
   return ctx;
 }
+
+/** The one column these drive through; `jsonb`, so a value rather than a string. */
+const setConfig = (c: Ctx, value: Json) => c.db.update(project).set({ config_json: value }).where(eq(project.id, 1));
 
 const BASE = {
   server: "127.0.0.1:8080",
@@ -53,21 +63,19 @@ const BASE = {
   cacheDirs: {},
 };
 
-test("cpu defaults to a quarter of the host rather than the SDK's one core", () => {
+test("cpu defaults to a quarter of the host rather than the SDK's one core", async () => {
   // The SDK default of "1" made this repo's typecheck 3.7x slower than the host
   // (docs/adr/005), and the failure mode is "gates are slow", which nobody
   // traces back to a resource limit.
-  const spec = specFor(ctx({ sandbox: BASE }), 1);
+  const spec = await specFor(await ctx({ sandbox: BASE }), 1);
   expect(Number(spec.cpu)).toBeGreaterThanOrEqual(2);
   expect(Number(spec.cpu)).toBeLessThanOrEqual(navigator.hardwareConcurrency || 64);
 });
 
-test("a project overrides the defaults one key at a time", () => {
-  const c = ctx({ sandbox: { ...BASE, image: "default:1", memory: "8Gi" } });
-  c.db.run(
-    `UPDATE project SET config_json = '{"sandbox":{"image":"rust:1","denyDomains":["evil.example"]}}' WHERE id = 1`,
-  );
-  const spec = specFor(c, 1);
+test("a project overrides the defaults one key at a time", async () => {
+  const c = await ctx({ sandbox: { ...BASE, image: "default:1", memory: "8Gi" } });
+  await setConfig(c, { sandbox: { image: "rust:1", denyDomains: ["evil.example"] } });
+  const spec = await specFor(c, 1);
   expect(spec.image).toBe("rust:1");
   expect(spec.denyDomains).toEqual(["evil.example"]);
   // Untouched keys still come from config, or an override would mean rewriting
@@ -76,17 +84,19 @@ test("a project overrides the defaults one key at a time", () => {
   expect(spec.ttlSeconds).toBe(3600);
 });
 
-test("a malformed project config falls back instead of failing the group", () => {
-  const c = ctx({ sandbox: BASE });
-  c.db.run(`UPDATE project SET config_json = 'not json' WHERE id = 1`);
-  expect(specFor(c, 1).image).toBe("img:1");
+test("a malformed project config falls back instead of failing the group", async () => {
+  // `jsonb` refuses text that is not JSON at all, so the shape this now guards is
+  // the one still reachable: valid JSON that is not a config object.
+  const c = await ctx({ sandbox: BASE });
+  await setConfig(c, "not json");
+  expect((await specFor(c, 1)).image).toBe("img:1");
 });
 
-test("malformed sandbox overrides never escape with asserted types", () => {
-  const c = ctx({ sandbox: { ...BASE, cpu: "4" } });
+test("malformed sandbox overrides never escape with asserted types", async () => {
+  const c = await ctx({ sandbox: { ...BASE, cpu: "4" } });
   for (const sandbox of [{ image: 7 }, { denyDomains: "evil.example.com" }, { cacheDirs: [] }, { extra: true }]) {
-    c.db.run("UPDATE project SET config_json = ? WHERE id = 1", [JSON.stringify({ sandbox })]);
-    expect(specFor(c, 1)).toEqual({
+    await setConfig(c, { sandbox });
+    expect(await specFor(c, 1)).toEqual({
       image: "img:1",
       cpu: "4",
       memory: "8Gi",
@@ -140,19 +150,17 @@ test("an SSH remote is rewritten, because a sandbox has no key and should not", 
   expect(httpsRemote("/srv/mirrors/repo.git")).toBe("/srv/mirrors/repo.git");
 });
 
-test("a project can share a package cache, and gets none unless it asks", () => {
+test("a project can share a package cache, and gets none unless it asks", async () => {
   // Off by default on purpose. This repo's worst outage was every worktree
   // sharing one node_modules through a symlink: two gates installed at once and
   // a group read `Failed to link jiti: EEXIST` as its own build being broken. A
   // package cache is not that — bun's is content-addressed and built for
   // concurrent readers — but it is close enough to be a deliberate choice.
-  expect(specFor(ctx({ sandbox: BASE }), 1).cacheDirs).toEqual({});
+  expect((await specFor(await ctx({ sandbox: BASE }), 1)).cacheDirs).toEqual({});
 
-  const c = ctx({ sandbox: BASE });
-  c.db.run(
-    `UPDATE project SET config_json = '{"sandbox":{"cacheDirs":{"/root/.bun/install/cache":"/var/tmp/orch-cache"}}}' WHERE id = 1`,
-  );
-  expect(specFor(c, 1).cacheDirs).toEqual({ "/root/.bun/install/cache": "/var/tmp/orch-cache" });
+  const c = await ctx({ sandbox: BASE });
+  await setConfig(c, { sandbox: { cacheDirs: { "/root/.bun/install/cache": "/var/tmp/orch-cache" } } });
+  expect((await specFor(c, 1)).cacheDirs).toEqual({ "/root/.bun/install/cache": "/var/tmp/orch-cache" });
 });
 
 test("the sandbox key is read from the server's own config, not invented here", () => {
@@ -198,7 +206,7 @@ test("a commented-out key is not a key", () => {
   expect(keyInConfig(f)).toBeNull();
 });
 
-test("staged skills mount read-only, on an absolute path, at neither CLI's own path", () => {
+test("staged skills mount read-only, on an absolute path, at neither CLI's own path", async () => {
   // Relative is the trap: the sandbox server resolves this against its own
   // filesystem and rejects anything that does not start with `/`, which fails
   // container creation for every group at once. Read-only is the other half —
@@ -211,7 +219,7 @@ test("staged skills mount read-only, on an absolute path, at neither CLI's own p
   // success. `SKILL_SYNC` builds both directories out of symlinks into this.
   const dir = tempDir("orch-sk-mount-");
   mkdirSync(join(dir, "skills", "alpha"), { recursive: true });
-  const mounts = skillMounts(ctx({ skillsDir: relative(process.cwd(), join(dir, "skills")) }));
+  const mounts = skillMounts(await ctx({ skillsDir: relative(process.cwd(), join(dir, "skills")) }));
 
   expect(mounts.map((m) => m.mountPath)).toEqual([STAGED_SKILLS]);
   for (const m of mounts) {
@@ -219,7 +227,7 @@ test("staged skills mount read-only, on an absolute path, at neither CLI's own p
     expect(m.host?.path).toBe(join(dir, "skills"));
   }
   // Nothing ticked: no mount rather than a mount of a directory that is not there.
-  expect(skillMounts(ctx({ skillsDir: join(dir, "nope") }))).toEqual([]);
+  expect(skillMounts(await ctx({ skillsDir: join(dir, "nope") }))).toEqual([]);
 });
 
 test("the sync script links both CLIs' directories and lists what a repo ships", () => {
@@ -245,15 +253,15 @@ test("the sync script links both CLIs' directories and lists what a repo ships",
   expect(SKILL_SYNC.trimEnd()).toEndWith("} 2>/dev/null");
 });
 
-test("the inventory survives the trip back out of the container", () => {
+test("the inventory survives the trip back out of the container", async () => {
   // The container is the only thing that can see a repository's skills, so the
   // listing the settings page and `/name` need has to travel as text on stdout.
-  const db = open(":memory:");
-  fx.project.insert(db, { name: "p", repo_path: "o/r" });
+  const db = await openMemory();
+  await fx.on(db).project.create({ name: "p", repo_path: "o/r" });
   const head = Buffer.from("---\nname: tidy\ndescription: |\n  keeps it neat\n---\nbody").toString("base64");
   const out = `some git noise\n${SKILL_LINE} .agents/skills/tidy/SKILL.md ${head}\nmore noise\nyes\n`;
 
-  expect(cacheProjectSkills(db, 1, out)).toEqual([
+  expect(await cacheProjectSkills(db, 1, out)).toEqual([
     {
       name: "tidy",
       file: "/work/.agents/skills/tidy/SKILL.md",
@@ -265,13 +273,13 @@ test("the inventory survives the trip back out of the container", () => {
       scope: "project",
     },
   ]);
-  expect(projectSkills(db, 1).map((s) => s.name)).toEqual(["tidy"]);
+  expect((await projectSkills(db, 1)).map((s) => s.name)).toEqual(["tidy"]);
 
   // A repository that dropped its last skill must stop listing it. Treating an
   // empty inventory as "leave the cache alone" is how a removed skill stays
   // nameable forever.
-  expect(cacheProjectSkills(db, 1, "yes\n")).toEqual([]);
-  expect(projectSkills(db, 1)).toEqual([]);
+  expect(await cacheProjectSkills(db, 1, "yes\n")).toEqual([]);
+  expect(await projectSkills(db, 1)).toEqual([]);
 });
 
 test("a group's container is only ever built from an image we published or you built", () => {
@@ -306,44 +314,44 @@ test("a group's container is only ever built from an image we published or you b
   }
 });
 
-test("a project that names a disallowed image gets the default, not that image", () => {
+test("a project that names a disallowed image gets the default, not that image", async () => {
   // Enforced where the container is actually built rather than only at the API.
   // `patchProjectConfig` merges arbitrary keys into `config_json`, so a check
   // that lives only in the route is one a request can walk around — and the
   // failure would be silent, which is the shape this codebase keeps paying for.
-  const c = ctx({ sandbox: { ...BASE, image: "ghcr.io/pamin-labs/orch-agent:latest" } });
-  c.db.run(`UPDATE project SET config_json = '{"sandbox":{"image":"evil.example.com/agent:1"}}' WHERE id = 1`);
-  expect(specFor(c, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:latest");
+  const c = await ctx({ sandbox: { ...BASE, image: "ghcr.io/pamin-labs/orch-agent:latest" } });
+  await setConfig(c, { sandbox: { image: "evil.example.com/agent:1" } });
+  expect((await specFor(c, 1)).image).toBe("ghcr.io/pamin-labs/orch-agent:latest");
 
   // A locally built one is still honoured — that is how this gets debugged.
-  c.db.run(`UPDATE project SET config_json = '{"sandbox":{"image":"orch/agent:1"}}' WHERE id = 1`);
-  expect(specFor(c, 1).image).toBe("orch/agent:1");
+  await setConfig(c, { sandbox: { image: "orch/agent:1" } });
+  expect((await specFor(c, 1)).image).toBe("orch/agent:1");
 });
 
-test("a machine's default image is what a new project runs on, and it is not the yaml", () => {
+test("a machine's default image is what a new project runs on, and it is not the yaml", async () => {
   // Registering a repository sets no image at all — the point of the default is
   // that nobody is asked. It lived only in `config/default.yaml`, which is
   // committed, so anybody self-hosting lost their edit on the next pull.
-  const db = openMemory();
-  fx.project.insert(db, { name: "p", repo_path: "me/x" });
+  const db = await openMemory();
+  await fx.on(db).project.create({ name: "p", repo_path: "me/x" });
   const cfg = loadConfig("config/does-not-exist.yaml");
   cfg.sandbox.image = "ghcr.io/pamin-labs/orch-agent:latest";
-  const ctx = testContext({ db, config: cfg });
+  const ctx = await testContext({ db, config: cfg });
 
-  expect(specFor(ctx, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:latest");
+  expect((await specFor(ctx, 1)).image).toBe("ghcr.io/pamin-labs/orch-agent:latest");
 
   // Writes the settings row *and* the live config, which is what makes the next
   // container use it without a restart.
-  setDefaultImage(db, cfg, "ghcr.io/pamin-labs/orch-agent:0.2.0");
-  expect(specFor(ctx, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:0.2.0");
+  await setDefaultImage(db, cfg, "ghcr.io/pamin-labs/orch-agent:0.2.0");
+  expect((await specFor(ctx, 1)).image).toBe("ghcr.io/pamin-labs/orch-agent:0.2.0");
 
   // The project's own answer still wins, and an image the boundary refuses falls
   // back to the machine's default rather than to the yaml — otherwise turning a
   // bad project override away would silently undo the default too.
-  db.run(`UPDATE project SET config_json = '{"sandbox":{"image":"orch/agent:1"}}' WHERE id = 1`);
-  expect(specFor(ctx, 1).image).toBe("orch/agent:1");
-  db.run(`UPDATE project SET config_json = '{"sandbox":{"image":"evil.example.com/x:1"}}' WHERE id = 1`);
-  expect(specFor(ctx, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:0.2.0");
+  await setConfig(ctx, { sandbox: { image: "orch/agent:1" } });
+  expect((await specFor(ctx, 1)).image).toBe("orch/agent:1");
+  await setConfig(ctx, { sandbox: { image: "evil.example.com/x:1" } });
+  expect((await specFor(ctx, 1)).image).toBe("ghcr.io/pamin-labs/orch-agent:0.2.0");
 });
 
 test("on Windows the mount path is the one the daemon can read, not the one we wrote", () => {
@@ -363,4 +371,28 @@ test("on Windows the mount path is the one the daemon can read, not the one we w
   // `/mnt` prefix would fail the same way in the other direction.
   expect(hostPathForDaemon("/var/tmp/orch-cache/skills", "darwin")).toBe("/var/tmp/orch-cache/skills");
   expect(hostPathForDaemon("/var/tmp/orch-cache/skills", "linux")).toBe("/var/tmp/orch-cache/skills");
+});
+
+/**
+ * What is written into `/opt/orch/cli.ts` has to run with nothing else present.
+ *
+ * A container has no repository and no node_modules, so an import in that file
+ * is a module it cannot resolve. `src/orch/cli.ts` was read verbatim, and the
+ * API split gave it five relative imports and `hono/client` — `orch` was dead in
+ * every sandbox started from a checkout, which is the agent's only way to reach
+ * the orchestrator. Run in a bare directory, because that is the container.
+ */
+test("the provisioned CLI runs where nothing else is installed", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "orch-cli-"));
+  try {
+    writeFileSync(join(dir, "cli.ts"), await agentCli(VERSION));
+    const ran = Bun.spawnSync(["bun", "run", join(dir, "cli.ts"), "--version"], { cwd: dir });
+    expect({
+      code: ran.exitCode,
+      out: ran.stdout.toString().trim(),
+      err: ran.stderr.toString().slice(0, 400),
+    }).toEqual({ code: 0, out: VERSION, err: "" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

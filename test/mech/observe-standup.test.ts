@@ -3,11 +3,18 @@ import { logLine } from "../../src/platform/observability/logging.ts";
 import { maskValue } from "../../src/platform/observability/redaction.ts";
 import { requestContext } from "../../src/platform/observability/request-context.ts";
 import { publishStandupItem } from "../../src/application/executor.ts";
-import { REEMIT_MS } from "../../src/mech/ops/watchdog.ts";
+
+import { count, eq } from "drizzle-orm";
+import { event } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
+import type { Ctx } from "../../src/mech/ctx.ts";
 import { testContext } from "../support/test-context.ts";
+import { loadConfig } from "../../src/platform/config/load.ts";
 
 const at = new Date("2026-08-17T09:00:00.000Z");
+
+const standupLines = async (db: Ctx["db"]) =>
+  (await db.select({ c: count() }).from(event).where(eq(event.author, "standup")))[0]!.c;
 
 /** A log line is JSON off a stream, so it is narrowed rather than trusted. */
 function parsed(line: string): Record<string, unknown> {
@@ -60,53 +67,59 @@ test("a line outside any request is still valid JSON with a level and a timestam
   expect(line).toEqual({ timestamp: at.toISOString(), level: "warn", message: "starting" });
 });
 
-test("the same standup line is not re-emitted within the re-emit window", () => {
-  const ctx = testContext();
-  const p = fx.project.insert(ctx.db, { name: "p" });
-  fx.grp.insert(ctx.db, { project_id: p.id, name: "g" });
+test("the same standup line is not re-emitted within the re-emit window", async () => {
+  const ctx = await testContext();
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p" });
+  await f.grp.create({ project_id: p.id, name: "g" });
   const item = { kind: "stalled", body: "两个需求卡在同一个文件上", grpIds: [1] };
 
-  publishStandupItem(ctx, item);
-  publishStandupItem(ctx, item);
+  await publishStandupItem(ctx, item);
+  await publishStandupItem(ctx, item);
 
-  const said = ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE author = 'standup'").get()!.c;
+  const said = await standupLines(ctx.db);
   // The standup runs on a timer against a condition that persists. Without the
   // window, a group stuck for a day repeats the same line every pass.
   expect(said).toBe(1);
 });
 
-test("a standup line returns once the window has passed", () => {
-  const ctx = testContext();
-  const p = fx.project.insert(ctx.db, { name: "p" });
-  fx.grp.insert(ctx.db, { project_id: p.id, name: "g" });
+test("a standup line returns once the window has passed", async () => {
+  const ctx = await testContext();
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p" });
+  await f.grp.create({ project_id: p.id, name: "g" });
   const item = { kind: "stalled", body: "还是那两个需求", grpIds: [1] };
 
-  publishStandupItem(ctx, item);
-  ctx.db.run("UPDATE event SET at = ? WHERE author = 'standup'", [Date.now() - REEMIT_MS - 1]);
-  publishStandupItem(ctx, item);
+  await publishStandupItem(ctx, item);
+  await ctx.db
+    .update(event)
+    .set({ at: Date.now() - loadConfig().watchdog.reemitMs - 1 })
+    .where(eq(event.author, "standup"));
+  await publishStandupItem(ctx, item);
 
-  const said = ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE author = 'standup'").get()!.c;
+  const said = await standupLines(ctx.db);
   expect(said).toBe(2);
 });
 
-test("a standup finding reaches the watchdog channel with the group it is about", () => {
-  const ctx = testContext();
-  const p = fx.project.insert(ctx.db, { name: "p" });
-  fx.grp.insert(ctx.db, { project_id: p.id, name: "g" });
+test("a standup finding reaches the watchdog channel with the group it is about", async () => {
+  const ctx = await testContext();
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p" });
+  await f.grp.create({ project_id: p.id, name: "g" });
   const seen: Array<{ rule: string; severity: string; grpId: number | null }> = [];
   ctx.onFinding = (rule, severity, _body, grpId) => seen.push({ rule, severity, grpId });
 
-  publishStandupItem(ctx, { kind: "budget", body: "预算快用完了", grpIds: [1, 2] });
+  await publishStandupItem(ctx, { kind: "budget", body: "预算快用完了", grpIds: [1, 2] });
 
   // Advisory, not blocker: the standup observes, it does not stop anyone.
   expect(seen).toEqual([{ rule: "budget", severity: "advisory", grpId: 1 }]);
 });
 
-test("a standup line about no group at all still lands", () => {
-  const ctx = testContext();
+test("a standup line about no group at all still lands", async () => {
+  const ctx = await testContext();
 
-  publishStandupItem(ctx, { kind: "fleet", body: "今天没有人在跑", grpIds: [] });
+  await publishStandupItem(ctx, { kind: "fleet", body: "今天没有人在跑", grpIds: [] });
 
-  const row = ctx.db.query<{ grp_id: number | null }, []>("SELECT grp_id FROM event WHERE author = 'standup'").get();
+  const [row] = await ctx.db.select({ grp_id: event.grp_id }).from(event).where(eq(event.author, "standup"));
   expect(row?.grp_id).toBeNull();
 });

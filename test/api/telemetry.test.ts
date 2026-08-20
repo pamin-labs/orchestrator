@@ -1,6 +1,9 @@
+import { loadConfig } from "../../src/platform/config/load.ts";
+import { openMemory } from "../../src/platform/persistence/database.ts";
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { JsonObject } from "../../src/contracts/json.ts";
+import type { Ctx } from "../../src/mech/ctx.ts";
 import { getTelemetry, TelemetryQuery, type TelemetryReport } from "../../src/api/panel/telemetry.ts";
 import { TelemetryReportSchema } from "../../web/src/shared/api.ts";
 import { SPAN_MAX_AGE_MS, writeSpans, type SpanRow } from "../../src/platform/observability/span-store.ts";
@@ -17,7 +20,27 @@ import { testContext } from "../support/test-context.ts";
  */
 
 const NOW = Date.now();
-const ctx = () => testContext();
+/**
+ * A context whose report cache cannot outlive the test that filled it.
+ *
+ * `getTelemetry` caches per `ctx.db` *object*, and `openMemory()` hands out one
+ * object for the whole process — so a truncate empties the rows and leaves the
+ * cached report, and the next test reads the previous one's answer. A 1ms TTL is
+ * the isolation a fresh database used to give. The two tests that are about the
+ * cache own their database instead and keep the shipped TTL.
+ */
+const ctx = () => testContext({ config: { ...loadConfig(), telemetryCacheMs: 1 } });
+
+/**
+ * A database of this file's own, for the two tests that need a second one.
+ *
+ * The cache is keyed on the database *object*, and `openMemory()` hands out a new
+ * wrapper per call, so two calls are two databases as far as it is concerned —
+ * which is exactly the question these two tests ask.
+ */
+const ownDatabase = async (logger?: { logQuery: () => void }, isolate = "") => ({
+  db: await openMemory(logger, isolate),
+});
 
 function span(over: Partial<SpanRow> & { attributes: Record<string, unknown> }): SpanRow {
   return {
@@ -37,10 +60,7 @@ function span(over: Partial<SpanRow> & { attributes: Record<string, unknown> }):
 const parse = (query: Record<string, string>) => TelemetryQuery.safeParse(query);
 
 /** The handler's body, already parsed. Every assertion below reads one of these. */
-async function report(
-  context: ReturnType<typeof ctx>,
-  query: Record<string, string>,
-): Promise<{ status: number; body: TelemetryReport }> {
+async function report(context: Ctx, query: Record<string, string>): Promise<{ status: number; body: TelemetryReport }> {
   const parsed = parse(query);
   if (!parsed.success) throw new Error(`query rejected: ${parsed.error.message}`);
   const response = await getTelemetry(context, new Request("http://x/"), {}, parsed.data);
@@ -97,8 +117,8 @@ test("a trace id is stored lowercase", () => {
 });
 
 test("the report answers for the scope asked for and excludes the others", async () => {
-  const context = ctx();
-  writeSpans(context.db, [
+  const context = await ctx();
+  await writeSpans(context.db, [
     span({ spanId: "1".repeat(16), name: "turn", durationMs: 100, attributes: { "project.id": 7, "grp.id": 3 } }),
     span({ spanId: "2".repeat(16), name: "turn", durationMs: 900, attributes: { "project.id": 8, "grp.id": 4 } }),
     span({ spanId: "3".repeat(16), name: "scheduler.tick", durationMs: 5, attributes: {} }),
@@ -119,7 +139,7 @@ test("the report answers for the scope asked for and excludes the others", async
 test("a scope that names nothing reports an empty scope rather than failing", async () => {
   // A span is an observation of work, not a reference to it, so a project that
   // has since been deleted is a legitimate question with an empty answer.
-  const answer = await report(ctx(), { scope: "project", id: "4040" });
+  const answer = await report(await ctx(), { scope: "project", id: "4040" });
   expect(answer.status).toBe(200);
   expect(answer.body.stages).toEqual([]);
   expect(answer.body.traces).toEqual([]);
@@ -128,8 +148,8 @@ test("a scope that names nothing reports an empty scope rather than failing", as
 });
 
 test("the report carries the scope's folded stacks for the flamegraph", async () => {
-  const context = ctx();
-  writeSpans(context.db, [
+  const context = await ctx();
+  await writeSpans(context.db, [
     span({
       traceId: "e".repeat(32),
       spanId: "1".repeat(16),
@@ -155,14 +175,14 @@ test("the report carries the scope's folded stacks for the flamegraph", async ()
 });
 
 test("no trace is opened unless one is asked for", async () => {
-  const context = ctx();
-  writeSpans(context.db, [span({ attributes: { "grp.id": 3 } })]);
+  const context = await ctx();
+  await writeSpans(context.db, [span({ attributes: { "grp.id": 3 } })]);
   expect((await report(context, { scope: "group", id: "3" })).body.trace).toBeNull();
 });
 
 test("asking for a trace returns its spans, parents and all", async () => {
-  const context = ctx();
-  writeSpans(context.db, [
+  const context = await ctx();
+  await writeSpans(context.db, [
     span({ traceId: "c".repeat(32), spanId: "1".repeat(16), name: "turn", attributes: { "grp.id": 3 } }),
     span({
       traceId: "c".repeat(32),
@@ -195,8 +215,8 @@ const RawSpans = z.object({
 });
 
 test("a trace's spans carry no attribute bag onto the wire", async () => {
-  const context = ctx();
-  writeSpans(context.db, [
+  const context = await ctx();
+  await writeSpans(context.db, [
     span({ traceId: "d".repeat(32), attributes: { "grp.id": 3, "agent.role": "engineer", "prompt.text": "secret" } }),
   ]);
 
@@ -218,8 +238,8 @@ test("a trace's spans carry no attribute bag onto the wire", async () => {
 });
 
 test("a trace that is no longer stored is refused rather than drawn as empty", async () => {
-  const context = ctx();
-  writeSpans(context.db, [span({ attributes: { "grp.id": 3 } })]);
+  const context = await ctx();
+  await writeSpans(context.db, [span({ attributes: { "grp.id": 3 } })]);
 
   const parsed = parse({ scope: "group", id: "3", trace: "f".repeat(32) });
   expect(parsed.success).toBe(true);
@@ -230,10 +250,53 @@ test("a trace that is no longer stored is refused rather than drawn as empty", a
 });
 
 test("the window the report was computed over is stated in the report", async () => {
-  const context = ctx();
+  const context = await ctx();
   const answer = await report(context, { scope: "system", windowMs: "600000" });
   // The panel labels its own axis from this rather than from the value it sent,
   // so a clamped or defaulted window cannot be mislabelled.
   expect(answer.body.windowMs).toBe(600_000);
   expect((await report(context, { scope: "system" })).body.windowMs).toBe(24 * 60 * 60 * 1_000);
+});
+
+test("two reads inside one TTL compute the report once", async () => {
+  // Not about latency — the report is inside its budget. It is six independent
+  // reads of one table per request, and a reloading tab re-runs all six against a
+  // database every other request and the SSE heartbeat are queued on too.
+  const own = await ownDatabase();
+  const context = await testContext({ db: own.db });
+  await writeSpans(own.db, [span({ spanId: "1".repeat(16), name: "turn", durationMs: 100, attributes: {} })]);
+
+  let statements = 0;
+  // Drizzle's own hook, which fires once per statement actually sent. Patching
+  // the client instead counted whatever that driver happened to call `query`.
+  await ownDatabase({ logQuery: () => void (statements += 1) });
+
+  const query = TelemetryQuery.parse({ scope: "system" });
+  await getTelemetry(context, new Request("http://x/"), {}, query);
+  const first = statements;
+  expect(first).toBeGreaterThan(0);
+
+  await getTelemetry(context, new Request("http://x/"), {}, query);
+  expect(statements).toBe(first);
+});
+
+test("a different database is a different report, not the first one's", async () => {
+  // Keyed on scope and window alone, a module-level cache answers one database's
+  // question with another's numbers. That is a wrong panel the first time two
+  // exist, and it was two red tests here the moment the cache went in.
+  const a = await testContext({ db: (await ownDatabase(undefined, "cache-a")).db });
+  const b = await testContext({ db: (await ownDatabase(undefined, "cache-b")).db });
+  await writeSpans(a.db, [span({ spanId: "1".repeat(16), name: "turn", durationMs: 100, attributes: {} })]);
+  await writeSpans(b.db, [span({ spanId: "2".repeat(16), name: "gate.run", durationMs: 7, attributes: {} })]);
+
+  const query = TelemetryQuery.parse({ scope: "system" });
+  // Parsed, not asserted: `.json()` is `any`, and the schema is what the browser
+  // gets anyway.
+  const read = async (c: Ctx) =>
+    TelemetryReportSchema.parse(await (await getTelemetry(c, new Request("http://x/"), {}, query)).json()).stages.map(
+      (st) => st.name,
+    );
+  const [first, other] = await Promise.all([read(a), read(b)]);
+  expect(first).toEqual(["turn"]);
+  expect(other).toEqual(["gate.run"]);
 });

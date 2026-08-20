@@ -1,11 +1,15 @@
+import { transaction } from "../platform/persistence/database.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { jsonOr } from "../contracts/json.ts";
+import { valueOr } from "../contracts/json.ts";
 import { requestContext } from "../platform/observability/request-context.ts";
 import { sandboxGit } from "../mech/git/checkout.ts";
 import { LeaseArgsSchema, loadResource, type ResourceDef, resolveLease, runResource } from "../mech/lease.ts";
 import { resourceExec, type Scope, WORK } from "../mech/sandbox/sandbox.ts";
 import { errText } from "../platform/process/text.ts";
+import { and, eq, inArray } from "drizzle-orm";
+import { agent as agents, lease as leases } from "../platform/persistence/schema.ts";
+import { ACTIVE_LEASE_STATES } from "../contracts/states.ts";
 import type { Job } from "../platform/scheduling/scheduler.ts";
 import type { ExecDeps } from "./executor.ts";
 
@@ -39,28 +43,32 @@ export async function runLease(deps: ExecDeps, job: Job<"lease">): Promise<void>
     await lease(deps, job, leaseId);
   } catch (e) {
     if (requestContext.getStore()?.signal?.aborted) throw e;
-    finishLease(deps, leaseId, 126, `the gate could not run: ${errText(e)}`, undefined);
+    await finishLease(deps, leaseId, 126, `the gate could not run: ${errText(e)}`, undefined);
   }
 }
 
 async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Promise<void> {
   const { ctx, cfg } = deps;
   const leaseId = leaseIdIn;
-  const lease = ctx.db
-    .query<{ id: number; resource: string; args_json: string; grp_id: number | null }, [number]>(
-      "SELECT id, resource, args_json, grp_id FROM lease WHERE id = ?",
-    )
-    .get(leaseId);
+  // Still unfinished, or there is nothing to run. `finishLease` guards its own
+  // UPDATE the same way, but that only stops the second *result* being written —
+  // the command itself would already have run again, and a gate is not free and
+  // not always idempotent. A replayed job after a restart is the ordinary way
+  // here, not a contrived one.
+  const [lease] = await ctx.db
+    .select({ id: leases.id, resource: leases.resource, args_json: leases.args_json, grp_id: leases.grp_id })
+    .from(leases)
+    .where(and(eq(leases.id, leaseId), inArray(leases.state, [...ACTIVE_LEASE_STATES])));
   if (!lease) return;
 
-  const def = loadResource(ctx.db, lease.resource);
-  if (!def) return finishLease(deps, leaseId, 127, "unknown resource", undefined);
+  const def = await loadResource(ctx.db, lease.resource);
+  if (!def) return await finishLease(deps, leaseId, 127, "unknown resource", undefined);
 
   // Re-validate at execution time. The queued args were checked on the way in,
   // but the resource template may have changed since.
-  const args = jsonOr(lease.args_json, LeaseArgsSchema.nullable(), null);
+  const args = valueOr(lease.args_json, LeaseArgsSchema.nullable(), null);
   if (!args) {
-    return finishLease(
+    return await finishLease(
       deps,
       leaseId,
       126,
@@ -69,7 +77,7 @@ async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Prom
     );
   }
   const resolved = resolveLease(def, args);
-  if (!resolved.ok) return finishLease(deps, leaseId, 126, resolved.error, undefined);
+  if (!resolved.ok) return await finishLease(deps, leaseId, 126, resolved.error, undefined);
 
   const cwd = leaseCwd(def);
   const logDir = join(cfg.dataDir, "leases");
@@ -80,11 +88,11 @@ async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Prom
   // environment is the variable, not the code.
   const scope: Scope = lease.grp_id ? { grp: lease.grp_id } : { project: 0 };
   const head = await sandboxGit(ctx, scope)(["rev-parse", "HEAD"], cwd);
-  ctx.db.run("UPDATE lease SET state = 'running', head_sha = ?, started_at = unixepoch() * 1000 WHERE id = ?", [
-    head.code === 0 ? head.out.trim() : null,
-    leaseId,
-  ]);
-  ctx.bus.emit({
+  await ctx.db
+    .update(leases)
+    .set({ state: "running", head_sha: head.code === 0 ? head.out.trim() : null, started_at: Date.now() })
+    .where(eq(leases.id, leaseId));
+  await ctx.bus.emit({
     grpId: lease.grp_id,
     author: "runner",
     kind: "tool_summary",
@@ -101,26 +109,41 @@ async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Prom
     // boss's machine with the boss's permissions; there is no hole now.
     exec: resourceExec(ctx, scope),
   });
-  if (!("digest" in out)) return finishLease(deps, leaseId, 126, out.error, logPath);
-  finishLease(deps, leaseId, out.exitCode, out.digest.text, logPath);
+  if (!("digest" in out)) return await finishLease(deps, leaseId, 126, out.error, logPath);
+  await finishLease(deps, leaseId, out.exitCode, out.digest.text, logPath);
 }
 
-function finishLease(deps: ExecDeps, leaseId: number, code: number, digest: string, logPath: string | undefined): void {
+/**
+ * The state guard is what makes this the single resolver: a second finish for the
+ * same lease matches no row, so no waiter is resolved twice.
+ *
+ * The event and the wake used to sit outside the transaction, because the bus
+ * wrote on another connection and this would have held the lease row across that
+ * round trip. `Bus.emit` joins the open transaction now, and without it a failed
+ * wake leaves the result fanned and the agent idle with nothing to start it.
+ */
+async function finishLease(
+  deps: ExecDeps,
+  leaseId: number,
+  code: number,
+  digest: string,
+  logPath: string | undefined,
+): Promise<void> {
   const { ctx } = deps;
-  ctx.db.transaction(() => {
-    const lease = ctx.db
-      .query<{ grp_id: number | null; agent_id: number | null }, [number]>(
-        "SELECT grp_id, agent_id FROM lease WHERE id = ?",
-      )
-      .get(leaseId);
+  await transaction(ctx.db, async (tx) => {
+    const [lease] = await tx
+      .update(leases)
+      .set({
+        state: code === 0 ? "done" : "failed",
+        exit_code: code,
+        result_digest: digest,
+        log_path: logPath ?? null,
+        ended_at: Date.now(),
+      })
+      .where(and(eq(leases.id, leaseId), inArray(leases.state, [...ACTIVE_LEASE_STATES])))
+      .returning({ grp_id: leases.grp_id, agent_id: leases.agent_id });
     if (!lease) return;
-    const finished = ctx.db.run(
-      `UPDATE lease SET state = ?, exit_code = ?, result_digest = ?, log_path = ?,
-       ended_at = unixepoch() * 1000 WHERE id = ? AND state IN ('queued', 'running')`,
-      [code === 0 ? "done" : "failed", code, digest, logPath ?? null, leaseId],
-    );
-    if (finished.changes === 0) return;
-    ctx.bus.emit({
+    await ctx.bus.emit({
       grpId: lease.grp_id,
       author: "runner",
       kind: "lease_result",
@@ -128,8 +151,11 @@ function finishLease(deps: ExecDeps, leaseId: number, code: number, digest: stri
       meta: { lease_id: leaseId, exit_code: code },
     });
     if (lease.agent_id) {
-      ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ? AND state = 'waiting_lease'", [lease.agent_id]);
-      ctx.sched.enqueue("agent_turn", {
+      await tx
+        .update(agents)
+        .set({ state: "idle" })
+        .where(and(eq(agents.id, lease.agent_id), eq(agents.state, "waiting_lease")));
+      await ctx.sched.enqueue("agent_turn", {
         grp_id: lease.grp_id,
         agent_id: lease.agent_id,
         priority: 5,
@@ -143,8 +169,8 @@ function finishLease(deps: ExecDeps, leaseId: number, code: number, digest: stri
         },
       });
     }
-  })();
-  ctx.sched.tick();
+  });
+  await ctx.sched.tick();
 }
 
 function leaseCwd(def: ResourceDef): string {

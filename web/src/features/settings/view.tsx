@@ -26,8 +26,6 @@ import { Knobs } from "../knobs/view";
 import { repoHref } from "../../shared/github";
 import { cn } from "../../ui/cn";
 import { ThemeChoice } from "../../ui/theme";
-import { LocaleChoice } from "./locale-choice";
-import { useTranslation } from "react-i18next";
 import { ImageChoicesSchema, ProjectConfigSchema, type ProjectPatch } from "../project/view";
 import { Skills } from "../skills/view";
 import { CredPane, RUNTIMES } from "./credentials";
@@ -75,26 +73,25 @@ const EMPTY_PREFLIGHT = { checks: [] as HostCheck[] };
 /** Host facts only. The credential rows are the 账号 section, said once. */
 const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
 
-/** The nav label lives at `settings.nav.<key>` in the locale resources. */
-const NAV: Array<{ key: Section; icon: typeof KeyRound; project?: true }> = [
+const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: true }> = [
   // 凭据 named the storage, not the thing: what is picked here is which account
   // the fleet works as, and the boss thinks of it as an account. 模型账号 rather
   // than 模型, because which model runs a turn is `roles/*.yaml` and
   // `difficultyModel` — one word for two things sends people here for the wrong
   // control.
-  { key: "cred", icon: KeyRound },
+  { key: "cred", zh: "模型账号", icon: KeyRound },
   // Its own section, not a row in 模型账号. Those are interchangeable, metered,
   // one per role and about to be six; this is one connection, not metered, with
   // a two-step flow and a repository list. Named GitHub rather than 代码源
   // because there is only GitHub, and the day there is a second one, renaming a
   // nav item is one string.
-  { key: "github", icon: GitBranch },
+  { key: "github", zh: "GitHub", icon: GitBranch },
   // What this machine has, which is a different question from how a container is
   // configured: docker and uv are facts about the host, read-only, and the answer
   // to "why will nothing start". Folded into 沙盒 once and taken back out — that
   // pane is about the server and its defaults, and a prerequisite is not a
   // setting.
-  { key: "host", icon: MonitorCog },
+  { key: "host", zh: "环境", icon: MonitorCog },
   // The server *and* what it is told to build, in one pane. These were two
   // sections, and the comment on the second one already said it belonged "under
   // 沙盒服务器, the same subject one level down" — while the rendering put five
@@ -102,29 +99,29 @@ const NAV: Array<{ key: Section; icon: typeof KeyRound; project?: true }> = [
   // `sandbox.image` were knob rows *and* purpose-built rows here, so one value
   // had two controls in two places, and the knob version of the image is a plain
   // text box while this one lists what the registry actually has.
-  { key: "server", icon: Server },
+  { key: "server", zh: "沙盒", icon: Server },
   // Not a setting, and it sits here anyway. It was an accordion at the foot of
   // the landing page, which is the page for what waits on the boss — and how
   // long `GET /state` took never waits on anybody. This dialog is where you come
   // to look at the machine and then leave, which is exactly the visit this pane
   // gets: once, on the day the panel feels slow.
-  { key: "timing", icon: Activity },
+  { key: "timing", zh: "系统耗时", icon: Activity },
   // This machine's skills, not this project's: the same staged directory is
   // mounted into every group of every project.
-  { key: "skills", icon: Sparkles },
+  { key: "skills", zh: "技能", icon: Sparkles },
   // The operating knobs, which used to be a yaml inside the release tarball.
   // Three sections rather than one, because forty rows in one list is a list
   // nobody reads to the bottom of — and the three answer different questions:
   // how much runs at once, what it costs, how long one turn may take.
-  { key: "sched", icon: Gauge },
-  { key: "models", icon: Coins },
-  { key: "turn", icon: Timer },
-  { key: "prefs", icon: SlidersHorizontal },
-  { key: "gates", icon: ListChecks, project: true },
-  { key: "sandbox", icon: Box, project: true },
+  { key: "sched", zh: "调度", icon: Gauge },
+  { key: "models", zh: "模型与预算", icon: Coins },
+  { key: "turn", zh: "turn 与上下文", icon: Timer },
+  { key: "prefs", zh: "偏好", icon: SlidersHorizontal },
+  { key: "gates", zh: "闸门", icon: ListChecks, project: true },
+  { key: "sandbox", zh: "沙盒", icon: Box, project: true },
   // Last, alone, and the only irreversible thing in this dialog. Nowhere near
   // the switches somebody flips while working.
-  { key: "remove", icon: Trash2, project: true },
+  { key: "remove", zh: "移除项目", icon: Trash2, project: true },
 ];
 
 const PROJECT_SECTIONS = new Set<Section>(["gates", "sandbox", "remove"]);
@@ -161,7 +158,6 @@ export function SettingsDialog({
   groupCount?: number;
   onRemoved?: () => void;
 }) {
-  const { t } = useTranslation();
   const [section, setSection] = useState<Section>(initial);
   useEffect(() => setSection(initial), [initial]);
   const pick = (k: Section) => {
@@ -181,9 +177,9 @@ export function SettingsDialog({
                      rounded-xl border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in
                      max-[44rem]:grid-cols-1 max-[44rem]:grid-rows-[auto_minmax(0,1fr)]"
         >
-          <Dialog.Title className="sr-only">{t(`settings.nav.${here}`)}</Dialog.Title>
+          <Dialog.Title className="sr-only">{NAV.find((n) => n.key === here)!.zh}</Dialog.Title>
           <Dialog.Close
-            aria-label={t("settings.dialogClose")}
+            aria-label="关掉"
             className="absolute top-3 right-3 grid size-6.5 cursor-pointer place-items-center rounded-md
                        text-ink-3 transition-colors hover:bg-sunk hover:text-ink"
           >
@@ -388,7 +384,6 @@ function SettingsPanes({
   onOpenChange: (open: boolean) => void;
   onRemoved: () => void;
 }) {
-  const { t } = useTranslation();
   const projectPane = (projectSection: ProjectSection) =>
     proj && projectId !== null ? (
       <ProjectPane
@@ -405,7 +400,7 @@ function SettingsPanes({
         }}
       />
     ) : (
-      <Meta className="block py-2">{t("settings.loading")}</Meta>
+      <Meta className="block py-2">读取中…</Meta>
     );
 
   const panes: Record<Section, React.ReactNode> = {
@@ -505,40 +500,30 @@ export function SandboxServerSettings({
 }
 
 function Preferences() {
-  const { t } = useTranslation();
   return (
     <>
-      <Head title={t("settings.prefs.title")} note={t("settings.prefs.note")} />
+      <Head title="偏好" note="只在这台机器上，不跟着项目走" />
       {/* Two subjects in one pane, so each says which it is. A `<fieldset>` with a
           `<legend>` rather than a heading over a div: the grouping is the
           accessible fact, and a reader hears 通知 with the switch inside it rather
           than a bare 开. Notifications were their own nav item for one knob and a
           browser permission — both of which are exactly what this pane is. */}
       <FieldSet className="mb-6">
-        <FieldLegend>{t("settings.prefs.appearance")}</FieldLegend>
+        <FieldLegend>外观</FieldLegend>
         <FieldGroup>
           {/* A toggle group has nothing a `<label>` can point at, so the
               row names itself: `Field` is already `role="group"`, and
               this is the one attribute that gives that group a name. */}
           <Field aria-labelledby="pref-theme">
-            <FieldTitle id="pref-theme">{t("settings.prefs.theme")}</FieldTitle>
+            <FieldTitle id="pref-theme">主题</FieldTitle>
             <FieldContent>
               <ThemeChoice />
-            </FieldContent>
-          </Field>
-          {/* Client-only, machine-local, same as the theme above — distinct from
-              the `language` knob on 模型与预算, which is server-side and governs
-              what agents write, not what this interface's own chrome says. */}
-          <Field aria-labelledby="pref-locale">
-            <FieldTitle id="pref-locale">{t("prefs.uiLanguage")}</FieldTitle>
-            <FieldContent>
-              <LocaleChoice />
             </FieldContent>
           </Field>
         </FieldGroup>
       </FieldSet>
       <FieldSet>
-        <FieldLegend>{t("settings.prefs.notifications")}</FieldLegend>
+        <FieldLegend>通知</FieldLegend>
         <Knobs section="notify" bare />
       </FieldSet>
     </>
@@ -577,7 +562,6 @@ function SettingsNavigation({
   project: z.infer<typeof ProjectConfigSchema> | null;
   onSection: (section: Section) => void;
 }) {
-  const { t } = useTranslation();
   // What is waiting on the boss, on the item that holds it. Same dot as the one on
   // the gear in the header, which is where they saw it before they clicked.
   const nags: Partial<Record<Section, boolean>> = {
@@ -591,8 +575,8 @@ function SettingsNavigation({
       <SettingsGroup
         items={items}
         project={false}
-        label={t("settings.scopeServer")}
-        note={t("settings.scopeServerNote")}
+        label="服务器"
+        note="所有项目共用"
         section={section}
         nags={nags}
         onSection={onSection}
@@ -603,7 +587,7 @@ function SettingsNavigation({
         <SettingsGroup
           items={items}
           project
-          label={t("settings.scopeProject")}
+          label="项目"
           {...(projectName !== undefined ? { note: projectName } : {})}
           {...(project ? { hint: project.repoPath } : {})}
           section={section}
@@ -664,8 +648,8 @@ function Group({
   children: React.ReactNode;
 }) {
   // A project's origin is a place you can go, so it is a link rather than a
-  // hover string. The tooltip is the fallback for a row migration 037 could not
-  // convert — it still holds a path, and that is still where it points.
+  // hover string. The tooltip is the fallback for a row whose host path was
+  // never converted — it still holds one, and that is still where it points.
   const href = repoHref(hint);
   const line = <Meta className="mb-1.5 block truncate px-2">{note}</Meta>;
   return (
@@ -679,7 +663,7 @@ function Group({
           href={href}
           target="_blank"
           rel="noreferrer"
-          className="mb-1.5 block truncate px-2 text-[0.6875rem] text-ink-3 hover:text-accent hover:underline"
+          className="mb-1.5 block truncate px-2 text-meta text-ink-3 hover:text-accent hover:underline"
         >
           {hint}
         </a>
@@ -697,12 +681,11 @@ function Item({
   nag,
   go,
 }: {
-  n: { key: Section; icon: typeof KeyRound };
+  n: { key: Section; zh: string; icon: typeof KeyRound };
   on: boolean;
   nag: boolean;
   go: () => void;
 }) {
-  const { t } = useTranslation();
   const Icon = n.icon;
   return (
     <button
@@ -710,7 +693,7 @@ function Item({
       onClick={go}
       aria-current={on}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[0.8125rem]",
+        "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-body",
         "transition-colors",
         // Weight as well as fill: hover is also a tint, and two states that differ
         // only by opacity are two states nobody can tell apart.
@@ -718,9 +701,9 @@ function Item({
       )}
     >
       <Icon size={14} strokeWidth={1.75} className="shrink-0" />
-      <span className="truncate">{t(`settings.nav.${n.key}`)}</span>
+      <span className="truncate">{n.zh}</span>
       <span className="grow" />
-      {nag && <i className="size-1.5 shrink-0 rounded-full bg-accent" aria-label={t("settings.nagLabel")} />}
+      {nag && <i className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="有事等你" />}
     </button>
   );
 }

@@ -1,6 +1,4 @@
 import { useTransition } from "react";
-import { useTranslation } from "react-i18next";
-import i18n from "../../i18n";
 import { Badge } from "../../ui/badge";
 import { H2, Head, Meta } from "../../ui/bits";
 import { Button, LinkButton } from "../../ui/button";
@@ -39,12 +37,11 @@ export type GhStatus = z.infer<typeof GhStatusSchema>;
  * because those two facts are useless apart.
  */
 export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; onRefresh: () => void }) {
-  const { t } = useTranslation();
   return (
     <>
       {/* 真令牌不进沙盒 is already the note on 模型账号, and a sentence repeated on
           two panes stops being read on either. */}
-      <Head title="GitHub" note={t("settings.github.note")} />
+      <Head title="GitHub" note="代码从这儿来" />
       <Connection status={s} onRefresh={onRefresh} />
       <Installations status={s} />
       {/* Under the connection because both answers come from it: the author is
@@ -55,7 +52,6 @@ export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; 
 }
 
 function Connection({ status, onRefresh }: { status: GhStatus | null; onRefresh: () => void }) {
-  const { t } = useTranslation();
   // One pending state for both directions, as before: connecting and
   // disconnecting are the same button row, and neither may be pressed while the
   // other is in flight. React 19 keeps `busy` true for the whole async function,
@@ -86,7 +82,7 @@ function Connection({ status, onRefresh }: { status: GhStatus | null; onRefresh:
       </div>
       {/* What the pane's own title and note already say — 克隆私有仓库、推分支、
           开 PR — is cut. What is left is the part that is not obvious. */}
-      <Meta className="block">{t("settings.github.oneConnection")}</Meta>
+      <Meta className="block">一个连接管所有项目</Meta>
       <DeviceAuthorization status={status} />
       <ConnectionError status={status} />
     </section>
@@ -94,32 +90,26 @@ function Connection({ status, onRefresh }: { status: GhStatus | null; onRefresh:
 }
 
 function ConnectionStatus({ status }: { status: GhStatus | null }) {
-  const { t } = useTranslation();
-  if (!status) return <Meta>{t("settings.loading")}</Meta>;
-  if (!status.connected)
-    return <span className="text-[0.8125rem] font-medium text-accent">{t("settings.github.notConnected")}</span>;
+  if (!status) return <Meta>读取中…</Meta>;
+  if (!status.connected) return <span className="text-body font-medium text-accent">没连</span>;
   return <ConnectedStatus status={status} />;
 }
 
 function ConnectedStatus({ status }: { status: GhStatus }) {
-  const { t } = useTranslation();
   if (status.stale) {
-    return <span className="text-[0.8125rem] font-medium text-accent">{t("settings.github.staleToken")}</span>;
+    return <span className="text-body font-medium text-accent">连过，但 GitHub 现在不认这个令牌了</span>;
   }
   if (status.installed === false) {
     // Authorized and installed are different acts, and only the second one
     // can reach a repository. Saying 已连 here would be a green tick over a
     // repo list that can never fill.
     return (
-      <span className="text-[0.8125rem] font-medium text-accent">
-        {accountLabel(status.account, t("settings.github.authorizedFallback"))}
-        {t("settings.github.appNotInstalledSuffix")}
+      <span className="text-body font-medium text-accent">
+        {accountLabel(status.account, "授权了")}，但 App 还没装到任何账号上
       </span>
     );
   }
-  return (
-    <span className="text-[0.8125rem]">{accountLabel(status.account, t("settings.github.connectedFallback"))}</span>
-  );
+  return <span className="text-body">{accountLabel(status.account, "已连")}</span>;
 }
 
 function accountLabel(account: string | null, fallback: string) {
@@ -135,19 +125,18 @@ function DisconnectButton({
   busy: boolean;
   onDisconnect: () => void;
 }) {
-  const { t } = useTranslation();
   if (!status?.connected) return null;
   return (
     <Button size="sm" variant="quiet" disabled={busy} onClick={onDisconnect}>
-      {t("settings.github.disconnect")}
+      断开
     </Button>
   );
 }
 
 function connectLabel(status: GhStatus, busy: boolean) {
-  if (status.pending) return i18n.t("settings.github.waitingApprove");
-  if (busy) return i18n.t("settings.github.fetchingCode");
-  return status.stale ? i18n.t("settings.github.reconnect") : i18n.t("settings.github.connect");
+  if (status.pending) return "等你在 GitHub 上批准…";
+  if (busy) return "去拿登录码…";
+  return status.stale ? "重新连接" : "连接 GitHub";
 }
 
 function canConnect(status: GhStatus) {
@@ -171,16 +160,9 @@ function ConnectButton({ status, busy, onConnect }: { status: GhStatus | null; b
 }
 
 function DeviceAuthorization({ status }: { status: GhStatus | null }) {
-  const { t } = useTranslation();
   if (!status) return null;
   if (!status.pending) return null;
-  return (
-    <DeviceCode
-      code={status.pending.userCode}
-      url={status.pending.verificationUri}
-      go={t("settings.github.deviceGo")}
-    />
-  );
+  return <DeviceCode code={status.pending.userCode} url={status.pending.verificationUri} go="去 GitHub 输入" />;
 }
 
 function ConnectionError({ status }: { status: GhStatus | null }) {
@@ -188,7 +170,7 @@ function ConnectionError({ status }: { status: GhStatus | null }) {
   if (status.pending) return null;
   // Why it did not land, beside the button that tries again.
   if (!status.error) return null;
-  return <p className="mt-1.5 text-[0.75rem] text-accent">{status.error}</p>;
+  return <p className="mt-1.5 text-secondary text-accent">{status.error}</p>;
 }
 
 function Installations({ status }: { status: GhStatus | null }) {
@@ -198,7 +180,6 @@ function Installations({ status }: { status: GhStatus | null }) {
 }
 
 function InstallationSection({ status }: { status: GhStatus }) {
-  const { t } = useTranslation();
   return (
     // Which accounts this login can actually work in, and how much each one
     // can see. The boss asked "how do I install to several orgs" because the
@@ -209,7 +190,7 @@ function InstallationSection({ status }: { status: GhStatus }) {
     // its rows were drawn with the same mark.
     <section className="mt-6">
       <div className="flex items-baseline gap-2">
-        <H2>{t("settings.github.installedTitle")}</H2>
+        <H2>装在哪些账号上</H2>
         <span className="grow" />
         <InstallLink url={status.installUrl} />
       </div>
@@ -219,17 +200,16 @@ function InstallationSection({ status }: { status: GhStatus }) {
 }
 
 function InstallLink({ url }: { url: string }) {
-  const { t } = useTranslation();
   if (url) {
     return (
-      <LinkButton href={url} className="px-2 py-0.5 text-[0.75rem]">
-        {t("settings.github.installElsewhere")}
+      <LinkButton href={url} className="px-2 py-0.5 text-secondary">
+        装到别的账号
       </LinkButton>
     );
   }
   return (
-    <Tip label={t("settings.github.installLinkTip")}>
-      <Meta>{t("settings.github.installHint")}</Meta>
+    <Tip label="config/default.yaml 里填上 github.appSlug，这里就是个直达链接。">
+      <Meta>去 GitHub → 这个 App → Install App</Meta>
     </Tip>
   );
 }
@@ -237,9 +217,10 @@ function InstallLink({ url }: { url: string }) {
 type Installation = GhStatus["accounts"][number];
 
 function AccountList({ accounts }: { accounts: Installation[] }) {
-  const { t } = useTranslation();
   if (!accounts.length) {
-    return <p className="text-[0.75rem] text-accent">{t("settings.github.noAccounts")}</p>;
+    return (
+      <p className="text-secondary text-accent">一个也没有，这个连接看不见任何仓库。装的时候选所有仓库，或者挑几个。</p>
+    );
   }
   return (
     // Between the rows only. The enclosing pair made this the one list in the
@@ -254,20 +235,15 @@ function AccountList({ accounts }: { accounts: Installation[] }) {
 }
 
 function AccountRow({ account }: { account: Installation }) {
-  const { t } = useTranslation();
   return (
     <div className="flex items-baseline gap-2 py-1.5">
-      <span className="text-[0.8125rem]">{account.account}</span>
-      <Badge>{account.kind === "Organization" ? t("settings.github.org") : t("settings.github.personal")}</Badge>
+      <span className="text-body">{account.account}</span>
+      <Badge>{account.kind === "Organization" ? "组织" : "个人"}</Badge>
       <span className="grow" />
       {/* Tabular figures: `86` and `5` share a right edge either way,
           but proportional digits make the two counts look like two
           different scales. */}
-      <Meta className="tabular-nums">
-        {account.repos === null
-          ? t("settings.github.reposUnknown")
-          : t("settings.github.reposCount", { count: account.repos })}
-      </Meta>
+      <Meta className="tabular-nums">{account.repos === null ? "数不出来" : `${account.repos} 个仓库`}</Meta>
     </div>
   );
 }
@@ -286,7 +262,6 @@ function CommitSettings({ status, onSaved }: { status: GhStatus | null; onSaved:
  * finished branch, and a diff an agent wrote should say so in the record.
  */
 function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
-  const { t } = useTranslation();
   const [busy, start] = useTransition();
   const set = (next: { signoff?: boolean; coauthor?: boolean }) =>
     start(async () => {
@@ -296,7 +271,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
   const bot = s.identity.name === s.bot.name;
   return (
     <section className="mt-6">
-      <H2>{t("settings.github.commitsTitle")}</H2>
+      <H2>提交</H2>
       <FieldGroup>
         {/* The author, stated rather than configured. It was a name in a yaml file
             that routed nowhere, so a `Signed-off-by` carrying it certified nothing
@@ -307,10 +282,10 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
             and the name stops being 11px mono Chinese prose with one word tinted
             darker. `role="group"` is already on `Field`; this names it. */}
         <Field aria-labelledby="t-author" className="items-center">
-          <FieldTitle id="t-author">{t("settings.github.authorLabel")}</FieldTitle>
+          <FieldTitle id="t-author">作者</FieldTitle>
           <FieldContent>
-            <span className="font-mono text-[0.75rem] text-ink-2">{s.identity.name}</span>
-            <Meta>{bot ? t("settings.github.authorBotNote") : t("settings.github.authorGhNote")}</Meta>
+            <span className="font-mono text-secondary text-ink-2">{s.identity.name}</span>
+            <Meta>{bot ? "还没连 GitHub，先用我们的机器人账号" : "取自你连的 GitHub 账号"}</Meta>
           </FieldContent>
         </Field>
         <Field className="items-center">
@@ -322,7 +297,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
               disabled={busy}
               onCheckedChange={(v) => set({ signoff: v })}
             />
-            <Meta>{t("settings.github.signoffNote")}</Meta>
+            <Meta>开了 DCO 的仓库不收没有这行的提交</Meta>
           </FieldContent>
         </Field>
         <Field className="items-center">
@@ -334,7 +309,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
               disabled={busy}
               onCheckedChange={(v) => set({ coauthor: v })}
             />
-            <Meta>{t("settings.github.coauthorNote", { bot: s.bot.name })}</Meta>
+            <Meta>把 {s.bot.name} 写进 Co-Authored-By</Meta>
           </FieldContent>
         </Field>
       </FieldGroup>

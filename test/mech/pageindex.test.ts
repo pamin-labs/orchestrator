@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import { loadConfig } from "../../src/platform/config/load.ts";
 import {
   chargeIndex,
   loadTree,
@@ -17,10 +18,16 @@ import {
   type Ask,
 } from "../../src/mech/knowledge/pageindex.ts";
 import { costReport } from "../../src/mech/ops/cost.ts";
+import { count, eq } from "drizzle-orm";
+import { agent, event, grp, note } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { z } from "zod";
 import { tempDir } from "../support/temp.ts";
+
+/** The shipped numbers, not a literal beside them: a walk tested at a depth the
+ *  product does not use proves nothing about the product's model bill. */
+const WALK = loadConfig().pageindex;
 
 const UsageMeta = z.object({ runtime: z.string() });
 
@@ -94,7 +101,7 @@ test("retrieval is the model walking the tree, not a similarity score", async ()
     const hit = lines.find((l) => l.includes("notification centre")) ?? lines[0]!;
     return hit.split(" — ")[0]!;
   };
-  const hits = await search(tree, "where does the desktop popup come from", ask);
+  const hits = await search(tree, "where does the desktop popup come from", ask, WALK);
   expect(hits).toEqual(["src/mech/notify.ts"]);
   expect(seen[0]).toContain("Which of these are worth opening");
   expect(render(tree, hits)).toContain("notification centre");
@@ -103,26 +110,27 @@ test("retrieval is the model walking the tree, not a similarity score", async ()
 test("a navigator that finds nothing relevant says so instead of guessing", async () => {
   const dir = repo();
   const { tree } = await summarise(skeleton(FILES), dirRead(dir), async () => "s");
-  expect(await search(tree, "how do I file my taxes", async () => "NONE")).toEqual([]);
+  expect(await search(tree, "how do I file my taxes", async () => "NONE", WALK)).toEqual([]);
 });
 
 test("the tree survives a round trip through the note it lives in", async () => {
-  const db = openMemory();
-  fx.project.insert(db, { name: "p" });
+  const db = await openMemory();
+  await fx.on(db).project.create({ name: "p" });
   const { tree } = await summarise(skeleton(FILES), dirRead(repo()), async () => "s");
-  saveTree(db, 1, tree);
-  saveTree(db, 1, tree);
-  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'pageindex'").get()!.c).toBe(1);
-  expect(loadTree(db, 1)!["src/mech/gate.ts"]!.summary).toBe("s");
+  await saveTree(db, 1, tree);
+  await saveTree(db, 1, tree);
+  expect((await db.select({ c: count() }).from(note).where(eq(note.kind, "pageindex")))[0]!.c).toBe(1);
+  expect((await loadTree(db, 1))!["src/mech/gate.ts"]!.summary).toBe("s");
 });
 
 test("journals and retros are leaves in the same tree as the code", async () => {
-  const db = openMemory();
-  fx.project.insert(db, { name: "p" });
-  const g = fx.runningGrp.insert(db, { project_id: 1, name: "g1" });
-  fx.note.insert(db, { grp_id: g.id, kind: "retro", body: "the flicker was the key, not the diffing" });
+  const db = await openMemory();
+  const f = fx.on(db);
+  await f.project.create({ name: "p" });
+  const g = await f.runningGrp.create({ project_id: 1, name: "g1" });
+  await f.note.create({ grp_id: g.id, kind: "retro", body: "the flicker was the key, not the diffing" });
 
-  const notes = noteLeaves(db, 1);
+  const notes = await noteLeaves(db, 1);
   expect(notes.ids).toEqual(["notes/grp-1/retro/1"]);
 
   const { tree } = await summarise(skeleton(notes.ids), notes.read, async (p) =>
@@ -132,10 +140,15 @@ test("journals and retros are leaves in the same tree as the code", async () => 
   // "what is this file for" of one produces a summary of the format.
   expect(tree["notes/grp-1/retro/1"]!.summary).toBe("why the timeline flickered");
 
-  const hits = await search(tree, "did anyone work out the flicker", async (p) => {
-    const lines = (p.split("NONE if none of them are relevant.")[1] ?? "").trim().split("\n");
-    return lines[0]!.split(" — ")[0]!;
-  });
+  const hits = await search(
+    tree,
+    "did anyone work out the flicker",
+    async (p) => {
+      const lines = (p.split("NONE if none of them are relevant.")[1] ?? "").trim().split("\n");
+      return lines[0]!.split(" — ")[0]!;
+    },
+    WALK,
+  );
   expect(hits).toEqual(["notes/grp-1/retro/1"]);
 });
 
@@ -144,38 +157,38 @@ test("what the index spends shows up in the cost report", async () => {
   // is not a turn, and `costReport` reads turns. It is charged to a standing
   // `indexer` row rather than to the Librarian, whose turns carry a full cached
   // prefix and a session — mixing the two makes "librarian took 4M" unusable.
-  const db = openMemory();
-  fx.project.insert(db, { name: "p" });
-  const ctx = testContext({ db });
+  const db = await openMemory();
+  await fx.on(db).project.create({ name: "p" });
+  const ctx = await testContext({ db });
   const spec = { runtime: "codex", model: "gpt-5.6-luna" };
 
-  chargeIndex(ctx, 1, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1, thinking: 0 });
-  chargeIndex(ctx, 1, spec, { input: 10, output: 2, cacheRead: 0, cacheCreate: 0, thinking: 0 });
+  await chargeIndex(ctx, 1, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1, thinking: 0 });
+  await chargeIndex(ctx, 1, spec, { input: 10, output: 2, cacheRead: 0, cacheCreate: 0, thinking: 0 });
 
-  const report = costReport(db);
+  const report = await costReport(db);
   expect(report.byRole.find((r) => r.label === "indexer")?.tokens).toBe(138);
   expect(report.byRuntime.find((r) => r.label === "codex")?.tokens).toBe(138);
   // One row per project, not one per call.
-  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM agent WHERE role = 'indexer'").get()!.n).toBe(1);
+  expect((await db.select({ n: count() }).from(agent).where(eq(agent.role, "indexer")))[0]!.n).toBe(1);
   // And the hourly burn chart reads the events, which need the same meta shape a
   // turn emits or the provider split guesses from the model name.
-  const ev = db.query<{ meta_json: string }, []>("SELECT meta_json FROM event WHERE author = 'indexer' LIMIT 1").get()!;
-  expect(UsageMeta.parse(JSON.parse(ev.meta_json)).runtime).toBe("codex");
+  const [ev] = await db.select({ meta_json: event.meta_json }).from(event).where(eq(event.author, "indexer")).limit(1);
+  expect(UsageMeta.parse(ev!.meta_json).runtime).toBe("codex");
 });
 
-test("a call that reported no usage is not charged", () => {
+test("a call that reported no usage is not charged", async () => {
   // Missing numbers must never fail the index, and a zero row would be a lie in
   // the report rather than an absence.
-  const db = openMemory();
-  fx.project.insert(db, { name: "p" });
-  const ctx = testContext({ db });
-  chargeIndex(
+  const db = await openMemory();
+  await fx.on(db).project.create({ name: "p" });
+  const ctx = await testContext({ db });
+  await chargeIndex(
     ctx,
     1,
     { runtime: "codex", model: "m" },
     { input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 },
   );
-  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM agent").get()!.n).toBe(0);
+  expect((await db.select({ n: count() }).from(agent))[0]!.n).toBe(0);
 });
 
 test("Codex output keeps the last valid message and usage in one noisy stream", () => {
@@ -275,4 +288,60 @@ test("a summary is asked for in English, whatever the file is written in", async
 
   expect(asked.length).toBeGreaterThan(0);
   for (const prompt of asked) expect(prompt).toContain("in English");
+});
+
+/**
+ * Depth was a literal, and depth is money.
+ *
+ * It decides how many **serial** model calls one `orch ctx query` makes — two per
+ * question on the measured corpus, each with its own 60s timeout — which makes it
+ * the most frequent model spend in the system. It sat as `opts.depth ?? 3` inside
+ * the walk, where the boss could not see it and no setting could reach it.
+ */
+test("how far and how wide the walk goes is config, not a literal inside it", async () => {
+  const { tree } = await summarise(skeleton(FILES), dirRead(repo()), async () => "s");
+  const asks: string[] = [];
+  const ask: Ask = async (p) => {
+    asks.push(p);
+    const lines = (p.split("NONE if none of them are relevant.")[1] ?? "").trim().split("\n");
+    return lines[0]!.split(" — ")[0]!;
+  };
+
+  // Three levels between the root and a file, so depth 3 is three serial calls.
+  await search(tree, "where is the notifier", ask, { enabled: true, depth: 3, width: 4 });
+  expect(asks).toHaveLength(3);
+
+  asks.length = 0;
+  await search(tree, "where is the notifier", ask, { enabled: true, depth: 1, width: 2 });
+  expect(asks).toHaveLength(1);
+  expect(asks[0]).toContain("at most 2 ids");
+
+  // Moving the numbers was not the point; being able to is. These are the values
+  // that shipped before the move, and this says so out of `config/default.yaml`.
+  expect(WALK).toEqual({ enabled: true, depth: 3, width: 4 });
+});
+
+test("a requirement's own retrieval counts against its budget", async () => {
+  // It did not. Index spend landed on the `indexer` agent row alone, so a group
+  // could ask `orch ctx query` on every turn and its `spent_tokens` — the number
+  // `sliceBudgetTokens` stops a runaway with — never moved. The most frequent
+  // model call in the system was the one the budget could not see.
+  const db = await openMemory();
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  const g = await f.runningGrp.create({ project_id: p.id, name: "g1" });
+  const ctx = await testContext({ db });
+  const spec = { runtime: "codex", model: "gpt-5.6-luna" };
+  const spent = async () => (await db.select({ t: grp.spent_tokens }).from(grp))[0]?.t;
+
+  await chargeIndex(ctx, p.id, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1, thinking: 0 }, g.id);
+  expect(await spent()).toBe(126);
+
+  // The rebuild belongs to no requirement: it is a project-scoped pass on a timer,
+  // and charging it to whichever group happened to be open would be a wrong number
+  // rather than a missing one.
+  await chargeIndex(ctx, p.id, spec, { input: 10, output: 2, cacheRead: 0, cacheCreate: 0, thinking: 0 });
+  expect(await spent()).toBe(126);
+  // Both still reach the project-level total either way.
+  expect((await costReport(db)).byRole.find((r) => r.label === "indexer")?.tokens).toBe(138);
 });

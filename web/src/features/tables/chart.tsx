@@ -1,5 +1,4 @@
 import { Area, AreaChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useTranslation } from "react-i18next";
 import { K } from "../../shared/format";
 import { AXIS, CHART_CARD, ChartTooltip } from "../../ui/chart";
 
@@ -20,11 +19,8 @@ import { AXIS, CHART_CARD, ChartTooltip } from "../../ui/chart";
 
 /** Hourly burn, stacked by which subscription paid for it. */
 export function BurnChart({ data }: { data: { hour: string; claude: number; codex: number }[] }) {
-  const { t } = useTranslation();
   if (data.length < 2) {
-    return (
-      <div className="py-4 text-[0.75rem] text-ink-3">{t("tables.chart.tooFewHours", "还不够两个小时的数据。")}</div>
-    );
+    return <div className="py-4 text-secondary text-ink-3">还不够两个小时的数据。</div>;
   }
   return (
     <div className="h-[8.5rem]">
@@ -122,7 +118,7 @@ export function SplitDonut({ rows }: { rows: { label: string; tokens: number }[]
       </div>
       <div className="min-w-0 grow">
         {list.map((r, i) => (
-          <div key={r.label} className="flex items-baseline gap-2 py-0.5 text-[0.75rem]">
+          <div key={r.label} className="flex items-baseline gap-2 py-0.5 text-secondary">
             <i className="size-2 shrink-0 rounded-[2px]" style={{ background: RAMP[i % RAMP.length] }} />
             <span className="min-w-0 truncate text-ink-2">{r.label}</span>
             <span className="grow" />

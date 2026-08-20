@@ -60,7 +60,7 @@ test("progress exposes live work, slice evidence and the concurrency limit", () 
     name: "发布链路",
     branch: "orch/release",
     status: "RUNNING",
-    owns_json: "[]",
+    owns_json: [],
     budget_tokens: 100,
     spent_tokens: 20,
     pr_number: null,

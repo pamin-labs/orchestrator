@@ -38,6 +38,16 @@ export const JOB_STATES = ["pending", "running", "done", "failed", "cancelled"] 
  */
 export const LEASE_STATES = ["queued", "running", "done", "failed"] as const;
 
+/**
+ * A lease that has not finished, so it is still the one an agent is parked on.
+ *
+ * `finishLease` guards its UPDATE on these two, which is what makes it the single
+ * resolver: a second finish for the same lease changes no rows and resolves no
+ * waiter twice. It was written into the SQL, where nothing checked it against
+ * this list.
+ */
+export const ACTIVE_LEASE_STATES = ["queued", "running"] as const satisfies readonly LeaseState[];
+
 /** `pm | architect | cos | boss` are in-flight; the last two are terminal. */
 export const ESCALATION_STATES = ["pm", "architect", "cos", "boss", "answered", "revoked"] as const;
 
@@ -85,17 +95,6 @@ export type JobState = (typeof JOB_STATES)[number];
 export type LeaseState = (typeof LEASE_STATES)[number];
 export type EscalationState = (typeof ESCALATION_STATES)[number];
 
-export type StateSubset =
-  | readonly GrpState[]
-  | readonly UtilState[]
-  | readonly ServerHealthState[]
-  | readonly ProjectState[]
-  | readonly SliceState[]
-  | readonly TaskState[]
-  | readonly JobState[]
-  | readonly LeaseState[]
-  | readonly EscalationState[];
-
 /** Jobs that still occupy a queue or executor slot. */
 export const ACTIVE_JOB_STATES = ["pending", "running"] as const satisfies readonly JobState[];
 
@@ -131,6 +130,3 @@ const terminalEscalationStates = new Set<EscalationState>(ESCALATION_TERMINAL_ST
 export const isDispatchableGrpState = (state: GrpState): boolean => dispatchableGrpStates.has(state);
 export const isTerminalEscalationState = (state: EscalationState): state is EscalationTerminalState =>
   terminalEscalationStates.has(state);
-
-/** Encode one typed state-machine subset as a SQLite `json_each(?)` binding. */
-export const stateParam = (states: StateSubset): string => JSON.stringify(states);

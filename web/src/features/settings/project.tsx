@@ -1,5 +1,4 @@
 import { useTransition } from "react";
-import { useTranslation } from "react-i18next";
 import { Head } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
@@ -67,13 +66,14 @@ function Remove({
   groups: number;
   onRemoved: () => void;
 }) {
-  const { t } = useTranslation();
   const [busy, startTransition] = useTransition();
   const go = async () => {
     const yes = await ask({
-      title: t("settings.project.removeConfirmTitle", { name }),
-      body: t("settings.project.removeConfirmBody", { repoPath, groups }),
-      yes: t("settings.project.removeConfirmYes"),
+      title: `移除 ${name}？`,
+      body:
+        `${repoPath} 的 ${groups} 个需求、它们的容器、卡片、记录和附件都会删掉，删了找不回来。\n\n` +
+        `GitHub 上什么都不动：分支还在，PR 还在，代码一行不少。移除的只是这台机器上的这份工作。`,
+      yes: "移除",
       danger: true,
     });
     if (!yes) return;
@@ -88,7 +88,7 @@ function Remove({
 
   return (
     <>
-      <Head title={t("settings.project.removeTitle")} />
+      <Head title="移除项目" />
       {/* Two columns, one measure: what goes, what stays. It was one paragraph of
           running prose across the full panel, and a destructive decision read as
           an essay puts all the weight on the button being red. The confirm still
@@ -96,23 +96,24 @@ function Remove({
       {/* Same left edge as every field row in the dialog: the boss arrives here
           from a pane of labelled values, and a column that moves between panes
           is the one thing a fixed grid is for. */}
-      <dl className="grid max-w-[34rem] grid-cols-[var(--label)_minmax(0,1fr)] gap-x-4 gap-y-3 pt-1 text-[0.8125rem]">
-        <dt className="font-semibold text-bad">{t("settings.project.deleteLabel")}</dt>
+      <dl className="grid max-w-[34rem] grid-cols-[var(--label)_minmax(0,1fr)] gap-x-4 gap-y-3 pt-1 text-body">
+        <dt className="font-semibold text-bad">删掉</dt>
         <dd className="min-w-0">
-          <span className="font-mono text-[0.75rem]">{repoPath}</span>
-          {t("settings.project.deleteCount", { count: groups })}
-          <div className="mt-0.5 text-[0.75rem] text-ink-3">{t("settings.project.deleteDetailNote")}</div>
+          <span className="font-mono text-secondary">{repoPath}</span> 的 {groups} 个需求
+          <div className="mt-0.5 text-secondary text-ink-3">
+            在跑的 turn 会停，容器、切片、卡片、提问、附件一起删，找不回来
+          </div>
         </dd>
-        <dt className="font-semibold text-ok">{t("settings.project.keepLabel")}</dt>
+        <dt className="font-semibold text-ok">留着</dt>
         <dd className="min-w-0 text-ink-2">
-          {t("settings.project.keepDetail")}
+          GitHub 上的分支、PR、代码
           {/* 不做了 archives and keeps every event. This does not, and the two
               buttons are one dialog apart. */}
-          <div className="mt-0.5 text-[0.75rem] text-ink-3">{t("settings.project.keepDetailNote")}</div>
+          <div className="mt-0.5 text-secondary text-ink-3">想留下记录就用「不做了」封存，那个不删</div>
         </dd>
       </dl>
       <Button variant="danger" className="mt-5" disabled={busy} onClick={go}>
-        {busy ? t("settings.project.removing") : t("settings.project.removeButton")}
+        {busy ? "移除中…" : "移除这个项目"}
       </Button>
     </>
   );

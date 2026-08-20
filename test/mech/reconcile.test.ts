@@ -130,3 +130,15 @@ test("the schema rejects empty and ambiguous completion accounts", () => {
     "both accounts at once": TaskClaimSchema.safeParse({ already_done: "x", files: ["a.ts"], summary: "x" }).success,
   }).toEqual({ "a blank account": false, "files with no summary": false, "both accounts at once": false });
 });
+
+test("a DRAFT card's prose yields repo paths, and only repo paths", () => {
+  // These paths are checked against the base tree and the misses are shown to the
+  // boss beside the card, as the one detectable sign of a decomposition pointed
+  // the wrong way. An import specifier or a bare word matched as a path puts a
+  // "this file does not exist" warning on every card until the boss stops
+  // reading them; matching nothing at all makes the check silently blank.
+  const card = `Move the check out of \`src/auth/mw.ts\` into src/auth/tokens.ts, then
+    re-export it from src/auth/mw.ts. Adds "web/src/panel/Card.tsx", imports from
+    drizzle-orm/sqlite-core, needs zod, and bumps the version to 1.2.3.`;
+  expect(extractClaimedFiles([card])).toEqual(["src/auth/mw.ts", "src/auth/tokens.ts", "web/src/panel/Card.tsx"]);
+});

@@ -1,7 +1,6 @@
 import * as P from "@radix-ui/react-popover";
 import * as T from "@radix-ui/react-tooltip";
 import { CircleHelp } from "lucide-react";
-import { useTranslation } from "react-i18next";
 
 /**
  * `title=` is the browser's tooltip: a second of delay, no styling, no keyboard
@@ -23,7 +22,7 @@ export function Tip({ label, children }: { label: React.ReactNode; children: Rea
         <T.Content
           sideOffset={5}
           className="fade-in z-50 max-w-[22rem] rounded-md border border-rule bg-paper px-2 py-1
-                     text-[0.75rem] text-ink shadow-[0_6px_20px_var(--shade)]"
+                     text-secondary text-ink shadow-[0_6px_20px_var(--shade)]"
         >
           {label}
           <T.Arrow className="fill-[var(--color-rule)]" />
@@ -49,11 +48,10 @@ export function Tip({ label, children }: { label: React.ReactNode; children: Rea
  * decision with a threshold: a phrase hovers, a paragraph is clicked.
  */
 export function Help({ children }: { children: React.ReactNode }) {
-  const { t } = useTranslation();
   return (
     <P.Root>
       <P.Trigger
-        aria-label={t("ui.tooltip.whyThisValue", "为什么是这个值")}
+        aria-label="为什么是这个值"
         className="cursor-pointer rounded-full text-ink-3 transition-colors duration-150
                    hover:text-ink data-[state=open]:text-ink"
       >
@@ -70,7 +68,7 @@ export function Help({ children }: { children: React.ReactNode }) {
           sideOffset={6}
           collisionPadding={12}
           className="fade-in z-50 w-[24rem] max-w-[min(24rem,90vw)] rounded-lg border border-rule bg-paper
-                     px-3 py-2.5 text-[0.75rem] leading-relaxed text-ink-2 shadow-[0_8px_28px_var(--shade)]"
+                     px-3 py-2.5 text-secondary leading-relaxed text-ink-2 shadow-[0_8px_28px_var(--shade)]"
         >
           {children}
           <P.Arrow className="fill-[var(--color-rule)]" />

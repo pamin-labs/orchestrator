@@ -5,6 +5,8 @@ import { reopenTasks, startNextSlice } from "../flow/review.ts";
 import { clearEscalation } from "../git/github.ts";
 import { parseRepo } from "../../contracts/repository.ts";
 import { repoHeld } from "../git/repository.ts";
+import { and, eq, exists, inArray, isNotNull, isNull, ne, notExists, notInArray, type SQL } from "drizzle-orm";
+import { agent, escalation, grp, job, project, slice, task } from "../../platform/persistence/schema.ts";
 import {
   ESCALATION_STATES,
   GRP_STATES,
@@ -25,7 +27,6 @@ import {
   type TaskState,
   type UtilState,
   ACTIVE_JOB_STATES,
-  stateParam,
 } from "../../contracts/states.ts";
 
 /**
@@ -58,11 +59,32 @@ interface Invariant<S extends string> {
    * question this table exists to force.
    */
   driver: string | null;
-  /** Idempotent repair, run every tick. Absent when `driver` needs no help. */
-  repair?: (ctx: Ctx) => void;
+  /** Idempotent repair, awaited every tick. Absent when `driver` needs no help. */
+  repair?: (ctx: Ctx) => Promise<void>;
 }
 
 const rows = <S extends string>(...r: Invariant<S>[]) => r;
+
+/**
+ * The two correlated subqueries these repairs keep asking for.
+ *
+ * Both name `grp.id` from the enclosing query, which is what makes them EXISTS
+ * tests rather than lists: "does this row have a pending slice", "is anything
+ * still queued for it". `ACTIVE_JOB_STATES` goes in as an `inArray` — the
+ * `json_each(?)` binding it needed under SQLite has no equivalent here and no
+ * purpose either.
+ */
+const sliceOf = (ctx: Ctx, ...extra: (SQL | undefined)[]) =>
+  ctx.db
+    .select({ id: slice.id })
+    .from(slice)
+    .where(and(eq(slice.grp_id, grp.id), ...extra));
+
+const activeJobOf = (ctx: Ctx, ...extra: (SQL | undefined)[]) =>
+  ctx.db
+    .select({ id: job.id })
+    .from(job)
+    .where(and(eq(job.grp_id, grp.id), inArray(job.state, [...ACTIVE_JOB_STATES]), ...extra));
 
 const GRP_INVARIANTS = rows<GrpState>(
   {
@@ -79,41 +101,50 @@ const GRP_INVARIANTS = rows<GrpState>(
     state: "RUNNING",
     must: "exactly one slice is in flight, or the branch is on its way to a PR",
     driver: "the slice pipeline; watchdog rule 8 for an empty queue",
-    repair: (ctx) => {
+    repair: async (ctx) => {
       // A slice left `pending` with nothing in flight. startNextSlice is only ever
       // called at the end of something else — a group starting, autoAdvance, an
       // acceptance — so when none of those fires again nobody starts it, and
       // RUNNING with an empty queue is indistinguishable from working.
-      for (const g of ctx.db
-        .query<{ id: number }, [string]>(
-          `SELECT g.id FROM grp g
-           WHERE g.status = 'RUNNING'
-             AND EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status = 'pending')
-             AND NOT EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status NOT IN ('pending','accepted'))
-             AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id
-                             AND state IN (SELECT value FROM json_each(?)))`,
-        )
-        .all(stateParam(ACTIVE_JOB_STATES))) {
-        startNextSlice(ctx, g.id);
+      for (const g of await ctx.db
+        .select({ id: grp.id })
+        .from(grp)
+        .where(
+          and(
+            eq(grp.status, "RUNNING"),
+            exists(sliceOf(ctx, eq(slice.status, "pending"))),
+            notExists(sliceOf(ctx, notInArray(slice.status, ["pending", "accepted"]))),
+            notExists(activeJobOf(ctx)),
+          ),
+        )) {
+        await startNextSlice(ctx, g.id);
       }
 
       // Every slice accepted and no PR. The branch review is enqueued from exactly
       // two places — the last acceptance, and writing a retro — and neither fires
       // again after the Auditor sends the branch back. Not while the boss is being
       // asked: pr_retries is spent by then and shipping would walk past them.
-      for (const g of ctx.db
-        .query<{ id: number }, [string]>(
-          `SELECT g.id FROM grp g
-           WHERE g.status = 'RUNNING' AND g.pr_number IS NULL
-             AND EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id)
-             AND NOT EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status != 'accepted')
-             AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id
-                             AND state IN (SELECT value FROM json_each(?)))
-             AND NOT EXISTS (SELECT 1 FROM escalation
-                             WHERE grp_id = g.id AND answer IS NULL AND chain_state = 'boss')`,
-        )
-        .all(stateParam(ACTIVE_JOB_STATES))) {
-        ctx.sched.enqueue("reconcile", { grp_id: g.id, priority: 5 });
+      for (const g of await ctx.db
+        .select({ id: grp.id })
+        .from(grp)
+        .where(
+          and(
+            eq(grp.status, "RUNNING"),
+            isNull(grp.pr_number),
+            exists(sliceOf(ctx)),
+            notExists(sliceOf(ctx, ne(slice.status, "accepted"))),
+            notExists(activeJobOf(ctx)),
+            notExists(
+              ctx.db
+                .select({ id: escalation.id })
+                .from(escalation)
+                .where(
+                  and(eq(escalation.grp_id, grp.id), isNull(escalation.answer), eq(escalation.chain_state, "boss")),
+                ),
+            ),
+          ),
+        )) {
+        await ctx.sched.enqueue("reconcile", { grp_id: g.id, priority: 5 });
       }
     },
   },
@@ -121,22 +152,29 @@ const GRP_INVARIANTS = rows<GrpState>(
     state: "PAUSING",
     must: "it becomes PAUSED as soon as nothing is in flight",
     driver: "settlePausing, from the watchdog tick rather than the turn's own exit path",
-    repair: (ctx) => void settlePausing(ctx),
+    repair: async (ctx) => {
+      await settlePausing(ctx);
+    },
   },
   {
     state: "PAUSED",
     must: "paused_at and pause_reason are set, or no timer and no resume is about this group",
     driver: "the boss answering, resume, or the park timer",
-    repair: (ctx) => {
+    repair: async (ctx) => {
       // Three callers write PAUSING without a timestamp; settle() stamps it now,
       // but a row that predates that fix would stay invisible forever. A missing
       // reason is the same failure one door over: `credentialChanged` resumes by
       // reason, so a row without one is a row nothing will ever start again.
-      ctx.db.run(
-        `UPDATE grp SET paused_at = coalesce(paused_at, unixepoch() * 1000),
-           pause_reason = coalesce(pause_reason, 'unknown')
-         WHERE status = 'PAUSED' AND (paused_at IS NULL OR pause_reason IS NULL)`,
-      );
+      // Two statements rather than one with `coalesce`: each fills only the column
+      // it names, which is what the coalesce was for.
+      await ctx.db
+        .update(grp)
+        .set({ paused_at: Date.now() })
+        .where(and(eq(grp.status, "PAUSED"), isNull(grp.paused_at)));
+      await ctx.db
+        .update(grp)
+        .set({ pause_reason: "unknown" })
+        .where(and(eq(grp.status, "PAUSED"), isNull(grp.pause_reason)));
     },
   },
   {
@@ -149,7 +187,7 @@ const GRP_INVARIANTS = rows<GrpState>(
     must: "it has a number, a place in the merge queue, and something reading GitHub",
     driver:
       "the Scribe filing `orch pr` publishes it; then pollPrs — merged winds it up, closed pauses it, reopened puts it back",
-    repair: (ctx) => {
+    repair: async (ctx) => {
       // Audited, queued, and no PR: the Scribe's turn died, or ended without
       // filing a message. Its own liveness is the scheduler's — a job that fails
       // is retried — so this only fires once nothing is left to run for the
@@ -160,25 +198,26 @@ const GRP_INVARIANTS = rows<GrpState>(
       // Auditor's turn is enqueued with a null `grp_id` so it does not show up in
       // the query below. A place in the merge queue is only handed out by a
       // passed audit.
-      for (const g of ctx.db
-        .query<{ id: number }, [string]>(
-          `SELECT id FROM grp g WHERE status = 'PR_OPEN' AND pr_number IS NULL AND merge_seq IS NOT NULL
-             AND NOT EXISTS (
-               SELECT 1 FROM job WHERE grp_id = g.id AND kind = 'agent_turn'
-                 AND state IN (SELECT value FROM json_each(?))
-             )`,
-        )
-        .all(stateParam(ACTIVE_JOB_STATES))) {
+      for (const g of await ctx.db
+        .select({ id: grp.id })
+        .from(grp)
+        .where(
+          and(
+            eq(grp.status, "PR_OPEN"),
+            isNull(grp.pr_number),
+            isNotNull(grp.merge_seq),
+            notExists(activeJobOf(ctx, eq(job.kind, "agent_turn"))),
+          ),
+        )) {
         ctx.publishBranch?.(g.id);
       }
       // waiting_merge reads merge_seq_at, so a null one is invisible to it: finished
       // work with no place in the order and nothing looking at it.
-      for (const g of ctx.db
-        .query<{ id: number }, []>(
-          "SELECT id FROM grp WHERE status = 'PR_OPEN' AND pr_number IS NOT NULL AND merge_seq IS NULL",
-        )
-        .all()) {
-        joinQueue(ctx.db, g.id);
+      for (const g of await ctx.db
+        .select({ id: grp.id })
+        .from(grp)
+        .where(and(eq(grp.status, "PR_OPEN"), isNotNull(grp.pr_number), isNull(grp.merge_seq)))) {
+        await joinQueue(ctx.db, g.id);
       }
     },
   },
@@ -203,32 +242,37 @@ const SLICE_INVARIANTS = rows<SliceState>(
     state: "running",
     must: "an engineer turn is queued or running, and the writer has a card it can claim",
     driver: "watchdog rule 8",
-    repair: (ctx) => {
+    repair: async (ctx) => {
       // A retry that left every task `done`. The turn keeps being dispatched and
       // keeps ending the same way — an empty task list, a claim refused, a question
       // to the boss — because there is nothing in the group the writer may touch.
       // Six groups at once, and every one of them read as RUNNING with an engineer
       // on it. sendBack reopens them now; this catches the rows it already stranded,
       // and any other path that ever flips a slice back without looking at its cards.
-      for (const s of ctx.db
-        .query<{ id: number }, []>(
-          `SELECT s.id FROM slice s
-           WHERE s.status = 'running'
-             AND EXISTS (SELECT 1 FROM task t WHERE t.slice_id = s.id)
-             AND NOT EXISTS (SELECT 1 FROM task t WHERE t.slice_id = s.id AND t.status != 'done')`,
-        )
-        .all()) {
-        reopenTasks(ctx.db, s.id);
+      const taskOf = (...extra: (SQL | undefined)[]) =>
+        ctx.db
+          .select({ id: task.id })
+          .from(task)
+          .where(and(eq(task.slice_id, slice.id), ...extra));
+      for (const s of await ctx.db
+        .select({ id: slice.id })
+        .from(slice)
+        .where(and(eq(slice.status, "running"), exists(taskOf()), notExists(taskOf(ne(task.status, "done")))))) {
+        await reopenTasks(ctx.db, s.id);
       }
 
       // The other half of the same deadlock: the card is claimed, but by an agent
       // that no longer exists to close it. `task done` compares against the row id,
       // so a rehired writer is a stranger to its own group's work.
-      ctx.db.run(
-        `UPDATE task SET owner_agent_id = NULL
-         WHERE status != 'done'
-           AND owner_agent_id IN (SELECT id FROM agent WHERE state = 'retired')`,
-      );
+      await ctx.db
+        .update(task)
+        .set({ owner_agent_id: null })
+        .where(
+          and(
+            ne(task.status, "done"),
+            inArray(task.owner_agent_id, ctx.db.select({ id: agent.id }).from(agent).where(eq(agent.state, "retired"))),
+          ),
+        );
     },
   },
   { state: "gate", must: "a gate job is queued or running", driver: "runReview; watchdog rule 8 if the queue empties" },
@@ -322,12 +366,15 @@ const PROJECT_INVARIANTS = rows<ProjectState>(
     driver:
       "REPO_HOLD_MS lapses and lets one turn re-test; any GitHub answer clears the hold and revokes the " +
       "question; saving a credential forgets the hold at once, so a boss who just fixed it does not wait",
-    repair: (ctx) => {
-      for (const p of ctx.db
-        .query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project WHERE remote IS NOT NULL")
-        .all()) {
-        const slug = parseRepo(p.remote!);
-        if (slug && !repoHeld(ctx.db, p.id)) clearEscalation(ctx.db, slug);
+    repair: async (ctx) => {
+      for (const p of await ctx.db
+        .select({ id: project.id, remote: project.remote })
+        .from(project)
+        .where(isNotNull(project.remote))) {
+        // `p.remote` is still typed nullable — the predicate is a runtime fact and
+        // not a type — so this reads it rather than asserting past it.
+        const slug = p.remote === null ? null : parseRepo(p.remote);
+        if (slug && !(await repoHeld(ctx.db, p.id))) await clearEscalation(ctx.db, slug);
       }
     },
   },
@@ -438,8 +485,19 @@ export const INVARIANT_TABLES = {
   lease: LEASE_INVARIANTS,
 } satisfies Record<string, readonly Invariant<string>[]>;
 
-export function runInvariants(ctx: Ctx): void {
-  for (const table of Object.values(INVARIANT_TABLES)) for (const invariant of table) invariant.repair?.(ctx);
+/**
+ * Every repair, awaited one at a time.
+ *
+ * Sequentially and deliberately: the repairs write overlapping rows — two of them
+ * update `grp` — and a tick that fired them all at once would race itself for no
+ * gain, on work that is idempotent and runs every 30 seconds anyway. Awaited
+ * because a repair nobody waits for is the failure this whole table is against:
+ * it would throw into an empty tick and read as a fleet with nothing to fix.
+ */
+export async function runInvariants(ctx: Ctx): Promise<void> {
+  for (const table of Object.values(INVARIANT_TABLES)) {
+    for (const invariant of table) await invariant.repair?.(ctx);
+  }
 }
 
 /** States with no row. The test fails on a non-empty result; nothing else calls it. */

@@ -1,0 +1,86 @@
+# The suite's own PostgreSQL. Separate from the one `db:up` starts, on purpose.
+#
+# Tests create and drop databases, and the development server's data is on the
+# other one — a suite that can drop a database is a suite that must not be
+# pointed at anything you would miss. Different port, different container, no
+# volume: there is nothing here worth keeping between runs.
+#
+#   bun run db:test:up      # before `bun run test`
+#   bun run db:test:down
+services:
+  postgres-test:
+    image: postgres:18-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+    container_name: orchestrator-postgres-test
+    environment:
+      POSTGRES_DB: orchestrator
+      POSTGRES_USER: orchestrator
+      # Committed on purpose: this server holds nothing but throwaway test
+      # databases, listens on loopback only, and every developer needs the same
+      # value for `bun run test` to work without a setup step.
+      POSTGRES_PASSWORD: orchestrator
+    ports:
+      - "127.0.0.1:5433:5432"
+    # In memory: the data directory never outlives the container, so a suite
+    # cannot inherit yesterday's rows and there is nothing to clean up.
+    #
+    # Sized, because "in memory" and "unbounded" together is the machine's problem
+    # rather than this container's. One database per test file at ~9MB is about
+    # 1.8GB for 189 files, and a schema change used to orphan the whole generation
+    # beside it — measured at 197 databases and 1,799 MB, holding 3GB resident.
+    # `openMemory` collects the old generation now; this is the ceiling if it ever
+    # cannot.
+    tmpfs:
+      - /var/lib/postgresql:size=4g
+    # `fsync=off` and friends: durability is worthless for a database that is
+    # discarded, and it is most of what a write costs.
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+      # The three above are PostgreSQL's own list for a non-durable database
+      # (docs 14.5), along with the tmpfs. The rest of that list is inverted here
+      # on purpose: it says to *raise* `max_wal_size` to checkpoint less often,
+      # and names the cost as `pg_wal` storage — which for us is RAM. A checkpoint
+      # from memory to memory is cheap, so the trade runs the other way.
+      - -c
+      - max_wal_size=64MB
+      # `minimal` writes the least WAL of the three levels; it requires no
+      # senders, and nothing replicates a database that is thrown away.
+      - -c
+      - wal_level=minimal
+      - -c
+      - max_wal_senders=0
+      # A quarter of the default. The data directory *is* memory, so a large
+      # buffer pool is a second copy of pages the OS is already holding.
+      - -c
+      - shared_buffers=32MB
+      # 4MB is sized for reports. The suite peaks at 241 connections — ten workers
+      # holding a pool of 24 — and every one of them can claim `work_mem` per sort,
+      # against tables measured in single-figure rows.
+      - -c
+      - work_mem=512kB
+      # Nothing here lives long enough to bloat, and every test empties its tables
+      # itself; three autovacuum workers are three processes with no work.
+      - -c
+      - autovacuum=off
+      # Which statements the suite actually sends, and how many times. Reading
+      # that is how the `pg_constraint` scan behind `TRUNCATE ... CASCADE` was
+      # found; guessing at it is how two earlier attempts optimised the wrong
+      # thing. Cheap: a fixed-size hash table, no per-statement allocation.
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      # Ten workers, each holding a pool of 24 — the panel snapshot issues nineteen
+      # concurrent statements — plus the admin connections that create the
+      # databases. 250 is the real peak; 300 is the headroom, and each unused slot
+      # is still memory reserved at startup. CI runs four workers and needs 100.
+      - max_connections=300
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orchestrator -d orchestrator"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

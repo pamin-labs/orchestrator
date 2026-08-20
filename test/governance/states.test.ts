@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { count, inArray, sql } from "drizzle-orm";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import { job } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import {
   ACTIVE_JOB_STATES,
@@ -18,7 +20,6 @@ import {
   PROJECT_STATES,
   SERVER_STATES,
   SLICE_STATES,
-  stateParam,
   UTIL_STATES,
 } from "../../src/contracts/states.ts";
 
@@ -88,18 +89,25 @@ test("canonical states and semantic subsets are unique and aligned", () => {
   expect(ESCALATION_STATES.filter(isTerminalEscalationState)).toEqual([...ESCALATION_TERMINAL_STATES]);
 });
 
-test("state subsets cross the SQL boundary as data, not syntax", () => {
-  const db = openMemory();
-  for (const state of ["pending", "done"]) fx.job.insert(db, { kind: "notify", state });
+test("state subsets cross the SQL boundary as data, not syntax", async () => {
+  const db = await openMemory();
+  const f = fx.on(db);
+  for (const state of ["pending", "done"] as const) await f.job.create({ kind: "notify", state });
 
-  const count = (param: string) =>
-    db
-      .query<{ n: number }, [string]>("SELECT count(*) AS n FROM job WHERE state IN (SELECT value FROM json_each(?))")
-      .get(param)!.n;
+  // `::text`, because the column's own type is the enum and the injection payload
+  // is deliberately not one of its values — which is the case under test.
+  const matching = async (states: readonly string[]) =>
+    (
+      await db
+        .select({ n: count() })
+        .from(job)
+        .where(inArray(sql`${job.state}::text`, [...states]))
+    )[0]?.n;
 
-  expect(count(stateParam(ACTIVE_JOB_STATES))).toBe(1);
-  expect(count(JSON.stringify(["pending') OR 1=1 --"]))).toBe(0);
-  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM job").get()!.n).toBe(2);
+  expect(await matching(ACTIVE_JOB_STATES)).toBe(1);
+  // The payload is compared, never parsed: it matches no state and selects nothing.
+  expect(await matching(["pending') OR 1=1 --"])).toBe(0);
+  expect((await db.select({ n: count() }).from(job))[0]?.n).toBe(2);
 });
 
 test("shared state policies are not restated by consumers", () => {

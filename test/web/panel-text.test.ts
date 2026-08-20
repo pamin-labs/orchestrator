@@ -94,7 +94,7 @@ test("an upload too big to hold is refused before it is held", async () => {
   // whole body into memory, so it never bounded the request — and a dropped
   // folder is one gesture that sends forty files. `content-length` is what every
   // browser upload carries, so this is decided without reading a byte.
-  const app = makeApp(testContext());
+  const app = makeApp(await testContext());
   const r = await app(
     new Request("http://x/api/v1/attach", {
       method: "POST",
@@ -123,7 +123,7 @@ test("a dropped folder becomes one attachment, and cannot escape its directory",
   form.append("file", new File(["c"], "c.png", { type: "image/png" }), "c.png");
   form.append("rel", "c.png");
 
-  const ctx = testContext();
+  const ctx = await testContext();
   ctx.config.dataDir = dir;
   const app = makeApp(ctx);
   const r = await app(
@@ -148,8 +148,8 @@ test("a dropped folder becomes one attachment, and cannot escape its directory",
 });
 
 test("a project links to its repository, and a leftover path never becomes a link", () => {
-  // `repo_path` is `owner/name` for every project — migration 037 converted the
-  // host paths. The shape is still checked rather than assumed, because that
+  // `repo_path` is `owner/name` for every project; the host paths it once held
+  // were converted. The shape is still checked rather than assumed, because that
   // migration deliberately leaves a row it could not convert holding its old
   // path, and `https://github.com//Users/…` is worse than plain text.
   expect(repoHref("acme/site")).toBe("https://github.com/acme/site");

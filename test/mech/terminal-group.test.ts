@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import { grp } from "../../src/platform/persistence/schema.ts";
 import { GRP_STATES } from "../../src/contracts/states.ts";
 import * as fx from "../support/factories.ts";
 
@@ -17,32 +19,34 @@ import * as fx from "../support/factories.ts";
  * `ownership.ts`, so its paths stay claimed with nobody left to release them and
  * the next group needing them never starts.
  *
- * `RAISE(IGNORE)` rather than `ABORT`: it skips the row and returns, which is what
- * `AND status <> 'DISSOLVED'` would have done at each of the fourteen sites. An
- * abort would turn a silently-wrong write into a thrown error inside a turn that
- * has no reason to expect one.
+ * A `BEFORE UPDATE` trigger returning NULL rather than one that raises: it skips
+ * the row and returns, which is what `AND status <> 'DISSOLVED'` would have done at
+ * each of the fourteen sites. Raising would turn a silently-wrong write into a
+ * thrown error inside a turn that has no reason to expect one.
  */
-test("no write moves a group out of DISSOLVED", () => {
-  const db = openMemory();
-  fx.project.insert(db, {});
-  fx.grp.insert(db, { project_id: 1, status: "DISSOLVED" });
+test("no write moves a group out of DISSOLVED", async () => {
+  const db = await openMemory();
+  const f = fx.on(db);
+  const project = await f.project.create({});
+  await f.grp.create({ project_id: project.id, status: "DISSOLVED" });
 
-  const status = () => db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()?.status;
+  const status = async () => (await db.select({ status: grp.status }).from(grp).where(eq(grp.id, 1)))[0]?.status;
   for (const state of GRP_STATES) {
-    db.run("UPDATE grp SET status = ? WHERE id = 1", [state]);
-    expect(status()).toBe("DISSOLVED");
+    await db.update(grp).set({ status: state }).where(eq(grp.id, 1));
+    expect(await status()).toBe("DISSOLVED");
   }
   // The whole-row shape too, since that is what the flow layer writes.
-  db.run("UPDATE grp SET status = 'RUNNING', approved_at = NULL WHERE id = 1");
-  expect(status()).toBe("DISSOLVED");
+  await db.update(grp).set({ status: "RUNNING", approved_at: null }).where(eq(grp.id, 1));
+  expect(await status()).toBe("DISSOLVED");
 });
 
-test("a group that is not dissolved still moves freely", () => {
-  const db = openMemory();
-  fx.project.insert(db, {});
-  fx.runningGrp.insert(db, { project_id: 1 });
+test("a group that is not dissolved still moves freely", async () => {
+  const db = await openMemory();
+  const f = fx.on(db);
+  const project = await f.project.create({});
+  await f.runningGrp.create({ project_id: project.id });
   for (const state of GRP_STATES.filter((s) => s !== "DISSOLVED")) {
-    db.run("UPDATE grp SET status = ? WHERE id = 1", [state]);
-    expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()?.status).toBe(state);
+    await db.update(grp).set({ status: state }).where(eq(grp.id, 1));
+    expect((await db.select({ status: grp.status }).from(grp).where(eq(grp.id, 1)))[0]?.status).toBe(state);
   }
 });

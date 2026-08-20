@@ -1,5 +1,4 @@
 import { memo } from "react";
-import { useTranslation } from "react-i18next";
 import type { State } from "../../shared/api";
 import { groupedRows, type PanelFrame } from "../../shared/stream";
 import { clock } from "../../shared/format";
@@ -9,8 +8,8 @@ const FRAME_TONE: Record<PanelFrame["cls"], string> = {
   say: "text-ink",
   state: "text-ok",
   ask: "text-warn",
-  tool: "font-mono text-[0.6875rem] text-ink-3",
-  partial: "font-mono text-[0.6875rem] text-ink-3",
+  tool: "font-mono text-meta text-ink-3",
+  partial: "font-mono text-meta text-ink-3",
 };
 
 const TimelineRow = memo(function TimelineRow({
@@ -25,11 +24,11 @@ const TimelineRow = memo(function TimelineRow({
   return (
     <div
       className={cn(
-        "fade-in grid grid-cols-[2.5rem_minmax(0,1fr)] gap-2 py-1 text-[0.75rem]",
+        "fade-in grid grid-cols-[2.5rem_minmax(0,1fr)] gap-2 py-1 text-secondary",
         showDivider && "border-t border-rule-soft",
       )}
     >
-      <span className="pt-px font-mono text-[0.625rem] text-ink-3">{showHeader ? clock(f.at) : ""}</span>
+      <span className="pt-px font-mono text-pill text-ink-3">{showHeader ? clock(f.at) : ""}</span>
       <div className="min-w-0">
         <FrameHeader frame={f} show={showHeader} />
         <span className={cn("break-words", FRAME_TONE[f.cls])}>{f.text}</span>
@@ -54,7 +53,7 @@ const Target = ({ value }: { value: string | null | undefined }) =>
 
 function Intent({ value }: { value: string | null | undefined }) {
   if (!value || value === "inform") return null;
-  return <span className="ml-1 font-mono text-[0.5625rem] uppercase tracking-[0.06em] text-ink-3">{value}</span>;
+  return <span className="ml-1 font-mono text-tag uppercase tracking-[0.06em] text-ink-3">{value}</span>;
 }
 
 export function Timeline({
@@ -68,9 +67,8 @@ export function Timeline({
   grpId: number | null;
   projectId: number | null;
 }) {
-  const { t } = useTranslation();
   let ids: Set<number> | null = null;
-  let label = t("timeline.view.all", "全部");
+  let label = "全部";
   if (grpId) {
     ids = new Set([grpId]);
     label = st.groups.find((g) => g.id === grpId)?.name ?? "";
@@ -95,10 +93,10 @@ export function Timeline({
 
   return (
     <div>
-      <h2 className="mb-2.5 flex items-baseline gap-1.5 text-[0.75rem] font-semibold text-ink-2">
-        {t("timeline.view.eventStream", "事件流")} <span className="truncate font-normal text-ink-3">{label}</span>
+      <h2 className="mb-2.5 flex items-baseline gap-1.5 text-secondary font-semibold text-ink-2">
+        事件流 <span className="truncate font-normal text-ink-3">{label}</span>
       </h2>
-      {!shown.length && <div className="text-[0.75rem] text-ink-3">{t("timeline.view.noEvents", "无事件")}</div>}
+      {!shown.length && <div className="text-secondary text-ink-3">无事件</div>}
       <div className="[&>*:first-child]:border-t-0">
         {groupedRows(shown).map(({ f, showHeader, showDivider }) => (
           <TimelineRow key={f.id} f={f} showHeader={showHeader} showDivider={showDivider} />

@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import i18n from "../../i18n";
 import { api, type Evidence, EvidenceSchema, GateLogResponseSchema, readApi } from "../../shared/api";
 import { nl } from "../../shared/prose";
 import { cn } from "../../ui/cn";
@@ -34,8 +32,7 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
     queryKey: ["evidence", sliceId],
     queryFn: () => readApi(api.slices[":id"].evidence.$get({ param: { id: String(sliceId) } }), EvidenceSchema),
   });
-  const { t } = useTranslation();
-  if (!evidence) return <Message>{t("evidence.view.loading", "读改动…")}</Message>;
+  if (!evidence) return <Message>读改动…</Message>;
   // Keyed by the slice: which tab opens is decided from that slice's verdicts,
   // so a different slice starts from its own default rather than inheriting the
   // tab the reader happened to leave the last one on.
@@ -56,7 +53,7 @@ function EvidenceViews({
 }
 
 const Message = ({ children }: { children: React.ReactNode }) => (
-  <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>{children}</div>
+  <div className={cn(PAD, "py-2 text-secondary text-ink-3")}>{children}</div>
 );
 const hasEvidence = (evidence: Evidence) => Boolean(evidence.diff || evidence.verdicts.length || evidence.gates.length);
 
@@ -84,9 +81,7 @@ function EvidenceContent({
   sliceId: number;
   actions?: React.ReactNode;
 }) {
-  const { t } = useTranslation();
-  if (!actions && !hasEvidence(evidence))
-    return <Message>{t("evidence.view.noEvidence", "这一片还没跑出改动，也还没有判词。")}</Message>;
+  if (!actions && !hasEvidence(evidence)) return <Message>这一片还没跑出改动，也还没有判词。</Message>;
   const summary = statSummary(evidence.stat);
   const stats = {
     files: statCount(summary, /(\d+) files? changed/),
@@ -114,22 +109,15 @@ function EvidenceHeader({
   setView: (view: string) => void;
   actions?: React.ReactNode;
 }) {
-  const { t } = useTranslation();
   return (
     <div className={cn(PAD, "sticky top-0 z-10 border-b border-rule bg-rail py-2.5")}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
-        <span className="min-w-0 text-[0.8125rem] text-ink">{evidence.accept_spec}</span>
+        <span className="min-w-0 text-body text-ink">{evidence.accept_spec}</span>
         <Meta className="shrink-0">
-          {stats.files
-            ? t("evidence.view.header.files", "{{n}} 个文件", { n: stats.files })
-            : t("evidence.view.header.noChange", "无改动")}
+          {stats.files ? `${stats.files} 个文件` : "无改动"}
           {evidence.diff && ` · +${stats.plus} −${stats.minus}`}
         </Meta>
-        {evidence.retries > 0 && (
-          <Meta className="shrink-0 text-warn">
-            {t("evidence.view.header.retries", "被打回过 {{n}} 次", { n: evidence.retries })}
-          </Meta>
-        )}
+        {evidence.retries > 0 && <Meta className="shrink-0 text-warn">被打回过 {evidence.retries} 次</Meta>}
         <span className="grow" />
         {actions}
       </div>
@@ -148,7 +136,6 @@ function EvidenceTabs({
   setView: (view: string) => void;
 }) {
   const bad = evidence.verdicts.some(failed);
-  const { t } = useTranslation();
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
       <Segments value={view} onValueChange={setView} className="-ml-2">
@@ -165,15 +152,8 @@ function EvidenceTabs({
         ))}
       </Segments>
       {evidence.scope === "branch" && (
-        <Tip
-          label={t(
-            "evidence.view.tabs.branchScopeTip",
-            "切片基线被 rebase 冲掉了，这里是整条分支相对 origin/main 的改动",
-          )}
-        >
-          <Meta className="cursor-help underline decoration-dotted">
-            {t("evidence.view.tabs.branchScope", "整条分支")}
-          </Meta>
+        <Tip label="切片基线被 rebase 冲掉了，这里是整条分支相对 origin/main 的改动">
+          <Meta className="cursor-help underline decoration-dotted">整条分支</Meta>
         </Tip>
       )}
     </div>
@@ -181,15 +161,9 @@ function EvidenceTabs({
 }
 
 function EvidenceBody({ evidence, view, sliceId }: { evidence: Evidence; view: string; sliceId: number }) {
-  const { t } = useTranslation();
   if (view === "verdicts") return <Verdicts rows={evidence.verdicts} />;
   if (view !== "diff") return <GateLog key={view} sliceId={sliceId} name={view} />;
-  if (!evidence.diff)
-    return (
-      <Message>
-        {t("evidence.view.body.noDiff", "没有 diff 可读。这一片没有记下基线 commit，或者沙盒已经回收了。")}
-      </Message>
-    );
+  if (!evidence.diff) return <Message>没有 diff 可读。这一片没有记下基线 commit，或者沙盒已经回收了。</Message>;
   return (
     <div className="h-[34rem] bg-sunk">
       <DiffView diff={evidence.diff} truncated={evidence.truncated} />
@@ -208,10 +182,8 @@ function Verdicts({ rows }: { rows: Evidence["verdicts"] }) {
 }
 
 const verdictTone = (no: boolean) => (no ? "text-bad" : "text-ok");
-const verdictLabel = (no: boolean) =>
-  no ? i18n.t("evidence.view.verdict.fail", "没过") : i18n.t("evidence.view.verdict.pass", "过");
-const toggleLabel = (open: boolean) =>
-  open ? i18n.t("evidence.view.verdict.collapse", "收起") : i18n.t("evidence.view.verdict.expand", "展开");
+const verdictLabel = (no: boolean) => (no ? "没过" : "过");
+const toggleLabel = (open: boolean) => (open ? "收起" : "展开");
 
 function VerdictRow({ author, body }: { author: string; body: string }) {
   const [open, setOpen] = useState(false);
@@ -219,8 +191,8 @@ function VerdictRow({ author, body }: { author: string; body: string }) {
   return (
     <div className="border-t border-rule-soft py-2.5 first:border-t-0">
       <div className="flex items-baseline gap-2">
-        <span className="font-mono text-[0.6875rem] text-ink-3">{author}</span>
-        <span className={cn("text-[0.6875rem] font-semibold", verdictTone(no))}>{verdictLabel(no)}</span>
+        <span className="font-mono text-meta text-ink-3">{author}</span>
+        <span className={cn("text-meta font-semibold", verdictTone(no))}>{verdictLabel(no)}</span>
         <span className="grow" />
         {body.length > 200 && (
           <Button variant="quiet" size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -230,7 +202,7 @@ function VerdictRow({ author, body }: { author: string; body: string }) {
       </div>
       <div
         className={cn(
-          "mt-1 max-w-[72ch] whitespace-pre-wrap break-words text-[0.8125rem]",
+          "mt-1 max-w-[72ch] whitespace-pre-wrap break-words text-body",
           no ? "text-bad" : "text-ink-2",
           !open && "line-clamp-3",
         )}
@@ -252,7 +224,6 @@ function filterLines(lines: string[], query: string): string[] {
 /** The same race one level down: two gate tabs in a row, answered out of order. */
 function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
   const [query, setQuery] = useState("");
-  const { t } = useTranslation();
   const { data: text } = useQuery({
     queryKey: ["gate", sliceId, name],
     queryFn: async () =>
@@ -261,12 +232,11 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
           api.slices[":id"].gate[":name"].$get({ param: { id: String(sliceId), name }, query: {} }),
           GateLogResponseSchema,
         )
-      )?.text ?? i18n.t("evidence.view.gateLog.unreadable", "读不到日志"),
+      )?.text ?? "读不到日志",
   });
-  if (text === undefined) return <Message>{t("evidence.view.gateLog.loading", "读日志…")}</Message>;
+  if (text === undefined) return <Message>读日志…</Message>;
   const lines = logLines(text);
-  if (!lines.some((line) => line.trim()))
-    return <Message>{t("evidence.view.gateLog.noOutput", "{{name}} 没有输出。", { name })}</Message>;
+  if (!lines.some((line) => line.trim())) return <Message>{name} 没有输出。</Message>;
   const fails = lines.filter((line) => /^\s*\(fail\)/.test(line));
   return (
     <div>
@@ -287,21 +257,18 @@ function GateToolbar({
   query: string;
   setQuery: (query: string) => void;
 }) {
-  const { t } = useTranslation();
   return (
     <div className={cn(PAD, "flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-rule py-1.5")}>
-      <span className={cn("text-[0.75rem] font-semibold", fails ? "text-bad" : "text-ok")}>
-        {fails
-          ? t("evidence.view.toolbar.failCount", "{{n}} 条没过", { n: fails })
-          : t("evidence.view.toolbar.allPass", "全过")}
+      <span className={cn("text-secondary font-semibold", fails ? "text-bad" : "text-ok")}>
+        {fails ? `${fails} 条没过` : "全过"}
       </span>
-      <Meta>{t("evidence.view.toolbar.lines", "{{n}} 行", { n: lines })}</Meta>
+      <Meta>{lines} 行</Meta>
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        aria-label={t("evidence.view.toolbar.filterAria", "过滤这份日志")}
-        placeholder={t("evidence.view.toolbar.filterPlaceholder", "过滤这份日志…")}
-        className="ml-auto w-44 rounded-md border border-rule bg-paper px-2 py-0.5 text-[0.6875rem] outline-none focus-visible:border-accent"
+        aria-label="过滤这份日志"
+        placeholder="过滤这份日志…"
+        className="ml-auto w-44 rounded-md border border-rule bg-paper px-2 py-0.5 text-meta outline-none focus-visible:border-accent"
       />
     </div>
   );
@@ -317,15 +284,7 @@ function keyed(values: string[]): Array<{ key: string; value: string }> {
 }
 
 function GateTranscript({ lines, query }: { lines: string[]; query: string }) {
-  const { t } = useTranslation();
-  if (!lines.length)
-    return (
-      <LogPane>
-        {query
-          ? t("evidence.view.transcript.noMatch", "没有匹配的行")
-          : t("evidence.view.transcript.empty", "这份日志是空的")}
-      </LogPane>
-    );
+  if (!lines.length) return <LogPane>{query ? "没有匹配的行" : "这份日志是空的"}</LogPane>;
   return (
     <LogPane>
       {keyed(lines).map(({ key, value }) => (
@@ -335,7 +294,7 @@ function GateTranscript({ lines, query }: { lines: string[]; query: string }) {
   );
 }
 
-const LOG_CLASS = "max-h-[34rem] overflow-auto bg-sunk py-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2";
+const LOG_CLASS = "max-h-[34rem] overflow-auto bg-sunk py-2 font-mono text-meta leading-[1.5] text-ink-2";
 const LogPane = ({ children }: { children: React.ReactNode }) => <pre className={cn(PAD, LOG_CLASS)}>{children}</pre>;
 
 function LogLine({ value }: { value: string }) {

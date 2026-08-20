@@ -21,7 +21,27 @@ export function clip(s: string, n = 200, collapse = false): string {
  * is why every one of them has that `?? e`.
  */
 export function errText<T>(e: T, n = 300): string {
-  return clip(e instanceof Error ? e.message : String(e), n);
+  return e instanceof Error ? withCauses(e, n) : clip(String(e), n);
+}
+
+/**
+ * The message, then what caused it.
+ *
+ * A wrapper's own message is often the boilerplate half: `DrizzleQueryError`
+ * says "Failed query: update …" and puts the constraint violation on `cause`, so
+ * an error shown to the boss named the statement and never the reason. Joined
+ * rather than replaced — the wrapper says which operation, the cause says what
+ * happened. Bounded in both directions: four links, each clipped on its own so a
+ * long wrapper cannot spend the whole budget before the reason arrives.
+ */
+function withCauses(e: Error, n: number): string {
+  const chain = [e.message];
+  for (let c = e.cause; c instanceof Error && chain.length < 4; c = c.cause) chain.push(c.message);
+  // Per link, not over the join. A `DrizzleQueryError` names the whole statement,
+  // which is past 300 characters for any wide table, so clipping the joined
+  // string cut off the constraint violation this exists to show — at exactly the
+  // character it started.
+  return chain.map((part) => clip(part, n)).join(": ");
 }
 
 /**

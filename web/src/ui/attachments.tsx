@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { Tip } from "./tooltip";
@@ -33,7 +32,6 @@ export function WithAttachments({ body, className }: { body: string; className?:
 }
 
 function Attachments({ files }: { files: Attached[] }) {
-  const { t } = useTranslation();
   const [full, setFull] = useState<Attached | null>(null);
   if (!files.length) return null;
   const images = files.filter((f) => f.image);
@@ -56,7 +54,7 @@ function Attachments({ files }: { files: Attached[] }) {
                 {/* The same marker the text uses. Three screenshots and a sentence
                   about 「第二张」 is a puzzle without it. */}
                 {f.label && (
-                  <span className="absolute left-1 top-1 rounded-sm bg-ink/75 px-1 font-mono text-[0.625rem] text-paper">
+                  <span className="absolute left-1 top-1 rounded-sm bg-ink/75 px-1 font-mono text-pill text-paper">
                     {f.label}
                   </span>
                 )}
@@ -73,7 +71,7 @@ function Attachments({ files }: { files: Attached[] }) {
               href={f.url}
               target="_blank"
               rel="noreferrer"
-              className="truncate font-mono text-[0.6875rem] text-ink-3 underline decoration-dotted hover:text-accent"
+              className="truncate font-mono text-meta text-ink-3 underline decoration-dotted hover:text-accent"
             >
               {f.label ? `[${f.label}] ` : ""}
               {f.name}
@@ -107,7 +105,7 @@ function Attachments({ files }: { files: Attached[] }) {
               />
             )}
             <Dialog.Close
-              aria-label={t("ui.attachments.close", "关掉")}
+              aria-label="关掉"
               className="absolute right-4 top-4 grid size-8 cursor-pointer place-items-center rounded-md bg-paper/90 text-ink hover:bg-paper"
             >
               <X size={16} strokeWidth={2} />

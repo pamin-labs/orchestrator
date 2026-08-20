@@ -1,3 +1,20 @@
+- **The live-sandbox `126` is diagnosed and fixed.** It reproduced once the probe
+  stopped discarding its output, and named itself immediately:
+  `code=126 out= err=container unavailable: Egress sidecar container failed to
+  start.` — `126` is this repository's own `EXEC_UNAVAILABLE`, not a shell's
+  "cannot execute". `data/opensandbox-server.log` has the cause five times over:
+  the server draws a random host port for the egress sidecar without checking it,
+  so two containers starting together collide on
+  `failed to bind host port 0.0.0.0:57714/tcp: address already in use`. A turn
+  died whenever Docker picked a busy port.
+
+  Retried once in `createMountedSandbox`, which is safe precisely there: `remember`
+  runs after it returns, so a failed create leaves no group pointing at a
+  container. The classifier matches the message the *client* is handed, not the
+  Docker text — that stays in the server's log, and a classifier written against
+  it would have retried nothing. Three live runs green since; two earlier
+  hypotheses (slow boot, provisioning race) were tested and both were wrong.
+
 # Project progress
 
 Read this file first when resuming work. Update it after a verifiable unit, not
@@ -10,15 +27,19 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Baseline
 
-- Branch: `refactor/api-split-and-settings`
-- SHA: the commit containing this entry
-- TypeScript, Oxlint, Biome, and Fallow audit: pass, the audit clean across all
-  424 changed files
-- Tests: 1124 pass, 6 environment skips, 0 fail
-- Coverage: 76.31% of statements, 67.25% of branches, 69.31% of functions,
-  78.97% of lines
-- Fallow complexity: **zero** functions over threshold across 5,226 analysed,
-  against real coverage rather than the export-reference estimate
+- Branch: `refactor/api-split-and-settings` merged to `main` as #7; work continues
+  on branches cut from it
+- TypeScript, Oxlint, Biome, and Fallow audit: pass
+- Tests: 1620 pass, 6 environment skips, 0 fail
+- Coverage: 81.96% of statements, 72.40% of branches, 77.21% of functions
+- Untested exports: 1 of 6,966 analysed (`missingBinaries`, which returns nothing
+  and is pinned as the deployment claim it expresses). Untested files: 3, all
+  entry points — the two declared in `.fallowrc.json` and `web/src/app/main.tsx`,
+  which `bundle-boots` builds and boots rather than imports
+- Fallow complexity: zero functions over threshold, against real coverage rather
+  than the export-reference estimate
+- Block comments over eight lines: zero, enforced by
+  `test/governance/comment-blocks.test.ts`
 - Test time is not recorded as a target. The same suite measures differently per
   machine, and a threshold on it would be a coin flip in CI
 
@@ -251,7 +272,287 @@ M7 — executable engineering governance and versioned protocol.
   time on a lesson worth keeping: binding NULL to a `NOT NULL DEFAULT` column
   overrides the default rather than falling back to it.
 
+- `orch ctx query` is the command every role is told to run first and was the only
+  waiting path in the system with no span. Its whole justification is that it costs
+  less than the grep rounds it replaces, and that was the one claim nothing here
+  could measure. It now opens `ctx.query`, with `ctx.pageindex` and `ctx.assemble`
+  timed separately — the two halves are not comparable costs, since the lexical half
+  is an in-memory index at 0.32ms while the other spends up to three serial model
+  calls. A walk that throws now ends its span red; the `catch` that hides the failure
+  from the agent predates the span and is why it was worth adding.
+- The 系统耗时 report has a budget for the first time, measured rather than guessed:
+  **705ms** for the system scope over 90,000 spans, which is one idle day (the
+  watchdog alone writes ~26 spans every 30 seconds). Five window-function queries
+  over the whole table, synchronous, so while it computes it blocks every other
+  request and the SSE heartbeat. The seed reproduces the real 94%-unscoped skew,
+  because that skew is what makes the system scope the expensive read.
+- `telemetry.ts` promised a seven-day window and a 200k retention cap; retention is
+  `SPAN_MAX_AGE_MS` (24h) and the cap is `SPAN_MAX_ROWS` (1,000,000), and `windowMs`
+  is already `.max(SPAN_MAX_AGE_MS)` in the same file — so seven days was unreachable
+  through a schema written twenty lines above the sentence claiming it. Both now read
+  from the constants instead of restating them.
+- The benchmark seeded `task.status = 'open'`, which is not in `TASK_STATES`
+  (`pending | in_progress | done`). Migration 044's constraint trigger made it a hard
+  failure; it had been meaningless data before that.
+- "Roles are configuration, not code" was a comment, not a fact: forty-odd role
+  names were hardcoded across the flow, so adding a Composer meant editing dozens
+  of call sites. `roles/*.yaml` now declares `capabilities:` and the flow asks for
+  one — `roleWith` resolves it and throws on nought or two, and the server checks
+  all ten at boot. The guard is a fixture role with no `qa` anywhere that must
+  still be dispatched by `handToQa` with no code change; it was shown failing
+  first (`Expected: "composer", Received: "qa"`).
+  Left as literals with reasons in the commit bodies: the `gates_json` "qa" key,
+  the escalation chain states in `src/contracts/states.ts`, and
+  `PLANNING_ROLES` in `scheduler.ts`, which is a DRAFT-freeze list rather than a
+  dispatch and fails safe for a role that is not in it.
+
+- A group given PR feedback went deaf and blocked everyone behind it.
+  `dispatchFeedback` moved it PR_OPEN → RUNNING and nothing moved it back, while
+  `pollPr` returns null for any other status — so every later comment, red check and
+  conflict was read by nobody, and the group still held `merge_seq` at the head of a
+  strictly serial queue. The flip bought nothing: PR_OPEN is already in
+  `DISPATCHABLE_GRP_STATES`. Removing it was the whole fix, and the stall rule then
+  had to stop naming two states where it meant every dispatchable one.
+- Half of a review was invisible. `state` was on neither transport, so APPROVED and
+  CHANGES_REQUESTED were the same string and a bodyless approval — the common shape —
+  was dropped by a filter on `body`. Line-level threads were never requested at all,
+  and a failing check arrived as the bare word `build`. All three now reach the group,
+  with the check summary deliberately kept out of `pr_checks_sig`: summaries carry run
+  numbers, and folding one in would wake the group every 30 seconds forever.
+- 系统耗时 opened in **739ms** and now opens in **262ms**, measured over 90,000 spans.
+  Indexes were tried first and rejected on measurement — `(started_at, grp_id,
+  project_id)` and `(started_at, name)` plus ANALYZE each left SQLite on `span_scope`
+  and made the total worse (655 → 716 → 728ms). The cost was sorting, not scanning:
+  `traceList` sorted every span in the window to return twenty, and `stageStats` paid
+  a third full sort for one status message per stage.
+- "Roles are configuration, not code" was false where it was stated. Ten capabilities
+  are declared in `roles/*.yaml` and the flow asks for a capability, never a name. The
+  guard is a fixture role called `composer` — a name appearing nowhere in the source —
+  dispatched by `handToQa` with no code change. A capability no role claims, or two
+  roles claiming one, is a named error rather than a silent `undefined` role.
+- Two config contradictions were live bugs. `escalation.ts` chose its language with
+  `language === "en"`, which is false for every value the setting can hold including
+  `"English"`, so the English branch was unreachable; there is one exported
+  `isChinese` now. And `config/default.yaml` told container users to set
+  `host: 0.0.0.0`, which `ConfigSchema` refuses — the schema is right (these routes
+  have no login) and the instruction was wrong.
+
+- The retrieval walk now has an off switch, and the first measurement of what it
+  buys. An empty `indexModel.model` means no navigator — both readers of `askIn`
+  already treat its absence that way. Measured on a 500-note corpus, three
+  questions: the lexical half answers in 12.6ms; the walk adds two model calls per
+  question and **192 characters**, about 1% more context, because `ctxBudgetChars`
+  was already full. Stable across model latencies of 300/900/1500ms — its cost
+  scales with the model and its contribution does not.
+
+  Then the missing case was measured, and it changes the reading. Ask "which
+  validation library did we pick?" of a note that says "we chose zod over ajv
+  because it ships types" and lexical retrieval returns **nothing** — the question
+  and the answer share no word, which is the one thing BM25 cannot cross and the
+  exact gap a model walking summaries exists to close. Ask "zod or ajv?" and it is
+  found instantly. So the honest verdict is neither "keep" nor "cut": the walk is
+  near-worthless when the asker already knows the vocabulary and is the only thing
+  that works when they do not. Conditional, not default — and the switch is now
+  there to make that arguable with data instead of prose.
+- An idle project paid **four container execs per tick** for a repo map that never
+  changed — `listTree` plus a `treeHeads` that ships every tracked file's contents
+  out of the container (0.8 MB here, 4.0 MB on a large repository) only for
+  `saveMap` to find the render byte-identical. Gated on a HEAD stamp in the
+  `setting` table: **one exec**, 41 bytes back.
+- A requirement's own retrieval was invisible to its budget. `chargeIndex` wrote to
+  the `indexer` agent row alone, so a group calling `orch ctx query` every turn —
+  which the contract tells it to do first — never moved its `spent_tokens`, the
+  number `sliceBudgetTokens` stops a runaway with. The project-scoped rebuild stays
+  unattributed on purpose: charging it to whichever group was open is a wrong
+  number rather than a missing one.
+- The SSE write chain had no ceiling and one rejection poisoned it permanently. It
+  is fed by one `bus.live()` per token from up to four concurrent turns, so a
+  browser that stopped reading accumulated closures without bound; and every later
+  `.then` produced another rejected promise, each unhandled, reaching the
+  process-wide reporter that emits a bus event into the same writer. Bounded, with
+  the loss counted rather than silent.
+- The `event` table had no retention at all — the only `DELETE FROM event` was
+  project deletion. The conversation (`say`, `boss_say`, `note`, `escalation`) is
+  kept: it is the record, and the unread cursor walks it. The machine's own
+  narration is not; 成本's chart asks for 24 hours and nothing reads `state_change`
+  back at all.
+
+- A review thread had no way to be closed. `dispatchFeedback` read threads to the
+  group and the reply did not exist, so an agent that fixed what a reviewer asked
+  could say so in a commit and nowhere else, and a human closed every thread by
+  hand. `orch pr resolve --thread <id>` goes through GraphQL's
+  `resolveReviewThread` on the same seam `pollViaGraph` uses. Two refusals decided
+  in code rather than asked of the agent: the thread must be on this group's pull
+  request — repository as well as number, since PR #7 exists in every repository
+  the token can write to — and its file must be inside `owns_json`. Anything else
+  stays open and goes to `orch ask-boss`, which is the human backstop.
+- The first Drizzle step is the check, not the schema. `schema.ts` describes what
+  the 46 migrations leave, and `test/platform/schema-equivalence.test.ts` compares
+  it against them by reading `table_info`, `index_xinfo` and `foreign_key_list`
+  from two in-memory databases — one replayed, one generated through
+  `drizzle-kit generate`, which is the production path rather than a hand-rolled
+  render. It earned its place on arrival: `grp.spent_tokens` and
+  `slice.spent_tokens` were declared nullable against migrations that say NOT NULL,
+  and it named both columns and both sides. Two things it cannot cover, stated
+  rather than left to be found: the state triggers, which Drizzle's DSL has no form
+  for, and the body of a partial index's WHERE.
+- `drizzle-orm`/`drizzle-kit` are pinned to the **v1 beta** line, not `latest`,
+  which is 0.45.2 and has not moved since 2026-03-27 while v1 replaces the
+  migration layout. And the number that decides the next step was re-measured
+  against the installed package: `drizzle-orm/bun-sqlite` is **synchronous**, so
+  the 423 `await` conversions and the 310 `openMemory` replacements this file
+  budgeted are the price of **Postgres**, not of the ORM. ADR 037 charges them to
+  that decision, where they belong.
+
+- 系统耗时 opened in 266ms and no longer blocks the process to do it. The five
+  queries are synchronous, so while one computed, every other API request and the
+  SSE heartbeat waited behind it on the one thread — a reloading tab was enough to
+  stall the fleet. Cached per scope and window under the heartbeat that writes the
+  spans: **3621ms cold → 0.28ms on a hit**, measured over 90,000 rows. Two traps
+  the guards caught: a module-level cache answers one database's question with
+  another's numbers, and rounding the window's end *down* drops the spans written
+  since — a wrong report rather than a stale one.
+- `main` was written into eight places, four of them strings an agent reads. A
+  group whose repository has no `main` was told to `git fetch origin main`, and
+  that fails inside the turn as a git error it cannot act on, nowhere the boss
+  looks. `baseBranchFallbacks` is the list; the project's own `base_branch` and
+  GitHub's `default_branch` still win over it.
+- Every watchdog threshold was a literal while `watchdogIntervalMs` beside them was
+  settable, so the panel could change how often the rules ran and nothing about
+  what they decided. Grouped as `watchdog.*`. Also settles a misreading: the 5–30s
+  clamp on `readinessPeriodMs` is a *derived* self-check period, not the boss's
+  interval being overridden — the watchdog timer reads it unclamped.
+- A blocking `orch ask-boss` registered its waiter after `route()`, and `route()`
+  can hand the question to a stand-in that answers inside the same tick. All three
+  answering paths end in `w?.(answer)`, so an answer arriving first was discarded
+  without a trace and the agent blocked forever on a question already answered.
+  Surfaced as one full run in three timing out. The key has one owner now —
+  `awaitAnswer`/`answered` — so a fourth answering path cannot reintroduce it.
+- `openMemory`'s `TRUNCATE` and a previous test's still-settling query were left to
+  the deadlock detector, which picks the victim itself: the abort landed on the
+  stray and arrived as a failure in the *next* test. `lock_timeout` under
+  `deadlock_timeout` makes the truncater always lose, so nothing but it is ever
+  cancelled. Eight consecutive full runs green afterwards, 1701 tests in ~27s.
+- The six live OpenSandbox tests pass, 6/6 under `ORCH_LIVE_SANDBOX=1`. Running
+  them found four things, three of them real: the agent CLI was provisioned as
+  source no container can run (677ddac); a blank line does not survive the session
+  transport, so every diff-hunk gap was closed up — `printf 'a\n\n\nb\n'` returns
+  `["a", "b"]` from `runInSession` and `["a", "\n", "\n", "b"]` from `run`; and
+  `VERSION` read package.json from module scope, so every `orch` verb inside a
+  container died at import with `ENOENT: /package.json`. The fourth was the suite's
+  own — it asserted `refs/heads/` where `keepBranch` deliberately writes
+  `refs/orch/`. Nightly should be green.
+- **The retrieval question is measured, and the answer is that it has never been
+  asked.** From the pre-migration database, 98,056 spans over 2026-08-19:
+  `index.ask` ran **36 times, succeeded 0 times**, spent **738.5s** of wall clock
+  (mean 20.5s, max 24.4s), and accounts for **36 of the 56 error spans in the
+  whole system — 64%**. Each `orch ctx query` that reached the tree paid ~20.5s to
+  learn nothing and fell through to the lexical half, which ADR 020 measured at
+  0.32ms. So the "59% of the cache-read bill" line is not refuted — it is
+  untestable, because the layer has never returned an answer to compare.
+
+  Why is not recoverable from that data: the span recorded `exit 1` and nothing
+  else, while the panel reads `status_message`. The boss was told 43 times
+  ("PageIndex 建不起来：12 次调用全部没有返回") with no reason attached, and both
+  runtimes were tried and reverted, so it is not one model name. `index.ask` now
+  carries the CLI's own words, scrubbed and clipped. Nothing is cut and the
+  default stays on — see [ADR 040](../adr/040-the-retrieval-walk-has-never-answered.md).
+  `pageindex.enabled` is the switch for the comparison once calls succeed.
+- `scripts/` was outside `bun run lint`, and that is where the async migration
+  hid. Ten findings, two of them `no-floating-promises`: `benchmark.ts` called
+  five newly-async span queries without awaiting one, so the telemetry budget
+  Wave 1 added reported **67µs against a 600ms ceiling** — five promises being
+  constructed — and could not have gone red for any regression. `seedSpans` had
+  the same shape, so its 90,000 inserts raced the whole run rather than preceding
+  it, which is the whole of the `snapshot: 7.96e+3ms > 90ms` failure. Awaited:
+  telemetry report **176–178ms** on PostgreSQL (739ms → 281ms was the SQLite
+  path), snapshot **2.6ms**, watchdog tick 6.8–10.5ms; every budget clear, and
+  the telemetry one shown able to fail. A test now fails if any directory holding
+  TypeScript is outside the lint target.
+- **One unreproduced live-sandbox failure, kept here rather than called a flake.**
+  One run in seven had three tests fail, the first at `test -x /usr/local/bin/orch
+  && ls /var/orch` returning **126** — the shell's "found but could not execute" —
+  337ms into the first test, so the container existed and provisioning had not
+  finished. Six runs since have been green: cold (server killed first), warm
+  (server reused), and immediately after three back-to-back full suites, which is
+  what preceded the red one. Two hypotheses were tested and both were wrong — the
+  22s wall clock was a *consequence* of failing early, not a slow boot, and a cold
+  `ensureServer` start does not reproduce it. `provision()` is awaited inside
+  `openSandbox`, so it is not a provisioning race either.
+
+  The reason it cannot be taken further is the assertion: `expect(orch.code).toBe(0)`
+  discarded both output streams, so a container that said something kept it. Same
+  defect class as `index.ask`'s `exit 1`, and fixed the same way — the probe now
+  prints `code`, `out` and `err`. A container is the one place where re-running is
+  not a way to find out. No cause is named here, because naming one would be a
+  guess printed as a diagnosis.
+- **Where an idle fleet's 24 hours actually went**, read back from the 98,056
+  spans the pre-migration database still holds. No agent turn ran in that window
+  at all — 7,707 watchdog jobs, **zero** `agent_turn` — so every second below is
+  the cost of doing nothing:
+
+  | span | calls | total | mean |
+  |---|---|---|---|
+  | `watchdog.repo_map` | 2,766 | **6,351s** | 2,296ms |
+  | `sandbox.exec` | 6,382 | 6,046s | 947ms |
+  | `git.ls_tree` | 1,184 | 3,819s | 3,226ms |
+  | `git.ensure_mirror` | 1,184 | 2,608s | 2,203ms |
+  | `index.ask` | 36 | 738s | 20,513ms |
+
+  `watchdog.repo_map` is 95% of the whole watchdog tick, and `git.ls_tree` and
+  `git.ensure_mirror` are nested inside it — their call counts (1,184) match the
+  1,185 ticks whose stamp could not be read exactly. Fixing that one branch
+  removes all three, about **6,300s per 24 idle hours**.
+
+  Both follow-ups that measurement left open are now closed. The gate's own
+  `rev-parse` cost ~947ms of container exec on every tick — the map's input is a
+  push, so it is asked on `watchdog.repoMapEveryMs` (five minutes) instead of on
+  every 30s tick, which is ~90% of that gone and a knob in the panel. And
+  `ensureMirror` no longer fetches for callers that do not read refs.
+- **Wave 5.6: the instrument was incomplete, and that is what got fixed.** Its
+  instruction is to confirm where a turn's wall clock goes *before* changing prompt
+  assembly, and no turn ran in the span history, so there was nothing to read.
+  Reading the code instead found the real gap: `runAgentTurn`'s own comment names
+  four stages — prepare, checkpoint, the provider call, settling the result — and
+  only three had spans. The missing quarter is ten serial awaits, two of which
+  enter a container (`preserveTurnBranch` bundles the branch into the mirror,
+  `reconcileOwnership` runs git against the checkout), so "the turn took nine
+  minutes" could resolve to the provider or to `finishTurn` with no way to tell.
+  `turn.settle` closes it. `assemble.ts`, hard constraint #1 and
+  `cache-position.test.ts` are untouched, as the plan requires — the next fleet
+  that runs a turn will have the four numbers the decision needs.
+- `ensureMirror` fetched unconditionally, so all three callers paid a network
+  round trip none of them had asked for — measured, **1,184 fetches costing 2,608
+  seconds in one day**. Two never needed it: `pushBranch` only sends `refs/orch/*`
+  outward, and `keepBranch` fetches a *local* bundle and already retries with an
+  explicit `fetch origin` on the one failure that means the mirror is behind.
+  Split into `ensureMirror` (it exists) and `freshMirror` (its refs are current),
+  and only `listTree` — the caller that reads refs — takes the second. The
+  question the old comment asked, "whether that is worth a cache", turned out to
+  be the wrong question: two of the three callers wanted no cache and no fetch.
+- **The query-plan check the plan's table asks for now exists, and its SQLite
+  answer did not transfer.** `progress.md` recorded indexes being tried and
+  rejected — on SQLite, where `span_scope (grp_id, slice_id, started_at)` trapped
+  the planner behind an unconstrained middle column and the real cost was sorting.
+  PostgreSQL plans the system scope as `Index Scan Backward using span_age`, three
+  buffer hits, 0.022ms, and drops out at the LIMIT. `test/platform/span-query-plan.test.ts`
+  asserts the plan on 20,000 rows at the real 94% unscoped skew, and was shown
+  failing by dropping `span_age` — which becomes `Seq Scan` plus `Sort`.
+
+  That proof cost something worth writing down: the per-file test database is a
+  template *copy that is kept*, and `openMemory` only empties rows. A `DROP INDEX`
+  therefore outlived its own run and every later run of that file inherited it,
+  until the database was dropped. Noted at `openMemory`.
+
 ## Blockers and deviations
+
+- **The `pageindex` config keys are recorded in the wrong commit.** They belong to
+  `55ee9e2`; they were swept into `5234fd6` (event retention) by a `git add` on
+  `config.ts`/`load.ts` that took another agent's unstaged hunks with them. The
+  tree is correct and complete — only the attribution is wrong. Not rewritten:
+  the commit is pushed with thirteen on top of it, and rewriting shared history to
+  fix a wrong label costs more than the label does. This is exactly the failure
+  `AGENTS.md` names when it says to stage owned files by name.
 
 - The `main` branch ruleset required a status check named `check` that no
   workflow defined, so it could never report while none of the fourteen quality
@@ -296,100 +597,58 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Next executable items
 
-1. Turn on secret scanning and push protection. Both are repository settings, so
-   no file can enable them. Push protection is the one that matters most on a
-   public repository: secret scanning tells you a credential leaked, push
-   protection stops the push that would have leaked it.
+1. **Run the release workflow in dry-run mode — blocked on a version bump, not on
+   effort.** `checks` refuses before anything builds: it requires
+   `inputs.version` to equal `main`'s `package.json` version *and* `v<version>` to
+   be unpublished. `main` is `0.1.2` and `v0.1.2` is published, so every dispatch
+   dies on "already published and immutable releases are not re-cut". Bump
+   `package.json` on `main` to the next version first; which version, and whether
+   now is the time to cut one, is the boss's call.
 
-   Where: Settings → Code security, or
-   `gh api -X PATCH repos/pamin-labs/orchestrator -F security_and_analysis[secret_scanning][status]=enabled`
-   and the same for `secret_scanning_push_protection`. Expect two new things
-   afterwards: a scanning alert surface under Security, and a push that contains
-   a recognised credential pattern being refused at the remote with the rule
-   named — which is the behaviour worth confirming once deliberately, on a
-   throwaway branch with a fake key, rather than discovering under pressure.
-2. When the database moves to Drizzle — decided, and on the **v1 RC line** rather
-   than `latest`, which has not moved since 2026-03-27 while v1 removes the
-   `_journal.json` every "bundle the migrations into the binary" recipe reads —
-   move `test/support/factories.ts` to Fishery's documented `onCreate` + async
-   `create()` with the database passed as a transient parameter, and drop the
-   project-owned `insert`.
+   Then dispatch with `dry_run` ticked (`release.yml:10`, default true) and confirm
+   `image-push`, `manifest`, `publish` and `promote-latest` are all skipped. What
+   only a hosted run exercises: the image build on x64 **and** arm64, Trivy against
+   the built image, SBOM generation, and provenance attestation.
 
-   Budget the async conversion rather than the ORM. Measured in `src/`: 297
-   `.query<>()`, 269 `.get()`, 132 `.all()`, 163 `db.run()` — about 564 call sites
-   that become `await`, plus 675 in `test/`, and it spreads, because a function
-   holding one becomes async and so does everything calling it. `openMemory()`'s
-   190× snapshot has no Postgres equivalent across its 283 call sites;
-   `pgsql-test` and `pglite-test` (both published 2026-08-18) replace it with
-   per-test transaction rollback — except `test/governance/transaction-boundaries.test.ts`,
-   whose subject *is* the transaction and which therefore cannot run inside one.
-   The `--compile` objection does not survive: with Postgres external, migration
-   is a compose step and the binary never migrates. It is written
-   synchronously today because `bun:sqlite` is synchronous, which is a stated
-   deviation rather than an oversight. Deferred deliberately: the conversion is
-   423 call sites across 59 files, it is the same edit whether it happens now or
-   at the switch, and it buys nothing until the driver is async. `no-floating-promises`
-   is already an error, so a forgotten `await` fails lint rather than shipping.
-3. Run the six environment-gated OpenSandbox integration tests. They are the six
-   `live(...)` cases in `test/live/sandbox-live.test.ts` at lines 95, 143, 181,
-   229, 273 and 351:
-   - a sandbox is a boundary: it gets a checkout, runs its gates, and cannot
-     touch this machine
-   - an agent reaches the orchestrator through the mailbox, with no route to
-     this machine
-   - the utility container takes a commit out of a group and into its mirror
-   - a credential bound to one path is not injected on another
-   - every skill reaches both CLIs, and the ones the boss ticked stay read-only
-   - one line out of a container is still one line by the time it is read
+   The publication half no longer depends on that run to be trustworthy. A test
+   walks every step in `release.yml` for a publishing verb — `docker push`,
+   `gh release create`, `imagetools create`, a registry login, either attest action,
+   `push: true` — and fails unless it sits under `!inputs.dry_run`. Naming the four
+   guarded jobs was a list a fifth job walks past, and a passing dry run only ever
+   proves that *today's* steps were guarded.
 
-   The skip lifts on its own: `serverUp()` at `:55` probes `cfg.sandbox.server`
-   over HTTP with `cfg.sandbox.apiKey`, and `:88` picks `test` or `test.skip`
-   from the answer. So the requirement is an opensandbox-server the settings
-   page can already reach, plus `ORCH_SANDBOX_API_KEY` matching it — there is no
-   flag to set and nothing to edit. `bun test test/live/` prints the reason on
-   the skip path, naming the address it tried.
+2. **`codecov/patch` is in the ruleset. Done**, and the blocker was a misreading:
+   `commits/<sha>/status` returns an empty array because Codecov posts a **check
+   run**, not a commit status. It had been uploading all along. Verified live on #9
+   with enforcement active. It is deliberately *not* in
+   `.github/required-checks.txt` — `release.yml` reads that to gate on the release
+   sha's check runs, and no `main` commit ever carries `codecov/patch`, so it lives
+   in `.github/merge-only-checks.txt`, read by the ruleset command alone.
 
-   Done when `bun test` reports 0 skips rather than 6. Keep the run's output:
-   these are the only tests that exercise the boundary against a real container,
-   so the log is the evidence that the boundary held, not a formality.
-4. Run the release workflow in dry-run mode on GitHub-hosted Linux. The entry is
-   the `dry_run` input at `.github/workflows/release.yml:10`, so it is a manual
-   dispatch with that box ticked. What only a hosted run can exercise: the
-   multi-platform image build on x64 **and** arm64, Trivy against the built
-   image, SBOM generation, and provenance attestation — none of which a local
-   run reaches.
+3. **Schema-level test isolation is done.** A namespace per worker replaces a
+   database per file: `template0` is 7,521 kB against 808 kB of our own tables, so
+   87% of every per-file database was a copy of the system catalogue. The
+   container went **3.00 GB → 193 MB**, and the cleanup that `TRUNCATE` did in
+   33,745ms a suite is ~2,000ms of `DELETE`. IntegreSQL was not needed — the
+   pooling it sells is one line here, `BUN_TEST_WORKER_ID` instead of `Bun.main`.
 
-   The thing to re-verify rather than assume is that a dry run writes nothing
-   external. `release.yml` gates the tag push, the GitHub release, the registry
-   tag and the `latest` alias on `!inputs.dry_run` (lines 279, 294, 305, 357,
-   473, 496, 539). Read the completed run's log for those six steps and confirm
-   each was skipped; a dry run that published anything is the one failure mode
-   that cannot be undone.
-5. Monitor the first merged CI and nightly stress runs; replay any property
-   failure from its reported seed and path.
-6. Add `codecov/patch` to the ruleset's required checks — **after this branch
-   merges, not before**, and the reason is more specific than "wait for a PR to
-   report it".
+   What that leaves, measured on a quiet machine: the suite is ~13.3s wall clock,
+   of which the database is ~0.4s. Every further attempt was tried and refuted
+   with data — `--no-isolate`, merging test files, per-file namespaces, lower
+   concurrency, a smaller pool, probing before delete, batching fixtures. The
+   remaining 11.1s is 1,715 tests doing their own work, and shortening that is a
+   per-file exercise with no lever in it.
 
-   `pr-report.yml` is the workflow that uploads coverage, and it is triggered by
-   `workflow_run`. GitHub only dispatches those from the **default branch**, and
-   the file exists nowhere but this branch, so the API does not believe it
-   exists at all:
+4. **Monitor the nightly stress run** and replay any property failure from its
+   reported seed and path. CI, security and CodeQL are green on `main` after #7.
 
-   ```
-   $ gh run list --workflow pr-report.yml
-   HTTP 404: workflow pr-report.yml not found on the default branch
-   ```
+## Done since this list was written
+- `test/support/factories.ts` is on Fishery's `onCreate` with the database as a
+  transient — 407 lines to 172. It was deferred until the driver moved, and the
+  driver has moved: `TableFactory.insert`, the string-built `INSERT`, and the five
+  bare `INSERT INTO`s in test files are all gone.
 
-   So Codecov has never received an upload, and
-   `gh api repos/pamin-labs/orchestrator/commits/<sha>/status` returns an empty
-   `statuses` array on every commit of this branch. Requiring `codecov/patch`
-   today would leave every pull request pending forever on a context nothing
-   posts — the exact shape of the `check` bug this branch found in the ruleset,
-   reintroduced under a different name.
-
-   What to do once merged: open any pull request, confirm `codecov/patch`
-   appears in `/commits/<sha>/status`, then add it with the ruleset call in
-   `docs/operations/ci.md`. If it does not appear, the fault is upstream of the
-   ruleset — check that `pr-report.yml` ran at all and that its OIDC upload
-   succeeded — and the ruleset must not be touched until it does.
+- Secret scanning and push protection are both `enabled` on the repository.
+  `secret_scanning_non_provider_patterns` and `secret_scanning_validity_checks`
+  remain off: they are paid features, not oversights.
+- The first merged CI, security and CodeQL runs on `main` all passed.

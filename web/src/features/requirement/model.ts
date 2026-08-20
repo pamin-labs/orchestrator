@@ -4,7 +4,6 @@ import type { Agent, Escalation, Group, Slice, State } from "../../shared/api";
 import { activityOf } from "../../shared/activity";
 import { gates, heldApproved, STOPS } from "../../shared/select";
 import { waited } from "../../shared/format";
-import i18n from "../../i18n";
 
 /**
  * What the requirement page decides, with no JSX around it.
@@ -58,8 +57,7 @@ export const openSliceValue = (shown: Slice | undefined): string => (shown ? Str
 export const pickedSlice = (value: string): number | "none" => (value ? Number(value) : "none");
 
 export const activeTab = (tab: string | null | undefined, mine: number): string => tab ?? (mine ? "ask" : "slice");
-export const askTabLabel = (mine: number): string =>
-  mine ? i18n.t("requirement.model.askTab.mine", "待你决策") : i18n.t("requirement.model.askTab.others", "问题");
+export const askTabLabel = (mine: number): string => (mine ? "待你决策" : "问题");
 /** Absent, not undefined: the strip is uncontrolled when nobody owns the hash. */
 export const tabProps = (onTab?: (t: string) => void): { onValueChange?: (t: string) => void } =>
   onTab ? { onValueChange: onTab } : {};
@@ -80,9 +78,9 @@ export const noQuestions = (asks: number, answered: number): boolean => !asks &&
 export const askLanes = (mine: number, others: number, answered: number): [string, string][] =>
   (
     [
-      ["mine", i18n.t("requirement.model.askLane.mine", "待你决策"), mine],
-      ["held", i18n.t("requirement.model.askLane.held", "别人在处理"), others],
-      ["done", i18n.t("requirement.model.askLane.done", "替你答过"), answered],
+      ["mine", "待你决策", mine],
+      ["held", "别人在处理", others],
+      ["done", "替你答过", answered],
     ] as [string, string, number][]
   )
     .filter(([, , n]) => n > 0)
@@ -108,12 +106,9 @@ const activityLine = (a: Agent): string => {
 
 /** The row's second line: where this slice has got to, in the fewest words that are true. */
 export function sliceLine(s: Slice, on: Agent[]): string {
-  if (s.status === "pending") return i18n.t("requirement.model.sliceLine.pending", "等前序切片");
-  if (s.status === "rejected") return i18n.t("requirement.model.sliceLine.rejected", "已退回，等它修");
-  if (s.status === "awaiting_boss")
-    return s.awaiting_at
-      ? i18n.t("requirement.model.sliceLine.awaitingSince", "待你查收 · {{waited}}", { waited: waited(s.awaiting_at) })
-      : i18n.t("requirement.model.sliceLine.awaiting", "待你查收");
+  if (s.status === "pending") return "等前序切片";
+  if (s.status === "rejected") return "已退回，等它修";
+  if (s.status === "awaiting_boss") return s.awaiting_at ? `待你查收 · ${waited(s.awaiting_at)}` : "待你查收";
   return on.length ? on.map(activityLine).join(" · ") : s.accept_spec;
 }
 
@@ -126,15 +121,7 @@ export const showTasks = (tasks: State["tasks"], s: Slice): boolean =>
   tasks.length > 1 || (!!tasks[0] && tasks[0].title !== s.title);
 
 /** The recorded gate track, plus the boss's own column — not a gate, but read as one. */
-export const tickStops = (waiting: boolean): [string, string][] => [
-  ...STOPS,
-  [
-    "boss",
-    waiting
-      ? i18n.t("requirement.model.tickStops.waiting", "待查收")
-      : i18n.t("requirement.model.tickStops.done", "查收"),
-  ],
-];
+export const tickStops = (waiting: boolean): [string, string][] => [...STOPS, ["boss", waiting ? "待查收" : "查收"]];
 
 export const tickState = (s: Slice, key: string, gs: Record<string, string>): string =>
   key !== "boss" ? (gs[key] ?? "") : s.status === "awaiting_boss" ? "wait" : s.status === "accepted" ? "pass" : "";
@@ -157,25 +144,17 @@ export type StepState = "wait" | "run" | "ok" | "bad";
 export const cloneStep = (cmd: string | null, failed: boolean): StepState => (cmd ? "ok" : failed ? "bad" : "run");
 export const installStep = (cmd: string | null, failed: boolean, until: number | null): StepState =>
   !cmd ? "wait" : failed ? "bad" : until ? "ok" : "run";
-export const bootCmd = (cmd: string | null): string =>
-  cmd ?? i18n.t("requirement.model.bootCmd", "把这个组的分支和依赖装回新沙盒");
+export const bootCmd = (cmd: string | null): string => cmd ?? "把这个组的分支和依赖装回新沙盒";
 export const bootSecs = (since: number, until: number | null, now: number): number =>
   Math.max(0, Math.round(((until ?? now) - (since || now)) / 1000));
 /** Elapsed, because an install with no clock reads as stuck at minute three. */
 export const bootClock = (failed: boolean, secs: number): string =>
-  failed
-    ? i18n.t("requirement.model.bootClock.failed", "装失败了")
-    : secs < 90
-      ? `${secs}s`
-      : `${Math.floor(secs / 60)}m${secs % 60}s`;
+  failed ? "装失败了" : secs < 90 ? `${secs}s` : `${Math.floor(secs / 60)}m${secs % 60}s`;
 
 export const inMergeQueue = (st: State, grpId: number): boolean => st.mergeQueue.some((m) => m.grpId === grpId);
 export const groupTone = (g: Group): "muted" | "mine" | "live" =>
   heldApproved(g) ? "muted" : g.status === "DRAFT" ? "mine" : g.status === "RUNNING" ? "live" : "muted";
-export const prLabel = (inQueue: boolean): string =>
-  inQueue
-    ? i18n.t("requirement.model.prLabel.queued", "去合并 PR ↗")
-    : i18n.t("requirement.model.prLabel.open", "打开 PR ↗");
+export const prLabel = (inQueue: boolean): string => (inQueue ? "去合并 PR ↗" : "打开 PR ↗");
 export const isRunning = (g: Group): boolean => ["RUNNING", "PAUSING"].includes(g.status);
 /** Closed PR: reopening it on GitHub is enough and the watchdog sees it, but a
  *  branch that was force-pushed or deleted cannot be reopened at all. */
@@ -198,8 +177,7 @@ export function draftView(st: State, grpId: number) {
 }
 
 export const blockedReason = (st: State, grpId: number): string =>
-  st.approvedBlocked.find((b) => b.grpId === grpId)?.reason ??
-  i18n.t("requirement.model.blockedReason", "等 Architect 切边界");
+  st.approvedBlocked.find((b) => b.grpId === grpId)?.reason ?? "等 Architect 切边界";
 export const cardRows = (filed: string): number => Math.max(7, filed.split("\n").length + 1);
 export const firstLine = (body: string): string => body.split("\n")[0] ?? "";
 /** Send the text only when edited: an untouched card is approved as filed, so

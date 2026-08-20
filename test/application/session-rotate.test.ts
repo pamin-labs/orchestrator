@@ -3,6 +3,7 @@ import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig, loadRoles } from "../../src/platform/config/load.ts";
+import { agent } from "../../src/platform/persistence/schema.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { Scheduler, type Executor } from "../../src/platform/scheduling/scheduler.ts";
 import { makeExecutor, sessionFor, type ExecDeps } from "../../src/application/executor.ts";
@@ -29,9 +30,9 @@ function turnUsage(over: Partial<TurnResult> = {}): TurnResult {
   };
 }
 
-function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
-  const db = openMemory();
-  seedAuth(db);
+async function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
+  const db = await openMemory();
+  await seedAuth(db);
   const bus = new Bus(db);
   const cfg = { ...loadConfig(), dataDir: tempDir("orch-data-") };
   const specs: TurnSpec[] = [];
@@ -56,46 +57,45 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
   };
   exec = makeExecutor(deps);
 
-  const p = fx.project.insert(db, { name: "p" });
-  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  const f = fx.on(db);
+  const p = await f.project.create({ name: "p" });
+  await f.runningGrp.create({ project_id: p.id, name: "g1" });
   return { db, ctx, sched, deps, specs, app: makeApp(ctx) };
 }
 
 test("session_tokens only counts input+cacheCreate, so heavy cacheRead never trips overTokenBudget", async () => {
-  const { db, sched } = harness(async () => turnUsage());
+  const { db, sched } = await harness(async () => turnUsage());
   for (let i = 0; i < 5; i++) {
-    sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+    await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
     await sched.drain();
   }
 
-  const agent = db
-    .query<{ session_tokens: number; total_tokens: number }, []>("SELECT session_tokens, total_tokens FROM agent")
-    .get()!;
+  const [row] = await db.select({ session_tokens: agent.session_tokens, total_tokens: agent.total_tokens }).from(agent);
   // 5 turns * (input 10 + cacheCreate 100) = 550, far under the 120k ceiling —
   // counting cacheRead too would have put this at 1.5M and rotated every turn.
-  expect(agent.session_tokens).toBe(550);
-  expect(agent.total_tokens).toBe(5 * (10 + 20 + 300_000 + 100));
+  expect(row?.session_tokens).toBe(550);
+  expect(row?.total_tokens).toBe(5 * (10 + 20 + 300_000 + 100));
 });
 
 test("rotating a session zeroes session_tokens instead of carrying it forward", async () => {
-  const { db, sched, specs } = harness(async () => turnUsage());
-  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  const { db, sched, specs } = await harness(async () => turnUsage());
+  await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
-  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
   // Two turns in the same session: accumulated, not reset.
-  expect(db.query<{ t: number }, []>("SELECT session_tokens AS t FROM agent").get()!.t).toBe(220);
+  expect((await db.select({ t: agent.session_tokens }).from(agent))[0]?.t).toBe(220);
   // What the runtime reported, not what we minted: codex starts a thread of its
   // own and only that id is resumable.
   expect(specs[1]!.resumeSessionId).toBe("s1");
 
   // Force a rotation the same way a stale stable hash or an explicit request does.
-  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer", rotate: true } });
+  await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer", rotate: true } });
   await sched.drain();
 
   // Reset by the rotation, then this turn's own usage is the only thing counted —
   // not 330, which is what carrying the old session's total forward would give.
-  expect(db.query<{ t: number }, []>("SELECT session_tokens AS t FROM agent").get()!.t).toBe(110);
+  expect((await db.select({ t: agent.session_tokens }).from(agent))[0]?.t).toBe(110);
 });
 
 /**

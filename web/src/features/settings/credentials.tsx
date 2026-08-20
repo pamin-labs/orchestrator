@@ -1,6 +1,4 @@
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
-import i18n from "../../i18n";
 import { api, mutate } from "../../shared/api";
 import { clock } from "../../shared/format";
 import { Head, Input, Meta, Textarea } from "../../ui/bits";
@@ -17,11 +15,9 @@ import {
 
 export interface Runtime {
   key: "claude" | "codex";
-  /** The CLI's own name — proper noun, shown as-is in every locale. */
   label: string;
   /** The mode this machine can obtain by running the CLI itself. */
   login?: Mode;
-  /** `label`, `how` and `cost` are i18n keys, same reason as `Runtime.label`. */
   modes: Array<{ mode: Mode; label: string; how: string; cost: string }>;
   urlEnv: string;
 }
@@ -33,18 +29,8 @@ export const RUNTIMES: Runtime[] = [
     login: "oauth_token",
     urlEnv: "ANTHROPIC_BASE_URL",
     modes: [
-      {
-        mode: "oauth_token",
-        label: "settings.credentials.claude.mode.oauth.label",
-        how: "settings.credentials.claude.mode.oauth.how",
-        cost: "settings.credentials.claude.mode.oauth.cost",
-      },
-      {
-        mode: "api_key",
-        label: "settings.credentials.claude.mode.apiKey.label",
-        how: "settings.credentials.claude.mode.apiKey.how",
-        cost: "settings.credentials.claude.mode.apiKey.cost",
-      },
+      { mode: "oauth_token", label: "订阅", how: "容器里跑 claude setup-token", cost: "一年有效" },
+      { mode: "api_key", label: "API 密钥", how: "console.anthropic.com", cost: "不显示额度" },
     ],
   },
   {
@@ -53,18 +39,8 @@ export const RUNTIMES: Runtime[] = [
     login: "chatgpt",
     urlEnv: "OPENAI_BASE_URL",
     modes: [
-      {
-        mode: "chatgpt",
-        label: "settings.credentials.codex.mode.chatgpt.label",
-        how: "settings.credentials.codex.mode.chatgpt.how",
-        cost: "settings.credentials.codex.mode.chatgpt.cost",
-      },
-      {
-        mode: "api_key",
-        label: "settings.credentials.codex.mode.apiKey.label",
-        how: "settings.credentials.codex.mode.apiKey.how",
-        cost: "settings.credentials.codex.mode.apiKey.cost",
-      },
+      { mode: "chatgpt", label: "订阅", how: "在容器里登录，本机不用装 codex", cost: "本机统一刷新" },
+      { mode: "api_key", label: "API 密钥", how: "platform.openai.com", cost: "不显示额度" },
     ],
   },
 ];
@@ -83,10 +59,9 @@ export function CredPane({
   onSaved: () => void;
   onWaitForLogin: (runtime: string, since: number) => void;
 }) {
-  const { t } = useTranslation();
   return (
     <>
-      <Head title={t("settings.credentials.title")} note={t("settings.credentials.note")} />
+      <Head title="模型账号" note="真令牌不进沙盒" />
       {RUNTIMES.map((runtime) => (
         <CredentialRow
           key={runtime.key}
@@ -210,7 +185,6 @@ function useCredential(props: CredentialProps) {
 type CredentialState = ReturnType<typeof useCredential>;
 
 function Credential(props: CredentialProps) {
-  const { t } = useTranslation();
   const state = useCredential(props);
   const { form, savedBaseUrl, changeForm } = state;
   const dirty = !!form.secret.trim() || form.baseUrl.trim() !== savedBaseUrl;
@@ -253,13 +227,13 @@ function Credential(props: CredentialProps) {
               props.onSaved();
             }}
           >
-            {t("settings.credentials.clear")}
+            清掉
           </Button>
         )}
         {/* Only once there is something to save, same as every other field here. */}
         {dirty && (
           <Button variant="go" size="sm" disabled={form.busy} onClick={() => void save()}>
-            {t("settings.credentials.save")}
+            存下
           </Button>
         )}
       </div>
@@ -268,7 +242,6 @@ function Credential(props: CredentialProps) {
 }
 
 function CredentialIntro({ state }: { state: CredentialState }) {
-  const { t } = useTranslation();
   const { props, form } = state;
   const spec = props.runtime.modes.find((candidate) => candidate.mode === form.mode) ?? props.runtime.modes[0]!;
   // How to get one, and what it costs — instructions for a decision already
@@ -276,17 +249,16 @@ function CredentialIntro({ state }: { state: CredentialState }) {
   if (props.current && props.current.mode === form.mode) return null;
   return (
     <Meta className="mb-1.5 block">
-      {t(spec.how)} · {t(spec.cost)}
+      {spec.how} · {spec.cost}
     </Meta>
   );
 }
 
 function CredentialHeader({ state }: { state: CredentialState }) {
-  const { t } = useTranslation();
   const { props, form, changeForm } = state;
   return (
     <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <span className="font-display text-[0.9375rem] font-semibold">{props.runtime.label}</span>
+      <span className="font-display text-name font-semibold">{props.runtime.label}</span>
       <CredentialStatus state={state} />
       <span className="grow" />
       <Segments
@@ -298,7 +270,7 @@ function CredentialHeader({ state }: { state: CredentialState }) {
       >
         {props.runtime.modes.map((m) => (
           <Segment key={m.mode} value={m.mode}>
-            {t(m.label)}
+            {m.label}
           </Segment>
         ))}
       </Segments>
@@ -307,12 +279,9 @@ function CredentialHeader({ state }: { state: CredentialState }) {
 }
 
 function CredentialStatus({ state }: { state: CredentialState }) {
-  const { t } = useTranslation();
   const { props, form } = state;
-  if (!props.current)
-    return <span className="text-[0.75rem] font-medium text-accent">{t("settings.credentials.unconfigured")}</span>;
+  if (!props.current) return <span className="text-secondary font-medium text-accent">没配</span>;
   const labels = Object.fromEntries(props.runtime.modes.map((mode) => [mode.mode, mode.label]));
-  const modeKey = labels[props.current.mode];
   return (
     <>
       {/* Which mode is stored is only worth a word when it is not the one
@@ -320,9 +289,7 @@ function CredentialStatus({ state }: { state: CredentialState }) {
           that, and a label repeating it is the same fact 30rem apart.
           When they differ it is the whole point of the row. */}
       {props.current.mode !== form.mode && (
-        <span className="text-[0.75rem] text-ink-2">
-          {t("settings.credentials.storedAs", { label: modeKey ? t(modeKey) : props.current.mode })}
-        </span>
+        <span className="text-secondary text-ink-2">存的是{labels[props.current.mode] ?? props.current.mode}</span>
       )}
       {/* The masked tail is in the box it was pasted into, not here as well. */}
       <Meta>{clock(props.current.updatedAt)}</Meta>
@@ -332,16 +299,12 @@ function CredentialStatus({ state }: { state: CredentialState }) {
 
 function secretPlaceholder(props: CredentialProps, form: CredentialForm, fallback: string) {
   if (!props.current || props.current.mode !== form.mode) return fallback;
-  return i18n.t("settings.credentials.secretPlaceholderCurrent", { hint: props.current.hint });
+  return `已存 ${props.current.hint}，粘新的就换掉`;
 }
 
-const SECRET_LABEL = {
-  oauth_token: "settings.credentials.secretLabel.oauthToken",
-  api_key: "settings.credentials.secretLabel.apiKey",
-} as const;
+const SECRET_LABEL = { oauth_token: "令牌", api_key: "API 密钥" } as const;
 
 function SecretField({ state }: { state: CredentialState }) {
-  const { t } = useTranslation();
   const { props, form, changeForm, changeLogin, updatedAt } = state;
   /**
    * Sign in, whichever way this runtime does it.
@@ -380,14 +343,14 @@ function SecretField({ state }: { state: CredentialState }) {
       {/* The label is what this mode calls the thing. It said `token` under an
           API key too, which is two words for one field. */}
       <FieldLabel htmlFor={`${props.runtime.key}-secret`} className="text-ink-3">
-        {t(SECRET_LABEL[mode])}
+        {SECRET_LABEL[mode]}
       </FieldLabel>
       <InputGroup>
         <Input
           id={`${props.runtime.key}-secret`}
           type="password"
           className="min-w-0 flex-1 font-mono"
-          placeholder={secretPlaceholder(props, form, t("settings.credentials.secretPlaceholder"))}
+          placeholder={secretPlaceholder(props, form, "粘贴进来，存下之后看不到")}
           value={form.secret}
           onChange={(e) => changeForm({ secret: e.target.value })}
         />
@@ -399,7 +362,6 @@ function SecretField({ state }: { state: CredentialState }) {
 }
 
 function ChatgptSecretField({ state, signIn }: { state: CredentialState; signIn: () => void }) {
-  const { t } = useTranslation();
   const { props, form, changeForm } = state;
   return (
     <Field orientation="vertical">
@@ -415,7 +377,7 @@ function ChatgptSecretField({ state, signIn }: { state: CredentialState; signIn:
       <Textarea
         id={`${props.runtime.key}-secret`}
         className="min-h-16"
-        placeholder={secretPlaceholder(props, form, t("settings.credentials.authJsonPlaceholder"))}
+        placeholder={secretPlaceholder(props, form, "~/.codex/auth.json 的完整内容")}
         value={form.secret}
         onChange={(e) => changeForm({ secret: e.target.value })}
       />
@@ -424,7 +386,6 @@ function ChatgptSecretField({ state, signIn }: { state: CredentialState; signIn:
 }
 
 function LoginProgress({ state }: { state: CredentialState }) {
-  const { t } = useTranslation();
   const { form, login, changeForm, changeLogin } = state;
   const sendCode = async () => {
     const code = login.paste.trim();
@@ -438,12 +399,12 @@ function LoginProgress({ state }: { state: CredentialState }) {
     <>
       {login.device && (
         <Field orientation="vertical">
-          <DeviceCode code={login.device.code} url={login.device.url} go={t("settings.credentials.deviceGoChatgpt")} />
+          <DeviceCode code={login.device.code} url={login.device.url} go="去 ChatGPT 输入" />
           <div className="mt-1.5 flex items-baseline gap-2">
             {/* The real expiry, not a remembered one. `15 分钟` was written into
                 the copy while `expiresAt` sat two lines up driving the timer
                 that clears this block. */}
-            <Meta>{t("settings.credentials.deviceExpiresAt", { time: clock(login.device.expiresAt) })}</Meta>
+            <Meta>到 {clock(login.device.expiresAt)} 前有效</Meta>
             <span className="grow" />
             <Button
               size="sm"
@@ -453,7 +414,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
                 changeLogin({ device: null });
               }}
             >
-              {t("settings.credentials.cancel")}
+              取消
             </Button>
           </div>
         </Field>
@@ -464,7 +425,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
           <Field>
             {/* Not a FieldLabel: there is no control on this row to focus, and a
                 label pointing at nothing is what a screen reader reads out. */}
-            <FieldTitle className="text-ink-3">{t("settings.credentials.loginPageTitle")}</FieldTitle>
+            <FieldTitle className="text-ink-3">登录页</FieldTitle>
             {/* One line: the address is 400 characters of PKCE and nobody reads
                 it. It stays selectable for the case where the browser that opened
                 it is not the one you want to log in with. */}
@@ -473,9 +434,9 @@ function LoginProgress({ state }: { state: CredentialState }) {
                 href={login.link}
                 target="_blank"
                 rel="noopener"
-                className="shrink-0 text-[0.75rem] text-accent underline"
+                className="shrink-0 text-secondary text-accent underline"
               >
-                {t("settings.credentials.openLoginPage")}
+                打开登录页
               </a>
               <Meta className="min-w-0 truncate">{login.link}</Meta>
             </span>
@@ -486,13 +447,13 @@ function LoginProgress({ state }: { state: CredentialState }) {
               thing to do next is beside the evidence for doing it. */}
           <Field orientation="vertical">
             <FieldLabel htmlFor="claude-code" className="text-ink-3">
-              {t("settings.credentials.pageCodeLabel")}
+              页面给的码
             </FieldLabel>
             <InputGroup>
               <Input
                 id="claude-code"
                 className="min-w-0 flex-1 font-mono"
-                placeholder={t("settings.credentials.pageCodePlaceholder")}
+                placeholder="批准完那一页会给一串码，贴这儿"
                 value={login.paste}
                 onChange={(e) => changeLogin({ paste: e.target.value })}
                 onKeyDown={(e) => {
@@ -500,7 +461,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
                 }}
               />
               <Button size="sm" disabled={form.busy || !login.paste.trim()} onClick={() => void sendCode()}>
-                {t("settings.credentials.submit")}
+                交上去
               </Button>
             </InputGroup>
             {/* No validity line here: this flow hands back no expiry, and the
@@ -515,7 +476,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
                   changeLogin({ link: null, paste: "" });
                 }}
               >
-                {t("settings.credentials.cancel")}
+                取消
               </Button>
             </div>
           </Field>
@@ -526,19 +487,18 @@ function LoginProgress({ state }: { state: CredentialState }) {
 }
 
 function CredentialSettings({ state }: { state: CredentialState }) {
-  const { t } = useTranslation();
   const { props, form, changeForm } = state;
   return (
     <>
       <Field>
         <FieldLabel htmlFor={`${props.runtime.key}-url`} className="text-ink-3">
-          {t("settings.credentials.apiAddrLabel")}
+          API 地址
         </FieldLabel>
         <FieldContent className="flex-col items-stretch gap-1">
           <Input
             id={`${props.runtime.key}-url`}
             className="font-mono"
-            placeholder={t("settings.credentials.apiAddrPlaceholder", { env: props.runtime.urlEnv })}
+            placeholder={`可选，自建网关 → ${props.runtime.urlEnv}`}
             value={form.baseUrl}
             onChange={(e) => changeForm({ baseUrl: e.target.value })}
           />
@@ -546,9 +506,7 @@ function CredentialSettings({ state }: { state: CredentialState }) {
               only ever read from the provider's own endpoint, so a gateway
               account has no window to show and the header would look broken
               rather than deliberate. */}
-          {form.mode !== "api_key" && form.baseUrl.trim() && (
-            <Meta className="block">{t("settings.credentials.gatewayNote")}</Meta>
-          )}
+          {form.mode !== "api_key" && form.baseUrl.trim() && <Meta className="block">自建网关，头部不显示额度</Meta>}
         </FieldContent>
       </Field>
 
@@ -574,7 +532,7 @@ function CredentialSettings({ state }: { state: CredentialState }) {
                 props.onSaved();
               }}
             />
-            <Meta>{t("settings.credentials.coauthorNote")}</Meta>
+            <Meta>Claude Code 自己提交时写进 Co-Authored-By</Meta>
           </FieldContent>
         </Field>
       )}
@@ -590,11 +548,10 @@ function CredentialSettings({ state }: { state: CredentialState }) {
  * whole OAuth exchange either way; nothing here forges one.
  */
 function Login({ busy, waiting, onClick }: { busy: boolean; waiting: boolean; onClick: () => void }) {
-  const { t } = useTranslation();
   return (
-    <Tip label={t("settings.credentials.loginTip")}>
+    <Tip label="在工具容器里跑一次官方 CLI 的登录，拿到的凭据存在这儿。本机什么都不用装。仅限官方账号；自建网关走 API key。">
       <Button size="sm" disabled={busy || waiting} onClick={onClick}>
-        {busy || waiting ? t("settings.credentials.loginWaiting") : t("settings.credentials.login")}
+        {busy || waiting ? "等你在浏览器里批准…" : "登录"}
       </Button>
     </Tip>
   );

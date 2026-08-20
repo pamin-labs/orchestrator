@@ -4,6 +4,7 @@ import { writeFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { baseBranch, LINK_AGENTS_MD } from "../../src/mech/git/checkout.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import { project } from "../../src/platform/persistence/schema.ts";
 import type { Github } from "../../src/mech/git/github.ts";
 import {
   baseRef,
@@ -18,6 +19,9 @@ import {
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { tempDir } from "../support/temp.ts";
+
+/** What `baseBranchFallbacks` ships as; the subject here is the search, not the list. */
+const FALLBACKS = ["main", "master"] as const;
 
 const git = testGit;
 
@@ -183,7 +187,7 @@ test.concurrent(
     }
     expect((await git(["log", "--format=%s", "main..HEAD"], wt.worktree)).out.split("\n").length).toBe(3);
 
-    const r = await squashWip(git, wt.worktree, "feat: the whole thing");
+    const r = await squashWip(git, wt.worktree, "feat: the whole thing", FALLBACKS);
     expect(r.squashed).toBe(3);
 
     const log = (await git(["log", "--format=%s", "main..HEAD"], wt.worktree)).out.trim();
@@ -206,7 +210,7 @@ test.concurrent(
     await git(["add", "-A"], wt.worktree);
     await git(["commit", "-q", "-m", "fix: the actual bug"], wt.worktree);
 
-    const r = await squashWip(git, wt.worktree, "squashed");
+    const r = await squashWip(git, wt.worktree, "squashed", FALLBACKS);
     expect(r.squashed).toBe(0);
     expect(r.reason).toContain("real messages");
     expect((await git(["log", "--format=%s", "main..HEAD"], wt.worktree)).out).toContain("fix: the actual bug");
@@ -234,7 +238,7 @@ test.concurrent(
     await git(["add", "-A"], dir);
     await git(["commit", "-q", "-m", "other group"], dir);
     await git(["fetch", "-q", "origin"], wt.worktree);
-    await rebaseOntoBase(git, wt.worktree);
+    await rebaseOntoBase(git, wt.worktree, FALLBACKS);
 
     // The recorded base is now a commit on main, so diffing from it would call
     // `theirs.txt` part of this slice. Fall back to the fork point instead.
@@ -290,10 +294,10 @@ test.concurrent(
     const work = join(origin, "../renamed-work");
     await git(["clone", "-q", origin, work], origin);
 
-    expect(await detectBaseBranch(git, work)).toBe("trunk");
+    expect(await detectBaseBranch(git, work, FALLBACKS)).toBe("trunk");
     // Without origin/HEAD it has to ask the remote rather than guess main.
     await git(["update-ref", "-d", "refs/remotes/origin/HEAD"], work);
-    expect(await detectBaseBranch(git, work)).toBe("trunk");
+    expect(await detectBaseBranch(git, work, FALLBACKS)).toBe("trunk");
   },
   GIT_IO,
 );
@@ -301,7 +305,7 @@ test.concurrent(
 test.concurrent(
   "with no base branch to rebase onto, the caller is told that and not `ambiguous argument`",
   async () => {
-    // Three helpers used to write `origin/${detectBaseBranch(...)}` and hand git a
+    // Three helpers used to write `origin/${detectBaseBranch(..., FALLBACKS)}` and hand git a
     // ref they had never verified. In a clone with no remote — or one whose remote
     // has gone — that is `origin/main` against a repository that has no `origin`
     // at all, so the rebase fails deep inside git with a message about argument
@@ -314,12 +318,12 @@ test.concurrent(
     await git(["add", "-A"], dir);
     await git(["commit", "-q", "-m", "one"], dir);
 
-    expect(await baseRef(git, dir)).toBeNull();
-    const r = await rebaseOntoBase(git, dir);
+    expect(await baseRef(git, dir, FALLBACKS)).toBeNull();
+    const r = await rebaseOntoBase(git, dir, FALLBACKS);
     expect(r.code).not.toBe(0);
     expect(r.out).toContain("no base branch");
     // And the squash declines with a reason instead of committing onto nothing.
-    expect((await squashWip(git, dir, "feat: x")).reason).toContain("no base branch");
+    expect((await squashWip(git, dir, "feat: x", FALLBACKS)).reason).toContain("no base branch");
   },
   GIT_IO,
 );
@@ -331,8 +335,8 @@ test(
     // is no checkout on this machine to ask. The drift itself still has to be
     // caught — a default branch renamed on the remote leaves every clone, rebase
     // and diff resolving against a ref that is not there.
-    const db = openMemory();
-    fx.project.insert(db, { name: "p", repo_path: "acme/p" });
+    const db = await openMemory();
+    await fx.on(db).project.create({ name: "p", repo_path: "acme/p" });
     let branch = "main";
     const gh: Github = {
       remaining: () => null,
@@ -342,23 +346,18 @@ test(
         data: schema.parse({ default_branch: branch, full_name: "acme/p" }),
       }),
     };
-    const ctx = testContext({ db, gh });
+    const ctx = await testContext({ db, gh });
 
     // Resolved once, then stored: the diff baseline has to mean the same thing on
     // the day a slice was cut and the day the boss reads it.
     expect(await baseBranch(ctx, 1)).toBe("main");
-    expect(db.query<{ b: string | null }, []>("SELECT base_branch AS b FROM project").get()!.b).toBe("main");
+    expect((await db.select({ b: project.base_branch }).from(project))[0]!.b).toBe("main");
     // Learning it the first time is not a change, so it is not announced.
-    expect(ctx.bus.since(0)).toEqual([]);
+    expect(await ctx.bus.since(0)).toEqual([]);
 
     branch = "mainline";
     expect(await baseBranch(ctx, 1)).toBe("mainline");
-    expect(
-      ctx.bus
-        .since(0)
-        .map((event) => event.body)
-        .join(" "),
-    ).toContain("mainline");
+    expect((await ctx.bus.since(0)).map((event) => event.body).join(" ")).toContain("mainline");
 
     // GitHub unreachable keeps what is stored: resetting a project that develops
     // on `develop` to `main` because the network blinked would repoint every diff.
@@ -366,7 +365,7 @@ test(
       remaining: () => null,
       request: async () => ({ ok: false, status: 0, bucket: "transient", message: "x" }),
     };
-    const offline = testContext({ ...ctx, gh: unavailable });
+    const offline = await testContext({ ...ctx, gh: unavailable });
     expect(await baseBranch(offline, 1)).toBe("mainline");
   },
   GIT_IO,
@@ -380,8 +379,8 @@ test(
     // `GET /repos/old/name` — which is why everything kept working and nothing
     // said anything — but a POST to open a pull request does not survive a
     // redirect, and the old path only works until somebody claims the freed name.
-    const db = openMemory();
-    fx.project.insert(db, { name: "p", repo_path: "Old-Org/p", remote: "https://github.com/Old-Org/p.git" });
+    const db = await openMemory();
+    await fx.on(db).project.create({ name: "p", repo_path: "Old-Org/p", remote: "https://github.com/Old-Org/p.git" });
     const gh: Github = {
       remaining: () => null,
       request: async (_method, _path, schema) => ({
@@ -394,19 +393,14 @@ test(
         }),
       }),
     };
-    const ctx = testContext({ db, gh });
+    const ctx = await testContext({ db, gh });
 
     await baseBranch(ctx, 1);
-    const row = db.query<{ p: string; r: string }, []>("SELECT repo_path AS p, remote AS r FROM project").get()!;
-    expect(row.p).toBe("new-org/p");
+    const [row] = await db.select({ p: project.repo_path, r: project.remote }).from(project);
+    expect(row!.p).toBe("new-org/p");
     // The remote too, or the clone still fetches by the old URL.
-    expect(row.r).toBe("https://github.com/new-org/p.git");
-    expect(
-      ctx.bus
-        .since(0)
-        .map((event) => event.body)
-        .join(" "),
-    ).toContain("new-org/p");
+    expect(row!.r).toBe("https://github.com/new-org/p.git");
+    expect((await ctx.bus.since(0)).map((event) => event.body).join(" ")).toContain("new-org/p");
   },
   GIT_IO,
 );

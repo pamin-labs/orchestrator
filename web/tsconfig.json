@@ -3,9 +3,8 @@
   "compilerOptions": {
     "rootDir": "..",
     "outDir": "../.cache/tsc/web",
-    "tsBuildInfoFile": "../.cache/tsc/web.tsbuildinfo",
-    "resolveJsonModule": true
+    "tsBuildInfoFile": "../.cache/tsc/web.tsbuildinfo"
   },
-  "include": ["src", "src/**/*.json"],
+  "include": ["src"],
   "references": [{ "path": "../tsconfig.src.json" }]
 }
