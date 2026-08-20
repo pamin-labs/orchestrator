@@ -9,7 +9,7 @@ import { usePaged } from "../../shared/page";
 import { STOPS, countWaiting, gates, heldApproved, statusLabel } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
-import { Trans } from "@lingui/react/macro";
+import { Plural, Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
@@ -239,7 +239,7 @@ function RowFlags({ st, group, facts }: { st: State; group: Group; facts: RowFac
       )}
       {facts.waiting > 0 && (
         <Badge tone="mine">
-          <Trans>{facts.waiting} slices awaiting acceptance</Trans>
+          <Plural value={facts.waiting} one="# slice awaiting acceptance" other="# slices awaiting acceptance" />
         </Badge>
       )}
       {group.status === "PR_OPEN" &&
@@ -375,7 +375,7 @@ function Done({ rows }: { rows: Archived[] }) {
             {a.pr_number ? <Meta className="ml-2">#{a.pr_number}</Meta> : null}
           </span>
           <Meta>
-            <Trans>{a.slices} slices</Trans>
+            <Plural value={a.slices} one="# slice" other="# slices" />
           </Meta>
         </div>
       ))}

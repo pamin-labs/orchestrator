@@ -22,7 +22,10 @@ import { formatter } from "@lingui/format-json";
  */
 export default {
   sourceLocale: "en",
-  locales: ["en", "zh"],
+  // Kept in step with `LOCALES` in `src/contracts/config.ts`, which is what
+  // decides whether a catalog can be reached at all; a locale here and not there
+  // extracts into a file nothing loads.
+  locales: ["en", "zh", "ja", "ko", "es", "fr", "de", "pt", "ru"],
   catalogs: [{ path: "web/src/locales/{locale}", include: ["web/src"] }],
   format: formatter({ origins: false }),
 };

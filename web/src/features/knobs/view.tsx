@@ -11,7 +11,7 @@ import {
   Caps,
   CountAmount,
   IndexModel,
-  LANGUAGES,
+  LANGUAGE_SUGGESTIONS,
   Lines,
   ModelTable,
   PERCENT,
@@ -639,8 +639,8 @@ function choiceValue({ knob, onWrite }: Editor) {
         <Combobox
           free
           value={ConfigSchema.shape.language.parse(knob.value)}
-          options={LANGUAGES}
-          placeholder={LANGUAGES.slice(0, 3).join(" / ")}
+          options={LANGUAGE_SUGGESTIONS}
+          placeholder={LANGUAGE_SUGGESTIONS.slice(0, 3).join(" / ")}
           onCommit={onWrite}
         />
       );

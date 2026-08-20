@@ -1,8 +1,7 @@
 import { i18n } from "@lingui/core";
 import { compileMessage } from "@lingui/message-utils/compileMessage";
 import { z } from "zod";
-import { localeOf } from "../../src/contracts/config.ts";
-import zh from "./locales/zh.json";
+import { type Locale, LOCALES, localeOf } from "../../src/contracts/config.ts";
 
 /**
  * The panel's catalogs, raw. `@lingui/core` takes uncompiled ICU strings when a
@@ -18,7 +17,7 @@ import zh from "./locales/zh.json";
  * folder imported `ui/segment` while `shared/select.ts` imported i18n.
  */
 
-const PrefSchema = z.enum(["follow", "zh", "en"]);
+const PrefSchema = z.enum(["follow", ...LOCALES]);
 type Pref = z.infer<typeof PrefSchema>;
 
 const KEY = "orch.locale";
@@ -26,6 +25,27 @@ const KEY = "orch.locale";
  *  language and correct itself once `/state` lands. */
 const RESOLVED = "orch.locale.at";
 export const LOCALE_CHANGED = "orch:locale";
+
+/**
+ * One `import()` per catalog, written out rather than built from a template: a
+ * bundler splits what it can see, and a template literal it cannot resolve
+ * either fails or pulls the whole directory into the entry point. Eight
+ * catalogs are ~1MB of JSON against a 1.9MB bundle, and nobody reads two.
+ */
+const CATALOGS: Record<Exclude<Locale, "en">, () => Promise<{ default: unknown }>> = {
+  zh: () => import("./locales/zh.json"),
+  ja: () => import("./locales/ja.json"),
+  ko: () => import("./locales/ko.json"),
+  es: () => import("./locales/es.json"),
+  fr: () => import("./locales/fr.json"),
+  de: () => import("./locales/de.json"),
+  pt: () => import("./locales/pt.json"),
+  ru: () => import("./locales/ru.json"),
+};
+
+/** Only the field the runtime needs. `lingui extract` writes four more per
+ *  message and is free to write a fifth. */
+const CatalogSchema = z.record(z.string(), z.object({ translation: z.string().optional() }));
 
 const read = <T>(key: string, parse: (v: string | null) => T): T => {
   try {
@@ -37,9 +57,12 @@ const read = <T>(key: string, parse: (v: string | null) => T): T => {
 
 export const preference = (): Pref => read(KEY, (v) => PrefSchema.catch("follow").parse(v));
 
-/** The catalog on disk carries the English source beside each hashed id; the
- *  runtime wants only `{id: translation}`. */
-const messages = (catalog: Record<string, { translation?: string }>): Record<string, string> => {
+/**
+ * Exported for the test preload, which cannot await: a preload's top-level
+ * `await` does not hold back the test module under `--parallel`, so the suite
+ * loads its one catalog synchronously from a static import instead.
+ */
+export const messages = (catalog: Record<string, { translation?: string | undefined }>): Record<string, string> => {
   const out: Record<string, string> = {};
   // An empty translation is a message nobody has done yet: leaving it out is
   // what makes the source text render instead of a blank pane.
@@ -48,11 +71,9 @@ const messages = (catalog: Record<string, { translation?: string }>): Record<str
 };
 
 i18n.setMessagesCompiler(compileMessage);
-i18n.load("zh", messages(zh));
 // English is the source: every id falls back to the message the macro hashed, so
-// the catalog is empty by construction. Declared anyway — an unloaded locale
-// warns on every render, and `en.json` is 800 `"translation": ""` lines nobody
-// should ship to say what the source already says.
+// its catalog is empty by construction. Declared anyway — an unloaded locale
+// warns on every render.
 i18n.load("en", {});
 
 /**
@@ -63,18 +84,25 @@ i18n.load("en", {});
  * defaults to. Every later load reads the cached resolution instead, so the
  * flash happens once per browser rather than once per reload.
  */
-export function resolve(pref: Pref, serverLanguage: string): "zh" | "en" {
+export function resolve(pref: Pref, serverLanguage: string): Locale {
   if (pref !== "follow") return pref;
   if (serverLanguage) return localeOf(serverLanguage);
-  return read(RESOLVED, (v) => (v === "en" ? "en" : "zh"));
+  return read(RESOLVED, (v) => PrefSchema.exclude(["follow"]).catch("zh").parse(v));
 }
 
 /** The last thing the server said, so changing the preference can re-resolve
  *  without waiting for the next `/state`. */
 let announced = "";
 
+/** Fetched once per locale per page. The entry point holds no catalog at all. */
+async function load(locale: Locale): Promise<void> {
+  if (locale === "en") return;
+  const catalog = await CATALOGS[locale]();
+  i18n.load(locale, messages(CatalogSchema.parse(catalog.default)));
+}
+
 /** Activate, and remember what `follow` came to. A no-op when nothing moved. */
-export function applyLocale(serverLanguage: string): void {
+export async function applyLocale(serverLanguage: string): Promise<void> {
   if (serverLanguage) announced = serverLanguage;
   const next = resolve(preference(), announced);
   if (preference() === "follow" && announced) {
@@ -82,13 +110,13 @@ export function applyLocale(serverLanguage: string): void {
       localStorage.setItem(RESOLVED, next);
     } catch {}
   }
-  if (i18n.locale !== next) i18n.activate(next);
+  if (i18n.locale === next) return;
+  await load(next);
+  i18n.activate(next);
 }
 
 /** Before the first paint, with no server answer yet. */
-export function startLocale(): void {
-  applyLocale("");
-}
+export const startLocale = (): Promise<void> => applyLocale("");
 
 export function setPreference(pref: Pref): void {
   try {
@@ -97,7 +125,7 @@ export function setPreference(pref: Pref): void {
   // The pane that is open follows a change made anywhere else, without a second
   // copy of the value in React state.
   window.dispatchEvent(new CustomEvent(LOCALE_CHANGED));
-  applyLocale("");
+  void applyLocale("");
 }
 
 export { i18n, PrefSchema, type Pref };

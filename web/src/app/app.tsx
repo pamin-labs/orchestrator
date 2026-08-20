@@ -132,7 +132,7 @@ export function App() {
   // another browser; `/state` is where this one hears about it. `applyLocale`
   // no-ops when the resolved locale has not moved, so the 60s refetch is free.
   useEffect(() => {
-    applyLocale(st.language);
+    void applyLocale(st.language);
   }, [st.language]);
   useEffect(() => {
     const view = backgroundView({ view: sel.view, g: sel.g });

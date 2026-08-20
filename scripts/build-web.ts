@@ -14,6 +14,9 @@ const built = await Bun.build({
   outdir: "web/dist",
   target: "browser",
   minify: true,
+  // Each catalog is its own chunk, fetched when a locale is first activated.
+  // Nine of them are ~1MB of JSON against a 1.9MB bundle, and nobody reads two.
+  splitting: true,
   plugins: [linguiMacros],
 });
 
@@ -21,4 +24,6 @@ const built = await Bun.build({
 // carries "error", which is what `src/mech/util/detect.ts` greps for.
 const entry = built.outputs.find((o) => o.kind === "entry-point");
 const bytes = entry ? (await entry.arrayBuffer()).byteLength : 0;
-console.log(`web/dist/main.js  ${(bytes / 1e6).toFixed(2)} MB  ${((Bun.nanoseconds() - started) / 1e6).toFixed(0)}ms`);
+const chunks = built.outputs.filter((o) => o.kind === "chunk").length;
+const mb = (bytes / 1e6).toFixed(2);
+console.log(`web/dist/main.js  ${mb} MB + ${chunks} chunks  ${((Bun.nanoseconds() - started) / 1e6).toFixed(0)}ms`);

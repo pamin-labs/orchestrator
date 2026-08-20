@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { LANGUAGES } from "../../web/src/features/knobs/editors.tsx";
+import { LANGUAGE_SUGGESTIONS } from "../../web/src/features/knobs/editors.tsx";
 
 /**
  * The panel's source language is English; Chinese lives in `web/src/locales`.
@@ -10,7 +10,7 @@ import { LANGUAGES } from "../../web/src/features/knobs/editors.tsx";
  * translation table still says 100%.
  */
 /**
- * Two kinds of Chinese are not copy. `LANGUAGES` is what `output.language` is
+ * Two kinds of Chinese are not copy. `LANGUAGE_SUGGESTIONS` is what `output.language` is
  * set to — an instruction to a model — exempted by membership rather than by
  * file, so a new literal in that same file still fails. The rest name themselves
  * with `i18n-exempt` and say why on the line above, which is where a reader will
@@ -54,7 +54,7 @@ function offendingLines(source: string, loader: "ts" | "tsx", allowed: Set<strin
 }
 
 test("no Chinese literal is left in web/src", async () => {
-  const allowed = new Set<string>(LANGUAGES);
+  const allowed = new Set<string>(LANGUAGE_SUGGESTIONS);
   const offenders: string[] = [];
   for (const file of new Bun.Glob("web/src/**/*.{ts,tsx}").scanSync(".")) {
     const source = await Bun.file(file).text();

@@ -1,20 +1,26 @@
 import { useEffect, useState } from "react";
-import { Segment, Segments } from "../../ui/segment";
+import { t } from "@lingui/core/macro";
+import { Combobox } from "../../ui/combobox";
 import { LOCALE_CHANGED, type Pref, PrefSchema, preference, setPreference } from "../../i18n";
+import { endonymOf } from "../../../../src/contracts/config";
 
 /**
- * Follow the server / 中文 / English, beside the theme control and for the same
- * reason: three states, because "follow" is what most people want and a bare
- * toggle silently pins whatever the fleet happened to be speaking that day.
+ * Follow the server, or one of the catalogs, for this browser only.
+ *
+ * A list rather than the theme control's segments: three states fit on a row and
+ * ten do not. Follow is first because it is what most people want — a bare
+ * choice silently pins whatever the fleet happened to be speaking that day.
  */
 /**
- * The two language names are endonyms and stay untranslated — a menu that says
- * "Chinese" to somebody who cannot read the pane they are on is no help. The
- * followed value is `output.language`, the knob in Settings → 模型与预算, which
- * is also what the agents write in; this only decides the chrome around them.
+ * Every language names itself, and the follow entry is the only one that is a
+ * sentence rather than a name — so it is the only one translated. It said
+ * "follow the server" first, which named no setting anybody could find: a server
+ * has no language, `output.language` does.
+ *
+ * The names come from `LANGUAGES` in contracts rather than from a copy here:
+ * this list used to exist in five places and adding a language meant finding
+ * all five.
  */
-const LABEL: Record<Pref, string> = { follow: "跟随服务器", zh: "中文", en: "English" };
-
 export function LocaleChoice() {
   const [pref, setPref] = useState<Pref>(preference);
   useEffect(() => {
@@ -23,20 +29,22 @@ export function LocaleChoice() {
     return () => window.removeEventListener(LOCALE_CHANGED, sync);
   }, []);
 
+  const follow = t`Same as the agents' language`;
+  const label = (p: Pref): string => (p === "follow" ? follow : endonymOf(p));
+  const byLabel = new Map(PrefSchema.options.map((p) => [label(p), p]));
+
   return (
-    <Segments
-      value={pref}
-      onValueChange={(v) => {
-        const next = PrefSchema.parse(v);
+    <Combobox
+      value={label(pref)}
+      options={[...byLabel.keys()]}
+      empty={t`No such language`}
+      width="12rem"
+      onCommit={(picked) => {
+        const next = byLabel.get(picked);
+        if (!next) return;
         setPreference(next);
         setPref(next);
       }}
-    >
-      {PrefSchema.options.map((p) => (
-        <Segment key={p} value={p}>
-          {LABEL[p]}
-        </Segment>
-      ))}
-    </Segments>
+    />
   );
 }

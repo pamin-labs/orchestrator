@@ -537,10 +537,19 @@ function Preferences() {
               this browser's chrome. The pane already says so at the top. */}
           <Field aria-labelledby="pref-locale">
             <FieldTitle id="pref-locale">
-              <Trans>Interface language</Trans>
+              <Trans>Panel language</Trans>
             </FieldTitle>
-            <FieldContent>
+            {/* The row says where the other one is, because there are two
+                settings a pane apart, both called a language, and nothing on
+                screen said how they differ. */}
+            <FieldContent className="flex-col items-start gap-1">
               <LocaleChoice />
+              <Meta>
+                <Trans>
+                  What this browser reads. What the agents write is the output language, under Models &amp; budget — and
+                  this follows it unless you pick one here.
+                </Trans>
+              </Meta>
             </FieldContent>
           </Field>
         </FieldGroup>

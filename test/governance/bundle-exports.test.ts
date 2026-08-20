@@ -21,12 +21,15 @@ async function bundle(): Promise<string> {
     entrypoints: ["web/src/app/main.tsx"],
     target: "browser",
     minify: true,
+    splitting: true,
     plugins: [linguiMacros],
   });
   expect(built.success).toBe(true);
-  const [output] = built.outputs;
-  expect(output).toBeDefined();
-  return output!.text();
+  // Named, not `outputs[0]`: with splitting on, a catalog chunk can come first
+  // and this would then assert against a file of Chinese strings.
+  const entry = built.outputs.find((o) => o.kind === "entry-point");
+  expect(entry).toBeDefined();
+  return entry!.text();
 }
 
 /**

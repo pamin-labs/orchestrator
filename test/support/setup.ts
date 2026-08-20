@@ -8,7 +8,8 @@ import { resetNet } from "../../src/mech/sandbox/net.ts";
 import { resetSandboxHold } from "../../src/mech/sandbox/sandbox.ts";
 import { resetServerRestarts } from "../../src/mech/ops/watchdog.ts";
 import { resetSkillsWarned } from "../../src/mech/skills.ts";
-import { i18n } from "../../web/src/i18n.ts";
+import { i18n, messages } from "../../web/src/i18n.ts";
+import zh from "../../web/src/locales/zh.json";
 
 /**
  * Every pane renders under the Chinese catalog, so the 544 assertions that read
@@ -16,6 +17,7 @@ import { i18n } from "../../web/src/i18n.ts";
  * catalog puts the right string in the right slot. The English source is what
  * `test/web/english-renders.test.tsx` covers, deliberately somewhere else.
  */
+i18n.load("zh", messages(zh));
 i18n.activate("zh");
 
 /**

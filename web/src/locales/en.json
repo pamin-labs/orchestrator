@@ -67,6 +67,22 @@
     "comments": [],
     "translation": ") to rebuild the frontend."
   },
+  "_0tQ5d": {
+    "message": "{0, plural, one {# slice awaiting acceptance} other {# slices awaiting acceptance}}",
+    "placeholders": {
+      "0": ["facts.waiting"]
+    },
+    "comments": [],
+    "translation": "{0, plural, one {# slice awaiting acceptance} other {# slices awaiting acceptance}}"
+  },
+  "GUAa3z": {
+    "message": "{0, plural, one {# slice} other {# slices}}",
+    "placeholders": {
+      "0": ["a.slices"]
+    },
+    "comments": [],
+    "translation": "{0, plural, one {# slice} other {# slices}}"
+  },
   "njveiC": {
     "message": "{0} (per the remote)",
     "placeholders": {
@@ -139,22 +155,6 @@
     },
     "comments": [],
     "translation": "{0} selected"
-  },
-  "-wCpfh": {
-    "message": "{0} slices",
-    "placeholders": {
-      "0": ["a.slices"]
-    },
-    "comments": [],
-    "translation": "{0} slices"
-  },
-  "oKKxMJ": {
-    "message": "{0} slices awaiting acceptance",
-    "placeholders": {
-      "0": ["facts.waiting"]
-    },
-    "comments": [],
-    "translation": "{0} slices awaiting acceptance"
   },
   "Oa9KS5": {
     "message": "{0}/{1} ticked reach the sandbox",
@@ -657,13 +657,6 @@
     "comments": [],
     "translation": "all under 1ms"
   },
-  "llj5Cv": {
-    "message": "All under 1ms",
-    "placeholders": {},
-    "comments": [],
-    "translation": "All under 1ms",
-    "obsolete": true
-  },
   "iN398g": {
     "message": "Allow notifications",
     "placeholders": {},
@@ -907,10 +900,10 @@
     "translation": "Branch"
   },
   "6tDDor": {
-    "translation": "Branches, PRs and code on GitHub",
     "message": "Branches, PRs and code on GitHub",
     "placeholders": {},
-    "comments": []
+    "comments": [],
+    "translation": "Branches, PRs and code on GitHub"
   },
   "JYj5R2": {
     "message": "Browse files",
@@ -2161,12 +2154,6 @@
     "comments": [],
     "translation": "Installed on these accounts"
   },
-  "3dioPi": {
-    "message": "Interface language",
-    "placeholders": {},
-    "comments": [],
-    "translation": "Interface language"
-  },
   "pD0NCH": {
     "message": "Interrupt and rollback",
     "placeholders": {},
@@ -2663,6 +2650,12 @@
     "comments": [],
     "translation": "No slices"
   },
+  "J22pod": {
+    "message": "No such language",
+    "placeholders": {},
+    "comments": [],
+    "translation": "No such language"
+  },
   "D8lG5Z": {
     "message": "No system activity recorded.",
     "placeholders": {},
@@ -2914,6 +2907,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "P95"
+  },
+  "2lGEAi": {
+    "message": "Panel language",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Panel language"
   },
   "wFwgKk": {
     "message": "Pass",
@@ -3565,6 +3564,12 @@
     },
     "comments": [],
     "translation": "Running: {running}"
+  },
+  "nY-16J": {
+    "message": "Same as the agents' language",
+    "placeholders": {},
+    "comments": [],
+    "translation": "Same as the agents' language"
   },
   "gkL2ub": {
     "message": "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way.",
@@ -4453,6 +4458,12 @@
     "placeholders": {},
     "comments": [],
     "translation": "What"
+  },
+  "2JOwRq": {
+    "message": "What this browser reads. What the agents write is the output language, under Models & budget — and this follows it unless you pick one here.",
+    "placeholders": {},
+    "comments": [],
+    "translation": "What this browser reads. What the agents write is the output language, under Models & budget — and this follows it unless you pick one here."
   },
   "oM0GrX": {
     "message": "What's not satisfactory. Cmd+Enter to reject",

@@ -9,8 +9,10 @@ import { i18n, startLocale } from "../i18n";
 // itself is a flash of the other one on every load.
 startTheme();
 // Same reason, one language over: the panel coming up in Chinese and correcting
-// itself once `/state` lands is a flash of the other one on every load.
-startLocale();
+// itself once `/state` lands is a flash of the other one on every load. Awaited
+// because the catalog is a chunk now — rendering before it arrives is that
+// flash, just from a different direction.
+await startLocale();
 
 /**
  * One cache for every read this panel does.

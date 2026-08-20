@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { cleanup, fireEvent, render } from "../support/render.tsx";
+import { cleanup, fireEvent, render, valueOf } from "../support/render.tsx";
 import { LocaleChoice } from "../../web/src/features/settings/locale-choice.tsx";
 import { applyLocale, i18n, preference, resolve, setPreference } from "../../web/src/i18n.ts";
 
@@ -28,7 +28,15 @@ test("follow reads the free-text language the way the server does", () => {
   // The knob suggests two dozen and accepts anything, so these are the spellings
   // a person actually types, not an enum.
   expect(["中文", "zh-CN", "简体中文"].map((l) => resolve("follow", l))).toEqual(["zh", "zh", "zh"]);
-  expect(["English", "en", "日本語"].map((l) => resolve("follow", l))).toEqual(["en", "en", "en"]);
+  expect(["日本語", "ja_JP", "Japanese"].map((l) => resolve("follow", l))).toEqual(["ja", "ja", "ja"]);
+  // A language with no catalog reads in the source language rather than in
+  // nothing, and a code that merely starts with one is not that language.
+  expect(["Українська", "ไทย", "Estonian", "English"].map((l) => resolve("follow", l))).toEqual([
+    "en",
+    "en",
+    "en",
+    "en",
+  ]);
 });
 
 /**
@@ -36,29 +44,37 @@ test("follow reads the free-text language the way the server does", () => {
  * means the server has not said yet. Reading it as one would show every English
  * boss a frame of Chinese on every load rather than only on their first.
  */
-test("an unanswered server keeps the language the last load resolved to", () => {
+test("an unanswered server keeps the language the last load resolved to", async () => {
   expect(resolve("follow", "")).toBe("zh");
-  applyLocale("English");
+  await applyLocale("English");
   expect(resolve("follow", "")).toBe("en");
 });
 
-test("changing the preference re-resolves without waiting for the next poll", () => {
-  applyLocale("English");
+test("changing the preference re-resolves without waiting for the next poll", async () => {
+  await applyLocale("English");
   expect(i18n.locale).toBe("en");
-  setPreference("zh");
+  // Awaited, because a catalog is a chunk now and activating one fetches it.
+  await applyLocale("中文");
   expect(i18n.locale).toBe("zh");
-  setPreference("follow");
-  expect([i18n.locale, preference()]).toEqual(["en", "follow"]);
+  setPreference("en");
+  await applyLocale("");
+  expect([i18n.locale, preference()]).toEqual(["en", "en"]);
 });
 
 /** The control is the only place the three states are visible at once, which is
  *  why it is segments rather than the cycling icon the theme control started as. */
-test("the switch offers follow beside the two languages, and stores what is picked", () => {
-  const { getByRole } = render(<LocaleChoice />);
-  expect(
-    ["跟随服务器", "中文", "English"].map((name) => getByRole("radio", { name }).getAttribute("data-state")),
-  ).toEqual(["on", "off", "off"]);
-  fireEvent.click(getByRole("radio", { name: "English" }));
-  expect(preference()).toBe("en");
-  expect(i18n.locale).toBe("en");
+/** Every language names itself, so the list is readable to whoever needs it —
+ *  "Chinese" is no help to somebody who cannot read the pane it is on, and the
+ *  one entry that is a sentence rather than a name is the one that is
+ *  translated. */
+test("the switch names each language in that language, and stores what is picked", async () => {
+  const { getByRole, findByText } = render(<LocaleChoice />);
+  const box = getByRole("combobox");
+  expect(valueOf(box)).toBe("跟随对外语言");
+
+  fireEvent.click(box);
+  fireEvent.change(box, { target: { value: "日本" } });
+  fireEvent.click(await findByText("日本語"));
+
+  expect(preference()).toBe("ja");
 });

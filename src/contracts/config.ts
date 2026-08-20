@@ -121,24 +121,64 @@ export const StoredProjectConfigSchema = z
 export type StoredProjectConfig = z.infer<typeof StoredProjectConfigSchema>;
 
 /**
- * The panel's catalog for a free-text `language`, and whether the boss reads
- * Chinese. Here rather than in `platform/text` because the panel needs the same
- * answer and may only import contracts — two copies of this question already got
- * two answers once: `escalation.ts` asked `language === "en"`, and the default is
- * `"中文"`, so its English branch was unreachable for every spelling including
- * `"English"`. The setting is free text — the panel suggests two dozen, a yaml
- * can say anything — so the test is what it looks like.
+ * Every language the panel can be read in, in one place: the code its catalog is
+ * filed under, the name it calls itself, and how a person writes it into
+ * `output.language`.
  */
-export const localeOf = (lang: string | undefined): "zh" | "en" => {
-  const l = lang ?? "";
-  // Anywhere in the string, not at the front. `繁體中文` is the second entry in
-  // the panel's own suggestion list and `startsWith("中")` read it as English —
-  // so picking the option the panel offers gave an English feed and an English
-  // pane, which looks like the setting not working at all.
-  return /[中汉漢]/.test(l) || l.toLowerCase().startsWith("zh") ? "zh" : "en";
-};
+/**
+ * One table because this list was five — here, the catalog imports, the picker's
+ * labels, the progress rows, and `lingui.config.js`. Missing one failed
+ * differently each time: no catalog extracted, a locale nobody could pick, a row
+ * labelled `ko`, a setting that matched nothing.
+ */
+/**
+ * The spellings are the three forms people actually write: the endonym the knob
+ * suggests, the English name, and the ISO code. Matched anywhere in the string
+ * rather than anchored — `繁體中文` is the second entry in the panel's own
+ * suggestion list and an anchored `中` read it as English, so picking the option
+ * the panel offers gave an English feed and an English pane. The ISO codes are
+ * anchored and delimited, because a bare `es` inside "Estonian" is not Spanish.
+ */
+const LANGUAGES = [
+  { locale: "en", endonym: "English", spelled: /english|^en([-_]|$)/i },
+  { locale: "zh", endonym: "中文", spelled: /[中汉漢華华]|chinese|mandarin|^zh([-_]|$)/i },
+  { locale: "ja", endonym: "日本語", spelled: /日本語|にほんご|japanese|^ja([-_]|$)/i },
+  { locale: "ko", endonym: "한국어", spelled: /한국어|조선말|korean|^ko([-_]|$)/i },
+  { locale: "es", endonym: "Español", spelled: /espa[ñn]ol|spanish|castellano|^es([-_]|$)/i },
+  { locale: "fr", endonym: "Français", spelled: /fran[çc]ais|french|^fr([-_]|$)/i },
+  { locale: "de", endonym: "Deutsch", spelled: /deutsch|german|^de([-_]|$)/i },
+  { locale: "pt", endonym: "Português", spelled: /portugu[êe]s|portuguese|^pt([-_]|$)/i },
+  { locale: "ru", endonym: "Русский", spelled: /русск|russian|^ru([-_]|$)/i },
+] as const;
 
-/** Everything not Chinese is English. */
+export type Locale = (typeof LANGUAGES)[number]["locale"];
+
+/** `en` first, because it is the source and the fallback. */
+export const LOCALES: readonly Locale[] = LANGUAGES.map((l) => l.locale);
+
+/** What a language calls itself — the only spelling every reader of that row can
+ *  read. A menu that says "Chinese" is no help to somebody who cannot read the
+ *  pane it is on. */
+export const endonymOf = (locale: Locale): string => LANGUAGES.find((l) => l.locale === locale)?.endonym ?? locale;
+
+/**
+ * Which catalog a free-text `language` asks for. Here rather than in
+ * `platform/text` because the panel needs the same answer and may only import
+ * contracts — two copies of this question already got two answers once:
+ * `escalation.ts` asked `language === "en"` against a `"中文"` default, so its
+ * English branch was unreachable for every spelling including `"English"`.
+ */
+/** Anything with no catalog is English, which is the source: an unrecognised
+ *  language reads in the language the panel was written in, not in nothing. */
+export const localeOf = (lang: string | undefined): Locale =>
+  LANGUAGES.find((l) => l.locale !== "en" && l.spelled.test(lang ?? ""))?.locale ?? "en";
+
+/**
+ * Whether the boss reads Chinese. Narrower than `localeOf` on purpose: the
+ * orchestrator's own strings in `src/platform/text/lang.ts` exist in Chinese and
+ * English only, so everything else there is English regardless of which catalog
+ * the panel loaded.
+ */
 export const isChinese = (lang: string | undefined): boolean => localeOf(lang) === "zh";
 
 export const ConfigSchema = z.object({

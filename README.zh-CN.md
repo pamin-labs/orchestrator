@@ -188,10 +188,27 @@ MIT 协议。
 `bun run i18n:progress` 重新生成下表；表过期时 CI 会红。
 
 <!-- i18n:table -->
-| 界面 | 字符串 | 中文 |
-| --- | ---: | ---: |
-| 面板（`web/src`） | 723 | 723 (100%) |
-| 编排器消息（`src/platform/text/lang.ts`） | 44 | 44 (100%) |
+**面板** · 725 条消息
+
+| 语言 | 进度 | 条数 |
+| --- | --- | ---: |
+| English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 源语言 |
+| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 725 / 725 |
+| 日本語 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
+| 한국어 | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
+| Español | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
+| Français | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
+| Deutsch | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
+| Português | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
+| Русский | ![](https://progress-bar.xyz/0?width=140&suffix=%25) | 0 / 725 |
+
+**编排器自己说的话** · 44 条，只有中英两套
+
+| 语言 | 进度 | 条数 |
+| --- | --- | ---: |
+| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 44 / 44 |
+
+`bun run i18n:progress` 重新生成；过期时 CI 会红。英文是源语言，不需要翻译。
 <!-- /i18n:table -->
 
 ## 更多

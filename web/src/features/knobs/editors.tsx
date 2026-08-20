@@ -53,7 +53,12 @@ const BARE_OK = new Set<string>(COUNT_UNITS);
  * model writes whatever it is told to — the list is here to save typing and to
  * say what the field wants, not to have an opinion about which languages exist.
  */
-export const LANGUAGES = [
+/**
+ * Suggestions for `output.language`, which is free text and reaches a model —
+ * so this is longer than the set of catalogs the panel has, and deliberately so.
+ * `LOCALES` in contracts is that other list.
+ */
+export const LANGUAGE_SUGGESTIONS = [
   "中文",
   "繁體中文",
   "English",
