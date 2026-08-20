@@ -14,6 +14,8 @@ const WorkflowSchema = z.object({
       if: z.string().optional(),
       needs: z.union([z.string(), z.array(z.string())]).optional(),
       "timeout-minutes": z.number().optional(),
+      // Asserted as absent: the suite's postgres is configured by its compose file.
+      services: JsonMap.optional(),
       "runs-on": z.union([z.string(), z.array(z.string())]).optional(),
       permissions: StringMap.optional(),
       strategy: z.looseObject({ matrix: JsonMap.optional() }).optional(),
@@ -156,6 +158,20 @@ describe("workflow governance", () => {
     expect(fallow).toContain("--format github-annotations");
     expect(fallow).toContain("--format github-summary");
     expect(fallow).toContain('exit "$audit_status"');
+  });
+
+  test("the suite's postgres is configured in one file, and CI reads that file", async () => {
+    // A `services:` block cannot take a `command`, so the copy in `ci.yml` ran on
+    // PostgreSQL's default `max_connections=100` while the compose file set 600 —
+    // and `sorry, too many clients already` is what four workers holding a pool of
+    // 24 each got. Two descriptions of one server is one description too many.
+    const ci = await load("ci");
+    expect(ci.jobs["test"]?.services).toBeUndefined();
+    expect(ci.jobs["test"]!.steps.some((step) => step.run?.includes("db:test:up"))).toBe(true);
+
+    // And the number that failure was about is still stated where it is set.
+    const compose = readFileSync("docker/postgres-test-compose.yml", "utf8");
+    expect(compose).toContain("max_connections=600");
   });
 
   test("CI only uploads the report evidence a privileged second stage consumes", async () => {
