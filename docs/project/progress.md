@@ -661,6 +661,14 @@ M7 — executable engineering governance and versioned protocol.
   needs the same answer.
 
 ## Found and not fixed
+- **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
+  resumes PR-level review instead of dead-ending` failed once on #9's x64 run
+  and passed on a rerun of the same commit, with 5 local runs of the file and 3
+  full local suites green. `1cda0ce` already fixed one ordering assumption in
+  this file — "the assertion depended on which turn the scheduler finished last"
+  — so this is the second symptom of the same shape and the first one was not
+  the whole cause. Worth a seeded replay rather than another local rerun.
+
 - **`src/mech/flow/start.ts` emits two `bus.emit` bodies as hardcoded Chinese**
   (`沙盒是新的…`, `装好了：…`) rather than through `say()`, which ADR 035
   category 3 requires. `web/src/features/requirement/bootstrap.ts` matches those
