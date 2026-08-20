@@ -625,23 +625,19 @@ M7 — executable engineering governance and versioned protocol.
    sha's check runs, and no `main` commit ever carries `codecov/patch`, so it lives
    in `.github/merge-only-checks.txt`, read by the ruleset command alone.
 
-3. **Consider schema-level test isolation, or rent IntegreSQL.** Measured while
-   fixing the 3 GB container: `template0` is **7,521 kB** and this schema's own
-   nineteen tables are **808 kB**, so 87% of every per-file database is a copy of
-   the system catalogue — 189 files duplicate it 189 times, about 1.6 GB in a
-   tmpfs.
+3. **Schema-level test isolation is done.** A namespace per worker replaces a
+   database per file: `template0` is 7,521 kB against 808 kB of our own tables, so
+   87% of every per-file database was a copy of the system catalogue. The
+   container went **3.00 GB → 193 MB**, and the cleanup that `TRUNCATE` did in
+   33,745ms a suite is ~2,000ms of `DELETE`. IntegreSQL was not needed — the
+   pooling it sells is one line here, `BUN_TEST_WORKER_ID` instead of `Bun.main`.
 
-   Two ways out, neither a parameter change. [IntegreSQL](https://github.com/allaboutapps/integresql)
-   pools pre-warmed template copies sized by *concurrency* (10) rather than by
-   file count (189), which is ~86 MB; it assumes a database can be handed back and
-   reused, which is exactly what one-database-per-file was chosen to avoid — though
-   several of the cross-file leaks that motivated it are now fixed
-   (`stopSchedulers`, `lock_timeout`, `clearBackends`). Schema-level isolation
-   skips the catalogue copy outright, at the price of `search_path` management and
-   no `CREATE SCHEMA ... TEMPLATE` to copy a prepared one.
-
-   Renting beats writing either. Not attempted here: it changes the isolation
-   model, which is not a thing to change inside a review.
+   What that leaves, measured on a quiet machine: the suite is ~13.3s wall clock,
+   of which the database is ~0.4s. Every further attempt was tried and refuted
+   with data — `--no-isolate`, merging test files, per-file namespaces, lower
+   concurrency, a smaller pool, probing before delete, batching fixtures. The
+   remaining 11.1s is 1,715 tests doing their own work, and shortening that is a
+   per-file exercise with no lever in it.
 
 4. **Monitor the nightly stress run** and replay any property failure from its
    reported seed and path. CI, security and CodeQL are green on `main` after #7.
