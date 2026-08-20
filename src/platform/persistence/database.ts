@@ -163,12 +163,11 @@ export const suffixFor = (isolate: string) =>
 /**
  * One PostgreSQL **schema** per test file, in one shared database.
  *
- * A *database* per file cost 87% overhead — `template0` is 7,521 kB against 808 kB
- * of our own tables — so this is a schema. Keyed on the **worker**, not the file:
- * `--parallel` runs ten of them, and one namespace per file made 193, whose
- * constraints all live in one shared `pg_constraint`. `TRUNCATE ... CASCADE`
- * walks it to find dependent foreign keys, and measured over one suite that was
- * **26,085 sequential scans reading 432 million rows**.
+ * A *database* per file cost 87% overhead — `template0` is 7,521 kB against our
+ * 808 kB — so this is a schema, keyed on the **worker**. One per file is 193
+ * namespaces, and building those is 193 concurrent `CREATE TABLE` storms against
+ * one catalogue: measured, 94 tests time out. The template a database-per-file
+ * copied absorbed that, and a schema has no `CREATE SCHEMA ... TEMPLATE`.
  */
 const nameFor = (isolate: string) => `t_${SCHEMA_TAG}_${suffixFor(isolate)}`;
 
