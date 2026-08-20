@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Segment, Segments } from "./segment";
 import { z } from "zod";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../i18n";
 
 /**
  * Light / dark / follow the system.
@@ -22,7 +25,7 @@ const PrefSchema = z.enum(["system", "light", "dark"]);
 type Pref = z.infer<typeof PrefSchema>;
 const KEY = "orch.theme";
 const NEXT: Record<Pref, Pref> = { system: "light", light: "dark", dark: "system" };
-const ZH: Record<Pref, string> = { system: "跟随系统", light: "浅色", dark: "深色" };
+const LABEL: Record<Pref, MessageDescriptor> = { system: msg`Follow the system`, light: msg`Light`, dark: msg`Dark` };
 const CHANGED = "orch:theme";
 
 const read = (): Pref => {
@@ -92,7 +95,7 @@ export function ThemeChoice() {
     >
       {PrefSchema.options.map((p) => (
         <Segment key={p} value={p}>
-          {ZH[p]}
+          {i18n._(LABEL[p])}
         </Segment>
       ))}
     </Segments>

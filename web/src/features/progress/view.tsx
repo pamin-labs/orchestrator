@@ -11,23 +11,36 @@ import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../../i18n";
 
 /** Requirements are state-filtered, paged, and counted on their tabs. */
 
 interface Bucket {
   key: string;
-  zh: string;
+  label: MessageDescriptor;
   of: string[];
   mine?: boolean;
 }
 
 /** 待办 renders the boss queue; 进行中 owns every undelivered requirement. */
 const BUCKETS: Bucket[] = [
-  { key: "mine", zh: "待办", of: [], mine: true },
-  { key: "live", zh: "进行中", of: ["RUNNING", "PLANNING", "PAUSING", "DRAFT", "PR_OPEN"] },
-  { key: "held", zh: "停着", of: ["PAUSED", "PARKED"] },
+  { key: "mine", label: msg`To do`, of: [], mine: true },
+  { key: "live", label: msg`In progress`, of: ["RUNNING", "PLANNING", "PAUSING", "DRAFT", "PR_OPEN"] },
+  { key: "held", label: msg`Stopped`, of: ["PAUSED", "PARKED"] },
 ];
 const DONE = "done";
+
+/** The plan card's goal line, matched by its prefix. The card is written by an
+ *  agent in `output.language`, so this is not a message: it is the shape of a
+ *  document the panel reads. */
+// i18n-exempt: the shape of a document an agent wrote in `output.language`,
+// matched by prefix. Not copy this panel owns.
+const GOAL_PREFIX = "目标";
+
+/** `已查收 3/7`, in one message rather than three fragments. */
+const acceptedOf = (done: number, total: number): string => t`accepted ${done}/${total}`;
 
 export function Progress({
   st,
@@ -77,7 +90,7 @@ export function Progress({
               count={b.mine ? todo : of(b).length}
               {...(b.mine !== undefined ? { mine: b.mine } : {})}
             >
-              {b.zh}
+              {i18n._(b.label)}
             </Tab>
           ))}
           <Tab value={DONE} count={archived.length}>
@@ -87,9 +100,13 @@ export function Progress({
           {/* The slot cap is why an approved requirement can sit still: queued, not
             stuck. Without it that difference is invisible. */}
           {maxGroups != null && (
-            <Tip label={`并发上限 ${maxGroups} 组。满了已批准的需求排队等槽位，不是卡住了。`}>
+            <Tip
+              label={t`At most ${maxGroups} groups at once. When it is full, approved requirements queue for a slot rather than being stuck.`}
+            >
               <Meta className={cn("self-center underline decoration-dotted", live >= maxGroups && "text-warn")}>
-                并行 {live}/{maxGroups}
+                <Trans>
+                  running {live}/{maxGroups}
+                </Trans>
               </Meta>
             </Tip>
           )}
@@ -138,7 +155,9 @@ function List({
       ))}
       {rest > 0 && (
         <Button variant="quiet" size="sm" className="mt-2" onClick={more}>
-          还有 {rest} 个（共 {total}）
+          <Trans>
+            {rest} more of {total}
+          </Trans>
         </Button>
       )}
     </>
@@ -181,7 +200,7 @@ function rowBody(group: Group, facts: RowFacts): React.ReactNode {
     );
   if (group.status === "DRAFT") {
     const goal = facts.card
-      ? (facts.card.body.split("\n").find((line) => line.startsWith("目标")) ?? t`Plan card pending approval`)
+      ? (facts.card.body.split("\n").find((line) => line.startsWith(GOAL_PREFIX)) ?? t`Plan card pending approval`)
       : t`Plan card not submitted yet`;
     return <span className="block truncate text-secondary text-ink-2">{goal}</span>;
   }
@@ -218,7 +237,11 @@ function RowFlags({ st, group, facts }: { st: State; group: Group; facts: RowFac
           <Trans>Budget exhausted</Trans>
         </Badge>
       )}
-      {facts.waiting > 0 && <Badge tone="mine">{facts.waiting} 片待查收</Badge>}
+      {facts.waiting > 0 && (
+        <Badge tone="mine">
+          <Trans>{facts.waiting} slices awaiting acceptance</Trans>
+        </Badge>
+      )}
       {group.status === "PR_OPEN" &&
         (url ? (
           <Badge
@@ -263,7 +286,7 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
         </div>
         <Meta>
           {statusLabel(g)}
-          {facts.slices.length ? ` · 已查收 ${facts.done}/${facts.slices.length}` : ""}
+          {facts.slices.length ? ` · ${acceptedOf(facts.done, facts.slices.length)}` : ""}
           {g.spent_tokens ? ` · ${K(g.spent_tokens)} tokens` : ""}
         </Meta>
       </div>
@@ -351,12 +374,16 @@ function Done({ rows }: { rows: Archived[] }) {
             {a.name}
             {a.pr_number ? <Meta className="ml-2">#{a.pr_number}</Meta> : null}
           </span>
-          <Meta>{a.slices} 片</Meta>
+          <Meta>
+            <Trans>{a.slices} slices</Trans>
+          </Meta>
         </div>
       ))}
       {rest > 0 && (
         <Button variant="quiet" size="sm" className="mt-2" onClick={more}>
-          还有 {rest} 个（共 {total}）
+          <Trans>
+            {rest} more of {total}
+          </Trans>
         </Button>
       )}
     </>

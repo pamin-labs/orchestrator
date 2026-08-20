@@ -67,11 +67,11 @@ export const KNOB_SHAPE: Record<string, Shape> = {
 };
 
 /** What to say when the typed text is not one of these. Shown on the row. */
-export const WANTS: Record<Shape, string> = {
-  ms: "要一个时长：20 分钟、45s、3 小时都行",
-  seconds: "要一个时长：24 小时、30 分钟都行",
-  count: "要一个数量：8M、200k、45 都行",
-  percent: "要 0 到 100 之间的百分比，比如 60%",
+export const WANTS: Record<Shape, MessageDescriptor> = {
+  ms: msg`Wants a duration: 20 min, 45s, 3 hr all work`,
+  seconds: msg`Wants a duration: 24 hr, 30 min both work`,
+  count: msg`Wants a count: 8M, 200k, 45 all work`,
+  percent: msg`Wants a percentage between 0 and 100, like 60%`,
 };
 
 /**
@@ -126,6 +126,9 @@ export function fmtDuration(ms: number): string {
  * Every spelling of a unit someone might type, including the ones this page
  * prints. A bare number keeps the unit already on screen.
  */
+// i18n-exempt: the keys are every spelling somebody might type, which includes
+// the Chinese ones. They are input, not output — translating them would delete
+// the spellings a Chinese reader has been typing since before this was English.
 const ALIAS: Record<string, DurationUnit> = {
   ms: "ms",
   毫秒: "ms",
@@ -147,6 +150,8 @@ const ALIAS: Record<string, DurationUnit> = {
 
 /** Text back to milliseconds. `null` = not a duration. */
 export function parseDuration(raw: string, unit: DurationUnit): number | null {
+  // i18n-exempt: a character class, not a sentence — it has to match the Chinese
+  // aliases above.
   const m = /^(\d+(?:\.\d+)?)\s*([a-z一-鿿]*)$/i.exec(raw.trim());
   if (!m) return null;
   const found = m[2] ? ALIAS[m[2].toLowerCase()] : unit;

@@ -6,6 +6,13 @@ import { Button } from "../../ui/button";
 import { cardStyles } from "../../ui/card";
 import { Queue } from "../queue/view";
 import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
+
+/** Which requirements are running, on one line. */
+const RunningNames = ({ names }: { names: string[] }) => {
+  const running = names.join(t`、`);
+  return <div className="mt-1.5 truncate text-secondary text-ink-2">{t`Running: ${running}`}</div>;
+};
 
 /**
  * Every project at once, plus what wants the boss across all of them.
@@ -79,9 +86,7 @@ export function Home({
                     // 空着 is said by the button beside it, in a form you can act on.
                     !state.fresh && <div className="mt-1 text-secondary text-ink-3">{state.zh}</div>
                   )}
-                  {live.length > 0 && (
-                    <div className="mt-1.5 truncate text-secondary text-ink-2">在跑：{live.join("、")}</div>
-                  )}
+                  {live.length > 0 && <RunningNames names={live} />}
                 </div>
                 {state.fresh ? (
                   // Nothing has ever been asked of this project, so the row is where to

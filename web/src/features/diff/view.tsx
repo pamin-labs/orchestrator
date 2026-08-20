@@ -204,6 +204,7 @@ function DiffFile({
   const name = nameOf(file);
   const rows = file.chunks.flatMap((chunk): Row[] => [{ gap: chunk.content }, ...rowsOf(chunk)]);
   const shown = expanded ? rows : rows.slice(0, 400);
+  const hiddenLines = rows.length - shown.length;
   return (
     <div>
       <div
@@ -232,7 +233,7 @@ function DiffFile({
       {rows.length > shown.length && (
         <div className="border-y border-rule-soft bg-sunk px-3.5 py-1">
           <Button variant="quiet" size="sm" onClick={onExpand}>
-            还有 {rows.length - shown.length} 行
+            <Trans>{hiddenLines} more lines</Trans>
           </Button>
         </div>
       )}

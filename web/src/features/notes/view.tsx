@@ -60,7 +60,7 @@ function Evidence({ note, gate, files }: { note: Note; gate: string | null; file
   const verdict = gate ? { ...found, text: found ? i18n._(found.text) : gate } : null;
   return (
     <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
-      {verdict && <Meta className={verdict.className}>闸门 {verdict.text}</Meta>}
+      {verdict && <Meta className={verdict.className}>{t`gate ${verdict.text}`}</Meta>}
       {files.map((file) => (
         <Tip key={file} label={file}>
           <Meta className="min-w-0 truncate font-mono">{file}</Meta>
@@ -201,7 +201,11 @@ function List({ notes, size, showKind }: { notes: Note[]; size: number; showKind
       ))}
       {rest > 0 && (
         <Button variant="quiet" size="sm" className="mt-2" onClick={more}>
-          还有 {rest} 条（共 {total}）
+          {/* Its own message, not the one the requirement list uses: a note is
+              counted in 条 and a requirement in 个. */}
+          <Trans context="notes">
+            {rest} more of {total}
+          </Trans>
         </Button>
       )}
     </>

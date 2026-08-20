@@ -237,6 +237,8 @@ export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; 
     setView(next);
   });
 
+  const zoomLevel = (1 / zoom).toFixed(0);
+
   return (
     <div className="mt-2">
       {/* One line, fixed height, holding whichever of two things is true: where the
@@ -260,9 +262,15 @@ export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; 
             <Trans>← Back to all</Trans>
           </button>
         )}
-        {zoomed !== null && <span className="shrink-0 text-meta text-ink-3">看的是 {humanName(zoomed)}</span>}
+        {zoomed !== null && (
+          <span className="shrink-0 text-meta text-ink-3">
+            <Trans>showing {humanName(zoomed)}</Trans>
+          </span>
+        )}
         {zoomed === null && zoom < 1 && (
-          <span className="shrink-0 text-meta text-ink-3">放大到 {(1 / zoom).toFixed(0)}×</span>
+          <span className="shrink-0 text-meta text-ink-3">
+            <Trans>zoomed to {zoomLevel}×</Trans>
+          </span>
         )}
         <div ref={details} className="min-w-0 truncate font-mono text-meta text-ink-2" />
       </div>

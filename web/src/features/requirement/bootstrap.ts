@@ -26,6 +26,13 @@ export interface Bootstrap {
   until: number | null;
 }
 
+/**
+ * i18n-exempt: these match the orchestrator's own event text, which
+ * `src/mech/flow/start.ts` emits as a hardcoded Chinese `bus.emit` body rather
+ * than through `say()`. So this pane already fails to recognise them for a boss
+ * whose `output.language` is English — a defect one layer down, recorded in
+ * docs/project/progress.md, not fixed by translating the copy here.
+ */
 const STARTED = "沙盒是新的";
 const ENDED = /^装好了|^装失败了/;
 

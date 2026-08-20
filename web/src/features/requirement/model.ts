@@ -110,8 +110,11 @@ const activityLine = (a: Agent): string => {
 export function sliceLine(s: Slice, on: Agent[]): string {
   if (s.status === "pending") return t`Waiting for prior slice`;
   if (s.status === "rejected") return t`Rejected, awaiting fix`;
-  if (s.status === "awaiting_boss")
-    return s.awaiting_at ? `待你查收 · ${waited(s.awaiting_at)}` : t`Awaiting your review`;
+  if (s.status === "awaiting_boss") {
+    if (!s.awaiting_at) return t`Awaiting your review`;
+    const since = waited(s.awaiting_at);
+    return t`Awaiting your review · ${since}`;
+  }
   return on.length ? on.map(activityLine).join(" · ") : s.accept_spec;
 }
 

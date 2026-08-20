@@ -80,7 +80,10 @@ export function browseRow(entry: Entry, isDir: boolean, pick: boolean, selected:
 export function days(at: number): string {
   if (!at) return "";
   const d = Math.round((Date.now() - at) / 86_400_000);
-  return d < 1 ? t`Today` : d < 30 ? `${d} 天前` : `${Math.round(d / 30)} 个月前`;
+  if (d < 1) return t`Today`;
+  if (d < 30) return t`${d} days ago`;
+  const months = Math.round(d / 30);
+  return t`${months} months ago`;
 }
 
 /** A repository as it is shown by GitHub, and what this panel has done with it. */
@@ -111,7 +114,7 @@ export function repoRow(repo: RepoLine, busy: string): RepoMarks {
   return {
     name: repo.fullName.split("/")[1] ?? repo.fullName,
     meta: adding ? t`Adding…` : repo.taken ? t`Added` : days(repo.pushedAt),
-    action: repo.taken ? `去 ${repo.taken.name} →` : `添加 · ${repo.defaultBranch}`,
+    action: repo.taken ? t`Go to ${repo.taken.name} →` : t`Add · ${repo.defaultBranch}`,
     adding,
   };
 }

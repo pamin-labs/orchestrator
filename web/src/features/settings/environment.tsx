@@ -255,9 +255,7 @@ function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: (
       title: t`Restart the sandbox server?`,
       // The evidence beside the button: this is not a service bounce, it is
       // every container going away and every turn inside them dying with it.
-      body:
-        `所有容器都会没：${server.containers} 个组的沙盒，还有 ${server.runningTurns} 个正在跑的 turn。` +
-        `\n\n没跑完的 turn 就白跑了，组会自己重开容器接着做，代码和分支不受影响。`,
+      body: `${t`Every container goes: sandboxes for ${server.containers} groups, and ${server.runningTurns} turns currently running.`}\n\n${t`An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected.`}`,
       yes: t`Restart`,
       danger: true,
     });
@@ -346,7 +344,7 @@ function ServerFields(props: ServerPaneProps) {
       // answer, and a write that was accepted is not a write that stored
       // this exact string.
       props.onRefreshImages();
-      toast.success(image ? `以后新项目都用 ${image}` : t`Reset to the image in config`);
+      toast.success(image ? t`New projects will use ${image}` : t`Reset to the image in config`);
     });
 
   return (
@@ -400,9 +398,10 @@ function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefres
           onKeyDown={async (event) => {
             if (event.key !== "Enter") return;
             const addr = event.currentTarget.value;
+            const next = addr.trim();
             const response = await mutate(api["sandbox-server"].addr.$post({ json: { addr } }));
             onRefresh();
-            if (response.ok) toast.success(addr.trim() ? `改成 ${addr.trim()} 了` : t`Reset to the image in config`);
+            if (response.ok) toast.success(next ? t`Changed to ${next}` : t`Reset to the image in config`);
           }}
         />
         {/* The server does not have to be on this machine — a Tailscale peer
@@ -423,7 +422,9 @@ function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefres
 }
 
 function keyPlaceholder(current?: AuthRow) {
-  return current ? `已存 ${current.hint}，粘新的就换掉` : t`Empty = server has no authentication`;
+  if (!current) return t`Empty = server has no authentication`;
+  const hint = current.hint;
+  return t`${hint} stored; paste a new one to replace it`;
 }
 
 function KeyRow({

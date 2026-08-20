@@ -310,18 +310,23 @@ function CredentialStatus({ state }: { state: CredentialState }) {
           being looked at: the pressed segment on the right already says
           that, and a label repeating it is the same fact 30rem apart.
           When they differ it is the whole point of the row. */}
-      {props.current.mode !== form.mode && (
-        <span className="text-secondary text-ink-2">存的是{labels[props.current.mode] ?? props.current.mode}</span>
-      )}
+      {props.current.mode !== form.mode && <StoredAs label={labels[props.current.mode] ?? props.current.mode} />}
       {/* The masked tail is in the box it was pasted into, not here as well. */}
       <Meta>{clock(props.current.updatedAt)}</Meta>
     </>
   );
 }
 
+/** Which mode is stored, when it differs from the one being looked at — the
+ *  whole point of the row when they disagree. */
+const StoredAs = ({ label }: { label: string }) => (
+  <span className="text-secondary text-ink-2">{t`stored as ${label}`}</span>
+);
+
 function secretPlaceholder(props: CredentialProps, form: CredentialForm, fallback: string) {
   if (!props.current || props.current.mode !== form.mode) return fallback;
-  return `已存 ${props.current.hint}，粘新的就换掉`;
+  const storedHint = props.current.hint;
+  return t`${storedHint} stored; paste a new one to replace it`;
 }
 
 const SECRET_LABEL = { oauth_token: msg`Token`, api_key: msg`API key` } as const;
@@ -426,7 +431,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
             {/* The real expiry, not a remembered one. `15 分钟` was written into
                 the copy while `expiresAt` sat two lines up driving the timer
                 that clears this block. */}
-            <Meta>到 {clock(login.device.expiresAt)} 前有效</Meta>
+            <Meta>{t`Valid until ${clock(login.device.expiresAt)}`}</Meta>
             <span className="grow" />
             <Button
               size="sm"
@@ -522,7 +527,7 @@ function CredentialSettings({ state }: { state: CredentialState }) {
           <Input
             id={`${props.runtime.key}-url`}
             className="font-mono"
-            placeholder={`可选，自建网关 → ${props.runtime.urlEnv}`}
+            placeholder={t`Optional, self-hosted gateway → ${props.runtime.urlEnv}`}
             value={form.baseUrl}
             onChange={(e) => changeForm({ baseUrl: e.target.value })}
           />

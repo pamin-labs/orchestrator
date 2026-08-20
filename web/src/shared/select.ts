@@ -114,7 +114,7 @@ export const countWaiting = (st: State, p: number | null) =>
  */
 export function projectState(st: State, p: number): { zh: string; mine: boolean; live?: boolean; fresh?: boolean } {
   const n = countWaiting(st, p);
-  if (n) return { zh: `${n} 件待办`, mine: true };
+  if (n) return { zh: t`${n} to do`, mine: true };
   const gs = st.groups.filter((g) => g.project_id === p);
   return gs.length ? activeProjectState(gs) : emptyProjectState(st, p);
 }
@@ -126,9 +126,9 @@ const emptyProjectState = (st: State, p: number) =>
 
 function activeProjectState(groups: Group[]) {
   const live = groups.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;
-  if (live) return { zh: `${live} 个在跑`, mine: false, live: true };
+  if (live) return { zh: t`${live} running`, mine: false, live: true };
   const held = groups.filter((g) => ["PAUSED", "PARKED"].includes(g.status)).length;
-  return held ? { zh: `${held} 个停着`, mine: false } : { zh: t`All done`, mine: false };
+  return held ? { zh: t`${held} stopped`, mine: false } : { zh: t`All done`, mine: false };
 }
 
 /** Where the PR lives, so "go and merge it" is one click rather than a hunt. */

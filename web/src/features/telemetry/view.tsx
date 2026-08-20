@@ -129,8 +129,19 @@ if (typeof scalePoint !== "function") throw new Error("d3-scale's scalePoint was
 /** The endpoint's own default window, so the first bucket is derived from the same number. */
 const DAY_MS = 24 * 3_600_000;
 
+/** Said around a bucket width, which is itself a message. */
+const perBucket = (width: string): string => t`${width} per bucket`;
+
+const tooManyBuckets = (count: string): string => t`This window needs ${count} buckets, more than fits`;
+
+const sliceLabel = (id: number): string => t`slice ${id}`;
+
 /** How wide a bucket reads, in the units the picker offers. */
-const bucketLabel = (ms: number) => (ms < 3_600_000 ? `${ms / 60_000} 分钟` : `${ms / 3_600_000} 小时`);
+const bucketLabel = (ms: number) => {
+  const minutes = ms / 60_000;
+  const hours = ms / 3_600_000;
+  return ms < 3_600_000 ? t`${minutes} min` : t`${hours} hr`;
+};
 
 /**
  * Which bucket width the trend is using, and a way to choose another.
@@ -153,7 +164,7 @@ function BucketPicker({
   onPick: (ms: number | null) => void;
 }) {
   return (
-    <Menu label={`每格 ${bucketLabel(value)}${pinned ? "" : t`(following)`}`}>
+    <Menu label={`${perBucket(bucketLabel(value))}${pinned ? "" : t`(following)`}`}>
       <MenuItem hint={t`Follow window—updates as window changes, fits without crowding`} onSelect={() => onPick(null)}>
         <Trans>Follow window</Trans>
       </MenuItem>
@@ -163,7 +174,7 @@ function BucketPicker({
           <MenuItem
             key={ms}
             disabled={!fits}
-            hint={fits ? undefined : `这段时间要 ${Math.round(windowMs / ms).toLocaleString()} 格，画不下`}
+            hint={fits ? undefined : tooManyBuckets(Math.round(windowMs / ms).toLocaleString())}
             onSelect={() => onPick(ms)}
           >
             {bucketLabel(ms)}
@@ -233,6 +244,11 @@ function StageTable({
   // answer rather than an answer, and `ui.md` gives absence a sentence rather
   // than equal billing.
   const { slow, fast, ceiling } = splitStages(stages);
+  // Named, because a placeholder takes the name of the expression that fills it.
+  // Under a millisecond the quoted ceiling rounds to "0ms", which reads as a
+  // broken number rather than as a fast stage, so it says so in words instead.
+  const restCount = fast.length;
+  const restCeiling = ceiling < 1 ? t`all under 1ms` : t`all under ${duration(ceiling)}`;
   return (
     <div>
       <div className={cn("grid gap-x-3 border-b border-rule pb-1 text-meta text-ink-3", COLS)}>
@@ -286,7 +302,9 @@ function StageTable({
                   />
                   <span className="truncate text-body text-ink">{group.label}</span>
                   {group.errors > 0 && (
-                    <span className="shrink-0 font-mono text-pill text-bad">{group.errors} 失败</span>
+                    <span className="shrink-0 font-mono text-pill text-bad">
+                      <Trans>{group.errors} failed</Trans>
+                    </span>
                   )}
                 </span>
                 {/* A shut group still answers "did this cost anything", which is
@@ -367,7 +385,9 @@ function StageTable({
                                because it is the newest failure's own words and
                                can be long — the row stays a row. */
                             <Tip label={stage.reason ?? t`No reason recorded`}>
-                              <span className="shrink-0 font-mono text-pill text-bad">{stage.errors} 失败</span>
+                              <span className="shrink-0 font-mono text-pill text-bad">
+                                <Trans>{stage.errors} failed</Trans>
+                              </span>
                             </Tip>
                           )}
                         </div>
@@ -404,11 +424,7 @@ function StageTable({
           onClick={() => onShowRest(!showRest)}
           className="cursor-pointer pt-1.5 text-left text-secondary text-ink-3 transition-colors hover:text-ink"
         >
-          {/* Under a millisecond the quoted ceiling rounds to "0ms", and "都在
-              0ms 以内" reads as a broken number rather than as a fast stage. */}
-          {showRest
-            ? `收起另外 ${fast.length} 个`
-            : `展开另外 ${fast.length} 个（${ceiling < 1 ? t`All under 1ms` : `都在 ${duration(ceiling)} 以内`}）`}
+          {showRest ? t`Hide the other ${restCount}` : t`Show the other ${restCount} (${restCeiling})`}
         </button>
       )}
     </div>
@@ -928,7 +944,7 @@ function Slices({ slices }: { slices: Report["slices"] }) {
                 roster belong to no slice, and leaving them out would make these add
                 up to less than the requirement with nothing explaining the gap. */}
             <span className="truncate text-secondary text-ink-2">
-              {row.sliceId === null ? t`No slice` : `切片 ${row.sliceId}`}
+              {row.sliceId === null ? t`No slice` : sliceLabel(row.sliceId)}
             </span>
             <div className="h-1.5 rounded-full bg-sunk">
               <div

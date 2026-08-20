@@ -16,6 +16,9 @@ import { cn } from "../../ui/cn";
 import { activityOf } from "../../shared/activity";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { said } from "../../shared/select";
 
 /**
  * Per docs/project/plan.md §8: current slice, turn count, the live last line, model, spend.
@@ -59,6 +62,13 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
       return run(b) - run(a) || (a.id ?? 1e9) - (b.id ?? 1e9);
     });
 
+  // Named locals, because a placeholder is named after the expression that fills
+  // it: `running.length` reaches a translator as `{0}`, which is a translator
+  // guessing.
+  const runningCount = running.length;
+  const total = rows.length;
+  const idleCount = rows.length - running.length;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
@@ -66,12 +76,14 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
           <Trans>Desk</Trans>
         </h2>
         <Meta>
-          在跑 {running.length} · 共 {rows.length}
+          <Trans>
+            {runningCount} running · {total} total
+          </Trans>
         </Meta>
         <span className="grow" />
         {running.length > 0 && rows.length > running.length && (
           <Button variant="quiet" size="sm" onClick={() => setIdle((v) => !v)}>
-            {idle ? t`Only running` : `连空闲的一起看（${rows.length - running.length}）`}
+            {idle ? t`Only running` : t`Show the idle ones too (${idleCount})`}
           </Button>
         )}
       </div>
@@ -95,7 +107,9 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
           <Desks key={String(g.id)} name={g.name} agents={g.agents} slices={st.slices} tail={last} />
         ))}
         {!idle && running.length > 0 && rows.length > running.length && (
-          <div className="mt-3 text-secondary text-ink-3">另外 {rows.length - running.length} 个空闲，没在花钱。</div>
+          <div className="mt-3 text-secondary text-ink-3">
+            <Trans>{idleCount} more are idle and costing nothing.</Trans>
+          </div>
         )}
       </Pane>
     </div>
@@ -184,7 +198,7 @@ function Desks({
                 {/* The session count moved into this label: it does not answer
                     "who is working on what", and a column for it is part of what
                     made this table nine wide. */}
-                <Tip label={`本 session ${K(a.session_tokens)} tokens · ${a.model}`}>
+                <Tip label={sessionTip(a)}>
                   <span className="flex min-w-0 items-baseline gap-1.5">
                     <span className="shrink-0 truncate text-body font-medium">{a.role}</span>
                     {/* A chip, because which model an agent is on is the second
@@ -263,14 +277,35 @@ function ownershipModel(all: Group[]) {
   };
 }
 
+/** One agent's cost so far, said in the tooltip rather than in a column: the
+ *  table was nine wide and this is the question people hover for. */
+/** Which other requirements claim this path. `、` is the separator a Chinese
+ *  reader expects and a comma is not, so it is a message of its own. */
+const sameGround = (names: string[]): string => {
+  const others = names.join(t`、`);
+  return t`the same ground as ${others}`;
+};
+
+const sessionTip = (a: State["agents"][number]): string => {
+  const sessionTokens = K(a.session_tokens);
+  return t`${sessionTokens} tokens this session · ${a.model}`;
+};
+
 export function Owns({ st, projectId }: { st: State; projectId: number }) {
   const all = st.groups.filter((g) => g.project_id === projectId);
   const { groups: gs, bare, bumps, hit, rows } = ownershipModel(all);
+  // Named, for the same reason as the desk header above.
+  const bareNames = bare.map((g) => g.name).join(t`、`);
+  const hitCount = hit.length;
+  const groupCount = gs.length;
   if (!gs.length) {
     return (
       <Empty>
-        还没有划过边界。Architect 开工前划定每组能写哪些路径，没划的组并行会踩到同一批文件。
-        {bare.length > 0 && `目前 ${bare.length} 个需求没有边界：${bare.map((g) => g.name).join("、")}。`}
+        <Trans>
+          No boundaries drawn yet. The Architect decides which paths each group may write before work starts; groups
+          without one run into the same files.
+        </Trans>{" "}
+        {bare.length > 0 && t`${bare.length} requirements have no boundary right now: ${bareNames}.`}
       </Empty>
     );
   }
@@ -283,11 +318,13 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
           once. */}
       <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {hit.length ? (
-          <b className="text-body font-semibold text-bad">{hit.length} 个需求想改同一批文件，不能一起跑</b>
+          <b className="text-body font-semibold text-bad">
+            <Trans>{hitCount} requirements want the same files and cannot run together</Trans>
+          </b>
         ) : (
           <b className="text-body font-semibold">
-            {gs.length} 个需求各改各的，可以一起跑{bare.length ? `（还有 ${bare.length} 个没分` : ""}
-            {bare.length ? "）" : ""}
+            <Trans>{groupCount} requirements touch different files and can run together</Trans>
+            {bare.length ? t` (${bare.length} more not yet assigned)` : ""}
           </b>
         )}
       </div>
@@ -309,6 +346,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
         {rows.map((g) => {
           const mine = bumps.get(g.id) ?? new Map<string, string[]>();
           const others = [...new Set([...mine.values()].flat())];
+          const overlapping = others.join(t`、`);
           return (
             <div
               key={g.id}
@@ -320,8 +358,10 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                   <div className="truncate font-display text-base font-semibold">{g.name}</div>
                 </Tip>
                 {others.length > 0 && (
-                  <Tip label={others.join("、")}>
-                    <Meta className="truncate text-bad">压着 {others.join("、")}</Meta>
+                  <Tip label={others.join(t`、`)}>
+                    <Meta className="truncate text-bad">
+                      <Trans>overlaps {overlapping}</Trans>
+                    </Meta>
                   </Tip>
                 )}
               </div>
@@ -331,7 +371,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                 {owns(g).length ? (
                   owns(g).map((o) =>
                     mine.has(o) ? (
-                      <Tip key={o} label={`和 ${mine.get(o)!.join("、")} 是同一块地方`}>
+                      <Tip key={o} label={sameGround(mine.get(o)!)}>
                         <span className="rounded-sm bg-bad-soft px-1.5 py-0.5 font-mono text-meta text-bad">{o}</span>
                       </Tip>
                     ) : (
@@ -354,11 +394,11 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
   );
 }
 
-const ROTATION_REASON: Record<string, string> = {
-  hash: "前缀变了",
-  budget: "上下文满了",
-  explicit: "打回重做",
-  new: "新雇的",
+const ROTATION_REASON: Record<string, MessageDescriptor> = {
+  hash: msg`prefix changed`,
+  budget: msg`context full`,
+  explicit: msg`sent back`,
+  new: msg`newly hired`,
 };
 
 function rotationModel(cost: Cost) {
@@ -367,7 +407,7 @@ function rotationModel(cost: Cost) {
   return {
     turns: cost.rotations.turns,
     cold,
-    why: entries.map(([reason, count]) => `${ROTATION_REASON[reason] ?? reason} ${count}`).join(" · "),
+    why: entries.map(([reason, count]) => `${said(ROTATION_REASON[reason], reason)} ${count}`).join(" · "),
     className: cold * 2 > cost.rotations.turns ? "text-warn" : "text-ink",
   };
 }
@@ -388,9 +428,10 @@ function attributionModel(cost: Cost) {
 
 function costSummary(cost: Cost) {
   const per = cost.delivered.count ? cost.delivered.tokens / cost.delivered.count : null;
+  const deliveredCount = cost.delivered.count;
   return {
     per: per == null ? "—" : K(per),
-    perNote: per == null ? t`(need one merge first)` : `（${cost.delivered.count} 个）`,
+    perNote: per == null ? t`(need one merge first)` : t`(${deliveredCount})`,
     cache: cost.cacheRatio == null ? t`No data yet` : `${Math.round(cost.cacheRatio * 100)}%`,
     cacheClass: cost.cacheRatio == null ? "text-ink-3" : cost.cacheRatio < 0.5 ? "text-warn" : "text-ink",
   };
@@ -513,9 +554,11 @@ export function CostView({ cost }: { cost: Cost | null }) {
               because those counts sum to the count already printed — the same
               number said twice, once as a total and once as its parts. */}
             {cold > 0 && (
-              <Tip label={`${turns} 个 turn 里重开了 ${cold} 次：${why}。重开一次，缓存前缀要从头建一遍`}>
+              <Tip
+                label={t`Restarted ${cold} times across ${turns} turns: ${why}. Each restart rebuilds the cache prefix from scratch`}
+              >
                 <div className="mt-0.5 w-fit text-secondary text-ink-2 underline decoration-dotted">
-                  重开会话{" "}
+                  <Trans>Session restarts</Trans>{" "}
                   <b className={cn("font-mono font-semibold", rotationClass)}>
                     {cold}/{turns}
                   </b>

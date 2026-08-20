@@ -126,10 +126,14 @@ function EvidenceHeader({
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
         <span className="min-w-0 text-body text-ink">{evidence.accept_spec}</span>
         <Meta className="shrink-0">
-          {stats.files ? `${stats.files} 个文件` : t`No changes`}
+          {stats.files ? t`${stats.files} files` : t`No changes`}
           {evidence.diff && ` · +${stats.plus} −${stats.minus}`}
         </Meta>
-        {evidence.retries > 0 && <Meta className="shrink-0 text-warn">被打回过 {evidence.retries} 次</Meta>}
+        {evidence.retries > 0 && (
+          <Meta className="shrink-0 text-warn">
+            <Trans>sent back {evidence.retries} times</Trans>
+          </Meta>
+        )}
         <span className="grow" />
         {actions}
       </div>
@@ -260,7 +264,7 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
       </Message>
     );
   const lines = logLines(text);
-  if (!lines.some((line) => line.trim())) return <Message>{name} 没有输出。</Message>;
+  if (!lines.some((line) => line.trim())) return <Message>{t`${name} produced no output.`}</Message>;
   const fails = lines.filter((line) => /^\s*\(fail\)/.test(line));
   return (
     <div>
@@ -284,9 +288,9 @@ function GateToolbar({
   return (
     <div className={cn(PAD, "flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-rule py-1.5")}>
       <span className={cn("text-secondary font-semibold", fails ? "text-bad" : "text-ok")}>
-        {fails ? `${fails} 条没过` : t`All pass`}
+        {fails ? t`${fails} failed` : t`All pass`}
       </span>
-      <Meta>{lines} 行</Meta>
+      <Meta>{t`${lines} lines`}</Meta>
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}

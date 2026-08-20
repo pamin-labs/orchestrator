@@ -80,7 +80,7 @@ function Paged({ blocks }: { blocks: { node: React.ReactNode }[] }) {
       {rest > 0 && (
         <div className="border-t border-rule-soft px-2 py-2">
           <Button variant="quiet" size="sm" onClick={more}>
-            还有 {rest} 条需求
+            <Trans>{rest} more requirements</Trans>
           </Button>
         </div>
       )}
@@ -191,7 +191,8 @@ function ClusterIdentity({ st, c, standing, hard }: { st: State; c: QueueCluster
 
 const clusterName = (st: State, grpId: number, standing: boolean) =>
   standing ? t`Standing post` : groupName(st, grpId);
-const clusterWaiting = (hard: number, total: number) => (hard > 0 ? `${hard} 条卡着全组` : `${total} 条等你`);
+const clusterWaiting = (hard: number, total: number) =>
+  hard > 0 ? t`${hard} blocking the whole group` : t`${total} waiting on you`;
 const clusterTokens = (tokens: number | undefined) => (tokens ? ` · ${K(tokens)} tokens` : "");
 
 function ClusterTickets({
@@ -205,13 +206,16 @@ function ClusterTickets({
   refresh: () => void;
   standing: boolean;
 }) {
+  const hiddenCount = folded.length - shown.length;
   return (
     <div className="flex min-w-0 flex-wrap items-stretch gap-1.5 max-[60rem]:col-span-full">
       {shown.map(({ item, n }) => (
         <Ticket key={item.key} item={item} n={n} refresh={refresh} standing={standing} />
       ))}
       {folded.length > shown.length && (
-        <span className="self-center font-mono text-meta text-ink-3">还有 {folded.length - shown.length} 条</span>
+        <span className="self-center font-mono text-meta text-ink-3">
+          <Trans>{hiddenCount} more</Trans>
+        </span>
       )}
     </div>
   );
@@ -276,7 +280,7 @@ function TicketMeta({ item, n }: { item: QueueItem; n: number }) {
       <TicketAbout item={item} />
       {n > 1 && <span className="font-semibold text-ink-2">×{n}</span>}
       <span className="grow" />
-      {item.reasons.find((reason) => reason.why.startsWith("等了"))?.why.replace("等了 ", "")}
+      {item.reasons.find((reason) => reason.kind === "waited")?.short}
     </span>
   );
 }

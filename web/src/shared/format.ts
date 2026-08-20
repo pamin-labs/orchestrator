@@ -49,5 +49,7 @@ export const duration = (ms: number) => {
 /** How long something has been waiting, in the coarsest unit that still says it. */
 export const waited = (ms: number) => {
   const m = Math.round((Date.now() - ms) / 60000);
-  return m < 1 ? t`Just now` : m < 60 ? `等待 ${m}m` : `等待 ${Math.round(m / 60)}h`;
+  if (m < 1) return t`Just now`;
+  const span = m < 60 ? `${m}m` : `${Math.round(m / 60)}h`;
+  return t`waiting ${span}`;
 };

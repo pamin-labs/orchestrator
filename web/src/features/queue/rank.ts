@@ -19,11 +19,22 @@ import { t } from "@lingui/core/macro";
 export interface Reason {
   why: string;
   points: number;
+  /**
+   * What this reason is, for a reader that needs the reason itself rather than
+   * its sentence. The queue used to find the wait by `why.startsWith("等了")`
+   * and slice the prefix off — a label doing duty as a tag, which stops being
+   * true the moment the label is translated.
+   */
+  kind?: "waited";
+  /** The same fact at chip length, when there is one. */
+  short?: string;
 }
+
+const spentAlready = (tokens: string): string => t`already spent ${tokens} tokens`;
 
 export const REASONS = {
   /** An agent is literally hanging on the answer: `orch ask-boss` blocks its caller. */
-  blocked: (who: string): Reason => ({ why: `${who} 挂着等你答`, points: 100 }),
+  blocked: (who: string): Reason => ({ why: t`${who} is hanging on your answer`, points: 100 }),
   /**
    * A blocker the system raised, not an agent. Nothing is hanging on the answer — the
    * group is suspended — so claiming "an agent is waiting" would be a lie the row tells
@@ -33,7 +44,7 @@ export const REASONS = {
   /** Nothing is running on this requirement, so the whole thing is stopped. */
   halted: (): Reason => ({ why: t`Group is paused`, points: 60 }),
   /** A queue head blocks everything behind it. */
-  blocking: (n: number): Reason => ({ why: `后面还排着 ${n} 个`, points: 12 * n }),
+  blocking: (n: number): Reason => ({ why: t`${n} more queued behind it`, points: 12 * n }),
   /** DRAFT blocks dispatch entirely: nothing in this requirement has started. */
   unstarted: (): Reason => ({ why: t`Starts after approval`, points: 45 }),
   /** Money already spent and now sitting idle. */
@@ -42,16 +53,14 @@ export const REASONS = {
   // stopped applying to five of the eight roles. 1M tokens is roughly where a
   // requirement starts being worth not abandoning.
   sunk: (tokens: number): Reason => ({
-    why: `已经花了 ${K(tokens)} tokens`,
+    why: spentAlready(K(tokens)),
     points: Math.min(30, (tokens / 1e6) * 10),
   }),
   /** The clock. docs/project/plan.md's whole argument for slicing work up. */
   waited: (ms: number): Reason => {
     const h = ms / 3_600_000;
-    return {
-      why: h >= 1 ? `等了 ${Math.round(h)}h` : `等了 ${Math.max(1, Math.round(h * 60))}m`,
-      points: Math.min(40, h * 8),
-    };
+    const short = h >= 1 ? `${Math.round(h)}h` : `${Math.max(1, Math.round(h * 60))}m`;
+    return { why: t`waited ${short}`, short, kind: "waited", points: Math.min(40, h * 8) };
   },
 } as const;
 

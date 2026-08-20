@@ -71,10 +71,8 @@ function Remove({
   const [busy, startTransition] = useTransition();
   const go = async () => {
     const yes = await ask({
-      title: `移除 ${name}？`,
-      body:
-        `${repoPath} 的 ${groups} 个需求、它们的容器、卡片、记录和附件都会删掉，删了找不回来。\n\n` +
-        `GitHub 上什么都不动：分支还在，PR 还在，代码一行不少。移除的只是这台机器上的这份工作。`,
+      title: t`Remove ${name}?`,
+      body: `${t`Every one of ${repoPath}'s ${groups} requirements — their containers, cards, records and attachments — is deleted, and cannot be recovered.`}\n\n${t`Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work.`}`,
       yes: t`Remove`,
       danger: true,
     });
@@ -114,7 +112,7 @@ function Remove({
           <Trans>Keep</Trans>
         </dt>
         <dd className="min-w-0 text-ink-2">
-          GitHub 上的分支、PR、代码
+          <Trans>Branches, PRs and code on GitHub</Trans>
           {/* 不做了 archives and keeps every event. This does not, and the two
               buttons are one dialog apart. */}
           <div className="mt-0.5 text-secondary text-ink-3">

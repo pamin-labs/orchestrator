@@ -200,7 +200,7 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
         <Row
           label={t`Base branch`}
           value={now.baseBranch}
-          placeholder={`${d.baseBranchNow}（远端说的）`}
+          placeholder={t`${d.baseBranchNow} (per the remote)`}
           width="max-w-[14rem]"
           busy={busy}
           onSave={(v) => patch({ baseBranch: v || null })}
@@ -287,7 +287,7 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
                 {d}
                 <button
                   type="button"
-                  aria-label={`不再禁止 ${d}`}
+                  aria-label={t`Stop denying ${d}`}
                   disabled={busy}
                   // Same trick as the combobox list: without it the box blurs
                   // first, `add` commits the half-typed draft against the old

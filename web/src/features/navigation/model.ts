@@ -180,7 +180,7 @@ export function projectItem(project: State["projects"][number], waiting: number)
     name: same ? project.repo_path : project.name,
     ...(same ? {} : { meta: project.repo_path }),
     rtlMeta: true,
-    ...(waiting > 0 ? { badge: `${waiting} 件待办` } : {}),
+    ...(waiting > 0 ? { badge: t`${waiting} to do` } : {}),
   };
 }
 

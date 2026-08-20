@@ -381,6 +381,7 @@ export function Knobs({
 }) {
   const queries = useQueryClient();
   const [saved, setSaved] = useState<string | null>(null);
+  const savedAt = (at: string): string => t`Saved ${at}`;
 
   // Every section of this dialog reads the same machine settings, so they share
   // one entry rather than each mounting its own effect and asking again.
@@ -437,12 +438,12 @@ export function Knobs({
       {/* Where a save button would be. There is none: a field is written when it
           loses focus, and this says the write landed. */}
       {bare ? (
-        saved && <Meta className="mb-1 block">已保存 {saved}</Meta>
+        saved && <Meta className="mb-1 block">{savedAt(saved)}</Meta>
       ) : (
         <Head title={i18n._(spec.title)} note={i18n._(spec.note)}>
           {/* Clear of the dialog's close button, which is absolutely positioned
               over this band and was sitting on the last character of the time. */}
-          {saved && <Meta className="mr-7">已保存 {saved}</Meta>}
+          {saved && <Meta className="mr-7">{savedAt(saved)}</Meta>}
         </Head>
       )}
       {knobs === null ? (
@@ -639,7 +640,7 @@ function choiceValue({ knob, onWrite }: Editor) {
           free
           value={ConfigSchema.shape.language.parse(knob.value)}
           options={LANGUAGES}
-          placeholder="中文 / English / 日本語 …"
+          placeholder={LANGUAGES.slice(0, 3).join(" / ")}
           onCommit={onWrite}
         />
       );
@@ -714,7 +715,7 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
         label={copyFor(knob).label}
         invalid={bad === ""}
         onCommit={(pct) => {
-          if (pct <= 0 || pct > 100) return onRefuse(WANTS.percent, "");
+          if (pct <= 0 || pct > 100) return onRefuse(i18n._(WANTS.percent), "");
           // Divided, not multiplied: 600 / 1000 is the same double as 0.6.
           onWrite(Math.round(pct * 10) / 1000);
         }}
@@ -730,7 +731,7 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
       onUnchanged={onClear}
       onCommit={(raw) => {
         const n = readNumber(raw, now, shape);
-        if (n === null) return onRefuse(shape ? WANTS[shape] : t`A number`, "");
+        if (n === null) return onRefuse(shape ? i18n._(WANTS[shape]) : t`A number`, "");
         onWrite(n);
       }}
     />

@@ -26,6 +26,7 @@ export const nl = (s: string) => s.replace(/\\n/g, "\n");
  * usually names the problem.
  */
 export const brief = (s: string, max = 44): string => {
+  // i18n-exempt: sentence terminators, Chinese and English, not copy.
   const first = (s.split(/[\n。.!?！？]/)[0] ?? s).trim() || s.trim();
   return first.length > max ? `${first.slice(0, max - 1)}…` : first;
 };

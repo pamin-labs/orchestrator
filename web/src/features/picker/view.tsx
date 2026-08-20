@@ -56,7 +56,7 @@ function PickBrowseRow(props: RowProps) {
       {props.isDir ? (
         <button
           type="button"
-          aria-label={`进入 ${props.entry.name}`}
+          aria-label={t`Open ${props.entry.name}`}
           onClick={() => props.load(props.entry.path)}
           className="cursor-pointer font-mono text-secondary text-ink-3 hover:text-accent"
         >
@@ -349,7 +349,11 @@ function RepoListEmpty({ data, account }: { data: RepoList | null; account: stri
   if (data.repos.length) return null;
   return (
     <div className="space-y-2 p-3.5 text-body text-ink-2">
-      <p>{account} 下面，这个 App 一个仓库都看不到。装的时候可能只勾了几个。</p>
+      <p>
+        <Trans>
+          Under {account}, this App can see no repository at all. It may have been installed with only a few ticked.
+        </Trans>
+      </p>
       {data.installUrl && (
         <LinkButton href={data.installUrl}>
           <Trans>Change its access</Trans>
@@ -443,7 +447,7 @@ function RepoFooter({ data, onCancel }: { data: RepoList | null; onCancel: (() =
   return (
     <div className="flex shrink-0 items-center gap-2 border-t border-rule p-3">
       <span className="min-w-0 grow truncate text-secondary text-ink-3">
-        {data?.repos.length ? `${data.repos.length} 个仓库，最近动过的在前` : ""}
+        {data?.repos.length ? t`${data.repos.length} repositories, most recently touched first` : ""}
       </span>
       {onCancel && (
         <Button onClick={onCancel}>
@@ -620,7 +624,7 @@ export function FilePicker({
         footer={() => (
           <>
             <span className="min-w-0 grow truncate text-secondary text-ink-3">
-              {sel.length ? `选了 ${sel.length} 个` : t`None selected`}
+              {sel.length ? t`${sel.length} selected` : t`None selected`}
             </span>
             <Button onClick={() => onOpenChange(false)}>
               <Trans>Cancel</Trans>

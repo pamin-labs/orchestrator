@@ -121,9 +121,10 @@ function ConnectedStatus({ status }: { status: GhStatus }) {
     // Authorized and installed are different acts, and only the second one
     // can reach a repository. Saying 已连 here would be a green tick over a
     // repo list that can never fill.
+    const accountName = accountLabel(status.account, t`Authorized`);
     return (
       <span className="text-body font-medium text-accent">
-        {accountLabel(status.account, t`Authorized`)}，但 App 还没装到任何账号上
+        {t`${accountName}, but the App is not installed on any account yet`}
       </span>
     );
   }
@@ -273,7 +274,7 @@ function AccountRow({ account }: { account: Installation }) {
       {/* Tabular figures: `86` and `5` share a right edge either way,
           but proportional digits make the two counts look like two
           different scales. */}
-      <Meta className="tabular-nums">{account.repos === null ? t`Can't count` : `${account.repos} 个仓库`}</Meta>
+      <Meta className="tabular-nums">{account.repos === null ? t`Can't count` : t`${account.repos} repositories`}</Meta>
     </div>
   );
 }
@@ -347,7 +348,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
               disabled={busy}
               onCheckedChange={(v) => set({ coauthor: v })}
             />
-            <Meta>把 {s.bot.name} 写进 Co-Authored-By</Meta>
+            <Meta>{t`Writes ${s.bot.name} into Co-Authored-By`}</Meta>
           </FieldContent>
         </Field>
       </FieldGroup>

@@ -288,7 +288,7 @@ function RemoveRow({ name, onRemove }: { name: string; onRemove?: () => void }) 
   if (!onRemove) return <span className="w-7 shrink-0" />;
   return (
     <Tip label={t`Delete this row`}>
-      <Button variant="quiet" size="sm" aria-label={`删掉 ${name}`} className="shrink-0" onClick={onRemove}>
+      <Button variant="quiet" size="sm" aria-label={t`Delete ${name}`} className="shrink-0" onClick={onRemove}>
         <X className="size-3" />
       </Button>
     </Tip>
@@ -338,7 +338,7 @@ export function Pairs({
         <div key={k} className="flex items-center gap-1.5">
           <Box
             value={k}
-            aria-label={`${k} 的名字`}
+            aria-label={t`Name for ${k}`}
             className="w-[13rem] flex-none"
             onCommit={(next) => {
               const name = next.trim();

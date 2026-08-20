@@ -18,6 +18,8 @@ export interface Attached {
   image: boolean;
 }
 
+// i18n-exempt: matches the header an agent writes into a message body, which
+// follows `output.language` rather than this panel.
 const HEAD = /\n*附件（路径如下）：\n/;
 
 export function splitAttachments(body: string): { text: string; files: Attached[] } {

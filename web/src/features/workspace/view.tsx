@@ -126,7 +126,7 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
           {info.sandbox.mounts.map((m) => (
             <Meta key={m.mountPath} title={m.hostPath}>
               {m.mountPath}
-              {m.readOnly ? " 只读" : ""}
+              {m.readOnly ? t` read-only` : ""}
             </Meta>
           ))}
         </div>

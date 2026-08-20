@@ -504,7 +504,13 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
  * same weight as 暂停 they read as ordinary, and one of them discards a turn's
  * work.
  */
+/** Said twice, from the two places a requirement can be dropped. */
+const dropBody = (name: string): string =>
+  t`${name} leaves the board and every queued turn is cancelled. The code and the record are both kept.`;
+
 function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
+  // `g.name` reaches a translator as `{0}`; a named local reaches it as `{name}`.
+  const name = g.name;
   const running = isRunning(g);
   return (
     <Menu label={t`More`}>
@@ -550,7 +556,7 @@ function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
         onSelect={confirmThen(
           {
             title: t`Restart container`,
-            body: `${g.name} 的容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。`,
+            body: t`${name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost.`,
             yes: t`Restart`,
           },
           () => groupAction(g.id, "rebuild"),
@@ -568,7 +574,7 @@ function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
         onSelect={confirmThen(
           {
             title: t`Don't proceed`,
-            body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录留着，组不会再被拉起。`,
+            body: t`${name} leaves the board and every queued turn is cancelled. The code and the record are kept; the group is never started again.`,
             yes: t`Don't proceed`,
             danger: true,
           },
@@ -771,8 +777,10 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
     );
   }
   const frac = g.spent_tokens / g.budget_tokens;
+  const spent = g.spent_tokens;
+  const cap = g.budget_tokens;
   return (
-    <Tip label={`${g.spent_tokens} / ${g.budget_tokens} tokens。用满即挂起全组。`}>
+    <Tip label={t`${spent} / ${cap} tokens. Spending it all suspends the whole group.`}>
       <span className="flex w-20 items-center gap-1.5">
         <Bar frac={frac} tone={frac >= 1 ? "bad" : frac >= 0.8 ? "warn" : "ink"} />
         <Meta>
@@ -795,6 +803,11 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
   // a `number` — so "no cap set" arrived as null and this computed NaN, which is
   // what the raise-the-budget field would have been pre-filled with.
   const doubled = Math.max((g.budget_tokens ?? 0) * 2, g.spent_tokens + 100_000);
+  // Named locals: a placeholder takes the name of the expression that fills it,
+  // and `K(g.spent_tokens)` reaches a translator as `{0}`.
+  const spent = K(g.spent_tokens);
+  const cap = K(g.budget_tokens);
+  const doubledLabel = K(doubled);
   return (
     <Card tone="mine" className="mt-2.5">
       <CardBody>
@@ -802,11 +815,13 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
           <Trans>Budget exhausted; group paused</Trans>
         </CardTitle>
         <div className="mt-0.5 text-secondary text-ink-2">
-          已花 {K(g.spent_tokens)} tokens，上限 {K(g.budget_tokens)}。 加上限才动得了，「继续」不生效。
+          <Trans>
+            Spent {spent} tokens against a {cap} limit. Only raising the limit moves it — "resume" does nothing.
+          </Trans>
         </div>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           <Button variant="go" onClick={() => setBudget(g, doubled, refresh)}>
-            翻倍到 {K(doubled)}
+            <Trans>Double to {doubledLabel}</Trans>
           </Button>
           <Button onClick={() => setBudget(g, null, refresh)}>
             <Trans>Remove limit</Trans>
@@ -838,7 +853,9 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
         // words, not the boss's.
         <div key={a.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
           <div className="flex items-baseline gap-2">
-            <span className="font-mono text-meta text-ink-3">{a.answered_by} 代答</span>
+            <span className="font-mono text-meta text-ink-3">
+              <Trans>answered on your behalf by {a.answered_by}</Trans>
+            </span>
             <span className="grow" />
             <Button
               variant="quiet"
@@ -870,7 +887,7 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
               <div className="max-w-[46rem] rounded-2xl rounded-tr-sm border border-rule bg-paper px-3.5 py-2 text-body text-ink-2">
                 {/* `answered` is also where a revoked question and one the chain
                     ran out on land, and neither wrote a reply. `nl(null)` threw. */}
-                <Clamp lines={3}>{a.answer === null ? "（没有留下答复）" : nl(a.answer)}</Clamp>
+                <Clamp lines={3}>{a.answer === null ? t`(no reply was left)` : nl(a.answer)}</Clamp>
               </div>
             </div>
           </div>
@@ -1030,7 +1047,10 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           key={`${o.author}:${o.body}`}
           className="my-2 break-words whitespace-pre-wrap rounded-md bg-sunk px-2.5 py-2 text-secondary"
         >
-          <b className="font-semibold text-warn">{o.author} 后补反对</b> {o.body}
+          <b className="font-semibold text-warn">
+            <Trans>{o.author} objected after the fact</Trans>
+          </b>{" "}
+          {o.body}
         </div>
       ))}
       {/* A plan that creates a file names it, so this is not an error — but a plan
@@ -1043,7 +1063,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           <b className="font-semibold text-warn">
             <Trans>These paths from the card don't exist in the repo</Trans>
           </b>{" "}
-          <span className="font-mono">{unknown.join("、")}</span>
+          <span className="font-mono">{unknown.join(t`、`)}</span>
           <div className="mt-1 text-ink-3">
             <Trans>
               New files are expected; if it thinks these already exist, the card was written from speculation.
@@ -1125,7 +1145,7 @@ function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: (
           onClick={confirmThen(
             {
               title: t`Abandon this requirement`,
-              body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
+              body: dropBody(g.name),
               yes: t`Abandoned`,
               danger: true,
             },
@@ -1199,7 +1219,7 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
               tip={t`Cancel all queued turns; return the occupied slot to another group.`}
               spec={{
                 title: t`Don't proceed`,
-                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
+                body: dropBody(g.name),
                 yes: t`Don't proceed`,
                 danger: true,
               }}

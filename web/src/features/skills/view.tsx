@@ -28,6 +28,14 @@ import { skillsKey } from "../composer/view";
  * page says.
  */
 
+/** What ticking a skill costs: how many reach the sandbox, and the prefix they
+ *  add to every turn. */
+const skillsNote = (tally: { staged: number; user: number; repo: number; k: number }): string => {
+  const mine = t`${tally.staged}/${tally.user} ticked reach the sandbox`;
+  const repo = tally.repo ? t`, ${tally.repo} from the repository` : "";
+  return `${mine}${repo}${t`, about ${tally.k}k tokens of prefix per turn`}`;
+};
+
 export function Skills({ projectId }: { projectId: number | null }) {
   const queries = useQueryClient();
   const [q, setQ] = useState("");
@@ -77,16 +85,7 @@ export function Skills({ projectId }: { projectId: number | null }) {
 
   return (
     <>
-      <Head
-        title={t`Skills`}
-        note={
-          rows
-            ? `勾中的 ${tally.staged}/${tally.user} 个进沙盒` +
-              (tally.repo ? `，仓库自带 ${tally.repo} 个` : "") +
-              `，每 turn 前缀约 ${tally.k}k tokens`
-            : t`Loading…`
-        }
-      >
+      <Head title={t`Skills`} note={rows ? skillsNote(tally) : t`Loading…`}>
         <Button variant="quiet" size="sm" disabled={busy === "*"} onClick={rescan}>
           <Trans>Rescan</Trans>
         </Button>

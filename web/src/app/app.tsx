@@ -414,7 +414,7 @@ export function App() {
               size="sm"
               onClick={() => go(choose(!!sel.p, { view: "board", g: null }, { view: "home", p: null, g: null }))}
             >
-              待办 {waiting}
+              <Trans>to do {waiting}</Trans>
             </Button>,
             <span className="font-mono text-meta text-ink-3">
               <Trans>No pending items</Trans>
