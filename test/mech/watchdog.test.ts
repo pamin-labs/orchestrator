@@ -87,6 +87,14 @@ async function watchdogDb(): Promise<DB> {
   return db;
 }
 
+/**
+ * The repo-map check runs on its own interval, so a test about the *gate* has to
+ * turn the interval off or it measures the cadence instead.
+ */
+const EVERY_MAP_TICK = {
+  watchdog: { ...loadConfig().watchdog, repoMapEveryMs: 0 },
+} satisfies Partial<ReturnType<typeof loadConfig>>;
+
 async function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
   const db = await watchdogDb();
   const bus = new Bus(db);
@@ -1271,7 +1279,7 @@ test("losing the network is announced once, by the path that dedups", async () =
  * identical to the stored one.
  */
 test("an idle project pays one cheap exec a tick, not the whole corpus", async () => {
-  const h = await harness();
+  const h = await harness(EVERY_MAP_TICK);
   let head = "1111111111111111111111111111111111111111";
   const sandbox = fakeSandbox((cmd) => {
     if (cmd.includes("merge-base")) return { code: 1 };
@@ -1314,7 +1322,7 @@ test("an idle project pays one cheap exec a tick, not the whole corpus", async (
  * stays — a paths-only map beats none; the repetition was the defect.
  */
 test("an unreadable container builds the map once, then reports instead of rebuilding", async () => {
-  const h = await harness();
+  const h = await harness(EVERY_MAP_TICK);
   const sandbox = fakeSandbox((cmd) => {
     if (cmd.includes("rev-parse")) return { code: 128, err: "not a git repository" };
     if (cmd.includes("ls-tree")) return { out: "src/a.ts\n" };
@@ -1561,4 +1569,42 @@ test("a merge queue held up behind the head interrupts, one PR waiting on its ow
   const head = (await runWatchdog(h2.deps)).find((x) => x.rule === "waiting_merge")!;
   expect(head.severity).toBe("blocker");
   expect(head.body).toContain("1");
+});
+
+/**
+ * The staleness check has its own clock, and it is a setting.
+ *
+ * Asking costs a container round trip — 947ms of a 30s interval, measured over
+ * 2,766 ticks — to be told "unchanged" on 1,534 of them, about a map whose input
+ * is somebody pushing a commit. Freshness here costs nothing an agent can feel:
+ * the map is navigation, not a gate.
+ */
+test("the repo map is not asked about on every tick, and the period is configurable", async () => {
+  const h = await harness({ watchdog: { ...loadConfig().watchdog, repoMapEveryMs: 60_000 } });
+  const sandbox = fakeSandbox((cmd) => {
+    if (cmd.includes("merge-base")) return { code: 1 };
+    if (cmd.includes("rev-parse")) return { out: "1111111111111111111111111111111111111111" };
+    if (cmd.includes("ls-tree")) return { out: "src/a.ts\n" };
+    return { code: 0 };
+  });
+  h.ctx.sandbox = sandbox;
+  await h.db.update(projectTable).set({ remote: "https://example.invalid/o/r.git" }).where(eq(projectTable.id, 1));
+
+  const asked = () => sandbox.commands.filter((c) => c.includes("rev-parse")).length;
+  await runWatchdog(h.deps);
+  expect(asked()).toBe(1);
+  // Three more ticks inside the minute, and it does not ask again.
+  await runWatchdog(h.deps);
+  await runWatchdog(h.deps);
+  await runWatchdog(h.deps);
+  expect(asked()).toBe(1);
+
+  // A rule that has never run is due, so the first tick is never delayed; that is
+  // what makes this a period and not a warm-up.
+  const fresh = await harness({ watchdog: { ...loadConfig().watchdog, repoMapEveryMs: 60_000 } });
+  fresh.ctx.sandbox = sandbox;
+  await fresh.db.update(projectTable).set({ remote: "https://example.invalid/o/r.git" }).where(eq(projectTable.id, 1));
+  const before = asked();
+  await runWatchdog(fresh.deps);
+  expect(asked()).toBe(before + 1);
 });

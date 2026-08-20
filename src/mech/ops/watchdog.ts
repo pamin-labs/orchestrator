@@ -462,7 +462,16 @@ const EVERY_TICK = null;
 /** Hourly, for a seven-day retention window. */
 const HOURLY = new Cron("0 * * * *");
 
-type Cadence = typeof EVERY_TICK | Cron;
+/**
+ * A plain interval, for a rule whose period is a setting rather than a clock time.
+ *
+ * `HOURLY` wants to land on the hour; the repo-map check just wants to stop
+ * asking every thirty seconds. A cron pattern built from milliseconds would be a
+ * translation with nothing to gain.
+ */
+type Every = { everyMs: number };
+
+type Cadence = typeof EVERY_TICK | Cron | Every;
 
 const RAN_KEY = (rule: string) => `watchdog.ran.${rule}`;
 
@@ -576,6 +585,7 @@ async function due(db: WatchdogDeps["ctx"]["db"], rule: string, cadence: Cadence
   if (stored === null) return true;
   const last = Number(stored);
   if (!Number.isFinite(last)) return true;
+  if ("everyMs" in cadence) return now - last >= cadence.everyMs;
   return (cadence.nextRun(new Date(last))?.getTime() ?? Infinity) <= now;
 }
 
@@ -1003,7 +1013,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // Deterministic and cheap — `git ls-files` plus one tree-sitter parse per file,
   // grammars loaded once per process — and only written when the render changed,
   // so a quiet repo costs one comparison. Seven groups were grepping for this.
-  await step({ id: "7e", name: "repo_map", every: EVERY_TICK }, async () => {
+  await step({ id: "7e", name: "repo_map", every: { everyMs: cfg.watchdog.repoMapEveryMs } }, async () => {
     for (const p of await ctx.db
       .select({ id: project.id, repo_path: project.repo_path, remote: project.remote })
       .from(project)) {

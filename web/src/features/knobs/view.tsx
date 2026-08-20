@@ -106,6 +106,7 @@ export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: st
       "watchdog.nudgeAfterMs",
       "watchdog.nudgeReemitMs",
       "watchdog.pausedNotifyMs",
+      "watchdog.repoMapEveryMs",
       "prPoll.prs",
       "prPoll.messages",
       "prPoll.checks",

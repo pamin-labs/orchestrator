@@ -338,9 +338,10 @@ export const ConfigSchema = z.object({
    *
    * The interval was settable and every threshold it enforces was not, so the one
    * knob the panel offered changed how often the rules ran and nothing about what
-   * they decided. Two kinds: `idleTurns`/`sameFile` are how much repetition is a
-   * loop rather than a hard day, and the three `*Ms` are how long a feed stays
-   * worth reading — a finding repeated every half hour is one the eye learns to skip.
+   * they decided. `idleTurns`/`sameFile` are repetition; the `*Ms` are how long a
+   * feed stays worth reading. `repoMapEveryMs` is how often the shared map is even
+   * *checked* — a container round trip costing 947ms of every 30s tick, over 2,766
+   * ticks, to answer "unchanged" about a map whose input is a push.
    */
   watchdog: z
     .object({
@@ -350,6 +351,7 @@ export const ConfigSchema = z.object({
       nudgeAfterMs: count,
       nudgeReemitMs: count,
       pausedNotifyMs: count,
+      repoMapEveryMs: count,
     })
     .strict(),
   /**

@@ -43,6 +43,7 @@ export const KNOB_SHAPE: Record<string, Shape> = {
   "watchdog.nudgeAfterMs": "ms",
   "watchdog.nudgeReemitMs": "ms",
   "watchdog.pausedNotifyMs": "ms",
+  "watchdog.repoMapEveryMs": "ms",
   "timeouts.githubApiMs": "ms",
   "timeouts.credentialCheckMs": "ms",
   "timeouts.webhookMs": "ms",

@@ -213,6 +213,11 @@ const DEFAULTS: Config = {
     nudgeAfterMs: 4 * 60 * 60 * 1_000,
     nudgeReemitMs: 6 * 60 * 60 * 1_000,
     pausedNotifyMs: 15 * 60 * 1_000,
+    // Five minutes. The stamp is a container exec and the map's input is a push,
+    // so a thirty-second cadence asked 2,766 times a day and was told "unchanged"
+    // 1,534 of them, at 947ms each. Freshness costs nothing an agent can feel:
+    // the map is navigation, not a gate.
+    repoMapEveryMs: 5 * 60 * 1_000,
   },
   // Local, and the smaller of the two ADR 031 measured — they ranked the same and
   // the gap it cares about did not close with the larger one. Nothing reads this

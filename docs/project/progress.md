@@ -504,11 +504,11 @@ M7 — executable engineering governance and versioned protocol.
   1,185 ticks whose stamp could not be read exactly. Fixing that one branch
   removes all three, about **6,300s per 24 idle hours**.
 
-  Two things this measurement leaves open, deliberately. The gate's own
-  `rev-parse` still costs ~947ms of container exec on every tick, ~2,600s a day,
-  because it reads the *project* container while the map is built from the
-  *mirror* — a redesign, not a branch. And `ensureMirror` still fetches
-  unconditionally, which is the blocker already recorded below.
+  Both follow-ups that measurement left open are now closed. The gate's own
+  `rev-parse` cost ~947ms of container exec on every tick — the map's input is a
+  push, so it is asked on `watchdog.repoMapEveryMs` (five minutes) instead of on
+  every 30s tick, which is ~90% of that gone and a knob in the panel. And
+  `ensureMirror` no longer fetches for callers that do not read refs.
 - **Wave 5.6 has no subject and `assemble.ts` was not touched.** Its instruction is
   to confirm where a turn's wall clock goes *before* changing prompt assembly.
   There are no turn spans in this history because no turn ran, so the prohibition
