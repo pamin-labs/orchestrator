@@ -31,7 +31,7 @@ import {
   runtimeSwitch,
   textOf,
 } from "./model";
-import { COUNT_UNITS, DURATION_UNITS, countOf, msOf, splitCount, splitDuration, unitLabel } from "./units";
+import { COUNT_UNITS, countOf, fmtDuration, parseDuration, splitCount, splitDuration } from "./units";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
@@ -106,6 +106,57 @@ export const LANGUAGE_SUGGESTIONS = [
  * format prints 8500000 as `8.5M`, and 8.5 is not something a spinner can step
  * or an integer field can hold. The picker shows 8500k instead.
  */
+/**
+ * A duration as one field: `15 秒`, `3h`, `2 分钟` — typed the way it reads.
+ *
+ * It was a number box beside every unit as a button, which on the waiting pane
+ * meant five buttons on each of twelve rows: sixty controls to say twelve
+ * numbers, and the unit segment repeated so often it stopped carrying meaning.
+ * `parseDuration` already accepted every spelling a person types, so the
+ * buttons were offering what the field could take anyway.
+ */
+export function DurationAmount({
+  ms,
+  label,
+  invalid,
+  onWrite,
+}: {
+  ms: number;
+  label: string;
+  invalid?: boolean;
+  onWrite: (ms: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => fmtDuration(ms));
+  // A value the server snapped to something else re-reads on the way back.
+  useEffect(() => setDraft(fmtDuration(ms)), [ms]);
+
+  const send = (raw: string) => {
+    // The unit already on screen is what a bare number means, which is what
+    // makes "20" a legal edit of "15 分钟".
+    const parsed = parseDuration(raw, splitDuration(ms).unit);
+    if (parsed === null) setDraft(fmtDuration(ms));
+    else onWrite(parsed);
+  };
+
+  return (
+    <Input
+      value={draft}
+      aria-label={label}
+      aria-invalid={invalid || undefined}
+      className="min-w-0 max-w-[7rem] py-0.5 font-mono text-secondary aria-[invalid=true]:border-accent"
+      onChange={(e) => setDraft(e.currentTarget.value)}
+      onBlur={(e) => send(e.currentTarget.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        else if (e.key === "Escape") {
+          setDraft(fmtDuration(ms));
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 export function Amount<U extends string>({
   n,
   unit,
@@ -418,13 +469,10 @@ export function Ladder({ list, onWrite }: { list: number[]; onWrite: (v: Json) =
       {steps.map(({ at, key, name, n, unit }) => (
         <div key={key} className="flex items-center gap-1.5">
           <Meta className="w-[3.25rem] shrink-0">{name}</Meta>
-          <Amount
-            n={n}
-            unit={unit}
-            units={DURATION_UNITS}
-            labelOf={unitLabel}
+          <DurationAmount
+            ms={list[at] ?? 0}
             label={name}
-            onCommit={(next, u) => onWrite(list.map((old, j) => (j === at ? msOf(next, u) : old)))}
+            onWrite={(next) => onWrite(list.map((old, j) => (j === at ? next : old)))}
           />
           {list.length > 1 && <RemoveRow name={name} onRemove={() => onWrite(list.filter((_, j) => j !== at))} />}
         </div>

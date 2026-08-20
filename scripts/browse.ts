@@ -82,7 +82,11 @@ if (built.exitCode !== 0) {
 }
 
 const dataDir = mkdtempSync(join(tmpdir(), "orch-browse-"));
-const srv = await start({ dataDir, port: 0, maxGroups: 0 });
+// 1, not 0. `ConfigSchema` requires a positive cap, so a zero here made every
+// endpoint that parses the config answer 500 — the settings dialog could not be
+// opened by this tool at all, which is the one surface it is most needed for.
+// Nothing starts anyway: a fresh temp dataDir has no project to run.
+const srv = await start({ dataDir, port: 0, maxGroups: 1 });
 const browser = await chromium.launch();
 const page = await browser.newPage();
 

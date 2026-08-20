@@ -908,6 +908,11 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
     },
   });
 
+  // What it actually bound, not what it was asked for. `port: 0` means "any free
+  // one" to `Bun.serve` and is refused by `ConfigSchema`, so leaving the zero in
+  // the config made every endpoint that parses it answer 500 — the settings
+  // dialog among them, which is the one `scripts/browse.ts` most needs to open.
+  if (server.port) cfg.port = server.port;
   const url = `http://${cfg.host === "::1" ? "[::1]" : cfg.host}:${server.port}`;
   // Environment handed to every spawned turn: the URL plus the agent's own
   // token. Identity is never a request-body field.

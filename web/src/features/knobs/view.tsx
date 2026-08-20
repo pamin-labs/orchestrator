@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { api, mutate, readApi } from "../../shared/api";
-import { DURATION_UNITS, KNOB_SHAPE, WANTS, msOf, readNumber, showNumber, splitDuration, unitLabel } from "./units";
+import { KNOB_SHAPE, WANTS, readNumber, showNumber } from "./units";
 import type { ModelSources } from "./models";
 import {
   Amount,
+  DurationAmount,
   Box,
   Embedding,
   Caps,
@@ -216,7 +217,7 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
       note: msg`Waits on the world outside, and what this machine keeps`,
       groups: [
         {
-          legend: msg`Give up after`,
+          legend: msg`Timeouts`,
           paths: [
             "timeouts.githubApiMs",
             "timeouts.credentialCheckMs",
@@ -228,7 +229,7 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
           ],
         },
         {
-          legend: msg`Ask again every`,
+          legend: msg`Polling intervals`,
           paths: ["intervals.recheckMs", "intervals.usagePollMs", "intervals.usageBackoffMs"],
         },
         {
@@ -711,7 +712,12 @@ export function Knobs({
         // Space between groups, hairlines inside them: a legend that sat on the
         // same rule as the row above it made a section boundary and a row
         // boundary look like the same thing.
-        <div className="flex flex-col gap-5">
+        //
+        // A wider label column than the shared default, because these labels are
+        // the longest in the dialog — "Clone, fetch or image pull" wrapped at
+        // 10rem, and one row taller than its neighbours breaks the column the
+        // eye is reading down.
+        <div className="flex flex-col gap-5 [--label:13rem]">
           {spec.groups.map((group, i) => (
             <Group
               key={group.paths[0]}
@@ -1012,16 +1018,12 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
   const scale = durationScale(shape);
 
   if (scale) {
-    const { n, unit } = splitDuration(now * scale);
     return (
-      <Amount
-        n={n}
-        unit={unit}
-        units={DURATION_UNITS}
-        labelOf={unitLabel}
+      <DurationAmount
+        ms={now * scale}
         label={copyFor(knob).label}
         invalid={bad === ""}
-        onCommit={(next, u) => onWrite(Math.round(msOf(next, u) / scale))}
+        onWrite={(next) => onWrite(Math.round(next / scale))}
       />
     );
   }
