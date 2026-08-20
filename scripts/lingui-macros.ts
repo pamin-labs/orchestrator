@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { BunPlugin } from "bun";
 
 /**
@@ -16,6 +17,7 @@ import type { BunPlugin } from "bun";
 
 const load = createRequire(import.meta.url) as <T>(id: string) => T;
 const CONFIG = new URL("./lingui.config.js", import.meta.url).pathname;
+const ROOT = new URL("../", import.meta.url).pathname;
 
 /**
  * Babel is resolved on first use, not at import. This module is imported by the
@@ -56,11 +58,34 @@ function boot(): (source: string, path: string) => string {
   };
 }
 
+/**
+ * Content-addressed, because `--parallel` implies `--isolate`: every test file
+ * re-evaluates the module graph it imports, so one panel module is expanded once
+ * per test process that reaches it — 49 of them, for the same bytes. Measured
+ * without it: +22% CPU across the suite. The key is the source and the plugin
+ * version, so an edit or an upgrade misses and nothing has to be cleared.
+ */
+const CACHE = `${ROOT}.cache/lingui`;
+const VERSION = "6.6.0";
+
 /** The substring scan is the whole gate: no macro import, no parse. */
 export function expandMacros(source: string, path: string): string {
   if (!source.includes("@lingui/")) return source;
+  const key = `${CACHE}/${Bun.hash(`${VERSION}:${path}:${source}`).toString(36)}.txt`;
+  try {
+    return readFileSync(key, "utf8");
+  } catch {
+    // A miss is the normal path on the first run and after any edit.
+  }
   expand ??= boot();
-  return expand(source, path);
+  const out = expand(source, path);
+  try {
+    mkdirSync(CACHE, { recursive: true });
+    writeFileSync(key, out);
+  } catch {
+    // An unwritable cache is a slow build, not a broken one.
+  }
+  return out;
 }
 
 export const linguiMacros: BunPlugin = {
