@@ -97,6 +97,7 @@ function apply(cfg: Config, path: SettingPath, value: Json): string | null {
   node[parts.at(-1)!] = value;
   const parsed = ConfigSchema.safeParse(root);
   if (!parsed.success) return parsed.error.issues.map((issue) => issue.message).join("; ");
+  // fallow-ignore-next-line security-sink -- `parsed.data` is `ConfigSchema`'s output, so its keys are the schema's own and nothing arrives from the request that is not one of them. `path` reached here through `SettingWriteSchema`, which resolves it against `ConfigSchema`'s `shape` with `Object.hasOwn` and refuses anything else, so the walk above cannot end on a prototype either. Both halves are held by "a path that is not the config's own cannot be walked or written" in `test/api/settings.test.ts`.
   Object.assign(cfg, parsed.data);
   return null;
 }

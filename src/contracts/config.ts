@@ -553,9 +553,12 @@ export function schemaAt(path: string): z.ZodType | null {
   let node: z.ZodType = ConfigSchema;
   for (const key of path.split(".")) {
     if (!(node instanceof z.ZodObject)) return null;
-    const next = (node.shape as Record<string, z.ZodType>)[key];
-    if (!next) return null;
-    node = next;
+    // `Object.hasOwn`, not indexing: `shape` is a plain object, so `shape.__proto__`
+    // is `Object.prototype` — truthy, and enough to make `isSettingPath("__proto__")`
+    // answer yes. It was refused anyway, by `path in SETTING_DENIALS` finding the same
+    // inherited key one line up, which is an accident rather than a guard.
+    if (!Object.hasOwn(node.shape, key)) return null;
+    node = (node.shape as Record<string, z.ZodType>)[key]!;
   }
   return node;
 }
@@ -564,7 +567,7 @@ export function schemaAt(path: string): z.ZodType | null {
 export function settingSchema<P extends SettingPath>(path: P): SchemaAtPath<typeof ConfigSchema, P>;
 export function settingSchema(path: string): z.ZodType | null;
 export function settingSchema(path: string): z.ZodType | null {
-  return path in SETTING_DENIALS ? null : schemaAt(path);
+  return Object.hasOwn(SETTING_DENIALS, path) ? null : schemaAt(path);
 }
 
 export const isSettingPath = (path: string): path is SettingPath => settingSchema(path) !== null;
