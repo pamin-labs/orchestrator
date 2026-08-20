@@ -321,7 +321,7 @@ function AskLanes({
           saw a question cut mid-sentence and no way to reply to it. */}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 pr-1">
         {noQuestions(mine.length + others.length, answered.length) && (
-          <div className="text-[0.8125rem] text-ink-3">没有开着的问题。这一组的人现在不等你。</div>
+          <div className="text-body text-ink-3">没有开着的问题。这一组的人现在不等你。</div>
         )}
         {sub === "mine" && mine.length > 0 && (
           <div className="overflow-hidden rounded-lg border border-accent">
@@ -404,7 +404,7 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
             pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
           }}
           className={cn(
-            "mt-2 max-h-40 overflow-y-auto rounded-md bg-sunk px-2.5 py-2 font-mono text-[0.6875rem]",
+            "mt-2 max-h-40 overflow-y-auto rounded-md bg-sunk px-2.5 py-2 font-mono text-meta",
             "leading-relaxed text-ink-2",
           )}
         >
@@ -432,7 +432,7 @@ function Step({ label, state }: { label: string; state: StepState }) {
           state === "run" && "breathe bg-ink-3",
         )}
       />
-      <span className={cn("text-[0.75rem]", state === "wait" ? "text-ink-3" : "text-ink-2")}>{label}</span>
+      <span className={cn("text-secondary", state === "wait" ? "text-ink-3" : "text-ink-2")}>{label}</span>
     </span>
   );
 }
@@ -445,7 +445,7 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-rule pb-3">
-      <span className="font-display text-[1.25rem] font-semibold">{g.name}</span>
+      <span className="font-display text-title font-semibold">{g.name}</span>
       <Badge tone={groupTone(g)}>{statusLabel(g)}</Badge>
       <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {g.branch && <Meta>{g.branch}</Meta>}
@@ -571,14 +571,12 @@ function SliceRow({ st, g, s, selected }: { st: State; g: Group; s: Slice; selec
         sliceRowClass(waiting, selected),
       )}
     >
-      <span className="font-mono text-[0.75rem] text-ink-3">S{s.seq}</span>
+      <span className="font-mono text-secondary text-ink-3">S{s.seq}</span>
       <span className="min-w-0">
-        <span className="block truncate text-[0.8125rem]">
-          {s.title} <span className="font-mono text-[0.625rem] text-ink-3">{s.difficulty}</span>
+        <span className="block truncate text-body">
+          {s.title} <span className="font-mono text-pill text-ink-3">{s.difficulty}</span>
         </span>
-        <span className="block truncate font-mono text-[0.6875rem] text-ink-3">
-          {sliceLine(s, runningAgents(st, g.id))}
-        </span>
+        <span className="block truncate font-mono text-meta text-ink-3">{sliceLine(s, runningAgents(st, g.id))}</span>
       </span>
       <Ticks s={s} gs={gates(s)} />
       <ChevronRight
@@ -597,7 +595,7 @@ function Ticks({ s, gs }: { s: Slice; gs: Record<string, string> }) {
       {tickStops(s.status === "awaiting_boss").map(([k, zh]) => {
         const v = tickState(s, k, gs);
         return (
-          <span key={k} className={cn("flex items-center gap-1 text-[0.6875rem]", tickTextClass(v))}>
+          <span key={k} className={cn("flex items-center gap-1 text-meta", tickTextClass(v))}>
             <span className={cn("size-2 rounded-full border", tickDotClass(v, s.status === k))} />
             <b className="whitespace-nowrap font-medium max-[64rem]:hidden">{zh}</b>
           </span>
@@ -631,7 +629,7 @@ function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => v
 
   if (s.status === "pending") {
     return (
-      <div className="border-t border-rule-soft py-2 pl-14 pr-3 text-[0.75rem] text-ink-3">
+      <div className="border-t border-rule-soft py-2 pl-14 pr-3 text-secondary text-ink-3">
         还没开工，等前面的切片查收。
       </div>
     );
@@ -641,7 +639,7 @@ function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => v
       {showTasks(tasks, s) && (
         <ul className="list-none border-b border-rule-soft py-1.5 pl-14 pr-3">
           {tasks.map((t) => (
-            <li key={t.id} className="flex gap-2 py-px text-[0.75rem]">
+            <li key={t.id} className="flex gap-2 py-px text-secondary">
               <span className={cn("font-mono", t.status === "done" ? "text-ok" : "text-ink-3")}>
                 {t.status === "done" ? "✓" : "○"}
               </span>
@@ -725,7 +723,7 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
     return (
       <button
         type="button"
-        className="cursor-pointer font-mono text-[0.6875rem] text-ink-3 underline decoration-dotted hover:text-ink"
+        className="cursor-pointer font-mono text-meta text-ink-3 underline decoration-dotted hover:text-ink"
         onClick={async () => {
           const v = await ask({
             title: "给这个需求设 token 上限",
@@ -769,8 +767,8 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
   return (
     <Card tone="mine" className="mt-2.5">
       <CardBody>
-        <CardTitle className="text-[0.9375rem] text-accent">预算用尽，全组挂起</CardTitle>
-        <div className="mt-0.5 text-[0.75rem] text-ink-2">
+        <CardTitle className="text-name text-accent">预算用尽，全组挂起</CardTitle>
+        <div className="mt-0.5 text-secondary text-ink-2">
           已花 {K(g.spent_tokens)} tokens，上限 {K(g.budget_tokens)}。 加上限才动得了，「继续」不生效。
         </div>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -805,7 +803,7 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
         // words, not the boss's.
         <div key={a.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
           <div className="flex items-baseline gap-2">
-            <span className="font-mono text-[0.6875rem] text-ink-3">{a.answered_by} 代答</span>
+            <span className="font-mono text-meta text-ink-3">{a.answered_by} 代答</span>
             <span className="grow" />
             <Button
               variant="quiet"
@@ -830,11 +828,11 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
                 blocks — this is a conversation the boss was not in, and the shape
                 everyone already knows for that is two sides. */}
           <div className="mt-1.5 space-y-1.5">
-            <div className="max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2 text-[0.75rem] text-ink-3">
+            <div className="max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2 text-secondary text-ink-3">
               <Clamp lines={3}>{nl(a.question)}</Clamp>
             </div>
             <div className="flex justify-end">
-              <div className="max-w-[46rem] rounded-2xl rounded-tr-sm border border-rule bg-paper px-3.5 py-2 text-[0.8125rem] text-ink-2">
+              <div className="max-w-[46rem] rounded-2xl rounded-tr-sm border border-rule bg-paper px-3.5 py-2 text-body text-ink-2">
                 {/* `answered` is also where a revoked question and one the chain
                     ran out on land, and neither wrote a reply. `nl(null)` threw. */}
                 <Clamp lines={3}>{a.answer === null ? "（没有留下答复）" : nl(a.answer)}</Clamp>
@@ -856,7 +854,7 @@ function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
         type="button"
         onClick={() => setOpen(true)}
         className="mt-2 flex w-full cursor-pointer items-center gap-2 rounded-md border border-rule
-                   bg-paper px-3 py-2 text-left text-[0.8125rem] text-ink-3 transition-colors hover:border-ink-3"
+                   bg-paper px-3 py-2 text-left text-body text-ink-3 transition-colors hover:border-ink-3"
       >
         跟这个组说话…
         <span className="grow" />
@@ -935,7 +933,7 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
         onSubmit={(d) => send(d)}
         actions={({ text, attachments, busy, clear }) => (
           <>
-            <span className="mr-1 text-[0.75rem] text-ink-3 max-[40rem]:hidden">分量：</span>
+            <span className="mr-1 text-secondary text-ink-3 max-[40rem]:hidden">分量：</span>
             <Tip label="原话记进黑板，PM 安排一条修正 task，组继续跑">
               <Button
                 size="sm"
@@ -981,13 +979,13 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
 
   return (
     <>
-      {idea && <div className="my-2 border-l border-rule pl-2.5 text-[0.8125rem] text-ink-2">{idea}</div>}
+      {idea && <div className="my-2 border-l border-rule pl-2.5 text-body text-ink-2">{idea}</div>}
       {/* An objection that arrived after the card was filed. Without this the card
           reads 反对 : 无 and the boss approves a plan somebody already argued with. */}
       {late.map((o) => (
         <div
           key={`${o.author}:${o.body}`}
-          className="my-2 break-words whitespace-pre-wrap rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]"
+          className="my-2 break-words whitespace-pre-wrap rounded-md bg-sunk px-2.5 py-2 text-secondary"
         >
           <b className="font-semibold text-warn">{o.author} 后补反对</b> {o.body}
         </div>
@@ -998,7 +996,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           decomposition pointed the wrong way. Reviewing the card is where that gets
           caught. */}
       {unknown.length > 0 && (
-        <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]">
+        <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-secondary">
           <b className="font-semibold text-warn">卡里这些路径仓库里没有</b>{" "}
           <span className="font-mono">{unknown.join("、")}</span>
           <div className="mt-1 text-ink-3">新建的文件正常；如果它以为这些已经存在，这张卡是照着想象写的。</div>
@@ -1017,7 +1015,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
         // nothing and reads as "the last one was ignored" — which is what it was.
         // 退回重拆 below is still the way out: it withdraws the approval.
         <>
-          <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-[0.8125rem]">
+          <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-body">
             <b className="font-semibold text-warn">已批准，边界挡着</b> {blockedReason(st, g.id)}
           </div>
           <Working>让开之后自动开工，不用再点一次</Working>
@@ -1040,7 +1038,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
             >
               批准开工
             </Button>
-            <span className="text-[0.75rem] text-ink-3">卡可以直接改再批</span>
+            <span className="text-secondary text-ink-3">卡可以直接改再批</span>
           </div>
         </>
       )}
@@ -1053,8 +1051,8 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
 function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: () => void }) {
   return (
     <div className="my-3 rounded-md border border-warn/40 bg-sunk px-3 py-2.5">
-      <div className="text-[0.8125rem] font-semibold text-warn">规划岗建议作废</div>
-      <div className="my-1 break-words whitespace-pre-wrap text-[0.8125rem]">{body}</div>
+      <div className="text-body font-semibold text-warn">规划岗建议作废</div>
+      <div className="my-1 break-words whitespace-pre-wrap text-body">{body}</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button
           variant="go"
@@ -1145,7 +1143,7 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
           </>
         )}
       />
-      <div className="mt-1.5 text-[0.75rem] text-ink-3">两个都发给 Dispatcher，它改完卡再回来给你批。</div>
+      <div className="mt-1.5 text-secondary text-ink-3">两个都发给 Dispatcher，它改完卡再回来给你批。</div>
     </div>
   );
 }
@@ -1189,12 +1187,12 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
           question cut mid-clause cannot be triaged, which is the only thing a
           closed row is for. */}
       <AccordionTrigger className="block px-4 py-2.5 transition-colors hover:bg-accent-soft">
-        <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-[0.6875rem]">
+        <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-meta">
           <span className="text-ink-2">{e.asker ?? "系统"}</span>
           <span className="text-ink-3">{waited(e.created_at)}</span>
           {e.severity === "blocker" && <span className="font-semibold text-bad">全组停着</span>}
         </div>
-        {!open && <div className="mt-1 line-clamp-2 max-w-[72ch] text-[0.8125rem] text-ink-2">{nl(e.question)}</div>}
+        {!open && <div className="mt-1 line-clamp-2 max-w-[72ch] text-body text-ink-2">{nl(e.question)}</div>}
       </AccordionTrigger>
 
       <AccordionBody className="bg-paper px-4 pb-3">
@@ -1223,7 +1221,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                 填进输入框
               </Button>
             </div>
-            <div className="mt-1 whitespace-pre-wrap break-words text-[0.8125rem] text-ink-2">
+            <div className="mt-1 whitespace-pre-wrap break-words text-body text-ink-2">
               <Clamp lines={3}>{nl(draft.text)}</Clamp>
             </div>
           </div>
@@ -1307,7 +1305,7 @@ function Asked({ body, className, tone }: { body: string; className?: string; to
   return (
     <div className={cn("max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2", className)}>
       <Clamp lines={6}>
-        <WithAttachments body={body} className={cn("text-[0.8125rem]", tone)} />
+        <WithAttachments body={body} className={cn("text-body", tone)} />
       </Clamp>
     </div>
   );
@@ -1329,7 +1327,7 @@ function Held({ rows }: { rows: Escalation[] }) {
         // nothing to choose here — the question and the fact that somebody is
         // writing back are the whole content.
         <div key={e.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
-          <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-[0.6875rem] text-ink-3">
+          <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-meta text-ink-3">
             <span className="text-ink-2">{e.asker ?? "系统"}</span>
             <span>{waited(e.created_at)}</span>
           </div>

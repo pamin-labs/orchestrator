@@ -57,8 +57,8 @@ export function FieldLegend({
       data-variant={variant}
       className={cn(
         "mb-1 w-full font-medium text-ink",
-        "data-[variant=legend]:text-[0.9375rem]",
-        "data-[variant=label]:text-[0.875rem]",
+        "data-[variant=legend]:text-name",
+        "data-[variant=label]:text-base",
         className,
       )}
       {...rest}
@@ -118,7 +118,7 @@ export function FieldLabel({ className, htmlFor, ...rest }: React.ComponentProps
     <label
       htmlFor={htmlFor}
       data-slot="field-label"
-      className={cn("flex items-baseline gap-2 text-[0.8125rem] text-ink", className)}
+      className={cn("flex items-baseline gap-2 text-body text-ink", className)}
       {...rest}
     />
   );
@@ -127,11 +127,7 @@ export function FieldLabel({ className, htmlFor, ...rest }: React.ComponentProps
 /** For a row whose label names a fact rather than a control. */
 export function FieldTitle({ className, ...rest }: React.ComponentProps<"div">) {
   return (
-    <div
-      data-slot="field-label"
-      className={cn("flex items-baseline gap-2 text-[0.8125rem] text-ink", className)}
-      {...rest}
-    />
+    <div data-slot="field-label" className={cn("flex items-baseline gap-2 text-body text-ink", className)} {...rest} />
   );
 }
 

@@ -49,7 +49,7 @@ import {
 
 /** One menu surface, because the stage rows and the waterfall both raise one. */
 const MENU =
-  "z-50 min-w-44 rounded-lg border border-rule bg-paper p-1 text-[0.8125rem] text-ink shadow-[0_10px_30px_var(--shade)]";
+  "z-50 min-w-44 rounded-lg border border-rule bg-paper p-1 text-body text-ink shadow-[0_10px_30px_var(--shade)]";
 
 /**
  * How a row looks, given two independent states.
@@ -92,7 +92,7 @@ function Block({ title, aside, children }: { title?: string; aside?: React.React
         // picture rather than discovered under it — and the rule already draws
         // the line those two things sit on, so nothing new is added to carry it.
         <div className="flex min-w-0 items-baseline justify-between gap-x-3 border-b border-rule pb-1">
-          <h3 className="min-w-0 truncate text-[0.8125rem] font-medium text-ink">{title}</h3>
+          <h3 className="min-w-0 truncate text-body font-medium text-ink">{title}</h3>
           {aside}
         </div>
       )}
@@ -172,7 +172,7 @@ function BucketPicker({
 }
 
 /** A number column that stays comparable down the page. */
-const NUM = "text-right font-mono text-[0.6875rem] tabular-nums";
+const NUM = "text-right font-mono text-meta tabular-nums";
 
 /**
  * One stage: how long, how often, and how bad the tail is.
@@ -232,7 +232,7 @@ function StageTable({
   const { slow, fast, ceiling } = splitStages(stages);
   return (
     <div>
-      <div className={cn("grid gap-x-3 border-b border-rule pb-1 text-[0.6875rem] text-ink-3", COLS)}>
+      <div className={cn("grid gap-x-3 border-b border-rule pb-1 text-meta text-ink-3", COLS)}>
         {/* A head is not only a definition; it is what makes a header row look
             like one — three labelled cells beside one blank read as a header that
             failed to render, not as a self-evident column. */}
@@ -273,9 +273,9 @@ function StageTable({
                     strokeWidth={2}
                     className="shrink-0 self-center text-ink-3 transition-transform duration-150 group-data-[state=open]:rotate-90"
                   />
-                  <span className="truncate text-[0.8125rem] text-ink">{group.label}</span>
+                  <span className="truncate text-body text-ink">{group.label}</span>
                   {group.errors > 0 && (
-                    <span className="shrink-0 font-mono text-[0.625rem] text-bad">{group.errors} 失败</span>
+                    <span className="shrink-0 font-mono text-pill text-bad">{group.errors} 失败</span>
                   )}
                 </span>
                 {/* A shut group still answers "did this cost anything", which is
@@ -343,12 +343,12 @@ function StageTable({
                 does not, and the waterfall below still shows it plainly. */}
                           {isRenamed(stage.name) ? (
                             <Tip label={stage.name}>
-                              <span className="whitespace-nowrap text-[0.8125rem] text-ink underline decoration-dotted underline-offset-2">
+                              <span className="whitespace-nowrap text-body text-ink underline decoration-dotted underline-offset-2">
                                 {humanName(stage.name)}
                               </span>
                             </Tip>
                           ) : (
-                            <span className="whitespace-nowrap font-mono text-[0.75rem] text-ink">{stage.name}</span>
+                            <span className="whitespace-nowrap font-mono text-secondary text-ink">{stage.name}</span>
                           )}
                           {stage.errors > 0 && (
                             /* The count says a stage is broken; the reason is the
@@ -356,7 +356,7 @@ function StageTable({
                                because it is the newest failure's own words and
                                can be long — the row stays a row. */
                             <Tip label={stage.reason ?? "没有记下原因"}>
-                              <span className="shrink-0 font-mono text-[0.625rem] text-bad">{stage.errors} 失败</span>
+                              <span className="shrink-0 font-mono text-pill text-bad">{stage.errors} 失败</span>
                             </Tip>
                           )}
                         </div>
@@ -387,7 +387,7 @@ function StageTable({
         <button
           type="button"
           onClick={() => onShowRest(!showRest)}
-          className="cursor-pointer pt-1.5 text-left text-[0.75rem] text-ink-3 transition-colors hover:text-ink"
+          className="cursor-pointer pt-1.5 text-left text-secondary text-ink-3 transition-colors hover:text-ink"
         >
           {/* Under a millisecond the quoted ceiling rounds to "0ms", and "都在
               0ms 以内" reads as a broken number rather than as a fast stage. */}
@@ -521,7 +521,7 @@ function Trend({
       // Inside the chart's own box, at the chart's own height: a slot the size of
       // the thing that is missing says which thing is missing. `sunk` is already
       // this page's surface for what a machine produced.
-      <div className="grid h-[7.5rem] place-items-center rounded-md bg-sunk text-center text-[0.75rem] text-ink-3">
+      <div className="grid h-[7.5rem] place-items-center rounded-md bg-sunk text-center text-secondary text-ink-3">
         {/* Which of the two absences it is. "Nothing was recorded here" and
             "nothing has been recorded yet" send the reader to different places,
             and the window is what tells them apart. */}
@@ -742,7 +742,7 @@ function TrendBlock({
         <button
           type="button"
           onClick={() => onWindow(null)}
-          className="cursor-pointer self-start text-[0.75rem] text-ink-3 transition-colors hover:text-ink"
+          className="cursor-pointer self-start text-secondary text-ink-3 transition-colors hover:text-ink"
         >
           ← 回到整段时间
         </button>
@@ -838,10 +838,10 @@ export function Telemetry({
   const limit = report?.dataWindow ?? extent ?? report?.window ?? shownWindow;
 
   if (!report) {
-    return <div className="py-4 text-[0.75rem] text-ink-3">{loading ? "读取中…" : empty}</div>;
+    return <div className="py-4 text-secondary text-ink-3">{loading ? "读取中…" : empty}</div>;
   }
   if (!hasSpans(report.stages, report.traces)) {
-    return <div className="py-4 text-[0.75rem] text-ink-3">{empty}</div>;
+    return <div className="py-4 text-secondary text-ink-3">{empty}</div>;
   }
 
   const shown = report.stages.filter((stage) => !excluded.includes(stage.name));
@@ -899,14 +899,14 @@ function Slices({ slices }: { slices: Report["slices"] }) {
   const total = slices.reduce((sum, row) => sum + row.totalMs, 0) || 1;
   return (
     <section className="flex flex-col gap-y-2">
-      <h3 className="border-b border-rule pb-1 text-[0.8125rem] font-medium text-ink">各切片耗时</h3>
+      <h3 className="border-b border-rule pb-1 text-body font-medium text-ink">各切片耗时</h3>
       <div className="flex flex-col gap-y-1.5">
         {slices.map((row) => (
           <div key={row.sliceId ?? "none"} className="grid grid-cols-[6rem_minmax(0,1fr)_4rem] items-center gap-x-3">
             {/* NULL is a row, not a filter: planning turns, the draft card and the
                 roster belong to no slice, and leaving them out would make these add
                 up to less than the requirement with nothing explaining the gap. */}
-            <span className="truncate text-[0.75rem] text-ink-2">
+            <span className="truncate text-secondary text-ink-2">
               {row.sliceId === null ? "没归到切片" : `切片 ${row.sliceId}`}
             </span>
             <div className="h-1.5 rounded-full bg-sunk">
@@ -938,7 +938,7 @@ function Excluded({
   onRestore: (name: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.75rem] text-ink-3">
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-secondary text-ink-3">
       <span>不看：</span>
       {names.map((name) => (
         <button

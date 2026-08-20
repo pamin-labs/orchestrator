@@ -527,7 +527,7 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate: Knob | null; src:
             <ResetOverride onReset={() => resetKnobs(knob, mate, (target, next) => void put(target, next))} />
           )}
         </div>
-        {bad.why && <span className="text-[0.6875rem] leading-snug text-accent">{bad.why}</span>}
+        {bad.why && <span className="text-meta leading-snug text-accent">{bad.why}</span>}
       </FieldContent>
     </Field>
   );

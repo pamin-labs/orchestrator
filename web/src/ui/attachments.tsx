@@ -54,7 +54,7 @@ function Attachments({ files }: { files: Attached[] }) {
                 {/* The same marker the text uses. Three screenshots and a sentence
                   about 「第二张」 is a puzzle without it. */}
                 {f.label && (
-                  <span className="absolute left-1 top-1 rounded-sm bg-ink/75 px-1 font-mono text-[0.625rem] text-paper">
+                  <span className="absolute left-1 top-1 rounded-sm bg-ink/75 px-1 font-mono text-pill text-paper">
                     {f.label}
                   </span>
                 )}
@@ -71,7 +71,7 @@ function Attachments({ files }: { files: Attached[] }) {
               href={f.url}
               target="_blank"
               rel="noreferrer"
-              className="truncate font-mono text-[0.6875rem] text-ink-3 underline decoration-dotted hover:text-accent"
+              className="truncate font-mono text-meta text-ink-3 underline decoration-dotted hover:text-accent"
             >
               {f.label ? `[${f.label}] ` : ""}
               {f.name}

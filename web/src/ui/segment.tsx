@@ -50,7 +50,7 @@ export function Segment({ value, children }: { value: string; children: React.Re
     <TG.Item
       value={value}
       className={cn(
-        "cursor-pointer rounded-md px-2 py-0.5 font-mono text-[0.75rem]",
+        "cursor-pointer rounded-md px-2 py-0.5 font-mono text-secondary",
         "text-ink-3 transition-colors hover:text-ink",
         "data-[state=on]:bg-sunk data-[state=on]:font-medium data-[state=on]:text-ink",
       )}

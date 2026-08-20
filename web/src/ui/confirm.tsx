@@ -74,8 +74,8 @@ export function AskCard({
                  border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in"
     >
       <div className="p-3.5">
-        <Dialog.Title className="mb-1.5 font-display text-[1.0625rem] font-semibold">{spec.title}</Dialog.Title>
-        {spec.body && <Dialog.Description className="text-[0.8125rem] text-ink-2">{spec.body}</Dialog.Description>}
+        <Dialog.Title className="mb-1.5 font-display text-card font-semibold">{spec.title}</Dialog.Title>
+        {spec.body && <Dialog.Description className="text-body text-ink-2">{spec.body}</Dialog.Description>}
         {spec.field && (
           <Textarea
             rows={3}

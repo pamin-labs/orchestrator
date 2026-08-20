@@ -53,7 +53,7 @@ function EvidenceViews({
 }
 
 const Message = ({ children }: { children: React.ReactNode }) => (
-  <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>{children}</div>
+  <div className={cn(PAD, "py-2 text-secondary text-ink-3")}>{children}</div>
 );
 const hasEvidence = (evidence: Evidence) => Boolean(evidence.diff || evidence.verdicts.length || evidence.gates.length);
 
@@ -112,7 +112,7 @@ function EvidenceHeader({
   return (
     <div className={cn(PAD, "sticky top-0 z-10 border-b border-rule bg-rail py-2.5")}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
-        <span className="min-w-0 text-[0.8125rem] text-ink">{evidence.accept_spec}</span>
+        <span className="min-w-0 text-body text-ink">{evidence.accept_spec}</span>
         <Meta className="shrink-0">
           {stats.files ? `${stats.files} 个文件` : "无改动"}
           {evidence.diff && ` · +${stats.plus} −${stats.minus}`}
@@ -191,8 +191,8 @@ function VerdictRow({ author, body }: { author: string; body: string }) {
   return (
     <div className="border-t border-rule-soft py-2.5 first:border-t-0">
       <div className="flex items-baseline gap-2">
-        <span className="font-mono text-[0.6875rem] text-ink-3">{author}</span>
-        <span className={cn("text-[0.6875rem] font-semibold", verdictTone(no))}>{verdictLabel(no)}</span>
+        <span className="font-mono text-meta text-ink-3">{author}</span>
+        <span className={cn("text-meta font-semibold", verdictTone(no))}>{verdictLabel(no)}</span>
         <span className="grow" />
         {body.length > 200 && (
           <Button variant="quiet" size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -202,7 +202,7 @@ function VerdictRow({ author, body }: { author: string; body: string }) {
       </div>
       <div
         className={cn(
-          "mt-1 max-w-[72ch] whitespace-pre-wrap break-words text-[0.8125rem]",
+          "mt-1 max-w-[72ch] whitespace-pre-wrap break-words text-body",
           no ? "text-bad" : "text-ink-2",
           !open && "line-clamp-3",
         )}
@@ -259,7 +259,7 @@ function GateToolbar({
 }) {
   return (
     <div className={cn(PAD, "flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-rule py-1.5")}>
-      <span className={cn("text-[0.75rem] font-semibold", fails ? "text-bad" : "text-ok")}>
+      <span className={cn("text-secondary font-semibold", fails ? "text-bad" : "text-ok")}>
         {fails ? `${fails} 条没过` : "全过"}
       </span>
       <Meta>{lines} 行</Meta>
@@ -268,7 +268,7 @@ function GateToolbar({
         onChange={(event) => setQuery(event.target.value)}
         aria-label="过滤这份日志"
         placeholder="过滤这份日志…"
-        className="ml-auto w-44 rounded-md border border-rule bg-paper px-2 py-0.5 text-[0.6875rem] outline-none focus-visible:border-accent"
+        className="ml-auto w-44 rounded-md border border-rule bg-paper px-2 py-0.5 text-meta outline-none focus-visible:border-accent"
       />
     </div>
   );
@@ -294,7 +294,7 @@ function GateTranscript({ lines, query }: { lines: string[]; query: string }) {
   );
 }
 
-const LOG_CLASS = "max-h-[34rem] overflow-auto bg-sunk py-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2";
+const LOG_CLASS = "max-h-[34rem] overflow-auto bg-sunk py-2 font-mono text-meta leading-[1.5] text-ink-2";
 const LogPane = ({ children }: { children: React.ReactNode }) => <pre className={cn(PAD, LOG_CLASS)}>{children}</pre>;
 
 function LogLine({ value }: { value: string }) {

@@ -39,12 +39,12 @@ interface BrowseRowProps {
 
 /** Handle, name, right edge. Fixed, so the names line up down the listing. */
 const BROWSE_ROW =
-  "grid w-full grid-cols-[1.125rem_minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-1.5 text-left text-[0.8125rem] transition-colors";
+  "grid w-full grid-cols-[1.125rem_minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-1.5 text-left text-body transition-colors";
 
 type RowProps = BrowseRowProps & { row: string; glyph: React.ReactNode; meta: string };
 
 function Glyph({ mark, accent }: { mark: string; accent: boolean }) {
-  return <span className={cn("font-mono text-[0.75rem]", accent ? "text-accent" : "text-ink-3")}>{mark}</span>;
+  return <span className={cn("font-mono text-secondary", accent ? "text-accent" : "text-ink-3")}>{mark}</span>;
 }
 
 /** Picking attachments: the arrow walks in, the name toggles the tick. */
@@ -56,7 +56,7 @@ function PickBrowseRow(props: RowProps) {
           type="button"
           aria-label={`进入 ${props.entry.name}`}
           onClick={() => props.load(props.entry.path)}
-          className="cursor-pointer font-mono text-[0.75rem] text-ink-3 hover:text-accent"
+          className="cursor-pointer font-mono text-secondary text-ink-3 hover:text-accent"
         >
           ▸
         </button>
@@ -70,7 +70,7 @@ function PickBrowseRow(props: RowProps) {
       >
         {props.entry.name}
       </button>
-      <span className="text-[0.75rem] text-ink-3">{props.meta}</span>
+      <span className="text-secondary text-ink-3">{props.meta}</span>
     </div>
   );
 }
@@ -87,7 +87,7 @@ function WalkBrowseRow(props: RowProps) {
     >
       {props.glyph}
       <span className={cn("truncate", props.entry.repo && "font-medium")}>{props.entry.name}</span>
-      <span className="text-[0.75rem] text-ink-3">{props.meta}</span>
+      <span className="text-secondary text-ink-3">{props.meta}</span>
     </button>
   );
 }
@@ -115,8 +115,8 @@ function BrowseRows(props: {
 }) {
   return (
     <div className="max-h-[46vh] overflow-y-auto">
-      {props.err && <div className="p-3.5 text-[0.75rem] text-bad">{props.err}</div>}
-      {props.here && !props.rows.length && <div className="p-3.5 text-[0.75rem] text-ink-3">空目录</div>}
+      {props.err && <div className="p-3.5 text-secondary text-bad">{props.err}</div>}
+      {props.here && !props.rows.length && <div className="p-3.5 text-secondary text-ink-3">空目录</div>}
       {props.rows.map(([entry, isDir]) => (
         <BrowseRow
           key={entry.path}
@@ -175,10 +175,10 @@ function Browse({
   return (
     <>
       <div className="flex items-baseline gap-2 border-b border-rule p-3">
-        <Dialog.Title className="font-display text-[1.0625rem] font-semibold">{title}</Dialog.Title>
-        {hint && <span className="text-[0.75rem] text-ink-3">{hint}</span>}
+        <Dialog.Title className="font-display text-card font-semibold">{title}</Dialog.Title>
+        {hint && <span className="text-secondary text-ink-3">{hint}</span>}
       </div>
-      <div className="flex flex-wrap items-center gap-1 border-b border-rule-soft px-3 py-2 font-mono text-[0.6875rem]">
+      <div className="flex flex-wrap items-center gap-1 border-b border-rule-soft px-3 py-2 font-mono text-meta">
         <Button size="sm" variant="quiet" onClick={() => load("/")}>
           /
         </Button>
@@ -270,7 +270,7 @@ function RepoHeader({
   return (
     <div className="flex items-baseline gap-2 border-b border-rule p-3">
       {title}
-      <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">点一行就添加</span>
+      <span className="min-w-0 grow truncate text-secondary text-ink-3">点一行就添加</span>
       {data && data.installations.length > 1 ? (
         <Menu label={here ? here.account : "选账号"}>
           {data.installations.map((installation) => (
@@ -284,7 +284,7 @@ function RepoHeader({
           ))}
         </Menu>
       ) : (
-        here && <span className="shrink-0 truncate text-[0.8125rem] font-medium">{here.account}</span>
+        here && <span className="shrink-0 truncate text-body font-medium">{here.account}</span>
       )}
     </div>
   );
@@ -294,7 +294,7 @@ function RepoError({ error, onSettings }: { error: string; onSettings: () => voi
   if (!error) return null;
   return (
     <div className="space-y-2 border-b border-rule-soft p-3.5">
-      <p className="text-[0.8125rem] text-bad">{error}</p>
+      <p className="text-body text-bad">{error}</p>
       <Button onClick={onSettings}>去设置看 GitHub</Button>
     </div>
   );
@@ -316,12 +316,12 @@ function RepoLoading({ data, error }: { data: RepoList | null; error: string }) 
 function RepoInstallEmpty({ data, empty }: { data: RepoList | null; empty: boolean | null }) {
   if (!empty) return null;
   return (
-    <div className="space-y-2 p-3.5 text-[0.8125rem] text-ink-2">
+    <div className="space-y-2 p-3.5 text-body text-ink-2">
       <p>连上了，但这个 GitHub App 还没装到任何账号上，所以一个仓库也看不见。</p>
       {data?.installUrl ? (
         <LinkButton href={data.installUrl}>去 GitHub 装上</LinkButton>
       ) : (
-        <p className="text-[0.75rem] text-ink-3">去 GitHub → 这个 App → Install App，选要给它看的仓库。</p>
+        <p className="text-secondary text-ink-3">去 GitHub → 这个 App → Install App，选要给它看的仓库。</p>
       )}
     </div>
   );
@@ -332,7 +332,7 @@ function RepoListEmpty({ data, account }: { data: RepoList | null; account: stri
   if (!data.installations.length) return null;
   if (data.repos.length) return null;
   return (
-    <div className="space-y-2 p-3.5 text-[0.8125rem] text-ink-2">
+    <div className="space-y-2 p-3.5 text-body text-ink-2">
       <p>{account} 下面，这个 App 一个仓库都看不到。装的时候可能只勾了几个。</p>
       {data.installUrl && <LinkButton href={data.installUrl}>去改它能看哪些</LinkButton>}
     </div>
@@ -364,13 +364,13 @@ function RepoStates(props: {
  * it says 添加中… and stops offering to be pressed again.
  */
 function RepoEdge({ marks }: { marks: ReturnType<typeof repoRow> }) {
-  if (marks.adding) return <span className="whitespace-nowrap text-[0.75rem] text-ink-3">{marks.meta}</span>;
+  if (marks.adding) return <span className="whitespace-nowrap text-secondary text-ink-3">{marks.meta}</span>;
   return (
     <>
-      <span className="whitespace-nowrap text-[0.75rem] text-ink-3 group-data-[selected=true]:hidden">
+      <span className="whitespace-nowrap text-secondary text-ink-3 group-data-[selected=true]:hidden">
         {marks.meta}
       </span>
-      <span className="hidden whitespace-nowrap font-mono text-[0.6875rem] text-accent group-data-[selected=true]:inline">
+      <span className="hidden whitespace-nowrap font-mono text-meta text-accent group-data-[selected=true]:inline">
         {marks.action}
       </span>
     </>
@@ -385,7 +385,7 @@ function RepoItem({ repo, busy, select }: { repo: Repo; busy: string; select: (r
       disabled={!!busy}
       onSelect={() => select(repo)}
       className={cn(
-        "group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 border-t border-rule-soft px-3.5 py-1.5 text-[0.8125rem] first:border-t-0 data-[selected=true]:bg-sunk",
+        "group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 border-t border-rule-soft px-3.5 py-1.5 text-body first:border-t-0 data-[selected=true]:bg-sunk",
         repo.taken && "text-ink-3",
       )}
     >
@@ -402,7 +402,7 @@ function RepositoryList({ data, busy, select }: { data: RepoList | null; busy: s
   const repos = data?.repos ?? [];
   return (
     <Command.List>
-      {!!repos.length && <Command.Empty className="p-3.5 text-[0.75rem] text-ink-3">没有匹配的</Command.Empty>}
+      {!!repos.length && <Command.Empty className="p-3.5 text-secondary text-ink-3">没有匹配的</Command.Empty>}
       {repos.map((repo) => (
         <RepoItem key={repo.fullName} repo={repo} busy={busy} select={select} />
       ))}
@@ -414,7 +414,7 @@ function RepoFooter({ data, onCancel }: { data: RepoList | null; onCancel: (() =
   if (!onCancel && !data?.repos.length) return null;
   return (
     <div className="flex shrink-0 items-center gap-2 border-t border-rule p-3">
-      <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">
+      <span className="min-w-0 grow truncate text-secondary text-ink-3">
         {data?.repos.length ? `${data.repos.length} 个仓库，最近动过的在前` : ""}
       </span>
       {onCancel && <Button onClick={onCancel}>取消</Button>}
@@ -489,7 +489,7 @@ function Repos({
           value={q}
           onValueChange={setQ}
           placeholder="筛一下，或者直接打名字"
-          className="w-full border-b border-rule-soft bg-transparent px-3.5 py-2.5 text-[0.875rem]
+          className="w-full border-b border-rule-soft bg-transparent px-3.5 py-2.5 text-base
                      text-ink placeholder:text-ink-3 focus:outline-none"
         />
       )}
@@ -520,7 +520,7 @@ export function Picker({
   return (
     <Shell open={open} onOpenChange={onOpenChange}>
       <Repos
-        title={<Dialog.Title className="shrink-0 font-display text-[1.0625rem] font-semibold">选择仓库</Dialog.Title>}
+        title={<Dialog.Title className="shrink-0 font-display text-card font-semibold">选择仓库</Dialog.Title>}
         onAdded={leave}
         onOpenProject={leave}
         onSettings={() => {
@@ -543,7 +543,7 @@ export function FirstProject({
   return (
     <div className="max-w-[40rem] overflow-hidden rounded-xl border border-rule bg-paper">
       <Repos
-        title={<h2 className="shrink-0 font-display text-[1.0625rem] font-semibold">添加第一个项目</h2>}
+        title={<h2 className="shrink-0 font-display text-card font-semibold">添加第一个项目</h2>}
         onAdded={onAdded}
         onOpenProject={onAdded}
         onSettings={onSettings}
@@ -579,7 +579,7 @@ export function FilePicker({
         }}
         footer={() => (
           <>
-            <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">
+            <span className="min-w-0 grow truncate text-secondary text-ink-3">
               {sel.length ? `选了 ${sel.length} 个` : "还没选"}
             </span>
             <Button onClick={() => onOpenChange(false)}>取消</Button>

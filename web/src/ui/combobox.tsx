@@ -120,7 +120,7 @@ export function Combobox({
                   setOpen(false);
                 }
               }}
-              className="w-full rounded-lg border border-rule bg-paper px-2.5 py-1.5 pr-7 font-mono text-[0.8125rem]
+              className="w-full rounded-lg border border-rule bg-paper px-2.5 py-1.5 pr-7 font-mono text-body
                          text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none
                          disabled:opacity-50"
             />
@@ -166,7 +166,7 @@ export function Combobox({
               }}
             >
               {!shown.length && (
-                <div className="px-2 py-2 text-[0.75rem] text-ink-3">
+                <div className="px-2 py-2 text-secondary text-ink-3">
                   {options.length ? empty : "读不到远端分支，这里按你填的存"}
                 </div>
               )}
@@ -183,7 +183,7 @@ export function Combobox({
                   }}
                   onSelect={() => commit(o)}
                   className={cn(
-                    "cursor-pointer rounded-md px-2 py-1.5 font-mono text-[0.75rem] text-ink",
+                    "cursor-pointer rounded-md px-2 py-1.5 font-mono text-secondary text-ink",
                     "data-[selected=true]:bg-sunk",
                     o === value.trim() && "text-accent",
                   )}

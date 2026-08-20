@@ -160,7 +160,7 @@ export function SkillMenu({ matches, onPick }: { matches: Skill[]; onPick: (sk: 
   if (!matches.length) return null;
   return (
     <div className="mx-2 mb-1 overflow-hidden rounded-md border border-rule bg-paper shadow-[0_6px_20px_var(--shade)]">
-      <div className="flex items-baseline gap-2 border-b border-rule-soft px-2 py-1 text-[0.6875rem] text-ink-3">
+      <div className="flex items-baseline gap-2 border-b border-rule-soft px-2 py-1 text-meta text-ink-3">
         <span className="min-w-0 grow">选中的技能，正文随这一个 turn 发给 agent，只花这一次钱</span>
         <span className="shrink-0 font-mono">{matches.length}</span>
       </div>
@@ -172,17 +172,15 @@ export function SkillMenu({ matches, onPick }: { matches: Skill[]; onPick: (sk: 
             onClick={() => onPick(sk)}
             className="flex w-full cursor-pointer items-baseline gap-2 px-2 py-1.5 text-left hover:bg-sunk"
           >
-            <span className="font-mono text-[0.75rem] text-ink">{sk.name}</span>
+            <span className="font-mono text-secondary text-ink">{sk.name}</span>
             {/* Where it came from matters: a project skill is versioned with the
                 code, a user one is the boss's own and shadowed by the project's. */}
-            <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">
-              {sk.scope === "project" ? "项目" : "全局"}
-            </span>
+            <span className="shrink-0 font-mono text-tag text-ink-3">{sk.scope === "project" ? "项目" : "全局"}</span>
             {/* Still offerable — the text is injected either way — but the agent
                 cannot reach for this one by itself until it is ticked. */}
-            {!sk.on && <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">未启用</span>}
-            <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{sk.description}</span>
-            <span className="shrink-0 font-mono text-[0.625rem] text-ink-3">Tab</span>
+            {!sk.on && <span className="shrink-0 font-mono text-tag text-ink-3">未启用</span>}
+            <span className="min-w-0 flex-1 truncate text-meta text-ink-3">{sk.description}</span>
+            <span className="shrink-0 font-mono text-pill text-ink-3">Tab</span>
           </button>
         ))}
       </div>
@@ -200,14 +198,14 @@ export function AttachmentTiles({ files, onRemove }: { files: Attached[]; onRemo
           {f.url ? (
             <img src={f.url} alt="" className="size-9 rounded object-cover" />
           ) : (
-            <span className="grid size-9 place-items-center rounded bg-sunk font-mono text-[0.5625rem] text-ink-3">
+            <span className="grid size-9 place-items-center rounded bg-sunk font-mono text-tag text-ink-3">
               {tileBadge(f)}
             </span>
           )}
-          <span className="font-mono text-[0.6875rem] text-ink-2">[{f.label}]</span>
-          <span className="max-w-40 truncate text-[0.75rem]">{f.name}</span>
+          <span className="font-mono text-meta text-ink-2">[{f.label}]</span>
+          <span className="max-w-40 truncate text-secondary">{f.name}</span>
           {f.type !== "inode/directory" && (
-            <span className="font-mono text-[0.625rem] text-ink-3">{Math.round(f.size / 1024)}k</span>
+            <span className="font-mono text-pill text-ink-3">{Math.round(f.size / 1024)}k</span>
           )}
           <button
             type="button"
@@ -535,7 +533,7 @@ export function Composer({
         // and runs past twenty lines, and a box that stops growing at half of that
         // is a window you write a page through.
         style={{ height: boxHeight(h), maxHeight: "36rem" }}
-        className="resize-none overflow-y-auto rounded-b-none border-0 font-sans text-[0.875rem] focus:ring-0"
+        className="resize-none overflow-y-auto rounded-b-none border-0 font-sans text-base focus:ring-0"
         placeholder={placeholder}
         value={text}
         onChange={(e) => onType(e.target.value, e.target.selectionStart ?? e.target.value.length)}
@@ -605,7 +603,7 @@ export function ComposerDialog({
               <Dialog.Title asChild>
                 <CardTitle>{title}</CardTitle>
               </Dialog.Title>
-              {hint && <Dialog.Description className="mt-1 text-[0.75rem] text-ink-3">{hint}</Dialog.Description>}
+              {hint && <Dialog.Description className="mt-1 text-secondary text-ink-3">{hint}</Dialog.Description>}
             </CardHeader>
             <div className="p-3.5">
               <Composer

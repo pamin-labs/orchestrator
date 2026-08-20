@@ -28,7 +28,7 @@ export function Tab({
   return (
     <T.Trigger
       className={cn(
-        "-mb-px cursor-pointer border-b-2 border-transparent px-2.5 py-1.5 text-[0.8125rem] text-ink-3",
+        "-mb-px cursor-pointer border-b-2 border-transparent px-2.5 py-1.5 text-body text-ink-3",
         "transition-colors hover:text-ink data-[state=active]:border-accent data-[state=active]:font-medium",
         "data-[state=active]:text-ink",
         className,
@@ -39,7 +39,7 @@ export function Tab({
       {count != null && (
         <span
           className={cn(
-            "ml-1.5 font-mono text-[0.75rem]",
+            "ml-1.5 font-mono text-secondary",
             mine && count > 0 ? "font-semibold text-accent" : "text-ink-3",
           )}
         >

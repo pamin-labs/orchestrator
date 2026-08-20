@@ -42,7 +42,7 @@ export function Queue({
   // things that would refill it and promising a notification. A queue that fills
   // itself does not need a paragraph saying it will.
   if (!items.length) {
-    return <div className="text-[0.8125rem] text-ok">都处理完了</div>;
+    return <div className="text-body text-ok">都处理完了</div>;
   }
 
   const blocks = queueClusters(items).map((cluster) => ({
@@ -173,7 +173,7 @@ function ClusterIdentity({ st, c, standing, hard }: { st: State; c: QueueCluster
   const group = st.groups.find((candidate) => candidate.id === c.grpId);
   return (
     <div className="min-w-0">
-      <div className="truncate font-display text-[0.9375rem] font-semibold">{clusterName(st, c.grpId, standing)}</div>
+      <div className="truncate font-display text-name font-semibold">{clusterName(st, c.grpId, standing)}</div>
       <Meta>
         {clusterWaiting(hard, c.items.length)}
         {clusterTokens(group?.spent_tokens)}
@@ -203,9 +203,7 @@ function ClusterTickets({
         <Ticket key={item.key} item={item} n={n} refresh={refresh} standing={standing} />
       ))}
       {folded.length > shown.length && (
-        <span className="self-center font-mono text-[0.6875rem] text-ink-3">
-          还有 {folded.length - shown.length} 条
-        </span>
+        <span className="self-center font-mono text-meta text-ink-3">还有 {folded.length - shown.length} 条</span>
       )}
     </div>
   );
@@ -250,7 +248,7 @@ function Ticket({
         )}
       >
         <TicketMeta item={item} n={n} />
-        <span className="mt-px block truncate text-[0.6875rem] text-ink-2">{item.what}</span>
+        <span className="mt-px block truncate text-meta text-ink-2">{item.what}</span>
         {/* A standing agent has no requirement to open, so its reply box is the
             only way to clear it and it stays on the card. */}
         <TicketReply item={item} standing={standing} refresh={refresh} />
@@ -261,7 +259,7 @@ function Ticket({
 
 function TicketMeta({ item, n }: { item: QueueItem; n: number }) {
   return (
-    <span className="flex items-center gap-1 font-mono text-[0.625rem] text-ink-3">
+    <span className="flex items-center gap-1 font-mono text-pill text-ink-3">
       {item.who}
       <TicketAbout item={item} />
       {n > 1 && <span className="font-semibold text-ink-2">×{n}</span>}
@@ -337,7 +335,7 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
           )
         }
         placeholder="回答…  ⌘↵ 发送"
-        className="w-[20rem] resize-none rounded-md border border-rule bg-paper px-2 py-1.5 text-[0.8125rem] outline-none focus:border-accent"
+        className="w-[20rem] resize-none rounded-md border border-rule bg-paper px-2 py-1.5 text-body outline-none focus:border-accent"
       />
       <Button variant="go" disabled={busy || !text.trim()} onClick={() => send(text)}>
         发送

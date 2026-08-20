@@ -56,7 +56,7 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
-        <h2 className="text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2">工位</h2>
+        <h2 className="text-secondary font-semibold tracking-[0.02em] text-ink-2">工位</h2>
         <Meta>
           在跑 {running.length} · 共 {rows.length}
         </Meta>
@@ -73,9 +73,7 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
             element, and nobody hovers a number they cannot read. The header is
             sticky because the pane scrolls and a heading that scrolls away stops
             being a heading. */}
-        <div
-          className={cn(DESK_ROW, "sticky top-0 z-10 border-b border-rule bg-paper pb-1.5 text-[0.6875rem] text-ink-3")}
-        >
+        <div className={cn(DESK_ROW, "sticky top-0 z-10 border-b border-rule bg-paper pb-1.5 text-meta text-ink-3")}>
           <span>谁 · 模型</span>
           <span>在做什么</span>
           <span className="text-right">turn</span>
@@ -85,7 +83,7 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
           <Desks key={String(g.id)} name={g.name} agents={g.agents} slices={st.slices} tail={last} />
         ))}
         {!idle && running.length > 0 && rows.length > running.length && (
-          <div className="mt-3 text-[0.75rem] text-ink-3">另外 {rows.length - running.length} 个空闲，没在花钱。</div>
+          <div className="mt-3 text-secondary text-ink-3">另外 {rows.length - running.length} 个空闲，没在花钱。</div>
         )}
       </Pane>
     </div>
@@ -145,7 +143,7 @@ function Desks({
         {/* The requirement is the thing being scanned for, so it gets the weight —
             it was the same size and colour as the shell command beside it. */}
         <Tip label={name}>
-          <span className={cn("truncate font-display text-[0.9375rem] font-semibold", runners === 0 && "text-ink-3")}>
+          <span className={cn("truncate font-display text-name font-semibold", runners === 0 && "text-ink-3")}>
             {name}
           </span>
         </Tip>
@@ -176,28 +174,26 @@ function Desks({
                     made this table nine wide. */}
                 <Tip label={`本 session ${K(a.session_tokens)} tokens · ${a.model}`}>
                   <span className="flex min-w-0 items-baseline gap-1.5">
-                    <span className="shrink-0 truncate text-[0.8125rem] font-medium">{a.role}</span>
+                    <span className="shrink-0 truncate text-body font-medium">{a.role}</span>
                     {/* A chip, because which model an agent is on is the second
                         thing looked for here and it was grey text in a grey row. */}
-                    <span className="truncate rounded-sm bg-sunk px-1 font-mono text-[0.625rem] text-ink-2">
-                      {row.model}
-                    </span>
+                    <span className="truncate rounded-sm bg-sunk px-1 font-mono text-pill text-ink-2">{row.model}</span>
                   </span>
                 </Tip>
                 <span className="min-w-0">
                   <span className="flex min-w-0 items-baseline gap-1.5">
                     {row.slice && (
                       <Tip label={row.slice.accept_spec}>
-                        <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">S{row.slice.seq}</span>
+                        <span className="shrink-0 font-mono text-meta text-ink-3">S{row.slice.seq}</span>
                       </Tip>
                     )}
-                    {row.verb && <span className="shrink-0 text-[0.75rem] font-medium text-ink">{row.verb}</span>}
+                    {row.verb && <span className="shrink-0 text-secondary font-medium text-ink">{row.verb}</span>}
                     <Tip label={row.activity}>
-                      <span className="truncate font-mono text-[0.6875rem] text-ink-3">{row.detail}</span>
+                      <span className="truncate font-mono text-meta text-ink-3">{row.detail}</span>
                     </Tip>
                   </span>
                   {row.stream && (
-                    <span className="mt-0.5 block truncate font-mono text-[0.6875rem] text-ink-3">
+                    <span className="mt-0.5 block truncate font-mono text-meta text-ink-3">
                       {row.stream.slice(-120)}
                     </span>
                   )}
@@ -275,9 +271,9 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
           once. */}
       <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {hit.length ? (
-          <b className="text-[0.8125rem] font-semibold text-bad">{hit.length} 个需求想改同一批文件，不能一起跑</b>
+          <b className="text-body font-semibold text-bad">{hit.length} 个需求想改同一批文件，不能一起跑</b>
         ) : (
-          <b className="text-[0.8125rem] font-semibold">
+          <b className="text-body font-semibold">
             {gs.length} 个需求各改各的，可以一起跑{bare.length ? `（还有 ${bare.length} 个没分` : ""}
             {bare.length ? "）" : ""}
           </b>
@@ -286,7 +282,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
 
       {/* A column of paths under no heading is a column of paths. */}
       <div
-        className="grid grid-cols-[13rem_minmax(0,1fr)] gap-x-5 border-b border-rule pb-1.5 text-[0.6875rem]
+        className="grid grid-cols-[13rem_minmax(0,1fr)] gap-x-5 border-b border-rule pb-1.5 text-meta
                       text-ink-3 max-[52rem]:grid-cols-1"
       >
         <span>需求</span>
@@ -305,7 +301,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
             >
               <div className="min-w-0">
                 <Tip label={g.name}>
-                  <div className="truncate font-display text-[0.875rem] font-semibold">{g.name}</div>
+                  <div className="truncate font-display text-base font-semibold">{g.name}</div>
                 </Tip>
                 {others.length > 0 && (
                   <Tip label={others.join("、")}>
@@ -320,12 +316,10 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                   owns(g).map((o) =>
                     mine.has(o) ? (
                       <Tip key={o} label={`和 ${mine.get(o)!.join("、")} 是同一块地方`}>
-                        <span className="rounded-sm bg-bad-soft px-1.5 py-0.5 font-mono text-[0.6875rem] text-bad">
-                          {o}
-                        </span>
+                        <span className="rounded-sm bg-bad-soft px-1.5 py-0.5 font-mono text-meta text-bad">{o}</span>
                       </Tip>
                     ) : (
-                      <span key={o} className="rounded-sm bg-sunk px-1.5 py-0.5 font-mono text-[0.6875rem] text-ink-2">
+                      <span key={o} className="rounded-sm bg-sunk px-1.5 py-0.5 font-mono text-meta text-ink-2">
                         {o}
                       </span>
                     ),
@@ -462,15 +456,15 @@ export function CostView({ cost }: { cost: Cost | null }) {
             with one number set in display size, not a row of stat cards. */}
           <div className="mb-5">
             <div className="flex items-baseline gap-1.5">
-              <b className="font-mono text-[1.375rem] font-semibold leading-none">{K(cost.total.tokens)}</b>
-              <span className="text-[0.75rem] text-ink-3">tokens · 这个项目累计</span>
+              <b className="font-mono text-figure font-semibold leading-none">{K(cost.total.tokens)}</b>
+              <span className="text-secondary text-ink-3">tokens · 这个项目累计</span>
             </div>
-            <div className="mt-1.5 text-[0.75rem] text-ink-2">
+            <div className="mt-1.5 text-secondary text-ink-2">
               每个已交付需求 <b className="font-mono font-semibold text-ink">{summary.per}</b>
               <span className="text-ink-3">{summary.perNote}</span>
             </div>
             <Tip label="掉到 50% 以下＝prompt 组装被改坏，每个 turn 贵 3-5 倍">
-              <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
+              <div className="mt-0.5 w-fit text-secondary text-ink-2 underline decoration-dotted">
                 cache 命中 <b className={cn("font-mono font-semibold", summary.cacheClass)}>{summary.cache}</b>
               </div>
             </Tip>
@@ -484,7 +478,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
               number said twice, once as a total and once as its parts. */}
             {cold > 0 && (
               <Tip label={`${turns} 个 turn 里重开了 ${cold} 次：${why}。重开一次，缓存前缀要从头建一遍`}>
-                <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
+                <div className="mt-0.5 w-fit text-secondary text-ink-2 underline decoration-dotted">
                   重开会话{" "}
                   <b className={cn("font-mono font-semibold", rotationClass)}>
                     {cold}/{turns}
@@ -531,9 +525,9 @@ function Flat({ rows }: { rows: { label: string; tokens: number }[] }) {
       {list.map((r) => (
         <div key={r.label} className={cn(ROW, "border-t border-rule-soft py-2.5 first:border-t-0")}>
           <Tip label={r.label}>
-            <span className="truncate pl-[1.125rem] text-[0.8125rem]">{r.label}</span>
+            <span className="truncate pl-[1.125rem] text-body">{r.label}</span>
           </Tip>
-          <span className="text-right font-mono text-[0.8125rem]">{K(r.tokens)}</span>
+          <span className="text-right font-mono text-body">{K(r.tokens)}</span>
           <Meta className="text-right">{list.length > 1 ? `${Math.round((r.tokens / sum) * 100)}%` : ""}</Meta>
           <Bar frac={r.tokens / top} className="max-[52rem]:hidden" />
         </div>
@@ -547,7 +541,7 @@ function Rail({ title, note, children }: { title: string; note: string; children
   return (
     <section className="mb-5 last:mb-0">
       <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
-        <h3 className="text-[0.8125rem] font-semibold">{title}</h3>
+        <h3 className="text-body font-semibold">{title}</h3>
         {note && <Meta>{note}</Meta>}
       </div>
       {children}
@@ -602,11 +596,11 @@ function Node({
             )}
           />
           <Tip label={label}>
-            <span className="truncate text-[0.8125rem]">{label}</span>
+            <span className="truncate text-body">{label}</span>
           </Tip>
           {note && <Meta className="truncate max-[52rem]:hidden">{note}</Meta>}
         </span>
-        <span className="text-right font-mono text-[0.8125rem]">{K(tokens)}</span>
+        <span className="text-right font-mono text-body">{K(tokens)}</span>
         <Meta className="text-right">{Math.round(share * 100)}%</Meta>
         <Bar frac={tokens / top} className="max-[52rem]:hidden" />
       </Collapsible.Trigger>
@@ -618,10 +612,10 @@ function Node({
                   until you know which model it took them on. Indented past the
                   chevron so the nesting is the indent, not a rule down the side. */}
               <span className="flex min-w-0 items-baseline gap-1.5 pl-[1.125rem]">
-                <span className="truncate font-mono text-[0.75rem] text-ink-2">{a.role}</span>
+                <span className="truncate font-mono text-secondary text-ink-2">{a.role}</span>
                 <Meta className="truncate">{a.model}</Meta>
               </span>
-              <span className="text-right font-mono text-[0.75rem] text-ink-2">{K(a.tokens)}</span>
+              <span className="text-right font-mono text-secondary text-ink-2">{K(a.tokens)}</span>
               {/* Share of this requirement, not of the project: inside the open row
                   the question is which of these people spent it. */}
               <Meta className="text-right">{Math.round((a.tokens / tokens) * 100)}%</Meta>

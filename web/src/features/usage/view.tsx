@@ -29,7 +29,7 @@ export function UsageBar({ usage }: { usage: Usage[] }) {
   // `display: contents` — no box, so Radix had nothing to position against and
   // put the card at the far edge of the screen.
   return (
-    <span className="grid grid-cols-[auto_auto_auto] items-center gap-x-4 gap-y-0.5 font-mono text-[0.625rem]">
+    <span className="grid grid-cols-[auto_auto_auto] items-center gap-x-4 gap-y-0.5 font-mono text-pill">
       {rows.map((usage) => (
         <UsageRow key={usage.runtime} usage={usage} />
       ))}

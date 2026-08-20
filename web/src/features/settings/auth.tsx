@@ -51,7 +51,7 @@ export const HostCheckSchema = z
 export function DeviceCode({ code, url, go }: { code: string; url: string; go: string }) {
   return (
     <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md bg-sunk px-3 py-2.5">
-      <code className="font-mono text-[1.375rem] leading-none font-semibold tracking-[0.3em] select-all">{code}</code>
+      <code className="font-mono text-figure leading-none font-semibold tracking-[0.3em] select-all">{code}</code>
       <Button
         size="sm"
         variant="quiet"
@@ -63,7 +63,7 @@ export function DeviceCode({ code, url, go }: { code: string; url: string; go: s
         复制
       </Button>
       <span className="grow" />
-      <LinkButton href={url} className="px-2 py-0.5 text-[0.75rem]">
+      <LinkButton href={url} className="px-2 py-0.5 text-secondary">
         {go}
       </LinkButton>
     </div>

@@ -258,7 +258,7 @@ function CredentialHeader({ state }: { state: CredentialState }) {
   const { props, form, changeForm } = state;
   return (
     <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <span className="font-display text-[0.9375rem] font-semibold">{props.runtime.label}</span>
+      <span className="font-display text-name font-semibold">{props.runtime.label}</span>
       <CredentialStatus state={state} />
       <span className="grow" />
       <Segments
@@ -280,7 +280,7 @@ function CredentialHeader({ state }: { state: CredentialState }) {
 
 function CredentialStatus({ state }: { state: CredentialState }) {
   const { props, form } = state;
-  if (!props.current) return <span className="text-[0.75rem] font-medium text-accent">没配</span>;
+  if (!props.current) return <span className="text-secondary font-medium text-accent">没配</span>;
   const labels = Object.fromEntries(props.runtime.modes.map((mode) => [mode.mode, mode.label]));
   return (
     <>
@@ -289,7 +289,7 @@ function CredentialStatus({ state }: { state: CredentialState }) {
           that, and a label repeating it is the same fact 30rem apart.
           When they differ it is the whole point of the row. */}
       {props.current.mode !== form.mode && (
-        <span className="text-[0.75rem] text-ink-2">存的是{labels[props.current.mode] ?? props.current.mode}</span>
+        <span className="text-secondary text-ink-2">存的是{labels[props.current.mode] ?? props.current.mode}</span>
       )}
       {/* The masked tail is in the box it was pasted into, not here as well. */}
       <Meta>{clock(props.current.updatedAt)}</Meta>
@@ -434,7 +434,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
                 href={login.link}
                 target="_blank"
                 rel="noopener"
-                className="shrink-0 text-[0.75rem] text-accent underline"
+                className="shrink-0 text-secondary text-accent underline"
               >
                 打开登录页
               </a>

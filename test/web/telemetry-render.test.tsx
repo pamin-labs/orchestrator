@@ -332,7 +332,7 @@ test("every frame is labelled, in a colour that reads against it", async () => {
   const rules = host?.getAttribute("class") ?? "";
   expect(rules).toContain("[&_.d3-flame-graph-label]:text-ink");
   expect(rules).toContain("[&_.d3-flame-graph-label]:truncate");
-  expect(rules).toContain("[&_.d3-flame-graph-label]:text-[0.6875rem]");
+  expect(rules).toContain("[&_.d3-flame-graph-label]:text-meta");
 });
 
 test("the self-time toggle offers both readings", async () => {

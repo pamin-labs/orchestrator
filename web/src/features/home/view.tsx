@@ -62,22 +62,22 @@ export function Home({
                     type="button"
                     onClick={() => onEnter(p.id)}
                     className={cn(
-                      "cursor-pointer text-left font-display text-[1.0625rem] font-semibold",
+                      "cursor-pointer text-left font-display text-card font-semibold",
                       "after:absolute after:inset-0 after:rounded-xl",
                       "focus-visible:outline-none focus-visible:after:ring-3 focus-visible:after:ring-accent-soft",
                     )}
                   >
                     {p.name}
                   </button>
-                  <div className="mt-px truncate font-mono text-[0.6875rem] text-ink-3">{p.repo_path}</div>
+                  <div className="mt-px truncate font-mono text-meta text-ink-3">{p.repo_path}</div>
                   {n ? (
-                    <div className="mt-1 text-[0.8125rem] font-semibold text-accent">{bits.join(" · ")}</div>
+                    <div className="mt-1 text-body font-semibold text-accent">{bits.join(" · ")}</div>
                   ) : (
                     // 空着 is said by the button beside it, in a form you can act on.
-                    !state.fresh && <div className="mt-1 text-[0.75rem] text-ink-3">{state.zh}</div>
+                    !state.fresh && <div className="mt-1 text-secondary text-ink-3">{state.zh}</div>
                   )}
                   {live.length > 0 && (
-                    <div className="mt-1.5 truncate text-[0.75rem] text-ink-2">在跑：{live.join("、")}</div>
+                    <div className="mt-1.5 truncate text-secondary text-ink-2">在跑：{live.join("、")}</div>
                   )}
                 </div>
                 {state.fresh ? (

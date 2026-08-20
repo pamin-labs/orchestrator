@@ -10,7 +10,7 @@ import { cn } from "./cn";
  * were already too small to read. 12px, normal case, ink-2.
  */
 export const H2 = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <h2 className={cn("mb-2.5 text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2", className)}>{children}</h2>
+  <h2 className={cn("mb-2.5 text-secondary font-semibold tracking-[0.02em] text-ink-2", className)}>{children}</h2>
 );
 
 /**
@@ -39,19 +39,19 @@ export const Head = ({
 );
 
 export const Meta = ({ children, className, ...rest }: React.HTMLAttributes<HTMLSpanElement>) => (
-  <span className={cn("font-mono text-[0.6875rem] text-ink-3", className)} {...rest}>
+  <span className={cn("font-mono text-meta text-ink-3", className)} {...rest}>
     {children}
   </span>
 );
 
 /** Absence, with a reason. An empty panel that only says "none" teaches nothing. */
 export const Empty = ({ children }: { children: React.ReactNode }) => (
-  <div className="max-w-[44rem] text-[0.75rem] leading-relaxed text-ink-3">{children}</div>
+  <div className="max-w-[44rem] text-secondary leading-relaxed text-ink-3">{children}</div>
 );
 
 /** Work in flight with nothing for the boss to do yet. */
 export const Working = ({ children }: { children: React.ReactNode }) => (
-  <div className="flex items-center gap-2 py-3 text-[0.8125rem] text-ink-2">
+  <div className="flex items-center gap-2 py-3 text-body text-ink-2">
     <i className="breathe size-1.5 rounded-full bg-ink-3" />
     {children}
   </div>
@@ -62,7 +62,7 @@ const field =
   "transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent-soft";
 
 export const Input = ({ className, ...rest }: React.InputHTMLAttributes<HTMLInputElement>) => (
-  <input className={cn(field, "px-2 py-1 text-[0.8125rem]", className)} {...rest} />
+  <input className={cn(field, "px-2 py-1 text-body", className)} {...rest} />
 );
 
 export const Textarea = ({
@@ -72,7 +72,7 @@ export const Textarea = ({
 }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { ref?: React.Ref<HTMLTextAreaElement> }) => (
   <textarea
     ref={ref}
-    className={cn(field, "resize-y px-2 py-1 font-mono text-[0.75rem] leading-relaxed", className)}
+    className={cn(field, "resize-y px-2 py-1 font-mono text-secondary leading-relaxed", className)}
     {...rest}
   />
 );

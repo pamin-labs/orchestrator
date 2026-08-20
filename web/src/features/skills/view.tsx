@@ -121,11 +121,11 @@ export function Skills({ projectId }: { projectId: number | null }) {
                   className="size-3.5 shrink-0 self-center accent-[var(--accent)] disabled:opacity-40"
                 />
               )}
-              <span className="font-mono text-[0.75rem] text-ink">{r.name}</span>
+              <span className="font-mono text-secondary text-ink">{r.name}</span>
               {/* Only the exception is marked. 全局 on every other row was a word
                   repeated a hundred and seventy-eight times to say "normal". */}
               {fixed && <Badge className="shrink-0 self-center">随仓库</Badge>}
-              <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{r.description}</span>
+              <span className="min-w-0 flex-1 truncate text-meta text-ink-3">{r.description}</span>
             </label>
           );
         })}

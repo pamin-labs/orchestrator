@@ -89,7 +89,7 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
               GATE_ROW,
               // Same hairline as every row under it: this is the table's first
               // row, not a boundary between two kinds of thing.
-              "sticky top-0 z-10 border-b border-rule-soft bg-paper pb-1.5 text-[0.6875rem] text-ink-3",
+              "sticky top-0 z-10 border-b border-rule-soft bg-paper pb-1.5 text-meta text-ink-3",
             )}
           >
             <span />
@@ -130,7 +130,7 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
                 {/* The digit alone. 「第 N 道」 wrapped to two lines in a column this
                     narrow, and the header already says what the column is. */}
                 <Meta>{i + 1}</Meta>
-                <span className="truncate text-[0.8125rem]">{name}</span>
+                <span className="truncate text-body">{name}</span>
                 <Meta className="min-w-0 truncate">{gateTemplate(d.resources, name)}</Meta>
               </Toggle>
             ))}
@@ -147,7 +147,7 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
               <Toggle key={res.name} value={res.name} className={cn(GATE_ROW, "py-2")}>
                 <span />
                 <span />
-                <span className="truncate text-[0.8125rem]">{res.name}</span>
+                <span className="truncate text-body">{res.name}</span>
                 <Meta className="min-w-0 truncate">{res.template}</Meta>
               </Toggle>
             ))}
@@ -262,7 +262,7 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
             {value.map((d) => (
               <span
                 key={d}
-                className="flex items-center gap-1 rounded-sm bg-sunk py-0.5 pr-1 pl-1.5 font-mono text-[0.6875rem] text-ink-2"
+                className="flex items-center gap-1 rounded-sm bg-sunk py-0.5 pr-1 pl-1.5 font-mono text-meta text-ink-2"
               >
                 {d}
                 <button

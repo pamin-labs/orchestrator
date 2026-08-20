@@ -102,7 +102,7 @@ function Crumb({
       type="button"
       onClick={onClick}
       className={cn(
-        "cursor-pointer truncate font-display text-[1rem] font-semibold transition-colors hover:text-ink",
+        "cursor-pointer truncate font-display text-lead font-semibold transition-colors hover:text-ink",
         choose(!!dim, "text-ink-2", "text-ink"),
         className,
       )}
@@ -222,12 +222,12 @@ export function App() {
       <Card className="max-w-[40rem]">
         <CardBody>
           <CardTitle>还没有需求</CardTitle>
-          <div className="mt-1 text-[0.75rem] text-ink-3">写一句话，拆成计划卡再回来给你批。</div>
-          <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-rule-soft pt-3 text-[0.75rem]">
+          <div className="mt-1 text-secondary text-ink-3">写一句话，拆成计划卡再回来给你批。</div>
+          <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-rule-soft pt-3 text-secondary">
             <dt className="text-ink-3">仓库</dt>
-            <dd className="truncate font-mono text-[0.6875rem]">{project?.repo_path}</dd>
+            <dd className="truncate font-mono text-meta">{project?.repo_path}</dd>
             <dt className="text-ink-3">从这个分支开</dt>
-            <dd className="font-mono text-[0.6875rem]">{project?.base_branch || "问 GitHub 要"}</dd>
+            <dd className="font-mono text-meta">{project?.base_branch || "问 GitHub 要"}</dd>
             <dt className="text-ink-3">闸门 / 安装命令</dt>
             <dd className="text-ink-2">第一个组克隆完才猜得出来，到时候填进设置</dd>
           </dl>
@@ -256,7 +256,7 @@ export function App() {
         />
       );
     },
-    missing: () => <div className="text-[0.8125rem] text-ink-3">这个需求已经归档或不存在了。</div>,
+    missing: () => <div className="text-body text-ink-3">这个需求已经归档或不存在了。</div>,
     desk: () => <Desk st={st} frames={frames} projectId={idOrZero(sel.p)} />,
     notes: () => <Notes projectId={idOrZero(sel.p)} tab={sel.t} onTab={(tab) => go({ t: tab })} />,
     owns: () => <Owns st={st} projectId={idOrZero(sel.p)} />,
@@ -322,14 +322,14 @@ export function App() {
         <header className="z-10 flex h-14 items-center gap-5 border-b border-rule bg-rail px-6">
           <button
             type="button"
-            className="cursor-pointer font-display text-[1.0625rem] font-semibold"
+            className="cursor-pointer font-display text-card font-semibold"
             onClick={() => go({ view: "home", p: null, g: null })}
           >
             orchestrator
           </button>
           {choose(
             !home,
-            <span className="flex min-w-0 shrink items-baseline gap-2 text-[0.8125rem]">
+            <span className="flex min-w-0 shrink items-baseline gap-2 text-body">
               <span className="text-ink-3">/</span>
               <Crumb dim={view === "req"} onClick={() => setPickProject(true)}>
                 {itemName(project)}
@@ -344,7 +344,7 @@ export function App() {
                 </>,
                 null,
               )}
-              <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">⌘K</span>
+              <span className="shrink-0 font-mono text-meta text-ink-3">⌘K</span>
             </span>,
             null,
           )}
@@ -357,7 +357,7 @@ export function App() {
                   key={key}
                   onClick={() => go({ view: key, g: null, t: null })}
                   className={cn(
-                    "-mb-px cursor-pointer whitespace-nowrap border-b-2 py-1 text-[0.8125rem] transition-colors",
+                    "-mb-px cursor-pointer whitespace-nowrap border-b-2 py-1 text-body transition-colors",
                     viewClass(viewActive(view, key)),
                   )}
                 >
@@ -371,7 +371,7 @@ export function App() {
           <UsageBar usage={st.usage} />
           {choose(
             live !== "live",
-            <span className="flex items-center gap-1.5 rounded-md bg-sunk px-2 py-0.5 font-mono text-[0.6875rem] text-warn">
+            <span className="flex items-center gap-1.5 rounded-md bg-sunk px-2 py-0.5 font-mono text-meta text-warn">
               <i className="breathe size-1.5 rounded-full bg-warn" />
               {connectionText(live)}
             </span>,
@@ -386,7 +386,7 @@ export function App() {
             >
               待办 {waiting}
             </Button>,
-            <span className="font-mono text-[0.6875rem] text-ink-3">无待办</span>,
+            <span className="font-mono text-meta text-ink-3">无待办</span>,
           )}
           {choose(
             showNewRequirement(sel.p, st.projects.length),

@@ -210,12 +210,12 @@ function DiffFile({
         data-i={index}
         className="mt-2 flex items-baseline gap-2 border-y-2 border-rule bg-sunk px-3.5 py-1.5 first:mt-0"
       >
-        <span className="font-mono text-[0.6875rem] font-semibold">{name}</span>
-        <span className="font-mono text-[0.625rem]">
+        <span className="font-mono text-meta font-semibold">{name}</span>
+        <span className="font-mono text-pill">
           <span className="text-ok">+{file.additions}</span> <span className="text-bad">−{file.deletions}</span>
         </span>
       </div>
-      <table className="w-full table-fixed border-collapse font-mono text-[0.6875rem] leading-[1.55]">
+      <table className="w-full table-fixed border-collapse font-mono text-meta leading-[1.55]">
         <colgroup>
           <col className="w-10" />
           <col className="w-[calc(50%-2.5rem)]" />
@@ -330,12 +330,12 @@ function Branch({ dir, depth, here, go }: { dir: Dir; depth: number; here: numbe
           onClick={() => go(f.i)}
           style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
           className={cn(
-            "flex w-full cursor-pointer items-baseline gap-1.5 py-0.5 pr-2 text-left font-mono text-[0.6875rem] hover:bg-sunk",
+            "flex w-full cursor-pointer items-baseline gap-1.5 py-0.5 pr-2 text-left font-mono text-meta hover:bg-sunk",
             f.i === here && "bg-accent-soft text-accent",
           )}
         >
           <span className="min-w-0 grow truncate">{f.name}</span>
-          <span className="shrink-0 text-[0.625rem]">
+          <span className="shrink-0 text-pill">
             <span className="text-ok">+{f.add}</span> <span className="text-bad">−{f.del}</span>
           </span>
         </button>
@@ -351,7 +351,7 @@ function Folder({ dir, depth, here, go }: { dir: Dir; depth: number; here: numbe
     <Collapsible.Root open={open} onOpenChange={setOpen}>
       <Collapsible.Trigger
         style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
-        className="flex w-full cursor-pointer items-baseline gap-1 py-0.5 pr-2 text-left font-mono text-[0.625rem] text-ink-3 hover:text-accent"
+        className="flex w-full cursor-pointer items-baseline gap-1 py-0.5 pr-2 text-left font-mono text-pill text-ink-3 hover:text-accent"
       >
         <span className="w-2 shrink-0">{open ? "▾" : "▸"}</span>
         <Tip label={dir.name}>
@@ -369,7 +369,7 @@ function Gutter({ n, tone, split }: { n?: number; tone?: "ok" | "bad"; split?: b
   return (
     <td
       className={cn(
-        "select-none border-r border-rule-soft px-1.5 text-right align-top text-[0.625rem] text-ink-3 tabular-nums",
+        "select-none border-r border-rule-soft px-1.5 text-right align-top text-pill text-ink-3 tabular-nums",
         // The two sides had no edge between them, so a wash on one and paper on
         // the other read as one column with an odd background.
         split && "border-l-2 border-l-rule",

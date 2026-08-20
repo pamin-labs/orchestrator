@@ -134,7 +134,7 @@ export function Amount<U extends string>({
         // Shrinks rather than holding 6.5rem: three of these share the tier grid
         // with a label column, and a fixed width pushed the unit toggle off the
         // right edge of the dialog.
-        className="min-w-0 max-w-[6.5rem] flex-1 py-0.5 font-mono text-[0.75rem] aria-[invalid=true]:border-accent"
+        className="min-w-0 max-w-[6.5rem] flex-1 py-0.5 font-mono text-secondary aria-[invalid=true]:border-accent"
         onChange={(e) => setDraft(e.currentTarget.value)}
         onBlur={(e) => send(e.currentTarget.value, unit)}
         onKeyDown={(e) => {
@@ -257,7 +257,7 @@ export function Box({
       spellCheck={false}
       aria-invalid={invalid || undefined}
       {...rest}
-      className={cn("min-w-0 flex-1 py-0.5 font-mono text-[0.75rem]", "aria-[invalid=true]:border-accent", className)}
+      className={cn("min-w-0 flex-1 py-0.5 font-mono text-secondary", "aria-[invalid=true]:border-accent", className)}
       onBlur={(e) => {
         const raw = e.currentTarget.value.trim();
         if (raw !== value) onCommit(raw);
