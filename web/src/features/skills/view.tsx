@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { Trans } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Head, Input, Meta } from "../../ui/bits";
 import { Badge } from "../../ui/badge";
@@ -76,7 +78,7 @@ export function Skills({ projectId }: { projectId: number | null }) {
   return (
     <>
       <Head
-        title="技能"
+        title={t`Skills`}
         note={
           rows
             ? `勾中的 ${tally.staged}/${tally.user} 个进沙盒` +
@@ -86,16 +88,16 @@ export function Skills({ projectId }: { projectId: number | null }) {
         }
       >
         <Button variant="quiet" size="sm" disabled={busy === "*"} onClick={rescan}>
-          重新扫描
+          <Trans>Rescan</Trans>
         </Button>
       </Head>
 
       <Input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="搜技能"
+        placeholder={t`Search skills`}
         className="mb-2"
-        aria-label="搜技能"
+        aria-label={t`Search skills`}
       />
 
       <div className="divide-y divide-rule-soft">
@@ -129,7 +131,11 @@ export function Skills({ projectId }: { projectId: number | null }) {
             </label>
           );
         })}
-        {rows && !shown.length && <Meta className="block py-2">没有匹配的技能</Meta>}
+        {rows && !shown.length && (
+          <Meta className="block py-2">
+            <Trans>No matching skills</Trans>
+          </Meta>
+        )}
       </div>
     </>
   );

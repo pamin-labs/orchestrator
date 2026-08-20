@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { linguiMacros } from "../../scripts/lingui-macros.ts";
 
 /**
  * Every export the browser bundle names has something behind it.
@@ -20,6 +21,7 @@ async function bundle(): Promise<string> {
     entrypoints: ["web/src/app/main.tsx"],
     target: "browser",
     minify: true,
+    plugins: [linguiMacros],
   });
   expect(built.success).toBe(true);
   const [output] = built.outputs;

@@ -6,6 +6,7 @@ import { waitFor } from "../support/render.tsx";
 import { tempDir } from "../support/temp.ts";
 import { inFlight, mockHttp, server } from "../support/http.ts";
 import { emptyState } from "../../web/src/shared/api.ts";
+import { linguiMacros } from "../../scripts/lingui-macros.ts";
 
 /**
  * The bundle the browser is actually served, booted.
@@ -121,7 +122,16 @@ const TELEMETRY = {
 
 test("the built bundle mounts 耗时 without throwing", async () => {
   workdir = tempDir("orch-boot-");
-  const built = await Bun.build({ entrypoints: [ENTRY], target: "browser", minify: true, outdir: workdir });
+  // The plugin is passed, never registered globally: a `Bun.plugin` does not
+  // reach an in-process `Bun.build`, so a bundle built without it keeps the
+  // unexpanded macro and throws "outside the context of compilation" on mount.
+  const built = await Bun.build({
+    entrypoints: [ENTRY],
+    target: "browser",
+    minify: true,
+    outdir: workdir,
+    plugins: [linguiMacros],
+  });
   expect(built.success).toBe(true);
 
   (globalThis as { EventSource?: unknown }).EventSource = QuietSource;

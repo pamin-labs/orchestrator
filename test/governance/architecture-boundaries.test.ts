@@ -20,7 +20,19 @@ test("Fallow adds only undiscovered entry points and classifies directories by p
   const zones = Object.fromEntries(config.boundaries.zones.map(({ name, patterns }) => [name, patterns]));
   const rules = Object.fromEntries(config.boundaries.rules.map((rule) => [rule.from, rule]));
 
-  expect(config.entry).toEqual(["scripts/browse.ts", "scripts/make-github-app.ts"]);
+  // Every entry here is reached through a string Fallow cannot follow, which is
+  // the only reason to list one. `main.tsx` used to be discovered from the
+  // `bun build` line in package.json and now sits inside `scripts/build-web.ts`;
+  // `coverage.ts` is a `bunfig.toml` preload that `loader.ts` requires at
+  // runtime. `scripts/lingui.config.js` is deliberately *not* here: it is an
+  // entry in the same sense, but listing it would make its `@lingui/format-json`
+  // import look like a production dependency. It carries a suppression instead.
+  expect(config.entry).toEqual([
+    "scripts/browse.ts",
+    "scripts/make-github-app.ts",
+    "web/src/app/main.tsx",
+    "test/support/coverage.ts",
+  ]);
   expect(config.security.categories.include).toContain("hardcoded-secret");
   expect(config.security.categories.include).toContain("secret-to-network");
   expect(new Set(config.security.categories.include).size).toBe(config.security.categories.include.length);

@@ -2,6 +2,8 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./app";
 import { startTheme } from "../ui/theme";
+import { I18nProvider } from "@lingui/react";
+import { i18n } from "../i18n";
 
 // Before the first paint: React mounting in the wrong theme and correcting
 // itself is a flash of the other one on every load.
@@ -21,6 +23,8 @@ const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } 
 
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queries}>
-    <App />
+    <I18nProvider i18n={i18n}>
+      <App />
+    </I18nProvider>
   </QueryClientProvider>,
 );

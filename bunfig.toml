@@ -4,18 +4,25 @@
 # `*.test.ts`. Those failed as ours and buried the real result.
 root = "test"
 # Order matters. A preload entry is loaded and evaluated before the next one
-# begins, and `test/support/coverage.ts` has to register its loader plugin before
-# anything it should instrument is *loaded* — not merely before it runs, because
-# a module graph is fetched ahead of evaluation. Registering from a later entry,
-# or from an `import` at the top of setup.ts, both left the four holds below and
-# their transitive closure out of the coverage map: fifty-six source files,
+# begins, and `test/support/loader.ts` has to register its plugin before anything
+# it should transform is *loaded* — not merely before it runs, because a module
+# graph is fetched ahead of evaluation. Registering from a later entry, or from
+# an `import` at the top of setup.ts, both left the four holds below and their
+# transitive closure out of the coverage map: fifty-six source files,
 # `src/scheduler.ts` among them, silently reported as estimates.
 #
-# Both files gate themselves, because the list cannot be gated from outside it.
-# coverage.ts loads the rewriter only under ORCH_COVERAGE=1; dom.ts registers a
-# document only for the test files that need one, decided from `Bun.main`, which
-# inside a preload is the absolute path of the file about to run. Between them
-# that is ~119ms per file that 107 of the 149 were paying for nothing.
+# loader.ts is one plugin doing two transforms — Lingui macro expansion and,
+# under ORCH_COVERAGE=1, oxc instrumentation — because Bun does not chain
+# `onLoad` handlers: the first registered for a path wins and the rest are never
+# called. ADR 041 has that measurement and the rest.
+#
+# All three files gate themselves, because the list cannot be gated from outside
+# it. loader.ts registers nothing for a file that cannot reach `web/src`, which
+# it decides from `Bun.main` the way dom.ts decides it needs a document — the
+# unconditional version cost 3s of CPU across the suite, on 193 processes paying
+# for a transform ~50 of them can reach. dom.ts registers a document only for the
+# test files that need one: ~119ms per file that 107 of the 149 were paying for
+# nothing.
 #
 # dom.ts's half only holds when each file gets its own process — `--isolate`, or
 # the `--parallel` that implies it, which is why the `test` script carries it.
@@ -38,7 +45,7 @@ root = "test"
 # `dom.ts` is here for the same reason and one step later: it must install a
 # document before any module that reaches `web/src` is evaluated, because Radix
 # reads `globalThis?.document` once when it loads and never asks again. It runs
-# after coverage.ts so the instrumentation sees it, and before setup.ts.
+# after loader.ts so the instrumentation sees it, and before setup.ts.
 # `test/governance/preload-scope.test.ts` holds its list of files to the imports
 # they actually have.
-preload = ["./test/support/coverage.ts", "./test/support/dom.ts", "./test/support/setup.ts"]
+preload = ["./test/support/loader.ts", "./test/support/dom.ts", "./test/support/setup.ts"]

@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
-  "entry": ["scripts/browse.ts", "scripts/make-github-app.ts"],
+  "entry": ["scripts/browse.ts", "scripts/make-github-app.ts", "web/src/app/main.tsx", "test/support/coverage.ts"],
   "ignoreUnresolvedImports": ["/dist/app.css", "/dist/main.js"],
   "typeAware": {
     "enabled": true,
@@ -19,7 +19,13 @@
     "security-client-server-leak": "warn",
     "security-sink": "warn"
   },
-  "ignoreDependencies": ["tailwindcss"],
+  "ignoreDependencies": [
+    "tailwindcss",
+    "@babel/core",
+    "@babel/types",
+    "@lingui/babel-plugin-lingui-macro",
+    "@lingui/format-json"
+  ],
   "boundaries": {
     "zones": [
       {
