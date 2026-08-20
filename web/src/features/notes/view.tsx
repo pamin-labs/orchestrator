@@ -13,8 +13,7 @@ import { WithAttachments } from "../../ui/attachments";
 import { z } from "zod";
 import { jsonOr } from "../../../../src/contracts/json.ts";
 import { NotesResponseSchema, type PanelNote as Note } from "../../../../src/contracts/notes";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
@@ -55,6 +54,7 @@ const GATES: Record<string, { text: MessageDescriptor; className?: string }> = {
 };
 
 function Evidence({ note, gate, files }: { note: Note; gate: string | null; files: string[] }) {
+  const { t } = useLingui();
   if (![gate, note.exportPath, ...files].some(Boolean)) return null;
   const found = gate ? GATES[gate] : undefined;
   const verdict = gate ? { ...found, text: found ? i18n._(found.text) : gate } : null;
@@ -262,6 +262,7 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
  * know whether this is the one, and the rest is one click away.
  */
 function Body({ text }: { text: string }) {
+  const { t } = useLingui();
   const [open, setOpen] = useState(false);
   const long = text.split("\n").length > 4 || text.length > 320;
   return (

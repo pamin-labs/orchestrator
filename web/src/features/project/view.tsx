@@ -24,7 +24,7 @@ import {
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 import { StoredProjectConfigSchema } from "../../../../src/contracts/config.ts";
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 
 const projectConfigPost = api.project[":id"].config.$post;
@@ -70,6 +70,7 @@ const GATE_ROW = "grid grid-cols-[1.25rem_1.5rem_7rem_minmax(0,1fr)] items-basel
  * `Alt` plus an arrow key covers the keyboard, which native drag does not.
  */
 export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch) => void }) {
+  const { t } = useLingui();
   const [drag, setDrag] = useState<string | null>(null);
   const gates = d.config.gates ?? [];
   const { on, off } = gateRows(gates, d.resources);
@@ -184,6 +185,7 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
  * is a wall of frames that says nothing about what goes in them.
  */
 export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; patch: (b: ProjectPatch) => void }) {
+  const { t } = useLingui();
   const now = sandboxRows(d.baseBranch, d.branches, d.config.install, d.config.sandbox);
   const set = <K extends keyof SandboxPatch>(k: K, v: SandboxPatch[K]) =>
     patch({ sandbox: sandboxSet(now.sandbox, k, v) });
@@ -263,6 +265,7 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
  * list, and two keys.
  */
 function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; onSave: (v: string[]) => void }) {
+  const { t } = useLingui();
   const [draft, setDraft] = useState("");
 
   const add = () => {
@@ -383,6 +386,7 @@ export function ImageRow({
    *  default row falls back to the yaml a fresh install ships with. */
   placeholder?: string;
 }) {
+  const { t } = useLingui();
   const [src, setSrc] = useState(imageSource(value));
   // The same key the settings shell reads this under. Two `ImageRow`s can be on
   // screen at once — the machine default and the project's own — and each held

@@ -1,11 +1,11 @@
 import { useState } from "react";
+import { useLingui } from "@lingui/react/macro";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { Tip } from "./tooltip";
 import { splitAttachments, type Attached } from "./attach";
 import { nl } from "../shared/prose";
 import { cn } from "./cn";
-import { t } from "@lingui/core/macro";
 
 /**
  * A message, and the files that came with it.
@@ -33,6 +33,7 @@ export function WithAttachments({ body, className }: { body: string; className?:
 }
 
 function Attachments({ files }: { files: Attached[] }) {
+  const { t } = useLingui();
   const [full, setFull] = useState<Attached | null>(null);
   if (!files.length) return null;
   const images = files.filter((f) => f.image);

@@ -1,9 +1,9 @@
 import * as P from "@radix-ui/react-popover";
+import { useLingui } from "@lingui/react/macro";
 import { Command } from "cmdk";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "./cn";
-import { t } from "@lingui/core/macro";
 
 /**
  * One control for a value that comes from a list: type to filter, click or Enter
@@ -50,7 +50,7 @@ export function Combobox({
   value,
   options,
   placeholder,
-  empty = t`No matching branches`,
+  empty,
   disabled,
   width,
   free,
@@ -59,6 +59,8 @@ export function Combobox({
   value: string;
   options: string[];
   placeholder?: string;
+  /** Defaulted in the body, not in the signature: a default parameter is
+   *  evaluated before `useLingui` has run. */
   empty?: string;
   disabled?: boolean;
   width?: string;
@@ -73,6 +75,8 @@ export function Combobox({
   free?: boolean;
   onCommit: (v: string) => void;
 }) {
+  const { t } = useLingui();
+  const nothingFound = empty ?? t`No matching branches`;
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const box = useRef<HTMLInputElement>(null);
@@ -168,7 +172,7 @@ export function Combobox({
             >
               {!shown.length && (
                 <div className="px-2 py-2 text-secondary text-ink-3">
-                  {options.length ? empty : t`Can't read remote branches; storing what you entered`}
+                  {options.length ? nothingFound : t`Can't read remote branches; storing what you entered`}
                 </div>
               )}
               {shown.map((o) => (

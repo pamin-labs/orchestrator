@@ -1,7 +1,7 @@
 import * as P from "@radix-ui/react-popover";
+import { useLingui } from "@lingui/react/macro";
 import * as T from "@radix-ui/react-tooltip";
 import { CircleHelp } from "lucide-react";
-import { t } from "@lingui/core/macro";
 
 /**
  * `title=` is the browser's tooltip: a second of delay, no styling, no keyboard
@@ -49,6 +49,7 @@ export function Tip({ label, children }: { label: React.ReactNode; children: Rea
  * decision with a threshold: a phrase hovers, a paragraph is clicked.
  */
 export function Help({ children }: { children: React.ReactNode }) {
+  const { t } = useLingui();
   return (
     <P.Root>
       <P.Trigger

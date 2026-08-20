@@ -11,7 +11,7 @@ import { KIND_LABEL } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { foldQueueItems, queueClusters, queueItems, type QueueCluster, type QueueItem } from "./model";
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 import { i18n } from "../../i18n";
 
@@ -309,6 +309,7 @@ function TicketReply({ item, standing, refresh }: { item: QueueItem; standing: b
  * answer text is unimportant, unblocking the agent is not.
  */
 function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh: () => void }) {
+  const { t } = useLingui();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [busy, startTransition] = useTransition();

@@ -10,8 +10,7 @@ import { cn } from "../../ui/cn";
 import { Empty, Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 
 /**
  * What this group's container is, and what it is saying right now.
@@ -53,6 +52,7 @@ const fromSandbox = (f: PanelFrame, grpId: number): boolean =>
   f.grpId === grpId && f.agentId == null && (f.cls === "tool" || f.cls === "state") && f.author === "orchestrator";
 
 export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
+  const { t } = useLingui();
   const queries = useQueryClient();
   const [busy, startTransition] = useTransition();
   // The group is the key. This was `useState` filled from a bare `.then()`, so

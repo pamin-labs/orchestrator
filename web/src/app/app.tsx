@@ -61,8 +61,7 @@ import {
   viewClass,
   waitingProject,
 } from "../features/navigation/model";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { i18n } from "../i18n";
 
 type UiKey = "adding" | "pickProject" | "pickReq" | "picking" | "side";
@@ -116,6 +115,7 @@ function Crumb({
 }
 
 export function App() {
+  const { t } = useLingui();
   const { state: st, cost, frames, live, refresh } = useOrch();
   const [sel, setSel] = useState<Selection>(() => parseSelection(location.hash));
   const { ui, setAdding, setPickProject, setPickReq, setPicking, setSide } = useUi();

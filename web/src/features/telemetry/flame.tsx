@@ -16,8 +16,7 @@ import { Minimap } from "./minimap";
 import { useWheel } from "../../shared/use-wheel";
 import { duration } from "../../shared/format";
 import { type FlameNode, humanName, isRenamed, type TimeWindow, WHOLE, wheelWindow } from "./model";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /**
  * One flame row, and the type that sits in it. 20 holds the 0.6875rem meta size
@@ -220,6 +219,7 @@ function useFlameChart({
 }
 
 export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked: readonly string[] }) {
+  const { t } = useLingui();
   const [view, setView] = useState<TimeWindow>({ from: 0, to: 1 });
   const zoom = view.to - view.from;
   const { host, port, details, chart, zoomed, setZoomed } = useFlameChart({ tree, self, picked, zoom });

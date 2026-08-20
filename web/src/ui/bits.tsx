@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { useLingui } from "@lingui/react/macro";
 import { Button } from "./button";
 import { cn } from "./cn";
-import { t } from "@lingui/core/macro";
 
 /**
  * Section label.
@@ -102,6 +102,7 @@ export const Pane = ({ children, className }: { children: React.ReactNode; class
  * two-word question grows a 展开 that does nothing.
  */
 export function Clamp({ lines = 2, children }: { lines?: number; children: React.ReactNode }) {
+  const { t } = useLingui();
   const [open, setOpen] = useState(false);
   const [over, setOver] = useState(false);
   const box = useRef<HTMLDivElement>(null);

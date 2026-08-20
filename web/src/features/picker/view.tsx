@@ -9,8 +9,7 @@ import { cn } from "../../ui/cn";
 import { browseListing, browseRow, repoRow, type Entry } from "./model";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 
 const EntrySchema = z.object({
   name: z.string(),
@@ -51,6 +50,7 @@ function Glyph({ mark, accent }: { mark: string; accent: boolean }) {
 
 /** Picking attachments: the arrow walks in, the name toggles the tick. */
 function PickBrowseRow(props: RowProps) {
+  const { t } = useLingui();
   return (
     <div className={cn(props.row, "hover:bg-sunk")}>
       {props.isDir ? (
@@ -273,6 +273,7 @@ function RepoHeader({
   here: RepoList["installations"][number] | undefined;
   selectInstallation: (id: number) => void;
 }) {
+  const { t } = useLingui();
   return (
     <div className="flex items-baseline gap-2 border-b border-rule p-3">
       {title}
@@ -443,6 +444,7 @@ function RepositoryList({ data, busy, select }: { data: RepoList | null; busy: s
 }
 
 function RepoFooter({ data, onCancel }: { data: RepoList | null; onCancel: (() => void) | undefined }) {
+  const { t } = useLingui();
   if (!onCancel && !data?.repos.length) return null;
   return (
     <div className="flex shrink-0 items-center gap-2 border-t border-rule p-3">
@@ -471,6 +473,7 @@ function Repos({
   onSettings: () => void;
   onCancel?: () => void;
 }) {
+  const { t } = useLingui();
   const [d, setD] = useState<RepoList | null>(cached);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
@@ -605,6 +608,7 @@ export function FilePicker({
   onOpenChange: (v: boolean) => void;
   onPick: (paths: string[]) => void;
 }) {
+  const { t } = useLingui();
   const [sel, setSel] = useState<string[]>([]);
   useEffect(() => {
     if (open) setSel([]);

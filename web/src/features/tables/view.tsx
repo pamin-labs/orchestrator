@@ -14,7 +14,7 @@ import { owns } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { activityOf } from "../../shared/activity";
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
@@ -29,6 +29,7 @@ import { said } from "../../shared/select";
  * stream the page is already holding, so nothing here costs an agent a token.
  */
 export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[]; projectId: number }) {
+  const { t } = useLingui();
   const ids = new Set(st.groups.filter((g) => g.project_id === projectId).map((g) => g.id));
   const rows = st.agents.filter((a) => !a.grp_id || ids.has(a.grp_id));
   const [idle, setIdle] = useState(false);
@@ -148,6 +149,7 @@ function Desks({
   slices: Slice[];
   tail: Map<number, string>;
 }) {
+  const { t } = useLingui();
   const runners = agents.filter((a) => a.state === "running").length;
   const [open, setOpen] = useState(runners > 0);
   const list = [...agents].sort((a, b) => Number(b.state === "running") - Number(a.state === "running"));
@@ -292,6 +294,7 @@ const sessionTip = (a: State["agents"][number]): string => {
 };
 
 export function Owns({ st, projectId }: { st: State; projectId: number }) {
+  const { t } = useLingui();
   const all = st.groups.filter((g) => g.project_id === projectId);
   const { groups: gs, bare, bumps, hit, rows } = ownershipModel(all);
   // Named, for the same reason as the desk header above.
@@ -438,6 +441,7 @@ function costSummary(cost: Cost) {
 }
 
 export function CostView({ cost }: { cost: Cost | null }) {
+  const { t } = useLingui();
   if (!cost?.total?.tokens) {
     return (
       <Empty>

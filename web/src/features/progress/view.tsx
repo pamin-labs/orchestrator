@@ -9,7 +9,7 @@ import { usePaged } from "../../shared/page";
 import { STOPS, countWaiting, gates, heldApproved, statusLabel } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
-import { Plural, Trans } from "@lingui/react/macro";
+import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
@@ -74,6 +74,7 @@ export function Progress({
   /** What needs the boss. Rendered as the 待办 tab, not above it. */
   queue?: React.ReactNode;
 }) {
+  const { t } = useLingui();
   const groups = st.groups.filter((g) => g.project_id === projectId);
   const archived = (st.archived ?? []).filter((a) => a.project_id === projectId);
   // A group already approved is not the boss's to act on: it belongs with the

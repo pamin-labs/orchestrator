@@ -37,7 +37,7 @@ import {
   trendScale,
   wheelWindow,
 } from "./model";
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 import { i18n } from "../../i18n";
 
@@ -163,6 +163,7 @@ function BucketPicker({
   windowMs: number;
   onPick: (ms: number | null) => void;
 }) {
+  const { t } = useLingui();
   return (
     <Menu label={`${perBucket(bucketLabel(value))}${pinned ? "" : t`(following)`}`}>
       <MenuItem hint={t`Follow window—updates as window changes, fits without crowding`} onSelect={() => onPick(null)}>
@@ -235,6 +236,7 @@ function StageTable({
   onPick: (names: readonly string[]) => void;
   onExclude: (name: string) => void;
 }) {
+  const { t } = useLingui();
   // Shut by default: the reader opens the group that looks expensive — and then
   // the next one, which is why this is a set rather than a single value. The
   // question 巡检规则 raises is "against what", and answering it by closing
@@ -461,6 +463,7 @@ function MenuAction({ onSelect, children }: { onSelect: () => void; children: Re
  * bounds the tree at 64 levels, since that walk would not terminate on a cycle.
  */
 function FlameBlock({ folded, picked }: { folded: Report["flame"]; picked: readonly string[] }) {
+  const { t } = useLingui();
   const [self, setSelf] = useState(true);
   const tree = useMemo(() => flameTree(folded), [folded]);
   const depth = flameDepth(tree);
@@ -525,6 +528,7 @@ function Trend({
   /** Drag and wheel write the same thing, and every block reads it. */
   onWindow: (next: TimeWindow | null) => void;
 }) {
+  const { t } = useLingui();
   const box = useRef<HTMLDivElement>(null);
   useWheel(box, (event) => {
     const el = box.current;
@@ -750,6 +754,7 @@ function TrendBlock({
   chosen: TimeWindow | null;
   onWindow: (next: TimeWindow | null) => void;
 }) {
+  const { t } = useLingui();
   return (
     <Block
       title={t`Per-run duration`}
@@ -829,6 +834,7 @@ export function Telemetry({
   trend?: boolean;
   empty?: string;
 }) {
+  const { t } = useLingui();
   const { picked, excluded, pick, exclude, restore, restoreAll } = useSelection();
   /**
    * The stretch of time the page is showing, when the reader has chosen one.
@@ -1008,6 +1014,7 @@ const HOST: TelemetryScope = { kind: "system" };
  * slower"), the host's is "is it slow now".
  */
 export function SystemTiming() {
+  const { t } = useLingui();
   return (
     <>
       <Head title={t`System timing`} note={t`Timing for all activity on this machine, last 24h`} />

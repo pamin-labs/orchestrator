@@ -2,8 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
 import { Button } from "./button";
 import { Textarea } from "./bits";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 
 /**
  * Confirmations are ours, not the browser's.
@@ -70,6 +69,7 @@ export function AskCard({
   onText: (v: string) => void;
   onDone: (v: string | true | null) => void;
 }) {
+  const { t } = useLingui();
   return (
     <Dialog.Content
       className="fixed left-1/2 top-1/3 z-50 w-[min(28rem,92vw)] -translate-x-1/2 rounded-xl

@@ -8,7 +8,7 @@ import { Button } from "../../ui/button";
 import { DiffView } from "../diff/view";
 import { Segment, Segments } from "../../ui/segment";
 import { Tip } from "../../ui/tooltip";
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 
 const PAD = "px-4";
@@ -121,6 +121,7 @@ function EvidenceHeader({
   setView: (view: string) => void;
   actions?: React.ReactNode;
 }) {
+  const { t } = useLingui();
   return (
     <div className={cn(PAD, "sticky top-0 z-10 border-b border-rule bg-rail py-2.5")}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
@@ -151,6 +152,7 @@ function EvidenceTabs({
   view: string;
   setView: (view: string) => void;
 }) {
+  const { t } = useLingui();
   const bad = evidence.verdicts.some(failed);
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -246,6 +248,7 @@ function filterLines(lines: string[], query: string): string[] {
 
 /** The same race one level down: two gate tabs in a row, answered out of order. */
 function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
+  const { t } = useLingui();
   const [query, setQuery] = useState("");
   const { data: text } = useQuery({
     queryKey: ["gate", sliceId, name],
@@ -285,6 +288,7 @@ function GateToolbar({
   query: string;
   setQuery: (query: string) => void;
 }) {
+  const { t } = useLingui();
   return (
     <div className={cn(PAD, "flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-rule py-1.5")}>
       <span className={cn("text-secondary font-semibold", fails ? "text-bad" : "text-ok")}>
@@ -312,6 +316,7 @@ function keyed(values: string[]): Array<{ key: string; value: string }> {
 }
 
 function GateTranscript({ lines, query }: { lines: string[]; query: string }) {
+  const { t } = useLingui();
   if (!lines.length) return <LogPane>{query ? t`No matching lines` : t`This log is empty`}</LogPane>;
   return (
     <LogPane>

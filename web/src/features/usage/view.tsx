@@ -1,9 +1,9 @@
 import { Fragment } from "react";
+import { useLingui } from "@lingui/react/macro";
 import { R, type RingInput, ringView, staleMark } from "./model";
 import type { Usage } from "../../shared/api";
 import { cn } from "../../ui/cn";
 import { Tip } from "../../ui/tooltip";
-import { t } from "@lingui/core/macro";
 
 /**
  * How much of each subscription is left, in the header.
@@ -46,6 +46,7 @@ export function windowRing(u: Usage, w: "five" | "week"): { v?: number; at?: num
 }
 
 function UsageRow({ usage }: { usage: Usage }) {
+  const { t } = useLingui();
   const shared = {
     read: usage.at,
     stale: staleMark(usage),

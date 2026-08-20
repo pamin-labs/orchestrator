@@ -83,7 +83,7 @@ import {
   tickTextClass,
   type StepState,
 } from "./model";
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 
 /**
@@ -124,6 +124,7 @@ export function Requirement({
   tab?: string | null;
   onTab?: (t: string) => void;
 }) {
+  const { t } = useLingui();
   const slices = groupSlices(st, g.id);
   const asks = bossFirst(asksOf(st, g.id));
   const mine = mineOf(asks);
@@ -368,6 +369,7 @@ function AskLanes({
  * is what remains. Nothing here is stored twice.
  */
 function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
+  const { t } = useLingui();
   const box = useRef<HTMLDivElement>(null);
   /** Stay pinned to the newest line only while the reader is already there. */
   const pinned = useRef(true);
@@ -509,6 +511,7 @@ const dropBody = (name: string): string =>
   t`${name} leaves the board and every queued turn is cancelled. The code and the record are both kept.`;
 
 function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
+  const { t } = useLingui();
   // `g.name` reaches a translator as `{0}`; a named local reaches it as `{name}`.
   const name = g.name;
   const running = isRunning(g);
@@ -698,6 +701,7 @@ function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => v
  * as "already done".
  */
 function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
+  const { t } = useLingui();
   return (
     <Button
       variant="go"
@@ -725,6 +729,7 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
  * composer as everywhere else, screenshot included.
  */
 function RejectSlice({ sliceId, refresh }: { sliceId: number; refresh: () => void }) {
+  const { t } = useLingui();
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -756,6 +761,7 @@ const setBudget = async (g: Group, tokens: number | null, refresh: () => void) =
 
 /** Spend against its cap, and the cap itself, editable. Nothing sets one otherwise. */
 function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
+  const { t } = useLingui();
   if (g.budget_tokens == null) {
     return (
       <button
@@ -961,6 +967,7 @@ function SendAs({
  * decomposition survives to the end.
  */
 function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; projectId: number }) {
+  const { t } = useLingui();
   const send = async (d: Draft, as?: "patch" | "respec" | "reject") => {
     const r = await mutate(
       api.say.$post({
@@ -1034,6 +1041,7 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
 }
 
 function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void }) {
+  const { t } = useLingui();
   const { filed, idea, late, proposal, unknown } = draftView(st, g.id);
   const [card, setCard] = useState(filed);
 
@@ -1132,6 +1140,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
 
 /** A planner's case that this requirement is already covered, and the two answers to it. */
 function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: () => void }) {
+  const { t } = useLingui();
   return (
     <div className="my-3 rounded-md border border-warn/40 bg-sunk px-3 py-2.5">
       <div className="text-body font-semibold text-warn">
@@ -1185,6 +1194,7 @@ function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: (
  * different things depending on which one is pressed.
  */
 function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; projectId: number }) {
+  const { t } = useLingui();
   const send = async (d: Draft, as: "patch" | "respec") => {
     const r = await mutate(api.say.$post({ json: { group_id: g.id, body: d.text, attachments: d.attachments, as } }));
     refresh();
@@ -1247,6 +1257,7 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
  * into a horizontal scroll — the content was there, just off the left edge.
  */
 function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: boolean }) {
+  const { t } = useLingui();
   // Seeding by remount: the composer owns its text once the boss starts typing,
   // and a controlled value here would fight them for it. Nothing is sent by the
   // draft — its button fills the box and the boss sends it.

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Head, Input, Meta } from "../../ui/bits";
@@ -37,6 +37,7 @@ const skillsNote = (tally: { staged: number; user: number; repo: number; k: numb
 };
 
 export function Skills({ projectId }: { projectId: number | null }) {
+  const { t } = useLingui();
   const queries = useQueryClient();
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<string | null>(null);

@@ -1,6 +1,6 @@
 import { ComposerDialog } from "../composer/view";
+import { useLingui } from "@lingui/react/macro";
 import { api, mutate } from "../../shared/api";
-import { t } from "@lingui/core/macro";
 
 /**
  * Dropping an idea.
@@ -21,6 +21,7 @@ export function NewRequirement({
   projectId: number;
   onDone: () => void;
 }) {
+  const { t } = useLingui();
   return (
     <ComposerDialog
       open={open}
