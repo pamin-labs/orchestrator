@@ -67,22 +67,6 @@
     "comments": [],
     "translation": "）会重建前端。"
   },
-  "_0tQ5d": {
-    "message": "{0, plural, one {# slice awaiting acceptance} other {# slices awaiting acceptance}}",
-    "placeholders": {
-      "0": ["facts.waiting"]
-    },
-    "comments": [],
-    "translation": "{0} 片待查收"
-  },
-  "GUAa3z": {
-    "message": "{0, plural, one {# slice} other {# slices}}",
-    "placeholders": {
-      "0": ["a.slices"]
-    },
-    "comments": [],
-    "translation": "{0} 片"
-  },
   "njveiC": {
     "message": "{0} (per the remote)",
     "placeholders": {
@@ -310,6 +294,14 @@
     "comments": [],
     "translation": "{months} 个月前"
   },
+  "6bwnTR": {
+    "translation": "{n} 片",
+    "message": "{n, plural, one {# slice} other {# slices}}",
+    "placeholders": {
+      "n": ["n"]
+    },
+    "comments": []
+  },
   "jMDoJw": {
     "message": "{n} more queued behind it",
     "placeholders": {
@@ -427,6 +419,14 @@
     },
     "comments": [],
     "translation": "{total} 条等你"
+  },
+  "ZKgsmP": {
+    "translation": "{waiting} 片待查收",
+    "message": "{waiting, plural, one {# slice awaiting acceptance} other {# slices awaiting acceptance}}",
+    "placeholders": {
+      "waiting": ["waiting"]
+    },
+    "comments": []
   },
   "Z6Ml5d": {
     "message": "{waiting} to do",

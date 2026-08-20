@@ -84,6 +84,10 @@ const steps: Step[] = [
   // Checks rather than writes, so it cannot be the thing that dirties the tree
   // the CI step below it exists to catch.
   { name: "translation table", job: "quality", run: () => cmd("bun run i18n:progress --check") },
+  // Nothing else reads a translation: we do not run `lingui compile`, and
+  // `compile --strict` also fails on a missing one, which eight locales
+  // deliberately are.
+  { name: "translation syntax", job: "quality", run: () => cmd("bun run i18n:validate") },
   { name: "web bundle", job: "quality", run: () => cmd("bun run build:web") },
   // Through `bun run test`, not `bun test` directly: that wrapper retries an arm64
   // worker panic once and nothing else, and this is the command a developer runs

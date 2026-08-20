@@ -32,6 +32,19 @@ const BUCKETS: Bucket[] = [
 ];
 const DONE = "done";
 
+/**
+ * A placeholder takes the name of the expression that fills it, so
+ * `value={facts.waiting}` reaches a translator as `{0}` and a parameter reaches
+ * them as itself — which is the whole of the context they get for a plural.
+ */
+const AwaitingBadge = ({ waiting }: { waiting: number }) => (
+  <Badge tone="mine">
+    <Plural value={waiting} one="# slice awaiting acceptance" other="# slices awaiting acceptance" />
+  </Badge>
+);
+
+const SliceCount = ({ n }: { n: number }) => <Plural value={n} one="# slice" other="# slices" />;
+
 /** The plan card's goal line, matched by its prefix. The card is written by an
  *  agent in `output.language`, so this is not a message: it is the shape of a
  *  document the panel reads. */
@@ -237,11 +250,7 @@ function RowFlags({ st, group, facts }: { st: State; group: Group; facts: RowFac
           <Trans>Budget exhausted</Trans>
         </Badge>
       )}
-      {facts.waiting > 0 && (
-        <Badge tone="mine">
-          <Plural value={facts.waiting} one="# slice awaiting acceptance" other="# slices awaiting acceptance" />
-        </Badge>
-      )}
+      {facts.waiting > 0 && <AwaitingBadge waiting={facts.waiting} />}
       {group.status === "PR_OPEN" &&
         (url ? (
           <Badge
@@ -375,7 +384,7 @@ function Done({ rows }: { rows: Archived[] }) {
             {a.pr_number ? <Meta className="ml-2">#{a.pr_number}</Meta> : null}
           </span>
           <Meta>
-            <Plural value={a.slices} one="# slice" other="# slices" />
+            <SliceCount n={a.slices} />
           </Meta>
         </div>
       ))}
