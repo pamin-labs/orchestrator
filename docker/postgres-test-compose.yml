@@ -54,14 +54,25 @@ services:
       - wal_level=minimal
       - -c
       - max_wal_senders=0
-      # Half the default. The data directory *is* memory, so a large buffer pool
-      # is a second copy of pages the OS is already holding.
+      # A quarter of the default. The data directory *is* memory, so a large
+      # buffer pool is a second copy of pages the OS is already holding.
       - -c
-      - shared_buffers=64MB
+      - shared_buffers=32MB
+      # 4MB is sized for reports. The suite peaks at 241 connections — ten workers
+      # holding a pool of 24 — and every one of them can claim `work_mem` per sort,
+      # against tables measured in single-figure rows.
+      - -c
+      - work_mem=512kB
       # Nothing here lives long enough to bloat, and every test empties its tables
       # itself; three autovacuum workers are three processes with no work.
       - -c
       - autovacuum=off
+      # Which statements the suite actually sends, and how many times. Reading
+      # that is how the `pg_constraint` scan behind `TRUNCATE ... CASCADE` was
+      # found; guessing at it is how two earlier attempts optimised the wrong
+      # thing. Cheap: a fixed-size hash table, no per-statement allocation.
+      - -c
+      - shared_preload_libraries=pg_stat_statements
       - -c
       # Ten workers, each holding a pool of 24 — the panel snapshot issues nineteen
       # concurrent statements — plus the admin connections that create the

@@ -4,7 +4,7 @@ import { getTableName, is, sql } from "drizzle-orm";
 import type { Logger } from "drizzle-orm/logger";
 import { drizzle as bunSqlDrizzle } from "drizzle-orm/bun-sql";
 import { migrate as bunSqlMigrate } from "drizzle-orm/bun-sql/migrator";
-import { PgTable, type PgAsyncDatabase, type PgQueryResultHKT } from "drizzle-orm/pg-core";
+import { getTableConfig, PgTable, type PgAsyncDatabase, type PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "../config/load.ts";
@@ -196,7 +196,10 @@ async function dropMyOldGenerations(admin: SQL, mine: string, suffix: string): P
     SELECT nspname FROM pg_namespace
     WHERE starts_with(nspname, 't_') AND right(nspname, ${tail.length}) = ${tail} AND nspname <> ${mine}`;
   // `CASCADE`, and best-effort: losing a race here costs memory and nothing else.
-  for (const { nspname } of stale) await admin.unsafe(`DROP SCHEMA IF EXISTS "${nspname}" CASCADE`).catch(() => {});
+  const ddl = bunSqlDrizzle({ client: admin });
+  for (const { nspname } of stale) {
+    await ddl.execute(sql`DROP SCHEMA IF EXISTS ${sql.identifier(nspname)} CASCADE`).catch(() => {});
+  }
 }
 
 const ready = new Map<string, Promise<SQL>>();
@@ -241,43 +244,6 @@ async function buildNamespace(client: SQL): Promise<void> {
   await terminalStateGuard(bunSqlDrizzle({ client }));
 }
 
-/**
- * Empty the tables, retrying while the last test is still letting go.
- *
- * A detached chain from the test before still holds a read lock on one of them,
- * and it is finishing rather than stuck — so waiting is the whole fix, but the
- * wait has to be *this* statement's. Left plain, the deadlock detector picks the
- * victim, and the abort landed on the stray, arriving as a failure in the next
- * test. `lock_timeout` under `deadlock_timeout` makes this one always give up
- * first; `SET LOCAL` in a transaction, or the pool settles it elsewhere.
- */
-async function emptied(db: DB, statement: string): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      // `SET LOCAL` in a transaction, which costs `BEGIN`, `SET`, `TRUNCATE`,
-      // `COMMIT` — four round trips at 0.1ms each. Both alternatives were tried
-      // and are worse: on the database it reaches every statement in every test
-      // (one run in six died on `canceling statement due to lock timeout` inside
-      // a login flow), and a multi-statement simple query is refused on a pool.
-      await db.transaction(async (tx) => {
-        await tx.execute(sql`SET LOCAL lock_timeout = '250ms'`);
-        // fallow-ignore-next-line security-sink -- built from `getTableName` over `schema.ts`; test-only, no request path
-        await tx.execute(sql.raw(statement));
-      });
-      return;
-    } catch (error) {
-      if (attempt >= 40 || !/deadlock|lock timeout|lock_timeout/i.test(errText(error, 2_000))) throw error;
-      // Only once the wait has already failed. Unconditionally clearing the other
-      // backends looks tidier and is wrong: the login flows keep working after
-      // their request returns, on purpose, so the common path would cancel
-      // legitimate work and report it against the next test. A statement still
-      // holding a lock through the retries is a different thing.
-      if (attempt === 20) await clearBackends(db, mineNamespace(db));
-      await Bun.sleep(10);
-    }
-  }
-}
-
 /** Which namespace a handle is pointed at, so cancellation stays inside this file's. */
 const namespaces = new WeakMap<DB, string>();
 const mineNamespace = (db: DB): string => namespaces.get(db) ?? "";
@@ -317,7 +283,7 @@ export async function openMemory(logger?: Logger, isolate = ""): Promise<DB> {
         const found = await admin<{ present: number }[]>`SELECT 1 AS present FROM pg_namespace WHERE nspname = ${mine}`;
         const client = new SQL({ url: urlFor(mine), max: 24 });
         if (found.length === 0) {
-          await admin.unsafe(`CREATE SCHEMA "${mine}"`);
+          await bunSqlDrizzle({ client: admin }).execute(sql`CREATE SCHEMA ${sql.identifier(mine)}`);
           await buildNamespace(client);
         }
         await dropMyOldGenerations(admin, mine, suffixFor(isolate));
@@ -335,14 +301,83 @@ export async function openMemory(logger?: Logger, isolate = ""): Promise<DB> {
   // `logger` is Drizzle's own hook, for the two tests that count statements.
   const db = bunSqlDrizzle(logger ? { client: await mineReady, logger } : { client: await mineReady });
   namespaces.set(db, mine);
-  const names = TABLES.map((t) => `"${t}"`).join(", ");
-  await emptied(db, `TRUNCATE ${names} RESTART IDENTITY CASCADE`);
+  await emptied(db);
   return db;
 }
 
 const TABLES = Object.values<unknown>(schema)
   .filter((v): v is PgTable => is(v, PgTable))
   .map((t) => getTableName(t));
+
+/**
+ * Empty every table, and reset the identities that were used.
+ *
+ * `DELETE`, not `TRUNCATE`: truncating makes a new relfilenode per relation — 19
+ * tables, 36 indexes, 11 sequences — right on a big table, wrong on ones holding
+ * single-figure rows. Measured at **1,183 calls, 33,745ms**, more than every
+ * insert and select combined; `DELETE` is 5x faster and nearly free when empty.
+ * A CTE for the rows and one statement for the sequences, because `DELETE` resets
+ * no identity. Foreign keys are deferred for the transaction, not ordered around.
+ */
+const DELETE_ALL = sql`WITH ${sql.join(
+  TABLES.map((t, i) => sql`${sql.identifier(`d${i}`)} AS (DELETE FROM ${sql.identifier(t)})`),
+  sql`, `,
+)} SELECT 1`;
+/**
+ * The identity sequences, derived from `schema.ts` rather than asked for.
+ *
+ * `pg_sequences` was 98 calls and 277ms to answer a question the schema already
+ * knows: Drizzle names one `<table>_<column>_seq` per generated identity, which
+ * is what PostgreSQL created. A catalogue query for a constant is a round trip
+ * that can never return anything new.
+ */
+const RESET_ALL = (() => {
+  const names = Object.values<unknown>(schema)
+    .filter((v): v is PgTable => is(v, PgTable))
+    .flatMap((table) => {
+      const config = getTableConfig(table);
+      return config.columns.filter((c) => c.generatedIdentity).map((c) => `${config.name}_${c.name}_seq`);
+    });
+  // `sql.join` over `sql` fragments, so each name is a bound parameter rather than
+  // a quoted literal this file had to escape itself.
+  return names.length
+    ? sql`SELECT ${sql.join(
+        names.map((n) => sql`setval(${n}, 1, false)`),
+        sql`, `,
+      )}`
+    : sql`SELECT 1`;
+})();
+
+async function emptied(db: DB): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await db.transaction(async (tx) => {
+        // `SET LOCAL`, so a standoff with a stray from the test before ends with
+        // *this* statement giving up rather than the deadlock detector choosing.
+        await tx.execute(sql`SET LOCAL lock_timeout = '250ms'`);
+        // And so the deletes below can run in any order. Foreign keys are checked
+        // by triggers, immediately, per statement — a CTE puts every `DELETE`
+        // under one snapshot but does **not** make them one statement, so
+        // emptying `grp` before `event` was `violates foreign key constraint
+        // event_grp_id_grp_id_fkey`. `replica` is what PostgreSQL's own restore
+        // path uses for exactly this, and `SET LOCAL` keeps it inside the
+        // transaction. `TRUNCATE ... CASCADE` never needed it because truncation
+        // takes every table at once.
+        await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+        await tx.execute(DELETE_ALL);
+        await tx.execute(RESET_ALL);
+      });
+      return;
+    } catch (error) {
+      if (attempt >= 40 || !/deadlock|lock timeout|lock_timeout/i.test(errText(error, 2_000))) throw error;
+      // Only once waiting has already failed: the login flows keep writing after
+      // their request returns, so cancelling on the common path would kill
+      // legitimate work and report it against the next test.
+      if (attempt === 20) await clearBackends(db, mineNamespace(db));
+      await Bun.sleep(10);
+    }
+  }
+}
 
 /**
  * The `setting` key/value table, read and written in one place.
