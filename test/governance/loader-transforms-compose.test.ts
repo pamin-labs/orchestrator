@@ -16,7 +16,10 @@ import { instrumented } from "../support/coverage.ts";
 const PANEL = `${process.cwd()}/web/src/ui/bits.tsx`;
 
 /** `oxc` returns the map beside the code; the shape it uses is not the plugin's business. */
-const mapOf = (code: string, path: string): { path: string; fnMap: Record<string, { decl: { start: { line: number } } }> } => {
+const mapOf = (
+  code: string,
+  path: string,
+): { path: string; fnMap: Record<string, { decl: { start: { line: number } } }> } => {
   const marker = "coverageData = {";
   const at = code.indexOf(marker);
   expect(at).toBeGreaterThan(-1);
