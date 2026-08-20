@@ -62,7 +62,7 @@ import { serverLogPath } from "../sandbox/server.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { buildMap, indexExcludes, saveMap } from "../knowledge/repomap.ts";
+import { buildMap, indexExcludes, loadMap, saveMap } from "../knowledge/repomap.ts";
 import { resumeReclaimed } from "../../platform/scheduling/scheduler.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
 import { probe } from "../sandbox/net.ts";
@@ -490,9 +490,27 @@ type MapProject = { id: number; repo_path: string; remote: string | null };
  * stored one.
  */
 async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise<void> {
-  // An empty stamp means "cannot tell", which is a reason to do the work rather
-  // than to skip it: a container that will not answer must not freeze the map.
   const stamp = p.remote ? await mapStamp(ctx, p.id, p.repo_path) : "";
+  // An unreadable stamp used to mean "do the work anyway", on the reasoning that a
+  // container which will not answer must not freeze the map. Measured over 2,766
+  // ticks: it froze nothing and cost **6,351 seconds** — 95% of the whole watchdog
+  // tick. The container that cannot answer `rev-parse` is the same one
+  // `treeHeads` reads file contents from, so every one of those rebuilds produced
+  // a *paths-only* map and stored it over a better one, at 5.3s a tick, for as
+  // long as the container stayed down.
+  // Once, if there is nothing stored yet — a paths-only map beats no map, and it
+  // is the repetition that cost the 6,351 seconds, not the first build.
+  if (p.remote && !stamp && (await loadMap(ctx.db, p.id)).length > 0) {
+    if (mapWarned.has(p.id)) return;
+    mapWarned.add(p.id);
+    findings.push({
+      rule: "repo-map",
+      grpId: null,
+      severity: "advisory",
+      body: `仓库地图停在上一次的版本：${p.repo_path} 的容器读不到 HEAD，重建只会得到一份没有符号的地图`,
+    });
+    return;
+  }
   if (stamp && (await readSetting(ctx.db, MAP_KEY(p.id))) === stamp) return;
   const { files, why } = p.remote
     ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))

@@ -1304,13 +1304,16 @@ test("an idle project pays one cheap exec a tick, not the whole corpus", async (
 });
 
 /**
- * A stamp that cannot be taken is not a stamp saying "unchanged".
+ * An unreadable container builds the map once, then says so and stops.
  *
- * The container being unreadable is the one case where skipping would be wrong
- * and permanent: the map would freeze at whatever it last held, and nothing would
- * ever ask again, because the answer to "did it change" would keep failing.
+ * It used to rebuild every tick, because a stamp that cannot be taken is not a
+ * stamp saying "unchanged". Measured over 2,766 real ticks that cost **6,351
+ * seconds — 95% of the whole watchdog tick** and bought nothing: the container
+ * that cannot answer `rev-parse` is the one `treeHeads` reads contents from, so
+ * each rebuild stored a *paths-only* map over a better one. The first build
+ * stays — a paths-only map beats none; the repetition was the defect.
  */
-test("an unreadable container refreshes the map rather than skipping it", async () => {
+test("an unreadable container builds the map once, then reports instead of rebuilding", async () => {
   const h = await harness();
   const sandbox = fakeSandbox((cmd) => {
     if (cmd.includes("rev-parse")) return { code: 128, err: "not a git repository" };
@@ -1320,11 +1323,15 @@ test("an unreadable container refreshes the map rather than skipping it", async 
   h.ctx.sandbox = sandbox;
   await h.db.update(projectTable).set({ remote: "https://example.invalid/o/r.git" }).where(eq(projectTable.id, 1));
 
-  await runWatchdog(h.deps);
-  await runWatchdog(h.deps);
+  const ticks = [await runWatchdog(h.deps), await runWatchdog(h.deps), await runWatchdog(h.deps)];
 
-  expect(sandbox.commands.filter((c) => c.includes("ls-tree"))).toHaveLength(2);
+  // One build, not one per tick — and the stamp is still absent, so the moment the
+  // container answers again the ordinary gate takes over with no special case.
+  expect(sandbox.commands.filter((c) => c.includes("ls-tree"))).toHaveLength(1);
   expect(await readSetting(h.db, "watchdog.repo_map.1")).toBeNull();
+  // Said once, and it names why rebuilding would not help.
+  const said = ticks.flat().filter((f) => f.body.includes("仓库地图停在上一次的版本"));
+  expect(said).toHaveLength(1);
 });
 
 test("every live container is renewed on the tick: groups, projects and the utility one", async () => {
