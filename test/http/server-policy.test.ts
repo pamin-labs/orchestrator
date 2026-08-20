@@ -246,7 +246,18 @@ test("an index model that answers nothing is not asked again until credentials c
 
   await recordIndexResult(ctx, p, "sha-2", { calls: 12, failed: 12, files: 30 });
   expect(await indexPaused(ctx.db, p)).toBe(true);
-  expect((await ctx.db.select({ c: count() }).from(tbl.event).where(eq(tbl.event.severity, "blocker")))[0]?.c).toBe(2);
+  // The bodies, not the count. `warnModelDown` dedups on `max(runtime_auth.updated_at)`,
+  // so exactly two are expected: one before any credential exists and one after
+  // signing this one in. CI once saw three and a bare count could only say "3",
+  // which names neither the extra event nor who wrote it.
+  const blockers = await ctx.db
+    .select({ body: tbl.event.body })
+    .from(tbl.event)
+    .where(eq(tbl.event.severity, "blocker"));
+  expect(blockers.map((b) => b.body)).toEqual([
+    "PageIndex 建不起来：12 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。",
+    "PageIndex 建不起来：12 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。",
+  ]);
 
   // A pass that worked clears it outright.
   await recordIndexResult(ctx, p, "sha-3", { calls: 4, failed: 0, files: 9 });
