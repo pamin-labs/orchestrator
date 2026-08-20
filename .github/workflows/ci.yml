@@ -97,12 +97,12 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       # The compose file, not a `services:` block restating half of it. A service
-      # container takes no `command`, so this ran on PostgreSQL's default
-      # `max_connections=100` while the compose file sets **600** and says why:
-      # each worker holds a pool wide enough for the panel snapshot's nineteen
-      # concurrent statements. Four workers x 24 is 96, and the admin connections
-      # that create the databases took it over — `sorry, too many clients
-      # already`, on the run that opened this pull request.
+      # container takes no `command`, so it silently ran on PostgreSQL's default
+      # connection limit while the compose file raises it and says why: each
+      # worker holds a pool wide enough for the panel snapshot's nineteen
+      # concurrent statements, and four workers took the default over —
+      # `sorry, too many clients already`, on the run that opened this branch's
+      # pull request. Every setting for this server lives in that one file.
       - name: the suite's postgres, from the file that configures it
         run: bun run db:test:up
       # Before anything that can fail. `upload-artifact` runs on `always()` so a

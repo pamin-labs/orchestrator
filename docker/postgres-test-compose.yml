@@ -41,11 +41,33 @@ services:
       - synchronous_commit=off
       - -c
       - full_page_writes=off
+      # The three above are PostgreSQL's own list for a non-durable database
+      # (docs 14.5), along with the tmpfs. The rest of that list is inverted here
+      # on purpose: it says to *raise* `max_wal_size` to checkpoint less often,
+      # and names the cost as `pg_wal` storage — which for us is RAM. A checkpoint
+      # from memory to memory is cheap, so the trade runs the other way.
       - -c
-      # Ten workers, each holding a pool wide enough for the panel snapshot's
-      # nineteen concurrent statements, plus the admin connections that create
-      # the databases. Cheap on a server that stores nothing.
-      - max_connections=600
+      - max_wal_size=64MB
+      # `minimal` writes the least WAL of the three levels; it requires no
+      # senders, and nothing replicates a database that is thrown away.
+      - -c
+      - wal_level=minimal
+      - -c
+      - max_wal_senders=0
+      # Half the default. The data directory *is* memory, so a large buffer pool
+      # is a second copy of pages the OS is already holding.
+      - -c
+      - shared_buffers=64MB
+      # Nothing here lives long enough to bloat, and every test empties its tables
+      # itself; three autovacuum workers are three processes with no work.
+      - -c
+      - autovacuum=off
+      - -c
+      # Ten workers, each holding a pool of 24 — the panel snapshot issues nineteen
+      # concurrent statements — plus the admin connections that create the
+      # databases. 250 is the real peak; 300 is the headroom, and each unused slot
+      # is still memory reserved at startup. CI runs four workers and needs 100.
+      - max_connections=300
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U orchestrator -d orchestrator"]
       interval: 2s

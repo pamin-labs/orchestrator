@@ -264,9 +264,14 @@ export async function applyMigrations(db: DB): Promise<void> {
 async function emptied(db: DB, statement: string): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
+      // `SET LOCAL` in a transaction, which costs `BEGIN`, `SET`, `TRUNCATE`,
+      // `COMMIT` — four round trips at 0.1ms each. Both alternatives were tried
+      // and are worse: on the database it reaches every statement in every test
+      // (one run in six died on `canceling statement due to lock timeout` inside
+      // a login flow), and a multi-statement simple query is refused on a pool.
       await db.transaction(async (tx) => {
         await tx.execute(sql`SET LOCAL lock_timeout = '250ms'`);
-        // fallow-ignore-next-line security-sink -- the caller builds this from `getTableName` over the tables in `schema.ts`; there is no request path into it and this function is test-only
+        // fallow-ignore-next-line security-sink -- built from `getTableName` over `schema.ts`; test-only, no request path
         await tx.execute(sql.raw(statement));
       });
       return;
@@ -325,6 +330,11 @@ export async function openMemory(logger?: Logger, isolate = ""): Promise<DB> {
         // Left in place between runs rather than dropped: `openMemory` empties it,
         // and dropping one a sibling still holds is how a worker kills a peer.
         if (found.length === 0) await admin.unsafe(`CREATE DATABASE "${mine}" TEMPLATE "${TEMPLATE}"`);
+        // Not `ALTER DATABASE ... SET lock_timeout`: that reaches every statement
+        // on every connection, and the login flows keep writing after their
+        // request returns — one in six runs died on `canceling statement due to
+        // lock timeout` in a *test*, not in the truncate it was meant for.
+        await admin.unsafe(`ALTER DATABASE "${mine}" RESET lock_timeout`);
         await dropMyOldGenerations(admin, mine, suffixFor(isolate));
       } finally {
         await admin`SELECT pg_advisory_unlock(${LOCK})`;

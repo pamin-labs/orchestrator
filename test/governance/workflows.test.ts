@@ -169,9 +169,14 @@ describe("workflow governance", () => {
     expect(ci.jobs["test"]?.services).toBeUndefined();
     expect(ci.jobs["test"]!.steps.some((step) => step.run?.includes("db:test:up"))).toBe(true);
 
-    // And the number that failure was about is still stated where it is set.
+    // And the setting that failure was about is stated where the server is
+    // configured — the value moves as the pool and worker count do, so what is
+    // pinned is that it is set at all, and set there rather than in the workflow.
     const compose = readFileSync("docker/postgres-test-compose.yml", "utf8");
-    expect(compose).toContain("max_connections=600");
+    expect(compose).toMatch(/max_connections=\d+/);
+    // No *setting* of it in the workflow — prose about why may mention the name,
+    // but a second `name=value` is the second owner this test exists to refuse.
+    expect(readFileSync(".github/workflows/ci.yml", "utf8")).not.toMatch(/max_connections\s*=/);
   });
 
   test("CI only uploads the report evidence a privileged second stage consumes", async () => {
