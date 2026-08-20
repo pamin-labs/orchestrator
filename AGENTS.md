@@ -202,8 +202,9 @@ owned files by name — `git add -A` sweeps in another session's half-finished
 work. Sign off every commit (`git commit -s`); CI's `dco` job checks each one
 against its author, and repairing a branch afterwards rewrites its history.
 
-Conventional Commit prefix, scoped to the module. The subject states the
-**finding**, not the diff — the log is read by somebody asking *why is this like
-this*. The body says what the failure looked like, why the fix is at that layer,
-and what was deliberately left out; measurements beat adjectives. Examples and
-the full convention are in [`CONTRIBUTING`](CONTRIBUTING.md).
+Conventional Commit prefix, scoped to the module — **on the pull request title
+too**, since squash puts that title on `main` as the commit subject. The subject
+states the **finding**, not the diff — the log is read by somebody asking *why is
+this like this*. The body says what the failure looked like, why the fix is at
+that layer, and what was deliberately left out; measurements beat adjectives.
+Examples and the full convention are in [`CONTRIBUTING`](CONTRIBUTING.md).
