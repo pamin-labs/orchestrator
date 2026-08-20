@@ -157,17 +157,18 @@ function schemaTag(): string {
  * Exported for the guard: if this stops agreeing with the name, reclamation
  * silently matches nothing and the generations pile up again with nothing to say.
  */
-export const suffixFor = (isolate: string) => Bun.hash(`${Bun.main}${isolate}`).toString(36);
+export const suffixFor = (isolate: string) =>
+  `w${process.env["BUN_TEST_WORKER_ID"] ?? "0"}${isolate ? `x${Bun.hash(isolate).toString(36)}` : ""}`;
 
 /**
  * One PostgreSQL **schema** per test file, in one shared database.
  *
- * An abandoned `Scheduler` dispatches into whatever file is running by then, so
- * isolation has to be structural. A *database* per file was the first way and it
- * cost: `template0` is 7,521 kB against 808 kB of our own tables, so **87% of
- * every copy was the system catalogue** — 1.6 GB across 193 files, in a tmpfs.
- * A schema isolates the same for the 808 kB, and migrating into one takes 54ms
- * against 59ms to copy a database, so the template and its advisory lock went too.
+ * A *database* per file cost 87% overhead — `template0` is 7,521 kB against 808 kB
+ * of our own tables — so this is a schema. Keyed on the **worker**, not the file:
+ * `--parallel` runs ten of them, and one namespace per file made 193, whose
+ * constraints all live in one shared `pg_constraint`. `TRUNCATE ... CASCADE`
+ * walks it to find dependent foreign keys, and measured over one suite that was
+ * **26,085 sequential scans reading 432 million rows**.
  */
 const nameFor = (isolate: string) => `t_${SCHEMA_TAG}_${suffixFor(isolate)}`;
 
