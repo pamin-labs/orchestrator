@@ -20,7 +20,7 @@
     "perf:budget": "bun run scripts/performance-budget.ts",
     "perf:bench": "bun run scripts/benchmark.ts",
     "embedding:check": "bun run scripts/embedding-check.ts",
-    "test": "bun test --parallel",
+    "test": "bun run scripts/test.ts",
     "test:changed": "bun test --parallel --changed",
     "test:coverage": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun test --parallel && bun run test/support/coverage-report.ts",
     "typecheck": "tsc -b --pretty false",
