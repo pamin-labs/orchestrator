@@ -385,25 +385,37 @@ const mirrorPath = (remote: string): string => `/repos/${remote.replace(/[^\w.-]
  * — `--mirror` does — so without it the mirror freezes; `--prune` drops dead branches.
  */
 async function ensureMirror(ctx: Ctx, remote: string): Promise<string> {
-  // Called by `keepBranch`, `pushBranch` and `listTree` with no freshness check at
-  // all, so an unconditional `fetch --prune` runs on every turn and every tick.
-  // Whether that is worth a cache is a question about a number nobody had.
   return gitSpan("git.ensure_mirror", {}, () => ensureMirrorInner(ctx, remote));
 }
 
 async function ensureMirrorInner(ctx: Ctx, remote: string): Promise<string> {
   const path = mirrorPath(remote);
   const there = await execIn(ctx, UTIL, `test -d ${shq(path)} && echo yes`);
-  if (there.out.trim() === "yes") {
+  if (there.out.trim() === "yes") return path;
+  const made = await utilGit(ctx, ["clone", "--bare", "--filter=blob:none", remote, path]);
+  if (made.code !== 0) throw new Error(`utility container could not mirror ${remote}: ${made.out.slice(-300)}`);
+  return path;
+}
+
+/**
+ * The mirror, and its refs current with the remote. Only for a caller that reads them.
+ *
+ * This used to be inside `ensureMirror`, so all three callers paid a network
+ * round trip they had not asked for: measured, 1,184 fetches costing **2,608
+ * seconds** in one day. Two of them never needed it. `keepBranch` fetches a local
+ * bundle and already retries with an explicit `fetch origin` on the one failure
+ * that means the mirror is behind; `pushBranch` only sends `refs/orch/*` outward.
+ * `listTree` is the caller that reads refs, so it is the caller that pays.
+ */
+async function freshMirror(ctx: Ctx, remote: string): Promise<string> {
+  const path = await ensureMirror(ctx, remote);
+  return gitSpan("git.fetch_mirror", {}, async () => {
     // Best-effort: a mirror that cannot reach the remote right now is stale, and
     // stale is what the caller already reports. Refusing here would turn one
     // unreachable network into an empty file list.
     await utilGit(ctx, ["fetch", "--prune", "origin", "+refs/heads/*:refs/heads/*"], path);
     return path;
-  }
-  const made = await utilGit(ctx, ["clone", "--bare", "--filter=blob:none", remote, path]);
-  if (made.code !== 0) throw new Error(`utility container could not mirror ${remote}: ${made.out.slice(-300)}`);
-  return path;
+  });
 }
 
 /**
@@ -477,7 +489,7 @@ async function listTreeInner(
   const ref = branch.replace(/^origin\//, "");
   let mirror: string;
   try {
-    mirror = await ensureMirror(ctx, remote);
+    mirror = await freshMirror(ctx, remote);
   } catch (e) {
     const why = errText(e);
     return { files: [], why, failed: why };

@@ -514,15 +514,18 @@ M7 — executable engineering governance and versioned protocol.
   There are no turn spans in this history because no turn ran, so the prohibition
   is the operative half. Hard constraint #1 and `cache-position.test.ts` are
   untouched, as the plan requires.
+- `ensureMirror` fetched unconditionally, so all three callers paid a network
+  round trip none of them had asked for — measured, **1,184 fetches costing 2,608
+  seconds in one day**. Two never needed it: `pushBranch` only sends `refs/orch/*`
+  outward, and `keepBranch` fetches a *local* bundle and already retries with an
+  explicit `fetch origin` on the one failure that means the mirror is behind.
+  Split into `ensureMirror` (it exists) and `freshMirror` (its refs are current),
+  and only `listTree` — the caller that reads refs — takes the second. The
+  question the old comment asked, "whether that is worth a cache", turned out to
+  be the wrong question: two of the three callers wanted no cache and no fetch.
 
 ## Blockers and deviations
 
-- **`ensureMirror` fetches unconditionally**, so every project with a remote pays a
-  network round trip to GitHub on every tick — 30 seconds — plus the two execs
-  around it. Its own comment at `src/mech/git/checkout.ts:357` says the callers
-  (`keepBranch`, `pushBranch`, `listTree`) apply no freshness check at all. Found
-  while gating the repo-map rebuild and deliberately not fixed there: it is shared
-  by three callers and belongs to its own change.
 - **The `pageindex` config keys are recorded in the wrong commit.** They belong to
   `55ee9e2`; they were swept into `5234fd6` (event retention) by a `git add` on
   `config.ts`/`load.ts` that took another agent's unstaged hunks with them. The

@@ -101,3 +101,37 @@ test("a work-in-progress branch is kept where prune cannot delete it", async () 
   const pushed = cmds.find((c) => c.includes("push"))!;
   expect(pushed).toContain("refs/orch/orch/g1:refs/heads/orch/g1");
 });
+
+test("only the caller that reads refs pays for the network", async () => {
+  // `ensureMirror` used to fetch unconditionally, so all three callers paid a
+  // round trip they had not asked for: measured, 1,184 fetches costing **2,608
+  // seconds** in one day. `pushBranch` only sends `refs/orch/*` outward and
+  // `keepBranch` fetches a local bundle — and already retries with an explicit
+  // `fetch origin` on the one failure that means the mirror is behind.
+  const seen = (cmds: string[]) => cmds.filter((c) => /\bfetch\b/.test(c) && c.includes("origin"));
+
+  const pushCmds: string[] = [];
+  const pushCtx = await testContext({
+    sandbox: fakeSandbox((cmd) => {
+      pushCmds.push(cmd);
+      return cmd.includes("test -d") ? { out: "yes" } : {};
+    }),
+  });
+  const pf = fx.on(pushCtx.db);
+  const pp = await pf.project.create({ name: "p", remote: "git@github.com:o/p.git" });
+  const pg = await pf.grp.create({ project_id: pp.id, name: "g1", branch: "orch/g1" });
+  expect((await pushBranch(pushCtx, pg.id)).ok).toBe(true);
+  expect(seen(pushCmds)).toEqual([]);
+
+  // And `listTree`, which resolves a ref against the remote, still does.
+  const treeCmds: string[] = [];
+  const treeCtx = await ctxWith((cmd) => {
+    treeCmds.push(cmd);
+    if (cmd.includes("test -d")) return { out: "yes" };
+    if (cmd.includes("ls-tree")) return { out: "src/a.ts" };
+    return {};
+  });
+  await listTree(treeCtx, "git@github.com:o/p.git", "main");
+  expect(seen(treeCmds)).toHaveLength(1);
+  expect(seen(treeCmds)[0]).toContain("+refs/heads/*:refs/heads/*");
+});
