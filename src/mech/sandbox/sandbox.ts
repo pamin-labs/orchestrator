@@ -1653,11 +1653,34 @@ export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpt
 }
 
 /** Which project a scope belongs to, so a span can be filtered by one. */
+/**
+ * Which project a group belongs to, asked once per group.
+ *
+ * Every `sandbox.*` span carries it, so this was the most frequent query in the
+ * suite — 8,263 calls — to read a column that cannot change: a group is created
+ * inside a project and never moves. Keyed on the database *object*, which is what
+ * makes it safe to cache at all: `openMemory` hands each test a fresh wrapper, so
+ * a suite that empties its tables and starts again at id 1 gets a fresh map with
+ * them.
+ */
+const projects = new WeakMap<DB, Map<number, number | null>>();
+
 async function projectOf(db: DB, scope: Scope): Promise<number | null> {
   if ("project" in scope) return scope.project;
   if (!("grp" in scope)) return null;
+  let known = projects.get(db);
+  if (!known) {
+    known = new Map();
+    projects.set(db, known);
+  }
+  const cached = known.get(scope.grp);
+  if (cached !== undefined) return cached;
   const [row] = await db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, scope.grp));
-  return row?.project_id ?? null;
+  const found = row?.project_id ?? null;
+  // Only a hit is remembered: a group the span fired for before its row existed
+  // would otherwise be `null` for the rest of the process.
+  if (found !== null) known.set(scope.grp, found);
+  return found;
 }
 
 /** `sh`'s "found it, could not run it". The lease guard already speaks it. */

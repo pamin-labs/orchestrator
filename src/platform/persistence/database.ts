@@ -319,19 +319,33 @@ const TABLES = Object.values<unknown>(schema)
  * A CTE for the rows and one statement for the sequences, because `DELETE` resets
  * no identity. Foreign keys are deferred for the transaction, not ordered around.
  */
-const DELETE_ALL = sql`WITH ${sql.join(
-  TABLES.map((t, i) => sql`${sql.identifier(`d${i}`)} AS (DELETE FROM ${sql.identifier(t)})`),
-  sql`, `,
-)} SELECT 1`;
 /**
- * The identity sequences, derived from `schema.ts` rather than asked for.
+ * Both session settings in one statement, because `SET` takes only one.
  *
- * `pg_sequences` was 98 calls and 277ms to answer a question the schema already
- * knows: Drizzle names one `<table>_<column>_seq` per generated identity, which
- * is what PostgreSQL created. A catalogue query for a constant is a round trip
- * that can never return anything new.
+ * `lock_timeout` so a standoff with a stray from the test before ends with *this*
+ * statement giving up, not with the deadlock detector picking a victim.
+ * `session_replication_role` so the deletes can run in any order: foreign keys are
+ * trigger-checked per statement, and a CTE puts every `DELETE` under one snapshot
+ * without making them one statement — `grp` before `event` failed four runs in
+ * six. `true` is `is_local`, so both end with the transaction.
  */
-const RESET_ALL = (() => {
+const SETTINGS = sql`SELECT set_config('lock_timeout', '250ms', true),
+  set_config('session_replication_role', 'replica', true)`;
+
+/**
+ * The deletes and the identity resets, as one statement.
+ *
+ * The CTE's `SELECT` has to project something, so it projects the `setval` calls
+ * — which turns two round trips into one, 1,694 times a suite. The sequence names
+ * come from `schema.ts` rather than from `pg_sequences`, which was 98 calls and
+ * 277ms to answer a question the schema already knows: Drizzle names one
+ * `<table>_<column>_seq` per generated identity, which is what PostgreSQL made.
+ */
+const EMPTY = (() => {
+  const deletes = sql.join(
+    TABLES.map((t, i) => sql`${sql.identifier(`d${i}`)} AS (DELETE FROM ${sql.identifier(t)})`),
+    sql`, `,
+  );
   const names = Object.values<unknown>(schema)
     .filter((v): v is PgTable => is(v, PgTable))
     .flatMap((table) => {
@@ -340,32 +354,21 @@ const RESET_ALL = (() => {
     });
   // `sql.join` over `sql` fragments, so each name is a bound parameter rather than
   // a quoted literal this file had to escape itself.
-  return names.length
-    ? sql`SELECT ${sql.join(
+  const resets = names.length
+    ? sql.join(
         names.map((n) => sql`setval(${n}, 1, false)`),
         sql`, `,
-      )}`
-    : sql`SELECT 1`;
+      )
+    : sql`1`;
+  return sql`WITH ${deletes} SELECT ${resets}`;
 })();
 
 async function emptied(db: DB): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
       await db.transaction(async (tx) => {
-        // `SET LOCAL`, so a standoff with a stray from the test before ends with
-        // *this* statement giving up rather than the deadlock detector choosing.
-        await tx.execute(sql`SET LOCAL lock_timeout = '250ms'`);
-        // And so the deletes below can run in any order. Foreign keys are checked
-        // by triggers, immediately, per statement — a CTE puts every `DELETE`
-        // under one snapshot but does **not** make them one statement, so
-        // emptying `grp` before `event` was `violates foreign key constraint
-        // event_grp_id_grp_id_fkey`. `replica` is what PostgreSQL's own restore
-        // path uses for exactly this, and `SET LOCAL` keeps it inside the
-        // transaction. `TRUNCATE ... CASCADE` never needed it because truncation
-        // takes every table at once.
-        await tx.execute(sql`SET LOCAL session_replication_role = replica`);
-        await tx.execute(DELETE_ALL);
-        await tx.execute(RESET_ALL);
+        await tx.execute(SETTINGS);
+        await tx.execute(EMPTY);
       });
       return;
     } catch (error) {
