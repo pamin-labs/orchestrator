@@ -91,14 +91,11 @@ const UNIT_LABEL: Record<DurationUnit, MessageDescriptor> = {
 
 /** `msg` at module scope, `i18n._` at call scope: a descriptor is locale-free
  *  data, so it is safe in a table built once at import. */
-export const unitLabel = (unit: DurationUnit): string => i18n._(UNIT_LABEL[unit]);
+const unitLabel = (unit: DurationUnit): string => i18n._(UNIT_LABEL[unit]);
 
 const PER: Record<DurationUnit, number> = { ms: 1, s: 1000, min: 60_000, h: 3_600_000, d: 86_400_000 };
 
-export const msOf = (n: number, unit: DurationUnit): number => n * PER[unit];
 
-/** Smallest first: the order a unit picker should offer them in. */
-export const DURATION_UNITS: DurationUnit[] = ["ms", "s", "min", "h", "d"];
 
 /**
  * Biggest first, so 1200000 reads as 20 分钟 rather than 1200000 毫秒.
