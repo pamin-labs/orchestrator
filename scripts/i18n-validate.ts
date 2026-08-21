@@ -46,22 +46,27 @@ const CatalogSchema = z.record(
  * branches hang off `options` and hold tokens of their own. The tags are not
  * tokens at all — they stay in the literals, so they are read from there.
  */
-function referenced(tokens: readonly unknown[], out = new Set<string>()): Set<string> {
-  for (const token of tokens) {
-    if (typeof token === "string") {
-      for (const [, slot] of token.matchAll(/<(\d+)>/g)) out.add(`<${slot}>`);
-      continue;
-    }
-    if (!Array.isArray(token)) continue;
-    const name: unknown = token[0];
-    if (typeof name === "string") out.add(name);
-    const options: unknown = token[2];
-    if (options && typeof options === "object" && !Array.isArray(options)) {
-      for (const branch of Object.values(options)) if (Array.isArray(branch)) referenced(branch, out);
-    }
-  }
-  return out;
+/** A placeholder token's nested token lists: a plural's branches, a select's cases. */
+function branchesOf(token: readonly unknown[]): readonly unknown[][] {
+  const options: unknown = token[2];
+  if (!options || typeof options !== "object" || Array.isArray(options)) return [];
+  return Object.values(options).filter((branch): branch is unknown[] => Array.isArray(branch));
 }
+
+/** Every name one token refers to. A literal carries no names, only `<0>` slots. */
+function namesIn(token: unknown): string[] {
+  if (typeof token === "string") return [...token.matchAll(/<(\d+)>/g)].map(([, slot]) => `<${slot}>`);
+  if (!Array.isArray(token)) return [];
+  const self = typeof token[0] === "string" ? [token[0]] : [];
+  return [...self, ...branchesOf(token).flatMap((branch) => branch.flatMap(namesIn))];
+}
+
+/**
+ * A token is either a literal string or `[name, type?, options?]`; a plural's
+ * branches hang off `options` and hold tokens of their own. The tags are not
+ * tokens at all — they stay in the literals, so they are read from there.
+ */
+const referenced = (tokens: readonly unknown[]): Set<string> => new Set(tokens.flatMap(namesIn));
 
 const missing = (want: Set<string>, got: Set<string>): string[] => [...want].filter((name) => !got.has(name));
 
