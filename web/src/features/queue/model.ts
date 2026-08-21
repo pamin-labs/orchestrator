@@ -1,7 +1,7 @@
 import type { Escalation, Group, Slice, State } from "../../shared/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "./rank";
 import { pending, prUrl } from "../../shared/select";
-import { brief } from "../../shared/prose";
+import { brief, cardGoal } from "../../shared/prose";
 import { t } from "@lingui/core/macro";
 
 export interface QueueItem {
@@ -34,15 +34,12 @@ const sunkReason = (tokens: number) => (tokens > 0 ? REASONS.sunk(tokens) : null
 const halted = (st: State, grpId: number | null) =>
   grpId != null && !st.agents.some((agent) => agent.grp_id === grpId && agent.state === "running");
 
-const cardGoal = (card: State["draftCards"][number] | undefined) =>
-  // i18n-exempt: the shape of a card an agent wrote in `output.language`, matched
-  // by prefix. Not copy this panel owns.
-  (card?.body.split("\n").find((line) => line.startsWith("目标")) ?? "").replace(/^目标\s*[:：]\s*/, "") ||
-  t`Plan card not submitted`;
+const goalOf = (card: State["draftCards"][number] | undefined) =>
+  cardGoal(card?.body ?? "") || t`Plan card not submitted`;
 
 function cardSummary(card: State["draftCards"][number] | undefined, drop: State["dropProposals"][number] | undefined) {
   if (drop) return drop.body.split("\n")[0] ?? "";
-  return cardGoal(card);
+  return goalOf(card);
 }
 
 function cardItem(st: State, group: Group, now: number): QueueItem {

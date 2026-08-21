@@ -30,3 +30,34 @@ export const brief = (s: string, max = 44): string => {
   const first = (s.split(/[\n。.!?！？]/)[0] ?? s).trim() || s.trim();
   return first.length > max ? `${first.slice(0, max - 1)}…` : first;
 };
+
+/**
+ * The goal line of a plan card.
+ *
+ * The card is a document an agent wrote, not copy this panel owns: its section
+ * keys are protocol and its content follows `output.language`. So this matches
+ * the key, in every grammar a stored card can have — `## goal` since the keys
+ * became ASCII, `## 目标` before that, and the pre-Markdown `目标: …` inline form
+ * that ADR 016 replaced.
+ */
+/**
+ * Both readers used to do `startsWith("目标")`, which a Markdown card never
+ * satisfies — its first line is `## 目标`. Every card in the queue read
+ * `Plan card not submitted` with the card sitting right there.
+ */
+const GOAL_KEY = /^\s*(?:#{1,6}\s*)?(goal|目标)\s*[:：]?\s*$/i;
+const GOAL_INLINE = /^\s*(goal|目标)\s*[:：]\s*/i;
+
+export function cardGoal(body: string): string {
+  const lines = body.split("\n");
+  const heading = lines.findIndex((line) => GOAL_KEY.test(line));
+  if (heading >= 0)
+    return (
+      lines
+        .slice(heading + 1)
+        .find((line) => line.trim())
+        ?.trim() ?? ""
+    );
+  const inline = lines.find((line) => GOAL_INLINE.test(line));
+  return inline?.replace(GOAL_INLINE, "").trim() ?? "";
+}

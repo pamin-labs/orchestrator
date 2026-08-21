@@ -92,7 +92,11 @@ test("waiting work replaces the project's state line and lists what is waiting",
   const st = emptyState();
   st.projects.push(project(1, "alpha"));
   st.groups.push(group(1, 1, { status: "DRAFT" }));
-  st.draftCards.push({ grpId: 1, body: "目标: 做完它", at: 1000, unknownPaths: null });
+  // A real Markdown card, not the pre-Markdown `目标: …` form the other fixtures
+  // use. Both readers matched the goal with `startsWith("目标")`, which a heading
+  // never satisfies — so every queued card read `Plan card not submitted` with
+  // the card sitting right there, and four fixtures on the old grammar hid it.
+  st.draftCards.push({ grpId: 1, body: "## goal\n做完它\n\n## risk\n无", at: 1000, unknownPaths: null });
   st.escalations.push({
     id: 7,
     grp_id: 1,
@@ -114,6 +118,11 @@ test("waiting work replaces the project's state line and lists what is waiting",
   // The counts that are zero stay off the line entirely.
   gone(page, "片待查收");
   gone(page, "个待合入");
+  // The goal itself, which is the whole reason the row shows a card rather than
+  // a count. Asserted because it was silently absent: with the goal unmatched the
+  // queue printed `计划卡还没交` beside a card that had been filed.
+  shown(page, "做完它");
+  gone(page, "计划卡还没交");
 });
 
 test("the project wanting the boss most is read first", () => {

@@ -4,6 +4,7 @@ import { Button } from "../../ui/button";
 import { Tab, TabList, TabPanel, Tabs } from "../../ui/tabs";
 import { Tip } from "../../ui/tooltip";
 import { prUrl } from "../../shared/select";
+import { cardGoal } from "../../shared/prose";
 import type { Archived, Group, Slice, State } from "../../shared/api";
 import { usePaged } from "../../shared/page";
 import { STOPS, countWaiting, gates, heldApproved, statusLabel } from "../../shared/select";
@@ -44,13 +45,6 @@ const AwaitingBadge = ({ waiting }: { waiting: number }) => (
 );
 
 const SliceCount = ({ n }: { n: number }) => <Plural value={n} one="# slice" other="# slices" />;
-
-/** The plan card's goal line, matched by its prefix. The card is written by an
- *  agent in `output.language`, so this is not a message: it is the shape of a
- *  document the panel reads. */
-// i18n-exempt: the shape of a document an agent wrote in `output.language`,
-// matched by prefix. Not copy this panel owns.
-const GOAL_PREFIX = "目标";
 
 /** `已查收 3/7`, in one message rather than three fragments. */
 const acceptedOf = (done: number, total: number): string => t`accepted ${done}/${total}`;
@@ -214,7 +208,7 @@ function rowBody(group: Group, facts: RowFacts): React.ReactNode {
     );
   if (group.status === "DRAFT") {
     const goal = facts.card
-      ? (facts.card.body.split("\n").find((line) => line.startsWith(GOAL_PREFIX)) ?? t`Plan card pending approval`)
+      ? cardGoal(facts.card.body) || t`Plan card pending approval`
       : t`Plan card not submitted yet`;
     return <span className="block truncate text-secondary text-ink-2">{goal}</span>;
   }
