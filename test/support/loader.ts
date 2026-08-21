@@ -65,7 +65,15 @@ if (touchesPanel || covering)
   Bun.plugin({
     name: "source-loader",
     setup(build) {
-      build.onLoad({ filter, namespace: "file" }, async ({ path }) => ({
+      // Synchronous, and not for speed: measured either way the suite is the
+      // same to within noise. An `async` handler makes every module it
+      // intercepts an async module, and a preload cannot `require` one of
+      // those — "require() async module … is unsupported", which is what a
+      // preload trying to reach a panel module gets today. Nothing needs that
+      // yet, so this is not a fix; it is the version of the same handler that
+      // forecloses less, at no cost. `coverage.ts` already reads its input
+      // with `readFileSync`.
+      build.onLoad({ filter, namespace: "file" }, ({ path }) => ({
         // Expanded first, then instrumented over the map it produced.
         //
         // The other order does not survive contact: oxc rewrites the initialiser
@@ -76,7 +84,7 @@ if (touchesPanel || covering)
         // it. The statement map still has to describe the file on disk; that is
         // what `inputSourceMap` is for, and oxc composes it during
         // instrumentation rather than after.
-        contents: instrument(...expanded(await Bun.file(path).text(), path)),
+        contents: instrument(...expanded(readFileSync(path, "utf8"), path)),
         loader: path.endsWith(".tsx") ? "tsx" : "ts",
       }));
     },

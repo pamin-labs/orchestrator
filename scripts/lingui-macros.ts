@@ -68,7 +68,22 @@ function boot(): (source: string, path: string) => Expanded {
       // every panel file lands in the report as `view.tsx` with no directory.
       sourceFileName: path,
       parserOpts: { plugins: [...plugins] },
-      plugins: [[macro, { linguiConfig }]],
+      // `descriptorFields: "message"`, pinned rather than left at the default.
+      //
+      // The default is "auto", which means the macro emits `{id, message}` under
+      // a dev `NODE_ENV` and `{id}` alone under production — and this project
+      // loads `{}` for English on purpose, so every id falls back to the source
+      // the macro hashed. Drop `message` and there is nothing to fall back to:
+      // an English reader gets `cfg2rE` where the heading should be, and so does
+      // every untranslated string in every other language. Nothing sets
+      // `NODE_ENV=production` here today, which is exactly what makes it worth
+      // pinning — the day a Dockerfile or a workflow adds that line, the panel
+      // renders hashes and the build stays green.
+      //
+      // Lingui documents this as one half of a two-line recipe; the other half,
+      // `setMessagesCompiler`, was already in `web/src/i18n.ts`.
+      // https://lingui.dev/guides/optimizing-bundle-size
+      plugins: [[macro, { linguiConfig, descriptorFields: "message" }]],
     });
     if (out?.code == null) throw new Error(`lingui: babel returned no code for ${path}`);
     return { code: out.code, map: out.map ? JSON.stringify(out.map) : null };
@@ -78,12 +93,20 @@ function boot(): (source: string, path: string) => Expanded {
 /**
  * Content-addressed, because `--parallel` implies `--isolate`: every test file
  * re-evaluates the module graph it imports, so one panel module is expanded once
- * per test process that reaches it — 49 of them, for the same bytes. Measured
- * without it: +22% CPU across the suite. The key is the source and the plugin
- * version, so an edit or an upgrade misses and nothing has to be cleared.
+ * per test process that reaches it — 58 of them, for the same bytes. Measured
+ * without it: +22% CPU across the suite. The key is the path, the source and the
+ * installed plugin version, so an edit or an upgrade misses and nothing has to
+ * be cleared.
  */
 const CACHE = `${ROOT}.cache/lingui`;
-const VERSION = "6.6.0";
+/**
+ * Read from the package, not written here. A hand-kept literal is a version that
+ * cannot go stale in the file and cannot invalidate anything either: every entry
+ * written before an upgrade would still be served after it, so the comment below
+ * promising "an upgrade misses" was only true of a string somebody remembered to
+ * bump.
+ */
+const VERSION = load<{ version: string }>("@lingui/babel-plugin-lingui-macro/package.json").version;
 
 /** A cache entry is a file on disk; a truncated write is a miss, not a crash. */
 function isExpanded(value: unknown): value is Expanded {
