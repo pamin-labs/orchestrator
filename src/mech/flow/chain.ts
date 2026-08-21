@@ -1,4 +1,5 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
+import type { Locale } from "../../contracts/config.ts";
 import { answered, roleFor, type Ctx } from "../../mech/ctx.ts";
 import { addNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
@@ -35,17 +36,86 @@ export const CHAIN = ESCALATION_OPEN_STATES;
  * A question wrongly sent to the boss costs one interruption; one wrongly
  * answered by an agent can cost money or a merge.
  */
-const RESERVED = [
-  /\b(spend|pay|purchase|buy|subscri|billing|invoice|budget increase)\b/i,
-  /\b(merge|merging)\b.*\b(main|master)\b/i,
-  /\b(secret|credential|api[_ -]?key|token|password|\.env)\b/i,
-  /\b(deploy|publish|release)\b.*\b(prod|production|live)\b/i,
-  /\b(scope|out of scope|drop the|add a feature|instead of what)\b/i,
-  /(花钱|付费|采购|订阅|预算|密钥|凭据|上线|发布到生产|需求范围|范围变更)/,
-];
+/**
+ * Keyed by locale, and typed `Record<Locale, ...>` so an eleventh language is
+ * caught by the compiler rather than by a boss who was never asked. Five topics,
+ * in the same order on every row: money, merging to `main`, credentials, going
+ * to production, changing the requirement.
+ */
+/**
+ * This gate was written when the panel spoke two languages. It speaks ten now
+ * and an agent writes its question in `output.language`, so the other eight
+ * walked straight through it — and so did two topics in the two it knew.
+ * Two probes per language, "raise the budget?" and "merge into main?": sixteen
+ * of eighteen leaked, English `budget increase` (never the word order anyone
+ * uses) and Chinese (no word for merge at all) among them.
+ */
+/**
+ * No `\b` on the CJK rows — word boundaries are defined on ASCII word
+ * characters, so `\b予算\b` never matches inside a Japanese sentence; the same
+ * trap `FILLER` in `mech/util/validate.ts` documents. Nor on Cyrillic, which
+ * inflects on top of it, so those are stems: `трат` covers трата/потратить/затраты.
+ */
+/**
+ * Every row stands on its own, so a word two languages spell alike is repeated
+ * in both deliberately rather than deduplicated: `budget` is French and German
+ * as well, and leaning on `en`'s copy of it makes a rewrite of those five
+ * English patterns drop money for fr and de, invisibly and in a diff that never
+ * mentions either.
+ */
+const RESERVED: Record<Locale, readonly RegExp[]> = {
+  // `subscri` sat inside the `\b(…)\b` group, so it could never match: every real
+  // word continues past it into another word character and the closing `\b` fails.
+  // Dead since it was written, for the one topic with a recurring bill attached.
+  en: [
+    /\b(spend|pay(ment|ing|s)?|purchase|buy|subscri\w*|billing|invoice|budget)\b/i,
+    /\b(merge|merging)\b.*\b(main|master)\b/i,
+    /\b(secret|credential|api[_ -]?key|token|password|\.env)\b/i,
+    /\b(deploy|publish|release)\b.*\b(prod|production|live)\b/i,
+    /\b(scope|out of scope|drop the|add a feature|instead of what)\b/i,
+  ],
+  zh: [/(花钱|付费|采购|订阅|预算|合并|密钥|凭据|上线|发布到生产|需求范围|范围变更)/],
+  // Its own row rather than characters bolted onto `zh`'s: 金鑰 is not 密钥 and
+  // 憑證 is not 凭据 — Traditional Chinese differs from Simplified by vocabulary
+  // here, not only by glyph, the same reason `zh-Hant.po` is generated through a
+  // phrase dictionary and not a character table.
+  "zh-Hant": [/(花錢|付費|採購|訂閱|預算|合併|金鑰|憑證|上線|發布到生產|需求範圍|範圍變更)/],
+  // 予算 is not 预算 and 範囲 is not 范围: sharing the Han script is not sharing
+  // the characters. Kana as well as kanji where the kana spelling is ordinary.
+  ja: [
+    /(支払|しはら|課金|購入|サブスク|有料|予算|マージ|取り込|秘密鍵|パスワード|認証情報|クレデンシャル|api\s*キー|本番|ほんばん|デプロイ|リリース|スコープ|要件|範囲)/i,
+  ],
+  ko: [
+    /(결제|지불|구매|구독|유료|예산|머지|병합|비밀번호|비밀\s*키|자격\s*증명|인증\s*정보|api\s*키|배포|프로덕션|운영\s*환경|스코프|요구\s*사항|범위)/i,
+  ],
+  // `\bpag[ao]` anchored at the front, or it fires on English "propagate".
+  es: [
+    /(\bpag[ao]|compra|suscri|factura|presupuesto|fusion|clave|contraseña|credencial|producci|despleg|desplieg|alcance|requisito)/i,
+  ],
+  // `en production`, not bare `production`: the French preposition keeps this off
+  // every English sentence about a production database, which `en` pairs with a verb.
+  fr: [
+    /(payer|paiement|payant|achat|acheter|abonnement|facture|budget|fusionner|clé|mot de passe|identifiants|déploi|en production|périmètre|exigence)/i,
+  ],
+  // `\babos?\b`, because a bare `\babo` is every English "about" and "abort".
+  de: [
+    /(bezahl|zahlung|kauf|\babos?\b|rechnung|budget|mergen|zusammenführ|schlüssel|passwort|zugangsdaten|geheimnis|produktion|produktiv|ausliefer|veröffentlich|umfang|anforderung)/i,
+  ],
+  pt: [
+    /(\bpaga|compra|assinatura|fatura|orçamento|mesclar|fundir|chave|senha|credenci|segredo|produç|implantar|publicar|escopo|âmbito|requisito)/i,
+  ],
+  // `ключ` needs the lookbehind: without it every включить — "shall we enable" —
+  // is a question about a key. `в прод`/`на прод` for the same reason, since a
+  // bare `прод` is продукт and продолжать.
+  ru: [
+    /(оплат|плати|платеж|платёж|трат|купить|покуп|подписк|бюджет|мерж|влить|слить|(?<![а-яё])ключ|пароль|секрет|уч[её]тные|токен|в прод|на прод|продакш|деплой|выкат|релиз|требован|скоуп|рамк)/i,
+  ],
+};
+
+const PATTERNS = Object.values(RESERVED).flat();
 
 export function isReserved(question: string): boolean {
-  return RESERVED.some((re) => re.test(question));
+  return PATTERNS.some((re) => re.test(question));
 }
 
 /** Where a new question should start. */

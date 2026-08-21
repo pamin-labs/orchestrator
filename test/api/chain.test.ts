@@ -100,6 +100,157 @@ describe("reserved topics skip the whole chain and go straight to the boss", () 
   });
 });
 
+/**
+ * The panel speaks ten languages and an agent writes its question in
+ * `output.language`, so the gate has to read all ten. Against the version that
+ * covered English and Simplified Chinese, sixteen of the eighteen budget/merge
+ * probes here leaked — English "increase the budget" among them, since the
+ * pattern spelled it `budget increase`.
+ */
+/**
+ * One question per topic per language, and the same five topics in the same
+ * order everywhere, so a language added without a pattern shows up as a column
+ * of failures rather than as a question the boss is never asked.
+ */
+describe.each([
+  [
+    "en",
+    "should we increase the budget for this?",
+    "can I merge this into main?",
+    "what is the value of the API_KEY?",
+    "should we deploy to production now?",
+    "should we drop the audit log instead?",
+    "which validation library should we use?",
+  ],
+  [
+    "zh",
+    "这个要不要加预算？",
+    "能不能把这个合并到 main？",
+    "密钥放在哪里？",
+    "现在要上线吗？",
+    "要不要改需求范围？",
+    "这个函数应该放在哪个模块？",
+  ],
+  [
+    "zh-Hant",
+    "這個要不要加預算？",
+    "能不能把這個合併到 main？",
+    "金鑰放在哪裡？",
+    "現在要上線嗎？",
+    "要不要改需求範圍？",
+    "這個函式應該放在哪個模組？",
+  ],
+  [
+    "ja",
+    "この件、予算を増やしますか？",
+    "これを main にマージしてもいいですか？",
+    "APIキーの値は何ですか？",
+    "今すぐ本番にデプロイしますか？",
+    "要件の範囲を変更しますか？",
+    "このZodスキーマはどのモジュールに置くべきですか？",
+  ],
+  [
+    "ko",
+    "이 건 예산을 늘릴까요?",
+    "이걸 main 에 머지해도 될까요?",
+    "API 키 값이 뭔가요?",
+    "지금 프로덕션에 배포할까요?",
+    "요구 사항 범위를 변경할까요?",
+    "이 함수는 어느 모듈에 두는 게 좋을까요?",
+  ],
+  [
+    "es",
+    "¿aumentamos el presupuesto para esto?",
+    "¿puedo fusionar esto en main?",
+    "¿cuál es el valor de la clave de API?",
+    "¿desplegamos a producción ahora?",
+    "¿cambiamos el alcance del requisito?",
+    "¿qué biblioteca de validación deberíamos usar?",
+  ],
+  [
+    "fr",
+    "faut-il augmenter le budget pour cela ?",
+    "puis-je fusionner ceci dans main ?",
+    "quelle est la valeur de la clé API ?",
+    "on déploie en production maintenant ?",
+    "doit-on changer le périmètre des exigences ?",
+    "quelle bibliothèque de validation devrions-nous utiliser ?",
+  ],
+  [
+    "de",
+    "sollen wir dafür das Budget erhöhen?",
+    "kann ich das nach main mergen?",
+    "wie lautet der Wert des API-Schlüssels?",
+    "sollen wir jetzt in die Produktion ausliefern?",
+    "sollen wir den Umfang der Anforderung ändern?",
+    "welche Validierungsbibliothek sollen wir verwenden?",
+  ],
+  [
+    "pt",
+    "devemos aumentar o orçamento para isto?",
+    "posso mesclar isto para main?",
+    "qual é o valor da chave de API?",
+    "vamos publicar em produção agora?",
+    "mudamos o escopo do requisito?",
+    "qual biblioteca de validação devemos usar?",
+  ],
+  [
+    "ru",
+    "нужно ли увеличить бюджет на это?",
+    "можно влить это в main?",
+    "какое значение у API-ключа?",
+    "выкатываем в прод сейчас?",
+    "меняем объём требований?",
+    "какую библиотеку валидации использовать?",
+  ],
+])("%s", (_locale, money, merge, credentials, production, requirement, ordinary) => {
+  test.each([
+    ["money", money],
+    ["merge to main", merge],
+    ["credentials", credentials],
+    ["production", production],
+    ["requirement", requirement],
+  ])("%s goes to the boss", (_topic, question) => {
+    expect(isReserved(question)).toBe(true);
+    expect(entryPoint(question)).toBe("boss");
+  });
+
+  // Over-triggering is the deliberate bias, but a gate that reserves every
+  // question reserves none: the boss stops reading it and the next real one is
+  // lost in the noise. One ordinary question per language holds the other edge.
+  test("an ordinary technical question is not reserved", () => {
+    expect(isReserved(ordinary)).toBe(false);
+  });
+});
+
+/**
+ * The trap each of these was written against, kept because the pattern that
+ * fails them still matches every question in the table above.
+ */
+describe("patterns that read one language must not fire on another", () => {
+  test.each([
+    // A bare `\babo` for German Abo is every English "about" and "abort".
+    "should we abort the run and ask about the retry policy?",
+    // A bare `pag` for Spanish/Portuguese pagar is inside "propagate".
+    "should we propagate the error to the caller?",
+    // A bare `production` for French is every English sentence about prod data.
+    "is the production schema versioned in the repo?",
+  ])("%s", (question) => {
+    expect(isReserved(question)).toBe(false);
+  });
+
+  // `ключ` without its lookbehind is inside включить, "to enable" — the most
+  // ordinary verb in the language.
+  test("включить is not a question about a key", () => {
+    expect(isReserved("нужно ли включить строгий режим в tsconfig?")).toBe(false);
+  });
+
+  // A bare `прод` is продукт and продолжать.
+  test("продолжаем is not a question about production", () => {
+    expect(isReserved("продолжаем рефакторинг парсера?")).toBe(false);
+  });
+});
+
 test("a missing level is skipped, not waited on", async () => {
   const h = await harness({ withPm: false, withCos: true });
   const id = await h.ask("technology choice");
