@@ -873,8 +873,19 @@ function Row({
     setBad(why ? { why, at: "" } : NO_COMPLAINT);
   };
 
+  // A wide table gets its label above it, not beside it. The label column is
+  // sized for the longest name in the pane, so a four-character one next to a
+  // grid that starts past it leaves a column of nothing — which is what the
+  // model pane looked like: three tables, each indented past 13rem of blank.
+  const stacked = TABLES.has(knob.path);
+
   return (
-    <Field className={className} data-invalid={invalidFlag(bad)} aria-labelledby={labelledBy(knob.path, knob.type, id)}>
+    <Field
+      orientation={stacked ? "vertical" : "horizontal"}
+      className={className}
+      data-invalid={invalidFlag(bad)}
+      aria-labelledby={labelledBy(knob.path, knob.type, id)}
+    >
       {/* The `?` is a sibling of the label, not a child of it: inside a
           `<label htmlFor>` every click on it would also focus the field it
           explains, which is a control that moves the cursor somewhere else. */}
