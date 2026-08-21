@@ -28,13 +28,23 @@ rotate every session in the fleet. `src/contracts/config.ts` holds the one
 function mapping free text — `中文`, `ja_JP`, `Japanese` — onto a catalog, and
 both sides call it.
 
-`src/platform/text/lang.ts` is **not** migrating. It owns the ~44 strings the
-orchestrator itself emits, and the release binary is built by
-`bun build --compile` — no bundler config, no plugin, so a macro there would
-have to be expanded at runtime in production. The boundary is: the panel is
-bundled and gets macros; the server is not and keeps its table. The README's
-translation table counts both, which is how a reader can see they are two
-mechanisms rather than one that is half-done.
+`src/platform/text/lang.ts` is **not** migrating, and the reason first written
+here was wrong. It said the release binary is `bun build --compile`, which takes
+no plugin, so a macro would have to expand at runtime. `Bun.build` accepts
+`compile` *and* `plugins` together — measured, a standalone binary carrying all
+809 compiled messages — so that door was never shut.
+
+The real reason is that the server has no reader who needs a ninth language.
+What it writes divides three ways: diagnostics only a developer reads, which stay
+English; feedback that lands in an agent's prompt, which stays English on purpose
+because translating it only makes the model translate it back; and text a person
+reads on the panel — which should not be rendered on the server at all. That last
+kind is a `SayKey` and its arguments, and the panel already holds nine catalogs
+to render it with. Rendering it early is what pins it to `output.language`
+instead of to the language the reader chose.
+
+The README's table counts both surfaces, which is how a reader can see they are
+two mechanisms rather than one that is half-done.
 
 ## Why babel, when ADR 015 measured it and refused it
 
