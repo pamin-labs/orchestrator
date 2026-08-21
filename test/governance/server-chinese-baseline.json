@@ -31,7 +31,7 @@
   "mech/sandbox/server.ts": 19,
   "mech/skills.ts": 4,
   "mech/util/attachment-text.ts": 1,
-  "mech/util/validate.ts": 29,
+  "mech/util/validate.ts": 6,
   "platform/config/load.ts": 1,
   "platform/observability/redaction.ts": 1,
   "platform/text/lang.ts": 44

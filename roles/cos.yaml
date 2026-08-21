@@ -46,6 +46,6 @@ prompt: |
 
   When the orchestrator hands you the same complaint three times over, write it as a
   project rule with `orch journal add --kind lesson`. Phrase it as an instruction a
-  later group can follow without knowing the history — "QA 必须逐条对着验收标准给判词",
-  not "老板抱怨过测试太浅". A rule nobody can act on is worse than no rule, and the
+  later group can follow without knowing the history — "QA must give a verdict against each acceptance criterion",
+  not "the boss complained the tests were shallow". A rule nobody can act on is worse than no rule, and the
   lesson list is capped at 20, so it has to be worth a slot.

@@ -99,7 +99,58 @@ export interface DraftOk {
   lines: number;
 }
 
-const DRAFT_FIELDS = ["目标", "不做", "验收", "切片", "风险", "反对"] as const;
+/**
+ * The card's section keys, and they are a protocol rather than copy.
+ *
+ * They were Chinese, pinned there by `roles/dispatcher.yaml` writing `## 目标`
+ * whatever `output.language` said — so a card came back with a Chinese heading
+ * over English prose, and only because the model copied the template rather
+ * than translating it, which nothing guaranteed. ASCII removes the coin flip:
+ * the keys are the same five names `validateDraftCard` already returns, so the
+ * document and the parsed shape stop disagreeing.
+ */
+const DRAFT_FIELDS = ["goal", "non-goals", "accept", "slices", "risk", "objection"] as const;
+type Field = (typeof DRAFT_FIELDS)[number];
+
+/**
+ * Headings a stored card can still carry. Cards live in `note.body` and are
+ * re-validated on approval, so a card filed before this change has to keep
+ * parsing — otherwise the boss meets `missing sections` on a card that is
+ * plainly complete, and cannot approve it. Retire with `draftLegacy` in 0.2.0.
+ */
+const ALIAS: Record<string, Field> = {
+  目标: "goal",
+  不做: "non-goals",
+  验收: "accept",
+  切片: "slices",
+  风险: "risk",
+  反对: "objection",
+};
+
+/**
+ * The field a heading names, in either grammar, or null.
+ *
+ * Lowercased because Markdown headings are conventionally capitalised and a
+ * model writing `## Goal` is not making a mistake worth a rejected card. Chinese
+ * had no such case to fold, which is why the exact match was safe before.
+ */
+function fieldOf(name: string): Field | null {
+  const alias = ALIAS[name];
+  if (alias) return alias;
+  const lower = name.toLowerCase();
+  return DRAFT_FIELDS.find((field) => field === lower) ?? null;
+}
+/**
+ * The same six, named — so a rejection can be written in English and still quote
+ * the heading the Dispatcher has to type. Interpolated rather than spelled out
+ * again: an error naming a section that `DRAFT_FIELDS` no longer holds sends the
+ * model to write a heading the parser will not accept.
+ */
+const [GOAL, NOT_DOING, ACCEPT, SLICES, RISK, OBJECTION] = DRAFT_FIELDS;
+/** What the Architect writes when it has no objection. Content, not a key — so
+ *  the prompt asks for it in the agent's own output language rather than fixing
+ *  a word here. This is only what the rejection suggests. */
+const NO_OBJECTION = "none";
 
 /**
  * A card, structured, whichever grammar it arrived in.
@@ -125,11 +176,12 @@ function textOf(node: Nodes): string {
 }
 
 /** The DRAFT field this heading names, or null if it names something else. */
-function headingField(node: Nodes): string | null {
-  const name = textOf(node)
-    .trim()
-    .replace(/[:：]\s*$/, "");
-  return (DRAFT_FIELDS as readonly string[]).includes(name) ? name : null;
+function headingField(node: Nodes): Field | null {
+  return fieldOf(
+    textOf(node)
+      .trim()
+      .replace(/[:：]\s*$/, ""),
+  );
 }
 
 /** Which section is this node in: the nodes under each field heading, in order. */
@@ -173,7 +225,7 @@ function contentLines(node: RootContent): string[] {
  * Markdown, parsed as Markdown.
  *
  * Headings name the sections, list items and paragraphs are their content, and
- * 切片 is a GFM table because three fields per slice is a shape every Markdown
+ * `slices` is a GFM table because three fields per slice is a shape every Markdown
  * reader already understands. Returns null when the text has no headings at
  * all, which is the one signal that it predates this format.
  */
@@ -184,7 +236,7 @@ function draftMarkdown(text: string): CardParts | null {
   const grouped = bySection(root);
   const sections = new Map([...grouped].map(([field, nodes]) => [field, nodes.flatMap(contentLines)]));
   const count = [...sections.values()].reduce((n, lines) => n + lines.length, 0);
-  const rows = grouped.get("切片")?.flatMap((n) => (n.type === "table" ? tableRows(n) : [])) ?? [];
+  const rows = grouped.get(SLICES)?.flatMap((n) => (n.type === "table" ? tableRows(n) : [])) ?? [];
 
   return { sections, count, slices: () => tableSlices(rows) };
 }
@@ -218,17 +270,19 @@ function draftLegacy(text: string): CardParts {
   let current: string | null = null;
   for (const line of lines) {
     const match = /^\s*([^\s:：]+)\s*[:：]\s*(.*)$/.exec(line);
-    const head = match?.[1];
-    if (head && (DRAFT_FIELDS as readonly string[]).includes(head)) {
+    // Through `fieldOf`, so a card in either grammar keys `sections` by the
+    // canonical name — which is what lets every read below name one spelling.
+    const head = match?.[1] ? fieldOf(match[1]) : null;
+    if (match && head) {
       current = head;
       if (!sections.has(head)) sections.set(head, []);
-      const rest = match[2]!.trim().replace(/^[-•]\s*/, "");
+      const rest = (match[2] ?? "").trim().replace(/^[-•]\s*/, "");
       if (rest) sections.get(head)!.push(rest);
     } else if (current) {
       sections.get(current)!.push(line.replace(/^\s*[-•]\s*/, "").trim());
     }
   }
-  return { sections, count: lines.length, slices: () => legacySlices(sections.get("切片") ?? []) };
+  return { sections, count: lines.length, slices: () => legacySlices(sections.get(SLICES) ?? []) };
 }
 
 /** LEGACY, with `draftLegacy`: "title [difficulty] — how it is accepted". */
@@ -254,9 +308,10 @@ function legacySlices(rawSlices: string[]): Result<{ slices: DraftSlice[] }> {
  * long card and making the Dispatcher rewrite is cheaper than training the boss to
  * skim.
  *
- * Expected: `## 目标` and `## 不做` one line each, `## 验收` 2–3 executable list
- * items, `## 切片` a table of `| 切片 | 难度 | 验收 |` with 1–5 body rows, `## 风险` at
- * most 2 items, and `## 反对` the Architect's objection in at most 2 lines, or 无.
+ * Expected: `## goal` and `## non-goals` one line each, `## accept` 2–3
+ * executable list items, `## slices` a table of `| slice | difficulty | accept |`
+ * with 1–5 body rows, `## risk` at most 2 items, and `## objection` the
+ * Architect's objection in at most 2 lines, or a statement that there is none.
  */
 export function validateDraftCard(text: string): Result<DraftOk> {
   const card = draftMarkdown(text) ?? draftLegacy(text);
@@ -278,21 +333,23 @@ export function validateDraftCard(text: string): Result<DraftOk> {
     return { ok: false, error: `missing sections: ${missing.join(", ")}` };
   }
 
-  const one = (f: string) => (sections.get(f) ?? []).join(" ").trim();
-  const many = (f: string) => (sections.get(f) ?? []).filter(Boolean);
+  // `Field`, not `string`: a typo used to be a section that silently read empty,
+  // and the rejection then named a heading the card already had.
+  const one = (f: Field) => (sections.get(f) ?? []).join(" ").trim();
+  const many = (f: Field) => (sections.get(f) ?? []).filter(Boolean);
 
-  const accept = many("验收");
+  const accept = many(ACCEPT);
   if (accept.length < 2 || accept.length > 3) {
-    return { ok: false, error: `验收 needs 2-3 executable criteria (got ${accept.length})` };
+    return { ok: false, error: `${ACCEPT} needs 2-3 executable criteria (got ${accept.length})` };
   }
 
-  const rawSlices = many("切片");
+  const rawSlices = many(SLICES);
   // 1, not 3. A floor of three made the Dispatcher invent work: measured, it
   // filed "切片 2、3 是为满足最少切片数补的相邻能力" as a risk on its own card, and
   // one of those padded slices would have changed what existing callers get.
   // A one-line requirement is one slice, and the boss can read that in 5 seconds.
   if (rawSlices.length < 1 || rawSlices.length > 5) {
-    return { ok: false, error: `切片 needs 1-5 slices (got ${rawSlices.length})` };
+    return { ok: false, error: `${SLICES} needs 1-5 slices (got ${rawSlices.length})` };
   }
   const parsedSlices = card.slices();
   if (!parsedSlices.ok) return parsedSlices;
@@ -301,23 +358,23 @@ export function validateDraftCard(text: string): Result<DraftOk> {
   const split = checkSplit(slices);
   if (split) return { ok: false, error: split };
 
-  const risk = many("风险");
-  if (risk.length > 2) return { ok: false, error: `风险 max 2 lines (got ${risk.length})` };
+  const risk = many(RISK);
+  if (risk.length > 2) return { ok: false, error: `${RISK} max 2 lines (got ${risk.length})` };
 
-  if (!one("目标")) return { ok: false, error: "目标 is empty" };
-  if (!one("不做")) return { ok: false, error: "不做 is empty — say what is out of scope" };
-  if (!one("反对")) {
-    return { ok: false, error: "反对 is empty — write the Architect's objection, or 无" };
+  if (!one(GOAL)) return { ok: false, error: `${GOAL} is empty` };
+  if (!one(NOT_DOING)) return { ok: false, error: `${NOT_DOING} is empty — say what is out of scope` };
+  if (!one(OBJECTION)) {
+    return { ok: false, error: `${OBJECTION} is empty — write the Architect's objection, or ${NO_OBJECTION}` };
   }
 
   return {
     ok: true,
-    goal: one("目标"),
-    notDoing: one("不做"),
+    goal: one(GOAL),
+    notDoing: one(NOT_DOING),
     accept,
     slices,
     risk,
-    objection: one("反对"),
+    objection: one(OBJECTION),
     lines: card.count,
   };
 }

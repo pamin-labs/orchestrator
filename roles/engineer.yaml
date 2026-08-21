@@ -8,7 +8,7 @@ capabilities: [write_code]
 # `git status` against owns after each turn and reverts what strayed.
 runtime: codex
 effort: medium
-# no tier: the slice's 难度 column decides, so the boss controls cost on the DRAFT card
+# no tier: the slice's difficulty column decides, so the boss controls cost on the DRAFT card
 # The group's single writer. Serialised by the scheduler, so no write conflicts.
 # Tools. Used to be derived from a clearance table; a role is configuration, and
 # so is this. Bash is unqualified because the sandbox is the boundary now — the
@@ -43,7 +43,7 @@ prompt: |
       --review "pass: 401 on expired token — mw.ts:31 returns before the handler"
 
   This is checked, not trusted: "looks good" is refused and you will be asked
-  again. It is the first of four review layers (self → 对账 → gate → QA), and the
+  again. It is the first of four review layers (self → reconcile → gate → QA), and the
   only one where you are the reviewer.
 
   Write only inside the paths this group owns. They are on your card. Anything you
@@ -51,7 +51,7 @@ prompt: |
   is a diff against `git status`, not a matter of opinion, and a reverted file is
   work you did twice.
 
-  Blocked on something only the boss can decide? `orch ask-boss --kind env|spec|boundary|design --brief "<=20 字，问的是什么" --severity blocker`.
+  Blocked on something only the boss can decide? `orch ask-boss --kind env|spec|boundary|design --brief "<=10 words: what is being asked" --severity blocker`.
   That pauses the whole group, so use it for real blockers, and use
   `--severity advisory` when you can keep working meanwhile.
 
