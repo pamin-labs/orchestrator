@@ -38,19 +38,16 @@ msgstr "{0, plural, other {호스트 검사 #개가 실패했습니다}}"
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, 다만 App이 아직 어떤 계정에도 설치되지 않았습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.base_moved"
+msgid "{base} moved to {sha}; {name} is behind it and has been told to rebase first"
 msgstr "{base}이(가) {sha}로 옮겨져 {name}이(가) 뒤처졌고, 먼저 rebase하도록 지시했습니다"
 
 msgid "{branch} (per the remote)"
 msgstr "{branch} (원격 기준)"
 
-#. js-lingui-explicit-id
-msgid "check.paths.covered"
+msgid "{config} covers all {count} paths to be mounted"
 msgstr "{config}가 마운트할 경로 {count}개를 모두 포함합니다"
 
-#. js-lingui-explicit-id
-msgid "check.paths.missing"
+msgid "{config} does not list {missing}"
 msgstr "{config}에 {missing}이(가) 없습니다"
 
 msgid "{count} repositories"
@@ -65,8 +62,7 @@ msgstr "지금 요건 {count}개에 경계가 없습니다: {bareNames}."
 msgid "{count} selected"
 msgstr "{count}개 선택됨"
 
-#. js-lingui-explicit-id
-msgid "check.skills.staged"
+msgid "{count} staged at {path}"
 msgstr "{path}에 {count}개 준비됨"
 
 msgid "{d} days ago"
@@ -84,12 +80,10 @@ msgstr "{fails}개 실패"
 msgid "{files} files"
 msgstr "파일 {files}개"
 
-#. js-lingui-explicit-id
-msgid "check.egress.ok"
+msgid "{good}"
 msgstr "{good}"
 
-#. js-lingui-explicit-id
-msgid "check.egress.mixed"
+msgid "{good} (also has {stale} — check [egress] image)"
 msgstr "{good} ({stale}도 있습니다 — [egress] image를 확인하세요)"
 
 msgid "{groupCount} requirements touch different files and can run together"
@@ -128,8 +122,7 @@ msgstr "{hours}시간"
 msgid "{idleCount} more are idle and costing nothing."
 msgstr "{idleCount}개는 유휴 상태로 비용이 없습니다."
 
-#. js-lingui-explicit-id
-msgid "check.image.absent"
+msgid "{image} is not on this machine"
 msgstr "이 머신에 {image}가 없습니다"
 
 msgid "{lines} lines"
@@ -144,40 +137,31 @@ msgstr "{minutes}분"
 msgid "{minutes}m ago"
 msgstr "{minutes}분 전"
 
-#. js-lingui-explicit-id
-msgid "check.cred.daysLeft"
+msgid "{mode} · {days} days left"
 msgstr "{mode} · {days}일 남음"
 
-#. js-lingui-explicit-id
-msgid "check.cred.accepted"
+msgid "{mode} · accepted"
 msgstr "{mode} · 승인됨"
 
-#. js-lingui-explicit-id
-msgid "check.cred.expired"
+msgid "{mode} · expired — sign in again"
 msgstr "{mode} · 만료됨 — 다시 로그인하세요"
 
-#. js-lingui-explicit-id
-msgid "check.cred.expiringToday"
+msgid "{mode} · expires within a day"
 msgstr "{mode} · 하루 안에 만료됩니다"
 
-#. js-lingui-explicit-id
-msgid "check.cred.githubRejected"
+msgid "{mode} · GitHub no longer accepts this token"
 msgstr "{mode} · GitHub이 이 토큰을 더 이상 받지 않습니다"
 
-#. js-lingui-explicit-id
-msgid "check.cred.unverified"
+msgid "{mode} · not verified (HTTP {status})"
 msgstr "{mode} · 확인되지 않음 (HTTP {status})"
 
-#. js-lingui-explicit-id
-msgid "check.cred.stored"
+msgid "{mode} · stored"
 msgstr "{mode} · 저장됨"
 
-#. js-lingui-explicit-id
-msgid "check.cred.rejected"
+msgid "{mode} · the provider rejected this credential"
 msgstr "{mode} · 제공자가 이 자격 증명을 거부했습니다"
 
-#. js-lingui-explicit-id
-msgid "check.cred.unreachable"
+msgid "{mode} · unreachable, not verified"
 msgstr "{mode} · 연결 불가, 확인되지 않음"
 
 msgid "{months} months ago"
@@ -189,8 +173,7 @@ msgstr "{mount} 읽기 전용"
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, other {슬라이스 #개}}"
 
-#. js-lingui-explicit-id
-msgid "ev.notify.batch"
+msgid "{n, plural, one {# thing needs} other {# things need}} you:"
 msgstr "처리를 기다리는 일이 {n}건 있습니다:"
 
 msgid "{n} more queued behind it"
@@ -199,32 +182,22 @@ msgstr "뒤에 {n}개 대기 중"
 msgid "{n} to do"
 msgstr "{n}건 처리 대기"
 
-#. js-lingui-explicit-id
-msgid "ev.unread.digest"
+msgid "{n} unread — the Librarian is compressing them"
 msgstr "읽지 않은 {n}건 — Librarian이 요약하고 있습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.sandbox_swept"
+msgid "{name} dissolved; its sandbox is reclaimed"
 msgstr "{name}이(가) 해산되어 샌드박스를 회수했습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_parked"
+msgid "{name} has been parked {hours}h — wake it, or drop it?"
 msgstr "{name}이(가) {hours}시간째 보류 중입니다 — 깨울까요, 그만둘까요?"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_on_you"
+msgid "{name} has been waiting {min} min for you"
 msgstr "{name}이(가) {min}분째 당신을 기다리고 있습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.unshipped"
-msgstr "{name}은(는) 모든 조각이 수락되었고 PR도 없고 대기열도 비었습니다 — 브랜치 검토를 다시 돌립니다"
-
-#. js-lingui-explicit-id
-msgid "ev.wd.budget_80"
+msgid "{name} is at {pct}% of its budget"
 msgstr "{name}의 예산 사용률이 {pct}%입니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.unparked"
+msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name}이(가) 기다리던 일이 끝났습니다 — 깨웠습니다"
 
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
@@ -233,53 +206,40 @@ msgstr "{name}이(가) 보드에서 빠지고 대기 중인 턴은 모두 취소
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are kept; the group is never started again."
 msgstr "{name}이(가) 보드에서 빠지고 대기 중인 턴은 모두 취소됩니다. 코드와 기록은 남지만 이 그룹은 다시 시작되지 않습니다."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.parked"
+msgid "{name} parked after waiting {min} min — checkout kept, slot freed"
 msgstr "{name}이(가) {min}분 기다린 뒤 보류되었습니다 — 체크아웃은 남기고 슬롯은 놓았습니다"
 
 msgid "{name} produced no output."
 msgstr "{name}이(가) 출력을 내지 않았습니다."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.stale_ask"
+msgid "{name} reached PR, so the question still hanging on it expired — closed by itself"
 msgstr "{name}이(가) PR에 도달해, 걸려 있던 질문이 만료되어 알아서 닫혔습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_slice"
+msgid "{name} S{seq} has been waiting {hours}h for you"
 msgstr "{name} S{seq}이(가) {hours}시간째 확인을 기다리고 있습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.budget_exhausted"
+msgid "{name} spent its whole budget ({tokens} tokens) and is suspended"
 msgstr "{name}이(가) 예산({tokens} 토큰)을 모두 쓰고 중단되었습니다"
 
 msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
 msgstr "{name}의 컨테이너를 버리고 다음 턴에서 다시 만듭니다: 브랜치 재클론, 의존성 재설치. 커밋하지 않은 변경은 사라집니다."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_card"
+msgid "{name}'s plan card has been waiting {hours}h for you"
 msgstr "{name}의 계획 카드가 {hours}시간째 승인을 기다리고 있습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_merge"
+msgid "{name}'s PR has been at the head of the merge queue for {hours}h"
 msgstr "{name}의 PR이 병합 대기열 맨 앞에서 {hours}시간째 멈춰 있습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_merge_blocked"
+msgid "{name}'s PR has been at the head of the merge queue for {hours}h, with {n} behind it"
 msgstr "{name}의 PR이 병합 대기열 맨 앞에서 {hours}시간째 멈춰 있고, 뒤에 {n}건이 막혀 있습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.sandbox_stale_cred"
+msgid "{name}'s sandbox is bound to a superseded credential; reclaimed, and the next tick rebuilds it"
 msgstr "{name}의 샌드박스가 옛 자격 증명에 묶여 있어 회수했고, 다음 틱에서 다시 만듭니다"
-
-#. js-lingui-explicit-id
-msgid "check.skills.fix.contained"
-msgstr "{path}는 이 컨테이너 안의 경로지만, 마운트는 샌드박스 서버의 docker가 자신의 파일시스템에서 해석합니다. 양쪽에 같은 절대 경로를 쓰고(-v <host path>:{path}), 샌드박스 서버의 allowed_host_paths에 추가하세요. 어긋나도 실패하지 않고 빈 디렉터리가 마운트될 뿐입니다."
 
 msgid "{repoPath} removed"
 msgstr "{repoPath} 삭제됨"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.env_suspect"
+msgid "{resource} failed {n}x with no code change in between — treat the environment as the suspect"
 msgstr "{resource}이(가) 코드 변경 없이 {n}회 실패했습니다 — 환경을 먼저 의심하세요"
 
 msgid "{rest} more of {total}"
@@ -292,16 +252,13 @@ msgstr "{total}개 중 {rest}개 더"
 msgid "{rest} more requirements"
 msgstr "요건 {rest}개 더"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.no_progress"
+msgid "{role} finished {n, plural, one {# turn} other {# turns}} without changing a file, a task or a note"
 msgstr "{role}이(가) {n}턴 동안 파일도 태스크도 노트도 건드리지 않았습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.circling"
+msgid "{role} has rewritten {file} {n, plural, one {# turn} other {# turns}} running — probably a design problem, sending it to the Architect"
 msgstr "{role}이(가) {n}턴 연속으로 {file}을(를) 고쳐 쓰고 있습니다 — 설계 문제로 보여 Architect에게 넘깁니다"
 
-#. js-lingui-explicit-id
-msgid "ev.owns.reverted"
+msgid "{role} wrote {n, plural, one {# file} other {# files}} this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it"
 msgstr "{role}이(가) 이 그룹 소유가 아닌 파일 {n}개를 고쳤습니다({files}) — 되돌렸습니다. 이 CLI의 샌드박스는 쓰기를 막지 못해 사후에 대조합니다"
 
 msgid "{runningCount} running · {total} total"
@@ -325,8 +282,7 @@ msgstr "체크한 {staged}/{ticked}이 샌드박스에 전달됩니다, 턴당 �
 msgid "{storedHint} stored; paste a new one to replace it"
 msgstr "{storedHint} 저장됨. 바꾸려면 새 값을 붙여넣으세요"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.autoaccept"
+msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} 자동 수락, 세 관문 모두 통과"
 
 msgid "{total} waiting on you"
@@ -386,12 +342,10 @@ msgstr "수락 기준"
 msgid "accepted {done}/{total}"
 msgstr "수락 {done}/{total}"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.accepted"
+msgid "accepted: S{seq} {title}"
 msgstr "수락: S{seq} {title}"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.accepted_why"
+msgid "accepted: S{seq} {title} ({why})"
 msgstr "수락: S{seq} {title}（{why}）"
 
 msgid "Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable"
@@ -402,10 +356,6 @@ msgstr "추가"
 
 msgid "Add · {branch}"
 msgstr "추가 · {branch}"
-
-#. js-lingui-explicit-id
-msgid "check.skills.fix.host"
-msgstr "{path}를 샌드박스 서버의 allowed_host_paths에 추가하세요. 그렇지 않으면 모든 그룹이 컨테이너를 열지 못합니다. 스킬은 설정에서 선택합니다."
 
 msgid "Add a row"
 msgstr "행 추가"
@@ -464,8 +414,7 @@ msgstr "알림 허용"
 msgid "already spent {tokens} tokens"
 msgstr "이미 {tokens} 토큰 사용"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.unclaimed"
+msgid "also changed on S{seq}, unclaimed: {files}"
 msgstr "S{seq}에서 신고 없이 바뀐 것: {files}"
 
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
@@ -486,8 +435,7 @@ msgstr "API 키"
 msgid "Appearance"
 msgstr "모양"
 
-#. js-lingui-explicit-id
-msgid "ev.group.approve_held"
+msgid "approval recorded — held by the boundary: {why}. Starts by itself once that clears"
 msgstr "승인을 기록했습니다 — 경계가 막고 있습니다: {why}. 풀리는 대로 알아서 시작합니다"
 
 msgid "Approve and start"
@@ -544,8 +492,7 @@ msgstr "자동 수락 등급"
 msgid "Auto-advance when approved"
 msgstr "승인되면 자동 진행"
 
-#. js-lingui-explicit-id
-msgid "ev.group.autoadvance"
+msgid "autoAdvance: started the next slice without waiting for you"
 msgstr "autoAdvance: 확인을 기다리지 않고 다음 조각을 시작했습니다"
 
 msgid "Awaiting Architect to split boundaries"
@@ -581,8 +528,7 @@ msgstr "묶어 보내는 간격"
 msgid "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates."
 msgstr "큰 프로젝트는 몇 시간씩 컴파일합니다. 상한이 없으면 멈춘 빌드 하나가 리스 슬롯을 영원히 차지합니다. 슬롯은 전역이고 희소해서, 죽은 명령 하나가 전체 함대의 게이트를 멈춥니다."
 
-#. js-lingui-explicit-id
-msgid "ev.group.blocked"
+msgid "blocked by {path}; handed to grp {target} and waiting for it to land"
 msgstr "{path}에 막혀 grp {target}에 넘겼고, 그것이 안착하기를 기다리는 중입니다"
 
 msgid "Blocked domains"
@@ -663,8 +609,7 @@ msgstr "대기 중인 턴을 모두 취소하고 차지하던 슬롯을 다른 �
 msgid "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
 msgstr "대기 중인 턴을 모두 취소하고 차지하던 슬롯을 다른 그룹에 돌려줍니다. 코드, 브랜치, 기록은 남습니다."
 
-#. js-lingui-explicit-id
-msgid "check.server.unreachable"
+msgid "cannot reach it: {error}"
 msgstr "연결할 수 없습니다: {error}"
 
 msgid "Cannot reach the usage endpoint"
@@ -694,8 +639,7 @@ msgstr "체크 실행"
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "체크한 스킬이 여기에 복제되어 각 샌드박스에 읽기 전용으로 마운트됩니다. 여기를 바꾸면 샌드박스 서버의 allowed_host_paths도 맞춰야 하며, 안 맞으면 컨테이너가 뜨지 않습니다. 조용히 빈 마운트가 되는 것보다 요란하게 실패하는 편이 낫습니다."
 
-#. js-lingui-explicit-id
-msgid "ev.group.worktree"
+msgid "checkout on {branch}"
 msgstr "{branch}에 체크아웃했습니다"
 
 msgid "Choose account"
@@ -712,6 +656,9 @@ msgstr "작업 맡기"
 
 msgid "Claude Code writes this in Co-Authored-By when committing"
 msgstr "Claude Code가 커밋할 때 Co-Authored-By에 적는 값입니다"
+
+msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
+msgstr "claude 가 컨테이너 안에서 로그인 링크를 출력하지 않았습니다 — 이미지에서 `claude setup-token` 을 실행해 원인을 확인하세요. pty 가 필요하며, 없으면 아무것도 출력하지 않고 정상 종료합니다."
 
 msgid "Clear"
 msgstr "지우기"
@@ -752,6 +699,9 @@ msgstr "코드 인덱스"
 msgid "Code repository"
 msgstr "코드 저장소"
 
+msgid "codex printed no device code inside the container — run `codex login --device-auth` in the image to see why."
+msgstr "codex 가 컨테이너 안에서 기기 코드를 출력하지 않았습니다 — 이미지에서 `codex login --device-auth` 를 실행해 원인을 확인하세요."
+
 msgid "Collapse"
 msgstr "접기"
 
@@ -785,8 +735,7 @@ msgstr "포기 확인"
 msgid "Connect GitHub"
 msgstr "GitHub 연결"
 
-#. js-lingui-explicit-id
-msgid "check.cred.fix.github"
+msgid "Connect GitHub once in Settings. Branches are pushed with it — without one, every slice is refused at its last step."
 msgstr "설정에서 GitHub을 한 번 연결하세요. 브랜치는 이것으로 푸시됩니다 — 없으면 모든 슬라이스가 마지막 단계에서 거부됩니다."
 
 msgid "Connected"
@@ -801,8 +750,7 @@ msgstr "연결 중"
 msgid "Connection lost; reconnecting"
 msgstr "연결이 끊겨 재연결 중"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.rebuild"
+msgid "container discarded; the next turn rebuilds it — clone and install. The branch lives in the host repo"
 msgstr "컨테이너를 버렸습니다. 다음 턴에서 다시 만듭니다 — 클론과 설치. 브랜치는 호스트 저장소에 있습니다"
 
 msgid "Container hasn't started yet. Clone and dependency installation output will appear here line by line."
@@ -946,8 +894,7 @@ msgstr "디스패처가 계획 카드를 쓰는 중입니다. 다 되면 여기�
 msgid "Dissolved"
 msgstr "해산됨"
 
-#. js-lingui-explicit-id
-msgid "check.host.elsewhere"
+msgid "docker, uv and the egress image belong to the machine running the sandbox server, not to this one"
 msgstr "docker, uv, egress 이미지는 샌드박스 서버를 실행하는 머신의 것이지 이 머신의 것이 아닙니다"
 
 msgid "Domains the sandbox may not reach. A blocklist, not an allowlist — an allowlist would have to name every registry and docs site. Credentials do not depend on this: the sandbox only ever holds fakes."
@@ -962,19 +909,16 @@ msgstr "완료"
 msgid "Double to {doubledLabel}"
 msgstr "{doubledLabel}(으)로 두 배"
 
-#. js-lingui-explicit-id
-msgid "ev.group.approved"
+msgid "DRAFT approved"
 msgstr "DRAFT를 승인했습니다"
 
 msgid "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
 msgstr "50% 아래로 떨어지면 프롬프트 조립이 깨진 것입니다. 턴당 비용이 3~5배가 됩니다"
 
-#. js-lingui-explicit-id
-msgid "ev.group.dropped"
+msgid "dropped by the boss"
 msgstr "보스가 하지 않기로 했습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.group.dropped_why"
+msgid "dropped by the boss: {why}"
 msgstr "보스가 하지 않기로 했습니다: {why}"
 
 msgid "e.g. 2000000"
@@ -1144,15 +1088,13 @@ msgstr "게이트 점검"
 msgid "Gate concurrency"
 msgstr "게이트 동시 실행 수"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.fail"
+msgid "gate fail on S{seq}"
 msgstr "S{seq} 관문 실패"
 
 msgid "gate name"
 msgstr "게이트 이름"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.pass"
+msgid "gate pass on S{seq}"
 msgstr "S{seq} 관문 통과"
 
 msgid "Gate retries"
@@ -1188,8 +1130,10 @@ msgstr "GitHub → 이 App → Install App"
 msgid "GitHub API call"
 msgstr "GitHub API 호출"
 
-#. js-lingui-explicit-id
-msgid "ev.repo.held"
+msgid "GitHub is not connected — connect it in Settings first"
+msgstr "GitHub 가 연결되지 않았습니다 — 먼저 설정에서 연결하세요"
+
+msgid "GitHub no longer accepts this login, so every turn on {repo} is held — retrying cannot help. Reconnect GitHub in settings and they resume on their own. Other projects are unaffected."
 msgstr "GitHub가 이 로그인을 더는 받아 주지 않아 {repo}의 모든 턴을 보류했습니다 — 재시도로는 해결되지 않습니다. 설정에서 GitHub를 다시 연결하면 알아서 재개합니다. 다른 프로젝트는 영향받지 않습니다."
 
 msgid "GitHub not connected yet; using our bot account for now"
@@ -1228,12 +1172,10 @@ msgstr "회색 글자는 기본값입니다"
 msgid "Group is paused"
 msgstr "그룹이 일시정지되었습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.stalled"
+msgid "group is RUNNING with an empty queue, and one re-queue did not revive it. Last failure: {why}"
 msgstr "그룹은 RUNNING인데 대기열이 비었고, 한 번 다시 넣어도 살아나지 않았습니다. 마지막 실패: {why}"
 
-#. js-lingui-explicit-id
-msgid "ev.group.unblocked"
+msgid "grp {target} landed; resuming by itself"
 msgstr "grp {target}이(가) 안착했습니다. 알아서 재개합니다"
 
 msgid "Has objections"
@@ -1248,8 +1190,7 @@ msgstr "이 단계 숨기기"
 msgid "Hiding:"
 msgstr "숨김:"
 
-#. js-lingui-explicit-id
-msgid "ev.hired"
+msgid "hired {role}"
 msgstr "{role}을(를) 채용했습니다"
 
 msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
@@ -1318,8 +1259,7 @@ msgstr "어떻게 알릴지"
 msgid "hr"
 msgstr "시간"
 
-#. js-lingui-explicit-id
-msgid "check.server.http"
+msgid "HTTP {status}"
 msgstr "HTTP {status}"
 
 msgid "HTTP request"
@@ -1350,10 +1290,6 @@ msgstr "스킬 삽입"
 msgid "Install dependencies"
 msgstr "의존성 설치"
 
-#. js-lingui-explicit-id
-msgid "check.docker.fix.install"
-msgstr "Docker를 설치하세요. Colima든 Podman이든 docker 소켓을 제공하는 것이면 됩니다. 설치한 뒤 실행하세요."
-
 msgid "Install on GitHub"
 msgstr "GitHub에 설치"
 
@@ -1365,10 +1301,6 @@ msgstr "다른 계정에 설치"
 
 msgid "Installed on these accounts"
 msgstr "이 계정들에 설치됨"
-
-#. js-lingui-explicit-id
-msgid "check.docker.silent"
-msgstr "설치되어 있지만 데몬이 응답하지 않습니다"
 
 msgid "Interrupt and rollback"
 msgstr "중단하고 롤백"
@@ -1384,10 +1316,6 @@ msgstr "네트워크가 아예 있는지. 각 공급자 오리진에 HEAD를 던
 
 msgid "It's not a duplicate, and it's not done yet — keep decomposing."
 msgstr "중복도 아니고 아직 끝난 것도 아닙니다 — 계속 분해하세요."
-
-#. js-lingui-explicit-id
-msgid "ev.pr.queued"
-msgstr "병합 대기열 {n}번째에 들어갔습니다"
 
 msgid "Journal"
 msgstr "기록"
@@ -1488,8 +1416,7 @@ msgstr "메모리"
 msgid "Memory ceiling per sandbox."
 msgstr "샌드박스당 메모리 상한."
 
-#. js-lingui-explicit-id
-msgid "ev.group.merged"
+msgid "merged into main"
 msgstr "main에 병합했습니다"
 
 msgid "Message this group"
@@ -1498,8 +1425,7 @@ msgstr "이 그룹에 메시지"
 msgid "Message this group…"
 msgstr "이 그룹에 메시지…"
 
-#. js-lingui-explicit-id
-msgid "check.database.ok"
+msgid "migrated and queryable"
 msgstr "마이그레이션 완료, 조회 가능"
 
 msgid "min"
@@ -1544,8 +1470,7 @@ msgstr "{k}의 이름"
 msgid "Needs an integer"
 msgstr "정수여야 합니다"
 
-#. js-lingui-explicit-id
-msgid "ev.net.back"
+msgid "network is back, held work resumes"
 msgstr "네트워크가 돌아왔습니다. 보류된 작업을 재개합니다"
 
 msgid "Network ping"
@@ -1581,6 +1506,9 @@ msgstr "예산 제한 없음"
 msgid "No changes"
 msgstr "변경 없음"
 
+msgid "no code given"
+msgstr "코드가 없습니다"
+
 msgid "No container yet"
 msgstr "아직 컨테이너 없음"
 
@@ -1596,8 +1524,14 @@ msgstr "diff가 없습니다. 슬라이스가 기준 커밋을 기록하지 않�
 msgid "No events"
 msgstr "이벤트 없음"
 
+msgid "no file"
+msgstr "파일이 없습니다"
+
 msgid "No gates enabled; LLM review has no floor."
 msgstr "게이트가 하나도 켜져 있지 않습니다. LLM 리뷰에 바닥이 없습니다."
+
+msgid "no login is waiting for a code — start one first"
+msgstr "코드를 기다리는 로그인이 없습니다 — 먼저 로그인을 시작하세요"
 
 msgid "No matches"
 msgstr "일치 항목 없음"
@@ -1626,12 +1560,10 @@ msgstr "아직 아무도 일하지 않습니다. 계획 카드를 승인하면 �
 msgid "No open questions. This group is not waiting on you right now."
 msgstr "열린 질문이 없습니다. 이 그룹은 지금 당신을 기다리지 않습니다."
 
-#. js-lingui-explicit-id
-msgid "check.paths.noConfig"
+msgid "no opensandbox-server config file found, so there is nothing to check against"
 msgstr "opensandbox-server 설정 파일을 찾지 못해 대조할 대상이 없습니다"
 
-#. js-lingui-explicit-id
-msgid "check.egress.none"
+msgid "no opensandbox/egress image pulled"
 msgstr "opensandbox/egress 이미지를 받은 적이 없습니다"
 
 msgid "No other models yet; just type"
@@ -1640,14 +1572,16 @@ msgstr "다른 모델은 아직 없습니다. 그냥 입력하세요"
 msgid "No other requirements for this project"
 msgstr "이 프로젝트에 다른 요건 없음"
 
+msgid "no path"
+msgstr "경로가 없습니다"
+
 msgid "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
 msgstr "일시정지된 요건이 없습니다. 예산이 바닥나거나 당신의 답을 2시간 넘게 기다리면 그룹이 여기서 멈추며, 작업은 남습니다."
 
 msgid "No pending items"
 msgstr "대기 중인 항목 없음"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_no_reason"
+msgid "no reason given, which is itself a bug"
 msgstr "밝혀진 이유가 없습니다. 그 자체가 버그입니다"
 
 msgid "No reason recorded"
@@ -1662,8 +1596,10 @@ msgstr "아직 요건 없음"
 msgid "No runnable commands found."
 msgstr "실행할 수 있는 명령을 찾지 못했습니다."
 
-#. js-lingui-explicit-id
-msgid "check.skills.none"
+msgid "No sandbox server config found. It was started with --config, so put that file's path in OPENSANDBOX_CONFIG, or move the file to ./sandbox.toml or ~/.sandbox.toml."
+msgstr "샌드박스 서버 설정 파일을 찾을 수 없습니다. --config 로 시작했으므로 그 경로를 OPENSANDBOX_CONFIG 에 넣거나 파일을 ./sandbox.toml 또는 ~/.sandbox.toml 로 옮기세요."
+
+msgid "no skills ticked"
 msgstr "선택된 스킬이 없습니다"
 
 msgid "No slice"
@@ -1678,10 +1614,6 @@ msgstr "기록된 시스템 활동이 없습니다."
 msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
 msgstr "아직 토큰을 쓰지 않았습니다. 계획 카드를 승인하면 비용이 요건별·에이전트별로 나뉩니다. 어떤 모델을 쓸지는 난이도 태그가 정합니다."
 
-#. js-lingui-explicit-id
-msgid "check.uvx.absent"
-msgstr "PATH에 uvx가 없습니다"
-
 msgid "No, keep going"
 msgstr "아니요, 계속"
 
@@ -1694,8 +1626,7 @@ msgstr "없음. 이 연결로는 저장소가 보이지 않습니다. 전체 저
 msgid "Not checked out"
 msgstr "체크아웃되지 않음"
 
-#. js-lingui-explicit-id
-msgid "check.cred.absent"
+msgid "not configured"
 msgstr "설정되지 않음"
 
 msgid "Not configured"
@@ -1712,10 +1643,6 @@ msgstr "두 구간치 데이터가 부족합니다."
 
 msgid "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
 msgstr "로컬도 아니고 암호화된 네트워크도 아닙니다 — 트래픽이 평문 HTTP입니다. 키와 컨테이너 통신이 노출됩니다. HTTPS나 Tailscale을 쓰세요."
-
-#. js-lingui-explicit-id
-msgid "check.docker.absent"
-msgstr "연결할 수 없음"
 
 msgid "Not running"
 msgstr "실행 중 아님"
@@ -1741,8 +1668,7 @@ msgstr "말 없는 그룹 찌르기"
 msgid "OK"
 msgstr "확인"
 
-#. js-lingui-explicit-id
-msgid "check.host.fix"
+msgid "On that machine: install docker, run uvx opensandbox-server, and docker pull opensandbox/egress:v1.1.6."
 msgstr "그 머신에서 docker를 설치하고, uvx opensandbox-server를 실행하고, docker pull opensandbox/egress:v1.1.6을 실행하세요."
 
 msgid "On, a group starts the next slice without waiting for you. Off, it finishes one and stops. The cost: later slices build on an earlier one, so reverting it pauses the whole group."
@@ -1778,8 +1704,7 @@ msgstr "누군가 요청한 일 자체인 REST 호출 하나 — PR 열기, 리�
 msgid "One turn"
 msgstr "한 턴"
 
-#. js-lingui-explicit-id
-msgid "check.egress.stale"
+msgid "only {stale}, which is too old"
 msgstr "{stale}뿐이라 너무 오래됐습니다"
 
 msgid "Only running"
@@ -1803,16 +1728,13 @@ msgstr "새 PR 열기"
 msgid "Open PR ↗"
 msgstr "PR 열기 ↗"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.server_restarted"
+msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server가 사라져 다시 시작했습니다({n}번째). 보류된 작업은 알아서 재개합니다."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.server_restart_failed"
+msgid "opensandbox-server was gone and the restart failed (attempt {n}): {why}"
 msgstr "opensandbox-server가 사라졌고 재시작에 실패했습니다({n}번째): {why}"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.server_gone"
+msgid "opensandbox-server will not start; {n, plural, one {# attempt} other {# attempts}} and no more automatic retries. Run it by hand to see what it says: {cmd}"
 msgstr "opensandbox-server가 시작되지 않습니다. {n}번 시도했고 더는 자동으로 재시도하지 않습니다. 직접 실행해 무엇이라 하는지 보세요: {cmd}"
 
 msgid "Optional, self-hosted gateway → {envVar}"
@@ -1851,10 +1773,6 @@ msgstr "P95"
 msgid "Panel language"
 msgstr "화면 언어"
 
-#. js-lingui-explicit-id
-msgid "ev.group.parked"
-msgstr "보류했습니다: {why}. 체크아웃과 체크포인트는 남겨 둡니다"
-
 msgid "Pass"
 msgstr "통과"
 
@@ -1870,8 +1788,7 @@ msgstr "일시정지"
 msgid "Paused"
 msgstr "일시정지됨"
 
-#. js-lingui-explicit-id
-msgid "ev.group.paused"
+msgid "PAUSED"
 msgstr "일시 정지됨"
 
 msgid "Pausing"
@@ -1934,8 +1851,7 @@ msgstr "구독 사용량 조회 주기"
 msgid "Polling intervals"
 msgstr "폴링 주기"
 
-#. js-lingui-explicit-id
-msgid "ev.pr.opened"
+msgid "PR #{n} opened"
 msgstr "PR #{n}을(를) 열었습니다"
 
 msgid "PR link not found"
@@ -1971,8 +1887,7 @@ msgstr "풀 리퀘스트"
 msgid "Pull requests per poll"
 msgstr "폴링당 PR 수"
 
-#. js-lingui-explicit-id
-msgid "check.paths.fix"
+msgid "Put this line in the [sandbox] section of {config}, then restart opensandbox-server: allowed_host_paths = [{line}]"
 msgstr "이 줄을 {config}의 [sandbox] 섹션에 넣고 opensandbox-server를 재시작하세요: allowed_host_paths = [{line}]"
 
 msgid "QA"
@@ -1993,19 +1908,16 @@ msgstr "질문"
 msgid "Queued"
 msgstr "대기열"
 
-#. js-lingui-explicit-id
-msgid "ev.rl.resumed"
+msgid "quota is back, resuming"
 msgstr "한도가 회복되었습니다. 재개합니다"
 
 msgid "Rate limited reading usage; it recovers by itself shortly"
 msgstr "사용량 조회가 레이트 리밋에 걸렸습니다. 잠시 뒤 저절로 회복됩니다"
 
-#. js-lingui-explicit-id
-msgid "ev.rl.waiting"
+msgid "rate limited; everything on this CLI holds until the window reopens (~{at}) and resumes itself — the quota belongs to the account, so no model spends less of it"
 msgstr "사용량 한도에 걸렸습니다. 이 CLI의 모든 작업은 한도가 풀릴 때({at}쯤)까지 보류되었다가 알아서 재개합니다 — 한도는 계정에 붙어 있어 모델을 바꿔도 덜 쓰지 않습니다"
 
-#. js-lingui-explicit-id
-msgid "check.server.reachable"
+msgid "reachable"
 msgstr "연결 가능"
 
 msgid "Read from server"
@@ -2029,8 +1941,7 @@ msgstr "도달성 재확인"
 msgid "Recheck the repo map"
 msgstr "저장소 맵 재확인"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.reconcile"
+msgid "reconcile failed on S{seq}: {reason}"
 msgstr "S{seq} 대조 실패: {reason}"
 
 msgid "Reconciliation"
@@ -2050,10 +1961,6 @@ msgstr "이 슬라이스 반려"
 
 msgid "Rejected"
 msgstr "반려됨"
-
-#. js-lingui-explicit-id
-msgid "ev.boss.reject_slice"
-msgstr "이 조각을 반려했습니다"
 
 msgid "Rejected, awaiting fix"
 msgstr "반려됨, 수정 대기"
@@ -2097,8 +2004,7 @@ msgstr "이 프로젝트 제거"
 msgid "Removing…"
 msgstr "제거 중…"
 
-#. js-lingui-explicit-id
-msgid "check.codex.fix"
+msgid "Renewal runs the real codex inside the utility container. If it keeps failing, paste ~/.codex/auth.json again in Settings, or switch to an API key — an API key never needs renewing."
 msgstr "갱신은 유틸리티 컨테이너 안에서 진짜 codex를 실행합니다. 계속 실패하면 설정에서 ~/.codex/auth.json을 다시 붙여 넣거나 API 키로 바꾸세요 — API 키는 갱신이 필요 없습니다."
 
 msgid "Renewed when a turn starts, so this is 'recover after idle', not 'task time limit'."
@@ -2191,8 +2097,7 @@ msgstr "전체 복원"
 msgid "Resume"
 msgstr "재개"
 
-#. js-lingui-explicit-id
-msgid "ev.group.resumed"
+msgid "resumed"
 msgstr "재개했습니다"
 
 msgid "Retrieval"
@@ -2228,19 +2133,16 @@ msgstr "대략 4k 토큰. 이 답은 트랜스크립트에 남고 세션의 남�
 msgid "Routine watchdog"
 msgstr "정기 watchdog"
 
-#. js-lingui-explicit-id
-msgid "check.uvx.fix"
+msgid "Run brew install uv. opensandbox-server is a Python package, so without uv there is nothing to start."
 msgstr "brew install uv를 실행하세요. opensandbox-server는 Python 패키지라서 uv가 없으면 시작할 것이 없습니다."
 
 msgid "Run claude setup-token in the container"
 msgstr "컨테이너 안에서 claude setup-token 실행"
 
-#. js-lingui-explicit-id
-msgid "check.image.fix"
+msgid "Run docker build -f docker/agent.Dockerfile -t {image} . — an image with no registry prefix can only be built locally."
 msgstr "docker build -f docker/agent.Dockerfile -t {image} . 를 실행하세요. registry 접두사가 없는 이미지는 로컬에서만 빌드할 수 있습니다."
 
-#. js-lingui-explicit-id
-msgid "check.egress.fix"
+msgid "Run docker pull opensandbox/egress:v1.1.6, then point [egress] image at it. v1.1.4 403s every scoped package as soon as a credential is bound."
 msgstr "docker pull opensandbox/egress:v1.1.6을 실행한 뒤 [egress] image를 그것으로 지정하세요. v1.1.4는 자격 증명이 연결되는 순간 모든 스코프 패키지를 403으로 막습니다."
 
 msgid "Run one turn"
@@ -2255,17 +2157,11 @@ msgstr "도구 컨테이너에서 공식 CLI 로그인을 한 번만 실행하�
 msgid "Run top-to-bottom; drag to reorder"
 msgstr "위에서 아래로 실행합니다. 끌어서 순서를 바꾸세요"
 
-#. js-lingui-explicit-id
-msgid "check.server.fix.host"
+msgid "Run uvx opensandbox-server --config ~/.sandbox.toml listening on {server}, with [egress] mode = \"dns+nft\"."
 msgstr "uvx opensandbox-server --config ~/.sandbox.toml을 {server}에서 수신하도록 실행하고, [egress] mode = \"dns+nft\"로 설정하세요."
 
-#. js-lingui-explicit-id
-msgid "check.server.fix.contained"
+msgid "Run uvx opensandbox-server on the host, not here: this orchestrator is inside a container and the sandbox server needs the host's docker. Then point ORCH_SANDBOX_SERVER at it — host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux."
 msgstr "uvx opensandbox-server는 여기가 아니라 호스트에서 실행하세요. 이 오케스트레이터는 컨테이너 안에 있고, 샌드박스 서버는 호스트의 docker가 필요합니다. 그런 다음 ORCH_SANDBOX_SERVER를 그쪽으로 지정하세요 — Docker Desktop에서는 host.docker.internal:8080, Linux에서는 호스트 IP 또는 --network host입니다."
-
-#. js-lingui-explicit-id
-msgid "check.docker.running"
-msgstr "실행 중"
 
 msgid "Running"
 msgstr "실행 중"
@@ -2285,16 +2181,13 @@ msgstr "돌고 있습니다. 우리가 띄웠습니다"
 msgid "Running: {running}"
 msgstr "실행 중: {running}"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.ready"
+msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq}「{title}」이(가) 끝났습니다. 확인해 주세요"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.failed"
+msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq}이(가) {from}에서 {n}회 연속 실패 — 코드가 아니라 인수 기준의 문제로 보입니다"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.sentback"
+msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq}이(가) {from}에 의해 반려되었습니다 ({n}번째)"
 
 msgid "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way."
@@ -2369,12 +2262,10 @@ msgstr "{times}번 반려됨"
 msgid "Server"
 msgstr "서버"
 
-#. js-lingui-explicit-id
-msgid "check.server.keyRejected"
+msgid "server rejected the API key"
 msgstr "서버가 API 키를 거부했습니다"
 
-#. js-lingui-explicit-id
-msgid "check.server.keyMissing"
+msgid "server requires an API key and none was sent"
 msgstr "서버가 API 키를 요구하는데 아무것도 보내지 않았습니다"
 
 msgid "Session restarts"
@@ -2386,8 +2277,7 @@ msgstr "세션 교대 임계값"
 msgid "Set"
 msgstr "설정됨"
 
-#. js-lingui-explicit-id
-msgid "check.serverAuth.fix"
+msgid "Set [server] api_key = \"…\" in the server's TOML, restart it, then Settings → Sandbox server → Read from server. The containers hold the checkout, the mailbox token and the CLI logins."
 msgstr "서버의 TOML에 [server] api_key = \"…\"를 설정하고 재시작한 다음, 설정 → 샌드박스 서버 → 서버에서 읽기를 누르세요. 컨테이너에는 체크아웃, 메일박스 토큰, CLI 로그인이 들어 있습니다."
 
 msgid "Set a token limit for this requirement"
@@ -2396,12 +2286,10 @@ msgstr "이 요건에 토큰 상한 설정"
 msgid "Settings"
 msgstr "설정"
 
-#. js-lingui-explicit-id
-msgid "check.cred.fix.claude"
+msgid "Settings → Claude → sign in. It runs the official claude setup-token inside the utility container, so nothing is installed here; paste the code that page gives you back into the input and it is stored. Good for a year."
 msgstr "설정 → Claude → 로그인. 유틸리티 컨테이너 안에서 공식 claude setup-token을 실행하므로 이 머신에는 아무것도 설치되지 않습니다. 그 페이지가 주는 코드를 입력란에 붙여 넣으면 저장됩니다. 1년간 유효합니다."
 
-#. js-lingui-explicit-id
-msgid "check.cred.fix.codex"
+msgid "Settings → codex → sign in, which runs the official device-code flow; codex is not installed here. Pasting an API key works too."
 msgstr "설정 → codex → 로그인. 공식 device-code 플로우가 실행됩니다. 이 머신에는 codex가 설치되어 있지 않습니다. API 키를 붙여 넣어도 됩니다."
 
 msgid "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S"
@@ -2469,10 +2357,6 @@ msgstr "상시 직무"
 
 msgid "Start"
 msgstr "시작"
-
-#. js-lingui-explicit-id
-msgid "check.docker.fix.start"
-msgstr "Docker Desktop을 실행하거나 colima start를 실행한 뒤 running이 될 때까지 기다리세요."
 
 msgid "Start from this branch"
 msgstr "이 브랜치에서 시작"
@@ -2546,8 +2430,7 @@ msgstr "메모하기"
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "브라우저가 읽을 수 없습니다. 폴더를 끌어다 놓으세요."
 
-#. js-lingui-explicit-id
-msgid "check.preflight.failed"
+msgid "the checks could not run: {error}"
 msgstr "점검 자체를 실행하지 못했습니다: {error}"
 
 msgid "The chosen skill is sent with this turn; it only costs for this one turn."
@@ -2559,15 +2442,13 @@ msgstr "유틸리티 컨테이너에서 도는 codex 리프레시 토큰 교환.
 msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
 msgstr "요건 전체가 디스패처로 돌아가 다시 파헤쳐집니다. 이 댓글이 최우선 사실이 됩니다."
 
-#. js-lingui-explicit-id
-msgid "ev.net.lost"
+msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, requirements left running"
 msgstr "호스트의 네트워크가 끊겼습니다. 턴 {n}건을 보류하고 다시 넣었으며, 요구사항은 실행 중인 상태로 둡니다"
 
 msgid "The last step repeats for as long as nobody answers"
 msgstr "아무도 답하지 않으면 마지막 단계가 계속 반복됩니다"
 
-#. js-lingui-explicit-id
-msgid "check.codex.fresh"
+msgid "the login is fresh; renewal runs inside the utility container, so codex is not needed here"
 msgstr "로그인이 최신입니다. 갱신은 유틸리티 컨테이너 안에서 실행되므로 이 머신에는 codex가 필요 없습니다"
 
 msgid "The name of a row under Model account, never the key"
@@ -2579,44 +2460,39 @@ msgstr "'모델 계정'에 있는 그 줄의 이름이지 키 자체가 아닙�
 msgid "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone."
 msgstr "'멈춤'의 나머지 절반: 같은 파일을 이만큼 연속으로 다시 쓴 경우. 수렴하는 에이전트는 이웃 파일도 건드립니다. 멈춘 에이전트는 예산이 바닥날 때까지 파일 하나만 계속 고쳐 씁니다."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_failed"
+msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "저장소 맵을 갱신할 수 없습니다: {repo} — {why}"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_stale"
+msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
 msgstr "저장소 맵이 지난 판에 멈춰 있습니다: {repo}의 컨테이너가 HEAD를 읽지 못해, 다시 만들어도 심볼 없는 맵만 나옵니다"
 
-#. js-lingui-explicit-id
-msgid "ev.sediment"
+msgid "the same feedback for the {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} time; asking the CoS to make it a project rule"
 msgstr "같은 피드백이 {n}번째입니다. CoS에게 프로젝트 규약으로 정리하도록 맡깁니다"
 
 msgid "the same ground as {others}"
 msgstr "{others}와(과) 같은 자리"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_undrivable"
+msgid "the sandbox server is running (pid {pid}) but we cannot drive it: {why}\n"
+"It was left alone rather than restarted, because that process may be yours and pointed at something else. Settings → Sandbox server has the button."
 msgstr "샌드박스 서버는 돌고 있지만(pid {pid}) 우리가 제어할 수 없습니다: {why}\n"
 "다시 시작하지 않고 그대로 두었습니다. 그 프로세스는 당신이 띄운 것이고 다른 설정을 가리킬 수 있기 때문입니다. 설정 → 샌드박스 서버 에 버튼이 있습니다."
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_started_by_us"
+msgid "the sandbox server is up — we started it (pid {pid})"
 msgstr "샌드박스 서버가 떴습니다 — 우리가 시작했습니다 (pid {pid})"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_up"
+msgid "the sandbox server is up (pid {pid})"
 msgstr "샌드박스 서버가 떴습니다 (pid {pid})"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_was_up"
+msgid "The sandbox server rejects this key. Enter the one written in that server's own config."
+msgstr "샌드박스 서버가 이 키를 거부했습니다. 그 서버의 설정 파일에 적힌 키를 입력하세요."
+
+msgid "the sandbox server was already running, so this used the one that was there"
 msgstr "샌드박스 서버가 이미 돌고 있어서, 있던 것을 그대로 썼습니다"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_bounced"
+msgid "the sandbox server was restarted, so every container it held is gone"
 msgstr "샌드박스 서버를 다시 시작해서, 그것이 쥐고 있던 컨테이너는 모두 사라졌습니다"
 
-#. js-lingui-explicit-id
-msgid "check.serverAuth.open"
+msgid "the server asks for no API key, so any process on this machine can enter a container"
 msgstr "서버가 API 키를 요구하지 않으므로 이 머신의 어떤 프로세스든 컨테이너에 들어갈 수 있습니다"
 
 msgid "The service that launches containers"
@@ -2628,8 +2504,8 @@ msgstr "시스템 전체에서 가장 많이 불리는 모델 호출. 순수 요
 msgid "The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst."
 msgstr "이 사용량 엔드포인트는 문서화되어 있지 않고, 빨리 두드리면 몇 시간씩 429를 돌려줍니다 — 게다가 당신의 /status도 같은 예산에서 씁니다. 5시간 창에서 10분이면 최악이라도 3% 오차입니다."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.broke"
+msgid "the watchdog threw this tick and the rules after it did not run: {why}\n"
+"It retries every 30s, but until it is fixed everything it drives — stalled groups, expired sandboxes, the rebase after a base moves, the clocks on what is waiting for you — stays where it is."
 msgstr "이번 틱에서 워치독이 예외를 던져 뒤의 규칙들이 실행되지 않았습니다: {why}\n"
 "30초마다 다시 시도하지만, 고쳐지기 전까지 워치독이 밀어 주던 것들(멈춘 그룹, 만료된 샌드박스, 베이스가 움직인 뒤의 rebase, 당신의 결정을 기다리는 시계)은 모두 그 자리에 멈춰 있습니다."
 
@@ -2645,8 +2521,7 @@ msgstr "이 계정에는 창이 없습니다"
 msgid "This browser doesn't support it"
 msgstr "이 브라우저는 지원하지 않습니다"
 
-#. js-lingui-explicit-id
-msgid "check.codex.stale"
+msgid "this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again"
 msgstr "이 ChatGPT 로그인은 갱신이 필요할 만큼 오래됐습니다 — 다음 컨테이너가 갱신하며, 계속 실패하면 auth.json을 다시 붙여 넣어야 합니다"
 
 msgid "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch."
@@ -2658,8 +2533,7 @@ msgstr "이 로그는 비었습니다"
 msgid "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward."
 msgstr "이 프로세스는 우리가 띄운 게 아닙니다 — 당신이 쓰고 있는 것일 수 있습니다. 필요하면 직접 재시작하세요. 그 뒤에는 우리가 알아봅니다."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_no_remote"
+msgid "this project has no remote recorded, so there is nothing to mirror"
 msgstr "이 프로젝트에는 remote가 기록되어 있지 않아 미러할 주소가 없습니다"
 
 msgid "This project hasn't run any activity yet."
@@ -2722,14 +2596,16 @@ msgstr "토큰 · 프로젝트 합계"
 msgid "tokens · share"
 msgstr "토큰 · 비중"
 
+msgid "tokens must be a positive number, or null to lift the cap"
+msgstr "토큰은 양수여야 하며, 상한을 없애려면 null 로 두세요"
+
 msgid "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
 msgstr "위에서부터 시도하며, 다른 것이 답하지 못할 때만 씁니다. 프로젝트 자신의 기준 브랜치가 우선이고 그다음이 GitHub의 default_branch입니다. 원격에 닿지 못하는 저장소가 마지막으로 기대는 곳입니다."
 
 msgid "Try again"
 msgstr "다시 시도"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.turn_timeout"
+msgid "turn ran past {min} min and was killed"
 msgstr "턴이 {min}분을 넘겨 중단했습니다"
 
 msgid "Turn timeout"
@@ -2780,6 +2656,9 @@ msgstr "지우지 않고 보관하려면 '보류'를 쓰세요. 기록이 남습
 msgid "Use draft"
 msgstr "초안 사용"
 
+msgid "Use host:port, or https://host:port — for example 127.0.0.1:8081 or sandbox.tail1234.ts.net:8080."
+msgstr "host:port 또는 https://host:port 형식으로 쓰세요. 예: 127.0.0.1:8081 또는 sandbox.tail1234.ts.net:8080."
+
 msgid "Use this only if you can't reopen an old PR on GitHub. Use when the branch has been force-pushed or deleted: it will re-open using the current branch and rejoin the merge queue."
 msgstr "GitHub에서 예전 PR을 다시 열 수 없을 때만 쓰세요. 브랜치가 force-push되었거나 삭제된 경우용입니다: 현재 브랜치로 다시 열고 병합 대기열에 복귀시킵니다."
 
@@ -2788,10 +2667,6 @@ msgstr "컨테이너가 멈췄거나, 의존성이 빠졌거나, 자격 증명�
 
 msgid "Used when a project has not set its own"
 msgstr "프로젝트가 따로 정하지 않았을 때 쓰입니다"
-
-#. js-lingui-explicit-id
-msgid "check.uvx.present"
-msgstr "uvx 사용 가능"
 
 msgid "Valid for one year"
 msgstr "1년간 유효"
@@ -2862,9 +2737,11 @@ msgstr "watchdog 주기"
 msgid "Watchdog rule"
 msgstr "watchdog 규칙"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.rule_broke"
+msgid "watchdog rule {rule} ({ruleName}) threw; the rest of the tick ran: {why}"
 msgstr "워치독 규칙 {rule}({ruleName})이(가) 예외를 던졌고, 이번 틱의 나머지는 실행되었습니다: {why}"
+
+msgid "We did not start this sandbox server, so we will not touch it — it may be your own, configured for something else. Restart it yourself and this page will recognise it afterwards."
+msgstr "이 샌드박스 서버는 우리가 시작한 것이 아니므로 건드리지 않습니다. 다른 용도로 직접 띄운 것일 수 있습니다. 직접 재시작하면 이 페이지가 이후에 인식합니다."
 
 msgid "Webhook timeout"
 msgstr "웹훅 제한 시간"
@@ -2904,6 +2781,9 @@ msgstr "어떤 난이도를 어떤 모델이 맡을지, CLI별로. 어떤 역할
 
 msgid "Which model runs what, and what it may spend"
 msgstr "어떤 모델이 무엇을 맡고, 얼마나 쓸 수 있는지"
+
+msgid "which repository? (owner/name)"
+msgstr "어느 저장소인가요? (owner/name)"
 
 msgid "Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you."
 msgstr "네 게이트를 모두 통과한 뒤 당신의 최종 확인을 건너뛸 수 있는 난이도. 기본은 쉬움과 보통이고, 어려운 것은 여전히 당신을 기다립니다."

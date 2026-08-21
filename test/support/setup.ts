@@ -9,7 +9,7 @@ import { resetSandboxHold } from "../../src/mech/sandbox/sandbox.ts";
 import { resetServerRestarts } from "../../src/mech/ops/watchdog.ts";
 import { resetSkillsWarned } from "../../src/mech/skills.ts";
 import { i18n } from "../../web/src/i18n.ts";
-import { messages } from "../../web/src/locales/zh.po";
+import { messages } from "../../locales/zh.po";
 
 /**
  * Every pane renders under the Chinese catalog, so the 242 assertions that read

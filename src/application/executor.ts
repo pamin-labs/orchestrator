@@ -1,3 +1,4 @@
+import { msg, plural } from "@lingui/core/macro";
 import { and, count, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { DB } from "../platform/persistence/database.ts";
 import {
@@ -26,7 +27,7 @@ import { roleFor, type Ctx } from "../mech/ctx.ts";
 function mintToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
-import { renderSaid, said } from "../platform/text/lang.ts";
+import { renderSaid } from "../platform/text/lang.ts";
 import { raise } from "../mech/flow/escalate.ts";
 import { hold } from "../mech/flow/intercept.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
@@ -215,7 +216,7 @@ export async function hire(
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    say: said("ev.hired", { role: roleName }),
+    say: msg`hired ${{ role: roleName }}`,
   });
   return row;
 }
@@ -868,11 +869,7 @@ export async function reconcileOwnership(
     author: "orchestrator",
     kind: "state_change",
     severity: "blocker",
-    say: said("ev.owns.reverted", {
-      role: agent.role,
-      files: reverted.slice(0, 5).join(", "),
-      n: String(reverted.length),
-    }),
+    say: msg`${{ role: agent.role }} wrote ${plural({ n: String(reverted.length) }, { one: "# file", other: "# files" })} this group does not own (${{ files: reverted.slice(0, 5).join(", ") }}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it`,
     meta: { reverted, stray, owns },
   });
 }
@@ -1051,7 +1048,7 @@ async function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: Tur
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    say: said("ev.rl.waiting", { at: new Date(resetsMs).toLocaleString() }),
+    say: msg`rate limited; everything on this CLI holds until the window reopens (~${{ at: new Date(resetsMs).toLocaleString() }}) and resumes itself — the quota belongs to the account, so no model spends less of it`,
     meta: rl,
   });
   if (job.grp_id) {

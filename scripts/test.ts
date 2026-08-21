@@ -18,6 +18,7 @@
  * which is x64 and has no PAC — so this is a local-only tax, not a flaky CI.
  */
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpus } from "node:os";
 import { dirname } from "node:path";
 
 export const CRASHED = /worker crashed with SIG|Segmentation fault|oh no: Bun has crashed/;
@@ -104,12 +105,27 @@ function claim(): () => void {
 /**
  * `--max-concurrency` under Bun's default of 20, because oversubscription is a
  * net cost here rather than a win: 62.3s at 20, 53.8s at 8, 46.2s at 4, for the
- * same 1,848 tests. Eight keeps overlap for the I/O-bound majority.
- *
+ * same 1,848 tests on ten cores.
+ */
+/**
+ * Derived from the core count rather than pinned at the eight measurement found,
+ * because the number that was right here was wrong on CI: a four-core runner ran
+ * four workers at eight apiece — thirty-two tests against one Postgres — and the
+ * property that replays every JSON payload, 578ms on this machine, spent over
+ * thirty seconds waiting its turn. The ratio reproduces the measured optimum on
+ * ten cores and asks for three on four.
+ */
+/**
  * Both sit before the caller's arguments, so `bun run test <path>
  * --max-concurrency=2` still wins — verified, Bun takes the last occurrence.
  */
-const LIMITS = ["--timeout=20000", "--max-concurrency=8"];
+/**
+ * The coverage scripts go through here too, and that is the point: pinning the
+ * number in `package.json` is what let the derivation miss CI entirely, since
+ * CI runs `test:coverage:ci` and never `test`. One definition, and the crash
+ * retry and the run lock come along for free.
+ */
+const LIMITS = ["--timeout=20000", `--max-concurrency=${Math.max(2, Math.round(cpus().length * 0.8))}`];
 
 async function run(): Promise<{ code: number; crashed: boolean }> {
   const args = ["test", "--parallel", ...LIMITS, ...Bun.argv.slice(2)];

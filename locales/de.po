@@ -38,19 +38,16 @@ msgstr "{0, plural, one {# Host-Prüfung fehlgeschlagen} other {# Host-Prüfunge
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, aber die App ist noch auf keinem Konto installiert"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.base_moved"
+msgid "{base} moved to {sha}; {name} is behind it and has been told to rebase first"
 msgstr "{base} ist auf {sha} gewandert; {name} liegt dahinter und wurde angewiesen, zuerst zu rebasen"
 
 msgid "{branch} (per the remote)"
 msgstr "{branch} (laut Remote)"
 
-#. js-lingui-explicit-id
-msgid "check.paths.covered"
+msgid "{config} covers all {count} paths to be mounted"
 msgstr "{config} deckt alle {count} zu mountenden Pfade ab"
 
-#. js-lingui-explicit-id
-msgid "check.paths.missing"
+msgid "{config} does not list {missing}"
 msgstr "{config} führt {missing} nicht auf"
 
 msgid "{count} repositories"
@@ -65,8 +62,7 @@ msgstr "{count} Anforderungen haben derzeit keine Grenze: {bareNames}."
 msgid "{count} selected"
 msgstr "{count} ausgewählt"
 
-#. js-lingui-explicit-id
-msgid "check.skills.staged"
+msgid "{count} staged at {path}"
 msgstr "{count} bereitgestellt unter {path}"
 
 msgid "{d} days ago"
@@ -84,12 +80,10 @@ msgstr "{fails} fehlgeschlagen"
 msgid "{files} files"
 msgstr "{files} Dateien"
 
-#. js-lingui-explicit-id
-msgid "check.egress.ok"
+msgid "{good}"
 msgstr "{good}"
 
-#. js-lingui-explicit-id
-msgid "check.egress.mixed"
+msgid "{good} (also has {stale} — check [egress] image)"
 msgstr "{good} (außerdem {stale} — [egress] image prüfen)"
 
 msgid "{groupCount} requirements touch different files and can run together"
@@ -128,8 +122,7 @@ msgstr "{hours} Std"
 msgid "{idleCount} more are idle and costing nothing."
 msgstr "{idleCount} weitere sind untätig und kosten nichts."
 
-#. js-lingui-explicit-id
-msgid "check.image.absent"
+msgid "{image} is not on this machine"
 msgstr "{image} ist auf dieser Maschine nicht vorhanden"
 
 msgid "{lines} lines"
@@ -144,40 +137,31 @@ msgstr "{minutes} Min"
 msgid "{minutes}m ago"
 msgstr "vor {minutes} Min"
 
-#. js-lingui-explicit-id
-msgid "check.cred.daysLeft"
+msgid "{mode} · {days} days left"
 msgstr "{mode} · noch {days} Tage"
 
-#. js-lingui-explicit-id
-msgid "check.cred.accepted"
+msgid "{mode} · accepted"
 msgstr "{mode} · akzeptiert"
 
-#. js-lingui-explicit-id
-msgid "check.cred.expired"
+msgid "{mode} · expired — sign in again"
 msgstr "{mode} · abgelaufen — bitte neu anmelden"
 
-#. js-lingui-explicit-id
-msgid "check.cred.expiringToday"
+msgid "{mode} · expires within a day"
 msgstr "{mode} · läuft binnen eines Tages ab"
 
-#. js-lingui-explicit-id
-msgid "check.cred.githubRejected"
+msgid "{mode} · GitHub no longer accepts this token"
 msgstr "{mode} · GitHub akzeptiert dieses Token nicht mehr"
 
-#. js-lingui-explicit-id
-msgid "check.cred.unverified"
+msgid "{mode} · not verified (HTTP {status})"
 msgstr "{mode} · nicht verifiziert (HTTP {status})"
 
-#. js-lingui-explicit-id
-msgid "check.cred.stored"
+msgid "{mode} · stored"
 msgstr "{mode} · gespeichert"
 
-#. js-lingui-explicit-id
-msgid "check.cred.rejected"
+msgid "{mode} · the provider rejected this credential"
 msgstr "{mode} · der Anbieter hat diese Zugangsdaten abgelehnt"
 
-#. js-lingui-explicit-id
-msgid "check.cred.unreachable"
+msgid "{mode} · unreachable, not verified"
 msgstr "{mode} · nicht erreichbar, nicht verifiziert"
 
 msgid "{months} months ago"
@@ -189,8 +173,7 @@ msgstr "{mount} schreibgeschützt"
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, one {# Abschnitt} other {# Abschnitte}}"
 
-#. js-lingui-explicit-id
-msgid "ev.notify.batch"
+msgid "{n, plural, one {# thing needs} other {# things need}} you:"
 msgstr "{n, plural, one {# Sache braucht} other {# Dinge brauchen}} dich:"
 
 msgid "{n} more queued behind it"
@@ -199,32 +182,22 @@ msgstr "{n} weitere warten dahinter"
 msgid "{n} to do"
 msgstr "{n} offen"
 
-#. js-lingui-explicit-id
-msgid "ev.unread.digest"
+msgid "{n} unread — the Librarian is compressing them"
 msgstr "{n} ungelesen — der Librarian fasst sie zusammen"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.sandbox_swept"
+msgid "{name} dissolved; its sandbox is reclaimed"
 msgstr "{name} wurde aufgelöst; die Sandbox ist zurückgewonnen"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_parked"
+msgid "{name} has been parked {hours}h — wake it, or drop it?"
 msgstr "{name} ist seit {hours} h geparkt — wecken oder verwerfen?"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_on_you"
+msgid "{name} has been waiting {min} min for you"
 msgstr "{name} wartet seit {min} Min. auf dich"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.unshipped"
-msgstr "{name} hat jede Scheibe abgenommen, keinen PR und eine leere Queue — die Branch-Prüfung läuft erneut"
-
-#. js-lingui-explicit-id
-msgid "ev.wd.budget_80"
+msgid "{name} is at {pct}% of its budget"
 msgstr "{name} liegt bei {pct} % seines Budgets"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.unparked"
+msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name} wartet auf nichts mehr — geweckt"
 
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
@@ -233,53 +206,40 @@ msgstr "{name} verlässt das Board, alle wartenden Züge werden abgebrochen. Cod
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are kept; the group is never started again."
 msgstr "{name} verlässt das Board, alle wartenden Züge werden abgebrochen. Code und Aufzeichnung bleiben; die Gruppe startet nie wieder."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.parked"
+msgid "{name} parked after waiting {min} min — checkout kept, slot freed"
 msgstr "{name} wurde nach {min} Min. Wartezeit geparkt — Checkout bleibt, Platz freigegeben"
 
 msgid "{name} produced no output."
 msgstr "{name} hat keine Ausgabe erzeugt."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.stale_ask"
+msgid "{name} reached PR, so the question still hanging on it expired — closed by itself"
 msgstr "{name} hat den PR erreicht, damit ist die noch offene Frage verfallen — von selbst geschlossen"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_slice"
+msgid "{name} S{seq} has been waiting {hours}h for you"
 msgstr "{name} S{seq} wartet seit {hours} h auf dich"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.budget_exhausted"
+msgid "{name} spent its whole budget ({tokens} tokens) and is suspended"
 msgstr "{name} hat das ganze Budget ({tokens} Tokens) verbraucht und ist ausgesetzt"
 
 msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
 msgstr "Der Container von {name} wird verworfen und im nächsten Zug neu gebaut: Branch neu klonen, Abhängigkeiten neu installieren. Nicht committete Änderungen gehen verloren."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_card"
+msgid "{name}'s plan card has been waiting {hours}h for you"
 msgstr "die Plankarte von {name} wartet seit {hours} h auf dich"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_merge"
+msgid "{name}'s PR has been at the head of the merge queue for {hours}h"
 msgstr "der PR von {name} steht seit {hours} h an der Spitze der Merge-Queue"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_merge_blocked"
+msgid "{name}'s PR has been at the head of the merge queue for {hours}h, with {n} behind it"
 msgstr "der PR von {name} steht seit {hours} h an der Spitze der Merge-Queue, mit {n} dahinter"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.sandbox_stale_cred"
+msgid "{name}'s sandbox is bound to a superseded credential; reclaimed, and the next tick rebuilds it"
 msgstr "die Sandbox von {name} hängt an einer abgelösten Anmeldung; zurückgewonnen, der nächste Tick baut sie neu"
-
-#. js-lingui-explicit-id
-msgid "check.skills.fix.contained"
-msgstr "{path} ist ein Pfad in diesem Container, gemountet wird aber vom docker des Sandbox-Servers, der ihn auf seinem eigenen Dateisystem auflöst. Nimm auf beiden Seiten denselben absoluten Pfad (-v <host path>:{path}) und trage ihn in allowed_host_paths des Sandbox-Servers ein. Eine Abweichung schlägt nicht fehl, sie mountet ein leeres Verzeichnis."
 
 msgid "{repoPath} removed"
 msgstr "{repoPath} entfernt"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.env_suspect"
+msgid "{resource} failed {n}x with no code change in between — treat the environment as the suspect"
 msgstr "{resource} ist {n}× ohne Codeänderung dazwischen fehlgeschlagen — verdächtige zuerst die Umgebung"
 
 msgid "{rest} more of {total}"
@@ -292,16 +252,13 @@ msgstr "{rest} weitere von {total}"
 msgid "{rest} more requirements"
 msgstr "{rest} weitere Anforderungen"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.no_progress"
+msgid "{role} finished {n, plural, one {# turn} other {# turns}} without changing a file, a task or a note"
 msgstr "{role} hat {n, plural, one {# Turn} other {# Turns}} beendet, ohne eine Datei, eine Aufgabe oder eine Notiz anzufassen"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.circling"
+msgid "{role} has rewritten {file} {n, plural, one {# turn} other {# turns}} running — probably a design problem, sending it to the Architect"
 msgstr "{role} schreibt {file} seit {n, plural, one {# Turn} other {# Turns}} immer wieder um — vermutlich ein Entwurfsproblem, geht an den Architect"
 
-#. js-lingui-explicit-id
-msgid "ev.owns.reverted"
+msgid "{role} wrote {n, plural, one {# file} other {# files}} this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it"
 msgstr "{role} hat {n, plural, one {# Datei} other {# Dateien}} geschrieben, die dieser Gruppe nicht gehören ({files}) — zurückgenommen; die Sandbox dieser CLI kann das Schreiben nicht verhindern, deshalb prüft der Abgleich danach"
 
 msgid "{runningCount} running · {total} total"
@@ -325,8 +282,7 @@ msgstr "{staged}/{ticked} angehakt erreichen die Sandbox, etwa {tokens}k Tokens 
 msgid "{storedHint} stored; paste a new one to replace it"
 msgstr "{storedHint} gespeichert; zum Ersetzen einen neuen einfügen"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.autoaccept"
+msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} automatisch abgenommen, alle drei Tore bestanden"
 
 msgid "{total} waiting on you"
@@ -386,12 +342,10 @@ msgstr "Abnahmekriterien"
 msgid "accepted {done}/{total}"
 msgstr "abgenommen {done}/{total}"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.accepted"
+msgid "accepted: S{seq} {title}"
 msgstr "abgenommen: S{seq} {title}"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.accepted_why"
+msgid "accepted: S{seq} {title} ({why})"
 msgstr "abgenommen: S{seq} {title} ({why})"
 
 msgid "Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable"
@@ -402,10 +356,6 @@ msgstr "Hinzufügen"
 
 msgid "Add · {branch}"
 msgstr "Hinzufügen · {branch}"
-
-#. js-lingui-explicit-id
-msgid "check.skills.fix.host"
-msgstr "Trage {path} in allowed_host_paths des Sandbox-Servers ein, sonst kann keine Gruppe einen Container öffnen. Die Skills werden in den Einstellungen ausgewählt."
 
 msgid "Add a row"
 msgstr "Zeile hinzufügen"
@@ -464,8 +414,7 @@ msgstr "Benachrichtigungen erlauben"
 msgid "already spent {tokens} tokens"
 msgstr "bereits {tokens} Tokens verbraucht"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.unclaimed"
+msgid "also changed on S{seq}, unclaimed: {files}"
 msgstr "bei S{seq} ebenfalls geändert, nicht angemeldet: {files}"
 
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
@@ -486,8 +435,7 @@ msgstr "API-Schlüssel"
 msgid "Appearance"
 msgstr "Darstellung"
 
-#. js-lingui-explicit-id
-msgid "ev.group.approve_held"
+msgid "approval recorded — held by the boundary: {why}. Starts by itself once that clears"
 msgstr "Genehmigung notiert — die Grenze hält noch: {why}. Startet von selbst, sobald das frei ist"
 
 msgid "Approve and start"
@@ -544,8 +492,7 @@ msgstr "Stufen für automatische Abnahme"
 msgid "Auto-advance when approved"
 msgstr "Nach Freigabe automatisch weiter"
 
-#. js-lingui-explicit-id
-msgid "ev.group.autoadvance"
+msgid "autoAdvance: started the next slice without waiting for you"
 msgstr "autoAdvance: die nächste Scheibe wurde gestartet, ohne auf dich zu warten"
 
 msgid "Awaiting Architect to split boundaries"
@@ -581,8 +528,7 @@ msgstr "Sammelfenster"
 msgid "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates."
 msgstr "Große Projekte kompilieren stundenlang; ohne Obergrenze belegt ein hängender Build für immer einen Ressourcenplatz. Die Plätze sind global und knapp — ein toter Befehl legt die Gates der ganzen Flotte lahm."
 
-#. js-lingui-explicit-id
-msgid "ev.group.blocked"
+msgid "blocked by {path}; handed to grp {target} and waiting for it to land"
 msgstr "von {path} blockiert; an grp {target} übergeben und wartet auf dessen Landung"
 
 msgid "Blocked domains"
@@ -663,8 +609,7 @@ msgstr "Bricht alle wartenden Züge ab und gibt den belegten Platz an eine ander
 msgid "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
 msgstr "Bricht alle wartenden Züge ab und gibt den belegten Platz zurück. Code, Branch und Aufzeichnungen bleiben erhalten."
 
-#. js-lingui-explicit-id
-msgid "check.server.unreachable"
+msgid "cannot reach it: {error}"
 msgstr "nicht erreichbar: {error}"
 
 msgid "Cannot reach the usage endpoint"
@@ -694,8 +639,7 @@ msgstr "Check-Runs"
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "Angehakte Skills werden hierher kopiert und in jede Sandbox schreibgeschützt eingehängt. Änderungen hier müssen mit allowed_host_paths des Sandbox-Servers abgeglichen werden, sonst startet der Container nicht — ein lautes Scheitern ist besser als ein stilles leeres Mount."
 
-#. js-lingui-explicit-id
-msgid "ev.group.worktree"
+msgid "checkout on {branch}"
 msgstr "Checkout auf {branch}"
 
 msgid "Choose account"
@@ -712,6 +656,9 @@ msgstr "Aufgabe übernehmen"
 
 msgid "Claude Code writes this in Co-Authored-By when committing"
 msgstr "Claude Code schreibt dies beim Commit in Co-Authored-By"
+
+msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
+msgstr "claude hat im Container keinen Anmeldelink ausgegeben — führen Sie `claude setup-token` im Image aus, um zu sehen warum. Es braucht ein pty; ohne eines gibt es nichts aus und endet mit 0."
 
 msgid "Clear"
 msgstr "Leeren"
@@ -752,6 +699,9 @@ msgstr "Code-Index"
 msgid "Code repository"
 msgstr "Code-Repository"
 
+msgid "codex printed no device code inside the container — run `codex login --device-auth` in the image to see why."
+msgstr "codex hat im Container keinen Gerätecode ausgegeben — führen Sie `codex login --device-auth` im Image aus, um zu sehen warum."
+
 msgid "Collapse"
 msgstr "Einklappen"
 
@@ -785,8 +735,7 @@ msgstr "Aufgabe bestätigen"
 msgid "Connect GitHub"
 msgstr "GitHub verbinden"
 
-#. js-lingui-explicit-id
-msgid "check.cred.fix.github"
+msgid "Connect GitHub once in Settings. Branches are pushed with it — without one, every slice is refused at its last step."
 msgstr "Verbinde GitHub einmal in den Einstellungen. Damit werden Branches gepusht — ohne wird jede Slice im letzten Schritt abgelehnt."
 
 msgid "Connected"
@@ -801,8 +750,7 @@ msgstr "Verbinde"
 msgid "Connection lost; reconnecting"
 msgstr "Verbindung verloren; verbinde neu"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.rebuild"
+msgid "container discarded; the next turn rebuilds it — clone and install. The branch lives in the host repo"
 msgstr "Container verworfen; der nächste Turn baut ihn neu — klonen und installieren. Der Branch liegt im Host-Repository"
 
 msgid "Container hasn't started yet. Clone and dependency installation output will appear here line by line."
@@ -946,8 +894,7 @@ msgstr "Der Dispatcher schreibt die Plankarte; sie erscheint hier, sobald sie fe
 msgid "Dissolved"
 msgstr "Aufgelöst"
 
-#. js-lingui-explicit-id
-msgid "check.host.elsewhere"
+msgid "docker, uv and the egress image belong to the machine running the sandbox server, not to this one"
 msgstr "docker, uv und das egress-Image gehören zu der Maschine, die den Sandbox-Server ausführt, nicht zu dieser"
 
 msgid "Domains the sandbox may not reach. A blocklist, not an allowlist — an allowlist would have to name every registry and docs site. Credentials do not depend on this: the sandbox only ever holds fakes."
@@ -962,19 +909,16 @@ msgstr "Fertig"
 msgid "Double to {doubledLabel}"
 msgstr "Auf {doubledLabel} verdoppeln"
 
-#. js-lingui-explicit-id
-msgid "ev.group.approved"
+msgid "DRAFT approved"
 msgstr "DRAFT genehmigt"
 
 msgid "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
 msgstr "Unter 50 % ist der Prompt-Aufbau kaputt: 3–5× teurer pro Zug"
 
-#. js-lingui-explicit-id
-msgid "ev.group.dropped"
+msgid "dropped by the boss"
 msgstr "der Chef hat es verworfen"
 
-#. js-lingui-explicit-id
-msgid "ev.group.dropped_why"
+msgid "dropped by the boss: {why}"
 msgstr "der Chef hat es verworfen: {why}"
 
 msgid "e.g. 2000000"
@@ -1144,15 +1088,13 @@ msgstr "Gate-Prüfung"
 msgid "Gate concurrency"
 msgstr "Gate-Parallelität"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.fail"
+msgid "gate fail on S{seq}"
 msgstr "Tor nicht bestanden bei S{seq}"
 
 msgid "gate name"
 msgstr "Gate-Name"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.pass"
+msgid "gate pass on S{seq}"
 msgstr "Tor bestanden bei S{seq}"
 
 msgid "Gate retries"
@@ -1188,8 +1130,10 @@ msgstr "GitHub → diese App → Install App"
 msgid "GitHub API call"
 msgstr "GitHub-API-Aufruf"
 
-#. js-lingui-explicit-id
-msgid "ev.repo.held"
+msgid "GitHub is not connected — connect it in Settings first"
+msgstr "GitHub ist nicht verbunden — verbinden Sie es zuerst in den Einstellungen"
+
+msgid "GitHub no longer accepts this login, so every turn on {repo} is held — retrying cannot help. Reconnect GitHub in settings and they resume on their own. Other projects are unaffected."
 msgstr "GitHub akzeptiert dieses Login nicht mehr, deshalb ist jeder Turn auf {repo} angehalten — erneutes Versuchen hilft nicht. Verbinde GitHub in den Einstellungen neu, dann laufen sie von selbst weiter. Andere Projekte sind nicht betroffen."
 
 msgid "GitHub not connected yet; using our bot account for now"
@@ -1228,12 +1172,10 @@ msgstr "Grauer Text zeigt die Standardwerte"
 msgid "Group is paused"
 msgstr "Die Gruppe pausiert"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.stalled"
+msgid "group is RUNNING with an empty queue, and one re-queue did not revive it. Last failure: {why}"
 msgstr "die Gruppe steht auf RUNNING bei leerer Queue, und einmaliges Neueinreihen hat sie nicht wiederbelebt. Letzter Fehler: {why}"
 
-#. js-lingui-explicit-id
-msgid "ev.group.unblocked"
+msgid "grp {target} landed; resuming by itself"
 msgstr "grp {target} ist gelandet; läuft von selbst weiter"
 
 msgid "Has objections"
@@ -1248,8 +1190,7 @@ msgstr "Diese Stufe ausblenden"
 msgid "Hiding:"
 msgstr "Ausgeblendet:"
 
-#. js-lingui-explicit-id
-msgid "ev.hired"
+msgid "hired {role}"
 msgstr "{role} eingestellt"
 
 msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
@@ -1318,8 +1259,7 @@ msgstr "Wie du benachrichtigt wirst"
 msgid "hr"
 msgstr "Std"
 
-#. js-lingui-explicit-id
-msgid "check.server.http"
+msgid "HTTP {status}"
 msgstr "HTTP {status}"
 
 msgid "HTTP request"
@@ -1350,10 +1290,6 @@ msgstr "Skill einfügen"
 msgid "Install dependencies"
 msgstr "Abhängigkeiten installieren"
 
-#. js-lingui-explicit-id
-msgid "check.docker.fix.install"
-msgstr "Installiere Docker — oder Colima oder Podman, alles was einen docker-Socket bereitstellt — und starte es."
-
 msgid "Install on GitHub"
 msgstr "Auf GitHub installieren"
 
@@ -1365,10 +1301,6 @@ msgstr "Auf einem anderen Konto installieren"
 
 msgid "Installed on these accounts"
 msgstr "Auf diesen Konten installiert"
-
-#. js-lingui-explicit-id
-msgid "check.docker.silent"
-msgstr "installiert, aber der Daemon antwortet nicht"
 
 msgid "Interrupt and rollback"
 msgstr "Abbrechen und zurückrollen"
@@ -1384,10 +1316,6 @@ msgstr "Ob überhaupt ein Netz da ist: ein HEAD an jede Anbieter-Origin, ausgef�
 
 msgid "It's not a duplicate, and it's not done yet — keep decomposing."
 msgstr "Kein Duplikat und noch nicht erledigt — weiter zerlegen."
-
-#. js-lingui-explicit-id
-msgid "ev.pr.queued"
-msgstr "in der Merge-Queue an Position {n} eingereiht"
 
 msgid "Journal"
 msgstr "Journal"
@@ -1488,8 +1416,7 @@ msgstr "Speicher"
 msgid "Memory ceiling per sandbox."
 msgstr "Speicherobergrenze pro Sandbox."
 
-#. js-lingui-explicit-id
-msgid "ev.group.merged"
+msgid "merged into main"
 msgstr "in main gemerged"
 
 msgid "Message this group"
@@ -1498,8 +1425,7 @@ msgstr "Dieser Gruppe schreiben"
 msgid "Message this group…"
 msgstr "Dieser Gruppe schreiben…"
 
-#. js-lingui-explicit-id
-msgid "check.database.ok"
+msgid "migrated and queryable"
 msgstr "migriert und abfragbar"
 
 msgid "min"
@@ -1544,8 +1470,7 @@ msgstr "Name für {k}"
 msgid "Needs an integer"
 msgstr "Muss eine ganze Zahl sein"
 
-#. js-lingui-explicit-id
-msgid "ev.net.back"
+msgid "network is back, held work resumes"
 msgstr "das Netz ist zurück, angehaltene Arbeit läuft weiter"
 
 msgid "Network ping"
@@ -1581,6 +1506,9 @@ msgstr "Keine Budgetgrenze"
 msgid "No changes"
 msgstr "Keine Änderungen"
 
+msgid "no code given"
+msgstr "kein Code angegeben"
+
 msgid "No container yet"
 msgstr "Noch kein Container"
 
@@ -1596,8 +1524,14 @@ msgstr "Kein Diff verfügbar. Der Abschnitt hat keinen Basis-Commit vermerkt, od
 msgid "No events"
 msgstr "Keine Ereignisse"
 
+msgid "no file"
+msgstr "keine Datei"
+
 msgid "No gates enabled; LLM review has no floor."
 msgstr "Kein Gate aktiviert; die LLM-Durchsicht hat keinen Boden."
+
+msgid "no login is waiting for a code — start one first"
+msgstr "keine Anmeldung wartet auf einen Code — starten Sie zuerst eine"
 
 msgid "No matches"
 msgstr "Keine Treffer"
@@ -1626,12 +1560,10 @@ msgstr "Noch arbeitet niemand. Gib eine Plankarte frei, dann erscheint hier die 
 msgid "No open questions. This group is not waiting on you right now."
 msgstr "Keine offenen Fragen. Diese Gruppe wartet gerade nicht auf dich."
 
-#. js-lingui-explicit-id
-msgid "check.paths.noConfig"
+msgid "no opensandbox-server config file found, so there is nothing to check against"
 msgstr "keine opensandbox-server-Konfigurationsdatei gefunden, es gibt also nichts zum Abgleichen"
 
-#. js-lingui-explicit-id
-msgid "check.egress.none"
+msgid "no opensandbox/egress image pulled"
 msgstr "kein opensandbox/egress-Image geladen"
 
 msgid "No other models yet; just type"
@@ -1640,14 +1572,16 @@ msgstr "Noch keine anderen Modelle; einfach tippen"
 msgid "No other requirements for this project"
 msgstr "Keine weiteren Anforderungen in diesem Projekt"
 
+msgid "no path"
+msgstr "kein Pfad"
+
 msgid "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
 msgstr "Keine pausierten Anforderungen. Gruppen halten hier an, wenn das Budget erschöpft ist oder das Warten auf deine Antwort 2 Stunden überschreitet; die Arbeit bleibt erhalten."
 
 msgid "No pending items"
 msgstr "Nichts offen"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_no_reason"
+msgid "no reason given, which is itself a bug"
 msgstr "kein Grund genannt, was für sich genommen schon ein Fehler ist"
 
 msgid "No reason recorded"
@@ -1662,8 +1596,10 @@ msgstr "Noch keine Anforderungen"
 msgid "No runnable commands found."
 msgstr "Keine ausführbaren Befehle gefunden."
 
-#. js-lingui-explicit-id
-msgid "check.skills.none"
+msgid "No sandbox server config found. It was started with --config, so put that file's path in OPENSANDBOX_CONFIG, or move the file to ./sandbox.toml or ~/.sandbox.toml."
+msgstr "Keine Sandbox-Server-Konfiguration gefunden. Er wurde mit --config gestartet — tragen Sie den Pfad dieser Datei in OPENSANDBOX_CONFIG ein oder verschieben Sie sie nach ./sandbox.toml oder ~/.sandbox.toml."
+
+msgid "no skills ticked"
 msgstr "keine Skills ausgewählt"
 
 msgid "No slice"
@@ -1678,10 +1614,6 @@ msgstr "Keine Systemaktivität aufgezeichnet."
 msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
 msgstr "Noch keine Tokens ausgegeben. Nach der Freigabe von Plankarten schlüsseln sich die Kosten nach Anforderung und Agent auf. Welches Modell zum Einsatz kommt, entscheidet die Stufen-Kennzeichnung."
 
-#. js-lingui-explicit-id
-msgid "check.uvx.absent"
-msgstr "kein uvx im PATH"
-
 msgid "No, keep going"
 msgstr "Nein, weiter"
 
@@ -1694,8 +1626,7 @@ msgstr "Keine; diese Verbindung sieht keine Repositorys. Mit allen Repositorys i
 msgid "Not checked out"
 msgstr "Nicht ausgecheckt"
 
-#. js-lingui-explicit-id
-msgid "check.cred.absent"
+msgid "not configured"
 msgstr "nicht eingerichtet"
 
 msgid "Not configured"
@@ -1712,10 +1643,6 @@ msgstr "Nicht genug Daten für zwei Zeiträume."
 
 msgid "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
 msgstr "Weder lokal noch in einem verschlüsselten Netz — der Verkehr läuft als unverschlüsseltes HTTP. Schlüssel und Container-Verkehr liegen offen; nutze HTTPS oder Tailscale."
-
-#. js-lingui-explicit-id
-msgid "check.docker.absent"
-msgstr "nicht erreichbar"
 
 msgid "Not running"
 msgstr "Läuft nicht"
@@ -1741,8 +1668,7 @@ msgstr "Stille Gruppe anstupsen"
 msgid "OK"
 msgstr "OK"
 
-#. js-lingui-explicit-id
-msgid "check.host.fix"
+msgid "On that machine: install docker, run uvx opensandbox-server, and docker pull opensandbox/egress:v1.1.6."
 msgstr "Auf dieser Maschine: docker installieren, uvx opensandbox-server ausführen und docker pull opensandbox/egress:v1.1.6."
 
 msgid "On, a group starts the next slice without waiting for you. Off, it finishes one and stops. The cost: later slices build on an earlier one, so reverting it pauses the whole group."
@@ -1778,8 +1704,7 @@ msgstr "Ein REST-Aufruf, dessen Antwort echte, angeforderte Arbeit ist — eine 
 msgid "One turn"
 msgstr "Ein Zug"
 
-#. js-lingui-explicit-id
-msgid "check.egress.stale"
+msgid "only {stale}, which is too old"
 msgstr "nur {stale}, das ist zu alt"
 
 msgid "Only running"
@@ -1803,16 +1728,13 @@ msgstr "Neue PR öffnen"
 msgid "Open PR ↗"
 msgstr "PR öffnen ↗"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.server_restarted"
+msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server war weg und wurde neu gestartet (Versuch {n}). Angehaltene Arbeit läuft von selbst weiter."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.server_restart_failed"
+msgid "opensandbox-server was gone and the restart failed (attempt {n}): {why}"
 msgstr "opensandbox-server war weg und der Neustart ist fehlgeschlagen (Versuch {n}): {why}"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.server_gone"
+msgid "opensandbox-server will not start; {n, plural, one {# attempt} other {# attempts}} and no more automatic retries. Run it by hand to see what it says: {cmd}"
 msgstr "opensandbox-server startet nicht; {n, plural, one {# Versuch} other {# Versuche}} und keine automatischen mehr. Starte ihn von Hand, um zu sehen, was er sagt: {cmd}"
 
 msgid "Optional, self-hosted gateway → {envVar}"
@@ -1851,10 +1773,6 @@ msgstr "P95"
 msgid "Panel language"
 msgstr "Sprache des Panels"
 
-#. js-lingui-explicit-id
-msgid "ev.group.parked"
-msgstr "geparkt: {why}. Checkout und Checkpoint bleiben erhalten"
-
 msgid "Pass"
 msgstr "Bestanden"
 
@@ -1870,8 +1788,7 @@ msgstr "Pausieren"
 msgid "Paused"
 msgstr "Pausiert"
 
-#. js-lingui-explicit-id
-msgid "ev.group.paused"
+msgid "PAUSED"
 msgstr "PAUSIERT"
 
 msgid "Pausing"
@@ -1934,8 +1851,7 @@ msgstr "Abonnement-Verbrauch abfragen"
 msgid "Polling intervals"
 msgstr "Abfrageintervalle"
 
-#. js-lingui-explicit-id
-msgid "ev.pr.opened"
+msgid "PR #{n} opened"
 msgstr "PR #{n} eröffnet"
 
 msgid "PR link not found"
@@ -1971,8 +1887,7 @@ msgstr "Pull Request"
 msgid "Pull requests per poll"
 msgstr "Pull Requests pro Abfrage"
 
-#. js-lingui-explicit-id
-msgid "check.paths.fix"
+msgid "Put this line in the [sandbox] section of {config}, then restart opensandbox-server: allowed_host_paths = [{line}]"
 msgstr "Trage diese Zeile in den Abschnitt [sandbox] von {config} ein und starte opensandbox-server neu: allowed_host_paths = [{line}]"
 
 msgid "QA"
@@ -1993,19 +1908,16 @@ msgstr "Fragen"
 msgid "Queued"
 msgstr "In der Warteschlange"
 
-#. js-lingui-explicit-id
-msgid "ev.rl.resumed"
+msgid "quota is back, resuming"
 msgstr "Kontingent ist zurück, läuft weiter"
 
 msgid "Rate limited reading usage; it recovers by itself shortly"
 msgstr "Ratenlimit beim Lesen des Verbrauchs; erholt sich von selbst"
 
-#. js-lingui-explicit-id
-msgid "ev.rl.waiting"
+msgid "rate limited; everything on this CLI holds until the window reopens (~{at}) and resumes itself — the quota belongs to the account, so no model spends less of it"
 msgstr "Nutzungslimit erreicht; alles auf dieser CLI wird angehalten, bis das Fenster wieder öffnet (~{at}), und läuft dann von selbst weiter — das Kontingent gehört dem Konto, kein Modell verbraucht davon weniger"
 
-#. js-lingui-explicit-id
-msgid "check.server.reachable"
+msgid "reachable"
 msgstr "erreichbar"
 
 msgid "Read from server"
@@ -2029,8 +1941,7 @@ msgstr "Erreichbarkeit erneut prüfen"
 msgid "Recheck the repo map"
 msgstr "Repository-Karte erneut prüfen"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.reconcile"
+msgid "reconcile failed on S{seq}: {reason}"
 msgstr "Abgleich fehlgeschlagen bei S{seq}: {reason}"
 
 msgid "Reconciliation"
@@ -2050,10 +1961,6 @@ msgstr "Diesen Abschnitt ablehnen"
 
 msgid "Rejected"
 msgstr "Abgelehnt"
-
-#. js-lingui-explicit-id
-msgid "ev.boss.reject_slice"
-msgstr "hat die Scheibe abgelehnt"
 
 msgid "Rejected, awaiting fix"
 msgstr "Abgelehnt, wartet auf Korrektur"
@@ -2097,8 +2004,7 @@ msgstr "Dieses Projekt entfernen"
 msgid "Removing…"
 msgstr "Wird entfernt…"
 
-#. js-lingui-explicit-id
-msgid "check.codex.fix"
+msgid "Renewal runs the real codex inside the utility container. If it keeps failing, paste ~/.codex/auth.json again in Settings, or switch to an API key — an API key never needs renewing."
 msgstr "Die Erneuerung führt das echte codex im Utility-Container aus. Wenn das weiter fehlschlägt, füge ~/.codex/auth.json in den Einstellungen neu ein oder wechsle zu einem API-Key — ein API-Key muss nie erneuert werden."
 
 msgid "Renewed when a turn starts, so this is 'recover after idle', not 'task time limit'."
@@ -2191,8 +2097,7 @@ msgstr "Alles zurücksetzen"
 msgid "Resume"
 msgstr "Fortsetzen"
 
-#. js-lingui-explicit-id
-msgid "ev.group.resumed"
+msgid "resumed"
 msgstr "fortgesetzt"
 
 msgid "Retrieval"
@@ -2228,19 +2133,16 @@ msgstr "Rund 4k Tokens. Diese Antwort landet im Transkript und wird von jedem ve
 msgid "Routine watchdog"
 msgstr "Regulärer Watchdog"
 
-#. js-lingui-explicit-id
-msgid "check.uvx.fix"
+msgid "Run brew install uv. opensandbox-server is a Python package, so without uv there is nothing to start."
 msgstr "Führe brew install uv aus. opensandbox-server ist ein Python-Paket — ohne uv gibt es nichts zu starten."
 
 msgid "Run claude setup-token in the container"
 msgstr "claude setup-token im Container ausführen"
 
-#. js-lingui-explicit-id
-msgid "check.image.fix"
+msgid "Run docker build -f docker/agent.Dockerfile -t {image} . — an image with no registry prefix can only be built locally."
 msgstr "Führe docker build -f docker/agent.Dockerfile -t {image} . aus — ein Image ohne Registry-Präfix kann nur lokal gebaut werden."
 
-#. js-lingui-explicit-id
-msgid "check.egress.fix"
+msgid "Run docker pull opensandbox/egress:v1.1.6, then point [egress] image at it. v1.1.4 403s every scoped package as soon as a credential is bound."
 msgstr "Führe docker pull opensandbox/egress:v1.1.6 aus und richte [egress] image darauf. v1.1.4 antwortet auf jedes scoped Paket mit 403, sobald Zugangsdaten gebunden sind."
 
 msgid "Run one turn"
@@ -2255,17 +2157,11 @@ msgstr "Führe die Anmeldung der offiziellen CLI einmal im Werkzeug-Container au
 msgid "Run top-to-bottom; drag to reorder"
 msgstr "Läuft von oben nach unten; zum Umsortieren ziehen"
 
-#. js-lingui-explicit-id
-msgid "check.server.fix.host"
+msgid "Run uvx opensandbox-server --config ~/.sandbox.toml listening on {server}, with [egress] mode = \"dns+nft\"."
 msgstr "Führe uvx opensandbox-server --config ~/.sandbox.toml aus, lauschend auf {server}, mit [egress] mode = \"dns+nft\"."
 
-#. js-lingui-explicit-id
-msgid "check.server.fix.contained"
+msgid "Run uvx opensandbox-server on the host, not here: this orchestrator is inside a container and the sandbox server needs the host's docker. Then point ORCH_SANDBOX_SERVER at it — host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux."
 msgstr "Führe uvx opensandbox-server auf dem Host aus, nicht hier: Dieser Orchestrator läuft in einem Container, und der Sandbox-Server braucht das docker des Hosts. Richte danach ORCH_SANDBOX_SERVER darauf — host.docker.internal:8080 bei Docker Desktop, die Host-IP oder --network host unter Linux."
-
-#. js-lingui-explicit-id
-msgid "check.docker.running"
-msgstr "läuft"
 
 msgid "Running"
 msgstr "Läuft"
@@ -2285,16 +2181,13 @@ msgstr "Läuft, von uns gestartet"
 msgid "Running: {running}"
 msgstr "Läuft: {running}"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.ready"
+msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq} „{title}“ ist fertig und wartet auf dich"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.failed"
+msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} ist bei {from} {n}× durchgefallen — vermutlich liegt es an den Abnahmekriterien, nicht am Code"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.sentback"
+msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} von {from} zurückgegeben (Versuch {n})"
 
 msgid "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way."
@@ -2369,12 +2262,10 @@ msgstr "{times}-mal zurückgeschickt"
 msgid "Server"
 msgstr "Server"
 
-#. js-lingui-explicit-id
-msgid "check.server.keyRejected"
+msgid "server rejected the API key"
 msgstr "der Server hat den API-Key abgelehnt"
 
-#. js-lingui-explicit-id
-msgid "check.server.keyMissing"
+msgid "server requires an API key and none was sent"
 msgstr "der Server verlangt einen API-Key, es wurde keiner gesendet"
 
 msgid "Session restarts"
@@ -2386,8 +2277,7 @@ msgstr "Schwelle für den Sitzungswechsel"
 msgid "Set"
 msgstr "Gesetzt"
 
-#. js-lingui-explicit-id
-msgid "check.serverAuth.fix"
+msgid "Set [server] api_key = \"…\" in the server's TOML, restart it, then Settings → Sandbox server → Read from server. The containers hold the checkout, the mailbox token and the CLI logins."
 msgstr "Setze [server] api_key = \"…\" im TOML des Servers, starte ihn neu und dann Einstellungen → Sandbox-Server → Vom Server lesen. In den Containern liegen der Checkout, das Mailbox-Token und die CLI-Logins."
 
 msgid "Set a token limit for this requirement"
@@ -2396,12 +2286,10 @@ msgstr "Für diese Anforderung ein Token-Limit setzen"
 msgid "Settings"
 msgstr "Einstellungen"
 
-#. js-lingui-explicit-id
-msgid "check.cred.fix.claude"
+msgid "Settings → Claude → sign in. It runs the official claude setup-token inside the utility container, so nothing is installed here; paste the code that page gives you back into the input and it is stored. Good for a year."
 msgstr "Einstellungen → Claude → anmelden. Dabei läuft das offizielle claude setup-token im Utility-Container, hier wird nichts installiert; füge den Code, den die Seite dir gibt, in das Feld ein, dann ist er gespeichert. Ein Jahr gültig."
 
-#. js-lingui-explicit-id
-msgid "check.cred.fix.codex"
+msgid "Settings → codex → sign in, which runs the official device-code flow; codex is not installed here. Pasting an API key works too."
 msgstr "Einstellungen → codex → anmelden, das startet den offiziellen device-code-Flow; codex ist hier nicht installiert. Ein eingefügter API-Key geht auch."
 
 msgid "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S"
@@ -2469,10 +2357,6 @@ msgstr "Feste Stelle"
 
 msgid "Start"
 msgstr "Starten"
-
-#. js-lingui-explicit-id
-msgid "check.docker.fix.start"
-msgstr "Starte Docker Desktop oder führe colima start aus und warte, bis running gemeldet wird."
 
 msgid "Start from this branch"
 msgstr "Von diesem Branch aus starten"
@@ -2546,8 +2430,7 @@ msgstr "Notieren"
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "Der Browser kann das nicht lesen. Zieh stattdessen Ordner hinein."
 
-#. js-lingui-explicit-id
-msgid "check.preflight.failed"
+msgid "the checks could not run: {error}"
 msgstr "die Prüfungen konnten nicht ausgeführt werden: {error}"
 
 msgid "The chosen skill is sent with this turn; it only costs for this one turn."
@@ -2559,15 +2442,13 @@ msgstr "Der codex-Refresh-Token-Tausch, ausgeführt im Utility-Container. Länge
 msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
 msgstr "Die ganze Anforderung geht zum Dispatcher zurück, um tiefer zu graben; dieser Kommentar hat oberste Priorität."
 
-#. js-lingui-explicit-id
-msgid "ev.net.lost"
+msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, requirements left running"
 msgstr "der Host hat sein Netz verloren; {n, plural, one {# Turn wurde angehalten und neu eingereiht} other {# Turns wurden angehalten und neu eingereiht}}, die Anforderungen laufen weiter"
 
 msgid "The last step repeats for as long as nobody answers"
 msgstr "Die letzte Stufe wiederholt sich, solange niemand antwortet"
 
-#. js-lingui-explicit-id
-msgid "check.codex.fresh"
+msgid "the login is fresh; renewal runs inside the utility container, so codex is not needed here"
 msgstr "das Login ist frisch; die Erneuerung läuft im Utility-Container, codex wird hier nicht gebraucht"
 
 msgid "The name of a row under Model account, never the key"
@@ -2579,44 +2460,39 @@ msgstr "Der Name jener Zeile unter „Modellkonto“, nicht der Schlüssel selbs
 msgid "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone."
 msgstr "Die andere Hälfte von „hängt“: dieselbe Datei so oft hintereinander neu geschrieben. Ein konvergierender Agent fasst auch die Nachbarn an; ein hängender schreibt eine Datei um, bis das Budget weg ist."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_failed"
+msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "die Repository-Karte lässt sich nicht auffrischen: {repo} — {why}"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_stale"
+msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
 msgstr "die Repository-Karte steht auf ihrer letzten Fassung: der Container von {repo} kann HEAD nicht lesen, und ein Neubau ergäbe nur eine Karte ohne Symbole"
 
-#. js-lingui-explicit-id
-msgid "ev.sediment"
+msgid "the same feedback for the {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} time; asking the CoS to make it a project rule"
 msgstr "dieselbe Rückmeldung zum {n}. Mal; der CoS soll daraus eine Projektregel machen"
 
 msgid "the same ground as {others}"
 msgstr "dasselbe Terrain wie {others}"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_undrivable"
+msgid "the sandbox server is running (pid {pid}) but we cannot drive it: {why}\n"
+"It was left alone rather than restarted, because that process may be yours and pointed at something else. Settings → Sandbox server has the button."
 msgstr "der Sandbox-Server läuft (pid {pid}), aber wir können ihn nicht steuern: {why}\n"
 "Er wurde in Ruhe gelassen statt neu gestartet, denn dieser Prozess könnte deiner sein und auf etwas anderes zeigen. Einstellungen → Sandbox-Server hat den Knopf."
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_started_by_us"
+msgid "the sandbox server is up — we started it (pid {pid})"
 msgstr "der Sandbox-Server läuft — wir haben ihn gestartet (pid {pid})"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_up"
+msgid "the sandbox server is up (pid {pid})"
 msgstr "der Sandbox-Server läuft (pid {pid})"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_was_up"
+msgid "The sandbox server rejects this key. Enter the one written in that server's own config."
+msgstr "Der Sandbox-Server lehnt diesen Schlüssel ab. Tragen Sie den ein, der in der Konfiguration dieses Servers steht."
+
+msgid "the sandbox server was already running, so this used the one that was there"
 msgstr "der Sandbox-Server lief schon, also wurde der vorhandene benutzt"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_bounced"
+msgid "the sandbox server was restarted, so every container it held is gone"
 msgstr "der Sandbox-Server wurde neu gestartet, also sind alle Container weg, die er hielt"
 
-#. js-lingui-explicit-id
-msgid "check.serverAuth.open"
+msgid "the server asks for no API key, so any process on this machine can enter a container"
 msgstr "der Server verlangt keinen API-Key, also kann jeder Prozess auf dieser Maschine in einen Container"
 
 msgid "The service that launches containers"
@@ -2628,8 +2504,8 @@ msgstr "Der meistgerufene Modellaufruf im ganzen System: reines Zusammenfassen, 
 msgid "The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst."
 msgstr "Der Nutzungs-Endpunkt ist undokumentiert und antwortet einem schnelleren Abfrager stundenlang mit 429 — und dein eigenes /status zahlt aus demselben Budget. Zehn Minuten in einem Fünf-Stunden-Fenster sind schlimmstenfalls 3 % Fehler."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.broke"
+msgid "the watchdog threw this tick and the rules after it did not run: {why}\n"
+"It retries every 30s, but until it is fixed everything it drives — stalled groups, expired sandboxes, the rebase after a base moves, the clocks on what is waiting for you — stays where it is."
 msgstr "der Watchdog hat in diesem Tick geworfen, und die Regeln danach liefen nicht: {why}\n"
 "Er versucht es alle 30 s erneut, aber bis das behoben ist, bleibt alles stehen, was er antreibt — hängende Gruppen, abgelaufene Sandboxes, der Rebase nach einer verschobenen Basis, die Uhren für alles, was auf dich wartet."
 
@@ -2645,8 +2521,7 @@ msgstr "Dieses Konto hat kein Fenster"
 msgid "This browser doesn't support it"
 msgstr "Dieser Browser unterstützt das nicht"
 
-#. js-lingui-explicit-id
-msgid "check.codex.stale"
+msgid "this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again"
 msgstr "dieses ChatGPT-Login ist alt genug, um erneuert werden zu müssen — der nächste Container erneuert es, und wenn das weiter fehlschlägt, muss die auth.json neu eingefügt werden"
 
 msgid "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch."
@@ -2658,8 +2533,7 @@ msgstr "Dieses Log ist leer"
 msgid "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward."
 msgstr "Diesen Prozess haben nicht wir gestartet — vielleicht nutzt du ihn gerade. Starte ihn bei Bedarf selbst neu; danach erkennen wir ihn."
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_no_remote"
+msgid "this project has no remote recorded, so there is nothing to mirror"
 msgstr "für dieses Projekt ist kein Remote hinterlegt, es gibt also nichts zu spiegeln"
 
 msgid "This project hasn't run any activity yet."
@@ -2722,14 +2596,16 @@ msgstr "Tokens · Projektsumme"
 msgid "tokens · share"
 msgstr "Tokens · Anteil"
 
+msgid "tokens must be a positive number, or null to lift the cap"
+msgstr "Token muss eine positive Zahl sein, oder null, um die Grenze aufzuheben"
+
 msgid "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
 msgstr "Der Reihe nach probiert, und nur wenn sonst nichts antwortet: der eigene Basis-Branch des Projekts gewinnt, dann GitHubs default_branch. Darauf fällt ein Repository zurück, dessen Remote nicht erreichbar ist."
 
 msgid "Try again"
 msgstr "Erneut versuchen"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.turn_timeout"
+msgid "turn ran past {min} min and was killed"
 msgstr "der Turn lief über {min} Min. und wurde abgebrochen"
 
 msgid "Turn timeout"
@@ -2780,6 +2656,9 @@ msgstr "Zum Archivieren ohne Löschen „zurückstellen“ verwenden; dann bleib
 msgid "Use draft"
 msgstr "Entwurf verwenden"
 
+msgid "Use host:port, or https://host:port — for example 127.0.0.1:8081 or sandbox.tail1234.ts.net:8080."
+msgstr "Verwenden Sie host:port oder https://host:port — zum Beispiel 127.0.0.1:8081 oder sandbox.tail1234.ts.net:8080."
+
 msgid "Use this only if you can't reopen an old PR on GitHub. Use when the branch has been force-pushed or deleted: it will re-open using the current branch and rejoin the merge queue."
 msgstr "Nur nutzen, wenn sich eine alte PR auf GitHub nicht wieder öffnen lässt. Für den Fall, dass der Branch force-gepusht oder gelöscht wurde: es wird mit dem aktuellen Branch neu geöffnet und reiht sich wieder in die Merge-Warteschlange ein."
 
@@ -2788,10 +2667,6 @@ msgstr "Nutzen, wenn der Container hängt, Abhängigkeiten fehlen oder sich Zuga
 
 msgid "Used when a project has not set its own"
 msgstr "Wird verwendet, wenn ein Projekt keinen eigenen gesetzt hat"
-
-#. js-lingui-explicit-id
-msgid "check.uvx.present"
-msgstr "uvx vorhanden"
 
 msgid "Valid for one year"
 msgstr "Ein Jahr gültig"
@@ -2862,9 +2737,11 @@ msgstr "Watchdog-Intervall"
 msgid "Watchdog rule"
 msgstr "Watchdog-Regel"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.rule_broke"
+msgid "watchdog rule {rule} ({ruleName}) threw; the rest of the tick ran: {why}"
 msgstr "Watchdog-Regel {rule} ({ruleName}) hat geworfen; der Rest des Ticks lief: {why}"
+
+msgid "We did not start this sandbox server, so we will not touch it — it may be your own, configured for something else. Restart it yourself and this page will recognise it afterwards."
+msgstr "Diesen Sandbox-Server haben wir nicht gestartet, also fassen wir ihn nicht an — er könnte Ihr eigener sein, für etwas anderes konfiguriert. Starten Sie ihn selbst neu; diese Seite erkennt ihn danach."
 
 msgid "Webhook timeout"
 msgstr "Webhook-Zeitlimit"
@@ -2904,6 +2781,9 @@ msgstr "Welches Modell welche Schwierigkeit übernimmt, je CLI. Welche Rolle wel
 
 msgid "Which model runs what, and what it may spend"
 msgstr "Welches Modell was macht und was es ausgeben darf"
+
+msgid "which repository? (owner/name)"
+msgstr "welches Repository? (owner/name)"
 
 msgid "Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you."
 msgstr "Welche Stufen nach allen vier Gates deinen letzten Blick überspringen. Standardmäßig trivial und normal; schwer wartet weiterhin auf dich."

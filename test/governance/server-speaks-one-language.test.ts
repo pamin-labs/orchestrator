@@ -24,24 +24,16 @@ const CJK = /[一-鿿ぁ-ヿ가-힯　-〿＀-￯]/;
 const ROOT = `${process.cwd()}/src`;
 
 /**
- * A file derived from `web/src/locales/*.po` is exempt, and only that shape is.
+ * No exemption any more.
  *
- * `messages.generated.ts` is nine languages of catalog by construction, so this
- * ratchet would read the fix as the defect. What keeps it honest is not this
- * test but `i18n:messages --check` and `i18n:validate`, both in preflight: the
- * first says it matches the `.po` files, the second says they are complete.
- * Exact suffix, not `includes`, so nothing earns the exemption by being named
- * `generated-something.ts`.
+ * A generated `messages.generated.ts` used to sit under `src/` holding nine
+ * languages of catalog, so this ratchet would have read the fix as the defect.
+ * The catalogues are `.po` files the server imports now, and `src/` is back to
+ * being one language of source with nothing to carve out.
  */
-const DERIVED = ".generated.ts";
-
 const walk = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory()
-      ? walk(`${dir}/${e.name}`)
-      : e.name.endsWith(".ts") && !e.name.endsWith(DERIVED)
-        ? [`${dir}/${e.name}`]
-        : [],
+    e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith(".ts") ? [`${dir}/${e.name}`] : [],
   );
 
 /** Parsed, not grepped, so a comment in Chinese is not a finding. */

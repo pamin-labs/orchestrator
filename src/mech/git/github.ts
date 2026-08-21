@@ -1,10 +1,11 @@
+import { msg } from "@lingui/core/macro";
 import type { DB } from "../../platform/persistence/database.ts";
 import { Octokit } from "@octokit/core";
 import QuickLRU from "quick-lru";
 import { retry } from "@octokit/plugin-retry";
 import { throttling } from "@octokit/plugin-throttling";
 import { z } from "zod";
-import { say } from "../../platform/text/lang.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
 import { loadAuth } from "../sandbox/auth.ts";
 import { raise } from "../flow/escalate.ts";
 import { jsonOr } from "../../contracts/json.ts";
@@ -171,7 +172,7 @@ async function holdRepo(db: DB, lang: string | undefined, slug: string, why: str
     // `why` goes in verbatim. It is the message built below, which deliberately
     // does not guess which of the four causes it was — and a wrapper that
     // "helpfully" summarised it as "token expired" would put the guess back.
-    question: `GitHub ${slug}: ${why}\n\n${say(lang, "ev.repo.held", { repo: slug })}`,
+    question: `GitHub ${slug}: ${why}\n\n${renderSaid(lang, msg`GitHub no longer accepts this login, so every turn on ${{ repo: slug }} is held — retrying cannot help. Reconnect GitHub in settings and they resume on their own. Other projects are unaffected.`)}`,
     brief: "GitHub 连不上了",
     kind: "env",
     // No agent can repair a project credential, and there is no group PM here.

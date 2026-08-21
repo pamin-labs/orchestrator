@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { i18n } from "../../web/src/i18n.ts";
-import { messages } from "../../web/src/locales/ru.po";
+import { messages } from "../../locales/ru.po";
 
 /**
  * Russian has four plural categories where English has two, and the boundaries

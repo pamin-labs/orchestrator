@@ -29,15 +29,15 @@ const KEY = "orch.locale";
  * own chunk of about 52KB, and nobody reads two.
  */
 const CATALOGS: Record<Exclude<Locale, "en">, () => Promise<{ messages: Messages }>> = {
-  zh: () => import("./locales/zh.po"),
-  "zh-Hant": () => import("./locales/zh-Hant.po"),
-  ja: () => import("./locales/ja.po"),
-  ko: () => import("./locales/ko.po"),
-  es: () => import("./locales/es.po"),
-  fr: () => import("./locales/fr.po"),
-  de: () => import("./locales/de.po"),
-  pt: () => import("./locales/pt.po"),
-  ru: () => import("./locales/ru.po"),
+  zh: () => import("../../locales/zh.po"),
+  "zh-Hant": () => import("../../locales/zh-Hant.po"),
+  ja: () => import("../../locales/ja.po"),
+  ko: () => import("../../locales/ko.po"),
+  es: () => import("../../locales/es.po"),
+  fr: () => import("../../locales/fr.po"),
+  de: () => import("../../locales/de.po"),
+  pt: () => import("../../locales/pt.po"),
+  ru: () => import("../../locales/ru.po"),
 };
 
 /**

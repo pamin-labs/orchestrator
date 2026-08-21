@@ -20,10 +20,17 @@ afterEach(() => {
   i18n.activate("zh");
 });
 
-test("a catalog that 404s leaves the panel readable in English", async () => {
-  void mock.module("../../web/src/locales/ja.po", () => {
-    throw new Error("404");
-  });
+/**
+ * The failure is injected at `i18n.load`, not at the `.po` module.
+ *
+ * `mock.module` no longer reaches this one: `lang.ts` imports all nine
+ * catalogues so the server can render a sentence, so every test process already
+ * holds `ja.po` before a test runs, and a module already in the registry is not
+ * replaced for a dynamic `import()`. `load` is inside the same `try`, so the
+ * branch under test is the same branch — a catalogue that does not become
+ * messages, whether because the chunk 404d or because Lingui refused it.
+ */
+test("a catalog that will not load leaves the panel readable in English", async () => {
   // Spied rather than left to print: the message is the point — a panel reading
   // in the wrong language has to be findable — and an unsilenced `console.error`
   // is a red line in every suite run that looks like a failure and is not.
@@ -35,6 +42,11 @@ test("a catalog that 404s leaves the panel readable in English", async () => {
   i18n.load("", {});
   i18n.activate("");
   localStorage.setItem("orch.locale", "ja");
+
+  // Installed after the setup above, which is a legitimate `load`.
+  spyOn(i18n, "load").mockImplementation(() => {
+    throw new Error("404");
+  });
 
   // Resolves rather than rejects: that is the whole property.
   expect(await startLocale()).toBeUndefined();

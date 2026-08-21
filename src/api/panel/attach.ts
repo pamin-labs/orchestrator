@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { eq } from "drizzle-orm";
 import { basename, dirname, join, resolve } from "node:path";
 import { addNote } from "../../mech/util/rows.ts";
@@ -7,7 +8,8 @@ import { cp, mkdir, writeFile } from "node:fs/promises";
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { bad, badEnglish, json, message } from "../../http/respond.ts";
+
 import { sediment } from "../../mech/knowledge/lessons.ts";
 import { grp } from "../../platform/persistence/schema.ts";
 
@@ -73,14 +75,14 @@ export const postAttach = (async (ctx, _req, _params, { file: files, rel: rels }
   // Each file's path relative to what was dropped. A loose file has none; a file
   // from inside a dropped folder has `<folder>/…/name`, and the folder is what the
   // boss meant to attach — "看这个目录" is one reference, not forty.
-  if (!files.length) return bad("no file");
+  if (!files.length) return bad(msg`no file`);
   const root = join(ctx.config.dataDir, "attachments");
   const out: { name: string; path: string; type: string; size: number }[] = [];
   const dirs = new Map<string, { path: string; bytes: number }>();
   const stamp = Date.now();
 
   for (const [i, f] of files.entries()) {
-    if (f.size > 25 * 1024 * 1024) return bad(`${f.name} is over 25MB`);
+    if (f.size > 25 * 1024 * 1024) return badEnglish(`${f.name} is over 25MB`);
     // The stamp keeps two screenshots called "Screenshot.png" apart, and the
     // sanitising keeps a crafted filename inside the directory. Every segment of
     // a relative path is sanitised the same way, so `..` cannot survive one.
@@ -125,7 +127,7 @@ export const LocalPathsBody = z.object({ paths: z.array(z.string().max(4000)).ma
 
 export const postAttachLocal = (async (ctx, _req, _p, b) => {
   const picked = b.paths.filter((s) => s.trim());
-  if (!picked.length) return bad("no path");
+  if (!picked.length) return bad(msg`no path`);
   const root = join(ctx.config.dataDir, "attachments");
   await mkdir(root, { recursive: true });
   const stamp = Date.now();
@@ -136,7 +138,7 @@ export const postAttachLocal = (async (ctx, _req, _p, b) => {
     try {
       st = statSync(src);
     } catch {
-      return bad(`${raw}: cannot be read`);
+      return badEnglish(`${raw}: cannot be read`);
     }
     const safe = basename(src)
       .replace(/[^\w.\-\u4e00-\u9fff]/g, "_")

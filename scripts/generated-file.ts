@@ -1,7 +1,7 @@
 /**
  * Write a generated file, or check that the one on disk is what we would write.
  *
- * Two scripts derive a checked-in file from `web/src/locales/*.po`, and both
+ * Two scripts derive a checked-in file from `locales/*.po`, and both
  * need the same `--check` so preflight can say "stale" instead of a reviewer
  * noticing. Shared because it was copied first: `fallow audit` found the two
  * halves as one 21-line clone.

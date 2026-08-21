@@ -7,6 +7,6 @@
   },
   // The `.po` module declaration too: `test/support/setup.ts` imports a catalog,
   // and a project reference carries types across but not ambient declarations.
-  "include": ["test", "test/**/*.json", "web/src/locales/po.d.ts"],
+  "include": ["test", "test/**/*.json", "src/platform/text/po.d.ts"],
   "references": [{ "path": "./tsconfig.src.json" }, { "path": "./web/tsconfig.json" }]
 }

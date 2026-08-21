@@ -28,7 +28,9 @@ test("the resolved catalog paths are absolute, so a wrong cwd cannot empty them"
   expect(catalog).toBeDefined();
   for (const path of [catalog!.path, ...catalog!.include]) {
     expect(path).toStartWith("/");
-    expect(path).toContain("/web/src");
+    // The catalogues left `web/src` when the server started reading them: `web/**`
+    // is a Fallow zone the server may not import from.
+    expect(path).toMatch(/\/(locales|web\/src|src)\b/);
     // Not `scripts/web/src`, which is where a `rootDir` left at its default puts them.
     expect(path).not.toContain("/scripts/");
   }

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { rmSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { VERSION } from "../../src/platform/process/version.ts";
 import { tempDir } from "../support/temp.ts";
@@ -21,6 +21,28 @@ test.each([
   expect(await child.exited).toBe(0);
   expect(await new Response(child.stdout).text()).toBe(`${VERSION}\n`);
   expect(await new Response(child.stderr).text()).toBe("");
+});
+
+/**
+ * The agent's CLI holds no Lingui macro, and there are two layers saying so.
+ *
+ * `agentCli()` builds `src/orch/cli.ts` with `Bun.build` at **runtime**, to put
+ * an `orch` inside every container, and it cannot pass the macro plugin —
+ * `src/mech` may not import `scripts/`. So an unexpanded macro throws in the
+ * container, hours from anyone reading a build log.
+ */
+/**
+ * The first layer is `.fallowrc.json`: the `cli` zone may import only `cli`,
+ * `build-info` and `shared-contracts`, none of which hold a message. That stops
+ * a macro arriving through an import, and not one written here — which is what
+ * this scan is for. The test below is the third and loudest layer, because it
+ * runs the bundle, but it only catches a macro at module scope.
+ */
+test("no macro reaches the CLI the sandbox builds without a plugin", () => {
+  const held = readdirSync(`${process.cwd()}/src/orch`)
+    .filter((file) => file.endsWith(".ts"))
+    .filter((file) => readFileSync(`${process.cwd()}/src/orch/${file}`, "utf8").includes("@lingui/"));
+  expect(held).toEqual([]);
 });
 
 test("the CLI bundle runs where there is no package.json to read", async () => {

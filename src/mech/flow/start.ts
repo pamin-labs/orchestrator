@@ -1,8 +1,9 @@
+import { msg } from "@lingui/core/macro";
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { agent, channel, escalation, grp as grpTable, project, resource } from "../../platform/persistence/schema.ts";
-import { said } from "../../platform/text/lang.ts";
+
 import { createCheckout, remoteFor } from "../git/checkout.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
@@ -74,7 +75,7 @@ export async function dropGroup(ctx: Ctx, grpId: number, why: string): Promise<v
       // of the sentence and belongs in the row that owns the sentence. Built
       // here it was a fullwidth `：`, which went into the English row too —
       // `dropped by the boss：ran out of budget`.
-      say: why ? said("ev.group.dropped_why", { why }) : said("ev.group.dropped"),
+      say: why ? msg`dropped by the boss: ${{ why }}` : msg`dropped by the boss`,
     });
   });
 }
@@ -343,7 +344,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
           grpId,
           author: "orchestrator",
           kind: "state_change",
-          say: said("ev.group.worktree", { branch }),
+          say: msg`checkout on ${{ branch }}`,
         });
 
         // The first moment the repository exists anywhere readable. It runs
@@ -382,7 +383,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
   }
 
   await ctx.db.update(grpTable).set({ status: "RUNNING", approved_at: null }).where(eq(grpTable.id, grpId));
-  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", say: said("ev.group.approved") });
+  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", say: msg`DRAFT approved` });
   // Approving a plan that then sits still is the most confusing failure there is:
   // it looks like the system ignored you.
   await startNextSlice(ctx, grpId);

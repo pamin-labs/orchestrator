@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { cleanup, render, valueOf } from "../support/render.tsx";
 import { DurationAmount } from "../../web/src/features/knobs/editors.tsx";
 import { i18n } from "../../web/src/i18n.ts";
-import { messages } from "../../web/src/locales/ru.po";
+import { messages } from "../../locales/ru.po";
 
 /**
  * A duration field carries a translated unit, so what it shows depends on the

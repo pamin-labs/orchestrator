@@ -10,11 +10,13 @@ import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { refreshRuntimeReadiness, shutdownRuntime } from "../../src/composition/server.ts";
 import { makeCheck } from "../../src/mech/ops/preflight.ts";
 import * as fx from "../support/factories.ts";
+import { said } from "../support/said.ts";
+
 import { testContext } from "../support/test-context.ts";
 
 test("health, cached readiness, metrics, and correlation describe the running process", async () => {
   const status = runtimeStatus(false);
-  status.checks = [makeCheck("sandbox", false, { id: "check.docker.absent" })];
+  status.checks = [makeCheck("sandbox", false, said("not reachable"))];
   const app = makeApp(await testContext(), status);
 
   const health = await app(new Request("http://x/healthz", { headers: { "x-request-id": "request-123" } }));
@@ -27,7 +29,7 @@ test("health, cached readiness, metrics, and correlation describe the running pr
   expect(await notReady.json()).toMatchObject({ status: "not_ready", checks: [{ name: "sandbox", ok: false }] });
 
   status.ready = true;
-  status.checks = [makeCheck("sandbox", true, { id: "check.server.reachable" })];
+  status.checks = [makeCheck("sandbox", true, said("reachable"))];
   expect((await app(new Request("http://x/readyz"))).status).toBe(200);
 
   const metrics = await (await app(new Request("http://x/metrics"))).text();
@@ -39,14 +41,14 @@ test("health, cached readiness, metrics, and correlation describe the running pr
 test("readiness refreshes through failure and recovery without a real server", async () => {
   const status = runtimeStatus(false);
 
-  const reachable = makeCheck("sandbox", true, { id: "check.server.reachable" });
+  const reachable = makeCheck("sandbox", true, said("reachable"));
   await refreshRuntimeReadiness(status, async () => [reachable]);
   expect(status.ready).toBe(true);
   expect(status.checks).toEqual([reachable]);
 
   await refreshRuntimeReadiness(status, async () => [
-    makeCheck("sandbox", false, { id: "check.server.unreachable", values: { error: "offline" } }),
-    makeCheck("migration", true, { id: "check.database.ok" }),
+    makeCheck("sandbox", false, { ...said("cannot reach it: {error}"), values: { error: "offline" } }),
+    makeCheck("migration", true, said("migrated and queryable")),
   ]);
   expect(status.ready).toBe(false);
   expect(status.checks).toHaveLength(2);
@@ -58,7 +60,7 @@ test("readiness refreshes through failure and recovery without a real server", a
   // The crash is a key too: the pane that shows it holds nine catalogues, and
   // the error text is the value inside the sentence rather than the sentence.
   expect(status.checks).toEqual([
-    makeCheck("preflight", false, { id: "check.preflight.failed", values: { error: "probe crashed" } }),
+    makeCheck("preflight", false, { ...said("the checks could not run: {error}"), values: { error: "probe crashed" } }),
   ]);
 
   await refreshRuntimeReadiness(status, async () => [reachable]);

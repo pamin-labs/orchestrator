@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { JsonValue, type Json } from "./json.ts";
+import { SaidSchema } from "./said.ts";
 
 export const TextResponseSchema = z.object({ text: z.string() });
 
@@ -13,6 +14,14 @@ export const ErrorResponseSchema = z.object({
   error: z.string(),
   code: z.string(),
   request_id: z.string(),
+  /**
+   * The same refusal, unrendered, for the reader who is a browser.
+   *
+   * Its own field rather than a key under `details`: a descriptor's `values` are
+   * whatever the macro interpolated, which `Json` cannot describe, and burying
+   * it in a free-form record cost a `safeParse` on both sides to get it back.
+   */
+  said: SaidSchema.optional(),
   details: z.record(z.string(), JsonValue).optional(),
 });
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;

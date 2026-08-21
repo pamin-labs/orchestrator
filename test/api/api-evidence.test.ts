@@ -210,8 +210,8 @@ test("the draft prompt carries the requirement, the asker, the slices and the bl
   };
 
   expect(Draft.parse(await (await h.get("/api/v1/escalations/1/draft")).json()).text).toBe("use zod");
-  expect(prompt).toContain("需求: ship-the-thing");
-  expect(prompt).toContain("提问的人: engineer (blocker)");
+  expect(prompt).toContain("requirement: ship-the-thing");
+  expect(prompt).toContain("asker: engineer (blocker)");
   expect(prompt).toContain("which validation library should S3 use?");
   expect(prompt).toContain("S3 qa rename the flag");
   expect(prompt).toContain("[decision] we settled on zod");

@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { and, asc, count, desc, eq, gt, inArray, isNull, lte, max, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import {
@@ -13,7 +14,7 @@ import {
   slice as slices,
 } from "../../platform/persistence/schema.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
-import { said } from "../../platform/text/lang.ts";
+
 import type { Config } from "../../platform/config/load.ts";
 import { getFile, type Scope } from "../../mech/sandbox/sandbox.ts";
 import { listSkills, projectSkills, readSkillIn } from "../../mech/skills.ts";
@@ -301,7 +302,7 @@ async function digestBacklog(
     grpId: groupId,
     author: "orchestrator",
     kind: "state_change",
-    say: said("ev.unread.digest", { n: behind.c }),
+    say: msg`${{ n: behind.c }} unread — the Librarian is compressing them`,
     meta: { channel_id: channelId, behind: behind.c },
   });
   return `\n\n(${behind.c} 条更早的还没读，Librarian 正在压成一条摘要，别自己去翻)`;

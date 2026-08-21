@@ -6,7 +6,8 @@
  * notification is decorative.
  */
 
-import { say } from "../../platform/text/lang.ts";
+import { msg, plural } from "@lingui/core/macro";
+import { renderSaid } from "../../platform/text/lang.ts";
 import { scrub } from "../../platform/observability/redaction.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../../platform/config/load.ts";
 import type { Bus } from "../../platform/persistence/event-bus.ts";
@@ -151,7 +152,8 @@ export class Notifier {
     const body =
       items.length === 1
         ? items[0]!.body
-        : `${say(this.lang, "ev.notify.batch", { n: items.length })}\n` + items.map((i) => `• ${i.body}`).join("\n");
+        : `${renderSaid(this.lang, msg`${plural({ n: items.length }, { one: "# thing needs", other: "# things need" })} you:`)}\n` +
+          items.map((i) => `• ${i.body}`).join("\n");
     // No lastSent write here: push() already stamped every key through dueNow,
     // and rewriting it would reset strikes to 1, pinning the backoff at its
     // first step forever.

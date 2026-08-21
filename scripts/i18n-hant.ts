@@ -43,7 +43,7 @@ import { writeOrCheck } from "./generated-file.ts";
  * dead one. `配置` is deliberately absent — mapping it to 設定 would collide
  * with `设置` and throw away a distinction the Chinese draws.
  */
-const MAINLAND: readonly (readonly [string, string])[] = [
+export const MAINLAND: readonly (readonly [string, string])[] = [
   // OpenCC s2twp converts these, and converts them wrong.
   ["镜像", "映像"], // s2twp: 映象 — the 像→象 over-conversion
   ["网关", "閘道"], // s2twp: 閘道器 — the spurious 器 suffix
@@ -77,7 +77,7 @@ const MAINLAND: readonly (readonly [string, string])[] = [
  * assumed. `字首` is a word about the first character of a word; what this
  * catalog means is the prompt prefix and the cache prefix.
  */
-const OVERCONVERTED: readonly (readonly [string, string])[] = [["字首", "前綴"]];
+export const OVERCONVERTED: readonly (readonly [string, string])[] = [["字首", "前綴"]];
 
 /**
  * The documented low-level entry point — `ConverterFactory` over
@@ -88,7 +88,7 @@ const OVERCONVERTED: readonly (readonly [string, string])[] = [["字首", "前�
  */
 /** The presets are `Record<string, …>`, so a typo in a locale name is a missing
  *  dictionary and a converter that quietly returns its input. Said out loud. */
-function preset(dicts: Record<string, readonly OpenCC.DictGroup[]>, name: string): readonly OpenCC.DictGroup[] {
+export function preset(dicts: Record<string, readonly OpenCC.DictGroup[]>, name: string): readonly OpenCC.DictGroup[] {
   const found = dicts[name];
   if (!found) throw new Error(`opencc-js: no '${name}' dictionary in this preset`);
   return found;
@@ -127,8 +127,8 @@ export function hant(po: string): string {
     .join("\n");
 }
 
-const SOURCE = "web/src/locales/zh.po";
-const TARGET = "web/src/locales/zh-Hant.po";
+const SOURCE = "locales/zh.po";
+const TARGET = "locales/zh-Hant.po";
 
 // `import.meta.main`, so a test can import `hant` and drive it over a handful of
 // lines without regenerating a catalogue to get at one function.

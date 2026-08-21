@@ -1,99 +1,83 @@
 import { expect, test } from "bun:test";
-import { say } from "../../src/platform/text/lang.ts";
-import { MESSAGES, MESSAGE_IDS, type MessageId } from "../../src/platform/text/messages.generated.ts";
+import { said } from "../support/said.ts";
+import { renderSaid } from "../../src/platform/text/lang.ts";
 import { LOCALES } from "../../src/contracts/config.ts";
 
 /**
  * What the orchestrator says, in ten languages, rendered on the server.
  *
  * This file used to guard two hand-kept tables behind `isChinese()` — a language
- * *pair*, so `output.language: 한국어` got English. The tables are the panel's
- * catalogs now, so what is left to check is that the generated one is total and
- * that the ids callers may name are the ids it has.
+ * *pair*, so `output.language: 한국어` got English. It then guarded a generated
+ * table. What is left to check is the thing neither of those was: that a
+ * descriptor an emitter wrote with `msg` finds its row in a catalogue compiled
+ * into this binary.
  */
+/** `said()` builds the descriptor the macro would have, so this is `renderSaid`
+ *  with the sentence written out. */
+const say = (lang: string, message: string, values?: Record<string, string | number>): string =>
+  renderSaid(lang, said(message, values));
+
+const MERGED = "merged into main";
 
 test("a language that is neither English nor Chinese gets its own words", () => {
   // The bug this replaced: `isChinese(lang) ? ZH : EN` has no third row, so a
   // Korean boss read the feed in English however the knob was set.
-  expect(say("한국어", "ev.group.merged")).toBe(MESSAGES.ko["ev.group.merged"]);
-  expect(say("Русский", "ev.group.merged")).toBe(MESSAGES.ru["ev.group.merged"]);
-  expect(say("English", "ev.group.merged")).not.toBe(say("Français", "ev.group.merged"));
+  expect(say("한국어", MERGED)).not.toBe(MERGED);
+  expect(say("Русский", MERGED)).toBe("влито в main");
+  expect(say("English", MERGED)).not.toBe(say("Français", MERGED));
   // Free text a person typed, so `localeOf` decides; an unrecognised one is the
   // source language rather than nothing.
-  expect(say("Klingon", "ev.group.merged")).toBe(MESSAGES.en["ev.group.merged"]);
+  expect(say("Klingon", MERGED)).toBe(MERGED);
   // A unit test builds a Ctx without config; a missing language is not a reason
   // to throw inside a bus.emit.
-  expect(() => say(undefined, "ev.gate.pass", { seq: 1 })).not.toThrow();
+  expect(() => renderSaid(undefined, said("gate pass on S{seq}", { seq: 1 }))).not.toThrow();
 });
 
-test("every locale answers every id", () => {
-  const gaps = LOCALES.flatMap((l) => MESSAGE_IDS.filter((id) => !MESSAGES[l][id]).map((id) => `${l}: ${id}`));
-  expect(gaps).toEqual([]);
+test("every locale renders every sentence, and only English renders the source", () => {
+  // The catalogues are imported modules in this process, exactly as they are in
+  // the compiled binary — so an empty one, a locale missing from `CATALOGS`, or
+  // a `.po` the bundler never compiled shows up here as English.
+  const english = LOCALES.filter((l) => l !== "en" && say(l, MERGED) === MERGED);
+  expect(english).toEqual([]);
 });
 
-/** The names a row asks its caller for, ICU plural branches included. */
-const holes = (row: string): string[] => [...row.matchAll(/\{\s*(\w+)/g)].map((m) => m[1]!).sort();
-
 /**
- * What this replaced could not fail.
- *
- * It asserted `!out.includes("{")` against a renderer that turns an unfilled
- * `{word}` into the empty string — so `turn ran past  min and was killed`
- * passed. ICU does the same thing, so the check has to stay on the rows: the
- * output is where the evidence has already been destroyed.
+ * The `message` on the descriptor is what an id with no catalogue row falls back
+ * to, and every English reader is that case — the source locale loads nothing.
+ * A sentence this build has never seen is the other case, and it is what keeps
+ * adding a message to the server non-breaking for a panel older than it.
  */
-/**
- * `ev.` only: `args` below is the union of what the `bus.emit` callers pass, and
- * the table also carries the host checks, whose values come from
- * `mech/ops/preflight.ts` and are covered where those are built.
- */
-test("no placeholder survives into the boss's feed unfilled", () => {
-  const args: Record<string, string | number> = {
-    name: "g1",
-    n: 3,
-    seq: 2,
-    role: "engineer",
-    from: "qa",
-    file: "a.ts",
-    tokens: "8M",
-    min: 5,
-    at: "18:00",
-    resource: "test",
-    repo: "o/r",
-    files: "a.ts",
-    why: "boom",
-    pid: 41,
-    branch: "b",
-    hours: 4,
-    rule: "12",
-    ruleName: "sandbox_swept",
-    cmd: "opensandbox-server --port 1",
-    base: "origin/main",
-    sha: "abc1234",
-    title: "t",
-    tier: "M",
-    reason: "no",
-    path: "src/a.ts",
-    target: 4,
-    pct: 80,
+test("a sentence no catalogue carries renders from the descriptor it arrived with", () => {
+  const unknown = {
+    id: "a-hash-no-catalogue-has",
+    message: "a newer server said this about {thing}",
+    values: { thing: "a slice" },
   };
-  const events = MESSAGE_IDS.filter((id) => id.startsWith("ev."));
-  const unfilled = events.flatMap((id) =>
-    holes(MESSAGES.en[id])
-      .filter((h) => !(h in args) && h !== "plural" && h !== "selectordinal")
-      .map((h) => `${id}: {${h}}`),
-  );
-  expect(unfilled).toEqual([]);
-  for (const locale of LOCALES) {
-    for (const id of events) expect(say(locale, id, args).length).toBeGreaterThan(0);
-  }
+  expect(renderSaid("Русский", unknown)).toBe("a newer server said this about a slice");
+  expect(renderSaid("English", unknown)).toBe("a newer server said this about a slice");
 });
 
 test("a plural reads right at one, which is what a bare {n} could not", () => {
-  const one = (id: MessageId, n: number) => say("English", id, { n, role: "engineer", file: "a.ts", files: "a.ts" });
-  expect(one("ev.wd.no_progress", 1)).toContain("1 turn without");
-  expect(one("ev.wd.no_progress", 2)).toContain("2 turns without");
-  expect(say("Русский", "ev.notify.batch", { n: 2 })).toContain("дела");
-  expect(say("Русский", "ev.notify.batch", { n: 5 })).toContain("дел");
-  expect(say("English", "ev.sediment", { n: 3 })).toContain("3rd");
+  const turns = (n: number) =>
+    say(
+      "English",
+      "{role} finished {n, plural, one {# turn} other {# turns}} without changing a file, a task or a note",
+      {
+        role: "engineer",
+        n,
+      },
+    );
+  expect(turns(1)).toContain("1 turn without");
+  expect(turns(2)).toContain("2 turns without");
+  // Russian has three plural categories and the catalogue picks between them.
+  const batch = (n: number) => say("Русский", "{n, plural, one {# thing needs} other {# things need}} you:", { n });
+  expect(batch(2)).toContain("дела");
+  expect(batch(5)).toContain("дел");
+  expect(
+    say(
+      "English",
+      "the same feedback for the {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} time; asking the CoS to make it a project rule",
+      { n: 3 },
+    ),
+  ).toContain("3rd");
 });

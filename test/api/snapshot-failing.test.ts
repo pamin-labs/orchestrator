@@ -3,6 +3,7 @@ import { z } from "zod";
 import { snapshot } from "../../src/api/panel/snapshot.ts";
 import { HostFailure } from "../../src/contracts/panel.ts";
 import { makeCheck } from "../../src/mech/ops/preflight.ts";
+import { said } from "../support/said.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -14,14 +15,19 @@ import { testContext } from "../support/test-context.ts";
  * carrying it is the failures themselves and nothing on a healthy host.
  */
 
+const ok = said("migrated and queryable");
+const silent = said("installed, but the daemon is not answering");
+const start = said("Start Docker Desktop, or run colima start, and wait for it to report running.");
+const http500 = said("HTTP {status}");
+
 test("only the broken checks cross the wire, with the two strings that say what to do", async () => {
   const ctx = await testContext();
   ctx.checks = () => [
-    makeCheck("database", true, { id: "check.database.ok" }),
-    makeCheck("docker", false, { id: "check.docker.silent" }, { id: "check.docker.fix.start" }),
+    makeCheck("database", true, ok),
+    makeCheck("docker", false, silent, start),
     // No `fix`: not every failure has a command, and the field is optional
     // rather than an empty string the panel would draw an empty box for.
-    makeCheck("sandbox-server", false, { id: "check.server.http", values: { status: 500 } }),
+    makeCheck("sandbox-server", false, { ...http500, values: { status: 500 } }),
   ];
 
   const failing = (await snapshot(ctx)).failing;
@@ -30,14 +36,12 @@ test("only the broken checks cross the wire, with the two strings that say what 
   // The English rides along with the key: `/readyz` and the console read it,
   // and it is what the panel falls back to for a key it does not know yet.
   expect(failing).toEqual([
+    { name: "docker", detail: silent.message, said: silent, fix: start.message, fixSaid: start },
     {
-      name: "docker",
-      detail: "installed, but the daemon is not answering",
-      said: { id: "check.docker.silent" },
-      fix: "Start Docker Desktop, or run colima start, and wait for it to report running.",
-      fixSaid: { id: "check.docker.fix.start" },
+      name: "sandbox-server",
+      detail: "HTTP 500",
+      said: { ...http500, values: { status: 500 } },
     },
-    { name: "sandbox-server", detail: "HTTP 500", said: { id: "check.server.http", values: { status: 500 } } },
   ]);
 });
 

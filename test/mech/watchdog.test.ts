@@ -3,7 +3,8 @@ import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trac
 import { StoredSpanExporter } from "../../src/platform/observability/span-store.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
-import { renderSaid, said } from "../../src/platform/text/lang.ts";
+import { renderSaid } from "../../src/platform/text/lang.ts";
+import { said } from "../support/said.ts";
 import { publishWatchdogFinding } from "../../src/application/executor.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory, readSetting, type DB } from "../../src/platform/persistence/database.ts";
@@ -1342,7 +1343,9 @@ test("an unreadable container builds the map once, then reports instead of rebui
   expect(sandbox.commands.filter((c) => c.includes("ls-tree"))).toHaveLength(1);
   expect(await readSetting(h.db, "watchdog.repo_map.1")).toBeNull();
   // Said once, and it names why rebuilding would not help.
-  const said = ticks.flat().filter((f) => f.say.id === "ev.wd.map_stale");
+  // Matched on the sentence, not its hash: the id is whatever the macro made of
+  // this English, and the English is what a reader is promised.
+  const said = ticks.flat().filter((f) => f.say.message?.includes("the repo map is stuck on its last version"));
   expect(said).toHaveLength(1);
 });
 
@@ -1630,7 +1633,7 @@ test("a finding reaches the notifier as a sentence in output.language, not as an
     rule: "turn_timeout",
     grpId: 1,
     severity: "advisory",
-    say: said("ev.wd.turn_timeout", { min: 30 }),
+    say: said("turn ran past {min} min and was killed", { min: 30 }),
   });
 
   expect(seen).toEqual(["一个 turn 超过 30 分钟，已掐断"]);

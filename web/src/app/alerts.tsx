@@ -4,7 +4,7 @@ import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import type { HostFailure } from "../shared/api";
-import { checkText } from "../features/settings/checks";
+import { saidText } from "../shared/said";
 
 /**
  * A broken host check, stated where the boss is looking.
@@ -69,7 +69,7 @@ export function HostAlert({ failing, onFix }: { failing: readonly HostFailure[];
             sentence after it is a key the panel renders, and falls back to the
             server's English for a key this build has never heard of. */}
         <AlertDescription>
-          <span className="text-ink">{first.name}</span> {checkText(first.said, first.detail)}
+          <span className="text-ink">{first.name}</span> {saidText(first.said, first.detail)}
         </AlertDescription>
       </span>
       <AlertAction>

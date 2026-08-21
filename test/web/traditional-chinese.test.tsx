@@ -4,6 +4,9 @@ import { i18n, startLocale } from "../../web/src/i18n.ts";
 import { Timeline } from "../../web/src/features/timeline/view.tsx";
 import { emptyState } from "../../web/src/shared/api.ts";
 import { translations } from "../../scripts/lingui-catalogs.ts";
+import * as OpenCC from "opencc-js/core";
+import * as Locale from "opencc-js/preset";
+import { MAINLAND, OVERCONVERTED, preset } from "../../scripts/i18n-hant.ts";
 
 /**
  * `zh-Hant` is Traditional, and stays Traditional.
@@ -92,46 +95,44 @@ test("no message in the Traditional catalog is Simplified", async () => {
 });
 
 /**
- * The six places OpenCC's own phrase dictionary is wrong, asserted against the
- * shipped file.
+ * The places OpenCC's own phrase dictionary is wrong, asserted against the
+ * shipped file and driven by the rules themselves.
  *
- * These are the rules a person wrote in `scripts/i18n-hant.ts`, and they are the
- * part of this catalog that a dependency upgrade can silently undo — `映象` and
- * `閘道器` are long-standing OpenCC output, so a future `opencc-js` that "fixes"
- * something nearby can put them back and every other check here stays green.
+ * These are the corrections a person wrote in `scripts/i18n-hant.ts`, and they
+ * are the part of this catalogue a dependency upgrade can silently undo — `映象`
+ * and `閘道器` are long-standing OpenCC output, so a future `opencc-js` that
+ * "fixes" something nearby can put them back while every other check here stays
+ * green.
  */
-/** Counts, not presence: the left-hand number is how many times the Simplified
- *  word appears in `zh.po`, so a rule that half-applies is caught too. They move
- *  whenever the panel gains copy — the assertion is that the right-hand column
- *  is still zero. */
-test("the corrections to OpenCC survive into the shipped catalog", async () => {
-  const po = await Bun.file("web/src/locales/zh-Hant.po").text();
-  const times = (word: string): number => po.split(word).length - 1;
-  expect({
-    映像: times("映像"),
-    映象: times("映象"),
-    閘道: times("閘道") - times("閘道器"),
-    閘道器: times("閘道器"),
-    行程: times("行程"),
-    程序: times("程序"),
-    全域: times("全域") - times("全域性"),
-    全域性: times("全域性"),
-    前綴: times("前綴"),
-    字首: times("字首"),
-    發布: times("發布"),
-    釋出: times("釋出"),
-  }).toEqual({
-    映像: 13,
-    映象: 0,
-    閘道: 3,
-    閘道器: 0,
-    行程: 4,
-    程序: 0,
-    全域: 2,
-    全域性: 0,
-    前綴: 6,
-    字首: 0,
-    發布: 1,
-    釋出: 0,
-  });
+/**
+ * The wrong form is computed, not written down: it is what `s2twp` produces for
+ * that word **without** this project's two dictionaries. So the judgement comes
+ * from the rule rather than from a count taken on some particular day — the
+ * previous version asserted `映像: 15, 閘道: 3, 行程: 4 …` and went red twice for
+ * new copy, both times with nothing wrong.
+ */
+test("every correction to OpenCC survives into the shipped catalogue", async () => {
+  const zh = await Bun.file("locales/zh.po").text();
+  const hant = await Bun.file("locales/zh-Hant.po").text();
+  const naive = OpenCC.ConverterFactory(preset(Locale.from, "cn"), preset(Locale.to, "twp"));
+
+  const wrong: string[] = [];
+  const missing: string[] = [];
+  for (const [simplified, ours] of MAINLAND) {
+    const machine = naive(simplified);
+    if (machine !== ours && hant.includes(machine)) wrong.push(`${simplified}: ${machine} is still in the catalogue`);
+    // Only for a rule the Simplified catalogue still triggers: copy that drops
+    // the last use of a word is not this test's business.
+    if (zh.includes(simplified) && !hant.includes(ours)) missing.push(`${simplified}: no ${ours} in the catalogue`);
+  }
+  // `OVERCONVERTED` is written the other way round — it repairs the machine's
+  // output, so its left-hand side *is* the wrong form.
+  for (const [machine, ours] of OVERCONVERTED) {
+    if (hant.includes(machine)) wrong.push(`${machine}: repaired to ${ours}, and still in the catalogue`);
+  }
+  expect({ wrong, missing }).toEqual({ wrong: [], missing: [] });
+
+  // Not vacuous: some rule has to actually disagree with the machine, or the
+  // loop above is comparing every word with itself.
+  expect(MAINLAND.filter(([simplified, ours]) => naive(simplified) !== ours).length).toBeGreaterThan(0);
 });

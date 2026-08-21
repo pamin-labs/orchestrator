@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { count, eq, isNotNull } from "drizzle-orm";
 import {
   allowedImage,
@@ -23,9 +24,8 @@ import { resetServerRestarts } from "../../mech/ops/watchdog.ts";
 import { preflight } from "../../mech/ops/preflight.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { bad, badEnglish, json, message } from "../../http/respond.ts";
 import { grp as grps, job } from "../../platform/persistence/schema.ts";
-import { said } from "../../platform/text/lang.ts";
 
 /**
  * What this machine can and cannot do, and the sidecar that decides it.
@@ -126,9 +126,9 @@ export const postImage = (async (ctx, _req, _p, b) => {
   // The same rule the container build applies, applied where the boss can read
   // it. Without this the refusal arrives as a container that will not create.
   if (image && !allowedImage(image))
-    return bad(`${image} is neither an image we publish nor one built on this machine`);
+    return badEnglish(`${image} is neither an image we publish nor one built on this machine`);
   const why = await setDefaultImage(ctx.db, ctx.config, image);
-  if (why) return bad(why);
+  if (why) return badEnglish(why);
   return message("ok");
 }) satisfies Handler<z.infer<typeof ImageBody>>;
 
@@ -187,7 +187,7 @@ export const postSandboxServerRestart = (async (ctx) => {
   const argv = await ourArgv(ctx.db);
   if (!argv) {
     return bad(
-      "We did not start this sandbox server, so we will not touch it — it may be your own, configured for something else. Restart it yourself and this page will recognise it afterwards.",
+      msg`We did not start this sandbox server, so we will not touch it — it may be your own, configured for something else. Restart it yourself and this page will recognise it afterwards.`,
     );
   }
   const err = await restartServer(argv, serverLogPath(ctx));
@@ -195,8 +195,12 @@ export const postSandboxServerRestart = (async (ctx) => {
   // hand, it does not take, and the watchdog has already spent its three tries
   // on the same problem.
   resetServerRestarts();
-  if (err) return bad(err);
-  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", say: said("ev.sandbox.server_bounced") });
+  if (err) return badEnglish(err);
+  await ctx.bus.emit({
+    author: "orchestrator",
+    kind: "state_change",
+    say: msg`the sandbox server was restarted, so every container it held is gone`,
+  });
   return json({ ok: true });
 }) satisfies Handler;
 
@@ -210,7 +214,7 @@ export const postSandboxServerAddr = (async (ctx, _req, _p, b) => {
   // A hostname and an optional scheme, because the server does not have to be on
   // this machine: a Tailscale peer or a cloud box works the same way.
   if (addr && !/^(https?:\/\/)?[\w.-]+(:\d{2,5})?$/.test(addr)) {
-    return bad("Use host:port, or https://host:port — for example 127.0.0.1:8081 or sandbox.tail1234.ts.net:8080.");
+    return bad(msg`Use host:port, or https://host:port — for example 127.0.0.1:8081 or sandbox.tail1234.ts.net:8080.`);
   }
   await setServerAddr(ctx, addr);
   return json({ ok: true, addr: serverAddr(ctx) });
@@ -219,11 +223,14 @@ export const postSandboxServerAddr = (async (ctx, _req, _p, b) => {
 /** Start one when there is none. The panel's way out of the `down` state. */
 export const postSandboxServerStart = (async (ctx) => {
   const st = await ensureServer(ctx);
-  if (st.kind === "down") return bad(st.why);
+  if (st.kind === "down") return badEnglish(st.why);
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    say: st.kind === "started" ? said("ev.sandbox.server_up", { pid: st.pid }) : said("ev.sandbox.server_was_up"),
+    say:
+      st.kind === "started"
+        ? msg`the sandbox server is up (pid ${{ pid: st.pid }})`
+        : msg`the sandbox server was already running, so this used the one that was there`,
   });
   return json({ ok: true, state: st.kind });
 }) satisfies Handler;

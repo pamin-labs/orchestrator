@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { i18n } from "../../web/src/i18n.ts";
+import { said as say } from "../support/said.ts";
 import { appendFrame, type PanelFrame } from "../../web/src/shared/stream.ts";
 
 /**
@@ -11,6 +12,8 @@ import { appendFrame, type PanelFrame } from "../../web/src/shared/stream.ts";
  * keep rendering the sentence the server rendered into it.
  */
 const one = (f: Parameters<typeof appendFrame>[1]): PanelFrame => appendFrame([], f, { current: 0 })[0]!;
+
+const MERGED = "merged into main";
 
 test("a row stored before meta.say existed renders the body it was written with", () => {
   const row = one({ type: "event", seq: 1, kind: "state_change", author: "boss", body: "已合入 main", at: 1 });
@@ -26,7 +29,7 @@ test("a row carrying meta.say renders the panel's catalogue, not the stored body
     author: "boss",
     // What the server wrote for the webhook and for `/readyz`, in output.language.
     body: "已合入 main",
-    meta: { say: { id: "ev.group.merged" } },
+    meta: { say: say(MERGED) },
     at: 2,
   });
   expect(row.text).toBe("merged into main");
@@ -38,7 +41,7 @@ test("a row carrying meta.say renders the panel's catalogue, not the stored body
       kind: "say",
       author: "boss",
       body: "x",
-      meta: { say: { id: "ev.group.merged" } },
+      meta: { say: say(MERGED) },
       at: 3,
     }).text,
   ).toBe("已合入 main");
@@ -52,7 +55,7 @@ test("arguments are filled in by the panel, from values the server sent", () => 
     kind: "escalation",
     author: "watchdog",
     body: "PR #7 已开",
-    meta: { rule: "pr", say: { id: "ev.pr.opened", values: { n: 7 } } },
+    meta: { rule: "pr", say: say("PR #{n} opened", { n: 7 }) },
     at: 4,
   });
   expect(row.text).toBe("PR #7 opened");

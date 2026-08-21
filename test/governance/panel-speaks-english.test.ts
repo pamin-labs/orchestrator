@@ -3,7 +3,7 @@ import { parseSync, traverse } from "@babel/core";
 import { LANGUAGE_SUGGESTIONS } from "../../web/src/features/knobs/editors.tsx";
 
 /**
- * The panel's source language is English; Chinese lives in `web/src/locales`.
+ * The panel's source language is English; Chinese lives in `locales/`.
  *
  * A literal left behind is caught by nothing else: it renders, it reads fine to
  * whoever wrote it, and it is simply absent from every catalog — so the English

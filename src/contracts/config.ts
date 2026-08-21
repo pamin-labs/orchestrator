@@ -201,12 +201,6 @@ export const localeOf = (lang: string | undefined): Locale =>
  * this too, and that was the bug: a language *pair* has no row for `한국어`, so a
  * Korean boss got English. It renders from ten catalogs now and asks `localeOf`.
  */
-/**
- * Both scripts, which is why this is a prefix test and not `=== "zh"`. Written
- * as `=== "zh"` the day `zh-Hant` was added, a Traditional reader would have got
- * the English block instead of the Chinese one.
- */
-export const isChinese = (lang: string | undefined): boolean => localeOf(lang).startsWith("zh");
 
 export const ConfigSchema = z.object({
   language: z.string().min(1),

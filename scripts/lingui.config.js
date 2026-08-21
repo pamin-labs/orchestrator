@@ -47,6 +47,6 @@ export default {
   // adds and retires message ids, and a catalog it does not know about goes
   // stale the first time an English string is reworded.
   locales: ["en", "zh", "zh-Hant", "ja", "ko", "es", "fr", "de", "pt", "ru"],
-  catalogs: [{ path: "<rootDir>/web/src/locales/{locale}", include: ["<rootDir>/web/src"] }],
+  catalogs: [{ path: "<rootDir>/locales/{locale}", include: ["<rootDir>/src", "<rootDir>/web/src"] }],
   format: formatter({ origins: false }),
 };

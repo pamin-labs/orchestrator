@@ -5,6 +5,6 @@
     "outDir": "../.cache/tsc/web",
     "tsBuildInfoFile": "../.cache/tsc/web.tsbuildinfo"
   },
-  "include": ["src"],
+  "include": ["src", "../src/platform/text/po.d.ts"],
   "references": [{ "path": "../tsconfig.src.json" }]
 }

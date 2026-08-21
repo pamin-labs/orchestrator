@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -5,7 +6,7 @@ import { type Config, ROOT } from "../../platform/config/load.ts";
 import { gitTrailers } from "./ghlogin.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
-import { said } from "../../platform/text/lang.ts";
+
 import { squashWip } from "./gitops.ts";
 import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
 import type { Github } from "./github.ts";
@@ -142,7 +143,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    say: said("ev.pr.opened", { n: number }),
+    say: msg`PR #${{ n: number }} opened`,
   });
   return { number };
 }

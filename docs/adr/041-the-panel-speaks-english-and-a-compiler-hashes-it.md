@@ -32,19 +32,20 @@ both sides call it.
 reasons written here for keeping it out were wrong, in different ways.
 
 The first said the release binary is `bun build --compile`, which takes no
-plugin, so a macro would have to expand at runtime. `Bun.build` accepts `compile`
-*and* `plugins` together — measured, a standalone binary carrying all 809
-compiled messages — so that door was never shut.
+plugin, so a macro would have to expand at runtime. That is true of the CLI and
+false of the API, which is the distinction the next section is about.
 
-## The correction: importing a catalog, not running the library
+## The correction: the flag, not the API
 
 The paragraph above conflates two things, and this ADR's conclusion rested on
-the confusion. `bun build --compile` takes no plugin, so it cannot **compile a
-`.po` on the way in**. It has no trouble **running Lingui**: a plugin is a build
-concern, and `setupI18n` is not.
+the confusion. **`bun build` the CLI** has no `--plugin` flag. **`Bun.build` the
+API** takes `plugins` and `compile` together, and `scripts/build-web.ts` was
+already using it for the panel. So the macro was never shut out of the server —
+one missing flag was read as a missing capability, and a whole layer got built
+to work around it.
 
-Measured, not argued — a standalone binary built with `bun build --compile`,
-rendering out of a generated module rather than a `.po`:
+Measured, not argued — the first version of this measurement compiled a binary
+that rendered out of a generated module:
 
 ```
 ru n=1  -> 1 срез        ru n=11 -> 11 срезов
@@ -61,10 +62,42 @@ Four Russian forms from one message is the part that matters. `one`/`few`/`many`
 is a rule ICU has and we do not, and the alternative on offer was a third
 hand-kept table.
 
-So the catalog reaches the server as a generated module —
-`scripts/i18n-messages.ts` writes `src/platform/text/messages.generated.ts` from
-the same ten `.po` files the panel compiles — and
-[`035`](035-language-follows-who-wrote-it.md) §3 is why it had to.
+That generated module is gone, and so is everything that existed to feed it.
+`scripts/build-server.ts` builds the release binary through `Bun.build` with the
+same two plugins as the panel, so `src/platform/text/lang.ts` imports the nine
+`.po` files directly and the server writes `msg` exactly as `web/src` does.
+
+Measured on the compiled binary, which is where this ADR was wrong before:
+
+```
+$ bun run scripts/build-server.ts src/probe.ts dist/probe bun-darwin-arm64
+$ dist/probe
+влито в main | 已合入 main | main にマージしました | merged into main
+```
+
+### What that deleted
+
+Everything below existed only to carry English and an id across a boundary the
+macro turned out to be able to cross:
+
+| gone | why it existed |
+|---|---|
+| explicit ids — `msg({ id: "ev.group.merged", … })` | the server could not compute a hash |
+| `web/src/shared/messages.ts`, `web/src/features/settings/checks.ts` | two descriptor tables, so the panel could look an id up |
+| `said()` in `lang.ts` | the one typed door onto those ids |
+| `scripts/i18n-messages.ts`, `src/platform/text/messages.generated.ts` | a catalogue for a runtime that could not import one |
+| `test/governance/english-has-one-author.test.ts` | two copies of the English to keep in step |
+
+An emitter writes `say: msg\`merged into main\``. The macro expands it to
+`{ id, message }` at build time, the wire carries that object with its values,
+and both sides call `i18n._` on it: the catalogue row when the reader's
+catalogue has one, the `message` beside the id when it does not. English is the
+second case for every sentence, which is why it still loads no catalogue —
+[`035`](035-language-follows-who-wrote-it.md) §3 is why the server renders at
+all.
+
+The catalogues moved from `web/src/locales/` to `locales/`, because `web/**` is
+a Fallow zone the server may not import from.
 
 ## What the second reason got wrong
 

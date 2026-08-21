@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import { roleFor } from "../../mech/ctx.ts";
@@ -22,7 +23,9 @@ import { abortJob } from "../../platform/process/running-turns.ts";
 import { ACTIVE_JOB_STATES } from "../../contracts/states.ts";
 import { IdParams } from "../../contracts/fields.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { bad, badEnglish, json, message } from "../../http/respond.ts";
+
+import { noGithubClient } from "./authflow.ts";
 import {
   agent,
   channel,
@@ -94,12 +97,12 @@ async function rememberInstall(db: DB, projectId: number, cmd: string | null): P
 }
 
 export const postSetup = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== roleFor(ctx, "bootstrap_env")) return bad(`${a.role} does not set this project up`);
+  if (a.role !== roleFor(ctx, "bootstrap_env")) return badEnglish(`${a.role} does not set this project up`);
   const [owner] = a.grp_id
     ? await ctx.db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, a.grp_id))
     : [];
   const projectId = owner?.project_id;
-  if (!a.grp_id || !projectId) return bad("this agent has no group");
+  if (!a.grp_id || !projectId) return badEnglish("this agent has no group");
 
   if (b.none) {
     await rememberInstall(ctx.db, projectId, null);
@@ -108,11 +111,11 @@ export const postSetup = (async (ctx, _req, a, _p, b) => {
   }
 
   const cmd = (b.cmd ?? "").trim();
-  if (!cmd) return bad('setup needs --cmd "<command>" or --none');
+  if (!cmd) return badEnglish('setup needs --cmd "<command>" or --none');
   // Same streamed install the first turn gets: the boss watches this one too,
   // and an agent's own attempt is the one most likely to need watching.
   const r = await runInstall(ctx, a.grp_id, cmd);
-  if (!r.ok) return bad(`install failed:\n${r.tail}`);
+  if (!r.ok) return badEnglish(`install failed:\n${r.tail}`);
   await rememberInstall(ctx.db, projectId, cmd);
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof SetupBody>>;
@@ -135,20 +138,20 @@ export const ProjectBody = z.object({
 
 export const postProject = (async (ctx, req, _p, b) => {
   const want = b.repo.trim();
-  if (!want) return bad("which repository? (owner/name)");
-  if (!ctx.gh) return bad("this server has no GitHub client");
+  if (!want) return bad(msg`which repository? (owner/name)`);
+  if (!ctx.gh) return noGithubClient();
 
   // Asked of GitHub rather than trusted from the browser: the default branch is
   // written into the row, and a wrong one is a group that branches off nothing.
   const r = await ctx.gh.request("GET", `/repos/${want}`, GithubRepo, undefined, req.signal);
-  if (!r.ok) return bad(r.message);
+  if (!r.ok) return badEnglish(r.message);
   const repoPath = r.data.full_name;
   const remote = r.data.clone_url;
   const baseBranch = r.data.default_branch || null;
   const name = (b.name ?? "").trim() || repoPath.split("/")[1] || repoPath;
 
   const [dup] = await ctx.db.select({ name: project.name }).from(project).where(eq(project.repo_path, repoPath));
-  if (dup) return bad(`${repoPath} is already registered as "${dup.name}"`);
+  if (dup) return badEnglish(`${repoPath} is already registered as "${dup.name}"`);
 
   const gates = b.gates ?? [];
   const [row] = await ctx.db
@@ -432,7 +435,7 @@ export const patchProjectConfig = (async (ctx, _req, params, data) => {
     // Validate the whole merge so an unrelated patch cannot bless a malformed
     // field written by an older binary or a database-side repair.
     const merged = mergeProjectConfig(row.config_json, patch);
-    if (!merged.ok) return bad(merged.error);
+    if (!merged.ok) return badEnglish(merged.error);
     config = merged.config;
   }
 

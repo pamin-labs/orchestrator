@@ -17,12 +17,13 @@
     "dev:trace": "OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 bun run dev",
     "orch": "bun run src/orch/cli.ts",
     "build:web": "bun run scripts/build-web.ts && tailwindcss -i web/style.css -o web/dist/app.css --minify",
+    "build:server": "bun run scripts/build-server.ts",
     "perf:budget": "bun run scripts/performance-budget.ts",
     "perf:bench": "bun run scripts/benchmark.ts",
     "embedding:check": "bun run scripts/embedding-check.ts",
     "test": "bun run scripts/test.ts",
     "test:changed": "bun test --parallel --changed",
-    "test:coverage": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun test --parallel --timeout=20000 --max-concurrency=8 && bun run test/support/coverage-report.ts",
+    "test:coverage": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun run scripts/test.ts && bun run test/support/coverage-report.ts",
     "typecheck": "tsc -b --pretty false",
     "typecheck:clean": "tsc -b --clean && tsc -b --pretty false",
     "lint": "oxlint src web/src test scripts",
@@ -30,7 +31,6 @@
     "format:check": "biome format .",
     "i18n:extract": "lingui extract --config scripts/lingui.config.js --clean",
     "i18n:hant": "bun run scripts/i18n-hant.ts",
-    "i18n:messages": "bun run scripts/i18n-messages.ts",
     "i18n:progress": "bun run scripts/i18n-progress.ts",
     "i18n:validate": "bun run scripts/i18n-validate.ts",
     "audit": "fallow audit",
@@ -43,7 +43,7 @@
     "test:stress": "bun run scripts/stress-tests.ts",
     "check": "bun run audit && bun run validate",
     "preflight": "bun run scripts/preflight.ts",
-    "test:coverage:ci": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun test --parallel --timeout=20000 --max-concurrency=8 --reporter=junit --reporter-outfile=\"$JUNIT_OUT\" && bun run test/support/coverage-report.ts"
+    "test:coverage:ci": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun run scripts/test.ts --reporter=junit --reporter-outfile=\"$JUNIT_OUT\" && bun run test/support/coverage-report.ts"
   },
   "devDependencies": {
     "@babel/core": "^7",

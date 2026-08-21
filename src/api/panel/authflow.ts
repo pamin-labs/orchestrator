@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
@@ -41,7 +42,8 @@ import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
 import { errText } from "../../platform/process/text.ts";
 import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/login-flow.ts";
 import type { Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { bad, badEnglish, json, message } from "../../http/respond.ts";
+
 import { escalation, grp, project, runtime_auth } from "../../platform/persistence/schema.ts";
 
 /**
@@ -58,6 +60,17 @@ import { escalation, grp, project, runtime_auth } from "../../platform/persisten
  */
 // `trailers` rides along: the Claude block draws one of the three switches, and
 // a second fetch for one boolean is a second thing that can be stale.
+/**
+ * The install has no GitHub client, said the same way in all three places.
+ *
+ * It was three: two spellings of "this server has no GitHub client" and one
+ * with the words the other way round. Nothing chose between them and nothing
+ * would have noticed a fourth. English, and no id with it — this is a broken
+ * wiring rather than a value the boss can correct, which ADR 035 leaves in the
+ * English column.
+ */
+export const noGithubClient = () => badEnglish("this server has no GitHub client");
+
 export const getAuth = (async (ctx) =>
   json({ runtimes: await listAuth(ctx.db), trailers: await trailers(ctx.db) })) satisfies Handler;
 
@@ -95,7 +108,7 @@ export const postAuth = (async (ctx, _req, _p, b) => {
     const found = serverKeyOnDisk();
     if (!found)
       return bad(
-        "No sandbox server config found. It was started with --config, so put that file's path in OPENSANDBOX_CONFIG, or move the file to ./sandbox.toml or ~/.sandbox.toml.",
+        msg`No sandbox server config found. It was started with --config, so put that file's path in OPENSANDBOX_CONFIG, or move the file to ./sandbox.toml or ~/.sandbox.toml.`,
       );
     await saveAuth(ctx.db, {
       runtime: SANDBOX_KEY,
@@ -113,16 +126,16 @@ export const postAuth = (async (ctx, _req, _p, b) => {
   // The sandbox key is ours, not a provider's, so it has no shape to check.
   if (auth.runtime !== SANDBOX_KEY) {
     const wrong = wrongShape(auth);
-    if (wrong) return bad(wrong);
+    if (wrong) return badEnglish(wrong);
   }
   // The one credential whose owner we can ask, and the one where a wrong value
   // is silent and total: it overrides the environment, so a key the server does
   // not share 401s every turn, gate and diff. Refused rather than stored.
   if (auth.runtime === SANDBOX_KEY) {
     const server = ctx.config.sandbox?.server ?? "127.0.0.1:8080";
-    const said = await sandboxKeyWorks(server, auth.secret);
-    if (said === "invalid")
-      return bad("The sandbox server rejects this key. Enter the one written in that server's own config.");
+    const verdict = await sandboxKeyWorks(server, auth.secret);
+    if (verdict === "invalid")
+      return bad(msg`The sandbox server rejects this key. Enter the one written in that server's own config.`);
     // Stored with the address it was just accepted by, so moving the address
     // later cannot make this key follow it. `sandboxKeyFor` is the reader.
     auth = { ...auth, baseUrl: `http://${server}` };
@@ -229,7 +242,7 @@ export const postClaudeLogin = (async (ctx) => {
   if (!url) {
     run.cancel();
     return bad(
-      "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0.",
+      msg`claude printed no login link inside the container — run \`claude setup-token\` in the image to see why. It needs a pty, and without one it prints nothing and exits 0.`,
     );
   }
   claudeFlow = { url, expiresAt: startedAt + PASTE_TTL_MS };
@@ -250,8 +263,8 @@ export const CodeBody = z.object({ code: z.string().max(4000).default("") });
 
 export const postClaudeCode = (async (ctx, _req, _p, b) => {
   const code = b.code.trim();
-  if (!code) return bad("no code given");
-  if (!claudeFlow) return bad("no login is waiting for a code — start one first");
+  if (!code) return bad(msg`no code given`);
+  if (!claudeFlow) return bad(msg`no login is waiting for a code — start one first`);
   await startClaudeLogin(ctx).submit(code);
   return message("ok");
 }) satisfies Handler<z.infer<typeof CodeBody>>;
@@ -324,7 +337,7 @@ export async function githubDeviceLogin(ctx: Ctx, fetchFn?: DeviceFlowFetcher): 
   } catch (e) {
     // `errText`, not `e?.message`: a thrown non-Error has no `message`, and the
     // object itself reaches the response body as "[object Object]".
-    return bad(errText(e) || "GitHub returned no device code");
+    return badEnglish(errText(e) || "GitHub returned no device code");
   }
   ghFlow = { userCode: d.userCode, verificationUri: d.verificationUri, expiresAt: Date.now() + d.expiresIn * 1000 };
   ghError = null;
@@ -347,7 +360,7 @@ export const postCodexDevice = (async (ctx) => {
   if (!both) {
     run.cancel();
     return bad(
-      "codex printed no device code inside the container — run `codex login --device-auth` in the image to see why.",
+      msg`codex printed no device code inside the container — run \`codex login --device-auth\` in the image to see why.`,
     );
   }
   codexFlow = { code: both.code, url: both.url, expiresAt: startedAt + DEVICE_CODE_TTL_MS };
@@ -524,8 +537,8 @@ export const postTrailers = (async (ctx, _req, _p, b) => {
 export const GithubReposQuery = z.object({ installation: z.coerce.number().int().positive().optional() });
 
 export const getGithubRepos = (async (ctx, req, _params, { installation: asked = 0 }) => {
-  if (!ctx.gh) return bad("this server has no GitHub client");
-  if (!(await loadAuth(ctx.db, "github"))) return bad("GitHub is not connected — connect it in Settings first");
+  if (!ctx.gh) return noGithubClient();
+  if (!(await loadAuth(ctx.db, "github"))) return bad(msg`GitHub is not connected — connect it in Settings first`);
   // Both at once when the caller names an installation, which it does on every
   // open after the first. The first open of a session still has to learn the id
   // before it can ask.
@@ -533,11 +546,11 @@ export const getGithubRepos = (async (ctx, req, _params, { installation: asked =
     listInstallations(ctx.gh, req.signal),
     asked ? listRepos(ctx.gh, asked, req.signal) : Promise.resolve(null),
   ]);
-  if (!inst.ok) return bad(inst.message);
+  if (!inst.ok) return badEnglish(inst.message);
 
   const selected = inst.data.find((i) => i.id === asked)?.id ?? inst.data[0]?.id ?? null;
   const repos = selected === asked ? guess : selected ? await listRepos(ctx.gh, selected, req.signal) : null;
-  if (repos && !repos.ok) return bad(repos.message);
+  if (repos && !repos.ok) return badEnglish(repos.message);
 
   // Seam (007 step 6): a project's identity is still `repo_path`, which for a
   // repository added here is `owner/name`.

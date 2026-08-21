@@ -136,10 +136,22 @@ export function expandMacros(source: string, path: string): Expanded {
   return out;
 }
 
+/**
+ * `src/` and `web/src/`, anchored at this checkout.
+ *
+ * The server writes `msg` too now, so the filter cannot be about the panel any
+ * more — but a bare `[\\/]src[\\/]` also matches every dependency that ships
+ * one, and some of those mention `@lingui/` in their own source. Anchoring at
+ * the root that holds this file is what keeps `node_modules` out without a
+ * lookahead, which Bun's filter engine is not promised to have.
+ */
+// fallow-ignore-next-line security-sink -- the pattern is this checkout's own directory, from `import.meta.dir`, with every regex metacharacter escaped on the line below. Nothing from a request, a config file or a `.po` reaches it: this runs in a build script, before any server exists. A ReDoS would need a path containing the pattern, and the pattern is the path.
+export const OURS = new RegExp(`^${ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:web[\\\\/])?src[\\\\/].+\\.tsx?$`);
+
 export const linguiMacros: BunPlugin = {
   name: "lingui-macros",
   setup(build) {
-    build.onLoad({ filter: /[\\/]web[\\/]src[\\/].+\.tsx?$/, namespace: "file" }, async ({ path }) => ({
+    build.onLoad({ filter: OURS, namespace: "file" }, async ({ path }) => ({
       contents: expandMacros(await Bun.file(path).text(), path).code,
       loader: path.endsWith(".tsx") ? "tsx" : "ts",
     }));

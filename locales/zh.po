@@ -38,19 +38,16 @@ msgstr "{0, plural, other {# 项主机检查未通过}}"
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}，但 App 还没装到任何账号上"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.base_moved"
+msgid "{base} moved to {sha}; {name} is behind it and has been told to rebase first"
 msgstr "{base} 动到了 {sha}，{name} 的基线落后了，已经让它先 rebase"
 
 msgid "{branch} (per the remote)"
 msgstr "{branch}（远端说的）"
 
-#. js-lingui-explicit-id
-msgid "check.paths.covered"
+msgid "{config} covers all {count} paths to be mounted"
 msgstr "{config} 覆盖了要挂载的全部 {count} 个路径"
 
-#. js-lingui-explicit-id
-msgid "check.paths.missing"
+msgid "{config} does not list {missing}"
 msgstr "{config} 里没列出 {missing}"
 
 msgid "{count} repositories"
@@ -65,8 +62,7 @@ msgstr "目前 {count} 个需求没有边界：{bareNames}。"
 msgid "{count} selected"
 msgstr "选了 {count} 个"
 
-#. js-lingui-explicit-id
-msgid "check.skills.staged"
+msgid "{count} staged at {path}"
 msgstr "{path} 下备好了 {count} 个"
 
 msgid "{d} days ago"
@@ -84,12 +80,10 @@ msgstr "{fails} 条没过"
 msgid "{files} files"
 msgstr "{files} 个文件"
 
-#. js-lingui-explicit-id
-msgid "check.egress.ok"
+msgid "{good}"
 msgstr "{good}"
 
-#. js-lingui-explicit-id
-msgid "check.egress.mixed"
+msgid "{good} (also has {stale} — check [egress] image)"
 msgstr "{good}（另外还有 {stale} —— 检查一下 [egress] image）"
 
 msgid "{groupCount} requirements touch different files and can run together"
@@ -128,8 +122,7 @@ msgstr "{hours} 小时"
 msgid "{idleCount} more are idle and costing nothing."
 msgstr "另外 {idleCount} 个空闲，没在花钱。"
 
-#. js-lingui-explicit-id
-msgid "check.image.absent"
+msgid "{image} is not on this machine"
 msgstr "这台机器上没有 {image}"
 
 msgid "{lines} lines"
@@ -144,40 +137,31 @@ msgstr "{minutes} 分钟"
 msgid "{minutes}m ago"
 msgstr "{minutes}m 前"
 
-#. js-lingui-explicit-id
-msgid "check.cred.daysLeft"
+msgid "{mode} · {days} days left"
 msgstr "{mode} · 还剩 {days} 天"
 
-#. js-lingui-explicit-id
-msgid "check.cred.accepted"
+msgid "{mode} · accepted"
 msgstr "{mode} · 通过"
 
-#. js-lingui-explicit-id
-msgid "check.cred.expired"
+msgid "{mode} · expired — sign in again"
 msgstr "{mode} · 过期了 —— 重新登录"
 
-#. js-lingui-explicit-id
-msgid "check.cred.expiringToday"
+msgid "{mode} · expires within a day"
 msgstr "{mode} · 一天之内就过期"
 
-#. js-lingui-explicit-id
-msgid "check.cred.githubRejected"
+msgid "{mode} · GitHub no longer accepts this token"
 msgstr "{mode} · GitHub 已经不认这个 token 了"
 
-#. js-lingui-explicit-id
-msgid "check.cred.unverified"
+msgid "{mode} · not verified (HTTP {status})"
 msgstr "{mode} · 没验上（HTTP {status}）"
 
-#. js-lingui-explicit-id
-msgid "check.cred.stored"
+msgid "{mode} · stored"
 msgstr "{mode} · 已存"
 
-#. js-lingui-explicit-id
-msgid "check.cred.rejected"
+msgid "{mode} · the provider rejected this credential"
 msgstr "{mode} · 供应商不认这个凭据"
 
-#. js-lingui-explicit-id
-msgid "check.cred.unreachable"
+msgid "{mode} · unreachable, not verified"
 msgstr "{mode} · 连不上，没验"
 
 msgid "{months} months ago"
@@ -189,8 +173,7 @@ msgstr "{mount} 只读"
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n} 片"
 
-#. js-lingui-explicit-id
-msgid "ev.notify.batch"
+msgid "{n, plural, one {# thing needs} other {# things need}} you:"
 msgstr "有 {n} 件事等你："
 
 msgid "{n} more queued behind it"
@@ -199,32 +182,22 @@ msgstr "后面还排着 {n} 个"
 msgid "{n} to do"
 msgstr "{n} 件待办"
 
-#. js-lingui-explicit-id
-msgid "ev.unread.digest"
+msgid "{n} unread — the Librarian is compressing them"
 msgstr "未读 {n} 条，已让 Librarian 压成摘要"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.sandbox_swept"
+msgid "{name} dissolved; its sandbox is reclaimed"
 msgstr "{name} 解散了，沙箱回收"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_parked"
+msgid "{name} has been parked {hours}h — wake it, or drop it?"
 msgstr "{name} 封存了 {hours} 小时，唤醒还是不做了？"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_on_you"
+msgid "{name} has been waiting {min} min for you"
 msgstr "{name} 已经等你 {min} 分钟"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.unshipped"
-msgstr "{name} 每一片都查收了但没有 PR，队列也空了 —— 重新走一遍分支复核"
-
-#. js-lingui-explicit-id
-msgid "ev.wd.budget_80"
+msgid "{name} is at {pct}% of its budget"
 msgstr "{name} 预算用到 {pct}%"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.unparked"
+msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name} 等的那件事已经了结，自动唤醒"
 
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
@@ -233,53 +206,40 @@ msgstr "{name} 会从看板上消失，排队的 turn 全部取消。代码和�
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are kept; the group is never started again."
 msgstr "{name} 会从看板上消失，排队的 turn 全部取消。代码和记录留着，组不会再被拉起。"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.parked"
+msgid "{name} parked after waiting {min} min — checkout kept, slot freed"
 msgstr "{name} 等你 {min} 分钟后自动封存 —— 代码留着，并发槽释放了"
 
 msgid "{name} produced no output."
 msgstr "{name} 没有输出。"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.stale_ask"
+msgid "{name} reached PR, so the question still hanging on it expired — closed by itself"
 msgstr "{name} 已经走到 PR，那条还挂着的问题过期了，自动关掉"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_slice"
+msgid "{name} S{seq} has been waiting {hours}h for you"
 msgstr "{name} S{seq} 等你查收 {hours} 小时了"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.budget_exhausted"
+msgid "{name} spent its whole budget ({tokens} tokens) and is suspended"
 msgstr "{name} 把 {tokens} tokens 花完了，全组挂起"
 
 msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
 msgstr "{name} 的容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_card"
+msgid "{name}'s plan card has been waiting {hours}h for you"
 msgstr "{name} 的计划卡等你批 {hours} 小时了"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_merge"
+msgid "{name}'s PR has been at the head of the merge queue for {hours}h"
 msgstr "{name} 的 PR 排在队首 {hours} 小时了"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.waiting_merge_blocked"
+msgid "{name}'s PR has been at the head of the merge queue for {hours}h, with {n} behind it"
 msgstr "{name} 的 PR 排在队首 {hours} 小时了，后面还堵着 {n} 个"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.sandbox_stale_cred"
+msgid "{name}'s sandbox is bound to a superseded credential; reclaimed, and the next tick rebuilds it"
 msgstr "{name} 的沙箱绑的是旧凭据，回收了，下一轮重建"
-
-#. js-lingui-explicit-id
-msgid "check.skills.fix.contained"
-msgstr "{path} 是这个容器里的路径，而挂载是沙箱服务器的 docker 做的，它在自己的文件系统上解析这个路径。两边用同一个绝对路径（-v <host path>:{path}），并把它加进沙箱服务器的 allowed_host_paths。对不上不会报错，只会挂上一个空目录。"
 
 msgid "{repoPath} removed"
 msgstr "{repoPath} 已删除"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.env_suspect"
+msgid "{resource} failed {n}x with no code change in between — treat the environment as the suspect"
 msgstr "{resource} 失败 {n} 次而代码没变 —— 先怀疑环境，别再改代码"
 
 msgid "{rest} more of {total}"
@@ -292,16 +252,13 @@ msgstr "还有 {rest} 条（共 {total}）"
 msgid "{rest} more requirements"
 msgstr "还有 {rest} 条需求"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.no_progress"
+msgid "{role} finished {n, plural, one {# turn} other {# turns}} without changing a file, a task or a note"
 msgstr "{role} 连续 {n} 个 turn 没动过文件、task 或 note"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.circling"
+msgid "{role} has rewritten {file} {n, plural, one {# turn} other {# turns}} running — probably a design problem, sending it to the Architect"
 msgstr "{role} 连着 {n} 个 turn 在改同一个文件 {file} —— 大概是设计问题，转给 Architect"
 
-#. js-lingui-explicit-id
-msgid "ev.owns.reverted"
+msgid "{role} wrote {n, plural, one {# file} other {# files}} this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it"
 msgstr "{role} 改了本组不拥有的 {n} 个文件（{files}），已回滚 —— 这个 CLI 的沙箱拦不住写入，只能事后对账"
 
 msgid "{runningCount} running · {total} total"
@@ -325,8 +282,7 @@ msgstr "勾中的 {staged}/{ticked} 个进沙箱，每 turn 前缀约 {tokens}k 
 msgid "{storedHint} stored; paste a new one to replace it"
 msgstr "已存 {storedHint}，粘新的就换掉"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.autoaccept"
+msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} 自动查收，三道闸全过"
 
 msgid "{total} waiting on you"
@@ -386,12 +342,10 @@ msgstr "验收口径"
 msgid "accepted {done}/{total}"
 msgstr "已查收 {done}/{total}"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.accepted"
+msgid "accepted: S{seq} {title}"
 msgstr "查收 S{seq} {title}"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.accepted_why"
+msgid "accepted: S{seq} {title} ({why})"
 msgstr "查收 S{seq} {title}（{why}）"
 
 msgid "Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable"
@@ -402,10 +356,6 @@ msgstr "加进来"
 
 msgid "Add · {branch}"
 msgstr "添加 · {branch}"
-
-#. js-lingui-explicit-id
-msgid "check.skills.fix.host"
-msgstr "把 {path} 加进沙箱服务器的 allowed_host_paths，否则每个组都开不出容器。技能在设置里勾。"
 
 msgid "Add a row"
 msgstr "加一项"
@@ -464,8 +414,7 @@ msgstr "允许通知"
 msgid "already spent {tokens} tokens"
 msgstr "已经花了 {tokens} tokens"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.unclaimed"
+msgid "also changed on S{seq}, unclaimed: {files}"
 msgstr "S{seq} 还改了这些但没声明：{files}"
 
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
@@ -486,8 +435,7 @@ msgstr "API 密钥"
 msgid "Appearance"
 msgstr "外观"
 
-#. js-lingui-explicit-id
-msgid "ev.group.approve_held"
+msgid "approval recorded — held by the boundary: {why}. Starts by itself once that clears"
 msgstr "已记下你的批准。边界还挡着：{why}。让开之后自动开工，不用再点一次"
 
 msgid "Approve and start"
@@ -544,8 +492,7 @@ msgstr "自动查收"
 msgid "Auto-advance when approved"
 msgstr "批了就往下做"
 
-#. js-lingui-explicit-id
-msgid "ev.group.autoadvance"
+msgid "autoAdvance: started the next slice without waiting for you"
 msgstr "autoAdvance：没等你，下一片已经开工"
 
 msgid "Awaiting Architect to split boundaries"
@@ -581,8 +528,7 @@ msgstr "攒单窗口"
 msgid "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates."
 msgstr "大项目的一次编译是小时级；完全没有上限的话，一个挂死的 build 会永远占着 lease 槽位，而槽位是全局的、少的——一条卡死的命令能让整个舰队再也过不了闸门。"
 
-#. js-lingui-explicit-id
-msgid "ev.group.blocked"
+msgid "blocked by {path}; handed to grp {target} and waiting for it to land"
 msgstr "被 {path} 挡住了，交给了另一条需求（grp {target}），它落地后自动继续"
 
 msgid "Blocked domains"
@@ -663,8 +609,7 @@ msgstr "排队的 turn 全取消，占的路径交还给别的组"
 msgid "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
 msgstr "排队的 turn 全取消，占的路径交还给别的组。代码、分支和记录都留着"
 
-#. js-lingui-explicit-id
-msgid "check.server.unreachable"
+msgid "cannot reach it: {error}"
 msgstr "连不上：{error}"
 
 msgid "Cannot reach the usage endpoint"
@@ -694,8 +639,7 @@ msgstr "检查任务数"
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "勾中的技能复制到这里，每个沙箱只读挂上去。改这里要同步改沙箱服务端的 allowed_host_paths，否则开容器直接失败——而那是响的失败，比一个静默的空目录好得多。"
 
-#. js-lingui-explicit-id
-msgid "ev.group.worktree"
+msgid "checkout on {branch}"
 msgstr "开好沙箱，分支 {branch}"
 
 msgid "Choose account"
@@ -712,6 +656,9 @@ msgstr "领任务"
 
 msgid "Claude Code writes this in Co-Authored-By when committing"
 msgstr "Claude Code 自己提交时写进 Co-Authored-By"
+
+msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
+msgstr "claude 在容器里没打印出登录链接 —— 在镜像里跑 `claude setup-token` 看为什么。它需要 pty，没有 pty 时它什么都不打印然后正常退出。"
 
 msgid "Clear"
 msgstr "清掉"
@@ -752,6 +699,9 @@ msgstr "代码索引"
 msgid "Code repository"
 msgstr "代码仓库"
 
+msgid "codex printed no device code inside the container — run `codex login --device-auth` in the image to see why."
+msgstr "codex 在容器里没打印出设备码 —— 在镜像里跑 `codex login --device-auth` 看为什么。"
+
 msgid "Collapse"
 msgstr "收起"
 
@@ -785,8 +735,7 @@ msgstr "确认作废"
 msgid "Connect GitHub"
 msgstr "连接 GitHub"
 
-#. js-lingui-explicit-id
-msgid "check.cred.fix.github"
+msgid "Connect GitHub once in Settings. Branches are pushed with it — without one, every slice is refused at its last step."
 msgstr "在设置里连一次 GitHub。分支要靠它推上去 —— 没有的话，每一片都会卡在最后一步被打回。"
 
 msgid "Connected"
@@ -801,8 +750,7 @@ msgstr "连接中"
 msgid "Connection lost; reconnecting"
 msgstr "连接断了，重连中"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.rebuild"
+msgid "container discarded; the next turn rebuilds it — clone and install. The branch lives in the host repo"
 msgstr "容器扔了，下一个 turn 会重建：clone + 装依赖，分支在宿主仓库里，不会丢"
 
 msgid "Container hasn't started yet. Clone and dependency installation output will appear here line by line."
@@ -946,8 +894,7 @@ msgstr "Dispatcher 正在写计划卡，写完出现在这里"
 msgid "Dissolved"
 msgstr "已解散"
 
-#. js-lingui-explicit-id
-msgid "check.host.elsewhere"
+msgid "docker, uv and the egress image belong to the machine running the sandbox server, not to this one"
 msgstr "docker、uv 和 egress 镜像属于跑沙箱服务器的那台机器，不是这一台"
 
 msgid "Domains the sandbox may not reach. A blocklist, not an allowlist — an allowlist would have to name every registry and docs site. Credentials do not depend on this: the sandbox only ever holds fakes."
@@ -962,19 +909,16 @@ msgstr "已交付"
 msgid "Double to {doubledLabel}"
 msgstr "翻倍到 {doubledLabel}"
 
-#. js-lingui-explicit-id
-msgid "ev.group.approved"
+msgid "DRAFT approved"
 msgstr "计划卡批准，开工"
 
 msgid "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
 msgstr "掉到 50% 以下＝prompt 组装被改坏，每个 turn 贵 3-5 倍"
 
-#. js-lingui-explicit-id
-msgid "ev.group.dropped"
+msgid "dropped by the boss"
 msgstr "老板决定不做了"
 
-#. js-lingui-explicit-id
-msgid "ev.group.dropped_why"
+msgid "dropped by the boss: {why}"
 msgstr "老板决定不做了：{why}"
 
 msgid "e.g. 2000000"
@@ -1144,15 +1088,13 @@ msgstr "闸门检查"
 msgid "Gate concurrency"
 msgstr "闸门并发"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.fail"
+msgid "gate fail on S{seq}"
 msgstr "S{seq} 闸门没过"
 
 msgid "gate name"
 msgstr "闸门名"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.pass"
+msgid "gate pass on S{seq}"
 msgstr "S{seq} 闸门通过"
 
 msgid "Gate retries"
@@ -1188,8 +1130,10 @@ msgstr "去 GitHub → 这个 App → Install App"
 msgid "GitHub API call"
 msgstr "GitHub API 调用"
 
-#. js-lingui-explicit-id
-msgid "ev.repo.held"
+msgid "GitHub is not connected — connect it in Settings first"
+msgstr "GitHub 还没连上 —— 先去设置里连"
+
+msgid "GitHub no longer accepts this login, so every turn on {repo} is held — retrying cannot help. Reconnect GitHub in settings and they resume on their own. Other projects are unaffected."
 msgstr "GitHub 认不了这个登录了，{repo} 这个项目的活先全部挂起 —— 重试帮不上忙。去设置页重连 GitHub，好了自动接着走。别的项目不受影响。"
 
 msgid "GitHub not connected yet; using our bot account for now"
@@ -1228,12 +1172,10 @@ msgstr "灰字是默认值"
 msgid "Group is paused"
 msgstr "组停着不动"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.stalled"
+msgid "group is RUNNING with an empty queue, and one re-queue did not revive it. Last failure: {why}"
 msgstr "这一组 RUNNING 但队列是空的，重排一轮也没救回来。最后一次失败：{why}"
 
-#. js-lingui-explicit-id
-msgid "ev.group.unblocked"
+msgid "grp {target} landed; resuming by itself"
 msgstr "挡路的 grp {target} 已经落地，自动继续"
 
 msgid "Has objections"
@@ -1248,8 +1190,7 @@ msgstr "不看这一段"
 msgid "Hiding:"
 msgstr "不看："
 
-#. js-lingui-explicit-id
-msgid "ev.hired"
+msgid "hired {role}"
 msgstr "雇了 {role}"
 
 msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
@@ -1318,8 +1259,7 @@ msgstr "有事叫你的方式"
 msgid "hr"
 msgstr "小时"
 
-#. js-lingui-explicit-id
-msgid "check.server.http"
+msgid "HTTP {status}"
 msgstr "HTTP {status}"
 
 msgid "HTTP request"
@@ -1350,10 +1290,6 @@ msgstr "插技能"
 msgid "Install dependencies"
 msgstr "装依赖"
 
-#. js-lingui-explicit-id
-msgid "check.docker.fix.install"
-msgstr "装个 Docker —— 或者 Colima、Podman，能提供 docker socket 的都行 —— 然后起起来。"
-
 msgid "Install on GitHub"
 msgstr "去 GitHub 装上"
 
@@ -1365,10 +1301,6 @@ msgstr "装到别的账号"
 
 msgid "Installed on these accounts"
 msgstr "装在哪些账号上"
-
-#. js-lingui-explicit-id
-msgid "check.docker.silent"
-msgstr "装了，但 daemon 不应答"
 
 msgid "Interrupt and rollback"
 msgstr "打断并回滚"
@@ -1384,10 +1316,6 @@ msgstr "到底有没有网：对每个供应商 origin 发一个 HEAD，在 watc
 
 msgid "It's not a duplicate, and it's not done yet — keep decomposing."
 msgstr "不是重复，也不算已经做完了 —— 接着拆。"
-
-#. js-lingui-explicit-id
-msgid "ev.pr.queued"
-msgstr "进合入队列，排在第 {n}"
 
 msgid "Journal"
 msgstr "日志"
@@ -1488,8 +1416,7 @@ msgstr "内存"
 msgid "Memory ceiling per sandbox."
 msgstr "每个沙箱的内存上限。"
 
-#. js-lingui-explicit-id
-msgid "ev.group.merged"
+msgid "merged into main"
 msgstr "已合入 main"
 
 msgid "Message this group"
@@ -1498,8 +1425,7 @@ msgstr "跟这个组说话"
 msgid "Message this group…"
 msgstr "跟这个组说话…"
 
-#. js-lingui-explicit-id
-msgid "check.database.ok"
+msgid "migrated and queryable"
 msgstr "已迁移，可查询"
 
 msgid "min"
@@ -1544,8 +1470,7 @@ msgstr "{k} 的名字"
 msgid "Needs an integer"
 msgstr "要一个整数"
 
-#. js-lingui-explicit-id
-msgid "ev.net.back"
+msgid "network is back, held work resumes"
 msgstr "网络恢复，挂起的活自动继续"
 
 msgid "Network ping"
@@ -1581,6 +1506,9 @@ msgstr "无预算上限"
 msgid "No changes"
 msgstr "无改动"
 
+msgid "no code given"
+msgstr "没给码"
+
 msgid "No container yet"
 msgstr "还没有容器"
 
@@ -1596,8 +1524,14 @@ msgstr "没有 diff 可读。这一片没有记下基线 commit，或者沙箱�
 msgid "No events"
 msgstr "无事件"
 
+msgid "no file"
+msgstr "没有文件"
+
 msgid "No gates enabled; LLM review has no floor."
 msgstr "一道都没开，LLM 审阅底下就没有地板。"
+
+msgid "no login is waiting for a code — start one first"
+msgstr "没有在等码的登录 —— 先点登录"
 
 msgid "No matches"
 msgstr "没有匹配的"
@@ -1626,12 +1560,10 @@ msgstr "还没有人上工。批准一张计划卡，这里就会列出每个 ag
 msgid "No open questions. This group is not waiting on you right now."
 msgstr "没有开着的问题。这一组的人现在不等你。"
 
-#. js-lingui-explicit-id
-msgid "check.paths.noConfig"
+msgid "no opensandbox-server config file found, so there is nothing to check against"
 msgstr "没找到 opensandbox-server 的配置文件，没东西可以对照"
 
-#. js-lingui-explicit-id
-msgid "check.egress.none"
+msgid "no opensandbox/egress image pulled"
 msgstr "没拉过 opensandbox/egress 镜像"
 
 msgid "No other models yet; just type"
@@ -1640,14 +1572,16 @@ msgstr "还没有别的模型，直接写就行"
 msgid "No other requirements for this project"
 msgstr "这个项目没有别的需求"
 
+msgid "no path"
+msgstr "没有路径"
+
 msgid "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
 msgstr "没有停着的需求。预算用尽、或等你答问题超过 2 小时会封存到这里，工作不丢。"
 
 msgid "No pending items"
 msgstr "无待办"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_no_reason"
+msgid "no reason given, which is itself a bug"
 msgstr "没有原因可说，这本身就是个 bug"
 
 msgid "No reason recorded"
@@ -1662,8 +1596,10 @@ msgstr "还没有需求"
 msgid "No runnable commands found."
 msgstr "没探到可跑的命令。"
 
-#. js-lingui-explicit-id
-msgid "check.skills.none"
+msgid "No sandbox server config found. It was started with --config, so put that file's path in OPENSANDBOX_CONFIG, or move the file to ./sandbox.toml or ~/.sandbox.toml."
+msgstr "找不到沙箱服务器的配置文件。它是用 --config 启动的，请把那个文件的路径写进 OPENSANDBOX_CONFIG，或者把文件挪到 ./sandbox.toml 或 ~/.sandbox.toml。"
+
+msgid "no skills ticked"
 msgstr "一个技能都没勾"
 
 msgid "No slice"
@@ -1678,10 +1614,6 @@ msgstr "还没有记下任何系统活动。"
 msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
 msgstr "还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。"
 
-#. js-lingui-explicit-id
-msgid "check.uvx.absent"
-msgstr "PATH 里没有 uvx"
-
 msgid "No, keep going"
 msgstr "不，接着做"
 
@@ -1694,8 +1626,7 @@ msgstr "一个也没有，这个连接看不见任何仓库。装的时候选所
 msgid "Not checked out"
 msgstr "还没切"
 
-#. js-lingui-explicit-id
-msgid "check.cred.absent"
+msgid "not configured"
 msgstr "没配"
 
 msgid "Not configured"
@@ -1712,10 +1643,6 @@ msgstr "还不够两个时段的数据。"
 
 msgid "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
 msgstr "不在本机，也不在加密内网，走的还是明文 http。密钥和容器流量都是裸的，用 https 或者 Tailscale。"
-
-#. js-lingui-explicit-id
-msgid "check.docker.absent"
-msgstr "连不上"
 
 msgid "Not running"
 msgstr "没在跑"
@@ -1741,8 +1668,7 @@ msgstr "多久催一次沉默的组"
 msgid "OK"
 msgstr "确定"
 
-#. js-lingui-explicit-id
-msgid "check.host.fix"
+msgid "On that machine: install docker, run uvx opensandbox-server, and docker pull opensandbox/egress:v1.1.6."
 msgstr "在那台机器上：装 docker，跑 uvx opensandbox-server，再 docker pull opensandbox/egress:v1.1.6。"
 
 msgid "On, a group starts the next slice without waiting for you. Off, it finishes one and stops. The cost: later slices build on an earlier one, so reverting it pauses the whole group."
@@ -1778,8 +1704,7 @@ msgstr "一次 REST 调用，它的答案就是某人要的活——开 PR、读
 msgid "One turn"
 msgstr "单个 turn"
 
-#. js-lingui-explicit-id
-msgid "check.egress.stale"
+msgid "only {stale}, which is too old"
 msgstr "只有 {stale}，太旧了"
 
 msgid "Only running"
@@ -1803,16 +1728,13 @@ msgstr "开新 PR"
 msgid "Open PR ↗"
 msgstr "打开 PR ↗"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.server_restarted"
+msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server 没了，重启了（第 {n} 次）。挂起的活会自己继续。"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.server_restart_failed"
+msgid "opensandbox-server was gone and the restart failed (attempt {n}): {why}"
 msgstr "opensandbox-server 没了，重启失败（第 {n} 次）：{why}"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.server_gone"
+msgid "opensandbox-server will not start; {n, plural, one {# attempt} other {# attempts}} and no more automatic retries. Run it by hand to see what it says: {cmd}"
 msgstr "opensandbox-server 起不来了，试了 {n} 次，不再自动重试。手动跑一次看它报什么：{cmd}"
 
 msgid "Optional, self-hosted gateway → {envVar}"
@@ -1851,10 +1773,6 @@ msgstr "最慢"
 msgid "Panel language"
 msgstr "界面语言"
 
-#. js-lingui-explicit-id
-msgid "ev.group.parked"
-msgstr "已封存：{why}。代码和 checkpoint 都留着"
-
 msgid "Pass"
 msgstr "过"
 
@@ -1870,8 +1788,7 @@ msgstr "暂停"
 msgid "Paused"
 msgstr "已暂停"
 
-#. js-lingui-explicit-id
-msgid "ev.group.paused"
+msgid "PAUSED"
 msgstr "全组已暂停"
 
 msgid "Pausing"
@@ -1934,8 +1851,7 @@ msgstr "轮询订阅用量"
 msgid "Polling intervals"
 msgstr "轮询间隔"
 
-#. js-lingui-explicit-id
-msgid "ev.pr.opened"
+msgid "PR #{n} opened"
 msgstr "PR #{n} 已开"
 
 msgid "PR link not found"
@@ -1971,8 +1887,7 @@ msgstr "合并请求"
 msgid "Pull requests per poll"
 msgstr "每次轮询的 PR 数"
 
-#. js-lingui-explicit-id
-msgid "check.paths.fix"
+msgid "Put this line in the [sandbox] section of {config}, then restart opensandbox-server: allowed_host_paths = [{line}]"
 msgstr "把这行加到 {config} 的 [sandbox] 段里，然后重启 opensandbox-server：allowed_host_paths = [{line}]"
 
 msgid "QA"
@@ -1993,19 +1908,16 @@ msgstr "问题"
 msgid "Queued"
 msgstr "排队中"
 
-#. js-lingui-explicit-id
-msgid "ev.rl.resumed"
+msgid "quota is back, resuming"
 msgstr "额度恢复，自动继续"
 
 msgid "Rate limited reading usage; it recovers by itself shortly"
 msgstr "读用量被限流了，过一会自己恢复"
 
-#. js-lingui-explicit-id
-msgid "ev.rl.waiting"
+msgid "rate limited; everything on this CLI holds until the window reopens (~{at}) and resumes itself — the quota belongs to the account, so no model spends less of it"
 msgstr "撞到限额，这个 CLI 上的活全部挂起等额度恢复（约 {at}），到点自动继续 —— 换模型不换池子，等是唯一的选择"
 
-#. js-lingui-explicit-id
-msgid "check.server.reachable"
+msgid "reachable"
 msgstr "能连上"
 
 msgid "Read from server"
@@ -2029,8 +1941,7 @@ msgstr "重新检查可达性"
 msgid "Recheck the repo map"
 msgstr "重新检查仓库地图"
 
-#. js-lingui-explicit-id
-msgid "ev.gate.reconcile"
+msgid "reconcile failed on S{seq}: {reason}"
 msgstr "S{seq} 对账没过：{reason}"
 
 msgid "Reconciliation"
@@ -2050,10 +1961,6 @@ msgstr "退回这一片"
 
 msgid "Rejected"
 msgstr "退回"
-
-#. js-lingui-explicit-id
-msgid "ev.boss.reject_slice"
-msgstr "退回了这一片"
 
 msgid "Rejected, awaiting fix"
 msgstr "已退回，等它修"
@@ -2097,8 +2004,7 @@ msgstr "移除这个项目"
 msgid "Removing…"
 msgstr "移除中…"
 
-#. js-lingui-explicit-id
-msgid "check.codex.fix"
+msgid "Renewal runs the real codex inside the utility container. If it keeps failing, paste ~/.codex/auth.json again in Settings, or switch to an API key — an API key never needs renewing."
 msgstr "续期是在工具容器里跑真的 codex。要是一直失败，就在设置里重新粘一次 ~/.codex/auth.json，或者换成 API key —— API key 永远不用续。"
 
 msgid "Renewed when a turn starts, so this is 'recover after idle', not 'task time limit'."
@@ -2191,8 +2097,7 @@ msgstr "全部恢复"
 msgid "Resume"
 msgstr "继续"
 
-#. js-lingui-explicit-id
-msgid "ev.group.resumed"
+msgid "resumed"
 msgstr "继续"
 
 msgid "Retrieval"
@@ -2228,19 +2133,16 @@ msgstr "约等于 4k token。这个答案会落进 transcript，而 transcript �
 msgid "Routine watchdog"
 msgstr "例行巡检"
 
-#. js-lingui-explicit-id
-msgid "check.uvx.fix"
+msgid "Run brew install uv. opensandbox-server is a Python package, so without uv there is nothing to start."
 msgstr "跑 brew install uv。opensandbox-server 是个 Python 包，没有 uv 就没东西可起。"
 
 msgid "Run claude setup-token in the container"
 msgstr "容器里跑 claude setup-token"
 
-#. js-lingui-explicit-id
-msgid "check.image.fix"
+msgid "Run docker build -f docker/agent.Dockerfile -t {image} . — an image with no registry prefix can only be built locally."
 msgstr "跑 docker build -f docker/agent.Dockerfile -t {image} . —— 不带 registry 前缀的镜像只能在本地构建。"
 
-#. js-lingui-explicit-id
-msgid "check.egress.fix"
+msgid "Run docker pull opensandbox/egress:v1.1.6, then point [egress] image at it. v1.1.4 403s every scoped package as soon as a credential is bound."
 msgstr "跑 docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一旦绑上凭据，每个 scoped 包都会 403。"
 
 msgid "Run one turn"
@@ -2255,17 +2157,11 @@ msgstr "在工具容器里跑一次官方 CLI 的登录，拿到的凭据存在�
 msgid "Run top-to-bottom; drag to reorder"
 msgstr "从上往下跑，拖着改顺序"
 
-#. js-lingui-explicit-id
-msgid "check.server.fix.host"
+msgid "Run uvx opensandbox-server --config ~/.sandbox.toml listening on {server}, with [egress] mode = \"dns+nft\"."
 msgstr "跑 uvx opensandbox-server --config ~/.sandbox.toml，监听 {server}，并且 [egress] mode = \"dns+nft\"。"
 
-#. js-lingui-explicit-id
-msgid "check.server.fix.contained"
+msgid "Run uvx opensandbox-server on the host, not here: this orchestrator is inside a container and the sandbox server needs the host's docker. Then point ORCH_SANDBOX_SERVER at it — host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux."
 msgstr "在宿主机上跑 uvx opensandbox-server，别在这儿跑：这个 orchestrator 在容器里，而沙箱服务器要用宿主机的 docker。然后把 ORCH_SANDBOX_SERVER 指过去 —— Docker Desktop 上是 host.docker.internal:8080，Linux 上用宿主机 IP 或 --network host。"
-
-#. js-lingui-explicit-id
-msgid "check.docker.running"
-msgstr "在跑"
 
 msgid "Running"
 msgstr "在跑"
@@ -2285,16 +2181,13 @@ msgstr "在跑，我们起的"
 msgid "Running: {running}"
 msgstr "在跑：{running}"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.ready"
+msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq}「{title}」做完了，等你查收"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.failed"
+msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} 连续 {n} 次没过 {from} —— 大概是验收标准的问题，不是代码"
 
-#. js-lingui-explicit-id
-msgid "ev.slice.sentback"
+msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} 被 {from} 打回（第 {n} 次）"
 
 msgid "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way."
@@ -2369,12 +2262,10 @@ msgstr "被打回过 {times} 次"
 msgid "Server"
 msgstr "服务器"
 
-#. js-lingui-explicit-id
-msgid "check.server.keyRejected"
+msgid "server rejected the API key"
 msgstr "服务器不认这个 API key"
 
-#. js-lingui-explicit-id
-msgid "check.server.keyMissing"
+msgid "server requires an API key and none was sent"
 msgstr "服务器要 API key，而我们没带"
 
 msgid "Session restarts"
@@ -2386,8 +2277,7 @@ msgstr "换会话的水位"
 msgid "Set"
 msgstr "设定"
 
-#. js-lingui-explicit-id
-msgid "check.serverAuth.fix"
+msgid "Set [server] api_key = \"…\" in the server's TOML, restart it, then Settings → Sandbox server → Read from server. The containers hold the checkout, the mailbox token and the CLI logins."
 msgstr "在服务器的 TOML 里设 [server] api_key = \"…\"，重启它，然后 设置 → 沙箱服务器 → 从服务器读取。容器里放着检出的代码、信箱 token 和各个 CLI 的登录。"
 
 msgid "Set a token limit for this requirement"
@@ -2396,12 +2286,10 @@ msgstr "给这个需求设 token 上限"
 msgid "Settings"
 msgstr "设置"
 
-#. js-lingui-explicit-id
-msgid "check.cred.fix.claude"
+msgid "Settings → Claude → sign in. It runs the official claude setup-token inside the utility container, so nothing is installed here; paste the code that page gives you back into the input and it is stored. Good for a year."
 msgstr "设置 → Claude → 登录。它在工具容器里跑官方的 claude setup-token，本机什么都不用装；把那个页面给你的码粘回输入框就存下了。管一年。"
 
-#. js-lingui-explicit-id
-msgid "check.cred.fix.codex"
+msgid "Settings → codex → sign in, which runs the official device-code flow; codex is not installed here. Pasting an API key works too."
 msgstr "设置 → codex → 登录，走的是官方的 device-code 流程；本机没装 codex。粘一个 API key 也行。"
 
 msgid "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S"
@@ -2469,10 +2357,6 @@ msgstr "常驻岗"
 
 msgid "Start"
 msgstr "起一个"
-
-#. js-lingui-explicit-id
-msgid "check.docker.fix.start"
-msgstr "起一下 Docker Desktop，或者跑 colima start，等它报 running。"
 
 msgid "Start from this branch"
 msgstr "从这个分支开"
@@ -2546,8 +2430,7 @@ msgstr "记笔记"
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "浏览器读不到这些内容。文件夹得拖进来。"
 
-#. js-lingui-explicit-id
-msgid "check.preflight.failed"
+msgid "the checks could not run: {error}"
 msgstr "自检没能跑起来：{error}"
 
 msgid "The chosen skill is sent with this turn; it only costs for this one turn."
@@ -2559,15 +2442,13 @@ msgstr "codex 换 refresh token 的调用，在工具容器里跑。比读用量
 msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
 msgstr "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。"
 
-#. js-lingui-explicit-id
-msgid "ev.net.lost"
+msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, requirements left running"
 msgstr "宿主断网了，{n} 个 turn 挂起等联网 —— 需求还在跑的状态，活儿排着，通了自动接上"
 
 msgid "The last step repeats for as long as nobody answers"
 msgstr "最后一级会一直重复，直到有人回"
 
-#. js-lingui-explicit-id
-msgid "check.codex.fresh"
+msgid "the login is fresh; renewal runs inside the utility container, so codex is not needed here"
 msgstr "登录是新的；续期在工具容器里跑，本机不需要 codex"
 
 msgid "The name of a row under Model account, never the key"
@@ -2579,44 +2460,39 @@ msgstr "「模型账号」里那一行的名字，不是密钥本身。密钥写
 msgid "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone."
 msgstr "「卡住」的另一半：同一个文件连着被重写这么多次。在收敛的 agent 会碰到邻近的文件；卡住的 agent 会一直重写一个文件，直到预算烧完。"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_failed"
+msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "仓库地图没法刷新了：{repo} —— {why}"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_stale"
+msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
 msgstr "仓库地图停在上一次的版本：{repo} 的容器读不到 HEAD，重建只会得到一份没有符号的地图"
 
-#. js-lingui-explicit-id
-msgid "ev.sediment"
+msgid "the same feedback for the {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} time; asking the CoS to make it a project rule"
 msgstr "同一类反馈第 {n} 次了，让 CoS 归纳成项目规约"
 
 msgid "the same ground as {others}"
 msgstr "和 {others} 是同一块地方"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_undrivable"
+msgid "the sandbox server is running (pid {pid}) but we cannot drive it: {why}\n"
+"It was left alone rather than restarted, because that process may be yours and pointed at something else. Settings → Sandbox server has the button."
 msgstr "沙箱服务器在跑（pid {pid}），但我们驱动不了：{why}\n"
 "没敢重启它，因为那个进程可能是你自己起的、配的是别的东西。设置 → 沙箱服务器 那里有按钮。"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_started_by_us"
+msgid "the sandbox server is up — we started it (pid {pid})"
 msgstr "沙箱服务器起好了 —— 我们起的（pid {pid}）"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_up"
+msgid "the sandbox server is up (pid {pid})"
 msgstr "沙箱服务器起好了（pid {pid}）"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_was_up"
+msgid "The sandbox server rejects this key. Enter the one written in that server's own config."
+msgstr "沙箱服务器不认这个密钥。请填那台服务器自己配置里写的那一个。"
+
+msgid "the sandbox server was already running, so this used the one that was there"
 msgstr "沙箱服务器本来就在跑，直接用了原来那个"
 
-#. js-lingui-explicit-id
-msgid "ev.sandbox.server_bounced"
+msgid "the sandbox server was restarted, so every container it held is gone"
 msgstr "沙箱服务器重启了，它手上的容器都没了"
 
-#. js-lingui-explicit-id
-msgid "check.serverAuth.open"
+msgid "the server asks for no API key, so any process on this machine can enter a container"
 msgstr "服务器根本不要 API key，这台机器上任何进程都能进容器"
 
 msgid "The service that launches containers"
@@ -2628,8 +2504,8 @@ msgstr "全系统调用最频繁的一个模型调用：纯摘要、不做决策
 msgid "The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst."
 msgstr "用量接口没有文档，轮得快了就连着几小时回 429——而你自己的 /status 花的是同一份额度。五小时窗口里十分钟一次，最坏也就 3% 的误差。"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.broke"
+msgid "the watchdog threw this tick and the rules after it did not run: {why}\n"
+"It retries every 30s, but until it is fixed everything it drives — stalled groups, expired sandboxes, the rebase after a base moves, the clocks on what is waiting for you — stays where it is."
 msgstr "看门狗这一轮挂了，后面的规则都没跑：{why}\n"
 "每 30 秒都会再试一次，但在修好之前，靠它推的那些状态（卡住的组、过期的沙箱、基线变了要 rebase、等你决定的计时）都停在原地。"
 
@@ -2645,8 +2521,7 @@ msgstr "这个账号没有窗口"
 msgid "This browser doesn't support it"
 msgstr "这个浏览器不支持"
 
-#. js-lingui-explicit-id
-msgid "check.codex.stale"
+msgid "this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again"
 msgstr "这个 ChatGPT 登录已经旧到该续期了 —— 下一个容器会去续，要是一直续不上，就得重新粘一次 auth.json"
 
 msgid "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch."
@@ -2658,8 +2533,7 @@ msgstr "这份日志是空的"
 msgid "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward."
 msgstr "这个进程不是我们起的，可能是你自己在用的那个。要重启就自己重启，之后这里会认得它。"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.map_no_remote"
+msgid "this project has no remote recorded, so there is nothing to mirror"
 msgstr "这个项目没记下 remote，没有可以镜像的地址"
 
 msgid "This project hasn't run any activity yet."
@@ -2722,14 +2596,16 @@ msgstr "tokens · 这个项目累计"
 msgid "tokens · share"
 msgstr "tokens · 占比"
 
+msgid "tokens must be a positive number, or null to lift the cap"
+msgstr "token 必须是正数，或者填 null 取消上限"
+
 msgid "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
 msgstr "按顺序试，只在别的都没答话时才用：项目自己的基线分支优先，然后是 GitHub 的 default_branch。远端连不上时就落到这里。"
 
 msgid "Try again"
 msgstr "重试"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.turn_timeout"
+msgid "turn ran past {min} min and was killed"
 msgstr "一个 turn 超过 {min} 分钟，已掐断"
 
 msgid "Turn timeout"
@@ -2780,6 +2656,9 @@ msgstr "想留下记录就用「不做了」封存，那个不删"
 msgid "Use draft"
 msgstr "用草稿"
 
+msgid "Use host:port, or https://host:port — for example 127.0.0.1:8081 or sandbox.tail1234.ts.net:8080."
+msgstr "用 host:port，或者 https://host:port —— 比如 127.0.0.1:8081 或 sandbox.tail1234.ts.net:8080。"
+
 msgid "Use this only if you can't reopen an old PR on GitHub. Use when the branch has been force-pushed or deleted: it will re-open using the current branch and rejoin the merge queue."
 msgstr "能在 GitHub 上重开旧 PR 就不用这个。分支被强推或删过才用：会用当前分支重提一个，回到合入队列。"
 
@@ -2788,10 +2667,6 @@ msgstr "容器卡住、少挂了东西、或换过凭据时用。下一个 turn 
 
 msgid "Used when a project has not set its own"
 msgstr "没自己设的项目用这些"
-
-#. js-lingui-explicit-id
-msgid "check.uvx.present"
-msgstr "uvx 有"
 
 msgid "Valid for one year"
 msgstr "一年有效"
@@ -2862,9 +2737,11 @@ msgstr "看门狗周期"
 msgid "Watchdog rule"
 msgstr "巡检规则"
 
-#. js-lingui-explicit-id
-msgid "ev.wd.rule_broke"
+msgid "watchdog rule {rule} ({ruleName}) threw; the rest of the tick ran: {why}"
 msgstr "看门狗第 {rule} 条（{ruleName}）挂了，这一轮其余的照跑：{why}"
+
+msgid "We did not start this sandbox server, so we will not touch it — it may be your own, configured for something else. Restart it yourself and this page will recognise it afterwards."
+msgstr "这台沙箱服务器不是我们起的，所以我们不动它——它可能是你自己起的，配的是别的东西。你自己重启它，这个页面之后会认出来。"
 
 msgid "Webhook timeout"
 msgstr "Webhook 超时"
@@ -2904,6 +2781,9 @@ msgstr "每种难度用哪个模型，按 CLI 分。哪个角色用哪个 CLI �
 
 msgid "Which model runs what, and what it may spend"
 msgstr "哪个模型跑什么，能花多少"
+
+msgid "which repository? (owner/name)"
+msgstr "哪个仓库？(owner/name)"
 
 msgid "Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you."
 msgstr "过了全部四道闸之后，哪些档位跳过你最后那一眼。默认 trivial 和 normal；hard 仍然等你。"

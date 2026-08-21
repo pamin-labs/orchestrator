@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { existsSync, readdirSync } from "node:fs";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { resolve } from "node:path";
@@ -15,9 +16,7 @@ import { decode } from "hono/jwt";
 import { z } from "zod";
 import { isNotNull } from "drizzle-orm";
 import type { Said } from "../../contracts/said.ts";
-import { setupI18n } from "@lingui/core";
-import { MESSAGES, type MessageId } from "../../platform/text/messages.generated.ts";
-import { compileMessageOrThrow } from "@lingui/message-utils/compileMessage";
+import { renderSaid } from "../../platform/text/lang.ts";
 import { agent } from "../../platform/persistence/schema.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "../../platform/config/load.ts";
 
@@ -44,36 +43,20 @@ export interface Check {
   fixSaid?: Said;
 }
 
-/** A key this file owns, with the values that fill it. */
-export interface CheckSaid {
-  id: CheckKey;
-  values?: Said["values"];
-}
-
-/** The ids a check may name: the generated union, narrowed to this file's half. */
-export type CheckKey = Extract<MessageId, `check.${string}`>;
-
 /**
- * The English rendering, by Lingui rather than beside it.
+ * One check, said twice: English for the log, the descriptor for the panel.
  *
  * `/readyz` is read by monitoring and `report()` writes a log, so both stay
- * English whatever the panel is set to — and neither has a catalogue to render
- * from. `setupI18n`, not the exported `i18n`: `activate` is process-wide state,
- * and this renders on request threads that have no opinion about a locale.
- * `setMessagesCompiler` is what lets an uncompiled ICU string be a catalogue,
- * which is the documented way to run the runtime without a build plugin.
+ * English whatever the panel is set to — `renderSaid("en", …)` is the same door
+ * the event bus renders through, and English is the `message` the macro hashed.
  */
-const english = setupI18n({ locale: "en", messages: { en: MESSAGES.en } });
-english.setMessagesCompiler(compileMessageOrThrow);
-
-/** One check, said twice: English for the log, an id for the panel. */
-export function makeCheck(name: string, ok: boolean, said: CheckSaid, fix?: CheckSaid): Check {
+export function makeCheck(name: string, ok: boolean, said: Said, fix?: Said): Check {
   return {
     name,
     ok,
-    detail: english._(said.id, said.values),
+    detail: renderSaid("en", said),
     said,
-    ...(fix ? { fix: english._(fix.id, fix.values), fixSaid: fix } : {}),
+    ...(fix ? { fix: renderSaid("en", fix), fixSaid: fix } : {}),
   };
 }
 
@@ -83,25 +66,27 @@ export function makeCheck(name: string, ok: boolean, said: CheckSaid, fix?: Chec
  * `/v1/sandboxes` is the cheapest *authenticated* call — a list, no side effect.
  * An unauthenticated endpoint answers for a server that rejects every real call.
  */
-async function reachable(url: string, apiKey: string, timeoutMs: number): Promise<{ ok: boolean; said: CheckSaid }> {
+async function reachable(url: string, apiKey: string, timeoutMs: number): Promise<{ ok: boolean; said: Said }> {
   try {
     // fallow-ignore-next-line security-sink -- the one caller builds `url` from `cfg.sandbox.server`, the address the boss set for their own sandbox server, and `sandboxKeyFor` is what makes "the key stored for that same address" true rather than assumed: a stored key carries the address it was accepted by, and is withheld when the two disagree.
     const res = await fetch(`${url}/v1/sandboxes`, {
       headers: apiKey ? { [SANDBOX_API_KEY_HEADER]: apiKey } : {},
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (res.ok) return { ok: true, said: { id: "check.server.reachable" } };
+    if (res.ok) return { ok: true, said: msg`reachable` };
     // The two the boss can act on, said in their own words.
     if (res.status === 401) {
       const why = await res.text().catch(() => "");
       return {
         ok: false,
-        said: { id: why.includes("MISSING") ? "check.server.keyMissing" : "check.server.keyRejected" },
+        said: why.includes("MISSING")
+          ? msg`server requires an API key and none was sent`
+          : msg`server rejected the API key`,
       };
     }
-    return { ok: false, said: { id: "check.server.http", values: { status: res.status } } };
+    return { ok: false, said: msg`HTTP ${{ status: res.status }}` };
   } catch (e) {
-    return { ok: false, said: { id: "check.server.unreachable", values: { error: String(e).slice(0, 120) } } };
+    return { ok: false, said: msg`cannot reach it: ${{ error: String(e).slice(0, 120) }}` };
   }
 }
 
@@ -114,7 +99,7 @@ async function reachable(url: string, apiKey: string, timeoutMs: number): Promis
  * expires is inside the JWT it stores. Cached, because the settings page asks on
  * every open.
  */
-const seen = new Map<string, { at: number; ok: boolean; said: CheckSaid }>();
+const seen = new Map<string, { at: number; ok: boolean; said: Said }>();
 
 const accepted: Verify = async (runtime, auth, cfg = DEFAULTS) => {
   // Hashed, not a tail: a pasted auth.json ends in `"}}` no matter whose login
@@ -146,19 +131,21 @@ async function ask(runtime: string, auth: RuntimeAuth, timeoutMs: number): Promi
 }
 
 function chatgptAccepted(auth: RuntimeAuth): Verdict {
+  const mode = auth.mode;
   // The refresh token is what matters and it is not ours to test; the access
   // token carries its own expiry, and codex rotates it from the host.
   const exp = jwtExpiry(parseAuth(auth.secret)?.tokens?.access_token);
-  if (!exp) return { ok: true, said: { id: "check.cred.stored" } };
+  if (!exp) return { ok: true, said: msg`${{ mode }} · stored` };
   const days = Math.round((exp - Date.now()) / 86_400_000);
-  if (exp <= Date.now()) return { ok: false, said: { id: "check.cred.expired" } };
+  if (exp <= Date.now()) return { ok: false, said: msg`${{ mode }} · expired — sign in again` };
   return {
     ok: true,
-    said: days >= 1 ? { id: "check.cred.daysLeft", values: { days } } : { id: "check.cred.expiringToday" },
+    said: days >= 1 ? msg`${{ mode }} · ${{ days }} days left` : msg`${{ mode }} · expires within a day`,
   };
 }
 
 async function githubAccepted(auth: RuntimeAuth, timeoutMs: number): Promise<Verdict> {
+  const mode = auth.mode;
   // GitHub is not a model provider and has no `/v1/models`. A missing credential
   // otherwise surfaces only when the utility container tries to push a branch.
   try {
@@ -166,12 +153,13 @@ async function githubAccepted(auth: RuntimeAuth, timeoutMs: number): Promise<Ver
       headers: { authorization: `Bearer ${auth.secret}`, "user-agent": "orchestrator" },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (response.ok) return { ok: true, said: { id: "check.cred.accepted" } };
+    if (response.ok) return { ok: true, said: msg`${{ mode }} · accepted` };
     // GitHub deliberately uses 404 for resources a token cannot see.
-    if ([401, 403, 404].includes(response.status)) return { ok: false, said: { id: "check.cred.githubRejected" } };
-    return { ok: true, said: { id: "check.cred.unverified", values: { status: response.status } } };
+    if ([401, 403, 404].includes(response.status))
+      return { ok: false, said: msg`${{ mode }} · GitHub no longer accepts this token` };
+    return { ok: true, said: msg`${{ mode }} · not verified (HTTP ${{ status: response.status }})` };
   } catch {
-    return { ok: true, said: { id: "check.cred.unreachable" } };
+    return { ok: true, said: msg`${{ mode }} · unreachable, not verified` };
   }
 }
 
@@ -206,19 +194,21 @@ export function modelProbe(runtime: string, auth: RuntimeAuth): { url: string; h
  * it is would send the boss to re-paste a token that was fine. Only 401 and 403
  * are the token; everything else is reported as unverified, which is what it is.
  */
-export function credentialVerdict(status: number): Verdict {
-  if (status >= 200 && status < 300) return { ok: true, said: { id: "check.cred.accepted" } };
-  if (status === 401 || status === 403) return { ok: false, said: { id: "check.cred.rejected" } };
-  return { ok: true, said: { id: "check.cred.unverified", values: { status } } };
+export function credentialVerdict(status: number, mode: string): Verdict {
+  if (status >= 200 && status < 300) return { ok: true, said: msg`${{ mode }} · accepted` };
+  if (status === 401 || status === 403)
+    return { ok: false, said: msg`${{ mode }} · the provider rejected this credential` };
+  return { ok: true, said: msg`${{ mode }} · not verified (HTTP ${{ status }})` };
 }
 
 async function modelAccepted(runtime: string, auth: RuntimeAuth, timeoutMs: number): Promise<Verdict> {
+  const mode = auth.mode;
   const { url, headers } = modelProbe(runtime, auth);
   try {
     // fallow-ignore-next-line security-sink -- `modelProbe` builds the URL from the provider default or `runtime_auth.base_url`, and the secret it sends is the one stored in that same row; the gateway and the credential are set together by the boss and cannot be substituted for each other.
-    return credentialVerdict((await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) })).status);
+    return credentialVerdict((await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) })).status, auth.mode);
   } catch {
-    return { ok: true, said: { id: "check.cred.unreachable" } };
+    return { ok: true, said: msg`${{ mode }} · unreachable, not verified` };
   }
 }
 
@@ -277,7 +267,7 @@ export type Verify = (runtime: string, auth: RuntimeAuth, cfg?: Config) => Promi
 /** What one credential probe found, before the mode is folded into it. */
 export interface Verdict {
   ok: boolean;
-  said: CheckSaid;
+  said: Said;
 }
 
 /** Is this exact image:tag on this machine? */
@@ -330,8 +320,10 @@ function dockerCheck(docker: boolean, installed: boolean): Check {
   return makeCheck(
     "docker",
     docker,
-    { id: docker ? "check.docker.running" : installed ? "check.docker.silent" : "check.docker.absent" },
-    { id: installed ? "check.docker.fix.start" : "check.docker.fix.install" },
+    docker ? msg`running` : installed ? msg`installed, but the daemon is not answering` : msg`not reachable`,
+    installed
+      ? msg`Start Docker Desktop, or run colima start, and wait for it to report running.`
+      : msg`Install Docker — or Colima, or Podman, anything that provides a docker socket — and start it.`,
   );
 }
 
@@ -344,42 +336,54 @@ function hostToolChecks(contained: boolean, probe: Probe): { checks: Check[]; do
     docker,
     checks: [
       dockerCheck(docker, installed),
-      makeCheck("uv / python", uvx, { id: uvx ? "check.uvx.present" : "check.uvx.absent" }, { id: "check.uvx.fix" }),
+      makeCheck(
+        "uv / python",
+        uvx,
+        uvx ? msg`uvx available` : msg`no uvx on PATH`,
+        msg`Run brew install uv. opensandbox-server is a Python package, so without uv there is nothing to start.`,
+      ),
     ],
   };
 }
 
-function sandboxServerCheck(
-  input: PreflightInput,
-  contained: boolean,
-  server: { ok: boolean; said: CheckSaid },
-): Check {
+function sandboxServerCheck(input: PreflightInput, contained: boolean, server: { ok: boolean; said: Said }): Check {
   return makeCheck(
     "opensandbox-server",
     server.ok,
     server.said,
     contained
-      ? { id: "check.server.fix.contained" }
-      : { id: "check.server.fix.host", values: { server: input.sandbox.server } },
+      ? msg`Run uvx opensandbox-server on the host, not here: this orchestrator is inside a container and the sandbox server needs the host's docker. Then point ORCH_SANDBOX_SERVER at it — host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux.`
+      : msg`Run uvx opensandbox-server --config ~/.sandbox.toml listening on ${{ server: input.sandbox.server }}, with [egress] mode = "dns+nft".`,
   );
 }
 
 function hostEnvironmentCheck(contained: boolean): Check | null {
   if (!contained) return null;
-  return makeCheck("host environment", true, { id: "check.host.elsewhere" }, { id: "check.host.fix" });
+  return makeCheck(
+    "host environment",
+    true,
+    msg`docker, uv and the egress image belong to the machine running the sandbox server, not to this one`,
+    msg`On that machine: install docker, run uvx opensandbox-server, and docker pull opensandbox/egress:v1.1.6.`,
+  );
 }
 
 function sandboxAuthCheck(serverOk: boolean, key: string): Check | null {
   if (!serverOk || key) return null;
-  return makeCheck("sandbox server auth", false, { id: "check.serverAuth.open" }, { id: "check.serverAuth.fix" });
+  return makeCheck(
+    "sandbox server auth",
+    false,
+    msg`the server asks for no API key, so any process on this machine can enter a container`,
+    msg`Set [server] api_key = "…" in the server's TOML, restart it, then Settings → Sandbox server → Read from server. The containers hold the checkout, the mailbox token and the CLI logins.`,
+  );
 }
 
 /** Tag lists are values, joined here because a docker tag is not a translated word. */
-function egressDetail(good: string[], stale: string[]): CheckSaid {
-  if (good.length === 0 && stale.length === 0) return { id: "check.egress.none" };
-  if (good.length === 0) return { id: "check.egress.stale", values: { stale: stale.join(", ") } };
-  if (stale.length > 0) return { id: "check.egress.mixed", values: { good: good.join(", "), stale: stale.join(", ") } };
-  return { id: "check.egress.ok", values: { good: good.join(", ") } };
+function egressDetail(good: string[], stale: string[]): Said {
+  if (good.length === 0 && stale.length === 0) return msg`no opensandbox/egress image pulled`;
+  if (good.length === 0) return msg`only ${{ stale: stale.join(", ") }}, which is too old`;
+  if (stale.length > 0)
+    return msg`${{ good: good.join(", ") }} (also has ${{ stale: stale.join(", ") }} — check [egress] image)`;
+  return msg`${{ good: good.join(", ") }}`;
 }
 
 function egressCheck(contained: boolean, probe: Probe): Check | null {
@@ -387,7 +391,12 @@ function egressCheck(contained: boolean, probe: Probe): Check | null {
   const egress = probe("docker") ? egressImages() : [];
   const good = egress.filter((tag) => newEnough(tag));
   const stale = egress.filter((tag) => !newEnough(tag));
-  return makeCheck("egress sidecar", good.length > 0, egressDetail(good, stale), { id: "check.egress.fix" });
+  return makeCheck(
+    "egress sidecar",
+    good.length > 0,
+    egressDetail(good, stale),
+    msg`Run docker pull opensandbox/egress:v1.1.6, then point [egress] image at it. v1.1.4 403s every scoped package as soon as a credential is bound.`,
+  );
 }
 
 function agentImageCheck(image: string, docker: boolean): Check | null {
@@ -395,8 +404,8 @@ function agentImageCheck(image: string, docker: boolean): Check | null {
   return makeCheck(
     "agent image",
     false,
-    { id: "check.image.absent", values: { image } },
-    { id: "check.image.fix", values: { image } },
+    msg`${{ image }} is not on this machine`,
+    msg`Run docker build -f docker/agent.Dockerfile -t ${{ image }} . — an image with no registry prefix can only be built locally.`,
   );
 }
 
@@ -408,8 +417,10 @@ function skillsMountCheck(input: PreflightInput, contained: boolean): { check: C
     check: makeCheck(
       "skills mount",
       skills > 0,
-      skills ? { id: "check.skills.staged", values: { count: skills, path: staged } } : { id: "check.skills.none" },
-      { id: contained ? "check.skills.fix.contained" : "check.skills.fix.host", values: { path: staged } },
+      skills ? msg`${{ count: skills }} staged at ${{ path: staged }}` : msg`no skills ticked`,
+      contained
+        ? msg`${{ path: staged }} is a path inside this container, and the mount is made by the sandbox server's docker, which resolves it on its own filesystem. Use one absolute path on both sides (-v <host path>:${{ path: staged }}) and add it to the sandbox server's allowed_host_paths. A mismatch does not fail; it mounts an empty directory.`
+        : msg`Add ${{ path: staged }} to the sandbox server's allowed_host_paths, or every group fails to open a container. Tick the skills in Settings.`,
     ),
   };
 }
@@ -418,28 +429,24 @@ function allowedPathsCheck(input: PreflightInput, staged: string): Check {
   const allowed = allowedHostPaths();
   const wanted = [staged, ...Object.values(input.cacheDirs ?? {})].map((path) => hostPathForDaemon(resolve(path)));
   const missing = allowed ? wanted.filter((path) => !coveredBy(allowed.paths, path)) : [];
-  const detail: CheckSaid = !allowed
-    ? { id: "check.paths.noConfig" }
+  const detail: Said = !allowed
+    ? msg`no opensandbox-server config file found, so there is nothing to check against`
     : missing.length
-      ? { id: "check.paths.missing", values: { config: allowed.config, missing: missing.join(", ") } }
-      : { id: "check.paths.covered", values: { config: allowed.config, count: wanted.length } };
-  const fix: CheckSaid | undefined =
+      ? msg`${{ config: allowed.config }} does not list ${{ missing: missing.join(", ") }}`
+      : msg`${{ config: allowed.config }} covers all ${{ count: wanted.length }} paths to be mounted`;
+  const fix: Said | undefined =
     allowed && missing.length
-      ? {
-          id: "check.paths.fix",
-          values: {
-            config: allowed.config,
-            line: [...allowed.paths, ...missing].map((path) => `"${path}"`).join(", "),
-          },
-        }
+      ? msg`Put this line in the [sandbox] section of ${{ config: allowed.config }}, then restart opensandbox-server: allowed_host_paths = [${{ line: [...allowed.paths, ...missing].map((path) => `"${path}"`).join(", ") }}]`
       : undefined;
   return makeCheck("allowed_host_paths", !allowed || missing.length === 0, detail, fix);
 }
 
-function credentialFix(runtime: string): CheckSaid {
-  if (runtime === "claude") return { id: "check.cred.fix.claude" };
-  if (runtime === "github") return { id: "check.cred.fix.github" };
-  return { id: "check.cred.fix.codex" };
+function credentialFix(runtime: string): Said {
+  if (runtime === "claude")
+    return msg`Settings → Claude → sign in. It runs the official claude setup-token inside the utility container, so nothing is installed here; paste the code that page gives you back into the input and it is stored. Good for a year.`;
+  if (runtime === "github")
+    return msg`Connect GitHub once in Settings. Branches are pushed with it — without one, every slice is refused at its last step.`;
+  return msg`Settings → codex → sign in, which runs the official device-code flow; codex is not installed here. Pasting an API key works too.`;
 }
 
 async function credentialRuntimes(db: DB): Promise<string[]> {
@@ -454,12 +461,12 @@ async function credentialRuntimes(db: DB): Promise<string[]> {
 async function credentialCheck(input: PreflightInput, runtime: string): Promise<Check> {
   const name = `credential:${runtime}`;
   const auth = await loadAuth(input.db, runtime);
-  if (!auth) return makeCheck(name, false, { id: "check.cred.absent" }, credentialFix(runtime));
+  if (!auth) return makeCheck(name, false, msg`not configured`, credentialFix(runtime));
   const live = await (input.verify ?? accepted)(runtime, auth, input.cfg ?? DEFAULTS);
-  // Which credential it is, as a value: `api_key` is an identifier the panel
-  // prints, not a word it translates.
-  const said: CheckSaid = { id: live.said.id, values: { ...live.said.values, mode: auth.mode } };
-  return makeCheck(name, live.ok, said, credentialFix(runtime));
+  // `mode` is interpolated where each sentence is written — `api_key` is an
+  // identifier the panel prints, not a word it translates, and merging it into
+  // somebody else's `values` afterwards was a second place to keep in step.
+  return makeCheck(name, live.ok, live.said, credentialFix(runtime));
 }
 
 async function codexRefresherCheck(db: DB): Promise<Check | null> {
@@ -470,8 +477,10 @@ async function codexRefresherCheck(db: DB): Promise<Check | null> {
   return makeCheck(
     "codex-refresher",
     !stale,
-    { id: stale ? "check.codex.stale" : "check.codex.fresh" },
-    { id: "check.codex.fix" },
+    stale
+      ? msg`this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again`
+      : msg`the login is fresh; renewal runs inside the utility container, so codex is not needed here`,
+    msg`Renewal runs the real codex inside the utility container. If it keeps failing, paste ~/.codex/auth.json again in Settings, or switch to an API key — an API key never needs renewing.`,
   );
 }
 

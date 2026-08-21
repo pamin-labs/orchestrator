@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { transaction } from "../../platform/persistence/database.ts";
 import { and, asc, count, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
@@ -12,7 +13,7 @@ import {
   task,
 } from "../../platform/persistence/schema.ts";
 import type { Config } from "../../platform/config/load.ts";
-import { said, say } from "../../platform/text/lang.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
 import { valueOr } from "../../contracts/json.ts";
 import type { SliceState } from "../../contracts/states.ts";
 import { runGates, recordGate, gateState } from "../gate.ts";
@@ -133,7 +134,7 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      say: said("ev.gate.reconcile", { seq: slice.seq, reason: rec.reason ?? "" }),
+      say: msg`reconcile failed on S${{ seq: slice.seq }}: ${{ reason: rec.reason ?? "" }}`,
       meta: { slice_id: sliceId, phantom: rec.phantom },
     });
     return {
@@ -160,7 +161,7 @@ export async function runDeterministicReview(
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "gate_result",
-    say: said(out.pass ? "ev.gate.pass" : "ev.gate.fail", { seq: slice.seq }),
+    say: out.pass ? msg`gate pass on S${{ seq: slice.seq }}` : msg`gate fail on S${{ seq: slice.seq }}`,
     meta: { slice_id: sliceId, results: out.results.map((r) => ({ name: r.name, pass: r.pass })) },
   });
   if (!out.pass) return { pass: false, feedback: out.feedback };
@@ -171,7 +172,7 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      say: said("ev.gate.unclaimed", { seq: slice.seq, files: rec.unclaimed.slice(0, 10).join(", ") }),
+      say: msg`also changed on S${{ seq: slice.seq }}, unclaimed: ${{ files: rec.unclaimed.slice(0, 10).join(", ") }}`,
       meta: { slice_id: sliceId },
     });
   }
@@ -239,7 +240,7 @@ export async function sendBack(deps: ReviewDeps, sliceId: number, feedback: stri
       kind: "escalation",
       intent: "ask",
       severity: "blocker",
-      say: said("ev.slice.failed", { seq: slice.seq, from, n: retries }),
+      say: msg`S${{ seq: slice.seq }} failed ${{ from }} ${{ n: retries }}x — probably the acceptance criteria, not the code`,
       meta: { slice_id: sliceId },
     });
     return;
@@ -254,7 +255,7 @@ export async function sendBack(deps: ReviewDeps, sliceId: number, feedback: stri
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    say: said("ev.slice.sentback", { seq: slice.seq, from, n: retries }),
+    say: msg`S${{ seq: slice.seq }} sent back by ${{ from }} (attempt ${{ n: retries }})`,
     meta: { slice_id: sliceId },
   });
   await ctx.sched.tick();
@@ -317,7 +318,7 @@ export async function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number)
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    say: said("ev.slice.ready", { seq: slice.seq, title: slice.title }),
+    say: msg`S${{ seq: slice.seq }} "${{ title: slice.title }}" is ready for you`,
     meta: { slice_id: sliceId, gates: await gateState(ctx.db, sliceId) },
   });
 
@@ -330,7 +331,7 @@ export async function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number)
       ctx,
       sliceId,
       "orchestrator",
-      say(ctx.config.language, "ev.slice.autoaccept", { tier: slice.difficulty }),
+      renderSaid(ctx.config.language, msg`${{ tier: slice.difficulty }} auto-accepted, all three gates passed`),
     );
     return;
   }
@@ -346,7 +347,7 @@ export async function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number)
         grpId: slice.grp_id,
         author: "orchestrator",
         kind: "state_change",
-        say: said("ev.group.autoadvance"),
+        say: msg`autoAdvance: started the next slice without waiting for you`,
         meta: { slice_id: next },
       });
       await ctx.sched.tick();
@@ -405,8 +406,8 @@ export async function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: s
     // Two keys rather than a bracket pair spliced in here: built at the call site
     // the brackets were fullwidth, so the English row read `accepted: S3 t（why）`.
     say: why
-      ? said("ev.slice.accepted_why", { seq: sl.seq, title: sl.title, why })
-      : said("ev.slice.accepted", { seq: sl.seq, title: sl.title }),
+      ? msg`accepted: S${{ seq: sl.seq }} ${{ title: sl.title }} (${{ why }})`
+      : msg`accepted: S${{ seq: sl.seq }} ${{ title: sl.title }}`,
     meta: { slice_id: sliceId, by },
   });
 

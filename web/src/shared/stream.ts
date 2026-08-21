@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import { notifyWanted } from "./desktop-notify";
-import { sayText } from "./messages";
+import { sayIn, saidText } from "./said";
 import { z } from "zod";
 import { FrameSchema } from "../../../src/contracts/events.ts";
 
@@ -126,7 +126,7 @@ function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[]
       // `meta.say` first: the server names the sentence and this renders it in
       // the reader's own language. A row from before that existed has only the
       // body, and gets it.
-      text: sayText(f.meta, f.body ?? ""),
+      text: saidText(sayIn(f.meta), f.body ?? ""),
     },
   ];
 }

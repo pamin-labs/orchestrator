@@ -514,7 +514,15 @@ describe("workflow governance", () => {
     expect(release).toContain("release-manifest.json");
     expect(release).toContain("bun-linux-x64-baseline");
     expect(release).toContain("bun-windows-x64-baseline");
-    expect(release.match(/__ORCH_VERSION__/g)).toHaveLength(2);
+    // Both builds go through `build-server.ts`, because `bun build` the CLI
+    // takes no plugin and a server compiled without the Lingui macros throws on
+    // its first message. The version stamp travels with them, in the script.
+    expect(release).toContain("bun run build:server src/orch/cli.ts dist/orch-cli.ts");
+    expect(release).toContain('bun run build:server src/composition/server.ts "dist/$root/$exe" "$bun_target"');
+    const builder = await Bun.file("scripts/build-server.ts").text();
+    expect(builder).toContain("__ORCH_VERSION__");
+    expect(builder).toContain("RELEASE_VERSION");
+    expect(builder).toContain("linguiMacros");
     expect(release).toContain('bun "$root/src/orch/cli.ts" --version');
     expect(release).toContain('"$root/orch-server" --version');
     for (const path of [

@@ -852,6 +852,95 @@ M7 — executable engineering governance and versioned protocol.
   proves nothing about the test, and looks exactly like a test that proves
   nothing.
 
+### One missing CLI flag was read as a missing capability, and a layer got built around it
+
+`bun build --compile` has no `--plugin`. `Bun.build({ compile, plugins })` does,
+and `scripts/build-web.ts` had been calling it that way for weeks. ADR 041 read
+the first fact as "a Lingui macro cannot reach the server" and everything below
+existed to carry a sentence across a boundary that was never closed:
+
+| deleted | lines it was there to hold |
+|---|---|
+| explicit ids on 135 messages | so the server could name a hash it could not compute |
+| `web/src/shared/messages.ts` + `web/src/features/settings/checks.ts` | two descriptor tables, 70 + 52 + 13 entries |
+| `said()` in `lang.ts`, `CheckSaid`/`CheckKey` in `preflight.ts` | the typed doors onto those ids |
+| `scripts/i18n-messages.ts` → `src/platform/text/messages.generated.ts` | 143 lines of catalogue for a runtime that "could not import one" |
+| `test/governance/english-has-one-author.test.ts` | two copies of the English, kept in step by a test |
+| the placeholder lists in `lang.test.ts` and `preflight.test.ts` | 27 + 13 hand-copied value names |
+
+An emitter now writes `say: msg\`merged into main\``, the same call the panel
+writes. The wire carries `{ id, message, values }` and both sides call `i18n._`
+on it — the catalogue row when the reader has one, the `message` beside the id
+when not. **English stopped being a special case**: it is the second branch, the
+way every untranslated message already was.
+
+Proof it reaches the artefact, which is where the original ADR was wrong — a
+standalone binary, built through `scripts/build-server.ts`, run:
+
+```
+влито в main | 已合入 main | main にマージしました | merged into main
+```
+
+Cross-compiled from darwin-arm64: `bun-linux-x64-baseline` → ELF x86-64,
+101.2 MB; `bun-darwin-x64` → Mach-O x86_64, 76.7 MB. Both under the release
+job's 150 MiB ceiling, and `__ORCH_VERSION__` lands in both.
+
+### The 135 messages kept their nine translations, and the migration proved it
+
+Under `@lingui/format-po` a hashed message is written `msgid "<the English>"`;
+only an explicit id gets `#. js-lingui-explicit-id` above it. So the migration
+was to replace each explicit id with the English from `en.po` and re-extract —
+and `lingui extract` then reports **934 messages, 0 missing in all nine
+locales**. A template that had drifted by one character would have shown up as
+that locale's missing row. `zh-Hant.po` came back byte-identical from
+`i18n:hant`.
+
+### Three places the macro now has to be wired, and the one that bites
+
+`Bun.build` in `build-web.ts` and `build-server.ts`, `Bun.plugin` in
+`test/support/loader.ts`, and — new — `bunfig.toml`'s **top-level** `preload`,
+for `bun run src/composition/server.ts`. Measured before writing it: a top-level
+`preload` is read for `bun run` and *not* for `bun test`, which is what keeps it
+from registering an `onLoad` ahead of the test loader's. Bun does not chain
+them, so a second registration would have silently taken coverage
+instrumentation out.
+
+`test/support/loader.ts` lost its `touchesPanel` gate — the 3s it saved across
+204 processes was buying an answer to "can this file reach a macro" that is now
+always yes. Timed on one file, warm cache, the difference is inside noise (0.35–
+0.42s with the transform, 0.46s with it registered for nothing): the expansion
+is content-addressed, so the steady-state cost is a file read.
+
+`src/mech/sandbox/sandbox.ts:agentCli()` builds the agent CLI at **runtime**
+with `Bun.build` and no plugin, so a macro reaching `src/orch/**` throws inside
+every container. Nothing new was written for it: `version.test.ts` already
+builds that bundle and runs it, and an injected `msg` in `cli.ts` turned two of
+its tests red.
+
+### The catalogues left `web/src`
+
+`web/**` is a Fallow zone; `platform` may not import from it. They live in
+`locales/` now, which is also why `tsconfig.src.json` and `web/tsconfig.json`
+both name `locales/po.d.ts`.
+
+### Two hardcoded lists replaced, and one deleted outright
+
+- `traditional-chinese.test.tsx` asserted `映像: 15, 閘道: 3, 行程: 4 …` — absolute
+  counts, red twice this branch for new copy with nothing wrong. It now walks
+  `MAINLAND`/`OVERCONVERTED` from `scripts/i18n-hant.ts` and computes each rule's
+  *wrong* form as what unpatched `s2twp` produces for that word: 21 rules covered
+  instead of 6, and adding copy cannot move it. Shown red by putting `映象` back
+  in the shipped catalogue.
+- `refusals-carry-an-id.test.ts` kept three English refusals copied out of the
+  code. `bad()` takes a descriptor and nothing else now, and the exemption says
+  its own name at the call site — `badEnglish("this server has no GitHub
+  client")` — so the test asserts only that both doors are in use and that no
+  literal reaches `bad()`.
+- The placeholder guards did not need replacing. A `msg` template writes the ICU
+  and its values from the same interpolation, so "a `{path}` no caller fills" is
+  no longer a thing that can be written down.
+
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run

@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { errText } from "../platform/process/text.ts";
 import { makeNoteIndex } from "../mech/knowledge/note-index.ts";
 import { existsSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
@@ -59,7 +60,6 @@ import { configureTracing } from "../platform/observability/otel.ts";
 import { trimSpans } from "../platform/observability/span-store.ts";
 import { configureStructuredLogging } from "../platform/observability/logging.ts";
 import { VERSION } from "../platform/process/version.ts";
-import { said } from "../platform/text/lang.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -91,9 +91,7 @@ export async function refreshRuntimeReadiness(
     runtime.ready = checks.every((check) => check.ok);
   } catch (error) {
     runtime.ready = false;
-    runtime.checks = [
-      makeCheck("preflight", false, { id: "check.preflight.failed", values: { error: errText(error) } }),
-    ];
+    runtime.checks = [makeCheck("preflight", false, msg`the checks could not run: ${{ error: errText(error) }}`)];
   }
 }
 
@@ -482,7 +480,7 @@ export async function reportServerState(ctx: Ctx, st: ServerState): Promise<void
     await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      say: said("ev.sandbox.server_started_by_us", { pid: st.pid }),
+      say: msg`the sandbox server is up — we started it (pid ${{ pid: st.pid }})`,
     });
     return;
   }
@@ -504,7 +502,7 @@ export async function reportServerState(ctx: Ctx, st: ServerState): Promise<void
     kind: "escalation",
     intent: "inform",
     severity: "blocker",
-    say: said("ev.sandbox.server_undrivable", { pid: st.pid, why: st.why }),
+    say: msg`the sandbox server is running (pid ${{ pid: st.pid }}) but we cannot drive it: ${{ why: st.why }}\nIt was left alone rather than restarted, because that process may be yours and pointed at something else. Settings → Sandbox server has the button.`,
   });
 }
 
@@ -1032,7 +1030,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
               // A real round trip, not a handle that exists: `open()` migrated it
               // at boot, and what this reports is whether it still answers.
               await db.execute(sql`select 1`);
-              return [makeCheck("database", true, { id: "check.database.ok" }), ...checks];
+              return [makeCheck("database", true, msg`migrated and queryable`), ...checks];
             },
           ),
         ),

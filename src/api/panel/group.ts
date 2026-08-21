@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { and, asc, desc, eq, inArray, isNull, like, ne, or, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { dropSlices } from "../../platform/persistence/database.ts";
@@ -14,10 +15,11 @@ import { z } from "zod";
 import { Attachment as AttachmentSchema, IdParams } from "../../contracts/fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import type { Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { bad, badEnglish, json, message } from "../../http/respond.ts";
+import { noGithubClient } from "./authflow.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { slug } from "../slug.ts";
-import { said, say } from "../../platform/text/lang.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 import { escalation, event, grp as grps, note, project, slice, task } from "../../platform/persistence/schema.ts";
@@ -193,7 +195,7 @@ async function heldForBoundary(ctx: Ctx, grpId: number, why: string): Promise<vo
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    say: said("ev.group.approve_held", { why }),
+    say: msg`approval recorded — held by the boundary: ${{ why }}. Starts by itself once that clears`,
   });
 }
 
@@ -221,7 +223,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
 
   if (card) {
     const v = validateDraftCard(card);
-    if (!v.ok) return bad(v.error);
+    if (!v.ok) return badEnglish(v.error);
     // Four tables point at a slice, not one. Clearing only `task` left `job`,
     // `note` and `slice.depends_on` holding references, so re-approving a group
     // that had already run died on `FOREIGN KEY constraint failed` — see
@@ -266,11 +268,16 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
   if (!start.ok) {
     await heldForBoundary(ctx, grpId, start.reason ?? "");
     // 200, not 422: the boss did decide, and a red error toast says the opposite.
-    return message(say(ctx.config.language, "ev.group.approve_held", { why: start.reason ?? "" }));
+    return message(
+      renderSaid(
+        ctx.config.language,
+        msg`approval recorded — held by the boundary: ${{ why: start.reason ?? "" }}. Starts by itself once that clears`,
+      ),
+    );
   }
 
   const err = await startGroup(ctx, grpId);
-  return err ? bad(err) : message("ok");
+  return err ? badEnglish(err) : message("ok");
 }) satisfies Handler<z.infer<typeof DraftDecisionBody>, z.infer<typeof DraftDecision>>;
 
 /**
@@ -281,7 +288,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
  */
 export async function landGroup(ctx: Ctx, grpId: number, by: string): Promise<number[]> {
   const stale = await landed(ctx.db, grpId);
-  await ctx.bus.emit({ grpId, author: by, kind: "state_change", say: said("ev.group.merged") });
+  await ctx.bus.emit({ grpId, author: by, kind: "state_change", say: msg`merged into main` });
 
   // Turn this group's retro into lessons while the branch is fresh. This is
   // the only mechanism by which the twentieth group is smarter than the
@@ -369,8 +376,9 @@ function normalizeBudget(tokens: number | null | undefined): number | null {
 
 function budgetError(tokens: number | null, spent: number): Response | null {
   if (tokens === null) return null;
-  if (!(tokens > 0)) return bad("tokens must be a positive number, or null to lift the cap");
-  if (tokens <= spent) return bad(`already spent ${spent} tokens — a cap at ${tokens} would stop it again immediately`);
+  if (!(tokens > 0)) return bad(msg`tokens must be a positive number, or null to lift the cap`);
+  if (tokens <= spent)
+    return badEnglish(`already spent ${spent} tokens — a cap at ${tokens} would stop it again immediately`);
   return null;
 }
 
@@ -412,7 +420,7 @@ async function resumeGroup(ctx: Ctx, grpId: number): Promise<Response> {
     .from(grps)
     .where(eq(grps.id, grpId));
   if (g?.budget_tokens != null && g.spent_tokens >= g.budget_tokens) {
-    return bad(
+    return badEnglish(
       `out of budget (${g.spent_tokens}/${g.budget_tokens} tokens). Raise the cap first, ` +
         `or it stops again on the next tick.`,
     );
@@ -433,7 +441,7 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
     .innerJoin(project, eq(project.id, grps.project_id))
     .where(eq(grps.id, grpId));
   if (!g) return message("no such group", 404);
-  if (!ctx.gh) return bad("no GitHub client on this server");
+  if (!ctx.gh) return noGithubClient();
   await ctx.db.update(grps).set({ pr_number: null }).where(eq(grps.id, grpId));
   const r = await openPr({
     ctx,
@@ -446,7 +454,7 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
     // Put the old number back: a group with no PR and no way to open one is
     // worse off than one whose PR is closed.
     await ctx.db.update(grps).set({ pr_number: g.pr_number }).where(eq(grps.id, grpId));
-    return bad(r.error);
+    return badEnglish(r.error);
   }
   await ctx.db.update(grps).set({ status: "PR_OPEN", paused_at: null, pause_reason: null }).where(eq(grps.id, grpId));
   await joinQueue(ctx.db, grpId);
@@ -491,7 +499,7 @@ async function rebuildSandbox(ctx: Ctx, grpId: number): Promise<Response> {
     grpId,
     author: "boss",
     kind: "state_change",
-    say: said("ev.sandbox.rebuild"),
+    say: msg`container discarded; the next turn rebuilds it — clone and install. The branch lives in the host repo`,
   });
   await ctx.sched.tick();
   return message("ok");

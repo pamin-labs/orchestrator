@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { z } from "zod";
 import { getPreflight } from "../../src/api/panel/sandbox.ts";
 import { makeCheck } from "../../src/mech/ops/preflight.ts";
+import { SaidSchema } from "../../src/contracts/said.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -13,7 +14,9 @@ import { testContext } from "../support/test-context.ts";
  * answer from before the fix, for as long as the timer took to come round.
  */
 
-const ok = makeCheck("opensandbox-server", true, { id: "check.server.reachable" });
+// Any id renders, because the descriptor carries the English it was hashed
+// from; what this file is about is which copy of the checks the route answers with.
+const ok = makeCheck("opensandbox-server", true, { id: "check.server.reachable", message: "reachable" });
 
 /** The wire shape, parsed rather than asserted: the response is `unknown` data. */
 const Body = z.object({
@@ -24,7 +27,9 @@ const Body = z.object({
       // Both halves cross: the English for `/readyz` and the console, and the key
       // the settings pane renders in whatever language this browser reads.
       detail: z.string(),
-      said: z.object({ id: z.string(), values: z.record(z.string(), z.union([z.string(), z.number()])).optional() }),
+      // The contract's own schema, not a second model of it: this is the shape
+      // `bad()` and `makeCheck` write, and a copy here would drift from it.
+      said: SaidSchema,
     }),
   ),
 });

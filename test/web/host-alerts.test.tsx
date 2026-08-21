@@ -1,5 +1,6 @@
 import { afterEach, expect, mock, test } from "bun:test";
 import { cleanup, render } from "../support/render.tsx";
+import { said as descriptor } from "../support/said.ts";
 import { HostAlert } from "../../web/src/app/alerts.tsx";
 import type { HostFailure } from "../../web/src/shared/api.ts";
 
@@ -19,7 +20,8 @@ import type { HostFailure } from "../../web/src/shared/api.ts";
  * adds a check. The English the server rendered is what gets drawn, so every
  * assertion below reads the fallback path.
  */
-const unknown = { id: "check.from.a.newer.server" };
+const unknown = { id: "a-hash-this-build-has-never-seen" };
+const STAGED = "{count} staged at {path}";
 const docker = (detail: string): HostFailure => ({ name: "docker", detail, said: unknown, fix: "colima start" });
 const server = (detail: string): HostFailure => ({ name: "sandbox-server", detail, said: unknown });
 
@@ -53,7 +55,7 @@ test("a key this panel knows is rendered here, with the server's values in it", 
         {
           name: "skills mount",
           detail: "7 staged at /var/tmp/orch-cache/skills",
-          said: { id: "check.skills.staged", values: { count: 7, path: "/var/tmp/orch-cache/skills" } },
+          said: descriptor(STAGED, { count: 7, path: "/var/tmp/orch-cache/skills" }),
         },
       ]}
       onFix={() => {}}

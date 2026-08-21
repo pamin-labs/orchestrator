@@ -63,18 +63,17 @@ where**:
 
 Row two is new work rather than a relabelling. `say()` was two hand-kept tables
 behind `isChinese()`, so a boss whose `output.language` was `한국어` read the feed
-in English however that knob was set. It is now the same ten catalogs the panel
-has: `web/src/shared/messages.ts` declares each message once with an explicit
-`ev.` id, `lingui extract` puts the id in all ten `.po` files, and
-`scripts/i18n-messages.ts` folds the `ev.` ones into
-`src/platform/text/messages.generated.ts` — a plain module, which is what the
-server can import. 041 said Lingui could not reach the server; what it could not
-reach was a `.po`, because `bun build --compile` takes no plugin. Running the
-library needs no plugin, and a standalone binary renders `5 дел ждут вас`.
+in English however that knob was set. The server writes the same `msg` templates
+the panel does now — `say: msg\`merged into main\`` — and `lingui extract` puts
+every one of them in all ten `.po` files, which
+[`041`](041-the-panel-speaks-english-and-a-compiler-hashes-it.md) has the
+measurement for: `bun build --compile` the CLI takes no plugin, `Bun.build` the
+API does, and a standalone binary built through it renders four languages.
 
-`MessageId` is a literal union off that generated file, so an id the server names
-and the catalogs do not have fails `tsc`. That is the whole guard; there is no
-parity test beside it.
+There is no id to keep in step and so nothing to guard: the macro computes the
+id from the English at build time, and the English travels beside it on the wire
+as the descriptor's `message`. A panel that has never heard of a sentence renders
+that.
 
 ### Three landings that stay server-rendered, and not for a language reason
 

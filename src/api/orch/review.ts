@@ -10,7 +10,7 @@ import { WORK } from "../../mech/sandbox/sandbox.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema, GroupRef, Id, IdParams } from "../../contracts/fields.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { badEnglish, json, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { bossFact } from "../panel/attach.ts";
@@ -39,14 +39,14 @@ const Verdict = z.enum(["pass", "fail"]);
 export const AuditBody = z.object({ group_id: GroupRef, verdict: Verdict, note: z.string().max(8000).optional() });
 
 export const postAudit = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== roleFor(ctx, "audit_branch")) return bad(`${a.role} does not file audit verdicts`);
+  if (a.role !== roleFor(ctx, "audit_branch")) return badEnglish(`${a.role} does not file audit verdicts`);
   const gid = await resolveGroup(ctx, b.group_id);
-  if (!gid) return bad("which group? pass its id or name");
+  if (!gid) return badEnglish("which group? pass its id or name");
   // The Auditor is deliberately not a member of the group it reviews, so it is
   // the one role whose group check is inverted. It is still bounded by its
   // project — a pass here opens a PR, which is a host `git push`, and that is not
   // an action to leave addressable by any group id an agent cares to name.
-  if (a.grp_id === gid) return bad("an auditor may not audit its own group");
+  if (a.grp_id === gid) return badEnglish("an auditor may not audit its own group");
   if (!(await mayAct(ctx.db, a, gid))) return message("not your project", 403);
 
   await ctx.bus.emit({
@@ -76,14 +76,14 @@ export const ReviewBody = z.object({
 
 export const postReview = (async (ctx, _req, a, _p, b) => {
   if (a.role !== roleFor(ctx, "review_slice") && a.role !== roleFor(ctx, "audit_branch"))
-    return bad(`${a.role} does not file review verdicts`);
+    return badEnglish(`${a.role} does not file review verdicts`);
 
   const [slice] = await ctx.db
     .select({ id: slices.id, grp_id: slices.grp_id, seq: slices.seq, accept_spec: slices.accept_spec })
     .from(slices)
     .where(eq(slices.id, b.slice_id));
-  if (!slice) return bad(`no slice ${b.slice_id}`);
-  if (slice.grp_id !== a.grp_id) return bad("that slice belongs to another group");
+  if (!slice) return badEnglish(`no slice ${b.slice_id}`);
+  if (slice.grp_id !== a.grp_id) return badEnglish("that slice belongs to another group");
 
   // QA's verdict was the one review layer with no floor under it: `--verdict pass`
   // with an empty note was accepted, which makes the independent check a formality
@@ -93,7 +93,7 @@ export const postReview = (async (ctx, _req, a, _p, b) => {
   const need = criteriaIn(slice.accept_spec);
   const v = validateSelfReview(b.note ?? "", need);
   if (!v.ok) {
-    return bad(
+    return badEnglish(
       `${v.error}\n\nAcceptance for S${slice.seq}: ${slice.accept_spec}\n` +
         `  orch review ${b.slice_id} --verdict ${b.verdict} --note "pass: <criterion> — <what you ran and saw>"`,
     );

@@ -1,3 +1,10 @@
+# Run straight from the checkout — `bun run src/composition/server.ts`, and the
+# `--version` spawn in `test/governance/version.test.ts` — with the Lingui
+# plugins registered. Top-level rather than under `[test]`: measured, this list
+# is read for `bun run` and not for `bun test`, which is what keeps it from
+# registering an `onLoad` ahead of the test loader's.
+preload = ["./scripts/preload.ts"]
+
 [test]
 # `bun test` with no path scans the whole tree, and the whole tree includes
 # `data/` — the codex home and the staged skills, both full of other people's
@@ -16,13 +23,17 @@ root = "test"
 # `onLoad` handlers: the first registered for a path wins and the rest are never
 # called. ADR 041 has that measurement and the rest.
 #
-# All three files gate themselves, because the list cannot be gated from outside
-# it. loader.ts registers nothing for a file that cannot reach `web/src`, which
-# it decides from `Bun.main` the way dom.ts decides it needs a document — the
-# unconditional version cost 3s of CPU across the suite, on 204 processes paying
-# for a transform 58 of them can reach. dom.ts registers a document only for the
-# test files that need one: ~119ms per file that 160 of the 204 were paying for
-# nothing.
+# dom.ts gates itself, because the list cannot be gated from outside it: it
+# registers a document only for the test files that need one, ~119ms per file
+# that 160 of the 204 were paying for nothing.
+#
+# loader.ts no longer gates. It used to skip the transform for a file that could
+# not reach `web/src`, decided from `Bun.main`, and the note here recorded 3s of
+# CPU saved across 204 processes. The server writes `msg` now, so every test file
+# can reach a macro and the question has one answer. Re-measured on one file with
+# a warm cache, the transform is inside the noise: 0.35–0.42s registered for the
+# two source roots against 0.46s registered for nothing. Expansion is
+# content-addressed (`.cache/lingui`), so steady state is a file read.
 #
 # dom.ts's half only holds when each file gets its own process — `--isolate`, or
 # the `--parallel` that implies it, which is why the `test` script carries it.

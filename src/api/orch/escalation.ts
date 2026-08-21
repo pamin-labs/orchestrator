@@ -20,10 +20,9 @@ import { Attachment as AttachmentSchema, GroupRef, Id, IdParams, Prose } from ".
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { bossFact } from "../panel/attach.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { badEnglish, json, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
-import { isChinese } from "../../contracts/config.ts";
 import {
   agent,
   escalation as escalations,
@@ -138,15 +137,15 @@ export const AnswerBody = z.object({
 export const postAnswer2 = (async (ctx, _req, a, _p, b) => {
   const deps = { ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) };
   const level = z.enum(CHAIN).safeParse(a.role);
-  if (!level.success) return bad(`${a.role} is not an answer-chain level`);
+  if (!level.success) return badEnglish(`${a.role} is not an answer-chain level`);
 
   if (b.abstain) {
     // Abstaining is the expected move when a level is unsure: a guess made on
     // the boss's behalf becomes a premise the whole group reasons from.
     const r = await abstain(deps, b.escalation_id, level.data, b.why ?? "", a.grp_id);
-    return r.ok ? message("passed up") : bad(r.error);
+    return r.ok ? message("passed up") : badEnglish(r.error);
   }
-  if (!b.answer?.trim()) return bad("an answer needs text, or pass --abstain");
+  if (!b.answer?.trim()) return badEnglish("an answer needs text, or pass --abstain");
   const r = await chainAnswer(deps, {
     escId: b.escalation_id,
     by: level.data,
@@ -154,7 +153,7 @@ export const postAnswer2 = (async (ctx, _req, a, _p, b) => {
     actorGrpId: a.grp_id,
     ...(b.ref === undefined ? {} : { refNoteId: b.ref }),
   });
-  return r.ok ? message("ok") : bad(r.error);
+  return r.ok ? message("ok") : badEnglish(r.error);
 }) satisfies AgentHandler<z.infer<typeof AnswerBody>>;
 
 export const TriageBody = z.object({
@@ -164,9 +163,10 @@ export const TriageBody = z.object({
 });
 
 export const postTriage = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== roleFor(ctx, "triage_boss_feedback")) return bad(`${a.role} does not triage the boss's feedback`);
+  if (a.role !== roleFor(ctx, "triage_boss_feedback"))
+    return badEnglish(`${a.role} does not triage the boss's feedback`);
   const gid = await resolveGroup(ctx, b.group_id);
-  if (!gid) return bad("which group? pass its id or name");
+  if (!gid) return badEnglish("which group? pass its id or name");
   if (!(await mayAct(ctx.db, a, gid))) return message("not your group", 403);
   await triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as, b.note ?? "");
   return message("ok");
@@ -195,7 +195,7 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
     .from(escalations)
     .where(eq(escalations.id, id));
   if (!esc) return message("no such question", 404);
-  if (esc.answer) return bad("already answered");
+  if (esc.answer) return badEnglish("already answered");
 
   // A standing agent carries the project on itself; one inside a group carries it
   // on the group. The join replaces a scalar subquery reading the asker's id back
@@ -208,7 +208,7 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
         .leftJoin(agent, eq(agent.id, escalations.agent_id))
         .where(eq(escalations.id, id));
   const projectId = owner?.project_id ?? null;
-  if (!projectId) return bad("cannot tell which project this belongs to");
+  if (!projectId) return badEnglish("cannot tell which project this belongs to");
 
   const idea = [b.text?.trim(), esc.question].filter(Boolean).join("\n\n");
   const name = (b.name ?? slug(idea)).slice(0, 40) || `esc-${id}`;
@@ -275,7 +275,7 @@ export const postAnswer = (async (ctx, _req, params, b) => {
   // The boss answers through the same path a stand-in would, so unblocking the
   // caller and un-pausing the group cannot drift between the two.
   const r = await chainAnswer({ ctx }, { escId: id, by: "boss", answer: withAttachments(b.answer, b.attachments) });
-  return r.ok ? message("ok") : bad(r.error);
+  return r.ok ? message("ok") : badEnglish(r.error);
 }) satisfies Handler<z.infer<typeof BossAnswerBody>, z.infer<typeof IdParams>>;
 
 /**
@@ -307,7 +307,7 @@ async function answerDraftContext(
   ctx: Ctx,
   groupId: number | null,
 ): Promise<{ requirement: string; notes: string[]; slices: string[] }> {
-  if (!groupId) return { requirement: isChinese(ctx.config.language) ? "常驻岗" : "standing", notes: [], slices: [] };
+  if (!groupId) return { requirement: "standing", notes: [], slices: [] };
   const [found] = await ctx.db.select({ name: grps.name }).from(grps).where(eq(grps.id, groupId));
   const requirement = found?.name ?? "?";
   const recent = await ctx.db
@@ -331,39 +331,29 @@ async function answerDraftContext(
   return { requirement, notes: noteLines, slices: sliceLines };
 }
 
+/**
+ * Scaffolding for a model, so it is English and has no second version.
+ *
+ * This was a Chinese half and an English half behind `isChinese(language)` — the
+ * last two-language pair in the codebase, and the reason a boss reading Korean
+ * got the English one. But the branch answered a question nobody asked: what the
+ * boss reads is the *draft*, and its language comes from the `## Output
+ * language` block `src/prompt/assemble.ts` injects. Nothing here is read by a
+ * person.
+ */
 function answerDraftPrompt(
-  language: string,
   escalation: AnswerDraftRow,
   context: Awaited<ReturnType<typeof answerDraftContext>>,
 ): string {
-  const [intro, rules, requirement, asker, question, slices, notes] = isChinese(language)
-    ? [
-        "你是老板的助手。下面是一个 agent 提给老板的问题，以及这个需求的黑板内容。写出老板可以直接发出去的答复。",
-        "要求：直接给结论和依据，不要开场白，不要复述问题，不超过 4 行。黑板里答得出来就直接答；答不出来就说清楚缺什么、并给出你认为最可能的决定。",
-        "需求",
-        "提问的人",
-        "问题",
-        "切片",
-        "黑板",
-      ]
-    : [
-        "You draft answers for the boss. Below is a question an agent escalated, plus this requirement's blackboard. Write the reply the boss could send as-is.",
-        "Rules: conclusion and evidence, no preamble, no restating the question, at most 4 lines. Answer from the blackboard when it is there; when it is not, say what is missing and give the most likely decision.",
-        "requirement",
-        "asker",
-        "question",
-        "slices",
-        "blackboard",
-      ];
   return [
-    intro,
-    rules,
+    "You draft answers for the boss. Below is a question an agent escalated, plus this requirement's blackboard. Write a reply the boss can send as it stands.",
+    "Rules: conclusion and evidence, no preamble, no restating the question, at most 4 lines. Answer from the blackboard where it can be answered; where it cannot, say what is missing and give the decision you think most likely.",
     "",
-    `${requirement}: ${context.requirement}`,
-    `${asker}: ${escalation.asker ?? "?"} (${escalation.severity})`,
-    `${question}: ${escalation.question.slice(0, 2000)}`,
-    context.slices.length ? `\n${slices}:\n${context.slices.join("\n")}` : "",
-    context.notes.length ? `\n${notes}:\n${context.notes.join("\n")}` : "",
+    `requirement: ${context.requirement}`,
+    `asker: ${escalation.asker ?? "?"} (${escalation.severity})`,
+    `question: ${escalation.question.slice(0, 2000)}`,
+    context.slices.length ? `\nslices:\n${context.slices.join("\n")}` : "",
+    context.notes.length ? `\nblackboard:\n${context.notes.join("\n")}` : "",
   ].join("\n");
 }
 
@@ -387,7 +377,7 @@ export const getAnswerDraft = (async (ctx, _req, params) => {
   // The blackboard is newest-first and capped: this is the cheapest model in
   // the system and a 40k-character prompt costs more than the answer is worth.
   const context = await answerDraftContext(ctx, escalation.grp_id);
-  const prompt = answerDraftPrompt(ctx.config.language, escalation, context);
+  const prompt = answerDraftPrompt(escalation, context);
 
   try {
     const out = (await ctx.askIn({ project: escalation.project_id })(prompt)).trim();
