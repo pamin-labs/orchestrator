@@ -52,7 +52,14 @@ Measured on this machine, median of three alternating runs against `main`:
 |---|---|---|
 | `bun run test`, CPU | 137.2s | 151.6s (+10.5%) |
 | `bun run build:web`, wall | 0.22s | 0.25s |
-| `web/dist/main.js` | 1.70 MB | 1.86 MB |
+| `web/dist/main.js` | 1,697,982 B | 1,778,092 B (+4.7%) |
+| one catalog chunk | — | 125–156 KB |
+
+`main.js` grows by the Lingui runtime and the ICU compiler and by nothing else:
+`splitting: true` puts each catalog in its own chunk, so a browser fetches the
+one language it reads and English fetches none. The eight together are 1.09 MB
+on disk and nobody downloads them. An earlier revision of this table said
+1.86 MB, which was this number before the split.
 
 Both numbers are what they are because of a content-addressed cache in
 `.cache/lingui`. Without it the suite was +22% and `build:web` was 0.60s: under
