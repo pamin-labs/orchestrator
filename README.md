@@ -203,20 +203,20 @@ MIT licensed.
 ### Languages
 
 <!-- i18n:table -->
-**Panel** · 965 messages
+**Panel** · 974 messages
 
 | Language | Progress | Messages |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | source |
-| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 965 / 965 |
-| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 965 / 965 |
-| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 965 / 965 |
-| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 965 / 965 |
-| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 965 / 965 |
-| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 965 / 965 |
-| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 965 / 965 |
-| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 965 / 965 |
-| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 965 / 965 |
+| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
+| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
+| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
+| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
+| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
+| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
+| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
+| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
+| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
 
 <!-- /i18n:table -->
 
