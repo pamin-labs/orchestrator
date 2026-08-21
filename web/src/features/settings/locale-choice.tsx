@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
+import { useLingui } from "@lingui/react/macro";
 import { Menu, MenuItem } from "../../ui/menu";
-import { LOCALE_CHANGED, PrefSchema, preference, setPreference } from "../../i18n";
-import { endonymOf, type Locale } from "../../../../src/contracts/config";
+import { PrefSchema, setPreference } from "../../i18n";
+import { endonymOf } from "../../../../src/contracts/config";
 
 /**
  * Which language this browser reads, and nothing else.
@@ -17,24 +17,25 @@ import { endonymOf, type Locale } from "../../../../src/contracts/config";
  * the pane it is on, so the names are endonyms and come from the one table in
  * contracts rather than from a copy here.
  */
+/**
+ * The tick follows the locale that is *live*, not the one that was asked for.
+ *
+ * They differ while a catalog chunk is in flight, and they stay different if it
+ * never arrives — `applyLocale` falls back to English rather than leaving the
+ * panel unrendered. A tick on the language that failed to load would be the one
+ * thing on this pane that is not true.
+ */
 export function LocaleChoice() {
-  const [pref, setPref] = useState<Locale>(preference);
-  useEffect(() => {
-    const sync = () => setPref(preference());
-    window.addEventListener(LOCALE_CHANGED, sync);
-    return () => window.removeEventListener(LOCALE_CHANGED, sync);
-  }, []);
+  // `useLingui`, and no second copy of the value in React state: the provider
+  // already re-renders its consumers on `activate`, which is what the hand-rolled
+  // `orch:locale` event used to do less well.
+  const { i18n } = useLingui();
+  const pref = PrefSchema.catch("en").parse(i18n.locale);
 
   return (
     <Menu label={endonymOf(pref)}>
       {PrefSchema.options.map((locale) => (
-        <MenuItem
-          key={locale}
-          onSelect={() => {
-            setPreference(locale);
-            setPref(locale);
-          }}
-        >
+        <MenuItem key={locale} onSelect={() => setPreference(locale)}>
           <span className="flex items-center gap-2">
             {/* The tick holds its width either way, so the names stay on one
                 left edge rather than shifting as the choice moves. */}

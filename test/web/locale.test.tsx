@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { cleanup, fireEvent, render } from "../support/render.tsx";
+import { cleanup, fireEvent, render, waitFor } from "../support/render.tsx";
 import { LocaleChoice } from "../../web/src/features/settings/locale-choice.tsx";
 import { i18n, preference, setPreference } from "../../web/src/i18n.ts";
 import { endonymOf, localeOf } from "../../src/contracts/config.ts";
@@ -45,12 +45,18 @@ test("an unset preference is the browser's language", () => {
  */
 test("the picker names each language in that language, and stores what is picked", async () => {
   const { getByRole, findByRole } = render(<LocaleChoice />);
-  // The trigger says what is active; nothing here accepts text.
-  expect(getByRole("button").textContent).toContain(endonymOf(localeOf(navigator.language)));
+  // What is *live*, not what `localStorage` asked for: the suite activates `zh`,
+  // and until a catalog is actually active the two are allowed to disagree.
+  expect(getByRole("button").textContent).toContain(endonymOf("zh"));
 
   // Radix opens on pointerdown, not click — the same way telemetry-render drives its menu.
   fireEvent.pointerDown(getByRole("button"), { button: 0, ctrlKey: false });
   fireEvent.click(await findByRole("menuitem", { name: "日本語" }));
 
+  // Stored at once, so a reload lands on it either way.
   expect(preference()).toBe("ja");
+  // Shown once the chunk is in. This is the trade the control makes: a tick that
+  // waits for the catalog is a tick that never names a language the panel is not
+  // actually reading in.
+  await waitFor(() => expect(getByRole("button").textContent).toContain("日本語"));
 });
