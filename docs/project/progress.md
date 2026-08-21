@@ -810,6 +810,18 @@ M7 — executable engineering governance and versioned protocol.
   invented here already existed; what is left of the invention is a wire schema
   of two fields, because that much has to cross HTTP.
 
+- **A boss whose outward language is Korean gets English prompts, and the code
+  says so in an `if`.** `src/api/orch/escalation.ts:310` and `:339` branch on
+  `isChinese(ctx.config.language)` to pick between a Chinese prompt and an
+  English one — the same two-language pair `say()` had, in the one place the
+  panel's ten catalogues cannot reach, because this text goes into a model
+  prompt rather than onto a screen. The new rule puts the parts of a prompt a
+  person reads under `output.language`, so this is a real gap and not a
+  category-3 exemption; it is out of scope for the change that is landing, which
+  is why it is written down rather than left in the diff. `answerDraftContext`
+  also picks `常驻岗` or `standing` the same way, and that string reaches the
+  model as data.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run
