@@ -7,6 +7,7 @@ import { useOrch } from "../shared/api";
 import { cn } from "../ui/cn";
 import { Pane } from "../ui/bits";
 import { Boundary } from "./boundary";
+import { useHostAlerts } from "./alerts";
 import { Button } from "../ui/button";
 import { Card, CardBody, CardTitle } from "../ui/card";
 import { AskHost } from "../ui/confirm";
@@ -121,6 +122,13 @@ export function App() {
   const { ui, setAdding, setPickProject, setPickReq, setPicking, setSide } = useUi();
   const [behind, setBehind] = useState<Selection["view"]>("progress");
   const go = (patch: Partial<Selection>) => setSel((current) => ({ ...current, ...patch }));
+  // A broken host check interrupts here, once per fault, rather than in a
+  // terminal log nobody has open. Reads the snapshot that is already polled, and
+  // hands the boss the pane that lists every check with its own controls.
+  // `s` and not a `view`: the section is already part of a `Selection`, so this
+  // lands on the pane that lists every check rather than on the dialog's first
+  // tab with the boss one click from what they were told about.
+  useHostAlerts(st.failing, () => go({ view: "settings", s: "server" }));
 
   useEffect(() => {
     try {

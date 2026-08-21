@@ -180,8 +180,24 @@ export const UsageWindow = z.object({
   error: z.string().optional(),
 });
 
+/**
+ * A preflight check that is currently failing, on its way to the panel.
+ *
+ * No `ok`: only failures are sent. The whole set — passing included — is the
+ * settings page's answer, and it costs a host round trip to produce; this is the
+ * one the boss has to be told about without opening anything.
+ */
+export const HostFailure = z.object({
+  name: z.string(),
+  detail: z.string(),
+  /** How the boss fixes it. Server-authored, shown verbatim, never in a catalog. */
+  fix: z.string().optional(),
+});
+
 export const SnapshotSchema = z.object({
   ready: z.boolean(),
+  /** What preflight last found wrong. Empty on a healthy host. */
+  failing: z.array(HostFailure),
   projects: z.array(Project),
   groups: z.array(Group),
   slices: z.array(Slice),
@@ -218,4 +234,5 @@ export type Archived = z.infer<typeof Archived>;
 export type Escalation = z.infer<typeof Escalation>;
 export type DraftCard = z.infer<typeof DraftCard>;
 export type Answered = z.infer<typeof Answered>;
+export type HostFailure = z.infer<typeof HostFailure>;
 export type Snapshot = z.infer<typeof SnapshotSchema>;

@@ -70,6 +70,15 @@ export interface Ctx {
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
   /**
+   * Wired by the server: what the readiness timer last found, already computed.
+   *
+   * A getter and not a value because the timer replaces the array every tick.
+   * Running the checks costs host round trips and stays on that timer; *reading*
+   * the result costs nothing, which is why the panel snapshot may have it.
+   * Structural rather than `preflight.Check` so this file keeps importing nothing.
+   */
+  checks?: () => ReadonlyArray<{ name: string; ok: boolean; detail: string; fix?: string }>;
+  /**
    * The roles this installation has, wired by the server.
    *
    * `roleFor` reads it to answer "who reviews a slice" without any call site

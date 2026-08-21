@@ -36,6 +36,8 @@ import { appendFrame, notifyFrom, raise, readWire, type PanelFrame } from "./str
 export type { Agent, Archived, Escalation, Group, Slice };
 export type State = Snapshot;
 export type Usage = State["usage"][number];
+/** A host check the server found broken. Only failures are sent; see `SnapshotSchema`. */
+export type HostFailure = State["failing"][number];
 export type Cost = CostReport;
 export type AgentCost = CostReport["agents"][number];
 
@@ -203,6 +205,7 @@ const EMPTY: State = {
   // Assume wired until told otherwise: a mark on the header before the first
   // poll lands would flash on every reload.
   ready: true,
+  failing: [],
   projects: [],
   groups: [],
   slices: [],

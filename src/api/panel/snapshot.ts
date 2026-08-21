@@ -83,8 +83,12 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
      * The scheduler refuses to dispatch a turn without one, so a fleet in this
      * state is stopped and every view would look idle rather than blocked. One
      * boolean, so the header can carry the mark instead of the boss discovering
-     * it in a queue that never moves. The deeper checks — docker, the sandbox
-     * server, the sidecar version — cost network and stay in the settings page.
+     * it in a queue that never moves.
+     */
+    /**
+     * The deeper checks — docker, the sandbox server, the sidecar version — cost
+     * host round trips, so *running* them stays on the readiness timer. Reading
+     * their result costs nothing, which is why `failing` rides along here.
      */
     db.select({ n: count() }).from(runtime_auth),
     // `base_branch` rides along because it is the one thing add-a-project decided
@@ -329,6 +333,13 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
 
   return {
     ready: (credentials[0]?.n ?? 0) > 0,
+    // Only what is wrong, and only the three strings the boss needs to act:
+    // the whole set is the settings page's answer. `ok` is not among them — every
+    // row here is a failure by construction. Absent in unit tests and in any
+    // process with no readiness timer, which is an empty list, not an error.
+    failing: (ctx.checks?.() ?? []).flatMap((c) =>
+      c.ok ? [] : [{ name: c.name, detail: c.detail, ...(c.fix === undefined ? {} : { fix: c.fix }) }],
+    ),
     projects,
     groups,
     approvedBlocked: approvedBlocked.filter((b) => b.reason),

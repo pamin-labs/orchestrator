@@ -151,7 +151,8 @@ meter
 export interface RuntimeStatus {
   accepting: boolean;
   ready: boolean;
-  checks: ReadonlyArray<{ name: string; ok: boolean; detail: string }>;
+  /** `fix` rides along: `/readyz` has always serialised it, and the panel reads it. */
+  checks: ReadonlyArray<{ name: string; ok: boolean; detail: string; fix?: string }>;
   startedAt: number;
 }
 
