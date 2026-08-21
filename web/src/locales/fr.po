@@ -31,6 +31,14 @@ msgstr "(il faut d'abord une fusion)"
 msgid "(no reply was left)"
 msgstr "(aucune réponse)"
 
+#. placeholder {0}: failing.length
+msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
+msgstr "{0, plural, one {# vérification de l’hôte a échoué} other {# vérifications de l’hôte ont échoué}}"
+
+#. placeholder {0}: first.name
+msgid "{0} failed"
+msgstr "{0} a échoué"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, mais l'App n'est encore installée sur aucun compte"
 
@@ -731,6 +739,9 @@ msgstr "Jette toutes les modifications du tour en cours et revient au début de 
 msgid "Disconnect"
 msgstr "Déconnecter"
 
+msgid "Dismiss"
+msgstr "Fermer"
+
 msgid "Dispatcher is analyzing; no slices yet"
 msgstr "Le Répartiteur analyse ; pas encore de tranches"
 
@@ -870,6 +881,9 @@ msgstr "Filtrer ce journal"
 
 msgid "Filter this log…"
 msgstr "Filtrer ce journal…"
+
+msgid "Fix in settings"
+msgstr "Corriger dans les réglages"
 
 msgid "Fix this"
 msgstr "Corriger ceci"

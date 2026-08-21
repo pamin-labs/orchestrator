@@ -31,6 +31,14 @@ msgstr "(need one merge first)"
 msgid "(no reply was left)"
 msgstr "(no reply was left)"
 
+#. placeholder {0}: failing.length
+msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
+msgstr "{0, plural, one {# host check failed} other {# host checks failed}}"
+
+#. placeholder {0}: first.name
+msgid "{0} failed"
+msgstr "{0} failed"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, but the App is not installed on any account yet"
 
@@ -731,6 +739,9 @@ msgstr "Discard all changes in the current turn and return to the start of this 
 msgid "Disconnect"
 msgstr "Disconnect"
 
+msgid "Dismiss"
+msgstr "Dismiss"
+
 msgid "Dispatcher is analyzing; no slices yet"
 msgstr "Dispatcher is analyzing; no slices yet"
 
@@ -870,6 +881,9 @@ msgstr "Filter this log"
 
 msgid "Filter this log…"
 msgstr "Filter this log…"
+
+msgid "Fix in settings"
+msgstr "Fix in settings"
 
 msgid "Fix this"
 msgstr "Fix this"

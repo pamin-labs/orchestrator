@@ -31,6 +31,14 @@ msgstr "（合入一個才有）"
 msgid "(no reply was left)"
 msgstr "（沒有留下答覆）"
 
+#. placeholder {0}: failing.length
+msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
+msgstr "{0, plural, other {# 項主機檢查未通過}}"
+
+#. placeholder {0}: first.name
+msgid "{0} failed"
+msgstr "{0} 未通過"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}，但 App 還沒裝到任何賬號上"
 
@@ -731,6 +739,9 @@ msgstr "丟棄當前 turn 的全部改動，退回到這一輪開始前。"
 msgid "Disconnect"
 msgstr "斷開"
 
+msgid "Dismiss"
+msgstr "關閉"
+
 msgid "Dispatcher is analyzing; no slices yet"
 msgstr "Dispatcher 在深挖，還沒有切片"
 
@@ -870,6 +881,9 @@ msgstr "過濾這份日誌"
 
 msgid "Filter this log…"
 msgstr "過濾這份日誌…"
+
+msgid "Fix in settings"
+msgstr "去設定裡修"
 
 msgid "Fix this"
 msgstr "要改一處"

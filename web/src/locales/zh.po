@@ -31,6 +31,14 @@ msgstr "（合入一个才有）"
 msgid "(no reply was left)"
 msgstr "（没有留下答复）"
 
+#. placeholder {0}: failing.length
+msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
+msgstr "{0, plural, other {# 项主机检查未通过}}"
+
+#. placeholder {0}: first.name
+msgid "{0} failed"
+msgstr "{0} 未通过"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}，但 App 还没装到任何账号上"
 
@@ -731,6 +739,9 @@ msgstr "丢弃当前 turn 的全部改动，退回到这一轮开始前。"
 msgid "Disconnect"
 msgstr "断开"
 
+msgid "Dismiss"
+msgstr "关闭"
+
 msgid "Dispatcher is analyzing; no slices yet"
 msgstr "Dispatcher 在深挖，还没有切片"
 
@@ -870,6 +881,9 @@ msgstr "过滤这份日志"
 
 msgid "Filter this log…"
 msgstr "过滤这份日志…"
+
+msgid "Fix in settings"
+msgstr "去设置里修"
 
 msgid "Fix this"
 msgstr "要改一处"

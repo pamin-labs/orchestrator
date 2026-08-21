@@ -31,6 +31,14 @@ msgstr "(erst ein Merge nötig)"
 msgid "(no reply was left)"
 msgstr "(keine Antwort)"
 
+#. placeholder {0}: failing.length
+msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
+msgstr "{0, plural, one {# Host-Prüfung fehlgeschlagen} other {# Host-Prüfungen fehlgeschlagen}}"
+
+#. placeholder {0}: first.name
+msgid "{0} failed"
+msgstr "{0} fehlgeschlagen"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, aber die App ist noch auf keinem Konto installiert"
 
@@ -731,6 +739,9 @@ msgstr "Verwirft alle Änderungen des laufenden Zugs und geht zum Anfang dieser 
 msgid "Disconnect"
 msgstr "Trennen"
 
+msgid "Dismiss"
+msgstr "Schließen"
+
 msgid "Dispatcher is analyzing; no slices yet"
 msgstr "Der Dispatcher analysiert; noch keine Abschnitte"
 
@@ -870,6 +881,9 @@ msgstr "Dieses Log filtern"
 
 msgid "Filter this log…"
 msgstr "Dieses Log filtern…"
+
+msgid "Fix in settings"
+msgstr "In den Einstellungen beheben"
 
 msgid "Fix this"
 msgstr "Das beheben"

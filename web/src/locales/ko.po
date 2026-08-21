@@ -31,6 +31,14 @@ msgstr "(먼저 병합 1회 필요)"
 msgid "(no reply was left)"
 msgstr "(답변 없음)"
 
+#. placeholder {0}: failing.length
+msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
+msgstr "{0, plural, other {호스트 검사 #개가 실패했습니다}}"
+
+#. placeholder {0}: first.name
+msgid "{0} failed"
+msgstr "{0} 실패"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, 다만 App이 아직 어떤 계정에도 설치되지 않았습니다"
 
@@ -731,6 +739,9 @@ msgstr "이번 턴의 변경을 모두 버리고 이 라운드 처음으로 돌�
 msgid "Disconnect"
 msgstr "연결 해제"
 
+msgid "Dismiss"
+msgstr "닫기"
+
 msgid "Dispatcher is analyzing; no slices yet"
 msgstr "디스패처가 분석 중. 아직 슬라이스 없음"
 
@@ -870,6 +881,9 @@ msgstr "이 로그 검색"
 
 msgid "Filter this log…"
 msgstr "이 로그 검색…"
+
+msgid "Fix in settings"
+msgstr "설정에서 고치기"
 
 msgid "Fix this"
 msgstr "이거 고치기"

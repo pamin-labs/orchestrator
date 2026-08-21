@@ -7,7 +7,7 @@ import { useOrch } from "../shared/api";
 import { cn } from "../ui/cn";
 import { Pane } from "../ui/bits";
 import { Boundary } from "./boundary";
-import { useHostAlerts } from "./alerts";
+import { HostAlert } from "./alerts";
 import { Button } from "../ui/button";
 import { Card, CardBody, CardTitle } from "../ui/card";
 import { AskHost } from "../ui/confirm";
@@ -128,7 +128,6 @@ export function App() {
   // `s` and not a `view`: the section is already part of a `Selection`, so this
   // lands on the pane that lists every check rather than on the dialog's first
   // tab with the boss one click from what they were told about.
-  useHostAlerts(st.failing, () => go({ view: "settings", s: "server" }));
 
   useEffect(() => {
     try {
@@ -349,7 +348,10 @@ export function App() {
           refresh(null);
         }}
       />
-      <div className="grid h-dvh grid-rows-[auto_minmax(0,1fr)]">
+      {/* Three rows, not two: the host banner is a row of the shell rather than
+          an overlay, so a broken check never covers the board it is reporting
+          about, and `minmax(0,1fr)` keeps the body scrolling on its own. */}
+      <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)]">
         <header className="z-10 flex h-14 items-center gap-5 border-b border-rule bg-rail px-6">
           <button
             type="button"
@@ -466,6 +468,7 @@ export function App() {
             </Tip>
           </span>
         </header>
+        <HostAlert failing={st.failing} onFix={() => go({ view: "settings", s: "server" })} />
         <Group orientation="horizontal" className={cn("h-full min-h-0", bodyClass(timeline))}>
           <Panel className="min-w-0 overflow-hidden" defaultSize="100%">
             <div className={cn("flex h-full max-w-[76rem] flex-col px-6 pt-5", scrollClass(view))}>

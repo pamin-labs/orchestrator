@@ -31,6 +31,14 @@ msgstr "(нужно сначала одно слияние)"
 msgid "(no reply was left)"
 msgstr "(ответа нет)"
 
+#. placeholder {0}: failing.length
+msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
+msgstr "{0, plural, one {# проверка хоста не пройдена} few {# проверки хоста не пройдены} many {# проверок хоста не пройдено} other {# проверки хоста не пройдено}}"
+
+#. placeholder {0}: first.name
+msgid "{0} failed"
+msgstr "{0}: сбой"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, но App ещё не установлено ни в одном аккаунте"
 
@@ -731,6 +739,9 @@ msgstr "Отбрасывает все изменения текущего ход
 msgid "Disconnect"
 msgstr "Отключить"
 
+msgid "Dismiss"
+msgstr "Закрыть"
+
 msgid "Dispatcher is analyzing; no slices yet"
 msgstr "Диспетчер анализирует; срезов пока нет"
 
@@ -870,6 +881,9 @@ msgstr "Отфильтровать этот лог"
 
 msgid "Filter this log…"
 msgstr "Отфильтровать этот лог…"
+
+msgid "Fix in settings"
+msgstr "Исправить в настройках"
 
 msgid "Fix this"
 msgstr "Исправить это"
