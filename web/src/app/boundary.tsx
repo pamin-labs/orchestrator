@@ -28,9 +28,14 @@ export class Boundary extends Component<{ children: ReactNode }, { err: Error | 
             <Trans>This view crashed</Trans>
           </CardTitle>
           <div className="mt-1 text-secondary text-ink-2">
-            <Trans>Frontend and server versions may be out of sync. Restart the service (</Trans>
-            <span className="font-mono">bun run dev</span>
-            <Trans>) to rebuild the frontend.</Trans>
+            {/* One `<Trans>`, not three: split at the `<span>` this left the
+                catalog holding `") to rebuild the frontend."`, a fragment no
+                translator can place. Wrapped whole, the command becomes `<0>` and
+                the sentence can be reordered around it. */}
+            <Trans>
+              Frontend and server versions may be out of sync. Restart the service (
+              <span className="font-mono">bun run dev</span>) to rebuild the frontend.
+            </Trans>
           </div>
           <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-sunk p-2 font-mono text-meta text-ink-2">
             {err.message}

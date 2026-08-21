@@ -38,7 +38,7 @@ import {
   wheelWindow,
 } from "./model";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { ph, t } from "@lingui/core/macro";
 import { i18n } from "../../i18n";
 
 /**
@@ -250,7 +250,7 @@ function StageTable({
   // Under a millisecond the quoted ceiling rounds to "0ms", which reads as a
   // broken number rather than as a fast stage, so it says so in words instead.
   const restCount = fast.length;
-  const restCeiling = ceiling < 1 ? t`all under 1ms` : t`all under ${duration(ceiling)}`;
+  const restCeiling = ceiling < 1 ? t`all under 1ms` : t`all under ${ph({ ceiling: duration(ceiling) })}`;
   return (
     <div>
       <div className={cn("grid gap-x-3 border-b border-rule pb-1 text-meta text-ink-3", COLS)}>
@@ -305,7 +305,7 @@ function StageTable({
                   <span className="truncate text-body text-ink">{group.label}</span>
                   {group.errors > 0 && (
                     <span className="shrink-0 font-mono text-pill text-bad">
-                      <Trans>{group.errors} failed</Trans>
+                      <Trans>{{ failed: group.errors }} failed</Trans>
                     </span>
                   )}
                 </span>
@@ -388,7 +388,7 @@ function StageTable({
                                can be long — the row stays a row. */
                             <Tip label={stage.reason ?? t`No reason recorded`}>
                               <span className="shrink-0 font-mono text-pill text-bad">
-                                <Trans>{stage.errors} failed</Trans>
+                                <Trans>{{ failed: stage.errors }} failed</Trans>
                               </span>
                             </Tip>
                           )}

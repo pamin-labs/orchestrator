@@ -1,39 +1,9 @@
 {
-  "921x3i": {
-    "message": " ({0} more not yet assigned)",
-    "placeholders": {
-      "0": ["bare.length"]
-    },
-    "comments": [],
-    "translation": " (mais {0} sem atribuição)"
-  },
-  "6yx4Js": {
-    "message": " read-only",
-    "placeholders": {},
-    "comments": [],
-    "translation": " somente leitura"
-  },
   "E4B4Vb": {
     "message": ", ",
     "placeholders": {},
     "comments": [],
     "translation": ", "
-  },
-  "K3M7mM": {
-    "message": ", {0} from the repository",
-    "placeholders": {
-      "0": ["tally.repo"]
-    },
-    "comments": [],
-    "translation": ", {0} do repositório"
-  },
-  "dG1ff6": {
-    "message": ", about {0}k tokens of prefix per turn",
-    "placeholders": {
-      "0": ["tally.k"]
-    },
-    "comments": [],
-    "translation": ", cerca de {0}k tokens de prefixo por turno"
   },
   "fwbE-9": {
     "message": "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it.",
@@ -67,94 +37,6 @@
     "comments": [],
     "translation": "(sem resposta)"
   },
-  "ItRr_m": {
-    "message": ") to rebuild the frontend.",
-    "placeholders": {},
-    "comments": [],
-    "translation": ") para reconstruir o frontend."
-  },
-  "njveiC": {
-    "message": "{0} (per the remote)",
-    "placeholders": {
-      "0": ["d.baseBranchNow"]
-    },
-    "comments": [],
-    "translation": "{0} (segundo o remoto)"
-  },
-  "OX4rbn": {
-    "message": "{0} failed",
-    "placeholders": {
-      "0": ["group.errors", "stage.errors"]
-    },
-    "comments": [],
-    "translation": "{0} falharam"
-  },
-  "jp78K0": {
-    "message": "{0} files",
-    "placeholders": {
-      "0": ["stats.files"]
-    },
-    "comments": [],
-    "translation": "{0} arquivos"
-  },
-  "3yj9TL": {
-    "message": "{0} is not enabled",
-    "placeholders": {
-      "0": ["sk.name"]
-    },
-    "comments": [],
-    "translation": "{0} não está ativado"
-  },
-  "qk-JJq": {
-    "message": "{0} objected after the fact",
-    "placeholders": {
-      "0": ["o.author"]
-    },
-    "comments": [],
-    "translation": "{0} objetou depois"
-  },
-  "Lpw5j3": {
-    "message": "{0} repositories",
-    "placeholders": {
-      "0": ["account.repos"]
-    },
-    "comments": [],
-    "translation": "{0} repositórios"
-  },
-  "RGwZnD": {
-    "message": "{0} repositories, most recently touched first",
-    "placeholders": {
-      "0": ["data.repos.length"]
-    },
-    "comments": [],
-    "translation": "{0} repositórios, os mais recentes primeiro"
-  },
-  "0d4OLA": {
-    "message": "{0} requirements have no boundary right now: {bareNames}.",
-    "placeholders": {
-      "0": ["bare.length"],
-      "bareNames": ["bareNames"]
-    },
-    "comments": [],
-    "translation": "{0} requisitos estão sem fronteira agora: {bareNames}."
-  },
-  "fvImQM": {
-    "message": "{0} selected",
-    "placeholders": {
-      "0": ["sel.length"]
-    },
-    "comments": [],
-    "translation": "{0} selecionados"
-  },
-  "Oa9KS5": {
-    "message": "{0}/{1} ticked reach the sandbox",
-    "placeholders": {
-      "0": ["tally.staged"],
-      "1": ["tally.user"]
-    },
-    "comments": [],
-    "translation": "{0}/{1} marcados chegam ao sandbox"
-  },
   "ovCU-t": {
     "message": "{accountName}, but the App is not installed on any account yet",
     "placeholders": {
@@ -162,6 +44,47 @@
     },
     "comments": [],
     "translation": "{accountName}, mas o App ainda não está instalado em nenhuma conta"
+  },
+  "3jCHOH": {
+    "message": "{branch} (per the remote)",
+    "placeholders": {
+      "branch": ["d.baseBranchNow"]
+    },
+    "comments": [],
+    "translation": "{branch} (segundo o remoto)"
+  },
+  "EgGTUv": {
+    "message": "{count} repositories",
+    "placeholders": {
+      "count": ["account.repos"]
+    },
+    "comments": [],
+    "translation": "{count} repositórios"
+  },
+  "bpqI7e": {
+    "message": "{count} repositories, most recently touched first",
+    "placeholders": {
+      "count": ["data.repos.length"]
+    },
+    "comments": [],
+    "translation": "{count} repositórios, os mais recentes primeiro"
+  },
+  "Gs_xJH": {
+    "message": "{count} requirements have no boundary right now: {bareNames}.",
+    "placeholders": {
+      "count": ["bare.length"],
+      "bareNames": ["bareNames"]
+    },
+    "comments": [],
+    "translation": "{count} requisitos estão sem fronteira agora: {bareNames}."
+  },
+  "8mILnH": {
+    "message": "{count} selected",
+    "placeholders": {
+      "count": ["sel.length"]
+    },
+    "comments": [],
+    "translation": "{count} selecionados"
   },
   "lwVyiD": {
     "message": "{d} days ago",
@@ -180,6 +103,14 @@
     "comments": [],
     "translation": "{d}d {hoursLeft}h"
   },
+  "f8Zj5h": {
+    "message": "{failed} failed",
+    "placeholders": {
+      "failed": ["group.errors", "stage.errors"]
+    },
+    "comments": [],
+    "translation": "{failed} falharam"
+  },
   "EKD809": {
     "message": "{fails} failed",
     "placeholders": {
@@ -188,6 +119,14 @@
     "comments": [],
     "translation": "{fails} falharam"
   },
+  "vC7F1S": {
+    "message": "{files} files",
+    "placeholders": {
+      "files": ["stats.files"]
+    },
+    "comments": [],
+    "translation": "{files} arquivos"
+  },
   "Uia4Si": {
     "message": "{groupCount} requirements touch different files and can run together",
     "placeholders": {
@@ -195,6 +134,15 @@
     },
     "comments": [],
     "translation": "{groupCount} requisitos tocam arquivos diferentes e podem rodar juntos"
+  },
+  "gawrVE": {
+    "message": "{groupCount} requirements touch different files and can run together ({more} more not yet assigned)",
+    "placeholders": {
+      "groupCount": ["groupCount"],
+      "more": ["bare.length"]
+    },
+    "comments": [],
+    "translation": "{groupCount} requisitos tocam arquivos diferentes e podem rodar juntos (mais {more} sem atribuição)"
   },
   "yzqNV2": {
     "message": "{groups, plural, one {# requirement} other {# requirements}} in <0>{repoPath}</0>",
@@ -318,6 +266,14 @@
     "comments": [],
     "translation": "há {months} meses"
   },
+  "wQeq_G": {
+    "message": "{mount} read-only",
+    "placeholders": {
+      "mount": ["m.mountPath"]
+    },
+    "comments": [],
+    "translation": "{mount} somente leitura"
+  },
   "6bwnTR": {
     "message": "{n, plural, one {# slice} other {# slices}}",
     "placeholders": {
@@ -410,14 +366,22 @@
     "comments": [],
     "translation": "{runningCount} em execução · {total} no total"
   },
-  "WgyR3J": {
-    "message": "{sessionTokens} tokens this session · {0}",
+  "H0oPj-": {
+    "message": "{sessionTokens} tokens this session · {model}",
     "placeholders": {
-      "0": ["a.model"],
-      "sessionTokens": ["sessionTokens"]
+      "sessionTokens": ["sessionTokens"],
+      "model": ["a.model"]
     },
     "comments": [],
-    "translation": "{sessionTokens} tokens nesta sessão · {0}"
+    "translation": "{sessionTokens} tokens nesta sessão · {model}"
+  },
+  "BVx080": {
+    "message": "{skill} is not enabled",
+    "placeholders": {
+      "skill": ["sk.name"]
+    },
+    "comments": [],
+    "translation": "{skill} não está ativado"
   },
   "4DAwh9": {
     "message": "{spent} / {cap} tokens. Spending it all suspends the whole group.",
@@ -427,6 +391,27 @@
     },
     "comments": [],
     "translation": "{spent} / {cap} tokens. Gastar tudo suspende o grupo inteiro."
+  },
+  "Xa5ZV1": {
+    "message": "{staged}/{ticked} ticked reach the sandbox, {fromRepo} from the repository, about {tokens}k tokens of prefix per turn",
+    "placeholders": {
+      "staged": ["tally.staged"],
+      "ticked": ["tally.user"],
+      "fromRepo": ["tally.repo"],
+      "tokens": ["tally.k"]
+    },
+    "comments": [],
+    "translation": "{staged}/{ticked} marcados chegam ao sandbox, {fromRepo} do repositório, cerca de {tokens}k tokens de prefixo por turno"
+  },
+  "bXyMH2": {
+    "message": "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn",
+    "placeholders": {
+      "staged": ["tally.staged"],
+      "ticked": ["tally.user"],
+      "tokens": ["tally.k"]
+    },
+    "comments": [],
+    "translation": "{staged}/{ticked} marcados chegam ao sandbox, cerca de {tokens}k tokens de prefixo por turno"
   },
   "TY7CY9": {
     "message": "{storedHint} stored; paste a new one to replace it",
@@ -467,6 +452,14 @@
     },
     "comments": [],
     "translation": "{who} está esperando sua resposta"
+  },
+  "ivEOtK": {
+    "message": "{who} objected after the fact",
+    "placeholders": {
+      "who": ["o.author"]
+    },
+    "comments": [],
+    "translation": "{who} objetou depois"
   },
   "l9xcKR": {
     "message": "{width} per bucket",
@@ -569,13 +562,13 @@
     "comments": [],
     "translation": "Adicionar"
   },
-  "un9nqz": {
-    "message": "Add · {0}",
+  "TG2Kag": {
+    "message": "Add · {branch}",
     "placeholders": {
-      "0": ["repo.defaultBranch"]
+      "branch": ["repo.defaultBranch"]
     },
     "comments": [],
-    "translation": "Adicionar · {0}"
+    "translation": "Adicionar · {branch}"
   },
   "IVZx0R": {
     "message": "Add a row",
@@ -667,13 +660,13 @@
     "comments": [],
     "translation": "Tudo passa"
   },
-  "pjnIc0": {
-    "message": "all under {0}",
+  "aZv_pW": {
+    "message": "all under {ceiling}",
     "placeholders": {
-      "0": ["duration(ceiling)"]
+      "ceiling": ["duration(ceiling)"]
     },
     "comments": [],
-    "translation": "tudo abaixo de {0}"
+    "translation": "tudo abaixo de {ceiling}"
   },
   "NDQ395": {
     "message": "all under 1ms",
@@ -707,13 +700,13 @@
     "comments": [],
     "translation": "Respondido em seu nome"
   },
-  "MNAzbz": {
-    "message": "answered on your behalf by {0}",
+  "Z4YyjY": {
+    "message": "answered on your behalf by {who}",
     "placeholders": {
-      "0": ["a.answered_by"]
+      "who": ["a.answered_by"]
     },
     "comments": [],
-    "translation": "respondido em seu nome por {0}"
+    "translation": "respondido em seu nome por {who}"
   },
   "9f6OQn": {
     "message": "API address",
@@ -1751,14 +1744,14 @@
     "comments": [],
     "translation": "Fluxo de eventos"
   },
-  "sqPg_r": {
-    "message": "Every container goes: sandboxes for {0} groups, and {1} turns currently running.",
+  "E37aad": {
+    "message": "Every container goes: sandboxes for {groups} groups, and {turns} turns currently running.",
     "placeholders": {
-      "0": ["server.containers"],
-      "1": ["server.runningTurns"]
+      "groups": ["server.containers"],
+      "turns": ["server.runningTurns"]
     },
     "comments": [],
-    "translation": "Todo contêiner conta: sandboxes de {0} grupos e {1} turnos rodando agora."
+    "translation": "Todo contêiner conta: sandboxes de {groups} grupos e {turns} turnos rodando agora."
   },
   "wTEow6": {
     "message": "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\nDrag in screenshots or designs, or paste. Cmd+Enter to submit",
@@ -1916,11 +1909,11 @@
     "comments": [],
     "translation": "Da sua conta do GitHub conectada"
   },
-  "4FtUNJ": {
-    "message": "Frontend and server versions may be out of sync. Restart the service (",
+  "nHqUCw": {
+    "message": "Frontend and server versions may be out of sync. Restart the service (<0>bun run dev</0>) to rebuild the frontend.",
     "placeholders": {},
     "comments": [],
-    "translation": "As versões do frontend e do servidor podem estar dessincronizadas. Reinicie o serviço ("
+    "translation": "As versões do frontend e do servidor podem estar dessincronizadas. Reinicie o serviço com <0>bun run dev</0> para reconstruir o frontend."
   },
   "rP26c9": {
     "message": "Full /v1/embeddings address, OpenAI-shaped. Write full, not just hostname—which path a provider uses is pure guesswork. Used only when mode is remote.",
@@ -1940,13 +1933,13 @@
     "comments": [],
     "translation": "Portão"
   },
-  "e59Xgm": {
-    "message": "gate {0}",
+  "SjqGe0": {
+    "message": "gate {verdict}",
     "placeholders": {
-      "0": ["verdict.text"]
+      "verdict": ["verdict.text"]
     },
     "comments": [],
-    "translation": "portão {0}"
+    "translation": "portão {verdict}"
   },
   "1tD4eM": {
     "message": "Gate check",
@@ -2050,13 +2043,13 @@
     "comments": [],
     "translation": "Ir mesclar o PR ↗"
   },
-  "_Hk7AP": {
-    "message": "Go to {0} →",
+  "hqwpf5": {
+    "message": "Go to {project} →",
     "placeholders": {
-      "0": ["repo.taken.name"]
+      "project": ["repo.taken.name"]
     },
     "comments": [],
-    "translation": "Ir para {0} →"
+    "translation": "Ir para {project} →"
   },
   "aQBZnK": {
     "message": "Go to ChatGPT to enter code",
@@ -3073,13 +3066,13 @@
     "comments": [],
     "translation": "Só esta etapa"
   },
-  "HWAICJ": {
-    "message": "Open {0}",
+  "ck1ryM": {
+    "message": "Open {entry}",
     "placeholders": {
-      "0": ["props.entry.name"]
+      "entry": ["props.entry.name"]
     },
     "comments": [],
-    "translation": "Abrir {0}"
+    "translation": "Abrir {entry}"
   },
   "AptlFm": {
     "message": "Open a new PR",
@@ -3105,13 +3098,13 @@
     "comments": [],
     "translation": "Abrir PR ↗"
   },
-  "eOzpoB": {
-    "message": "Optional, self-hosted gateway → {0}",
+  "Kfkb70": {
+    "message": "Optional, self-hosted gateway → {envVar}",
     "placeholders": {
-      "0": ["props.runtime.urlEnv"]
+      "envVar": ["props.runtime.urlEnv"]
     },
     "comments": [],
-    "translation": "Opcional, gateway próprio → {0}"
+    "translation": "Opcional, gateway próprio → {envVar}"
   },
   "UYUgdb": {
     "message": "Order",
@@ -3320,10 +3313,10 @@
     "translation": "Consultar o uso da assinatura"
   },
   "5LTB0L": {
-    "translation": "Intervalos de consulta",
     "message": "Polling intervals",
     "placeholders": {},
-    "comments": []
+    "comments": [],
+    "translation": "Intervalos de consulta"
   },
   "uVradX": {
     "message": "PR link not found",
@@ -3559,13 +3552,13 @@
     "comments": [],
     "translation": "Remover"
   },
-  "w61W3L": {
-    "message": "Remove {0}",
+  "e_K7vM": {
+    "message": "Remove {attachment}",
     "placeholders": {
-      "0": ["f.name"]
+      "attachment": ["f.name"]
     },
     "comments": [],
-    "translation": "Remover {0}"
+    "translation": "Remover {attachment}"
   },
   "Tcxuis": {
     "message": "Remove {name}?",
@@ -4068,13 +4061,13 @@
     "comments": [],
     "translation": "devolvido"
   },
-  "9wpFIo": {
-    "message": "sent back {0} times",
+  "Lhkms1": {
+    "message": "sent back {times} times",
     "placeholders": {
-      "0": ["evidence.retries"]
+      "times": ["evidence.retries"]
     },
     "comments": [],
-    "translation": "devolvido {0} vezes"
+    "translation": "devolvido {times} vezes"
   },
   "sGH11W": {
     "message": "Server",
@@ -4159,13 +4152,13 @@
     "comments": [],
     "translation": "Mostrar os outros {restCount} ({restCeiling})"
   },
-  "TLSF4A": {
-    "message": "showing {0}",
+  "TZ6MlW": {
+    "message": "showing {span}",
     "placeholders": {
-      "0": ["humanName(zoomed)"]
+      "span": ["humanName(zoomed)"]
     },
     "comments": [],
-    "translation": "mostrando {0}"
+    "translation": "mostrando {span}"
   },
   "M8DQJW": {
     "message": "Silence this long and the group is asked what it is doing. Not a failure — a long compile is silent too — so this is hours rather than minutes.",
@@ -4561,10 +4554,10 @@
     "translation": "Tempo"
   },
   "R9PvNq": {
-    "translation": "Tempos limite",
     "message": "Timeouts",
     "placeholders": {},
-    "comments": []
+    "comments": [],
+    "translation": "Tempos limite"
   },
   "TtMxW4": {
     "message": "Timing for all activity on this machine, last 24h",
@@ -4776,13 +4769,13 @@
     "comments": [],
     "translation": "Válido por um ano"
   },
-  "Rc58yh": {
-    "message": "Valid until {0}",
+  "fH2znm": {
+    "message": "Valid until {when}",
     "placeholders": {
-      "0": ["clock(login.device.expiresAt)"]
+      "when": ["clock(login.device.expiresAt)"]
     },
     "comments": [],
-    "translation": "Válido até {0}"
+    "translation": "Válido até {when}"
   },
   "VfbDAF": {
     "message": "View diff",
@@ -5052,13 +5045,13 @@
     "comments": [],
     "translation": "Escreva o endereço completo de /v1/embeddings e a busca remota liga."
   },
-  "0Csw8z": {
-    "message": "Writes {0} into Co-Authored-By",
+  "7fDtst": {
+    "message": "Writes {bot} into Co-Authored-By",
     "placeholders": {
-      "0": ["s.bot.name"]
+      "bot": ["s.bot.name"]
     },
     "comments": [],
-    "translation": "Escreve {0} em Co-Authored-By"
+    "translation": "Escreve {bot} em Co-Authored-By"
   },
   "Hpf_lH": {
     "message": "Wrong direction",

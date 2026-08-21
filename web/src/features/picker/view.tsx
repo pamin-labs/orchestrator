@@ -10,6 +10,7 @@ import { browseListing, browseRow, repoRow, type Entry } from "./model";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { ph } from "@lingui/core/macro";
 
 const EntrySchema = z.object({
   name: z.string(),
@@ -56,7 +57,7 @@ function PickBrowseRow(props: RowProps) {
       {props.isDir ? (
         <button
           type="button"
-          aria-label={t`Open ${props.entry.name}`}
+          aria-label={t`Open ${ph({ entry: props.entry.name })}`}
           onClick={() => props.load(props.entry.path)}
           className="cursor-pointer font-mono text-secondary text-ink-3 hover:text-accent"
         >
@@ -449,7 +450,7 @@ function RepoFooter({ data, onCancel }: { data: RepoList | null; onCancel: (() =
   return (
     <div className="flex shrink-0 items-center gap-2 border-t border-rule p-3">
       <span className="min-w-0 grow truncate text-secondary text-ink-3">
-        {data?.repos.length ? t`${data.repos.length} repositories, most recently touched first` : ""}
+        {data?.repos.length ? t`${ph({ count: data.repos.length })} repositories, most recently touched first` : ""}
       </span>
       {onCancel && (
         <Button onClick={onCancel}>
@@ -628,7 +629,7 @@ export function FilePicker({
         footer={() => (
           <>
             <span className="min-w-0 grow truncate text-secondary text-ink-3">
-              {sel.length ? t`${sel.length} selected` : t`None selected`}
+              {sel.length ? t`${ph({ count: sel.length })} selected` : t`None selected`}
             </span>
             <Button onClick={() => onOpenChange(false)}>
               <Trans>Cancel</Trans>

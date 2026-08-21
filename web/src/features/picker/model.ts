@@ -1,4 +1,4 @@
-import { t } from "@lingui/core/macro"; /**
+import { ph, t } from "@lingui/core/macro"; /**
  * What the two pickers work out before they draw a row.
  *
  * Both surfaces are lists of one-line rows whose whole content is a decision:
@@ -114,7 +114,9 @@ export function repoRow(repo: RepoLine, busy: string): RepoMarks {
   return {
     name: repo.fullName.split("/")[1] ?? repo.fullName,
     meta: adding ? t`Adding…` : repo.taken ? t`Added` : days(repo.pushedAt),
-    action: repo.taken ? t`Go to ${repo.taken.name} →` : t`Add · ${repo.defaultBranch}`,
+    action: repo.taken
+      ? t`Go to ${ph({ project: repo.taken.name })} →`
+      : t`Add · ${ph({ branch: repo.defaultBranch })}`,
     adding,
   };
 }

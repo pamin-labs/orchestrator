@@ -207,19 +207,19 @@ translated from there. `bun run i18n:progress` regenerates this; CI fails if it
 is stale.
 
 <!-- i18n:table -->
-**Panel** · 811 messages
+**Panel** · 809 messages
 
 | Language | Progress | Messages |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | source |
-| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
-| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
-| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
-| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
-| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
-| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
-| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
-| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 811 / 811 |
+| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
+| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
+| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
+| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
+| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
+| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
+| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
+| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
 
 **What the orchestrator says** · 44, Chinese and English only
 

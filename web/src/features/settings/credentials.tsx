@@ -13,7 +13,7 @@ import {
   CodexLoginFlowSchema as CodexLoginSchema,
 } from "../../../../src/contracts/login-flow";
 import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { ph, t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
 import { i18n } from "../../i18n";
 import type { MessageDescriptor } from "@lingui/core";
@@ -431,7 +431,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
             {/* The real expiry, not a remembered one. `15 分钟` was written into
                 the copy while `expiresAt` sat two lines up driving the timer
                 that clears this block. */}
-            <Meta>{t`Valid until ${clock(login.device.expiresAt)}`}</Meta>
+            <Meta>{t`Valid until ${ph({ when: clock(login.device.expiresAt) })}`}</Meta>
             <span className="grow" />
             <Button
               size="sm"
@@ -527,7 +527,7 @@ function CredentialSettings({ state }: { state: CredentialState }) {
           <Input
             id={`${props.runtime.key}-url`}
             className="font-mono"
-            placeholder={t`Optional, self-hosted gateway → ${props.runtime.urlEnv}`}
+            placeholder={t`Optional, self-hosted gateway → ${ph({ envVar: props.runtime.urlEnv })}`}
             value={form.baseUrl}
             onChange={(e) => changeForm({ baseUrl: e.target.value })}
           />

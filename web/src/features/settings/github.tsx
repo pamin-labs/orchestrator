@@ -10,7 +10,7 @@ import { DeviceCode } from "./auth";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { ph, t } from "@lingui/core/macro";
 
 export const GhStatusSchema: z.ZodType<InferResponseType<typeof api.auth.github.$get, 200>> = z.object({
   connected: z.boolean(),
@@ -274,7 +274,9 @@ function AccountRow({ account }: { account: Installation }) {
       {/* Tabular figures: `86` and `5` share a right edge either way,
           but proportional digits make the two counts look like two
           different scales. */}
-      <Meta className="tabular-nums">{account.repos === null ? t`Can't count` : t`${account.repos} repositories`}</Meta>
+      <Meta className="tabular-nums">
+        {account.repos === null ? t`Can't count` : t`${ph({ count: account.repos })} repositories`}
+      </Meta>
     </div>
   );
 }
@@ -348,7 +350,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
               disabled={busy}
               onCheckedChange={(v) => set({ coauthor: v })}
             />
-            <Meta>{t`Writes ${s.bot.name} into Co-Authored-By`}</Meta>
+            <Meta>{t`Writes ${ph({ bot: s.bot.name })} into Co-Authored-By`}</Meta>
           </FieldContent>
         </Field>
       </FieldGroup>

@@ -860,7 +860,7 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
         <div key={a.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
           <div className="flex items-baseline gap-2">
             <span className="font-mono text-meta text-ink-3">
-              <Trans>answered on your behalf by {a.answered_by}</Trans>
+              <Trans>answered on your behalf by {{ who: a.answered_by }}</Trans>
             </span>
             <span className="grow" />
             <Button
@@ -1056,7 +1056,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           className="my-2 break-words whitespace-pre-wrap rounded-md bg-sunk px-2.5 py-2 text-secondary"
         >
           <b className="font-semibold text-warn">
-            <Trans>{o.author} objected after the fact</Trans>
+            <Trans>{{ who: o.author }} objected after the fact</Trans>
           </b>{" "}
           {o.body}
         </div>

@@ -264,7 +264,7 @@ export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; 
         )}
         {zoomed !== null && (
           <span className="shrink-0 text-meta text-ink-3">
-            <Trans>showing {humanName(zoomed)}</Trans>
+            <Trans>showing {{ span: humanName(zoomed) }}</Trans>
           </span>
         )}
         {zoomed === null && zoom < 1 && (

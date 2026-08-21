@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { ph, t } from "@lingui/core/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Head, Input, Meta } from "../../ui/bits";
 import { Badge } from "../../ui/badge";
@@ -30,11 +30,13 @@ import { skillsKey } from "../composer/view";
 
 /** What ticking a skill costs: how many reach the sandbox, and the prefix they
  *  add to every turn. */
-const skillsNote = (tally: { staged: number; user: number; repo: number; k: number }): string => {
-  const mine = t`${tally.staged}/${tally.user} ticked reach the sandbox`;
-  const repo = tally.repo ? t`, ${tally.repo} from the repository` : "";
-  return `${mine}${repo}${t`, about ${tally.k}k tokens of prefix per turn`}`;
-};
+/** Two whole sentences rather than three fragments glued together. Assembled, the
+ *  catalog held `", {0} from the repository"` — a clause starting with a comma,
+ *  which fixes the order of every language to English's. */
+const skillsNote = (tally: { staged: number; user: number; repo: number; k: number }): string =>
+  tally.repo
+    ? t`${ph({ staged: tally.staged })}/${ph({ ticked: tally.user })} ticked reach the sandbox, ${ph({ fromRepo: tally.repo })} from the repository, about ${ph({ tokens: tally.k })}k tokens of prefix per turn`
+    : t`${ph({ staged: tally.staged })}/${ph({ ticked: tally.user })} ticked reach the sandbox, about ${ph({ tokens: tally.k })}k tokens of prefix per turn`;
 
 export function Skills({ projectId }: { projectId: number | null }) {
   const { t } = useLingui();

@@ -13,7 +13,7 @@ import { Tip } from "../../ui/tooltip";
 import { ImageRow } from "../project/view";
 import type { AuthRow, HostCheck } from "./auth";
 import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { ph, t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
@@ -255,7 +255,7 @@ function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: (
       title: t`Restart the sandbox server?`,
       // The evidence beside the button: this is not a service bounce, it is
       // every container going away and every turn inside them dying with it.
-      body: `${t`Every container goes: sandboxes for ${server.containers} groups, and ${server.runningTurns} turns currently running.`}\n\n${t`An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected.`}`,
+      body: `${t`Every container goes: sandboxes for ${ph({ groups: server.containers })} groups, and ${ph({ turns: server.runningTurns })} turns currently running.`}\n\n${t`An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected.`}`,
       yes: t`Restart`,
       danger: true,
     });

@@ -36,7 +36,7 @@ import {
   type Slash,
 } from "./model";
 import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { ph, t } from "@lingui/core/macro";
 
 export type { Draft, Skill };
 
@@ -219,7 +219,7 @@ export function AttachmentTiles({ files, onRemove }: { files: Attached[]; onRemo
           )}
           <button
             type="button"
-            aria-label={t`Remove ${f.name}`}
+            aria-label={t`Remove ${ph({ attachment: f.name })}`}
             className="cursor-pointer text-ink-3 hover:text-bad"
             onClick={() => onRemove(i)}
           >
@@ -392,7 +392,7 @@ export function Composer({
     // the text is injected into this one turn — but the agent cannot reach for it
     // on its own afterwards, and that difference is invisible from the picker.
     const go = await ask({
-      title: t`${sk.name} is not enabled`,
+      title: t`${ph({ skill: sk.name })} is not enabled`,
       body: t`Disabled skills aren't in the sandbox; the agent can't find it. Enable it in settings, or cancel this insertion?`,
       yes: t`Go to settings`,
     });

@@ -9,7 +9,7 @@ import { DiffView } from "../diff/view";
 import { Segment, Segments } from "../../ui/segment";
 import { Tip } from "../../ui/tooltip";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { ph, t } from "@lingui/core/macro";
 
 const PAD = "px-4";
 const failed = (verdict: { body: string }) => /\bfail\b/i.test(verdict.body);
@@ -127,12 +127,12 @@ function EvidenceHeader({
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
         <span className="min-w-0 text-body text-ink">{evidence.accept_spec}</span>
         <Meta className="shrink-0">
-          {stats.files ? t`${stats.files} files` : t`No changes`}
+          {stats.files ? t`${ph({ files: stats.files })} files` : t`No changes`}
           {evidence.diff && ` · +${stats.plus} −${stats.minus}`}
         </Meta>
         {evidence.retries > 0 && (
           <Meta className="shrink-0 text-warn">
-            <Trans>sent back {evidence.retries} times</Trans>
+            <Trans>sent back {{ times: evidence.retries }} times</Trans>
           </Meta>
         )}
         <span className="grow" />

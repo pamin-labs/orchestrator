@@ -25,7 +25,7 @@ import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 import { StoredProjectConfigSchema } from "../../../../src/contracts/config.ts";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { ph, t } from "@lingui/core/macro";
 
 const projectConfigPost = api.project[":id"].config.$post;
 export type ProjectPatch = NonNullable<Parameters<typeof projectConfigPost>[0]>["json"];
@@ -202,7 +202,7 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
         <Row
           label={t`Base branch`}
           value={now.baseBranch}
-          placeholder={t`${d.baseBranchNow} (per the remote)`}
+          placeholder={t`${ph({ branch: d.baseBranchNow })} (per the remote)`}
           width="max-w-[14rem]"
           busy={busy}
           onSave={(v) => patch({ baseBranch: v || null })}

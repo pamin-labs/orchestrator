@@ -11,6 +11,7 @@ import { Empty, Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { ph } from "@lingui/core/macro";
 
 /**
  * What this group's container is, and what it is saying right now.
@@ -125,8 +126,9 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
         <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1">
           {info.sandbox.mounts.map((m) => (
             <Meta key={m.mountPath} title={m.hostPath}>
-              {m.mountPath}
-              {m.readOnly ? t` read-only` : ""}
+              {/* The whole label, not a `" read-only"` suffix: a translator given
+                  that fragment cannot see what it hangs off. */}
+              {m.readOnly ? t`${ph({ mount: m.mountPath })} read-only` : m.mountPath}
             </Meta>
           ))}
         </div>

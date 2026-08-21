@@ -14,7 +14,7 @@ import { z } from "zod";
 import { jsonOr } from "../../../../src/contracts/json.ts";
 import { NotesResponseSchema, type PanelNote as Note } from "../../../../src/contracts/notes";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { msg } from "@lingui/core/macro";
+import { ph, msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
 import { said } from "../../shared/select";
@@ -60,7 +60,7 @@ function Evidence({ note, gate, files }: { note: Note; gate: string | null; file
   const verdict = gate ? { ...found, text: found ? i18n._(found.text) : gate } : null;
   return (
     <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
-      {verdict && <Meta className={verdict.className}>{t`gate ${verdict.text}`}</Meta>}
+      {verdict && <Meta className={verdict.className}>{t`gate ${ph({ verdict: verdict.text })}`}</Meta>}
       {files.map((file) => (
         <Tip key={file} label={file}>
           <Meta className="min-w-0 truncate font-mono">{file}</Meta>

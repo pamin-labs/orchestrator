@@ -15,7 +15,7 @@ import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { activityOf } from "../../shared/activity";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { ph, t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { said } from "../../shared/select";
@@ -290,7 +290,7 @@ const sameGround = (names: string[]): string => {
 
 const sessionTip = (a: State["agents"][number]): string => {
   const sessionTokens = K(a.session_tokens);
-  return t`${sessionTokens} tokens this session · ${a.model}`;
+  return t`${sessionTokens} tokens this session · ${ph({ model: a.model })}`;
 };
 
 export function Owns({ st, projectId }: { st: State; projectId: number }) {
@@ -308,7 +308,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
           No boundaries drawn yet. The Architect decides which paths each group may write before work starts; groups
           without one run into the same files.
         </Trans>{" "}
-        {bare.length > 0 && t`${bare.length} requirements have no boundary right now: ${bareNames}.`}
+        {bare.length > 0 && t`${ph({ count: bare.length })} requirements have no boundary right now: ${bareNames}.`}
       </Empty>
     );
   }
@@ -326,8 +326,17 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
           </b>
         ) : (
           <b className="text-body font-semibold">
-            <Trans>{groupCount} requirements touch different files and can run together</Trans>
-            {bare.length ? t` (${bare.length} more not yet assigned)` : ""}
+            {/* Two whole sentences, because the tail was extracted as
+                `" ({0} more not yet assigned)"` — a parenthetical with a leading
+                space and nothing to attach it to. */}
+            {bare.length ? (
+              <Trans>
+                {groupCount} requirements touch different files and can run together ({{ more: bare.length }} more not
+                yet assigned)
+              </Trans>
+            ) : (
+              <Trans>{groupCount} requirements touch different files and can run together</Trans>
+            )}
           </b>
         )}
       </div>
