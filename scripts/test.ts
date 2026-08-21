@@ -17,7 +17,81 @@
  * the newest stable and still does this. Every workflow runs `ubuntu-24.04`,
  * which is x64 and has no PAC — so this is a local-only tax, not a flaky CI.
  */
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+
 export const CRASHED = /worker crashed with SIG|Segmentation fault|oh no: Bun has crashed/;
+
+/**
+ * One suite run at a time, because a namespace is named per worker.
+ *
+ * `BUN_TEST_WORKER_ID` restarts at 0 every run, so a second concurrent run takes
+ * the first one's schemas and empties its tables mid-test. That is not a slow
+ * run, it is a wrong one: duplicate keys, absent foreign parents and
+ * `relation "agent" does not exist` across files that share nothing — and a
+ * corrupt run looks exactly like a broken branch.
+ */
+/**
+ * A lock file, not an advisory lock in the database: the pool hands each
+ * statement whichever connection is free, so a session-scoped lock on one of
+ * twenty-four is not held by the run. A lock left by a killed run names its own
+ * pid, which is what lets it be cleared and said out loud.
+ */
+const LOCK = `${import.meta.dir}/../node_modules/.cache/orch-test.lock`;
+
+/** Whether a pid is still around. Signal 0 asks without delivering anything. */
+function alive(pid: number): boolean {
+  if (!Number.isFinite(pid)) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The pid in the lock file, or 0 when there is none to read. */
+function holder(): number {
+  try {
+    return Number(readFileSync(LOCK, "utf8"));
+  } catch {
+    return 0;
+  }
+}
+
+function claim(): () => void {
+  mkdirSync(dirname(LOCK), { recursive: true });
+  for (let attempt = 0; ; attempt++) {
+    // `wx` is `O_CREAT | O_EXCL`: it creates or it throws, with no window between
+    // the two in which a second run could decide the same thing.
+    try {
+      writeFileSync(LOCK, String(process.pid), { flag: "wx" });
+      break;
+    } catch {}
+    const held = holder();
+    if (!alive(held) && attempt === 0) {
+      console.error(`[test] clearing a lock left by pid ${held}, which is gone.`);
+      try {
+        unlinkSync(LOCK);
+      } catch {}
+      continue;
+    }
+    console.error(
+      `\n[test] another suite run (pid ${held}) is already using this repository's test\n` +
+        `[test] namespaces. Two runs share schema names and empty each other's tables,\n` +
+        `[test] which reports as failures in files neither run touched. Wait for it, or\n` +
+        `[test] run one file: bun run test <path> --max-concurrency=2\n`,
+    );
+    process.exit(1);
+  }
+  return () => {
+    // Only if it is still ours: a run that outlived its lock must not delete the
+    // lock of the run that legitimately took over.
+    try {
+      if (holder() === process.pid) unlinkSync(LOCK);
+    } catch {}
+  };
+}
 
 async function run(): Promise<{ code: number; crashed: boolean }> {
   const args = ["test", "--parallel", ...Bun.argv.slice(2)];
@@ -38,6 +112,8 @@ async function run(): Promise<{ code: number; crashed: boolean }> {
 // `import.meta.main`, so the test that pins `CRASHED` to a real panic can import
 // this file without running the whole suite to get at one regular expression.
 if (import.meta.main) {
+  const release = claim();
+  process.on("exit", release);
   const first = await run();
   if (first.code === 0 || !first.crashed) process.exit(first.code);
 
