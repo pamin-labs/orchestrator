@@ -689,6 +689,33 @@ M7 — executable engineering governance and versioned protocol.
   `src/contracts/config.ts` beside the schema it interprets, because the panel
   needs the same answer.
 
+- **The plan card's six section headings were Chinese literals, and three
+  independent readers matched them.** `roles/dispatcher.yaml` told the agent to
+  write `## 目标`, `src/mech/util/validate.ts` parsed for it, and the panel
+  matched it by prefix — three parties aligned on one Chinese string while
+  `output.language` was free to be any of nine. They are protocol tokens that
+  happen to look like Chinese, the same category as `application/json`, so they
+  are `goal`, `non-goals`, `accept`, `slices`, `risk`, `objection` now, matched
+  case-insensitively, with the old headings kept in an `ALIAS` table because a
+  queue can hold cards written on either side of the change. `dispatcher.yaml`'s
+  example slice had to become `add tests` rather than `add test cases`:
+  `validate.ts`'s `testOnly` pattern carries neither `more` nor `cases`, and the
+  wrong wording would have made the teaching example silently legal. Verified
+  against the compiled pattern before writing it.
+
+- **155 Chinese strings under `src/` were never a translation problem.** ADR 035
+  puts errors in category 2 and CLAUDE.md says the same in one line, so
+  `docker 装了但没启动` and `密钥不对，服务器不认` were a rule violation, not a
+  missing catalog — reading them that way is what made the batch tractable, since
+  none of them needs nine catalogs. Preflight's `detail`/`fix` pairs, the sandbox
+  server and image diagnostics, the auth errors, `ghlogin`'s device-flow failures
+  and `checkout`'s silent-skip reasons are English. The `say()` bodies are
+  untouched: they are category 3 and follow `output.language`, which is why
+  `authflow.ts` correctly reads `GitHub 没连上：the authorization was denied on
+  GitHub` — a category 3 wrapper around a category 2 error. The baseline the
+  governance guard ratchets against went 407 → 252, of which 44 are `say()`'s own
+  table.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run
