@@ -203,21 +203,21 @@ MIT licensed.
 ### Languages
 
 <!-- i18n:table -->
-**Panel** · 809 messages
+**Panel** · 810 messages
 
 | Language | Progress | Messages |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | source |
-| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
-| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
-| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
-| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
-| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
-| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
-| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
-| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 809 / 809 |
+| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
+| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
+| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
+| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
+| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
+| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
+| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
+| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
 
-**What the orchestrator says** · 44, Chinese and English only
+**What the orchestrator says through `say()`** · 44, Chinese and English only
 
 | Language | Progress | Messages |
 | --- | --- | ---: |

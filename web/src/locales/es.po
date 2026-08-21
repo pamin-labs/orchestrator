@@ -1658,6 +1658,9 @@ msgstr "Leer del servidor"
 msgid "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser."
 msgstr "Se lee de la propia configuración del servidor de sandbox (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Los valores no pasan por el navegador."
 
+msgid "Read-only. Every one of these has to pass before a container starts"
+msgstr "Solo lectura. Todo esto tiene que pasar antes de que arranque un contenedor"
+
 msgid "Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage."
 msgstr "Lee cuánto queda de la ventana de suscripción, con curl desde el contenedor de utilidades. Nada se bloquea por ello; la cabecera simplemente no muestra porcentaje."
 
@@ -1891,9 +1894,6 @@ msgstr "Del mismo orden que el arriendo y de la misma naturaleza: una compilaci�
 
 msgid "Sandbox"
 msgstr "Sandbox"
-
-msgid "Sandbox configuration"
-msgstr "Configuración del sandbox"
 
 msgid "Sandbox defaults"
 msgstr "Valores por defecto del sandbox"
@@ -2380,6 +2380,9 @@ msgstr "Peso:"
 
 msgid "What"
 msgstr "Qué"
+
+msgid "What has to be here"
+msgstr "Lo que tiene que estar"
 
 msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
 msgstr "El idioma en que escriben los agentes. El código, los commits, las ramas, los PRs y los errores siguen en inglés. Cambiarlo reinicia todas las sesiones."

@@ -1658,6 +1658,9 @@ msgstr "从服务器读"
 msgid "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser."
 msgstr "从沙盒服务器自己的配置里读（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）。值不经过浏览器。"
 
+msgid "Read-only. Every one of these has to pass before a container starts"
+msgstr "只读。容器起来之前，这些必须全通过"
+
 msgid "Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage."
 msgstr "读订阅窗口还剩多少，从工具容器里 curl。没有东西等它；顶栏只是不显示百分比而已。"
 
@@ -1891,9 +1894,6 @@ msgstr "和 lease 同一个量级，因为是同一类东西——真的在编�
 
 msgid "Sandbox"
 msgstr "沙盒"
-
-msgid "Sandbox configuration"
-msgstr "沙盒要用的"
 
 msgid "Sandbox defaults"
 msgstr "沙盒默认值"
@@ -2380,6 +2380,9 @@ msgstr "分量："
 
 msgid "What"
 msgstr "在做什么"
+
+msgid "What has to be here"
+msgstr "必须就位的东西"
 
 msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
 msgstr "agent 用什么语言写。代码、commit、分支名、PR 和错误信息始终是英文。改这一项会重启每一个 session。"

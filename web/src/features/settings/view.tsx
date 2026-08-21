@@ -4,7 +4,6 @@ import { useEffect, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
-  MonitorCog,
   Box,
   Coins,
   Gauge,
@@ -93,20 +92,18 @@ const NAV: Array<{ key: Section; label: MessageDescriptor; icon: typeof KeyRound
   // because there is only GitHub, and the day there is a second one, renaming a
   // nav item is one string.
   { key: "github", label: msg`GitHub`, icon: GitBranch },
-  // What this machine has, which is a different question from how a container is
-  // configured: docker and uv are facts about the host, read-only, and the answer
-  // to "why will nothing start". Folded into 沙盒 once and taken back out — that
-  // pane is about the server and its defaults, and a prerequisite is not a
-  // setting.
-  { key: "host", label: msg`Environment`, icon: MonitorCog },
-  // The server *and* what it is told to build, in one pane. These were two
-  // sections, and the comment on the second one already said it belonged "under
-  // 沙盒服务器, the same subject one level down" — while the rendering put five
-  // panes between them. Worse, they overlapped: `sandbox.server` and
-  // `sandbox.image` were knob rows *and* purpose-built rows here, so one value
-  // had two controls in two places, and the knob version of the image is a plain
-  // text box while this one lists what the registry actually has.
-  { key: "server", label: msg`Sandbox`, icon: Server },
+  // The server, what stops it starting, and what it builds by default — one
+  // subject, one pane. It was two: 环境 held the host prerequisites and 沙盒 held
+  // the server, on the argument that "a prerequisite is not a setting". The
+  // split never took. Both panes read the same `checks` array, and both drew
+  // `allowed_host_paths` from it — the same fact printed twice, two entries
+  // apart in a list of eleven.
+  //
+  // Named `Sandbox server`, not `Sandbox`: a project has a pane called 沙盒 too,
+  // and two navigation rows reading the same word is how somebody opens the
+  // wrong one. The `<Head>` inside already said `Sandbox server`, so the name
+  // was on screen the whole time — one row above it said something else.
+  { key: "server", label: msg`Sandbox server`, icon: Server },
   // Not a setting, and it sits here anyway. It was an accordion at the foot of
   // the landing page, which is the page for what waits on the boss — and how
   // long `GET /state` took never waits on anybody. This dialog is where you come
@@ -441,10 +438,13 @@ function SettingsPanes({
         <Knobs section="repo" />
       </>
     ),
-    host: <EnvPane checks={checks.filter((c) => !isCredential(c))} />,
     server: (
       <>
         <SandboxServerSettings open={open} section={section} rows={rows} checks={checks} onSaved={onSaved} />
+        {/* Why it will not start, under the thing that will not start. Read-only,
+            and the credential rows are dropped: those have their own pane and
+            their own controls. */}
+        <EnvPane checks={checks.filter((c) => !isCredential(c))} />
         {/* What a container is built with, for a project that says nothing. A
             project's own 沙盒 pane overrides these. */}
         <Knobs section="boxdefaults" />
@@ -615,7 +615,7 @@ function SettingsNavigation({
   // the gear in the header, which is where they saw it before they clicked.
   const nags: Partial<Record<Section, boolean>> = {
     cred: needsCredentials(rows),
-    host: needsHostAttention(checks),
+    server: needsHostAttention(checks),
     gates: needsGates(project),
   };
 

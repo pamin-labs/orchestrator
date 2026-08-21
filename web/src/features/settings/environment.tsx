@@ -19,11 +19,23 @@ import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
 
 /** Can this machine build a sandbox at all. Four facts, one line each. */
+/**
+ * Why nothing will start: docker, uv, the sidecar image, the mounts.
+ *
+ * `allowed_host_paths` is dropped, and only here — `ServerDrift` above already
+ * draws it, with the exact TOML line to paste. Both panes used to read this same
+ * array from two entries apart in the navigation; now that they are one pane it
+ * would be the same fact twice on one screen.
+ */
 export function EnvPane({ checks }: { checks: HostCheck[] }) {
+  const rest = checks.filter((c) => c.name !== "allowed_host_paths");
   return (
     <>
-      <Head title={t`Environment`} note={t`Sandbox configuration`} />
-      {!checks.length && (
+      <Head
+        title={t`What has to be here`}
+        note={t`Read-only. Every one of these has to pass before a container starts`}
+      />
+      {!rest.length && (
         <Meta className="block py-2">
           <Trans>Loading…</Trans>
         </Meta>
@@ -31,7 +43,7 @@ export function EnvPane({ checks }: { checks: HostCheck[] }) {
       {/* One idiom for row rules across the dialog: the list draws them, not the
           rows, so there is no `first:` exception to forget. */}
       <div className="divide-y divide-rule-soft">
-        {checks.map((c) => (
+        {rest.map((c) => (
           <EnvironmentCheck key={c.name} check={c} />
         ))}
       </div>

@@ -1658,6 +1658,9 @@ msgstr "サーバーから読む"
 msgid "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser."
 msgstr "サンドボックスサーバー自身の設定（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）から読みます。値がブラウザを通ることはありません。"
 
+msgid "Read-only. Every one of these has to pass before a container starts"
+msgstr "読み取り専用。コンテナが起動する前に、ここが全部通っている必要があります"
+
 msgid "Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage."
 msgstr "サブスクの残り枠を読み取ります。ユーティリティコンテナから curl します。これを待って止まるものはなく、失敗してもヘッダーにパーセントが出ないだけです。"
 
@@ -1891,9 +1894,6 @@ msgstr "リースと同じ桁、同じ性質——本物のコンパイルです
 
 msgid "Sandbox"
 msgstr "サンドボックス"
-
-msgid "Sandbox configuration"
-msgstr "サンドボックス設定"
 
 msgid "Sandbox defaults"
 msgstr "サンドボックスの既定値"
@@ -2380,6 +2380,9 @@ msgstr "重み："
 
 msgid "What"
 msgstr "内容"
+
+msgid "What has to be here"
+msgstr "そろっている必要があるもの"
 
 msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
 msgstr "agent が書くときの言語。コード、commit、ブランチ名、PR、エラーは英語のまま。変更すると全 session が再起動します。"

@@ -1658,6 +1658,9 @@ msgstr "서버에서 읽기"
 msgid "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser."
 msgstr "샌드박스 서버 자체 설정(OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml)에서 읽습니다. 값이 브라우저를 거치지 않습니다."
 
+msgid "Read-only. Every one of these has to pass before a container starts"
+msgstr "읽기 전용. 컨테이너가 뜨기 전에 여기가 전부 통과해야 합니다"
+
 msgid "Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage."
 msgstr "구독 창이 얼마나 남았는지 읽습니다. 유틸리티 컨테이너에서 curl로 가져옵니다. 이걸 기다려 막히는 건 없고, 실패하면 헤더에 퍼센트가 안 뜰 뿐입니다."
 
@@ -1891,9 +1894,6 @@ msgstr "리스와 같은 자릿수, 같은 성격 — 진짜 컴파일입니다.
 
 msgid "Sandbox"
 msgstr "샌드박스"
-
-msgid "Sandbox configuration"
-msgstr "샌드박스 설정"
 
 msgid "Sandbox defaults"
 msgstr "샌드박스 기본값"
@@ -2380,6 +2380,9 @@ msgstr "가중치:"
 
 msgid "What"
 msgstr "내용"
+
+msgid "What has to be here"
+msgstr "갖춰져 있어야 하는 것"
 
 msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
 msgstr "에이전트가 쓰는 언어. 코드, 커밋, 브랜치 이름, PR, 오류는 영어로 유지됩니다. 바꾸면 모든 세션이 재시작됩니다."

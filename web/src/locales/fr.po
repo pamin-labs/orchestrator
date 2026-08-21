@@ -1658,6 +1658,9 @@ msgstr "Lire depuis le serveur"
 msgid "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser."
 msgstr "Lu depuis la configuration propre du serveur de bac à sable (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Les valeurs ne transitent pas par le navigateur."
 
+msgid "Read-only. Every one of these has to pass before a container starts"
+msgstr "Lecture seule. Tout ceci doit passer avant qu'un conteneur démarre"
+
 msgid "Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage."
 msgstr "Lit ce qu'il reste de la fenêtre d'abonnement, via curl depuis le conteneur utilitaire. Rien n'attend dessus ; l'en-tête n'affiche simplement aucun pourcentage."
 
@@ -1891,9 +1894,6 @@ msgstr "Même ordre de grandeur que la réservation, même nature — une vraie 
 
 msgid "Sandbox"
 msgstr "Bac à sable"
-
-msgid "Sandbox configuration"
-msgstr "Configuration du bac à sable"
 
 msgid "Sandbox defaults"
 msgstr "Réglages par défaut du bac à sable"
@@ -2380,6 +2380,9 @@ msgstr "Poids :"
 
 msgid "What"
 msgstr "Quoi"
+
+msgid "What has to be here"
+msgstr "Ce qui doit être là"
 
 msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
 msgstr "La langue dans laquelle écrivent les agents. Code, commits, branches, PR et erreurs restent en anglais. Le modifier redémarre toutes les sessions."

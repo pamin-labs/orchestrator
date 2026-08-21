@@ -1658,6 +1658,9 @@ msgstr "Прочитать с сервера"
 msgid "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser."
 msgstr "Читается из собственной конфигурации сервера песочниц (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Значения не проходят через браузер."
 
+msgid "Read-only. Every one of these has to pass before a container starts"
+msgstr "Только чтение. Всё это должно пройти, прежде чем запустится контейнер"
+
 msgid "Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage."
 msgstr "Читает, сколько осталось от окна подписки, curl'ом из служебного контейнера. Ничто на этом не блокируется; в шапке просто не будет процента."
 
@@ -1891,9 +1894,6 @@ msgstr "Тот же порядок, что и аренда, и та же при�
 
 msgid "Sandbox"
 msgstr "Песочница"
-
-msgid "Sandbox configuration"
-msgstr "Настройка песочницы"
 
 msgid "Sandbox defaults"
 msgstr "Значения песочницы по умолчанию"
@@ -2380,6 +2380,9 @@ msgstr "Вес:"
 
 msgid "What"
 msgstr "Что"
+
+msgid "What has to be here"
+msgstr "Что должно быть на месте"
 
 msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
 msgstr "Язык, на котором пишут агенты. Код, коммиты, ветки, PR и ошибки остаются английскими. Изменение перезапускает все сессии."

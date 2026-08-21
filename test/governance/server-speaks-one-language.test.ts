@@ -1,0 +1,74 @@
+import { expect, test } from "bun:test";
+import { parseSync, traverse } from "@babel/core";
+import { readdirSync, readFileSync } from "node:fs";
+import BASELINE from "./server-chinese-baseline.json";
+
+/**
+ * `src/` carries 407 hardcoded Chinese literals across 36 files, and this test
+ * does not fix that. It stops it growing.
+ *
+ * The panel is translated into nine languages and the server is not, so a Korean
+ * reader gets a Korean pane with `服务器开了鉴权，我们没带密钥` inside it. Every one
+ * of those is a string the panel renders but cannot reach: `say()` has 44 of
+ * them and 28 call sites, and the rest bypass it entirely.
+ */
+/**
+ * `RegExpLiteral` as well as strings, and that is the part worth copying.
+ * `panel-speaks-english.test.ts` visits `StringLiteral`, `TemplateElement` and
+ * `JSXText` — a regular expression is none of those, so a scan built from it
+ * cannot see `/(花钱|付费|采购|订阅|预算|密钥)/` in `chain.ts`, the pattern deciding
+ * which questions must reach a person. Regexes are exactly the literals where a
+ * translation breaks behaviour rather than reading oddly.
+ */
+const CJK = /[一-鿿ぁ-ヿ가-힯　-〿＀-￯]/;
+const ROOT = `${process.cwd()}/src`;
+
+const walk = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith(".ts") ? [`${dir}/${e.name}`] : [],
+  );
+
+/** Parsed, not grepped, so a comment in Chinese is not a finding. */
+function countIn(path: string): number {
+  const ast = parseSync(readFileSync(path, "utf8"), {
+    filename: path,
+    configFile: false,
+    babelrc: false,
+    parserOpts: { plugins: ["typescript"] },
+  });
+  if (!ast) return 0;
+  let n = 0;
+  traverse(ast, {
+    StringLiteral: (p) => void (CJK.test(p.node.value) && n++),
+    TemplateElement: (p) => void (CJK.test(p.node.value.raw) && n++),
+    RegExpLiteral: (p) => void (CJK.test(p.node.pattern) && n++),
+  });
+  return n;
+}
+
+const baseline = BASELINE as Record<string, number>;
+
+test("no file under src grows its count of Chinese literals", () => {
+  const grew: string[] = [];
+  const shrank: string[] = [];
+  for (const path of walk(ROOT)) {
+    const file = path.slice(ROOT.length + 1);
+    const now = countIn(path);
+    const was = baseline[file] ?? 0;
+    if (now > was) grew.push(`${file}: ${was} → ${now}`);
+    if (now < was) shrank.push(`${file}: ${was} → ${now}`);
+  }
+  // Growing is the failure this exists for: a new hardcoded sentence is one more
+  // string a Korean reader will meet in Chinese.
+  expect(grew).toEqual([]);
+  // Shrinking is the work, and the baseline has to follow it down — or the file
+  // it was fixed in silently reopens the same room it was closed out of.
+  expect(shrank).toEqual([]);
+});
+
+test("a file with no baseline entry may not introduce one", () => {
+  const fresh = walk(ROOT)
+    .map((p) => p.slice(ROOT.length + 1))
+    .filter((f) => !(f in baseline) && countIn(`${ROOT}/${f}`) > 0);
+  expect(fresh).toEqual([]);
+});
