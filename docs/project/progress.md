@@ -716,6 +716,69 @@ M7 — executable engineering governance and versioned protocol.
   governance guard ratchets against went 407 → 252, of which 44 are `say()`'s own
   table.
 
+- **A guard that could not fail, for the third time in one branch.**
+  `test/platform/lang.test.ts` asserted `!say(...).includes("{")` — against a
+  function whose whole body replaces every `{word}` with `String(args[k] ?? "")`.
+  It could never be red. Replaced with a set comparison of the placeholder names
+  in each row, and it immediately found six that had been rendering as empty
+  string in a green suite: `slice.autoaccept: {tier}`, `gate.reconcile: {reason}`,
+  `group.blocked: {path}` and `{target}`, `group.unblocked: {target}`,
+  `wd.budget_80: {pct}`. This is the same shape as `settings-boundary.test.ts`
+  seeing 37 of 61 knob paths and `panel-speaks-english.test.ts` never visiting a
+  `RegExpLiteral`: not a missing guard, a guard that looks present and stops
+  anyone from writing a real one.
+
+- **The escalation gate read two languages while the panel grew to ten.**
+  `isReserved` decides which questions an agent may never answer on the boss's
+  behalf — money, merging to `main`, credentials, production, changing scope. It
+  was five English patterns and one Chinese one, written when the panel spoke
+  two languages; an agent writes its question in `output.language`, so a Japanese
+  or Russian one walked through. Fifty probes — five topics across ten locales —
+  and the old gate caught eight. Two of the misses were in the languages it was
+  written for: `budget increase` is a word order nobody uses, and `subscri`
+  inside `\b(…)\b` could never match, because subscribe and subscription both
+  continue into another word character. The one topic with a recurring bill
+  attached had a dead keyword from the day it was written. Now
+  `Record<Locale, readonly RegExp[]>`, so the compiler stops the eleventh
+  language rather than the boss discovering he was never asked — which it
+  collected on the same afternoon, when adding `zh-Hant` failed to compile until
+  its row existed.
+
+- **Traditional Chinese is generated, not translated.** `scripts/i18n-hant.ts`
+  runs `zh.po` through opencc-js with two term tables: five corrections where
+  `s2twp` over-converts (映象 for 映像, 閘道器 for 閘道, 程序 — which is Taiwanese
+  for *program* — for 行程) and sixteen it leaves in Mainland form. `zh-Hant`
+  is ordered before `zh` in `LANGUAGES` because CLDR's likelySubtags resolves a
+  bare `zh` to Simplified, and `isChinese` is a prefix test because `=== "zh"`
+  would have given a Traditional reader **English** — worse than before the
+  locale existed. The guard asserts counts rather than presence, so an opencc-js
+  upgrade that quietly restores 映象 is caught while every other check is green.
+
+- **A prompt firewall on the role files, and nowhere else.** `promptpurify`'s
+  deterministic layer refuses to load a role whose prompt impersonates an
+  instruction, naming the file, the rule and the span to delete. Checking the
+  *assembled* prompt was built, measured and rejected: `src/runtime/codex.ts:36`
+  is `argv.push("--ignore-user-config", "--ignore-rules")`, so an engineer asked
+  to audit this project's own runtime trips the gate every time — a fixed string
+  in our source, not a probabilistic false positive. The classifier is not wired
+  at all: this repository's benign content scores a median 0.545 while six of
+  eight injections written against this orchestrator score 0.25–0.40, so the
+  attacks rank below ordinary source code and no threshold separates them. ADR
+  042 carries the numbers and the condition under which the rejected half can be
+  reopened.
+
+- **Two concurrent suite runs shared their namespaces and emptied each other.**
+  A test namespace is `t_<tag>_w<BUN_TEST_WORKER_ID>`, and that id restarts at 0
+  every run, so a second `bun run test` takes the same schemas as the first and
+  deletes its rows mid-test. It reports as duplicate keys, absent foreign parents
+  and `relation "agent" does not exist` scattered across files that share
+  nothing — two agents each spent a full suite diagnosing a branch that was fine,
+  because a corrupt run and a broken branch look identical. `scripts/test.ts`
+  takes an `O_EXCL` lock and refuses the second run by name; a lock left by a
+  killed run is cleared and said out loud. `emptied()` was accused first and is
+  innocent: its deletes are a data-modifying CTE inside a transaction, which
+  PostgreSQL runs to completion whether or not the query reads them.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run

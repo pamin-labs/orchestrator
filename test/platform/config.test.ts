@@ -106,7 +106,10 @@ test("the Dispatcher prompt carries the concrete bad-split example", () => {
   // Abstract advice ("slices must be independent") produced three steps of one
   // change on a real run. The anti-example is the part that teaches, so it has to
   // survive a change of card format — it is written as a table row now.
-  expect(d).toContain("| 补充测试用例 | trivial | 覆盖两条路径 |");
+  // `add tests`, and the wording is load-bearing: `validate.ts`'s `testOnly`
+  // pattern carries neither `more` nor `cases`, so `add test cases` would make
+  // the anti-example legal and teach nothing.
+  expect(d).toContain("| add tests | trivial | covers both paths |");
   expect(d).toContain("A real bad split, from an actual run");
   expect(d).toContain("ONE");
   expect(d).toContain("Padding to three is worse");

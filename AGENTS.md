@@ -42,8 +42,10 @@ file. Record an architectural exception or changed decision in a new ADR.
 
 ## Technology and commands
 
-- Bun + strict TypeScript, Hono, Zod, `bun:sqlite`, React, Tailwind v4, and
-  shadcn/Radix behavior primitives.
+- Bun + strict TypeScript, Hono, Zod, PostgreSQL through Drizzle
+  (`drizzle-orm/bun-sql`), React, Tailwind v4, and shadcn/Radix behavior
+  primitives. Tests talk to a real Postgres in a container, one schema per
+  worker — which is why a suite run costs what it does.
 - Agent processes run in per-group OpenSandbox containers. The file mailbox and
   `orch` CLI are their only orchestration interface; real credentials remain in
   the egress vault.
