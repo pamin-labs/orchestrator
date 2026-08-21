@@ -941,6 +941,45 @@ both name `locales/po.d.ts`.
   no longer a thing that can be written down.
 
 
+- **A comment claiming to enforce a rule, sitting on the line that breaks it.**
+  `contracts/said.ts` says values are never text — a parameter carrying an
+  already-translated fragment is a sentence in two languages — and the change
+  that wrote that rule broke it in five places. The worst of them carried four
+  lines saying `{why}` is a value, not a key, which `contracts/said.ts`
+  refuses, directly above a `{why}` holding a sentence rendered in
+  `output.language` and handed to a panel that renders in the browser's. A
+  comment that asserts compliance is harder to find than no comment, because
+  the reader believes it.
+
+- **The fix grew the next variant of the defect it was fixing.**
+  `${{ why: st.why }}` became `${{ why: renderSaid("en", st.why) }}` while the
+  first instance was being repaired — the same fault one layer in, and
+  invisible to both greps that found the original, because a rendered value
+  reads exactly like an ordinary one. The guard that covers it is AST rather
+  than a pattern, and earned that immediately: a probe aliased to `render(`
+  escaped both greps and the test caught it. What it forbids is the position,
+  not the function — and the judgement turned out to be the tag, since a plain
+  template literal is a join and a `msg` template is a key, so the two legitimate
+  places that concatenate rendered strings need no exemption.
+
+- **A type migration's blast radius is larger than the places that changed
+  type, and three tools each see part of it.** `reason: string → Said` left a
+  plain template literal writing an event body, which would have shipped
+  `[object Object]`. `grep` for `msg` templates could not see it — it is not a
+  `msg` template. `tsc` accepted it — a template literal takes anything.
+  Oxlint's `no-base-to-string` is what said so.
+
+- **Trust boundaries are about where data enters, not about what a type
+  permits.** Requiring `message` on the whole schema was the wrong reading of
+  "validate unknown data at trust boundaries": descriptors flowing out of our
+  own macro are not unknown, and Lingui declares `MessageDescriptor.message`
+  optional, so the strict version cost 149 type errors and, once split, stopped
+  at hono's inferred response types — going further meant the panel
+  re-declaring the wire shape, which is the second owner this work spent its
+  length deleting. One line on `MetaSchema` — the JSON read back out of
+  `event.meta_json`, which is the only genuinely unknown input — buys the same
+  guarantee.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run
