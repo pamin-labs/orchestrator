@@ -93,8 +93,26 @@ function claim(): () => void {
   };
 }
 
+/**
+ * A hang threshold, not a load threshold.
+ *
+ * Bun's 5000ms default sat 571ms above this suite's p99.9 — 4,429ms across
+ * 1,848 tests, measured from a junit run — so three of five consecutive full
+ * runs reported a *different* healthy test as timed out, and CI's runner is
+ * about twice as slow again. A real hang does not finish in twenty seconds.
+ */
+/**
+ * `--max-concurrency` under Bun's default of 20, because oversubscription is a
+ * net cost here rather than a win: 62.3s at 20, 53.8s at 8, 46.2s at 4, for the
+ * same 1,848 tests. Eight keeps overlap for the I/O-bound majority.
+ *
+ * Both sit before the caller's arguments, so `bun run test <path>
+ * --max-concurrency=2` still wins — verified, Bun takes the last occurrence.
+ */
+const LIMITS = ["--timeout=20000", "--max-concurrency=8"];
+
 async function run(): Promise<{ code: number; crashed: boolean }> {
-  const args = ["test", "--parallel", ...Bun.argv.slice(2)];
+  const args = ["test", "--parallel", ...LIMITS, ...Bun.argv.slice(2)];
   const child = Bun.spawn([process.execPath, ...args], { stdout: "pipe", stderr: "pipe" });
   let saw = "";
   const tee = async (from: ReadableStream<Uint8Array>, to: typeof Bun.stdout) => {

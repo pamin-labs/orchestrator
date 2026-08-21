@@ -22,7 +22,7 @@
     "embedding:check": "bun run scripts/embedding-check.ts",
     "test": "bun run scripts/test.ts",
     "test:changed": "bun test --parallel --changed",
-    "test:coverage": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun test --parallel && bun run test/support/coverage-report.ts",
+    "test:coverage": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun test --parallel --timeout=20000 --max-concurrency=8 && bun run test/support/coverage-report.ts",
     "typecheck": "tsc -b --pretty false",
     "typecheck:clean": "tsc -b --clean && tsc -b --pretty false",
     "lint": "oxlint src web/src test scripts",
@@ -42,7 +42,7 @@
     "test:stress": "bun run scripts/stress-tests.ts",
     "check": "bun run audit && bun run validate",
     "preflight": "bun run scripts/preflight.ts",
-    "test:coverage:ci": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun test --parallel --reporter=junit --reporter-outfile=\"$JUNIT_OUT\" && bun run test/support/coverage-report.ts"
+    "test:coverage:ci": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun test --parallel --timeout=20000 --max-concurrency=8 --reporter=junit --reporter-outfile=\"$JUNIT_OUT\" && bun run test/support/coverage-report.ts"
   },
   "devDependencies": {
     "@babel/core": "^7",
