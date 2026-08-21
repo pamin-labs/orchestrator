@@ -822,6 +822,36 @@ M7 — executable engineering governance and versioned protocol.
   also picks `常驻岗` or `standing` the same way, and that string reaches the
   model as data.
 
+- **The panel showed three languages at once, and each one was following a
+  rule.** The sandbox pane's frame was Chinese, its diagnostics English, its
+  server status Chinese again. Now: panel text follows the interface language
+  and the panel renders it; text leaving this machine for a person follows
+  `output.language` and the server renders it in ten languages; code, commits,
+  protocol keys, logs and `/readyz` stay English. `say()` had been
+  `isChinese(lang) ? ZH_SAY : EN` — a language *pair* — so a boss whose
+  `output.language` was `한국어` had read an English feed since that function was
+  written. `src/`'s Chinese literal count fell 236 → 167, and what is left is
+  protocol, regexes and one prompt branch.
+
+- **`lingui extract` will not update a `msgstr` it has already written.** Under
+  an explicit id the source locale is a translation like any other: a new id
+  gets its message, an existing one is left alone. So deleting the server's copy
+  of the English bought one author for *new* messages only — reword an existing
+  one and the panel moves, because a `MessageDescriptor` carries its own
+  English, while `/readyz` and the console stay on `en.po` through the generated
+  table. `english-has-one-author.test.ts` compares the two, and found a bug in
+  its own `.po` reader on its first run: it stopped at the first line of a
+  `msgstr` the formatter had wrapped.
+
+- **The mutation had not taken effect, for the second time in this branch.**
+  That is how the above was found — an edit to a `message` was made, the table
+  regenerated, and the guard stayed green. The first instinct, "the test is not
+  sensitive enough", was wrong both times. The earlier one left `NEVERMATCHxx`
+  in a shipped pattern because the pristine copy it was `cmp`-ed against had
+  been taken *after* the injection. A mutation that does not move the artefact
+  proves nothing about the test, and looks exactly like a test that proves
+  nothing.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run
