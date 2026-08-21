@@ -65,7 +65,10 @@ jobs:
         run: bun run lint
       - name: translation table
         run: bun run i18n:progress --check
-      - name: translation syntax
+      # Both halves: every message parses as ICU, and every one of them still
+      # refers to the names its English source did. A translation that quietly
+      # dropped `{count}` is well-formed and renders the wrong sentence.
+      - name: translations parse and keep their names
         run: bun run i18n:validate
       # Nothing above may leave the tree dirty — a formatter or a build that
       # writes into the repository is a diff the author never saw.
