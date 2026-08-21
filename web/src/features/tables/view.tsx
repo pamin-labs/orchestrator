@@ -299,6 +299,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
   const { groups: gs, bare, bumps, hit, rows } = ownershipModel(all);
   // Named, for the same reason as the desk header above.
   const bareNames = bare.map((g) => g.name).join(t`, `);
+  const count = bare.length;
   const hitCount = hit.length;
   const groupCount = gs.length;
   if (!gs.length) {
@@ -308,7 +309,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
           No boundaries drawn yet. The Architect decides which paths each group may write before work starts; groups
           without one run into the same files.
         </Trans>{" "}
-        {bare.length > 0 && t`${ph({ count: bare.length })} requirements have no boundary right now: ${bareNames}.`}
+        {count > 0 && t`${count} requirements have no boundary right now: ${bareNames}.`}
       </Empty>
     );
   }

@@ -266,6 +266,9 @@ function AccountList({ accounts }: { accounts: Installation[] }) {
 }
 
 function AccountRow({ account }: { account: Installation }) {
+  // Named by the binding rather than through `ph`: `${count}` extracts as
+  // `{count}`, `${account.repos}` would be `{0}`.
+  const { repos: count } = account;
   return (
     <div className="flex items-baseline gap-2 py-1.5">
       <span className="text-body">{account.account}</span>
@@ -274,9 +277,7 @@ function AccountRow({ account }: { account: Installation }) {
       {/* Tabular figures: `86` and `5` share a right edge either way,
           but proportional digits make the two counts look like two
           different scales. */}
-      <Meta className="tabular-nums">
-        {account.repos === null ? t`Can't count` : t`${ph({ count: account.repos })} repositories`}
-      </Meta>
+      <Meta className="tabular-nums">{count === null ? t`Can't count` : t`${count} repositories`}</Meta>
     </div>
   );
 }

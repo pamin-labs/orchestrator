@@ -611,6 +611,7 @@ export function FilePicker({
 }) {
   const { t } = useLingui();
   const [sel, setSel] = useState<string[]>([]);
+  const count = sel.length;
   useEffect(() => {
     if (open) setSel([]);
   }, [open]);
@@ -629,7 +630,7 @@ export function FilePicker({
         footer={() => (
           <>
             <span className="min-w-0 grow truncate text-secondary text-ink-3">
-              {sel.length ? t`${ph({ count: sel.length })} selected` : t`None selected`}
+              {count ? t`${count} selected` : t`None selected`}
             </span>
             <Button onClick={() => onOpenChange(false)}>
               <Trans>Cancel</Trans>

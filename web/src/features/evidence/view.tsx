@@ -9,7 +9,7 @@ import { DiffView } from "../diff/view";
 import { Segment, Segments } from "../../ui/segment";
 import { Tip } from "../../ui/tooltip";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ph, t } from "@lingui/core/macro";
+import { t } from "@lingui/core/macro";
 
 const PAD = "px-4";
 const failed = (verdict: { body: string }) => /\bfail\b/i.test(verdict.body);
@@ -122,12 +122,15 @@ function EvidenceHeader({
   actions?: React.ReactNode;
 }) {
   const { t } = useLingui();
+  // Destructured so the macro names the placeholder off the binding: `${files}`
+  // extracts as `{files}`, where `${stats.files}` would be `{0}`.
+  const { files } = stats;
   return (
     <div className={cn(PAD, "sticky top-0 z-10 border-b border-rule bg-rail py-2.5")}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
         <span className="min-w-0 text-body text-ink">{evidence.accept_spec}</span>
         <Meta className="shrink-0">
-          {stats.files ? t`${ph({ files: stats.files })} files` : t`No changes`}
+          {files ? t`${files} files` : t`No changes`}
           {evidence.diff && ` · +${stats.plus} −${stats.minus}`}
         </Meta>
         {evidence.retries > 0 && (

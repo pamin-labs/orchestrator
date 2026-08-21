@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ph, t } from "@lingui/core/macro";
+import { t } from "@lingui/core/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Head, Input, Meta } from "../../ui/bits";
 import { Badge } from "../../ui/badge";
@@ -28,14 +28,18 @@ import { skillsKey } from "../composer/view";
  * page says.
  */
 
+type Tally = { staged: number; user: number; repo: number; k: number };
+
 /** What ticking a skill costs: how many reach the sandbox, and the prefix they
  *  add to every turn. */
 /** Two whole sentences rather than three glued together: a clause extracted
  *  starting with a comma pins every language to English's word order. */
-const skillsNote = (tally: { staged: number; user: number; repo: number; k: number }): string =>
-  tally.repo
-    ? t`${ph({ staged: tally.staged })}/${ph({ ticked: tally.user })} ticked reach the sandbox, ${ph({ fromRepo: tally.repo })} from the repository, about ${ph({ tokens: tally.k })}k tokens of prefix per turn`
-    : t`${ph({ staged: tally.staged })}/${ph({ ticked: tally.user })} ticked reach the sandbox, about ${ph({ tokens: tally.k })}k tokens of prefix per turn`;
+/** Destructured first, so the macro names the placeholders off the bindings —
+ *  `${staged}` extracts as `{staged}`, where `${tally.staged}` would be `{0}`. */
+const skillsNote = ({ staged, user: ticked, repo: fromRepo, k: tokens }: Tally): string =>
+  fromRepo
+    ? t`${staged}/${ticked} ticked reach the sandbox, ${fromRepo} from the repository, about ${tokens}k tokens of prefix per turn`
+    : t`${staged}/${ticked} ticked reach the sandbox, about ${tokens}k tokens of prefix per turn`;
 
 export function Skills({ projectId }: { projectId: number | null }) {
   const { t } = useLingui();

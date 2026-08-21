@@ -250,6 +250,8 @@ function StageTable({
   // Under a millisecond the quoted ceiling rounds to "0ms", which reads as a
   // broken number rather than as a fast stage, so it says so in words instead.
   const restCount = fast.length;
+  // `ph` because the name the message wants is already taken by the number it
+  // formats — a binding called `ceiling` cannot also be `duration(ceiling)`.
   const restCeiling = ceiling < 1 ? t`all under 1ms` : t`all under ${ph({ ceiling: duration(ceiling) })}`;
   return (
     <div>
