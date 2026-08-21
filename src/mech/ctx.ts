@@ -79,6 +79,15 @@ export interface Ctx {
    */
   checks?: () => ReadonlyArray<{ name: string; ok: boolean; detail: string; fix?: string }>;
   /**
+   * Wired by the server: run them now, publish the result, hand it back.
+   *
+   * The settings page asks after the boss has just fixed something, and it used
+   * to run its own copy — so the pane went green while the shell's banner kept
+   * quoting the answer the timer last found. Two runs of one question is two
+   * answers, and the fresher one was the one nobody else could see.
+   */
+  recheck?: () => Promise<ReadonlyArray<{ name: string; ok: boolean; detail: string; fix?: string }>>;
+  /**
    * The roles this installation has, wired by the server.
    *
    * `roleFor` reads it to answer "who reviews a slice" without any call site

@@ -38,6 +38,7 @@ import {
   isHome,
   navigationShortcut,
   orEmpty,
+  nextSelection,
   parseSelection,
   projectForGroup,
   projectItem,
@@ -121,7 +122,7 @@ export function App() {
   const [sel, setSel] = useState<Selection>(() => parseSelection(location.hash));
   const { ui, setAdding, setPickProject, setPickReq, setPicking, setSide } = useUi();
   const [behind, setBehind] = useState<Selection["view"]>("progress");
-  const go = (patch: Partial<Selection>) => setSel((current) => ({ ...current, ...patch }));
+  const go = (patch: Partial<Selection>) => setSel((current) => nextSelection(current, patch));
   // A broken host check interrupts here, once per fault, rather than in a
   // terminal log nobody has open. Reads the snapshot that is already polled, and
   // hands the boss the pane that lists every check with its own controls.

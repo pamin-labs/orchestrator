@@ -77,14 +77,28 @@ export const getSandbox = (async (ctx, _req, _params, { grp: grpId }) => {
   });
 }) satisfies Handler<z.infer<typeof SandboxQuery>>;
 
+/**
+ * Run the checks now, and publish what they found.
+ *
+ * Through `ctx.recheck` rather than calling `preflight` here: this runs when the
+ * boss has just fixed something, and a private copy left the pane green while
+ * the shell's banner still quoted the answer the readiness timer last found.
+ * The direct call stays as the fallback for a context with no server behind it.
+ */
 export const getPreflight = (async (ctx) =>
   json({
-    checks: await preflight({
-      db: ctx.db,
-      sandbox: ctx.config.sandbox,
-      skillsDir: ctx.config.skillsDir,
-      cfg: ctx.config,
-    }),
+    // Copied out of the readonly view the owner hands back: the wire type is the
+    // panel's, and making it readonly would push `ReadonlyArray` through every
+    // pane that renders a check.
+    checks: [
+      ...(await (ctx.recheck?.() ??
+        preflight({
+          db: ctx.db,
+          sandbox: ctx.config.sandbox,
+          skillsDir: ctx.config.skillsDir,
+          cfg: ctx.config,
+        }))),
+    ],
   })) satisfies Handler;
 
 /**

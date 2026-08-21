@@ -234,10 +234,18 @@ function SettingsContent({
   const [signin, setSignin] = useState<Signin | null>(null);
 
   const queries = useQueryClient();
-  // A credential landing changes more than the row it landed on: 主机 goes green
-  // and the header's readiness with it. Invalidating the lot rather than listing
-  // them is safe here — this fires when a human clicks 保存, not on a timer.
-  const load = () => void queries.invalidateQueries();
+  // A credential landing changes more than the row it landed on: the host checks
+  // go green and the shell's banner with them. Invalidating the lot rather than
+  // listing it is safe here — this fires when a human presses save, not on a
+  // timer.
+  //
+  // Preflight first and the rest after it, in that order: `/preflight` is what
+  // re-runs the checks and republishes them, so a snapshot fetched beside it
+  // rather than behind it still carries the answer from before the fix. That is
+  // the banner saying the sandbox server has no key while the pane behind it
+  // reads `reachable`.
+  const load = () =>
+    void queries.invalidateQueries({ queryKey: ["preflight"] }).then(() => queries.invalidateQueries());
 
   const { authData, rows, prefs, checks, proj } = useSettingsData(open, projectId, signin);
   useSigninEnd(authData, signin, setSignin);

@@ -120,6 +120,22 @@ export function parseSelection(hash: string): Selection {
   };
 }
 
+/**
+ * The next selection, given a patch. One rule lives here: a tab belongs to the
+ * view it was opened in, so changing view drops it.
+ *
+ * In the model rather than at the callers because the callers are where it kept
+ * being forgotten — the header's buttons pass `t: null` by hand and the host
+ * banner's "fix this" did not, which left `#v=settings&t=done&s=server` in the
+ * bar, naming a tab the settings view does not have. A patch that says what `t`
+ * should be still wins: it is applied last.
+ */
+export const nextSelection = (current: Selection, patch: Partial<Selection>): Selection => ({
+  ...current,
+  ...(patch.view && patch.view !== current.view ? { t: null } : {}),
+  ...patch,
+});
+
 export function selectionHash(selection: Selection): string {
   const value = new URLSearchParams();
   if (selection.p) value.set("p", String(selection.p));

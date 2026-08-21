@@ -1014,8 +1014,11 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   // finding now leaves through `ctx.checks` into the panel snapshot, which
   // notifies once per fault and can be dismissed.
   let readinessWork: Promise<void> | null = null;
-  const refreshReadiness = () => {
-    if (readinessWork) return;
+  // Returns the work rather than starting it and walking away: `ctx.recheck`
+  // needs to await the run that is already in flight, and a second one started
+  // beside it would be the same host round trips twice.
+  const refreshReadiness = (): Promise<void> => {
+    if (readinessWork) return readinessWork;
     readinessWork = track(
       refreshRuntimeReadiness(runtime, () =>
         sandboxServer.then(() =>
@@ -1032,11 +1035,24 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
     ).finally(() => {
       readinessWork = null;
     });
+    return readinessWork;
   };
-  refreshReadiness();
+  // The settings page's `/preflight` goes through here rather than running its
+  // own: one owner for the answer, so the pane and the shell's banner cannot
+  // disagree about whether the host is well.
+  ctx.recheck = async () => {
+    await refreshReadiness();
+    return runtime.checks;
+  };
+  void refreshReadiness();
   // The second of the two timers reading `watchdogIntervalMs`; see `reArming`
   // for why neither may resolve it once at boot.
-  const stopReadiness = reArming(() => readinessPeriodMs(cfg.watchdogIntervalMs), refreshReadiness);
+  // `void`, because `refreshReadiness` returns its work now for `ctx.recheck`
+  // to await, and the timer is the caller that does not.
+  const stopReadiness = reArming(
+    () => readinessPeriodMs(cfg.watchdogIntervalMs),
+    () => void refreshReadiness(),
+  );
 
   await sched.tick();
   let stopped = false;
