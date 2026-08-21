@@ -21,11 +21,26 @@ import { formatter } from "@lingui/format-json";
  * would leave a translator a file of `"PCSkw2": "技能"`.
  */
 export default {
+  /**
+   * Absolute, from this file rather than from `process.cwd()`.
+   *
+   * `@lingui/conf` defaults `rootDir` to the directory holding the config, which
+   * is `scripts/` — but `path` and `include` below only pick that up when they
+   * are written as `<rootDir>/…`. Left relative they resolve against the cwd,
+   * and `lingui extract` run from anywhere but the repository root then finds
+   * **zero** messages and exits 0. With `--clean` on the script, zero found
+   * means all 811 are obsolete. Measured from `scripts/`: every locale reported
+   * 0/0 and the command succeeded.
+   *
+   * Same fix `lingui-macros.ts` already applies for `browse.ts`, which runs
+   * `build:web` with the cwd set to a worktree.
+   */
+  rootDir: new URL("..", import.meta.url).pathname,
   sourceLocale: "en",
   // Kept in step with `LOCALES` in `src/contracts/config.ts`, which is what
   // decides whether a catalog can be reached at all; a locale here and not there
   // extracts into a file nothing loads.
   locales: ["en", "zh", "ja", "ko", "es", "fr", "de", "pt", "ru"],
-  catalogs: [{ path: "web/src/locales/{locale}", include: ["web/src"] }],
+  catalogs: [{ path: "<rootDir>/web/src/locales/{locale}", include: ["<rootDir>/web/src"] }],
   format: formatter({ origins: false }),
 };
