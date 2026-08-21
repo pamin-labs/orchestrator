@@ -8,7 +8,7 @@ import { emptyState } from "../../web/src/shared/api.ts";
  * The source language, rendered.
  *
  * Every other web test runs under the Chinese catalog, which is what makes those
- * 544 assertions a check on the catalog. It also means English — the language
+ * 242 assertions a check on the catalog. It also means English — the language
  * the code is written in — is never rendered in CI at all: a malformed `<Trans>`,
  * a placeholder that lost its name, a `` t`` `` that landed in the wrong slot,
  * all invisible.

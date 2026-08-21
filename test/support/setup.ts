@@ -12,7 +12,7 @@ import { i18n, messages } from "../../web/src/i18n.ts";
 import zh from "../../web/src/locales/zh.json";
 
 /**
- * Every pane renders under the Chinese catalog, so the 544 assertions that read
+ * Every pane renders under the Chinese catalog, so the 242 assertions that read
  * Chinese out of the panel keep asserting — and become the only check that the
  * catalog puts the right string in the right slot. The English source is what
  * `test/web/english-renders.test.tsx` covers, deliberately somewhere else.

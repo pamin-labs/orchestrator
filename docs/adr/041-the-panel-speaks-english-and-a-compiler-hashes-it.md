@@ -18,10 +18,15 @@ is what gettext has meant by that for thirty years.
 ## What Lingui owns and what stays ours
 
 It owns message extraction, ICU parsing and formatting, the catalog format, and
-message identity. What stays ours is which locale is active and how it is chosen
-— [`035`](035-language-follows-who-wrote-it.md) already decides that language
-follows who wrote a thing, and `src/contracts/config.ts` holds the one mapping
-from the free-text `output.language` to a catalog.
+message identity. What stays ours is which locale is active and how it is chosen.
+
+The panel's language is **this browser's**, stored in `localStorage` and
+defaulting to `navigator.language`. It does not follow `output.language`:
+[`035`](035-language-follows-who-wrote-it.md) governs what the agents write, and
+that knob sits in the cache prefix, so reading a pane in another language would
+rotate every session in the fleet. `src/contracts/config.ts` holds the one
+function mapping free text — `中文`, `ja_JP`, `Japanese` — onto a catalog, and
+both sides call it.
 
 `src/platform/text/lang.ts` is **not** migrating. It owns the ~44 strings the
 orchestrator itself emits, and the release binary is built by
@@ -40,8 +45,8 @@ file under `src` and `web/src`, re-run per test file because `--parallel` implie
 8s. That decision stands and oxc is still the only thing that instruments.
 
 Macro expansion is a different shape. It is **bounded**: a `includes("@lingui/")`
-scan rejects a file before it is parsed, so only the ~60 files under `web/src`
-that hold copy can reach babel, and only the ~50 test processes that import one
+scan rejects a file before it is parsed, so only the 51 files under `web/src`
+that hold copy can reach babel, and only the 58 test processes that import one
 of them pay anything at all. `test/support/loader.ts` refuses to register the
 plugin for a test file that cannot reach `web/src`, decided from `Bun.main` the
 way `dom.ts` decides it needs a document.
@@ -64,16 +69,27 @@ on disk and nobody downloads them. An earlier revision of this table said
 Both numbers are what they are because of a content-addressed cache in
 `.cache/lingui`. Without it the suite was +22% and `build:web` was 0.60s: under
 `--isolate` the same panel module is expanded once per test process that imports
-it, 49 times for the same bytes. The key is the source plus the plugin version,
-so an edit misses and an upgrade misses. A cold cache costs one babel call per
+it, 58 times for the same bytes. The key is the path, the source and the
+installed plugin version, so an edit misses and an upgrade misses. A cold cache costs one babel call per
 file — measured at 142.8s against a warm 143.3s, because 51 calls is nothing
-next to 49 × 51.
+next to 58 × 51.
 
 **The rule that keeps 015 intact, stated so it can be checked**: babel never
 instruments, oxc never expands macros, and the two meet in exactly one `onLoad`
-in `test/support/loader.ts` with oxc first. `@babel/core` appears at one call
-site with `configFile: false`, `babelrc: false` and a one-element plugin list,
-so it cannot acquire a second job by configuration drift.
+in `test/support/loader.ts` — **expansion first**, with the map it produces
+handed to oxc as `inputSourceMap`.
+
+This paragraph said "oxc first" until the coverage job proved it could not be:
+oxc rewrites the initialiser of `const { t } = useLingui()` into a sequence
+expression and the macro then refuses the file. The statement map still has to
+describe the file on disk, which is what `composeInputSourceMap` is for.
+`test/governance/loader-transforms-compose.test.ts` holds the order, and holds
+it without either environment variable.
+
+`@babel/core` appears at two call sites — `scripts/lingui-macros.ts` transforms,
+`test/governance/panel-speaks-english.test.ts` only parses — both with
+`configFile: false` and `babelrc: false`. Neither instruments, which is the part
+015 cares about.
 
 ## What Bun made us do
 
@@ -117,7 +133,8 @@ touched English.
 Two Chinese wordings can collapse into one English message. Eight did, and are
 now written once; the ninth was 镜像 and 图 as "Image", which mislabelled a
 dropped screenshot as a container image and needed a `context` to stay two
-messages. Nothing catches this but reading the merge report the codemod prints.
+messages. Nothing catches this automatically — the collapse was found by reading
+the pairs, with a throwaway script that was not kept.
 
 ## Reopen
 

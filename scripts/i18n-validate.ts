@@ -7,9 +7,8 @@ import { LOCALES } from "../src/contracts/config.ts";
  * runtime.
  *
  * Nothing else checks this. We do not run `lingui compile`, so no build step
- * ever reads a translation — and `compile --strict`, which would, also fails on
- * a missing translation, which is a state this project is deliberately in for
- * eight locales. Plain `compile` prints the error and exits 0.
+ * ever reads a translation, and plain `compile` prints a parse error and exits
+ * 0 anyway.
  */
 /**
  * `compileMessageOrThrow`, not `compileMessage`: the second one prints the parse

@@ -19,9 +19,9 @@ root = "test"
 # All three files gate themselves, because the list cannot be gated from outside
 # it. loader.ts registers nothing for a file that cannot reach `web/src`, which
 # it decides from `Bun.main` the way dom.ts decides it needs a document — the
-# unconditional version cost 3s of CPU across the suite, on 193 processes paying
-# for a transform ~50 of them can reach. dom.ts registers a document only for the
-# test files that need one: ~119ms per file that 107 of the 149 were paying for
+# unconditional version cost 3s of CPU across the suite, on 204 processes paying
+# for a transform 58 of them can reach. dom.ts registers a document only for the
+# test files that need one: ~119ms per file that 160 of the 204 were paying for
 # nothing.
 #
 # dom.ts's half only holds when each file gets its own process — `--isolate`, or

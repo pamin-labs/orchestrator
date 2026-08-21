@@ -21,7 +21,7 @@ const ROOT = new URL("../", import.meta.url).pathname;
 
 /**
  * Babel is resolved on first use, not at import. This module is imported by the
- * test preload in every one of the 193 test processes, and all but the browser
+ * test preload in every one of the 204 test processes, and all but the browser
  * ones never reach a macro — paying for babel's module graph there is the cost
  * ADR 015 measured and refused.
  */

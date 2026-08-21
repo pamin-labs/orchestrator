@@ -1,8 +1,8 @@
 import { linguiMacros } from "./lingui-macros.ts";
 
 /**
- * The panel bundle. Same entry and same flags the `bun build` line carried,
- * plus the one thing the CLI has no way to accept: a plugin.
+ * The panel bundle. Same entry the `bun build` line carried, plus `splitting`
+ * — which the CLI does have as `--splitting` — and a plugin, which it does not.
  *
  * The panel's copy is behind a Lingui macro now, and a macro that reaches the
  * bundler unexpanded is a `throw` at module scope in the browser.
@@ -15,7 +15,8 @@ const built = await Bun.build({
   target: "browser",
   minify: true,
   // Each catalog is its own chunk, fetched when a locale is first activated.
-  // Nine of them are ~1MB of JSON against a 1.9MB bundle, and nobody reads two.
+  // Eight of them are 1.09MB of JSON against a 1.78MB bundle, and nobody reads
+  // two — English has no catalog at all, so it fetches none.
   splitting: true,
   plugins: [linguiMacros],
 });

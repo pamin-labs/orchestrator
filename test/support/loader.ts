@@ -25,7 +25,7 @@ const covering = process.env.ORCH_COVERAGE === "1";
  * decides it needs a document: `Bun.Transpiler` over `Bun.main`, synchronously.
  *
  * Registering the plugin unconditionally cost 3s across the suite and expanding
- * a macro cost nothing — 193 processes paid for a transform ~50 of them can
+ * a macro cost nothing — 204 processes paid for a transform 58 of them can
  * reach. Direct imports only, same limit `dom.ts` documents: a test reaching
  * `web/src` through a helper of its own should re-export from `support/render`.
  */

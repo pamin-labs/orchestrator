@@ -38,7 +38,13 @@ only make the model translate it back.
 
 ## 3. Derived data a person reads follows `output.language`
 
-`say()` event bodies, note bodies, panel text.
+`say()` event bodies and note bodies.
+
+Panel text was in this list and is not any more:
+[`041`](041-the-panel-speaks-english-and-a-compiler-hashes-it.md) moved it to the
+browser's own language. Reading a pane is not writing a thing, and this knob sits
+in the cache prefix — following it would have rotated every session in the fleet
+to change what one person reads.
 
 ## The cost, stated
 

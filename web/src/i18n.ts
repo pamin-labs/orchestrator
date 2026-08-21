@@ -26,7 +26,7 @@ export const LOCALE_CHANGED = "orch:locale";
  * One `import()` per catalog, written out rather than built from a template: a
  * bundler splits what it can see, and a template literal it cannot resolve
  * either fails or pulls the whole directory into the entry point. Eight
- * catalogs are ~1MB of JSON against a 1.9MB bundle, and nobody reads two.
+ * catalogs are 1.09MB of JSON against a 1.78MB bundle, and nobody reads two.
  */
 const CATALOGS: Record<Exclude<Locale, "en">, () => Promise<{ default: unknown }>> = {
   zh: () => import("./locales/zh.json"),

@@ -84,10 +84,10 @@ const steps: Step[] = [
   // Checks rather than writes, so it cannot be the thing that dirties the tree
   // the CI step below it exists to catch.
   { name: "translation table", job: "quality", run: () => cmd("bun run i18n:progress --check") },
-  // Nothing else reads a translation: we do not run `lingui compile`, and
-  // `compile --strict` also fails on a missing one, which eight locales
-  // deliberately are. Named for both halves because it checks both: a message
-  // that parses can still have dropped the one number it was written to carry.
+  // Nothing else reads a translation: we do not run `lingui compile`, and plain
+  // `compile` prints a parse error and exits 0. Named for both halves because it
+  // checks both — a message that parses can still have dropped the one number it
+  // was written to carry.
   { name: "translations parse and keep their names", job: "quality", run: () => cmd("bun run i18n:validate") },
   { name: "web bundle", job: "quality", run: () => cmd("bun run build:web") },
   // Through `bun run test`, not `bun test` directly: that wrapper retries an arm64
