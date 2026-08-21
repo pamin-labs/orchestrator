@@ -326,9 +326,8 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
           </b>
         ) : (
           <b className="text-body font-semibold">
-            {/* Two whole sentences, because the tail was extracted as
-                `" ({0} more not yet assigned)"` — a parenthetical with a leading
-                space and nothing to attach it to. */}
+            {/* Two whole sentences: a parenthetical extracted on its own has
+                nothing to attach it to. */}
             {bare.length ? (
               <Trans>
                 {groupCount} requirements touch different files and can run together ({{ more: bare.length }} more not

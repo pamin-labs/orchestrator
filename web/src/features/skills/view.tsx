@@ -30,9 +30,8 @@ import { skillsKey } from "../composer/view";
 
 /** What ticking a skill costs: how many reach the sandbox, and the prefix they
  *  add to every turn. */
-/** Two whole sentences rather than three fragments glued together. Assembled, the
- *  catalog held `", {0} from the repository"` — a clause starting with a comma,
- *  which fixes the order of every language to English's. */
+/** Two whole sentences rather than three glued together: a clause extracted
+ *  starting with a comma pins every language to English's word order. */
 const skillsNote = (tally: { staged: number; user: number; repo: number; k: number }): string =>
   tally.repo
     ? t`${ph({ staged: tally.staged })}/${ph({ ticked: tally.user })} ticked reach the sandbox, ${ph({ fromRepo: tally.repo })} from the repository, about ${ph({ tokens: tally.k })}k tokens of prefix per turn`

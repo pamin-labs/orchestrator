@@ -126,8 +126,7 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
         <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1">
           {info.sandbox.mounts.map((m) => (
             <Meta key={m.mountPath} title={m.hostPath}>
-              {/* The whole label, not a `" read-only"` suffix: a translator given
-                  that fragment cannot see what it hangs off. */}
+              {/* The whole label, not a bare `" read-only"` suffix. */}
               {m.readOnly ? t`${ph({ mount: m.mountPath })} read-only` : m.mountPath}
             </Meta>
           ))}

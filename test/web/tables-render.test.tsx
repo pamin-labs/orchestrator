@@ -110,9 +110,6 @@ test("requirements with disjoint boundaries are cleared to run at once, and the 
   st.groups.push(owning(1, "改闸门", ["src/mech/**"]), owning(2, "改面板", ["web/src/**"]), owning(3, "没划", []));
   const pane = render(<Owns st={st} projectId={1} />);
 
-  // One sentence, not two: the tail used to be a separate `" (N more not yet
-  // assigned)"` message, which left a translator a parenthetical with nothing to
-  // attach it to.
   shown(pane, "2 个需求各改各的，可以一起跑（还有 1 个没分）");
   gone(pane, "压着");
 });

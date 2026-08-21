@@ -28,10 +28,8 @@ export class Boundary extends Component<{ children: ReactNode }, { err: Error | 
             <Trans>This view crashed</Trans>
           </CardTitle>
           <div className="mt-1 text-secondary text-ink-2">
-            {/* One `<Trans>`, not three: split at the `<span>` this left the
-                catalog holding `") to rebuild the frontend."`, a fragment no
-                translator can place. Wrapped whole, the command becomes `<0>` and
-                the sentence can be reordered around it. */}
+            {/* One `<Trans>` around the whole sentence: split at the `<span>`,
+                each half extracts as a fragment nobody can reorder. */}
             <Trans>
               Frontend and server versions may be out of sync. Restart the service (
               <span className="font-mono">bun run dev</span>) to rebuild the frontend.
