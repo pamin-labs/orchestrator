@@ -1,3 +1,4 @@
+import { waitFor } from "@testing-library/dom";
 import { expect, test } from "bun:test";
 import { makeApp } from "../../src/composition/api.ts";
 import { asc, eq } from "drizzle-orm";
@@ -67,7 +68,14 @@ test("the claude login hands back the link and nothing else", async () => {
   expect(text).not.toContain(CLAUDE_TOKEN);
   expect(text).not.toContain("sk-ant");
   // Stored where a credential belongs, and read back masked from there.
-  expect((await loadAuth(h.db, "claude"))?.secret).toBe(CLAUDE_TOKEN);
+  //
+  // Waited for, because the response is deliberately not the confirmation: the
+  // route hands back the link as soon as the CLI prints it and lets `run.done`
+  // write `runtime_auth` afterwards — the panel polls the credential row. Read
+  // straight after the POST this raced, and lost on a loaded CI runner while
+  // passing on every local run. Same `waitFor` as `test/mech/auth.test.ts:467`,
+  // for the same reason: it throws where the waiting happened.
+  await waitFor(async () => expect((await loadAuth(h.db, "claude"))?.secret).toBe(CLAUDE_TOKEN));
   await reset(h);
 });
 
