@@ -54,7 +54,7 @@ export type ServerState =
  * and starting a second one just fails to bind. `auth` is the one case we must
  * never act on — a server holding a key we were not given is somebody else's.
  */
-type Probe =
+export type Probe =
   | { kind: "ok" }
   /** Answering, and refusing our key. Someone else's server. */
   | { kind: "auth" }
@@ -91,7 +91,7 @@ async function probe(server: string, key: string): Promise<Probe> {
  * explaining. These sentences sit directly above the controls that are the
  * ways out of each case.
  */
-function say(p: Probe, server: string): Said {
+export function say(p: Probe, server: string): Said {
   switch (p.kind) {
     case "auth":
       return msg`Something is listening on ${{ server }} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address.`;
