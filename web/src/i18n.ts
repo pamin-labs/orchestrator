@@ -20,7 +20,6 @@ import { type Locale, LOCALES, localeOf } from "../../src/contracts/config.ts";
 const PrefSchema = z.enum(LOCALES);
 
 const KEY = "orch.locale";
-export const LOCALE_CHANGED = "orch:locale";
 
 /**
  * One `import()` per catalog, written out rather than built from a template: a
@@ -91,10 +90,26 @@ async function load(locale: Locale): Promise<void> {
 
 /** Activate, fetching the catalog the first time it is asked for. A no-op when
  *  the locale has not moved. */
+/**
+ * A catalog that cannot be fetched is not a reason for the panel not to start.
+ * Each one is its own chunk, so a stale index or a half-deployed `web/dist`
+ * makes this a real 404 — and it is awaited before the first paint, so the
+ * rejection took the whole entry point down and rendered nothing at all. The
+ * English source is every message's fallback, which is exactly the state to land
+ * in: readable, in the language the code is written in.
+ */
 async function applyLocale(): Promise<void> {
   const next = preference();
   if (i18n.locale === next) return;
-  await load(next);
+  try {
+    await load(next);
+  } catch (cause) {
+    // Said out loud rather than swallowed: reading in the wrong language is a
+    // thing somebody has to be able to find out about.
+    console.error(`orch: the ${next} catalog did not load; reading in ${i18n.locale || "en"}`, cause);
+    if (!i18n.locale) i18n.activate("en");
+    return;
+  }
   i18n.activate(next);
 }
 
@@ -105,9 +120,11 @@ export function setPreference(pref: Locale): void {
   try {
     localStorage.setItem(KEY, pref);
   } catch {}
-  // The pane that is open follows a change made anywhere else, without a second
-  // copy of the value in React state.
-  window.dispatchEvent(new CustomEvent(LOCALE_CHANGED));
+  // No event of our own: `I18nProvider` re-renders every `useLingui` consumer on
+  // `activate`, and the control that shows the choice is one of them.
+  //
+  // `void` and not a dangling promise: `applyLocale` handles its own failure and
+  // resolves either way, so there is no rejection here to lose.
   void applyLocale();
 }
 
