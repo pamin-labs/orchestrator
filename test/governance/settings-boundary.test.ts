@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { SECTIONS } from "../../web/src/features/knobs/view.tsx";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -145,19 +146,18 @@ const settingPaths = (): string[] => {
   return out;
 };
 
-/** Every path each knob section says it renders, section by section. */
-const knobPaths = (): Map<string, string[]> => {
-  const src = read("../../web/src/features/knobs/view.tsx");
-  const table = src.slice(src.indexOf("const SECTIONS"), src.indexOf("\n};", src.indexOf("const SECTIONS")));
-  const out = new Map<string, string[]>();
-  for (const m of table.matchAll(/(\w+): \{[\s\S]*?paths: \[([\s\S]*?)\]/g)) {
-    out.set(
-      m[1]!,
-      [...m[2]!.matchAll(/"([\w.]+)"/g)].map((x) => x[1]!),
-    );
-  }
-  return out;
-};
+/**
+ * Every path each knob section says it renders, section by section.
+ *
+ * Imported, not scraped. The regular expression this replaces stopped at the
+ * first `paths:` array in each section, so it saw 37 of 61 — every group with a
+ * `legend` was invisible, which is all eight watchdog knobs, all five pull
+ * request ones, and the whole of Retrieval, polling and storage. Both tests
+ * below held over 60% of the table and reported green on the rest. Measured by
+ * rendering `watchdog.idleTurns` in a second section: still green.
+ */
+const knobPaths = (): Map<string, string[]> =>
+  new Map(Object.entries(SECTIONS).map(([key, section]) => [key, section.groups.flatMap((g) => g.paths)]));
 
 test("a setting written by a route of its own is not also a knob row", () => {
   const bespoke = settingPaths();
