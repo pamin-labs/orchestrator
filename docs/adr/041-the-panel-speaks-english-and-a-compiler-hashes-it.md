@@ -123,6 +123,28 @@ memoised here until a render budget says otherwise.
 The catalogs are JSON keyed by hashed id with the English `message` beside each
 one. `minimal` style would have left a translator a file of `"PCSkw2": "技能"`.
 
+**Named as a deliberate departure, because Lingui's docs are firm the other
+way.** `setMessagesCompiler` is documented for loading catalogs from a CMS, for
+over-the-air delivery, and for injecting messages at runtime — not for this — and
+the same page says *"you need to always compile your catalogs, even if they are
+in JSON format"* and that the compiler *"is typically excluded"* from production
+builds. The escape Lingui offers instead is a bundler integration that compiles
+on the fly: `@lingui/vite-plugin`, `@lingui/loader`, `@lingui/metro-transformer`.
+None of them covers `Bun.build`, which is why this project holds the exception
+rather than taking the recommended path. The bundle cost the docs warn about is
+measured in the table above; the reopen condition is Bun's bundler gaining what
+those plugins give Vite, or a fifth caller making the codegen step cheap enough
+to be worth it.
+
+Two smaller departures, both because there is no path to take. The catalogs are
+reshaped by hand in `web/src/i18n.ts` because both JSON styles are documented as
+*"only used offline"* and `@lingui/format-json` exports no runtime reader. And
+the macro is wired into a Bun plugin by hand because Lingui's setup guides cover
+Vite, React, RSC, React Native and plain JavaScript, and none of them is Bun —
+the package used is the recommended `@lingui/babel-plugin-lingui-macro`, and even
+Vite's official route expands macros with a Babel pass, so the shape is the same
+one.
+
 ## The cost, stated
 
 A hashed id means a reworded sentence loses its translation. That is the trade
