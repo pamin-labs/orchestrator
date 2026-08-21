@@ -187,7 +187,7 @@ test("a group that has spent its budget gets the wall instead of a working 继�
 test("the rebuild pane reports both steps while it runs and stays up when it fails", () => {
   const { st, g } = running();
   const started = [
-    frame({ id: "e1", cls: "state", text: "沙盒是新的", at: 1_000 }),
+    frame({ id: "e1", cls: "state", text: "沙箱是新的", at: 1_000 }),
     frame({ id: "e2", text: "$ bun install --frozen-lockfile", at: 2_000 }),
     frame({ id: "e3", text: "resolved 400 packages", at: 3_000 }),
   ];

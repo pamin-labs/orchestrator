@@ -181,7 +181,7 @@ export const postSandboxServerRestart = (async (ctx) => {
   // on the same problem.
   resetServerRestarts();
   if (err) return bad(err);
-  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "沙盒服务器重启了，容器都没了" });
+  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "沙箱服务器重启了，容器都没了" });
   return json({ ok: true });
 }) satisfies Handler;
 
@@ -208,7 +208,7 @@ export const postSandboxServerStart = (async (ctx) => {
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body: st.kind === "started" ? `沙盒服务器起好了（pid ${st.pid}）` : "沙盒服务器本来就在跑，直接用了",
+    body: st.kind === "started" ? `沙箱服务器起好了（pid ${st.pid}）` : "沙箱服务器本来就在跑，直接用了",
   });
   return json({ ok: true, state: st.kind });
 }) satisfies Handler;

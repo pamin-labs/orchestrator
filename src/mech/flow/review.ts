@@ -405,11 +405,11 @@ export async function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: s
     grpId: sl.grp_id,
     author: by,
     kind: "state_change",
-    body: say(ctx.config.language, "slice.accepted", {
-      seq: sl.seq,
-      title: sl.title,
-      why: why ? `（${why}）` : "",
-    }),
+    // Two keys rather than a bracket pair spliced in here: built at the call site
+    // the brackets were fullwidth, so the English row read `accepted: S3 t（why）`.
+    body: why
+      ? say(ctx.config.language, "slice.accepted_why", { seq: sl.seq, title: sl.title, why })
+      : say(ctx.config.language, "slice.accepted", { seq: sl.seq, title: sl.title }),
     meta: { slice_id: sliceId, by },
   });
 

@@ -281,7 +281,12 @@ export function sweepTurnLogs(dir: string, now: number): { zipped: number; dropp
  * and "arrived a minute ago" looked alike, and a forgotten requirement is as
  * stopped as a crashed one.
  */
-async function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number, nudgeAfterMs: number): Promise<Finding[]> {
+async function waitingOnBoss(
+  db: WatchdogDeps["ctx"]["db"],
+  now: number,
+  nudgeAfterMs: number,
+  t: Translate,
+): Promise<Finding[]> {
   const out: Finding[] = [];
   const cutoff = now - nudgeAfterMs;
 
@@ -304,7 +309,7 @@ async function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number, nudgeAf
       rule: "waiting_card",
       grpId: g.id,
       severity: "advisory",
-      body: `${g.name} 的计划卡等你批 ${hours(now - (g.at ?? now))} 小时了`,
+      body: t("wd.waiting_card", { name: g.name, hours: hours(now - (g.at ?? now)) }),
     });
   }
 
@@ -317,7 +322,7 @@ async function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number, nudgeAf
       rule: "waiting_slice",
       grpId: s.grp_id,
       severity: "advisory",
-      body: `${s.name} S${s.seq} 等你查收 ${hours(now - (s.awaiting_at ?? now))} 小时了`,
+      body: t("wd.waiting_slice", { name: s.name, seq: s.seq, hours: hours(now - (s.awaiting_at ?? now)) }),
     });
   }
 
@@ -364,9 +369,11 @@ async function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number, nudgeAf
       rule: "waiting_merge",
       grpId: q.id,
       severity: behind > 0 ? "blocker" : "advisory",
-      body:
-        `${q.name} 的 PR 排在队首 ${hours(now - (q.at ?? now))} 小时了` +
-        (behind > 0 ? `，后面还堵着 ${behind} 个` : ""),
+      body: t(behind > 0 ? "wd.waiting_merge_blocked" : "wd.waiting_merge", {
+        name: q.name,
+        hours: hours(now - (q.at ?? now)),
+        n: behind,
+      }),
     });
   }
   return out;
@@ -442,10 +449,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
           rule: "watchdog_broke",
           grpId: null,
           severity: "blocker",
-          body:
-            `看门狗这一轮挂了，后面的规则都没跑：${errText(e)}\n` +
-            `每 30 秒都会再试一次，但在修好之前，靠它推的那些状态（卡住的组、过期的沙盒、` +
-            `基线变了要 rebase、等你决定的计时）都停在原地。`,
+          body: say(deps.ctx.config.language, "wd.broke", { why: errText(e) }),
         },
       ],
       deps.now ?? (() => Date.now()),
@@ -516,14 +520,14 @@ async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise
       rule: "repo-map",
       grpId: null,
       severity: "advisory",
-      body: `仓库地图停在上一次的版本：${p.repo_path} 的容器读不到 HEAD，重建只会得到一份没有符号的地图`,
+      body: say(ctx.config.language, "wd.map_stale", { repo: p.repo_path }),
     });
     return;
   }
   if (stamp && (await readSetting(ctx.db, MAP_KEY(p.id))) === stamp) return;
   const { files, why } = p.remote
     ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))
-    : { files: [], why: "这个项目没记下 remote，没有可以镜像的地址" };
+    : { files: [], why: say(ctx.config.language, "wd.map_no_remote") };
   // Said once per project: never means the map silently stops being refreshed,
   // and every tick is a feed nobody reads. Said with git's own words, because
   // naming possible causes in prose is a guess printed as a diagnosis.
@@ -534,7 +538,10 @@ async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise
       rule: "repo-map",
       grpId: null,
       severity: "advisory",
-      body: `仓库地图没法刷新了：${p.repo_path} —— ${why ?? "没有原因可说，这本身就是个 bug"}`,
+      body: say(ctx.config.language, "wd.map_failed", {
+        repo: p.repo_path,
+        why: why ?? say(ctx.config.language, "wd.map_no_reason"),
+      }),
     });
     return;
   }
@@ -629,7 +636,11 @@ function stepper(deps: WatchdogDeps, now: () => number, findings: Finding[]) {
             rule: `rule_broke:${rule.id}`,
             grpId: null,
             severity: "blocker",
-            body: `看门狗第 ${rule.id} 条（${rule.name}）挂了，这一轮其余的照跑：${errText(e)}`,
+            body: say(deps.ctx.config.language, "wd.rule_broke", {
+              rule: rule.id,
+              ruleName: rule.name,
+              why: errText(e),
+            }),
           });
         } finally {
           span.end();
@@ -790,7 +801,7 @@ async function queueRebase(
     rule: "base_moved",
     grpId: group.id,
     severity: "advisory",
-    body: `${baseRef} 动到了 ${sha.slice(0, 8)}，${group.name} 的基线落后了，已经让它先 rebase`,
+    body: say(ctx.config.language, "wd.base_moved", { base: baseRef, sha: sha.slice(0, 8), name: group.name }),
   });
 }
 
@@ -1271,7 +1282,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "waiting_parked",
         grpId: g.id,
         severity: "advisory",
-        body: `${g.name} 封存了 ${hours(now() - (g.paused_at ?? now()))} 小时，唤醒还是不做了？`,
+        body: t("wd.waiting_parked", { name: g.name, hours: hours(now() - (g.paused_at ?? now())) }),
       });
     }
   });
@@ -1291,7 +1302,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "sandbox_swept",
         grpId: g.id,
         severity: "advisory",
-        body: `${g.name} 解散了，沙盒回收`,
+        body: t("wd.sandbox_swept", { name: g.name }),
       });
     }
   });
@@ -1324,7 +1335,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "sandbox_stale_credential",
           grpId: g.id,
           severity: "advisory",
-          body: `${g.name} 的沙盒绑的是旧凭据，回收了，下一轮重建`,
+          body: t("wd.sandbox_stale_cred", { name: g.name }),
         });
       }
       for (const p of await ctx.db
@@ -1379,9 +1390,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "server_gone",
           grpId: null,
           severity: "blocker",
-          body:
-            `opensandbox-server 起不来了，试了 ${SERVER_RESTART_CAP} 次，不再自动重试。` +
-            `手动跑一次看它报什么：${seenServerArgv!.join(" ")}`,
+          body: t("wd.server_gone", { n: SERVER_RESTART_CAP, cmd: seenServerArgv!.join(" ") }),
         });
         break;
       case "restart": {
@@ -1393,8 +1402,8 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           grpId: null,
           severity: err ? "blocker" : "advisory",
           body: err
-            ? `opensandbox-server 没了，重启失败（第 ${serverRestarts} 次）：${err}`
-            : `opensandbox-server 没了，重启了（第 ${serverRestarts} 次）。挂起的活会自己继续。`,
+            ? t("wd.server_restart_failed", { n: serverRestarts, why: err })
+            : t("wd.server_restarted", { n: serverRestarts }),
         });
         break;
       }
@@ -1433,7 +1442,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "stale_ask",
         grpId: e.grp_id,
         severity: "advisory",
-        body: `${e.name} 已经走到 PR，那条还挂着的问题过期了，自动关掉`,
+        body: t("wd.stale_ask", { name: e.name }),
       });
     }
   });
@@ -1441,7 +1450,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // 13. The three places that wait on the boss, with a clock on each. They are
   // supposed to wait; what was missing is that they waited in silence.
   await step({ id: "13", name: "boss_clocks", every: EVERY_TICK }, async () => {
-    for (const w of await waitingOnBoss(ctx.db, now(), limits(ctx).nudgeAfterMs)) findings.push(w);
+    for (const w of await waitingOnBoss(ctx.db, now(), limits(ctx).nudgeAfterMs, t)) findings.push(w);
   });
 
   return await emit(ctx, findings, now);

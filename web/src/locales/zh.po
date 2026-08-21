@@ -162,10 +162,10 @@ msgid "{spent} / {cap} tokens. Spending it all suspends the whole group."
 msgstr "{spent} / {cap} tokens。用满即挂起全组。"
 
 msgid "{staged}/{ticked} ticked reach the sandbox, {fromRepo} from the repository, about {tokens}k tokens of prefix per turn"
-msgstr "勾中的 {staged}/{ticked} 个进沙盒，仓库自带 {fromRepo} 个，每 turn 前缀约 {tokens}k tokens"
+msgstr "勾中的 {staged}/{ticked} 个进沙箱，仓库自带 {fromRepo} 个，每 turn 前缀约 {tokens}k tokens"
 
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
-msgstr "勾中的 {staged}/{ticked} 个进沙盒，每 turn 前缀约 {tokens}k tokens"
+msgstr "勾中的 {staged}/{ticked} 个进沙箱，每 turn 前缀约 {tokens}k tokens"
 
 msgid "{storedHint} stored; paste a new one to replace it"
 msgstr "已存 {storedHint}，粘新的就换掉"
@@ -336,7 +336,7 @@ msgid "Archive after paused"
 msgstr "暂停多久后封存"
 
 msgid "Archive releases the sandbox. Groups parked too long hog concurrency slots for nothing."
-msgstr "封存会退掉沙盒。挂起太久的组占着并发名额而没人在推它。"
+msgstr "封存会退掉沙箱。挂起太久的组占着并发名额而没人在推它。"
 
 msgid "Archived"
 msgstr "已封存"
@@ -492,7 +492,7 @@ msgid "Changed to {next}"
 msgstr "改成 {next} 了"
 
 msgid "Changes exceed 400k characters; tail not retrieved. Remaining changes are in the sandbox checkout."
-msgstr "改动超过 400k 字符，尾部没取回来，剩下的在沙盒的 checkout 里"
+msgstr "改动超过 400k 字符，尾部没取回来，剩下的在沙箱的 checkout 里"
 
 msgid "Check for stuck turns"
 msgstr "查有没有卡住的轮次"
@@ -501,7 +501,7 @@ msgid "Check runs"
 msgstr "检查任务数"
 
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
-msgstr "勾中的技能复制到这里，每个沙盒只读挂上去。改这里要同步改沙盒服务端的 allowed_host_paths，否则开容器直接失败——而那是响的失败，比一个静默的空目录好得多。"
+msgstr "勾中的技能复制到这里，每个沙箱只读挂上去。改这里要同步改沙箱服务端的 allowed_host_paths，否则开容器直接失败——而那是响的失败，比一个静默的空目录好得多。"
 
 msgid "Choose account"
 msgstr "选账号"
@@ -534,7 +534,7 @@ msgid "Clone"
 msgstr "克隆"
 
 msgid "Clone this group's branch and dependencies into a new sandbox"
-msgstr "把这个组的分支和依赖装回新沙盒"
+msgstr "把这个组的分支和依赖装回新沙箱"
 
 msgid "Clone, fetch or image pull"
 msgstr "克隆、拉取或拉镜像"
@@ -723,7 +723,7 @@ msgid "Disabled"
 msgstr "未启用"
 
 msgid "Disabled skills aren't in the sandbox; the agent can't find it. Enable it in settings, or cancel this insertion?"
-msgstr "没勾选的技能不在沙盒里，agent 自己找不到它。去设置里勾上，还是取消这次插入？"
+msgstr "没勾选的技能不在沙箱里，agent 自己找不到它。去设置里勾上，还是取消这次插入？"
 
 msgid "Discard all changes in the current turn and return to the start of this round."
 msgstr "丢弃当前 turn 的全部改动，退回到这一轮开始前。"
@@ -741,7 +741,7 @@ msgid "Dissolved"
 msgstr "已解散"
 
 msgid "Domains the sandbox may not reach. A blocklist, not an allowlist — an allowlist would have to name every registry and docs site. Credentials do not depend on this: the sandbox only ever holds fakes."
-msgstr "沙盒不能访问的域名。是黑名单不是白名单——白名单得列全每个镜像源和文档站。凭据安全不靠它：沙盒里拿到的本来就是假的。"
+msgstr "沙箱不能访问的域名。是黑名单不是白名单——白名单得列全每个镜像源和文档站。凭据安全不靠它：沙箱里拿到的本来就是假的。"
 
 msgid "Don't proceed"
 msgstr "不做了"
@@ -816,7 +816,7 @@ msgid "Event stream"
 msgstr "事件流"
 
 msgid "Every container goes: sandboxes for {groups} groups, and {turns} turns currently running."
-msgstr "所有容器都会没：{groups} 个组的沙盒，还有 {turns} 个正在跑的 turn。"
+msgstr "所有容器都会没：{groups} 个组的沙箱，还有 {turns} 个正在跑的 turn。"
 
 msgid "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\n"
 "Drag in screenshots or designs, or paste. Cmd+Enter to submit"
@@ -1004,7 +1004,7 @@ msgid "Hiding:"
 msgstr "不看："
 
 msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
-msgstr "每个沙盒都会挂载的宿主目录，写成「容器里的路径: 宿主路径」。只适合包管理器缓存——共享任何构建会写入的目录都会让两个组撞车。这个路径还得在沙盒服务器的 allowed_host_paths 里。"
+msgstr "每个沙箱都会挂载的宿主目录，写成「容器里的路径: 宿主路径」。只适合包管理器缓存——共享任何构建会写入的目录都会让两个组撞车。这个路径还得在沙箱服务器的 allowed_host_paths 里。"
 
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "问不到 GitHub 时，一个 checkout 按什么读"
@@ -1116,7 +1116,7 @@ msgid "Interrupt, keep changes"
 msgstr "打断，保留改动"
 
 msgid "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
-msgstr "沙盒服务器在不在，认不认我们的密钥。通常是回环，而且它的答案只是填一份报告——下面那个网络探测才卡着整个 fleet。"
+msgstr "沙箱服务器在不在，认不认我们的密钥。通常是回环，而且它的答案只是填一份报告——下面那个网络探测才卡着整个 fleet。"
 
 msgid "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open."
 msgstr "到底有没有网：对每个供应商 origin 发一个 HEAD，在 watchdog 的 tick 里跑。这里故意最短——答案慢不能把一个 tick 拖住。"
@@ -1221,7 +1221,7 @@ msgid "Memory"
 msgstr "内存"
 
 msgid "Memory ceiling per sandbox."
-msgstr "每个沙盒的内存上限。"
+msgstr "每个沙箱的内存上限。"
 
 msgid "Message this group"
 msgstr "跟这个组说话"
@@ -1314,7 +1314,7 @@ msgid "No deliveries yet. Requirements are archived here after merging to main."
 msgstr "还没有交付过。合入 main 之后的需求归档到这里。"
 
 msgid "No diff available. The slice didn't record a baseline commit, or the sandbox has been reclaimed."
-msgstr "没有 diff 可读。这一片没有记下基线 commit，或者沙盒已经回收了。"
+msgstr "没有 diff 可读。这一片没有记下基线 commit，或者沙箱已经回收了。"
 
 msgid "No events"
 msgstr "无事件"
@@ -1659,7 +1659,7 @@ msgid "Read from server"
 msgstr "从服务器读"
 
 msgid "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser."
-msgstr "从沙盒服务器自己的配置里读（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）。值不经过浏览器。"
+msgstr "从沙箱服务器自己的配置里读（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）。值不经过浏览器。"
 
 msgid "Read-only. Every one of these has to pass before a container starts"
 msgstr "只读。容器起来之前，这些必须全通过"
@@ -1668,7 +1668,7 @@ msgid "Reading how much of the subscription window is left, curl'd from the util
 msgstr "读订阅窗口还剩多少，从工具容器里 curl。没有东西等它；顶栏只是不显示百分比而已。"
 
 msgid "Real tokens don't enter the sandbox"
-msgstr "真令牌不进沙盒"
+msgstr "真令牌不进沙箱"
 
 msgid "Recheck reachability"
 msgstr "重新检查可达性"
@@ -1698,7 +1698,7 @@ msgid "Rejected, awaiting fix"
 msgstr "已退回，等它修"
 
 msgid "Release the concurrency slot; code and checkpoint in the sandbox stay in place."
-msgstr "释放并发槽，沙盒里的代码和 checkpoint 原地不动"
+msgstr "释放并发槽，沙箱里的代码和 checkpoint 原地不动"
 
 msgid "Remind about paused"
 msgstr "暂停多久提醒一次"
@@ -1809,7 +1809,7 @@ msgid "Restart container"
 msgstr "重开容器"
 
 msgid "Restart the sandbox server?"
-msgstr "重启沙盒服务器？"
+msgstr "重启沙箱服务器？"
 
 msgid "Restarted {cold} times across {turns} turns: {why}. Each restart rebuilds the cache prefix from scratch"
 msgstr "{turns} 个 turn 里重开了 {cold} 次：{why}。重开一次，缓存前缀要从头建一遍"
@@ -1896,25 +1896,25 @@ msgid "Same magnitude as lease, same category—real compilation. Too tight fail
 msgstr "和 lease 同一个量级，因为是同一类东西——真的在编译。卡太紧的失败长得像「这个项目坏了」而不像「超时了」，而组在两种情况下都一样卡住。"
 
 msgid "Sandbox"
-msgstr "沙盒"
+msgstr "沙箱"
 
 msgid "Sandbox defaults"
-msgstr "沙盒默认值"
+msgstr "沙箱默认值"
 
 msgid "Sandbox operation"
 msgstr "容器操作"
 
 msgid "Sandbox server"
-msgstr "沙盒服务器"
+msgstr "沙箱服务器"
 
 msgid "Sandbox server ping"
-msgstr "沙盒服务器探测"
+msgstr "沙箱服务器探测"
 
 msgid "Sandbox setup"
 msgstr "环境装配"
 
 msgid "Sandbox TTL"
-msgstr "沙盒存活时间"
+msgstr "沙箱存活时间"
 
 msgid "Save"
 msgstr "存下"
@@ -1980,7 +1980,7 @@ msgid "Settings"
 msgstr "设置"
 
 msgid "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S"
-msgstr "设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S"
+msgstr "设置：账号、环境、技能、主题，以及这个项目的闸门和沙箱 ⌘S"
 
 msgid "Shared across all projects"
 msgstr "所有项目共用"

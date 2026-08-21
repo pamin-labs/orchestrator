@@ -70,7 +70,11 @@ export async function dropGroup(ctx: Ctx, grpId: number, why: string): Promise<v
       grpId,
       author: "boss",
       kind: "state_change",
-      body: say(ctx.config.language, "group.dropped", { why: why ? `：${why}` : "" }),
+      // Two keys, not one key and a separator built here: the separator is part
+      // of the sentence and belongs in the row that owns the sentence. Built
+      // here it was a fullwidth `：`, which went into the English row too —
+      // `dropped by the boss：ran out of budget`.
+      body: why ? say(ctx.config.language, "group.dropped_why", { why }) : say(ctx.config.language, "group.dropped"),
     });
   });
 }
@@ -150,7 +154,7 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: `沙盒是新的，把 ${grp.branch} 和依赖装回去`,
+    body: `沙箱是新的，把 ${grp.branch} 和依赖装回去`,
   });
   // The branch comes back off the remote, not out of a bundle the host kept:
   // `pushBranch` put it there at the last slice boundary, and `createCheckout`
@@ -178,7 +182,7 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     priority: 9,
     payload: {
       role: roleFor(ctx, "bootstrap_env"),
-      ...(known ? { rejection: `沙盒重建后，记下来的安装命令跑不通：${known}` } : {}),
+      ...(known ? { rejection: `沙箱重建后，记下来的安装命令跑不通：${known}` } : {}),
     },
   });
 }

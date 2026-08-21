@@ -19,7 +19,7 @@ const f = (o: Partial<PanelFrame> & { text: string; cls: PanelFrame["cls"] }): P
   ...o,
 });
 
-const started = () => f({ cls: "state", text: "沙盒是新的，把 orch/g1 和依赖装回去" });
+const started = () => f({ cls: "state", text: "沙箱是新的，把 orch/g1 和依赖装回去" });
 const cmd = () => f({ cls: "tool", text: "$ bun install --frozen-lockfile" });
 const out = (t: string) => f({ cls: "tool", text: t });
 
@@ -51,7 +51,7 @@ test("a failed run stays, because it is the one outcome to act on", () => {
 test("a second rebuild is its own run, not the first one continued", () => {
   // Concatenating them made the header quote the command from the run before.
   const first = [started(), cmd(), f({ cls: "state", text: "装好了：bun install" })];
-  const again = f({ cls: "state", text: "沙盒是新的，把 orch/g1 和依赖装回去" });
+  const again = f({ cls: "state", text: "沙箱是新的，把 orch/g1 和依赖装回去" });
   const b = bootstrapOf([...first, again, f({ cls: "tool", text: "$ pnpm i" })], 1);
   expect(b.cmd).toBe("pnpm i");
   expect(b.lines).toHaveLength(1);

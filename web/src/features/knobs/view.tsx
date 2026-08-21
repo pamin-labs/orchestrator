@@ -104,7 +104,7 @@ export type KnobSection = (typeof KNOB_SECTIONS)[number];
  * the second is what put thirteen keys on the API and nowhere on the page.
  */
 /**
- * `sandbox.server` and `sandbox.image` belong to the 沙盒 pane, which validates an
+ * `sandbox.server` and `sandbox.image` belong to the 沙箱 pane, which validates an
  * address and lists what the registry actually holds.
  *
  * `embedding.model` and `indexModel.model` belong to the `PAIRED` row their

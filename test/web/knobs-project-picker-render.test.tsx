@@ -166,7 +166,7 @@ test("the sandbox pane shows every unset override as an empty box with the defau
   const { getByLabelText, getByPlaceholderText, getByText } = render(
     <Sandbox d={config()} busy={false} patch={() => {}} />,
   );
-  getByText("沙盒");
+  getByText("沙箱");
   getByText("灰字是默认值");
   // The inherited value is the placeholder, never the value: a box pre-filled
   // with the default saves that default as this project's own the first time it

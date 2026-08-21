@@ -6,6 +6,7 @@
  * notification is decorative.
  */
 
+import { say } from "../../platform/text/lang.ts";
 import { scrub } from "../../platform/observability/redaction.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../../platform/config/load.ts";
 import type { Bus } from "../../platform/persistence/event-bus.ts";
@@ -77,6 +78,14 @@ export interface NotifierOptions {
   backoffMs?: number[];
   /** Delivery. Injected everywhere: the server passes `busDeliver`, tests pass a spy. */
   deliver?: (title: string, body: string, url?: string) => void | Promise<void>;
+  /**
+   * `output.language`, for the one sentence this class writes itself.
+   *
+   * Every item in a batch is already in the boss's language and the heading over
+   * them was the literal `N things need you:` — English, on the one string that
+   * arrives as a system notification.
+   */
+  lang?: string;
   now?: () => number;
 }
 
@@ -93,6 +102,8 @@ export class Notifier {
   private readonly batchMs: number;
   private readonly backoffMs: number[];
   private readonly now: () => number;
+
+  private readonly lang: string | undefined;
   private readonly deliver: NonNullable<NotifierOptions["deliver"]>;
 
   private readonly opts: NotifierOptions;
@@ -105,6 +116,7 @@ export class Notifier {
     // reminder immediate, which is the noise this class exists to stop.
     this.backoffMs = opts.backoffMs?.length ? opts.backoffMs : BACKOFF_MS;
     this.now = opts.now ?? (() => Date.now());
+    this.lang = opts.lang;
     // No default. There is exactly one delivery path and the server owns it, so
     // a Notifier built without one is a test, and a test that forgot its spy
     // should fail rather than quietly notify nobody.
@@ -139,7 +151,7 @@ export class Notifier {
     const body =
       items.length === 1
         ? items[0]!.body
-        : `${items.length} things need you:\n` + items.map((i) => `• ${i.body}`).join("\n");
+        : `${say(this.lang, "notify.batch", { n: items.length })}\n` + items.map((i) => `• ${i.body}`).join("\n");
     // No lastSent write here: push() already stamped every key through dueNow,
     // and rewriting it would reset strikes to 1, pinning the backoff at its
     // first step forever.

@@ -33,7 +33,7 @@ export interface Bootstrap {
  * whose `output.language` is English — a defect one layer down, recorded in
  * docs/project/progress.md, not fixed by translating the copy here.
  */
-const STARTED = "沙盒是新的";
+const STARTED = "沙箱是新的";
 const ENDED = /^装好了|^装失败了/;
 
 export function bootstrapOf(frames: PanelFrame[], grpId: number): Bootstrap {

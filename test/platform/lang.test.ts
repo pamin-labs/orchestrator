@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { SAY_KEYS, say } from "../../src/platform/text/lang.ts";
+import { SAY_KEYS, ZH_SAY, say, EN_SAY } from "../../src/platform/text/lang.ts";
 import { isChinese } from "../../src/contracts/config.ts";
 
 /**
@@ -25,9 +25,35 @@ test("both languages answer every key, with the arguments filled in", () => {
   expect(() => say(undefined, "gate.pass", {})).not.toThrow();
 });
 
+/** The names a row asks its caller for. */
+const holes = (row: string): string[] => [...row.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!).sort();
+
+/**
+ * The same silent failure as an unknown key, one level down: a row asking for
+ * `{minutes}` while every caller passes `min` renders a sentence with the thing
+ * it was about missing, and nothing anywhere says so.
+ *
+ * A set comparison rather than an inspection of the output, because the output
+ * is where the evidence has already been destroyed — see the test below.
+ */
+test("a translated row asks for exactly the arguments its English row asks for", () => {
+  const drift = SAY_KEYS.filter((k) => {
+    const zh = ZH_SAY[k];
+    return zh !== undefined && String(holes(zh)) !== String(holes(EN_SAY[k]));
+  });
+  expect(drift).toEqual([]);
+});
+
+/**
+ * What this replaced could not fail.
+ *
+ * It asserted `!out.includes("{")` — against a function that replaces **every**
+ * `{word}` with `String(args[k] ?? "")`. An unfilled placeholder becomes the
+ * empty string, so `turn ran past  min and was killed` passed. Rewritten as a
+ * check on the rows rather than on the output, it immediately named six that had
+ * been rendering blank under the green one.
+ */
 test("no placeholder survives into the boss's feed unfilled", () => {
-  // `{name}` reaching the screen is the visible half of the same failure the key
-  // check covers: the sentence is there, and the thing it was about is not.
   const args = {
     name: "g1",
     n: 3,
@@ -44,13 +70,30 @@ test("no placeholder survives into the boss's feed unfilled", () => {
     why: "boom",
     pr: 7,
     branch: "b",
+    hours: 4,
+    rule: "12",
+    ruleName: "sandbox_swept",
+    cmd: "opensandbox-server --port 1",
+    base: "origin/main",
+    sha: "abc1234",
+    title: "t",
+    // The six this check found on the day it replaced the vacuous one: every one
+    // of them was rendering as the empty string in the test above, green.
+    tier: "M",
+    reason: "no",
+    path: "src/a.ts",
+    target: 4,
+    pct: 80,
   };
+  const unfilled = SAY_KEYS.flatMap((key) =>
+    holes(EN_SAY[key])
+      .filter((h) => !(h in args))
+      .map((h) => `${key}: {${h}}`),
+  );
+  expect(unfilled).toEqual([]);
   for (const lang of ["中文", "English"]) {
     for (const key of SAY_KEYS) {
-      const out = say(lang, key, args);
-      expect(out.length).toBeGreaterThan(0);
-      // Not `{`, which is what an argument nobody passed leaves behind.
-      expect([key, out.includes("{")]).toEqual([key, false]);
+      expect(say(lang, key, args).length).toBeGreaterThan(0);
     }
   }
 });

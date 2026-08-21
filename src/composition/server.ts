@@ -27,7 +27,7 @@ import { REAL, sandboxHeld, type Scope } from "../mech/sandbox/sandbox.ts";
 import type { DB } from "../platform/persistence/database.ts";
 import { startMailbox } from "../mech/sandbox/mailbox.ts";
 import { baseRefFor, createCheckout, treeHeads } from "../mech/git/checkout.ts";
-import { preflight, report, type Check } from "../mech/ops/preflight.ts";
+import { preflight, type Check } from "../mech/ops/preflight.ts";
 import { restageSkills } from "../mech/skills.ts";
 import { ensureServer, type ServerState } from "../mech/sandbox/server.ts";
 import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "../mech/ops/notify.ts";
@@ -479,7 +479,7 @@ export async function reportServerState(ctx: Ctx, st: ServerState): Promise<void
     await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: `沙盒服务器起好了（我们起的，pid ${st.pid}）`,
+      body: `沙箱服务器起好了（我们起的，pid ${st.pid}）`,
     });
     return;
   }
@@ -502,8 +502,8 @@ export async function reportServerState(ctx: Ctx, st: ServerState): Promise<void
     intent: "inform",
     severity: "blocker",
     body:
-      `沙盒服务器在跑（pid ${st.pid}），但我们驱动不了：${st.why}\n` +
-      `没敢自动重启它 —— 这个进程可能是你自己起的，配的是别的东西。设置 → 沙盒服务器 那里有按钮。`,
+      `沙箱服务器在跑（pid ${st.pid}），但我们驱动不了：${st.why}\n` +
+      `没敢自动重启它 —— 这个进程可能是你自己起的，配的是别的东西。设置 → 沙箱服务器 那里有按钮。`,
   });
 }
 
@@ -875,6 +875,10 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   // configured endpoint only the SQLite processor is registered.
   configureTracing(db);
   const runtime = runtimeStatus(false);
+  // What the readiness timer found, where the panel can reach it. A getter, so
+  // the snapshot reads the current array rather than the one that existed at
+  // wiring time — and a read, so it never triggers the checks themselves.
+  ctx.checks = () => runtime.checks;
   const app = makeApp(ctx, runtime);
   const webDir = join(ROOT, "web");
   const background = new Set<Promise<unknown>>();
@@ -922,6 +926,11 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
     deliver: busDeliver(bus, cfg.notifyWebhook, cfg.timeouts.webhookMs),
     batchMs: cfg.intervals.notifyBatchMs,
     backoffMs: cfg.intervals.notifyBackoffMs,
+    // The one string the boss reads outside the panel, so it is the one that
+    // cannot follow the panel's locale: `busDeliver` also POSTs it to a webhook,
+    // where no browser is involved. ADR 035's test is whether anything but a
+    // browser reads the string, and here something does.
+    lang: cfg.language,
   });
   ctx.onFinding = (rule, severity, body, grpId) => {
     // The finding is already an event in the timeline. A notification on top of it
@@ -996,9 +1005,14 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
       .catch((e: unknown) => consola.error(`ensureServer: ${errText(e)}`)),
   );
 
-  // Say what is missing here, once, rather than letting every group discover it
+  // Find what is missing here, once, rather than letting every group discover it
   // one failed turn at a time. Not fatal: the panel can be opened and the
   // settings page is where three of these are fixed.
+  //
+  // Nothing is printed. A console line is written to a terminal the boss does not
+  // watch, and re-written every tick for as long as the fault lasts; the same
+  // finding now leaves through `ctx.checks` into the panel snapshot, which
+  // notifies once per fault and can be dismissed.
   let readinessWork: Promise<void> | null = null;
   const refreshReadiness = () => {
     if (readinessWork) return;
@@ -1014,10 +1028,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
             },
           ),
         ),
-      ).then(() => {
-        const bad = report([...runtime.checks]);
-        if (bad) consola.warn(`preflight:\n${bad}`);
-      }),
+      ),
     ).finally(() => {
       readinessWork = null;
     });

@@ -190,7 +190,7 @@ test("the sandbox server pane comes up reading rather than claiming a state", ()
       </TipRoot>
     </QueryClientProvider>,
   );
-  getByText("沙盒服务器");
+  getByText("沙箱服务器");
   getByText(/开容器的那个服务/);
   expect(getAllByText("读取中…").length).toBeGreaterThan(0);
 });
@@ -200,7 +200,7 @@ test("an account with nothing stored says so and offers both ways to fill it", (
     <CredPane rows={[]} onSaved={() => {}} onWaitForLogin={() => {}} />,
   );
   getByText("模型账号");
-  getByText(/真令牌不进沙盒/);
+  getByText(/真令牌不进沙箱/);
   // Both runtimes, both unconfigured, each with its own way in.
   getByText("Claude");
   getByText("Codex");
@@ -244,8 +244,8 @@ test("the skills pane says nothing about counts until the read lands", () => {
   getByText("读取中…");
   getByRole("button", { name: "重新扫描" });
   getByPlaceholderText("搜技能");
-  // No "0/0 个进沙盒" before anything is known.
-  expect(queryAllByText(/进沙盒/)).toHaveLength(0);
+  // No "0/0 个进沙箱" before anything is known.
+  expect(queryAllByText(/进沙箱/)).toHaveLength(0);
 });
 
 const skill = (name: string, over: Partial<Skill> = {}): Skill => ({

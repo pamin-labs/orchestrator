@@ -14,18 +14,18 @@
   "contracts/config.ts": 8,
   "mech/flow/chain.ts": 4,
   "mech/flow/intercept.ts": 1,
-  "mech/flow/review.ts": 11,
-  "mech/flow/start.ts": 15,
+  "mech/flow/review.ts": 9,
+  "mech/flow/start.ts": 14,
   "mech/git/checkout.ts": 6,
   "mech/git/github.ts": 1,
   "mech/git/prwatch.ts": 1,
   "mech/ops/checkconfig.ts": 12,
-  "mech/ops/watchdog.ts": 39,
+  "mech/ops/watchdog.ts": 5,
   "mech/sandbox/auth.ts": 1,
   "mech/skills.ts": 4,
   "mech/util/attachment-text.ts": 1,
   "mech/util/validate.ts": 6,
   "platform/config/load.ts": 1,
   "platform/observability/redaction.ts": 1,
-  "platform/text/lang.ts": 44
+  "platform/text/lang.ts": 65
 }

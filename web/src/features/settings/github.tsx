@@ -41,7 +41,7 @@ export type GhStatus = z.infer<typeof GhStatusSchema>;
 export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; onRefresh: () => void }) {
   return (
     <>
-      {/* 真令牌不进沙盒 is already the note on 模型账号, and a sentence repeated on
+      {/* 真令牌不进沙箱 is already the note on 模型账号, and a sentence repeated on
           two panes stops being read on either. */}
       <Head title="GitHub" note={t`Code comes from here`} />
       <Connection status={s} onRefresh={onRefresh} />

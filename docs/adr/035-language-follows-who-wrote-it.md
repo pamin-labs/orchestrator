@@ -36,15 +36,50 @@ Feedback to an agent is the same category for a different reason, recorded in
 `lang.ts`: it lands in a prompt beside code and gate output, and translating it would
 only make the model translate it back.
 
-## 3. Derived data a person reads follows `output.language`
-
-`say()` event bodies and note bodies.
+## 3. Derived data a person reads
 
 Panel text was in this list and is not any more:
 [`041`](041-the-panel-speaks-english-and-a-compiler-hashes-it.md) moved it to the
 browser's own language. Reading a pane is not writing a thing, and this knob sits
 in the cache prefix — following it would have rotated every session in the fleet
 to change what one person reads.
+
+This section said "`say()` event bodies and note bodies" follow `output.language`,
+and after 041 that was half wrong in a way nobody could see from either file: 041
+says a `SayKey` and its arguments "should not be rendered on the server at all",
+which is the opposite instruction for the same strings. **041 wins for event
+bodies.** The line is not the kind of text, it is the reader:
+
+> Does anything but a browser read this string?
+
+**No — the panel's own locale, and the server sends a key.** A `bus.emit` body is
+read by the timeline and by nothing else. Rendering it at the emit site pins it to
+one install-wide setting, and `isChinese()` is a language *pair*, so a Korean boss
+gets English however that knob is set. The catalogs have nine; the panel picks
+one per browser.
+
+**Yes — `output.language`, rendered on the server, as before.** Three sinks, and
+each has something other than a browser at the far end:
+
+- **Escalation `question` and `brief`.** `delta.ts` splices `question` verbatim
+  into an agent's prompt. It is also matched as data: `escalate.ts` dedupes on
+  `starts_with(question, prefix)` and `api/panel/group.ts` closes a question with
+  `like(question, "PR #%…%")`. A key would break both against rows already stored.
+- **Note bodies.** `note.lang` exists to record which language a note was written
+  in, because retrieval has to reach it and an agent reads it back.
+- **The notification webhook.** `notify.ts` posts the body to somebody else's
+  server. Desktop notifications are *not* in this list: there is no Web Push here,
+  the frame goes over the same bus and the browser raises it.
+
+The migration is additive, not a rewrite: `event.meta_json` already exists, so a
+key and its arguments ride beside the rendered body, the panel prefers the key and
+falls back to `body`, and `state_change` is trimmed at seven days anyway. The
+server keeps rendering `body` regardless — it is `NOT NULL`, and the webhook reads
+it.
+
+None of that has happened yet. What exists today is the half it depends on: every
+message the watchdog writes is a `SayKey` with **named** arguments, because
+`{hours}` is a name a catalog can carry and `{h}` is not.
 
 ## The cost, stated
 

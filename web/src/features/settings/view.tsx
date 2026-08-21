@@ -92,13 +92,13 @@ const NAV: Array<{ key: Section; label: MessageDescriptor; icon: typeof KeyRound
   // nav item is one string.
   { key: "github", label: msg`GitHub`, icon: GitBranch },
   // The server, what stops it starting, and what it builds by default — one
-  // subject, one pane. It was two: 环境 held the host prerequisites and 沙盒 held
+  // subject, one pane. It was two: 环境 held the host prerequisites and 沙箱 held
   // the server, on the argument that "a prerequisite is not a setting". The
   // split never took. Both panes read the same `checks` array, and both drew
   // `allowed_host_paths` from it — the same fact printed twice, two entries
   // apart in a list of eleven.
   //
-  // Named `Sandbox server`, not `Sandbox`: a project has a pane called 沙盒 too,
+  // Named `Sandbox server`, not `Sandbox`: a project has a pane called 沙箱 too,
   // and two navigation rows reading the same word is how somebody opens the
   // wrong one. The `<Head>` inside already said `Sandbox server`, so the name
   // was on screen the whole time — one row above it said something else.
@@ -444,7 +444,7 @@ function SettingsPanes({
             their own controls. */}
         <EnvPane checks={checks.filter((c) => !isCredential(c))} />
         {/* What a container is built with, for a project that says nothing. A
-            project's own 沙盒 pane overrides these. */}
+            project's own 沙箱 pane overrides these. */}
         <Knobs section="boxdefaults" />
       </>
     ),

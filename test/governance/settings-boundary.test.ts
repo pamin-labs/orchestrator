@@ -113,8 +113,8 @@ test("project controls own panes while the settings shell owns project scope", (
 /**
  * A setting has one control, in one pane.
  *
- * `sandbox.server` and `sandbox.image` had two each: a generic knob row in 沙盒默认值
- * *and* a purpose-built row in 沙盒服务器. Neither section knew about the other and
+ * `sandbox.server` and `sandbox.image` had two each: a generic knob row in 沙箱默认值
+ * *and* a purpose-built row in 沙箱服务器. Neither section knew about the other and
  * the panes were five apart in the sidebar, so which control a reader found was
  * down to which pane they opened. The report that arrived was "the image dropdown
  * disappeared": it had not, they were on the knob.
