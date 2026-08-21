@@ -779,6 +779,37 @@ M7 — executable engineering governance and versioned protocol.
   innocent: its deletes are a data-modifying CTE inside a transaction, which
   PostgreSQL runs to completion whether or not the query reads them.
 
+- **ADR 041 said Lingui could not reach the server, and that was only half
+  true.** The reason it gave was real — `release.yml` builds the server with
+  `bun build --compile`, the CLI has no `--plugin`, so the `.po` plugin cannot
+  run there. But that constrains *importing a catalogue*, not *running the
+  library*. Measured: a `bun build --compile` binary importing `@lingui/core`
+  and `@lingui/message-utils/compileMessage` renders Russian plurals correctly
+  — 1 срез, 2 среза, 5 срезов, **11 срезов, 21 срез**, the two everyone gets
+  wrong — for 10 extra modules and 49,536 bytes (63,495,650 against
+  63,446,114). Macros need the build plugin; the runtime does not. That is what
+  makes a server that speaks ten languages possible without reopening the
+  decision 041 actually made.
+
+- **Where each kind of text gets its language, written down once.** Panel text
+  follows the *interface* language and is rendered by the panel; text that
+  leaves this machine for a person — the notify webhook, the parts of a prompt
+  an agent writes for a human — follows `output.language` and is rendered by
+  the server in ten languages; code, commits, branch names, protocol keys, logs
+  and `/readyz` stay English and are not translated at all. The split is by
+  *function*, not by whether a browser is involved: that earlier test made the
+  webhook English-only, which is not a language a boss chose.
+
+- **The design for it is Lingui's, not ours.** `msg({ id, message })` takes an
+  explicit id (`@lingui/core/macro`), `i18n._(id, values)` takes a plain string
+  id, and the catalogues already hold both. So the server names a sentence and
+  the panel renders it, with no descriptor table beside the catalogue, no
+  hand-written interpolator beside ICU, and no parity test — the generated
+  server table exports the ids as a literal union, so a server naming a message
+  the panel never declared fails to compile. Three things that were about to be
+  invented here already existed; what is left of the invention is a wire schema
+  of two fields, because that much has to cross HTTP.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run
