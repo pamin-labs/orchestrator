@@ -208,7 +208,8 @@ MIT licensed.
 | Language | Progress | Messages |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | source |
-| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 | 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 | 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 | Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
@@ -217,11 +218,11 @@ MIT licensed.
 | Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 | Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 
-**What the orchestrator says through `say()`** · 44, Chinese and English only
+**What the orchestrator says through `say()`** · 65, English and one Chinese table — a Traditional reader gets these in Simplified
 
 | Language | Progress | Messages |
 | --- | --- | ---: |
-| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 44 / 44 |
+| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 65 / 65 |
 
 <!-- /i18n:table -->
 

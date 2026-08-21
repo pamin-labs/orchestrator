@@ -190,7 +190,8 @@ MIT 协议。
 | 语言 | 进度 | 条数 |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 源语言 |
-| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 | 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 | 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 | Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
@@ -199,11 +200,11 @@ MIT 协议。
 | Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 | Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 
-**编排器经 `say()` 说的话** · 44 条，只有中英两套
+**编排器经 `say()` 说的话** · 65 条，只有中英两套 —— 繁体读者拿到的是简体
 
 | 语言 | 进度 | 条数 |
 | --- | --- | ---: |
-| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 44 / 44 |
+| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 65 / 65 |
 
 <!-- /i18n:table -->
 

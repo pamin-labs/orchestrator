@@ -84,6 +84,10 @@ const steps: Step[] = [
   // Checks rather than writes, so it cannot be the thing that dirties the tree
   // the CI step below it exists to catch.
   { name: "translation table", job: "quality", run: () => cmd("bun run i18n:progress --check") },
+  // `zh-Hant.po` is generated from `zh.po`, so editing one Chinese string leaves
+  // the other catalog a sentence behind and nothing else notices: it is complete,
+  // it parses, and `i18n:validate` is satisfied by it.
+  { name: "traditional Chinese catalog", job: "quality", run: () => cmd("bun run i18n:hant --check") },
   // Editing an English `<Trans>` retires its id, so eight catalogs lose that
   // string at once — and `i18n:progress --check` only asks whether the README
   // matches, which regenerating it satisfies. This is the gate that says no.

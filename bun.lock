@@ -51,6 +51,7 @@
         "lucide-react": "^1.31.0",
         "p-map": "^7.0.6",
         "parse-diff": "^0.12.0",
+        "promptpurify": "^0.0.1",
         "quick-lru": "^7.3.0",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
@@ -101,6 +102,7 @@
         "istanbul-lib-report": "^3.0.1",
         "istanbul-reports": "^3.2.0",
         "msw": "^2.15.0",
+        "opencc-js": "^1.4.1",
         "oxc-coverage-instrument": "0.12.0",
         "oxlint": "^1.78.0",
         "oxlint-tsgolint": "^7.0.2001",
@@ -1097,6 +1099,8 @@
 
     "openapi-typescript-helpers": ["openapi-typescript-helpers@0.0.15", "", {}, "sha512-opyTPaunsklCBpTK8JGef6mfPhLSnyy5a0IN9vKtx3+4aExf+KxEqYwIy3hqkedXIB97u357uLMJsOnm3GVjsw=="],
 
+    "opencc-js": ["opencc-js@1.4.1", "", {}, "sha512-2lPLcrg7cnh1ATSduOxhnk/jq6KlR6w+5Ihl4wF7Z5e5Rva4vxTyugV5rZ7EiUCOZl+EDOLetIix+BhgYDCC+A=="],
+
     "ora": ["ora@9.4.1", "", { "dependencies": { "chalk": "^5.6.2", "cli-cursor": "^5.0.0", "cli-spinners": "^3.2.0", "is-interactive": "^2.0.0", "is-unicode-supported": "^2.1.0", "log-symbols": "^7.0.1", "stdin-discarder": "^0.3.2", "string-width": "^8.1.0" } }, "sha512-6VlU9MLXbjVQD04AZCMX28hVtA5bUoadvUqO76MUCVA0ilwJbMiHsITRPfyVm6p/BC0Av/BXMujx39WCe1LEqw=="],
 
     "outvariant": ["outvariant@1.4.3", "", {}, "sha512-+Sl2UErvtsoajRDKCE5/dBz4DIvHXQQnAxtQTF04OJxY0+DyZXSo5P5Bb7XYWOh81syohlYL24hbDwxedPUJCA=="],
@@ -1124,6 +1128,8 @@
     "pofile-ts": ["pofile-ts@4.0.3", "", {}, "sha512-sz1pnjgEfPyZ+QvaeX3NtCmbYnEvG01LZRLoN/uXoLtPZtxCIH5IctL7yXXc0fFyk/fqV6K8g3hlNfr6IJwupA=="],
 
     "pretty-format": ["pretty-format@27.5.1", "", { "dependencies": { "ansi-regex": "^5.0.1", "ansi-styles": "^5.0.0", "react-is": "^17.0.1" } }, "sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ=="],
+
+    "promptpurify": ["promptpurify@0.0.1", "", { "peerDependencies": { "onnxruntime-node": ">=1.17.0" }, "optionalPeers": ["onnxruntime-node"] }, "sha512-bRNwith6AL1d5QVTTcHKVeFpHdb/oEDvwtyoms1jUqMm56XjqheUlmKDorKGMOXxKtPu3muldvLVf646cbFg/g=="],
 
     "pseudolocale": ["pseudolocale@2.3.0", "", { "dependencies": { "commander": "^10.0.0" }, "bin": { "pseudolocale": "dist/cli.mjs" } }, "sha512-2RfZuwSSZ8sopelTIIZ2JhmO4GLnHflJQBmtMPF2APWEtmfKOsvqCIWsi8KQJ6EQ0D0+zVllPnLLGijUauSlqw=="],
 

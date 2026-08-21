@@ -139,9 +139,28 @@ export type StoredProjectConfig = z.infer<typeof StoredProjectConfigSchema>;
  * the panel offers gave an English feed and an English pane. The ISO codes are
  * anchored and delimited, because a bare `es` inside "Estonian" is not Spanish.
  */
+/**
+ * Order is load-bearing for the two Chinese rows, and only for them: `localeOf`
+ * takes the first row that matches, and `zh`'s `[中汉漢華华]` matches `繁體中文`
+ * too. Traditional first, or every Traditional reader silently gets Simplified.
+ */
+/**
+ * `zh` is Simplified and keeps its bare tag rather than becoming `zh-Hans`,
+ * because CLDR's `likelySubtags` already reads it that way — `zh` → `zh_Hans_CN`,
+ * `zh_TW` and `zh_Hant` → `zh_Hant_TW`. `zh-Hant` is the script subtag rather
+ * than `zh-TW` for the same reason: Taiwan, Hong Kong and Macau all maximise to
+ * it, so one row covers all three.
+ *
+ * `台` is not in the Traditional pattern on its own — `平台` would match it.
+ */
 const LANGUAGES = [
   { locale: "en", endonym: "English", spelled: /english|^en([-_]|$)/i },
-  { locale: "zh", endonym: "中文", spelled: /[中汉漢華华]|chinese|mandarin|^zh([-_]|$)/i },
+  {
+    locale: "zh-Hant",
+    endonym: "繁體中文",
+    spelled: /繁體|繁体|臺灣|台灣|台湾|traditional|^(zh|cmn)[-_](hant|tw|hk|mo)([-_]|$)/i,
+  },
+  { locale: "zh", endonym: "简体中文", spelled: /[中汉漢華华]|chinese|mandarin|^zh([-_]|$)/i },
   { locale: "ja", endonym: "日本語", spelled: /日本語|にほんご|japanese|^ja([-_]|$)/i },
   { locale: "ko", endonym: "한국어", spelled: /한국어|조선말|korean|^ko([-_]|$)/i },
   { locale: "es", endonym: "Español", spelled: /espa[ñn]ol|spanish|castellano|^es([-_]|$)/i },
@@ -179,7 +198,15 @@ export const localeOf = (lang: string | undefined): Locale =>
  * English only, so everything else there is English regardless of which catalog
  * the panel loaded.
  */
-export const isChinese = (lang: string | undefined): boolean => localeOf(lang) === "zh";
+/**
+ * Both scripts, which is why this is a prefix test and not `=== "zh"`.
+ *
+ * `ZH_SAY` is one Simplified table, so a Traditional reader gets Simplified
+ * there — readable, and the honest trade for 44 strings. Written as `=== "zh"`
+ * the day `zh-Hant` was added, they would have got **English** instead, which is
+ * worse than what they had before the locale existed.
+ */
+export const isChinese = (lang: string | undefined): boolean => localeOf(lang).startsWith("zh");
 
 export const ConfigSchema = z.object({
   language: z.string().min(1),

@@ -30,6 +30,7 @@ const KEY = "orch.locale";
  */
 const CATALOGS: Record<Exclude<Locale, "en">, () => Promise<{ messages: Messages }>> = {
   zh: () => import("./locales/zh.po"),
+  "zh-Hant": () => import("./locales/zh-Hant.po"),
   ja: () => import("./locales/ja.po"),
   ko: () => import("./locales/ko.po"),
   es: () => import("./locales/es.po"),

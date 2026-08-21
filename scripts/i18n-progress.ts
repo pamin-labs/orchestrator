@@ -57,13 +57,14 @@ const COPY = {
     head: ["Language", "Progress", "Messages"],
     source: "source",
     panel: (n: number) => `**Panel** · ${n} messages`,
-    orchestrator: (n: number) => `**What the orchestrator says through \`say()\`** · ${n}, Chinese and English only`,
+    orchestrator: (n: number) =>
+      `**What the orchestrator says through \`say()\`** · ${n}, English and one Chinese table — a Traditional reader gets these in Simplified`,
   },
   "README.zh-CN.md": {
     head: ["语言", "进度", "条数"],
     source: "源语言",
     panel: (n: number) => `**面板** · ${n} 条消息`,
-    orchestrator: (n: number) => `**编排器经 \`say()\` 说的话** · ${n} 条，只有中英两套`,
+    orchestrator: (n: number) => `**编排器经 \`say()\` 说的话** · ${n} 条，只有中英两套 —— 繁体读者拿到的是简体`,
   },
 } as const;
 

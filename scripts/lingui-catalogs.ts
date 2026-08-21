@@ -90,7 +90,11 @@ async function compile(path: string): Promise<string> {
 export const linguiCatalogs: BunPlugin = {
   name: "lingui-catalogs",
   setup(build) {
-    build.onLoad({ filter: /[\\/]locales[\\/][a-z-]+\.po$/, namespace: "file" }, async ({ path }) => ({
+    // `[a-zA-Z-]`, not `[a-z-]`: a BCP-47 script subtag is title case, so
+    // `zh-Hant.po` did not match — and the failure mode is not a build error but
+    // a catalog that is never compiled, which reads as "that locale renders in
+    // English" three layers away from here.
+    build.onLoad({ filter: /[\\/]locales[\\/][a-zA-Z-]+\.po$/, namespace: "file" }, async ({ path }) => ({
       contents: await compile(path),
       loader: "js",
     }));

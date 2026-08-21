@@ -11,7 +11,7 @@
   "application/executor.ts": 6,
   "application/turn/delta.ts": 2,
   "composition/server.ts": 24,
-  "contracts/config.ts": 6,
+  "contracts/config.ts": 8,
   "mech/flow/chain.ts": 4,
   "mech/flow/intercept.ts": 1,
   "mech/flow/review.ts": 11,
