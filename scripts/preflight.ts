@@ -84,11 +84,14 @@ const steps: Step[] = [
   // Checks rather than writes, so it cannot be the thing that dirties the tree
   // the CI step below it exists to catch.
   { name: "translation table", job: "quality", run: () => cmd("bun run i18n:progress --check") },
-  // Nothing else reads a translation: we do not run `lingui compile`, and plain
-  // `compile` prints a parse error and exits 0. Named for both halves because it
-  // checks both — a message that parses can still have dropped the one number it
-  // was written to carry.
-  { name: "translations parse and keep their names", job: "quality", run: () => cmd("bun run i18n:validate") },
+  // Editing an English `<Trans>` retires its id, so eight catalogs lose that
+  // string at once — and `i18n:progress --check` only asks whether the README
+  // matches, which regenerating it satisfies. This is the gate that says no.
+  {
+    name: "every message is translated and keeps its placeholders",
+    job: "quality",
+    run: () => cmd("bun run i18n:validate"),
+  },
   { name: "web bundle", job: "quality", run: () => cmd("bun run build:web") },
   // Through `bun run test`, not `bun test` directly: that wrapper retries an arm64
   // worker panic once and nothing else, and this is the command a developer runs

@@ -202,10 +202,6 @@ MIT licensed.
 
 ### Languages
 
-The panel and the messages the orchestrator writes are English at the source and
-translated from there. `bun run i18n:progress` regenerates this; CI fails if it
-is stale.
-
 <!-- i18n:table -->
 **Panel** · 809 messages
 
@@ -227,7 +223,6 @@ is stale.
 | --- | --- | ---: |
 | 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 44 / 44 |
 
-`bun run i18n:progress` regenerates this; CI fails if it is stale. English is the source, so it needs none.
 <!-- /i18n:table -->
 
 ## More

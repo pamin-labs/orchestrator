@@ -2381,8 +2381,8 @@ msgstr "分量："
 msgid "What"
 msgstr "在做什么"
 
-msgid "What the agents write in: journals, channel messages, questions, summaries. Any language works; the list only saves typing. Code, commits, branch names, PRs and errors stay English. Changing it restarts every session in the fleet."
-msgstr "agent 用什么语言写：journal、频道消息、问你的问题、状态摘要。写什么语言都行，这个列表只是省打字。代码、commit、分支名、PR 和错误信息始终是英文。改这一项会重启舰队里每一个 session。"
+msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
+msgstr "agent 用什么语言写。代码、commit、分支名、PR 和错误信息始终是英文。改这一项会重启每一个 session。"
 
 msgid "What this browser reads. What the agents write is the output language, under Models & budget — and this follows it unless you pick one here."
 msgstr "这台机器读什么语言。agent 写什么语言是「对外语言」，在 模型与预算 里——没在这里单独选的话，这里就跟着它走。"

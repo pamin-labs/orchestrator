@@ -65,10 +65,12 @@ jobs:
         run: bun run lint
       - name: translation table
         run: bun run i18n:progress --check
-      # Both halves: every message parses as ICU, and every one of them still
-      # refers to the names its English source did. A translation that quietly
-      # dropped `{count}` is well-formed and renders the wrong sentence.
-      - name: translations parse and keep their names
+      # Two failures this catches, both silent otherwise. Editing an English
+      # `<Trans>` retires its id — the id is a hash of the source — so eight
+      # catalogs lose that string at once and the panel renders English inside a
+      # Russian pane. And a translation that quietly dropped `{count}` is
+      # well-formed ICU rendering the wrong sentence.
+      - name: every message is translated and keeps its placeholders
         run: bun run i18n:validate
       # Nothing above may leave the tree dirty — a formatter or a build that
       # writes into the repository is a diff the author never saw.

@@ -2381,8 +2381,8 @@ msgstr "重み："
 msgid "What"
 msgstr "内容"
 
-msgid "What the agents write in: journals, channel messages, questions, summaries. Any language works; the list only saves typing. Code, commits, branch names, PRs and errors stay English. Changing it restarts every session in the fleet."
-msgstr "エージェントが書くときの言語です：日誌、チャンネルのメッセージ、質問、要約。どの言語でも動きます。このリストは入力を省くためだけのものです。コード、コミット、ブランチ名、PR、エラーは英語のままです。変更すると艦隊の全セッションが再起動します。"
+msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
+msgstr "agent が書くときの言語。コード、commit、ブランチ名、PR、エラーは英語のまま。変更すると全 session が再起動します。"
 
 msgid "What this browser reads. What the agents write is the output language, under Models & budget — and this follows it unless you pick one here."
 msgstr "このブラウザが読む言語です。エージェントが書く言語は「モデルと予算」にある対外言語で、ここで選ばない限りそちらに従います。"

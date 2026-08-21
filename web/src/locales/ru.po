@@ -2381,8 +2381,8 @@ msgstr "Вес:"
 msgid "What"
 msgstr "Что"
 
-msgid "What the agents write in: journals, channel messages, questions, summaries. Any language works; the list only saves typing. Code, commits, branch names, PRs and errors stay English. Changing it restarts every session in the fleet."
-msgstr "Язык, на котором пишут агенты: журналы, сообщения в каналах, вопросы, сводки. Подойдёт любой; список лишь экономит набор. Код, коммиты, имена веток, PR и ошибки остаются английскими. Изменение перезапускает все сессии флота."
+msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
+msgstr "Язык, на котором пишут агенты. Код, коммиты, ветки, PR и ошибки остаются английскими. Изменение перезапускает все сессии."
 
 msgid "What this browser reads. What the agents write is the output language, under Models & budget — and this follows it unless you pick one here."
 msgstr "То, что читает этот браузер. То, на чём пишут агенты, — язык вывода в разделе «Модели и бюджет»; этот следует за ним, пока вы не выберете здесь свой."

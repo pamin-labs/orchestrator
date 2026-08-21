@@ -49,7 +49,13 @@ import { Switch } from "../../ui/switch";
 import { Help, Tip } from "../../ui/tooltip";
 import { z } from "zod";
 import type { Json } from "../../../../src/contracts/json";
-import { ConfigSchema, SettingWriteSchema, type SettingWrite } from "../../../../src/contracts/config";
+import {
+  ConfigSchema,
+  endonymOf,
+  localeOf,
+  SettingWriteSchema,
+  type SettingWrite,
+} from "../../../../src/contracts/config";
 import type { InferResponseType } from "hono/client";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
@@ -416,7 +422,7 @@ export const COPY: Record<
   },
   language: {
     label: msg`Output language`,
-    why: msg`What the agents write in: journals, channel messages, questions, summaries. Any language works; the list only saves typing. Code, commits, branch names, PRs and errors stay English. Changing it restarts every session in the fleet.`,
+    why: msg`What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session.`,
   },
   turnTimeoutMs: {
     label: msg`Turn timeout`,
@@ -986,6 +992,11 @@ function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
   }
 }
 
+/** What this browser is reading in, as the language names itself. Read off the
+ *  active locale rather than the stored preference: what leads the list should be
+ *  the language actually on screen. */
+const reading = (): string => endonymOf(localeOf(i18n.locale));
+
 function choiceValue({ knob, onWrite }: Editor) {
   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- this renderer intentionally owns only choice knobs
   switch (knob.path) {
@@ -994,11 +1005,17 @@ function choiceValue({ knob, onWrite }: Editor) {
       // *agents* write, and a model writes whatever it is told to. `say()`'s
       // table is only the orchestrator's own status lines — a smaller fact, and
       // it is in the row's note.
+      // The panel's own language leads the list, because "same as what I am
+      // reading" is the answer most of the time and typing it is the only way to
+      // get it otherwise. It writes that language's name, not a "follow" token:
+      // the server never learns what this browser is set to — that lives in
+      // `localStorage` — so a value promising to track it would be a lie the
+      // moment the reader changed panes.
       return (
         <Combobox
           free
           value={ConfigSchema.shape.language.parse(knob.value)}
-          options={LANGUAGE_SUGGESTIONS}
+          options={[reading(), ...LANGUAGE_SUGGESTIONS.filter((l) => l !== reading())]}
           placeholder={LANGUAGE_SUGGESTIONS.slice(0, 3).join(" / ")}
           onCommit={onWrite}
         />

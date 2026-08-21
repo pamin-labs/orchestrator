@@ -2381,8 +2381,8 @@ msgstr "Peso:"
 msgid "What"
 msgstr "O quê"
 
-msgid "What the agents write in: journals, channel messages, questions, summaries. Any language works; the list only saves typing. Code, commits, branch names, PRs and errors stay English. Changing it restarts every session in the fleet."
-msgstr "O idioma em que os agentes escrevem: diários, mensagens de canal, perguntas, resumos. Qualquer idioma serve; a lista só poupa digitação. Código, commits, nomes de branch, PRs e erros continuam em inglês. Mudar isto reinicia todas as sessões da frota."
+msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
+msgstr "O idioma em que os agentes escrevem. Código, commits, branches, PRs e erros continuam em inglês. Mudar reinicia todas as sessões."
 
 msgid "What this browser reads. What the agents write is the output language, under Models & budget — and this follows it unless you pick one here."
 msgstr "O que este navegador lê. O que os agentes escrevem é o idioma de saída, em Modelos e orçamento — e este segue aquele, a menos que você escolha um aqui."

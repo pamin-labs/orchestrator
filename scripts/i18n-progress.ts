@@ -58,14 +58,12 @@ const COPY = {
     source: "source",
     panel: (n: number) => `**Panel** · ${n} messages`,
     orchestrator: (n: number) => `**What the orchestrator says** · ${n}, Chinese and English only`,
-    note: "`bun run i18n:progress` regenerates this; CI fails if it is stale. English is the source, so it needs none.",
   },
   "README.zh-CN.md": {
     head: ["语言", "进度", "条数"],
     source: "源语言",
     panel: (n: number) => `**面板** · ${n} 条消息`,
     orchestrator: (n: number) => `**编排器自己说的话** · ${n} 条，只有中英两套`,
-    note: "`bun run i18n:progress` 重新生成；过期时 CI 会红。英文是源语言，不需要翻译。",
   },
 } as const;
 
@@ -90,7 +88,6 @@ const block = (rows: Row[], orchestrator: Row, copy: Copy): string =>
     copy.orchestrator(orchestrator.total),
     "",
     ...table([orchestrator], copy),
-    copy.note,
     MARK.close,
   ].join("\n");
 

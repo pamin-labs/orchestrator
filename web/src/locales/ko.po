@@ -2381,8 +2381,8 @@ msgstr "가중치:"
 msgid "What"
 msgstr "내용"
 
-msgid "What the agents write in: journals, channel messages, questions, summaries. Any language works; the list only saves typing. Code, commits, branch names, PRs and errors stay English. Changing it restarts every session in the fleet."
-msgstr "에이전트가 쓸 때의 언어입니다: 일지, 채널 메시지, 질문, 요약. 어떤 언어든 됩니다 — 목록은 타이핑을 줄여줄 뿐입니다. 코드, 커밋, 브랜치 이름, PR, 오류는 영어로 유지됩니다. 바꾸면 함대의 모든 세션이 재시작됩니다."
+msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
+msgstr "에이전트가 쓰는 언어. 코드, 커밋, 브랜치 이름, PR, 오류는 영어로 유지됩니다. 바꾸면 모든 세션이 재시작됩니다."
 
 msgid "What this browser reads. What the agents write is the output language, under Models & budget — and this follows it unless you pick one here."
 msgstr "이 브라우저가 읽는 언어입니다. 에이전트가 쓰는 언어는 '모델과 예산'의 대외 언어이며, 여기서 고르지 않으면 그것을 따릅니다."

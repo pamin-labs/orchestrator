@@ -30,9 +30,10 @@ type Catalogs = Awaited<ReturnType<Api["getCatalogs"]>>;
  *
  * Lingui's own return type carries more, and naming it here would make every
  * reader of the README's progress table depend on the shape of a CLI internal.
- * These two fields are the whole contract: what is translated, and what is not.
+ * These two fields are the whole contract: what is translated, and — by id —
+ * what is not.
  */
-export type Translations = { messages: Record<string, string>; missing: unknown[] };
+export type Translations = { messages: Record<string, string>; missing: { id: string }[] };
 
 /** Resolved once. `getCatalogs` walks the filesystem, and it is the same answer
  *  for every catalog in a build. */
