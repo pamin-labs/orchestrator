@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
-import { badEnglish, message } from "../../http/respond.ts";
+import { badText, message } from "../../http/respond.ts";
 import { evictOldestLessons } from "../../mech/knowledge/lessons.ts";
 import { execIn, putFile, WORK } from "../../mech/sandbox/sandbox.ts";
 import { shq } from "../../platform/process/shell.ts";
@@ -110,7 +110,7 @@ async function queueCompletedRetro(ctx: Ctx, groupId: number | null, kind: Journ
 
 export const postJournal = (async (ctx, _req, a, _p, b) => {
   const v = validateJournal({ kind: b.kind, body: b.body, ...(b.files ? { files: b.files } : {}) });
-  if (!v.ok) return badEnglish(v.error);
+  if (!v.ok) return badText(v.error);
 
   const [found] = a.grp_id
     ? await ctx.db.select({ name: grps.name, project_id: grps.project_id }).from(grps).where(eq(grps.id, a.grp_id))

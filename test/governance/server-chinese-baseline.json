@@ -12,7 +12,6 @@
   "composition/server.ts": 19,
   "contracts/config.ts": 8,
   "mech/flow/chain.ts": 4,
-  "mech/flow/intercept.ts": 1,
   "mech/flow/review.ts": 9,
   "mech/flow/start.ts": 14,
   "mech/git/checkout.ts": 6,

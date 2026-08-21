@@ -4,21 +4,21 @@ import { readdirSync, readFileSync } from "node:fs";
 import BASELINE from "./server-chinese-baseline.json";
 
 /**
- * `src/` carries 407 hardcoded Chinese literals across 36 files, and this test
- * does not fix that. It stops it growing.
+ * `src/` still carries hardcoded Chinese literals, and this test does not fix
+ * that. It stops them growing. The count lives in `server-chinese-baseline.json`
+ * rather than here, so it cannot go stale: it was 407 across 36 files when this
+ * was written and the file is what says where it is now.
  *
  * The panel is translated into nine languages and the server is not, so a Korean
- * reader gets a Korean pane with `服务器开了鉴权，我们没带密钥` inside it. Every one
- * of those is a string the panel renders but cannot reach: `say()` has 44 of
- * them and 28 call sites, and the rest bypass it entirely.
+ * reader gets a Korean pane with `服务器开了鉴权，我们没带密钥` inside it.
  */
 /**
- * `RegExpLiteral` as well as strings, and that is the part worth copying.
- * `panel-speaks-english.test.ts` visits `StringLiteral`, `TemplateElement` and
- * `JSXText` — a regular expression is none of those, so a scan built from it
- * cannot see `/(花钱|付费|采购|订阅|预算|密钥)/` in `chain.ts`, the pattern deciding
- * which questions must reach a person. Regexes are exactly the literals where a
- * translation breaks behaviour rather than reading oddly.
+ * `RegExpLiteral` as well as strings, and that is the part worth copying — a
+ * regular expression is not a `StringLiteral`, a `TemplateElement` or a `JSXText`,
+ * so a scan without it cannot see `/(花钱|付费|采购|订阅|预算|密钥)/` in `chain.ts`,
+ * the pattern deciding which questions must reach a person. Regexes are exactly
+ * the literals where a translation breaks behaviour rather than reading oddly.
+ * `panel-speaks-english.test.ts` visits it too now.
  */
 const CJK = /[一-鿿ぁ-ヿ가-힯　-〿＀-￯]/;
 const ROOT = `${process.cwd()}/src`;

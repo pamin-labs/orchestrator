@@ -16,8 +16,8 @@ const built = await Bun.build({
   target: "browser",
   minify: true,
   // Each catalog is its own chunk, fetched when a locale is first activated:
-  // eight of them, ~52KB each compiled, and nobody reads two. English has no
-  // catalog at all, so it fetches none.
+  // ten of them, ~90KB each compiled, and nobody reads two. English is one of
+  // the ten — ADR 041 has why it stopped being the exception.
   splitting: true,
   plugins: [linguiMacros, linguiCatalogs],
 });

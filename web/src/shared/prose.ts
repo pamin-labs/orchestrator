@@ -45,6 +45,10 @@ export const brief = (s: string, max = 44): string => {
  * satisfies — its first line is `## 目标`. Every card in the queue read
  * `Plan card not submitted` with the card sitting right there.
  */
+// i18n-exempt: protocol, not copy — the same two spellings `ALIAS` in
+// `src/mech/util/validate.ts` accepts, for the same stored cards, and they retire
+// together with it in 0.2.0. Invisible to this guard until it learned to read
+// regexes.
 const GOAL_KEY = /^\s*(?:#{1,6}\s*)?(goal|目标)\s*[:：]?\s*$/i;
 const GOAL_INLINE = /^\s*(goal|目标)\s*[:：]\s*/i;
 

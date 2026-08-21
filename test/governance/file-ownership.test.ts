@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { Said } from "../../src/contracts/said.ts";
+import { renderSaid } from "../../src/platform/text/lang.ts";
 import { eq } from "drizzle-orm";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { grp, project } from "../../src/platform/persistence/schema.ts";
@@ -35,6 +37,9 @@ async function seed(groups: Array<{ name: string; owns: string[]; status?: GrpSt
   }
   return db;
 }
+
+/** `canStart` names its refusal rather than writing it; these assert the English. */
+const en = (said: Said | undefined): string => (said ? renderSaid("en", said) : "");
 
 test("static prefix stops at a path boundary, but a literal path is itself", async () => {
   expect(staticPrefix("src/auth/**")).toBe("src/auth/");
@@ -78,8 +83,8 @@ test("starting undeclared beside a group that HAS declared is refused", async ()
   const r = await canStart(db, 2);
   // An undeclared group silently claims everything, including their paths.
   expect(r.ok).toBe(false);
-  expect(r.reason).toContain("auth");
-  expect(r.reason).toContain("boundary");
+  expect(en(r.reason)).toContain("auth");
+  expect(en(r.reason)).toContain("boundary");
 });
 
 test("two undeclared groups are allowed — two blanks cannot be shown to overlap", async () => {
@@ -98,8 +103,8 @@ test("overlapping groups cannot run in parallel, and the message names both", as
   const r = await canStart(db, 2);
   expect(r.ok).toBe(false);
   expect(r.conflicts[0]!.name).toBe("auth");
-  expect(r.reason).toContain("src/auth/mw.ts");
-  expect(r.reason).toContain("Architect");
+  expect(en(r.reason)).toContain("src/auth/mw.ts");
+  expect(en(r.reason)).toContain("Architect");
 });
 
 test("disjoint groups start together", async () => {
@@ -131,7 +136,7 @@ test("shared files belong to no group", async () => {
   const r = await canStart(db, 1);
   expect(r.ok).toBe(false);
   expect(r.sharedClaimed).toContain("package.json");
-  expect(r.reason).toContain("no group");
+  expect(en(r.reason)).toContain("no group");
 });
 
 test("a project may declare extra shared paths", async () => {

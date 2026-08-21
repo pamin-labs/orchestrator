@@ -122,6 +122,9 @@ msgstr "{hours} 時間"
 msgid "{idleCount} more are idle and costing nothing."
 msgstr "他 {idleCount} 件はアイドルで費用ゼロです。"
 
+msgid "{image} is neither an image we publish nor one built on this machine"
+msgstr "{image} は公開しているイメージでも、このマシンでビルドされたものでもありません"
+
 msgid "{image} is not on this machine"
 msgstr "{image} はこのマシンにありません"
 
@@ -130,6 +133,9 @@ msgstr "{lines} 行"
 
 msgid "{live} running"
 msgstr "{live} 件実行中"
+
+msgid "{mine} overlaps {theirs} owned by {name} — wait for it, or ask the Architect for a different split"
+msgstr "{mine} は {name} が持つ {theirs} と重なっています。待つか、アーキテクトに別の分割を頼んでください"
 
 msgid "{minutes} min"
 msgstr "{minutes} 分"
@@ -200,6 +206,9 @@ msgstr "{name} の予算消化率が {pct}% です"
 msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name} の待ち条件が解消されました — 起こしました"
 
+msgid "{name} is over 25MB"
+msgstr "{name} は 25MB を超えています"
+
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
 msgstr "{name} はボードから外れ、キュー中のターンはすべて取り消されます。コードと記録は残ります。"
 
@@ -236,6 +245,18 @@ msgstr "{name} の PR がマージキューの先頭で {hours} 時間止まっ�
 msgid "{name}'s sandbox is bound to a superseded credential; reclaimed, and the next tick rebuilds it"
 msgstr "{name} のサンドボックスは古い資格情報に紐づいていたため回収しました。次のティックで再構築します"
 
+msgid "{path} is a path inside this container, and the mount is made by the sandbox server's docker, which resolves it on its own filesystem. Use one absolute path on both sides (-v <host path>:{path}) and add it to the sandbox server's allowed_host_paths. A mismatch does not fail; it mounts an empty directory."
+msgstr "{path} はこのコンテナ内のパスですが、マウントを行うのはサンドボックスサーバーの docker で、そちらは自分のファイルシステム上で解決します。両側で同じ絶対パスを使い（-v <host path>:{path}）、サンドボックスサーバーの allowed_host_paths に追加してください。食い違っても失敗はせず、空のディレクトリがマウントされるだけです。"
+
+msgid "{path}: {error}"
+msgstr "{path}: {error}"
+
+msgid "{path}: cannot be read"
+msgstr "{path}: 読み取れません"
+
+msgid "{repoPath} is already registered as \"{name}\""
+msgstr "{repoPath} は既に「{name}」として登録されています"
+
 msgid "{repoPath} removed"
 msgstr "{repoPath} を削除しました"
 
@@ -263,6 +284,12 @@ msgstr "{role} がこのグループの所有外のファイルを {n} 件書き
 
 msgid "{runningCount} running · {total} total"
 msgstr "{runningCount} 件実行中 · 全 {total} 件"
+
+msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
+msgstr "{server} は応答しますが、sandbox server ではありません（HTTP {status}）。別のアドレスを指定してください。"
+
+msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
+msgstr "{server} は応答せず、このマシンのアドレスでもありません。ここでは起動できません。そのマシンを確認してください。"
 
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "このセッション {sessionTokens} トークン · {model}"
@@ -357,6 +384,9 @@ msgstr "追加"
 msgid "Add · {branch}"
 msgstr "追加 · {branch}"
 
+msgid "Add {path} to the sandbox server's allowed_host_paths, or every group fails to open a container. Tick the skills in Settings."
+msgstr "{path} をサンドボックスサーバーの allowed_host_paths に追加してください。さもないとどのグループもコンテナを作れません。スキルは設定で選びます。"
+
 msgid "Add a row"
 msgstr "行を追加"
 
@@ -411,6 +441,9 @@ msgstr "すべて 1ms 未満"
 msgid "Allow notifications"
 msgstr "通知を許可"
 
+msgid "already spent {spent} tokens — a cap at {tokens} would stop it again immediately"
+msgstr "すでに {spent} トークン使っています。上限を {tokens} にしてもすぐまた止まります"
+
 msgid "already spent {tokens} tokens"
 msgstr "すでに {tokens} トークン消費"
 
@@ -435,8 +468,8 @@ msgstr "API キー"
 msgid "Appearance"
 msgstr "外観"
 
-msgid "approval recorded — held by the boundary: {why}. Starts by itself once that clears"
-msgstr "承認を記録しました — 境界が保留中です: {why}。解消され次第、自動的に開始します"
+msgid "Approval recorded — it starts by itself once the boundary clears."
+msgstr "承認を記録しました。境界が空き次第、自動的に始まります。"
 
 msgid "Approve and start"
 msgstr "承認して開始"
@@ -543,6 +576,9 @@ msgstr "どちらもディスパッチャに回ります。カードを直して
 msgid "Boundary"
 msgstr "境界"
 
+msgid "boundary still overlaps"
+msgstr "境界がまだ重なっています"
+
 msgid "Branch"
 msgstr "ブランチ"
 
@@ -614,6 +650,12 @@ msgstr "到達できません: {error}"
 
 msgid "Cannot reach the usage endpoint"
 msgstr "使用量エンドポイントに到達できません"
+
+msgid "cannot start it: {error}"
+msgstr "起動できません: {error}"
+
+msgid "cannot write the config: {error}"
+msgstr "設定を書き込めません: {error}"
 
 msgid "cards pending review"
 msgstr "レビュー待ちのカード"
@@ -789,8 +831,17 @@ msgstr "CoS 作業中"
 msgid "Cost"
 msgstr "コスト"
 
+msgid "could not force-stop pid {pid}: {error}"
+msgstr "pid {pid} の強制停止に失敗しました: {error}"
+
 msgid "Could not generate a draft; you'll need to write this one yourself."
 msgstr "下書きを作れませんでした。これは自分で書いてください。"
+
+msgid "could not start {bin}: {error}"
+msgstr "{bin} を起動できません: {error}"
+
+msgid "could not stop pid {pid}: {error}"
+msgstr "pid {pid} の停止に失敗しました: {error}"
 
 msgid "Couldn't read the settings from the server."
 msgstr "サーバーから設定を読めませんでした。"
@@ -1290,6 +1341,9 @@ msgstr "スキルを挿入"
 msgid "Install dependencies"
 msgstr "依存をインストール"
 
+msgid "Install Docker — or Colima, or Podman, anything that provides a docker socket — and start it."
+msgstr "Docker を入れてください。Colima でも Podman でも、docker ソケットを提供するものなら何でも構いません。入れたら起動してください。"
+
 msgid "Install on GitHub"
 msgstr "GitHub にインストール"
 
@@ -1302,6 +1356,9 @@ msgstr "別のアカウントにインストール"
 msgid "Installed on these accounts"
 msgstr "これらのアカウントにインストール済み"
 
+msgid "installed, but the daemon is not answering"
+msgstr "インストール済みだが、デーモンが応答しない"
+
 msgid "Interrupt and rollback"
 msgstr "中断してロールバック"
 
@@ -1313,6 +1370,14 @@ msgstr "サンドボックスサーバーが動いていて、こちらの鍵を
 
 msgid "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open."
 msgstr "そもそもネットワークがあるか。各プロバイダのオリジンへ HEAD を投げ、watchdog のティック内で走ります。ここで最短の待ちにしてあるのは意図的です。遅い答えがティックを開けたままにしてはいけません。"
+
+msgid "it exited on its own (exit {code}), printing nothing"
+msgstr "自分で終了しました（exit {code}）。何も出力していません"
+
+msgid "it exited on its own (exit {code}):\n"
+"{tail}"
+msgstr "自分で終了しました（exit {code}）:\n"
+"{tail}"
 
 msgid "It's not a duplicate, and it's not done yet — keep decomposing."
 msgstr "重複ではないし、まだ終わってもいません。分解を続けてください。"
@@ -1572,6 +1637,9 @@ msgstr "ほかのモデルはまだありません。そのまま入力してく
 msgid "No other requirements for this project"
 msgstr "このプロジェクトに他の要件はありません"
 
+msgid "no owned paths declared, and {holders} already hold theirs — the Architect has to cut the boundary before work starts"
+msgstr "所有パスが宣言されておらず、{holders} は既に自分の分を持っています。着手前にアーキテクトが境界を切る必要があります"
+
 msgid "no path"
 msgstr "パスがありません"
 
@@ -1580,9 +1648,6 @@ msgstr "一時停止中の要件はありません。予算が尽きたときや
 
 msgid "No pending items"
 msgstr "未処理はありません"
-
-msgid "no reason given, which is itself a bug"
-msgstr "理由が示されていません。これ自体がバグです"
 
 msgid "No reason recorded"
 msgstr "理由の記録なし"
@@ -1608,11 +1673,20 @@ msgstr "スライスなし"
 msgid "No slices"
 msgstr "スライスなし"
 
+msgid "no such group"
+msgstr "そのグループはありません"
+
 msgid "No system activity recorded."
 msgstr "システムの活動記録はありません。"
 
 msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
 msgstr "まだトークンを使っていません。計画カードを承認すると、コストが要件ごと・エージェントごとに分かれます。どのモデルを使うかは難度タグが決めます。"
+
+msgid "no uvx — opensandbox-server is a Python package, so install uv before one can start"
+msgstr "uvx がありません。opensandbox-server は Python パッケージなので、先に uv を入れてください"
+
+msgid "no uvx on PATH"
+msgstr "PATH に uvx がない"
 
 msgid "No, keep going"
 msgstr "いいえ、続ける"
@@ -1644,8 +1718,17 @@ msgstr "2 期間分のデータがありません。"
 msgid "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
 msgstr "ローカルでも暗号化されたネットワーク上でもありません。通信は暗号化されていない HTTP です。鍵とコンテナの通信が露出します。HTTPS か Tailscale を使ってください。"
 
+msgid "not reachable"
+msgstr "到達できない"
+
+msgid "not running"
+msgstr "動いていません"
+
 msgid "Not running"
 msgstr "停止中"
+
+msgid "not running (a process looks like it, pid {pid}, but {server} does not answer — it may be starting, or it may be stuck)"
+msgstr "動いていません（それらしいプロセスはあります、pid {pid}。ただし {server} は応答しません。起動中か、詰まっているかです）"
 
 msgid "Not satisfied"
 msgstr "未達成"
@@ -1658,6 +1741,9 @@ msgstr "ノート"
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "GitHub 側は何も変わりません。ブランチも PR もそのまま、コードは 1 行も触りません。消えるのは、このマシンにある作業のコピーです。"
+
+msgid "nothing recorded about how this server was started"
+msgstr "このサーバーの起動方法は記録されていません"
 
 msgid "Notifications"
 msgstr "通知"
@@ -1731,9 +1817,6 @@ msgstr "PR を開く ↗"
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server が消失したため再起動しました（{n} 回目）。保留中の作業は自動的に再開します。"
 
-msgid "opensandbox-server was gone and the restart failed (attempt {n}): {why}"
-msgstr "opensandbox-server が消失し、再起動に失敗しました（{n} 回目）: {why}"
-
 msgid "opensandbox-server will not start; {n, plural, one {# attempt} other {# attempts}} and no more automatic retries. Run it by hand to see what it says: {cmd}"
 msgstr "opensandbox-server が起動しません。{n} 回試行し、自動再試行は行いません。手動で実行して出力を確認してください: {cmd}"
 
@@ -1748,6 +1831,9 @@ msgstr "組織"
 
 msgid "Other"
 msgstr "その他"
+
+msgid "out of budget ({spent}/{budget} tokens). Raise the cap first, or it stops again on the next tick."
+msgstr "予算切れです（{spent}/{budget} トークン）。先に上限を上げないと、次のティックでまた止まります。"
 
 msgid "Output language"
 msgstr "対外言語"
@@ -1817,6 +1903,9 @@ msgstr "個人アカウント"
 
 msgid "Pick a model to add a row"
 msgstr "モデルを選ぶと行が足せます"
+
+msgid "pid {pid} is still running after SIGKILL"
+msgstr "SIGKILL のあとも pid {pid} は動いています"
 
 msgid "Plan"
 msgstr "計画"
@@ -1941,8 +2030,11 @@ msgstr "到達性を再確認"
 msgid "Recheck the repo map"
 msgstr "リポジトリマップを再確認"
 
-msgid "reconcile failed on S{seq}: {reason}"
-msgstr "S{seq} の照合に失敗: {reason}"
+msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
+msgstr "S{seq} の突き合わせに失敗: 宣言はあるが変更なし — {files}"
+
+msgid "reconcile failed on S{seq}: nothing was claimed and nothing changed"
+msgstr "S{seq} の突き合わせに失敗: 宣言も変更もありません"
 
 msgid "Reconciliation"
 msgstr "整合の取り直し"
@@ -2163,6 +2255,9 @@ msgstr "uvx opensandbox-server --config ~/.sandbox.toml を {server} で待ち�
 msgid "Run uvx opensandbox-server on the host, not here: this orchestrator is inside a container and the sandbox server needs the host's docker. Then point ORCH_SANDBOX_SERVER at it — host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux."
 msgstr "uvx opensandbox-server はここではなくホスト側で実行してください。このオーケストレーターはコンテナの中にあり、サンドボックスサーバーはホストの docker を必要とします。実行したら ORCH_SANDBOX_SERVER をそこに向けてください — Docker Desktop なら host.docker.internal:8080、Linux ならホストの IP か --network host です。"
 
+msgid "running"
+msgstr "稼働中"
+
 msgid "Running"
 msgstr "実行中"
 
@@ -2343,6 +2438,9 @@ msgstr "件のスライスが待機中"
 msgid "Someone else is handling it"
 msgstr "別の人が対応しています"
 
+msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
+msgstr "{server} で私たちが起動していないものが待ち受けていて、API キーも一致しません。そのサーバー自身の api_key を設定に入れるか、別のアドレスを指定してください。"
+
 msgid "Spec"
 msgstr "仕様"
 
@@ -2357,6 +2455,9 @@ msgstr "常設ポスト"
 
 msgid "Start"
 msgstr "開始"
+
+msgid "Start Docker Desktop, or run colima start, and wait for it to report running."
+msgstr "Docker Desktop を起動するか colima start を実行し、running になるまで待ってください。"
 
 msgid "Start from this branch"
 msgstr "このブランチから始める"
@@ -2378,6 +2479,14 @@ msgstr "ステップ {nth}"
 
 msgid "Steps one turn may take before it is cut off. Most turns finish in about 36; the long tail is an agent lost rather than working, and it costs the most because every step re-reads the transcript. Changing it restarts every session."
 msgstr "打ち切られるまでに 1 ターンが踏めるステップ数。ほとんどのターンは 36 前後で終わります。長い尾は働いているのではなく迷子になったエージェントで、毎ステップがトランスクリプトを読み直すため最も高くつきます。変更すると全セッションが再起動します。"
+
+msgid "still not up after {secs}s"
+msgstr "{secs} 秒待っても起動しません"
+
+msgid "still not up after {secs}s. It printed:\n"
+"{tail}"
+msgstr "{secs} 秒待っても起動しません。出力はこれです:\n"
+"{tail}"
 
 msgid "Stop denying {d}"
 msgstr "{d} の拒否をやめる"
@@ -2427,6 +2536,9 @@ msgstr "システム耗時"
 msgid "Take note"
 msgstr "書き留める"
 
+msgid "the boundary still overlaps"
+msgstr "境界がまだ重なっています"
+
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "ブラウザからは読めません。フォルダをドラッグして入れてください。"
 
@@ -2448,6 +2560,9 @@ msgstr "ホストがネットワークを失いました。{n} 件のターン�
 msgid "The last step repeats for as long as nobody answers"
 msgstr "誰も答えない限り、最後の段が繰り返されます"
 
+msgid "the last turn was cut off, so the worktree may hold unfinished changes. Run `git diff` before carrying on rather than assuming it is complete."
+msgstr "直前のターンが強制的に中断されたため、worktree に未完了の変更が残っている可能性があります。続ける前に `git diff` を確認し、完全だと仮定しないでください。"
+
 msgid "the login is fresh; renewal runs inside the utility container, so codex is not needed here"
 msgstr "ログインは新しい状態です。更新はユーティリティコンテナ内で行われるため、ここに codex は不要です"
 
@@ -2463,6 +2578,12 @@ msgstr "「詰まり」のもう半分：同じファイルをこれだけ連続
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "リポジトリマップを更新できません: {repo} — {why}"
 
+msgid "the repo map cannot be refreshed: {repo} has no remote recorded, so there is nothing to mirror"
+msgstr "リポジトリマップを更新できません: {repo} にリモートが記録されていないため、ミラーする対象がありません"
+
+msgid "the repo map cannot be refreshed: {repo}, and git gave no reason, which is itself a bug"
+msgstr "リポジトリマップを更新できません: {repo}。git は理由を返しませんでした。それ自体がバグです"
+
 msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
 msgstr "リポジトリマップが前回の版のままです: {repo} のコンテナが HEAD を読めず、再構築してもシンボルのないマップになるだけです"
 
@@ -2471,11 +2592,6 @@ msgstr "同じ指摘が {n} 回目です。CoS にプロジェクト規約とし
 
 msgid "the same ground as {others}"
 msgstr "{others} と同じ土地"
-
-msgid "the sandbox server is running (pid {pid}) but we cannot drive it: {why}\n"
-"It was left alone rather than restarted, because that process may be yours and pointed at something else. Settings → Sandbox server has the button."
-msgstr "サンドボックスサーバーは動いています（pid {pid}）が、こちらから操作できません: {why}\n"
-"再起動はせず放置しました。そのプロセスはあなたが起こしたもので、別の設定を指している可能性があるためです。設定 → サンドボックスサーバー にボタンがあります。"
 
 msgid "the sandbox server is up — we started it (pid {pid})"
 msgstr "サンドボックスサーバーが起動しました —— こちらで起こしました（pid {pid}）"
@@ -2512,6 +2628,9 @@ msgstr "このティックでウォッチドッグが例外を投げ、以降の
 msgid "Theme"
 msgstr "テーマ"
 
+msgid "these belong to no group: {paths} — changes there go through the boss or the Architect"
+msgstr "どのグループにも属していません: {paths}。そこの変更はボスかアーキテクト経由です"
+
 msgid "These paths from the card don't exist in the repo"
 msgstr "カードに書かれたこれらのパスはリポジトリに存在しません"
 
@@ -2533,9 +2652,6 @@ msgstr "このログは空です"
 msgid "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward."
 msgstr "このプロセスはこちらが起動したものではありません。あなたが使っているものかもしれません。必要なら自分で再起動してください。あとからこちらが認識します。"
 
-msgid "this project has no remote recorded, so there is nothing to mirror"
-msgstr "このプロジェクトには remote が記録されておらず、ミラーする先がありません"
-
 msgid "This project hasn't run any activity yet."
 msgstr "このプロジェクトではまだ何も動いていません。"
 
@@ -2544,6 +2660,9 @@ msgstr "この要件はアーカイブされたか、もう存在しません。
 
 msgid "This requirement hasn't run any activity yet."
 msgstr "この要件ではまだ何も動いていません。"
+
+msgid "this server has no GitHub client"
+msgstr "このサーバーには GitHub クライアントがありません"
 
 msgid "This slice hasn't produced changes yet and has no verdict."
 msgstr "このスライスはまだ変更を出しておらず、判定もありません。"
@@ -2667,6 +2786,9 @@ msgstr "コンテナが詰まった、依存が足りない、資格情報が変
 
 msgid "Used when a project has not set its own"
 msgstr "プロジェクトが独自に設定していないときに使われます"
+
+msgid "uvx available"
+msgstr "uvx あり"
 
 msgid "Valid for one year"
 msgstr "有効期間は 1 年"

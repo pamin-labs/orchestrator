@@ -122,6 +122,9 @@ msgstr "{hours} ч"
 msgid "{idleCount} more are idle and costing nothing."
 msgstr "ещё {idleCount} простаивают и ничего не стоят."
 
+msgid "{image} is neither an image we publish nor one built on this machine"
+msgstr "{image} — не наш опубликованный образ и не собранный на этой машине"
+
 msgid "{image} is not on this machine"
 msgstr "{image} нет на этой машине"
 
@@ -130,6 +133,9 @@ msgstr "{lines} строк"
 
 msgid "{live} running"
 msgstr "{live} выполняется"
+
+msgid "{mine} overlaps {theirs} owned by {name} — wait for it, or ask the Architect for a different split"
+msgstr "{mine} пересекается с {theirs}, которым владеет {name} — дождитесь его или попросите Архитектора разделить иначе"
 
 msgid "{minutes} min"
 msgstr "{minutes} мин"
@@ -200,6 +206,9 @@ msgstr "{name} израсходовала {pct}% бюджета"
 msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name} больше ничего не ждёт — разбужена"
 
+msgid "{name} is over 25MB"
+msgstr "{name} больше 25 МБ"
+
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
 msgstr "{name} уходит с доски, все ходы в очереди отменяются. Код и запись сохраняются."
 
@@ -236,6 +245,18 @@ msgstr "PR от {name} стоит во главе очереди на слиян
 msgid "{name}'s sandbox is bound to a superseded credential; reclaimed, and the next tick rebuilds it"
 msgstr "песочница {name} привязана к устаревшим учётным данным; освобождена, следующий тик соберёт её заново"
 
+msgid "{path} is a path inside this container, and the mount is made by the sandbox server's docker, which resolves it on its own filesystem. Use one absolute path on both sides (-v <host path>:{path}) and add it to the sandbox server's allowed_host_paths. A mismatch does not fail; it mounts an empty directory."
+msgstr "{path} — это путь внутри контейнера, а монтирует docker сервера песочницы, который разрешает путь на своей файловой системе. Используйте один абсолютный путь с обеих сторон (-v <host path>:{path}) и добавьте его в allowed_host_paths сервера песочницы. Несовпадение не приводит к ошибке — монтируется пустой каталог."
+
+msgid "{path}: {error}"
+msgstr "{path}: {error}"
+
+msgid "{path}: cannot be read"
+msgstr "{path}: не читается"
+
+msgid "{repoPath} is already registered as \"{name}\""
+msgstr "{repoPath} уже зарегистрирован как «{name}»"
+
 msgid "{repoPath} removed"
 msgstr "{repoPath} удалён"
 
@@ -263,6 +284,12 @@ msgstr "{role} записал {n, plural, one {# файл} few {# файла} ot
 
 msgid "{runningCount} running · {total} total"
 msgstr "{runningCount} выполняется · всего {total}"
+
+msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
+msgstr "{server} отвечает, но это не sandbox server (HTTP {status}) — укажите другой адрес."
+
+msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
+msgstr "{server} не отвечает, и это не адрес на этой машине — здесь нечего запускать. Смотрите на той машине."
 
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "{sessionTokens} токенов за сессию · {model}"
@@ -357,6 +384,9 @@ msgstr "Добавить"
 msgid "Add · {branch}"
 msgstr "Добавить · {branch}"
 
+msgid "Add {path} to the sandbox server's allowed_host_paths, or every group fails to open a container. Tick the skills in Settings."
+msgstr "Добавьте {path} в allowed_host_paths сервера песочницы, иначе ни одна группа не откроет контейнер. Навыки отмечаются в настройках."
+
 msgid "Add a row"
 msgstr "Добавить строку"
 
@@ -411,6 +441,9 @@ msgstr "все меньше 1 мс"
 msgid "Allow notifications"
 msgstr "Разрешить уведомления"
 
+msgid "already spent {spent} tokens — a cap at {tokens} would stop it again immediately"
+msgstr "уже потрачено {spent} токенов — лимит в {tokens} остановит снова сразу же"
+
 msgid "already spent {tokens} tokens"
 msgstr "уже потрачено {tokens} токенов"
 
@@ -435,8 +468,8 @@ msgstr "Ключ API"
 msgid "Appearance"
 msgstr "Вид"
 
-msgid "approval recorded — held by the boundary: {why}. Starts by itself once that clears"
-msgstr "одобрение записано — держит граница: {why}. Запустится само, как только освободится"
+msgid "Approval recorded — it starts by itself once the boundary clears."
+msgstr "Одобрение записано — запустится само, как только граница освободится."
 
 msgid "Approve and start"
 msgstr "Одобрить и запустить"
@@ -543,6 +576,9 @@ msgstr "И то и другое уходит Диспетчеру; он попр
 msgid "Boundary"
 msgstr "Граница"
 
+msgid "boundary still overlaps"
+msgstr "границы всё ещё пересекаются"
+
 msgid "Branch"
 msgstr "Ветка"
 
@@ -614,6 +650,12 @@ msgstr "не удаётся подключиться: {error}"
 
 msgid "Cannot reach the usage endpoint"
 msgstr "Не удаётся достучаться до эндпоинта расхода"
+
+msgid "cannot start it: {error}"
+msgstr "не удаётся запустить: {error}"
+
+msgid "cannot write the config: {error}"
+msgstr "не удаётся записать конфиг: {error}"
 
 msgid "cards pending review"
 msgstr "карточек на проверку"
@@ -789,8 +831,17 @@ msgstr "CoS работает"
 msgid "Cost"
 msgstr "Расходы"
 
+msgid "could not force-stop pid {pid}: {error}"
+msgstr "не удалось принудительно остановить pid {pid}: {error}"
+
 msgid "Could not generate a draft; you'll need to write this one yourself."
 msgstr "Черновик не получился; этот придётся написать самому."
+
+msgid "could not start {bin}: {error}"
+msgstr "не удалось запустить {bin}: {error}"
+
+msgid "could not stop pid {pid}: {error}"
+msgstr "не удалось остановить pid {pid}: {error}"
 
 msgid "Couldn't read the settings from the server."
 msgstr "Не удалось прочитать настройки с сервера."
@@ -1290,6 +1341,9 @@ msgstr "Вставить навык"
 msgid "Install dependencies"
 msgstr "Установить зависимости"
 
+msgid "Install Docker — or Colima, or Podman, anything that provides a docker socket — and start it."
+msgstr "Установите Docker — или Colima, или Podman, что угодно, что даёт docker-сокет — и запустите."
+
 msgid "Install on GitHub"
 msgstr "Установить на GitHub"
 
@@ -1302,6 +1356,9 @@ msgstr "Установить в другой аккаунт"
 msgid "Installed on these accounts"
 msgstr "Установлено в этих аккаунтах"
 
+msgid "installed, but the daemon is not answering"
+msgstr "установлен, но демон не отвечает"
+
 msgid "Interrupt and rollback"
 msgstr "Прервать и откатить"
 
@@ -1313,6 +1370,14 @@ msgstr "Поднят ли сервер песочниц и принимает л
 
 msgid "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open."
 msgstr "Есть ли сеть вообще: HEAD к origin каждого провайдера, внутри такта сторожевого таймера. Самое короткое ожидание здесь — намеренно: медленный ответ не должен держать такт открытым."
+
+msgid "it exited on its own (exit {code}), printing nothing"
+msgstr "завершился сам (exit {code}), ничего не напечатав"
+
+msgid "it exited on its own (exit {code}):\n"
+"{tail}"
+msgstr "завершился сам (exit {code}):\n"
+"{tail}"
 
 msgid "It's not a duplicate, and it's not done yet — keep decomposing."
 msgstr "Это не дубликат и ещё не сделано — продолжайте разбирать."
@@ -1572,6 +1637,9 @@ msgstr "Других моделей пока нет; просто введите
 msgid "No other requirements for this project"
 msgstr "Других требований в этом проекте нет"
 
+msgid "no owned paths declared, and {holders} already hold theirs — the Architect has to cut the boundary before work starts"
+msgstr "свои пути не объявлены, а {holders} уже держат свои — Архитектор должен провести границу до начала работы"
+
 msgid "no path"
 msgstr "нет пути"
 
@@ -1580,9 +1648,6 @@ msgstr "Приостановленных требований нет. Групп
 
 msgid "No pending items"
 msgstr "Ничего не ждёт"
-
-msgid "no reason given, which is itself a bug"
-msgstr "причина не названа, и это само по себе баг"
 
 msgid "No reason recorded"
 msgstr "Причина не записана"
@@ -1608,11 +1673,20 @@ msgstr "Без среза"
 msgid "No slices"
 msgstr "Срезов нет"
 
+msgid "no such group"
+msgstr "такой группы нет"
+
 msgid "No system activity recorded."
 msgstr "Активность системы не записана."
 
 msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
 msgstr "Токены ещё не тратились. После одобрения карточек плана расходы разбиваются по требованиям и агентам. Какая модель — решает метка уровня."
+
+msgid "no uvx — opensandbox-server is a Python package, so install uv before one can start"
+msgstr "нет uvx — opensandbox-server это Python-пакет, сначала поставьте uv"
+
+msgid "no uvx on PATH"
+msgstr "uvx нет в PATH"
 
 msgid "No, keep going"
 msgstr "Нет, продолжать"
@@ -1644,8 +1718,17 @@ msgstr "Данных на два периода не хватает."
 msgid "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
 msgstr "Ни локально, ни в шифрованной сети — трафик идёт незашифрованным HTTP. Ключи и обмен контейнеров открыты; используйте HTTPS или Tailscale."
 
+msgid "not reachable"
+msgstr "недоступен"
+
+msgid "not running"
+msgstr "не запущен"
+
 msgid "Not running"
 msgstr "Не запущено"
+
+msgid "not running (a process looks like it, pid {pid}, but {server} does not answer — it may be starting, or it may be stuck)"
+msgstr "не запущен (есть похожий процесс, pid {pid}, но {server} не отвечает — возможно, он стартует или завис)"
 
 msgid "Not satisfied"
 msgstr "Не выполнено"
@@ -1658,6 +1741,9 @@ msgstr "Заметки"
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "На GitHub ничего не меняется: ветки на месте, PR на месте, ни строки кода не тронуто. Удаляется копия работы на этой машине."
+
+msgid "nothing recorded about how this server was started"
+msgstr "о том, как был запущен этот сервер, ничего не записано"
 
 msgid "Notifications"
 msgstr "Уведомления"
@@ -1731,9 +1817,6 @@ msgstr "Открыть PR ↗"
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server пропал и был перезапущен (попытка {n}). Приостановленная работа продолжится сама."
 
-msgid "opensandbox-server was gone and the restart failed (attempt {n}): {why}"
-msgstr "opensandbox-server пропал, и перезапуск не удался (попытка {n}): {why}"
-
 msgid "opensandbox-server will not start; {n, plural, one {# attempt} other {# attempts}} and no more automatic retries. Run it by hand to see what it says: {cmd}"
 msgstr "opensandbox-server не запускается; {n, plural, one {# попытка} few {# попытки} other {# попыток}}, автоматических больше не будет. Запустите вручную и посмотрите, что он скажет: {cmd}"
 
@@ -1748,6 +1831,9 @@ msgstr "Организация"
 
 msgid "Other"
 msgstr "Прочее"
+
+msgid "out of budget ({spent}/{budget} tokens). Raise the cap first, or it stops again on the next tick."
+msgstr "бюджет исчерпан ({spent}/{budget} токенов). Сначала поднимите лимит, иначе остановится на следующем тике."
 
 msgid "Output language"
 msgstr "Язык вывода"
@@ -1817,6 +1903,9 @@ msgstr "Личный аккаунт"
 
 msgid "Pick a model to add a row"
 msgstr "Выберите модель, чтобы добавить строку"
+
+msgid "pid {pid} is still running after SIGKILL"
+msgstr "pid {pid} всё ещё работает после SIGKILL"
 
 msgid "Plan"
 msgstr "План"
@@ -1941,8 +2030,11 @@ msgstr "Перепроверить доступность"
 msgid "Recheck the repo map"
 msgstr "Перепроверить карту репозитория"
 
-msgid "reconcile failed on S{seq}: {reason}"
-msgstr "сверка не прошла на S{seq}: {reason}"
+msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
+msgstr "сверка на S{seq} не прошла: заявлено, но не изменено — {files}"
+
+msgid "reconcile failed on S{seq}: nothing was claimed and nothing changed"
+msgstr "сверка на S{seq} не прошла: ничего не заявлено и ничего не изменено"
 
 msgid "Reconciliation"
 msgstr "Сверка"
@@ -2163,6 +2255,9 @@ msgstr "Запустите uvx opensandbox-server --config ~/.sandbox.toml с п
 msgid "Run uvx opensandbox-server on the host, not here: this orchestrator is inside a container and the sandbox server needs the host's docker. Then point ORCH_SANDBOX_SERVER at it — host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux."
 msgstr "Запустите uvx opensandbox-server на хосте, а не здесь: этот оркестратор внутри контейнера, а серверу песочницы нужен docker хоста. Затем укажите на него ORCH_SANDBOX_SERVER — host.docker.internal:8080 в Docker Desktop, IP хоста или --network host в Linux."
 
+msgid "running"
+msgstr "работает"
+
 msgid "Running"
 msgstr "Выполняется"
 
@@ -2343,6 +2438,9 @@ msgstr "срезов ждут"
 msgid "Someone else is handling it"
 msgstr "Этим занимается кто-то другой"
 
+msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
+msgstr "на {server} слушает что-то, что запускали не мы, и ключ API не совпадает — впишите api_key того сервера в настройки или укажите другой адрес."
+
 msgid "Spec"
 msgstr "Спецификация"
 
@@ -2357,6 +2455,9 @@ msgstr "Постоянный пост"
 
 msgid "Start"
 msgstr "Начать"
+
+msgid "Start Docker Desktop, or run colima start, and wait for it to report running."
+msgstr "Запустите Docker Desktop или выполните colima start и дождитесь состояния running."
 
 msgid "Start from this branch"
 msgstr "Начать с этой ветки"
@@ -2378,6 +2479,14 @@ msgstr "Шаг {nth}"
 
 msgid "Steps one turn may take before it is cut off. Most turns finish in about 36; the long tail is an agent lost rather than working, and it costs the most because every step re-reads the transcript. Changing it restarts every session."
 msgstr "Сколько шагов ход может сделать до обрыва. Большинство ходов укладывается примерно в 36; длинный хвост — это агент, который заблудился, а не работает, и он самый дорогой, потому что каждый шаг перечитывает транскрипт. Изменение перезапускает все сессии."
+
+msgid "still not up after {secs}s"
+msgstr "так и не поднялся за {secs}с"
+
+msgid "still not up after {secs}s. It printed:\n"
+"{tail}"
+msgstr "так и не поднялся за {secs}с. Он напечатал:\n"
+"{tail}"
 
 msgid "Stop denying {d}"
 msgstr "Перестать блокировать {d}"
@@ -2427,6 +2536,9 @@ msgstr "Системное время"
 msgid "Take note"
 msgstr "Записать"
 
+msgid "the boundary still overlaps"
+msgstr "границы всё ещё пересекаются"
+
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "Браузер это прочитать не может. Перетащите папки сюда."
 
@@ -2448,6 +2560,9 @@ msgstr "хост потерял сеть; {n, plural, one {# ход приост
 msgid "The last step repeats for as long as nobody answers"
 msgstr "Последняя ступень повторяется, пока никто не ответит"
 
+msgid "the last turn was cut off, so the worktree may hold unfinished changes. Run `git diff` before carrying on rather than assuming it is complete."
+msgstr "прошлый ход был прерван, поэтому в worktree могут остаться незаконченные изменения. Выполните `git diff`, прежде чем продолжать, а не считайте его целым."
+
 msgid "the login is fresh; renewal runs inside the utility container, so codex is not needed here"
 msgstr "вход свежий; обновление выполняется внутри служебного контейнера, поэтому codex здесь не нужен"
 
@@ -2463,6 +2578,12 @@ msgstr "Вторая половина «зависания»: один и тот
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "карту репозитория не удаётся обновить: {repo} — {why}"
 
+msgid "the repo map cannot be refreshed: {repo} has no remote recorded, so there is nothing to mirror"
+msgstr "карту репозитория не обновить: у {repo} не записан remote, зеркалить нечего"
+
+msgid "the repo map cannot be refreshed: {repo}, and git gave no reason, which is itself a bug"
+msgstr "карту репозитория не обновить: {repo}, и git не назвал причину, что само по себе баг"
+
 msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
 msgstr "карта репозитория осталась на прошлой версии: контейнер {repo} не может прочитать HEAD, и пересборка дала бы лишь карту без символов"
 
@@ -2471,11 +2592,6 @@ msgstr "тот же отзыв в {n}-й раз; прошу CoS преврати
 
 msgid "the same ground as {others}"
 msgstr "та же территория, что и у {others}"
-
-msgid "the sandbox server is running (pid {pid}) but we cannot drive it: {why}\n"
-"It was left alone rather than restarted, because that process may be yours and pointed at something else. Settings → Sandbox server has the button."
-msgstr "песочный сервер работает (pid {pid}), но мы не можем им управлять: {why}\n"
-"Его оставили как есть, а не перезапустили: этот процесс может быть вашим и указывать на другое. Настройки → Песочный сервер — там кнопка."
 
 msgid "the sandbox server is up — we started it (pid {pid})"
 msgstr "песочный сервер поднят — его запустили мы (pid {pid})"
@@ -2512,6 +2628,9 @@ msgstr "на этом тике watchdog выбросил исключение, �
 msgid "Theme"
 msgstr "Тема"
 
+msgid "these belong to no group: {paths} — changes there go through the boss or the Architect"
+msgstr "эти не принадлежат ни одной группе: {paths} — изменения там идут через босса или Архитектора"
+
 msgid "These paths from the card don't exist in the repo"
 msgstr "Этих путей из карточки в репозитории нет"
 
@@ -2533,9 +2652,6 @@ msgstr "Этот лог пуст"
 msgid "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward."
 msgstr "Этот процесс запустили не мы — возможно, вы им пользуетесь. Перезапустите сами, если нужно; после этого мы его распознаем."
 
-msgid "this project has no remote recorded, so there is nothing to mirror"
-msgstr "у этого проекта не записан remote, так что зеркалить нечего"
-
 msgid "This project hasn't run any activity yet."
 msgstr "В этом проекте пока ничего не происходило."
 
@@ -2544,6 +2660,9 @@ msgstr "Это требование в архиве или больше не с�
 
 msgid "This requirement hasn't run any activity yet."
 msgstr "По этому требованию пока ничего не происходило."
+
+msgid "this server has no GitHub client"
+msgstr "на этом сервере нет клиента GitHub"
 
 msgid "This slice hasn't produced changes yet and has no verdict."
 msgstr "Этот срез пока не дал изменений и не имеет вердикта."
@@ -2667,6 +2786,9 @@ msgstr "Используйте, когда контейнер завис, не �
 
 msgid "Used when a project has not set its own"
 msgstr "Используется, когда у проекта нет своего"
+
+msgid "uvx available"
+msgstr "uvx доступен"
 
 msgid "Valid for one year"
 msgstr "Действует год"

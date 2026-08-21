@@ -8,7 +8,8 @@ import { SplitRequirements } from "../../contracts/orch.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
-import { badEnglish, json, message } from "../../http/respond.ts";
+import { bad, badText, json, message } from "../../http/respond.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
 
 import { hold } from "../../mech/flow/intercept.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
@@ -30,7 +31,7 @@ async function actingGroup(
   ref: z.infer<typeof GroupRef> | null | undefined,
 ): Promise<number | Response> {
   const groupId = await resolveGroup(ctx, ref, caller.grp_id);
-  if (!groupId) return badEnglish("which group? pass its id or name");
+  if (!groupId) return badText("which group? pass its id or name");
   return (await mayAct(ctx.db, caller, groupId)) ? groupId : message("not your group", 403);
 }
 
@@ -67,15 +68,15 @@ const plans = (ctx: Ctx, a: Caller): boolean =>
 export const DraftBody = z.object({ group_id: GroupRef.optional(), card: z.string().min(1).max(20_000) });
 
 export const postDraft = (async (ctx, _req, a, _p, b) => {
-  if (!plans(ctx, a)) return badEnglish(`${a.role} does not file DRAFT cards`);
+  if (!plans(ctx, a)) return badText(`${a.role} does not file DRAFT cards`);
 
   const v = validateDraftCard(b.card);
-  if (!v.ok) return badEnglish(v.error);
+  if (!v.ok) return badText(v.error);
 
   const grpId = await actingGroup(ctx, a, b.group_id);
   if (grpId instanceof Response) return grpId;
   const [grp] = await ctx.db.select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, grpId));
-  if (!grp) return badEnglish(`no group ${grpId}`);
+  if (!grp) return badText(`no group ${grpId}`);
 
   // Paths the card names that are not in the repo.
   //
@@ -159,7 +160,7 @@ export const SplitBody = z.object({
 });
 
 export const postSplit = (async (ctx, _req, a, _p, b) => {
-  if (!plans(ctx, a)) return badEnglish(`${a.role} does not split requirements`);
+  if (!plans(ctx, a)) return badText(`${a.role} does not split requirements`);
 
   const gid = await actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
@@ -169,23 +170,20 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
     .where(eq(grps.id, gid));
   if (!grp) return message("no such group", 404);
   if (grp.status !== "PLANNING") {
-    return badEnglish(
+    return badText(
       `${grp.name} is ${grp.status}, not PLANNING. A split only makes sense before a card is approved; ` +
         `after that the branch exists and re-cutting the work is the boss's respec, not yours.`,
     );
   }
   const [work] = await ctx.db.select({ c: count() }).from(slice).where(eq(slice.grp_id, gid));
-  if ((work?.c ?? 0) > 0 || grp.branch)
-    return badEnglish(`${grp.name} already has slices or a branch; split before that`);
+  if ((work?.c ?? 0) > 0 || grp.branch) return badText(`${grp.name} already has slices or a branch; split before that`);
 
   const items = (b.requirements ?? []).filter((r) => r?.idea?.trim());
   if (items.length < 2) {
-    return badEnglish(
-      "a split needs at least 2 requirements. If it is one thing, just file the card with `orch draft`.",
-    );
+    return badText("a split needs at least 2 requirements. If it is one thing, just file the card with `orch draft`.");
   }
   if (items.length > MAX_SPLIT) {
-    return badEnglish(
+    return badText(
       `${items.length} is too many for one split (max ${MAX_SPLIT}). Group what shares an acceptance path, ` +
         `and ask the boss which of the rest matters first.`,
     );
@@ -268,41 +266,41 @@ export const DropBody = z.object({
 
 async function duplicateEvidence(ctx: Ctx, gid: number, ref: z.infer<typeof GroupRef>): Promise<string | Response> {
   const duplicateId = await resolveGroup(ctx, ref);
-  if (!duplicateId) return badEnglish(`no group ${ref}`);
-  if (duplicateId === gid) return badEnglish("a group cannot be a duplicate of itself");
+  if (!duplicateId) return badText(`no group ${ref}`);
+  if (duplicateId === gid) return badText("a group cannot be a duplicate of itself");
   const [duplicate] = await ctx.db.select({ name: grps.name }).from(grps).where(eq(grps.id, duplicateId));
-  if (!duplicate) return badEnglish(`no group ${ref}`);
+  if (!duplicate) return badText(`no group ${ref}`);
   return `duplicate of ${duplicate.name} (grp ${duplicateId})`;
 }
 
 async function commitEvidence(ctx: Ctx, gid: number, sha: string): Promise<string | Response> {
-  if (!/^[0-9a-f]{7,40}$/i.test(sha)) return badEnglish("--commit takes a sha, 7 to 40 hex characters");
+  if (!/^[0-9a-f]{7,40}$/i.test(sha)) return badText("--commit takes a sha, 7 to 40 hex characters");
   const git = sandboxGit(ctx, { grp: gid });
   const commit = await git(["cat-file", "-t", sha], WORK);
-  if (commit.code !== 0 || commit.out.trim() !== "commit") return badEnglish(`${sha} is not a commit in this repo`);
+  if (commit.code !== 0 || commit.out.trim() !== "commit") return badText(`${sha} is not a commit in this repo`);
   const [owner] = await ctx.db.select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, gid));
   const projectId = owner?.project_id;
-  if (!projectId) return badEnglish("no such group");
+  if (!projectId) return badText("no such group");
   const base = await baseRefFor(ctx, projectId);
   const merged = await git(["merge-base", "--is-ancestor", sha, base], WORK);
   return merged.code === 0
     ? `already landed in ${sha.slice(0, 8)}`
-    : badEnglish(`${sha.slice(0, 8)} is a real commit but is not on ${base} yet`);
+    : badText(`${sha.slice(0, 8)} is a real commit but is not on ${base} yet`);
 }
 
 async function dropEvidence(ctx: Ctx, gid: number, body: z.infer<typeof DropBody>): Promise<string | Response> {
   if (body.duplicate != null) return await duplicateEvidence(ctx, gid, body.duplicate);
-  if (!body.commit) return badEnglish("give evidence: --duplicate <group> or --commit <sha>");
+  if (!body.commit) return badText("give evidence: --duplicate <group> or --commit <sha>");
   return commitEvidence(ctx, gid, body.commit.trim());
 }
 
 export const postDrop = (async (ctx, _req, a, _p, b) => {
   if (!plans(ctx, a) && a.role !== roleFor(ctx, "cut_boundary"))
-    return badEnglish(`${a.role} does not propose dropping work`);
+    return badText(`${a.role} does not propose dropping work`);
   const gid = await actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
   const why = b.why.trim();
-  if (why.length < 10) return badEnglish("--why has to say what already covers it, in a sentence");
+  if (why.length < 10) return badText("--why has to say what already covers it, in a sentence");
 
   // Evidence the server can check. A sentence alone is a model's opinion of its
   // own workload, which is exactly what must not be able to close a requirement.
@@ -442,24 +440,24 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
   if (gid instanceof Response) return gid;
   const path = b.path.trim().replace(/^\.\//, "");
   const why = b.why.trim();
-  if (!path) return badEnglish("--path <file> — which file you cannot change");
-  if (why.length < 10) return badEnglish("--why has to say what is wrong with it, in a sentence");
+  if (!path) return badText("--path <file> — which file you cannot change");
+  if (why.length < 10) return badText("--why has to say what is wrong with it, in a sentence");
 
   const [me] = await ctx.db
     .select({ project_id: grps.project_id, name: grps.name, owns_json: grps.owns_json })
     .from(grps)
     .where(eq(grps.id, gid));
-  if (!me) return badEnglish("no such group");
+  if (!me) return badText("no such group");
   // In the group's own checkout, not the host's. The caller named this path from
   // inside `/work`, and the host main checkout sits on whatever the boss last had
   // out — so a file the group created, or one that exists only on its branch,
   // came back as "not a file in this repo", which is both wrong and misleading.
   const seen = await execIn(ctx, { grp: gid }, `test -e ${shq(`${WORK}/${path}`)}`);
-  if (seen.code !== 0) return badEnglish(`${path} is not a file in your checkout`);
+  if (seen.code !== 0) return badText(`${path} is not a file in your checkout`);
   // The whole justification. Inside its own boundary the group is expected to fix
   // it, and saying otherwise is the cheap way out of difficult work.
   if (parseOwns(me.owns_json).some((o) => overlaps(o, path))) {
-    return badEnglish(`${path} is inside your own boundary — fix it`);
+    return badText(`${path} is inside your own boundary — fix it`);
   }
 
   const owner = await pathOwner(ctx.db, me.project_id, gid, path);
@@ -468,7 +466,7 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
   // nothing downstream would notice: both are PAUSED for a stated reason, and the
   // reason is each other.
   if (owner && (await waitsOn(ctx.db, owner.id, gid))) {
-    return badEnglish(`${owner.name} is already waiting on you — one of you has to go first`);
+    return badText(`${owner.name} is already waiting on you — one of you has to go first`);
   }
   const routed = await ctx.bus.transaction(async (tx) => {
     // A ctx whose handle is the transaction. `routeBlockedPath` reads and writes
@@ -500,7 +498,7 @@ export const OwnsBody = z.object({
 });
 
 export const postOwns = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== roleFor(ctx, "cut_boundary")) return badEnglish(`${a.role} does not cut boundaries`);
+  if (a.role !== roleFor(ctx, "cut_boundary")) return badText(`${a.role} does not cut boundaries`);
   const gid = await actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
 
@@ -512,7 +510,7 @@ export const postOwns = (async (ctx, _req, a, _p, b) => {
       author: roleFor(ctx, "cut_boundary"),
       kind: "decision",
       intent: "decision",
-      body: `owns ${b.paths.join(", ")}${result.ok ? "" : ` — still blocked: ${result.reason}`}`,
+      body: `owns ${b.paths.join(", ")}${result.ok || !result.reason ? "" : ` — still blocked: ${renderSaid("en", result.reason)}`}`,
       meta: { paths: b.paths, ok: result.ok },
     });
     return result;
@@ -521,5 +519,5 @@ export const postOwns = (async (ctx, _req, a, _p, b) => {
   // is swept. Without this the boss's approval sat waiting on a boundary that had
   // already been drawn.
   await sweepApproved(ctx);
-  return check.ok ? message("ok") : badEnglish(check.reason ?? "boundary still overlaps");
+  return check.ok ? message("ok") : bad(check.reason ?? msg`boundary still overlaps`);
 }) satisfies AgentHandler<z.infer<typeof OwnsBody>>;

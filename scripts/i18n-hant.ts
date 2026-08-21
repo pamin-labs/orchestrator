@@ -1,6 +1,7 @@
 import * as OpenCC from "opencc-js/core";
 import * as Locale from "opencc-js/preset";
 import { writeOrCheck } from "./generated-file.ts";
+import { catalogFormat } from "./lingui-catalogs.ts";
 
 /**
  * `zh-Hant.po`, generated from `zh.po`.
@@ -99,37 +100,36 @@ const convert = OpenCC.ConverterFactory([MAINLAND], preset(Locale.from, "cn"), p
 ]);
 
 /**
- * Only `msgstr` is converted, and `msgid` is copied through untouched.
+ * `zh-Hant.po`, read and written by Lingui's own `.po` formatter.
  *
- * The ids are the English source and the keys the compiled catalog is looked up
- * by — converting one would retire the message rather than translate it. A
- * `msgstr` runs across continuation lines, so this tracks which block it is in
- * rather than matching a line at a time.
+ * This was a line-at-a-time state machine deciding which `"…"` lines were a
+ * `msgstr` continuation. The formatter is the one `lingui.config.js` declares,
+ * so "the key is never converted" is now a property of the data — only
+ * `translation` is touched — rather than of a `startsWith` in this file.
  */
-/**
- * Line-based on purpose. Lingui owns reading `.po` and this file does not
- * reimplement that — it rewrites a subset of the lines and leaves the rest
- * byte-for-byte, which is what makes the diff between the two catalogs readable
- * as a translation rather than as a reformat.
- */
-export function hant(po: string): string {
-  let inside = false;
-  return po
-    .split("\n")
-    .map((line) => {
-      if (line.startsWith("msgstr")) inside = true;
-      else if (!line.startsWith('"')) inside = false;
-      // The header is a `msgstr` too, and its `Language:` is the one field in it
-      // that is about this file rather than about `zh.po`.
-      if (line === '"Language: zh\\n"') return '"Language: zh-Hant\\n"';
-      return inside ? convert(line) : line;
-    })
-    .join("\n");
+const TARGET = "locales/zh-Hant.po";
+
+export async function hant(po: string, existing?: string): Promise<string> {
+  const { format, sourceLocale } = catalogFormat();
+  const ctx = { sourceLocale, filename: TARGET };
+  const catalog = await format.parse(po, { ...ctx, locale: "zh" });
+  for (const entry of Object.values(catalog)) {
+    if (entry.translation) entry.translation = convert(entry.translation);
+  }
+  // `existing` is what carries the header: without it the formatter writes a
+  // fresh one, and its `POT-Creation-Date` would be a new value every run — a
+  // file that never matches `--check`. With it, `Language: zh-Hant` and the rest
+  // are whatever the checked-in catalogue already says.
+  return await format.serialize(catalog, { ...ctx, locale: "zh-Hant", existing });
 }
 
 const SOURCE = "locales/zh.po";
-const TARGET = "locales/zh-Hant.po";
 
-// `import.meta.main`, so a test can import `hant` and drive it over a handful of
-// lines without regenerating a catalogue to get at one function.
-if (import.meta.main) await writeOrCheck(TARGET, hant(await Bun.file(SOURCE).text()), SOURCE, "i18n:hant");
+// `import.meta.main`, so a test can drive `hant` over a handful of messages
+// without regenerating a catalogue to get at one function.
+if (import.meta.main) {
+  const current = await Bun.file(TARGET)
+    .text()
+    .catch(() => undefined);
+  await writeOrCheck(TARGET, await hant(await Bun.file(SOURCE).text(), current), SOURCE, "i18n:hant");
+}

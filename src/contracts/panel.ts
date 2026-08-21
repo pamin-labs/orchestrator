@@ -149,7 +149,9 @@ export const Answered = z.object({
 
 const GroupNote = z.object({ grpId: z.number(), body: z.string() });
 const GroupSaid = z.object({ grpId: z.number(), author: z.string(), body: z.string() });
-const Blocked = z.object({ grpId: z.number(), reason: z.string() });
+/** Why an approved group is still held. `reason`/`said` are the `HostFailure`
+ *  pair: English for anything that is not a browser, the key for one that is. */
+const Blocked = z.object({ grpId: z.number(), reason: z.string(), said: SaidSchema.optional() });
 const QueueEntry = z.object({
   projectId: z.number(),
   grpId: z.number(),

@@ -299,7 +299,12 @@ export const note = pgTable(
     slice_id: integer().references(() => slice.id),
     task_id: integer().references(() => task.id),
     kind: text().notNull(),
-    lang: text().notNull().default("zh"),
+    /**
+     * What language this note is written in, stated by whoever writes it.
+     * Nullable because `saveSingletonNote` stores JSON blobs, which are in no
+     * language — it used to default to `zh`, from when the product had one.
+     */
+    lang: text(),
     body: text().notNull(),
     frontmatter_json: jsonb().$type<Json>().notNull().default({}),
     export_path: text(),

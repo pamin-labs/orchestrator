@@ -9,7 +9,7 @@ import { MailIntent } from "../../contracts/orch.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { bossFact } from "../panel/attach.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
-import { badEnglish, message } from "../../http/respond.ts";
+import { badText, message } from "../../http/respond.ts";
 import { resolveGroup } from "./access.ts";
 import { agent, grp, project as projects } from "../../platform/persistence/schema.ts";
 
@@ -45,7 +45,7 @@ export const postMail = (async (ctx, _req, a, _p, b) => {
   // Dispatcher invented a `--wait` flag, the parser took it, and the mail went
   // out with no body — the Architect burned a turn on "收到的 ask 消息内容为空".
   if (!b.body.trim()) {
-    return badEnglish(
+    return badText(
       `mail to "${b.target}" has an empty body. Put the message in quotes as the last ` +
         `argument: orch mail ${b.target} --intent ${b.intent} "…". There is no --wait flag; ` +
         `ask blocks on its own.`,
@@ -62,7 +62,7 @@ export const postMail = (async (ctx, _req, a, _p, b) => {
       const known = (ctx.knownRoles?.() ?? []).join(", ");
       // Never a silent no-op: an unreachable recipient is exactly how an agent
       // ends up asking a wall twice and then giving up.
-      return badEnglish(`no such recipient "${b.target}". Roles that exist: ${known || "none configured"}`);
+      return badText(`no such recipient "${b.target}". Roles that exist: ${known || "none configured"}`);
     }
   }
 
@@ -144,7 +144,7 @@ async function deliver(
   const target = await resolveTarget(ctx, grpId, to, project);
   if (!target) {
     const known = (ctx.knownRoles?.() ?? []).join(", ");
-    return badEnglish(`没有 "${to}" 这个收件人。现有角色：${known || "none configured"}`);
+    return badText(`没有 "${to}" 这个收件人。现有角色：${known || "none configured"}`);
   }
   await ctx.bus.emit({
     grpId: grpId ?? target.grpId ?? null,
@@ -167,7 +167,7 @@ export const postSay = (async (ctx, _req, _p, b) => {
   // A screenshot is as useful when saying "这里不对" as when filing the idea.
   const said = withAttachments(b.body.trim(), b.attachments);
   const grpId = b.group_id == null ? null : await resolveGroup(ctx, b.group_id);
-  if (b.group_id != null && !grpId) return badEnglish("no such requirement");
+  if (b.group_id != null && !grpId) return badText("no such requirement");
 
   const [owner] = grpId ? await ctx.db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)) : [];
   const project = owner?.project_id ?? null;
@@ -182,7 +182,7 @@ export const postSay = (async (ctx, _req, _p, b) => {
   const skills = skillNames(said, repo, await projectSkills(ctx.db, project));
 
   if (b.as) {
-    if (!grpId) return badEnglish("triage needs a requirement");
+    if (!grpId) return badText("triage needs a requirement");
     await ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: said });
     await triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, grpId, b.as, said, skills);
     await ctx.sched.tick();

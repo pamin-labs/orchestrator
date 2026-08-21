@@ -6,11 +6,9 @@ import { i18n } from "../../web/src/i18n.ts";
 /**
  * Every state the vocabulary can hold has a word the boss reads.
  *
- * `statusLabel` falls back to `g.status`, so a state added to
- * `src/contracts/states.ts` without a line here does not fail anywhere — it
- * quietly shows `PR_OPEN` on the panel to someone who has never read the enum.
- * The fallback is right (an unlabelled state is better than an empty cell) and
- * that is exactly why it needs a test: nothing else notices.
+ * `STATUS_LABEL` is `Record<GrpState, …>`, so a missing row is a compile error
+ * and there is no test here for it. What a type cannot say is that the row holds
+ * a *word*: `PR_OPEN: msg`PR_OPEN`` type-checks and shows the boss the enum.
  */
 
 type Group = Parameters<typeof statusLabel>[0];
@@ -29,18 +27,10 @@ const group = (status: Group["status"], approvedAt: number | null = null): Group
   approved_at: approvedAt,
 });
 
-test("every group state has a label, and none of them is the enum name", () => {
-  const missing = GRP_STATES.filter((s) => !STATUS_LABEL[s]);
-  expect(missing).toEqual([]);
-  // Not merely present: a label that is the identifier back again would pass the
-  // check above while showing the boss the same thing the fallback would.
-  // Resolved, not compared as descriptors: the table holds `msg` now, and what
-  // the boss reads is what it resolves to under the active catalog.
-  const echoed = GRP_STATES.filter((s) => {
-    const label = STATUS_LABEL[s];
-    return label !== undefined && i18n._(label) === s;
-  });
-  expect(echoed).toEqual([]);
+test("no group state is labelled with its own enum name", () => {
+  // Resolved, not compared as descriptors: the table holds `msg`, and what the
+  // boss reads is what it resolves to under the active catalog.
+  expect(GRP_STATES.filter((s) => i18n._(STATUS_LABEL[s]) === s)).toEqual([]);
 });
 
 test("an approved draft says so, because 待批 would be a lie once it is approved", () => {

@@ -6,6 +6,7 @@ import { poolSizes } from "../../platform/scheduling/scheduler.ts";
 import { head, position } from "../../mech/flow/mergequeue.ts";
 import type { Handler } from "../../http/handler.ts";
 import { json } from "../../http/respond.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { ESCALATION_TERMINAL_STATES } from "../../contracts/states.ts";
 import { z } from "zod";
@@ -320,7 +321,12 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
   // Two answers that need a row in hand before they can be asked. Both fan out
   // over a handful of ids, and both go out together rather than one at a time.
   const [approvedBlocked, mergeQueue] = await Promise.all([
-    Promise.all(awaitingBoundary.map(async (g) => ({ grpId: g.id, reason: (await canStart(db, g.id)).reason ?? "" }))),
+    Promise.all(
+      awaitingBoundary.map(async (g) => {
+        const why = (await canStart(db, g.id)).reason;
+        return { grpId: g.id, reason: why ? renderSaid("en", why) : "", ...(why ? { said: why } : {}) };
+      }),
+    ),
     // Only the queue head is offered for merging; the rest carry their place in
     // line so the boss can see why they are waiting.
     Promise.all(

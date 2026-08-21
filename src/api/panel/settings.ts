@@ -1,7 +1,7 @@
 import { currentFor, defaultFor, overrides, putSetting, settablePaths } from "../../platform/config/settings.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
-import { badEnglish, json, message } from "../../http/respond.ts";
+import { badText, json, message } from "../../http/respond.ts";
 import { ConfigSchema, SettingWriteSchema, type SettingPath, type SettingValue } from "../../contracts/config.ts";
 import type { Config } from "../../platform/config/load.ts";
 import type { Json } from "../../contracts/json.ts";
@@ -38,7 +38,7 @@ export const SettingBody = SettingWriteSchema;
 export const postSetting = (async (ctx, _req, _p, b) => {
   const cfg = ConfigSchema.parse(ctx.config);
   const why = await putSetting(ctx.db, cfg, b.path, b.value);
-  if (why) return badEnglish(why);
+  if (why) return badText(why);
   Object.assign(ctx.config, cfg);
   await ctx.bus.emit({
     author: "boss",

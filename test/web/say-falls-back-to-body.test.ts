@@ -61,15 +61,8 @@ test("arguments are filled in by the panel, from values the server sent", () => 
   expect(row.text).toBe("PR #7 opened");
 });
 
-test("a key this build has no descriptor for falls back to the stored body", () => {
-  const row = one({
-    type: "event",
-    seq: 5,
-    kind: "say",
-    author: "orchestrator",
-    body: "something a newer server said",
-    meta: { say: { id: "not.a.key.here" } },
-    at: 5,
-  });
-  expect(row.text).toBe("something a newer server said");
-});
+/**
+ * There is no "a newer server named an id this panel does not know": `release.yml`
+ * puts `web/dist` and the binary in the same tarball, so the two ship together.
+ * The test that asserted that state is gone with it.
+ */

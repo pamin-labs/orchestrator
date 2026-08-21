@@ -2,6 +2,7 @@ import { setupI18n, type I18n, type Messages } from "@lingui/core";
 import { compileMessageOrThrow } from "@lingui/message-utils/compileMessage";
 import { localeOf, type Locale } from "../../contracts/config.ts";
 import type { Said } from "../../contracts/said.ts";
+import { messages as en } from "../../../locales/en.po";
 import { messages as zh } from "../../../locales/zh.po";
 import { messages as zhHant } from "../../../locales/zh-Hant.po";
 import { messages as ja } from "../../../locales/ja.po";
@@ -23,11 +24,12 @@ import { messages as ru } from "../../../locales/ru.po";
  * the CLI does not.
  */
 /**
- * English loads nothing, exactly as in the browser. Every id falls back to the
- * `message` the macro hashed it from, which is the English — a catalogue would
- * be a second copy of the source, kept in step by nothing.
+ * Ten locales, ten catalogues. English used to be `{}` here on the grounds that
+ * the source locale's catalogue is empty by construction — but `en.po` exists,
+ * and loading it renders every case identically (measured, plural and
+ * selectordinal included), so the row that needed explaining is gone instead.
  */
-const CATALOGS: Record<Locale, Messages> = { en: {}, zh, "zh-Hant": zhHant, ja, ko, es, fr, de, pt, ru };
+const CATALOGS: Record<Locale, Messages> = { en, zh, "zh-Hant": zhHant, ja, ko, es, fr, de, pt, ru };
 
 /**
  * One instance per locale, not `activate` on a shared one: `activate` is

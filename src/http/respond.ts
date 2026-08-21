@@ -69,13 +69,18 @@ export const message = <S extends ContentfulStatusCode = 200>(
 export const bad = (said: Said) => failure(renderSaid("en", said), 422, undefined, undefined, said);
 
 /**
- * A refusal that stays English, named so nothing has to keep a list of which
- * ones those are.
+ * A refusal whose reason is already a string, so there is no sentence here to
+ * name.
  *
- * `this server has no GitHub client` reports a broken install rather than a
- * value anybody can correct, and ADR 035 leaves those in the English column.
- * The choice is the call site's and it is spelled at the call site; the guard in
- * `test/api/refusals-carry-an-id.test.ts` only has to find `bad("…")`, which
- * this overload no longer accepts.
+ * A validator, a subprocess or GitHub hands back text somebody else rendered,
+ * and `bad()` cannot translate what it did not write.
  */
-export const badEnglish = (reason: string) => failure(reason, 422);
+/**
+ * The other kind is `postSetup`, which answers an **agent**: ADR 035 keeps
+ * feedback a model reads in English, because translating it only makes the model
+ * translate it back. Neither kind is about a language.
+ *
+ * Which door a call site wants is a compile error to get wrong — `bad()` takes a
+ * descriptor and nothing else — rather than a list somebody keeps.
+ */
+export const badText = (reason: string) => failure(reason, 422);

@@ -1,3 +1,5 @@
+import { msg } from "@lingui/core/macro";
+import type { Said } from "../../contracts/said.ts";
 import type { Bus } from "../../platform/persistence/event-bus.ts";
 import { desc, eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
@@ -301,18 +303,14 @@ async function waitForServerExit(ops: RestartOps): Promise<boolean> {
  * differently-configured server beside the wedged one. Everything it was running
  * dies with it, turns in flight included.
  */
-export async function restartServer(
-  argv: string[],
-  log?: string,
-  ops: RestartOps = restartOps,
-): Promise<string | null> {
-  if (!argv.length) return "nothing recorded about how this server was started";
+export async function restartServer(argv: string[], log?: string, ops: RestartOps = restartOps): Promise<Said | null> {
+  if (!argv.length) return msg`nothing recorded about how this server was started`;
   const live = ops.running();
   if (live) {
     try {
       ops.kill(Number(live.pid), "SIGTERM");
     } catch (e) {
-      return `could not stop pid ${live.pid}: ${errText(e)}`;
+      return msg`could not stop pid ${{ pid: live.pid }}: ${{ error: errText(e) }}`;
     }
     // It has containers to let go of. SIGKILL after, or a wedged process never
     // releases the port and the restart lands on an address already in use.
@@ -320,9 +318,9 @@ export async function restartServer(
       try {
         ops.kill(Number(live.pid), "SIGKILL");
       } catch (e) {
-        return `could not force-stop pid ${live.pid}: ${errText(e)}`;
+        return msg`could not force-stop pid ${{ pid: live.pid }}: ${{ error: errText(e) }}`;
       }
-      if (!(await waitForServerExit(ops))) return `pid ${live.pid} is still running after SIGKILL`;
+      if (!(await waitForServerExit(ops))) return msg`pid ${{ pid: live.pid }} is still running after SIGKILL`;
     }
   }
   try {
@@ -333,7 +331,7 @@ export async function restartServer(
     ops.start(argv, log);
     return null;
   } catch (e) {
-    return `could not start ${argv[0]}: ${errText(e)}`;
+    return msg`could not start ${{ bin: argv[0] ?? "" }}: ${{ error: errText(e) }}`;
   }
 }
 

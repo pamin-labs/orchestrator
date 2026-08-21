@@ -31,7 +31,7 @@ export default {
    * are written as `<rootDir>/…`. Left relative they resolve against the cwd,
    * and `lingui extract` run from anywhere but the repository root then finds
    * **zero** messages and exits 0. With `--clean` on the script, zero found
-   * means all 811 are obsolete. Measured from `scripts/`: every locale reported
+   * means every message in the catalogue is obsolete. Measured from `scripts/`: every locale reported
    * 0/0 and the command succeeded.
    *
    * Same fix `lingui-macros.ts` already applies for `browse.ts`, which runs

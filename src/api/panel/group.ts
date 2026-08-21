@@ -15,11 +15,12 @@ import { z } from "zod";
 import { Attachment as AttachmentSchema, IdParams } from "../../contracts/fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import type { Handler } from "../../http/handler.ts";
-import { bad, badEnglish, json, message } from "../../http/respond.ts";
+import { bad, badText, json, message } from "../../http/respond.ts";
 import { noGithubClient } from "./authflow.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { slug } from "../slug.ts";
 import { renderSaid } from "../../platform/text/lang.ts";
+import type { Said } from "../../contracts/said.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 import { escalation, event, grp as grps, note, project, slice, task } from "../../platform/persistence/schema.ts";
@@ -156,7 +157,7 @@ async function sendBack(ctx: Ctx, grpId: number, b: z.infer<typeof DraftDecision
  * paths merged. One click has to be final, so the approval is written and the
  * Architect is put back on the boundary it forgot to cut.
  */
-async function heldForBoundary(ctx: Ctx, grpId: number, why: string): Promise<void> {
+async function heldForBoundary(ctx: Ctx, grpId: number, why: Said): Promise<void> {
   // A refusal used to end here, and the click was gone: the group sat in DRAFT
   // with nothing recording that the boss had said yes, and nobody re-ran it when
   // the group holding the paths merged. One click has to be final.
@@ -195,7 +196,11 @@ async function heldForBoundary(ctx: Ctx, grpId: number, why: string): Promise<vo
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    say: msg`approval recorded — held by the boundary: ${{ why }}. Starts by itself once that clears`,
+    // `why` verbatim — a descriptor cannot nest in another. "approval recorded,
+    // starts by itself" is not lost: `approved_at` is set two lines up and the
+    // card reads "Approved · Awaiting boundary" from `heldApproved` in
+    // `shared/select.ts`. What the event has to add is *which* boundary.
+    say: why,
   });
 }
 
@@ -223,7 +228,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
 
   if (card) {
     const v = validateDraftCard(card);
-    if (!v.ok) return badEnglish(v.error);
+    if (!v.ok) return badText(v.error);
     // Four tables point at a slice, not one. Clearing only `task` left `job`,
     // `note` and `slice.depends_on` holding references, so re-approving a group
     // that had already run died on `FOREIGN KEY constraint failed` — see
@@ -266,18 +271,21 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
   // lost between the two clicks.
   const start = await canStart(ctx.db, grpId);
   if (!start.ok) {
-    await heldForBoundary(ctx, grpId, start.reason ?? "");
+    const why = start.reason ?? msg`the boundary still overlaps`;
+    await heldForBoundary(ctx, grpId, why);
     // 200, not 422: the boss did decide, and a red error toast says the opposite.
+    // Both halves rendered into one language and joined as strings — not one key
+    // with the other rendered into its values. Joining two rendered sentences is
+    // safe because nothing renders the result again; a descriptor carrying one is
+    // not, because the panel renders the outer in the language *it* reads.
+    const lang = ctx.config.language;
     return message(
-      renderSaid(
-        ctx.config.language,
-        msg`approval recorded — held by the boundary: ${{ why: start.reason ?? "" }}. Starts by itself once that clears`,
-      ),
+      `${renderSaid(lang, msg`Approval recorded — it starts by itself once the boundary clears.`)} ${renderSaid(lang, why)}`,
     );
   }
 
   const err = await startGroup(ctx, grpId);
-  return err ? badEnglish(err) : message("ok");
+  return err ? badText(err) : message("ok");
 }) satisfies Handler<z.infer<typeof DraftDecisionBody>, z.infer<typeof DraftDecision>>;
 
 /**
@@ -378,7 +386,7 @@ function budgetError(tokens: number | null, spent: number): Response | null {
   if (tokens === null) return null;
   if (!(tokens > 0)) return bad(msg`tokens must be a positive number, or null to lift the cap`);
   if (tokens <= spent)
-    return badEnglish(`already spent ${spent} tokens — a cap at ${tokens} would stop it again immediately`);
+    return bad(msg`already spent ${{ spent }} tokens — a cap at ${{ tokens }} would stop it again immediately`);
   return null;
 }
 
@@ -420,9 +428,8 @@ async function resumeGroup(ctx: Ctx, grpId: number): Promise<Response> {
     .from(grps)
     .where(eq(grps.id, grpId));
   if (g?.budget_tokens != null && g.spent_tokens >= g.budget_tokens) {
-    return badEnglish(
-      `out of budget (${g.spent_tokens}/${g.budget_tokens} tokens). Raise the cap first, ` +
-        `or it stops again on the next tick.`,
+    return bad(
+      msg`out of budget (${{ spent: g.spent_tokens }}/${{ budget: g.budget_tokens }} tokens). Raise the cap first, or it stops again on the next tick.`,
     );
   }
   await resume(ctx, grpId);
@@ -454,7 +461,7 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
     // Put the old number back: a group with no PR and no way to open one is
     // worse off than one whose PR is closed.
     await ctx.db.update(grps).set({ pr_number: g.pr_number }).where(eq(grps.id, grpId));
-    return badEnglish(r.error);
+    return badText(r.error);
   }
   await ctx.db.update(grps).set({ status: "PR_OPEN", paused_at: null, pause_reason: null }).where(eq(grps.id, grpId));
   await joinQueue(ctx.db, grpId);

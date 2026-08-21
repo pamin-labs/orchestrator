@@ -4,6 +4,7 @@ import type { Agent, Escalation, Group, Slice, State } from "../../shared/api";
 import { activityOf } from "../../shared/activity";
 import { gates, heldApproved, STOPS } from "../../shared/select";
 import { waited } from "../../shared/format";
+import { saidText } from "../../shared/said";
 import { t } from "@lingui/core/macro";
 import { i18n } from "../../i18n";
 
@@ -187,7 +188,10 @@ export function draftView(st: State, grpId: number) {
 }
 
 export const blockedReason = (st: State, grpId: number): string =>
-  st.approvedBlocked.find((b) => b.grpId === grpId)?.reason ?? t`Awaiting Architect to split boundaries`;
+  (() => {
+    const b = st.approvedBlocked.find((x) => x.grpId === grpId);
+    return b ? saidText(b.said, b.reason) : t`Awaiting Architect to split boundaries`;
+  })();
 export const cardRows = (filed: string): number => Math.max(7, filed.split("\n").length + 1);
 export const firstLine = (body: string): string => body.split("\n")[0] ?? "";
 /** Send the text only when edited: an untouched card is approved as filed, so

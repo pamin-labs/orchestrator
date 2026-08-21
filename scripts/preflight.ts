@@ -96,6 +96,24 @@ const steps: Step[] = [
     job: "quality",
     run: () => cmd("bun run i18n:validate"),
   },
+  /**
+   * The catalogues are a current snapshot of the source, and nothing else asks.
+   *
+   * Nine translations were lost inside this branch: `extract --clean` retired
+   * ids that a later edit brought back as `msg` templates, and no gate saw it.
+   * `i18n:validate` could not — the catalogue was *complete*, because the rows
+   * were gone from it too — and `i18n:progress --check` only reads a README.
+   */
+  /**
+   * Writes, where the steps above only read, which is why it is followed by the
+   * diff rather than being a `--check`: `lingui extract` has no such mode, and
+   * running it is the only thing that answers the question.
+   */
+  {
+    name: "catalogues match the source",
+    job: "quality",
+    run: () => cmd("bun run i18n:extract && git diff --exit-code -- locales/"),
+  },
   { name: "web bundle", job: "quality", run: () => cmd("bun run build:web") },
   // Through `bun run test`, not `bun test` directly: that wrapper retries an arm64
   // worker panic once and nothing else, and this is the command a developer runs

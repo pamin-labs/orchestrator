@@ -50,9 +50,8 @@ export function HostAlert({ failing, onFix }: { failing: readonly HostFailure[];
   const [hidden, setHidden] = useState("");
   const now = fingerprint(failing);
 
-  if (!failing.length || hidden === now) return null;
   const first = failing[0];
-  if (!first) return null;
+  if (!first || hidden === now) return null;
 
   return (
     <Alert>

@@ -20,7 +20,7 @@ import { Attachment as AttachmentSchema, GroupRef, Id, IdParams, Prose } from ".
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { bossFact } from "../panel/attach.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
-import { badEnglish, json, message } from "../../http/respond.ts";
+import { badText, json, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
 import {
@@ -137,15 +137,15 @@ export const AnswerBody = z.object({
 export const postAnswer2 = (async (ctx, _req, a, _p, b) => {
   const deps = { ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) };
   const level = z.enum(CHAIN).safeParse(a.role);
-  if (!level.success) return badEnglish(`${a.role} is not an answer-chain level`);
+  if (!level.success) return badText(`${a.role} is not an answer-chain level`);
 
   if (b.abstain) {
     // Abstaining is the expected move when a level is unsure: a guess made on
     // the boss's behalf becomes a premise the whole group reasons from.
     const r = await abstain(deps, b.escalation_id, level.data, b.why ?? "", a.grp_id);
-    return r.ok ? message("passed up") : badEnglish(r.error);
+    return r.ok ? message("passed up") : badText(r.error);
   }
-  if (!b.answer?.trim()) return badEnglish("an answer needs text, or pass --abstain");
+  if (!b.answer?.trim()) return badText("an answer needs text, or pass --abstain");
   const r = await chainAnswer(deps, {
     escId: b.escalation_id,
     by: level.data,
@@ -153,7 +153,7 @@ export const postAnswer2 = (async (ctx, _req, a, _p, b) => {
     actorGrpId: a.grp_id,
     ...(b.ref === undefined ? {} : { refNoteId: b.ref }),
   });
-  return r.ok ? message("ok") : badEnglish(r.error);
+  return r.ok ? message("ok") : badText(r.error);
 }) satisfies AgentHandler<z.infer<typeof AnswerBody>>;
 
 export const TriageBody = z.object({
@@ -163,10 +163,9 @@ export const TriageBody = z.object({
 });
 
 export const postTriage = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== roleFor(ctx, "triage_boss_feedback"))
-    return badEnglish(`${a.role} does not triage the boss's feedback`);
+  if (a.role !== roleFor(ctx, "triage_boss_feedback")) return badText(`${a.role} does not triage the boss's feedback`);
   const gid = await resolveGroup(ctx, b.group_id);
-  if (!gid) return badEnglish("which group? pass its id or name");
+  if (!gid) return badText("which group? pass its id or name");
   if (!(await mayAct(ctx.db, a, gid))) return message("not your group", 403);
   await triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as, b.note ?? "");
   return message("ok");
@@ -195,7 +194,7 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
     .from(escalations)
     .where(eq(escalations.id, id));
   if (!esc) return message("no such question", 404);
-  if (esc.answer) return badEnglish("already answered");
+  if (esc.answer) return badText("already answered");
 
   // A standing agent carries the project on itself; one inside a group carries it
   // on the group. The join replaces a scalar subquery reading the asker's id back
@@ -208,7 +207,7 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
         .leftJoin(agent, eq(agent.id, escalations.agent_id))
         .where(eq(escalations.id, id));
   const projectId = owner?.project_id ?? null;
-  if (!projectId) return badEnglish("cannot tell which project this belongs to");
+  if (!projectId) return badText("cannot tell which project this belongs to");
 
   const idea = [b.text?.trim(), esc.question].filter(Boolean).join("\n\n");
   const name = (b.name ?? slug(idea)).slice(0, 40) || `esc-${id}`;
@@ -275,7 +274,7 @@ export const postAnswer = (async (ctx, _req, params, b) => {
   // The boss answers through the same path a stand-in would, so unblocking the
   // caller and un-pausing the group cannot drift between the two.
   const r = await chainAnswer({ ctx }, { escId: id, by: "boss", answer: withAttachments(b.answer, b.attachments) });
-  return r.ok ? message("ok") : badEnglish(r.error);
+  return r.ok ? message("ok") : badText(r.error);
 }) satisfies Handler<z.infer<typeof BossAnswerBody>, z.infer<typeof IdParams>>;
 
 /**

@@ -8,7 +8,7 @@ import { cp, mkdir, writeFile } from "node:fs/promises";
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Handler } from "../../http/handler.ts";
-import { bad, badEnglish, json, message } from "../../http/respond.ts";
+import { bad, json, message } from "../../http/respond.ts";
 
 import { sediment } from "../../mech/knowledge/lessons.ts";
 import { grp } from "../../platform/persistence/schema.ts";
@@ -82,7 +82,7 @@ export const postAttach = (async (ctx, _req, _params, { file: files, rel: rels }
   const stamp = Date.now();
 
   for (const [i, f] of files.entries()) {
-    if (f.size > 25 * 1024 * 1024) return badEnglish(`${f.name} is over 25MB`);
+    if (f.size > 25 * 1024 * 1024) return bad(msg`${{ name: f.name }} is over 25MB`);
     // The stamp keeps two screenshots called "Screenshot.png" apart, and the
     // sanitising keeps a crafted filename inside the directory. Every segment of
     // a relative path is sanitised the same way, so `..` cannot survive one.
@@ -138,7 +138,7 @@ export const postAttachLocal = (async (ctx, _req, _p, b) => {
     try {
       st = statSync(src);
     } catch {
-      return badEnglish(`${raw}: cannot be read`);
+      return bad(msg`${{ path: raw }}: cannot be read`);
     }
     const safe = basename(src)
       .replace(/[^\w.\-\u4e00-\u9fff]/g, "_")

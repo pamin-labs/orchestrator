@@ -18,7 +18,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { ph, t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
-import { said } from "../../shared/select";
+import { labelOf } from "../../shared/select";
 
 /**
  * Per docs/project/plan.md §8: current slice, turn count, the live last line, model, spend.
@@ -419,7 +419,7 @@ function rotationModel(cost: Cost) {
   return {
     turns: cost.rotations.turns,
     cold,
-    why: entries.map(([reason, count]) => `${said(ROTATION_REASON[reason], reason)} ${count}`).join(" · "),
+    why: entries.map(([reason, count]) => `${labelOf(ROTATION_REASON[reason], reason)} ${count}`).join(" · "),
     className: cold * 2 > cost.rotations.turns ? "text-warn" : "text-ink",
   };
 }

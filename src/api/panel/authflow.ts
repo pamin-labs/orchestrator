@@ -42,7 +42,7 @@ import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
 import { errText } from "../../platform/process/text.ts";
 import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/login-flow.ts";
 import type { Handler } from "../../http/handler.ts";
-import { bad, badEnglish, json, message } from "../../http/respond.ts";
+import { bad, badText, json, message } from "../../http/respond.ts";
 
 import { escalation, grp, project, runtime_auth } from "../../platform/persistence/schema.ts";
 
@@ -69,7 +69,7 @@ import { escalation, grp, project, runtime_auth } from "../../platform/persisten
  * wiring rather than a value the boss can correct, which ADR 035 leaves in the
  * English column.
  */
-export const noGithubClient = () => badEnglish("this server has no GitHub client");
+export const noGithubClient = () => bad(msg`this server has no GitHub client`);
 
 export const getAuth = (async (ctx) =>
   json({ runtimes: await listAuth(ctx.db), trailers: await trailers(ctx.db) })) satisfies Handler;
@@ -126,7 +126,7 @@ export const postAuth = (async (ctx, _req, _p, b) => {
   // The sandbox key is ours, not a provider's, so it has no shape to check.
   if (auth.runtime !== SANDBOX_KEY) {
     const wrong = wrongShape(auth);
-    if (wrong) return badEnglish(wrong);
+    if (wrong) return badText(wrong);
   }
   // The one credential whose owner we can ask, and the one where a wrong value
   // is silent and total: it overrides the environment, so a key the server does
@@ -337,7 +337,7 @@ export async function githubDeviceLogin(ctx: Ctx, fetchFn?: DeviceFlowFetcher): 
   } catch (e) {
     // `errText`, not `e?.message`: a thrown non-Error has no `message`, and the
     // object itself reaches the response body as "[object Object]".
-    return badEnglish(errText(e) || "GitHub returned no device code");
+    return badText(errText(e) || "GitHub returned no device code");
   }
   ghFlow = { userCode: d.userCode, verificationUri: d.verificationUri, expiresAt: Date.now() + d.expiresIn * 1000 };
   ghError = null;
@@ -546,11 +546,11 @@ export const getGithubRepos = (async (ctx, req, _params, { installation: asked =
     listInstallations(ctx.gh, req.signal),
     asked ? listRepos(ctx.gh, asked, req.signal) : Promise.resolve(null),
   ]);
-  if (!inst.ok) return badEnglish(inst.message);
+  if (!inst.ok) return badText(inst.message);
 
   const selected = inst.data.find((i) => i.id === asked)?.id ?? inst.data[0]?.id ?? null;
   const repos = selected === asked ? guess : selected ? await listRepos(ctx.gh, selected, req.signal) : null;
-  if (repos && !repos.ok) return badEnglish(repos.message);
+  if (repos && !repos.ok) return badText(repos.message);
 
   // Seam (007 step 6): a project's identity is still `repo_path`, which for a
   // repository added here is `owner/name`.

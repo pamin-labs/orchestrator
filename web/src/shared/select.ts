@@ -2,13 +2,15 @@ import type { Escalation, Group, Slice, State } from "./api";
 import { githubRepo } from "./github";
 import { z } from "zod";
 import { valueOr } from "../../../src/contracts/json.ts";
+import type { GrpState } from "../../../src/contracts/states.ts";
 import { msg, t } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../i18n";
 
-/** A label from a table, or the raw value when the table has no row for it —
- *  a state the server added and this build has never heard of. */
-export const said = (m: MessageDescriptor | undefined, fallback: string): string => (m ? i18n._(m) : fallback);
+/** A label from a partial table, or the raw value where it has no row. Only
+ *  `WHERE_LABEL` needs it: it covers the four open chain states and `chain_state`
+ *  also carries `answered` and `revoked`. A total table indexes directly. */
+export const labelOf = (m: MessageDescriptor | undefined, fallback: string): string => (m ? i18n._(m) : fallback);
 
 const OwnsSchema = z.array(z.string());
 const GatesSchema = z.record(z.string(), z.string());
@@ -22,14 +24,19 @@ const GatesSchema = z.record(z.string(), z.string());
 export const heldApproved = (g: Group) => g.status === "DRAFT" && !!g.approved_at;
 
 export const statusLabel = (g: Group) =>
-  heldApproved(g) ? t`Approved · Awaiting boundary` : said(STATUS_LABEL[g.status], g.status);
+  heldApproved(g) ? t`Approved · Awaiting boundary` : i18n._(STATUS_LABEL[g.status]);
 
 /**
  * `msg` at module scope, `i18n._` at call scope. A descriptor is locale-free
  * data, so a table built once at import stays right after the locale changes;
  * a resolved string would freeze at whatever was active on first evaluation.
+ *
+ * `Record<GrpState, …>`, so a ninth state is a compile error rather than a raw
+ * `PR_OPEN` on the panel. `Group.status` is `z.enum(GRP_STATES)`, so there is no
+ * unknown state to fall back for: one this build has never heard of fails
+ * `SnapshotSchema.safeParse` before it reaches here.
  */
-export const STATUS_LABEL: Record<string, MessageDescriptor> = {
+export const STATUS_LABEL: Record<GrpState, MessageDescriptor> = {
   PLANNING: msg`Planning`,
   DRAFT: msg`Pending review`,
   RUNNING: msg`Running`,

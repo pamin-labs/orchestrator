@@ -57,11 +57,11 @@ export const CHAIN = ESCALATION_OPEN_STATES;
  * inflects on top of it, so those are stems: `трат` covers трата/потратить/затраты.
  */
 /**
- * Every row stands on its own, so a word two languages spell alike is repeated
- * in both deliberately rather than deduplicated: `budget` is French and German
- * as well, and leaning on `en`'s copy of it makes a rewrite of those five
- * English patterns drop money for fr and de, invisibly and in a diff that never
- * mentions either.
+ * Nothing looks a row up. `PATTERNS` flattens all ten and every question is
+ * tested against all of them, because an agent writes in whatever
+ * `output.language` says and the gate does not get to know which. The keys buy
+ * one thing and it is worth the shape: `Record<Locale, …>` makes an eleventh
+ * language a compile error.
  */
 const RESERVED: Record<Locale, readonly RegExp[]> = {
   // `subscri` sat inside the `\b(…)\b` group, so it could never match: every real

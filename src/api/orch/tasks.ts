@@ -6,7 +6,7 @@ import { valueOr } from "../../contracts/json.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
-import { badEnglish, message } from "../../http/respond.ts";
+import { badText, message } from "../../http/respond.ts";
 import { agent, slice, task } from "../../platform/persistence/schema.ts";
 import {
   AlreadyDoneClaimSchema,
@@ -150,7 +150,7 @@ export const postTaskClaim = (async (ctx, _req, a, _p, b) => {
       ),
     )
     .returning({ id: task.id });
-  return claimed.length ? message("ok") : badEnglish("already claimed, or its slice is not being worked yet");
+  return claimed.length ? message("ok") : badText("already claimed, or its slice is not being worked yet");
 }) satisfies AgentHandler<z.infer<typeof TaskRef>>;
 
 const TaskDoneBase = {
@@ -243,7 +243,7 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
   // unstarted slices into review.
   const completion = await taskCompletion(ctx.db, b.task_id, a.grp_id);
   if (completion?.slice_status && ["pending", "accepted"].includes(completion.slice_status)) {
-    return badEnglish(
+    return badText(
       `task ${b.task_id} belongs to a slice that is not being worked (${completion.slice_status}). ` +
         `Finish the slice you are on; the next one starts when the boss accepts this one.`,
     );
@@ -265,7 +265,7 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
    * would make it a formality four times over.
    */
   const invalidReview = reviewError(b.task_id, completion, b.review);
-  if (invalidReview) return badEnglish(invalidReview);
+  if (invalidReview) return badText(invalidReview);
 
   // Unowned is fine: a group has one writer, so requiring an explicit claim only
   // adds a step that gets forgotten. Someone else's task is not — unless that
@@ -308,7 +308,7 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
     });
     return shouldTick;
   });
-  if (advanced === null) return badEnglish(`task ${b.task_id} is not yours, or does not exist`);
+  if (advanced === null) return badText(`task ${b.task_id} is not yours, or does not exist`);
   if (advanced) await ctx.sched.tick();
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof TaskDoneBody>>;

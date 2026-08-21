@@ -6,7 +6,7 @@ import { roleFor } from "../../mech/ctx.ts";
 import { z } from "zod";
 import { GroupRef } from "../../contracts/fields.ts";
 import type { AgentHandler } from "../../http/handler.ts";
-import { badEnglish, message } from "../../http/respond.ts";
+import { badText, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { grp as grps, project } from "../../platform/persistence/schema.ts";
 
@@ -40,21 +40,21 @@ export const PrBody = z.object({
 });
 
 export const postPr = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== roleFor(ctx, "write_pr_message")) return badEnglish(`${a.role} does not write pull request messages`);
+  if (a.role !== roleFor(ctx, "write_pr_message")) return badText(`${a.role} does not write pull request messages`);
   const gid = await resolveGroup(ctx, b.group_id);
-  if (!gid) return badEnglish("which group? pass its id or name");
+  if (!gid) return badText("which group? pass its id or name");
   if (!(await mayAct(ctx.db, a, gid))) return message("not your project", 403);
 
   const title = b.title.trim();
   const summary = b.body.trim();
   const wrong = checkPrMessage(title, summary);
-  if (wrong) return badEnglish(wrong);
+  if (wrong) return badText(wrong);
 
   const [g] = await ctx.db
     .select({ status: grps.status, pr_number: grps.pr_number })
     .from(grps)
     .where(eq(grps.id, gid));
-  if (!g) return badEnglish("no such group");
+  if (!g) return badText("no such group");
   await ctx.db.update(grps).set({ pr_title: title, pr_summary: summary }).where(eq(grps.id, gid));
   await ctx.bus.emit({
     grpId: gid,
@@ -92,30 +92,28 @@ export const postPrResolve = (async (ctx, req, a, _p, b) => {
   // its own PR has exactly one answer, and making it retype the id is how the
   // wrong one gets typed.
   const gid = await resolveGroup(ctx, b.group_id, a.grp_id);
-  if (!gid) return badEnglish("which group? pass its id or name");
+  if (!gid) return badText("which group? pass its id or name");
   if (!(await mayAct(ctx.db, a, gid))) return message("not your project", 403);
-  if (!ctx.gh) return badEnglish("this server has no GitHub client");
+  if (!ctx.gh) return badText("this server has no GitHub client");
 
   const [g] = await ctx.db
     .select({ pr_number: grps.pr_number, owns_json: grps.owns_json, remote: project.remote })
     .from(grps)
     .innerJoin(project, eq(project.id, grps.project_id))
     .where(eq(grps.id, gid));
-  if (!g) return badEnglish("no such group");
-  if (!g.pr_number) return badEnglish("this group has no pull request open, so it has no threads to close");
+  if (!g) return badText("no such group");
+  if (!g.pr_number) return badText("this group has no pull request open, so it has no threads to close");
 
   // Where the thread is, from GitHub rather than from the caller. The id is the
   // only thing an agent holds, and it is what the next two refusals check.
   const at = await reviewThreadAt(ctx.gh, b.thread_id, req.signal);
-  if (!at) return badEnglish(`no review thread with id ${b.thread_id} — quote the id from the feedback exactly`);
+  if (!at) return badText(`no review thread with id ${b.thread_id} — quote the id from the feedback exactly`);
 
   // A thread on somebody else's pull request. The repository too, not just the
   // number: PR #5 exists in every repository the fleet's token can write to.
   const mine = parseRepo(g.remote ?? "");
   if (at.repo !== mine || at.prNumber !== g.pr_number) {
-    return badEnglish(
-      `that thread is on ${at.repo}#${at.prNumber}; this group's pull request is ${mine}#${g.pr_number}`,
-    );
+    return badText(`that thread is on ${at.repo}#${at.prNumber}; this group's pull request is ${mine}#${g.pr_number}`);
   }
 
   // A thread on a file this group does not own. Someone else is fixing it, or
@@ -124,14 +122,14 @@ export const postPrResolve = (async (ctx, req, a, _p, b) => {
   // whether a write belongs to this group; a group that declared no boundary is
   // not policed here, exactly as it is not there.
   if (outsideOwns([at.path], parseOwns(g.owns_json)).length) {
-    return badEnglish(
+    return badText(
       `${at.path} is outside this group's boundary, so this group does not get to close that thread — ` +
         `say so with \`orch ask-boss\` and leave it open`,
     );
   }
 
   const failed = await resolveReviewThread(ctx.gh, b.thread_id, req.signal);
-  if (failed) return badEnglish(failed);
+  if (failed) return badText(failed);
   await ctx.bus.emit({
     grpId: gid,
     author: a.role,

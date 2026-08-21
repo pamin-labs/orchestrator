@@ -135,8 +135,10 @@ const ALIAS: Record<string, Field> = {
  * had no such case to fold, which is why the exact match was safe before.
  */
 function fieldOf(name: string): Field | null {
-  const alias = ALIAS[name];
-  if (alias) return alias;
+  // `Object.hasOwn`, not a truthy index: `ALIAS` is a plain object, so
+  // `ALIAS["constructor"]` is `Object` — truthy, and enough to make `## constructor`
+  // name a section. Same accident `schemaAt` in `contracts/config.ts` closed.
+  if (Object.hasOwn(ALIAS, name)) return ALIAS[name]!;
   const lower = name.toLowerCase();
   return DRAFT_FIELDS.find((field) => field === lower) ?? null;
 }

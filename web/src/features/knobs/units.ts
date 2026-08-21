@@ -163,7 +163,11 @@ export function parseDuration(raw: string, unit: DurationUnit): number | null {
   // aliases above.
   const m = /^(\d+(?:\.\d+)?)\s*([a-z一-鿿]*)$/i.exec(raw.trim());
   if (!m) return null;
-  const found = m[2] ? ALIAS[m[2].toLowerCase()] : unit;
+  // `Object.hasOwn`, not a truthy index: `ALIAS["constructor"]` is `Object`, and
+  // `PER[Object]` is `undefined`, so `parseDuration("5constructor")` returned NaN
+  // instead of null. Same accident `schemaAt` in `contracts/config.ts` closed.
+  const key = m[2]?.toLowerCase();
+  const found = key ? (Object.hasOwn(ALIAS, key) ? ALIAS[key] : undefined) : unit;
   if (!found) return null;
   // Rounded because 1.5 * 3_600_000 is exact but 0.1 * 3_600_000 is not, and a
   // duration that lands on 359999.99999 is a number no validator will accept.

@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { renderSaid } from "../../src/platform/text/lang.ts";
+import { said } from "../support/said.ts";
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { and, asc, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
@@ -760,7 +762,11 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
   // 200: the boss did decide. A 422 shows a red error and asks for the same click
   // again — and the click it asked for used to be a 500 (see the next test).
   expect(held.status).toBe(200);
-  expect(await held.text()).toContain("自动开工");
+  // The framing sentence, not a word out of one translation of it: the toast has
+  // to say the click landed, or a 200 reads like the 422 it deliberately is not.
+  expect(await held.text()).toContain(
+    renderSaid("zh", said("Approval recorded — it starts by itself once the boundary clears.")),
+  );
 
   const g = (await first(
     db.select({ status: grp.status, approved_at: grp.approved_at }).from(grp).where(eq(grp.id, grp_id)),

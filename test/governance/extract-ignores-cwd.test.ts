@@ -10,9 +10,9 @@ import { createRequire } from "node:module";
  * anywhere but the repository root finds zero messages — and exits 0.
  */
 /**
- * The script carries `--clean`, where "found zero" means "all 811 are
- * obsolete". Measured from `scripts/` before the fix: every locale reported 0/0
- * and the command succeeded.
+ * The script carries `--clean`, where "found zero" means every message in the
+ * catalogue is obsolete. Measured from `scripts/` before the fix: every locale
+ * reported 0/0 and the command succeeded.
  */
 const load = createRequire(import.meta.url) as <T>(id: string) => T;
 

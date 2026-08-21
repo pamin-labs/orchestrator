@@ -20,14 +20,15 @@ import { translations } from "./lingui-catalogs.ts";
  * the tokens, and a regex over the raw string has to re-derive which braces are
  * a reference, which are a plural category and which are inside a branch.
  */
-
 /**
- * Every name a compiled message refers to, plus every `<0>` slot.
- *
- * A token is either a literal string or `[name, type?, options?]`; a plural's
- * branches hang off `options` and hold tokens of their own. The tags are not
- * tokens at all — they stay in the literals, so they are read from there.
+ * Green here does not mean the translations are complete. This reads `.po`
+ * against `.po` — a `msg` template added to `src/` or `web/src/` is invisible to
+ * it until `lingui extract` writes the id out, so a branch can add ten English
+ * strings and still print "catalogs complete". The half nobody else owns is
+ * `preflight.ts`'s `i18n:extract && git diff --exit-code -- locales/`, which is
+ * also what catches `--clean` retiring a row. Two owners, half each.
  */
+
 /** A placeholder token's nested token lists: a plural's branches, a select's cases. */
 function branchesOf(token: readonly unknown[]): readonly unknown[][] {
   const options: unknown = token[2];

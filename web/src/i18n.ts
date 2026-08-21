@@ -26,9 +26,17 @@ const KEY = "orch.locale";
  * One `import()` per catalog, written out rather than built from a template: a
  * bundler splits what it can see, and a template literal it cannot resolve
  * either fails or pulls the whole directory into the entry point. Each is its
- * own chunk of about 52KB, and nobody reads two.
+ * own chunk of about 90KB, and nobody reads two.
  */
-const CATALOGS: Record<Exclude<Locale, "en">, () => Promise<{ messages: Messages }>> = {
+/**
+ * English is in the list. It used to be `Exclude<Locale, "en">` with an empty
+ * catalogue loaded beside it — the source locale renders from the `message` the
+ * macro left in the bundle, so the chunk bought nothing but a saved fetch. Ten
+ * locales through one path is what Lingui's own SSR example does, and it is what
+ * lets `saidText` be one line; ADR 041 records the fetch as the price.
+ */
+const CATALOGS: Record<Locale, () => Promise<{ messages: Messages }>> = {
+  en: () => import("../../locales/en.po"),
   zh: () => import("../../locales/zh.po"),
   "zh-Hant": () => import("../../locales/zh-Hant.po"),
   ja: () => import("../../locales/ja.po"),
@@ -58,14 +66,9 @@ const CATALOGS: Record<Exclude<Locale, "en">, () => Promise<{ messages: Messages
 export const preference = (): Locale =>
   PrefSchema.catch(localeOf(detect(fromNavigator()) ?? "en")).parse(detect(fromStorage(KEY)) ?? "");
 
-// English is the source: every id falls back to the message the macro hashed, so
-// its catalog is empty by construction. Declared anyway — an unloaded locale
-// warns on every render.
-i18n.load("en", {});
-
-/** Fetched once per locale per page. The entry point holds no catalog at all. */
+/** Fetched once per locale per page, English included. The entry point holds
+ *  no catalog at all. */
 async function load(locale: Locale): Promise<void> {
-  if (locale === "en") return;
   const { messages } = await CATALOGS[locale]();
   i18n.load(locale, messages);
 }

@@ -192,16 +192,6 @@ export const endonymOf = (locale: Locale): string => LANGUAGES.find((l) => l.loc
 export const localeOf = (lang: string | undefined): Locale =>
   LANGUAGES.find((l) => l.locale !== "en" && l.spelled.test(lang ?? ""))?.locale ?? "en";
 
-/**
- * Whether the boss reads Chinese — one caller left, and it is not about a
- * catalog.
- *
- * `escalation.ts` builds an agent's prompt from a Chinese or an English block;
- * they are written prose, not translations of one another. `lang.ts` used to ask
- * this too, and that was the bug: a language *pair* has no row for `한국어`, so a
- * Korean boss got English. It renders from ten catalogs now and asks `localeOf`.
- */
-
 export const ConfigSchema = z.object({
   language: z.string().min(1),
   maxGroups: count,

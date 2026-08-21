@@ -15,15 +15,19 @@ import type { HostFailure } from "../../web/src/shared/api.ts";
  */
 
 /**
- * A failure whose key this build has never heard of — which is the case that has
- * to keep working, because it is what an older panel meets the day the server
- * adds a check. The English the server rendered is what gets drawn, so every
- * assertion below reads the fallback path.
+ * A failure whose sentence no catalogue carries, so it renders from the
+ * `message` the descriptor arrived with. That is what the suite's Chinese
+ * catalogue does to every English-only check, and it is the path these
+ * assertions read.
  */
-const unknown = { id: "a-hash-this-build-has-never-seen" };
 const STAGED = "{count} staged at {path}";
-const docker = (detail: string): HostFailure => ({ name: "docker", detail, said: unknown, fix: "colima start" });
-const server = (detail: string): HostFailure => ({ name: "sandbox-server", detail, said: unknown });
+const docker = (detail: string): HostFailure => ({
+  name: "docker",
+  detail,
+  said: descriptor(detail),
+  fix: "colima start",
+});
+const server = (detail: string): HostFailure => ({ name: "sandbox-server", detail, said: descriptor(detail) });
 
 afterEach(cleanup);
 
@@ -86,7 +90,7 @@ test("three faults are one row with the count, not three rows", () => {
       failing={[
         docker("daemon is not running"),
         server("HTTP 500"),
-        { name: "image", detail: "no registry", said: unknown },
+        { name: "image", detail: "no registry", said: descriptor("no registry") },
       ]}
       onFix={() => {}}
     />,

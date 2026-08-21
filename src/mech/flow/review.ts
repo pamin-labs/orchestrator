@@ -134,7 +134,13 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      say: msg`reconcile failed on S${{ seq: slice.seq }}: ${{ reason: rec.reason ?? "" }}`,
+      // `rec.reason` is prose we wrote, so it stays out of the descriptor and the
+      // two failing shapes get a key each. Both are reachable: every `pass: false`
+      // from `reconcile` either names phantom files or claimed nothing at all.
+      // Paths are values; a sentence would be one sentence in two languages.
+      say: rec.phantom.length
+        ? msg`reconcile failed on S${{ seq: slice.seq }}: claimed but not changed — ${{ files: rec.phantom.join(", ") }}`
+        : msg`reconcile failed on S${{ seq: slice.seq }}: nothing was claimed and nothing changed`,
       meta: { slice_id: sliceId, phantom: rec.phantom },
     });
     return {
@@ -498,7 +504,8 @@ async function carryOver(db: DB, sliceId: number, grpId: number): Promise<void> 
     `Gates: ${JSON.stringify(sl.gates_json)}\n` +
     (decisions.length ? `What it settled:\n${decisions.map((d) => `- ${d}`).join("\n")}` : "");
 
-  await addNote(db, { grpId, sliceId, kind: "handoff", body });
+  // Assembled from English above, and read by the next slice's agent.
+  await addNote(db, { grpId, sliceId, kind: "handoff", body, lang: "en" });
 }
 
 /**

@@ -21,10 +21,11 @@ export const SaidSchema = z.object({
   /** The macro's hash of the English. Nobody writes one by hand. */
   id: z.string().min(1),
   /**
-   * The English the id was hashed from, carried so a reader whose catalogue has
-   * no row for it still gets a sentence. That is every English reader — the
-   * source locale loads no catalogue — and every reader of a panel older than
-   * the server that named this.
+   * The English the id was hashed from. Optional only because that is how Lingui
+   * types `MessageDescriptor` — every producer here is a `msg` template and
+   * `lingui-macros.ts` pins `descriptorFields: "message"`, so one without it is
+   * malformed rather than old. Requiring it would refuse `msg` at all 35 emit
+   * sites; the renderer treats the absence as unreachable instead.
    */
   message: z.string().optional(),
   /**
@@ -32,6 +33,12 @@ export const SaidSchema = z.object({
    * sentence assembled in two languages, which is the defect this replaces:
    * `dropped by the boss：ran out of budget`, with a full-width colon glued on
    * at the call site.
+   */
+  /**
+   * Not theoretical: the change that wrote this rule broke it five times —
+   * `watchdog.ts` rendered its fallback in `output.language` and passed it as a
+   * value to a key the panel renders in the browser's, which is the same defect
+   * with the seam moved one layer in.
    */
   // oxlint-disable-next-line eslint/no-restricted-properties -- `Record<string, unknown>` is Lingui's own type for a descriptor's values, and this schema has to accept the object its macro produced; narrowing it here would refuse `msg` at every emit site. Nothing reads a value: they are handed to ICU formatting, which renders whatever it gets, and React escapes the result.
   values: z.record(z.string(), z.unknown()).optional(),

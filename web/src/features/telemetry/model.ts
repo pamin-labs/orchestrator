@@ -12,7 +12,7 @@ import { t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
-import { said } from "../../shared/select";
+import { labelOf } from "../../shared/select";
 
 /**
  * One frame of the flamegraph: a name, what it cost, and what it called.
@@ -138,7 +138,7 @@ const HUMAN: Record<string, MessageDescriptor> = {
 };
 
 /** The words for a span name, or the span name when nobody has written any. */
-export const humanName = (id: string): string => said(HUMAN[id], id);
+export const humanName = (id: string): string => labelOf(HUMAN[id], id);
 
 /** Whether this name has words of its own, and therefore an identifier worth keeping on hover. */
 export const isRenamed = (id: string): boolean => id in HUMAN;

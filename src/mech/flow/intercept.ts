@@ -4,6 +4,7 @@ import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { agent, grp, job } from "../../platform/persistence/schema.ts";
 import { addNote } from "../util/rows.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
 import { rebaseOntoBase, rollbackTo } from "../git/gitops.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
@@ -280,8 +281,11 @@ export async function interrupt(
     await addNote(ctx.db, {
       grpId,
       kind: "fact",
-      lang: "zh",
-      body: "上一个 turn 被强制打断，worktree 里可能有未完成的改动。先 `git diff` 看一眼再继续，不要假设它是完整的。",
+      lang: ctx.config.language,
+      body: renderSaid(
+        ctx.config.language,
+        msg`the last turn was cut off, so the worktree may hold unfinished changes. Run \`git diff\` before carrying on rather than assuming it is complete.`,
+      ),
     });
   }
 

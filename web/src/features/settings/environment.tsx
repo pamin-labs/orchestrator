@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { api, mutate } from "../../shared/api";
+import { SaidSchema, type Said } from "../../../../src/contracts/said.ts";
 import { cn } from "../../ui/cn";
 import { Head, Input, Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
@@ -88,7 +89,7 @@ export const ServerInfoSchema: z.ZodType<InferResponseType<(typeof api)["sandbox
   addr: z.string(),
   inClear: z.boolean(),
   state: z.enum(["ours", "theirs", "stuck", "started", "down"]),
-  why: z.string().nullable(),
+  why: SaidSchema.nullable(),
   pid: z.string().nullable(),
   config: z.string().nullable(),
   argv: z.array(z.string()),
@@ -204,14 +205,15 @@ function ServerDetails({ server }: { server: ServerInfo | null }) {
   );
 }
 
-function ServerWhy({ why, state }: { why: string | null; state: string }) {
+function ServerWhy({ why, state }: { why: Said | null; state: string }) {
   // Under the line it explains, indented past the icon, and only when it adds
   // something — `没在跑` was rendering twice, once as the status and once as
   // its own reason, which reads as a stuck panel. It was a bordered box on
   // `sunk` too: a frame around one sentence, on the surface reserved for what a
   // machine produced.
-  if (!why || why === state) return null;
-  return <p className="mt-1 ml-5 text-secondary leading-relaxed text-ink-2">{why}</p>;
+  const text = saidText(why, "");
+  if (!text || text === state) return null;
+  return <p className="mt-1 ml-5 text-secondary leading-relaxed text-ink-2">{text}</p>;
 }
 
 function ServerIdentity({ value }: { value: string }) {

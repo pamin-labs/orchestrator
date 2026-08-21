@@ -2,7 +2,7 @@ import type { Usage } from "../../shared/api";
 import { t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
-import { said } from "../../shared/select";
+import { labelOf } from "../../shared/select";
 
 const WARN_AT = 80;
 
@@ -59,7 +59,7 @@ export const ringArc = (v?: number) => (v === undefined ? null : `${(Math.min(10
  * not been refreshed" stop being the same sentence.
  */
 export function ringTip(p: RingInput): string {
-  if (p.v === undefined) return said(WHY[p.why ?? ""], t`Unreadable`);
+  if (p.v === undefined) return labelOf(WHY[p.why ?? ""], t`Unreadable`);
   const age = p.read ? Math.round((Date.now() - p.read) / 60_000) : 0;
   const resets = p.at ? ` · ${resetsIn(until(p.at))}` : "";
   const read = age >= 15 ? ` · ${readAgo(age)}` : "";

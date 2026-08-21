@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { relative } from "node:path";
 import type { BunPlugin } from "bun";
+import type { CatalogFormatter } from "@lingui/conf";
 
 /**
  * `.po` catalogs, compiled at build time, for `Bun.build` and the test loader.
@@ -60,6 +61,19 @@ export async function translations(locale: string): Promise<Translations> {
     fallbackLocales: config.fallbackLocales,
     sourceLocale: config.sourceLocale,
   });
+}
+
+/**
+ * The formatter `lingui.config.js` declares, and the locale it calls the source.
+ *
+ * `i18n-hant.ts` reads and writes a `.po` with it rather than parsing one:
+ * a second `formatter({ … })` beside the config would be a second answer to how
+ * this project's catalogues are written.
+ */
+export function catalogFormat(): { format: CatalogFormatter; sourceLocale: string } {
+  const { config } = lingui();
+  if (!config.format) throw new Error(`lingui: no catalog formatter in ${CONFIG}`);
+  return { format: config.format, sourceLocale: config.sourceLocale };
 }
 
 async function compile(path: string): Promise<string> {

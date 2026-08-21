@@ -17,7 +17,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { ph, msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
-import { said } from "../../shared/select";
+import { labelOf } from "../../shared/select";
 
 /**
  * The blackboard's static half.
@@ -231,7 +231,7 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-2">
-          {showKind && <Badge>{said(KIND_LABEL.get(n.kind), n.kind)}</Badge>}
+          {showKind && <Badge>{labelOf(KIND_LABEL.get(n.kind), n.kind)}</Badge>}
           <Meta>{clock(n.at)}</Meta>
         </div>
         {n.group && (

@@ -14,7 +14,8 @@ import {
 } from "../../mech/skills.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
-import { badEnglish, json } from "../../http/respond.ts";
+import { msg } from "@lingui/core/macro";
+import { bad, json } from "../../http/respond.ts";
 import { expandHome } from "./attach.ts";
 import { errText } from "../../platform/process/text.ts";
 import type { PanelNote } from "../../contracts/notes.ts";
@@ -185,7 +186,7 @@ export const getDirs = (async (ctx, _req, _params, query) => {
   try {
     entries = readdirSync(path, { withFileTypes: true });
   } catch (e) {
-    return badEnglish(`${path}: ${errText(e)}`);
+    return bad(msg`${{ path }}: ${{ error: errText(e) }}`);
   }
   const taken = new Set((await ctx.db.select({ repo_path: project.repo_path }).from(project)).map((r) => r.repo_path));
   const dirs = entries

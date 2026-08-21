@@ -37,7 +37,6 @@ import { valueOr } from "../../contracts/json.ts";
 import { errText, hours, minutes } from "../../platform/process/text.ts";
 import { answered, roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
-import { renderSaid } from "../../platform/text/lang.ts";
 import type { Said } from "../../contracts/said.ts";
 import { hold, interrupt, park, release, unpark } from "../flow/intercept.ts";
 import { sweepApproved } from "../flow/start.ts";
@@ -503,6 +502,20 @@ type MapProject = { id: number; repo_path: string; remote: string | null };
  * container execs and 0.8 MB every thirty seconds for a map identical to the
  * stored one.
  */
+/**
+ * Why the map could not be refreshed — a key per case, not one key with a
+ * fragment rendered into it: a value carrying prose we wrote is one sentence in
+ * two languages, which `contracts/said.ts` refuses. `{why}` is only ever git's
+ * own words. Its own function so the three cases do not sit inside `refreshMap`,
+ * where they read as branches of the rule rather than as one answer.
+ */
+const mapFailure = (repo: string, remote: boolean, why: string | null): Said =>
+  !remote
+    ? msg`the repo map cannot be refreshed: ${{ repo }} has no remote recorded, so there is nothing to mirror`
+    : why
+      ? msg`the repo map cannot be refreshed: ${{ repo }} — ${{ why }}`
+      : msg`the repo map cannot be refreshed: ${{ repo }}, and git gave no reason, which is itself a bug`;
+
 async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise<void> {
   const stamp = p.remote ? await mapStamp(ctx, p.id, p.repo_path) : "";
   // An unreadable stamp used to mean "do the work anyway", on the reasoning that a
@@ -528,10 +541,7 @@ async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise
   if (stamp && (await readSetting(ctx.db, MAP_KEY(p.id))) === stamp) return;
   const { files, why } = p.remote
     ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))
-    : {
-        files: [],
-        why: renderSaid(ctx.config.language, msg`this project has no remote recorded, so there is nothing to mirror`),
-      };
+    : { files: [], why: null };
   // Said once per project: never means the map silently stops being refreshed,
   // and every tick is a feed nobody reads. Said with git's own words, because
   // naming possible causes in prose is a guess printed as a diagnosis.
@@ -542,10 +552,7 @@ async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise
       rule: "repo-map",
       grpId: null,
       severity: "advisory",
-      // `{why}` is a value, not a key: git's own words when there are any, and
-      // this sentence when there are not. A parameter carrying a *key* would be
-      // a sentence assembled in two catalogues, which `contracts/said.ts` refuses.
-      say: msg`the repo map cannot be refreshed: ${{ repo: p.repo_path }} — ${{ why: why ?? renderSaid(ctx.config.language, msg`no reason given, which is itself a bug`) }}`,
+      say: mapFailure(p.repo_path, !!p.remote, why),
     });
     return;
   }
@@ -1103,6 +1110,11 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "stalled",
         grpId: j.grp_id,
         severity: "blocker",
+        // `{why}` is exception text, not a sentence of ours: `payloadError` in
+        // `scheduling/scheduler.ts` writes `invalid <kind> payload: <error.message>`,
+        // where the prefix is scaffolding that gives the message a context and the
+        // message is the content. Naming it would mean changing what the
+        // `jobs.error` column holds, which the scheduler and the CLI both read.
         say: msg`group is RUNNING with an empty queue, and one re-queue did not revive it. Last failure: ${{ why: j.error ?? "" }}`,
       });
     }
@@ -1404,9 +1416,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "server_restarted",
           grpId: null,
           severity: err ? "blocker" : "advisory",
-          say: err
-            ? msg`opensandbox-server was gone and the restart failed (attempt ${{ n: serverRestarts }}): ${{ why: err }}`
-            : msg`opensandbox-server was gone and has been restarted (attempt ${{ n: serverRestarts }}). Held work resumes by itself.`,
+          // `err` verbatim: it is a descriptor now and one cannot nest in another.
+          // The attempt number leaves the failing branch with it — `give_up` below
+          // is what says how many there were, and it says it once.
+          say:
+            err ??
+            msg`opensandbox-server was gone and has been restarted (attempt ${{ n: serverRestarts }}). Held work resumes by itself.`,
         });
         break;
       }

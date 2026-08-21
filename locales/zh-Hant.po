@@ -122,6 +122,9 @@ msgstr "{hours} 小時"
 msgid "{idleCount} more are idle and costing nothing."
 msgstr "另外 {idleCount} 個空閒，沒在花錢。"
 
+msgid "{image} is neither an image we publish nor one built on this machine"
+msgstr "{image} 既不是我們發布的映像，也不是這臺機器上建置的"
+
 msgid "{image} is not on this machine"
 msgstr "這臺機器上沒有 {image}"
 
@@ -130,6 +133,9 @@ msgstr "{lines} 行"
 
 msgid "{live} running"
 msgstr "{live} 個在跑"
+
+msgid "{mine} overlaps {theirs} owned by {name} — wait for it, or ask the Architect for a different split"
+msgstr "{mine} 和 {name} 持有的 {theirs} 重疊了——等它，或者找架構師重新切分"
 
 msgid "{minutes} min"
 msgstr "{minutes} 分鐘"
@@ -200,6 +206,9 @@ msgstr "{name} 預算用到 {pct}%"
 msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name} 等的那件事已經了結，自動喚醒"
 
+msgid "{name} is over 25MB"
+msgstr "{name} 超過 25MB"
+
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
 msgstr "{name} 會從看板上消失，排隊的 turn 全部取消。程式碼和記錄都留著。"
 
@@ -236,6 +245,18 @@ msgstr "{name} 的 PR 排在隊首 {hours} 小時了，後面還堵著 {n} 個"
 msgid "{name}'s sandbox is bound to a superseded credential; reclaimed, and the next tick rebuilds it"
 msgstr "{name} 的沙箱綁的是舊憑證，回收了，下一輪重建"
 
+msgid "{path} is a path inside this container, and the mount is made by the sandbox server's docker, which resolves it on its own filesystem. Use one absolute path on both sides (-v <host path>:{path}) and add it to the sandbox server's allowed_host_paths. A mismatch does not fail; it mounts an empty directory."
+msgstr "{path} 是這個容器裡的路徑，而掛載是沙箱伺服器的 docker 做的，它在自己的檔案系統上解析這個路徑。兩邊用同一個絕對路徑（-v <host path>:{path}），並把它加進沙箱伺服器的 allowed_host_paths。對不上不會報錯，只會掛上一個空目錄。"
+
+msgid "{path}: {error}"
+msgstr "{path}：{error}"
+
+msgid "{path}: cannot be read"
+msgstr "{path}：讀不了"
+
+msgid "{repoPath} is already registered as \"{name}\""
+msgstr "{repoPath} 已經註冊為「{name}」"
+
 msgid "{repoPath} removed"
 msgstr "{repoPath} 已刪除"
 
@@ -263,6 +284,12 @@ msgstr "{role} 改了本組不擁有的 {n} 個檔案（{files}），已復原 �
 
 msgid "{runningCount} running · {total} total"
 msgstr "在跑 {runningCount} · 共 {total}"
+
+msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
+msgstr "{server} 有應答，但它不是 sandbox server（HTTP {status}）——換個地址。"
+
+msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
+msgstr "{server} 沒有應答，而且它不是這臺機器上的地址——這裡起不了。去那臺機器上看。"
 
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "本 session {sessionTokens} tokens · {model}"
@@ -357,6 +384,9 @@ msgstr "加進來"
 msgid "Add · {branch}"
 msgstr "新增 · {branch}"
 
+msgid "Add {path} to the sandbox server's allowed_host_paths, or every group fails to open a container. Tick the skills in Settings."
+msgstr "把 {path} 加進沙箱伺服器的 allowed_host_paths，否則每個組都開不出容器。技能在設定裡勾。"
+
 msgid "Add a row"
 msgstr "加一項"
 
@@ -411,6 +441,9 @@ msgstr "都在 1ms 以內"
 msgid "Allow notifications"
 msgstr "允許通知"
 
+msgid "already spent {spent} tokens — a cap at {tokens} would stop it again immediately"
+msgstr "已經花掉 {spent} tokens —— 上限設成 {tokens} 會立刻再停一次"
+
 msgid "already spent {tokens} tokens"
 msgstr "已經花了 {tokens} tokens"
 
@@ -435,8 +468,8 @@ msgstr "API 金鑰"
 msgid "Appearance"
 msgstr "外觀"
 
-msgid "approval recorded — held by the boundary: {why}. Starts by itself once that clears"
-msgstr "已記下你的批准。邊界還擋著：{why}。讓開之後自動開工，不用再點一次"
+msgid "Approval recorded — it starts by itself once the boundary clears."
+msgstr "已記下批准 —— 邊界一讓開它就自己開工。"
 
 msgid "Approve and start"
 msgstr "批准開工"
@@ -543,6 +576,9 @@ msgstr "兩個都發給 Dispatcher，它改完卡再回來給你批。"
 msgid "Boundary"
 msgstr "邊界"
 
+msgid "boundary still overlaps"
+msgstr "邊界仍然重疊"
+
 msgid "Branch"
 msgstr "分支"
 
@@ -614,6 +650,12 @@ msgstr "連不上：{error}"
 
 msgid "Cannot reach the usage endpoint"
 msgstr "連不上用量介面"
+
+msgid "cannot start it: {error}"
+msgstr "起不來：{error}"
+
+msgid "cannot write the config: {error}"
+msgstr "寫不了配置：{error}"
 
 msgid "cards pending review"
 msgstr "張卡待批"
@@ -789,8 +831,17 @@ msgstr "CoS 處理中"
 msgid "Cost"
 msgstr "成本"
 
+msgid "could not force-stop pid {pid}: {error}"
+msgstr "強制停止 pid {pid} 失敗：{error}"
+
 msgid "Could not generate a draft; you'll need to write this one yourself."
 msgstr "沒能擬出來，這條得你自己寫。"
+
+msgid "could not start {bin}: {error}"
+msgstr "起不來 {bin}：{error}"
+
+msgid "could not stop pid {pid}: {error}"
+msgstr "停止 pid {pid} 失敗：{error}"
 
 msgid "Couldn't read the settings from the server."
 msgstr "讀不到伺服器上的設定。"
@@ -1290,6 +1341,9 @@ msgstr "插技能"
 msgid "Install dependencies"
 msgstr "裝依賴"
 
+msgid "Install Docker — or Colima, or Podman, anything that provides a docker socket — and start it."
+msgstr "裝個 Docker —— 或者 Colima、Podman，能提供 docker socket 的都行 —— 然後起起來。"
+
 msgid "Install on GitHub"
 msgstr "去 GitHub 裝上"
 
@@ -1302,6 +1356,9 @@ msgstr "裝到別的賬號"
 msgid "Installed on these accounts"
 msgstr "裝在哪些賬號上"
 
+msgid "installed, but the daemon is not answering"
+msgstr "裝了，但 daemon 不應答"
+
 msgid "Interrupt and rollback"
 msgstr "打斷並復原"
 
@@ -1313,6 +1370,14 @@ msgstr "沙箱伺服器在不在，認不認我們的金鑰。通常是迴環，
 
 msgid "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open."
 msgstr "到底有沒有網：對每個供應商 origin 發一個 HEAD，在 watchdog 的 tick 裡跑。這裡故意最短——答案慢不能把一個 tick 拖住。"
+
+msgid "it exited on its own (exit {code}), printing nothing"
+msgstr "它自己退了（exit {code}），什麼都沒列印"
+
+msgid "it exited on its own (exit {code}):\n"
+"{tail}"
+msgstr "它自己退了（exit {code}）：\n"
+"{tail}"
 
 msgid "It's not a duplicate, and it's not done yet — keep decomposing."
 msgstr "不是重複，也不算已經做完了 —— 接著拆。"
@@ -1572,6 +1637,9 @@ msgstr "還沒有別的模型，直接寫就行"
 msgid "No other requirements for this project"
 msgstr "這個專案沒有別的需求"
 
+msgid "no owned paths declared, and {holders} already hold theirs — the Architect has to cut the boundary before work starts"
+msgstr "沒有宣告自己的路徑，而 {holders} 已經各自持有了——開工前得讓架構師先切邊界"
+
 msgid "no path"
 msgstr "沒有路徑"
 
@@ -1580,9 +1648,6 @@ msgstr "沒有停著的需求。預算用盡、或等你答問題超過 2 小時
 
 msgid "No pending items"
 msgstr "無待辦"
-
-msgid "no reason given, which is itself a bug"
-msgstr "沒有原因可說，這本身就是個 bug"
 
 msgid "No reason recorded"
 msgstr "沒有記下原因"
@@ -1608,11 +1673,20 @@ msgstr "沒歸到切片"
 msgid "No slices"
 msgstr "無切片"
 
+msgid "no such group"
+msgstr "沒有這個組"
+
 msgid "No system activity recorded."
 msgstr "還沒有記下任何系統活動。"
 
 msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
 msgstr "還沒花 token。批准計劃卡之後，這裡按需求往下拆到每個 agent。難度標籤決定跑哪個模型。"
+
+msgid "no uvx — opensandbox-server is a Python package, so install uv before one can start"
+msgstr "沒有 uvx——opensandbox-server 是個 Python 包，先裝 uv 才能起"
+
+msgid "no uvx on PATH"
+msgstr "PATH 裡沒有 uvx"
 
 msgid "No, keep going"
 msgstr "不，接著做"
@@ -1644,8 +1718,17 @@ msgstr "還不夠兩個時段的資料。"
 msgid "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
 msgstr "不在本機，也不在加密內網，走的還是明文 http。金鑰和容器流量都是裸的，用 https 或者 Tailscale。"
 
+msgid "not reachable"
+msgstr "連不上"
+
+msgid "not running"
+msgstr "沒在跑"
+
 msgid "Not running"
 msgstr "沒在跑"
+
+msgid "not running (a process looks like it, pid {pid}, but {server} does not answer — it may be starting, or it may be stuck)"
+msgstr "沒在跑（有個行程看著像，pid {pid}，但 {server} 沒有應答——可能在啟動，也可能卡住了）"
 
 msgid "Not satisfied"
 msgstr "不滿意"
@@ -1658,6 +1741,9 @@ msgstr "記錄"
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "GitHub 上什麼都不動：分支還在，PR 還在，程式碼一行不少。移除的只是這臺機器上的這份工作。"
+
+msgid "nothing recorded about how this server was started"
+msgstr "沒有記錄這臺 server 是怎麼起的"
 
 msgid "Notifications"
 msgstr "通知"
@@ -1731,9 +1817,6 @@ msgstr "開啟 PR ↗"
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server 沒了，重啟了（第 {n} 次）。擱置的活會自己繼續。"
 
-msgid "opensandbox-server was gone and the restart failed (attempt {n}): {why}"
-msgstr "opensandbox-server 沒了，重啟失敗（第 {n} 次）：{why}"
-
 msgid "opensandbox-server will not start; {n, plural, one {# attempt} other {# attempts}} and no more automatic retries. Run it by hand to see what it says: {cmd}"
 msgstr "opensandbox-server 起不來了，試了 {n} 次，不再自動重試。手動跑一次看它報什麼：{cmd}"
 
@@ -1748,6 +1831,9 @@ msgstr "組織"
 
 msgid "Other"
 msgstr "其他"
+
+msgid "out of budget ({spent}/{budget} tokens). Raise the cap first, or it stops again on the next tick."
+msgstr "預算用完了（{spent}/{budget} tokens）。先把上限提上去，否則下一個 tick 又會停。"
 
 msgid "Output language"
 msgstr "對外語言"
@@ -1817,6 +1903,9 @@ msgstr "個人賬號"
 
 msgid "Pick a model to add a row"
 msgstr "選一個模型就多一行"
+
+msgid "pid {pid} is still running after SIGKILL"
+msgstr "SIGKILL 之後 pid {pid} 還在跑"
 
 msgid "Plan"
 msgstr "計劃"
@@ -1941,8 +2030,11 @@ msgstr "重新檢查可達性"
 msgid "Recheck the repo map"
 msgstr "重新檢查儲存庫地圖"
 
-msgid "reconcile failed on S{seq}: {reason}"
-msgstr "S{seq} 對賬沒過：{reason}"
+msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
+msgstr "S{seq} 的對賬沒過：認領了但沒改動——{files}"
+
+msgid "reconcile failed on S{seq}: nothing was claimed and nothing changed"
+msgstr "S{seq} 的對賬沒過：什麼都沒認領，也什麼都沒改"
 
 msgid "Reconciliation"
 msgstr "對賬"
@@ -2163,6 +2255,9 @@ msgstr "跑 uvx opensandbox-server --config ~/.sandbox.toml，監聽 {server}，
 msgid "Run uvx opensandbox-server on the host, not here: this orchestrator is inside a container and the sandbox server needs the host's docker. Then point ORCH_SANDBOX_SERVER at it — host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux."
 msgstr "在宿主機上跑 uvx opensandbox-server，別在這兒跑：這個 orchestrator 在容器裡，而沙箱伺服器要用宿主機的 docker。然後把 ORCH_SANDBOX_SERVER 指過去 —— Docker Desktop 上是 host.docker.internal:8080，Linux 上用宿主機 IP 或 --network host。"
 
+msgid "running"
+msgstr "在跑"
+
 msgid "Running"
 msgstr "在跑"
 
@@ -2343,6 +2438,9 @@ msgstr "片待查收"
 msgid "Someone else is handling it"
 msgstr "別人在處理"
 
+msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
+msgstr "{server} 上有個不是我們起的行程在監聽，而且 API key 對不上——把那臺 server 自己的 api_key 填進設定，或者換個地址。"
+
 msgid "Spec"
 msgstr "規格"
 
@@ -2357,6 +2455,9 @@ msgstr "常駐崗"
 
 msgid "Start"
 msgstr "起一個"
+
+msgid "Start Docker Desktop, or run colima start, and wait for it to report running."
+msgstr "起一下 Docker Desktop，或者跑 colima start，等它報 running。"
 
 msgid "Start from this branch"
 msgstr "從這個分支開"
@@ -2378,6 +2479,14 @@ msgstr "第 {nth} 級"
 
 msgid "Steps one turn may take before it is cut off. Most turns finish in about 36; the long tail is an agent lost rather than working, and it costs the most because every step re-reads the transcript. Changing it restarts every session."
 msgstr "一個 turn 最多走多少步就掐斷。多數 turn 三十幾步就完事；長尾是 agent 迷路了而不是在幹活，而且最貴——每一步都要重讀整份記錄。改這一項會重啟所有 session。"
+
+msgid "still not up after {secs}s"
+msgstr "等了 {secs} 秒還沒起來"
+
+msgid "still not up after {secs}s. It printed:\n"
+"{tail}"
+msgstr "等了 {secs} 秒還沒起來。它列印了：\n"
+"{tail}"
 
 msgid "Stop denying {d}"
 msgstr "不再禁止 {d}"
@@ -2427,6 +2536,9 @@ msgstr "系統耗時"
 msgid "Take note"
 msgstr "記筆記"
 
+msgid "the boundary still overlaps"
+msgstr "邊界仍然重疊"
+
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "瀏覽器讀不到這些內容。資料夾得拖進來。"
 
@@ -2448,6 +2560,9 @@ msgstr "宿主斷網了，{n} 個 turn 擱置等聯網 —— 需求還在跑的
 msgid "The last step repeats for as long as nobody answers"
 msgstr "最後一級會一直重複，直到有人回"
 
+msgid "the last turn was cut off, so the worktree may hold unfinished changes. Run `git diff` before carrying on rather than assuming it is complete."
+msgstr "上一個 turn 被強制打斷，worktree 裡可能有未完成的改動。先 `git diff` 看一眼再繼續，不要假設它是完整的。"
+
 msgid "the login is fresh; renewal runs inside the utility container, so codex is not needed here"
 msgstr "登入是新的；續期在工具容器裡跑，本機不需要 codex"
 
@@ -2463,6 +2578,12 @@ msgstr "「卡住」的另一半：同一個檔案連著被覆寫這麼多次。
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "儲存庫地圖沒法重新整理了：{repo} —— {why}"
 
+msgid "the repo map cannot be refreshed: {repo} has no remote recorded, so there is nothing to mirror"
+msgstr "儲存庫對映重新整理不了：{repo} 沒有記錄遠端，沒有東西可以映像"
+
+msgid "the repo map cannot be refreshed: {repo}, and git gave no reason, which is itself a bug"
+msgstr "儲存庫對映重新整理不了：{repo}，而且 git 沒給理由，這本身就是個 bug"
+
 msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
 msgstr "儲存庫地圖停在上一次的版本：{repo} 的容器讀不到 HEAD，重建只會得到一份沒有符號的地圖"
 
@@ -2471,11 +2592,6 @@ msgstr "同一類反饋第 {n} 次了，讓 CoS 歸納成專案規約"
 
 msgid "the same ground as {others}"
 msgstr "和 {others} 是同一塊地方"
-
-msgid "the sandbox server is running (pid {pid}) but we cannot drive it: {why}\n"
-"It was left alone rather than restarted, because that process may be yours and pointed at something else. Settings → Sandbox server has the button."
-msgstr "沙箱伺服器在跑（pid {pid}），但我們驅動不了：{why}\n"
-"沒敢重啟它，因為那個行程可能是你自己起的、配的是別的東西。設定 → 沙箱伺服器 那裡有按鈕。"
 
 msgid "the sandbox server is up — we started it (pid {pid})"
 msgstr "沙箱伺服器起好了 —— 我們起的（pid {pid}）"
@@ -2512,6 +2628,9 @@ msgstr "看門狗這一輪掛了，後面的規則都沒跑：{why}\n"
 msgid "Theme"
 msgstr "主題"
 
+msgid "these belong to no group: {paths} — changes there go through the boss or the Architect"
+msgstr "這些不屬於任何組：{paths}——那裡的改動要走老闆或架構師"
+
 msgid "These paths from the card don't exist in the repo"
 msgstr "卡里這些路徑儲存庫裡沒有"
 
@@ -2533,9 +2652,6 @@ msgstr "這份日誌是空的"
 msgid "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward."
 msgstr "這個行程不是我們起的，可能是你自己在用的那個。要重啟就自己重啟，之後這裡會認得它。"
 
-msgid "this project has no remote recorded, so there is nothing to mirror"
-msgstr "這個專案沒記下 remote，沒有可以映像的地址"
-
 msgid "This project hasn't run any activity yet."
 msgstr "這個專案還沒跑過任何活。"
 
@@ -2544,6 +2660,9 @@ msgstr "這個需求已經歸檔或不存在了。"
 
 msgid "This requirement hasn't run any activity yet."
 msgstr "這個需求還沒跑過任何活。"
+
+msgid "this server has no GitHub client"
+msgstr "這臺伺服器沒有 GitHub 客戶端"
 
 msgid "This slice hasn't produced changes yet and has no verdict."
 msgstr "這一片還沒跑出改動，也還沒有判詞。"
@@ -2667,6 +2786,9 @@ msgstr "容器卡住、少掛了東西、或換過憑證時用。下一個 turn 
 
 msgid "Used when a project has not set its own"
 msgstr "沒自己設的專案用這些"
+
+msgid "uvx available"
+msgstr "uvx 有"
 
 msgid "Valid for one year"
 msgstr "一年有效"

@@ -2,7 +2,7 @@ import { PanelRight, SlidersHorizontal } from "lucide-react";
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
-import { countWaiting, said, STATUS_LABEL } from "../shared/select";
+import { countWaiting, STATUS_LABEL } from "../shared/select";
 import { useOrch } from "../shared/api";
 import { cn } from "../ui/cn";
 import { Pane } from "../ui/bits";
@@ -64,7 +64,6 @@ import {
   waitingProject,
 } from "../features/navigation/model";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { i18n } from "../i18n";
 
 type UiKey = "adding" | "pickProject" | "pickReq" | "picking" | "side";
 
@@ -117,7 +116,7 @@ function Crumb({
 }
 
 export function App() {
-  const { t } = useLingui();
+  const { t, i18n } = useLingui();
   const { state: st, cost, frames, live, refresh } = useOrch();
   const [sel, setSel] = useState<Selection>(() => parseSelection(location.hash));
   const { ui, setAdding, setPickProject, setPickReq, setPicking, setSide } = useUi();
@@ -326,7 +325,7 @@ export function App() {
         label={t`Switch requirement`}
         placeholder={t`Requirement name…`}
         empty={t`No other requirements for this project`}
-        items={groups.map((group) => requirementItem(group, said(STATUS_LABEL[group.status], group.status)))}
+        items={groups.map((group) => requirementItem(group, i18n._(STATUS_LABEL[group.status])))}
         onPick={(id) => go({ view: "req", g: id })}
       />
       {choose(

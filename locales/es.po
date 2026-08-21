@@ -122,6 +122,9 @@ msgstr "{hours} h"
 msgid "{idleCount} more are idle and costing nothing."
 msgstr "{idleCount} más están inactivos y no cuestan nada."
 
+msgid "{image} is neither an image we publish nor one built on this machine"
+msgstr "{image} no es ni una imagen que publiquemos ni una construida en esta máquina"
+
 msgid "{image} is not on this machine"
 msgstr "{image} no está en esta máquina"
 
@@ -130,6 +133,9 @@ msgstr "{lines} líneas"
 
 msgid "{live} running"
 msgstr "{live} en marcha"
+
+msgid "{mine} overlaps {theirs} owned by {name} — wait for it, or ask the Architect for a different split"
+msgstr "{mine} se solapa con {theirs}, que pertenece a {name}: espéralo o pide al Arquitecto otro reparto"
 
 msgid "{minutes} min"
 msgstr "{minutes} min"
@@ -200,6 +206,9 @@ msgstr "{name} va por el {pct}% de su presupuesto"
 msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name} ya no espera nada — despertada"
 
+msgid "{name} is over 25MB"
+msgstr "{name} supera los 25MB"
+
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
 msgstr "{name} sale del tablero y se cancelan todos los turnos en cola. El código y el registro se conservan."
 
@@ -236,6 +245,18 @@ msgstr "el PR de {name} lleva {hours} h a la cabeza de la cola de fusión, con {
 msgid "{name}'s sandbox is bound to a superseded credential; reclaimed, and the next tick rebuilds it"
 msgstr "el sandbox de {name} está atado a una credencial reemplazada; liberado, y el próximo tick lo reconstruye"
 
+msgid "{path} is a path inside this container, and the mount is made by the sandbox server's docker, which resolves it on its own filesystem. Use one absolute path on both sides (-v <host path>:{path}) and add it to the sandbox server's allowed_host_paths. A mismatch does not fail; it mounts an empty directory."
+msgstr "{path} es una ruta dentro de este contenedor, pero el montaje lo hace el docker del servidor de sandbox, que la resuelve en su propio sistema de archivos. Usa una única ruta absoluta en ambos lados (-v <host path>:{path}) y añádela a allowed_host_paths del servidor de sandbox. Si no coinciden no falla: monta un directorio vacío."
+
+msgid "{path}: {error}"
+msgstr "{path}: {error}"
+
+msgid "{path}: cannot be read"
+msgstr "{path}: no se puede leer"
+
+msgid "{repoPath} is already registered as \"{name}\""
+msgstr "{repoPath} ya está registrado como «{name}»"
+
 msgid "{repoPath} removed"
 msgstr "{repoPath} eliminado"
 
@@ -263,6 +284,12 @@ msgstr "{role} escribió {n, plural, one {# archivo} other {# archivos}} que est
 
 msgid "{runningCount} running · {total} total"
 msgstr "{runningCount} en marcha · {total} en total"
+
+msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
+msgstr "{server} responde, pero no es un sandbox server (HTTP {status}): apunta a otra dirección."
+
+msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
+msgstr "{server} no responde y no es una dirección de esta máquina: aquí no se puede iniciar nada. Mira en esa máquina."
 
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "{sessionTokens} tokens en esta sesión · {model}"
@@ -357,6 +384,9 @@ msgstr "Añadir"
 msgid "Add · {branch}"
 msgstr "Añadir · {branch}"
 
+msgid "Add {path} to the sandbox server's allowed_host_paths, or every group fails to open a container. Tick the skills in Settings."
+msgstr "Añade {path} a allowed_host_paths del servidor de sandbox, o ningún grupo podrá abrir un contenedor. Marca las habilidades en Ajustes."
+
 msgid "Add a row"
 msgstr "Añadir fila"
 
@@ -411,6 +441,9 @@ msgstr "todo por debajo de 1 ms"
 msgid "Allow notifications"
 msgstr "Permitir notificaciones"
 
+msgid "already spent {spent} tokens — a cap at {tokens} would stop it again immediately"
+msgstr "ya gastó {spent} tokens: un tope de {tokens} lo detendría otra vez de inmediato"
+
 msgid "already spent {tokens} tokens"
 msgstr "ya gastó {tokens} tokens"
 
@@ -435,8 +468,8 @@ msgstr "Clave de API"
 msgid "Appearance"
 msgstr "Apariencia"
 
-msgid "approval recorded — held by the boundary: {why}. Starts by itself once that clears"
-msgstr "aprobación registrada — retenida por el límite: {why}. Arranca sola en cuanto se despeje"
+msgid "Approval recorded — it starts by itself once the boundary clears."
+msgstr "Aprobación registrada: empieza por sí mismo en cuanto se libere el límite."
 
 msgid "Approve and start"
 msgstr "Aprobar y empezar"
@@ -543,6 +576,9 @@ msgstr "Ambos van al Despachador; revisará la tarjeta y te la traerá de nuevo 
 msgid "Boundary"
 msgstr "Límite"
 
+msgid "boundary still overlaps"
+msgstr "el límite sigue solapado"
+
 msgid "Branch"
 msgstr "Rama"
 
@@ -614,6 +650,12 @@ msgstr "no se puede conectar: {error}"
 
 msgid "Cannot reach the usage endpoint"
 msgstr "No se alcanza el endpoint de uso"
+
+msgid "cannot start it: {error}"
+msgstr "no se puede iniciar: {error}"
+
+msgid "cannot write the config: {error}"
+msgstr "no se puede escribir la configuración: {error}"
 
 msgid "cards pending review"
 msgstr "tarjetas por revisar"
@@ -789,8 +831,17 @@ msgstr "CoS trabajando"
 msgid "Cost"
 msgstr "Coste"
 
+msgid "could not force-stop pid {pid}: {error}"
+msgstr "no se pudo forzar la parada del pid {pid}: {error}"
+
 msgid "Could not generate a draft; you'll need to write this one yourself."
 msgstr "No se pudo generar un borrador; este tendrás que escribirlo tú."
+
+msgid "could not start {bin}: {error}"
+msgstr "no se pudo iniciar {bin}: {error}"
+
+msgid "could not stop pid {pid}: {error}"
+msgstr "no se pudo parar el pid {pid}: {error}"
 
 msgid "Couldn't read the settings from the server."
 msgstr "No se pudieron leer los ajustes del servidor."
@@ -1290,6 +1341,9 @@ msgstr "Insertar habilidad"
 msgid "Install dependencies"
 msgstr "Instalar dependencias"
 
+msgid "Install Docker — or Colima, or Podman, anything that provides a docker socket — and start it."
+msgstr "Instala Docker —o Colima, o Podman, cualquier cosa que provea un socket docker— y arráncalo."
+
 msgid "Install on GitHub"
 msgstr "Instalar en GitHub"
 
@@ -1302,6 +1356,9 @@ msgstr "Instalar en otra cuenta"
 msgid "Installed on these accounts"
 msgstr "Instalado en estas cuentas"
 
+msgid "installed, but the daemon is not answering"
+msgstr "instalado, pero el daemon no responde"
+
 msgid "Interrupt and rollback"
 msgstr "Interrumpir y revertir"
 
@@ -1313,6 +1370,14 @@ msgstr "Si el servidor de sandbox está en marcha y acepta nuestra clave. Suele 
 
 msgid "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open."
 msgstr "Si hay red siquiera: un HEAD a cada origen de proveedor, dentro del latido del vigilante. La espera más corta de aquí, a propósito: una respuesta lenta no debe mantener abierto un latido."
+
+msgid "it exited on its own (exit {code}), printing nothing"
+msgstr "salió por su cuenta (exit {code}), sin imprimir nada"
+
+msgid "it exited on its own (exit {code}):\n"
+"{tail}"
+msgstr "salió por su cuenta (exit {code}):\n"
+"{tail}"
 
 msgid "It's not a duplicate, and it's not done yet — keep decomposing."
 msgstr "No es un duplicado y aún no está hecho: sigue descomponiendo."
@@ -1572,6 +1637,9 @@ msgstr "Aún no hay otros modelos; escríbelo sin más"
 msgid "No other requirements for this project"
 msgstr "No hay otros requisitos en este proyecto"
 
+msgid "no owned paths declared, and {holders} already hold theirs — the Architect has to cut the boundary before work starts"
+msgstr "no se declararon rutas propias y {holders} ya tienen las suyas: el Arquitecto tiene que cortar el límite antes de empezar"
+
 msgid "no path"
 msgstr "ninguna ruta"
 
@@ -1580,9 +1648,6 @@ msgstr "No hay requisitos en pausa. Los grupos se paran aquí cuando se agota el
 
 msgid "No pending items"
 msgstr "Nada pendiente"
-
-msgid "no reason given, which is itself a bug"
-msgstr "no se dio ningún motivo, lo cual ya es un fallo"
 
 msgid "No reason recorded"
 msgstr "Sin motivo registrado"
@@ -1608,11 +1673,20 @@ msgstr "Sin fragmento"
 msgid "No slices"
 msgstr "Sin fragmentos"
 
+msgid "no such group"
+msgstr "no existe ese grupo"
+
 msgid "No system activity recorded."
 msgstr "No hay actividad del sistema registrada."
 
 msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
 msgstr "Aún no se han gastado tokens. Tras aprobar tarjetas de plan, el coste se desglosa por requisito y por agente. La etiqueta de nivel decide qué modelo se usa."
+
+msgid "no uvx — opensandbox-server is a Python package, so install uv before one can start"
+msgstr "no hay uvx: opensandbox-server es un paquete de Python, así que instala uv antes de poder iniciarlo"
+
+msgid "no uvx on PATH"
+msgstr "no hay uvx en el PATH"
 
 msgid "No, keep going"
 msgstr "No, sigue"
@@ -1644,8 +1718,17 @@ msgstr "No hay datos suficientes para dos periodos."
 msgid "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
 msgstr "Ni local ni en una red cifrada: el tráfico va por HTTP sin cifrar. Las claves y el tráfico de los contenedores quedan expuestos; usa HTTPS o Tailscale."
 
+msgid "not reachable"
+msgstr "inaccesible"
+
+msgid "not running"
+msgstr "no está en marcha"
+
 msgid "Not running"
 msgstr "Parado"
+
+msgid "not running (a process looks like it, pid {pid}, but {server} does not answer — it may be starting, or it may be stuck)"
+msgstr "no está en marcha (hay un proceso que lo parece, pid {pid}, pero {server} no responde: puede estar arrancando o atascado)"
 
 msgid "Not satisfied"
 msgstr "Sin cumplir"
@@ -1658,6 +1741,9 @@ msgstr "Notas"
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "En GitHub no cambia nada: las ramas siguen ahí, los PRs también, ni una línea de código se toca. Lo que se borra es la copia del trabajo que hay en esta máquina."
+
+msgid "nothing recorded about how this server was started"
+msgstr "no hay nada registrado sobre cómo se inició este servidor"
 
 msgid "Notifications"
 msgstr "Notificaciones"
@@ -1731,9 +1817,6 @@ msgstr "Abrir PR ↗"
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server había desaparecido y se ha reiniciado (intento {n}). El trabajo retenido se reanuda solo."
 
-msgid "opensandbox-server was gone and the restart failed (attempt {n}): {why}"
-msgstr "opensandbox-server había desaparecido y el reinicio falló (intento {n}): {why}"
-
 msgid "opensandbox-server will not start; {n, plural, one {# attempt} other {# attempts}} and no more automatic retries. Run it by hand to see what it says: {cmd}"
 msgstr "opensandbox-server no arranca; {n, plural, one {# intento} other {# intentos}} y no habrá más reintentos automáticos. Ejecútalo a mano para ver qué dice: {cmd}"
 
@@ -1748,6 +1831,9 @@ msgstr "Organización"
 
 msgid "Other"
 msgstr "Otros"
+
+msgid "out of budget ({spent}/{budget} tokens). Raise the cap first, or it stops again on the next tick."
+msgstr "sin presupuesto ({spent}/{budget} tokens). Sube el tope primero, o se detiene otra vez en el próximo tick."
 
 msgid "Output language"
 msgstr "Idioma de salida"
@@ -1817,6 +1903,9 @@ msgstr "Cuenta personal"
 
 msgid "Pick a model to add a row"
 msgstr "Elige un modelo para añadir una fila"
+
+msgid "pid {pid} is still running after SIGKILL"
+msgstr "el pid {pid} sigue vivo después de SIGKILL"
 
 msgid "Plan"
 msgstr "Plan"
@@ -1941,8 +2030,11 @@ msgstr "Volver a comprobar el alcance"
 msgid "Recheck the repo map"
 msgstr "Volver a comprobar el mapa del repositorio"
 
-msgid "reconcile failed on S{seq}: {reason}"
-msgstr "la conciliación falló en S{seq}: {reason}"
+msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
+msgstr "falló la conciliación en S{seq}: reclamado pero sin cambios — {files}"
+
+msgid "reconcile failed on S{seq}: nothing was claimed and nothing changed"
+msgstr "falló la conciliación en S{seq}: no se reclamó ni cambió nada"
 
 msgid "Reconciliation"
 msgstr "Reconciliación"
@@ -2163,6 +2255,9 @@ msgstr "Ejecuta uvx opensandbox-server --config ~/.sandbox.toml escuchando en {s
 msgid "Run uvx opensandbox-server on the host, not here: this orchestrator is inside a container and the sandbox server needs the host's docker. Then point ORCH_SANDBOX_SERVER at it — host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux."
 msgstr "Ejecuta uvx opensandbox-server en el host, no aquí: este orquestador está dentro de un contenedor y el servidor de sandbox necesita el docker del host. Luego apunta ORCH_SANDBOX_SERVER hacia él: host.docker.internal:8080 en Docker Desktop, la IP del host o --network host en Linux."
 
+msgid "running"
+msgstr "en ejecución"
+
 msgid "Running"
 msgstr "En marcha"
 
@@ -2343,6 +2438,9 @@ msgstr "fragmentos pendientes"
 msgid "Someone else is handling it"
 msgstr "Ya se está encargando otra persona"
 
+msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
+msgstr "algo que no iniciamos nosotros escucha en {server}, y la clave de API no coincide: pon el api_key de ese servidor en Ajustes, o apunta a otra dirección."
+
 msgid "Spec"
 msgstr "Especificación"
 
@@ -2357,6 +2455,9 @@ msgstr "Puesto fijo"
 
 msgid "Start"
 msgstr "Empezar"
+
+msgid "Start Docker Desktop, or run colima start, and wait for it to report running."
+msgstr "Inicia Docker Desktop, o ejecuta colima start, y espera a que informe running."
 
 msgid "Start from this branch"
 msgstr "Empezar desde esta rama"
@@ -2378,6 +2479,14 @@ msgstr "Paso {nth}"
 
 msgid "Steps one turn may take before it is cut off. Most turns finish in about 36; the long tail is an agent lost rather than working, and it costs the most because every step re-reads the transcript. Changing it restarts every session."
 msgstr "Pasos que puede dar un turno antes de cortarlo. La mayoría termina en unos 36; la cola larga es un agente perdido, no trabajando, y es lo más caro porque cada paso relee la transcripción. Cambiarlo reinicia todas las sesiones."
+
+msgid "still not up after {secs}s"
+msgstr "sigue sin levantar tras {secs}s"
+
+msgid "still not up after {secs}s. It printed:\n"
+"{tail}"
+msgstr "sigue sin levantar tras {secs}s. Imprimió:\n"
+"{tail}"
 
 msgid "Stop denying {d}"
 msgstr "Dejar de denegar {d}"
@@ -2427,6 +2536,9 @@ msgstr "Tiempos del sistema"
 msgid "Take note"
 msgstr "Anotar"
 
+msgid "the boundary still overlaps"
+msgstr "el límite sigue solapado"
+
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "El navegador no puede leerlo. Arrastra las carpetas aquí."
 
@@ -2448,6 +2560,9 @@ msgstr "el anfitrión perdió la red; {n, plural, one {# turno retenido y reenco
 msgid "The last step repeats for as long as nobody answers"
 msgstr "El último escalón se repite mientras nadie conteste"
 
+msgid "the last turn was cut off, so the worktree may hold unfinished changes. Run `git diff` before carrying on rather than assuming it is complete."
+msgstr "el turno anterior se cortó, así que el worktree puede tener cambios sin terminar. Ejecuta `git diff` antes de seguir en vez de darlo por completo."
+
 msgid "the login is fresh; renewal runs inside the utility container, so codex is not needed here"
 msgstr "el inicio de sesión está fresco; la renovación ocurre dentro del contenedor de utilidades, así que aquí no hace falta codex"
 
@@ -2463,6 +2578,12 @@ msgstr "La otra mitad de «atascado»: el mismo archivo reescrito estas veces se
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "no se puede refrescar el mapa del repositorio: {repo} — {why}"
 
+msgid "the repo map cannot be refreshed: {repo} has no remote recorded, so there is nothing to mirror"
+msgstr "no se puede refrescar el mapa del repositorio: {repo} no tiene remoto registrado, así que no hay nada que replicar"
+
+msgid "the repo map cannot be refreshed: {repo}, and git gave no reason, which is itself a bug"
+msgstr "no se puede refrescar el mapa del repositorio: {repo}, y git no dio ninguna razón, lo cual ya es un fallo"
+
 msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
 msgstr "el mapa del repositorio se quedó en su última versión: el contenedor de {repo} no puede leer HEAD, y reconstruirlo solo daría un mapa sin símbolos"
 
@@ -2471,11 +2592,6 @@ msgstr "la misma observación por {n}ª vez; le pido al CoS que la convierta en 
 
 msgid "the same ground as {others}"
 msgstr "el mismo terreno que {others}"
-
-msgid "the sandbox server is running (pid {pid}) but we cannot drive it: {why}\n"
-"It was left alone rather than restarted, because that process may be yours and pointed at something else. Settings → Sandbox server has the button."
-msgstr "el servidor de sandbox está corriendo (pid {pid}) pero no podemos manejarlo: {why}\n"
-"Se dejó como estaba en vez de reiniciarlo, porque ese proceso puede ser tuyo y apuntar a otra cosa. Ajustes → Servidor de sandbox tiene el botón."
 
 msgid "the sandbox server is up — we started it (pid {pid})"
 msgstr "el servidor de sandbox está en marcha — lo arrancamos nosotros (pid {pid})"
@@ -2512,6 +2628,9 @@ msgstr "el watchdog lanzó una excepción en este tick y las reglas posteriores 
 msgid "Theme"
 msgstr "Tema"
 
+msgid "these belong to no group: {paths} — changes there go through the boss or the Architect"
+msgstr "estos no pertenecen a ningún grupo: {paths}: los cambios ahí pasan por el jefe o el Arquitecto"
+
 msgid "These paths from the card don't exist in the repo"
 msgstr "Estas rutas de la tarjeta no existen en el repositorio"
 
@@ -2533,9 +2652,6 @@ msgstr "Este registro está vacío"
 msgid "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward."
 msgstr "Este proceso no lo arrancamos nosotros; puede ser algo que estés usando. Reinícialo tú si hace falta; después lo reconoceremos."
 
-msgid "this project has no remote recorded, so there is nothing to mirror"
-msgstr "este proyecto no tiene remote registrado, así que no hay nada que replicar"
-
 msgid "This project hasn't run any activity yet."
 msgstr "Este proyecto aún no ha registrado actividad."
 
@@ -2544,6 +2660,9 @@ msgstr "Este requisito se ha archivado o ya no existe."
 
 msgid "This requirement hasn't run any activity yet."
 msgstr "Este requisito aún no ha registrado actividad."
+
+msgid "this server has no GitHub client"
+msgstr "este servidor no tiene cliente de GitHub"
 
 msgid "This slice hasn't produced changes yet and has no verdict."
 msgstr "Este fragmento aún no ha producido cambios ni tiene veredicto."
@@ -2667,6 +2786,9 @@ msgstr "Úsalo cuando el contenedor esté atascado, falten dependencias o hayan 
 
 msgid "Used when a project has not set its own"
 msgstr "Se usa cuando un proyecto no ha puesto el suyo"
+
+msgid "uvx available"
+msgstr "uvx disponible"
 
 msgid "Valid for one year"
 msgstr "Válido un año"

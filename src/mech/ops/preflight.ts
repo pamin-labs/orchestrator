@@ -66,7 +66,7 @@ export function makeCheck(name: string, ok: boolean, said: Said, fix?: Said): Ch
  * `/v1/sandboxes` is the cheapest *authenticated* call — a list, no side effect.
  * An unauthenticated endpoint answers for a server that rejects every real call.
  */
-async function reachable(url: string, apiKey: string, timeoutMs: number): Promise<{ ok: boolean; said: Said }> {
+async function reachable(url: string, apiKey: string, timeoutMs: number): Promise<Verdict> {
   try {
     // fallow-ignore-next-line security-sink -- the one caller builds `url` from `cfg.sandbox.server`, the address the boss set for their own sandbox server, and `sandboxKeyFor` is what makes "the key stored for that same address" true rather than assumed: a stored key carries the address it was accepted by, and is withheld when the two disagree.
     const res = await fetch(`${url}/v1/sandboxes`, {
@@ -346,7 +346,7 @@ function hostToolChecks(contained: boolean, probe: Probe): { checks: Check[]; do
   };
 }
 
-function sandboxServerCheck(input: PreflightInput, contained: boolean, server: { ok: boolean; said: Said }): Check {
+function sandboxServerCheck(input: PreflightInput, contained: boolean, server: Verdict): Check {
   return makeCheck(
     "opensandbox-server",
     server.ok,

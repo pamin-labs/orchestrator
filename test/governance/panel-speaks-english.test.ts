@@ -18,6 +18,12 @@ import { LANGUAGE_SUGGESTIONS } from "../../web/src/features/knobs/editors.tsx";
  * 个需求` sat in a settings pane, and passed again on an injected
  * `<Trans>项目列表</Trans>`. Comments are dropped by the parser instead.
  */
+/**
+ * `RegExpLiteral` too, which `server-speaks-one-language.test.ts` pointed out
+ * this test could not see. A pattern is where a translation breaks *behaviour*
+ * rather than reading oddly, and there are two live ones — both matching text
+ * the server hardcodes, so both are protocol and both say so where they sit.
+ */
 const CJK = /[一-鿿　-〿＀-￯]/;
 const EXEMPT = /i18n-exempt/;
 
@@ -26,16 +32,18 @@ const EXEMPT = /i18n-exempt/;
  *  new literal in that same file still fails. */
 const allowed = new Set<string>(LANGUAGE_SUGGESTIONS);
 
-/** Lines an `i18n-exempt` comment covers: from the comment to the first line
- *  that closes a block at column zero, because the alias table it was written
- *  for is sixteen rows long. */
+/** Lines an `i18n-exempt` comment covers: from the comment to the first blank
+ *  line or the first line that closes a block at column zero. The bracket rule
+ *  is for the sixteen-row alias table it was written for; without the blank-line
+ *  rule a one-line exemption in `ui/attach.ts` reached the next `}` and took a
+ *  whole function's literals with it. */
 function exemptLines(source: string): Set<number> {
   const lines = source.split("\n");
   const out = new Set<number>();
   for (const [i, line] of lines.entries()) {
     if (!EXEMPT.test(line)) continue;
     let end = i + 1;
-    while (end < lines.length && !/^[)\]}]/.test(lines[end] ?? "")) end++;
+    while (end < lines.length && (lines[end] ?? "").trim() !== "" && !/^[)\]}]/.test(lines[end] ?? "")) end++;
     for (let n = i; n <= end; n++) out.add(n + 1);
   }
   return out;
@@ -65,6 +73,9 @@ function offenders(file: string, source: string): string[] {
     TemplateElement(p) {
       const raw = p.node.value.cooked ?? "";
       if (CJK.test(raw)) report(p.node.loc?.start.line ?? 0, raw);
+    },
+    RegExpLiteral(p) {
+      if (CJK.test(p.node.pattern)) report(p.node.loc?.start.line ?? 0, p.node.pattern);
     },
   });
   return found;

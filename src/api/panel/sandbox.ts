@@ -24,7 +24,7 @@ import { resetServerRestarts } from "../../mech/ops/watchdog.ts";
 import { preflight } from "../../mech/ops/preflight.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
-import { bad, badEnglish, json, message } from "../../http/respond.ts";
+import { bad, badText, json, message } from "../../http/respond.ts";
 import { grp as grps, job } from "../../platform/persistence/schema.ts";
 
 /**
@@ -126,9 +126,9 @@ export const postImage = (async (ctx, _req, _p, b) => {
   // The same rule the container build applies, applied where the boss can read
   // it. Without this the refusal arrives as a container that will not create.
   if (image && !allowedImage(image))
-    return badEnglish(`${image} is neither an image we publish nor one built on this machine`);
+    return bad(msg`${{ image }} is neither an image we publish nor one built on this machine`);
   const why = await setDefaultImage(ctx.db, ctx.config, image);
-  if (why) return badEnglish(why);
+  if (why) return badText(why);
   return message("ok");
 }) satisfies Handler<z.infer<typeof ImageBody>>;
 
@@ -195,7 +195,7 @@ export const postSandboxServerRestart = (async (ctx) => {
   // hand, it does not take, and the watchdog has already spent its three tries
   // on the same problem.
   resetServerRestarts();
-  if (err) return badEnglish(err);
+  if (err) return bad(err);
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
@@ -223,7 +223,7 @@ export const postSandboxServerAddr = (async (ctx, _req, _p, b) => {
 /** Start one when there is none. The panel's way out of the `down` state. */
 export const postSandboxServerStart = (async (ctx) => {
   const st = await ensureServer(ctx);
-  if (st.kind === "down") return badEnglish(st.why);
+  if (st.kind === "down") return bad(st.why);
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",

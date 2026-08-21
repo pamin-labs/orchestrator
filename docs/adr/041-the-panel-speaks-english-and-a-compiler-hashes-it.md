@@ -142,9 +142,23 @@ Measured on this machine, median of three alternating runs against `main`:
 
 `main.js` grows by the Lingui runtime and the ICU compiler and by nothing else:
 `splitting: true` puts each catalog in its own chunk, so a browser fetches the
-one language it reads and English fetches none. The eight together are 1.09 MB
-on disk and nobody downloads them. An earlier revision of this table said
-1.86 MB, which was this number before the split.
+one language it reads. An earlier revision of this table said 1.86 MB, which was
+this number before the split.
+
+### English fetched none, and now fetches one
+
+That was true and is deliberately no longer true. `en` was excluded from
+`CATALOGS` and an empty catalogue loaded in its place, because the source locale
+renders from the `message` the macro already put in the bundle — measured
+identical, plural and selectordinal included. So the chunk bought nothing except
+a saved fetch, and cost three special cases: the `Exclude<Locale, "en">`, the
+`i18n.load("en", {})`, and a branch in `saidText` for "no catalogue row and no
+message".
+
+The boss's rule is that every language takes one path and bundle size is not a
+constraint; Lingui's own SSR example loads the source locale like any other. So
+English now fetches its ~90KB chunk like everybody else, and `saidText` is two
+lines. The price is named here rather than left for somebody to rediscover.
 
 Both numbers are what they are because of a content-addressed cache in
 `.cache/lingui`. Without it the suite was +22% and `build:web` was 0.60s: under

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { said } from "../support/said.ts";
 import {
   applyPrOutcome,
   chargedProject,
@@ -320,7 +321,7 @@ test("a sandbox server nobody can drive raises a question instead of being resta
   // cannot drive it" is not evidence that nobody can — so it reaches the boss
   // rather than being killed by an installation that did not start it.
   const ctx = await testContext();
-  await reportServerState(ctx, { kind: "stuck", pid: "42", why: "handshake refused" });
+  await reportServerState(ctx, { kind: "stuck", pid: "42", why: said("handshake refused") });
 
   const raised = await ctx.db
     .select({ kind: tbl.event.kind, severity: tbl.event.severity, body: tbl.event.body })
@@ -338,7 +339,7 @@ test("a server this process already drives is not news", async () => {
   for (const state of [
     { kind: "ours", pid: "1" },
     { kind: "theirs", pid: "2" },
-    { kind: "down", why: "no binary" },
+    { kind: "down", why: said("no binary") },
   ] as const) {
     await reportServerState(ctx, state);
   }

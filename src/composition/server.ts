@@ -1,5 +1,6 @@
 import { msg } from "@lingui/core/macro";
 import { errText } from "../platform/process/text.ts";
+import { renderSaid } from "../platform/text/lang.ts";
 import { makeNoteIndex } from "../mech/knowledge/note-index.ts";
 import { existsSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -489,20 +490,26 @@ export async function reportServerState(ctx: Ctx, st: ServerState): Promise<void
     return;
   }
   if (st.kind === "down") {
-    consola.warn(`opensandbox-server: ${st.why}`);
+    consola.warn(`opensandbox-server: ${renderSaid("en", st.why)}`);
     return;
   }
   // `ours` is a server this orchestrator started and is still driving. The chain
   // this replaced had no branch for it and fell out silently, which was right by
   // accident: a reconnect to our own process is not news.
   if (st.kind === "ours") return;
-  consola.warn(`opensandbox-server running (pid ${st.pid}) but not drivable: ${st.why}`);
+  consola.warn(`opensandbox-server running (pid ${st.pid}) but not drivable: ${renderSaid("en", st.why)}`);
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "escalation",
     intent: "inform",
     severity: "blocker",
-    say: msg`the sandbox server is running (pid ${{ pid: st.pid }}) but we cannot drive it: ${{ why: st.why }}\nIt was left alone rather than restarted, because that process may be yours and pointed at something else. Settings → Sandbox server has the button.`,
+    // `st.why` verbatim, not wrapped: a descriptor cannot nest in another, and
+    // rendering it to a string to interpolate is one sentence in two languages.
+    // Nothing is lost — `say()` in `sandbox/server.ts` already names the way out
+    // for each `Probe`, and "we left it alone" is what "that we did not start"
+    // there already means. The pid is data, so it rides in `meta`.
+    say: st.why,
+    meta: { pid: st.pid },
   });
 }
 

@@ -122,6 +122,9 @@ msgstr "{hours}시간"
 msgid "{idleCount} more are idle and costing nothing."
 msgstr "{idleCount}개는 유휴 상태로 비용이 없습니다."
 
+msgid "{image} is neither an image we publish nor one built on this machine"
+msgstr "{image}는 우리가 배포하는 이미지도, 이 머신에서 빌드된 것도 아닙니다"
+
 msgid "{image} is not on this machine"
 msgstr "이 머신에 {image}가 없습니다"
 
@@ -130,6 +133,9 @@ msgstr "{lines}줄"
 
 msgid "{live} running"
 msgstr "{live}개 실행 중"
+
+msgid "{mine} overlaps {theirs} owned by {name} — wait for it, or ask the Architect for a different split"
+msgstr "{mine}이(가) {name}이(가) 가진 {theirs}와 겹칩니다 — 기다리거나 아키텍트에게 다른 분할을 요청하세요"
 
 msgid "{minutes} min"
 msgstr "{minutes}분"
@@ -200,6 +206,9 @@ msgstr "{name}의 예산 사용률이 {pct}%입니다"
 msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name}이(가) 기다리던 일이 끝났습니다 — 깨웠습니다"
 
+msgid "{name} is over 25MB"
+msgstr "{name}이(가) 25MB를 넘습니다"
+
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
 msgstr "{name}이(가) 보드에서 빠지고 대기 중인 턴은 모두 취소됩니다. 코드와 기록은 남습니다."
 
@@ -236,6 +245,18 @@ msgstr "{name}의 PR이 병합 대기열 맨 앞에서 {hours}시간째 멈춰 �
 msgid "{name}'s sandbox is bound to a superseded credential; reclaimed, and the next tick rebuilds it"
 msgstr "{name}의 샌드박스가 옛 자격 증명에 묶여 있어 회수했고, 다음 틱에서 다시 만듭니다"
 
+msgid "{path} is a path inside this container, and the mount is made by the sandbox server's docker, which resolves it on its own filesystem. Use one absolute path on both sides (-v <host path>:{path}) and add it to the sandbox server's allowed_host_paths. A mismatch does not fail; it mounts an empty directory."
+msgstr "{path}는 이 컨테이너 안의 경로지만, 마운트는 샌드박스 서버의 docker가 자신의 파일시스템에서 해석합니다. 양쪽에 같은 절대 경로를 쓰고(-v <host path>:{path}), 샌드박스 서버의 allowed_host_paths에 추가하세요. 어긋나도 실패하지 않고 빈 디렉터리가 마운트될 뿐입니다."
+
+msgid "{path}: {error}"
+msgstr "{path}: {error}"
+
+msgid "{path}: cannot be read"
+msgstr "{path}: 읽을 수 없습니다"
+
+msgid "{repoPath} is already registered as \"{name}\""
+msgstr "{repoPath}은(는) 이미 \"{name}\"으로 등록되어 있습니다"
+
 msgid "{repoPath} removed"
 msgstr "{repoPath} 삭제됨"
 
@@ -263,6 +284,12 @@ msgstr "{role}이(가) 이 그룹 소유가 아닌 파일 {n}개를 고쳤습니
 
 msgid "{runningCount} running · {total} total"
 msgstr "{runningCount}개 실행 중 · 총 {total}개"
+
+msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
+msgstr "{server}는 응답하지만 sandbox server가 아닙니다(HTTP {status}). 다른 주소를 지정하세요."
+
+msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
+msgstr "{server}는 응답하지 않고, 이 머신의 주소도 아닙니다. 여기서는 시작할 수 없습니다. 그 머신을 확인하세요."
 
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "이번 세션 {sessionTokens} 토큰 · {model}"
@@ -357,6 +384,9 @@ msgstr "추가"
 msgid "Add · {branch}"
 msgstr "추가 · {branch}"
 
+msgid "Add {path} to the sandbox server's allowed_host_paths, or every group fails to open a container. Tick the skills in Settings."
+msgstr "{path}를 샌드박스 서버의 allowed_host_paths에 추가하세요. 그렇지 않으면 모든 그룹이 컨테이너를 열지 못합니다. 스킬은 설정에서 선택합니다."
+
 msgid "Add a row"
 msgstr "행 추가"
 
@@ -411,6 +441,9 @@ msgstr "모두 1ms 미만"
 msgid "Allow notifications"
 msgstr "알림 허용"
 
+msgid "already spent {spent} tokens — a cap at {tokens} would stop it again immediately"
+msgstr "이미 {spent} 토큰을 썼습니다. 상한을 {tokens}로 두면 곧바로 다시 멈춥니다"
+
 msgid "already spent {tokens} tokens"
 msgstr "이미 {tokens} 토큰 사용"
 
@@ -435,8 +468,8 @@ msgstr "API 키"
 msgid "Appearance"
 msgstr "모양"
 
-msgid "approval recorded — held by the boundary: {why}. Starts by itself once that clears"
-msgstr "승인을 기록했습니다 — 경계가 막고 있습니다: {why}. 풀리는 대로 알아서 시작합니다"
+msgid "Approval recorded — it starts by itself once the boundary clears."
+msgstr "승인을 기록했습니다. 경계가 정리되면 스스로 시작합니다."
 
 msgid "Approve and start"
 msgstr "승인하고 시작"
@@ -543,6 +576,9 @@ msgstr "둘 다 디스패처로 갑니다. 카드를 고쳐 다시 승인 요청
 msgid "Boundary"
 msgstr "경계"
 
+msgid "boundary still overlaps"
+msgstr "경계가 아직 겹칩니다"
+
 msgid "Branch"
 msgstr "브랜치"
 
@@ -614,6 +650,12 @@ msgstr "연결할 수 없습니다: {error}"
 
 msgid "Cannot reach the usage endpoint"
 msgstr "사용량 엔드포인트에 접근할 수 없음"
+
+msgid "cannot start it: {error}"
+msgstr "시작할 수 없습니다: {error}"
+
+msgid "cannot write the config: {error}"
+msgstr "설정을 쓸 수 없습니다: {error}"
 
 msgid "cards pending review"
 msgstr "검토 대기 카드"
@@ -789,8 +831,17 @@ msgstr "CoS 작업 중"
 msgid "Cost"
 msgstr "비용"
 
+msgid "could not force-stop pid {pid}: {error}"
+msgstr "pid {pid} 강제 종료에 실패했습니다: {error}"
+
 msgid "Could not generate a draft; you'll need to write this one yourself."
 msgstr "초안을 만들지 못했습니다. 이건 직접 써야 합니다."
+
+msgid "could not start {bin}: {error}"
+msgstr "{bin}을(를) 시작할 수 없습니다: {error}"
+
+msgid "could not stop pid {pid}: {error}"
+msgstr "pid {pid} 종료에 실패했습니다: {error}"
 
 msgid "Couldn't read the settings from the server."
 msgstr "서버에서 설정을 읽지 못했습니다."
@@ -1290,6 +1341,9 @@ msgstr "스킬 삽입"
 msgid "Install dependencies"
 msgstr "의존성 설치"
 
+msgid "Install Docker — or Colima, or Podman, anything that provides a docker socket — and start it."
+msgstr "Docker를 설치하세요. Colima든 Podman이든 docker 소켓을 제공하는 것이면 됩니다. 설치한 뒤 실행하세요."
+
 msgid "Install on GitHub"
 msgstr "GitHub에 설치"
 
@@ -1302,6 +1356,9 @@ msgstr "다른 계정에 설치"
 msgid "Installed on these accounts"
 msgstr "이 계정들에 설치됨"
 
+msgid "installed, but the daemon is not answering"
+msgstr "설치되어 있지만 데몬이 응답하지 않습니다"
+
 msgid "Interrupt and rollback"
 msgstr "중단하고 롤백"
 
@@ -1313,6 +1370,14 @@ msgstr "샌드박스 서버가 떠 있고 우리 키를 받는지. 보통 루프
 
 msgid "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open."
 msgstr "네트워크가 아예 있는지. 각 공급자 오리진에 HEAD를 던지며 watchdog 틱 안에서 돕니다. 여기서 가장 짧게 잡은 건 의도적입니다 — 느린 답이 틱을 붙잡아선 안 됩니다."
+
+msgid "it exited on its own (exit {code}), printing nothing"
+msgstr "스스로 종료했습니다(exit {code}). 아무것도 출력하지 않았습니다"
+
+msgid "it exited on its own (exit {code}):\n"
+"{tail}"
+msgstr "스스로 종료했습니다(exit {code}):\n"
+"{tail}"
 
 msgid "It's not a duplicate, and it's not done yet — keep decomposing."
 msgstr "중복도 아니고 아직 끝난 것도 아닙니다 — 계속 분해하세요."
@@ -1572,6 +1637,9 @@ msgstr "다른 모델은 아직 없습니다. 그냥 입력하세요"
 msgid "No other requirements for this project"
 msgstr "이 프로젝트에 다른 요건 없음"
 
+msgid "no owned paths declared, and {holders} already hold theirs — the Architect has to cut the boundary before work starts"
+msgstr "선언된 소유 경로가 없고 {holders}는 이미 각자 가지고 있습니다 — 시작 전에 아키텍트가 경계를 나눠야 합니다"
+
 msgid "no path"
 msgstr "경로가 없습니다"
 
@@ -1580,9 +1648,6 @@ msgstr "일시정지된 요건이 없습니다. 예산이 바닥나거나 당신
 
 msgid "No pending items"
 msgstr "대기 중인 항목 없음"
-
-msgid "no reason given, which is itself a bug"
-msgstr "밝혀진 이유가 없습니다. 그 자체가 버그입니다"
 
 msgid "No reason recorded"
 msgstr "기록된 이유 없음"
@@ -1608,11 +1673,20 @@ msgstr "슬라이스 없음"
 msgid "No slices"
 msgstr "슬라이스 없음"
 
+msgid "no such group"
+msgstr "그런 그룹이 없습니다"
+
 msgid "No system activity recorded."
 msgstr "기록된 시스템 활동이 없습니다."
 
 msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
 msgstr "아직 토큰을 쓰지 않았습니다. 계획 카드를 승인하면 비용이 요건별·에이전트별로 나뉩니다. 어떤 모델을 쓸지는 난이도 태그가 정합니다."
+
+msgid "no uvx — opensandbox-server is a Python package, so install uv before one can start"
+msgstr "uvx가 없습니다 — opensandbox-server는 Python 패키지라 uv를 먼저 설치해야 시작됩니다"
+
+msgid "no uvx on PATH"
+msgstr "PATH에 uvx가 없습니다"
 
 msgid "No, keep going"
 msgstr "아니요, 계속"
@@ -1644,8 +1718,17 @@ msgstr "두 구간치 데이터가 부족합니다."
 msgid "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
 msgstr "로컬도 아니고 암호화된 네트워크도 아닙니다 — 트래픽이 평문 HTTP입니다. 키와 컨테이너 통신이 노출됩니다. HTTPS나 Tailscale을 쓰세요."
 
+msgid "not reachable"
+msgstr "연결할 수 없음"
+
+msgid "not running"
+msgstr "실행 중이 아닙니다"
+
 msgid "Not running"
 msgstr "실행 중 아님"
+
+msgid "not running (a process looks like it, pid {pid}, but {server} does not answer — it may be starting, or it may be stuck)"
+msgstr "실행 중이 아닙니다(비슷한 프로세스는 있습니다, pid {pid}. 하지만 {server}는 응답하지 않습니다 — 시작 중이거나 멈춰 있습니다)"
 
 msgid "Not satisfied"
 msgstr "미충족"
@@ -1658,6 +1741,9 @@ msgstr "노트"
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "GitHub 쪽은 아무것도 바뀌지 않습니다. 브랜치도 PR도 그대로이고 코드는 한 줄도 건드리지 않습니다. 지워지는 건 이 기기에 있는 작업 사본입니다."
+
+msgid "nothing recorded about how this server was started"
+msgstr "이 서버를 어떻게 띄웠는지 기록이 없습니다"
 
 msgid "Notifications"
 msgstr "알림"
@@ -1731,9 +1817,6 @@ msgstr "PR 열기 ↗"
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server가 사라져 다시 시작했습니다({n}번째). 보류된 작업은 알아서 재개합니다."
 
-msgid "opensandbox-server was gone and the restart failed (attempt {n}): {why}"
-msgstr "opensandbox-server가 사라졌고 재시작에 실패했습니다({n}번째): {why}"
-
 msgid "opensandbox-server will not start; {n, plural, one {# attempt} other {# attempts}} and no more automatic retries. Run it by hand to see what it says: {cmd}"
 msgstr "opensandbox-server가 시작되지 않습니다. {n}번 시도했고 더는 자동으로 재시도하지 않습니다. 직접 실행해 무엇이라 하는지 보세요: {cmd}"
 
@@ -1748,6 +1831,9 @@ msgstr "조직"
 
 msgid "Other"
 msgstr "기타"
+
+msgid "out of budget ({spent}/{budget} tokens). Raise the cap first, or it stops again on the next tick."
+msgstr "예산이 떨어졌습니다({spent}/{budget} 토큰). 상한을 먼저 올리지 않으면 다음 틱에서 또 멈춥니다."
 
 msgid "Output language"
 msgstr "대외 언어"
@@ -1817,6 +1903,9 @@ msgstr "개인 계정"
 
 msgid "Pick a model to add a row"
 msgstr "모델을 고르면 행을 추가합니다"
+
+msgid "pid {pid} is still running after SIGKILL"
+msgstr "SIGKILL 이후에도 pid {pid}가 살아 있습니다"
 
 msgid "Plan"
 msgstr "계획"
@@ -1941,8 +2030,11 @@ msgstr "도달성 재확인"
 msgid "Recheck the repo map"
 msgstr "저장소 맵 재확인"
 
-msgid "reconcile failed on S{seq}: {reason}"
-msgstr "S{seq} 대조 실패: {reason}"
+msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
+msgstr "S{seq} 대조 실패: 선언했지만 바뀐 것이 없습니다 — {files}"
+
+msgid "reconcile failed on S{seq}: nothing was claimed and nothing changed"
+msgstr "S{seq} 대조 실패: 선언한 것도 바뀐 것도 없습니다"
 
 msgid "Reconciliation"
 msgstr "정합 맞추기"
@@ -2163,6 +2255,9 @@ msgstr "uvx opensandbox-server --config ~/.sandbox.toml을 {server}에서 수신
 msgid "Run uvx opensandbox-server on the host, not here: this orchestrator is inside a container and the sandbox server needs the host's docker. Then point ORCH_SANDBOX_SERVER at it — host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux."
 msgstr "uvx opensandbox-server는 여기가 아니라 호스트에서 실행하세요. 이 오케스트레이터는 컨테이너 안에 있고, 샌드박스 서버는 호스트의 docker가 필요합니다. 그런 다음 ORCH_SANDBOX_SERVER를 그쪽으로 지정하세요 — Docker Desktop에서는 host.docker.internal:8080, Linux에서는 호스트 IP 또는 --network host입니다."
 
+msgid "running"
+msgstr "실행 중"
+
 msgid "Running"
 msgstr "실행 중"
 
@@ -2343,6 +2438,9 @@ msgstr "개 슬라이스 대기"
 msgid "Someone else is handling it"
 msgstr "다른 사람이 처리 중"
 
+msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
+msgstr "{server}에서 우리가 시작하지 않은 것이 수신 대기 중이고 API 키도 맞지 않습니다. 그 서버의 api_key를 설정에 넣거나 다른 주소를 지정하세요."
+
 msgid "Spec"
 msgstr "명세"
 
@@ -2357,6 +2455,9 @@ msgstr "상시 직무"
 
 msgid "Start"
 msgstr "시작"
+
+msgid "Start Docker Desktop, or run colima start, and wait for it to report running."
+msgstr "Docker Desktop을 실행하거나 colima start를 실행한 뒤 running이 될 때까지 기다리세요."
 
 msgid "Start from this branch"
 msgstr "이 브랜치에서 시작"
@@ -2378,6 +2479,14 @@ msgstr "{nth}단계"
 
 msgid "Steps one turn may take before it is cut off. Most turns finish in about 36; the long tail is an agent lost rather than working, and it costs the most because every step re-reads the transcript. Changing it restarts every session."
 msgstr "잘리기 전까지 한 턴이 밟을 수 있는 단계 수. 대부분의 턴은 36 언저리에서 끝납니다. 긴 꼬리는 일하는 게 아니라 길을 잃은 에이전트이고, 매 단계가 트랜스크립트를 다시 읽어 가장 비쌉니다. 바꾸면 모든 세션이 재시작됩니다."
+
+msgid "still not up after {secs}s"
+msgstr "{secs}초가 지나도 올라오지 않습니다"
+
+msgid "still not up after {secs}s. It printed:\n"
+"{tail}"
+msgstr "{secs}초가 지나도 올라오지 않습니다. 출력은 이렇습니다:\n"
+"{tail}"
 
 msgid "Stop denying {d}"
 msgstr "{d} 차단 해제"
@@ -2427,6 +2536,9 @@ msgstr "시스템 소요시간"
 msgid "Take note"
 msgstr "메모하기"
 
+msgid "the boundary still overlaps"
+msgstr "경계가 아직 겹칩니다"
+
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "브라우저가 읽을 수 없습니다. 폴더를 끌어다 놓으세요."
 
@@ -2448,6 +2560,9 @@ msgstr "호스트의 네트워크가 끊겼습니다. 턴 {n}건을 보류하고
 msgid "The last step repeats for as long as nobody answers"
 msgstr "아무도 답하지 않으면 마지막 단계가 계속 반복됩니다"
 
+msgid "the last turn was cut off, so the worktree may hold unfinished changes. Run `git diff` before carrying on rather than assuming it is complete."
+msgstr "직전 턴이 강제로 중단되어 worktree에 끝나지 않은 변경이 남아 있을 수 있습니다. 계속하기 전에 `git diff`로 확인하고 완전하다고 가정하지 마세요."
+
 msgid "the login is fresh; renewal runs inside the utility container, so codex is not needed here"
 msgstr "로그인이 최신입니다. 갱신은 유틸리티 컨테이너 안에서 실행되므로 이 머신에는 codex가 필요 없습니다"
 
@@ -2463,6 +2578,12 @@ msgstr "'멈춤'의 나머지 절반: 같은 파일을 이만큼 연속으로 �
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "저장소 맵을 갱신할 수 없습니다: {repo} — {why}"
 
+msgid "the repo map cannot be refreshed: {repo} has no remote recorded, so there is nothing to mirror"
+msgstr "저장소 맵을 새로 고칠 수 없습니다: {repo}에 기록된 리모트가 없어 미러할 대상이 없습니다"
+
+msgid "the repo map cannot be refreshed: {repo}, and git gave no reason, which is itself a bug"
+msgstr "저장소 맵을 새로 고칠 수 없습니다: {repo}, 그리고 git이 이유를 주지 않았습니다 — 그 자체가 버그입니다"
+
 msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
 msgstr "저장소 맵이 지난 판에 멈춰 있습니다: {repo}의 컨테이너가 HEAD를 읽지 못해, 다시 만들어도 심볼 없는 맵만 나옵니다"
 
@@ -2471,11 +2592,6 @@ msgstr "같은 피드백이 {n}번째입니다. CoS에게 프로젝트 규약으
 
 msgid "the same ground as {others}"
 msgstr "{others}와(과) 같은 자리"
-
-msgid "the sandbox server is running (pid {pid}) but we cannot drive it: {why}\n"
-"It was left alone rather than restarted, because that process may be yours and pointed at something else. Settings → Sandbox server has the button."
-msgstr "샌드박스 서버는 돌고 있지만(pid {pid}) 우리가 제어할 수 없습니다: {why}\n"
-"다시 시작하지 않고 그대로 두었습니다. 그 프로세스는 당신이 띄운 것이고 다른 설정을 가리킬 수 있기 때문입니다. 설정 → 샌드박스 서버 에 버튼이 있습니다."
 
 msgid "the sandbox server is up — we started it (pid {pid})"
 msgstr "샌드박스 서버가 떴습니다 — 우리가 시작했습니다 (pid {pid})"
@@ -2512,6 +2628,9 @@ msgstr "이번 틱에서 워치독이 예외를 던져 뒤의 규칙들이 실�
 msgid "Theme"
 msgstr "테마"
 
+msgid "these belong to no group: {paths} — changes there go through the boss or the Architect"
+msgstr "어느 그룹에도 속하지 않습니다: {paths} — 그쪽 변경은 보스나 아키텍트를 거칩니다"
+
 msgid "These paths from the card don't exist in the repo"
 msgstr "카드에 적힌 이 경로들이 저장소에 없습니다"
 
@@ -2533,9 +2652,6 @@ msgstr "이 로그는 비었습니다"
 msgid "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward."
 msgstr "이 프로세스는 우리가 띄운 게 아닙니다 — 당신이 쓰고 있는 것일 수 있습니다. 필요하면 직접 재시작하세요. 그 뒤에는 우리가 알아봅니다."
 
-msgid "this project has no remote recorded, so there is nothing to mirror"
-msgstr "이 프로젝트에는 remote가 기록되어 있지 않아 미러할 주소가 없습니다"
-
 msgid "This project hasn't run any activity yet."
 msgstr "이 프로젝트에서는 아직 아무 활동도 없었습니다."
 
@@ -2544,6 +2660,9 @@ msgstr "이 요건은 보관되었거나 더 이상 존재하지 않습니다."
 
 msgid "This requirement hasn't run any activity yet."
 msgstr "이 요건에서는 아직 아무 활동도 없었습니다."
+
+msgid "this server has no GitHub client"
+msgstr "이 서버에는 GitHub 클라이언트가 없습니다"
 
 msgid "This slice hasn't produced changes yet and has no verdict."
 msgstr "이 슬라이스는 아직 변경을 내놓지 않았고 판정도 없습니다."
@@ -2667,6 +2786,9 @@ msgstr "컨테이너가 멈췄거나, 의존성이 빠졌거나, 자격 증명�
 
 msgid "Used when a project has not set its own"
 msgstr "프로젝트가 따로 정하지 않았을 때 쓰입니다"
+
+msgid "uvx available"
+msgstr "uvx 사용 가능"
 
 msgid "Valid for one year"
 msgstr "1년간 유효"
