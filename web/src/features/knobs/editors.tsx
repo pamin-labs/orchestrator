@@ -192,10 +192,12 @@ export function Amount<U extends string>({
         value={draft}
         aria-label={label}
         aria-invalid={invalid || undefined}
-        // Shrinks rather than holding 6.5rem: three of these share the tier grid
-        // with a label column, and a fixed width pushed the unit toggle off the
-        // right edge of the dialog.
-        className="min-w-0 max-w-[6.5rem] flex-1 py-0.5 font-mono text-secondary aria-[invalid=true]:border-accent"
+        // `w-*`, not `max-w-*`: `Input` carries `w-full`, and a max-width beside
+        // it only bites where the row is wider still — so in a single-column
+        // group the box grew to the whole row and left a hand's width of nothing
+        // between the digits and their unit. Shrinkable, because three of these
+        // share the tier grid with a label column.
+        className="w-[6.5rem] min-w-0 shrink py-0.5 font-mono text-secondary aria-[invalid=true]:border-accent"
         onChange={(e) => setDraft(e.currentTarget.value)}
         onBlur={(e) => send(e.currentTarget.value, unit)}
         onKeyDown={(e) => {
