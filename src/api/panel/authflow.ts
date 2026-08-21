@@ -95,7 +95,7 @@ export const postAuth = (async (ctx, _req, _p, b) => {
     const found = serverKeyOnDisk();
     if (!found)
       return bad(
-        "没找到沙盒服务器的配置。它是用 --config 启动的，把那个文件的路径放进 OPENSANDBOX_CONFIG，或者放在 ./sandbox.toml、~/.sandbox.toml。",
+        "No sandbox server config found. It was started with --config, so put that file's path in OPENSANDBOX_CONFIG, or move the file to ./sandbox.toml or ~/.sandbox.toml.",
       );
     await saveAuth(ctx.db, {
       runtime: SANDBOX_KEY,
@@ -121,7 +121,8 @@ export const postAuth = (async (ctx, _req, _p, b) => {
   if (auth.runtime === SANDBOX_KEY) {
     const server = ctx.config.sandbox?.server ?? "127.0.0.1:8080";
     const said = await sandboxKeyWorks(server, auth.secret);
-    if (said === "invalid") return bad("沙盒服务器不认这个密钥。它自己的配置里写的是哪个，这里就得填哪个。");
+    if (said === "invalid")
+      return bad("The sandbox server rejects this key. Enter the one written in that server's own config.");
     // Stored with the address it was just accepted by, so moving the address
     // later cannot make this key follow it. `sandboxKeyFor` is the reader.
     auth = { ...auth, baseUrl: `http://${server}` };
@@ -228,7 +229,7 @@ export const postClaudeLogin = (async (ctx) => {
   if (!url) {
     run.cancel();
     return bad(
-      "容器里的 claude 没打印出登录链接 —— 镜像里跑一下 `claude setup-token` 看看（它需要一个 pty，没有 pty 时它什么都不打印就退出 0）。",
+      "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0.",
     );
   }
   claudeFlow = { url, expiresAt: startedAt + PASTE_TTL_MS };
@@ -249,8 +250,8 @@ export const CodeBody = z.object({ code: z.string().max(4000).default("") });
 
 export const postClaudeCode = (async (ctx, _req, _p, b) => {
   const code = b.code.trim();
-  if (!code) return bad("没有码");
-  if (!claudeFlow) return bad("没有在等码的登录 —— 先点登录");
+  if (!code) return bad("no code given");
+  if (!claudeFlow) return bad("no login is waiting for a code — start one first");
   await startClaudeLogin(ctx).submit(code);
   return message("ok");
 }) satisfies Handler<z.infer<typeof CodeBody>>;
@@ -323,7 +324,7 @@ export async function githubDeviceLogin(ctx: Ctx, fetchFn?: DeviceFlowFetcher): 
   } catch (e) {
     // `errText`, not `e?.message`: a thrown non-Error has no `message`, and the
     // object itself reaches the response body as "[object Object]".
-    return bad(errText(e) || "GitHub 没给出登录码");
+    return bad(errText(e) || "GitHub returned no device code");
   }
   ghFlow = { userCode: d.userCode, verificationUri: d.verificationUri, expiresAt: Date.now() + d.expiresIn * 1000 };
   ghError = null;
@@ -345,7 +346,9 @@ export const postCodexDevice = (async (ctx) => {
   const both = await printed(run, () => (run.url && run.code ? { url: run.url, code: run.code } : null), 100);
   if (!both) {
     run.cancel();
-    return bad("容器里的 codex 没打印出登录码 —— 镜像里跑一下 `codex login --device-auth` 看看。");
+    return bad(
+      "codex printed no device code inside the container — run `codex login --device-auth` in the image to see why.",
+    );
   }
   codexFlow = { code: both.code, url: both.url, expiresAt: startedAt + DEVICE_CODE_TTL_MS };
   void run.done.then(async (r) => {
@@ -522,7 +525,7 @@ export const GithubReposQuery = z.object({ installation: z.coerce.number().int()
 
 export const getGithubRepos = (async (ctx, req, _params, { installation: asked = 0 }) => {
   if (!ctx.gh) return bad("this server has no GitHub client");
-  if (!(await loadAuth(ctx.db, "github"))) return bad("还没连 GitHub，先去设置里连一下");
+  if (!(await loadAuth(ctx.db, "github"))) return bad("GitHub is not connected — connect it in Settings first");
   // Both at once when the caller names an installation, which it does on every
   // open after the first. The first open of a session still has to learn the id
   // before it can ask.

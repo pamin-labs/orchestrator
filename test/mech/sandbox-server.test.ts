@@ -204,7 +204,7 @@ test("a server that is already there is handed back untouched, whatever state it
   for (const seen of [
     { kind: "ours", pid: "1" },
     { kind: "theirs", pid: "2" },
-    { kind: "stuck", pid: "3", why: "密钥对不上" },
+    { kind: "stuck", pid: "3", why: "the API key does not match" },
   ] as const) {
     expect(startPlan(seen, HERE, true)).toEqual(seen);
   }
@@ -213,7 +213,10 @@ test("a server that is already there is handed back untouched, whatever state it
 test("without uvx there is nothing to start, and the reason already says so", () => {
   // opensandbox-server is a Python package. Reporting "could not start" over
   // this would hide the one command that fixes it.
-  const down = { kind: "down", why: "没有 uvx —— opensandbox-server 是个 Python 包，装 uv 才起得来" } as const;
+  const down = {
+    kind: "down",
+    why: "no uvx — opensandbox-server is a Python package, so install uv before one can start",
+  } as const;
   expect(startPlan(down, HERE, false)).toEqual(down);
 });
 
@@ -221,14 +224,14 @@ test("a remote address is never started locally, however silent it is", () => {
   // Pointed at a Tailscale peer or a cloud box, "nothing answers" means that
   // host is down. Spawning one here would bind a port nobody is asking about
   // and report success.
-  const plan = startPlan({ kind: "down", why: "没在跑" }, "sandbox.tailnet.ts.net:8080", true);
+  const plan = startPlan({ kind: "down", why: "not running" }, "sandbox.tailnet.ts.net:8080", true);
   expect(plan.kind).toBe("down");
-  expect(plan.kind === "down" && plan.why).toContain("不是本机地址");
+  expect(plan.kind === "down" && plan.why).toContain("not an address on this machine");
 });
 
 test("every shape of a local address is startable, including the IPv6 loopback", () => {
   for (const addr of ["localhost:8080", "127.0.0.1:8080", "127.5.5.5:9", "[::1]:8080", "https://LOCALHOST:8443"]) {
-    expect(startPlan({ kind: "down", why: "没在跑" }, addr, true).kind).toBe("start");
+    expect(startPlan({ kind: "down", why: "not running" }, addr, true).kind).toBe("start");
   }
 });
 
@@ -278,7 +281,7 @@ test("a process that died silently says that, rather than leaving a blank where 
   });
 
   expect(up.why).toContain("exit 2");
-  expect(up.why).toContain("什么都没打印");
+  expect(up.why).toContain("printing nothing");
 });
 
 test("a server that never answers gives up at the deadline and says how long it waited", async () => {
@@ -287,7 +290,7 @@ test("a server that never answers gives up at the deadline and says how long it 
   //
   // The deadline is real time — `waitUp` closes over `Date.now()`, and only its
   // `sleep` is injected — so this test costs whatever deadline it is given. 600ms
-  // is the cheapest one that still rounds to the "等了 1 秒" below, and it was
+  // is the cheapest one that still rounds to the "after 1s" below, and it was
   // 1200ms: the same two assertions for twice the wall clock.
   const ctx = await waiting(tempDir("orch-srv-"), "Address already in use\n");
   let probes = 0;
@@ -301,7 +304,7 @@ test("a server that never answers gives up at the deadline and says how long it 
   });
 
   expect(up.ok).toBe(false);
-  expect(up.why).toContain("等了 1 秒");
+  expect(up.why).toContain("after 1s");
   expect(up.why).toContain("Address already in use");
   expect(probes).toBeGreaterThan(0);
 });

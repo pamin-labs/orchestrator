@@ -110,7 +110,8 @@ export const postImage = (async (ctx, _req, _p, b) => {
   const image = b.image.trim();
   // The same rule the container build applies, applied where the boss can read
   // it. Without this the refusal arrives as a container that will not create.
-  if (image && !allowedImage(image)) return bad(`${image} 不是我们发布的镜像，也不是本机构建的`);
+  if (image && !allowedImage(image))
+    return bad(`${image} is neither an image we publish nor one built on this machine`);
   const why = await setDefaultImage(ctx.db, ctx.config, image);
   if (why) return bad(why);
   return message("ok");
@@ -171,7 +172,7 @@ export const postSandboxServerRestart = (async (ctx) => {
   const argv = await ourArgv(ctx.db);
   if (!argv) {
     return bad(
-      "这个沙盒服务器不是我们起的，不会去动它 —— 它可能是你自己起的，配的是别的东西。要重启就自己重启，之后这里会认得它。",
+      "We did not start this sandbox server, so we will not touch it — it may be your own, configured for something else. Restart it yourself and this page will recognise it afterwards.",
     );
   }
   const err = await restartServer(argv, serverLogPath(ctx));
@@ -194,7 +195,7 @@ export const postSandboxServerAddr = (async (ctx, _req, _p, b) => {
   // A hostname and an optional scheme, because the server does not have to be on
   // this machine: a Tailscale peer or a cloud box works the same way.
   if (addr && !/^(https?:\/\/)?[\w.-]+(:\d{2,5})?$/.test(addr)) {
-    return bad("填 host:port，或者 https://host:port。比如 127.0.0.1:8081、sandbox.tail1234.ts.net:8080");
+    return bad("Use host:port, or https://host:port — for example 127.0.0.1:8081 or sandbox.tail1234.ts.net:8080.");
   }
   await setServerAddr(ctx, addr);
   return json({ ok: true, addr: serverAddr(ctx) });

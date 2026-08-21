@@ -98,11 +98,11 @@ test("a code with no login waiting for it is refused, and so is an empty one", a
   await reset(h);
   const empty = await h.post("/api/v1/auth/claude/login/code", { code: "   " });
   expect(empty.status).toBe(422);
-  expect(await empty.text()).toContain("没有码");
+  expect(await empty.text()).toContain("no code given");
 
   const orphan = await h.post("/api/v1/auth/claude/login/code", { code: "WDJB-MJHT" });
   expect(orphan.status).toBe(422);
-  expect(await orphan.text()).toContain("先点登录");
+  expect(await orphan.text()).toContain("start one first");
   await reset(h);
 });
 
@@ -170,7 +170,7 @@ test("the device flow mints once, reuses a live code, and never returns the one 
 
   // And the refusal that ends the poll clears the pending code, so the button is
   // pressable again rather than stuck on a code nobody can use.
-  expect(await denied).toContain("拒绝了这次授权");
+  expect(await denied).toContain("the authorization was denied on GitHub");
 });
 
 test("a poll that lands stores the token, kills the sandboxes and says so without the token", async () => {
@@ -222,6 +222,6 @@ test("a poll GitHub denies is reported by reason, not by exchange", async () => 
 
   expect(await loadAuth(h.db, "github")).toBeNull();
   const lines = (await said(h)).join("\n");
-  expect(lines).toContain("拒绝了这次授权");
+  expect(lines).toContain("the authorization was denied on GitHub");
   expect(lines).not.toContain("dev-secret-code");
 });

@@ -343,13 +343,13 @@ test("a secret that cannot be right is refused before it is stored", () => {
   // with a 401 that reads like an expired subscription.
   expect(
     wrongShape({ runtime: "claude", mode: "oauth_token", secret: "https://claude.com/cai/oauth/authorize?code=true" }),
-  ).toContain("网址");
+  ).toContain("is a URL, not a credential");
   expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: "sk-ant-api03-x" })).toContain("sk-ant-oat01-");
   expect(wrongShape({ runtime: "claude", mode: "api_key", secret: "sk-proj-x" })).toContain("sk-ant-");
   expect(wrongShape({ runtime: "codex", mode: "api_key", secret: "not-a-key" })).toContain("sk-");
   expect(wrongShape({ runtime: "codex", mode: "chatgpt", secret: "{}" })).toContain("refresh_token");
   expect(wrongShape({ runtime: "codex", mode: "chatgpt", secret: "half a file" })).toContain("JSON");
-  expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: "  " })).toBe("空的");
+  expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: "  " })).toBe("empty");
 
   // And the shapes that are right.
   expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: `sk-ant-oat01-${"A".repeat(40)}` })).toBeNull();
@@ -423,7 +423,7 @@ test("a chatgpt login is judged by the expiry it carries, without a request", as
   const dead = await preflight({ db, sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" }, probe: () => false });
   const row = dead.find((c) => c.name === "credential:codex")!;
   expect(row.ok).toBe(false);
-  expect(row.detail).toContain("过期");
+  expect(row.detail).toContain("expired — sign in again");
 });
 
 test("the codex device login shows a code with its link, and stores what the container wrote", async () => {
@@ -507,7 +507,7 @@ test("in a container, preflight stops answering questions about somebody else's 
   }
   // Said once rather than dropped silently: somebody reading this pane should
   // learn where those questions went, not wonder whether they are still asked.
-  expect(names(inside)).toContain("宿主环境");
+  expect(names(inside)).toContain("host environment");
 
   // The one check that still means something is reachability — and its fix has
   // to stop telling a container to start a server it cannot start.

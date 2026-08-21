@@ -92,9 +92,9 @@ async function probe(server: string, key: string): Promise<Probe> {
 function say(p: Probe, server: string): string {
   switch (p.kind) {
     case "auth":
-      return `${server} 上那个服务器不是我们起的，密钥对不上 —— 填它的 api_key，或者换个地址。`;
+      return `Something is listening on ${server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address.`;
     case "http":
-      return `${server} 上有东西在应答，但不是沙盒服务器（HTTP ${p.status}）—— 换个地址。`;
+      return `${server} answers, but it is not a sandbox server (HTTP ${p.status}) — point at another address.`;
     case "none":
       return p.why;
     case "ok":
@@ -286,7 +286,7 @@ export async function waitUp(
   let dead: number | null = null;
   void proc.exited.then((code) => (dead = code));
   const until = Date.now() + ms;
-  let last = "还没应答";
+  let last = "no answer yet";
   while (Date.now() < until) {
     const r = await io.probe(server, key);
     if (r.kind === "ok") return { ok: true, why: "" };
@@ -301,10 +301,10 @@ export async function waitUp(
 }
 
 const exited = (code: number, tail: string): string =>
-  `它自己退了（exit ${String(code)}）${tail ? `：\n${tail}` : "，而且什么都没打印"}`;
+  `it exited on its own (exit ${String(code)})${tail ? `:\n${tail}` : ", printing nothing"}`;
 
 const timedOut = (ms: number, last: string, tail: string): string =>
-  `等了 ${Math.round(ms / 1000)} 秒还是 ${last}${tail ? `。它打印的是：\n${tail}` : ""}`;
+  `still not up after ${Math.round(ms / 1000)}s — ${last}${tail ? `. It printed:\n${tail}` : ""}`;
 
 /**
  * What is there, without changing anything.
@@ -336,10 +336,10 @@ export async function inspectServer(ctx: Ctx): Promise<ServerState> {
   return {
     kind: "down",
     why: !Bun.which("uvx")
-      ? "没有 uvx —— opensandbox-server 是个 Python 包，装 uv 才起得来"
+      ? "no uvx — opensandbox-server is a Python package, so install uv before one can start"
       : live
-        ? `没在跑（有个进程看着像它，pid ${live.pid}，但 ${server} 不应答 —— 可能正在启动，也可能挂了）`
-        : "没在跑",
+        ? `not running (a process looks like it, pid ${live.pid}, but ${server} does not answer — it may be starting, or it may be stuck)`
+        : "not running",
   };
 }
 
@@ -359,7 +359,7 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
   try {
     config = await writeConfig(ctx, startKey);
   } catch (e) {
-    return { kind: "down", why: `写不出配置：${errText(e, 200)}` };
+    return { kind: "down", why: `cannot write the config: ${errText(e, 200)}` };
   }
   return startServer(ctx, server, startKey, config);
 }
@@ -383,7 +383,10 @@ export function startPlan(seen: ServerState, server: string, haveUvx: boolean): 
   // local server would bind a port nobody is asking about and report success.
   const host = splitAddr(server).authority.replace(/:\d+$/, "").toLowerCase();
   if (host === "localhost" || host.startsWith("127.") || host === "::1" || host === "[::1]") return { kind: "start" };
-  return { kind: "down", why: `${server} 不应答 —— 那不是本机地址，起不了，得去那台机器上看。` };
+  return {
+    kind: "down",
+    why: `${server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine.`,
+  };
 }
 
 /** Spawn one and wait for it, remembering that it is ours. */
@@ -404,7 +407,7 @@ async function startServer(ctx: Ctx, server: string, key: string, config: string
     if (!up.ok) return { kind: "down", why: up.why, log };
     return { kind: "started", pid: String(p.pid), config };
   } catch (e) {
-    return { kind: "down", why: `起不来：${errText(e, 160)}` };
+    return { kind: "down", why: `cannot start it: ${errText(e, 160)}` };
   }
 }
 

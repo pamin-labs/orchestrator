@@ -482,7 +482,7 @@ export const ConfigSchema = z.object({
       .min(1)
       .regex(
         /^(?:\[[0-9a-fA-F:]+\]|[a-zA-Z0-9._-]+)(?::\d{1,5})?$/,
-        "sandbox.server 只能是 host 或 host:port，不能带协议、路径、查询或凭据",
+        "sandbox.server must be host or host:port — no scheme, path, query, or credentials",
       ),
     apiKey: z.string(),
   }),

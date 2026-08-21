@@ -137,11 +137,15 @@ test("slow_down widens the interval, which is the whole reason to handle it", as
 test("a refused or expired login stops, and says which", async () => {
   const denied = scripted([{ error: "access_denied" }]);
   // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
-  await expect(pollForToken(DEVICE, { fetchFn: denied.fetchFn, sleep: async () => {} })).rejects.toThrow(/拒绝/);
+  await expect(pollForToken(DEVICE, { fetchFn: denied.fetchFn, sleep: async () => {} })).rejects.toThrow(
+    /denied on GitHub/,
+  );
 
   const expired = scripted([{ error: "expired_token" }]);
   // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
-  await expect(pollForToken(DEVICE, { fetchFn: expired.fetchFn, sleep: async () => {} })).rejects.toThrow(/过期/);
+  await expect(pollForToken(DEVICE, { fetchFn: expired.fetchFn, sleep: async () => {} })).rejects.toThrow(
+    /device code expired/,
+  );
 
   // And a code that runs out while nobody is looking is the same message rather
   // than a poll that never returns.
@@ -154,7 +158,7 @@ test("a refused or expired login stops, and says which", async () => {
       sleep: async (ms) => void (clock += ms),
       now: () => clock,
     }),
-  ).rejects.toThrow(/过期/);
+  ).rejects.toThrow(/device code expired/);
 });
 
 test("the token lands in runtime_auth like every other credential", async () => {

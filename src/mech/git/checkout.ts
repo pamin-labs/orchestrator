@@ -735,7 +735,7 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
-      body: `${why}，/work 还是空的 —— 这一轮没有代码可跑`,
+      body: `${why}, so /work is still empty — there is no code to run this turn`,
     });
   };
 
@@ -743,13 +743,13 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
     .select({ name: grps.name, project_id: grps.project_id, branch: grps.branch })
     .from(grps)
     .where(eq(grps.id, grpId));
-  if (!grp) return report(`grp 表里找不到组 ${grpId}`, null);
+  if (!grp) return report(`no group ${grpId} in the grp table`, null);
   // Still two questions, not one: a project that is gone and a project with no
   // remote recorded send the reader to different places.
   const [found] = await ctx.db.select({ remote: project.remote }).from(project).where(eq(project.id, grp.project_id));
-  if (!found) return report(`项目不在了（project ${grp.project_id} 查不到）`);
+  if (!found) return report(`the project is gone (project ${grp.project_id} is not there)`);
   const remote = await remoteFor(ctx.db, grp.project_id);
-  if (!remote) return report(`project ${grp.project_id} 没记下 remote，无从 clone`);
+  if (!remote) return report(`project ${grp.project_id} has no remote recorded, so there is nothing to clone`);
   await createCheckout(
     ctx,
     { grp: grpId },

@@ -73,9 +73,9 @@ test("every way out that is not a clone says which one it was", async () => {
   // Built one at a time: each harness empties the one database, so holding three
   // of them would leave the first two describing rows that are gone.
   const cases: [string, () => Promise<Awaited<ReturnType<typeof harness>>>, number][] = [
-    ["组 2", () => harness(), 2],
-    ["项目不在了", () => harness({ project: false }), 1],
-    ["没记下 remote", () => harness({ remote: false }), 1],
+    ["no group 2", () => harness(), 2],
+    ["the project is gone", () => harness({ project: false }), 1],
+    ["has no remote recorded", () => harness({ remote: false }), 1],
   ];
 
   for (const [needle, make, grpId] of cases) {

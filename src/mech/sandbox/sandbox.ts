@@ -501,14 +501,18 @@ async function markDown<T>(ctx: Ctx, e: T, now = Date.now()): Promise<void> {
     intent: "inform",
     severity: "blocker",
     body:
-      `开不了容器，所有 turn 先挂起：${errText(e, 200)}\n` +
-      `多半是 docker 没起或者 opensandbox-server 没在跑 —— 设置页的自检那一栏会说是哪个。好了自动继续。`,
+      `Cannot open a container, so every turn is held: ${errText(e, 200)}\n` +
+      `Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back.`,
   });
 }
 
 async function markUp(bus: Bus): Promise<void> {
   if (saidDown) {
-    await bus?.emit({ author: "orchestrator", kind: "state_change", body: "容器又能开了，挂起的活自动继续" });
+    await bus?.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body: "Containers open again; the held work resumes on its own.",
+    });
   }
   downUntil = 0;
   saidDown = false;
@@ -605,8 +609,9 @@ async function createMountedSandbox(
       kind: "state_change",
       severity: "blocker",
       body:
-        `技能没挂进沙盒：opensandbox-server 的 allowed_host_paths 不含 ${skills[0]!.host?.path}。` +
-        `加上它再重开这个组的容器；在那之前 agent 只能用你在输入框里点名的技能。`,
+        `Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list ` +
+        `${skills[0]!.host?.path}. Add it and reopen this group's container; until then agents can only use ` +
+        `the skills named in the input box.`,
     });
     return { sandbox: await createSandbox(ctx, scope, spec, cached), skillsMounted: false };
   }
@@ -651,8 +656,9 @@ async function installVaultCredentials(
         kind: "state_change",
         severity: "blocker",
         body:
-          `这个容器的凭据没绑上，里面的假值会原样发出去 —— 接下来每次模型调用都会 401，` +
-          `而那不是 token 的问题，重新登录也没用。原因：${errText(error, 400)}`,
+          `Credentials did not bind to this container, so the decoy values inside go out unchanged — every ` +
+          `model call from here 401s. That is not the token's fault, and signing in again will not help. ` +
+          `Cause: ${errText(error, 400)}`,
       });
     });
 }
@@ -665,7 +671,7 @@ async function restoreGroupWorkspace(ctx: Ctx, scope: Scope): Promise<void> {
       author: "orchestrator",
       kind: "state_change",
       severity: "warn",
-      body: `沙盒重建了，但工作区没装回去：${errText(error)}`,
+      body: `The sandbox was rebuilt, but the workspace was not restored: ${errText(error)}`,
     });
   });
 }
@@ -846,11 +852,12 @@ export async function checkSkillsMount(bus: Bus, sb: Counter, hostPath: string, 
     kind: "state_change",
     severity: "blocker",
     body:
-      `技能挂进去了但里面是空的：宿主 ${hostPath} 有 ${onHost} 个，容器里 ${at} 有 0 个。\n` +
-      `容器运行时读不到宿主这个路径，绑上去就是个空目录 —— macOS 上 docker 跑在虚拟机里，` +
-      `虚拟机外的路径（/var/tmp 这类）不会被共享进去。把 skillsDir 指到一个能共享的位置` +
-      `（$HOME 下面的就行），让 opensandbox-server 的 allowed_host_paths 也包含它，然后重启它。` +
-      `在那之前 agent 一个技能都用不上。`,
+      `Skills are mounted but the directory inside is empty: host ${hostPath} has ${onHost}, and ${at} in ` +
+      `the container has 0.\n` +
+      `The container runtime cannot read that host path, so binding it delivers an empty directory — on macOS ` +
+      `docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point ` +
+      `skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's ` +
+      `allowed_host_paths, and restart it. Until then agents have no skills at all.`,
   });
 }
 

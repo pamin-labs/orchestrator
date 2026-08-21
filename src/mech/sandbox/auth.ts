@@ -87,20 +87,20 @@ export function decoy(runtime: string, mode: AuthMode): string {
 }
 
 const CREDENTIAL_PREFIX: Readonly<Record<string, readonly [string, string]>> = {
-  "claude:oauth_token": ["sk-ant-oat01-", "订阅 token 是 sk-ant-oat01- 开头的"],
-  "claude:api_key": ["sk-ant-", "Anthropic 的 API key 是 sk-ant- 开头的"],
-  "codex:api_key": ["sk-", "OpenAI 的 API key 是 sk- 开头的"],
+  "claude:oauth_token": ["sk-ant-oat01-", "a subscription token starts with sk-ant-oat01-"],
+  "claude:api_key": ["sk-ant-", "an Anthropic API key starts with sk-ant-"],
+  "codex:api_key": ["sk-", "an OpenAI API key starts with sk-"],
 };
 
 /** Reject provider-impossible shapes early; prefixes are stable while lengths drift. */
 export function wrongShape({ runtime, mode, secret }: RuntimeAuth): string | null {
   const v = secret.trim();
-  if (!v) return "空的";
-  if (/^https?:\/\//.test(v)) return "这是个网址，不是凭据 —— 登录页的地址不是 token";
+  if (!v) return "empty";
+  if (/^https?:\/\//.test(v)) return "that is a URL, not a credential — the address of a login page is not a token";
   if (mode === "chatgpt") {
     const parsed = parseAuth(v);
-    if (!parsed) return "要的是 ~/.codex/auth.json 的完整内容，那是一段 JSON";
-    return parsed.tokens?.refresh_token ? null : "auth.json 里没有 tokens.refresh_token，续不了期";
+    if (!parsed) return "paste the whole contents of ~/.codex/auth.json, which is JSON";
+    return parsed.tokens?.refresh_token ? null : "this auth.json has no tokens.refresh_token, so it cannot be renewed";
   }
   const expected = CREDENTIAL_PREFIX[`${runtime}:${mode}`];
   return expected && !v.startsWith(expected[0]) ? expected[1] : null;

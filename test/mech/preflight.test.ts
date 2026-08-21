@@ -37,7 +37,7 @@ test("a ChatGPT login is called out when it is old, not when the host lacks code
   const fresh = (await withLogin(new Date().toISOString())).find((c) => c.name === "codex-refresher")!;
   expect(fresh.ok).toBe(true);
   // And it says where the renewal happens, so nobody re-adds the host requirement.
-  expect(fresh.detail).toContain("工具容器");
+  expect(fresh.detail).toContain("utility container");
 });
 
 test("the other credential modes need nothing on this host", async () => {
@@ -76,8 +76,8 @@ test("docker installed but not started is not 'running'", async () => {
   expect(docker.ok).toBe(false);
   // And the two failures are told apart, because they send the boss to
   // different places: a download, or one click.
-  expect(docker.detail).toContain("没启动");
-  expect(docker.fix).toContain("启动");
+  expect(docker.detail).toContain("installed, but the daemon is not answering");
+  expect(docker.fix).toContain("Start Docker Desktop");
 });
 
 /**
@@ -124,7 +124,7 @@ test("each runtime asks its own provider unless a gateway is configured", () => 
 });
 
 test("only 401 and 403 are read as the credential being refused", () => {
-  expect(credentialVerdict(200)).toEqual({ ok: true, detail: "能用" });
+  expect(credentialVerdict(200)).toEqual({ ok: true, detail: "accepted" });
   expect({ "401": credentialVerdict(401).ok, "403": credentialVerdict(403).ok }).toEqual({
     "401": false,
     "403": false,
