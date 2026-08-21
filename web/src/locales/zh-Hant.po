@@ -35,10 +35,6 @@ msgstr "（沒有留下答覆）"
 msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, other {# 項主機檢查未通過}}"
 
-#. placeholder {0}: first.name
-msgid "{0} failed"
-msgstr "{0} 未通過"
-
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}，但 App 還沒裝到任何賬號上"
 
@@ -146,6 +142,9 @@ msgstr "{name} 沒有輸出。"
 
 msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
 msgstr "{name} 的容器會被扔掉，下一個 turn 重建：重新 clone 分支、重灌依賴。沒提交的改動會丟。"
+
+msgid "{repoPath} removed"
+msgstr "{repoPath} 已刪除"
 
 msgid "{rest} more of {total}"
 msgstr "還有 {rest} 個（共 {total}）"

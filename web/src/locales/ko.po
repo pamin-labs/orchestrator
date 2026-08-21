@@ -35,10 +35,6 @@ msgstr "(답변 없음)"
 msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, other {호스트 검사 #개가 실패했습니다}}"
 
-#. placeholder {0}: first.name
-msgid "{0} failed"
-msgstr "{0} 실패"
-
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, 다만 App이 아직 어떤 계정에도 설치되지 않았습니다"
 
@@ -146,6 +142,9 @@ msgstr "{name}이(가) 출력을 내지 않았습니다."
 
 msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
 msgstr "{name}의 컨테이너를 버리고 다음 턴에서 다시 만듭니다: 브랜치 재클론, 의존성 재설치. 커밋하지 않은 변경은 사라집니다."
+
+msgid "{repoPath} removed"
+msgstr "{repoPath} 삭제됨"
 
 msgid "{rest} more of {total}"
 msgstr "{total}개 중 {rest}개 더"

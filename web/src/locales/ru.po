@@ -35,10 +35,6 @@ msgstr "(ответа нет)"
 msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, one {# проверка хоста не пройдена} few {# проверки хоста не пройдены} many {# проверок хоста не пройдено} other {# проверки хоста не пройдено}}"
 
-#. placeholder {0}: first.name
-msgid "{0} failed"
-msgstr "{0}: сбой"
-
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, но App ещё не установлено ни в одном аккаунте"
 
@@ -146,6 +142,9 @@ msgstr "{name} ничего не вывел."
 
 msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
 msgstr "Контейнер {name} выбрасывается, следующий ход собирает его заново: заново клонировать ветку, переустановить зависимости. Незакоммиченные изменения теряются."
+
+msgid "{repoPath} removed"
+msgstr "{repoPath} удалён"
 
 msgid "{rest} more of {total}"
 msgstr "ещё {rest} из {total}"

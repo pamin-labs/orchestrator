@@ -2,6 +2,7 @@ import { useTransition } from "react";
 import { Head } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
+import { toast } from "sonner";
 import { api, mutate } from "../../shared/api";
 import { Gates, Sandbox, type ProjectConfig, type ProjectPatch } from "../project/view";
 import { Plural, Trans } from "@lingui/react/macro";
@@ -45,7 +46,7 @@ export function ProjectPane({
  * The one irreversible thing in this dialog, and the only place in the panel that
  * deletes rather than archives.
  *
- * 不做了 winds a requirement up and keeps every event, because what a group did is
+ * `defer` winds a requirement up and keeps every event, because what a group did is
  * the record. Removing a project is the boss saying they do not want the record
  * either — a different act, so it lives on its own page, behind its own confirm, in
  * the danger colour, and never next to a switch somebody flips while working.
@@ -88,7 +89,15 @@ function Remove({
     // for them.
     startTransition(async () => {
       const r = await mutate(api.projects[":id"].$delete({ param: { id: String(projectId) } }));
-      if (r.ok) onRemoved();
+      if (!r.ok) return;
+      onRemoved();
+      // The one destructive action whose result is invisible. The dialog closes,
+      // the panel goes home, and the row is simply *absent* — which is not a
+      // confirmation, least of all after a confirm that listed containers,
+      // cards, records and attachments. Every other mutation here shows its
+      // effect where the boss is already looking, and a toast on top of that is
+      // the same thing said twice.
+      toast.success(t`${repoPath} removed`);
     });
   };
 
@@ -126,7 +135,7 @@ function Remove({
         </dt>
         <dd className="min-w-0 text-ink-2">
           <Trans>Branches, PRs and code on GitHub</Trans>
-          {/* 不做了 archives and keeps every event. This does not, and the two
+          {/* `defer` archives and keeps every event. This does not, and the two
               buttons are one dialog apart. */}
           <div className="mt-0.5 text-secondary text-ink-3">
             <Trans>Use 'defer' to archive without deleting; that keeps records</Trans>

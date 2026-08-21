@@ -35,10 +35,6 @@ msgstr "(keine Antwort)"
 msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, one {# Host-Prüfung fehlgeschlagen} other {# Host-Prüfungen fehlgeschlagen}}"
 
-#. placeholder {0}: first.name
-msgid "{0} failed"
-msgstr "{0} fehlgeschlagen"
-
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, aber die App ist noch auf keinem Konto installiert"
 
@@ -146,6 +142,9 @@ msgstr "{name} hat keine Ausgabe erzeugt."
 
 msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
 msgstr "Der Container von {name} wird verworfen und im nächsten Zug neu gebaut: Branch neu klonen, Abhängigkeiten neu installieren. Nicht committete Änderungen gehen verloren."
+
+msgid "{repoPath} removed"
+msgstr "{repoPath} entfernt"
 
 msgid "{rest} more of {total}"
 msgstr "{rest} weitere von {total}"

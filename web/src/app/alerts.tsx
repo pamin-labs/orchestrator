@@ -58,16 +58,17 @@ export function HostAlert({ failing, onFix }: { failing: readonly HostFailure[];
       <TriangleAlert size={14} strokeWidth={2} className="text-bad" aria-hidden />
       <span className="flex min-w-0 items-baseline gap-2">
         <AlertTitle>
-          {failing.length === 1 ? (
-            <Trans>{first.name} failed</Trans>
-          ) : (
-            <Plural value={failing.length} one="# host check failed" other="# host checks failed" />
-          )}
+          <Plural value={failing.length} one="# host check failed" other="# host checks failed" />
         </AlertTitle>
-        {/* Server-authored and rendered as text; only the frame around it is
-            translated. One line, because the pane behind the button holds all of
-            them with the instructions for each. */}
-        <AlertDescription>{first.detail}</AlertDescription>
+        {/* The name belongs to the sentence, not to the title. A `detail` is
+            written to follow its own name — `opensandbox-server` + `server
+            requires an API key and none was sent` — so dropping the name left
+            the row starting mid-phrase, which is how the settings pane renders
+            the same pair. Server-authored, both of them; only the frame around
+            them is translated. */}
+        <AlertDescription>
+          <span className="text-ink">{first.name}</span> {first.detail}
+        </AlertDescription>
       </span>
       <AlertAction>
         <Button size="sm" variant="quiet" onClick={onFix}>

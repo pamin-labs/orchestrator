@@ -18,12 +18,17 @@ const server = (detail: string): HostFailure => ({ name: "sandbox-server", detai
 
 afterEach(cleanup);
 
-test("a broken check names itself and says what is wrong", () => {
-  const { getByRole } = render(<HostAlert failing={[docker("daemon is not running")]} onFix={() => {}} />);
-  // Server-authored, rendered as text. `role="alert"` because that is what this
-  // is to a screen reader, and it is how the row is found without a test id.
-  expect(getByRole("alert").textContent).toContain("daemon is not running");
-  expect(getByRole("alert").textContent).toContain("docker");
+/**
+ * The name is part of the sentence, and this is the assertion that says so. A
+ * `detail` is written to follow its own name — `opensandbox-server` reads
+ * `server requires an API key and none was sent` — so a row that carries only
+ * the detail starts mid-phrase.
+ */
+test("a broken check names itself and says what is wrong, in that order", () => {
+  const { getByRole } = render(<HostAlert failing={[server("server requires an API key")]} onFix={() => {}} />);
+  // `role="alert"` because that is what this is to a screen reader, and it is
+  // how the row is found without a test id.
+  expect(getByRole("alert").textContent).toContain("sandbox-server server requires an API key");
 });
 
 // A count, never the node: a failing `expect(element)` prints the whole

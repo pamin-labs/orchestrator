@@ -35,10 +35,6 @@ msgstr "（返信なし）"
 msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, other {ホストチェックが # 件失敗しました}}"
 
-#. placeholder {0}: first.name
-msgid "{0} failed"
-msgstr "{0} が失敗しました"
-
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}。ただし App はまだどのアカウントにもインストールされていません"
 
@@ -146,6 +142,9 @@ msgstr "{name} は出力を出しませんでした。"
 
 msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
 msgstr "{name} のコンテナを破棄し、次のターンで作り直します：ブランチを再クローンし、依存を再インストール。コミットしていない変更は失われます。"
+
+msgid "{repoPath} removed"
+msgstr "{repoPath} を削除しました"
 
 msgid "{rest} more of {total}"
 msgstr "{total} 件中あと {rest} 件"
