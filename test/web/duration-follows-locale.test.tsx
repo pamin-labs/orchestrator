@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { cleanup, render, valueOf } from "../support/render.tsx";
 import { DurationAmount } from "../../web/src/features/knobs/editors.tsx";
-import { i18n, messages } from "../../web/src/i18n.ts";
-import ru from "../../web/src/locales/ru.json";
+import { i18n } from "../../web/src/i18n.ts";
+import { messages } from "../../web/src/locales/ru.po";
 
 /**
  * A duration field carries a translated unit, so what it shows depends on the
@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 test("switching language rewrites the unit inside the field, not only its label", () => {
-  i18n.load("ru", messages(ru));
+  i18n.load("ru", messages);
   i18n.activate("en");
   const { getByLabelText, rerender } = render(
     <DurationAmount ms={1_200_000} label="Turn timeout" onWrite={() => {}} />,

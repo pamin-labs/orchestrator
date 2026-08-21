@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 test("a catalog that 404s leaves the panel readable in English", async () => {
-  void mock.module("../../web/src/locales/ja.json", () => {
+  void mock.module("../../web/src/locales/ja.po", () => {
     throw new Error("404");
   });
   // Spied rather than left to print: the message is the point — a panel reading

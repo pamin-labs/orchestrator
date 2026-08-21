@@ -110,40 +110,51 @@ the plugin explicitly; without it the bundle they build keeps the raw macro and
 dies on mount with "outside the context of compilation", which is also the exact
 text a missing transform produces anywhere else.
 
-## Catalogs are not compiled
+## Catalogs are `.po`, compiled by a plugin
 
-`@lingui/core` accepts uncompiled ICU strings once a compiler is registered, so
-`lingui compile` and its generated artefact never exist. The alternative would
-have put a codegen step in front of `build:web`, `bun test`, `preflight`,
-`browse.ts` and three workflows, and a fresh checkout that forgot one fails from
-inside a React component. The cost is `@messageformat/parser` in the bundle and
-a parse per `i18n._()` call — not cached by Lingui, and deliberately not
-memoised here until a render budget says otherwise.
+`scripts/lingui-catalogs.ts` turns each `.po` into an ES module exporting
+`messages`, through the four public calls from `@lingui/cli/api` that
+`@lingui/vite-plugin` makes in the same order: `getCatalogs`,
+`getCatalogForFile`, `catalog.getTranslations`, `createCompiledCatalog`. Lingui
+ships that plugin for Vite, a loader for webpack and a transformer for Metro;
+there is none for Bun, and writing the Bun one is a smaller departure than not
+compiling at all — which is what this project did first, and what Lingui's docs
+are firm against: *"you need to always compile your catalogs, even if they are in
+JSON format"*, and the runtime compiler *"is typically excluded"* from production
+builds.
 
-The catalogs are JSON keyed by hashed id with the English `message` beside each
-one. `minimal` style would have left a translator a file of `"PCSkw2": "技能"`.
+Two things fall out of compiling at build time. The ICU parser is gone from the
+browser, and a message that will not parse now fails `build:web` instead of
+throwing inside a React render — `createCompiledCatalog` returns its errors and
+this plugin raises them.
 
-**Named as a deliberate departure, because Lingui's docs are firm the other
-way.** `setMessagesCompiler` is documented for loading catalogs from a CMS, for
-over-the-air delivery, and for injecting messages at runtime — not for this — and
-the same page says *"you need to always compile your catalogs, even if they are
-in JSON format"* and that the compiler *"is typically excluded"* from production
-builds. The escape Lingui offers instead is a bundler integration that compiles
-on the fly: `@lingui/vite-plugin`, `@lingui/loader`, `@lingui/metro-transformer`.
-None of them covers `Bun.build`, which is why this project holds the exception
-rather than taking the recommended path. The bundle cost the docs warn about is
-measured in the table above; the reopen condition is Bun's bundler gaining what
-those plugins give Vite, or a fifth caller making the codegen step cheap enough
-to be worth it.
+`.po` and not JSON, because the file is a translator's. `msgid "Skills"` sits
+above `msgstr "Fähigkeiten"`, and any PO editor opens it. The JSON was keyed by
+the hash, so the same pair read `"PCSkw2": "技能"` with the English it translates
+in a sibling field.
 
-Two smaller departures, both because there is no path to take. The catalogs are
-reshaped by hand in `web/src/i18n.ts` because both JSON styles are documented as
-*"only used offline"* and `@lingui/format-json` exports no runtime reader. And
-the macro is wired into a Bun plugin by hand because Lingui's setup guides cover
-Vite, React, RSC, React Native and plain JavaScript, and none of them is Bun —
-the package used is the recommended `@lingui/babel-plugin-lingui-macro`, and even
-Vite's official route expands macros with a Babel pass, so the shape is the same
-one.
+Measured, against the same tree with JSON catalogs and a runtime compiler:
+
+| | JSON, compiled at runtime | `.po`, compiled at build |
+|---|---|---|
+| catalog chunks | 1,089,738 B | 416,704 B (−62%) |
+| `web/dist/main.js` | 1,778,092 B | 1,778,509 B |
+
+The chunk a reader actually downloads went from ~136 KB to ~52 KB, because a
+compiled catalog is an array per message rather than an ICU string to be parsed.
+`main.js` is flat: the ICU parser left and `@lingui/detect-locale` arrived.
+
+One departure is left, and it is the same shape: the macro is expanded by a Bun
+plugin of ours because Lingui's setup guides cover Vite, React, RSC, React Native
+and plain JavaScript, and none of them is Bun. The package is the recommended
+`@lingui/babel-plugin-lingui-macro`, and even Vite's official route expands
+macros with a Babel pass — so what differs is the host, not the method.
+
+Locale detection is `@lingui/detect-locale`, which owns reading storage without
+throwing and falling through to the navigator. What it returns is a raw string,
+so `localeOf` still decides which catalog can serve it: the stored value is one
+of nine, `navigator.language` is whatever the browser says, and `output.language`
+is free text a person typed.
 
 ## The cost, stated
 

@@ -1,0 +1,2445 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-08-21 14:28+1000\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: ru\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+msgid ", "
+msgstr ", "
+
+msgid "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
+msgstr "«Эти учётные данные ещё принимаются?»: /user у GitHub, /v1/models у провайдера. Коротко, потому что медленный ответ сообщает «не проверено», а не падает, и ничто его не ждёт."
+
+msgid "({deliveredCount})"
+msgstr "({deliveredCount})"
+
+msgid "(following)"
+msgstr "(автоматически)"
+
+msgid "(need one merge first)"
+msgstr "(нужно сначала одно слияние)"
+
+msgid "(no reply was left)"
+msgstr "(ответа нет)"
+
+msgid "{accountName}, but the App is not installed on any account yet"
+msgstr "{accountName}, но App ещё не установлено ни в одном аккаунте"
+
+msgid "{branch} (per the remote)"
+msgstr "{branch} (по данным удалённого)"
+
+msgid "{count} repositories"
+msgstr "{count} репозиториев"
+
+msgid "{count} repositories, most recently touched first"
+msgstr "{count} репозиториев, недавно изменённые сверху"
+
+msgid "{count} requirements have no boundary right now: {bareNames}."
+msgstr "Сейчас у {count} требований нет границы: {bareNames}."
+
+msgid "{count} selected"
+msgstr "выбрано {count}"
+
+msgid "{d} days ago"
+msgstr "{d} дн. назад"
+
+msgid "{d}d{hoursLeft}h"
+msgstr "{d}д {hoursLeft}ч"
+
+msgid "{failed} failed"
+msgstr "{failed} с ошибкой"
+
+msgid "{fails} failed"
+msgstr "{fails} с ошибкой"
+
+msgid "{files} files"
+msgstr "{files} файлов"
+
+msgid "{groupCount} requirements touch different files and can run together"
+msgstr "{groupCount} требований трогают разные файлы и могут идти вместе"
+
+msgid "{groupCount} requirements touch different files and can run together ({more} more not yet assigned)"
+msgstr "{groupCount} требований трогают разные файлы и могут идти вместе (ещё {more} без назначения)"
+
+msgid "{groups, plural, one {# requirement} other {# requirements}} in <0>{repoPath}</0>"
+msgstr "{groups, plural, one {# требование} few {# требования} many {# требований} other {# требования}} в <0>{repoPath}</0>"
+
+msgid "{groups, plural, one {The one requirement in {repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.} other {All # requirements in {repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.}}"
+msgstr "{groups, plural, one {Единственное требование в {repoPath} — его контейнер, карточки, записи и вложения — будет удалено безвозвратно.} few {# требования в {repoPath} — их контейнеры, карточки, записи и вложения — будут удалены безвозвратно.} many {# требований в {repoPath} — их контейнеры, карточки, записи и вложения — будут удалены безвозвратно.} other {# требования в {repoPath} — их контейнеры, карточки, записи и вложения — будут удалены безвозвратно.}}"
+
+msgid "{hard} blocking the whole group"
+msgstr "{hard} блокируют всю группу"
+
+msgid "{held} stopped"
+msgstr "{held} остановлено"
+
+msgid "{hiddenCount} more"
+msgstr "ещё {hiddenCount}"
+
+msgid "{hiddenLines} more lines"
+msgstr "ещё {hiddenLines} строк"
+
+msgid "{hint} stored; paste a new one to replace it"
+msgstr "{hint} сохранён; вставьте новый, чтобы заменить"
+
+msgid "{hitCount} requirements want the same files and cannot run together"
+msgstr "{hitCount} требований хотят те же файлы и не могут идти вместе"
+
+msgid "{hours} hr"
+msgstr "{hours} ч"
+
+msgid "{idleCount} more are idle and costing nothing."
+msgstr "ещё {idleCount} простаивают и ничего не стоят."
+
+msgid "{lines} lines"
+msgstr "{lines} строк"
+
+msgid "{live} running"
+msgstr "{live} выполняется"
+
+msgid "{minutes} min"
+msgstr "{minutes} мин"
+
+msgid "{minutes}m ago"
+msgstr "{minutes} мин назад"
+
+msgid "{months} months ago"
+msgstr "{months} мес. назад"
+
+msgid "{mount} read-only"
+msgstr "{mount} только чтение"
+
+msgid "{n, plural, one {# slice} other {# slices}}"
+msgstr "{n, plural, one {# срез} few {# среза} many {# срезов} other {# среза}}"
+
+msgid "{n} more queued behind it"
+msgstr "ещё {n} в очереди за ним"
+
+msgid "{n} to do"
+msgstr "{n} к разбору"
+
+msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
+msgstr "{name} уходит с доски, все ходы в очереди отменяются. Код и запись сохраняются."
+
+msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are kept; the group is never started again."
+msgstr "{name} уходит с доски, все ходы в очереди отменяются. Код и запись сохраняются; группа больше не запускается."
+
+msgid "{name} produced no output."
+msgstr "{name} ничего не вывел."
+
+msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
+msgstr "Контейнер {name} выбрасывается, следующий ход собирает его заново: заново клонировать ветку, переустановить зависимости. Незакоммиченные изменения теряются."
+
+msgid "{rest} more of {total}"
+msgstr "ещё {rest} из {total}"
+
+msgctxt "notes"
+msgid "{rest} more of {total}"
+msgstr "ещё {rest} из {total}"
+
+msgid "{rest} more requirements"
+msgstr "ещё {rest} требований"
+
+msgid "{runningCount} running · {total} total"
+msgstr "{runningCount} выполняется · всего {total}"
+
+msgid "{sessionTokens} tokens this session · {model}"
+msgstr "{sessionTokens} токенов за сессию · {model}"
+
+msgid "{skill} is not enabled"
+msgstr "{skill} не включён"
+
+msgid "{spent} / {cap} tokens. Spending it all suspends the whole group."
+msgstr "{spent} / {cap} токенов. Если израсходовать всё, вся группа встанет."
+
+msgid "{staged}/{ticked} ticked reach the sandbox, {fromRepo} from the repository, about {tokens}k tokens of prefix per turn"
+msgstr "{staged}/{ticked} отмеченных попадают в песочницу, {fromRepo} из репозитория, около {tokens}k токенов префикса за ход"
+
+msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
+msgstr "{staged}/{ticked} отмеченных попадают в песочницу, около {tokens}k токенов префикса за ход"
+
+msgid "{storedHint} stored; paste a new one to replace it"
+msgstr "{storedHint} сохранён; вставьте новый, чтобы заменить"
+
+msgid "{total} waiting on you"
+msgstr "{total} ждут вас"
+
+msgid "{waiting, plural, one {# slice awaiting acceptance} other {# slices awaiting acceptance}}"
+msgstr "{waiting, plural, one {# срез ждёт приёмки} few {# среза ждут приёмки} many {# срезов ждут приёмки} other {# среза ждут приёмки}}"
+
+msgid "{waiting} to do"
+msgstr "{waiting} к разбору"
+
+msgid "{who} is hanging on your answer"
+msgstr "{who} ждёт вашего ответа"
+
+msgid "{who} objected after the fact"
+msgstr "{who} возразил постфактум"
+
+msgid "{width} per bucket"
+msgstr "{width} на интервал"
+
+msgid "← Back to all"
+msgstr "← Ко всем"
+
+msgid "← Back to full timeline"
+msgstr "← К полной хронологии"
+
+msgid "+ Add project"
+msgstr "+ Добавить проект"
+
+msgid "+ New requirement"
+msgstr "+ Новое требование"
+
+msgid "1/4 of host cores"
+msgstr "1/4 ядер хоста"
+
+msgid "127.0.0.1:8080 or https://host:port"
+msgstr "127.0.0.1:8080 или https://host:port"
+
+msgid "A number"
+msgstr "Число"
+
+msgid "A paused group is waiting on you and costs a concurrency slot while it waits. This is how often it says so before 'Archive after paused' takes the slot back."
+msgstr "Приостановленная группа ждёт вас и всё это время занимает слот параллелизма. С такой частотой она напоминает — пока «Архивировать после паузы» не вернёт слот."
+
+msgid "Abandon this requirement"
+msgstr "Бросить это требование"
+
+msgid "Abandoned"
+msgstr "Брошено"
+
+msgid "Accept"
+msgstr "Принять"
+
+msgid "Acceptance criteria"
+msgstr "Критерии приёмки"
+
+msgid "accepted {done}/{total}"
+msgstr "принято {done}/{total}"
+
+msgid "Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable"
+msgstr "Идущие ходы остановятся; контейнеры, срезы, карточки, вопросы и вложения удалятся безвозвратно"
+
+msgid "Add"
+msgstr "Добавить"
+
+msgid "Add · {branch}"
+msgstr "Добавить · {branch}"
+
+msgid "Add a row"
+msgstr "Добавить строку"
+
+msgid "Add a step"
+msgstr "Добавить шаг"
+
+msgid "Add another"
+msgstr "Добавить ещё"
+
+msgid "Add requirements or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes"
+msgstr "Добавьте требования или объясните отказ. Вставляйте скриншоты и макеты; / вставляет навык. Cmd+Enter — запросить правки"
+
+msgid "Add your first project"
+msgstr "Добавьте первый проект"
+
+msgid "Added"
+msgstr "Добавлено"
+
+msgid "Adding…"
+msgstr "Добавление…"
+
+msgid "Address"
+msgstr "Адрес"
+
+msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
+msgstr "Если срез падает несколько раз подряд, вопрос уходит человеку, а не тем же путём заново."
+
+msgid "After approval, copy the code from that page"
+msgstr "После одобрения скопируйте код с той страницы"
+
+msgid "AI is thinking on your behalf"
+msgstr "ИИ думает за вас"
+
+msgid "AI-drafted response"
+msgstr "Ответ, набросанный ИИ"
+
+msgid "All"
+msgstr "Все"
+
+msgid "All done"
+msgstr "Всё готово"
+
+msgid "All pass"
+msgstr "Все прошли"
+
+msgid "all under {ceiling}"
+msgstr "все меньше {ceiling}"
+
+msgid "all under 1ms"
+msgstr "все меньше 1 мс"
+
+msgid "Allow notifications"
+msgstr "Разрешить уведомления"
+
+msgid "already spent {tokens} tokens"
+msgstr "уже потрачено {tokens} токенов"
+
+msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
+msgstr "Незавершённый ход пропадает; группа перезапускает контейнер и продолжает сама. Код и ветки не затрагиваются."
+
+msgid "Answered on your behalf"
+msgstr "Отвечено за вас"
+
+msgid "answered on your behalf by {who}"
+msgstr "за вас ответил {who}"
+
+msgid "API address"
+msgstr "Адрес API"
+
+msgid "API key"
+msgstr "Ключ API"
+
+msgid "Appearance"
+msgstr "Вид"
+
+msgid "Approve and start"
+msgstr "Одобрить и запустить"
+
+msgid "Approved · Awaiting boundary"
+msgstr "Одобрено · Ждёт границы"
+
+msgid "Approved, blocked by boundaries"
+msgstr "Одобрено, заблокировано границами"
+
+msgid "Approved; starts automatically when boundaries clear"
+msgstr "Одобрено; запустится само, когда границы освободятся"
+
+msgid "Architect decides on tech choices and architectural boundaries; if they can't answer, they'll come back."
+msgstr "Технические решения и границы архитектуры определяет Архитектор; если ответить не может — вернёт вопрос."
+
+msgid "Architect working"
+msgstr "Архитектор работает"
+
+msgid "Archive"
+msgstr "В архив"
+
+msgid "Archive after paused"
+msgstr "Архивировать после паузы"
+
+msgid "Archive releases the sandbox. Groups parked too long hog concurrency slots for nothing."
+msgstr "Архивация освобождает песочницу. Долго простаивающая группа зря занимает слот параллелизма."
+
+msgid "Archived"
+msgstr "В архиве"
+
+msgid "Ask GitHub"
+msgstr "Спросить GitHub"
+
+msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
+msgstr "Предполагаемое окно контекста для каждой модели — на первый ход сессии; дальше реальное значение сообщает CLI. Занизите — модель с большим контекстом будет перезапускаться постоянно, каждый раз выбрасывая кэш."
+
+msgid "At most {maxGroups} groups at once. When it is full, approved requirements queue for a slot rather than being stuck."
+msgstr "Не более {maxGroups} групп одновременно. Когда занято, одобренные требования ждут слот, а не застревают."
+
+msgid "Attach"
+msgstr "Приложить"
+
+msgid "Author"
+msgstr "Автор"
+
+msgid "Authorized"
+msgstr "Авторизовано"
+
+msgid "Auto-accept tiers"
+msgstr "Уровни автоприёмки"
+
+msgid "Auto-advance when approved"
+msgstr "Продолжать сразу после одобрения"
+
+msgid "Awaiting Architect to split boundaries"
+msgstr "Ждём, пока Архитектор разделит границы"
+
+msgid "Awaiting merge"
+msgstr "Ждёт слияния"
+
+msgid "Awaiting your decision"
+msgstr "Ждёт вашего решения"
+
+msgid "Awaiting your review"
+msgstr "Ждёт вашей проверки"
+
+msgid "Awaiting your review · {since}"
+msgstr "Ждёт вашей проверки · {since}"
+
+msgid "Back off after a 429"
+msgstr "Пауза после 429"
+
+msgid "Background job"
+msgstr "Фоновая задача"
+
+msgid "Base branch"
+msgstr "Базовая ветка"
+
+msgid "Base branch fallbacks"
+msgstr "Запасные базовые ветки"
+
+msgid "Batch window"
+msgstr "Окно группировки"
+
+msgid "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates."
+msgstr "Большие проекты собираются часами; без потолка один зависший билд занимает слот ресурса навсегда. Слотов мало и они общие — одна мёртвая команда останавливает воротa всего флота."
+
+msgid "Blocked domains"
+msgstr "Заблокированные домены"
+
+msgid "Bootstrap failed"
+msgstr "Не удалось развернуть"
+
+msgid "Both go to Dispatcher; it will revise the card and bring it back for your approval."
+msgstr "И то и другое уходит Диспетчеру; он поправит карточку и вернёт её вам на одобрение."
+
+msgid "Boundary"
+msgstr "Граница"
+
+msgid "Branch"
+msgstr "Ветка"
+
+msgid "Branches, PRs and code on GitHub"
+msgstr "Ветки, PR и код на GitHub"
+
+msgid "Browse files"
+msgstr "Смотреть файлы"
+
+msgid "Browser allowed it. The panel will still notify in the background; only closing the entire browser stops notifications—reopen it to catch up."
+msgstr "Браузер разрешил. Панель продолжит уведомлять и в фоне; уведомления прекращает только полное закрытие браузера — откройте его снова, чтобы наверстать."
+
+msgid "Browser can't read the clipboard directly. Click in the input and use Cmd+V; images work too."
+msgstr "Браузер не может читать буфер обмена напрямую. Кликните в поле и нажмите Cmd+V; изображения тоже работают."
+
+msgid "Browser denied it. To enable, change it in site settings (left of address bar), then refresh."
+msgstr "Браузер отказал. Чтобы включить, измените это в настройках сайта (слева от адресной строки) и обновите страницу."
+
+msgid "Browser permission"
+msgstr "Разрешение браузера"
+
+msgid "Budget exhausted"
+msgstr "Бюджет исчерпан"
+
+msgid "Budget exhausted; group paused"
+msgstr "Бюджет исчерпан; группа на паузе"
+
+msgid "Burn rate"
+msgstr "Скорость расхода"
+
+msgid "By account"
+msgstr "По аккаунтам"
+
+msgid "By requirement"
+msgstr "По требованиям"
+
+msgid "By tier"
+msgstr "По уровням"
+
+msgid "Cache hit rate"
+msgstr "Попадания в кэш"
+
+msgid "Can modify which files"
+msgstr "Какие файлы можно менять"
+
+msgid "Can't count"
+msgstr "Не сосчитать"
+
+msgid "Can't determine until first group clones; fill in settings later"
+msgstr "Не определить, пока первая группа не склонирует; настройки заполните позже"
+
+msgid "Can't read log"
+msgstr "Лог не читается"
+
+msgid "Can't read remote branches; storing what you entered"
+msgstr "Удалённые ветки не читаются; сохраняем то, что вы ввели"
+
+msgid "Cancel"
+msgstr "Отмена"
+
+msgid "Cancel all queued turns; return the occupied slot to another group."
+msgstr "Отменяет все ходы в очереди и возвращает занятый слот другой группе."
+
+msgid "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
+msgstr "Отменяет все ходы в очереди и возвращает занятый слот другой группе. Код, ветка и записи сохраняются."
+
+msgid "Cannot reach the usage endpoint"
+msgstr "Не удаётся достучаться до эндпоинта расхода"
+
+msgid "cards pending review"
+msgstr "карточек на проверку"
+
+msgid "Change base branch"
+msgstr "Сменить базовую ветку"
+
+msgid "Change its access"
+msgstr "Изменить доступ"
+
+msgid "Changed to {next}"
+msgstr "Изменено на {next}"
+
+msgid "Changes exceed 400k characters; tail not retrieved. Remaining changes are in the sandbox checkout."
+msgstr "Изменения превышают 400k символов; конец не получен. Остальное — в чекауте песочницы."
+
+msgid "Check for stuck turns"
+msgstr "Проверка зависших ходов"
+
+msgid "Check runs"
+msgstr "Проверки"
+
+msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
+msgstr "Отмеченные навыки копируются сюда и монтируются в каждую песочницу только для чтения. Изменения здесь нужно согласовать с allowed_host_paths сервера песочниц, иначе контейнер не запустится — громкий отказ лучше тихого пустого монтирования."
+
+msgid "Choose account"
+msgstr "Выбрать аккаунт"
+
+msgid "Choose attachments"
+msgstr "Выбрать вложения"
+
+msgid "Choose repository"
+msgstr "Выбрать репозиторий"
+
+msgid "Claim task"
+msgstr "Взять задачу"
+
+msgid "Claude Code writes this in Co-Authored-By when committing"
+msgstr "Claude Code пишет это в Co-Authored-By при коммите"
+
+msgid "Clear"
+msgstr "Очистить"
+
+msgid "Click a row to add"
+msgstr "Нажмите на строку, чтобы добавить"
+
+msgid "Click to add to the end"
+msgstr "Нажмите, чтобы добавить в конец"
+
+msgid "Clipboard is empty"
+msgstr "Буфер обмена пуст"
+
+msgid "Clone"
+msgstr "Клонировать"
+
+msgid "Clone this group's branch and dependencies into a new sandbox"
+msgstr "Клонирует ветку и зависимости этой группы в новую песочницу"
+
+msgid "Clone, fetch or image pull"
+msgstr "Клон, fetch или загрузка образа"
+
+msgid "Close"
+msgstr "Закрыть"
+
+msgid "Cmd+Enter to send to PM"
+msgstr "Cmd+Enter — отправить PM"
+
+msgid "Code comes from here"
+msgstr "Код берётся отсюда"
+
+msgid "Code from page"
+msgstr "Код со страницы"
+
+msgid "Code index"
+msgstr "Индекс кода"
+
+msgid "Code repository"
+msgstr "Репозиторий кода"
+
+msgid "Collapse"
+msgstr "Свернуть"
+
+msgid "Collapse event stream"
+msgstr "Свернуть поток событий"
+
+msgid "Command"
+msgstr "Команда"
+
+msgid "Comments are recorded in the notes; PM will schedule a correction task and the group continues."
+msgstr "Комментарии попадут в заметки; PM поставит задачу на правку, а группа продолжит."
+
+msgid "Comments are recorded in the notes; the PM will schedule corrections accordingly. Paste screenshots directly."
+msgstr "Комментарии попадут в заметки; PM запланирует правки. Скриншоты можно вставлять прямо сюда."
+
+msgid "Comments on the pull request itself, newest first. Past this, the oldest are never read — which is a reviewer's first comment going unanswered."
+msgstr "Комментарии к самому пул-реквесту, новые сверху. Дальше самые старые уже не читаются — именно так первый комментарий ревьюера остаётся без ответа."
+
+msgid "Compile"
+msgstr "Сборка"
+
+msgid "Concurrent jobs"
+msgstr "Одновременных задач"
+
+msgid "Configuration doesn't allow the path we need to mount"
+msgstr "Конфигурация не разрешает путь, который нужно смонтировать"
+
+msgid "Confirm abandonment"
+msgstr "Подтвердить отказ"
+
+msgid "Connect GitHub"
+msgstr "Подключить GitHub"
+
+msgid "Connected"
+msgstr "Подключено"
+
+msgid "Connected, but this GitHub App isn't installed on any account, so no repos are visible."
+msgstr "Подключено, но это GitHub App не установлено ни в одном аккаунте, поэтому репозитории не видны."
+
+msgid "Connecting"
+msgstr "Подключение"
+
+msgid "Connection lost; reconnecting"
+msgstr "Соединение потеряно; переподключаемся"
+
+msgid "Container hasn't started yet. Clone and dependency installation output will appear here line by line."
+msgstr "Контейнер ещё не запущен. Вывод клонирования и установки зависимостей будет появляться здесь построчно."
+
+msgid "Container running"
+msgstr "Контейнер работает"
+
+msgid "Container will be discarded. The next turn will rebuild it: re-clone the branch, reinstall dependencies. Uncommitted changes will be lost."
+msgstr "Контейнер будет выброшен. Следующий ход соберёт его заново: заново клонировать ветку, переустановить зависимости. Незакоммиченные изменения потеряются."
+
+msgid "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:"
+msgstr "Контейнер не упадёт, а просто смонтирует пустой каталог — включённые навыки исчезнут. Добавьте эту строку в конфигурацию и перезапустите:"
+
+msgid "context full"
+msgstr "контекст заполнен"
+
+msgid "Context response limit"
+msgstr "Предел ответа по контексту"
+
+msgid "Context window"
+msgstr "Окно контекста"
+
+msgid "Conversation comments"
+msgstr "Комментарии обсуждения"
+
+msgid "Convert to a requirement; this group will automatically continue after it's implemented."
+msgstr "Превратится в требование; после реализации эта группа продолжит сама."
+
+msgid "Copy"
+msgstr "Копировать"
+
+msgid "CoS working"
+msgstr "CoS работает"
+
+msgid "Cost"
+msgstr "Расходы"
+
+msgid "Could not generate a draft; you'll need to write this one yourself."
+msgstr "Черновик не получился; этот придётся написать самому."
+
+msgid "Couldn't read the settings from the server."
+msgstr "Не удалось прочитать настройки с сервера."
+
+msgid "Count"
+msgstr "Количество"
+
+msgid "CPU"
+msgstr "CPU"
+
+msgid "Create new sandbox"
+msgstr "Создать песочницу"
+
+msgid "Create requirement"
+msgstr "Создать требование"
+
+msgid "Credential check"
+msgstr "Проверка учётных данных"
+
+msgid "Credential name"
+msgstr "Имя учётных данных"
+
+msgid "Custom gateway; usage not displayed in header"
+msgstr "Свой шлюз; расход в шапке не показывается"
+
+msgid "Dark"
+msgstr "Тёмная"
+
+msgid "Database connections"
+msgstr "Соединений с базой"
+
+msgid "Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections."
+msgstr "Сколько соединений с базой держать открытыми. Снимку панели нужно около двадцати разом: меньше — и он ждёт волнами, больше — без пользы. Снижайте, только если ваш Postgres ограничивает число соединений."
+
+msgid "day"
+msgstr "день"
+
+msgid "Decision"
+msgstr "Решение"
+
+msgid "Decomposing"
+msgstr "Разбираем"
+
+msgid "Default"
+msgstr "По умолчанию"
+
+msgid "Default image"
+msgstr "Образ по умолчанию"
+
+msgid "Delegate to Architect"
+msgstr "Передать Архитектору"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Delete {name}"
+msgstr "Удалить {name}"
+
+msgid "Delete this row"
+msgstr "Удалить эту строку"
+
+msgid "Denied domains"
+msgstr "Запрещённые домены"
+
+msgid "Design choice"
+msgstr "Выбор в дизайне"
+
+msgid "Desk"
+msgstr "Стол"
+
+msgid "Desk wall"
+msgstr "Доска на столе"
+
+msgid "Desktop pop-ups"
+msgstr "Уведомления на рабочем столе"
+
+msgid "Difficulty → Model"
+msgstr "Сложность → Модель"
+
+msgid "Disabled"
+msgstr "Выключено"
+
+msgid "Disabled skills aren't in the sandbox; the agent can't find it. Enable it in settings, or cancel this insertion?"
+msgstr "Выключенных навыков нет в песочнице — агент их не найдёт. Включить в настройках или отменить вставку?"
+
+msgid "Discard all changes in the current turn and return to the start of this round."
+msgstr "Отбрасывает все изменения текущего хода и возвращает к началу раунда."
+
+msgid "Disconnect"
+msgstr "Отключить"
+
+msgid "Dispatcher is analyzing; no slices yet"
+msgstr "Диспетчер анализирует; срезов пока нет"
+
+msgid "Dispatcher is writing the plan card; it will appear here when done."
+msgstr "Диспетчер пишет карточку плана; она появится здесь, когда будет готова."
+
+msgid "Dissolved"
+msgstr "Распущено"
+
+msgid "Domains the sandbox may not reach. A blocklist, not an allowlist — an allowlist would have to name every registry and docs site. Credentials do not depend on this: the sandbox only ever holds fakes."
+msgstr "Домены, до которых песочнице нельзя доставать. Это чёрный список, а не белый — белый пришлось бы заполнять каждым реестром и сайтом документации. Учётные данные от него не зависят: в песочнице всегда только подделки."
+
+msgid "Don't proceed"
+msgstr "Не продолжать"
+
+msgid "Done"
+msgstr "Готово"
+
+msgid "Double to {doubledLabel}"
+msgstr "Удвоить до {doubledLabel}"
+
+msgid "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
+msgstr "Ниже 50% сборка промпта сломана: ход дороже в 3–5 раз"
+
+msgid "e.g. 2000000"
+msgstr "напр. 2000000"
+
+msgid "Edit file"
+msgstr "Изменить файл"
+
+msgid "Edits to one file"
+msgstr "Правки одного файла"
+
+msgid "Embedding mode"
+msgstr "Режим эмбеддингов"
+
+msgid "Empty"
+msgstr "Пусто"
+
+msgid "Empty = 1/4 of host cores"
+msgstr "Пусто = 1/4 ядер хоста"
+
+msgid "Empty = 1/4 of host cores. SDK's own default is 1; tsc --noEmit here takes 7.6s (3.2s on 6 cores)."
+msgstr "Пусто = 1/4 ядер хоста. У самого SDK по умолчанию 1; здесь tsc --noEmit занимает 7,6 с (3,2 с на 6 ядрах)."
+
+msgid "Empty = allow all outbound (see README)"
+msgstr "Пусто = разрешён весь исходящий трафик (см. README)"
+
+msgid "Empty = server has no authentication"
+msgstr "Пусто = на сервере нет аутентификации"
+
+msgid "Empty directory"
+msgstr "Пустой каталог"
+
+msgid "Empty, only this page notifies you. Filled, each notification POSTs JSON (title / message / url) — ntfy, Bark, a group bot, anything. Content is scrubbed first: this is the only channel that leaves the machine."
+msgstr "Пусто — уведомляет только эта страница. Заполнено — каждое уведомление уходит POST'ом в виде JSON (title / message / url): ntfy, Bark, групповой бот, что угодно. Содержимое сначала вычищается: это единственный канал наружу."
+
+msgid "Empty: bootstrap detects from repo"
+msgstr "Пусто: определится из репозитория при развёртывании"
+
+msgid "Empty: only this page notifies you"
+msgstr "Пусто: уведомляет только эта страница"
+
+msgid "Endpoint"
+msgstr "Эндпоинт"
+
+msgid "Entire branch"
+msgstr "Вся ветка"
+
+msgid "Entire group is paused"
+msgstr "Вся группа на паузе"
+
+msgid "Entire group is suspended"
+msgstr "Вся группа приостановлена"
+
+msgid "Environment"
+msgstr "Окружение"
+
+msgid "Environment setup output"
+msgstr "Вывод настройки окружения"
+
+msgid "Event stream"
+msgstr "Поток событий"
+
+msgid "Every container goes: sandboxes for {groups} groups, and {turns} turns currently running."
+msgstr "Считается каждый контейнер: песочницы для {groups} групп и {turns} идущих сейчас ходов."
+
+msgid "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\n"
+"Drag in screenshots or designs, or paste. Cmd+Enter to submit"
+msgstr "Пример: добавить на страницу входа галочку «Запомнить меня»; если отмечена — держать вход 30 дней.\n"
+"Перетащите скриншоты или макеты либо вставьте их. Cmd+Enter — отправить"
+
+msgid "Exceeded, watchdog kills it. Real max single-turn was 8.2 minutes."
+msgstr "Превышение — и сторожевой таймер его убивает. Самый долгий замеренный ход: 8,2 минуты."
+
+msgid "Expand"
+msgstr "Развернуть"
+
+msgid "Expand event stream: who said what to whom, newest first"
+msgstr "Развернуть поток событий: кто кому что сказал, новые сверху"
+
+msgid "Fail"
+msgstr "Не прошло"
+
+msgid "Failed to add"
+msgstr "Не удалось добавить"
+
+msgid "Failed to open"
+msgstr "Не удалось открыть"
+
+msgid "Feedback threshold to become a rule"
+msgstr "Сколько замечаний становятся правилом"
+
+msgid "Fetching login code…"
+msgstr "Получаем код входа…"
+
+msgid "Files and folders OK; click a name to enter a folder."
+msgstr "Файлы и папки читаются; кликните по имени, чтобы войти в папку."
+
+msgid "Fill config/default.yaml with github.appSlug; this becomes a direct link."
+msgstr "Впишите github.appSlug в config/default.yaml — и это станет прямой ссылкой."
+
+msgid "Fill in"
+msgstr "Заполнить"
+
+msgid "Fill in a name to add a row"
+msgstr "Введите имя, чтобы добавить строку"
+
+msgid "Fill in both and remote retrieval switches on. Until then it stays local."
+msgstr "Заполните оба — включится удалённая выборка. До этого остаётся локальной."
+
+msgid "Filter or type a name"
+msgstr "Отфильтруйте или введите имя"
+
+msgid "Filter this log"
+msgstr "Отфильтровать этот лог"
+
+msgid "Filter this log…"
+msgstr "Отфильтровать этот лог…"
+
+msgid "Fix this"
+msgstr "Исправить это"
+
+msgid "Flame distribution"
+msgstr "Распределение по флейм-графу"
+
+msgid "Folder"
+msgstr "Папка"
+
+msgid "Follow the system"
+msgstr "Как в системе"
+
+msgid "Follow this machine's default"
+msgstr "Как по умолчанию на этой машине"
+
+msgid "Follow window"
+msgstr "По ширине окна"
+
+msgid "Follow window—updates as window changes, fits without crowding"
+msgstr "Следует за окном: обновляется при изменении размера и помещается без тесноты"
+
+msgid "Forward to webhook"
+msgstr "Пересылать в вебхук"
+
+msgid "From your connected GitHub account"
+msgstr "Из подключённого аккаунта GitHub"
+
+msgid "Frontend and server versions may be out of sync. Restart the service (<0>bun run dev</0>) to rebuild the frontend."
+msgstr "Версии фронтенда и сервера могли разойтись. Перезапустите сервис через <0>bun run dev</0>, чтобы пересобрать фронтенд."
+
+msgid "Full /v1/embeddings address, OpenAI-shaped. Write full, not just hostname—which path a provider uses is pure guesswork. Used only when mode is remote."
+msgstr "Полный адрес /v1/embeddings в формате OpenAI. Пишите целиком, не только хост — какой путь у провайдера, угадать нельзя. Используется только в удалённом режиме."
+
+msgid "Full contents of ~/.codex/auth.json"
+msgstr "Полное содержимое ~/.codex/auth.json"
+
+msgid "Gate"
+msgstr "Ворота"
+
+msgid "gate {verdict}"
+msgstr "ворота {verdict}"
+
+msgid "Gate check"
+msgstr "Проверка ворот"
+
+msgid "Gate concurrency"
+msgstr "Параллелизм ворот"
+
+msgid "gate name"
+msgstr "имя ворот"
+
+msgid "Gate retries"
+msgstr "Повторы ворот"
+
+msgid "Gates"
+msgstr "Ворота"
+
+msgid "Gates / Install commands"
+msgstr "Ворота / Команды установки"
+
+msgid "Generate a draft from this group's notes without sending it."
+msgstr "Создаёт черновик по заметкам этой группы, ничего не отправляя."
+
+msgid "Generate another"
+msgstr "Сгенерировать ещё"
+
+msgid "Generated from this group's notes; not yet sent to anyone. You can edit after filling it in."
+msgstr "Составлено по заметкам этой группы; никому ещё не отправлено. После заполнения можно править."
+
+msgid "Git ops"
+msgstr "Операции Git"
+
+msgid "Git repo"
+msgstr "Репозиторий Git"
+
+msgid "GitHub"
+msgstr "GitHub"
+
+msgid "GitHub → this App → Install App"
+msgstr "GitHub → это App → Install App"
+
+msgid "GitHub API call"
+msgstr "Вызов GitHub API"
+
+msgid "GitHub not connected yet; using our bot account for now"
+msgstr "GitHub ещё не подключён; пока используется наш бот-аккаунт"
+
+msgid "Global"
+msgstr "Глобально"
+
+msgid "Go merge PR ↗"
+msgstr "Слить PR ↗"
+
+msgid "Go to {project} →"
+msgstr "К {project} →"
+
+msgid "Go to ChatGPT to enter code"
+msgstr "Введите код в ChatGPT"
+
+msgid "Go to GitHub → this App → Install App, then choose which repos it can access."
+msgstr "Откройте GitHub → это App → Install App и выберите, к каким репозиториям есть доступ."
+
+msgid "Go to GitHub to enter code"
+msgstr "Введите код на GitHub"
+
+msgid "Go to settings"
+msgstr "К настройкам"
+
+msgid "Go to settings to check GitHub"
+msgstr "Проверить GitHub в настройках"
+
+msgid "Got it"
+msgstr "Понятно"
+
+msgid "Gray text shows defaults"
+msgstr "Серым показаны значения по умолчанию"
+
+msgid "Group is paused"
+msgstr "Группа на паузе"
+
+msgid "Has objections"
+msgstr "Есть возражения"
+
+msgid "Hide the other {restCount}"
+msgstr "Скрыть остальные {restCount}"
+
+msgid "Hide this stage"
+msgstr "Скрыть этот этап"
+
+msgid "Hiding:"
+msgstr "Скрыто:"
+
+msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
+msgstr "Каталоги хоста, которые монтирует каждая песочница, в виде «путь в контейнере: путь на хосте». Только для кэшей пакетных менеджеров — если поделиться тем, куда пишет сборка, две группы столкнутся. Путь также должен быть в allowed_host_paths сервера песочниц."
+
+msgid "How a checkout is read when GitHub cannot be asked"
+msgstr "Как читать чекаут, когда спросить GitHub нельзя"
+
+msgid "How far down one review thread the poll reads. A long argument in a thread is the case this truncates."
+msgstr "Насколько глубоко опрос читает одну ветку ревью. Обрезается именно длинный спор внутри ветки."
+
+msgid "How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page."
+msgstr "Сколько живёт «мы недавно спрашивали» — и интервал пробы доступности, и время кэширования вердикта по учётным данным на этой странице."
+
+msgid "How long a notification waits for company before it is sent. This is the knob between one alert an hour and one per event."
+msgstr "Сколько уведомление ждёт попутчиков, прежде чем уйти. Это ручка между одним сообщением в час и одним на событие."
+
+msgid "How long an unanswered notification waits before each repeat. It holds at the last step for as long as nobody answers. At least one step: an empty ladder repeats every tick."
+msgstr "Сколько неотвеченное уведомление ждёт до каждого повтора. Пока никто не отвечает, оно держится на последней ступени. Нужна хотя бы одна ступень: пустая лестница повторяет каждый тик."
+
+msgid "How long before a group that answered nothing is nudged again. Longer than the first wait, or the nudge becomes the noise it was meant to cut through."
+msgstr "Через сколько снова толкнуть группу, которая ничего не ответила. Дольше первого ожидания — иначе напоминание само станет тем шумом, который должно было пробить."
+
+msgid "How long before the same stuck report is worth saying again. Shorter turns one stuck group into a feed of its own."
+msgstr "Через сколько тот же отчёт о зависании стоит повторить. Короче — и одна зависшая группа превращается в отдельную ленту."
+
+msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
+msgstr "Сколько переиспользуется один отчёт о системном времени. Считать его дорого настолько, что все прочие запросы ждут позади, а исходные данные всё равно обновляются только по такту."
+
+msgid "How long one turn may run, and how much it may read"
+msgstr "Сколько может идти ход и сколько прочитать"
+
+msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
+msgstr "Сколько может занять POST выше. Ответ всё равно отбрасывается — это лишь не даёт молчащему вебхуку удерживать уведомление."
+
+msgid "How long the rest of a group's events are kept. The conversation itself — what was said, asked and escalated — is never dropped."
+msgstr "Сколько хранятся прочие события группы. Сам разговор — что сказали, о чём спросили, что подняли выше — не удаляется никогда."
+
+msgid "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones."
+msgstr "Сколько эндпоинт расхода оставляют в покое после отказа. Короче срока действия отказа — и опрос просто зарабатывает новые."
+
+msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
+msgstr "Сколько ворот может идти одновременно. Аренда — это настоящая сборка или прогон тестов, десяток параллельно убьёт машину. Браузер отдельно ограничен единицей: каждый — настоящий Chromium."
+
+msgid "How many live frames wait for one slow tab before they are dropped. A tab that stopped reading is the only thing here that grows without bound. Dropping is safe: the panel re-reads its state on the next event."
+msgstr "Сколько живых кадров ждут одну медленную вкладку, прежде чем их выбросят. Вкладка, переставшая читать, — единственное здесь, что растёт без предела. Выбрасывать безопасно: панель перечитает состояние на следующем событии."
+
+msgid "How many nodes the model may name at one level. Width costs tokens in a single call, where depth costs another call."
+msgstr "Сколько узлов модель может назвать на одном уровне. Ширина стоит токенов внутри одного вызова, глубина — ещё одного вызова."
+
+msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
+msgstr "Сколько открытых пул-реквестов один опрос запрашивает у GitHub. Стоимость GraphQL-запроса — это число узлов, так что каждая цифра в этой группе — потолок, купленный за квоту."
+
+msgid "How much runs at once, and when work moves on without you"
+msgstr "Сколько идёт одновременно и когда работа продолжается без вас"
+
+msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
+msgstr "Как часто выполняются детерминированные правила. И заодно — сколько работа в очереди ждёт отправки без явного тика."
+
+msgid "How often the shared repository map is re-checked. Deliberately far longer than the watchdog tick: the map only changes on a push, and checking costs a container round trip."
+msgstr "Как часто перепроверяется общая карта репозитория. Намеренно куда реже такта сторожевого таймера: карта меняется только при пуше, а проверка стоит похода в контейнер и обратно."
+
+msgid "How to alert you"
+msgstr "Как вас уведомлять"
+
+msgid "hr"
+msgstr "ч"
+
+msgid "HTTP request"
+msgstr "HTTP-запрос"
+
+msgid "Idle"
+msgstr "Простой"
+
+msgid "Image"
+msgstr "Образ"
+
+msgctxt "a picture, not a container image"
+msgid "Image"
+msgstr "Изображение"
+
+msgid "In progress"
+msgstr "В работе"
+
+msgid "Including downstream"
+msgstr "Включая зависящее"
+
+msgid "Index model"
+msgstr "Модель индекса"
+
+msgid "Insert skill"
+msgstr "Вставить навык"
+
+msgid "Install dependencies"
+msgstr "Установить зависимости"
+
+msgid "Install on GitHub"
+msgstr "Установить на GitHub"
+
+msgid "Install timeout"
+msgstr "Таймаут установки"
+
+msgid "Install to another account"
+msgstr "Установить в другой аккаунт"
+
+msgid "Installed on these accounts"
+msgstr "Установлено в этих аккаунтах"
+
+msgid "Interrupt and rollback"
+msgstr "Прервать и откатить"
+
+msgid "Interrupt, keep changes"
+msgstr "Прервать, изменения оставить"
+
+msgid "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
+msgstr "Поднят ли сервер песочниц и принимает ли он наш ключ. Обычно это loopback, и его ответ лишь заполняет отчёт — тогда как сетевой пинг ниже открывает или закрывает ворота всему флоту."
+
+msgid "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open."
+msgstr "Есть ли сеть вообще: HEAD к origin каждого провайдера, внутри такта сторожевого таймера. Самое короткое ожидание здесь — намеренно: медленный ответ не должен держать такт открытым."
+
+msgid "It's not a duplicate, and it's not done yet — keep decomposing."
+msgstr "Это не дубликат и ещё не сделано — продолжайте разбирать."
+
+msgid "Journal"
+msgstr "Журнал"
+
+msgid "Just describe what you need. A plan card will be generated for approval before any code is written."
+msgstr "Просто опишите, что нужно. Перед тем как писать код, появится карточка плана на одобрение."
+
+msgid "Just now"
+msgstr "Только что"
+
+msgid "Just started"
+msgstr "Только начали"
+
+msgid "Keep"
+msgstr "Оставить"
+
+msgid "Keep machine events"
+msgstr "Хранить машинные события"
+
+msgid "Key"
+msgstr "Ключ"
+
+msgid "Last 24 hours, per hour"
+msgstr "Последние 24 часа, по часам"
+
+msgid "Lease timeout"
+msgstr "Таймаут аренды"
+
+msgid "Lesson"
+msgstr "Урок"
+
+msgid "Let AI generate one"
+msgstr "Пусть сгенерирует ИИ"
+
+msgid "Let bootstrap retry; it will review the repository with the error above in context"
+msgstr "Пусть развёртывание попробует снова; репозиторий будет пересмотрен с учётом ошибки выше"
+
+msgid "Levels of the tree one question may descend, and each level is a serial model call with its own 60s timeout — two per question at 3. This is the single knob on the most frequent model spend here."
+msgstr "На сколько уровней дерева может спуститься один вопрос; каждый уровень — последовательный вызов модели со своим таймаутом в 60 с, при 3 это два вызова на вопрос. Единственная ручка на самой частой трате модели здесь."
+
+msgid "Light"
+msgstr "Светлая"
+
+msgid "Line-level review threads read per pull request. Set it below what the repository actually produces and the oldest threads are never seen."
+msgstr "Сколько построчных веток ревью читается на один пул-реквест. Меньше, чем репозиторий реально порождает, — и самые старые ветки не увидят никогда."
+
+msgid "Live stream backlog"
+msgstr "Очередь живого потока"
+
+msgid "Loading changes…"
+msgstr "Загружаем изменения…"
+
+msgid "Loading log…"
+msgstr "Загружаем лог…"
+
+msgid "Loading notes…"
+msgstr "Загружаем заметки…"
+
+msgid "Loading…"
+msgstr "Загрузка…"
+
+msgid "Local"
+msgstr "Локально"
+
+msgid "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision."
+msgstr "Локально работает на этой машине; удалённо отправляет текст на выбранный вами эндпоинт. Для поиска пока не используется ни то, ни другое — по замерам межъязыковой поиск оказался хуже поиска по ключевым словам, который он должен был заменить. Удалённый режим означает, что ваши требования и критерии приёмки покидают эту машину, поэтому локальный — по умолчанию, а удалённый — решение."
+
+msgid "Local to this machine only, not tied to the project"
+msgstr "Только на этой машине, к проекту не привязано"
+
+msgid "Log in"
+msgstr "Войти"
+
+msgid "Log in within the container; no need to install codex locally"
+msgstr "Вход происходит внутри контейнера; ставить codex локально не нужно"
+
+msgid "Login code copied"
+msgstr "Код входа скопирован"
+
+msgid "Login page"
+msgstr "Страница входа"
+
+msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
+msgstr "Логи живут в памяти сервера, максимум 500 строк, и стираются при перезапуске. Вывод — в «Заметках»."
+
+msgid "Management directive"
+msgstr "Указание руководства"
+
+msgid "Max channel messages to cram into one delta per turn."
+msgstr "Сколько сообщений канала максимум влезает в одну дельту за ход."
+
+msgid "Max steps per turn"
+msgstr "Максимум шагов за ход"
+
+msgid "Memory"
+msgstr "Память"
+
+msgid "Memory ceiling per sandbox."
+msgstr "Потолок памяти на песочницу."
+
+msgid "Message this group"
+msgstr "Написать этой группе"
+
+msgid "Message this group…"
+msgstr "Написать этой группе…"
+
+msgid "min"
+msgstr "мин"
+
+msgid "Model account"
+msgstr "Аккаунт модели"
+
+msgid "Model ID"
+msgstr "ID модели"
+
+msgid "Model processing"
+msgstr "Обработка моделью"
+
+msgid "Models & budget"
+msgstr "Модели и бюджет"
+
+msgid "Modified"
+msgstr "Изменено"
+
+msgid "More"
+msgstr "Ещё"
+
+msgid "mount point"
+msgstr "точка монтирования"
+
+msgid "ms"
+msgstr "мс"
+
+msgid "Name"
+msgstr "Имя"
+
+msgid "Name a stored credential and remote retrieval switches on."
+msgstr "Укажите сохранённые учётные данные — включится удалённая выборка."
+
+msgid "Name can't be empty; use the × on the right to delete"
+msgstr "Имя не может быть пустым; для удаления — × справа"
+
+msgid "Name for {k}"
+msgstr "Имя для {k}"
+
+msgid "Needs an integer"
+msgstr "Нужно целое число"
+
+msgid "Network ping"
+msgstr "Сетевой пинг"
+
+msgid "New files are expected; if it thinks these already exist, the card was written from speculation."
+msgstr "Ожидаются новые файлы; если считается, что они уже есть, карточка написана наугад."
+
+msgid "New projects use this; leave blank to follow config"
+msgstr "Новые проекты используют это; оставьте пустым — возьмётся из конфигурации"
+
+msgid "New projects will use {image}"
+msgstr "Новые проекты будут использовать {image}"
+
+msgid "New requirement"
+msgstr "Новое требование"
+
+msgid "newly hired"
+msgstr "только принят"
+
+msgid "No activity in this window."
+msgstr "В этом промежутке ничего не происходило."
+
+msgid "No activity yet."
+msgstr "Пока ничего не происходило."
+
+msgid "No boundaries drawn yet. The Architect decides which paths each group may write before work starts; groups without one run into the same files."
+msgstr "Границы ещё не проведены. Архитектор решает, в какие пути может писать каждая группа, до начала работы; группы без границы сталкиваются в одних и тех же файлах."
+
+msgid "No budget limit"
+msgstr "Без ограничения бюджета"
+
+msgid "No changes"
+msgstr "Изменений нет"
+
+msgid "No container yet"
+msgstr "Контейнера пока нет"
+
+msgid "No data yet"
+msgstr "Данных пока нет"
+
+msgid "No deliveries yet. Requirements are archived here after merging to main."
+msgstr "Пока ничего не сдано. Требования попадают сюда в архив после слияния в main."
+
+msgid "No diff available. The slice didn't record a baseline commit, or the sandbox has been reclaimed."
+msgstr "Диффа нет. Срез не записал базовый коммит, либо песочница уже освобождена."
+
+msgid "No events"
+msgstr "Событий нет"
+
+msgid "No gates enabled; LLM review has no floor."
+msgstr "Не включены ворота; у проверки LLM нет опоры."
+
+msgid "No matches"
+msgstr "Совпадений нет"
+
+msgid "No matching branches"
+msgstr "Подходящих веток нет"
+
+msgid "No matching images"
+msgstr "Подходящих образов нет"
+
+msgid "No matching lines"
+msgstr "Подходящих строк нет"
+
+msgid "No matching projects"
+msgstr "Подходящих проектов нет"
+
+msgid "No matching skills"
+msgstr "Подходящих навыков нет"
+
+msgid "No notes yet. Agents write journals each turn; retrospectives are written before the group dissolves and distilled into lessons for later groups."
+msgstr "Заметок пока нет. Агенты ведут журнал каждый ход; ретроспективы пишутся перед роспуском группы и сводятся в уроки для следующих."
+
+msgid "No one working yet. Approve a plan card and each agent's current task appears here."
+msgstr "Пока никто не работает. Одобрите карточку плана — и здесь появится текущая задача каждого агента."
+
+msgid "No open questions. This group is not waiting on you right now."
+msgstr "Открытых вопросов нет. Сейчас эта группа вас не ждёт."
+
+msgid "No other models yet; just type"
+msgstr "Других моделей пока нет; просто введите"
+
+msgid "No other requirements for this project"
+msgstr "Других требований в этом проекте нет"
+
+msgid "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
+msgstr "Приостановленных требований нет. Группы встают здесь, когда кончается бюджет или ожидание вашего ответа переваливает за 2 часа; работа сохраняется."
+
+msgid "No pending items"
+msgstr "Ничего не ждёт"
+
+msgid "No reason recorded"
+msgstr "Причина не записана"
+
+msgid "No requirements in progress. Click + for a new one in the top right."
+msgstr "Требований в работе нет. Нажмите + справа вверху, чтобы создать новое."
+
+msgid "No requirements yet"
+msgstr "Требований пока нет"
+
+msgid "No runnable commands found."
+msgstr "Исполняемых команд не найдено."
+
+msgid "No slice"
+msgstr "Без среза"
+
+msgid "No slices"
+msgstr "Срезов нет"
+
+msgid "No system activity recorded."
+msgstr "Активность системы не записана."
+
+msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
+msgstr "Токены ещё не тратились. После одобрения карточек плана расходы разбиваются по требованиям и агентам. Какая модель — решает метка уровня."
+
+msgid "No, keep going"
+msgstr "Нет, продолжать"
+
+msgid "None selected"
+msgstr "Ничего не выбрано"
+
+msgid "None; this connection sees no repositories. Install with all repos, or select specific ones."
+msgstr "Ни одного; это подключение не видит репозиториев. Установите со всеми репозиториями или выберите конкретные."
+
+msgid "Not checked out"
+msgstr "Не выгружено"
+
+msgid "Not configured"
+msgstr "Не настроено"
+
+msgid "Not connected"
+msgstr "Не подключено"
+
+msgid "Not enough data for two hours."
+msgstr "Данных на два часа не хватает."
+
+msgid "Not enough data for two periods."
+msgstr "Данных на два периода не хватает."
+
+msgid "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
+msgstr "Ни локально, ни в шифрованной сети — трафик идёт незашифрованным HTTP. Ключи и обмен контейнеров открыты; используйте HTTPS или Tailscale."
+
+msgid "Not running"
+msgstr "Не запущено"
+
+msgid "Not satisfied"
+msgstr "Не выполнено"
+
+msgid "Not started yet; waiting for prior slices to be accepted."
+msgstr "Ещё не начато; ждём приёмки предыдущих срезов."
+
+msgid "Notes"
+msgstr "Заметки"
+
+msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
+msgstr "На GitHub ничего не меняется: ветки на месте, PR на месте, ни строки кода не тронуто. Удаляется копия работы на этой машине."
+
+msgid "Notifications"
+msgstr "Уведомления"
+
+msgid "Nudge a silent group"
+msgstr "Толкнуть молчащую группу"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "On, a group starts the next slice without waiting for you. Off, it finishes one and stops. The cost: later slices build on an earlier one, so reverting it pauses the whole group."
+msgstr "Включено — группа берётся за следующий срез, не дожидаясь вас. Выключено — доводит один и останавливается. Цена: поздние срезы стоят на раннем, и откат раннего останавливает всю группу."
+
+msgid "On, a question walks the index tree before it is answered — one model call. Off skips the walk entirely and falls through to keyword search, which is the comparison this switch is for."
+msgstr "Включено — вопрос обходит дерево индекса, прежде чем на него ответят: один вызов модели. Выключено — обход пропускается и всё падает в поиск по ключевым словам; ради этого сравнения переключатель и существует."
+
+msgid "Onboarding"
+msgstr "Первый запуск"
+
+msgid "Once boundaries are cleared, work starts automatically; no need to click again."
+msgstr "Как только границы освободятся, работа начнётся сама; повторно нажимать не нужно."
+
+msgid "One branch name per line, most likely first"
+msgstr "По одной ветке в строке, самая вероятная сверху"
+
+msgid "One CI run can post fifty of these. Set below what your workflow produces and the fleet decides a pull request is green while a check it never saw is red."
+msgstr "Один прогон CI может опубликовать полсотни таких. Поставьте меньше, чем реально выдаёт ваш workflow, — и флот сочтёт пул-реквест зелёным, пока невиданная проверка красная."
+
+msgid "One connection manages all projects"
+msgstr "Одно подключение обслуживает все проекты"
+
+msgid "One domain per line; empty allows all"
+msgstr "По одному домену в строке; пусто — разрешены все"
+
+msgid "One network operation that moves a repository or an image — clone, fetch, submodule init, image pull. Minutes rather than seconds."
+msgstr "Одна сетевая операция, перемещающая репозиторий или образ — клон, fetch, инициализация сабмодуля, загрузка образа. Минуты, а не секунды."
+
+msgid "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it."
+msgstr "Один REST-вызов, ответ на который — работа, о которой попросили: открыть пул-реквест, прочитать ревью. Дольше проверки учётных данных ниже, потому что на нём кто-то ждёт."
+
+msgid "Only running"
+msgstr "Только идущие"
+
+msgid "Only this stage"
+msgstr "Только этот этап"
+
+msgid "Open {entry}"
+msgstr "Открыть {entry}"
+
+msgid "Open a new PR"
+msgstr "Открыть новый PR"
+
+msgid "Open login page"
+msgstr "Открыть страницу входа"
+
+msgid "Open new PR"
+msgstr "Открыть новый PR"
+
+msgid "Open PR ↗"
+msgstr "Открыть PR ↗"
+
+msgid "Optional, self-hosted gateway → {envVar}"
+msgstr "Необязательно, свой шлюз → {envVar}"
+
+msgid "Order"
+msgstr "Порядок"
+
+msgid "Organization"
+msgstr "Организация"
+
+msgid "Other"
+msgstr "Прочее"
+
+msgid "Output language"
+msgstr "Язык вывода"
+
+msgid "overlaps {overlapping}"
+msgstr "пересекается с {overlapping}"
+
+msgid "Ownership"
+msgstr "Владение"
+
+msgid "p50"
+msgstr "p50"
+
+msgid "P50"
+msgstr "P50"
+
+msgid "p95"
+msgstr "p95"
+
+msgid "P95"
+msgstr "P95"
+
+msgid "Panel language"
+msgstr "Язык панели"
+
+msgid "Pass"
+msgstr "Прошло"
+
+msgid "Paste"
+msgstr "Вставить"
+
+msgid "Paste it; hidden after saving"
+msgstr "Вставьте; после сохранения скрывается"
+
+msgid "Pause"
+msgstr "Пауза"
+
+msgid "Paused"
+msgstr "На паузе"
+
+msgid "Pausing"
+msgstr "Останавливаем"
+
+msgid "Pending"
+msgstr "Ожидает"
+
+msgid "pending merges"
+msgstr "ждут слияния"
+
+msgid "Pending review"
+msgstr "Ждёт проверки"
+
+msgid "Per delivered requirement"
+msgstr "На сданное требование"
+
+msgid "Per-run duration"
+msgstr "Длительность одного запуска"
+
+msgid "Personal"
+msgstr "Личный"
+
+msgid "Personal account"
+msgstr "Личный аккаунт"
+
+msgid "Pick a model to add a row"
+msgstr "Выберите модель, чтобы добавить строку"
+
+msgid "Plan"
+msgstr "План"
+
+msgid "Plan card"
+msgstr "Карточка плана"
+
+msgid "Plan card not submitted"
+msgstr "Карточка плана не подана"
+
+msgid "Plan card not submitted yet"
+msgstr "Карточка плана ещё не подана"
+
+msgid "Plan card pending approval"
+msgstr "Карточка плана ждёт одобрения"
+
+msgid "Planner suggests abandoning"
+msgstr "Планировщик советует бросить"
+
+msgid "Planning"
+msgstr "Планируем"
+
+msgid "PM working"
+msgstr "PM работает"
+
+msgid "Poll subscription usage"
+msgstr "Опрос расхода подписки"
+
+msgid "Polling intervals"
+msgstr "Интервалы опроса"
+
+msgid "PR link not found"
+msgstr "Ссылка на PR не найдена"
+
+msgid "PR open"
+msgstr "PR открыт"
+
+msgid "PR pending merge"
+msgstr "PR ждёт слияния"
+
+msgid "Preferences"
+msgstr "Предпочтения"
+
+msgid "prefix changed"
+msgstr "префикс изменился"
+
+msgid "Prepare this turn"
+msgstr "Подготовка хода"
+
+msgid "Private"
+msgstr "Приватный"
+
+msgid "Project name…"
+msgstr "Название проекта…"
+
+msgid "Projects"
+msgstr "Проекты"
+
+msgid "Pull request"
+msgstr "Пул-реквест"
+
+msgid "Pull requests"
+msgstr "Пул-реквесты"
+
+msgid "Pull requests per poll"
+msgstr "Пул-реквестов за опрос"
+
+msgid "QA"
+msgstr "QA"
+
+msgid "Query index"
+msgstr "Запрос к индексу"
+
+msgid "Question"
+msgstr "Вопрос"
+
+msgid "questions"
+msgstr "вопросов"
+
+msgid "Questions"
+msgstr "Вопросы"
+
+msgid "Queued"
+msgstr "В очереди"
+
+msgid "Rate limited reading usage; it recovers by itself shortly"
+msgstr "Лимит запросов при чтении расхода; вскоре восстановится само"
+
+msgid "Read from server"
+msgstr "Прочитать с сервера"
+
+msgid "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser."
+msgstr "Читается из собственной конфигурации сервера песочниц (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Значения не проходят через браузер."
+
+msgid "Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage."
+msgstr "Читает, сколько осталось от окна подписки, curl'ом из служебного контейнера. Ничто на этом не блокируется; в шапке просто не будет процента."
+
+msgid "Real tokens don't enter the sandbox"
+msgstr "Настоящие токены в песочницу не попадают"
+
+msgid "Recheck reachability"
+msgstr "Перепроверить доступность"
+
+msgid "Recheck the repo map"
+msgstr "Перепроверить карту репозитория"
+
+msgid "Reconciliation"
+msgstr "Сверка"
+
+msgid "Reconnect"
+msgstr "Переподключиться"
+
+msgid "Refresh"
+msgstr "Обновить"
+
+msgid "Refreshed locally"
+msgstr "Обновлено локально"
+
+msgid "Reject this slice"
+msgstr "Отклонить этот срез"
+
+msgid "Rejected"
+msgstr "Отклонено"
+
+msgid "Rejected, awaiting fix"
+msgstr "Отклонено, ждём исправления"
+
+msgid "Release the concurrency slot; code and checkpoint in the sandbox stay in place."
+msgstr "Освобождает слот параллелизма; код и контрольная точка в песочнице остаются на месте."
+
+msgid "Remind about paused"
+msgstr "Напоминать о приостановленных"
+
+msgid "Reminder ladder"
+msgstr "Лестница напоминаний"
+
+msgid "Remote"
+msgstr "Удалённо"
+
+msgid "Remote credential name"
+msgstr "Имя удалённых учётных данных"
+
+msgid "Remote endpoint"
+msgstr "Удалённый эндпоинт"
+
+msgid "Remove"
+msgstr "Убрать"
+
+msgid "Remove {attachment}"
+msgstr "Убрать {attachment}"
+
+msgid "Remove {name}?"
+msgstr "Убрать {name}?"
+
+msgid "Remove limit"
+msgstr "Снять ограничение"
+
+msgid "Remove project"
+msgstr "Убрать проект"
+
+msgid "Remove this project"
+msgstr "Убрать этот проект"
+
+msgid "Removing…"
+msgstr "Убираем…"
+
+msgid "Renewed when a turn starts, so this is 'recover after idle', not 'task time limit'."
+msgstr "Обновляется в начале каждого хода, так что это «восстановление после простоя», а не «лимит времени на задачу»."
+
+msgid "Repeat a stuck notice"
+msgstr "Повтор сообщения о зависании"
+
+msgid "Repeat the nudge"
+msgstr "Повторить напоминание"
+
+msgid "Replies per thread"
+msgstr "Ответов на ветку"
+
+msgid "Reply"
+msgstr "Ответить"
+
+msgid "Reply. Sending this will unblock the waiting agent. Cmd+Enter to send"
+msgstr "Ответьте. Отправка разблокирует ждущего агента. Cmd+Enter — отправить"
+
+msgid "Reply… Cmd+Enter to send"
+msgstr "Ответить… Cmd+Enter — отправить"
+
+msgid "Repo-wide"
+msgstr "По всему репозиторию"
+
+msgid "Repos with DCO enabled won't accept commits without this line"
+msgstr "Репозитории с включённым DCO не принимают коммиты без этой строки"
+
+msgid "Repositories"
+msgstr "Репозитории"
+
+msgid "Repository"
+msgstr "Репозиторий"
+
+msgid "Request changes"
+msgstr "Запросить правки"
+
+msgid "Requirement"
+msgstr "Требование"
+
+msgid "Requirement name…"
+msgstr "Название требования…"
+
+msgid "requirements"
+msgstr "требований"
+
+msgid "Requirements running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page."
+msgstr "Сколько требований идёт одновременно. Обычно раньше упрёшься в другой потолок: две группы не могут владеть пересекающимися путями, а у одного аккаунта свой лимит запросов. Поднимая, следите за попаданиями в кэш на странице расходов."
+
+msgid "Rescan"
+msgstr "Пересканировать"
+
+msgid "Reset to default"
+msgstr "Вернуть по умолчанию"
+
+msgid "Reset to the image in config"
+msgstr "Вернуть образ из конфигурации"
+
+msgid "resets in {span}"
+msgstr "сбросится через {span}"
+
+msgid "Resetting soon"
+msgstr "Скоро сбросится"
+
+msgid "Resource lease"
+msgstr "Аренда ресурса"
+
+msgid "Restart"
+msgstr "Перезапустить"
+
+msgid "Restart container"
+msgstr "Перезапустить контейнер"
+
+msgid "Restart the sandbox server?"
+msgstr "Перезапустить сервер песочниц?"
+
+msgid "Restarted {cold} times across {turns} turns: {why}. Each restart rebuilds the cache prefix from scratch"
+msgstr "Перезапускался {cold} раз за {turns} ходов: {why}. Каждый перезапуск строит префикс кэша с нуля"
+
+msgid "Restarted; containers will restart on demand"
+msgstr "Перезапущено; контейнеры поднимутся по мере надобности"
+
+msgid "Restarting…"
+msgstr "Перезапуск…"
+
+msgid "Restore all"
+msgstr "Восстановить всё"
+
+msgid "Resume"
+msgstr "Возобновить"
+
+msgid "Retrieval"
+msgstr "Поиск"
+
+msgid "Retrospective"
+msgstr "Ретроспектива"
+
+msgid "Retry this view"
+msgstr "Повторить этот экран"
+
+msgid "Return for re-decomposition"
+msgstr "Вернуть на повторную разбивку"
+
+msgid "Return to the checkpoint before this round started; all changes in this turn are discarded."
+msgstr "Возврат к контрольной точке перед началом раунда; все изменения этого хода отбрасываются."
+
+msgid "Review threads"
+msgstr "Ветки ревью"
+
+msgid "Revoke and take over"
+msgstr "Отозвать и взять на себя"
+
+msgid "Risk"
+msgstr "Риск"
+
+msgid "Roll back to the checkpoint when the question was asked; all subsequent changes are discarded. You'll answer it again."
+msgstr "Откат к контрольной точке на момент вопроса; все последующие изменения отбрасываются, и отвечать придётся заново."
+
+msgid "Roughly 4k token. This answer lands in the transcript, and every remaining turn in the session re-reads it—so a generous answer keeps billing long after the question is answered."
+msgstr "Примерно 4k токенов. Ответ остаётся в транскрипте, и каждый оставшийся ход сессии перечитывает его — щедрый ответ продолжает списывать деньги задолго после самого вопроса."
+
+msgid "Routine watchdog"
+msgstr "Штатный сторожевой таймер"
+
+msgid "Run claude setup-token in the container"
+msgstr "Выполните claude setup-token в контейнере"
+
+msgid "Run one turn"
+msgstr "Прогнать один ход"
+
+msgid "Run tests"
+msgstr "Прогнать тесты"
+
+msgid "Run the official CLI's login once in the tool container; store the credential here. No setup needed locally. Official accounts only; custom gateways use API key."
+msgstr "Один раз выполните вход официального CLI в служебном контейнере; учётные данные сохранятся здесь. Локально настраивать нечего. Только официальные аккаунты; для своих шлюзов — ключ API."
+
+msgid "Run top-to-bottom; drag to reorder"
+msgstr "Выполняются сверху вниз; перетащите, чтобы переставить"
+
+msgid "Running"
+msgstr "Выполняется"
+
+msgid "running {live}/{maxGroups}"
+msgstr "работает {live}/{maxGroups}"
+
+msgid "Running, but we can't control it"
+msgstr "Работает, но управлять им мы не можем"
+
+msgid "Running, not started by us; using as-is"
+msgstr "Работает, запущено не нами; используем как есть"
+
+msgid "Running, started by us"
+msgstr "Работает, запущено нами"
+
+msgid "Running: {running}"
+msgstr "Выполняется: {running}"
+
+msgid "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way."
+msgstr "Тот же порядок, что и аренда, и та же природа — настоящая сборка. Слишком туго, и отказ выглядит как «этот проект сломан», а не «истекло время»; группы застревают в обоих случаях."
+
+msgid "Sandbox"
+msgstr "Песочница"
+
+msgid "Sandbox configuration"
+msgstr "Настройка песочницы"
+
+msgid "Sandbox defaults"
+msgstr "Значения песочницы по умолчанию"
+
+msgid "Sandbox operation"
+msgstr "Операция песочницы"
+
+msgid "Sandbox server"
+msgstr "Сервер песочниц"
+
+msgid "Sandbox server ping"
+msgstr "Пинг сервера песочниц"
+
+msgid "Sandbox setup"
+msgstr "Подготовка песочницы"
+
+msgid "Sandbox TTL"
+msgstr "Время жизни песочницы"
+
+msgid "Save"
+msgstr "Сохранить"
+
+msgid "Save checkpoint"
+msgstr "Сохранить контрольную точку"
+
+msgid "Saved {at}"
+msgstr "Сохранено {at}"
+
+msgid "Scheduling"
+msgstr "Планирование"
+
+msgid "Search skills"
+msgstr "Искать навыки"
+
+msgid "sec"
+msgstr "с"
+
+msgid "Selected"
+msgstr "Выбрано"
+
+msgid "Self"
+msgstr "Сам"
+
+msgid "Self-review"
+msgstr "Самопроверка"
+
+msgid "Send"
+msgstr "Отправить"
+
+msgid "Send message"
+msgstr "Отправить сообщение"
+
+msgid "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch."
+msgstr "Возвращает требование целиком Диспетчеру, чтобы копнуть глубже; уже написанный код остаётся в ветке."
+
+msgid "Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact."
+msgstr "Возвращает требование целиком Диспетчеру, чтобы копнуть глубже; этот комментарий — факт высшего приоритета."
+
+msgid "Send to PM"
+msgstr "Отправить PM"
+
+msgid "sent back"
+msgstr "возвращено"
+
+msgid "sent back {times} times"
+msgstr "возвращено {times} раз"
+
+msgid "Server"
+msgstr "Сервер"
+
+msgid "Session restarts"
+msgstr "Перезапуски сессии"
+
+msgid "Session rotation threshold"
+msgstr "Порог смены сессии"
+
+msgid "Set"
+msgstr "Задано"
+
+msgid "Set a token limit for this requirement"
+msgstr "Задать лимит токенов для этого требования"
+
+msgid "Settings"
+msgstr "Настройки"
+
+msgid "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S"
+msgstr "Настройки: аккаунт, окружение, навыки, тема, а также ворота и песочница этого проекта ⌘S"
+
+msgid "Shared across all projects"
+msgstr "Общее для всех проектов"
+
+msgid "Shared across requirements"
+msgstr "Общее для требований"
+
+msgid "Shared cache"
+msgstr "Общий кэш"
+
+msgid "Shared cache directories"
+msgstr "Каталоги общего кэша"
+
+msgid "Show the idle ones too ({idleCount})"
+msgstr "Показать и простаивающие ({idleCount})"
+
+msgid "Show the other {restCount} ({restCeiling})"
+msgstr "Показать остальные {restCount} ({restCeiling})"
+
+msgid "showing {span}"
+msgstr "показано {span}"
+
+msgid "Silence this long and the group is asked what it is doing. Not a failure — a long compile is silent too — so this is hours rather than minutes."
+msgstr "После такого молчания у группы спрашивают, чем она занята. Это не отказ — долгая сборка тоже молчит, — поэтому часы, а не минуты."
+
+msgid "Skills"
+msgstr "Навыки"
+
+msgid "Skills staging directory"
+msgstr "Каталог подготовки навыков"
+
+msgid "Slice"
+msgstr "Срез"
+
+msgid "slice {id}"
+msgstr "срез {id}"
+
+msgid "Slice baseline was lost in rebase; showing the entire branch relative to origin/main"
+msgstr "База среза потерялась при ребейзе; показана вся ветка относительно origin/main"
+
+msgid "Slice durations"
+msgstr "Длительность срезов"
+
+msgid "slices pending"
+msgstr "срезов ждут"
+
+msgid "Someone else is handling it"
+msgstr "Этим занимается кто-то другой"
+
+msgid "Spec"
+msgstr "Спецификация"
+
+msgid "Spent {spent} tokens against a {cap} limit. Only raising the limit moves it — \"resume\" does nothing."
+msgstr "Потрачено {spent} токенов при лимите {cap}. Сдвинуть это может только повышение лимита — «возобновить» не делает ничего."
+
+msgid "Stage durations"
+msgstr "Длительность этапов"
+
+msgid "Standing post"
+msgstr "Постоянный пост"
+
+msgid "Start"
+msgstr "Начать"
+
+msgid "Start from this branch"
+msgstr "Начать с этой ветки"
+
+msgid "Started"
+msgstr "Начато"
+
+msgid "Started at"
+msgstr "Начато в"
+
+msgid "Starting…"
+msgstr "Запуск…"
+
+msgid "Starts after approval"
+msgstr "Начнётся после одобрения"
+
+msgid "Step {nth}"
+msgstr "Шаг {nth}"
+
+msgid "Steps one turn may take before it is cut off. Most turns finish in about 36; the long tail is an agent lost rather than working, and it costs the most because every step re-reads the transcript. Changing it restarts every session."
+msgstr "Сколько шагов ход может сделать до обрыва. Большинство ходов укладывается примерно в 36; длинный хвост — это агент, который заблудился, а не работает, и он самый дорогой, потому что каждый шаг перечитывает транскрипт. Изменение перезапускает все сессии."
+
+msgid "Stop denying {d}"
+msgstr "Перестать блокировать {d}"
+
+msgid "Stop dispatching; branch is kept but not merged. A retrospective is still required."
+msgstr "Раздача прекращается; ветка сохраняется, но не сливается. Ретроспектива всё равно обязательна."
+
+msgid "Stop here (archive)"
+msgstr "Остановиться здесь (в архив)"
+
+msgid "Stop the current turn; keep changes. The next turn will be informed."
+msgstr "Останавливает текущий ход, изменения оставляет. Следующий ход об этом узнает."
+
+msgid "Stopped"
+msgstr "Остановлено"
+
+msgid "Storage & streams"
+msgstr "Хранение и потоки"
+
+msgid "stored as {label}"
+msgstr "сохранено как {label}"
+
+msgid "Submit"
+msgstr "Отправить"
+
+msgid "Submit task"
+msgstr "Отправить задачу"
+
+msgid "Subscription"
+msgstr "Подписка"
+
+msgid "Swap sessions when context hits this much of the window. Fallback trigger; real rotation is slice-end—clean semantic boundary, cheap handoff."
+msgstr "Меняет сессию, когда контекст достигает такой доли окна. Это запасной триггер; настоящая смена происходит в конце среза — чистая смысловая граница и дешёвая передача дел."
+
+msgid "Switch project"
+msgstr "Сменить проект"
+
+msgid "Switch requirement"
+msgstr "Сменить требование"
+
+msgid "System"
+msgstr "Система"
+
+msgid "System timing"
+msgstr "Системное время"
+
+msgid "Take note"
+msgstr "Записать"
+
+msgid "The browser can't read this. Drag folders in instead."
+msgstr "Браузер это прочитать не может. Перетащите папки сюда."
+
+msgid "The chosen skill is sent with this turn; it only costs for this one turn."
+msgstr "Выбранный навык уходит вместе с этим ходом и стоит только за него."
+
+msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
+msgstr "Обмен refresh-токена codex, выполняемый в служебном контейнере. Дольше чтения расхода: он поднимает процесс и делает OAuth-обход."
+
+msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
+msgstr "Требование целиком возвращается Диспетчеру, чтобы копнуть глубже; этот комментарий — факт высшего приоритета."
+
+msgid "The last step repeats for as long as nobody answers"
+msgstr "Последняя ступень повторяется, пока никто не ответит"
+
+msgid "The name of a row under Model account, never the key"
+msgstr "Имя строки в разделе «Аккаунт модели», а не сам ключ"
+
+msgid "The name of that line in 'Model account', not the key itself. Key in config is key in shell history and every backup."
+msgstr "Имя той строки в «Аккаунте модели», а не сам ключ. Ключ в конфигурации — это ключ в истории шелла и в каждой резервной копии."
+
+msgid "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone."
+msgstr "Вторая половина «зависания»: один и тот же файл переписан столько раз подряд. Сходящийся агент трогает и соседние файлы; зависший переписывает один файл, пока не кончится бюджет."
+
+msgid "the same ground as {others}"
+msgstr "та же территория, что и у {others}"
+
+msgid "The service that launches containers"
+msgstr "Служба, которая запускает контейнеры"
+
+msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
+msgstr "Самый частый вызов модели во всей системе: чистое суммирование, без решений, без инструментов, без общей доски. Первое, что стоит увести с дорогой подписки."
+
+msgid "The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst."
+msgstr "Эндпоинт расхода недокументирован и часами отвечает 429 тому, кто опрашивает чаще, — а ваш собственный /status тратит из того же бюджета. Десять минут внутри пятичасового окна дают в худшем случае 3% погрешности."
+
+msgid "Theme"
+msgstr "Тема"
+
+msgid "These paths from the card don't exist in the repo"
+msgstr "Этих путей из карточки в репозитории нет"
+
+msgid "This account has no window"
+msgstr "У этого аккаунта нет окна"
+
+msgid "This browser doesn't support it"
+msgstr "Этот браузер такого не умеет"
+
+msgid "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch."
+msgstr "Этот комментарий становится фактом высшего приоритета; требование целиком возвращается Диспетчеру, чтобы копнуть глубже. Код остаётся в ветке."
+
+msgid "This log is empty"
+msgstr "Этот лог пуст"
+
+msgid "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward."
+msgstr "Этот процесс запустили не мы — возможно, вы им пользуетесь. Перезапустите сами, если нужно; после этого мы его распознаем."
+
+msgid "This project hasn't run any activity yet."
+msgstr "В этом проекте пока ничего не происходило."
+
+msgid "This requirement has been archived or no longer exists."
+msgstr "Это требование в архиве или больше не существует."
+
+msgid "This requirement hasn't run any activity yet."
+msgstr "По этому требованию пока ничего не происходило."
+
+msgid "This slice hasn't produced changes yet and has no verdict."
+msgstr "Этот срез пока не дал изменений и не имеет вердикта."
+
+msgid "This view crashed"
+msgstr "Этот экран упал"
+
+msgid "This window needs {count} buckets, more than fits"
+msgstr "Этому окну нужно {count} интервалов — больше, чем помещается"
+
+msgid "Time"
+msgstr "Время"
+
+msgid "Timeouts"
+msgstr "Таймауты"
+
+msgid "Timing for all activity on this machine, last 24h"
+msgstr "Время всей активности на этой машине за последние 24 ч"
+
+msgid "Timing report cache"
+msgstr "Кэш отчёта о времени"
+
+msgid "To do"
+msgstr "К разбору"
+
+msgid "to do {waiting}"
+msgstr "к разбору {waiting}"
+
+msgid "Today"
+msgstr "Сегодня"
+
+msgid "Token"
+msgstr "Токен"
+
+msgid "Token ceiling for one slice. Set it above your worst finished slice and below the outliers — it exists to stop an agent that is lost, not to trim a slow day. New slices only."
+msgstr "Потолок токенов на один срез. Ставьте выше худшего доведённого до конца среза и ниже выбросов — он нужен, чтобы остановить заблудившегося агента, а не подрезать медленный день. Действует только на новые срезы."
+
+msgid "Token limit per slice"
+msgstr "Лимит токенов на срез"
+
+msgid "Token refresh"
+msgstr "Обновление токена"
+
+msgid "tokens · project total"
+msgstr "токенов · всего по проекту"
+
+msgid "tokens · share"
+msgstr "токенов · доля"
+
+msgid "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
+msgstr "Пробуются по порядку и только когда ничто другое не ответило: сначала собственная базовая ветка проекта, затем default_branch с GitHub. Это то, к чему откатывается репозиторий, когда до удалённого не достучаться."
+
+msgid "Try again"
+msgstr "Повторить"
+
+msgid "Turn timeout"
+msgstr "Таймаут хода"
+
+msgid "Turned off, but page alerts and tab title counts still work—just no pop-ups."
+msgstr "Выключено, но уведомления на странице и счётчик в заголовке вкладки работают — нет только всплывающих окон."
+
+msgid "Turns & context"
+msgstr "Ходы и контекст"
+
+msgid "Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed."
+msgstr "Сколько ходов подряд ничего не менялось, прежде чем сторожевой таймер сочтёт это зависанием. Меньше трёх — сработает на агенте, который ещё читает; сильно больше — цикл будет крутиться весь день незамеченным."
+
+msgid "Turns without progress"
+msgstr "Ходов без продвижения"
+
+msgid "Two sources only: our releases (ghcr.io/pamin-labs/…) and local builds with no registry prefix. Agents run your code inside this image, so an untrusted one hands away the boundary — and the panel cannot tell."
+msgstr "Источников всего два: наши релизы (ghcr.io/pamin-labs/…) и локальные сборки без префикса реестра. Агенты выполняют ваш код внутри этого образа, поэтому недоверенный образ отдаёт саму границу — а панель этого не различит."
+
+msgid "Type a model ID to add a row"
+msgstr "Введите ID модели, чтобы добавить строку"
+
+msgid "Undefined"
+msgstr "Не задано"
+
+msgid "Under {account}, this App can see no repository at all. It may have been installed with only a few ticked."
+msgstr "В {account} это App не видит ни одного репозитория. Возможно, при установке отметили лишь несколько."
+
+msgid "Unit for {label}"
+msgstr "Единица для {label}"
+
+msgid "Unread digest threshold"
+msgstr "Порог сводки непрочитанного"
+
+msgid "Unreadable"
+msgstr "Не читается"
+
+msgid "Update code index"
+msgstr "Обновить индекс кода"
+
+msgid "Usage not displayed"
+msgstr "Расход не показан"
+
+msgid "Usage read"
+msgstr "Чтение расхода"
+
+msgid "Use 'defer' to archive without deleting; that keeps records"
+msgstr "Чтобы отправить в архив без удаления, используйте «отложить» — записи сохранятся"
+
+msgid "Use draft"
+msgstr "Взять черновик"
+
+msgid "Use this only if you can't reopen an old PR on GitHub. Use when the branch has been force-pushed or deleted: it will re-open using the current branch and rejoin the merge queue."
+msgstr "Используйте, только если старый PR на GitHub переоткрыть нельзя. Подходит, когда ветку force-push'нули или удалили: PR откроется заново на текущей ветке и вернётся в очередь на слияние."
+
+msgid "Use when the container is stuck, missing dependencies, or credentials changed. The next turn will re-clone and reinstall; the branch in the host repo stays."
+msgstr "Используйте, когда контейнер завис, не хватает зависимостей или сменились учётные данные. Следующий ход заново склонирует и переустановит; ветка в репозитории на хосте остаётся."
+
+msgid "Used when a project has not set its own"
+msgstr "Используется, когда у проекта нет своего"
+
+msgid "Valid for one year"
+msgstr "Действует год"
+
+msgid "Valid until {when}"
+msgstr "Действует до {when}"
+
+msgid "View diff"
+msgstr "Смотреть дифф"
+
+msgid "View log"
+msgstr "Смотреть лог"
+
+msgid "waited {short}"
+msgstr "ждал {short}"
+
+msgid "Waiting"
+msgstr "Ожидание"
+
+msgid "waiting {span}"
+msgstr "ждёт {span}"
+
+msgid "Waiting & storage"
+msgstr "Ожидания и хранение"
+
+msgid "Waiting for prior slice"
+msgstr "Ждём предыдущий срез"
+
+msgid "Waiting for you"
+msgstr "Ждёт вас"
+
+msgid "Waiting for you to approve in the browser…"
+msgstr "Ждём вашего одобрения в браузере…"
+
+msgid "Waiting for you to approve on GitHub…"
+msgstr "Ждём вашего одобрения на GitHub…"
+
+msgid "Waits on the world outside, and what this machine keeps"
+msgstr "Ожидания внешнего мира и то, что хранит эта машина"
+
+msgid "Wake"
+msgstr "Пробуждение"
+
+msgid "Walk depth"
+msgstr "Глубина обхода"
+
+msgid "Walk the index tree"
+msgstr "Обходить дерево индекса"
+
+msgid "Walk width"
+msgstr "Ширина обхода"
+
+msgid "Wants a count: 8M, 200k, 45 all work"
+msgstr "Нужно количество: 8M, 200k, 45 — всё подойдёт"
+
+msgid "Wants a duration: 20 min, 45s, 3 hr all work"
+msgstr "Нужна длительность: 20 min, 45s, 3 hr — всё подойдёт"
+
+msgid "Wants a duration: 24 hr, 30 min both work"
+msgstr "Нужна длительность: подойдут и 24 hr, и 30 min"
+
+msgid "Wants a percentage between 0 and 100, like 60%"
+msgstr "Нужен процент от 0 до 100, например 60%"
+
+msgid "Was connected, but GitHub no longer recognizes this token"
+msgstr "Было подключено, но GitHub больше не признаёт этот токен"
+
+msgid "Watchdog"
+msgstr "Сторожевой таймер"
+
+msgid "Watchdog interval"
+msgstr "Интервал сторожевого таймера"
+
+msgid "Watchdog rule"
+msgstr "Правило сторожевого таймера"
+
+msgid "Webhook timeout"
+msgstr "Таймаут вебхука"
+
+msgid "Week"
+msgstr "Неделя"
+
+msgid "Weight:"
+msgstr "Вес:"
+
+msgid "What"
+msgstr "Что"
+
+msgid "What the agents write in: journals, channel messages, questions, summaries. Any language works; the list only saves typing. Code, commits, branch names, PRs and errors stay English. Changing it restarts every session in the fleet."
+msgstr "Язык, на котором пишут агенты: журналы, сообщения в каналах, вопросы, сводки. Подойдёт любой; список лишь экономит набор. Код, коммиты, имена веток, PR и ошибки остаются английскими. Изменение перезапускает все сессии флота."
+
+msgid "What this browser reads. What the agents write is the output language, under Models & budget — and this follows it unless you pick one here."
+msgstr "То, что читает этот браузер. То, на чём пишут агенты, — язык вывода в разделе «Модели и бюджет»; этот следует за ним, пока вы не выберете здесь свой."
+
+msgid "What's not satisfactory. Cmd+Enter to reject"
+msgstr "Что не устраивает. Cmd+Enter — отклонить"
+
+msgid "When the limit is reached, the group pauses until you decide whether to increase it."
+msgstr "Достигнув лимита, группа встаёт и ждёт, пока вы решите, поднимать ли его."
+
+msgid "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint."
+msgstr "Если одно и то же всплывает N раз, это должно стать правилом проекта, а не N+1-й жалобой."
+
+msgid "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP."
+msgstr "Где живёт opensandbox-server. Он должен быть в режиме dns+nft, иначе подстановка учётных данных тихо не сработает. Это не обязательно эта машина — подойдёт пир Tailscale или машина в облаке, SDK говорит только по HTTP."
+
+msgid "Which model handles each difficulty, per CLI. Which role uses which CLI is in roles/*.yaml. Only affects newly hired agents — a model is frozen at hire time."
+msgstr "Какая модель берёт какую сложность, по каждому CLI. Какая роль использует какой CLI — в roles/*.yaml. Действует только на вновь нанятых агентов: модель фиксируется в момент найма."
+
+msgid "Which model runs what, and what it may spend"
+msgstr "Какая модель что делает и сколько может тратить"
+
+msgid "Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you."
+msgstr "Какие уровни пропускают ваш последний взгляд после всех четырёх ворот. По умолчанию — тривиальные и обычные; сложные по-прежнему ждут вас."
+
+msgid "Which window"
+msgstr "Какое окно"
+
+msgid "Who · Model"
+msgstr "Кто · Модель"
+
+msgid "Why this value"
+msgstr "Почему такое значение"
+
+msgid "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM"
+msgstr "Прочитается в начале следующего хода. Скриншоты вставляйте прямо сюда; / вставляет навык. Cmd+Enter — отправить PM"
+
+msgid "Workflow"
+msgstr "Рабочий процесс"
+
+msgid "Workspace"
+msgstr "Рабочее пространство"
+
+msgid "Write a description, break into plan cards, then come back for review."
+msgstr "Пишет описание, разбивает на карточки плана и возвращается на проверку."
+
+msgid "Write the full /v1/embeddings address and remote retrieval switches on."
+msgstr "Впишите полный адрес /v1/embeddings — включится удалённая выборка."
+
+msgid "Writes {bot} into Co-Authored-By"
+msgstr "Пишет {bot} в Co-Authored-By"
+
+msgid "Wrong direction"
+msgstr "Не туда"
+
+msgid "You can edit the card and re-approve."
+msgstr "Карточку можно поправить и одобрить снова."
+
+msgid "zoomed to {zoomLevel}×"
+msgstr "увеличено в {zoomLevel}×"

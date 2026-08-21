@@ -1,3 +1,4 @@
+import { linguiCatalogs } from "./lingui-catalogs.ts";
 import { linguiMacros } from "./lingui-macros.ts";
 
 /**
@@ -14,11 +15,11 @@ const built = await Bun.build({
   outdir: "web/dist",
   target: "browser",
   minify: true,
-  // Each catalog is its own chunk, fetched when a locale is first activated.
-  // Eight of them are 1.09MB of JSON against a 1.78MB bundle, and nobody reads
-  // two — English has no catalog at all, so it fetches none.
+  // Each catalog is its own chunk, fetched when a locale is first activated:
+  // eight of them, ~52KB each compiled, and nobody reads two. English has no
+  // catalog at all, so it fetches none.
   splitting: true,
-  plugins: [linguiMacros],
+  plugins: [linguiMacros, linguiCatalogs],
 });
 
 // `throw` defaults to true, so a failure never reaches here — and its message

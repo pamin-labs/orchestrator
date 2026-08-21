@@ -1,14 +1,15 @@
-import { i18n } from "@lingui/core";
-import { compileMessage } from "@lingui/message-utils/compileMessage";
+import { i18n, type Messages } from "@lingui/core";
+import { detect, fromNavigator, fromStorage } from "@lingui/detect-locale";
 import { z } from "zod";
 import { type Locale, LOCALES, localeOf } from "../../src/contracts/config.ts";
 
 /**
- * The panel's catalogs, raw. `@lingui/core` takes uncompiled ICU strings when a
- * compiler is registered, so `lingui compile` and its generated artefact never
- * exist — `build:web`, `bun test`, preflight, `browse.ts` and three workflows
- * would each have had to produce one first, and a fresh checkout that forgot
- * fails from inside a React component.
+ * The panel's catalogs, compiled.
+ *
+ * `scripts/lingui-catalogs.ts` turns each `.po` into an ES module exporting
+ * `messages`, which is what `@lingui/vite-plugin` does for Vite. So this is the
+ * documented shape — `const { messages } = await import(…)`, then `load`, then
+ * `activate` — and no ICU parser reaches the browser.
  */
 /**
  * A leaf module on purpose: `@lingui/core`, the catalogs, and one contract.
@@ -24,30 +25,18 @@ const KEY = "orch.locale";
 /**
  * One `import()` per catalog, written out rather than built from a template: a
  * bundler splits what it can see, and a template literal it cannot resolve
- * either fails or pulls the whole directory into the entry point. Eight
- * catalogs are 1.09MB of JSON against a 1.78MB bundle, and nobody reads two.
+ * either fails or pulls the whole directory into the entry point. Each is its
+ * own chunk of about 52KB, and nobody reads two.
  */
-const CATALOGS: Record<Exclude<Locale, "en">, () => Promise<{ default: unknown }>> = {
-  zh: () => import("./locales/zh.json"),
-  ja: () => import("./locales/ja.json"),
-  ko: () => import("./locales/ko.json"),
-  es: () => import("./locales/es.json"),
-  fr: () => import("./locales/fr.json"),
-  de: () => import("./locales/de.json"),
-  pt: () => import("./locales/pt.json"),
-  ru: () => import("./locales/ru.json"),
-};
-
-/** Only the field the runtime needs. `lingui extract` writes four more per
- *  message and is free to write a fifth. */
-const CatalogSchema = z.record(z.string(), z.object({ translation: z.string().optional() }));
-
-const read = <T>(key: string, parse: (v: string | null) => T): T => {
-  try {
-    return parse(localStorage.getItem(key));
-  } catch {
-    return parse(null);
-  }
+const CATALOGS: Record<Exclude<Locale, "en">, () => Promise<{ messages: Messages }>> = {
+  zh: () => import("./locales/zh.po"),
+  ja: () => import("./locales/ja.po"),
+  ko: () => import("./locales/ko.po"),
+  es: () => import("./locales/es.po"),
+  fr: () => import("./locales/fr.po"),
+  de: () => import("./locales/de.po"),
+  pt: () => import("./locales/pt.po"),
+  ru: () => import("./locales/ru.po"),
 };
 
 /**
@@ -58,24 +47,16 @@ const read = <T>(key: string, parse: (v: string | null) => T): T => {
  * rotates every session in the fleet. Reading a pane in another language is not
  * that, and must not cost that.
  */
-/** Unset means the browser's own language, which is the answer every other page
- *  this person opens already uses. */
-export const preference = (): Locale => read(KEY, (v) => PrefSchema.catch(localeOf(navigator.language)).parse(v));
-
 /**
- * Exported for the test preload, which cannot await: a preload's top-level
- * `await` does not hold back the test module under `--parallel`, so the suite
- * loads its one catalog synchronously from a static import instead.
+ * `detect` is Lingui's own, and it owns the fiddly half: reading storage without
+ * throwing where storage is denied, then falling through to the navigator. What
+ * it hands back is a raw string, so `localeOf` still decides which catalog can
+ * serve it — the stored value is one of nine, `navigator.language` is whatever
+ * the browser says.
  */
-export const messages = (catalog: Record<string, { translation?: string | undefined }>): Record<string, string> => {
-  const out: Record<string, string> = {};
-  // An empty translation is a message nobody has done yet: leaving it out is
-  // what makes the source text render instead of a blank pane.
-  for (const [id, m] of Object.entries(catalog)) if (m.translation) out[id] = m.translation;
-  return out;
-};
+export const preference = (): Locale =>
+  PrefSchema.catch(localeOf(detect(fromNavigator()) ?? "en")).parse(detect(fromStorage(KEY)) ?? "");
 
-i18n.setMessagesCompiler(compileMessage);
 // English is the source: every id falls back to the message the macro hashed, so
 // its catalog is empty by construction. Declared anyway — an unloaded locale
 // warns on every render.
@@ -84,8 +65,8 @@ i18n.load("en", {});
 /** Fetched once per locale per page. The entry point holds no catalog at all. */
 async function load(locale: Locale): Promise<void> {
   if (locale === "en") return;
-  const catalog = await CATALOGS[locale]();
-  i18n.load(locale, messages(CatalogSchema.parse(catalog.default)));
+  const { messages } = await CATALOGS[locale]();
+  i18n.load(locale, messages);
 }
 
 /** Activate, fetching the catalog the first time it is asked for. A no-op when

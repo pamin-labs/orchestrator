@@ -1,42 +1,22 @@
 import { compileMessageOrThrow } from "@lingui/message-utils/compileMessage";
-import { z } from "zod";
 import { LOCALES } from "../src/contracts/config.ts";
+import { translations } from "./lingui-catalogs.ts";
 
 /**
- * Every translation parses as ICU, checked with the function that parses it at
- * runtime.
+ * Every translation still refers to the names its English source did.
  *
- * Nothing else checks this. We do not run `lingui compile`, so no build step
- * ever reads a translation, and plain `compile` prints a parse error and exits
- * 0 anyway.
- */
-/**
- * `compileMessageOrThrow`, not `compileMessage`: the second one prints the parse
- * error and returns anyway, so a validator built on it reports every catalog
- * clean while printing the failure above its own summary. Measured — the first
- * version of this file did exactly that.
- */
-/**
- * The failure it prevents: a translator writing Russian plurals — `one`, `few`,
- * `many`, `other`, which is four sets of braces — gets one wrong, and the panel
- * throws inside a React render, in production, for Russian readers only.
- */
-/**
- * Parsing is not the whole check. A translation can be flawless ICU and still
- * have dropped `{count}`, rendering a sentence missing the one number it was
- * written to carry — silently, and only in that language. So the compiled form
- * is walked for the names it references and compared against the source's.
+ * ICU syntax is checked by the build: `createCompiledCatalog` in
+ * `lingui-catalogs.ts` fails on a message it cannot parse, so a broken Russian
+ * plural stops `build:web` rather than throwing inside a React render. What no
+ * compiler can catch is a translation that parses perfectly and dropped
+ * `{count}` on the way through, rendering a sentence missing the one number it
+ * was written to carry — silently, and only in that language.
  */
 /**
  * Walked rather than pattern-matched: `compileMessageOrThrow` already returns
  * the tokens, and a regex over the raw string has to re-derive which braces are
  * a reference, which are a plural category and which are inside a branch.
  */
-
-const CatalogSchema = z.record(
-  z.string(),
-  z.object({ message: z.string().optional(), translation: z.string().optional() }),
-);
 
 /**
  * Every name a compiled message refers to, plus every `<0>` slot.
@@ -70,38 +50,30 @@ const referenced = (tokens: readonly unknown[]): Set<string> => new Set(tokens.f
 const missing = (want: Set<string>, got: Set<string>): string[] => [...want].filter((name) => !got.has(name));
 
 let bad = 0;
+// The source catalog says which names each message is supposed to carry.
+const source = (await translations("en")).messages;
+
 for (const locale of LOCALES) {
-  const path = `web/src/locales/${locale}.json`;
-  for (const [id, message] of Object.entries(CatalogSchema.parse(await Bun.file(path).json()))) {
-    const translation = message.translation ?? "";
-    if (translation === "") continue;
-    let compiled;
-    try {
-      compiled = compileMessageOrThrow(translation);
-    } catch (error) {
-      console.error(`${path}  ${id}\n  ${translation}\n  ${error instanceof Error ? error.message : String(error)}`);
-      bad++;
-      continue;
-    }
-    // The source is what the macro hashed, so it is the only thing that says
-    // which names this message is supposed to carry.
-    const source = message.message ?? "";
-    if (source === "") continue;
-    const want = referenced(compileMessageOrThrow(source));
-    const gone = missing(want, referenced(compiled));
-    const extra = missing(referenced(compiled), want);
+  if (locale === "en") continue;
+  const { messages } = await translations(locale);
+  for (const [id, translation] of Object.entries(messages)) {
+    const english = source[id];
+    if (!translation || !english || translation === english) continue;
+    const want = referenced(compileMessageOrThrow(english));
+    const gone = missing(want, referenced(compileMessageOrThrow(translation)));
+    const extra = missing(referenced(compileMessageOrThrow(translation)), want);
     if (gone.length === 0 && extra.length === 0) continue;
     const what = [
       gone.length > 0 && `dropped ${gone.join(", ")}`,
       extra.length > 0 && `invented ${extra.join(", ")}`,
     ].filter(Boolean);
-    console.error(`${path}  ${id}\n  en: ${source}\n  ${locale}: ${translation}\n  ${what.join("; ")}`);
+    console.error(`${locale}.po  ${id}\n  en: ${english}\n  ${locale}: ${translation}\n  ${what.join("; ")}`);
     bad++;
   }
 }
 
 if (bad > 0) {
-  console.error(`\n${bad} translation(s) will throw or render the wrong thing.`);
+  console.error(`\n${bad} translation(s) will render the wrong thing.`);
   process.exit(1);
 }
-console.log(`ICU and placeholders ok in ${LOCALES.length} catalogs`);
+console.log(`placeholders ok in ${LOCALES.length - 1} translated catalogs`);

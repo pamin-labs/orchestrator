@@ -5,6 +5,8 @@
     "outDir": ".cache/tsc/test",
     "tsBuildInfoFile": ".cache/tsc/test.tsbuildinfo"
   },
-  "include": ["test"],
+  // The `.po` module declaration too: `test/support/setup.ts` imports a catalog,
+  // and a project reference carries types across but not ambient declarations.
+  "include": ["test", "web/src/locales/po.d.ts"],
   "references": [{ "path": "./tsconfig.src.json" }, { "path": "./web/tsconfig.json" }]
 }

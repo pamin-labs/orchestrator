@@ -1,5 +1,5 @@
-import { z } from "zod";
 import { endonymOf, LOCALES } from "../src/contracts/config.ts";
+import { translations } from "./lingui-catalogs.ts";
 import { SAY_KEYS, ZH_SAY } from "../src/platform/text/lang.ts";
 
 /**
@@ -24,11 +24,6 @@ import { SAY_KEYS, ZH_SAY } from "../src/platform/text/lang.ts";
 const MARK = { open: "<!-- i18n:table -->", close: "<!-- /i18n:table -->" };
 const BAR = (percent: number) => `https://progress-bar.xyz/${percent}?width=140&suffix=%25`;
 
-/** Only the field this counts. `lingui extract` writes four more per message and
- *  is free to write a fifth; a schema that refused one would make a new Lingui
- *  release look like a broken README. */
-const CatalogSchema = z.record(z.string(), z.object({ translation: z.string().optional() }));
-
 type Row = { label: string; done: number; total: number; source?: boolean };
 
 const pct = (r: Row): number => (r.total === 0 ? 100 : Math.round((r.done / r.total) * 100));
@@ -36,12 +31,15 @@ const pct = (r: Row): number => (r.total === 0 ? 100 : Math.round((r.done / r.to
 async function panelRows(): Promise<Row[]> {
   const rows: Row[] = [];
   for (const locale of LOCALES) {
-    const entries = Object.values(CatalogSchema.parse(await Bun.file(`web/src/locales/${locale}.json`).json()));
+    // Through Lingui's own reader, not by parsing `.po`: this is the count
+    // `lingui extract` prints, so the README cannot disagree with the tool.
+    const { messages, missing } = await translations(locale);
+    const total = Object.keys(messages).length;
     // The source language needs no translations: every message falls back to the
     // English the macro hashed, so it is complete by construction rather than by
     // anybody's work.
-    const done = locale === "en" ? entries.length : entries.filter((m) => (m.translation ?? "").trim() !== "").length;
-    rows.push({ label: endonymOf(locale), done, total: entries.length, ...(locale === "en" ? { source: true } : {}) });
+    const done = locale === "en" ? total : total - missing.length;
+    rows.push({ label: endonymOf(locale), done, total, ...(locale === "en" ? { source: true } : {}) });
   }
   return rows;
 }

@@ -6,6 +6,7 @@ import { waitFor } from "../support/render.tsx";
 import { tempDir } from "../support/temp.ts";
 import { inFlight, mockHttp, server } from "../support/http.ts";
 import { emptyState } from "../../web/src/shared/api.ts";
+import { linguiCatalogs } from "../../scripts/lingui-catalogs.ts";
 import { linguiMacros } from "../../scripts/lingui-macros.ts";
 
 /**
@@ -130,7 +131,7 @@ test("the built bundle mounts 耗时 without throwing", async () => {
     target: "browser",
     minify: true,
     outdir: workdir,
-    plugins: [linguiMacros],
+    plugins: [linguiMacros, linguiCatalogs],
   });
   expect(built.success).toBe(true);
 

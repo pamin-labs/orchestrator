@@ -1,4 +1,4 @@
-import { formatter } from "@lingui/format-json";
+import { formatter } from "@lingui/format-po";
 
 /**
  * The panel's messages, keyed by their English source.
@@ -13,12 +13,14 @@ import { formatter } from "@lingui/format-json";
  * import graph reaches it and Fallow is told about its formatter separately.
  */
 /**
- * JSON rather than `.po`, so Bun imports the catalogs natively — a `.po` needs
- * a loader plugin in both the bundler and the test preload to compile it.
+ * `.po`, the format Lingui's own docs and tooling are built around. A translator
+ * reads `msgid "Skills"` above `msgstr "Fähigkeiten"`; the JSON this replaced
+ * was keyed by hash, so the same line read `"PCSkw2": "技能"` and the English it
+ * translates lived in a sibling field.
  *
- * The default `lingui` style keeps the English `message` beside each hashed id,
- * which is the only thing that makes a catalog of hashes reviewable: `minimal`
- * would leave a translator a file of `"PCSkw2": "技能"`.
+ * The catalogs are compiled by `scripts/lingui-catalogs.ts`, the way
+ * `@lingui/vite-plugin` compiles them for Vite — so nothing here needs a
+ * `lingui compile` step and no ICU parser ships to the browser.
  */
 export default {
   /**

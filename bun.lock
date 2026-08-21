@@ -8,7 +8,7 @@
         "@alibaba-group/opensandbox": "^0.1.11",
         "@hono/zod-validator": "^0.9.0",
         "@lingui/core": "6.6.0",
-        "@lingui/message-utils": "6.6.0",
+        "@lingui/detect-locale": "6.6.0",
         "@lingui/react": "6.6.0",
         "@octokit/core": "^7.0.7",
         "@octokit/plugin-retry": "^8.1.1",
@@ -67,13 +67,13 @@
       },
       "devDependencies": {
         "@babel/core": "^7",
-        "@babel/types": "^7",
         "@biomejs/biome": "^2.5.8",
         "@happy-dom/global-registrator": "^20.11.2",
         "@lingui/babel-plugin-lingui-macro": "6.6.0",
         "@lingui/cli": "6.6.0",
         "@lingui/conf": "6.6.0",
-        "@lingui/format-json": "6.6.0",
+        "@lingui/format-po": "6.6.0",
+        "@lingui/message-utils": "6.6.0",
         "@opentelemetry/otlp-transformer": "^0.221.0",
         "@tailwindcss/cli": "^4.3.3",
         "@testing-library/dom": "10.4.1",
@@ -295,7 +295,7 @@
 
     "@lingui/core": ["@lingui/core@6.6.0", "", { "dependencies": { "@lingui/babel-plugin-lingui-macro": "6.6.0", "@lingui/message-utils": "6.6.0" }, "peerDependencies": { "babel-plugin-macros": "2 || 3" }, "optionalPeers": ["babel-plugin-macros"] }, "sha512-vqL7LkU2iDAHcaHYzFGbdYovHLdHamG0Zh7r5F9O7C1J1sEPZSMQfkddk2FFeSZHy5j7Na7hzIGGJTZutgiZRg=="],
 
-    "@lingui/format-json": ["@lingui/format-json@6.6.0", "", { "dependencies": { "@lingui/conf": "6.6.0" } }, "sha512-OFSaDbQtGIIYFaBMO8ylwF5v03wpkJJHxsOrdn9lgtQAP/tntyFZ7O36SuJQrq0S+IP4aLQTLGibx2uDWHtTGw=="],
+    "@lingui/detect-locale": ["@lingui/detect-locale@6.6.0", "", {}, "sha512-QUplAyyZZh3LD3vycCV7eFxTsq2LI8T9n9kBRJXfYpjhzyjptK0WIzewEzStDLL2X39wNc6cAlmymjFE9Arwtg=="],
 
     "@lingui/format-po": ["@lingui/format-po@6.6.0", "", { "dependencies": { "@lingui/conf": "6.6.0", "@lingui/message-utils": "6.6.0", "pofile-ts": "^4.0.3" } }, "sha512-vOUYBYC+81Gl/tJWqEMM2ah+W06M3zWjb78qNwRtl3UhNhoDbduZpNayDQ7RoEA9NtxNQ75Fx7946+0GPnHy7Q=="],
 

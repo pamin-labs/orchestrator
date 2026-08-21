@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import { linguiCatalogs } from "../../scripts/lingui-catalogs.ts";
 import { expandMacros } from "../../scripts/lingui-macros.ts";
 
 /**
@@ -60,6 +61,16 @@ const expanded = (source: string, path: string): [string, string, string | null]
   const { code, map } = expandMacros(source, path);
   return [code, path, map];
 };
+
+// The catalogs, on the same terms the bundler gets them: compiled by
+// `@lingui/cli/api` rather than parsed in the browser. A separate plugin because
+// its filter does not overlap this one's — `.po` is not a `.tsx`.
+//
+// Ungated, unlike the transform below: `setup.ts` imports the Chinese catalog
+// unconditionally, so a process without this handler cannot resolve `.po` at
+// all. Registering an `onLoad` costs nothing; running one is what costs, and
+// only the files this filter matches ever run it.
+void Bun.plugin(linguiCatalogs);
 
 if (touchesPanel || covering)
   Bun.plugin({

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { linguiCatalogs } from "../../scripts/lingui-catalogs.ts";
 import { linguiMacros } from "../../scripts/lingui-macros.ts";
 
 /**
@@ -22,7 +23,7 @@ async function bundle(): Promise<string> {
     target: "browser",
     minify: true,
     splitting: true,
-    plugins: [linguiMacros],
+    plugins: [linguiMacros, linguiCatalogs],
   });
   expect(built.success).toBe(true);
   // Named, not `outputs[0]`: with splitting on, a catalog chunk can come first
