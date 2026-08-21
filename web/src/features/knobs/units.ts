@@ -91,9 +91,9 @@ const UNIT_LABEL: Record<DurationUnit, MessageDescriptor> = {
 
 /** `msg` at module scope, `i18n._` at call scope: a descriptor is locale-free
  *  data, so it is safe in a table built once at import. */
-const unitLabel = (unit: DurationUnit): string => i18n._(UNIT_LABEL[unit]);
+export const unitLabel = (unit: DurationUnit): string => i18n._(UNIT_LABEL[unit]);
 
-const PER: Record<DurationUnit, number> = { ms: 1, s: 1000, min: 60_000, h: 3_600_000, d: 86_400_000 };
+export const PER: Record<DurationUnit, number> = { ms: 1, s: 1000, min: 60_000, h: 3_600_000, d: 86_400_000 };
 
 /**
  * Biggest first, so 1200000 reads as 20 分钟 rather than 1200000 毫秒.
@@ -103,7 +103,8 @@ const PER: Record<DurationUnit, number> = { ms: 1, s: 1000, min: 60_000, h: 3_60
  * dividing. Only two shipped values are a whole number of days, and both read
  * better as one.
  */
-const BIGGEST_FIRST: DurationUnit[] = ["d", "h", "min", "s", "ms"];
+/** Biggest first, which is also the order the unit menu offers them. */
+export const DURATION_UNITS: readonly DurationUnit[] = ["d", "h", "min", "s", "ms"];
 
 /**
  * The largest unit this many milliseconds is a whole number of.
@@ -112,7 +113,7 @@ const BIGGEST_FIRST: DurationUnit[] = ["d", "h", "min", "s", "ms"];
  * every split can be multiplied back to exactly the number that came in.
  */
 export function splitDuration(ms: number): { n: number; unit: DurationUnit } {
-  for (const unit of BIGGEST_FIRST) {
+  for (const unit of DURATION_UNITS) {
     const n = ms / PER[unit];
     // Zero is a whole number of hours too; it should read as 0 秒.
     if (Number.isInteger(n) && (n !== 0 || unit === "s")) return { n, unit };

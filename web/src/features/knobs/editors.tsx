@@ -13,6 +13,7 @@ import { Combobox } from "../../ui/combobox";
 import { Field, FieldContent, FieldTitle } from "../../ui/field";
 import { Input, Meta, Textarea } from "../../ui/bits";
 import { Button } from "../../ui/button";
+import { Menu, MenuItem } from "../../ui/menu";
 import { Segment, Segments } from "../../ui/segment";
 import { Tip } from "../../ui/tooltip";
 import { Switch } from "../../ui/switch";
@@ -31,7 +32,7 @@ import {
   runtimeSwitch,
   textOf,
 } from "./model";
-import { COUNT_UNITS, countOf, fmtDuration, parseDuration, splitCount, splitDuration } from "./units";
+import { COUNT_UNITS, countOf, DURATION_UNITS, PER, splitCount, splitDuration, unitLabel } from "./units";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
@@ -47,6 +48,8 @@ const DEFAULT_KEY = "default";
  * Unit sets where "none" is a real answer, so the toggle may be turned all the
  * way off. Counts qualify — 45 is forty-five — and durations do not.
  */
+const MANY = 3;
+
 const BARE_OK = new Set<string>(COUNT_UNITS);
 
 /**
@@ -115,6 +118,14 @@ export const LANGUAGE_SUGGESTIONS = [
  * `parseDuration` already accepted every spelling a person types, so the
  * buttons were offering what the field could take anyway.
  */
+/**
+ * A duration, as a number and the unit it is counted in.
+ *
+ * It was one free-text box that accepted `15s` or `3 小时`, which read fine and
+ * asked the reader to know that `分钟` was a word this field would take. The
+ * unit is a closed set of five, so it is a menu — `Amount` draws one past four
+ * options rather than spending five buttons of width on a row that has twelve.
+ */
 export function DurationAmount({
   ms,
   label,
@@ -126,38 +137,16 @@ export function DurationAmount({
   invalid?: boolean;
   onWrite: (ms: number) => void;
 }) {
-  // The *resolved* text, not `ms`: the unit is translated, so the same number
-  // reads `20 min` and `20 мин`. Keyed on `ms`, the effect saw nothing move when
-  // the panel changed language and the field kept the previous language's unit —
-  // beside a label that had already changed.
-  const shown = fmtDuration(ms);
-  const [draft, setDraft] = useState(shown);
-  // A value the server snapped to something else re-reads on the way back.
-  useEffect(() => setDraft(shown), [shown]);
-
-  const send = (raw: string) => {
-    // The unit already on screen is what a bare number means, which is what
-    // makes "20" a legal edit of "15 分钟".
-    const parsed = parseDuration(raw, splitDuration(ms).unit);
-    if (parsed === null) setDraft(fmtDuration(ms));
-    else onWrite(parsed);
-  };
-
+  const { n, unit } = splitDuration(ms);
   return (
-    <Input
-      value={draft}
-      aria-label={label}
-      aria-invalid={invalid || undefined}
-      className="min-w-0 max-w-[7rem] py-0.5 font-mono text-secondary aria-[invalid=true]:border-accent"
-      onChange={(e) => setDraft(e.currentTarget.value)}
-      onBlur={(e) => send(e.currentTarget.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
-        else if (e.key === "Escape") {
-          setDraft(fmtDuration(ms));
-          e.currentTarget.blur();
-        }
-      }}
+    <Amount
+      n={n}
+      unit={unit}
+      units={DURATION_UNITS}
+      label={label}
+      labelOf={unitLabel}
+      {...(invalid !== undefined ? { invalid } : {})}
+      onCommit={(next, u) => onWrite(next * PER[u])}
     />
   );
 }
@@ -220,6 +209,17 @@ export function Amount<U extends string>({
       {/* One unit is not a choice, it is a suffix. */}
       {units.length === 1 && units[0] !== undefined ? (
         <Meta>{show(units[0])}</Meta>
+      ) : units.length > MANY ? (
+        /* A menu past four, because a segmented control spends a button of width
+           on every option it is not showing. Five units down twelve rows is
+           sixty buttons to say twelve numbers — measured, on the waiting pane. */
+        <Menu label={show(unit)}>
+          {units.filter(Boolean).map((u) => (
+            <MenuItem key={u} onSelect={() => send(draft, u)}>
+              {show(u)}
+            </MenuItem>
+          ))}
+        </Menu>
       ) : (
         <Segments
           value={unit}
