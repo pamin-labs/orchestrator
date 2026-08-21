@@ -4,6 +4,7 @@ import { ConfigSchema } from "../../contracts/config.ts";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { findHijack, RolePromptHijackError } from "../text/prompt-guard.ts";
 
 /**
  * Roles are configuration, not code.
@@ -369,6 +370,18 @@ export function loadRoles(dir = join(ROOT, "roles")): Map<string, RoleDef> {
     const r = RoleDefSchema.parse(Bun.YAML.parse(readFileSync(join(dir, f), "utf8")), {
       error: () => `${f}: invalid role`,
     });
+    // Fail closed: a role whose prompt contains text impersonating an instruction
+    // does not start. Better a role that will not load than one running a backdoor
+    // its author never read — a role file can arrive by copy-paste from somebody
+    // else's installation. The message names the file and quotes the span, because
+    // "this role is unsafe" tells the boss to worry and not what to delete.
+    //
+    // `untrusted_data`, not `trusted_instruction`: `trusted_instruction` is the
+    // sink for text that is ALLOWED to command the model, so nothing is ever
+    // `blocked` under it and the gate would pass everything. A role file is checked
+    // precisely because it may have been copied from another installation.
+    const hijack = findHijack(r.prompt, "untrusted_data");
+    if (hijack) throw new RolePromptHijackError(`roles/${f}`, hijack);
     out.set(r.name, r);
   }
   return out;
