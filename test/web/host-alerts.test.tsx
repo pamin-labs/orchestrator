@@ -13,8 +13,15 @@ import type { HostFailure } from "../../web/src/shared/api.ts";
  * itself when the set of faults is a different set.
  */
 
-const docker = (detail: string): HostFailure => ({ name: "docker", detail, fix: "colima start" });
-const server = (detail: string): HostFailure => ({ name: "sandbox-server", detail });
+/**
+ * A failure whose key this build has never heard of — which is the case that has
+ * to keep working, because it is what an older panel meets the day the server
+ * adds a check. The English the server rendered is what gets drawn, so every
+ * assertion below reads the fallback path.
+ */
+const unknown = { id: "check.from.a.newer.server" };
+const docker = (detail: string): HostFailure => ({ name: "docker", detail, said: unknown, fix: "colima start" });
+const server = (detail: string): HostFailure => ({ name: "sandbox-server", detail, said: unknown });
 
 afterEach(cleanup);
 
@@ -29,6 +36,33 @@ test("a broken check names itself and says what is wrong, in that order", () => 
   // `role="alert"` because that is what this is to a screen reader, and it is
   // how the row is found without a test id.
   expect(getByRole("alert").textContent).toContain("sandbox-server server requires an API key");
+});
+
+/**
+ * The other half of the same rule: a key this panel *does* know is rendered from
+ * its own catalogue, values and all.
+ *
+ * Asserted by what it is not, because the suite runs under the Chinese catalog:
+ * the English the server rendered must not reach the screen, while the number
+ * inside the sentence — which only the server knows — must.
+ */
+test("a key this panel knows is rendered here, with the server's values in it", () => {
+  const { getByRole } = render(
+    <HostAlert
+      failing={[
+        {
+          name: "skills mount",
+          detail: "7 staged at /var/tmp/orch-cache/skills",
+          said: { id: "check.skills.staged", values: { count: 7, path: "/var/tmp/orch-cache/skills" } },
+        },
+      ]}
+      onFix={() => {}}
+    />,
+  );
+  const said = getByRole("alert").textContent ?? "";
+  expect(said).toContain("7");
+  expect(said).toContain("/var/tmp/orch-cache/skills");
+  expect(said).not.toContain("staged at");
 });
 
 // A count, never the node: a failing `expect(element)` prints the whole
@@ -47,7 +81,11 @@ test("a healthy host draws nothing at all", () => {
 test("three faults are one row with the count, not three rows", () => {
   const { getByRole } = render(
     <HostAlert
-      failing={[docker("daemon is not running"), server("HTTP 500"), { name: "image", detail: "no registry" }]}
+      failing={[
+        docker("daemon is not running"),
+        server("HTTP 500"),
+        { name: "image", detail: "no registry", said: unknown },
+      ]}
       onFix={() => {}}
     />,
   );

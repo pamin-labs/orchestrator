@@ -25,6 +25,7 @@ import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
 import { grp as grps, job } from "../../platform/persistence/schema.ts";
+import { said } from "../../platform/text/lang.ts";
 
 /**
  * What this machine can and cannot do, and the sidecar that decides it.
@@ -195,7 +196,7 @@ export const postSandboxServerRestart = (async (ctx) => {
   // on the same problem.
   resetServerRestarts();
   if (err) return bad(err);
-  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "沙箱服务器重启了，容器都没了" });
+  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", say: said("ev.sandbox.server_bounced") });
   return json({ ok: true });
 }) satisfies Handler;
 
@@ -222,7 +223,7 @@ export const postSandboxServerStart = (async (ctx) => {
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body: st.kind === "started" ? `沙箱服务器起好了（pid ${st.pid}）` : "沙箱服务器本来就在跑，直接用了",
+    say: st.kind === "started" ? said("ev.sandbox.server_up", { pid: st.pid }) : said("ev.sandbox.server_was_up"),
   });
   return json({ ok: true, state: st.kind });
 }) satisfies Handler;

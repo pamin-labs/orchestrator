@@ -13,7 +13,7 @@ import {
   slice as slices,
 } from "../../platform/persistence/schema.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
-import { say } from "../../platform/text/lang.ts";
+import { said } from "../../platform/text/lang.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { getFile, type Scope } from "../../mech/sandbox/sandbox.ts";
 import { listSkills, projectSkills, readSkillIn } from "../../mech/skills.ts";
@@ -301,7 +301,7 @@ async function digestBacklog(
     grpId: groupId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "unread.digest", { n: behind.c }),
+    say: said("ev.unread.digest", { n: behind.c }),
     meta: { channel_id: channelId, behind: behind.c },
   });
   return `\n\n(${behind.c} 条更早的还没读，Librarian 正在压成一条摘要，别自己去翻)`;

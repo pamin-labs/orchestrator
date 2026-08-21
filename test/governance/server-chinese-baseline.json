@@ -6,11 +6,10 @@
   "api/panel/authflow.ts": 7,
   "api/panel/group.ts": 1,
   "api/panel/project.ts": 16,
-  "api/panel/sandbox.ts": 4,
   "api/panel/settings.ts": 2,
   "application/executor.ts": 6,
   "application/turn/delta.ts": 2,
-  "composition/server.ts": 24,
+  "composition/server.ts": 19,
   "contracts/config.ts": 8,
   "mech/flow/chain.ts": 4,
   "mech/flow/intercept.ts": 1,
@@ -26,6 +25,5 @@
   "mech/util/attachment-text.ts": 1,
   "mech/util/validate.ts": 6,
   "platform/config/load.ts": 1,
-  "platform/observability/redaction.ts": 1,
-  "platform/text/lang.ts": 65
+  "platform/observability/redaction.ts": 1
 }

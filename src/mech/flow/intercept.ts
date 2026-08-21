@@ -7,7 +7,7 @@ import { rebaseOntoBase, rollbackTo } from "../git/gitops.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
-import { say } from "../../platform/text/lang.ts";
+import { said } from "../../platform/text/lang.ts";
 import { GRP_TERMINAL_STATES, type GrpState } from "../../contracts/states.ts";
 
 /**
@@ -202,13 +202,13 @@ async function settle(ctx: Ctx, grpId: number): Promise<void> {
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "group.paused"),
+    say: said("ev.group.paused"),
   });
 }
 
 export async function resume(ctx: Ctx, grpId: number): Promise<void> {
   await release(ctx, grpId);
-  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config.language, "group.resumed") });
+  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", say: said("ev.group.resumed") });
   await ctx.sched.tick();
 }
 

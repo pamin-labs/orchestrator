@@ -4,6 +4,7 @@ import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import type { HostFailure } from "../shared/api";
+import { checkText } from "../features/settings/checks";
 
 /**
  * A broken host check, stated where the boss is looking.
@@ -64,10 +65,11 @@ export function HostAlert({ failing, onFix }: { failing: readonly HostFailure[];
             written to follow its own name — `opensandbox-server` + `server
             requires an API key and none was sent` — so dropping the name left
             the row starting mid-phrase, which is how the settings pane renders
-            the same pair. Server-authored, both of them; only the frame around
-            them is translated. */}
+            the same pair. The name is an identifier and stays as it is; the
+            sentence after it is a key the panel renders, and falls back to the
+            server's English for a key this build has never heard of. */}
         <AlertDescription>
-          <span className="text-ink">{first.name}</span> {first.detail}
+          <span className="text-ink">{first.name}</span> {checkText(first.said, first.detail)}
         </AlertDescription>
       </span>
       <AlertAction>

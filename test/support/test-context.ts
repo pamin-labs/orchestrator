@@ -20,12 +20,16 @@ export const stopSchedulers = (): void => {
 
 export async function testContext(overrides: Partial<Ctx> = {}): Promise<Ctx> {
   const db = overrides.db ?? (await openMemory());
+  const config = overrides.config ?? loadConfig();
   return {
     ...overrides,
     db,
-    bus: overrides.bus ?? new Bus(db),
+    // With the language, as the server wires it: the bus renders an event's
+    // `body` column from the key its emitter named, and a bus built without one
+    // writes English into a context whose `output.language` says otherwise.
+    bus: overrides.bus ?? new Bus(db, () => config.language),
     sched: overrides.sched ?? made[made.push(new Scheduler(db, async () => {})) - 1]!,
     waiters: overrides.waiters ?? new Map<string, (value: string) => void>(),
-    config: overrides.config ?? loadConfig(),
+    config,
   };
 }

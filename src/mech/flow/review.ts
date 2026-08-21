@@ -12,7 +12,7 @@ import {
   task,
 } from "../../platform/persistence/schema.ts";
 import type { Config } from "../../platform/config/load.ts";
-import { say } from "../../platform/text/lang.ts";
+import { said, say } from "../../platform/text/lang.ts";
 import { valueOr } from "../../contracts/json.ts";
 import type { SliceState } from "../../contracts/states.ts";
 import { runGates, recordGate, gateState } from "../gate.ts";
@@ -133,7 +133,7 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      body: say(ctx.config.language, "gate.reconcile", { seq: slice.seq, reason: rec.reason ?? "" }),
+      say: said("ev.gate.reconcile", { seq: slice.seq, reason: rec.reason ?? "" }),
       meta: { slice_id: sliceId, phantom: rec.phantom },
     });
     return {
@@ -160,7 +160,7 @@ export async function runDeterministicReview(
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "gate_result",
-    body: say(ctx.config.language, out.pass ? "gate.pass" : "gate.fail", { seq: slice.seq }),
+    say: said(out.pass ? "ev.gate.pass" : "ev.gate.fail", { seq: slice.seq }),
     meta: { slice_id: sliceId, results: out.results.map((r) => ({ name: r.name, pass: r.pass })) },
   });
   if (!out.pass) return { pass: false, feedback: out.feedback };
@@ -171,10 +171,7 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      body: say(ctx.config.language, "gate.unclaimed", {
-        seq: slice.seq,
-        files: rec.unclaimed.slice(0, 10).join(", "),
-      }),
+      say: said("ev.gate.unclaimed", { seq: slice.seq, files: rec.unclaimed.slice(0, 10).join(", ") }),
       meta: { slice_id: sliceId },
     });
   }
@@ -242,7 +239,7 @@ export async function sendBack(deps: ReviewDeps, sliceId: number, feedback: stri
       kind: "escalation",
       intent: "ask",
       severity: "blocker",
-      body: say(ctx.config.language, "slice.failed", { seq: slice.seq, from, n: retries }),
+      say: said("ev.slice.failed", { seq: slice.seq, from, n: retries }),
       meta: { slice_id: sliceId },
     });
     return;
@@ -257,7 +254,7 @@ export async function sendBack(deps: ReviewDeps, sliceId: number, feedback: stri
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "slice.sentback", { seq: slice.seq, from, n: retries }),
+    say: said("ev.slice.sentback", { seq: slice.seq, from, n: retries }),
     meta: { slice_id: sliceId },
   });
   await ctx.sched.tick();
@@ -320,7 +317,7 @@ export async function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number)
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "slice.ready", { seq: slice.seq, title: slice.title }),
+    say: said("ev.slice.ready", { seq: slice.seq, title: slice.title }),
     meta: { slice_id: sliceId, gates: await gateState(ctx.db, sliceId) },
   });
 
@@ -333,7 +330,7 @@ export async function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number)
       ctx,
       sliceId,
       "orchestrator",
-      say(ctx.config.language, "slice.autoaccept", { tier: slice.difficulty }),
+      say(ctx.config.language, "ev.slice.autoaccept", { tier: slice.difficulty }),
     );
     return;
   }
@@ -349,7 +346,7 @@ export async function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number)
         grpId: slice.grp_id,
         author: "orchestrator",
         kind: "state_change",
-        body: say(ctx.config.language, "group.autoadvance"),
+        say: said("ev.group.autoadvance"),
         meta: { slice_id: next },
       });
       await ctx.sched.tick();
@@ -407,9 +404,9 @@ export async function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: s
     kind: "state_change",
     // Two keys rather than a bracket pair spliced in here: built at the call site
     // the brackets were fullwidth, so the English row read `accepted: S3 t（why）`.
-    body: why
-      ? say(ctx.config.language, "slice.accepted_why", { seq: sl.seq, title: sl.title, why })
-      : say(ctx.config.language, "slice.accepted", { seq: sl.seq, title: sl.title }),
+    say: why
+      ? said("ev.slice.accepted_why", { seq: sl.seq, title: sl.title, why })
+      : said("ev.slice.accepted", { seq: sl.seq, title: sl.title }),
     meta: { slice_id: sliceId, by },
   });
 

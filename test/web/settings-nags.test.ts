@@ -10,7 +10,12 @@ import type { AuthRow, HostCheck } from "../../web/src/features/settings/auth.ts
  */
 
 const rowFor = (runtime: string): AuthRow => ({ runtime, mode: "api_key", hint: "…x", updatedAt: 1 });
-const check = (name: string, ok: boolean): HostCheck => ({ name, ok, detail: "" });
+const check = (name: string, ok: boolean): HostCheck => ({
+  name,
+  ok,
+  detail: "",
+  said: { id: "check.docker.absent" },
+});
 
 /**
  * Which input lit the dot is the missing half of `expected false, received true`,

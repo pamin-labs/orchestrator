@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { JsonValue } from "./json.ts";
+import { SaidSchema } from "./said.ts";
 import { ESCALATION_STATES, GRP_STATES, SLICE_STATES, TASK_STATES } from "./states.ts";
 
 /**
@@ -189,9 +190,13 @@ export const UsageWindow = z.object({
  */
 export const HostFailure = z.object({
   name: z.string(),
+  /** English, and the panel's fallback: a key its own table does not know yet still reads. */
   detail: z.string(),
-  /** How the boss fixes it. Server-authored, shown verbatim, never in a catalog. */
+  /** How the boss fixes it. */
   fix: z.string().optional(),
+  /** The same two sentences as keys, rendered in whatever language this browser reads. */
+  said: SaidSchema,
+  fixSaid: SaidSchema.optional(),
 });
 
 export const SnapshotSchema = z.object({

@@ -338,7 +338,17 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
     // row here is a failure by construction. Absent in unit tests and in any
     // process with no readiness timer, which is an empty list, not an error.
     failing: (ctx.checks?.() ?? []).flatMap((c) =>
-      c.ok ? [] : [{ name: c.name, detail: c.detail, ...(c.fix === undefined ? {} : { fix: c.fix }) }],
+      c.ok
+        ? []
+        : [
+            {
+              name: c.name,
+              detail: c.detail,
+              said: c.said,
+              ...(c.fix === undefined ? {} : { fix: c.fix }),
+              ...(c.fixSaid === undefined ? {} : { fixSaid: c.fixSaid }),
+            },
+          ],
     ),
     projects,
     groups,

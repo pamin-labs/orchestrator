@@ -36,7 +36,8 @@ import { valueOr } from "../../contracts/json.ts";
 import { errText, hours, minutes } from "../../platform/process/text.ts";
 import { answered, roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
-import { say, type SayKey } from "../../platform/text/lang.ts";
+import { said, say } from "../../platform/text/lang.ts";
+import type { Said } from "../../contracts/said.ts";
 import { hold, interrupt, park, release, unpark } from "../flow/intercept.ts";
 import { sweepApproved } from "../flow/start.ts";
 import { raise } from "../flow/escalate.ts";
@@ -105,7 +106,12 @@ export interface WatchdogDeps {
 export interface Finding {
   rule: string;
   grpId: number | null;
-  body: string;
+  /**
+   * Named, not rendered. ADR 035 §3: the panel is the only reader of the event
+   * body, so it renders this in its own locale — and `executor.ts` renders the
+   * same key in `output.language` for the notifier, which does reach a webhook.
+   */
+  say: Said;
   severity: "advisory" | "blocker";
 }
 
@@ -281,12 +287,7 @@ export function sweepTurnLogs(dir: string, now: number): { zipped: number; dropp
  * and "arrived a minute ago" looked alike, and a forgotten requirement is as
  * stopped as a crashed one.
  */
-async function waitingOnBoss(
-  db: WatchdogDeps["ctx"]["db"],
-  now: number,
-  nudgeAfterMs: number,
-  t: Translate,
-): Promise<Finding[]> {
+async function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number, nudgeAfterMs: number): Promise<Finding[]> {
   const out: Finding[] = [];
   const cutoff = now - nudgeAfterMs;
 
@@ -309,7 +310,7 @@ async function waitingOnBoss(
       rule: "waiting_card",
       grpId: g.id,
       severity: "advisory",
-      body: t("wd.waiting_card", { name: g.name, hours: hours(now - (g.at ?? now)) }),
+      say: said("ev.wd.waiting_card", { name: g.name, hours: hours(now - (g.at ?? now)) }),
     });
   }
 
@@ -322,7 +323,7 @@ async function waitingOnBoss(
       rule: "waiting_slice",
       grpId: s.grp_id,
       severity: "advisory",
-      body: t("wd.waiting_slice", { name: s.name, seq: s.seq, hours: hours(now - (s.awaiting_at ?? now)) }),
+      say: said("ev.wd.waiting_slice", { name: s.name, seq: s.seq, hours: hours(now - (s.awaiting_at ?? now)) }),
     });
   }
 
@@ -369,7 +370,7 @@ async function waitingOnBoss(
       rule: "waiting_merge",
       grpId: q.id,
       severity: behind > 0 ? "blocker" : "advisory",
-      body: t(behind > 0 ? "wd.waiting_merge_blocked" : "wd.waiting_merge", {
+      say: said(behind > 0 ? "ev.wd.waiting_merge_blocked" : "ev.wd.waiting_merge", {
         name: q.name,
         hours: hours(now - (q.at ?? now)),
         n: behind,
@@ -449,7 +450,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
           rule: "watchdog_broke",
           grpId: null,
           severity: "blocker",
-          body: say(deps.ctx.config.language, "wd.broke", { why: errText(e) }),
+          say: said("ev.wd.broke", { why: errText(e) }),
         },
       ],
       deps.now ?? (() => Date.now()),
@@ -520,14 +521,14 @@ async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise
       rule: "repo-map",
       grpId: null,
       severity: "advisory",
-      body: say(ctx.config.language, "wd.map_stale", { repo: p.repo_path }),
+      say: said("ev.wd.map_stale", { repo: p.repo_path }),
     });
     return;
   }
   if (stamp && (await readSetting(ctx.db, MAP_KEY(p.id))) === stamp) return;
   const { files, why } = p.remote
     ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))
-    : { files: [], why: say(ctx.config.language, "wd.map_no_remote") };
+    : { files: [], why: say(ctx.config.language, "ev.wd.map_no_remote") };
   // Said once per project: never means the map silently stops being refreshed,
   // and every tick is a feed nobody reads. Said with git's own words, because
   // naming possible causes in prose is a guess printed as a diagnosis.
@@ -538,9 +539,12 @@ async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise
       rule: "repo-map",
       grpId: null,
       severity: "advisory",
-      body: say(ctx.config.language, "wd.map_failed", {
+      // `{why}` is a value, not a key: git's own words when there are any, and
+      // this sentence when there are not. A parameter carrying a *key* would be
+      // a sentence assembled in two catalogues, which `contracts/said.ts` refuses.
+      say: said("ev.wd.map_failed", {
         repo: p.repo_path,
-        why: why ?? say(ctx.config.language, "wd.map_no_reason"),
+        why: why ?? say(ctx.config.language, "ev.wd.map_no_reason"),
       }),
     });
     return;
@@ -636,7 +640,7 @@ function stepper(deps: WatchdogDeps, now: () => number, findings: Finding[]) {
             rule: `rule_broke:${rule.id}`,
             grpId: null,
             severity: "blocker",
-            body: say(deps.ctx.config.language, "wd.rule_broke", {
+            say: said("ev.wd.rule_broke", {
               rule: rule.id,
               ruleName: rule.name,
               why: errText(e),
@@ -656,19 +660,12 @@ function stepper(deps: WatchdogDeps, now: () => number, findings: Finding[]) {
   };
 }
 
-type Translate = (key: SayKey, args?: Parameters<typeof say>[2]) => string;
-
 /** Stop network-dependent rules while offline and requeue interrupted turns once. */
-async function networkReady(
-  deps: WatchdogDeps,
-  findings: Finding[],
-  now: () => number,
-  t: Translate,
-): Promise<boolean> {
+async function networkReady(deps: WatchdogDeps, findings: Finding[], now: () => number): Promise<boolean> {
   const net = await (deps.probe ?? probe)(deps.ctx.db, now(), undefined, deps.ctx.config);
   if (!net.changed) return net.online;
   const held = net.online ? 0 : await holdForOffline(deps.ctx, now());
-  const body = net.online ? t("net.back") : t("net.lost", { n: held });
+  const what = net.online ? said("ev.net.back") : said("ev.net.lost", { n: held });
   // The finding is the only announcement. There was a `bus.emit` here as well,
   // with the same sentence and no dedup, so the feed carried the line twice in
   // the same second — once from `orchestrator` as a state change, once from
@@ -679,7 +676,7 @@ async function networkReady(
     rule: net.online ? "network_back" : "network_lost",
     grpId: null,
     severity: net.online ? "advisory" : "blocker",
-    body,
+    say: what,
   });
   if (net.online) await deps.ctx.sched.tick();
   return net.online;
@@ -801,17 +798,15 @@ async function queueRebase(
     rule: "base_moved",
     grpId: group.id,
     severity: "advisory",
-    body: say(ctx.config.language, "wd.base_moved", { base: baseRef, sha: sha.slice(0, 8), name: group.name }),
+    say: said("ev.wd.base_moved", { base: baseRef, sha: sha.slice(0, 8), name: group.name }),
   });
 }
 
 async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]> {
   const { ctx, cfg } = deps;
-  // Boss-facing findings follow output.language; agent feedback stays English.
-  const t = (k: SayKey, a?: Parameters<typeof say>[2]) => say(ctx.config.language, k, a);
   const now = deps.now ?? (() => Date.now());
   const step = stepper(deps, now, findings);
-  if (!(await networkReady(deps, findings, now, t))) return await emit(ctx, findings, now);
+  if (!(await networkReady(deps, findings, now))) return await emit(ctx, findings, now);
 
   // Liveness first: one row per state, each saying who pushes it (invariants.ts).
   // The rules below are the other question — "is this healthy" — and keeping the
@@ -840,7 +835,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "turn_timeout",
         grpId: j.grp_id,
         severity: "advisory",
-        body: t("wd.turn_timeout", { min: minutes(cfg.turnTimeoutMs) }),
+        say: said("ev.wd.turn_timeout", { min: minutes(cfg.turnTimeoutMs) }),
       });
       if (j.grp_id) await interrupt(ctx, j.grp_id, "keep");
     }
@@ -857,7 +852,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "no_progress",
         grpId: a.grp_id,
         severity: "advisory",
-        body: t("wd.no_progress", { role: a.role, n: a.idle_turns }),
+        say: said("ev.wd.no_progress", { role: a.role, n: a.idle_turns }),
       });
       await ctx.db.update(agent).set({ state: "blocked", idle_turns: 0 }).where(eq(agent.id, a.id));
     }
@@ -884,7 +879,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         // a design problem, and asking the writer to try harder does not fix it.
         // `loop_file` is still typed nullable — the predicate is a runtime fact and
         // not a type — so this reads it rather than asserting past it.
-        body: t("wd.circling", { role: a.role, file: a.loop_file ?? "", n: a.loop_count }),
+        say: said("ev.wd.circling", { role: a.role, file: a.loop_file ?? "", n: a.loop_count }),
       });
       await ctx.db.update(agent).set({ loop_count: 0 }).where(eq(agent.id, a.id));
     }
@@ -905,7 +900,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         severity: "advisory",
         // Same command, same code, same failure: the environment is the variable,
         // and letting the writer keep editing code is how hours disappear.
-        body: t("wd.env_suspect", { resource: l.resource, n: l.c }),
+        say: said("ev.wd.env_suspect", { resource: l.resource, n: l.c }),
       });
       await ctx.db
         .update(lease)
@@ -942,7 +937,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "budget_exhausted",
           grpId: g.id,
           severity: "blocker",
-          body: t("wd.budget_exhausted", { name: g.name, tokens: g.spent_tokens }),
+          say: said("ev.wd.budget_exhausted", { name: g.name, tokens: g.spent_tokens }),
         });
         await hold(ctx.db, g.id, { reason: "budget", settled: true });
         // A notification says it stopped; it does not put a decision in front of
@@ -964,7 +959,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "budget_80",
           grpId: g.id,
           severity: "advisory",
-          body: t("wd.budget_80", { name: g.name, pct: Math.round(frac * 100) }),
+          say: said("ev.wd.budget_80", { name: g.name, pct: Math.round(frac * 100) }),
         });
       }
     }
@@ -983,9 +978,9 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         grpId: g.id,
         author: "orchestrator",
         kind: "state_change",
-        body: t("rl.resumed"),
+        say: said("ev.rl.resumed"),
       });
-      findings.push({ rule: "rate_limit_resumed", grpId: g.id, severity: "advisory", body: t("rl.resumed") });
+      findings.push({ rule: "rate_limit_resumed", grpId: g.id, severity: "advisory", say: said("ev.rl.resumed") });
     }
   });
 
@@ -1105,7 +1100,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "stalled",
         grpId: j.grp_id,
         severity: "blocker",
-        body: t("wd.stalled", { why: j.error ?? "" }),
+        say: said("ev.wd.stalled", { why: j.error ?? "" }),
       });
     }
     // No tick here: the server ticks on the same timer that enqueued this watchdog,
@@ -1181,7 +1176,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         grpId: g.id,
         author: "orchestrator",
         kind: "state_change",
-        body: t("group.unblocked", { target: String(g.blocked_on) }),
+        say: said("ev.group.unblocked", { target: String(g.blocked_on) }),
       });
       // Rule 8 above requeues a live group with an empty queue, so the turn itself
       // comes from there — this only has to make the group live again.
@@ -1189,7 +1184,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "unblocked",
         grpId: g.id,
         severity: "advisory",
-        body: t("group.unblocked", { target: String(g.blocked_on) }),
+        say: said("ev.group.unblocked", { target: String(g.blocked_on) }),
       });
     }
   });
@@ -1213,14 +1208,14 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "parked",
           grpId: g.id,
           severity: "advisory",
-          body: t("wd.parked", { name: g.name, min: minutes(waited) }),
+          say: said("ev.wd.parked", { name: g.name, min: minutes(waited) }),
         });
       } else if (waited >= limits(ctx).pausedNotifyMs) {
         findings.push({
           rule: "waiting_on_you",
           grpId: g.id,
           severity: "blocker",
-          body: t("wd.waiting_on_you", { name: g.name, min: minutes(waited) }),
+          say: said("ev.wd.waiting_on_you", { name: g.name, min: minutes(waited) }),
         });
       }
     }
@@ -1262,7 +1257,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       );
     for (const g of revivable) {
       await unpark(ctx, g.id);
-      findings.push({ rule: "unparked", grpId: g.id, severity: "advisory", body: t("wd.unparked", { name: g.name }) });
+      findings.push({
+        rule: "unparked",
+        grpId: g.id,
+        severity: "advisory",
+        say: said("ev.wd.unparked", { name: g.name }),
+      });
     }
   });
 
@@ -1282,7 +1282,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "waiting_parked",
         grpId: g.id,
         severity: "advisory",
-        body: t("wd.waiting_parked", { name: g.name, hours: hours(now() - (g.paused_at ?? now())) }),
+        say: said("ev.wd.waiting_parked", { name: g.name, hours: hours(now() - (g.paused_at ?? now())) }),
       });
     }
   });
@@ -1302,7 +1302,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "sandbox_swept",
         grpId: g.id,
         severity: "advisory",
-        body: t("wd.sandbox_swept", { name: g.name }),
+        say: said("ev.wd.sandbox_swept", { name: g.name }),
       });
     }
   });
@@ -1335,7 +1335,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "sandbox_stale_credential",
           grpId: g.id,
           severity: "advisory",
-          body: t("wd.sandbox_stale_cred", { name: g.name }),
+          say: said("ev.wd.sandbox_stale_cred", { name: g.name }),
         });
       }
       for (const p of await ctx.db
@@ -1390,7 +1390,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "server_gone",
           grpId: null,
           severity: "blocker",
-          body: t("wd.server_gone", { n: SERVER_RESTART_CAP, cmd: seenServerArgv!.join(" ") }),
+          say: said("ev.wd.server_gone", { n: SERVER_RESTART_CAP, cmd: seenServerArgv!.join(" ") }),
         });
         break;
       case "restart": {
@@ -1401,9 +1401,9 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "server_restarted",
           grpId: null,
           severity: err ? "blocker" : "advisory",
-          body: err
-            ? t("wd.server_restart_failed", { n: serverRestarts, why: err })
-            : t("wd.server_restarted", { n: serverRestarts }),
+          say: err
+            ? said("ev.wd.server_restart_failed", { n: serverRestarts, why: err })
+            : said("ev.wd.server_restarted", { n: serverRestarts }),
         });
         break;
       }
@@ -1442,7 +1442,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "stale_ask",
         grpId: e.grp_id,
         severity: "advisory",
-        body: t("wd.stale_ask", { name: e.name }),
+        say: said("ev.wd.stale_ask", { name: e.name }),
       });
     }
   });
@@ -1450,7 +1450,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // 13. The three places that wait on the boss, with a clock on each. They are
   // supposed to wait; what was missing is that they waited in silence.
   await step({ id: "13", name: "boss_clocks", every: EVERY_TICK }, async () => {
-    for (const w of await waitingOnBoss(ctx.db, now(), limits(ctx).nudgeAfterMs, t)) findings.push(w);
+    for (const w of await waitingOnBoss(ctx.db, now(), limits(ctx).nudgeAfterMs)) findings.push(w);
   });
 
   return await emit(ctx, findings, now);
@@ -1489,7 +1489,7 @@ async function emit(ctx: Ctx, findings: Finding[], now: () => number): Promise<F
       kind: "escalation",
       intent: "ask",
       severity: f.severity,
-      body: f.body,
+      say: f.say,
       meta: { rule: f.rule },
     });
   }

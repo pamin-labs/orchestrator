@@ -12,6 +12,7 @@ import { Field, FieldContent, FieldGroup, FieldLabel, InputGroup } from "../../u
 import { Tip } from "../../ui/tooltip";
 import { ImageRow } from "../project/view";
 import type { AuthRow, HostCheck } from "./auth";
+import { checkText } from "./checks";
 import { Trans } from "@lingui/react/macro";
 import { ph, t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
@@ -57,7 +58,7 @@ function EnvironmentCheck({ check }: { check: HostCheck }) {
       <div className="flex items-baseline gap-2">
         <CheckIcon ok={check.ok} />
         <span className={cn("text-body", !check.ok && "text-accent")}>{check.name}</span>
-        <Meta className="min-w-0 truncate">{check.detail}</Meta>
+        <Meta className="min-w-0 truncate">{checkText(check.said, check.detail)}</Meta>
       </div>
       <CheckFix check={check} />
     </div>
@@ -77,7 +78,7 @@ function CheckFix({ check }: { check: HostCheck }) {
   if (check.ok || !check.fix) return null;
   return (
     <span className="mt-1 ml-5 block rounded-md bg-sunk px-2 py-1 font-mono text-meta leading-relaxed text-ink-2">
-      {check.fix}
+      {checkText(check.fixSaid, check.fix)}
     </span>
   );
 }

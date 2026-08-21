@@ -100,8 +100,10 @@ test("no message in the Traditional catalog is Simplified", async () => {
  * `閘道器` are long-standing OpenCC output, so a future `opencc-js` that "fixes"
  * something nearby can put them back and every other check here stays green.
  */
-/** Counts, not presence: `9` is how many times `镜像` appears in `zh.po`, so a
- *  rule that half-applies is caught too. */
+/** Counts, not presence: the left-hand number is how many times the Simplified
+ *  word appears in `zh.po`, so a rule that half-applies is caught too. They move
+ *  whenever the panel gains copy — the assertion is that the right-hand column
+ *  is still zero. */
 test("the corrections to OpenCC survive into the shipped catalog", async () => {
   const po = await Bun.file("web/src/locales/zh-Hant.po").text();
   const times = (word: string): number => po.split(word).length - 1;
@@ -119,15 +121,15 @@ test("the corrections to OpenCC survive into the shipped catalog", async () => {
     發布: times("發布"),
     釋出: times("釋出"),
   }).toEqual({
-    映像: 9,
+    映像: 13,
     映象: 0,
     閘道: 3,
     閘道器: 0,
-    行程: 2,
+    行程: 4,
     程序: 0,
     全域: 2,
     全域性: 0,
-    前綴: 5,
+    前綴: 6,
     字首: 0,
     發布: 1,
     釋出: 0,

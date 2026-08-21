@@ -88,6 +88,9 @@ const steps: Step[] = [
   // the other catalog a sentence behind and nothing else notices: it is complete,
   // it parses, and `i18n:validate` is satisfied by it.
   { name: "traditional Chinese catalog", job: "quality", run: () => cmd("bun run i18n:hant --check") },
+  // The server renders these too, out of a module generated from the same `.po`
+  // files. Stale means the panel says one thing and the webhook another.
+  { name: "server message table", job: "quality", run: () => cmd("bun run i18n:messages --check") },
   // Editing an English `<Trans>` retires its id, so eight catalogs lose that
   // string at once — and `i18n:progress --check` only asks whether the README
   // matches, which regenerating it satisfies. This is the gate that says no.

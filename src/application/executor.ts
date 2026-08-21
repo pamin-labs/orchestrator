@@ -26,7 +26,7 @@ import { roleFor, type Ctx } from "../mech/ctx.ts";
 function mintToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
-import { say } from "../platform/text/lang.ts";
+import { renderSaid, said } from "../platform/text/lang.ts";
 import { raise } from "../mech/flow/escalate.ts";
 import { hold } from "../mech/flow/intercept.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
@@ -43,7 +43,7 @@ import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts"
 import { gitTrailers } from "../mech/git/ghlogin.ts";
 import { changedSince, checkpoint, porcelainEntries, porcelainPaths, STATUS_Z } from "../mech/git/gitops.ts";
 import { lessonsFor } from "../mech/knowledge/lessons.ts";
-import { gzipTurnLog, recordTurnOutcome, runWatchdog } from "../mech/ops/watchdog.ts";
+import { gzipTurnLog, recordTurnOutcome, runWatchdog, type Finding } from "../mech/ops/watchdog.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { scopeAttributes, type SpanScope } from "../platform/observability/metrics.ts";
 import { activeTracer } from "../platform/observability/traces.ts";
@@ -215,7 +215,7 @@ export async function hire(
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "hired", { role: roleName }),
+    say: said("ev.hired", { role: roleName }),
   });
   return row;
 }
@@ -868,7 +868,7 @@ export async function reconcileOwnership(
     author: "orchestrator",
     kind: "state_change",
     severity: "blocker",
-    body: say(deps.ctx.config.language, "owns.reverted", {
+    say: said("ev.owns.reverted", {
       role: agent.role,
       files: reverted.slice(0, 5).join(", "),
       n: String(reverted.length),
@@ -1051,7 +1051,7 @@ async function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: Tur
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "rl.waiting", { at: new Date(resetsMs).toLocaleString() }),
+    say: said("ev.rl.waiting", { at: new Date(resetsMs).toLocaleString() }),
     meta: rl,
   });
   if (job.grp_id) {
@@ -1090,11 +1090,16 @@ async function runWatchdogJob(deps: ExecDeps): Promise<void> {
   for (const item of await runStandup(deps.ctx.db)) await publishStandupItem(deps.ctx, item);
 }
 
-function publishWatchdogFinding(
-  ctx: Ctx,
-  finding: { rule: string; severity: string; body: string; grpId: number | null },
-): void {
-  ctx.onFinding?.(finding.rule, finding.severity, finding.body, finding.grpId);
+/**
+ * Rendered here, and in `output.language`.
+ *
+ * The event carrying this finding went out with a key on it, which the panel
+ * renders in its own locale. This is the other reader: `onFinding` feeds the
+ * `Notifier`, and `busDeliver` POSTs what it produces to a webhook — no browser
+ * on that path, which is ADR 035 §3's test for staying server-rendered.
+ */
+export function publishWatchdogFinding(ctx: Ctx, finding: Finding): void {
+  ctx.onFinding?.(finding.rule, finding.severity, renderSaid(ctx.config.language, finding.say), finding.grpId);
 }
 
 export async function publishStandupItem(

@@ -1,60 +1,54 @@
 import { expect, test } from "bun:test";
-import { SAY_KEYS, ZH_SAY, say, EN_SAY } from "../../src/platform/text/lang.ts";
-import { isChinese } from "../../src/contracts/config.ts";
+import { say } from "../../src/platform/text/lang.ts";
+import { MESSAGES, MESSAGE_IDS, type MessageId } from "../../src/platform/text/messages.generated.ts";
+import { LOCALES } from "../../src/contracts/config.ts";
 
 /**
- * The two tables and the keys callers may name.
+ * What the orchestrator says, in ten languages, rendered on the server.
  *
- * `EN` used to be annotated `Record<string, string>`, which made `keyof typeof EN`
- * mean `string` — so `say`'s `key` parameter checked nothing, in any caller, ever.
- * And `say` answers an unknown key with `String(key)`: it does not throw and does
- * not log, it puts the literal `wd.stalledd` into the boss's feed.
- *
- * The annotation is gone and the union is real; this file covers what a type cannot.
+ * This file used to guard two hand-kept tables behind `isChinese()` — a language
+ * *pair*, so `output.language: 한국어` got English. The tables are the panel's
+ * catalogs now, so what is left to check is that the generated one is total and
+ * that the ids callers may name are the ids it has.
  */
 
-test("both languages answer every key, with the arguments filled in", () => {
-  expect(say("中文", "wd.stalled", { why: "boom" })).toContain("boom");
-  expect(say("English", "wd.stalled", { why: "boom" })).toContain("boom");
-  // Anything that is not Chinese gets the English row — that is the whole rule,
-  // and `output.language` may now be any language at all.
-  expect(say("日本語", "gate.pass", { name: "x" })).toBe(say("English", "gate.pass", { name: "x" }));
-  expect(say("zh-CN", "gate.pass", { name: "x" })).toBe(say("中文", "gate.pass", { name: "x" }));
+test("a language that is neither English nor Chinese gets its own words", () => {
+  // The bug this replaced: `isChinese(lang) ? ZH : EN` has no third row, so a
+  // Korean boss read the feed in English however the knob was set.
+  expect(say("한국어", "ev.group.merged")).toBe(MESSAGES.ko["ev.group.merged"]);
+  expect(say("Русский", "ev.group.merged")).toBe(MESSAGES.ru["ev.group.merged"]);
+  expect(say("English", "ev.group.merged")).not.toBe(say("Français", "ev.group.merged"));
+  // Free text a person typed, so `localeOf` decides; an unrecognised one is the
+  // source language rather than nothing.
+  expect(say("Klingon", "ev.group.merged")).toBe(MESSAGES.en["ev.group.merged"]);
   // A unit test builds a Ctx without config; a missing language is not a reason
   // to throw inside a bus.emit.
-  expect(() => say(undefined, "gate.pass", {})).not.toThrow();
+  expect(() => say(undefined, "ev.gate.pass", { seq: 1 })).not.toThrow();
 });
 
-/** The names a row asks its caller for. */
-const holes = (row: string): string[] => [...row.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!).sort();
-
-/**
- * The same silent failure as an unknown key, one level down: a row asking for
- * `{minutes}` while every caller passes `min` renders a sentence with the thing
- * it was about missing, and nothing anywhere says so.
- *
- * A set comparison rather than an inspection of the output, because the output
- * is where the evidence has already been destroyed — see the test below.
- */
-test("a translated row asks for exactly the arguments its English row asks for", () => {
-  const drift = SAY_KEYS.filter((k) => {
-    const zh = ZH_SAY[k];
-    return zh !== undefined && String(holes(zh)) !== String(holes(EN_SAY[k]));
-  });
-  expect(drift).toEqual([]);
+test("every locale answers every id", () => {
+  const gaps = LOCALES.flatMap((l) => MESSAGE_IDS.filter((id) => !MESSAGES[l][id]).map((id) => `${l}: ${id}`));
+  expect(gaps).toEqual([]);
 });
+
+/** The names a row asks its caller for, ICU plural branches included. */
+const holes = (row: string): string[] => [...row.matchAll(/\{\s*(\w+)/g)].map((m) => m[1]!).sort();
 
 /**
  * What this replaced could not fail.
  *
- * It asserted `!out.includes("{")` — against a function that replaces **every**
- * `{word}` with `String(args[k] ?? "")`. An unfilled placeholder becomes the
- * empty string, so `turn ran past  min and was killed` passed. Rewritten as a
- * check on the rows rather than on the output, it immediately named six that had
- * been rendering blank under the green one.
+ * It asserted `!out.includes("{")` against a renderer that turns an unfilled
+ * `{word}` into the empty string — so `turn ran past  min and was killed`
+ * passed. ICU does the same thing, so the check has to stay on the rows: the
+ * output is where the evidence has already been destroyed.
+ */
+/**
+ * `ev.` only: `args` below is the union of what the `bus.emit` callers pass, and
+ * the table also carries the host checks, whose values come from
+ * `mech/ops/preflight.ts` and are covered where those are built.
  */
 test("no placeholder survives into the boss's feed unfilled", () => {
-  const args = {
+  const args: Record<string, string | number> = {
     name: "g1",
     n: 3,
     seq: 2,
@@ -68,7 +62,7 @@ test("no placeholder survives into the boss's feed unfilled", () => {
     repo: "o/r",
     files: "a.ts",
     why: "boom",
-    pr: 7,
+    pid: 41,
     branch: "b",
     hours: 4,
     rule: "12",
@@ -77,44 +71,29 @@ test("no placeholder survives into the boss's feed unfilled", () => {
     base: "origin/main",
     sha: "abc1234",
     title: "t",
-    // The six this check found on the day it replaced the vacuous one: every one
-    // of them was rendering as the empty string in the test above, green.
     tier: "M",
     reason: "no",
     path: "src/a.ts",
     target: 4,
     pct: 80,
   };
-  const unfilled = SAY_KEYS.flatMap((key) =>
-    holes(EN_SAY[key])
-      .filter((h) => !(h in args))
-      .map((h) => `${key}: {${h}}`),
+  const events = MESSAGE_IDS.filter((id) => id.startsWith("ev."));
+  const unfilled = events.flatMap((id) =>
+    holes(MESSAGES.en[id])
+      .filter((h) => !(h in args) && h !== "plural" && h !== "selectordinal")
+      .map((h) => `${id}: {${h}}`),
   );
   expect(unfilled).toEqual([]);
-  for (const lang of ["中文", "English"]) {
-    for (const key of SAY_KEYS) {
-      expect(say(lang, key, args).length).toBeGreaterThan(0);
-    }
+  for (const locale of LOCALES) {
+    for (const id of events) expect(say(locale, id, args).length).toBeGreaterThan(0);
   }
 });
 
-test("the language test is one predicate, and `en` is not what it answers to", () => {
-  // `escalation.ts` asked `language === "en"` while this module asked whether the
-  // string starts with 中 or zh. The default is "中文" and the panel offers
-  // "English", so that branch was unreachable for every value the setting can hold
-  // — the boss reading English got a Chinese prompt, from a comparison that looked
-  // deliberate. Free text in, so the test is what the value looks like.
-  expect([isChinese("中文"), isChinese("zh"), isChinese("zh-CN"), isChinese("中")]).toEqual([true, true, true, true]);
-  // The panel's own suggestion list, which is where the free text usually comes
-  // from: `繁體中文` is its second entry and read as English until `localeOf`
-  // stopped anchoring the test to the first character.
-  expect([isChinese("繁體中文"), isChinese("简体中文"), isChinese("汉语")]).toEqual([true, true, true]);
-  expect([isChinese("English"), isChinese("en"), isChinese("日本語"), isChinese(undefined)]).toEqual([
-    false,
-    false,
-    false,
-    false,
-  ]);
-  // And it is the same answer `say` gives, because there is one of it now.
-  expect(say("English", "gate.pass", { name: "x" })).toBe(say("fr", "gate.pass", { name: "x" }));
+test("a plural reads right at one, which is what a bare {n} could not", () => {
+  const one = (id: MessageId, n: number) => say("English", id, { n, role: "engineer", file: "a.ts", files: "a.ts" });
+  expect(one("ev.wd.no_progress", 1)).toContain("1 turn without");
+  expect(one("ev.wd.no_progress", 2)).toContain("2 turns without");
+  expect(say("Русский", "ev.notify.batch", { n: 2 })).toContain("дела");
+  expect(say("Русский", "ev.notify.batch", { n: 5 })).toContain("дел");
+  expect(say("English", "ev.sediment", { n: 3 })).toContain("3rd");
 });

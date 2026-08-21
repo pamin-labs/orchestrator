@@ -3,6 +3,8 @@ import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trac
 import { StoredSpanExporter } from "../../src/platform/observability/span-store.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
+import { renderSaid, said } from "../../src/platform/text/lang.ts";
+import { publishWatchdogFinding } from "../../src/application/executor.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory, readSetting, type DB } from "../../src/platform/persistence/database.ts";
 import { busDeliver, Notifier, notifiable, tierFor, batchForBoss } from "../../src/mech/ops/notify.ts";
@@ -97,9 +99,11 @@ const EVERY_MAP_TICK = {
 
 async function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
   const db = await watchdogDb();
-  const bus = new Bus(db);
   const sched = new Scheduler(db, async () => {});
   const cfg = { ...loadConfig(), ...over };
+  // The bus renders the `body` column from the key an emitter names, so it needs
+  // the same `output.language` the rest of this context has.
+  const bus = new Bus(db, () => cfg.language);
   const ctx: Ctx = {
     db,
     bus,
@@ -155,7 +159,7 @@ test("a RUNNING group whose last turn failed is put back once, then handed to th
   await h.db.update(jobTable).set({ state: "failed", error: "same thing" }).where(eq(jobTable.state, "pending"));
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("stalled");
-  expect(f.find((x) => x.rule === "stalled")!.body).toContain("same thing");
+  expect(f.find((x) => x.rule === "stalled")!.say.values?.why).toContain("same thing");
   expect(await pending(h.db)).toHaveLength(0);
 });
 
@@ -228,7 +232,7 @@ test("rewriting one file every turn is caught and sent to the Architect", async 
   expect(circling).toBeDefined();
   // The message names the likely cause: telling the writer to try harder does
   // not fix a design problem.
-  expect(circling.body).toContain("Architect");
+  expect(renderSaid("en", circling.say)).toContain("Architect");
 });
 
 test("touching several files does not look like circling", async () => {
@@ -250,8 +254,8 @@ test("the same lease failing twice on unchanged code blames the environment", as
   expect(env).toBeDefined();
   // The body follows output.language (中文 here); the resource name is a technical
   // term and stays verbatim in both.
-  expect(env.body).toContain("build");
-  expect(env.body).toContain("环境");
+  expect(env.say.values?.resource).toBe("build");
+  expect(renderSaid(h.ctx.config.language, env.say)).toContain("环境");
 });
 
 test("two failures at different commits are just two failures", async () => {
@@ -1006,7 +1010,7 @@ test("one rule throwing costs that rule, not the twenty-four after it", async ()
   // The rule that threw names itself, so the finding is actionable — "rule 7d3
   // broke" rather than "the watchdog broke".
   expect(first.map((x) => x.rule)).toContain("rule_broke:7d3");
-  expect(first.find((x) => x.rule === "rule_broke:7d3")!.body).toContain("usage endpoint exploded");
+  expect(first.find((x) => x.rule === "rule_broke:7d3")!.say.values?.why).toContain("usage endpoint exploded");
 
   // The next tick, with 7d3 still throwing: the rules after it ran anyway, and
   // the breakage is not reported a second time — once per REEMIT_MS, or a rule
@@ -1338,7 +1342,7 @@ test("an unreadable container builds the map once, then reports instead of rebui
   expect(sandbox.commands.filter((c) => c.includes("ls-tree"))).toHaveLength(1);
   expect(await readSetting(h.db, "watchdog.repo_map.1")).toBeNull();
   // Said once, and it names why rebuilding would not help.
-  const said = ticks.flat().filter((f) => f.body.includes("仓库地图停在上一次的版本"));
+  const said = ticks.flat().filter((f) => f.say.id === "ev.wd.map_stale");
   expect(said).toHaveLength(1);
 });
 
@@ -1568,7 +1572,7 @@ test("a merge queue held up behind the head interrupts, one PR waiting on its ow
   await queued2(2);
   const head = (await runWatchdog(h2.deps)).find((x) => x.rule === "waiting_merge")!;
   expect(head.severity).toBe("blocker");
-  expect(head.body).toContain("1");
+  expect(head.say.values?.n).toBe(1);
 });
 
 /**
@@ -1607,4 +1611,27 @@ test("the repo map is not asked about on every tick, and the period is configura
   const before = asked();
   await runWatchdog(fresh.deps);
   expect(asked()).toBe(before + 1);
+});
+
+/**
+ * The other half of ADR 035 §3, which the panel's half is easy to break.
+ *
+ * A finding now travels as an id, and the panel renders it. The notifier does
+ * not: `busDeliver` POSTs what it is handed to a webhook, and there is no
+ * browser on that path — so `publishWatchdogFinding` has to render, in
+ * `output.language`, before `onFinding` ever sees it.
+ */
+test("a finding reaches the notifier as a sentence in output.language, not as an id", async () => {
+  const h = await harness();
+  const seen: string[] = [];
+  h.ctx.onFinding = (_rule, _severity, body) => seen.push(body);
+
+  publishWatchdogFinding(h.ctx, {
+    rule: "turn_timeout",
+    grpId: 1,
+    severity: "advisory",
+    say: said("ev.wd.turn_timeout", { min: 30 }),
+  });
+
+  expect(seen).toEqual(["一个 turn 超过 30 分钟，已掐断"]);
 });

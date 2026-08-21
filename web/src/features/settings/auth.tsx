@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import { Button, LinkButton } from "../../ui/button";
 import { z } from "zod";
 import { api } from "../../shared/api";
+import { SaidSchema } from "../../../../src/contracts/said.ts";
 import type { InferResponseType } from "hono/client";
 import { Trans } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
@@ -34,11 +35,15 @@ export const HostCheckSchema = z
     ok: z.boolean(),
     detail: z.string(),
     fix: z.string().optional(),
+    /** ADR 041: the sentence is a key the panel renders, `detail` is the English fallback. */
+    said: SaidSchema,
+    fixSaid: SaidSchema.optional(),
   })
   .transform(
-    ({ fix, ...check }): HostCheck => ({
+    ({ fix, fixSaid, ...check }): HostCheck => ({
       ...check,
       ...(fix !== undefined ? { fix } : {}),
+      ...(fixSaid !== undefined ? { fixSaid } : {}),
     }),
   );
 

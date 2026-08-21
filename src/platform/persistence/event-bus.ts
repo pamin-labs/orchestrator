@@ -12,6 +12,7 @@ import {
 import { jsonOr, valueOr, JsonValue } from "../../contracts/json.ts";
 import { requestContext } from "../observability/request-context.ts";
 import { scrub } from "../observability/redaction.ts";
+import { renderSaid } from "../text/lang.ts";
 
 /**
  * Append-only event log plus fan-out.
@@ -94,8 +95,16 @@ export class Bus {
 
   private readonly db: DB;
 
-  constructor(db: DB) {
+  private readonly lang: () => string | undefined;
+
+  /**
+   * `lang` is a thunk for the reason `maxGroups` is one: it is a setting the boss
+   * can change while the fleet runs, and the bus outlives the change. Absent, it
+   * renders English — a `Bus` built without a config is a test.
+   */
+  constructor(db: DB, lang: () => string | undefined = () => undefined) {
     this.db = db;
+    this.lang = lang;
   }
 
   subscribe(sink: (frame: Frame) => void): () => void {
@@ -138,15 +147,27 @@ export class Bus {
     return transaction(this.db, run);
   }
 
-  private prepare(e: EventInput): ValidatedEventInput {
-    const body = scrub(e.body ?? "");
+  /**
+   * One place, not thirty call sites.
+   *
+   * ADR 035 §3 splits an event body by its reader: the panel is the only one, so
+   * the caller names the sentence and the panel renders it from `meta.say` in the
+   * language that reader chose. `body` is still written — it is `NOT NULL`, it is
+   * what every row stored before this has, and `/readyz` and the console read it.
+   * Doing both here is what stops the thirtieth emitter from doing only one.
+   */
+  private prepare({ say: said, ...e }: EventInput): ValidatedEventInput {
+    const body = scrub(said ? renderSaid(this.lang(), said) : (e.body ?? ""));
+    // The key beside whatever the emitter already put there, never instead of it:
+    // `emit` in `watchdog.ts` keys its own dedupe on `meta.rule`.
+    const meta = said ? { ...(typeof e.meta === "object" && e.meta ? e.meta : {}), say: said } : e.meta;
     // `meta` too, not just the body. It is written to the same append-only row and
     // read back by the panel and the cost report, and several emitters put whole
     // CLI payloads in it — a credential landing there was as permanent as one in
     // the body, and only the body was ever masked. Scrubbed as serialised text
     // because the masker works on values, and `MASK` carries no quote so the JSON
     // survives it.
-    const metaJson = scrub(JSON.stringify(e.meta ?? {}));
+    const metaJson = scrub(JSON.stringify(meta ?? {}));
     const context = requestContext.getStore();
     return EventInputSchema.parse({
       ...e,

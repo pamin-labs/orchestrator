@@ -8,7 +8,7 @@ import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
-import { say } from "../../platform/text/lang.ts";
+import { said } from "../../platform/text/lang.ts";
 import { hold } from "../../mech/flow/intercept.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { CLAIMING, canStart, claimsShared, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";
@@ -480,7 +480,7 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
       grpId: gid,
       author: a.role,
       kind: "state_change",
-      body: say(ctx.config.language, "group.blocked", { path, target: String(destination.target) }),
+      say: said("ev.group.blocked", { path, target: String(destination.target) }),
       meta: { blocked_on: destination.target, path },
     });
     return destination;

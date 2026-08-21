@@ -86,7 +86,7 @@ test("drift is reported with the line to paste, not a description of it", async 
       skillsDir: "/Users/me/.orch-cache/skills",
       cacheDirs: { "/root/.bun/install/cache": "/Users/me/.orch-cache/bun" },
       probe: () => false,
-      verify: async () => ({ ok: true, detail: "" }),
+      verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
     });
     const c = checks.find((x) => x.name === "allowed_host_paths")!;
     expect(c.ok).toBe(false);
@@ -101,7 +101,7 @@ test("drift is reported with the line to paste, not a description of it", async 
       sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
       skillsDir: "/var/tmp/orch-cache/skills",
       probe: () => false,
-      verify: async () => ({ ok: true, detail: "" }),
+      verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
     });
     expect(ok.find((x) => x.name === "allowed_host_paths")!.ok).toBe(true);
   } finally {

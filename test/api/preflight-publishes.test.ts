@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
 import { getPreflight } from "../../src/api/panel/sandbox.ts";
+import { makeCheck } from "../../src/mech/ops/preflight.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -12,10 +13,21 @@ import { testContext } from "../support/test-context.ts";
  * answer from before the fix, for as long as the timer took to come round.
  */
 
-const ok = { name: "opensandbox-server", ok: true, detail: "reachable" };
+const ok = makeCheck("opensandbox-server", true, { id: "check.server.reachable" });
 
 /** The wire shape, parsed rather than asserted: the response is `unknown` data. */
-const Body = z.object({ checks: z.array(z.object({ name: z.string(), ok: z.boolean(), detail: z.string() })) });
+const Body = z.object({
+  checks: z.array(
+    z.object({
+      name: z.string(),
+      ok: z.boolean(),
+      // Both halves cross: the English for `/readyz` and the console, and the key
+      // the settings pane renders in whatever language this browser reads.
+      detail: z.string(),
+      said: z.object({ id: z.string(), values: z.record(z.string(), z.union([z.string(), z.number()])).optional() }),
+    }),
+  ),
+});
 const bodyOf = async (response: Promise<Response>) => Body.parse(await (await response).json());
 
 test("the endpoint reports what it published, not a copy of its own", async () => {

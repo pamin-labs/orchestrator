@@ -1,5 +1,6 @@
 import * as OpenCC from "opencc-js/core";
 import * as Locale from "opencc-js/preset";
+import { writeOrCheck } from "./generated-file.ts";
 
 /**
  * `zh-Hant.po`, generated from `zh.po`.
@@ -131,24 +132,4 @@ const TARGET = "web/src/locales/zh-Hant.po";
 
 // `import.meta.main`, so a test can import `hant` and drive it over a handful of
 // lines without regenerating a catalogue to get at one function.
-if (import.meta.main) {
-  const next = hant(await Bun.file(SOURCE).text());
-  const current = await Bun.file(TARGET)
-    .text()
-    .catch(() => "");
-
-  if (process.argv.includes("--check")) {
-    if (next === current) {
-      console.log(`${TARGET}: up to date`);
-      process.exit(0);
-    }
-    console.error(`${TARGET} does not match ${SOURCE} — run \`bun run i18n:hant\``);
-    process.exit(1);
-  }
-
-  if (next === current) console.log(`${TARGET}: unchanged`);
-  else {
-    await Bun.write(TARGET, next);
-    console.log(`${TARGET}: written`);
-  }
-}
+if (import.meta.main) await writeOrCheck(TARGET, hant(await Bun.file(SOURCE).text()), SOURCE, "i18n:hant");

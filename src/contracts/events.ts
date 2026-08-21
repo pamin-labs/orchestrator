@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Said } from "./said.ts";
 
 export const EventInputSchema = z.object({
   channelId: z.number().nullable().optional(),
@@ -36,6 +37,15 @@ export const FrameSchema = z.discriminatedUnion("type", [
 
 export type EventInput = Omit<z.infer<typeof EventInputSchema>, "meta"> & {
   meta?: object | string | number | boolean | null;
+  /**
+   * The sentence, unrendered, for the reader who is a browser.
+   *
+   * ADR 035 §3: nothing but the panel reads an event body, so the key rides in
+   * `meta.say` and the panel renders it in the language its reader chose. `Bus`
+   * still writes `body` from it — `NOT NULL`, and older rows have nothing else.
+   * Stripped before the insert; `meta.say` is where it lands.
+   */
+  say?: Said;
 };
 export type StoredEvent = z.infer<typeof StoredEventSchema>;
 export type LiveFrame = z.infer<typeof LiveFrameSchema>;

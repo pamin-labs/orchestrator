@@ -8,7 +8,7 @@ import { runtime_auth } from "../../src/platform/persistence/schema.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { setTrailers } from "../../src/mech/git/ghlogin.ts";
-import { newEnough, preflight, report } from "../../src/mech/ops/preflight.ts";
+import { newEnough, preflight, report, type PreflightInput } from "../../src/mech/ops/preflight.ts";
 import {
   CODEX_HOME,
   decoy,
@@ -104,7 +104,7 @@ test("preflight names what is missing and how to fix it, rather than degrading",
     probe: () => false,
     // Injected: whether a provider still accepts a token is a network fact, and
     // a test that asks the network is a test that fails on a train.
-    verify: async () => ({ ok: true, detail: "能用" }),
+    verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
   });
   const by = Object.fromEntries(checks.map((c) => [c.name, c]));
   // The fix for a missing server is a uvx command, so a machine without uv has
@@ -127,7 +127,7 @@ test("preflight names what is missing and how to fix it, rather than degrading",
     db,
     sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
     probe: () => false,
-    verify: async () => ({ ok: true, detail: "能用" }),
+    verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
   });
   expect(after.find((c) => c.name === "credential:claude")!.ok).toBe(true);
 });
@@ -491,11 +491,11 @@ test("in a container, preflight stops answering questions about somebody else's 
   // running the sandbox server, and when the orchestrator ships as an image that
   // machine is somebody else's.
   const db = await openMemory();
-  const input = {
+  const input: PreflightInput = {
     db,
     sandbox: { server: "127.0.0.1:9", apiKey: "", image: "ghcr.io/pamin-labs/orch-agent:latest" },
     probe: () => false,
-    verify: async () => ({ ok: true, detail: "能用" }),
+    verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
   };
   const host = await preflight({ ...input, contained: false });
   const inside = await preflight({ ...input, contained: true });

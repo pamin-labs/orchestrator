@@ -1,3 +1,4 @@
+import type { Said } from "../contracts/said.ts";
 import type { DB } from "../platform/persistence/database.ts";
 import type { Bus } from "../platform/persistence/event-bus.ts";
 import type { Scheduler } from "../platform/scheduling/scheduler.ts";
@@ -75,9 +76,10 @@ export interface Ctx {
    * A getter and not a value because the timer replaces the array every tick.
    * Running the checks costs host round trips and stays on that timer; *reading*
    * the result costs nothing, which is why the panel snapshot may have it.
-   * Structural rather than `preflight.Check` so this file keeps importing nothing.
+   * Structural rather than `preflight.Check` so this file keeps importing nothing
+   * but the `Said` contract, which is the panel's half of the same rows.
    */
-  checks?: () => ReadonlyArray<{ name: string; ok: boolean; detail: string; fix?: string }>;
+  checks?: () => ReadonlyArray<{ name: string; ok: boolean; detail: string; fix?: string; said: Said; fixSaid?: Said }>;
   /**
    * Wired by the server: run them now, publish the result, hand it back.
    *
@@ -86,7 +88,9 @@ export interface Ctx {
    * quoting the answer the timer last found. Two runs of one question is two
    * answers, and the fresher one was the one nobody else could see.
    */
-  recheck?: () => Promise<ReadonlyArray<{ name: string; ok: boolean; detail: string; fix?: string }>>;
+  recheck?: () => Promise<
+    ReadonlyArray<{ name: string; ok: boolean; detail: string; fix?: string; said: Said; fixSaid?: Said }>
+  >;
   /**
    * The roles this installation has, wired by the server.
    *

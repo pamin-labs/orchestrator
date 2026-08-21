@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { credentialVerdict, modelProbe, preflight } from "../../src/mech/ops/preflight.ts";
+import { MESSAGES, MESSAGE_IDS } from "../../src/platform/text/messages.generated.ts";
 
 test("a ChatGPT login is called out when it is old, not when the host lacks codex", async () => {
   // This used to check `probe("codex")`. Since 007 step 7 the renewal runs real
@@ -24,7 +25,7 @@ test("a ChatGPT login is called out when it is old, not when the host lacks code
       sandbox: { server: "http://127.0.0.1:1", apiKey: "", image: "x" },
       // No codex on this host, and that is now fine.
       probe: (bin) => bin !== "codex",
-      verify: async () => ({ ok: true, detail: "ok" }),
+      verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
     });
   };
 
@@ -49,7 +50,7 @@ test("the other credential modes need nothing on this host", async () => {
     db,
     sandbox: { server: "http://127.0.0.1:1", apiKey: "", image: "x" },
     probe: () => false,
-    verify: async () => ({ ok: true, detail: "ok" }),
+    verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
   });
   expect(checks.find((c) => c.name === "codex-refresher")).toBeUndefined();
 });
@@ -69,7 +70,7 @@ test("docker installed but not started is not 'running'", async () => {
       asked.push([bin, ...argv]);
       return bin === "docker" && argv[0] === "--version";
     },
-    verify: async () => ({ ok: true, detail: "" }),
+    verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
   });
   const docker = checks.find((c) => c.name === "docker")!;
   expect(asked).toContainEqual(["docker", "info"]);
@@ -124,7 +125,7 @@ test("each runtime asks its own provider unless a gateway is configured", () => 
 });
 
 test("only 401 and 403 are read as the credential being refused", () => {
-  expect(credentialVerdict(200)).toEqual({ ok: true, detail: "accepted" });
+  expect(credentialVerdict(200)).toEqual({ ok: true, said: { id: "check.cred.accepted" } });
   expect({ "401": credentialVerdict(401).ok, "403": credentialVerdict(403).ok }).toEqual({
     "401": false,
     "403": false,
@@ -132,10 +133,49 @@ test("only 401 and 403 are read as the credential being refused", () => {
 
   // Everything else is unverified, not refused. A 500 or a 429 from a gateway
   // says nothing about the token, and calling it bad costs the boss a re-paste
-  // and leaves the real outage unreported.
+  // and leaves the real outage unreported. The status is a **value** in the
+  // sentence rather than text spliced into it, so the panel can say it in nine
+  // languages and still name the number.
   for (const status of [429, 500, 502, 404]) {
     const v = credentialVerdict(status);
     expect(v.ok).toBe(true);
-    expect(v.detail).toContain(String(status));
+    expect(v.said).toEqual({ id: "check.cred.unverified", values: { status } });
   }
+});
+
+/**
+ * The other half of `lang.test.ts`'s placeholder guard, which covers `ev.` only.
+ *
+ * It has to be checked on the rows, not the output: ICU renders an unfilled
+ * `{path}` as the empty string, so `no skills ticked at ` reads like a sentence
+ * somebody wrote. The evidence is already gone by the time there is a string.
+ */
+/**
+ * `values` is the union of what `makeCheck`'s call sites in `preflight.ts` pass.
+ * `makeCheck` is the only place a `Check` is built, so a name missing here is a
+ * name no check can fill.
+ */
+test("no placeholder in a host check's sentence goes unfilled", () => {
+  const values = new Set([
+    "mode",
+    "status",
+    "days",
+    "error",
+    "server",
+    "good",
+    "stale",
+    "image",
+    "count",
+    "path",
+    "config",
+    "missing",
+    "line",
+  ]);
+  const holes = (row: string): string[] => [...row.matchAll(/\{\s*(\w+)/g)].map((m) => m[1]!);
+  const unfilled = MESSAGE_IDS.filter((id) => id.startsWith("check.")).flatMap((id) =>
+    holes(MESSAGES.en[id])
+      .filter((hole) => !values.has(hole))
+      .map((hole) => `${id}: {${hole}}`),
+  );
+  expect(unfilled).toEqual([]);
 });

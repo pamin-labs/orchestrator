@@ -28,20 +28,57 @@ rotate every session in the fleet. `src/contracts/config.ts` holds the one
 function mapping free text — `中文`, `ja_JP`, `Japanese` — onto a catalog, and
 both sides call it.
 
-`src/platform/text/lang.ts` is **not** migrating, and the reason first written
-here was wrong. It said the release binary is `bun build --compile`, which takes
-no plugin, so a macro would have to expand at runtime. `Bun.build` accepts
-`compile` *and* `plugins` together — measured, a standalone binary carrying all
-809 compiled messages — so that door was never shut.
+`src/platform/text/lang.ts` was **not** migrating — it has since, and both
+reasons written here for keeping it out were wrong, in different ways.
 
-The real reason is that the server has no reader who needs a ninth language.
-What it writes divides three ways: diagnostics only a developer reads, which stay
-English; feedback that lands in an agent's prompt, which stays English on purpose
-because translating it only makes the model translate it back; and text a person
-reads on the panel — which should not be rendered on the server at all. That last
-kind is a `SayKey` and its arguments, and the panel already holds nine catalogs
-to render it with. Rendering it early is what pins it to `output.language`
-instead of to the language the reader chose.
+The first said the release binary is `bun build --compile`, which takes no
+plugin, so a macro would have to expand at runtime. `Bun.build` accepts `compile`
+*and* `plugins` together — measured, a standalone binary carrying all 809
+compiled messages — so that door was never shut.
+
+## The correction: importing a catalog, not running the library
+
+The paragraph above conflates two things, and this ADR's conclusion rested on
+the confusion. `bun build --compile` takes no plugin, so it cannot **compile a
+`.po` on the way in**. It has no trouble **running Lingui**: a plugin is a build
+concern, and `setupI18n` is not.
+
+Measured, not argued — a standalone binary built with `bun build --compile`,
+rendering out of a generated module rather than a `.po`:
+
+```
+ru n=1  -> 1 срез        ru n=11 -> 11 срезов
+ru n=2  -> 2 среза       ru n=21 -> 21 срез
+ko      -> main에 병합했습니다
+de      -> migriert und abfragbar     (check.database.ok)
+```
+
+| | without | with |
+|---|---|---|
+| binary | 63,446,114 B | 63,495,650 B (+49,536, 10 modules) |
+
+Four Russian forms from one message is the part that matters. `one`/`few`/`many`
+is a rule ICU has and we do not, and the alternative on offer was a third
+hand-kept table.
+
+So the catalog reaches the server as a generated module —
+`scripts/i18n-messages.ts` writes `src/platform/text/messages.generated.ts` from
+the same ten `.po` files the panel compiles — and
+[`035`](035-language-follows-who-wrote-it.md) §3 is why it had to.
+
+## What the second reason got wrong
+
+It was that the server has no reader who needs a ninth language. Wrong about one
+reader: the notification webhook is a person, and it leaves this machine. `035`
+§3 now sorts by who reads a string and where, and the server renders its half in
+ten languages rather than in the two `isChinese()` could tell apart — which is a
+language *pair*, so `output.language: 한국어` got English however it was set.
+
+What stays true is the rest of the division: diagnostics only a developer reads
+stay English, and feedback that lands in an agent's prompt stays English on
+purpose, because translating it only makes the model translate it back. Text a
+person reads on the panel is an id and its values, rendered by the browser out of
+the catalog its reader chose.
 
 The README's table counts both surfaces, which is how a reader can see they are
 two mechanisms rather than one that is half-done.

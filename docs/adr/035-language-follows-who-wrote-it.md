@@ -38,48 +38,62 @@ only make the model translate it back.
 
 ## 3. Derived data a person reads
 
-Panel text was in this list and is not any more:
-[`041`](041-the-panel-speaks-english-and-a-compiler-hashes-it.md) moved it to the
-browser's own language. Reading a pane is not writing a thing, and this knob sits
-in the cache prefix — following it would have rotated every session in the fleet
-to change what one person reads.
+This section has been rewritten twice, and the reason is worth keeping: both
+earlier drafts drew the line in the wrong place.
 
-This section said "`say()` event bodies and note bodies" follow `output.language`,
-and after 041 that was half wrong in a way nobody could see from either file: 041
-says a `SayKey` and its arguments "should not be rendered on the server at all",
-which is the opposite instruction for the same strings. **041 wins for event
-bodies.** The line is not the kind of text, it is the reader:
+The first said "`say()` event bodies and note bodies" follow `output.language`.
+[`041`](041-the-panel-speaks-english-and-a-compiler-hashes-it.md) then said a
+message id and its arguments "should not be rendered on the server at all",
+which is the opposite instruction for the same strings.
 
-> Does anything but a browser read this string?
+The second tried to settle it with **"does anything but a browser read this
+string?"** — no meant a key and the panel's locale, yes meant `output.language`
+on the server. That put the notification webhook in the second bucket by
+accident of plumbing, not by intent: a webhook is a person reading a sentence,
+and it got one of two languages because `isChinese()` is a language *pair*.
 
-**No — the panel's own locale, and the server sends a key.** A `bus.emit` body is
-read by the timeline and by nothing else. Rendering it at the emit site pins it to
-one install-wide setting, and `isChinese()` is a language *pair*, so a Korean boss
-gets English however that knob is set. The catalogs have nine; the panel picks
-one per browser.
+The line is neither the kind of text nor the transport. It is **who reads it and
+where**:
 
-**Yes — `output.language`, rendered on the server, as before.** Three sinks, and
-each has something other than a browser at the far end:
+| Text | Follows | Rendered by |
+|---|---|---|
+| Shown on the panel — host checks, events, validation errors | the site language | the panel |
+| Leaves this machine for a person — the webhook, the paragraphs of a prompt a person reads | the output language | the server, in ten languages |
+| Code, commits, branches, protocol keys, logs, `/readyz` | English | nobody; it is not translated |
 
-- **Escalation `question` and `brief`.** `delta.ts` splices `question` verbatim
-  into an agent's prompt. It is also matched as data: `escalate.ts` dedupes on
-  `starts_with(question, prefix)` and `api/panel/group.ts` closes a question with
-  `like(question, "PR #%…%")`. A key would break both against rows already stored.
-- **Note bodies.** `note.lang` exists to record which language a note was written
-  in, because retrieval has to reach it and an agent reads it back.
-- **The notification webhook.** `notify.ts` posts the body to somebody else's
-  server. Desktop notifications are *not* in this list: there is no Web Push here,
-  the frame goes over the same bus and the browser raises it.
+Row two is new work rather than a relabelling. `say()` was two hand-kept tables
+behind `isChinese()`, so a boss whose `output.language` was `한국어` read the feed
+in English however that knob was set. It is now the same ten catalogs the panel
+has: `web/src/shared/messages.ts` declares each message once with an explicit
+`ev.` id, `lingui extract` puts the id in all ten `.po` files, and
+`scripts/i18n-messages.ts` folds the `ev.` ones into
+`src/platform/text/messages.generated.ts` — a plain module, which is what the
+server can import. 041 said Lingui could not reach the server; what it could not
+reach was a `.po`, because `bun build --compile` takes no plugin. Running the
+library needs no plugin, and a standalone binary renders `5 дел ждут вас`.
 
-The migration is additive, not a rewrite: `event.meta_json` already exists, so a
-key and its arguments ride beside the rendered body, the panel prefers the key and
-falls back to `body`, and `state_change` is trimmed at seven days anyway. The
-server keeps rendering `body` regardless — it is `NOT NULL`, and the webhook reads
-it.
+`MessageId` is a literal union off that generated file, so an id the server names
+and the catalogs do not have fails `tsc`. That is the whole guard; there is no
+parity test beside it.
 
-None of that has happened yet. What exists today is the half it depends on: every
-message the watchdog writes is a `SayKey` with **named** arguments, because
-`{hours}` is a name a catalog can carry and `{h}` is not.
+### Three landings that stay server-rendered, and not for a language reason
+
+- **Escalation `question` and `brief`.** They are matched as data:
+  `escalate.ts` dedupes on `starts_with(question, prefix)`, `api/panel/group.ts`
+  closes one with `like(question, "PR #%…%")`, and `delta.ts` splices `question`
+  verbatim into an agent's prompt. A key would break all three against rows
+  already stored.
+- **Note bodies.** `note.lang` records which language a note was written in,
+  because retrieval has to reach it and an agent reads it back.
+
+These are **load-bearing data**, not text somebody happens to read. That is why
+they are exempt, and the exemption survives any future move of the line above.
+
+The migration was additive: `event.meta_json` already existed, so an id and its
+values ride beside the rendered body, the panel prefers the id and falls back to
+`body`, and `state_change` is trimmed at seven days anyway. The server keeps
+rendering `body` regardless — it is `NOT NULL`, `scrub` works on it, and the
+webhook reads it — but in the output language, now that there are ten of them.
 
 ## The cost, stated
 

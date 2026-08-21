@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { z } from "zod";
 import { snapshot } from "../../src/api/panel/snapshot.ts";
 import { HostFailure } from "../../src/contracts/panel.ts";
+import { makeCheck } from "../../src/mech/ops/preflight.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -16,19 +17,27 @@ import { testContext } from "../support/test-context.ts";
 test("only the broken checks cross the wire, with the two strings that say what to do", async () => {
   const ctx = await testContext();
   ctx.checks = () => [
-    { name: "database", ok: true, detail: "migrated and queryable" },
-    { name: "docker", ok: false, detail: "daemon is not running", fix: "colima start" },
+    makeCheck("database", true, { id: "check.database.ok" }),
+    makeCheck("docker", false, { id: "check.docker.silent" }, { id: "check.docker.fix.start" }),
     // No `fix`: not every failure has a command, and the field is optional
     // rather than an empty string the panel would draw an empty box for.
-    { name: "sandbox-server", ok: false, detail: "HTTP 500" },
+    makeCheck("sandbox-server", false, { id: "check.server.http", values: { status: 500 } }),
   ];
 
   const failing = (await snapshot(ctx)).failing;
   const parsed = z.array(HostFailure).safeParse(failing);
   expect(parsed.success ? [] : parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual([]);
+  // The English rides along with the key: `/readyz` and the console read it,
+  // and it is what the panel falls back to for a key it does not know yet.
   expect(failing).toEqual([
-    { name: "docker", detail: "daemon is not running", fix: "colima start" },
-    { name: "sandbox-server", detail: "HTTP 500" },
+    {
+      name: "docker",
+      detail: "installed, but the daemon is not answering",
+      said: { id: "check.docker.silent" },
+      fix: "Start Docker Desktop, or run colima start, and wait for it to report running.",
+      fixSaid: { id: "check.docker.fix.start" },
+    },
+    { name: "sandbox-server", detail: "HTTP 500", said: { id: "check.server.http", values: { status: 500 } } },
   ]);
 });
 

@@ -17,7 +17,7 @@ import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { slug } from "../slug.ts";
-import { say } from "../../platform/text/lang.ts";
+import { said, say } from "../../platform/text/lang.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 import { escalation, event, grp as grps, note, project, slice, task } from "../../platform/persistence/schema.ts";
@@ -193,7 +193,7 @@ async function heldForBoundary(ctx: Ctx, grpId: number, why: string): Promise<vo
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "group.approve_held", { why }),
+    say: said("ev.group.approve_held", { why }),
   });
 }
 
@@ -266,7 +266,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
   if (!start.ok) {
     await heldForBoundary(ctx, grpId, start.reason ?? "");
     // 200, not 422: the boss did decide, and a red error toast says the opposite.
-    return message(say(ctx.config.language, "group.approve_held", { why: start.reason ?? "" }));
+    return message(say(ctx.config.language, "ev.group.approve_held", { why: start.reason ?? "" }));
   }
 
   const err = await startGroup(ctx, grpId);
@@ -281,7 +281,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
  */
 export async function landGroup(ctx: Ctx, grpId: number, by: string): Promise<number[]> {
   const stale = await landed(ctx.db, grpId);
-  await ctx.bus.emit({ grpId, author: by, kind: "state_change", body: say(ctx.config.language, "group.merged") });
+  await ctx.bus.emit({ grpId, author: by, kind: "state_change", say: said("ev.group.merged") });
 
   // Turn this group's retro into lessons while the branch is fresh. This is
   // the only mechanism by which the twentieth group is smarter than the
@@ -491,7 +491,7 @@ async function rebuildSandbox(ctx: Ctx, grpId: number): Promise<Response> {
     grpId,
     author: "boss",
     kind: "state_change",
-    body: say(ctx.config.language, "sandbox.rebuild"),
+    say: said("ev.sandbox.rebuild"),
   });
   await ctx.sched.tick();
   return message("ok");

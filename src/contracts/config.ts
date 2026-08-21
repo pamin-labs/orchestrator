@@ -193,18 +193,18 @@ export const localeOf = (lang: string | undefined): Locale =>
   LANGUAGES.find((l) => l.locale !== "en" && l.spelled.test(lang ?? ""))?.locale ?? "en";
 
 /**
- * Whether the boss reads Chinese. Narrower than `localeOf` on purpose: the
- * orchestrator's own strings in `src/platform/text/lang.ts` exist in Chinese and
- * English only, so everything else there is English regardless of which catalog
- * the panel loaded.
+ * Whether the boss reads Chinese — one caller left, and it is not about a
+ * catalog.
+ *
+ * `escalation.ts` builds an agent's prompt from a Chinese or an English block;
+ * they are written prose, not translations of one another. `lang.ts` used to ask
+ * this too, and that was the bug: a language *pair* has no row for `한국어`, so a
+ * Korean boss got English. It renders from ten catalogs now and asks `localeOf`.
  */
 /**
- * Both scripts, which is why this is a prefix test and not `=== "zh"`.
- *
- * `ZH_SAY` is one Simplified table, so a Traditional reader gets Simplified
- * there — readable, and the honest trade for 44 strings. Written as `=== "zh"`
- * the day `zh-Hant` was added, they would have got **English** instead, which is
- * worse than what they had before the locale existed.
+ * Both scripts, which is why this is a prefix test and not `=== "zh"`. Written
+ * as `=== "zh"` the day `zh-Hant` was added, a Traditional reader would have got
+ * the English block instead of the Chinese one.
  */
 export const isChinese = (lang: string | undefined): boolean => localeOf(lang).startsWith("zh");
 

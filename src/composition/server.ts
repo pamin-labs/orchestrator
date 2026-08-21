@@ -27,7 +27,7 @@ import { REAL, sandboxHeld, type Scope } from "../mech/sandbox/sandbox.ts";
 import type { DB } from "../platform/persistence/database.ts";
 import { startMailbox } from "../mech/sandbox/mailbox.ts";
 import { baseRefFor, createCheckout, treeHeads } from "../mech/git/checkout.ts";
-import { preflight, type Check } from "../mech/ops/preflight.ts";
+import { makeCheck, preflight, type Check } from "../mech/ops/preflight.ts";
 import { restageSkills } from "../mech/skills.ts";
 import { ensureServer, type ServerState } from "../mech/sandbox/server.ts";
 import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "../mech/ops/notify.ts";
@@ -59,6 +59,7 @@ import { configureTracing } from "../platform/observability/otel.ts";
 import { trimSpans } from "../platform/observability/span-store.ts";
 import { configureStructuredLogging } from "../platform/observability/logging.ts";
 import { VERSION } from "../platform/process/version.ts";
+import { said } from "../platform/text/lang.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -90,7 +91,9 @@ export async function refreshRuntimeReadiness(
     runtime.ready = checks.every((check) => check.ok);
   } catch (error) {
     runtime.ready = false;
-    runtime.checks = [{ name: "preflight", ok: false, detail: errText(error) }];
+    runtime.checks = [
+      makeCheck("preflight", false, { id: "check.preflight.failed", values: { error: errText(error) } }),
+    ];
   }
 }
 
@@ -479,7 +482,7 @@ export async function reportServerState(ctx: Ctx, st: ServerState): Promise<void
     await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: `沙箱服务器起好了（我们起的，pid ${st.pid}）`,
+      say: said("ev.sandbox.server_started_by_us", { pid: st.pid }),
     });
     return;
   }
@@ -501,9 +504,7 @@ export async function reportServerState(ctx: Ctx, st: ServerState): Promise<void
     kind: "escalation",
     intent: "inform",
     severity: "blocker",
-    body:
-      `沙箱服务器在跑（pid ${st.pid}），但我们驱动不了：${st.why}\n` +
-      `没敢自动重启它 —— 这个进程可能是你自己起的，配的是别的东西。设置 → 沙箱服务器 那里有按钮。`,
+    say: said("ev.sandbox.server_undrivable", { pid: st.pid, why: st.why }),
   });
 }
 
@@ -735,7 +736,11 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   // send it anywhere else.
   await bindSandboxKey(db, cfg.sandbox.server);
 
-  const bus = new Bus(db);
+  // The thunk, not `cfg.language`: `applyOverrides` above and the settings pane
+  // below both rewrite this object while the fleet runs, and the bus outlives
+  // both. It renders the `body` column, which ADR 035 §3 keeps in output.language
+  // for the readers that are not a browser.
+  const bus = new Bus(db, () => cfg.language);
   const roles = loadRoles();
   // Before anything can dispatch. A capability no role declares reaches a job
   // payload as an undefined role and becomes a turn that never runs; a capability
@@ -1027,7 +1032,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
               // A real round trip, not a handle that exists: `open()` migrated it
               // at boot, and what this reports is whether it still answers.
               await db.execute(sql`select 1`);
-              return [{ name: "database", ok: true, detail: "migrated and queryable" }, ...checks];
+              return [makeCheck("database", true, { id: "check.database.ok" }), ...checks];
             },
           ),
         ),

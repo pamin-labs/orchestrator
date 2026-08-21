@@ -171,7 +171,7 @@ async function holdRepo(db: DB, lang: string | undefined, slug: string, why: str
     // `why` goes in verbatim. It is the message built below, which deliberately
     // does not guess which of the four causes it was — and a wrapper that
     // "helpfully" summarised it as "token expired" would put the guess back.
-    question: `GitHub ${slug}: ${why}\n\n${say(lang, "repo.held", { repo: slug })}`,
+    question: `GitHub ${slug}: ${why}\n\n${say(lang, "ev.repo.held", { repo: slug })}`,
     brief: "GitHub 连不上了",
     kind: "env",
     // No agent can repair a project credential, and there is no group PM here.

@@ -151,7 +151,7 @@ export class Notifier {
     const body =
       items.length === 1
         ? items[0]!.body
-        : `${say(this.lang, "notify.batch", { n: items.length })}\n` + items.map((i) => `• ${i.body}`).join("\n");
+        : `${say(this.lang, "ev.notify.batch", { n: items.length })}\n` + items.map((i) => `• ${i.body}`).join("\n");
     // No lastSent write here: push() already stamped every key through dueNow,
     // and rewriting it would reset strikes to 1, pinning the backoff at its
     // first step forever.
