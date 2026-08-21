@@ -1009,8 +1009,14 @@ msgstr "Host-Verzeichnisse, die jede Sandbox einhängt, als „Pfad im Container
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "Wie ein Checkout gelesen wird, wenn GitHub nicht gefragt werden kann"
 
+msgid "How agents run"
+msgstr "Wie die Agenten laufen"
+
 msgid "How far down one review thread the poll reads. A long argument in a thread is the case this truncates."
 msgstr "Wie weit die Abfrage einen Review-Thread hinunterliest. Genau eine lange Diskussion im Thread wird hier abgeschnitten."
+
+msgid "How hard the fleet is pushed, and when to stop waiting on it"
+msgstr "Wie hart die Flotte gefahren wird und wann man nicht mehr auf sie wartet"
 
 msgid "How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page."
 msgstr "Wie lange „kürzlich gefragt“ gilt — sowohl das Intervall der Erreichbarkeitsprobe als auch die Cache-Dauer eines Zugangsdaten-Urteils auf dieser Seite."
@@ -1029,9 +1035,6 @@ msgstr "Wie lange, bis derselbe Hängen-Bericht es wert ist, wiederholt zu werde
 
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "Wie lange ein Systemzeit-Bericht wiederverwendet wird. Die Berechnung ist teuer genug, dass jede andere Anfrage dahinter wartet — und die zugrunde liegenden Daten ändern sich ohnehin nur im Herzschlag."
-
-msgid "How long one turn may run, and how much it may read"
-msgstr "Wie lange ein Zug laufen und wie viel er lesen darf"
 
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "Wie lange der POST oben dauern darf. Die Antwort wird ohnehin verworfen — das hindert nur einen stummen Webhook daran, eine Benachrichtigung festzuhalten."
@@ -1053,9 +1056,6 @@ msgstr "Wie viele Knoten das Modell auf einer Ebene nennen darf. Breite kostet T
 
 msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
 msgstr "Wie viele offene Pull Requests eine Abfrage bei GitHub erfragt. Was eine GraphQL-Abfrage kostet, ist die Knotenzahl — jede Zahl in dieser Gruppe ist eine mit Kontingent bezahlte Obergrenze."
-
-msgid "How much runs at once, and when work moves on without you"
-msgstr "Wie viel gleichzeitig läuft und wann es ohne dich weitergeht"
 
 msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
 msgstr "Wie oft die deterministischen Regeln laufen. Zugleich, wie lange wartende Arbeit ohne expliziten Tick bis zur Zuteilung wartet."
@@ -1466,6 +1466,9 @@ msgstr "Eine Netzwerkoperation, die ein Repository oder ein Image bewegt — Klo
 msgid "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it."
 msgstr "Ein REST-Aufruf, dessen Antwort echte, angeforderte Arbeit ist — eine Pull Request öffnen, eine Review lesen. Länger als die Prüfung der Zugangsdaten unten, weil etwas darauf blockiert."
 
+msgid "One turn"
+msgstr "Ein Zug"
+
 msgid "Only running"
 msgstr "Nur laufende"
 
@@ -1586,6 +1589,9 @@ msgstr "Der Planer schlägt vor aufzugeben"
 msgid "Planning"
 msgstr "Planung"
 
+msgid "Plumbing"
+msgstr "Innereien"
+
 msgid "PM working"
 msgstr "PM arbeitet"
 
@@ -1624,9 +1630,6 @@ msgstr "Projekte"
 
 msgid "Pull request"
 msgstr "Pull Request"
-
-msgid "Pull requests"
-msgstr "Pull Requests"
 
 msgid "Pull requests per poll"
 msgstr "Pull Requests pro Abfrage"
@@ -1922,9 +1925,6 @@ msgstr "Checkpoint speichern"
 msgid "Saved {at}"
 msgstr "Gespeichert {at}"
 
-msgid "Scheduling"
-msgstr "Zeitsteuerung"
-
 msgid "Search skills"
 msgstr "Skills suchen"
 
@@ -2195,6 +2195,9 @@ msgstr "Zeit"
 msgid "Timeouts"
 msgstr "Zeitlimits"
 
+msgid "Timeouts, polling and retention. Come here when something is broken"
+msgstr "Zeitlimits, Abfragen und Aufbewahrung. Hierher, wenn etwas kaputt ist"
+
 msgid "Timing for all activity on this machine, last 24h"
 msgstr "Zeiten aller Aktivität auf diesem Rechner, letzte 24 Std"
 
@@ -2239,9 +2242,6 @@ msgstr "Zug-Zeitlimit"
 
 msgid "Turned off, but page alerts and tab title counts still work—just no pop-ups."
 msgstr "Aus, aber Hinweise auf der Seite und der Zähler im Tab-Titel laufen weiter — es gibt nur keine Pop-ups."
-
-msgid "Turns & context"
-msgstr "Züge und Kontext"
 
 msgid "Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed."
 msgstr "Aufeinanderfolgende Züge ohne jede Änderung, bis der Watchdog es „hängt“ nennt. Unter drei feuert er auf einen Agenten, der noch liest; weit darüber dreht eine Schleife den ganzen Nachmittag unbemerkt."
@@ -2315,9 +2315,6 @@ msgstr "Wartet"
 msgid "waiting {span}"
 msgstr "wartet {span}"
 
-msgid "Waiting & storage"
-msgstr "Warten und Speichern"
-
 msgid "Waiting for prior slice"
 msgstr "Wartet auf den vorherigen Abschnitt"
 
@@ -2329,9 +2326,6 @@ msgstr "Warte auf deine Freigabe im Browser…"
 
 msgid "Waiting for you to approve on GitHub…"
 msgstr "Warte auf deine Freigabe bei GitHub…"
-
-msgid "Waits on the world outside, and what this machine keeps"
-msgstr "Was auf die Außenwelt wartet und was dieser Rechner behält"
 
 msgid "Wake"
 msgstr "Aufwachen"

@@ -1009,8 +1009,14 @@ msgstr "每个沙盒都会挂载的宿主目录，写成「容器里的路径: �
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "问不到 GitHub 时，一个 checkout 按什么读"
 
+msgid "How agents run"
+msgstr "运行方式"
+
 msgid "How far down one review thread the poll reads. A long argument in a thread is the case this truncates."
 msgstr "一条审阅线程往下读多少。线程里吵得很长，就是它会截断的情况。"
+
+msgid "How hard the fleet is pushed, and when to stop waiting on it"
+msgstr "把舰队推多狠，以及什么时候不再等它"
 
 msgid "How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page."
 msgstr "「刚问过」算多久：既是可达性探测的间隔，也是凭据结论在这个页面上的缓存时长。"
@@ -1029,9 +1035,6 @@ msgstr "同一条「卡住」的报告隔多久才值得再说一遍。太短会
 
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "一份系统耗时报告能复用多久。算它的代价大到别的请求都得排在后面，而且底层数据本来也只在心跳时更新。"
-
-msgid "How long one turn may run, and how much it may read"
-msgstr "一个 turn 能跑多久，能读多少"
 
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "上面那个 POST 最多花多久。答案反正会丢掉——这只是别让一个不回话的 webhook 卡住通知。"
@@ -1053,9 +1056,6 @@ msgstr "模型在一层里最多能点名多少个节点。宽度花的是一次
 
 msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
 msgstr "一次轮询向 GitHub 问多少个开着的 PR。GraphQL 查询的开销就是节点数，所以这一组里每个数字都是拿配额买来的上限。"
-
-msgid "How much runs at once, and when work moves on without you"
-msgstr "同时跑多少，以及什么时候不等你就往下走"
 
 msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
 msgstr "确定性规则多久跑一遍。也是没有显式 tick 的入队要等多久才被派发。"
@@ -1466,6 +1466,9 @@ msgstr "一次搬运仓库或镜像的网络操作——clone、fetch、submodul
 msgid "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it."
 msgstr "一次 REST 调用，它的答案就是某人要的活——开 PR、读审阅。比下面的凭据检查长，因为有东西被它卡着。"
 
+msgid "One turn"
+msgstr "单个 turn"
+
 msgid "Only running"
 msgstr "只看在跑的"
 
@@ -1586,6 +1589,9 @@ msgstr "规划岗建议作废"
 msgid "Planning"
 msgstr "拆解中"
 
+msgid "Plumbing"
+msgstr "底层管道"
+
 msgid "PM working"
 msgstr "PM 处理中"
 
@@ -1623,9 +1629,6 @@ msgid "Projects"
 msgstr "项目"
 
 msgid "Pull request"
-msgstr "合并请求"
-
-msgid "Pull requests"
 msgstr "合并请求"
 
 msgid "Pull requests per poll"
@@ -1922,9 +1925,6 @@ msgstr "存一次档"
 msgid "Saved {at}"
 msgstr "已保存 {at}"
 
-msgid "Scheduling"
-msgstr "调度"
-
 msgid "Search skills"
 msgstr "搜技能"
 
@@ -2195,6 +2195,9 @@ msgstr "耗时"
 msgid "Timeouts"
 msgstr "超时"
 
+msgid "Timeouts, polling and retention. Come here when something is broken"
+msgstr "超时、轮询和保留期。出问题才来这里"
+
 msgid "Timing for all activity on this machine, last 24h"
 msgstr "这台机器上所有活动的耗时，最近一天"
 
@@ -2239,9 +2242,6 @@ msgstr "单轮墙钟上限"
 
 msgid "Turned off, but page alerts and tab title counts still work—just no pop-ups."
 msgstr "关掉之后仍然会在页面里提示，标签页标题也照样带计数——只是不再弹出窗口。"
-
-msgid "Turns & context"
-msgstr "turn 与上下文"
 
 msgid "Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed."
 msgstr "连续多少个 turn 没有任何改动，看门狗就算它卡住。低于三次会误伤还在读代码的 agent；高太多，一个死循环能跑一下午没人知道。"
@@ -2315,9 +2315,6 @@ msgstr "等"
 msgid "waiting {span}"
 msgstr "等待 {span}"
 
-msgid "Waiting & storage"
-msgstr "等待与存储"
-
 msgid "Waiting for prior slice"
 msgstr "等前序切片"
 
@@ -2329,9 +2326,6 @@ msgstr "等你在浏览器里批准…"
 
 msgid "Waiting for you to approve on GitHub…"
 msgstr "等你在 GitHub 上批准…"
-
-msgid "Waits on the world outside, and what this machine keeps"
-msgstr "对外面世界的等待，以及这台机器留下什么"
 
 msgid "Wake"
 msgstr "唤醒"

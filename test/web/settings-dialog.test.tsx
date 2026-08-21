@@ -43,7 +43,7 @@ afterEach(() => {
 /**
  * Which pane is open, read off `aria-current` rather than off the text.
  *
- * The left rail lists every pane by name at all times, so `getByText("调度")` matches
+ * The left rail lists every pane by name at all times, so `getByText("运行方式")` matches
  * whether or not that pane is showing — the first draft of two of these tests
  * asserted exactly that and passed against a component with the rule deleted.
  */
@@ -75,12 +75,12 @@ const open = (props: Partial<Parameters<typeof SettingsDialog>[0]> = {}) => {
 /**
  * The hash decides which pane opens, and it keeps deciding.
  *
- * A link to `#…&s=sched` that landed on 模型账号 would make every settings link in
+ * A link to `#…&s=ops` that landed on 模型账号 would make every settings link in
  * the product point at the same place.
  */
 test("the dialog opens on the pane it was asked for", async () => {
-  const { view } = open({ initial: "sched" });
-  await waitFor(() => expect(current(view)).toBe("调度"));
+  const { view } = open({ initial: "ops" });
+  await waitFor(() => expect(current(view)).toBe("运行方式"));
 });
 
 /**
@@ -112,6 +112,6 @@ test("picking a pane tells the caller that owns the URL", async () => {
   const { view, picked } = open();
   await waitFor(() => expect(current(view)).toBe("模型账号"));
 
-  act(() => void fireEvent.click(view.getAllByRole("button", { name: "调度" })[0]!));
-  await waitFor(() => expect(picked).toContain("sched"));
+  act(() => void fireEvent.click(view.getAllByRole("button", { name: "运行方式" })[0]!));
+  await waitFor(() => expect(picked).toContain("ops"));
 });

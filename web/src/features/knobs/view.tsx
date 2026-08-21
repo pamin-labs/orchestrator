@@ -94,7 +94,7 @@ const SettingsResponseSchema: z.ZodType<SettingsResponse> = z.object({ settings:
 
 /** Every knob pane, as the values themselves: a caller that walks them all —
  *  the render check does — should not have to assert its way back to the type. */
-export const KNOB_SECTIONS = ["sched", "models", "turn", "waits", "notify", "boxdefaults", "repo"] as const;
+export const KNOB_SECTIONS = ["ops", "models", "internals", "notify", "boxdefaults", "repo"] as const;
 export type KnobSection = (typeof KNOB_SECTIONS)[number];
 
 /**
@@ -144,9 +144,15 @@ export interface KnobGroup {
  */
 export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: MessageDescriptor; groups: KnobGroup[] }> =
   {
-    sched: {
-      title: msg`Scheduling`,
-      note: msg`How much runs at once, and when work moves on without you`,
+    ops: {
+      title: msg`How agents run`,
+      // Three groups, one subject: how hard the fleet is pushed, what one turn is
+      // allowed, and when to decide it is stuck. They were 调度 and 轮次与上下文,
+      // two panes apart — with `leaseTimeoutMs` in the first and `turnTimeoutMs`
+      // in the second, both answering "how long may one piece of agent work
+      // take", and a comment in each explaining why it was not next to the
+      // other.
+      note: msg`How hard the fleet is pushed, and when to stop waiting on it`,
       groups: [
         {
           paths: [
@@ -160,6 +166,17 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
             "autoAdvance",
             "autoAcceptTiers",
             "parkAfterPausedMs",
+          ],
+        },
+        {
+          legend: msg`One turn`,
+          paths: [
+            "turnTimeoutMs",
+            "maxTurnsPerJob",
+            "sessionRotateFraction",
+            "ctxBudgetChars",
+            "unreadDigestThreshold",
+            "feedbackSedimentThreshold",
           ],
         },
         {
@@ -178,10 +195,6 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
             "watchdog.repoMapEveryMs",
           ],
         },
-        {
-          legend: msg`Pull requests`,
-          paths: ["prPoll.prs", "prPoll.messages", "prPoll.checks", "prPoll.threads", "prPoll.threadComments"],
-        },
       ],
     },
     models: {
@@ -198,30 +211,19 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
         },
       ],
     },
-    turn: {
-      title: msg`Turns & context`,
-      note: msg`How long one turn may run, and how much it may read`,
-      groups: [
-        {
-          paths: [
-            "turnTimeoutMs",
-            "maxTurnsPerJob",
-            "sessionRotateFraction",
-            "ctxBudgetChars",
-            "unreadDigestThreshold",
-            "feedbackSedimentThreshold",
-          ],
-        },
-      ],
-    },
-    waits: {
-      title: msg`Waiting & storage`,
+    internals: {
+      title: msg`Plumbing`,
       // Everything in the first two groups bounds a wait on something outside this
       // process: GitHub, a container, the network. They were eighteen literals
       // across seven files, and the only ones anybody could change were the three
       // turn budgets. The third group is this machine's own plumbing, which sat
       // under 轮次与上下文 where it was neither a turn nor a context.
-      note: msg`Waits on the world outside, and what this machine keeps`,
+      // Named for when you come here rather than for what it holds: nothing on
+      // this pane changes what the fleet decides, only how patiently it waits and
+      // how much it keeps. The three groups were split across 调度 and
+      // 等待与存储 on a naming axis — a poll size is not a wait — where the axis
+      // that actually separates them is whether anybody ever touches them.
+      note: msg`Timeouts, polling and retention. Come here when something is broken`,
       groups: [
         {
           legend: msg`Timeouts`,
@@ -237,7 +239,18 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
         },
         {
           legend: msg`Polling intervals`,
-          paths: ["intervals.recheckMs", "intervals.usagePollMs", "intervals.usageBackoffMs"],
+          paths: [
+            "intervals.recheckMs",
+            "intervals.usagePollMs",
+            "intervals.usageBackoffMs",
+            // A page size, not a wait — which is why it never fitted under
+            // 调度 either. What it bounds is how much of GitHub one poll reads.
+            "prPoll.prs",
+            "prPoll.messages",
+            "prPoll.checks",
+            "prPoll.threads",
+            "prPoll.threadComments",
+          ],
         },
         {
           legend: msg`Storage & streams`,

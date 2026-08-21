@@ -1009,8 +1009,14 @@ msgstr "Host directories every sandbox mounts, as 'path in container: path on ho
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "How a checkout is read when GitHub cannot be asked"
 
+msgid "How agents run"
+msgstr "How agents run"
+
 msgid "How far down one review thread the poll reads. A long argument in a thread is the case this truncates."
 msgstr "How far down one review thread the poll reads. A long argument in a thread is the case this truncates."
+
+msgid "How hard the fleet is pushed, and when to stop waiting on it"
+msgstr "How hard the fleet is pushed, and when to stop waiting on it"
 
 msgid "How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page."
 msgstr "How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page."
@@ -1029,9 +1035,6 @@ msgstr "How long before the same stuck report is worth saying again. Shorter tur
 
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
-
-msgid "How long one turn may run, and how much it may read"
-msgstr "How long one turn may run, and how much it may read"
 
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
@@ -1053,9 +1056,6 @@ msgstr "How many nodes the model may name at one level. Width costs tokens in a 
 
 msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
 msgstr "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
-
-msgid "How much runs at once, and when work moves on without you"
-msgstr "How much runs at once, and when work moves on without you"
 
 msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
 msgstr "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
@@ -1466,6 +1466,9 @@ msgstr "One network operation that moves a repository or an image — clone, fet
 msgid "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it."
 msgstr "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it."
 
+msgid "One turn"
+msgstr "One turn"
+
 msgid "Only running"
 msgstr "Only running"
 
@@ -1586,6 +1589,9 @@ msgstr "Planner suggests abandoning"
 msgid "Planning"
 msgstr "Planning"
 
+msgid "Plumbing"
+msgstr "Plumbing"
+
 msgid "PM working"
 msgstr "PM working"
 
@@ -1624,9 +1630,6 @@ msgstr "Projects"
 
 msgid "Pull request"
 msgstr "Pull request"
-
-msgid "Pull requests"
-msgstr "Pull requests"
 
 msgid "Pull requests per poll"
 msgstr "Pull requests per poll"
@@ -1922,9 +1925,6 @@ msgstr "Save checkpoint"
 msgid "Saved {at}"
 msgstr "Saved {at}"
 
-msgid "Scheduling"
-msgstr "Scheduling"
-
 msgid "Search skills"
 msgstr "Search skills"
 
@@ -2195,6 +2195,9 @@ msgstr "Time"
 msgid "Timeouts"
 msgstr "Timeouts"
 
+msgid "Timeouts, polling and retention. Come here when something is broken"
+msgstr "Timeouts, polling and retention. Come here when something is broken"
+
 msgid "Timing for all activity on this machine, last 24h"
 msgstr "Timing for all activity on this machine, last 24h"
 
@@ -2239,9 +2242,6 @@ msgstr "Turn timeout"
 
 msgid "Turned off, but page alerts and tab title counts still work—just no pop-ups."
 msgstr "Turned off, but page alerts and tab title counts still work—just no pop-ups."
-
-msgid "Turns & context"
-msgstr "Turns & context"
 
 msgid "Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed."
 msgstr "Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed."
@@ -2315,9 +2315,6 @@ msgstr "Waiting"
 msgid "waiting {span}"
 msgstr "waiting {span}"
 
-msgid "Waiting & storage"
-msgstr "Waiting & storage"
-
 msgid "Waiting for prior slice"
 msgstr "Waiting for prior slice"
 
@@ -2329,9 +2326,6 @@ msgstr "Waiting for you to approve in the browser…"
 
 msgid "Waiting for you to approve on GitHub…"
 msgstr "Waiting for you to approve on GitHub…"
-
-msgid "Waits on the world outside, and what this machine keeps"
-msgstr "Waits on the world outside, and what this machine keeps"
 
 msgid "Wake"
 msgstr "Wake"

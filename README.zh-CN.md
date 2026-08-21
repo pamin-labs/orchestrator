@@ -185,19 +185,19 @@ MIT 协议。
 ### 语言
 
 <!-- i18n:table -->
-**面板** · 810 条消息
+**面板** · 808 条消息
 
 | 语言 | 进度 | 条数 |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 源语言 |
-| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
+| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 
 **编排器经 `say()` 说的话** · 44 条，只有中英两套
 

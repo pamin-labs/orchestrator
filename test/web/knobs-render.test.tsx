@@ -126,7 +126,7 @@ test("the reminder ladder is a row per step, not a line of JSON", async () => {
 test("a refused write prints the server's reason on the row it came from", async () => {
   const why = "maxGroups: too many";
   server.use(http.post("*/api/v1/settings", () => HttpResponse.json({ error: why }, { status: 422 })));
-  const view = render(<Knobs section="sched" />);
+  const view = render(<Knobs section="ops" />);
   await waitFor(() => expect(view.getAllByText("同时开工的需求数")).toHaveLength(1));
 
   const box = view.getByLabelText("同时开工的需求数");

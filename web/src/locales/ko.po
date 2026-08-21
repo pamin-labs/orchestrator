@@ -1009,8 +1009,14 @@ msgstr "모든 샌드박스가 마운트하는 호스트 디렉터리. '컨테�
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "GitHub에 물을 수 없을 때 체크아웃을 읽는 방법"
 
+msgid "How agents run"
+msgstr "에이전트 운영 방식"
+
 msgid "How far down one review thread the poll reads. A long argument in a thread is the case this truncates."
 msgstr "리뷰 스레드 하나를 어디까지 읽을지. 스레드 안의 긴 논쟁이 여기서 잘립니다."
+
+msgid "How hard the fleet is pushed, and when to stop waiting on it"
+msgstr "함대를 얼마나 밀어붙일지, 그리고 언제 기다리기를 멈출지"
 
 msgid "How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page."
 msgstr "'최근에 물어봤다'가 얼마나 유효한지. 도달성 프로브의 주기이자, 이 페이지에서 자격 증명 판정을 캐시하는 시간입니다."
@@ -1029,9 +1035,6 @@ msgstr "같은 '멈췄다' 보고를 다시 말할 가치가 생기기까지의 
 
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "'시스템 소요시간' 리포트 하나를 재사용하는 시간. 계산이 무거워 그동안 다른 요청이 뒤에서 기다립니다. 원본 데이터도 어차피 하트비트에만 갱신됩니다."
-
-msgid "How long one turn may run, and how much it may read"
-msgstr "한 턴이 돌 수 있는 시간과 읽을 수 있는 양"
 
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "위 POST에 허용하는 시간. 응답은 어차피 버립니다 — 답하지 않는 웹훅이 알림을 붙잡지 못하게 할 뿐입니다."
@@ -1053,9 +1056,6 @@ msgstr "한 계층에서 모델이 댈 수 있는 노드 수. 폭은 한 번의 
 
 msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
 msgstr "폴링 한 번에 GitHub에 묻는 열린 PR 수. GraphQL 비용은 노드 수라서, 이 그룹의 모든 숫자는 쿼터로 산 상한입니다."
-
-msgid "How much runs at once, and when work moves on without you"
-msgstr "얼마나 동시에 돌지, 언제 당신 없이 진행할지"
 
 msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
 msgstr "결정론적 규칙을 도는 주기. 명시적 틱이 없을 때 대기 중인 작업이 발진까지 기다리는 시간이기도 합니다."
@@ -1466,6 +1466,9 @@ msgstr "저장소나 이미지를 옮기는 네트워크 작업 하나 — 클�
 msgid "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it."
 msgstr "누군가 요청한 일 자체인 REST 호출 하나 — PR 열기, 리뷰 읽기. 아래의 자격 증명 확인보다 긴 이유는 무언가가 그것을 기다리며 멈춰 있기 때문입니다."
 
+msgid "One turn"
+msgstr "한 턴"
+
 msgid "Only running"
 msgstr "실행 중만"
 
@@ -1586,6 +1589,9 @@ msgstr "플래너가 포기를 권합니다"
 msgid "Planning"
 msgstr "계획 중"
 
+msgid "Plumbing"
+msgstr "배관"
+
 msgid "PM working"
 msgstr "PM 작업 중"
 
@@ -1623,9 +1629,6 @@ msgid "Projects"
 msgstr "프로젝트"
 
 msgid "Pull request"
-msgstr "풀 리퀘스트"
-
-msgid "Pull requests"
 msgstr "풀 리퀘스트"
 
 msgid "Pull requests per poll"
@@ -1922,9 +1925,6 @@ msgstr "체크포인트 저장"
 msgid "Saved {at}"
 msgstr "{at}에 저장됨"
 
-msgid "Scheduling"
-msgstr "스케줄링"
-
 msgid "Search skills"
 msgstr "스킬 검색"
 
@@ -2195,6 +2195,9 @@ msgstr "시간"
 msgid "Timeouts"
 msgstr "타임아웃"
 
+msgid "Timeouts, polling and retention. Come here when something is broken"
+msgstr "타임아웃, 폴링, 보관 기간. 뭔가 고장 났을 때 오는 곳"
+
 msgid "Timing for all activity on this machine, last 24h"
 msgstr "이 기기의 모든 활동 소요 시간, 최근 24시간"
 
@@ -2239,9 +2242,6 @@ msgstr "턴 제한 시간"
 
 msgid "Turned off, but page alerts and tab title counts still work—just no pop-ups."
 msgstr "꺼져 있지만 페이지 안 알림과 탭 제목의 개수는 그대로 동작합니다 — 팝업만 안 뜹니다."
-
-msgid "Turns & context"
-msgstr "턴과 컨텍스트"
 
 msgid "Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed."
 msgstr "watchdog이 '멈췄다'고 판단하기까지, 아무것도 바꾸지 못한 연속 턴 수. 3보다 작으면 아직 읽고 있을 뿐인 에이전트에 발동합니다. 너무 크면 루프가 오후 내내 들키지 않고 돕니다."
@@ -2315,9 +2315,6 @@ msgstr "대기 중"
 msgid "waiting {span}"
 msgstr "{span} 대기 중"
 
-msgid "Waiting & storage"
-msgstr "대기와 저장"
-
 msgid "Waiting for prior slice"
 msgstr "앞 슬라이스 대기"
 
@@ -2329,9 +2326,6 @@ msgstr "브라우저에서 승인하기를 기다립니다…"
 
 msgid "Waiting for you to approve on GitHub…"
 msgstr "GitHub에서 승인하기를 기다립니다…"
-
-msgid "Waits on the world outside, and what this machine keeps"
-msgstr "바깥 세상을 기다리는 시간과, 이 기기가 남기는 것"
 
 msgid "Wake"
 msgstr "깨우기"

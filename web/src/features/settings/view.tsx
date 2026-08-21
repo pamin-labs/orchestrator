@@ -14,7 +14,6 @@ import {
   Server,
   SlidersHorizontal,
   Sparkles,
-  Timer,
   Trash2,
   X,
 } from "lucide-react";
@@ -118,13 +117,12 @@ const NAV: Array<{ key: Section; label: MessageDescriptor; icon: typeof KeyRound
   // nobody reads to the bottom of — and the four answer different questions: how
   // much runs at once, what it costs, how long one turn may take, and how long
   // we wait on something that is not us.
-  { key: "sched", label: msg`Scheduling`, icon: Gauge },
+  { key: "ops", label: msg`How agents run`, icon: Gauge },
   { key: "models", label: msg`Models & budget`, icon: Coins },
-  { key: "turn", label: msg`Turns & context`, icon: Timer },
   // Four rather than three. The knob section behind this existed, held eleven
   // settable paths, and had no nav entry and no pane — so the coverage check saw
   // them "placed" while the boss could not reach one of them from the panel.
-  { key: "waits", label: msg`Waiting & storage`, icon: Hourglass },
+  { key: "internals", label: msg`Plumbing`, icon: Hourglass },
   { key: "prefs", label: msg`Preferences`, icon: SlidersHorizontal },
   { key: "gates", label: msg`Gates`, icon: ListChecks, project: true },
   { key: "sandbox", label: msg`Sandbox`, icon: Box, project: true },
@@ -451,10 +449,9 @@ function SettingsPanes({
       </>
     ),
     skills: <Skills projectId={projectId} />,
-    sched: <Knobs section="sched" />,
+    ops: <Knobs section="ops" />,
     models: <Knobs section="models" />,
-    turn: <Knobs section="turn" />,
-    waits: <Knobs section="waits" />,
+    internals: <Knobs section="internals" />,
     prefs: <Preferences />,
     gates: projectPane("gates"),
     sandbox: projectPane("sandbox"),

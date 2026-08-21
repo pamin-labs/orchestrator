@@ -1009,8 +1009,14 @@ msgstr "すべてのサンドボックスがマウントするホストのディ
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "GitHub に聞けないとき、チェックアウトをどう読むか"
 
+msgid "How agents run"
+msgstr "エージェントの動かし方"
+
 msgid "How far down one review thread the poll reads. A long argument in a thread is the case this truncates."
 msgstr "1 つのレビュースレッドをどこまで読むか。スレッド内の長い議論がここで切られます。"
+
+msgid "How hard the fleet is pushed, and when to stop waiting on it"
+msgstr "艦隊をどこまで押すか、そしていつ待つのをやめるか"
 
 msgid "How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page."
 msgstr "「最近確認した」がどれだけ持つか。到達性プローブの間隔と、このページで資格情報の判定をキャッシュする時間の両方です。"
@@ -1029,9 +1035,6 @@ msgstr "同じ「詰まっている」報告を再び言う価値が出るまで
 
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "1 回の「システム耗時」レポートを使い回す時間。計算が重く、その間ほかのリクエストが後ろで待ちます。元データはどのみちハートビートでしか更新されません。"
-
-msgid "How long one turn may run, and how much it may read"
-msgstr "1 ターンが走れる時間と、読める量"
 
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "上の POST に許す時間。応答はどちらにせよ捨てます。返事をしない webhook が通知を抱え込むのを防ぐだけです。"
@@ -1053,9 +1056,6 @@ msgstr "1 つの階層でモデルが挙げてよいノード数。幅は 1 回�
 
 msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
 msgstr "1 回のポーリングで GitHub に尋ねるオープン PR の数。GraphQL のコストはノード数なので、このグループの数字はすべてクォータで買った上限です。"
-
-msgid "How much runs at once, and when work moves on without you"
-msgstr "どれだけ同時に走るか、いつあなたを待たずに進むか"
 
 msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
 msgstr "決定論的なルールを回す間隔。明示的なティックがない場合に、キュー中の仕事が発進まで待つ時間でもあります。"
@@ -1466,6 +1466,9 @@ msgstr "リポジトリやイメージを動かすネットワーク操作 1 回
 msgid "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it."
 msgstr "誰かが頼んだ仕事そのものになる REST 呼び出し 1 回。PR を開く、レビューを読む。下の資格情報チェックより長いのは、何かがそれを待って止まっているからです。"
 
+msgid "One turn"
+msgstr "1 ターン"
+
 msgid "Only running"
 msgstr "実行中のみ"
 
@@ -1586,6 +1589,9 @@ msgstr "プランナーは破棄を勧めています"
 msgid "Planning"
 msgstr "計画中"
 
+msgid "Plumbing"
+msgstr "配管"
+
 msgid "PM working"
 msgstr "PM 作業中"
 
@@ -1623,9 +1629,6 @@ msgid "Projects"
 msgstr "プロジェクト"
 
 msgid "Pull request"
-msgstr "プルリクエスト"
-
-msgid "Pull requests"
 msgstr "プルリクエスト"
 
 msgid "Pull requests per poll"
@@ -1922,9 +1925,6 @@ msgstr "チェックポイントを保存"
 msgid "Saved {at}"
 msgstr "{at} に保存"
 
-msgid "Scheduling"
-msgstr "スケジューリング"
-
 msgid "Search skills"
 msgstr "スキルを検索"
 
@@ -2195,6 +2195,9 @@ msgstr "時間"
 msgid "Timeouts"
 msgstr "タイムアウト"
 
+msgid "Timeouts, polling and retention. Come here when something is broken"
+msgstr "タイムアウト、ポーリング、保持期間。何かが壊れたときに来る場所"
+
 msgid "Timing for all activity on this machine, last 24h"
 msgstr "このマシン上の全活動の所要時間、直近 24 時間"
 
@@ -2239,9 +2242,6 @@ msgstr "1 ターンの上限時間"
 
 msgid "Turned off, but page alerts and tab title counts still work—just no pop-ups."
 msgstr "オフですが、ページ内の通知とタブタイトルの件数は動きます。ポップアップが出ないだけです。"
-
-msgid "Turns & context"
-msgstr "ターンとコンテキスト"
 
 msgid "Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed."
 msgstr "watchdog が「詰まった」と判断するまでの、何も変わらなかった連続ターン数。3 未満だと、まだ読んでいるだけのエージェントに発火します。大きすぎると、ループが午後いっぱい気づかれずに回ります。"
@@ -2315,9 +2315,6 @@ msgstr "待機中"
 msgid "waiting {span}"
 msgstr "{span} 待機中"
 
-msgid "Waiting & storage"
-msgstr "待ちと保存"
-
 msgid "Waiting for prior slice"
 msgstr "前のスライス待ち"
 
@@ -2329,9 +2326,6 @@ msgstr "ブラウザでの承認を待っています…"
 
 msgid "Waiting for you to approve on GitHub…"
 msgstr "GitHub での承認を待っています…"
-
-msgid "Waits on the world outside, and what this machine keeps"
-msgstr "外の世界を待つ時間と、このマシンが残すもの"
 
 msgid "Wake"
 msgstr "起床"

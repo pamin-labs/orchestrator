@@ -203,19 +203,19 @@ MIT licensed.
 ### Languages
 
 <!-- i18n:table -->
-**Panel** · 810 messages
+**Panel** · 808 messages
 
 | Language | Progress | Messages |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | source |
-| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
-| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 810 / 810 |
+| 中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
+| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 808 / 808 |
 
 **What the orchestrator says through `say()`** · 44, Chinese and English only
 

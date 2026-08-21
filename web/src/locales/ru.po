@@ -1009,8 +1009,14 @@ msgstr "Каталоги хоста, которые монтирует кажд�
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "Как читать чекаут, когда спросить GitHub нельзя"
 
+msgid "How agents run"
+msgstr "Как работают агенты"
+
 msgid "How far down one review thread the poll reads. A long argument in a thread is the case this truncates."
 msgstr "Насколько глубоко опрос читает одну ветку ревью. Обрезается именно длинный спор внутри ветки."
+
+msgid "How hard the fleet is pushed, and when to stop waiting on it"
+msgstr "Насколько жёстко гонят флот и когда перестать его ждать"
 
 msgid "How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page."
 msgstr "Сколько живёт «мы недавно спрашивали» — и интервал пробы доступности, и время кэширования вердикта по учётным данным на этой странице."
@@ -1029,9 +1035,6 @@ msgstr "Через сколько тот же отчёт о зависании �
 
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "Сколько переиспользуется один отчёт о системном времени. Считать его дорого настолько, что все прочие запросы ждут позади, а исходные данные всё равно обновляются только по такту."
-
-msgid "How long one turn may run, and how much it may read"
-msgstr "Сколько может идти ход и сколько прочитать"
 
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "Сколько может занять POST выше. Ответ всё равно отбрасывается — это лишь не даёт молчащему вебхуку удерживать уведомление."
@@ -1053,9 +1056,6 @@ msgstr "Сколько узлов модель может назвать на о
 
 msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
 msgstr "Сколько открытых пул-реквестов один опрос запрашивает у GitHub. Стоимость GraphQL-запроса — это число узлов, так что каждая цифра в этой группе — потолок, купленный за квоту."
-
-msgid "How much runs at once, and when work moves on without you"
-msgstr "Сколько идёт одновременно и когда работа продолжается без вас"
 
 msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
 msgstr "Как часто выполняются детерминированные правила. И заодно — сколько работа в очереди ждёт отправки без явного тика."
@@ -1466,6 +1466,9 @@ msgstr "Одна сетевая операция, перемещающая ре�
 msgid "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it."
 msgstr "Один REST-вызов, ответ на который — работа, о которой попросили: открыть пул-реквест, прочитать ревью. Дольше проверки учётных данных ниже, потому что на нём кто-то ждёт."
 
+msgid "One turn"
+msgstr "Один ход"
+
 msgid "Only running"
 msgstr "Только идущие"
 
@@ -1586,6 +1589,9 @@ msgstr "Планировщик советует бросить"
 msgid "Planning"
 msgstr "Планируем"
 
+msgid "Plumbing"
+msgstr "Внутренности"
+
 msgid "PM working"
 msgstr "PM работает"
 
@@ -1624,9 +1630,6 @@ msgstr "Проекты"
 
 msgid "Pull request"
 msgstr "Пул-реквест"
-
-msgid "Pull requests"
-msgstr "Пул-реквесты"
 
 msgid "Pull requests per poll"
 msgstr "Пул-реквестов за опрос"
@@ -1922,9 +1925,6 @@ msgstr "Сохранить контрольную точку"
 msgid "Saved {at}"
 msgstr "Сохранено {at}"
 
-msgid "Scheduling"
-msgstr "Планирование"
-
 msgid "Search skills"
 msgstr "Искать навыки"
 
@@ -2195,6 +2195,9 @@ msgstr "Время"
 msgid "Timeouts"
 msgstr "Таймауты"
 
+msgid "Timeouts, polling and retention. Come here when something is broken"
+msgstr "Таймауты, опросы и хранение. Сюда приходят, когда что-то сломалось"
+
 msgid "Timing for all activity on this machine, last 24h"
 msgstr "Время всей активности на этой машине за последние 24 ч"
 
@@ -2239,9 +2242,6 @@ msgstr "Таймаут хода"
 
 msgid "Turned off, but page alerts and tab title counts still work—just no pop-ups."
 msgstr "Выключено, но уведомления на странице и счётчик в заголовке вкладки работают — нет только всплывающих окон."
-
-msgid "Turns & context"
-msgstr "Ходы и контекст"
 
 msgid "Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed."
 msgstr "Сколько ходов подряд ничего не менялось, прежде чем сторожевой таймер сочтёт это зависанием. Меньше трёх — сработает на агенте, который ещё читает; сильно больше — цикл будет крутиться весь день незамеченным."
@@ -2315,9 +2315,6 @@ msgstr "Ожидание"
 msgid "waiting {span}"
 msgstr "ждёт {span}"
 
-msgid "Waiting & storage"
-msgstr "Ожидания и хранение"
-
 msgid "Waiting for prior slice"
 msgstr "Ждём предыдущий срез"
 
@@ -2329,9 +2326,6 @@ msgstr "Ждём вашего одобрения в браузере…"
 
 msgid "Waiting for you to approve on GitHub…"
 msgstr "Ждём вашего одобрения на GitHub…"
-
-msgid "Waits on the world outside, and what this machine keeps"
-msgstr "Ожидания внешнего мира и то, что хранит эта машина"
 
 msgid "Wake"
 msgstr "Пробуждение"
