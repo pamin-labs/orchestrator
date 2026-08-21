@@ -111,7 +111,7 @@ const convert = OpenCC.ConverterFactory([MAINLAND], preset(Locale.from, "cn"), p
  * byte-for-byte, which is what makes the diff between the two catalogs readable
  * as a translation rather than as a reformat.
  */
-function hant(po: string): string {
+export function hant(po: string): string {
   let inside = false;
   return po
     .split("\n")
@@ -129,23 +129,26 @@ function hant(po: string): string {
 const SOURCE = "web/src/locales/zh.po";
 const TARGET = "web/src/locales/zh-Hant.po";
 
-const next = hant(await Bun.file(SOURCE).text());
-const current = await Bun.file(TARGET)
-  .text()
-  .catch(() => "");
+// `import.meta.main`, so a test can import `hant` and drive it over a handful of
+// lines without regenerating a catalogue to get at one function.
+if (import.meta.main) {
+  const next = hant(await Bun.file(SOURCE).text());
+  const current = await Bun.file(TARGET)
+    .text()
+    .catch(() => "");
 
-if (process.argv.includes("--check")) {
-  if (next === current) {
-    console.log(`${TARGET}: up to date`);
-    process.exit(0);
+  if (process.argv.includes("--check")) {
+    if (next === current) {
+      console.log(`${TARGET}: up to date`);
+      process.exit(0);
+    }
+    console.error(`${TARGET} does not match ${SOURCE} — run \`bun run i18n:hant\``);
+    process.exit(1);
   }
-  console.error(`${TARGET} does not match ${SOURCE} — run \`bun run i18n:hant\``);
-  process.exit(1);
-}
 
-if (next === current) {
-  console.log(`${TARGET}: unchanged`);
-} else {
-  await Bun.write(TARGET, next);
-  console.log(`${TARGET}: written`);
+  if (next === current) console.log(`${TARGET}: unchanged`);
+  else {
+    await Bun.write(TARGET, next);
+    console.log(`${TARGET}: written`);
+  }
 }

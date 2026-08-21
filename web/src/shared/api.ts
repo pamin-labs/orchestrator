@@ -28,16 +28,15 @@ import {
   type Archived,
   type Escalation,
   type Group,
+  type HostFailure,
   type Slice,
   type Snapshot,
 } from "../../../src/contracts/panel.ts";
 import { appendFrame, notifyFrom, raise, readWire, type PanelFrame } from "./stream.ts";
 
-export type { Agent, Archived, Escalation, Group, Slice };
+export type { Agent, Archived, Escalation, Group, HostFailure, Slice };
 export type State = Snapshot;
 export type Usage = State["usage"][number];
-/** A host check the server found broken. Only failures are sent; see `SnapshotSchema`. */
-export type HostFailure = State["failing"][number];
 export type Cost = CostReport;
 export type AgentCost = CostReport["agents"][number];
 
