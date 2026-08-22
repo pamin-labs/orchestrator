@@ -1,3 +1,5 @@
+import { firstSentence } from "../../../src/contracts/sentence.ts";
+
 /**
  * Text an agent wrote, made readable where it is read.
  *
@@ -23,14 +25,11 @@ export const nl = (s: string) => s.replace(/\\n/g, "\n");
  *
  * The server asks for `--brief` and derives one when it is missing, but every
  * question filed before that column existed has none — and those are exactly the
- * ones sitting in the queue today. Same rule on this side: the first sentence
- * usually names the problem.
+ * ones sitting in the queue today. The rule is the same on both sides, so it is
+ * one function in `contracts` and not two: this copy still cut on every full
+ * stop after the server's stopped.
  */
-export const brief = (s: string, max = 44): string => {
-  // i18n-exempt: sentence terminators, Chinese and English, not copy.
-  const first = (s.split(/[\n。.!?！？]/)[0] ?? s).trim() || s.trim();
-  return first.length > max ? `${first.slice(0, max - 1)}…` : first;
-};
+export const brief = (s: string, max = 44): string => firstSentence(s, max);
 
 /**
  * The goal line of a plan card.

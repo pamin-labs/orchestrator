@@ -40,7 +40,11 @@ test("the settable paths are the config's own, and nothing else is", () => {
     expect([...paths.keys()]).not.toContain(p);
     expect(refuse(p, 1)).toBeTruthy();
   }
+  // Unprefixed, because the message already names the path — and that is decided
+  // by a `params.namesPath` flag the issue carries, not by matching the sentence
+  // in another file. A denial keeps its prefix, because its text names nothing.
   expect(refuse("nonsense", 1)).toBe("no setting called nonsense");
+  expect(refuse("host", 1)).toStartWith("host: ");
   expect(refuse("maxGroups", "ten")).toContain("maxGroups");
 
   // The hole this schema closed. `busyGroups.size >= maxGroups()` is the

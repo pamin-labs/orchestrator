@@ -11,6 +11,7 @@ import type { Folded, Stage, TraceRow, Trend } from "../../shared/api";
 import { msg, t } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
+import { clock, day, hourOnly } from "../../shared/format";
 import { labelOf } from "../../shared/select";
 
 /**
@@ -529,12 +530,15 @@ export const hasSpans = (stages: readonly Stage[], traces: readonly TraceRow[]):
  * because nothing happened for two hours. Two inputs: the **window** decides
  * whether a clock is worth printing, the **bucket** decides the precision.
  */
+/**
+ * Both halves come from `Intl` at the reader's locale, not from string building.
+ * `8/20` is 20 August here and 8 August to a German, French or Korean reader —
+ * the day branch printed month-first for every one of the ten. The clock is
+ * `clock()`, which is already `hourCycle: "h23"` so the column keeps its width.
+ */
 export const trendLabel = (at: number, windowMs: number, bucketMs: number): string => {
-  const when = new Date(at);
-  if (windowMs > 48 * 60 * 60 * 1_000) return `${when.getMonth() + 1}/${when.getDate()}`;
-  const hour = String(when.getHours()).padStart(2, "0");
-  if (bucketMs >= 3_600_000) return `${hour}:00`;
-  return `${hour}:${String(when.getMinutes()).padStart(2, "0")}`;
+  if (windowMs > 48 * 60 * 60 * 1_000) return day(new Date(at));
+  return bucketMs >= 3_600_000 ? hourOnly(new Date(at)) : clock(at);
 };
 
 /**

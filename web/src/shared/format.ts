@@ -50,6 +50,25 @@ const hhmm = per((locale) => new Intl.DateTimeFormat(locale, { hour: "2-digit", 
 export const clock = (ms: number) => hhmm().format(ms);
 
 /**
+ * The two coarser trend-axis labels, from the same `Intl` the clock uses.
+ *
+ * The axis built these as `${month + 1}/${date}` and `${hour}:00`, so `8/20` was
+ * 20 August here and 8 August to a German, French or Korean reader — half the
+ * shipped locales read month-first as a date they did not get. `h23` on the hour
+ * for the same reason `clock` has it: the tick is a fixed-width column.
+ */
+const mmdd = per((locale) => new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" }));
+const hh = per((locale) => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }));
+
+export const day = (at: Date | number) => mmdd().format(at);
+/** The top of the hour, spelled the way this locale spells a time. */
+export const hourOnly = (at: Date | number) =>
+  hh()
+    .formatToParts(at)
+    .map((p) => (p.type === "minute" ? "00" : p.value))
+    .join("");
+
+/**
  * How long something took, in the coarsest unit that does not lose the point.
  *
  * Six orders of magnitude on one page, so no single unit serves: below a second

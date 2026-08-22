@@ -146,6 +146,29 @@ test("a picked file is copied under the data directory, typed and sized", async 
   expect(basename(f!.path)).toEndWith("-shot.png");
 });
 
+/**
+ * The allowlist was ASCII plus CJK Unified Ideographs, which is two of the ten
+ * languages this ships in — so a German boss's `Größe-Bericht.png` reached the
+ * agent as `Gr__e-Bericht.png` and a Korean one as three underscores. `name`
+ * kept the original either way; it is the on-disk path an agent Reads that was
+ * mangled, which is the half nobody looks at.
+ */
+test("a filename keeps its own letters, in every script the panel ships", async () => {
+  const h = await localHarness();
+  // Decomposed on purpose: macOS hands back `e` + U+0301, and a combining mark
+  // is \p{M}, not \p{L} — so the property escape alone mangles the very name it
+  // was added to keep.
+  const names = ["Größe-Bericht.png", "メモ帳.txt", "보고서.pdf", "résumé.docx".normalize("NFD"), "отчёт.xlsx"];
+  for (const name of names) {
+    const src = join(h.dir, name);
+    writeFileSync(src, "X");
+    const r = await h.post([src]);
+    expect(r.status).toBe(200);
+    const [f] = Staged.parse(await r.json()).files;
+    expect(basename(f!.path)).toEndWith(`-${name.normalize("NFC")}`);
+  }
+});
+
 test("a picked directory is one attachment, copied whole", async () => {
   const h = await localHarness();
   const src = join(h.dir, "spec");

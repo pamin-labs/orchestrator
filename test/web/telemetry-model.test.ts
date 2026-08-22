@@ -26,6 +26,7 @@ import {
   trendLabel,
 } from "../../web/src/features/telemetry/model.ts";
 import { duration } from "../../web/src/shared/format.ts";
+import { i18n } from "../../web/src/i18n.ts";
 
 /**
  * The shaping, without a browser.
@@ -128,7 +129,12 @@ test("the trend axis reads as hours inside two days and as dates beyond", () => 
   const day = 24 * 60 * 60 * 1_000;
   const hour = 60 * 60 * 1_000;
   expect(trendLabel(new Date(2026, 7, 17, 9, 0).getTime(), day, hour)).toBe("09:00");
-  expect(trendLabel(new Date(2026, 7, 17, 9, 0).getTime(), 7 * day, 6 * hour)).toBe("8/17");
+  // Under `en`, which `setup.ts` does not activate — so this is the *format*,
+  // taken from `Intl` rather than built as `${month + 1}/${date}`. That build
+  // printed `8/17` to a German reader too, who reads it as 8 August.
+  expect(trendLabel(new Date(2026, 7, 17, 9, 0).getTime(), 7 * day, 6 * hour)).toBe(
+    new Intl.DateTimeFormat(i18n.locale, { month: "numeric", day: "numeric" }).format(new Date(2026, 7, 17)),
+  );
 });
 
 test("a bucket finer than an hour puts its minutes on the axis", () => {

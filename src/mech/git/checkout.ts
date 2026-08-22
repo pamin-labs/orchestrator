@@ -157,9 +157,23 @@ export const baseRefFor = async (ctx: Ctx, projectId: number): Promise<string> =
  * home. No repo lock: each group has its own clone, so there is nothing left for
  * two groups to corrupt.
  */
+/**
+ * Git's own messages, in the language this code reads.
+ *
+ * Three call sites tell "nothing to push" from a real failure by matching
+ * `/empty bundle/i` against stderr, and git marks that string translatable —
+ * `die(_("Refusing to create empty bundle."))`. The shipped image sets no
+ * `LANG`, so it answers in English; a custom image (the boss can set one) with
+ * Debian's git l10n and a `LANG` would turn an ordinary empty branch into an
+ * escalated hard failure at all three.
+ */
+/** `LC_ALL`, not `LANG`: it is the one that wins over both. Insurance, not a
+ *  reproduction — no image this ships with translates. */
+const GIT_ENV = { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" } as const;
+
 export function sandboxGit(ctx: Ctx, scope: Scope): GitRunner {
   return async (argv, cwd) => {
-    const r = await execIn(ctx, scope, `git ${argv.map(shq).join(" ")}`, { cwd: cwd ?? WORK });
+    const r = await execIn(ctx, scope, `git ${argv.map(shq).join(" ")}`, { cwd: cwd ?? WORK, env: { ...GIT_ENV } });
     // stderr only when the command failed — that is where the reason lives and
     // callers read `out` for it. On success stderr is warnings, and porcelain `-z`
     // output is one NUL-terminated blob, so an appended line becomes a path.
@@ -271,7 +285,7 @@ async function createCheckoutInner(ctx: Ctx, scope: Scope, spec: CheckoutSpec): 
   const cloneCmd = `git clone --progress --filter=blob:none ${shq(spec.remote)} ${WORK}`;
   const clone = await streamed(ctx, scope, cloneCmd, {
     timeoutMs: ctx.config.timeouts.transferMs,
-    env: { GIT_TERMINAL_PROMPT: "0" },
+    env: { ...GIT_ENV },
   });
   if (clone.code !== 0) throw new Error(`git clone failed: ${clone.out.slice(-400)}`);
 
@@ -370,7 +384,7 @@ export async function utilGit(ctx: Ctx, argv: string[], cwd?: string): Promise<{
   const r = await execIn(ctx, UTIL, cmd, {
     ...(cwd ? { cwd } : {}),
     timeoutMs: ctx.config.timeouts.transferMs,
-    env: { GIT_TERMINAL_PROMPT: "0" },
+    env: { ...GIT_ENV },
   });
   return { code: r.code, out: `${r.out}${r.err}`.trimEnd() };
 }
@@ -660,6 +674,7 @@ async function keep(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: st
   const name = `${branch.replaceAll("/", "-")}.bundle`;
   const made = await execIn(ctx, scope, `git bundle create ${shq(`/tmp/${name}`)} ${shq(branch)} --not ${shq(base)}`, {
     cwd: WORK,
+    env: { ...GIT_ENV },
   });
   // "Refusing to create empty bundle" is the ordinary answer for a group that
   // has committed nothing yet, not a failure worth escalating.

@@ -12,6 +12,7 @@ import { bad, json, message } from "../../http/respond.ts";
 
 import { sediment } from "../../mech/knowledge/lessons.ts";
 import { grp } from "../../platform/persistence/schema.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 export const AttachmentNameParams = z.object({ name: z.string().min(1) });
 
@@ -71,6 +72,28 @@ export const AttachForm = z.object({
     .default([]),
 });
 
+/**
+ * A filename kept as its owner wrote it, minus anything that could steer a path.
+ *
+ * The allowlist was `[\w.\-\u4e00-\u9fff]` — ASCII plus CJK Unified Ideographs,
+ * which is two of the ten languages this ships in. A German boss dropping
+ * `Größe-Bericht.png` handed the agent `Gr__e-Bericht.png`; Korean, Russian and
+ * kana filenames arrived as rows of underscores. `\p{L}\p{N}` is the same rule
+ * written as what it meant, and the traversal guarantee is unchanged: `/` is not
+ * a letter, so no separator survives, and `..` is filtered by segment above.
+ */
+/**
+ * NFC first, because macOS hands back decomposed filenames: the `é` in
+ * `résumé.docx` arrives as `e` + U+0301, and a combining mark is `\p{M}`, not
+ * `\p{L}` — so without this the property escape mangles exactly the names it was
+ * added to keep.
+ */
+const keepName = (s: string): string =>
+  s
+    .normalize("NFC")
+    .replace(/[^\p{L}\p{N}._-]/gu, "_")
+    .slice(-80);
+
 export const postAttach = (async (ctx, _req, _params, { file: files, rel: rels }) => {
   // Each file's path relative to what was dropped. A loose file has none; a file
   // from inside a dropped folder has `<folder>/…/name`, and the folder is what the
@@ -86,7 +109,7 @@ export const postAttach = (async (ctx, _req, _params, { file: files, rel: rels }
     // The stamp keeps two screenshots called "Screenshot.png" apart, and the
     // sanitising keeps a crafted filename inside the directory. Every segment of
     // a relative path is sanitised the same way, so `..` cannot survive one.
-    const safe = (s: string) => s.replace(/[^\w.\-\u4e00-\u9fff]/g, "_").slice(-80);
+    const safe = keepName;
     const rel = (rels[i] ?? "")
       .split("/")
       .filter((s) => s && s !== "." && s !== "..")
@@ -140,9 +163,7 @@ export const postAttachLocal = (async (ctx, _req, _p, b) => {
     } catch {
       return bad(msg`${{ path: raw }}: cannot be read`);
     }
-    const safe = basename(src)
-      .replace(/[^\w.\-\u4e00-\u9fff]/g, "_")
-      .slice(-80);
+    const safe = keepName(basename(src));
     const dest = join(root, `${stamp}-${out.length}-${safe}`);
     await cp(src, dest, { recursive: st.isDirectory() });
     out.push({
@@ -209,6 +230,6 @@ export const getAttachment = (async (ctx, _req, params) => {
 export async function bossFact(ctx: Ctx, grpId: number | null, body: string): Promise<void> {
   const [owner] = grpId ? await ctx.db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)) : [];
   const projectId = owner?.project_id ?? null;
-  await addNote(ctx.db, { projectId, grpId, kind: "fact", lang: ctx.config.language, body });
+  await addNote(ctx.db, { projectId, grpId, kind: "fact", lang: outputLanguage(ctx.config), body });
   await sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold);
 }

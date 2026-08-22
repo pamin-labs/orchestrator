@@ -53,7 +53,8 @@ export function refuse(path: string, value: Json): string | null {
   const parsed = SettingWriteSchema.safeParse({ path, value });
   if (parsed.success) return null;
   const message = parsed.error.issues.map((issue) => issue.message).join("; ");
-  return message.startsWith("no setting called ") ? message : `${path}: ${message}`;
+  const namesPath = parsed.error.issues.some((issue) => issue.code === "custom" && issue.params?.namesPath === true);
+  return namesPath ? message : `${path}: ${message}`;
 }
 
 async function read(db: DB): Promise<SettingWrite[]> {
