@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { z } from "zod";
 import { getPreflight } from "../../src/api/panel/sandbox.ts";
 import { makeCheck } from "../../src/mech/ops/preflight.ts";
-import { SaidSchema } from "../../src/contracts/said.ts";
+import { HostFailure } from "../../src/contracts/panel.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -19,20 +19,10 @@ import { testContext } from "../support/test-context.ts";
 const ok = makeCheck("opensandbox-server", true, { id: "check.server.reachable", message: "reachable" });
 
 /** The wire shape, parsed rather than asserted: the response is `unknown` data. */
-const Body = z.object({
-  checks: z.array(
-    z.object({
-      name: z.string(),
-      ok: z.boolean(),
-      // Both halves cross: the English for `/readyz` and the console, and the key
-      // the settings pane renders in whatever language this browser reads.
-      detail: z.string(),
-      // The contract's own schema, not a second model of it: this is the shape
-      // `bad()` and `makeCheck` write, and a copy here would drift from it.
-      said: SaidSchema,
-    }),
-  ),
-});
+// The contract's own schema rather than a third model of it. Both halves cross:
+// the English for `/readyz` and the console, and the key the settings pane
+// renders in whatever language this browser reads.
+const Body = z.object({ checks: z.array(HostFailure.extend({ ok: z.boolean() })) });
 const bodyOf = async (response: Promise<Response>) => Body.parse(await (await response).json());
 
 test("the endpoint reports what it published, not a copy of its own", async () => {

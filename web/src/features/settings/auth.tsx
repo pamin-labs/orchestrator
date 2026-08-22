@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { Button, LinkButton } from "../../ui/button";
 import { z } from "zod";
 import { api } from "../../shared/api";
-import { SaidSchema } from "../../../../src/contracts/said.ts";
+import { HostFailure } from "../../../../src/contracts/panel.ts";
 import type { InferResponseType } from "hono/client";
 import { Trans, useLingui } from "@lingui/react/macro";
 
@@ -28,23 +28,16 @@ export const AuthRowSchema = z
 
 export type PreflightResponse = InferResponseType<typeof api.preflight.$get, 200>;
 export type HostCheck = PreflightResponse["checks"][number];
-export const HostCheckSchema = z
-  .object({
-    name: z.string(),
-    ok: z.boolean(),
-    detail: z.string(),
-    fix: z.string().optional(),
-    /** ADR 041: the sentence is a key the panel renders, `detail` is the English fallback. */
-    said: SaidSchema,
-    fixSaid: SaidSchema.optional(),
-  })
-  .transform(
-    ({ fix, fixSaid, ...check }): HostCheck => ({
-      ...check,
-      ...(fix !== undefined ? { fix } : {}),
-      ...(fixSaid !== undefined ? { fixSaid } : {}),
-    }),
-  );
+/** `HostFailure` plus the flag: the snapshot carries only the ones that failed,
+ *  so `ok` is the single field this endpoint adds. Five fields were written out
+ *  here and again in `contracts/panel.ts` before that was noticed. */
+export const HostCheckSchema = HostFailure.extend({ ok: z.boolean() }).transform(
+  ({ fix, fixSaid, ...check }): HostCheck => ({
+    ...check,
+    ...(fix !== undefined ? { fix } : {}),
+    ...(fixSaid !== undefined ? { fixSaid } : {}),
+  }),
+);
 
 /**
  * A device code, the way both flows show one.
