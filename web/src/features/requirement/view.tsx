@@ -648,12 +648,12 @@ function SliceRow({ st, g, s, selected }: { st: State; g: Group; s: Slice; selec
 function Ticks({ s, gs }: { s: Slice; gs: Record<string, string> }) {
   return (
     <span className="flex items-center gap-1.5">
-      {tickStops(s.status === "awaiting_boss").map(([k, zh]) => {
+      {tickStops(s.status === "awaiting_boss").map(([k, label]) => {
         const v = tickState(s, k, gs);
         return (
           <span key={k} className={cn("flex items-center gap-1 text-meta", tickTextClass(v))}>
             <span className={cn("size-2 rounded-full border", tickDotClass(v, s.status === k))} />
-            <b className="whitespace-nowrap font-medium max-[64rem]:hidden">{zh}</b>
+            <b className="whitespace-nowrap font-medium max-[64rem]:hidden">{label}</b>
           </span>
         );
       })}

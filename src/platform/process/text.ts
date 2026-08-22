@@ -59,9 +59,9 @@ export function tail(s: string, n = 300): string {
  * Milliseconds as whole minutes or hours, for a sentence the boss reads.
  *
  * `Math.round(x / 60000)` appeared seven times in the watchdog alone, once as a
- * local `hours` helper and six times inline — and every one of them is feeding a
- * `say()` argument, so the unit is part of the message rather than a detail of
- * the arithmetic.
+ * local `hours` helper and six times inline — and every one of them is a value
+ * inside a `msg` template, so the unit is part of the message rather than a
+ * detail of the arithmetic.
  */
 export const minutes = (ms: number): number => Math.round(ms / 60_000);
 export const hours = (ms: number): number => Math.round(ms / 3_600_000);

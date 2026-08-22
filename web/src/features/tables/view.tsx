@@ -10,15 +10,13 @@ import { Tip } from "../../ui/tooltip";
 import { BurnChart, SplitDonut } from "./chart";
 import type { Agent, AgentCost, Cost, Slice, State } from "../../shared/api";
 import type { PanelFrame } from "../../shared/stream";
-import { owns } from "../../shared/select";
+import { labelOf, owns } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { activityOf } from "../../shared/activity";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ph, t } from "@lingui/core/macro";
-import { msg } from "@lingui/core/macro";
+import { msg, ph, t } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
-import { labelOf } from "../../shared/select";
 
 /**
  * Per docs/project/plan.md §8: current slice, turn count, the live last line, model, spend.

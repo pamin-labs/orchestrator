@@ -84,7 +84,7 @@ export function Home({
                     <div className="mt-1 text-body font-semibold text-accent">{bits.join(" · ")}</div>
                   ) : (
                     // `Empty` is said by the button beside it, in a form you can act on.
-                    !state.fresh && <div className="mt-1 text-secondary text-ink-3">{state.zh}</div>
+                    !state.fresh && <div className="mt-1 text-secondary text-ink-3">{state.label}</div>
                   )}
                   {live.length > 0 && <RunningNames names={live} />}
                 </div>

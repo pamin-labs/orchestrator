@@ -8,8 +8,7 @@
  */
 
 import type { Folded, Stage, TraceRow, Trend } from "../../shared/api";
-import { t } from "@lingui/core/macro";
-import { msg } from "@lingui/core/macro";
+import { msg, t } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
 import { labelOf } from "../../shared/select";

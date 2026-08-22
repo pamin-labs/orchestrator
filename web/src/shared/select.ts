@@ -7,9 +7,11 @@ import { msg, t } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../i18n";
 
-/** A label from a partial table, or the raw value where it has no row. Only
- *  `WHERE_LABEL` needs it: it covers the four open chain states and `chain_state`
- *  also carries `answered` and `revoked`. A total table indexes directly. */
+/** A label from a partial table, or the raw value where it has no row. Four
+ *  tables need it — `WHERE_LABEL` covers the four open chain states while
+ *  `chain_state` also carries `answered` and `revoked`, and the rotation, note
+ *  and usage tables are partial for their own reasons. A total table indexes
+ *  directly. */
 export const labelOf = (m: MessageDescriptor | undefined, fallback: string): string => (m ? i18n._(m) : fallback);
 
 const OwnsSchema = z.array(z.string());
@@ -120,23 +122,23 @@ export const countWaiting = (st: State, p: number | null) =>
  * "no live group": a project whose requirements all merged also has none, and
  * calling that `Empty` denies the only work the system ever finished.
  */
-export function projectState(st: State, p: number): { zh: string; mine: boolean; live?: boolean; fresh?: boolean } {
+export function projectState(st: State, p: number): { label: string; mine: boolean; live?: boolean; fresh?: boolean } {
   const n = countWaiting(st, p);
-  if (n) return { zh: t`${n} to do`, mine: true };
+  if (n) return { label: t`${n} to do`, mine: true };
   const gs = st.groups.filter((g) => g.project_id === p);
   return gs.length ? activeProjectState(gs) : emptyProjectState(st, p);
 }
 
 const emptyProjectState = (st: State, p: number) =>
   (st.archived ?? []).some((a) => a.project_id === p)
-    ? { zh: t`All done`, mine: false }
-    : { zh: t`Empty`, mine: false, fresh: true };
+    ? { label: t`All done`, mine: false }
+    : { label: t`Empty`, mine: false, fresh: true };
 
 function activeProjectState(groups: Group[]) {
   const live = groups.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;
-  if (live) return { zh: t`${live} running`, mine: false, live: true };
+  if (live) return { label: t`${live} running`, mine: false, live: true };
   const held = groups.filter((g) => ["PAUSED", "PARKED"].includes(g.status)).length;
-  return held ? { zh: t`${held} stopped`, mine: false } : { zh: t`All done`, mine: false };
+  return held ? { label: t`${held} stopped`, mine: false } : { label: t`All done`, mine: false };
 }
 
 /** Where the PR lives, so "go and merge it" is one click rather than a hunt. */

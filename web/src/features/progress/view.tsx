@@ -3,16 +3,14 @@ import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { Tab, TabList, TabPanel, Tabs } from "../../ui/tabs";
 import { Tip } from "../../ui/tooltip";
-import { prUrl } from "../../shared/select";
+import { STOPS, countWaiting, gates, heldApproved, prUrl, statusLabel } from "../../shared/select";
 import { cardGoal } from "../../shared/prose";
 import type { Archived, Group, Slice, State } from "../../shared/api";
 import { usePaged } from "../../shared/page";
-import { STOPS, countWaiting, gates, heldApproved, statusLabel } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
-import { msg } from "@lingui/core/macro";
+import { msg, t } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 
 /** Requirements are state-filtered, paged, and counted on their tabs. */

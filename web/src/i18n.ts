@@ -106,8 +106,9 @@ async function applyLocale(): Promise<void> {
   }
 }
 
-/** Before the first paint, with no server answer yet. */
-export const startLocale = (): Promise<void> => applyLocale();
+/** `startLocale` at the call site, because that is when it runs: before the
+ *  first paint, with no server answer yet. */
+export { applyLocale as startLocale };
 
 export function setPreference(pref: Locale): void {
   try {

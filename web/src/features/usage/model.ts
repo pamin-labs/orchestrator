@@ -1,6 +1,5 @@
 import type { Usage } from "../../shared/api";
-import { t } from "@lingui/core/macro";
-import { msg } from "@lingui/core/macro";
+import { msg, t } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { labelOf } from "../../shared/select";
 

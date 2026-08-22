@@ -31,7 +31,7 @@ import { parse } from "../support/ast.ts";
 /** Parsed, not grepped: the call can wrap onto its own line, and an import can
  *  rename it — `renderSaid as render` defeats the grep and not this. Only `src`;
  *  the panel renders through `i18n._` and has no server renderer to reach for. */
-const RENDERERS = new Set(["renderSaid"]);
+const RENDERER = "renderSaid";
 const MACROS = new Set(["msg", "t"]);
 
 function offenders(file: string, source: string): string[] {
@@ -42,7 +42,7 @@ function offenders(file: string, source: string): string[] {
   const local = new Set<string>();
   traverse(ast, {
     ImportSpecifier(p) {
-      if (p.node.imported.type === "Identifier" && RENDERERS.has(p.node.imported.name)) local.add(p.node.local.name);
+      if (p.node.imported.type === "Identifier" && p.node.imported.name === RENDERER) local.add(p.node.local.name);
     },
   });
   if (local.size === 0) return [];
@@ -51,12 +51,11 @@ function offenders(file: string, source: string): string[] {
   traverse(ast, {
     TaggedTemplateExpression(p) {
       if (p.node.tag.type !== "Identifier" || !MACROS.has(p.node.tag.name)) return;
+      const tag = p.node.tag.name;
       p.traverse({
         CallExpression(c) {
           if (c.node.callee.type === "Identifier" && local.has(c.node.callee.name)) {
-            found.push(
-              `${file}:${c.node.loc?.start.line ?? 0} ${c.node.callee.name}() inside a ${p.node.tag.type === "Identifier" ? p.node.tag.name : "?"}\` template`,
-            );
+            found.push(`${file}:${c.node.loc?.start.line ?? 0} ${c.node.callee.name}() inside a ${tag}\` template`);
           }
         },
       });

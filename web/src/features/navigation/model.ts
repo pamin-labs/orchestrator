@@ -1,8 +1,7 @@
 import { z } from "zod";
 import type { State } from "../../shared/api";
 import { SectionSchema, type Section } from "../settings/model";
-import { t } from "@lingui/core/macro";
-import { msg } from "@lingui/core/macro";
+import { msg, t } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 
 const ViewSchema = z.enum([

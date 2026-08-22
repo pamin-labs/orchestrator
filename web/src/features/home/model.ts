@@ -7,7 +7,7 @@ const LIVE = new Set(["RUNNING", "PLANNING"]);
 
 // A zero is not a fact worth the right edge. 0 `requirements` next to `Empty` is the same
 // absence twice, and 0 tokens is what every project starts at.
-const count = (n: number, zh: string) => (n ? `${n} ${zh}` : "");
+const count = (n: number, label: string) => (n ? `${n} ${label}` : "");
 
 /** Whoever wants the boss most is read first. */
 export const homeRows = (st: State) => [...st.projects].sort((a, b) => countWaiting(st, b.id) - countWaiting(st, a.id));

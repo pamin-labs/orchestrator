@@ -589,6 +589,19 @@ const PAIRS: Record<string, { kind: PairKind; keyPh: MessageDescriptor }> = {
 };
 
 /**
+ * The two rows whose value is a list of strings, for the same reason `PAIRS`
+ * exists: one control, and only the schema that parses the value differs.
+ *
+ * Each keeps its own schema rather than a shared `z.array(z.string())` — that
+ * is what refuses `["main","master"]` typed as JSON into a textarea, which is
+ * what `baseBranchFallbacks` was before it had one.
+ */
+const LINES: Record<string, z.ZodType<string[]>> = {
+  "sandbox.denyDomains": ConfigSchema.shape.sandbox.shape.denyDomains,
+  baseBranchFallbacks: ConfigSchema.shape.baseBranchFallbacks,
+};
+
+/**
  * Settings the page shows as one row, because they are one decision.
  *
  * The settings table splits any object with fixed keys into a path each, so the
@@ -867,10 +880,6 @@ async function saveKnob(target: Knob, value: Json, onWrite: Write): Promise<stri
   return result.ok ? null : result.text;
 }
 
-function resetKnobs(knob: Knob, mates: Knob[], write: (target: Knob, value: Json) => void) {
-  for (const target of [knob, ...mates]) write(target, target.default);
-}
-
 function Row({
   knob,
   mates,
@@ -929,8 +938,15 @@ function Row({
           />
           {/* Neutral, not the accent: the accent means "waiting on you" and this
               is only "not the shipped value". */}
+          {/* Resets the row and everything grouped with it: a single-row reset
+              would leave a pair half-overridden, which reads as a knob that
+              refused to reset. */}
           {rowChanged(knob, mates) && (
-            <ResetOverride onReset={() => resetKnobs(knob, mates, (target, next) => void put(target, next))} />
+            <ResetOverride
+              onReset={() => {
+                for (const target of [knob, ...mates]) void put(target, target.default);
+              }}
+            />
           )}
         </div>
         {bad.why && <span className="text-meta leading-snug text-accent">{bad.why}</span>}
@@ -999,24 +1015,12 @@ function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
     case "contextWindow":
       return <Windows map={ConfigSchema.shape.contextWindow.parse(knob.value)} src={src} onWrite={onWrite} />;
     case "sandbox.denyDomains":
-      return (
-        <Lines
-          list={ConfigSchema.shape.sandbox.shape.denyDomains.parse(knob.value)}
-          ph={copyFor(knob).ph}
-          onWrite={onWrite}
-        />
-      );
     case "baseBranchFallbacks":
-      // A list of names, in preference order, which is exactly what a textarea
-      // preserves. It was a text box holding `["main","master"]`, where adding a
-      // third meant getting JSON right by hand.
-      return (
-        <Lines
-          list={ConfigSchema.shape.baseBranchFallbacks.parse(knob.value)}
-          ph={copyFor(knob).ph}
-          onWrite={onWrite}
-        />
-      );
+      // A list of names, in the order they are tried, which is exactly what a
+      // textarea preserves. `baseBranchFallbacks` was a text box holding
+      // `["main","master"]`, where adding a third meant getting JSON right by
+      // hand.
+      return <Lines list={LINES[knob.path]!.parse(knob.value)} ph={copyFor(knob).ph} onWrite={onWrite} />;
     case "intervals.notifyBackoffMs":
       return <Ladder list={ConfigSchema.shape.intervals.shape.notifyBackoffMs.parse(knob.value)} onWrite={onWrite} />;
     default:
@@ -1024,18 +1028,22 @@ function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
   }
 }
 
-/** What this browser is reading in, as the language names itself. Read off the
- *  active locale rather than the stored preference: what leads the list should be
- *  the language actually on screen. */
-const reading = (): string => endonymOf(localeOf(i18n.locale));
+/** The suggestions with this browser's own language at the front, because "same
+ *  as what I am reading" is the answer most of the time and typing it is the only
+ *  other way to get it. Read off the *active* locale rather than the stored
+ *  preference: what leads the list should be the language actually on screen. */
+const withReadingFirst = (): string[] => {
+  const reading = endonymOf(localeOf(i18n.locale));
+  return [reading, ...LANGUAGE_SUGGESTIONS.filter((l) => l !== reading)];
+};
 
 function choiceValue({ knob, onWrite }: Editor) {
   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- this renderer intentionally owns only choice knobs
   switch (knob.path) {
     case "language":
       // Any language, suggested rather than restricted: this governs what the
-      // *agents* write, and a model writes whatever it is told to. `say()`'s
-      // table is only the orchestrator's own status lines — a smaller fact, and
+      // *agents* write, and a model writes whatever it is told to. The panel's
+      // own language is a separate choice, in Preferences — a smaller fact, and
       // it is in the row's note.
       // The panel's own language leads the list, because "same as what I am
       // reading" is the answer most of the time and typing it is the only way to
@@ -1047,7 +1055,7 @@ function choiceValue({ knob, onWrite }: Editor) {
         <Combobox
           free
           value={ConfigSchema.shape.language.parse(knob.value)}
-          options={[reading(), ...LANGUAGE_SUGGESTIONS.filter((l) => l !== reading())]}
+          options={withReadingFirst()}
           placeholder={LANGUAGE_SUGGESTIONS.slice(0, 3).join(" / ")}
           onCommit={onWrite}
         />

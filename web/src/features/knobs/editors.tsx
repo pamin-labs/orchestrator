@@ -42,12 +42,15 @@ export const PERCENT = ["%"] as const;
 /** The window every model without a row of its own falls back to. Not a model. */
 const DEFAULT_KEY = "default";
 
+/** Past this many options the unit becomes a menu rather than a segmented
+ *  control, because a segment spends a button of width on every option it is
+ *  not showing. Three: counts have three units and durations five. */
+const MANY = 3;
+
 /**
  * Unit sets where "none" is a real answer, so the toggle may be turned all the
  * way off. Counts qualify — 45 is forty-five — and durations do not.
  */
-const MANY = 3;
-
 const BARE_OK = new Set<string>(COUNT_UNITS);
 
 /**
@@ -90,34 +93,6 @@ export const LANGUAGE_SUGGESTIONS = [
 ];
 
 /**
- * One box, written when it loses focus.
- *
- * Uncontrolled and keyed on the stored value: a refused edit keeps the text that
- * was typed (so it can be fixed rather than retyped) and an accepted one snaps
- * to what the server actually holds, which is how `20 分钟` appears after
- * someone types `1200s`. (i18n-exempt: a spelling `units.ts` accepts.)
- */
-/**
- * A number and its unit, as two controls instead of one string to spell.
- *
- * The parser stays — `20 分钟`, `3h`, `8M` all still work — but splitting them
- * leaves digits as the only free text, and the input refuses everything else.
- *
- * Integer-only, which is why `splitCount` exists next to `fmtCount`: the reading
- * format prints 8500000 as `8.5M`, which a spinner cannot step and an integer
- * field cannot hold; the picker shows 8500k. (i18n-exempt: `units.ts` spellings.)
- */
-/**
- * A duration as one field: `15 秒`, `3h`, `2 分钟` — typed the way it reads.
- *
- * It was a number box beside every unit as a button, which on the waiting pane
- * meant five buttons on each of twelve rows: sixty controls to say twelve
- * numbers, and the unit segment repeated so often it stopped carrying meaning.
- * `parseDuration` already accepted every spelling a person types, so the
- * buttons were offering what the field could take anyway.
- * i18n-exempt: spellings `units.ts` accepts.
- */
-/**
  * A duration, as a number and the unit it is counted in.
  *
  * It was one free-text box that accepted `15s` or `3 小时`, which read fine and
@@ -151,6 +126,16 @@ export function DurationAmount({
   );
 }
 
+/**
+ * A number and its unit, as two controls instead of one string to spell.
+ *
+ * The parser stays — `20 分钟`, `3h`, `8M` all still work — but splitting them
+ * leaves digits as the only free text, and the input refuses everything else.
+ *
+ * Integer-only, which is why `splitCount` exists next to `fmtCount`: the reading
+ * format prints 8500000 as `8.5M`, which a spinner cannot step and an integer
+ * field cannot hold; the picker shows 8500k. (i18n-exempt: `units.ts` spellings.)
+ */
 export function Amount<U extends string>({
   n,
   unit,
@@ -308,6 +293,14 @@ function ModelPick({
   );
 }
 
+/**
+ * One box, written when it loses focus.
+ *
+ * Uncontrolled and keyed on the stored value: a refused edit keeps the text that
+ * was typed (so it can be fixed rather than retyped) and an accepted one snaps
+ * to what the server actually holds, which is how `20 分钟` appears after
+ * someone types `1200s`. (i18n-exempt: a spelling `units.ts` accepts.)
+ */
 export function Box({
   value,
   onCommit,
@@ -391,7 +384,7 @@ export function Pairs({
 }) {
   const { t } = useLingui();
   const entries = Object.entries(map);
-  const show = textOf;
+
   // A number gets the same 9rem a number gets on every other row of this page;
   // only a path needs the rest of the width.
   const vw = kind === "text" ? "" : "w-[9rem] flex-none";
@@ -419,7 +412,7 @@ export function Pairs({
             }}
           />
           <Box
-            value={show(v)}
+            value={textOf(v)}
             invalid={bad === k}
             aria-label={k}
             className={vw}
@@ -816,16 +809,16 @@ export function Embedding({
  * after a write that had just succeeded.
  */
 function Missing({ endpoint, credential }: { endpoint: string; credential: string }) {
-  const said = (): React.ReactNode => {
-    if (!URL.canParse(endpoint)) {
-      if (!credential) return <Trans>Fill in both and remote retrieval switches on. Until then it stays local.</Trans>;
-      return <Trans>Write the full /v1/embeddings address and remote retrieval switches on.</Trans>;
-    }
-    if (!credential) return <Trans>Name a stored credential and remote retrieval switches on.</Trans>;
-    return null;
-  };
-  const message = said();
-  return message && <span className="text-meta leading-snug text-accent">{message}</span>;
+  const missing = !URL.canParse(endpoint) ? (
+    !credential ? (
+      <Trans>Fill in both and remote retrieval switches on. Until then it stays local.</Trans>
+    ) : (
+      <Trans>Write the full /v1/embeddings address and remote retrieval switches on.</Trans>
+    )
+  ) : !credential ? (
+    <Trans>Name a stored credential and remote retrieval switches on.</Trans>
+  ) : null;
+  return missing && <span className="text-meta leading-snug text-accent">{missing}</span>;
 }
 
 /** A field inside a row that already has a label: the block editors' own shape. */
@@ -845,12 +838,13 @@ function Sub({ label, children }: { label: string; children: React.ReactNode }) 
  * anything worth being notified about gets denied, and that decision is sticky.
  */
 /** What each answer means, and where the reader has to go to change it. */
-const NOTIFY_SAID: Record<NotifyState, MessageDescriptor | ""> = {
+/** `ask` has no row: it is the only state with anything left to press, and a
+ *  `Partial` says that in the type rather than with an empty string standing in
+ *  for a message. */
+const NOTIFY_SAID: Partial<Record<NotifyState, MessageDescriptor>> = {
   unsupported: msg`This browser doesn't support it`,
   granted: msg`Browser allowed it. The panel will still notify in the background; only closing the entire browser stops notifications—reopen it to catch up.`,
   denied: msg`Browser denied it. To enable, change it in site settings (left of address bar), then refresh.`,
-  // The only state with anything left to press.
-  ask: "",
 };
 
 /**
@@ -868,7 +862,7 @@ export function Permission() {
   const [state, setState] = useState(supported ? Notification.permission : "denied");
   const [want, setWant] = useState(notifyWanted);
   const message = NOTIFY_SAID[notifyState(supported, state)];
-  const said = message === "" ? "" : t(message);
+  const said = message && t(message);
   return (
     <>
       <Field aria-labelledby="notify-perm">
