@@ -9,7 +9,7 @@ import { Tab, TabList, TabPanel, Tabs } from "../../ui/tabs";
 import { Tip } from "../../ui/tooltip";
 import { BurnChart, SplitDonut } from "./chart";
 import type { Agent, AgentCost, Cost, Slice, State } from "../../shared/api";
-import type { PanelFrame } from "../../shared/stream";
+import { frameText, type PanelFrame } from "../../shared/stream";
 import { labelOf, owns } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
@@ -41,7 +41,7 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
   // Newest live frame per agent: the tail of what it is printing right now.
   const last = new Map<number, string>();
   for (const f of frames) {
-    if (f.agentId != null && (f.cls === "partial" || f.cls === "tool")) last.set(f.agentId, f.text);
+    if (f.agentId != null && (f.cls === "partial" || f.cls === "tool")) last.set(f.agentId, frameText(f));
   }
   const running = rows.filter((a) => a.state === "running");
   const shown = idle ? rows : running.length ? running : rows;

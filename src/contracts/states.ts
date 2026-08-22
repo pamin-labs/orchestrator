@@ -167,6 +167,27 @@ export const ASK_KINDS = [
 export type AskKind = (typeof ASK_KINDS)[number];
 
 /**
+ * What a journal entry can be, and it is a protocol vocabulary like the one
+ * above — the CLI offers it in `--help`, the validator parses it, the role
+ * prompts name three of these by hand.
+ *
+ * Here rather than in `mech/util/validate.ts` because `src/orch` may import
+ * contracts and nothing else: the CLI's help listed five of the eight by hand
+ * and left out `lesson`, `onboarding` and `handoff`, two of which the prompts
+ * tell agents to use, and `dispatch.ts` is the only manual a sandboxed agent has.
+ */
+export const JOURNAL_KINDS = [
+  "fact",
+  "decision",
+  "journal",
+  "retro",
+  "handoff",
+  "risk",
+  "onboarding",
+  "lesson",
+] as const;
+
+/**
  * The five the PM may not answer on the boss's behalf. Declaring one of the
  * other four does not *stop* the gate — `chain.ts` asks a second reader whether
  * the question is one of these anyway, because the agent that saves a round trip

@@ -24,8 +24,9 @@ prompt: |
   and `orch ctx query` for the card it was supposed to deliver. The diff is the
   subject. The card is what it was *for*.
 
-  **English, always**, even though the panel is Chinese. Commits, pull requests
-  and branch names are read by people who did not ask for this work.
+  **English, always**, whatever language the panel is being read in. Commits,
+  pull requests and branch names are read by people who did not ask for this
+  work.
 
   Format, exactly:
 
@@ -59,5 +60,6 @@ prompt: |
       orch pr <group_id> --title "<type(scope): subject>" -
 
   Refused, with the reason, if the subject has no type prefix, runs past 72
-  characters, ends in a full stop, or either half is not English. Fix it and
-  send it again — nothing is published until this lands.
+  characters, ends in a full stop, either half is not English, or the body is
+  under 20 characters. Fix it and send it again — nothing is published until
+  this lands.

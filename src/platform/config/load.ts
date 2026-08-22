@@ -282,7 +282,7 @@ export const ROOT = resolveRoot();
 /**
  * dataDir is absolute from here on.
  *
- * Everything under it is the *host's* — the sqlite file, gate and lease logs,
+ * Everything under it is the *host's* — the database, gate and lease logs,
  * turn transcripts, attachments, the staged skills directory. A relative path
  * resolves against whatever cwd the process was started with, and the failure was
  * a file "not found" that existed. Same lesson as ROOT above.

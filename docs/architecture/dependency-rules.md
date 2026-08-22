@@ -55,5 +55,5 @@ base. Do not add a health baseline when the repository has no accepted debt to
 suppress.
 
 Tailwind v4 is a build-only dependency imported from CSS. Fallow's documented
-CSS-framework exception is therefore the single `ignoreDependencies` entry; it
+CSS-framework exception is therefore the `ignoreDependencies` entries; it
 is not an ignored source import or a production runtime dependency.

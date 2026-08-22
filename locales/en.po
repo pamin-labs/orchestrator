@@ -1413,6 +1413,9 @@ msgstr "group is RUNNING with an empty queue, and one re-queue did not revive it
 msgid "grp {target} landed; resuming by itself"
 msgstr "grp {target} landed; resuming by itself"
 
+msgid "half the time"
+msgstr "half the time"
+
 msgid "handed to {to}: {question}"
 msgstr "handed to {to}: {question}"
 
@@ -2072,14 +2075,8 @@ msgstr "Ownership"
 msgid "owns {paths}"
 msgstr "owns {paths}"
 
-msgid "p50"
-msgstr "p50"
-
 msgid "P50"
 msgstr "P50"
-
-msgid "p95"
-msgstr "p95"
 
 msgid "P95"
 msgstr "P95"
@@ -3017,6 +3014,9 @@ msgstr "The service that launches containers"
 
 msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
 msgstr "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
+
+msgid "the slowest few"
+msgstr "the slowest few"
 
 msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
 msgstr "the submodules did not come up, so the checkout may be incomplete: {why}"

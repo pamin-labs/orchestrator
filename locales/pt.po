@@ -1413,6 +1413,9 @@ msgstr "o grupo está em RUNNING com a fila vazia, e voltar a enfileirar uma vez
 msgid "grp {target} landed; resuming by itself"
 msgstr "grp {target} aterrou; a retomar sozinha"
 
+msgid "half the time"
+msgstr "metade das vezes"
+
 msgid "handed to {to}: {question}"
 msgstr "passado a {to}: {question}"
 
@@ -2072,14 +2075,8 @@ msgstr "Divisão"
 msgid "owns {paths}"
 msgstr "fronteira definida em {paths}"
 
-msgid "p50"
-msgstr "p50"
-
 msgid "P50"
 msgstr "P50"
-
-msgid "p95"
-msgstr "p95"
 
 msgid "P95"
 msgstr "P95"
@@ -3017,6 +3014,9 @@ msgstr "O serviço que sobe os contêineres"
 
 msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
 msgstr "A chamada de modelo mais frequente de todo o sistema: resumo puro, sem decisão, sem ferramentas, sem quadro compartilhado. A primeira coisa a tirar de uma assinatura cara."
+
+msgid "the slowest few"
+msgstr "as poucas mais lentas"
 
 msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
 msgstr "os submódulos não subiram, por isso a cópia pode estar incompleta: {why}"

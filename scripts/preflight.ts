@@ -91,7 +91,7 @@ const steps: Step[] = [
   { name: "format", job: "quality", run: () => cmd("bun run format:check") },
   { name: "types", job: "quality", run: () => cmd("bun run typecheck") },
   { name: "lint", job: "quality", run: () => cmd("bun run lint") },
-  // Editing an English `<Trans>` retires its id, so eight catalogs lose that
+  // Editing an English `<Trans>` retires its id, so nine catalogs lose that
   // string at once. The step below regenerates and diffs, which a *complete*
   // catalogue satisfies — the rows are gone from it too. This is the gate that
   // says no.

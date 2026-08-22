@@ -10,6 +10,7 @@ import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { z } from "zod";
+import { JOURNAL_KINDS } from "../../contracts/states.ts";
 
 export interface Invalid {
   ok: false;
@@ -28,7 +29,6 @@ const JOURNAL_MAX_LINES = 6;
  */
 const DRAFT_MAX_LINES = 12;
 
-const JOURNAL_KINDS = ["fact", "decision", "journal", "retro", "handoff", "risk", "onboarding", "lesson"] as const;
 const JournalKindSchema = z.enum(JOURNAL_KINDS);
 export type JournalKind = z.infer<typeof JournalKindSchema>;
 

@@ -2,7 +2,7 @@
 
 **Status**: accepted; sessions implemented, snapshots refused on measurement.
 **Date**: 2026-08-19
-**Follows**: [005](005-the-container-is-the-boundary.md) and
+**Follows**: [005](005-opensandbox-is-the-boundary.md) and
 [026](026-three-classes-of-process.md), which decide what a container is for.
 
 The plan called for two things the SDK ships and this repository had zero

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { GRP_STATES } from "../../../../src/contracts/states.ts";
 import { api, groupAction, readApi } from "../../shared/api";
-import type { PanelFrame } from "../../shared/stream";
+import { frameText, type PanelFrame } from "../../shared/stream";
 import { clock } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { Empty, Meta } from "../../ui/bits";
@@ -48,6 +48,23 @@ const SandboxInfoSchema: z.ZodType<InferResponseType<typeof api.sandbox.$get, 20
 });
 type SandboxInfo = z.infer<typeof SandboxInfoSchema>;
 
+/**
+ * The stored tail, then whatever arrived since. Rendering is here and not in a
+ * `useMemo` on purpose: `frameText` reads the active catalogue, so a memo over
+ * frames alone would keep the language it was first computed in — the defect one
+ * layer up, which is why the frame carries a descriptor at all. The locale
+ * cannot be a dependency (a module singleton re-renders nothing), and this is a
+ * map over rows that are sliced to 300 before they are drawn.
+ */
+const merged = (stored: Line[], live: PanelFrame[]): Line[] => {
+  const seen = new Set(stored.map((l) => `${l.at}:${l.text}`));
+  const fresh = live.map((f) => {
+    const text = frameText(f);
+    return { at: f.at, kind: kindOf(text), text };
+  });
+  return [...stored, ...fresh.filter((l) => !seen.has(`${l.at}:${l.text}`))];
+};
+
 /** A live frame from this group's container, rather than from an agent in it. */
 const fromSandbox = (f: PanelFrame, grpId: number): boolean =>
   f.grpId === grpId && f.agentId == null && (f.cls === "tool" || f.cls === "state") && f.author === "orchestrator";
@@ -69,14 +86,14 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
   // The stored tail, then whatever has arrived since this panel opened. Both,
   // because either one alone is the bug: the tail stops at page load and the
   // live feed starts there.
-  const live = useMemo(
-    () => frames.filter((f) => fromSandbox(f, grpId)).map((f) => ({ at: f.at, kind: kindOf(f.text), text: f.text })),
-    [frames, grpId],
-  );
-  const lines = useMemo(() => {
-    const seen = new Set((info?.lines ?? []).map((l) => `${l.at}:${l.text}`));
-    return [...(info?.lines ?? []), ...live.filter((l) => !seen.has(`${l.at}:${l.text}`))];
-  }, [info, live]);
+  // Filtering is memoised; rendering is not. `frameText` reads the active
+  // catalogue, so a memo over frames alone would keep the language it was first
+  // computed in — the defect one layer up, which is why the frame carries a
+  // descriptor at all. The locale cannot be a dependency (a module singleton
+  // does not re-render anything), and the work is a filter over at most a few
+  // hundred rows that are then sliced to 300.
+  const mine = useMemo(() => frames.filter((f) => fromSandbox(f, grpId)), [frames, grpId]);
+  const lines = merged(info?.lines ?? [], mine);
 
   const tail = useRef<HTMLDivElement>(null);
   useEffect(() => {

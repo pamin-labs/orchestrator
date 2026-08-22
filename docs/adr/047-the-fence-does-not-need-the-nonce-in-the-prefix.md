@@ -54,7 +54,7 @@ fence early. It is not what makes the notice authentic — forging an extra fenc
 of one's own gains nothing. So:
 
 - **A fixed, nonce-free notice goes in `systemAppend`**, saying that some turns
-  begin with a `Security:` line naming a one-time nonce, that only the
+  end with a `Security:` line naming a one-time nonce, that only the
   orchestrator writes it, and that everything between a matching pair of markers
   is data. Constant bytes for the life of the process. This half is load-bearing:
   without it the `Security:` line is a claim made inside the same channel an

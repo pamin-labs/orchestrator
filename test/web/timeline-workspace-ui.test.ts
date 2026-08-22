@@ -27,14 +27,14 @@ const render = (node: ReturnType<typeof createElement>) => {
   return mount(createElement(WithQueries, null, node));
 };
 
-const frame = (id: string, text: string, grpId: number | null, projectId = 1): PanelFrame => ({
+const frame = (id: string, body: string, grpId: number | null, projectId = 1): PanelFrame => ({
   id,
   cls: "say",
   grpId,
   projectId,
   at: Number(id.slice(1)) || 1,
   author: "agent",
-  text,
+  body,
 });
 
 test("timeline renders an empty state and filters to the selected requirement", () => {
@@ -70,7 +70,7 @@ test("timeline renders an empty state and filters to the selected requirement", 
 test("workspace renders its empty state plus live path and diff output", () => {
   shown(render(createElement(Workspace, { frames: [], grpId: 1 })), "容器还没说话");
   const lines = ["$ pwd", "/workspace", "$ git diff", "+changed"].map(
-    (text, index): PanelFrame => ({
+    (body, index): PanelFrame => ({
       id: `e${index}`,
       cls: "tool",
       grpId: 1,
@@ -78,7 +78,7 @@ test("workspace renders its empty state plus live path and diff output", () => {
       at: index,
       author: "orchestrator",
       agentId: null,
-      text,
+      body,
     }),
   );
   const live = render(createElement(Workspace, { frames: lines, grpId: 1 }));

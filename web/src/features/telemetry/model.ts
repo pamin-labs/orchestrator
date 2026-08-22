@@ -150,8 +150,15 @@ export const isRenamed = (id: string): boolean => id in HUMAN;
  * wants to know what usually happens and what happens on a bad day, and those
  * are the words for it.
  */
-export const P50_LABEL = msg`p50`;
-export const P95_LABEL = msg`p95`;
+/**
+ * The conversion to descriptors took the two plain-language labels this pane
+ * shipped with and made them `p50` and `p95`, so the tooltip that exists to
+ * explain the header repeated the header — and nine catalogues got a row
+ * translating nothing. i18n-exempt: the labels it replaced, quoted below.
+ * They were `一半的情况` and `最慢的那几次`.
+ */
+export const P50_LABEL = msg`half the time`;
+export const P95_LABEL = msg`the slowest few`;
 
 /**
  * What kind of work a span name is, from its own prefix.

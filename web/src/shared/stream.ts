@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { notifyWanted } from "./desktop-notify";
 import { sayIn, type Said } from "../../../src/contracts/said.ts";
+import { saidText } from "./said";
 import { z } from "zod";
 import { FrameSchema } from "../../../src/contracts/events.ts";
 
@@ -65,10 +66,14 @@ export interface PanelFrame {
   target?: string | null;
   intent?: string | null;
   /**
-   * What to draw when the row names no sentence, and the fallback when it does:
-   * a stored `body`, or raw sandbox output, which is not ours to translate.
+   * The stored body, or raw sandbox output — **not** display text.
+   *
+   * It is named `body` and not `text` because it was `text` and three panes read
+   * it as if it were what to draw. Two of them stopped being right the moment
+   * the descriptor started travelling beside it, and the compiler is what found
+   * them. `frameText` is the one way to a string a person reads.
    */
-  text: string;
+  body: string;
   /**
    * The sentence the server named, unrendered.
    *
@@ -108,7 +113,7 @@ function appendLive(next: PanelFrame[], f: LiveWire, liveSeq: { current: number 
   const cls = f.kind === "text" || f.kind === "thinking" ? "partial" : "tool";
   const last = next[next.length - 1];
   if (cls === "partial" && last?.cls === "partial" && last.agentId === f.agentId) {
-    next[next.length - 1] = { ...last, text: (last.text + f.body).slice(-300) };
+    next[next.length - 1] = { ...last, body: (last.body + f.body).slice(-300) };
     return next;
   }
   return [
@@ -120,7 +125,7 @@ function appendLive(next: PanelFrame[], f: LiveWire, liveSeq: { current: number 
       projectId: f.projectId ?? null,
       at,
       author: f.role ?? "agent",
-      text: f.body,
+      body: f.body,
       agentId: f.agentId,
     },
   ];
@@ -148,7 +153,7 @@ function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[]
       // producer visible as a blank row instead of weakening PanelFrame's type.
       // The descriptor travels beside it and the row renders it, so the timeline
       // follows the locale menu rather than the moment the frame arrived.
-      text: f.body ?? "",
+      body: f.body ?? "",
       ...(sentence ? { said: sentence } : {}),
       ...(step ? { step } : {}),
     },
@@ -246,3 +251,12 @@ export function raise(f: Notice) {
     n.close();
   };
 }
+
+/**
+ * What this row says, in the language being read now.
+ *
+ * The one way from a frame to a string a person sees. Rendering at ingest froze
+ * every row in whichever catalogue was live when its SSE frame arrived, because
+ * frames are appended to `useState` and never rebuilt.
+ */
+export const frameText = (f: PanelFrame): string => saidText(f.said, f.body);

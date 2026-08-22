@@ -1413,6 +1413,9 @@ msgstr "группа в состоянии RUNNING при пустой очер�
 msgid "grp {target} landed; resuming by itself"
 msgstr "grp {target} приземлилась; продолжаем сами"
 
+msgid "half the time"
+msgstr "в половине случаев"
+
 msgid "handed to {to}: {question}"
 msgstr "передано {to}: {question}"
 
@@ -2072,14 +2075,8 @@ msgstr "Владение"
 msgid "owns {paths}"
 msgstr "границы заданы: {paths}"
 
-msgid "p50"
-msgstr "p50"
-
 msgid "P50"
 msgstr "P50"
-
-msgid "p95"
-msgstr "p95"
 
 msgid "P95"
 msgstr "P95"
@@ -3017,6 +3014,9 @@ msgstr "Служба, которая запускает контейнеры"
 
 msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
 msgstr "Самый частый вызов модели во всей системе: чистое суммирование, без решений, без инструментов, без общей доски. Первое, что стоит увести с дорогой подписки."
+
+msgid "the slowest few"
+msgstr "самые медленные из них"
 
 msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
 msgstr "сабмодули не поднялись, так что рабочая копия может быть неполной: {why}"

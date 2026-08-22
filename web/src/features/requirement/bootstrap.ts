@@ -1,4 +1,4 @@
-import type { PanelFrame } from "../../shared/stream";
+import { frameText, type PanelFrame } from "../../shared/stream";
 import { BOOTSTRAP_FAILED, BOOTSTRAP_OK, BOOTSTRAP_START } from "../../../../src/contracts/events.ts";
 
 /**
@@ -50,7 +50,11 @@ export function bootstrapOf(frames: PanelFrame[], grpId: number): Bootstrap {
   const since = began?.at ?? 0;
   const lines = mine.filter((f) => f.cls === "tool" && f.agentId == null && f.at >= since);
   const done = mine.findLast((f) => f.cls === "state" && f.at >= since && ended(f.step));
-  const cmd = lines.find((f) => f.text.startsWith("$ "))?.text.slice(2) ?? null;
+  const cmd =
+    lines
+      .map(frameText)
+      .find((line: string) => line.startsWith("$ "))
+      ?.slice(2) ?? null;
   return {
     running: (!!began || !!lines.length) && !done,
     failed: done?.step === BOOTSTRAP_FAILED,

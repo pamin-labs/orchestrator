@@ -61,7 +61,7 @@ const source = (await translations("en")).messages;
  * A missing translation is what *editing English* looks like.
  *
  * The id is a hash of the source text, so rewording one `<Trans>` retires its id
- * and eight catalogs lose that string at once. Nothing stopped that from being
+ * and nine catalogs lose that string at once. Nothing stopped that from being
  * merged: the README's table is regenerated from the catalogues, so a catalogue
  * that lost a row is a table that agrees with it. The panel then renders English
  * inside a Russian pane, for as long as nobody reads the number.

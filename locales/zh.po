@@ -1413,6 +1413,9 @@ msgstr "这一组 RUNNING 但队列是空的，重排一轮也没救回来。最
 msgid "grp {target} landed; resuming by itself"
 msgstr "挡路的 grp {target} 已经落地，自动继续"
 
+msgid "half the time"
+msgstr "一半的情况"
+
 msgid "handed to {to}: {question}"
 msgstr "转给 {to}：{question}"
 
@@ -2072,14 +2075,8 @@ msgstr "所有权"
 msgid "owns {paths}"
 msgstr "边界划为 {paths}"
 
-msgid "p50"
-msgstr "一半的情况"
-
 msgid "P50"
 msgstr "一般"
-
-msgid "p95"
-msgstr "最慢的那几次"
 
 msgid "P95"
 msgstr "最慢"
@@ -3017,6 +3014,9 @@ msgstr "开容器的那个服务"
 
 msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
 msgstr "全系统调用最频繁的一个模型调用：纯摘要、不做决策、不用工具、不碰黑板。第一个该从贵订阅上挪走的就是它。"
+
+msgid "the slowest few"
+msgstr "最慢的那几次"
 
 msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
 msgstr "子模块没拉起来，代码可能不全：{why}"

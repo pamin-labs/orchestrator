@@ -182,7 +182,7 @@ function version(): string {
  * The commit convention, as an `if`.
  *
  * Every rule here is one the Scribe's prompt states, and the prompt lists these
- * four refusals by name. That is not decoration: a prompt that permits what the
+ * five refusals by name. That is not decoration: a prompt that permits what the
  * validator rejects teaches the model to write something that will be thrown
  * away, and it finds out at the end of the only turn it gets.
  */

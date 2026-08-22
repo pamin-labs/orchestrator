@@ -1413,6 +1413,9 @@ msgstr "le groupe est en RUNNING avec une file vide, et une remise en file ne l'
 msgid "grp {target} landed; resuming by itself"
 msgstr "grp {target} a atterri ; reprise automatique"
 
+msgid "half the time"
+msgstr "la moitié du temps"
+
 msgid "handed to {to}: {question}"
 msgstr "transmis à {to} : {question}"
 
@@ -2072,14 +2075,8 @@ msgstr "Répartition"
 msgid "owns {paths}"
 msgstr "frontière fixée à {paths}"
 
-msgid "p50"
-msgstr "p50"
-
 msgid "P50"
 msgstr "P50"
-
-msgid "p95"
-msgstr "p95"
 
 msgid "P95"
 msgstr "P95"
@@ -3017,6 +3014,9 @@ msgstr "Le service qui lance les conteneurs"
 
 msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
 msgstr "L'appel modèle le plus fréquent de tout le système : pure synthèse, aucune décision, aucun outil, aucun tableau partagé. La première chose à sortir d'un abonnement premium."
+
+msgid "the slowest few"
+msgstr "les quelques plus lentes"
 
 msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
 msgstr "les sous-modules ne sont pas remontés, la copie de travail est peut-être incomplète : {why}"

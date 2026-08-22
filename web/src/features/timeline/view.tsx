@@ -1,8 +1,7 @@
 import { memo } from "react";
 import type { State } from "../../shared/api";
-import { groupedRows, type PanelFrame } from "../../shared/stream";
+import { frameText, groupedRows, type PanelFrame } from "../../shared/stream";
 import { clock } from "../../shared/format";
-import { saidText } from "../../shared/said";
 import { cn } from "../../ui/cn";
 import { Trans, useLingui } from "@lingui/react/macro";
 
@@ -117,13 +116,7 @@ export function Timeline({
       )}
       <div className="[&>*:first-child]:border-t-0">
         {groupedRows(shown).map(({ f, showHeader, showDivider }) => (
-          <TimelineRow
-            key={f.id}
-            f={f}
-            text={saidText(f.said, f.text)}
-            showHeader={showHeader}
-            showDivider={showDivider}
-          />
+          <TimelineRow key={f.id} f={f} text={frameText(f)} showHeader={showHeader} showDivider={showDivider} />
         ))}
       </div>
     </div>

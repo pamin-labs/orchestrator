@@ -1413,6 +1413,9 @@ msgstr "die Gruppe steht auf RUNNING bei leerer Queue, und einmaliges Neueinreih
 msgid "grp {target} landed; resuming by itself"
 msgstr "grp {target} ist gelandet; läuft von selbst weiter"
 
+msgid "half the time"
+msgstr "in der Hälfte der Fälle"
+
 msgid "handed to {to}: {question}"
 msgstr "an {to} weitergegeben: {question}"
 
@@ -2072,14 +2075,8 @@ msgstr "Zuständigkeit"
 msgid "owns {paths}"
 msgstr "Grenze auf {paths} gesetzt"
 
-msgid "p50"
-msgstr "p50"
-
 msgid "P50"
 msgstr "P50"
-
-msgid "p95"
-msgstr "p95"
 
 msgid "P95"
 msgstr "P95"
@@ -3017,6 +3014,9 @@ msgstr "Der Dienst, der Container startet"
 
 msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
 msgstr "Der meistgerufene Modellaufruf im ganzen System: reines Zusammenfassen, keine Entscheidung, keine Werkzeuge, kein Blackboard. Das Erste, was von einem teuren Abo wegsollte."
+
+msgid "the slowest few"
+msgstr "die langsamsten paar"
 
 msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
 msgstr "die Submodule sind nicht hochgekommen, der Checkout ist womöglich unvollständig: {why}"

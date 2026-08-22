@@ -139,7 +139,7 @@ export const readinessPeriodMs = (watchdogIntervalMs: number): number =>
 
 /**
  * Nothing. The host runs no binary of its own — what is left on this machine is
- * the server, sqlite and mailbox polling, so a headless box with docker, the
+ * the server, the database and mailbox polling, so a headless box with docker, the
  * image and a pasted token starts. Kept as a function rather than deleted: the
  * one place to name a host binary if one is ever needed again.
  */
@@ -895,7 +895,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
 
   // Composition installs the span processors, so no platform module opens a
   // socket or takes a database handle as an import side effect. Without a
-  // configured endpoint only the SQLite processor is registered.
+  // configured endpoint only the stored-span processor is registered.
   configureTracing(db);
   const runtime = runtimeStatus(false);
   // What the readiness timer found, where the panel can reach it. A getter, so

@@ -24,7 +24,7 @@ const one = (f: Parameters<typeof appendFrame>[1]): PanelFrame => appendFrame([]
  */
 const drawn = (f: Parameters<typeof appendFrame>[1]): string => {
   const row = one(f);
-  return saidText(row.said, row.text);
+  return saidText(row.said, row.body);
 };
 
 const MERGED = "merged into main";
@@ -32,7 +32,7 @@ const MERGED = "merged into main";
 test("a row stored before meta.say existed renders the body it was written with", () => {
   const row = one({ type: "event", seq: 1, kind: "state_change", author: "boss", body: "已合入 main", at: 1 });
   expect(row.said).toBeUndefined();
-  expect(saidText(row.said, row.text)).toBe("已合入 main");
+  expect(saidText(row.said, row.body)).toBe("已合入 main");
 });
 
 test("a row carrying meta.say renders the panel's catalogue, not the stored body", () => {
@@ -66,9 +66,9 @@ test("one frame, ingested once, follows the reader when the locale moves", () =>
     meta: { say: say(MERGED) },
     at: 9,
   });
-  expect(saidText(row.said, row.text)).toBe("merged into main");
+  expect(saidText(row.said, row.body)).toBe("merged into main");
   i18n.activate("zh");
-  expect(saidText(row.said, row.text)).toBe("已合入 main");
+  expect(saidText(row.said, row.body)).toBe("已合入 main");
 });
 
 test("arguments are filled in by the panel, from values the server sent", () => {

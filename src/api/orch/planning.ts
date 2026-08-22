@@ -313,18 +313,21 @@ async function dropEvidence(ctx: Ctx, gid: number, body: z.infer<typeof DropBody
 /**
  * Enough of an answer to be one, in whatever language it is written in.
  *
- * This was `why.length < 10`, calibrated on English and enforced as a 400.
- * `.length` counts UTF-16 units, so it refused complete Chinese, Japanese and
- * Korean sentences — `需求二已完全覆盖` is eight — while `ok i think` is ten and
- * passed, which is the non-answer the check exists to stop.
+ * A floor against emptiness, and nothing more — `ok`, `短`, `嗯`, a full stop.
+ * It cannot tell a considered answer from `ok i think`, and it never could.
+ *
+ * It was `why.length < 10`, calibrated on English and enforced as a 422:
+ * `.length` counts UTF-16 units, so `需求二已完全覆盖` — eight units, a complete
+ * sentence — was refused while `ok i think` was ten and passed.
  */
 /**
- * `terms()` is this project's tokeniser: ICU word breaking plus rented stop-word
- * lists, so it counts words in ten languages and drops the ones carrying
- * nothing. Measured on those four cases, three terms accepts both refused
- * sentences and refuses `ok i think`.
+ * `terms()` is this project's tokeniser, ICU word breaking plus rented stop-word
+ * lists, so it counts the same way in ten languages. **Two**, not three: at three
+ * it refused `grp2 covers it` and `remember to fix this`, which are answers —
+ * the same over-reach `slug.ts` records for pointing this list at a job it was
+ * not built for.
  */
-const isASentence = (why: string): boolean => terms(why).length >= 3;
+const isASentence = (why: string): boolean => terms(why).length >= 2;
 
 export const postDrop = (async (ctx, _req, a, _p, b) => {
   if (!plans(ctx, a) && a.role !== roleFor(ctx, "cut_boundary"))

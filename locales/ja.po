@@ -1413,6 +1413,9 @@ msgstr "グループは RUNNING ですがキューが空で、一度の再投入
 msgid "grp {target} landed; resuming by itself"
 msgstr "grp {target} が着地しました。自動的に再開します"
 
+msgid "half the time"
+msgstr "半分の場合"
+
 msgid "handed to {to}: {question}"
 msgstr "{to} に回しました：{question}"
 
@@ -2072,14 +2075,8 @@ msgstr "担当"
 msgid "owns {paths}"
 msgstr "担当範囲を {paths} に決めました"
 
-msgid "p50"
-msgstr "p50"
-
 msgid "P50"
 msgstr "P50"
-
-msgid "p95"
-msgstr "p95"
 
 msgid "P95"
 msgstr "P95"
@@ -3017,6 +3014,9 @@ msgstr "コンテナを起動するサービス"
 
 msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
 msgstr "システム全体で最も呼ばれるモデル呼び出し。純粋な要約で、判断も、ツールも、ブラックボードもありません。高額なサブスクから真っ先に外すべきものです。"
+
+msgid "the slowest few"
+msgstr "いちばん遅い数回"
 
 msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
 msgstr "サブモジュールが取れませんでした。コードが揃っていない可能性があります：{why}"

@@ -37,6 +37,7 @@ import { EvidencePanel } from "../evidence/view";
 import { Notes } from "../notes/view";
 import { bootstrapOf } from "./bootstrap";
 import { saidText } from "../../shared/said";
+import { frameText } from "../../shared/stream";
 import {
   activeTab,
   answeredFor,
@@ -424,7 +425,7 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
         >
           {lines.slice(-300).map((f) => (
             <div key={f.id} className="break-all whitespace-pre-wrap">
-              {f.text}
+              {frameText(f)}
             </div>
           ))}
         </div>

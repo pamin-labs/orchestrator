@@ -1,6 +1,7 @@
 # 042 A prompt firewall on the role files, and nowhere else
 
-**Status**: accepted
+**Status**: accepted; the "known next step" section is superseded by
+[`047`](047-the-fence-does-not-need-the-nonce-in-the-prefix.md).
 **Date**: 2026-08-21
 
 A role's prompt can carry text shaped like an instruction rather than like data —

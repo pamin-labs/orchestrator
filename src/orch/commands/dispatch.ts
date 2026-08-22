@@ -1,4 +1,5 @@
 import { ASK_KINDS, isAskKind } from "../../contracts/states.ts";
+import { JOURNAL_KINDS } from "../../contracts/states.ts";
 import { Command, CommanderError } from "commander";
 import type { hc } from "hono/client";
 import { ChangedFilesClaimSchema, MailIntent, SplitRequirements } from "../../contracts/orch.ts";
@@ -397,7 +398,7 @@ function buildProgram(api: DispatchContext, act: Act, out: string[], err: string
       "--kind <kind>",
       "required — budget|merge|credential|deploy|scope (the boss decides these) or env|spec|boundary|design",
     )
-    .option("--brief <brief>", "<=20 chars, what it is about")
+    .option("--brief <brief>", "<=40 characters, what it is about")
     .action(bind(askBoss));
 
   const leaseCommand = program
@@ -426,7 +427,7 @@ function buildProgram(api: DispatchContext, act: Act, out: string[], err: string
     .description("the group's written record: add")
     .command("add")
     .description("append an entry; the body is read from stdin")
-    .option("--kind <kind>", "decision|journal|retro|risk|fact", "journal")
+    .option("--kind <kind>", JOURNAL_KINDS.join("|"), "journal")
     .option("--supersedes <id>", "the decision this one overturns; it stops being retrieved")
     .option("--file <path>", "a file the entry is about, repeatable", collect, [])
     .option("--slice <n>", "the slice this belongs to")

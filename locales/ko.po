@@ -1413,6 +1413,9 @@ msgstr "그룹은 RUNNING인데 대기열이 비었고, 한 번 다시 넣어도
 msgid "grp {target} landed; resuming by itself"
 msgstr "grp {target}이(가) 안착했습니다. 알아서 재개합니다"
 
+msgid "half the time"
+msgstr "절반의 경우"
+
 msgid "handed to {to}: {question}"
 msgstr "{to}에게 넘겼습니다: {question}"
 
@@ -2072,14 +2075,8 @@ msgstr "소유"
 msgid "owns {paths}"
 msgstr "경계를 {paths}로 정했습니다"
 
-msgid "p50"
-msgstr "p50"
-
 msgid "P50"
 msgstr "P50"
-
-msgid "p95"
-msgstr "p95"
 
 msgid "P95"
 msgstr "P95"
@@ -3017,6 +3014,9 @@ msgstr "컨테이너를 띄우는 서비스"
 
 msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
 msgstr "시스템 전체에서 가장 많이 불리는 모델 호출. 순수 요약이며 판단도, 도구도, 블랙보드도 없습니다. 비싼 구독에서 가장 먼저 빼야 할 것입니다."
+
+msgid "the slowest few"
+msgstr "가장 느린 몇 번"
 
 msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
 msgstr "서브모듈을 가져오지 못했습니다. 코드가 온전하지 않을 수 있습니다: {why}"
