@@ -39,7 +39,7 @@ import {
   runPrReview,
   sendBack,
 } from "../mech/flow/review.ts";
-import { runStandup } from "../mech/flow/standup.ts";
+import { runStandup, type StandupItem } from "../mech/flow/standup.ts";
 import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { gitTrailers } from "../mech/git/ghlogin.ts";
 import { changedSince, checkpoint, porcelainEntries, porcelainPaths, STATUS_Z } from "../mech/git/gitops.ts";
@@ -1107,24 +1107,34 @@ export function publishWatchdogFinding(ctx: Ctx, finding: Finding): void {
   ctx.onFinding?.(finding.rule, finding.severity, renderSaid(outputLanguage(ctx.config), finding.say), finding.grpId);
 }
 
-export async function publishStandupItem(
-  ctx: Ctx,
-  item: { kind: string; body: string; grpIds: number[] },
-): Promise<void> {
+/**
+ * The same two readers as a watchdog finding, and now the same treatment.
+ *
+ * It took the sentence already written and emitted it as `body:`, so the panel
+ * had nothing to render and every locale read English. `say` goes on the wire
+ * for the panel; `renderSaid` produces the one the notifier posts to a webhook.
+ */
+/**
+ * De-duplicated on the descriptor's id and values rather than on the rendered
+ * body: the prose is free to change now, and the same finding in two languages
+ * is one finding.
+ */
+export async function publishStandupItem(ctx: Ctx, item: StandupItem): Promise<void> {
+  const key = JSON.stringify([item.say.id, item.say.values ?? {}]);
   const [seen] = await ctx.db
     .select({ at: maxMs(events.at) })
     .from(events)
-    .where(and(eq(events.author, "standup"), eq(events.body, item.body)));
+    .where(and(eq(events.author, "standup"), sql`${events.meta_json}->>'key' = ${key}`));
   if (seen?.at && Date.now() - seen.at < ctx.config.watchdog.reemitMs) return;
   const groupId = item.grpIds[0] ?? null;
   await ctx.bus.emit({
     grpId: groupId,
     author: "standup",
     kind: "state_change",
-    body: item.body,
-    meta: { kind: item.kind, groups: item.grpIds },
+    say: item.say,
+    meta: { kind: item.kind, groups: item.grpIds, key },
   });
-  ctx.onFinding?.(item.kind, "advisory", item.body, groupId);
+  ctx.onFinding?.(item.kind, "advisory", renderSaid(outputLanguage(ctx.config), item.say), groupId);
 }
 
 /** Called by the server when the Auditor files a PR-level verdict. */

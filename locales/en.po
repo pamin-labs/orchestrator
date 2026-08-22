@@ -35,6 +35,9 @@ msgstr "(no reply was left)"
 msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, one {# host check failed} other {# host checks failed}}"
 
+msgid "{a} and {b} both hold paths matching {hit} — one of them widened its boundary after starting"
+msgstr "{a} and {b} both hold paths matching {hit} — one of them widened its boundary after starting"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, but the App is not installed on any account yet"
 
@@ -214,6 +217,9 @@ msgstr "{name} dissolved; its sandbox is reclaimed"
 msgid "{name} has been parked {hours}h — wake it, or drop it?"
 msgstr "{name} has been parked {hours}h — wake it, or drop it?"
 
+msgid "{name} has been running with nothing happening for {n, plural, one {# minute} other {# minutes}} and nobody is waiting on an answer"
+msgstr "{name} has been running with nothing happening for {n, plural, one {# minute} other {# minutes}} and nobody is waiting on an answer"
+
 msgid "{name} has been waiting {min} min for you"
 msgstr "{name} has been waiting {min} min for you"
 
@@ -306,6 +312,9 @@ msgstr "{repoPath} removed"
 
 msgid "{resource} failed {n}x with no code change in between — treat the environment as the suspect"
 msgstr "{resource} failed {n}x with no code change in between — treat the environment as the suspect"
+
+msgid "{resource} is failing in {n, plural, one {# group} other {# different groups}} — likely the project, not the groups"
+msgstr "{resource} is failing in {n, plural, one {# group} other {# different groups}} — likely the project, not the groups"
 
 msgid "{rest} more of {total}"
 msgstr "{rest} more of {total}"

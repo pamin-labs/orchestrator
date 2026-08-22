@@ -35,6 +35,9 @@ msgstr "(keine Antwort)"
 msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, one {# Host-Prüfung fehlgeschlagen} other {# Host-Prüfungen fehlgeschlagen}}"
 
+msgid "{a} and {b} both hold paths matching {hit} — one of them widened its boundary after starting"
+msgstr "{a} und {b} halten beide Pfade, die auf {hit} passen — einer von beiden hat seine Grenze nach dem Start erweitert"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, aber die App ist noch auf keinem Konto installiert"
 
@@ -214,6 +217,9 @@ msgstr "{name} wurde aufgelöst; die Sandbox ist zurückgewonnen"
 msgid "{name} has been parked {hours}h — wake it, or drop it?"
 msgstr "{name} ist seit {hours} h geparkt — wecken oder verwerfen?"
 
+msgid "{name} has been running with nothing happening for {n, plural, one {# minute} other {# minutes}} and nobody is waiting on an answer"
+msgstr "{name} läuft seit {n, plural, one {# Minute} other {# Minuten}}, ohne dass etwas passiert, und niemand wartet auf eine Antwort"
+
 msgid "{name} has been waiting {min} min for you"
 msgstr "{name} wartet seit {min} Min. auf dich"
 
@@ -306,6 +312,9 @@ msgstr "{repoPath} entfernt"
 
 msgid "{resource} failed {n}x with no code change in between — treat the environment as the suspect"
 msgstr "{resource} ist {n}× ohne Codeänderung dazwischen fehlgeschlagen — verdächtige zuerst die Umgebung"
+
+msgid "{resource} is failing in {n, plural, one {# group} other {# different groups}} — likely the project, not the groups"
+msgstr "{resource} schlägt in {n, plural, one {# Gruppe} other {# verschiedenen Gruppen}} fehl — vermutlich liegt es am Projekt, nicht an den Gruppen"
 
 msgid "{rest} more of {total}"
 msgstr "{rest} weitere von {total}"

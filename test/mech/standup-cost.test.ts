@@ -28,7 +28,9 @@ test("boundaries widened after starting are caught", async () => {
   // canStart refuses this at the start, so seeing it later means someone widened
   // their glob mid-flight.
   expect(dup).toBeDefined();
-  expect(dup.body).toContain("widened");
+  // The descriptor, not a rendered sentence: the panel renders it in the reader's
+  // catalogue and the notifier renders it in `output.language`.
+  expect(dup.say.message).toContain("widened");
   expect(dup.grpIds.sort((left, right) => left - right)).toEqual([a, b].sort((left, right) => left - right));
 });
 
@@ -64,7 +66,7 @@ test("a gate failing across several groups is a project problem", async () => {
   await failed(a);
   await failed(b);
   const item = (await runStandup(db, NOW)).find((i) => i.kind === "repeat_failure")!;
-  expect(item.body).toContain("likely the project");
+  expect(item.say.message).toContain("likely the project");
 });
 
 test("a gate that has since gone green stops being reported", async () => {

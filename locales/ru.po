@@ -35,6 +35,9 @@ msgstr "(ответа нет)"
 msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, one {# проверка хоста не пройдена} few {# проверки хоста не пройдены} many {# проверок хоста не пройдено} other {# проверки хоста не пройдено}}"
 
+msgid "{a} and {b} both hold paths matching {hit} — one of them widened its boundary after starting"
+msgstr "{a} и {b} оба владеют путями, совпадающими с {hit}, — один из них расширил свою границу уже после старта"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, но App ещё не установлено ни в одном аккаунте"
 
@@ -214,6 +217,9 @@ msgstr "{name} распущена; её песочница освобожден�
 msgid "{name} has been parked {hours}h — wake it, or drop it?"
 msgstr "{name} отложена уже {hours} ч — разбудить или отказаться?"
 
+msgid "{name} has been running with nothing happening for {n, plural, one {# minute} other {# minutes}} and nobody is waiting on an answer"
+msgstr "{name} работает уже {n, plural, one {# минуту} few {# минуты} many {# минут} other {# минуты}} без каких-либо событий, и никто не ждёт ответа"
+
 msgid "{name} has been waiting {min} min for you"
 msgstr "{name} ждёт вас уже {min} мин"
 
@@ -306,6 +312,9 @@ msgstr "{repoPath} удалён"
 
 msgid "{resource} failed {n}x with no code change in between — treat the environment as the suspect"
 msgstr "{resource} упал {n} раз без изменений кода между попытками — подозревайте окружение"
+
+msgid "{resource} is failing in {n, plural, one {# group} other {# different groups}} — likely the project, not the groups"
+msgstr "{resource} падает в {n, plural, one {# группе} few {# разных группах} many {# разных группах} other {# разных группах}} — дело, скорее всего, в проекте, а не в группах"
 
 msgid "{rest} more of {total}"
 msgstr "ещё {rest} из {total}"

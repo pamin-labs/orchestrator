@@ -35,6 +35,9 @@ msgstr "（返信なし）"
 msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, other {ホストチェックが # 件失敗しました}}"
 
+msgid "{a} and {b} both hold paths matching {hit} — one of them widened its boundary after starting"
+msgstr "{a} と {b} の両方が {hit} に一致するパスを保持しています。どちらかが開始後に境界を広げました"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}。ただし App はまだどのアカウントにもインストールされていません"
 
@@ -214,6 +217,9 @@ msgstr "{name} は解散しました。サンドボックスを回収しまし�
 msgid "{name} has been parked {hours}h — wake it, or drop it?"
 msgstr "{name} は {hours} 時間保留されています — 起こしますか、取りやめますか？"
 
+msgid "{name} has been running with nothing happening for {n, plural, one {# minute} other {# minutes}} and nobody is waiting on an answer"
+msgstr "{name} は {n, plural, other {# 分}} 何も起きないまま動いており、誰も回答を待っていません"
+
 msgid "{name} has been waiting {min} min for you"
 msgstr "{name} が {min} 分あなたを待っています"
 
@@ -306,6 +312,9 @@ msgstr "{repoPath} を削除しました"
 
 msgid "{resource} failed {n}x with no code change in between — treat the environment as the suspect"
 msgstr "{resource} がコード変更なしで {n} 回失敗しました — 環境を疑ってください"
+
+msgid "{resource} is failing in {n, plural, one {# group} other {# different groups}} — likely the project, not the groups"
+msgstr "{resource} は {n, plural, other {# 個の異なるグループ}} で失敗しています。おそらくグループではなくプロジェクト側の問題です"
 
 msgid "{rest} more of {total}"
 msgstr "{total} 件中あと {rest} 件"

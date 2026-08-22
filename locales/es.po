@@ -35,6 +35,9 @@ msgstr "(sin respuesta)"
 msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, one {# comprobación del host ha fallado} other {# comprobaciones del host han fallado}}"
 
+msgid "{a} and {b} both hold paths matching {hit} — one of them widened its boundary after starting"
+msgstr "{a} y {b} tienen ambos rutas que coinciden con {hit}: uno de ellos amplió su límite después de empezar"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, pero la App aún no está instalada en ninguna cuenta"
 
@@ -214,6 +217,9 @@ msgstr "{name} se disolvió; su sandbox queda liberado"
 msgid "{name} has been parked {hours}h — wake it, or drop it?"
 msgstr "{name} lleva {hours} h aparcada — ¿la despierto o la descarto?"
 
+msgid "{name} has been running with nothing happening for {n, plural, one {# minute} other {# minutes}} and nobody is waiting on an answer"
+msgstr "{name} lleva {n, plural, one {# minuto} other {# minutos}} sin que ocurra nada y nadie espera una respuesta"
+
 msgid "{name} has been waiting {min} min for you"
 msgstr "{name} lleva {min} min esperándote"
 
@@ -306,6 +312,9 @@ msgstr "{repoPath} eliminado"
 
 msgid "{resource} failed {n}x with no code change in between — treat the environment as the suspect"
 msgstr "{resource} falló {n} veces sin cambios de código entre medias — sospecha del entorno"
+
+msgid "{resource} is failing in {n, plural, one {# group} other {# different groups}} — likely the project, not the groups"
+msgstr "{resource} está fallando en {n, plural, one {# grupo} other {# grupos distintos}}: probablemente sea el proyecto, no los grupos"
 
 msgid "{rest} more of {total}"
 msgstr "{rest} más de {total}"

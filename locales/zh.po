@@ -35,6 +35,9 @@ msgstr "（没有留下答复）"
 msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, other {# 项主机检查未通过}}"
 
+msgid "{a} and {b} both hold paths matching {hit} — one of them widened its boundary after starting"
+msgstr "{a} 和 {b} 都持有匹配 {hit} 的路径 —— 其中一个在开工后放宽了自己的边界"
+
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}，但 App 还没装到任何账号上"
 
@@ -214,6 +217,9 @@ msgstr "{name} 解散了，沙箱回收"
 msgid "{name} has been parked {hours}h — wake it, or drop it?"
 msgstr "{name} 封存了 {hours} 小时，唤醒还是不做了？"
 
+msgid "{name} has been running with nothing happening for {n, plural, one {# minute} other {# minutes}} and nobody is waiting on an answer"
+msgstr "{name} 已经 {n, plural, other {# 分钟}} 没有任何动静，也没有人在等答复"
+
 msgid "{name} has been waiting {min} min for you"
 msgstr "{name} 已经等你 {min} 分钟"
 
@@ -306,6 +312,9 @@ msgstr "{repoPath} 已删除"
 
 msgid "{resource} failed {n}x with no code change in between — treat the environment as the suspect"
 msgstr "{resource} 失败 {n} 次而代码没变 —— 先怀疑环境，别再改代码"
+
+msgid "{resource} is failing in {n, plural, one {# group} other {# different groups}} — likely the project, not the groups"
+msgstr "{resource} 在 {n, plural, other {# 个不同的需求}} 里都在失败 —— 多半是项目的问题，不是这些需求的问题"
 
 msgid "{rest} more of {total}"
 msgstr "还有 {rest} 个（共 {total}）"

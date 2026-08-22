@@ -185,20 +185,20 @@ MIT 协议。
 ### 语言
 
 <!-- i18n:table -->
-**面板** · 1092 条消息
+**面板** · 1095 条消息
 
 | 语言 | 进度 | 条数 |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 源语言 |
-| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1092 / 1092 |
-| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1092 / 1092 |
-| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1092 / 1092 |
-| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1092 / 1092 |
-| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1092 / 1092 |
-| français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1092 / 1092 |
-| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1092 / 1092 |
-| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1092 / 1092 |
-| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1092 / 1092 |
+| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1095 / 1095 |
+| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1095 / 1095 |
+| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1095 / 1095 |
+| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1095 / 1095 |
+| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1095 / 1095 |
+| français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1095 / 1095 |
+| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1095 / 1095 |
+| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1095 / 1095 |
+| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1095 / 1095 |
 
 <!-- /i18n:table -->
 
