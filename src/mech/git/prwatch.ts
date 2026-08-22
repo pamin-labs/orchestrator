@@ -189,11 +189,17 @@ function version(): string {
 const TYPES = ["feat", "fix", "docs", "test", "refactor", "perf", "build", "chore"] as const;
 // fallow-ignore-next-line security-sink -- the only interpolation is `TYPES`, a module-level `as const` tuple of eight literals; no PR title or body reaches the pattern (they are the `test` arguments below).
 const SUBJECT = new RegExp(`^(${TYPES.join("|")})(\\([a-z0-9._/-]+\\))?: \\S`);
-// CJK, kana and hangul. Not a general "is this English" test — it cannot be one
-// — but it catches the thing that actually happens: the panel's language is
-// Chinese, the journals are Chinese, and the message written next to them comes
-// out Chinese too.
-const NOT_ENGLISH = /[぀-ヿ㐀-鿿가-힯]/;
+/**
+ * A letter that is not written in the Latin script.
+ *
+ * It was three hand-picked ranges — kana, Han, hangul — chosen when the only
+ * other language was Chinese. `output.language` is ten now, and `перенести
+ * проверку`, `μετακίνηση ελέγχου` and `نقل الفحص` all walked past, so ADR 035's
+ * "commits and pull requests are English, always" held for three scripts and not
+ * the rest. Unicode's property is the whole rule: `Common` and `Inherited` keep
+ * digits, punctuation and combining marks legal, `Latin` keeps `déplacer` legal.
+ */
+const NOT_ENGLISH = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u;
 
 /** Null when the message may be published, otherwise what to fix. */
 export function checkPrMessage(title: string, body: string): string | null {

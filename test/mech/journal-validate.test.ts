@@ -63,12 +63,30 @@ test("a real entry passes and is normalised", () => {
   }
 });
 
+/**
+ * A non-answer is refused by counting verdicts, not by recognising the ways
+ * there are to say nothing.
+ *
+ * `pass` and `fail` are the two words `roles/engineer.yaml` and `roles/qa.yaml`
+ * hand out, so counting them is language-free. The lexicon this replaced knew
+ * `looks good`, `lgtm` and four more, in English, and also accepted `ok`, `met`
+ * and `not met` as verdicts — so `looks ok` counted and `bestanden` did not.
+ */
 describe("self-review must not be vacuous", () => {
-  test.each(["looks good", "LGTM", "no issues", "all good", ""])("%s is refused", (body) => {
-    const r = validateSelfReview(body, 2);
+  test("an empty review is its own message, because there is nothing to count", () => {
+    const r = validateSelfReview("", 2);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain("carries no information");
   });
+
+  test.each(["looks good", "LGTM", "no issues", "all good", "sieht gut aus", "看起来没问题", "looks ok"])(
+    "%s is refused",
+    (body) => {
+      const r = validateSelfReview(body, 2);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toContain("covered 0 of 2");
+    },
+  );
 });
 
 test("self-review must cover every acceptance criterion", () => {

@@ -284,7 +284,11 @@ test("QA's pass hands the slice to the boss and rotates the sessions", async () 
   const h = await harness();
   await h.db.update(sliceTable).set({ difficulty: "hard" }).where(eq(sliceTable.id, 1));
   await h.db.update(agentTable).set({ session_id: "old", session_tokens: 90000 });
-  await h.post("/orch/v1/review", { slice_id: 1, verdict: "pass", note: "all three criteria met" }, "tok-qa");
+  await h.post(
+    "/orch/v1/review",
+    { slice_id: 1, verdict: "pass", note: "pass: all three criteria — a.txt says two" },
+    "tok-qa",
+  );
 
   expect(
     (await h.db.select({ status: sliceTable.status }).from(sliceTable).where(eq(sliceTable.id, 1)))[0]!.status,
@@ -315,7 +319,10 @@ test("a verdict with nothing behind it is refused", async () => {
   expect((await h.post("/orch/v1/review", { slice_id: 1, verdict: "pass" }, "tok-qa")).status).toBe(422);
   const vague = await h.post("/orch/v1/review", { slice_id: 1, verdict: "pass", note: "looks good" }, "tok-qa");
   expect(vague.status).toBe(422);
-  expect(await vague.text()).toContain("carries no information");
+  // "looks good" carries no verdict word, so the count is what refuses it — and
+  // it refuses "sieht gut aus" the same way, which a lexicon of English
+  // non-answers never did.
+  expect(await vague.text()).toContain("covered 0 of 1");
 });
 
 test("only reviewers may file verdicts, and only for their own group", async () => {
@@ -608,7 +615,7 @@ test("the task that closes a slice needs a self-review, and vacuous does not cou
     "tok-eng",
   );
   expect(vacuous.status).toBe(422);
-  expect(await vacuous.text()).toContain("carries no information");
+  expect(await vacuous.text()).toContain("covered 0 of 1");
 
   const ok = await h.post(
     "/orch/v1/task/done",

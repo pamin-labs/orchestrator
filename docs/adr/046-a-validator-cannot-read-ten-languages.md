@@ -106,6 +106,35 @@ that pinned it is replaced by one asserting the cap refuses padding in English,
 Chinese and German alike, and that a short entry is accepted in all three — which
 the lexicon was refusing in two.
 
+## The class, once you look for it outside `validate.ts`
+
+Two more of the same shape turned up the moment "hardcoded word list" was the
+thing being searched for rather than "Chinese literal".
+
+**`checkPrMessage`'s `NOT_ENGLISH` was three hand-picked script ranges** — kana,
+Han, hangul — chosen when the only other language was Chinese. ADR 035 says
+commits and pull requests are English always, and that held for three scripts:
+`перенести проверку`, `μετακίνηση ελέγχου` and `نقل الفحص` all walked past it,
+in a product that ships Russian. It is
+`/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u` now — Unicode's
+own property rather than a list of the alphabets somebody remembered, with
+`Common` and `Inherited` keeping digits, punctuation and combining marks legal
+and `Latin` keeping `déplacer` legal.
+
+**`validateSelfReview` counted `ok`, `met` and `not met` as verdicts**, three
+English words no prompt hands out, and refused a fixed lexicon of English
+non-answers — `looks good`, `lgtm`, `all good` and four more. So `looks ok`
+counted as a verdict and `bestanden` did not, and `sieht gut aus` was accepted
+where "looks good" was refused. `roles/engineer.yaml` shows `--review "pass: …"`
+and `roles/qa.yaml` says "state pass or fail", so the vocabulary is `pass|fail`
+and counting those is language-free. The lexicon is gone: a review with no
+verdict word is refused by the count, which is the same refusal in every
+language, and product invariant 8 — the prompt and the validator describe the
+same behaviour — becomes true rather than half true.
+
+Both are only visible if the search is for the *shape*. A guard that looks for
+Chinese literals cannot see an English one.
+
 ## What is left that is language-dependent
 
 `short.length < 8` counts characters, and a dense script says more per character,

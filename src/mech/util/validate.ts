@@ -445,10 +445,23 @@ const checkSplit = (slices: DraftSlice[], generic: string[]): string | null => s
  * Self-review that says nothing is not self-review. It must reference the
  * acceptance criteria and its own diff, or it is just self-congratulation.
  */
+/**
+ * `pass` and `fail`, which are the two words the prompt hands out.
+ *
+ * `roles/engineer.yaml` shows `--review "pass: …"` and `roles/qa.yaml` says
+ * "state pass or fail" — ASCII protocol keys, one of ADR 035's three exemptions,
+ * and what makes this check language-free.
+ */
+/**
+ * It also accepted `ok`, `met` and `not met`, three English words no prompt asks
+ * for, so `looks ok` counted as a verdict and `bestanden` did not. Invariant 8
+ * says the prompt and the validator describe the same behaviour; only half did.
+ */
+const VERDICT = /\b(pass|fail)\b/i;
+
 export function validateSelfReview(text: string, criteriaCount: number): Result<{ checked: number }> {
   const lines = nonEmptyLines(text);
-  const vacuous = /^(looks?\s+(good|fine|ok)|lgtm|no\s+(issues?|problems?)|all\s+good|seems?\s+(fine|correct))\b/i;
-  if (lines.length === 0 || (lines.length === 1 && vacuous.test(lines[0]!))) {
+  if (lines.length === 0) {
     return {
       ok: false,
       error:
@@ -456,8 +469,10 @@ export function validateSelfReview(text: string, criteriaCount: number): Result<
         "checked. 'looks good' carries no information.",
     };
   }
-  // One verdict per criterion, at minimum. Fewer means something went unchecked.
-  const verdicts = lines.filter((l) => /\b(pass|fail|ok|not\s+met|met)\b/i.test(l)).length;
+  // One verdict per criterion, at minimum. Fewer means something went unchecked —
+  // and it is what refuses "looks good", without a lexicon of the ways there are
+  // to say nothing, which is unbounded and was written in one language.
+  const verdicts = lines.filter((l) => VERDICT.test(l)).length;
   if (verdicts < criteriaCount) {
     return {
       ok: false,

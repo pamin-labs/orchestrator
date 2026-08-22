@@ -621,10 +621,25 @@ test("the message the Scribe files is the convention, enforced", async () => {
   expect(checkPrMessage("update the mount path", body)).toContain("type prefix");
   expect(checkPrMessage(`fix(sandbox): ${"x".repeat(70)}`, body)).toContain("72");
   expect(checkPrMessage("fix(sandbox): the mount was empty.", body)).toContain("full stop");
-  // The panel is Chinese, the journals are Chinese, and this is the one place
-  // where the language has to stop being: it is read in somebody else's repo.
-  expect(checkPrMessage("fix(sandbox): 挂载是空的", body)).toContain("English");
-  expect(checkPrMessage("fix(sandbox): the mount was empty", "挂载是空的，什么都没说")).toContain("English");
+  // The one place the reader's language has to stop mattering: this is read in
+  // somebody else's repository. The check used to be three hand-picked script
+  // ranges chosen when the only other language was Chinese, so Russian, Greek and
+  // Arabic titles walked past it — in a product that ships all three.
+  for (const title of [
+    "挂载是空的",
+    "마운트가 비었다",
+    "монтирование пусто",
+    "η προσάρτηση είναι κενή",
+    "التركيب فارغ",
+  ]) {
+    expect(checkPrMessage(`fix(sandbox): ${title}`, body)).toContain("English");
+  }
+  expect(
+    checkPrMessage("fix(sandbox): the mount was empty", "монтирование пусто и ничего об этом не сказало"),
+  ).toContain("English");
+  // Latin with diacritics is not another script: a name in a body is legal.
+  expect(checkPrMessage("fix(sandbox): the mount was empty — 100% of macOS runs", body)).toBeNull();
+  expect(checkPrMessage("fix(sandbox): déplacer le contrôle du jeton", body)).toBeNull();
   expect(checkPrMessage("fix(sandbox): the mount was empty", "fixed it")).toContain("one line is not that");
 });
 
