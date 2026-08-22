@@ -7,7 +7,7 @@ import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig, loadRoles } from "../../src/platform/config/load.ts";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { job, span } from "../../src/platform/persistence/schema.ts";
-import { Scheduler, type Executor } from "../../src/platform/scheduling/scheduler.ts";
+import type { Executor } from "../../src/platform/scheduling/scheduler.ts";
 import { makeExecutor, type ExecDeps } from "../../src/application/executor.ts";
 import type { TurnResult } from "../../src/runtime/claude.ts";
 import { readTrace, StoredSpanExporter, type StoredSpan } from "../../src/platform/observability/span-store.ts";
@@ -17,6 +17,7 @@ import { fakeSandbox } from "../support/fake-sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { tempDir } from "../support/temp.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 /**
  * The span table is only worth having if the rows can answer "where did this
@@ -35,7 +36,7 @@ async function harness(turn: () => Promise<TurnResult>) {
 
   const cfg = { ...loadConfig(), dataDir: tempDir("orch-spans-") };
   let exec: Executor;
-  const sched = new Scheduler(db, (j) => exec(j));
+  const sched = newScheduler(db, (j) => exec(j));
   const ctx: Ctx = { db, bus: new Bus(db), sched, sandbox: fakeSandbox(), waiters: new Map(), config: cfg };
   const deps: ExecDeps = { ctx, cfg, roles: loadRoles("roles"), runTurn: turn };
   exec = makeExecutor(deps);

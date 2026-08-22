@@ -9,10 +9,10 @@ import { openMemory } from "../../src/platform/persistence/database.ts";
 import { makeGithub, type GithubFetcher } from "../../src/mech/git/github.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { abortJob } from "../../src/platform/process/running-turns.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { job } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 function blockedFetch(onStart: (signal: AbortSignal) => void): GithubFetcher {
   return async (_url, init) => {
@@ -63,7 +63,7 @@ test("an aborted HTTP request cancels an implicit GitHub call with the caller's 
     }),
   );
   const bus = new Bus(db);
-  const sched = new Scheduler(db, async () => {});
+  const sched = newScheduler(db, async () => {});
   const ctx: Ctx = { db, bus, sched, gh, waiters: new Map(), config: loadConfig() };
   const response = makeApp(ctx)(new Request("http://x/api/v1/project/1/config", { signal: controller.signal }));
 
@@ -97,7 +97,7 @@ test("cancelling a running queued job aborts GitHub fetch and retry backoff", as
     });
     return new Response('{"message":"try later"}', { status: 502 });
   });
-  const scheduler = new Scheduler(db, async () => {
+  const scheduler = newScheduler(db, async () => {
     try {
       await gh.request("GET", "/user", z.json());
     } catch (error) {

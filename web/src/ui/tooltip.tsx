@@ -1,4 +1,5 @@
 import * as P from "@radix-ui/react-popover";
+import { useLingui } from "@lingui/react/macro";
 import * as T from "@radix-ui/react-tooltip";
 import { CircleHelp } from "lucide-react";
 
@@ -48,10 +49,11 @@ export function Tip({ label, children }: { label: React.ReactNode; children: Rea
  * decision with a threshold: a phrase hovers, a paragraph is clicked.
  */
 export function Help({ children }: { children: React.ReactNode }) {
+  const { t } = useLingui();
   return (
     <P.Root>
       <P.Trigger
-        aria-label="为什么是这个值"
+        aria-label={t`Why this value`}
         className="cursor-pointer rounded-full text-ink-3 transition-colors duration-150
                    hover:text-ink data-[state=open]:text-ink"
       >

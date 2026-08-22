@@ -15,8 +15,8 @@ import { DEFAULTS_FOR_CHECK } from "../../src/platform/config/load.ts";
 const POLL_EVERY_MS = DEFAULTS_FOR_CHECK.intervals.usagePollMs;
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { z } from "zod";
+import { newScheduler } from "../support/scheduler.ts";
 
 const StoredUsage = z.object({ fiveHourPercent: z.number().optional(), weeklyPercent: z.number().optional() });
 
@@ -38,7 +38,7 @@ const RESPONSE = {
 const ctx = (db: DB, answer = `${JSON.stringify(RESPONSE)}\n200`): Ctx => ({
   db,
   bus: new Bus(db),
-  sched: new Scheduler(db, async () => {}),
+  sched: newScheduler(db, async () => {}),
   sandbox: fakeSandbox(() => ({ out: answer })),
   waiters: new Map(),
   config: loadConfig(),
@@ -219,7 +219,7 @@ test("the usage read carries a decoy, never the stored token", async () => {
   const c: Ctx = {
     db,
     bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
+    sched: newScheduler(db, async () => {}),
     sandbox: fakeSandbox((cmd) => {
       seen.push(cmd);
       return { out: `${JSON.stringify(RESPONSE)}\n200` };

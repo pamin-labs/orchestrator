@@ -263,7 +263,7 @@ limits.set("watchdog tick", 60);
 bench.add("watchdog tick", async () => void (await runWatchdog(watchdogDeps)), { async: true });
 
 /**
- * The 系统耗时 report, at the volume one idle day produces.
+ * The `System timing` report, at the volume one idle day produces.
  *
  * Five queries over the whole table. `system` scope because its predicate
  * (`project_id IS NULL AND grp_id IS NULL`) is the one no index can seek — indexes

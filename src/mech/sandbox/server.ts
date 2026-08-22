@@ -1,5 +1,7 @@
 import type { DB } from "../../platform/persistence/database.ts";
+import { msg } from "@lingui/core/macro";
 import { errText } from "../../platform/process/text.ts";
+import type { Said } from "../../contracts/said.ts";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -38,11 +40,11 @@ export type ServerState =
   /** Running and drivable, started by someone else. Left alone. */
   | { kind: "theirs"; pid: string }
   /** Running and not drivable. Reported, never restarted automatically. */
-  | { kind: "stuck"; pid: string; why: string }
+  | { kind: "stuck"; pid: string; why: Said }
   /** We started one just now. */
   | { kind: "started"; pid: string; config: string }
   /** Nothing running and we could not start one. */
-  | { kind: "down"; why: string; log?: string };
+  | { kind: "down"; why: Said; log?: string };
 
 /**
  * Four answers, not two.
@@ -52,14 +54,14 @@ export type ServerState =
  * and starting a second one just fails to bind. `auth` is the one case we must
  * never act on — a server holding a key we were not given is somebody else's.
  */
-type Probe =
+export type Probe =
   | { kind: "ok" }
   /** Answering, and refusing our key. Someone else's server. */
   | { kind: "auth" }
   /** Answering with something else. Alive, and not usable. */
   | { kind: "http"; status: number }
   /** Nothing on the port. */
-  | { kind: "none"; why: string };
+  | { kind: "none"; why: Said };
 
 async function probe(server: string, key: string): Promise<Probe> {
   try {
@@ -78,7 +80,7 @@ async function probe(server: string, key: string): Promise<Probe> {
     if (res.status === 401 || res.status === 403) return { kind: "auth" };
     return { kind: "http", status: res.status };
   } catch (e) {
-    return { kind: "none", why: errText(e, 120) };
+    return { kind: "none", why: msg`cannot reach it: ${{ error: errText(e, 120) }}` };
   }
 }
 
@@ -89,16 +91,16 @@ async function probe(server: string, key: string): Promise<Probe> {
  * explaining. These sentences sit directly above the controls that are the
  * ways out of each case.
  */
-function say(p: Probe, server: string): string {
+export function say(p: Probe, server: string): Said {
   switch (p.kind) {
     case "auth":
-      return `${server} 上那个服务器不是我们起的，密钥对不上 —— 填它的 api_key，或者换个地址。`;
+      return msg`Something is listening on ${{ server }} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address.`;
     case "http":
-      return `${server} 上有东西在应答，但不是沙盒服务器（HTTP ${p.status}）—— 换个地址。`;
+      return msg`${{ server }} answers, but it is not a sandbox server (HTTP ${{ status: p.status }}) — point at another address.`;
     case "none":
       return p.why;
     case "ok":
-      return "";
+      return msg`reachable`;
   }
 }
 
@@ -282,29 +284,42 @@ export async function waitUp(
   key: string,
   ms = 45_000,
   io: { probe: typeof probe; sleep: (ms: number) => Promise<void> } = { probe, sleep: Bun.sleep },
-): Promise<{ ok: boolean; why: string }> {
+): Promise<{ ok: boolean; why: Said }> {
   let dead: number | null = null;
   void proc.exited.then((code) => (dead = code));
   const until = Date.now() + ms;
-  let last = "还没应答";
   while (Date.now() < until) {
     const r = await io.probe(server, key);
-    if (r.kind === "ok") return { ok: true, why: "" };
-    last = say(r, server);
+    if (r.kind === "ok") return { ok: true, why: msg`reachable` };
     // Its own words, not ours. "Unable to connect" is what we observed; the log
     // is what happened, and without it this reports the symptom of a process
     // that died of something specific it already printed.
     if (dead !== null) return { ok: false, why: exited(dead, serverLogTail(ctx)) };
     await io.sleep(400);
   }
-  return { ok: false, why: timedOut(ms, last, serverLogTail(ctx)) };
+  return { ok: false, why: timedOut(ms, serverLogTail(ctx)) };
 }
 
-const exited = (code: number, tail: string): string =>
-  `它自己退了（exit ${String(code)}）${tail ? `：\n${tail}` : "，而且什么都没打印"}`;
+/**
+ * `{tail}` is the server's own output — a diagnostic carried as a value, the way
+ * `check.server.unreachable` carries `{error}`.
+ */
+/**
+ * The last probe's reason is deliberately *not* in here. It would have to be
+ * rendered to be interpolated, and a rendered sentence inside another sentence
+ * is the two-language assembly `Said` exists to stop. It is also the least
+ * useful half: `waitUp` runs on a server we just spawned, so the reason is
+ * almost always "no answer yet" while the log is what says what happened.
+ */
+const exited = (code: number, tail: string): Said =>
+  tail
+    ? msg`it exited on its own (exit ${{ code }}):\n${{ tail }}`
+    : msg`it exited on its own (exit ${{ code }}), printing nothing`;
 
-const timedOut = (ms: number, last: string, tail: string): string =>
-  `等了 ${Math.round(ms / 1000)} 秒还是 ${last}${tail ? `。它打印的是：\n${tail}` : ""}`;
+const timedOut = (ms: number, tail: string): Said => {
+  const secs = Math.round(ms / 1000);
+  return tail ? msg`still not up after ${{ secs }}s. It printed:\n${{ tail }}` : msg`still not up after ${{ secs }}s`;
+};
 
 /**
  * What is there, without changing anything.
@@ -336,10 +351,10 @@ export async function inspectServer(ctx: Ctx): Promise<ServerState> {
   return {
     kind: "down",
     why: !Bun.which("uvx")
-      ? "没有 uvx —— opensandbox-server 是个 Python 包，装 uv 才起得来"
+      ? msg`no uvx — opensandbox-server is a Python package, so install uv before one can start`
       : live
-        ? `没在跑（有个进程看着像它，pid ${live.pid}，但 ${server} 不应答 —— 可能正在启动，也可能挂了）`
-        : "没在跑",
+        ? msg`not running (a process looks like it, pid ${{ pid: live.pid }}, but ${{ server }} does not answer — it may be starting, or it may be stuck)`
+        : msg`not running`,
   };
 }
 
@@ -359,7 +374,7 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
   try {
     config = await writeConfig(ctx, startKey);
   } catch (e) {
-    return { kind: "down", why: `写不出配置：${errText(e, 200)}` };
+    return { kind: "down", why: msg`cannot write the config: ${{ error: errText(e, 200) }}` };
   }
   return startServer(ctx, server, startKey, config);
 }
@@ -383,7 +398,10 @@ export function startPlan(seen: ServerState, server: string, haveUvx: boolean): 
   // local server would bind a port nobody is asking about and report success.
   const host = splitAddr(server).authority.replace(/:\d+$/, "").toLowerCase();
   if (host === "localhost" || host.startsWith("127.") || host === "::1" || host === "[::1]") return { kind: "start" };
-  return { kind: "down", why: `${server} 不应答 —— 那不是本机地址，起不了，得去那台机器上看。` };
+  return {
+    kind: "down",
+    why: msg`${{ server }} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine.`,
+  };
 }
 
 /** Spawn one and wait for it, remembering that it is ours. */
@@ -404,7 +422,7 @@ async function startServer(ctx: Ctx, server: string, key: string, config: string
     if (!up.ok) return { kind: "down", why: up.why, log };
     return { kind: "started", pid: String(p.pid), config };
   } catch (e) {
-    return { kind: "down", why: `起不来：${errText(e, 160)}` };
+    return { kind: "down", why: msg`cannot start it: ${{ error: errText(e, 160) }}` };
   }
 }
 

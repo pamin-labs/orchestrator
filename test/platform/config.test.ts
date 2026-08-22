@@ -12,7 +12,7 @@ import {
   modelFor,
   withAbsoluteDataDir,
 } from "../../src/platform/config/load.ts";
-import { EmbeddingRef, ConfigSchema } from "../../src/contracts/config.ts";
+import { EmbeddingRef, ConfigSchema, outputLanguage } from "../../src/contracts/config.ts";
 import { routeSource } from "../support/route-source.ts";
 import { tempDir } from "../support/temp.ts";
 
@@ -106,7 +106,10 @@ test("the Dispatcher prompt carries the concrete bad-split example", () => {
   // Abstract advice ("slices must be independent") produced three steps of one
   // change on a real run. The anti-example is the part that teaches, so it has to
   // survive a change of card format — it is written as a table row now.
-  expect(d).toContain("| 补充测试用例 | trivial | 覆盖两条路径 |");
+  // `add tests`, and the wording is load-bearing: `validate.ts`'s `testOnly`
+  // pattern carries neither `more` nor `cases`, so `add test cases` would make
+  // the anti-example legal and teach nothing.
+  expect(d).toContain("| add tests | trivial | covers both paths |");
   expect(d).toContain("A real bad split, from an actual run");
   expect(d).toContain("ONE");
   expect(d).toContain("Padding to three is worse");
@@ -282,7 +285,7 @@ test("a remote embedding needs an endpoint and a credential name; local needs ne
 /**
  * The yaml holds boot parameters and nothing else.
  *
- * Everything else is in 设置, because those are decisions made while watching the
+ * Everything else is in `Settings`, because those are decisions made while watching the
  * thing run and a restart costs more than the change — and because this file
  * ships inside the release, so editing it means editing the download. The rule
  * was written in the file's own header and enforced by nobody: a key added here
@@ -298,4 +301,18 @@ test("every key in the yaml is one a startup cannot ask the database for", () =>
     (key) => !env.includes(`ORCH_${key.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase()}`),
   );
   expect(missing).toEqual([]);
+});
+
+/**
+ * What "nobody has said" resolves to, which is the whole point of ADR 043: a
+ * fresh installation has no language written down and still speaks the reader's.
+ *
+ * Here rather than beside its governance guard — that one is a scan over `src`,
+ * and a function's return values are a unit test whatever file the rule about
+ * calling it lives in.
+ */
+test("output follows the boss, then the panel, then English", () => {
+  expect(outputLanguage({ language: "Deutsch", panelLanguage: "zh" })).toBe("Deutsch");
+  expect(outputLanguage({ language: "", panelLanguage: "zh" })).toBe("zh");
+  expect(outputLanguage({ language: "", panelLanguage: "" })).toBe("en");
 });

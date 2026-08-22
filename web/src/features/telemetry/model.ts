@@ -8,6 +8,11 @@
  */
 
 import type { Folded, Stage, TraceRow, Trend } from "../../shared/api";
+import { msg, t } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../../i18n";
+import { clock, day } from "../../shared/format";
+import { labelOf } from "../../shared/select";
 
 /**
  * One frame of the flamegraph: a name, what it cost, and what it called.
@@ -30,7 +35,7 @@ export interface FlameNode {
  * its children, and the map is keyed by full path so two different parents'
  * identically named children never merge.
  */
-export function flameTree(folded: readonly Folded[], rootName = "全部"): FlameNode {
+export function flameTree(folded: readonly Folded[], rootName = t`All`): FlameNode {
   const root: FlameNode = { name: rootName, value: 0, children: [] };
   const byPath = new Map<string, FlameNode>();
 
@@ -87,7 +92,7 @@ export function verdict(split: StageSplit): Verdict | null {
   if (split.fast.length > 0) {
     // Two names and a count, not seven names: the sentence exists to be read
     // instead of the table, so it has to be shorter than it. Unmapped identifiers
-    // are counted rather than pasted in — 「更新代码索引、git.ls_tree」 reads as two
+    // are counted rather than pasted in — "refresh the code index, git.ls_tree" reads as two
     // different kinds of thing, and half a translated sentence is worse than none.
     const named = split.slow.filter((stage) => isRenamed(stage.name));
     const unnamed = split.slow.length - named.length;
@@ -100,7 +105,7 @@ export function verdict(split: StageSplit): Verdict | null {
   }
   const [worst, second] = split.slow;
   if (!worst || !second) return null;
-  // A second place at zero makes the ratio infinite, and 「Infinity 倍」 is not a
+  // A second place at zero makes the ratio infinite, and "Infinity×" is not a
   // number. It is also the clearest possible gap, so it is reported as one.
   if (second.p95 <= 0) {
     const named = isRenamed(worst.name);
@@ -114,26 +119,26 @@ export function verdict(split: StageSplit): Verdict | null {
  * What each span name is, in words, for the person reading this page.
  *
  * An exact table and nothing cleverer: a pattern turning `foo.create` into
- * 「开一个 foo」 invents sentences about spans nobody has read. **Unmapped falls
+ * inventing "open a foo" makes up sentences about spans nobody has read. **Unmapped falls
  * through to the identifier** — the set of names grows every time somebody adds a
  * stage, and a missing entry must degrade to a name the reader can search for.
  */
-const HUMAN: Record<string, string> = {
-  "sandbox.create": "开一个新环境",
-  "sandbox.init": "环境装配",
-  turn: "跑一轮",
-  "turn.prepare": "准备这一轮",
-  "turn.provider": "模型在想",
-  "turn.checkpoint": "存一次档",
-  "job watchdog": "例行巡检",
-  "job agent_turn": "跑一轮",
-  "watchdog.repo_map": "更新代码索引",
-  "watchdog.turn_timeout": "查有没有卡住的轮次",
-  "GET /api/v1/auth/github": "连 GitHub",
+const HUMAN: Record<string, MessageDescriptor> = {
+  "sandbox.create": msg`Create new sandbox`,
+  "sandbox.init": msg`Sandbox setup`,
+  turn: msg`Run one turn`,
+  "turn.prepare": msg`Prepare this turn`,
+  "turn.provider": msg`Model processing`,
+  "turn.checkpoint": msg`Save checkpoint`,
+  "job watchdog": msg`Routine watchdog`,
+  "job agent_turn": msg`Run one turn`,
+  "watchdog.repo_map": msg`Update code index`,
+  "watchdog.turn_timeout": msg`Check for stuck turns`,
+  "GET /api/v1/auth/github": msg`Connect GitHub`,
 };
 
 /** The words for a span name, or the span name when nobody has written any. */
-export const humanName = (id: string): string => HUMAN[id] ?? id;
+export const humanName = (id: string): string => labelOf(HUMAN[id], id);
 
 /** Whether this name has words of its own, and therefore an identifier worth keeping on hover. */
 export const isRenamed = (id: string): boolean => id in HUMAN;
@@ -145,8 +150,8 @@ export const isRenamed = (id: string): boolean => id in HUMAN;
  * wants to know what usually happens and what happens on a bad day, and those
  * are the words for it.
  */
-export const P50_LABEL = "一半的情况";
-export const P95_LABEL = "最慢的那几次";
+export const P50_LABEL = msg`p50`;
+export const P95_LABEL = msg`p95`;
 
 /**
  * What kind of work a span name is, from its own prefix.
@@ -156,30 +161,30 @@ export const P95_LABEL = "最慢的那几次";
  * names already encode the kind. The fallback bucket is part of the design — a
  * span with no prefix at all still has to land somewhere a reader can find it.
  */
-const KIND_NAMES: Record<string, string> = {
-  watchdog: "巡检规则",
-  sandbox: "容器操作",
-  git: "代码仓库",
-  github: "GitHub",
-  turn: "跑一轮",
-  job: "后台任务",
-  index: "代码索引",
-  lease: "借用资源",
-  gate: "闸门检查",
-  pr: "合并请求",
+const KIND_NAMES: Record<string, MessageDescriptor> = {
+  watchdog: msg`Watchdog rule`,
+  sandbox: msg`Sandbox operation`,
+  git: msg`Code repository`,
+  github: msg`GitHub`,
+  turn: msg`Run one turn`,
+  job: msg`Background job`,
+  index: msg`Code index`,
+  lease: msg`Resource lease`,
+  gate: msg`Gate check`,
+  pr: msg`Pull request`,
 };
 
 /** HTTP spans are named `METHOD /route`, which is a prefix of a different shape. */
 const HTTP = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) /;
 
 export function spanKind(name: string): { key: string; label: string } {
-  if (HTTP.test(name)) return { key: "http", label: "接口请求" };
+  if (HTTP.test(name)) return { key: "http", label: t`HTTP request` };
   const prefix = name.split(".")[0] ?? "";
   const label = KIND_NAMES[prefix];
   // A prefix nobody has named keeps its own, so a new family of spans is its own
-  // group on the day it ships rather than being swept into 其他.
-  if (label) return { key: prefix, label };
-  return name.includes(".") ? { key: prefix, label: prefix } : { key: "other", label: "其他" };
+  // group on the day it ships rather than being swept into `Other`.
+  if (label) return { key: prefix, label: i18n._(label) };
+  return name.includes(".") ? { key: prefix, label: prefix } : { key: "other", label: t`Other` };
 }
 
 /** One kind of work, with everything under it and what it cost together. */
@@ -525,12 +530,21 @@ export const hasSpans = (stages: readonly Stage[], traces: readonly TraceRow[]):
  * because nothing happened for two hours. Two inputs: the **window** decides
  * whether a clock is worth printing, the **bucket** decides the precision.
  */
-export const trendLabel = (at: number, windowMs: number, bucketMs: number): string => {
-  const when = new Date(at);
-  if (windowMs > 48 * 60 * 60 * 1_000) return `${when.getMonth() + 1}/${when.getDate()}`;
-  const hour = String(when.getHours()).padStart(2, "0");
-  if (bucketMs >= 3_600_000) return `${hour}:00`;
-  return `${hour}:${String(when.getMinutes()).padStart(2, "0")}`;
+/**
+ * Both halves come from `Intl` at the reader's locale, not from string building.
+ * `8/20` is 20 August here and 8 August to a German, French or Korean reader —
+ * the day branch printed month-first for every one of the ten. Both finer
+ * branches are `clock()`, which is already `hourCycle: "h23"` so the column
+ * keeps its width.
+ */
+export const trendLabel = (at: number, windowMs: number): string => {
+  if (windowMs > 48 * 60 * 60 * 1_000) return day(new Date(at));
+  // One `clock()` for every bucket size, so `bucketMs` is no longer an input.
+  // The hour branch used to blank the minutes through `formatToParts` — at an
+  // hourly bucket `at` is already the top of an hour, so that was a no-op
+  // everywhere except a half-hour offset (`Asia/Kolkata`, `+05:30`), where it
+  // labelled the 14:30 bucket 14:00.
+  return clock(at);
 };
 
 /**

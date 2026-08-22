@@ -2,12 +2,23 @@ import { afterAll, beforeEach } from "bun:test";
 import { rmSync } from "node:fs";
 import { createdRoot } from "./temp.ts";
 import { closeTestDatabases } from "../../src/platform/persistence/database.ts";
-import { stopSchedulers } from "./test-context.ts";
+import { stopSchedulers } from "./scheduler.ts";
 import { resetRepoHolds } from "../../src/mech/git/repository.ts";
 import { resetNet } from "../../src/mech/sandbox/net.ts";
 import { resetSandboxHold } from "../../src/mech/sandbox/sandbox.ts";
 import { resetServerRestarts } from "../../src/mech/ops/watchdog.ts";
 import { resetSkillsWarned } from "../../src/mech/skills.ts";
+import { i18n } from "../../web/src/i18n.ts";
+import { messages } from "../../locales/zh.po";
+
+/**
+ * Every pane renders under the Chinese catalog, so the 242 assertions that read
+ * Chinese out of the panel keep asserting — and become the only check that the
+ * catalog puts the right string in the right slot. The English source is what
+ * `test/web/english-renders.test.tsx` covers, deliberately somewhere else.
+ */
+i18n.load("zh", messages);
+i18n.activate("zh");
 
 /**
  * The three holds are module state, and `bun test` runs every file in one process.
@@ -26,13 +37,20 @@ import { resetSkillsWarned } from "../../src/mech/skills.ts";
  * `beforeEach`, not `beforeAll`: no test inherits a hold from whatever ran before
  * it, including the test above it in its own file.
  */
-beforeEach(() => {
+beforeEach(async () => {
+  // The active locale is a process-global like the five below it. `test/web`
+  // asserts Chinese because this file activates `zh`, and a test that moves the
+  // locale and does not move it back leaves every later file in the process
+  // reading English — `say-falls-back-to-body` ended on `activate("en")`, and
+  // 120 failures in six unrelated files followed it through the stress pass.
+  // Invisible under `--parallel`, where each file has its own process.
+  i18n.activate("zh");
   resetSandboxHold();
   resetRepoHolds();
   resetNet();
   resetServerRestarts();
   resetSkillsWarned();
-  stopSchedulers();
+  await stopSchedulers();
 });
 
 /**

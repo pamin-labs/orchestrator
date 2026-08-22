@@ -1,4 +1,5 @@
 import { UsageWindow, type Snapshot } from "../../contracts/panel.ts";
+import { SaidSchema, type Said } from "../../contracts/said.ts";
 import { valueOr } from "../../contracts/json.ts";
 import { costReport } from "../../mech/ops/cost.ts";
 import { canStart } from "../../mech/flow/ownership.ts";
@@ -6,6 +7,7 @@ import { poolSizes } from "../../platform/scheduling/scheduler.ts";
 import { head, position } from "../../mech/flow/mergequeue.ts";
 import type { Handler } from "../../http/handler.ts";
 import { json } from "../../http/respond.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { ESCALATION_TERMINAL_STATES } from "../../contracts/states.ts";
 import { z } from "zod";
@@ -83,8 +85,12 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
      * The scheduler refuses to dispatch a turn without one, so a fleet in this
      * state is stopped and every view would look idle rather than blocked. One
      * boolean, so the header can carry the mark instead of the boss discovering
-     * it in a queue that never moves. The deeper checks — docker, the sandbox
-     * server, the sidecar version — cost network and stay in the settings page.
+     * it in a queue that never moves.
+     */
+    /**
+     * The deeper checks — docker, the sandbox server, the sidecar version — cost
+     * host round trips, so *running* them stays on the readiness timer. Reading
+     * their result costs nothing, which is why `failing` rides along here.
      */
     db.select({ n: count() }).from(runtime_auth),
     // `base_branch` rides along because it is the one thing add-a-project decided
@@ -203,13 +209,13 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
     // detail: a millisecond is not an ordering key, so a card and an objection
     // can share one, and a strict > then drops the objection entirely. That is
     // precisely the failure this clause exists to prevent — approving a card
-    // that still reads 反对：无 while somebody has already said otherwise. The
+    // that still reads `Objection: none` while somebody has already said otherwise. The
     // boundary has to fall on the side that shows it. Nothing else can land
     // here: a card is a note, not an event, and the only say events considered
     // are other agents'. The Dispatcher does not
     // wait for the Architect — a card nobody filed is worth less than a card with
     // no objection on it — so a real objection can land a minute later, while the
-    // card still reads 反对 : 无. Approving that is approving something the boss
+    // card still reads `Objection: none`. Approving that is approving something the boss
     // was never shown. Measured: the late objection was "the locale-inference
     // slice contradicts the acceptance criterion that says behaviour is unchanged".
     db
@@ -246,6 +252,7 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
         id: escalation.id,
         grp_id: escalation.grp_id,
         question: escalation.question,
+        question_said: escalation.question_said,
         answer: escalation.answer,
         answered_by: escalation.answered_by,
         ref_note_id: escalation.ref_note_id,
@@ -269,7 +276,9 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
         grp_id: escalation.grp_id,
         severity: escalation.severity,
         question: escalation.question,
+        question_said: escalation.question_said,
         brief: escalation.brief,
+        brief_said: escalation.brief_said,
         kind: escalation.kind,
         chain_state: escalation.chain_state,
         answered_by: escalation.answered_by,
@@ -283,7 +292,7 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
       .where(notInArray(escalation.chain_state, [...ESCALATION_TERMINAL_STATES]))
       .orderBy(escalation.created_at, escalation.id),
     db.select({ id: project.id }).from(project),
-    // Delivered work, so 收尾 stops meaning "vanished". A group that merged is the
+    // Delivered work, so winding up stops meaning "vanished". A group that merged is the
     // only proof the system did what it was asked, and it was leaving no trace
     // anywhere in the panel. Two correlated scalars again, and the second is also
     // the sort key — bound once and used in both places rather than written twice.
@@ -301,11 +310,11 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
       .from(grp)
       .where(eq(grp.status, "DISSOLVED"))
       // `nulls last` for the same reason as `answered`: a dissolved group with no
-      // events would otherwise sort to the top of 已交付.
+      // events would otherwise sort to the top of `Done`.
       .orderBy(sql`${lastEventAt(db)} desc nulls last`, desc(grp.id))
       .limit(12),
     // How much of each subscription is gone. Not spend — spend is attributable and
-    // belongs in 成本. This answers "can this still run tonight", which is the one
+    // belongs in `Cost`. This answers "can this still run tonight", which is the one
     // usage question that changes what the boss does next.
     db
       .select({ runtime: usage_snapshot.runtime, json: usage_snapshot.json, at: usage_snapshot.at })
@@ -316,7 +325,12 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
   // Two answers that need a row in hand before they can be asked. Both fan out
   // over a handful of ids, and both go out together rather than one at a time.
   const [approvedBlocked, mergeQueue] = await Promise.all([
-    Promise.all(awaitingBoundary.map(async (g) => ({ grpId: g.id, reason: (await canStart(db, g.id)).reason ?? "" }))),
+    Promise.all(
+      awaitingBoundary.map(async (g) => {
+        const why = (await canStart(db, g.id)).reason;
+        return { grpId: g.id, reason: why ? renderSaid("en", why) : "", ...(why ? { said: why } : {}) };
+      }),
+    ),
     // Only the queue head is offered for merging; the rest carry their place in
     // line so the boss can see why they are waiting.
     Promise.all(
@@ -329,6 +343,23 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
 
   return {
     ready: (credentials[0]?.n ?? 0) > 0,
+    // Only what is wrong, and only the three strings the boss needs to act:
+    // the whole set is the settings page's answer. `ok` is not among them — every
+    // row here is a failure by construction. Absent in unit tests and in any
+    // process with no readiness timer, which is an empty list, not an error.
+    failing: (ctx.checks?.() ?? []).flatMap((c) =>
+      c.ok
+        ? []
+        : [
+            {
+              name: c.name,
+              detail: c.detail,
+              said: c.said,
+              ...(c.fix === undefined ? {} : { fix: c.fix }),
+              ...(c.fixSaid === undefined ? {} : { fixSaid: c.fixSaid }),
+            },
+          ],
+    ),
     projects,
     groups,
     approvedBlocked: approvedBlocked.filter((b) => b.reason),
@@ -342,11 +373,18 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
     ideas,
     // `answered_by` is filtered above and the contract says it is a string, so
     // this narrows rather than asserts: the filter means nothing is dropped.
-    answered: answerable.flatMap((r) => (r.answered_by === null ? [] : [{ ...r, answered_by: r.answered_by }])),
-    escalations,
+    answered: answerable.flatMap(({ question_said, ...r }) => {
+      const said = saidIn(question_said);
+      return r.answered_by === null ? [] : [{ ...r, answered_by: r.answered_by, ...(said && { said }) }];
+    }),
+    escalations: escalations.map(({ question_said, brief_said, ...e }) => {
+      const said = saidIn(question_said);
+      const briefSaid = saidIn(brief_said);
+      return { ...e, ...(said && { said }), ...(briefSaid && { briefSaid }) };
+    }),
     mergeQueue: mergeQueue.flat(),
     archived,
-    // The panel shows "并行 3/3" from this: without the cap, a queued group looks
+    // The panel shows "3/3 in parallel" from this: without the cap, a queued group looks
     // stuck rather than queued, which is the difference between a bug and a setting.
     limits: {
       maxGroups: ctx.config.maxGroups,
@@ -370,6 +408,16 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
     lastSeq: newest[0]?.s ?? 0,
   };
 }
+
+/**
+ * The descriptor a row stored beside its rendered text, if it is still readable.
+ *
+ * Spread in by the caller rather than assigned, because `exactOptionalPropertyTypes`
+ * refuses an explicit `undefined` on an optional field. Unparseable or absent means
+ * the field is simply not there and the panel draws the text beside it, which is
+ * what every row written before the column does.
+ */
+const saidIn = (value: unknown): Said | undefined => SaidSchema.safeParse(value).data;
 
 /** How many turns this agent has finished. Correlated on the row being selected. */
 const agentTurns = (db: Ctx["db"]) =>

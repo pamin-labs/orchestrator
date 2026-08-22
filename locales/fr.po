@@ -1,0 +1,3332 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-08-21 14:28+1000\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: fr\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+msgid ", "
+msgstr ", "
+
+msgid "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
+msgstr "« Cette identification est-elle toujours valable ? » : le /user de GitHub, le /v1/models d'un fournisseur. Court, car une réponse lente signale « non vérifié » au lieu d'échouer, et rien ne l'attend."
+
+msgid "({deliveredCount})"
+msgstr "({deliveredCount})"
+
+msgid "(following)"
+msgstr "(automatique)"
+
+msgid "(need one merge first)"
+msgstr "(il faut d'abord une fusion)"
+
+msgid "(no reply was left)"
+msgstr "(aucune réponse)"
+
+#. placeholder {0}: failing.length
+msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
+msgstr "{0, plural, one {# vérification de l’hôte a échoué} other {# vérifications de l’hôte ont échoué}}"
+
+msgid "{accountName}, but the App is not installed on any account yet"
+msgstr "{accountName}, mais l'App n'est encore installée sur aucun compte"
+
+msgid "{base} moved to {sha}; {name} is behind it and has been told to rebase first"
+msgstr "{base} est passée à {sha} ; {name} est en retard et a reçu l'ordre de rebaser d'abord"
+
+msgid "{branch} (per the remote)"
+msgstr "{branch} (selon le distant)"
+
+msgid "{by} passed this up, with no reason given"
+msgstr "{by} a fait remonter la question, sans donner de raison"
+
+msgid "{by} passed this up: {why}"
+msgstr "{by} a fait remonter la question : {why}"
+
+msgid "{config} covers all {count} paths to be mounted"
+msgstr "{config} couvre les {count} chemins à monter"
+
+msgid "{config} does not list {missing}"
+msgstr "{config} ne liste pas {missing}"
+
+msgid "{count} repositories"
+msgstr "{count} dépôts"
+
+msgid "{count} repositories, most recently touched first"
+msgstr "{count} dépôts, les plus récents d'abord"
+
+msgid "{count} requirements have no boundary right now: {bareNames}."
+msgstr "{count} exigences n'ont aucune frontière pour l'instant : {bareNames}."
+
+msgid "{count} selected"
+msgstr "{count} sélectionnés"
+
+msgid "{count} staged at {path}"
+msgstr "{count} préparées dans {path}"
+
+msgid "{d} days ago"
+msgstr "il y a {d} jours"
+
+msgid "{d}d{hoursLeft}h"
+msgstr "{d}j {hoursLeft}h"
+
+msgid "{failed} failed"
+msgstr "{failed} en échec"
+
+msgid "{fails} failed"
+msgstr "{fails} en échec"
+
+msgid "{files} files"
+msgstr "{files} fichiers"
+
+msgid "{from} has sent the whole branch back {n} times. That is usually the acceptance criteria rather than the code:\n"
+"{why}"
+msgstr "{from} a renvoyé toute la branche {n} fois. C'est en général le critère d'acceptation, pas le code :\n"
+"{why}"
+
+msgid "{good}"
+msgstr "{good}"
+
+msgid "{good} (also has {stale} — check [egress] image)"
+msgstr "{good} (il y a aussi {stale} — vérifiez [egress] image)"
+
+msgid "{groupCount} requirements touch different files and can run together"
+msgstr "{groupCount} exigences touchent des fichiers différents et peuvent tourner ensemble"
+
+msgid "{groupCount} requirements touch different files and can run together ({more} more not yet assigned)"
+msgstr "{groupCount} exigences touchent des fichiers différents et peuvent tourner ensemble ({more} autres non assignées)"
+
+msgid "{groups, plural, one {# requirement} other {# requirements}} in <0>{repoPath}</0>"
+msgstr "{groups, plural, one {# exigence} other {# exigences}} dans <0>{repoPath}</0>"
+
+msgid "{groups, plural, one {The one requirement in {repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.} other {All # requirements in {repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.}}"
+msgstr "{groups, plural, one {L'unique exigence de {repoPath} — son conteneur, ses cartes, ses enregistrements et ses pièces jointes — est supprimée, sans retour possible.} other {Les # exigences de {repoPath} — leurs conteneurs, cartes, enregistrements et pièces jointes — sont supprimées, sans retour possible.}}"
+
+msgid "{hard} blocking the whole group"
+msgstr "{hard} bloquent tout le groupe"
+
+msgid "{held} stopped"
+msgstr "{held} arrêtées"
+
+msgid "{hiddenCount} more"
+msgstr "{hiddenCount} de plus"
+
+msgid "{hiddenLines} more lines"
+msgstr "{hiddenLines} lignes de plus"
+
+msgid "{hint} stored; paste a new one to replace it"
+msgstr "{hint} enregistré ; collez-en un nouveau pour le remplacer"
+
+msgid "{hitCount} requirements want the same files and cannot run together"
+msgstr "{hitCount} exigences veulent les mêmes fichiers et ne peuvent pas tourner ensemble"
+
+msgid "{hours} hr"
+msgstr "{hours} h"
+
+msgid "{idleCount} more are idle and costing nothing."
+msgstr "{idleCount} autres sont inactives et ne coûtent rien."
+
+msgid "{image} is neither an image we publish nor one built on this machine"
+msgstr "{image} n'est ni une image que nous publions ni une image construite sur cette machine"
+
+msgid "{image} is not on this machine"
+msgstr "{image} n'est pas sur cette machine"
+
+msgid "{lines} lines"
+msgstr "{lines} lignes"
+
+msgid "{live} running"
+msgstr "{live} en cours"
+
+msgid "{mine} overlaps {theirs} owned by {name} — wait for it, or ask the Architect for a different split"
+msgstr "{mine} chevauche {theirs}, détenu par {name} — attends-le, ou demande un autre découpage à l'Architecte"
+
+msgid "{minutes} min"
+msgstr "{minutes} min"
+
+msgid "{minutes}m ago"
+msgstr "il y a {minutes} min"
+
+msgid "{mode} · {days} days left"
+msgstr "{mode} · {days} jours restants"
+
+msgid "{mode} · accepted"
+msgstr "{mode} · acceptée"
+
+msgid "{mode} · expired — sign in again"
+msgstr "{mode} · expiré — reconnectez-vous"
+
+msgid "{mode} · expires within a day"
+msgstr "{mode} · expire dans moins d'un jour"
+
+msgid "{mode} · GitHub no longer accepts this token"
+msgstr "{mode} · GitHub n'accepte plus ce jeton"
+
+msgid "{mode} · not verified (HTTP {status})"
+msgstr "{mode} · non vérifié (HTTP {status})"
+
+msgid "{mode} · stored"
+msgstr "{mode} · enregistré"
+
+msgid "{mode} · the provider rejected this credential"
+msgstr "{mode} · le fournisseur a rejeté cet identifiant"
+
+msgid "{mode} · unreachable, not verified"
+msgstr "{mode} · injoignable, non vérifié"
+
+msgid "{months} months ago"
+msgstr "il y a {months} mois"
+
+msgid "{mount} read-only"
+msgstr "{mount} lecture seule"
+
+msgid "{n, plural, one {# slice} other {# slices}}"
+msgstr "{n, plural, one {# tranche} other {# tranches}}"
+
+msgid "{n, plural, one {# thing needs} other {# things need}} you:"
+msgstr "{n, plural, one {# chose a besoin} other {# choses ont besoin}} de toi :"
+
+msgid "{n} more queued behind it"
+msgstr "{n} autres en file derrière"
+
+msgid "{n} to do"
+msgstr "{n} à traiter"
+
+msgid "{n} unread — the Librarian is compressing them"
+msgstr "{n} non lus — le Librarian est en train de les condenser"
+
+msgid "{name} ({repo} · {branch}) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
+msgstr "{name} ({repo} · {branch}) a été ajouté. Les gates et la commande d'installation sont devinés une fois que le premier groupe a cloné ; sinon, renseignez-les dès maintenant dans Réglages → Gates."
+
+msgid "{name} ({repo}, on whatever the remote calls its default branch) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
+msgstr "{name} ({repo}, sur la branche que le dépôt distant considère par défaut) a été ajouté. Les gates et la commande d'installation sont devinés une fois que le premier groupe a cloné ; sinon, renseignez-les dès maintenant dans Réglages → Gates."
+
+msgid "{name} dissolved; its sandbox is reclaimed"
+msgstr "{name} a été dissoute ; son bac à sable est récupéré"
+
+msgid "{name} has been parked {hours}h — wake it, or drop it?"
+msgstr "{name} est de côté depuis {hours} h — la réveiller, ou l'abandonner ?"
+
+msgid "{name} has been waiting {min} min for you"
+msgstr "{name} t'attend depuis {min} min"
+
+msgid "{name} has spent all {tokens} of its tokens and the whole group is suspended. Raise the cap and it carries on, or leave it stopped here."
+msgstr "{name} a dépensé ses {tokens} jetons et tout le groupe est suspendu. Relevez le plafond et il repart, ou laissez-le arrêté ici."
+
+msgid "{name} is at {pct}% of its budget"
+msgstr "{name} en est à {pct} % de son budget"
+
+msgid "{name} is blocked by {path}, which is inside your boundary: {why}"
+msgstr "{name} est bloqué par {path}, qui est dans votre frontière : {why}"
+
+msgid "{name} is no longer waiting on anything — woken up"
+msgstr "{name} n'attend plus rien — réveillée"
+
+msgid "{name} is over 25MB"
+msgstr "{name} dépasse 25 Mo"
+
+msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
+msgstr "{name} quitte le tableau et tous les tours en file sont annulés. Le code et l'historique sont conservés."
+
+msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are kept; the group is never started again."
+msgstr "{name} quitte le tableau et tous les tours en file sont annulés. Le code et l'historique sont conservés ; le groupe ne redémarrera jamais."
+
+msgid "{name} parked after waiting {min} min — checkout kept, slot freed"
+msgstr "{name} mise de côté après {min} min d'attente — checkout conservé, place libérée"
+
+msgid "{name} produced no output."
+msgstr "{name} n'a rien produit."
+
+msgid "{name} reached PR, so the question still hanging on it expired — closed by itself"
+msgstr "{name} a atteint la PR, la question encore en suspens a donc expiré — fermée d'elle-même"
+
+msgid "{name} S{seq} has been waiting {hours}h for you"
+msgstr "{name} S{seq} t'attend depuis {hours} h"
+
+msgid "{name} spent its whole budget ({tokens} tokens) and is suspended"
+msgstr "{name} a dépensé tout son budget ({tokens} tokens) et est suspendue"
+
+msgid "{name}: {n, plural, one {# running turn was} other {# running turns were}} killed before the data goes"
+msgstr "{name} : {n, plural, one {# tour en cours a été tué} other {# tours en cours ont été tués}} avant la suppression des données"
+
+msgid "{name}: PR #{pr} was closed — reopen it or drop the requirement"
+msgstr "{name} : la PR #{pr} a été fermée — rouvrez-la ou abandonnez l'exigence"
+
+msgid "{name}: the PR will not open — {why}"
+msgstr "{name} : la PR ne s'ouvre pas — {why}"
+
+msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
+msgstr "Le conteneur de {name} est jeté et le tour suivant le reconstruit : reclonage de la branche, réinstallation des dépendances. Les modifications non commitées sont perdues."
+
+msgid "{name}'s plan card has been waiting {hours}h for you"
+msgstr "la fiche de plan de {name} t'attend depuis {hours} h"
+
+msgid "{name}'s PR has been at the head of the merge queue for {hours}h"
+msgstr "la PR de {name} est en tête de la file de fusion depuis {hours} h"
+
+msgid "{name}'s PR has been at the head of the merge queue for {hours}h, with {n} behind it"
+msgstr "la PR de {name} est en tête de la file de fusion depuis {hours} h, avec {n} derrière elle"
+
+msgid "{name}'s sandbox is bound to a superseded credential; reclaimed, and the next tick rebuilds it"
+msgstr "le bac à sable de {name} est lié à un identifiant remplacé ; récupéré, et le prochain tick le reconstruit"
+
+msgid "{path} is a path inside this container, and the mount is made by the sandbox server's docker, which resolves it on its own filesystem. Use one absolute path on both sides (-v <host path>:{path}) and add it to the sandbox server's allowed_host_paths. A mismatch does not fail; it mounts an empty directory."
+msgstr "{path} est un chemin dans ce conteneur, mais le montage est fait par le docker du serveur de bac à sable, qui le résout sur son propre système de fichiers. Utilisez un seul chemin absolu des deux côtés (-v <host path>:{path}) et ajoutez-le à allowed_host_paths du serveur. Une divergence n'échoue pas : elle monte un répertoire vide."
+
+msgid "{path} is back to its default"
+msgstr "{path} est revenu à sa valeur par défaut"
+
+msgid "{path} is now {value}"
+msgstr "{path} vaut désormais {value}"
+
+msgid "{path}: {error}"
+msgstr "{path} : {error}"
+
+msgid "{path}: cannot be read"
+msgstr "{path} : illisible"
+
+msgid "{repo} has been added, but this login cannot push to it: {why}. Deal with it now, rather than after the first slice is finished."
+msgstr "{repo} a été ajouté, mais cette connexion ne peut pas y pousser : {why}. Réglez-le maintenant, pas une fois la première tranche terminée."
+
+msgid "{repo}'s own skills are not listed yet: the code only exists inside a container, so nothing can count them until the first group has cloned it (we look in {dirs}). After that they appear here by themselves, and you can name one in the composer with /name. Skills kept outside those directories are invisible to both."
+msgstr "les compétences propres à {repo} ne sont pas encore listées : le code n'existe qu'à l'intérieur d'un conteneur, donc rien ne peut les compter tant que le premier groupe ne l'a pas cloné (on regarde dans {dirs}). Ensuite elles apparaissent ici toutes seules, et vous pouvez en appeler une dans le composeur avec /nom. Les compétences rangées hors de ces répertoires sont invisibles des deux côtés."
+
+msgid "{repoPath} is already registered as \"{name}\""
+msgstr "{repoPath} est déjà enregistré sous « {name} »"
+
+msgid "{repoPath} removed"
+msgstr "{repoPath} supprimé"
+
+msgid "{resource} failed {n}x with no code change in between — treat the environment as the suspect"
+msgstr "{resource} a échoué {n} fois sans changement de code entre-temps — soupçonne l'environnement"
+
+msgid "{rest} more of {total}"
+msgstr "{rest} de plus sur {total}"
+
+msgctxt "notes"
+msgid "{rest} more of {total}"
+msgstr "{rest} de plus sur {total}"
+
+msgid "{rest} more requirements"
+msgstr "{rest} exigences de plus"
+
+msgid "{role} finished {n, plural, one {# turn} other {# turns}} without changing a file, a task or a note"
+msgstr "{role} a terminé {n, plural, one {# tour} other {# tours}} sans toucher un fichier, une tâche ni une note"
+
+msgid "{role} has rewritten {file} {n, plural, one {# turn} other {# turns}} running — probably a design problem, sending it to the Architect"
+msgstr "{role} réécrit {file} depuis {n, plural, one {# tour} other {# tours}} d'affilée — probablement un problème de conception, transmis à l'Architect"
+
+msgid "{role} wrote {n, plural, one {# file} other {# files}} this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it"
+msgstr "{role} a écrit {n, plural, one {# fichier} other {# fichiers}} que ce groupe ne possède pas ({files}) — annulés ; le bac à sable de ce CLI ne peut pas empêcher l'écriture, la vérification vient donc après"
+
+msgid "{role}'s session record is gone; the next turn starts a new session"
+msgstr "l'enregistrement de session de {role} a disparu ; le tour suivant repart sur une nouvelle session"
+
+msgid "{runningCount} running · {total} total"
+msgstr "{runningCount} en cours · {total} au total"
+
+msgid "{runtime} credential expired"
+msgstr "identifiant {runtime} expiré"
+
+msgid "{runtime} credentials rejected"
+msgstr "les identifiants {runtime} ont été refusés"
+
+msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
+msgstr "{server} répond, mais ce n'est pas un sandbox server (HTTP {status}) — pointe vers une autre adresse."
+
+msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
+msgstr "{server} ne répond pas, et ce n'est pas une adresse de cette machine — rien ne peut être démarré ici. Regarde sur cette machine."
+
+msgid "{sessionTokens} tokens this session · {model}"
+msgstr "{sessionTokens} tokens cette session · {model}"
+
+msgid "{skill} is not enabled"
+msgstr "{skill} n'est pas activé"
+
+msgid "{spent} / {cap} tokens. Spending it all suspends the whole group."
+msgstr "{spent} / {cap} tokens. Les épuiser suspend tout le groupe."
+
+msgid "{staged}/{ticked} ticked reach the sandbox, {fromRepo} from the repository, about {tokens}k tokens of prefix per turn"
+msgstr "{staged}/{ticked} cochés atteignent le bac à sable, {fromRepo} du dépôt, environ {tokens}k tokens de préfixe par tour"
+
+msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
+msgstr "{staged}/{ticked} cochés atteignent le bac à sable, environ {tokens}k tokens de préfixe par tour"
+
+msgid "{tier} auto-accepted, all three gates passed"
+msgstr "{tier} acceptée automatiquement, les trois gates sont passés"
+
+msgid "{total} waiting on you"
+msgstr "{total} vous attendent"
+
+msgid "{waiting, plural, one {# slice awaiting acceptance} other {# slices awaiting acceptance}}"
+msgstr "{waiting, plural, one {# tranche en attente d'acceptation} other {# tranches en attente d'acceptation}}"
+
+msgid "{waiting} to do"
+msgstr "{waiting} à traiter"
+
+msgid "{who} is hanging on your answer"
+msgstr "{who} attend ta réponse"
+
+msgid "{who} objected after the fact"
+msgstr "{who} a objecté après coup"
+
+msgid "{width} per bucket"
+msgstr "{width} par intervalle"
+
+msgid "← Back to all"
+msgstr "← Retour à tout"
+
+msgid "← Back to full timeline"
+msgstr "← Retour à la chronologie complète"
+
+msgid "+ Add project"
+msgstr "+ Ajouter un projet"
+
+msgid "+ New requirement"
+msgstr "+ Nouvelle exigence"
+
+msgid "1/4 of host cores"
+msgstr "1/4 des cœurs de l'hôte"
+
+msgid "127.0.0.1:8080 or https://host:port"
+msgstr "127.0.0.1:8080 ou https://host:port"
+
+msgid "A background task crashed and the server carried on without it. That is a bug — please send this to whoever maintains it:\n"
+"{stack}"
+msgstr "Une tâche de fond a planté et le serveur a continué sans elle. C'est un bug — transmettez ceci à qui le maintient :\n"
+"{stack}"
+
+msgid "A number"
+msgstr "Un nombre"
+
+msgid "A paused group is waiting on you and costs a concurrency slot while it waits. This is how often it says so before 'Archive after paused' takes the slot back."
+msgstr "Un groupe en pause vous attend et occupe une place de concurrence pendant ce temps. Voici à quelle fréquence il le rappelle, avant qu'« Archiver après pause » ne récupère la place."
+
+msgid "A project's config has to be a JSON object. One partial edit will not be allowed to replace the whole of it."
+msgstr "La configuration d'un projet doit être un objet JSON. Une modification partielle ne remplacera pas l'ensemble."
+
+msgid "Abandon this requirement"
+msgstr "Abandonner cette exigence"
+
+msgid "Abandoned"
+msgstr "Abandonnée"
+
+msgid "Accept"
+msgstr "Accepter"
+
+msgid "Acceptance criteria"
+msgstr "Critères d'acceptation"
+
+msgid "accepted {done}/{total}"
+msgstr "acceptées {done}/{total}"
+
+msgid "accepted: S{seq} {title}"
+msgstr "acceptée : S{seq} {title}"
+
+msgid "accepted: S{seq} {title} ({why})"
+msgstr "acceptée : S{seq} {title} ({why})"
+
+msgid "Active turns will stop; containers, slices, cards, questions, attachments deleted and unrecoverable"
+msgstr "Les tours en cours s'arrêtent ; conteneurs, tranches, cartes, questions et pièces jointes sont supprimés sans retour"
+
+msgid "Add"
+msgstr "Ajouter"
+
+msgid "Add · {branch}"
+msgstr "Ajouter · {branch}"
+
+msgid "Add {path} to the sandbox server's allowed_host_paths, or every group fails to open a container. Tick the skills in Settings."
+msgstr "Ajoutez {path} à allowed_host_paths du serveur de bac à sable, sinon aucun groupe ne peut ouvrir de conteneur. Cochez les compétences dans Réglages."
+
+msgid "Add a row"
+msgstr "Ajouter une ligne"
+
+msgid "Add a step"
+msgstr "Ajouter une étape"
+
+msgid "Add another"
+msgstr "En ajouter un autre"
+
+msgid "Add requirements or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes"
+msgstr "Ajoutez des exigences ou expliquez le refus. Collez captures ou maquettes ; / pour insérer une compétence. Cmd+Entrée pour demander des modifications"
+
+msgid "Add your first project"
+msgstr "Ajoutez votre premier projet"
+
+msgid "Added"
+msgstr "Ajouté"
+
+msgid "Adding…"
+msgstr "Ajout…"
+
+msgid "Address"
+msgstr "Adresse"
+
+msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
+msgstr "Après plusieurs échecs consécutifs d'une tranche, on escalade vers une personne au lieu de réessayer la même voie."
+
+msgid "After approval, copy the code from that page"
+msgstr "Après approbation, copiez le code sur cette page"
+
+msgid "AI is thinking on your behalf"
+msgstr "L'IA réfléchit à votre place"
+
+msgid "AI-drafted response"
+msgstr "Réponse rédigée par l'IA"
+
+msgid "All"
+msgstr "Tout"
+
+msgid "All done"
+msgstr "Tout est fait"
+
+msgid "All pass"
+msgstr "Tout passe"
+
+msgid "all under {ceiling}"
+msgstr "tout sous {ceiling}"
+
+msgid "all under 1ms"
+msgstr "tout sous 1 ms"
+
+msgid "Allow notifications"
+msgstr "Autoriser les notifications"
+
+msgid "already spent {spent} tokens — a cap at {tokens} would stop it again immediately"
+msgstr "déjà {spent} tokens dépensés — un plafond à {tokens} l'arrêterait aussitôt"
+
+msgid "already spent {tokens} tokens"
+msgstr "déjà {tokens} tokens dépensés"
+
+msgid "also changed on S{seq}, unclaimed: {files}"
+msgstr "également modifié sur S{seq}, non déclaré : {files}"
+
+msgid "An image has to be one we publish (ghcr.io/pamin-labs/…) or one you built locally (orch/agent:1, say). The agent runs inside this image with your code in front of it, so pointing it somewhere else hands over the whole boundary — and nothing on the panel would show it."
+msgstr "L'image doit être l'une des nôtres (ghcr.io/pamin-labs/…) ou une image que vous avez construite localement (orch/agent:1, par exemple). L'agent s'exécute dans cette image avec votre code sous les yeux : pointer ailleurs revient à céder toute la frontière — et rien ne le montrerait dans le panneau."
+
+msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
+msgstr "Le tour inachevé est perdu ; le groupe redémarre son conteneur et continue seul. Le code et les branches ne bougent pas."
+
+msgid "answer revoked, but the rollback to {sha} failed: {why}"
+msgstr "réponse révoquée, mais le retour à {sha} a échoué : {why}"
+
+msgid "Answered on your behalf"
+msgstr "Répondu à votre place"
+
+msgid "answered on your behalf by {who}"
+msgstr "répondu à votre place par {who}"
+
+msgid "API address"
+msgstr "Adresse de l'API"
+
+msgid "API key"
+msgstr "Clé d'API"
+
+msgid "Appearance"
+msgstr "Apparence"
+
+msgid "Approval recorded — it starts by itself once the boundary clears."
+msgstr "Approbation enregistrée — elle démarre d'elle-même dès que la frontière se libère."
+
+msgid "Approve and start"
+msgstr "Approuver et démarrer"
+
+msgid "Approved · Awaiting boundary"
+msgstr "Approuvée · En attente de frontière"
+
+msgid "Approved, blocked by boundaries"
+msgstr "Approuvée, bloquée par les frontières"
+
+msgid "Approved; starts automatically when boundaries clear"
+msgstr "Approuvée ; démarre automatiquement dès que les frontières se libèrent"
+
+msgid "Architect decides on tech choices and architectural boundaries; if they can't answer, they'll come back."
+msgstr "L'Architecte tranche les choix techniques et les frontières d'architecture ; s'il ne peut pas répondre, il revient vers vous."
+
+msgid "Architect working"
+msgstr "Architecte au travail"
+
+msgid "Archive"
+msgstr "Archiver"
+
+msgid "Archive after paused"
+msgstr "Archiver après pause"
+
+msgid "Archive releases the sandbox. Groups parked too long hog concurrency slots for nothing."
+msgstr "L'archivage libère le bac à sable. Un groupe garé trop longtemps monopolise des places de concurrence pour rien."
+
+msgid "Archived"
+msgstr "Archivée"
+
+msgid "Ask GitHub"
+msgstr "Interroger GitHub"
+
+msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
+msgstr "Fenêtre de contexte supposée par modèle, utilisée au premier tour de la session — ensuite la CLI donne la vraie valeur. Trop basse, un modèle à grand contexte redémarre sans cesse et jette son cache à chaque fois."
+
+msgid "At most {maxGroups} groups at once. When it is full, approved requirements queue for a slot rather than being stuck."
+msgstr "Au plus {maxGroups} groupes à la fois. Quand c'est plein, les exigences approuvées font la queue au lieu de bloquer."
+
+msgid "Attach"
+msgstr "Joindre"
+
+msgid "audit {verdict}"
+msgstr "audit {verdict}"
+
+msgid "audit {verdict}: {note}"
+msgstr "audit {verdict} : {note}"
+
+msgid "audit passed — queued to merge, {place} of {total}"
+msgstr "audit passé — dans la file de fusion, {place} sur {total}"
+
+msgid "audit passed — ready for you to merge"
+msgstr "audit passé — prêt à être fusionné par vos soins"
+
+msgid "Author"
+msgstr "Auteur"
+
+msgid "Authorized"
+msgstr "Autorisé"
+
+msgid "Auto-accept tiers"
+msgstr "Niveaux d'acceptation automatique"
+
+msgid "Auto-advance when approved"
+msgstr "Avancer automatiquement à l'approbation"
+
+msgid "autoAdvance: started the next slice without waiting for you"
+msgstr "autoAdvance : la tranche suivante a démarré sans t'attendre"
+
+msgid "Awaiting Architect to split boundaries"
+msgstr "En attente du découpage des frontières par l'Architecte"
+
+msgid "Awaiting merge"
+msgstr "En attente de fusion"
+
+msgid "Awaiting your decision"
+msgstr "En attente de votre décision"
+
+msgid "Awaiting your review"
+msgstr "En attente de votre relecture"
+
+msgid "Awaiting your review · {since}"
+msgstr "En attente de votre relecture · {since}"
+
+msgid "Back off after a 429"
+msgstr "Attente après un 429"
+
+msgid "Background job"
+msgstr "Tâche de fond"
+
+msgid "Base branch"
+msgstr "Branche de base"
+
+msgid "Base branch fallbacks"
+msgstr "Branches de base de repli"
+
+msgid "Batch window"
+msgstr "Fenêtre de regroupement"
+
+msgid "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates."
+msgstr "Les gros projets compilent pendant des heures ; sans plafond, un build bloqué occupe une place de ressource à jamais. Les places sont globales et rares : une commande morte arrête les gates de toute la flotte."
+
+msgid "blocked by {path}; handed to grp {target} and waiting for it to land"
+msgstr "bloquée par {path} ; confiée à grp {target}, en attente de son atterrissage"
+
+msgid "Blocked domains"
+msgstr "Domaines bloqués"
+
+msgid "Bootstrap failed"
+msgstr "Échec de l'amorçage"
+
+msgid "Both go to Dispatcher; it will revise the card and bring it back for your approval."
+msgstr "Les deux partent au Répartiteur ; il révisera la carte et la représentera à votre approbation."
+
+msgid "Boundary"
+msgstr "Frontière"
+
+msgid "boundary still overlaps"
+msgstr "la frontière se chevauche toujours"
+
+msgid "Branch"
+msgstr "Branche"
+
+msgid "branch gate failed:\n"
+"{gates}"
+msgstr "le gate de branche a échoué :\n"
+"{gates}"
+
+msgid "branch sent back by {from} {n, plural, one {# time} other {# times}} — stopping rather than paying for another round"
+msgstr "la branche a été renvoyée par {from} {n, plural, one {# fois} other {# fois}} — on s'arrête là plutôt que de payer un tour de plus"
+
+msgid "Branches, PRs and code on GitHub"
+msgstr "Branches, PR et code sur GitHub"
+
+msgid "Browse files"
+msgstr "Parcourir les fichiers"
+
+msgid "Browser allowed it. The panel will still notify in the background; only closing the entire browser stops notifications—reopen it to catch up."
+msgstr "Le navigateur a accepté. Le panneau notifie encore en arrière-plan ; seule la fermeture complète du navigateur arrête les notifications — rouvrez-le pour rattraper."
+
+msgid "Browser can't read the clipboard directly. Click in the input and use Cmd+V; images work too."
+msgstr "Le navigateur ne peut pas lire le presse-papiers directement. Cliquez dans le champ et faites Cmd+V ; les images marchent aussi."
+
+msgid "Browser denied it. To enable, change it in site settings (left of address bar), then refresh."
+msgstr "Le navigateur a refusé. Pour l'activer, modifiez-le dans les paramètres du site (à gauche de la barre d'adresse), puis rechargez."
+
+msgid "Browser permission"
+msgstr "Autorisation du navigateur"
+
+msgid "Budget"
+msgstr "Budget"
+
+msgid "Budget exhausted"
+msgstr "Budget épuisé"
+
+msgid "Budget exhausted; group paused"
+msgstr "Budget épuisé ; groupe en pause"
+
+msgid "Burn rate"
+msgstr "Rythme de dépense"
+
+msgid "By account"
+msgstr "Par compte"
+
+msgid "By requirement"
+msgstr "Par exigence"
+
+msgid "By tier"
+msgstr "Par niveau"
+
+msgid "Cache hit rate"
+msgstr "Taux de cache"
+
+msgid "Can modify which files"
+msgstr "Quels fichiers il peut modifier"
+
+msgid "Can't count"
+msgstr "Impossible à compter"
+
+msgid "Can't determine until first group clones; fill in settings later"
+msgstr "Impossible à déterminer avant le premier clonage ; renseignez les réglages plus tard"
+
+msgid "Can't read log"
+msgstr "Journal illisible"
+
+msgid "Can't read remote branches; storing what you entered"
+msgstr "Impossible de lire les branches distantes ; on enregistre ce que vous avez saisi"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Cancel all queued turns; return the occupied slot to another group."
+msgstr "Annule tous les tours en file et rend la place occupée à un autre groupe."
+
+msgid "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
+msgstr "Annule tous les tours en file et rend la place occupée à un autre groupe. Le code, la branche et les enregistrements sont conservés."
+
+msgid "cancelled {n, plural, one {# job} other {# jobs}} queued for a dissolved group"
+msgstr "{n, plural, one {# tâche en file annulée} other {# tâches en file annulées}} pour une exigence dissoute"
+
+msgid "Cannot open a container, so every turn is held: {why}\n"
+"Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back."
+msgstr "impossible d'ouvrir un conteneur, donc tous les tours sont retenus : {why}\n"
+"En général docker est arrêté ou opensandbox-server ne tourne pas — le panneau d'autodiagnostic dans les Réglages dit lequel. Le travail reprend tout seul dès son retour."
+
+msgid "cannot reach it: {error}"
+msgstr "impossible de le joindre : {error}"
+
+msgid "Cannot reach the usage endpoint"
+msgstr "Point d'accès d'utilisation injoignable"
+
+msgid "cannot start it: {error}"
+msgstr "impossible de le démarrer : {error}"
+
+msgid "cannot write the config: {error}"
+msgstr "impossible d'écrire la configuration : {error}"
+
+msgid "cards pending review"
+msgstr "cartes à relire"
+
+msgid "Change base branch"
+msgstr "Changer la branche de base"
+
+msgid "Change its access"
+msgstr "Modifier son accès"
+
+msgid "Changed to {next}"
+msgstr "Changé en {next}"
+
+msgid "Changes exceed 400k characters; tail not retrieved. Remaining changes are in the sandbox checkout."
+msgstr "Les modifications dépassent 400k caractères ; la fin n'a pas été récupérée. Le reste est dans le checkout du bac à sable."
+
+msgid "Check for stuck turns"
+msgstr "Vérifier les tours bloqués"
+
+msgid "Check runs"
+msgstr "Vérifications"
+
+msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
+msgstr "Les compétences cochées sont copiées ici et montées en lecture seule dans chaque bac à sable. Toute modification ici doit être répercutée dans allowed_host_paths du serveur de bac à sable, sinon le conteneur ne démarre pas — un échec bruyant vaut mieux qu'un montage vide silencieux."
+
+msgid "checkout on {branch}"
+msgstr "checkout sur {branch}"
+
+msgid "Choose account"
+msgstr "Choisir un compte"
+
+msgid "Choose attachments"
+msgstr "Choisir les pièces jointes"
+
+msgid "Choose repository"
+msgstr "Choisir un dépôt"
+
+msgid "Claim task"
+msgstr "Prendre la tâche"
+
+msgid "Claude Code writes this in Co-Authored-By when committing"
+msgstr "Claude Code l'inscrit dans Co-Authored-By lors des commits"
+
+msgid "claude could not sign in: {detail}"
+msgstr "claude n'a pas pu se connecter : {detail}"
+
+msgid "claude is signed in"
+msgstr "claude est connecté"
+
+msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
+msgstr "claude n'a affiché aucun lien de connexion dans le conteneur — lancez `claude setup-token` dans l'image pour voir pourquoi. Il lui faut un pty ; sans pty il n'affiche rien et sort avec 0."
+
+msgid "Clear"
+msgstr "Effacer"
+
+msgid "Click a row to add"
+msgstr "Cliquez sur une ligne pour l'ajouter"
+
+msgid "Click to add to the end"
+msgstr "Cliquez pour ajouter à la fin"
+
+msgid "Clipboard is empty"
+msgstr "Le presse-papiers est vide"
+
+msgid "Clone"
+msgstr "Cloner"
+
+msgid "Clone this group's branch and dependencies into a new sandbox"
+msgstr "Clone la branche et les dépendances de ce groupe dans un nouveau bac à sable"
+
+msgid "Clone, fetch or image pull"
+msgstr "Clone, fetch ou récupération d'image"
+
+msgid "Close"
+msgstr "Fermer"
+
+msgid "Cmd+Enter to send to PM"
+msgstr "Cmd+Entrée pour envoyer au PM"
+
+msgid "Code comes from here"
+msgstr "Le code vient d'ici"
+
+msgid "Code from page"
+msgstr "Code de la page"
+
+msgid "Code index"
+msgstr "Index du code"
+
+msgid "Code repository"
+msgstr "Dépôt de code"
+
+msgid "codex could not sign in: {detail}"
+msgstr "codex n'a pas pu se connecter : {detail}"
+
+msgid "codex is signed in"
+msgstr "codex est connecté"
+
+msgid "codex printed no device code inside the container — run `codex login --device-auth` in the image to see why."
+msgstr "codex n'a affiché aucun code d'appareil dans le conteneur — lancez `codex login --device-auth` dans l'image pour voir pourquoi."
+
+msgid "Collapse"
+msgstr "Réduire"
+
+msgid "Collapse event stream"
+msgstr "Réduire le flux d'événements"
+
+msgid "Command"
+msgstr "Commande"
+
+msgid "Comments are recorded in the notes; PM will schedule a correction task and the group continues."
+msgstr "Les commentaires sont consignés dans les notes ; le PM planifiera une correction et le groupe continue."
+
+msgid "Comments are recorded in the notes; the PM will schedule corrections accordingly. Paste screenshots directly."
+msgstr "Les commentaires sont consignés dans les notes ; le PM planifiera les corrections. Collez les captures directement."
+
+msgid "Comments on the pull request itself, newest first. Past this, the oldest are never read — which is a reviewer's first comment going unanswered."
+msgstr "Commentaires sur la pull request elle-même, les plus récents d'abord. Au-delà, les plus anciens ne sont jamais lus — c'est là que le premier commentaire d'un relecteur reste sans réponse."
+
+msgid "Compile"
+msgstr "Compiler"
+
+msgid "Concurrent jobs"
+msgstr "Tâches simultanées"
+
+msgid "Configuration doesn't allow the path we need to mount"
+msgstr "La configuration n'autorise pas le chemin à monter"
+
+msgid "Confirm abandonment"
+msgstr "Confirmer l'abandon"
+
+msgid "Connect GitHub"
+msgstr "Connecter GitHub"
+
+msgid "Connect GitHub once in Settings. Branches are pushed with it — without one, every slice is refused at its last step."
+msgstr "Connectez GitHub une fois dans Réglages. C'est avec ça que les branches sont poussées — sans, chaque tranche est refusée à sa dernière étape."
+
+msgid "Connected"
+msgstr "Connecté"
+
+msgid "Connected, but this GitHub App isn't installed on any account, so no repos are visible."
+msgstr "Connecté, mais cette GitHub App n'est installée sur aucun compte : aucun dépôt n'est visible."
+
+msgid "Connecting"
+msgstr "Connexion"
+
+msgid "Connection lost; reconnecting"
+msgstr "Connexion perdue ; reconnexion"
+
+msgid "container discarded; the next turn rebuilds it — clone and install. The branch lives in the host repo"
+msgstr "conteneur jeté ; le prochain tour le reconstruit — clone et installation. La branche vit dans le dépôt hôte"
+
+msgid "Container hasn't started yet. Clone and dependency installation output will appear here line by line."
+msgstr "Le conteneur n'a pas encore démarré. La sortie du clonage et de l'installation des dépendances apparaîtra ici ligne par ligne."
+
+msgid "Container running"
+msgstr "Conteneur en marche"
+
+msgid "Container will be discarded. The next turn will rebuild it: re-clone the branch, reinstall dependencies. Uncommitted changes will be lost."
+msgstr "Le conteneur sera jeté. Le tour suivant le reconstruira : reclonage de la branche, réinstallation des dépendances. Les modifications non commitées seront perdues."
+
+msgid "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:"
+msgstr "Le conteneur ne plantera pas, il montera juste un répertoire vide — les compétences activées disparaissent. Ajoutez cette ligne à la configuration, puis redémarrez :"
+
+msgid "Containers open again; the held work resumes on its own."
+msgstr "Les conteneurs s'ouvrent de nouveau ; le travail retenu reprend tout seul."
+
+msgid "context full"
+msgstr "contexte plein"
+
+msgid "Context response limit"
+msgstr "Limite de réponse du contexte"
+
+msgid "Context window"
+msgstr "Fenêtre de contexte"
+
+msgid "Conversation comments"
+msgstr "Commentaires de la conversation"
+
+msgid "Convert to a requirement; this group will automatically continue after it's implemented."
+msgstr "Converti en exigence ; ce groupe reprendra tout seul une fois l'implémentation faite."
+
+msgid "Copy"
+msgstr "Copier"
+
+msgid "CoS working"
+msgstr "CoS au travail"
+
+msgid "Cost"
+msgstr "Coût"
+
+msgid "could not check file ownership this turn (git status in the sandbox: {out})"
+msgstr "impossible de vérifier la propriété des fichiers ce tour-ci (git status dans le bac à sable : {out})"
+
+msgid "could not force-stop pid {pid}: {error}"
+msgstr "impossible de forcer l'arrêt du pid {pid} : {error}"
+
+msgid "Could not generate a draft; you'll need to write this one yourself."
+msgstr "Impossible de générer un brouillon ; celui-ci, il faudra l'écrire vous-même."
+
+msgid "could not open a PR: {why}"
+msgstr "impossible d'ouvrir une PR : {why}"
+
+msgid "could not put {file} into the sandbox: {why}"
+msgstr "impossible de mettre {file} dans le bac à sable : {why}"
+
+msgid "could not roll back {n, plural, one {# file} other {# files}} outside this group's paths ({files}): {out}"
+msgstr "impossible d'annuler {n, plural, one {# fichier} other {# fichiers}} hors des chemins de ce groupe ({files}) : {out}"
+
+msgid "could not start {bin}: {error}"
+msgstr "impossible de démarrer {bin} : {error}"
+
+msgid "could not stop pid {pid}: {error}"
+msgstr "impossible d'arrêter le pid {pid} : {error}"
+
+msgid "could not take {branch} out of the sandbox: {why}"
+msgstr "impossible de sortir {branch} du bac à sable : {why}"
+
+msgid "Couldn't read the settings from the server."
+msgstr "Impossible de lire les réglages depuis le serveur."
+
+msgid "Count"
+msgstr "Nombre"
+
+msgid "CPU"
+msgstr "CPU"
+
+msgid "Create new sandbox"
+msgstr "Créer un bac à sable"
+
+msgid "Create requirement"
+msgstr "Créer une exigence"
+
+msgid "Credential"
+msgstr "Identifiants"
+
+msgid "Credential check"
+msgstr "Vérification des identifiants"
+
+msgid "Credential name"
+msgstr "Nom de l'identifiant"
+
+msgid "Credentials did not bind to this container, so the decoy values inside go out unchanged — every model call from here 401s. That is not the token's fault, and signing in again will not help. Cause: {why}"
+msgstr "Les identifiants ne se sont pas liés à ce conteneur, donc les valeurs leurres à l'intérieur sortent telles quelles — chaque appel de modèle depuis ici renvoie 401. Ce n'est pas la faute du jeton, et se reconnecter n'y changera rien. Cause : {why}"
+
+msgid "Custom gateway; usage not displayed in header"
+msgstr "Passerelle personnalisée ; l'usage n'apparaît pas dans l'en-tête"
+
+msgid "Dark"
+msgstr "Sombre"
+
+msgid "Database connections"
+msgstr "Connexions à la base"
+
+msgid "Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections."
+msgstr "Connexions maintenues ouvertes. L'instantané du panneau en demande une vingtaine d'un coup : en dessous, il attend par vagues ; au-dessus, aucun gain. Ne baissez que si votre Postgres plafonne les connexions."
+
+msgid "Decision"
+msgstr "Décision"
+
+msgid "Decomposing"
+msgstr "Découpage en cours"
+
+msgid "Default"
+msgstr "Par défaut"
+
+msgid "Default image"
+msgstr "Image par défaut"
+
+msgid "Delegate to Architect"
+msgstr "Déléguer à l'Architecte"
+
+msgid "Delete"
+msgstr "Supprimer"
+
+msgid "Delete {name}"
+msgstr "Supprimer {name}"
+
+msgid "Delete this row"
+msgstr "Supprimer cette ligne"
+
+msgid "Denied domains"
+msgstr "Domaines refusés"
+
+msgid "Deploy"
+msgstr "Déploiement"
+
+msgid "Design choice"
+msgstr "Choix de conception"
+
+msgid "Desk"
+msgstr "Bureau"
+
+msgid "Desk wall"
+msgstr "Mur du bureau"
+
+msgid "Desktop pop-ups"
+msgstr "Notifications du bureau"
+
+msgid "Difficulty → Model"
+msgstr "Difficulté → Modèle"
+
+msgid "Disabled"
+msgstr "Désactivé"
+
+msgid "Disabled skills aren't in the sandbox; the agent can't find it. Enable it in settings, or cancel this insertion?"
+msgstr "Une compétence désactivée n'est pas dans le bac à sable ; l'agent ne la trouvera pas. L'activer dans les réglages, ou annuler l'insertion ?"
+
+msgid "Discard all changes in the current turn and return to the start of this round."
+msgstr "Jette toutes les modifications du tour en cours et revient au début de cette manche."
+
+msgid "Disconnect"
+msgstr "Déconnecter"
+
+msgid "Dismiss"
+msgstr "Fermer"
+
+msgid "Dispatcher is analyzing; no slices yet"
+msgstr "Le Répartiteur analyse ; pas encore de tranches"
+
+msgid "Dispatcher is writing the plan card; it will appear here when done."
+msgstr "Le Répartiteur rédige la carte du plan ; elle apparaîtra ici une fois prête."
+
+msgid "Dissolved"
+msgstr "Dissous"
+
+msgid "docker, uv and the egress image belong to the machine running the sandbox server, not to this one"
+msgstr "docker, uv et l'image egress appartiennent à la machine qui exécute le serveur de bac à sable, pas à celle-ci"
+
+msgid "Domains the sandbox may not reach. A blocklist, not an allowlist — an allowlist would have to name every registry and docs site. Credentials do not depend on this: the sandbox only ever holds fakes."
+msgstr "Domaines que le bac à sable ne doit pas atteindre. Liste de blocage, pas d'autorisation — une liste d'autorisation devrait nommer tous les registres et sites de doc. Les identifiants n'en dépendent pas : le bac à sable ne détient que des faux."
+
+msgid "Don't proceed"
+msgstr "Ne pas continuer"
+
+msgid "Done"
+msgstr "Terminé"
+
+msgid "Double to {doubledLabel}"
+msgstr "Doubler à {doubledLabel}"
+
+msgid "DRAFT approved"
+msgstr "DRAFT approuvé"
+
+msgid "DRAFT card filed: {goal}"
+msgstr "fiche DRAFT déposée : {goal}"
+
+msgid "DRAFT card filed: {goal} ({n, plural, one {# planning turn} other {# planning turns}} dropped)"
+msgstr "fiche DRAFT déposée : {goal} ({n, plural, one {# tour de planification abandonné} other {# tours de planification abandonnés}})"
+
+msgid "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
+msgstr "Sous 50 %, l'assemblage du prompt est cassé : 3 à 5× plus cher par tour"
+
+msgid "dropped by the boss"
+msgstr "le patron l'a abandonnée"
+
+msgid "dropped by the boss: {why}"
+msgstr "le patron l'a abandonnée : {why}"
+
+msgid "e.g. 2000000"
+msgstr "ex. 2000000"
+
+msgid "Edit file"
+msgstr "Modifier le fichier"
+
+msgid "Edits to one file"
+msgstr "Modifications d'un fichier"
+
+msgid "Embedding mode"
+msgstr "Mode d'embedding"
+
+msgid "Empty"
+msgstr "Vide"
+
+msgid "Empty = 1/4 of host cores"
+msgstr "Vide = 1/4 des cœurs de l'hôte"
+
+msgid "Empty = 1/4 of host cores. SDK's own default is 1; tsc --noEmit here takes 7.6s (3.2s on 6 cores)."
+msgstr "Vide = 1/4 des cœurs de l'hôte. Le SDK met 1 par défaut ; ici tsc --noEmit prend 7,6 s (3,2 s sur 6 cœurs)."
+
+msgid "Empty = allow all outbound (see README)"
+msgstr "Vide = tout le trafic sortant est autorisé (voir README)"
+
+msgid "Empty = server has no authentication"
+msgstr "Vide = le serveur n'a pas d'authentification"
+
+msgid "Empty directory"
+msgstr "Répertoire vide"
+
+msgid "Empty, only this page notifies you. Filled, each notification POSTs JSON (title / message / url) — ntfy, Bark, a group bot, anything. Content is scrubbed first: this is the only channel that leaves the machine."
+msgstr "Vide, seule cette page vous avertit. Rempli, chaque notification POSTe un JSON (title / message / url) — ntfy, Bark, un bot de groupe, peu importe. Le contenu est nettoyé d'abord : c'est le seul canal qui quitte la machine."
+
+msgid "Empty: bootstrap detects from repo"
+msgstr "Vide : l'amorçage le détecte depuis le dépôt"
+
+msgid "Empty: only this page notifies you"
+msgstr "Vide : seule cette page vous avertit"
+
+msgid "Endpoint"
+msgstr "Point d'accès"
+
+msgid "Entire branch"
+msgstr "Toute la branche"
+
+msgid "Entire group is paused"
+msgstr "Tout le groupe est en pause"
+
+msgid "Entire group is suspended"
+msgstr "Tout le groupe est suspendu"
+
+msgid "Environment"
+msgstr "Environnement"
+
+msgid "Environment setup output"
+msgstr "Sortie de la préparation de l'environnement"
+
+msgid "Event stream"
+msgstr "Flux d'événements"
+
+msgid "Every container goes: sandboxes for {groups} groups, and {turns} turns currently running."
+msgstr "Tout conteneur compte : les bacs à sable de {groups} groupes, et {turns} tours en cours."
+
+msgid "Evidence: {evidence}"
+msgstr "Preuve : {evidence}"
+
+msgid "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\n"
+"Drag in screenshots or designs, or paste. Cmd+Enter to submit"
+msgstr "Exemple : ajouter une case « Se souvenir de moi » à la page de connexion ; une fois cochée, rester connecté 30 jours.\n"
+"Glissez captures ou maquettes, ou collez-les. Cmd+Entrée pour envoyer"
+
+msgid "Exceeded, watchdog kills it. Real max single-turn was 8.2 minutes."
+msgstr "Au-delà, le chien de garde le tue. Le tour le plus long mesuré : 8,2 minutes."
+
+msgid "Expand"
+msgstr "Déplier"
+
+msgid "Expand event stream: who said what to whom, newest first"
+msgstr "Déplier le flux d'événements : qui a dit quoi à qui, du plus récent au plus ancien"
+
+msgid "Fail"
+msgstr "Échec"
+
+msgid "Failed to add"
+msgstr "Échec de l'ajout"
+
+msgid "Failed to open"
+msgstr "Impossible d'ouvrir"
+
+msgid "Feedback threshold to become a rule"
+msgstr "Retours avant de devenir une règle"
+
+msgid "Fetching login code…"
+msgstr "Récupération du code de connexion…"
+
+msgid "Files and folders OK; click a name to enter a folder."
+msgstr "Fichiers et dossiers accessibles ; cliquez sur un nom pour entrer dans un dossier."
+
+msgid "Fill config/default.yaml with github.appSlug; this becomes a direct link."
+msgstr "Renseignez github.appSlug dans config/default.yaml et ceci devient un lien direct."
+
+msgid "Fill in"
+msgstr "Renseigner"
+
+msgid "Fill in a name to add a row"
+msgstr "Saisissez un nom pour ajouter une ligne"
+
+msgid "Fill in both and remote retrieval switches on. Until then it stays local."
+msgstr "Remplissez les deux et la récupération distante s'active. D'ici là, ça reste en local."
+
+msgid "Filter or type a name"
+msgstr "Filtrez ou saisissez un nom"
+
+msgid "Filter this log"
+msgstr "Filtrer ce journal"
+
+msgid "Filter this log…"
+msgstr "Filtrer ce journal…"
+
+msgid "Fix in settings"
+msgstr "Corriger dans les réglages"
+
+msgid "Fix this"
+msgstr "Corriger ceci"
+
+msgid "Flame distribution"
+msgstr "Distribution du flame graph"
+
+msgid "Folder"
+msgstr "Dossier"
+
+msgid "Follow the system"
+msgstr "Suivre le système"
+
+msgid "Follow this machine's default"
+msgstr "Suivre le réglage par défaut de cette machine"
+
+msgid "Follow window"
+msgstr "Suivre la fenêtre"
+
+msgid "Follow window—updates as window changes, fits without crowding"
+msgstr "Suit la fenêtre : se met à jour quand elle change et tient sans se serrer"
+
+msgid "for you: {question}"
+msgstr "pour vous : {question}"
+
+msgid "Forward to webhook"
+msgstr "Transférer vers un webhook"
+
+msgid "From your connected GitHub account"
+msgstr "Depuis votre compte GitHub connecté"
+
+msgid "Frontend and server versions may be out of sync. Restart the service (<0>bun run dev</0>) to rebuild the frontend."
+msgstr "Les versions du frontend et du serveur peuvent être désynchronisées. Redémarrez le service avec <0>bun run dev</0> pour reconstruire le frontend."
+
+msgid "Full /v1/embeddings address, OpenAI-shaped. Write full, not just hostname—which path a provider uses is pure guesswork. Used only when mode is remote."
+msgstr "Adresse complète de /v1/embeddings, au format OpenAI. Écrivez-la en entier, pas seulement l'hôte : le chemin varie d'un fournisseur à l'autre. Utilisée uniquement en mode distant."
+
+msgid "Full contents of ~/.codex/auth.json"
+msgstr "Contenu complet de ~/.codex/auth.json"
+
+msgid "Gate"
+msgstr "Gate"
+
+msgid "gate {verdict}"
+msgstr "gate {verdict}"
+
+msgid "Gate check"
+msgstr "Contrôle des gates"
+
+msgid "Gate concurrency"
+msgstr "Concurrence des gates"
+
+msgid "gate fail on S{seq}"
+msgstr "gate échoué sur S{seq}"
+
+msgid "gate name"
+msgstr "nom du gate"
+
+msgid "gate pass on S{seq}"
+msgstr "gate franchi sur S{seq}"
+
+msgid "Gate retries"
+msgstr "Réessais de gate"
+
+msgid "Gates"
+msgstr "Gates"
+
+msgid "Gates / Install commands"
+msgstr "Gates / Commandes d'installation"
+
+msgid "gates found: {gates}"
+msgstr "gates détectés : {gates}"
+
+msgid "gates found: {gates} · install with {install}"
+msgstr "gates détectés : {gates} · installer avec {install}"
+
+msgid "Generate a draft from this group's notes without sending it."
+msgstr "Génère un brouillon à partir des notes de ce groupe, sans l'envoyer."
+
+msgid "Generate another"
+msgstr "En générer un autre"
+
+msgid "Generated from this group's notes; not yet sent to anyone. You can edit after filling it in."
+msgstr "Généré à partir des notes de ce groupe ; encore envoyé à personne. Vous pourrez le modifier une fois rempli."
+
+msgid "Git ops"
+msgstr "Opérations Git"
+
+msgid "Git repo"
+msgstr "Dépôt Git"
+
+msgid "GitHub"
+msgstr "GitHub"
+
+msgid "GitHub → this App → Install App"
+msgstr "GitHub → cette App → Install App"
+
+msgid "GitHub API call"
+msgstr "Appel à l'API GitHub"
+
+msgid "GitHub is connected"
+msgstr "GitHub est connecté"
+
+msgid "GitHub is not connected — connect it in Settings first"
+msgstr "GitHub n'est pas connecté — connectez-le d'abord dans les réglages"
+
+msgid "GitHub is not connected: {why}"
+msgstr "GitHub n'est pas connecté : {why}"
+
+msgid "GitHub no longer accepts the login for {repo}, so every turn on it is held — retrying cannot help: {why}\n"
+"\n"
+"Reconnect GitHub in settings and they resume on their own. Other projects are unaffected."
+msgstr "GitHub n'accepte plus la connexion de {repo}, donc tous les tours de ce projet sont retenus — réessayer n'y changera rien : {why}\n"
+"\n"
+"Reconnecte GitHub dans les réglages et ils reprendront d'eux-mêmes. Les autres projets ne sont pas touchés."
+
+msgid "GitHub not connected yet; using our bot account for now"
+msgstr "GitHub n'est pas encore connecté ; on utilise notre compte bot pour l'instant"
+
+msgid "GitHub will not connect"
+msgstr "GitHub ne se connecte pas"
+
+msgid "Global"
+msgstr "Global"
+
+msgid "Go merge PR ↗"
+msgstr "Aller fusionner la PR ↗"
+
+msgid "Go to {project} →"
+msgstr "Aller à {project} →"
+
+msgid "Go to ChatGPT to enter code"
+msgstr "Allez saisir le code sur ChatGPT"
+
+msgid "Go to GitHub → this App → Install App, then choose which repos it can access."
+msgstr "Allez sur GitHub → cette App → Install App, puis choisissez les dépôts accessibles."
+
+msgid "Go to GitHub to enter code"
+msgstr "Allez saisir le code sur GitHub"
+
+msgid "Go to settings"
+msgstr "Aller aux réglages"
+
+msgid "Go to settings to check GitHub"
+msgstr "Aller aux réglages vérifier GitHub"
+
+msgid "Got it"
+msgstr "Compris"
+
+msgid "Gray text shows defaults"
+msgstr "Le texte gris indique les valeurs par défaut"
+
+msgid "Group is paused"
+msgstr "Le groupe est en pause"
+
+msgid "group is RUNNING with an empty queue, and one re-queue did not revive it. Last failure: {why}"
+msgstr "le groupe est en RUNNING avec une file vide, et une remise en file ne l'a pas ranimé. Dernier échec : {why}"
+
+msgid "grp {target} landed; resuming by itself"
+msgstr "grp {target} a atterri ; reprise automatique"
+
+msgid "handed to {to}: {question}"
+msgstr "transmis à {to} : {question}"
+
+msgid "Has objections"
+msgstr "Objections en cours"
+
+msgid "Hide the other {restCount}"
+msgstr "Masquer les {restCount} autres"
+
+msgid "Hide this stage"
+msgstr "Masquer cette étape"
+
+msgid "Hiding:"
+msgstr "Masqué :"
+
+msgid "hired {role}"
+msgstr "{role} recruté"
+
+msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
+msgstr "Répertoires de l'hôte montés par chaque bac à sable, sous la forme « chemin dans le conteneur : chemin sur l'hôte ». Réservé aux caches de gestionnaires de paquets : partager un emplacement où un build écrit fait entrer en collision deux groupes. Le chemin doit aussi figurer dans allowed_host_paths du serveur de bac à sable."
+
+msgid "How a checkout is read when GitHub cannot be asked"
+msgstr "Comment lire un checkout quand GitHub est injoignable"
+
+msgid "How agents run"
+msgstr "Comment tournent les agents"
+
+msgid "How far down one review thread the poll reads. A long argument in a thread is the case this truncates."
+msgstr "Jusqu'où le sondage lit dans un fil de relecture. C'est une longue discussion dans un fil que cela tronque."
+
+msgid "How hard the fleet is pushed, and when to stop waiting on it"
+msgstr "Jusqu'où pousser la flotte, et quand cesser de l'attendre"
+
+msgid "How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page."
+msgstr "Combien de temps dure le « on a vérifié récemment » : à la fois l'intervalle de la sonde d'accessibilité et la durée de mise en cache du verdict d'un identifiant sur cette page."
+
+msgid "How long a notification waits for company before it is sent. This is the knob between one alert an hour and one per event."
+msgstr "Combien de temps une notification attend de la compagnie avant de partir. C'est le curseur entre une alerte par heure et une par événement."
+
+msgid "How long an unanswered notification waits before each repeat. It holds at the last step for as long as nobody answers. At least one step: an empty ladder repeats every tick."
+msgstr "Combien de temps une notification sans réponse attend avant chaque relance. Elle reste au dernier palier tant que personne ne répond. Au moins un palier : une échelle vide relance à chaque tic."
+
+msgid "How long before a group that answered nothing is nudged again. Longer than the first wait, or the nudge becomes the noise it was meant to cut through."
+msgstr "Combien de temps avant de relancer un groupe qui n'a rien répondu. Plus long que la première attente, sinon la relance devient le bruit qu'elle voulait percer."
+
+msgid "How long before the same stuck report is worth saying again. Shorter turns one stuck group into a feed of its own."
+msgstr "Combien de temps avant que le même rapport de blocage vaille d'être redit. Plus court transforme un seul groupe bloqué en flux à lui tout seul."
+
+msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
+msgstr "Combien de temps un rapport de temps système est réutilisé. Son calcul est assez coûteux pour que toutes les autres requêtes attendent derrière, et les données sous-jacentes ne bougent qu'à chaque battement."
+
+msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
+msgstr "Durée maximale du POST ci-dessus. La réponse est jetée de toute façon : cela empêche seulement un webhook muet de retenir une notification."
+
+msgid "How long the rest of a group's events are kept. The conversation itself — what was said, asked and escalated — is never dropped."
+msgstr "Combien de temps le reste des événements d'un groupe est conservé. La conversation elle-même — ce qui a été dit, demandé, escaladé — n'est jamais supprimée."
+
+msgid "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones."
+msgstr "Combien de temps on laisse tranquille le point d'accès d'utilisation après un refus. Plus court que la durée du refus, le sondage ne fait qu'en récolter de nouveaux."
+
+msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
+msgstr "Combien de gates peuvent tourner en même temps. Une réservation est une vraie compilation ou une vraie série de tests : dix en parallèle mettent la machine à genoux. Le navigateur est plafonné à 1 tout seul — chacun est un vrai Chromium."
+
+msgid "How many live frames wait for one slow tab before they are dropped. A tab that stopped reading is the only thing here that grows without bound. Dropping is safe: the panel re-reads its state on the next event."
+msgstr "Combien de trames en direct patientent pour un onglet lent avant d'être jetées. Un onglet qui a cessé de lire est la seule chose ici qui grossit sans limite. Jeter est sans risque : le panneau relit son état au prochain événement."
+
+msgid "How many nodes the model may name at one level. Width costs tokens in a single call, where depth costs another call."
+msgstr "Combien de nœuds le modèle peut nommer à un niveau. La largeur coûte des tokens dans un seul appel, la profondeur coûte un appel de plus."
+
+msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
+msgstr "Combien de pull requests ouvertes un sondage demande à GitHub. Le coût d'une requête GraphQL, c'est le nombre de nœuds : chaque chiffre de ce groupe est un plafond payé en quota."
+
+msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
+msgstr "À quelle fréquence les règles déterministes tournent. C'est aussi le temps qu'attend le travail en file, sans tic explicite, avant d'être distribué."
+
+msgid "How often the shared repository map is re-checked. Deliberately far longer than the watchdog tick: the map only changes on a push, and checking costs a container round trip."
+msgstr "À quelle fréquence la carte partagée du dépôt est revérifiée. Volontairement bien plus long que le tic du chien de garde : la carte ne change qu'à un push, et vérifier coûte un aller-retour dans le conteneur."
+
+msgid "How to alert you"
+msgstr "Comment vous prévenir"
+
+msgid "HTTP {status}"
+msgstr "HTTP {status}"
+
+msgid "HTTP request"
+msgstr "Requête HTTP"
+
+msgid "Idle"
+msgstr "Inactif"
+
+msgid "Image"
+msgstr "Image"
+
+msgctxt "a picture, not a container image"
+msgid "Image"
+msgstr "Image"
+
+msgid "In progress"
+msgstr "En cours"
+
+msgid "Including downstream"
+msgstr "Y compris l'aval"
+
+msgid "index call ({total} tokens)"
+msgstr "appel d'indexation ({total} jetons)"
+
+msgid "Index model"
+msgstr "Modèle d'index"
+
+msgid "Insert skill"
+msgstr "Insérer une compétence"
+
+msgid "Install dependencies"
+msgstr "Installer les dépendances"
+
+msgid "Install Docker — or Colima, or Podman, anything that provides a docker socket — and start it."
+msgstr "Installez Docker — ou Colima, ou Podman, tout ce qui fournit une socket docker — puis lancez-le."
+
+msgid "install failed (exit {code}): {cmd}\n"
+"{tail}"
+msgstr "l'installation a échoué (exit {code}) : {cmd}\n"
+"{tail}"
+
+msgid "Install on GitHub"
+msgstr "Installer sur GitHub"
+
+msgid "Install timeout"
+msgstr "Délai d'installation"
+
+msgid "Install to another account"
+msgstr "Installer sur un autre compte"
+
+msgid "Installed on these accounts"
+msgstr "Installé sur ces comptes"
+
+msgid "installed, but the daemon is not answering"
+msgstr "installé, mais le démon ne répond pas"
+
+msgid "installed: {cmd}"
+msgstr "installé : {cmd}"
+
+msgid "Interrupt and rollback"
+msgstr "Interrompre et annuler"
+
+msgid "Interrupt, keep changes"
+msgstr "Interrompre en gardant les modifications"
+
+msgid "interrupted ({mode}), killed {killed}"
+msgstr "interrompu ({mode}), {killed} arrêté(s)"
+
+msgid "interrupted ({mode}), killed {killed}, rolled back to {sha}"
+msgstr "interrompu ({mode}), {killed} arrêté(s), retour à {sha}"
+
+msgid "interrupted, but the rollback to {sha} failed: {why}. The checkout is dirty."
+msgstr "interrompu, mais le retour à {sha} a échoué : {why}. La copie de travail est sale."
+
+msgid "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
+msgstr "Le serveur de bac à sable est-il en marche et accepte-t-il notre clé. En général en loopback, et sa réponse ne fait que remplir un rapport — alors que le ping réseau ci-dessous conditionne toute la flotte."
+
+msgid "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open."
+msgstr "Y a-t-il un réseau, tout simplement : un HEAD vers chaque origine de fournisseur, exécuté dans le tic du chien de garde. Volontairement l'attente la plus courte ici — une réponse lente ne doit pas garder un tic ouvert."
+
+msgid "it exited on its own (exit {code}), printing nothing"
+msgstr "il s'est arrêté tout seul (exit {code}), sans rien afficher"
+
+msgid "it exited on its own (exit {code}):\n"
+"{tail}"
+msgstr "il s'est arrêté tout seul (exit {code}) :\n"
+"{tail}"
+
+msgid "It's not a duplicate, and it's not done yet — keep decomposing."
+msgstr "Ce n'est pas un doublon et ce n'est pas encore fait — continuez à découper."
+
+msgid "Journal"
+msgstr "Journal"
+
+msgid "Just describe what you need. A plan card will be generated for approval before any code is written."
+msgstr "Décrivez simplement votre besoin. Une carte de plan sera générée pour approbation avant d'écrire la moindre ligne de code."
+
+msgid "Just started"
+msgstr "Vient de démarrer"
+
+msgid "Keep"
+msgstr "Conserver"
+
+msgid "Keep machine events"
+msgstr "Conserver les événements machine"
+
+msgid "Key"
+msgstr "Clé"
+
+msgid "Last 24 hours, per hour"
+msgstr "Dernières 24 heures, par heure"
+
+msgid "lease {resource} #{id} started"
+msgstr "bail {resource} #{id} démarré"
+
+msgid "lease #{id} exit {code}"
+msgstr "bail #{id} sortie {code}"
+
+msgid "Lease timeout"
+msgstr "Délai de réservation"
+
+msgid "Lesson"
+msgstr "Leçon"
+
+msgid "Let AI generate one"
+msgstr "Laisser l'IA en générer un"
+
+msgid "Let bootstrap retry; it will review the repository with the error above in context"
+msgstr "Laissez l'amorçage réessayer ; il réexaminera le dépôt en tenant compte de l'erreur ci-dessus"
+
+msgid "Levels of the tree one question may descend, and each level is a serial model call with its own 60s timeout — two per question at 3. This is the single knob on the most frequent model spend here."
+msgstr "De combien de niveaux une question peut descendre dans l'arbre ; chaque niveau est un appel modèle en série avec son propre délai de 60 s — deux par question à 3. C'est l'unique curseur sur la dépense modèle la plus fréquente ici."
+
+msgid "Light"
+msgstr "Clair"
+
+msgid "Line-level review threads read per pull request. Set it below what the repository actually produces and the oldest threads are never seen."
+msgstr "Fils de relecture ligne à ligne lus par pull request. En dessous de ce que le dépôt produit réellement, les fils les plus anciens ne sont jamais vus."
+
+msgid "Live stream backlog"
+msgstr "File du flux en direct"
+
+msgid "Loading changes…"
+msgstr "Chargement des modifications…"
+
+msgid "Loading log…"
+msgstr "Chargement du journal…"
+
+msgid "Loading notes…"
+msgstr "Chargement des notes…"
+
+msgid "Loading…"
+msgstr "Chargement…"
+
+msgid "Local"
+msgstr "Local"
+
+msgid "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision."
+msgstr "Local tourne sur cette machine ; distant envoie le texte à un point d'accès de votre choix. Aucun des deux ne sert encore à la recherche : mesuré, le multilingue faisait moins bien que la recherche par mots-clés qu'il devait remplacer. Distant veut dire que vos exigences et vos critères d'acceptation quittent cette machine : local est donc le défaut, et distant une décision."
+
+msgid "Local to this machine only, not tied to the project"
+msgstr "Local à cette machine uniquement, non lié au projet"
+
+msgid "Log in"
+msgstr "Se connecter"
+
+msgid "Log in within the container; no need to install codex locally"
+msgstr "Connectez-vous dans le conteneur ; pas besoin d'installer codex en local"
+
+msgid "Login code copied"
+msgstr "Code de connexion copié"
+
+msgid "Login page"
+msgstr "Page de connexion"
+
+msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
+msgstr "Les journaux vivent en mémoire du serveur, 500 lignes au plus, effacés au redémarrage. La conclusion est dans « Notes »."
+
+msgid "Management directive"
+msgstr "Directive de la direction"
+
+msgid "Max channel messages to cram into one delta per turn."
+msgstr "Nombre maximal de messages de canal entassés dans un delta par tour."
+
+msgid "Max steps per turn"
+msgstr "Étapes maximales par tour"
+
+msgid "Memory"
+msgstr "Mémoire"
+
+msgid "Memory ceiling per sandbox."
+msgstr "Plafond mémoire par bac à sable."
+
+msgid "Merge to main"
+msgstr "Fusion dans main"
+
+msgid "merged into main"
+msgstr "fusionnée dans main"
+
+msgid "Message this group"
+msgstr "Écrire à ce groupe"
+
+msgid "Message this group…"
+msgstr "Écrire à ce groupe…"
+
+msgid "migrated and queryable"
+msgstr "migrée et interrogeable"
+
+msgid "Model account"
+msgstr "Compte du modèle"
+
+msgid "Model ID"
+msgstr "ID du modèle"
+
+msgid "Model processing"
+msgstr "Traitement du modèle"
+
+msgid "Models & budget"
+msgstr "Modèles et budget"
+
+msgid "Modified"
+msgstr "Modifié"
+
+msgid "More"
+msgstr "Plus"
+
+msgid "mount point"
+msgstr "point de montage"
+
+msgid "Name"
+msgstr "Nom"
+
+msgid "Name a stored credential and remote retrieval switches on."
+msgstr "Nommez un identifiant enregistré et la récupération distante s'active."
+
+msgid "Name can't be empty; use the × on the right to delete"
+msgstr "Le nom ne peut pas être vide ; utilisez le × à droite pour supprimer"
+
+msgid "Name for {k}"
+msgstr "Nom de {k}"
+
+msgid "Needs an integer"
+msgstr "Doit être un entier"
+
+msgid "network is back, held work resumes"
+msgstr "le réseau est revenu, le travail retenu reprend"
+
+msgid "Network ping"
+msgstr "Ping réseau"
+
+msgid "New files are expected; if it thinks these already exist, the card was written from speculation."
+msgstr "De nouveaux fichiers sont attendus ; s'il pense qu'ils existent déjà, la carte a été écrite au jugé."
+
+msgid "New projects use this; leave blank to follow config"
+msgstr "Les nouveaux projets l'utilisent ; laissez vide pour suivre la configuration"
+
+msgid "New projects will use {image}"
+msgstr "Les nouveaux projets utiliseront {image}"
+
+msgid "New requirement"
+msgstr "Nouvelle exigence"
+
+msgid "newly hired"
+msgstr "fraîchement recruté"
+
+msgid "No activity in this window."
+msgstr "Aucune activité sur cette période."
+
+msgid "No activity yet."
+msgstr "Pas encore d'activité."
+
+msgid "No boundaries drawn yet. The Architect decides which paths each group may write before work starts; groups without one run into the same files."
+msgstr "Aucune frontière n'est encore tracée. L'Architecte décide dans quels chemins chaque groupe peut écrire avant le début des travaux ; les groupes sans frontière se heurtent sur les mêmes fichiers."
+
+msgid "No budget limit"
+msgstr "Aucune limite de budget"
+
+msgid "No changes"
+msgstr "Aucune modification"
+
+msgid "no code given"
+msgstr "aucun code fourni"
+
+msgid "No container yet"
+msgstr "Pas encore de conteneur"
+
+msgid "No data yet"
+msgstr "Pas encore de données"
+
+msgid "No deliveries yet. Requirements are archived here after merging to main."
+msgstr "Aucune livraison pour l'instant. Les exigences sont archivées ici après fusion dans main."
+
+msgid "No diff available. The slice didn't record a baseline commit, or the sandbox has been reclaimed."
+msgstr "Aucun diff disponible. La tranche n'a pas enregistré de commit de référence, ou le bac à sable a été récupéré."
+
+msgid "No events"
+msgstr "Aucun événement"
+
+msgid "no file"
+msgstr "aucun fichier"
+
+msgid "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
+msgstr "aucun gate détecté dans ce dépôt. Chaque tranche échouera à la revue tant que ce projet n'en aura pas au moins un : ajoutez un modèle de ressource et inscrivez son nom dans les gates du projet."
+
+msgid "No gates enabled; LLM review has no floor."
+msgstr "Aucun gate activé ; la relecture du LLM n'a aucun plancher."
+
+msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
+msgstr "aucun groupe {grp} dans la table grp, donc /work est toujours vide — il n'y a pas de code à exécuter ce tour-ci"
+
+msgid "no login is waiting for a code — start one first"
+msgstr "aucune connexion n'attend de code — commencez-en une d'abord"
+
+msgid "No matches"
+msgstr "Aucun résultat"
+
+msgid "No matching branches"
+msgstr "Aucune branche correspondante"
+
+msgid "No matching images"
+msgstr "Aucune image correspondante"
+
+msgid "No matching lines"
+msgstr "Aucune ligne correspondante"
+
+msgid "No matching projects"
+msgstr "Aucun projet correspondant"
+
+msgid "No matching skills"
+msgstr "Aucune compétence correspondante"
+
+msgid "No notes yet. Agents write journals each turn; retrospectives are written before the group dissolves and distilled into lessons for later groups."
+msgstr "Pas encore de notes. Les agents tiennent un journal à chaque tour ; les rétrospectives sont écrites avant la dissolution du groupe et distillées en leçons pour les suivants."
+
+msgid "No one working yet. Approve a plan card and each agent's current task appears here."
+msgstr "Personne ne travaille encore. Approuvez une carte de plan et la tâche en cours de chaque agent apparaîtra ici."
+
+msgid "No open questions. This group is not waiting on you right now."
+msgstr "Aucune question en suspens. Ce groupe ne vous attend pas pour le moment."
+
+msgid "no opensandbox-server config file found, so there is nothing to check against"
+msgstr "aucun fichier de configuration opensandbox-server trouvé : il n'y a rien à comparer"
+
+msgid "no opensandbox/egress image pulled"
+msgstr "aucune image opensandbox/egress n'a été téléchargée"
+
+msgid "No other models yet; just type"
+msgstr "Pas encore d'autres modèles ; saisissez directement"
+
+msgid "No other requirements for this project"
+msgstr "Aucune autre exigence pour ce projet"
+
+msgid "no owned paths declared, and {holders} already hold theirs — the Architect has to cut the boundary before work starts"
+msgstr "aucun chemin possédé n'est déclaré, et {holders} détiennent déjà les leurs — l'Architecte doit tracer la frontière avant de commencer"
+
+msgid "no path"
+msgstr "aucun chemin"
+
+msgid "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
+msgstr "Aucune exigence en pause. Les groupes s'arrêtent ici quand le budget est épuisé ou quand ils attendent votre réponse depuis plus de 2 heures ; le travail est conservé."
+
+msgid "No pending items"
+msgstr "Rien en attente"
+
+msgid "No reason recorded"
+msgstr "Aucune raison consignée"
+
+msgid "No requirements in progress. Click + for a new one in the top right."
+msgstr "Aucune exigence en cours. Cliquez sur + en haut à droite pour en créer une."
+
+msgid "No requirements yet"
+msgstr "Pas encore d'exigences"
+
+msgid "no retro yet — the group cannot wind up without one"
+msgstr "pas encore de rétrospective — le groupe ne peut pas être clos sans elle"
+
+msgid "No runnable commands found."
+msgstr "Aucune commande exécutable trouvée."
+
+msgid "No sandbox server config found. It was started with --config, so put that file's path in OPENSANDBOX_CONFIG, or move the file to ./sandbox.toml or ~/.sandbox.toml."
+msgstr "Configuration du serveur de bac à sable introuvable. Il a été démarré avec --config : indiquez le chemin de ce fichier dans OPENSANDBOX_CONFIG, ou déplacez-le vers ./sandbox.toml ou ~/.sandbox.toml."
+
+msgid "no skills ticked"
+msgstr "aucune compétence cochée"
+
+msgid "No slice"
+msgstr "Aucune tranche"
+
+msgid "No slices"
+msgstr "Aucune tranche"
+
+msgid "no squash ({why})"
+msgstr "pas de squash ({why})"
+
+msgid "no such group"
+msgstr "ce groupe n'existe pas"
+
+msgid "No system activity recorded."
+msgstr "Aucune activité système enregistrée."
+
+msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
+msgstr "Aucun token dépensé pour l'instant. Après approbation des cartes de plan, les coûts se ventilent par exigence et par agent. C'est l'étiquette de niveau qui choisit le modèle."
+
+msgid "no uvx — opensandbox-server is a Python package, so install uv before one can start"
+msgstr "pas d'uvx — opensandbox-server est un paquet Python, installe uv avant de pouvoir le démarrer"
+
+msgid "no uvx on PATH"
+msgstr "pas de uvx dans le PATH"
+
+msgid "No, keep going"
+msgstr "Non, continuer"
+
+msgid "None selected"
+msgstr "Rien de sélectionné"
+
+msgid "None; this connection sees no repositories. Install with all repos, or select specific ones."
+msgstr "Aucun ; cette connexion ne voit aucun dépôt. Installez avec tous les dépôts, ou choisissez-en certains."
+
+msgid "Not checked out"
+msgstr "Pas de checkout"
+
+msgid "not configured"
+msgstr "non configuré"
+
+msgid "Not configured"
+msgstr "Non configuré"
+
+msgid "Not connected"
+msgstr "Non connecté"
+
+msgid "Not enough data for two hours."
+msgstr "Pas assez de données pour deux heures."
+
+msgid "Not enough data for two periods."
+msgstr "Pas assez de données pour deux périodes."
+
+msgid "Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are exposed; use HTTPS or Tailscale."
+msgstr "Ni en local, ni sur un réseau chiffré — le trafic passe en HTTP en clair. Clés et trafic des conteneurs sont exposés ; utilisez HTTPS ou Tailscale."
+
+msgid "not reachable"
+msgstr "injoignable"
+
+msgid "not running"
+msgstr "pas en cours d'exécution"
+
+msgid "Not running"
+msgstr "À l'arrêt"
+
+msgid "not running (a process looks like it, pid {pid}, but {server} does not answer — it may be starting, or it may be stuck)"
+msgstr "pas en cours d'exécution (un processus y ressemble, pid {pid}, mais {server} ne répond pas — il démarre peut-être, ou il est bloqué)"
+
+msgid "Not satisfied"
+msgstr "Non satisfait"
+
+msgid "Not started yet; waiting for prior slices to be accepted."
+msgstr "Pas encore démarré ; en attente de l'acceptation des tranches précédentes."
+
+msgid "Notes"
+msgstr "Notes"
+
+msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
+msgstr "Rien ne change sur GitHub : les branches sont là, les PR sont là, pas une ligne de code n'est touchée. Ce qui disparaît, c'est la copie du travail sur cette machine."
+
+msgid "nothing recorded about how this server was started"
+msgstr "rien n'a été enregistré sur la façon dont ce serveur a été démarré"
+
+msgid "Notifications"
+msgstr "Notifications"
+
+msgid "Nudge a silent group"
+msgstr "Relancer un groupe silencieux"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "On that machine: install docker, run uvx opensandbox-server, and docker pull opensandbox/egress:v1.1.6."
+msgstr "Sur cette machine : installez docker, exécutez uvx opensandbox-server, puis docker pull opensandbox/egress:v1.1.6."
+
+msgid "On, a group starts the next slice without waiting for you. Off, it finishes one and stops. The cost: later slices build on an earlier one, so reverting it pauses the whole group."
+msgstr "Activé, le groupe attaque la tranche suivante sans vous attendre. Désactivé, il en termine une et s'arrête. Le prix : les tranches suivantes s'appuient sur la précédente, donc l'annuler met tout le groupe en pause."
+
+msgid "On, a question walks the index tree before it is answered — one model call. Off skips the walk entirely and falls through to keyword search, which is the comparison this switch is for."
+msgstr "Activé, une question parcourt l'arbre d'index avant d'être traitée — un appel modèle. Désactivé, le parcours est sauté et on retombe sur la recherche par mots-clés : c'est précisément la comparaison que permet cet interrupteur."
+
+msgid "Onboarding"
+msgstr "Intégration"
+
+msgid "Once boundaries are cleared, work starts automatically; no need to click again."
+msgstr "Dès que les frontières se libèrent, le travail démarre tout seul ; inutile de recliquer."
+
+msgid "One branch name per line, most likely first"
+msgstr "Un nom de branche par ligne, la plus probable en premier"
+
+msgid "One CI run can post fifty of these. Set below what your workflow produces and the fleet decides a pull request is green while a check it never saw is red."
+msgstr "Une seule exécution de CI peut en publier cinquante. Réglez-le sous ce que produit votre workflow et la flotte considérera une pull request comme verte alors qu'une vérification jamais vue est rouge."
+
+msgid "One connection manages all projects"
+msgstr "Une seule connexion gère tous les projets"
+
+msgid "One domain per line; empty allows all"
+msgstr "Un domaine par ligne ; vide autorise tout"
+
+msgid "One network operation that moves a repository or an image — clone, fetch, submodule init, image pull. Minutes rather than seconds."
+msgstr "Une opération réseau qui déplace un dépôt ou une image — clone, fetch, init de sous-module, récupération d'image. Des minutes, pas des secondes."
+
+msgid "One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it."
+msgstr "Un appel REST dont la réponse est un travail demandé — ouvrir une pull request, lire une relecture. Plus long que la vérification d'identifiants ci-dessous, parce que quelque chose attend dessus."
+
+msgid "One turn"
+msgstr "Un tour"
+
+msgid "only {stale}, which is too old"
+msgstr "seulement {stale}, ce qui est trop ancien"
+
+msgid "Only running"
+msgstr "En cours seulement"
+
+msgid "Only this stage"
+msgstr "Cette étape seulement"
+
+msgid "Open {entry}"
+msgstr "Ouvrir {entry}"
+
+msgid "Open a new PR"
+msgstr "Ouvrir une nouvelle PR"
+
+msgid "Open login page"
+msgstr "Ouvrir la page de connexion"
+
+msgid "Open new PR"
+msgstr "Ouvrir une nouvelle PR"
+
+msgid "Open PR ↗"
+msgstr "Ouvrir la PR ↗"
+
+msgid "opened as requirement {name} (grp {grp})"
+msgstr "ouvert en exigence {name} (grp {grp})"
+
+msgid "opened PR #{pr} to replace the closed one"
+msgstr "PR #{pr} ouverte pour remplacer celle qui a été fermée"
+
+msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
+msgstr "opensandbox-server avait disparu et a été redémarré (tentative {n}). Le travail retenu reprend de lui-même."
+
+msgid "opensandbox-server will not start; {n, plural, one {# attempt} other {# attempts}} and no more automatic retries. Run it by hand to see what it says: {cmd}"
+msgstr "opensandbox-server refuse de démarrer ; {n, plural, one {# tentative} other {# tentatives}} et plus de reprise automatique. Lance-le à la main pour voir ce qu'il dit : {cmd}"
+
+msgid "Optional, self-hosted gateway → {envVar}"
+msgstr "Facultatif, passerelle auto-hébergée → {envVar}"
+
+msgid "Order"
+msgstr "Ordre"
+
+msgid "Organization"
+msgstr "Organisation"
+
+msgid "Other"
+msgstr "Autres"
+
+msgid "out of budget — raise it or not"
+msgstr "budget épuisé — l'augmenter ou non"
+
+msgid "out of budget ({spent}/{budget} tokens). Raise the cap first, or it stops again on the next tick."
+msgstr "budget épuisé ({spent}/{budget} tokens). Relève d'abord le plafond, sinon il s'arrête de nouveau au prochain tick."
+
+msgid "Output language"
+msgstr "Langue de sortie"
+
+msgid "overlaps {overlapping}"
+msgstr "chevauche {overlapping}"
+
+msgid "Ownership"
+msgstr "Répartition"
+
+msgid "owns {paths}"
+msgstr "frontière fixée à {paths}"
+
+msgid "p50"
+msgstr "p50"
+
+msgid "P50"
+msgstr "P50"
+
+msgid "p95"
+msgstr "p95"
+
+msgid "P95"
+msgstr "P95"
+
+msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
+msgstr "PageIndex ne peut pas être construit : les {n} appels sont revenus vides. Vérifiez dans les réglages si le compte utilisé par l'index fonctionne encore."
+
+msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
+msgstr "PageIndex : {n, plural, one {# nœud résumé} other {# nœuds résumés}}, {files, plural, one {# fichier indexé} other {# fichiers indexés}}"
+
+msgid "Panel language"
+msgstr "Langue du panneau"
+
+msgid "parked ({reason}); {n, plural, one {# queued turn} other {# queued turns}} dropped, worktree untouched"
+msgstr "garé ({reason}) ; {n, plural, one {# tour en file abandonné} other {# tours en file abandonnés}}, copie de travail intacte"
+
+msgid "Pass"
+msgstr "Réussi"
+
+msgid "Paste"
+msgstr "Coller"
+
+msgid "Paste it; hidden after saving"
+msgstr "Collez-le ; masqué après enregistrement"
+
+msgid "Pause"
+msgstr "Mettre en pause"
+
+msgid "paused"
+msgstr "en pause"
+
+msgid "Paused"
+msgstr "En pause"
+
+msgid "PAUSED"
+msgstr "EN PAUSE"
+
+msgid "Pausing"
+msgstr "Mise en pause"
+
+msgid "pausing — waiting for {n, plural, one {# turn} other {# turns}} to land"
+msgstr "mise en pause — en attente de {n, plural, one {# tour} other {# tours}} à terminer"
+
+msgid "Pending"
+msgstr "En attente"
+
+msgid "pending merges"
+msgstr "fusions en attente"
+
+msgid "Pending review"
+msgstr "En attente de relecture"
+
+msgid "Per delivered requirement"
+msgstr "Par exigence livrée"
+
+msgid "Per-run duration"
+msgstr "Durée par exécution"
+
+msgid "Personal"
+msgstr "Personnel"
+
+msgid "Personal account"
+msgstr "Compte personnel"
+
+msgid "Pick a model to add a row"
+msgstr "Choisissez un modèle pour ajouter une ligne"
+
+msgid "pid {pid} is still running after SIGKILL"
+msgstr "le pid {pid} tourne toujours après SIGKILL"
+
+msgid "Plan"
+msgstr "Plan"
+
+msgid "Plan card"
+msgstr "Carte de plan"
+
+msgid "Plan card not submitted"
+msgstr "Carte de plan non soumise"
+
+msgid "Plan card not submitted yet"
+msgstr "La carte de plan n'a pas encore été soumise"
+
+msgid "Plan card pending approval"
+msgstr "Carte de plan en attente d'approbation"
+
+msgid "Planner suggests abandoning"
+msgstr "Le planificateur suggère d'abandonner"
+
+msgid "Planning"
+msgstr "Planification"
+
+msgid "Plumbing"
+msgstr "Entrailles"
+
+msgid "PM working"
+msgstr "PM au travail"
+
+msgid "Poll subscription usage"
+msgstr "Sonder l'usage de l'abonnement"
+
+msgid "Polling intervals"
+msgstr "Intervalles de sondage"
+
+msgid "PR #{n} opened"
+msgstr "PR #{n} ouverte"
+
+msgid "PR #{pr} has feedback:\n"
+"{lines}"
+msgstr "la PR #{pr} a des retours :\n"
+"{lines}"
+
+msgid "PR #{pr} was closed without merging"
+msgstr "la PR #{pr} a été fermée sans fusion"
+
+msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
+"To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
+msgstr "La PR #{pr} a été fermée sans être fusionnée. Ce groupe s'est arrêté et a quitté la file de fusion.\n"
+"Pour continuer : rouvre la PR sur GitHub, elle rejoint la file d'elle-même. Pour abandonner : abandonne l'exigence."
+
+msgid "PR #{pr} was reopened; back in the merge queue"
+msgstr "la PR #{pr} a été rouverte ; de retour dans la file de fusion"
+
+msgid "PR closed — reopen it or not"
+msgstr "PR fermée — la rouvrir ou non"
+
+msgid "PR link not found"
+msgstr "Lien de la PR introuvable"
+
+msgid "PR open"
+msgstr "PR ouverte"
+
+msgid "PR pending merge"
+msgstr "PR en attente de fusion"
+
+msgid "Preferences"
+msgstr "Préférences"
+
+msgid "prefix changed"
+msgstr "préfixe modifié"
+
+msgid "Prepare this turn"
+msgstr "Préparer ce tour"
+
+msgid "Private"
+msgstr "Privé"
+
+msgid "project {project} has no remote recorded, so there is nothing to clone — /work is still empty and there is no code to run this turn"
+msgstr "le projet {project} n'a aucun dépôt distant enregistré, il n'y a donc rien à cloner — /work est toujours vide et il n'y a pas de code à exécuter ce tour-ci"
+
+msgid "Project name…"
+msgstr "Nom du projet…"
+
+msgid "Projects"
+msgstr "Projets"
+
+msgid "proposing to drop this: {why} ({evidence})"
+msgstr "propose de l'abandonner : {why} ({evidence})"
+
+msgid "Pull request"
+msgstr "Pull request"
+
+msgid "Pull requests per poll"
+msgstr "Pull requests par sondage"
+
+msgid "Put this line in the [sandbox] section of {config}, then restart opensandbox-server: allowed_host_paths = [{line}]"
+msgstr "Mettez cette ligne dans la section [sandbox] de {config}, puis redémarrez opensandbox-server : allowed_host_paths = [{line}]"
+
+msgid "QA"
+msgstr "QA"
+
+msgid "Query index"
+msgstr "Interroger l'index"
+
+msgid "Question"
+msgstr "Question"
+
+msgid "questions"
+msgstr "questions"
+
+msgid "Questions"
+msgstr "Questions"
+
+msgid "Queued"
+msgstr "En file"
+
+msgid "quota is back, resuming"
+msgstr "le quota est revenu, reprise"
+
+msgid "Rate limited reading usage; it recovers by itself shortly"
+msgstr "Limite de débit à la lecture de l'usage ; ça se rétablit tout seul sous peu"
+
+msgid "rate limited; everything on this CLI holds until the window reopens (~{at, date, short} {at, time, short}) and resumes itself — the quota belongs to the account, so no model spends less of it"
+msgstr "limite d'usage atteinte ; tout ce qui passe par ce CLI est retenu jusqu'à la réouverture de la fenêtre (~{at, date, short} {at, time, short}) puis reprend seul — le quota appartient au compte, donc aucun modèle n'en consomme moins"
+
+msgid "reachable"
+msgstr "joignable"
+
+msgid "Read from server"
+msgstr "Lire depuis le serveur"
+
+msgid "Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser."
+msgstr "Lu depuis la configuration propre du serveur de bac à sable (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Les valeurs ne transitent pas par le navigateur."
+
+msgid "Read-only. Every one of these has to pass before a container starts"
+msgstr "Lecture seule. Tout ceci doit passer avant qu'un conteneur démarre"
+
+msgid "Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage."
+msgstr "Lit ce qu'il reste de la fenêtre d'abonnement, via curl depuis le conteneur utilitaire. Rien n'attend dessus ; l'en-tête n'affiche simplement aucun pourcentage."
+
+msgid "Real tokens don't enter the sandbox"
+msgstr "Les vrais tokens n'entrent pas dans le bac à sable"
+
+msgid "rebase onto the base branch failed while waking up:\n"
+"{out}"
+msgstr "le rebase sur la branche de base a échoué au réveil :\n"
+"{out}"
+
+msgid "Recheck reachability"
+msgstr "Revérifier l'accessibilité"
+
+msgid "Recheck the repo map"
+msgstr "Revérifier la carte du dépôt"
+
+msgid "reclaimed {n, plural, one {# turn} other {# turns}} left running by the previous server, resumed {resumed}"
+msgstr "{n, plural, one {# tour récupéré} other {# tours récupérés}} laissés en cours par le serveur précédent, {resumed} repris"
+
+msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
+msgstr "réconciliation en échec sur S{seq} : revendiqué mais non modifié — {files}"
+
+msgid "reconcile failed on S{seq}: nothing was claimed and nothing changed"
+msgstr "réconciliation en échec sur S{seq} : rien de revendiqué et rien de modifié"
+
+msgid "Reconciliation"
+msgstr "Réconciliation"
+
+msgid "Reconnect"
+msgstr "Se reconnecter"
+
+msgid "Refresh"
+msgstr "Actualiser"
+
+msgid "Refreshed locally"
+msgstr "Actualisé en local"
+
+msgid "Reject this slice"
+msgstr "Refuser cette tranche"
+
+msgid "rejected"
+msgstr "rejeté"
+
+msgid "Rejected"
+msgstr "Refusée"
+
+msgid "Rejected, awaiting fix"
+msgstr "Refusée, en attente de correction"
+
+msgid "Release the concurrency slot; code and checkpoint in the sandbox stay in place."
+msgstr "Libère la place de concurrence ; le code et le point de reprise dans le bac à sable restent en place."
+
+msgid "Remind about paused"
+msgstr "Rappeler les mises en pause"
+
+msgid "Reminder ladder"
+msgstr "Échelle de relances"
+
+msgid "Remote"
+msgstr "Distant"
+
+msgid "Remote credential name"
+msgstr "Nom de l'identifiant distant"
+
+msgid "Remote endpoint"
+msgstr "Point d'accès distant"
+
+msgid "Remove"
+msgstr "Retirer"
+
+msgid "Remove {attachment}"
+msgstr "Retirer {attachment}"
+
+msgid "Remove {name}?"
+msgstr "Retirer {name} ?"
+
+msgid "Remove limit"
+msgstr "Retirer la limite"
+
+msgid "Remove project"
+msgstr "Retirer le projet"
+
+msgid "Remove this project"
+msgstr "Retirer ce projet"
+
+msgid "Removed the project {name} ({repo}): {n, plural, one {# requirement} other {# requirements}}, the containers and the records are gone. Nothing on GitHub was touched."
+msgstr "Projet {name} ({repo}) supprimé : {n, plural, one {# exigence} other {# exigences}}, leurs conteneurs et leurs enregistrements ont disparu. Rien n'a été touché sur GitHub."
+
+msgid "Removing…"
+msgstr "Retrait…"
+
+msgid "Renewal runs the real codex inside the utility container. If it keeps failing, paste ~/.codex/auth.json again in Settings, or switch to an API key — an API key never needs renewing."
+msgstr "Le renouvellement exécute le vrai codex dans le conteneur utilitaire. Si cela échoue encore, recollez ~/.codex/auth.json dans Réglages, ou passez à une clé API — une clé API n'a jamais besoin d'être renouvelée."
+
+msgid "Renewed when a turn starts, so this is 'recover after idle', not 'task time limit'."
+msgstr "Renouvelé au démarrage de chaque tour : c'est donc « reprendre après une inactivité », pas « durée maximale d'une tâche »."
+
+msgid "Repeat a stuck notice"
+msgstr "Répéter un avis de blocage"
+
+msgid "Repeat the nudge"
+msgstr "Répéter la relance"
+
+msgid "Replies per thread"
+msgstr "Réponses par fil"
+
+msgid "Reply"
+msgstr "Répondre"
+
+msgid "Reply. Sending this will unblock the waiting agent. Cmd+Enter to send"
+msgstr "Répondez. L'envoi débloque l'agent en attente. Cmd+Entrée pour envoyer"
+
+msgid "Reply… Cmd+Enter to send"
+msgstr "Répondre… Cmd+Entrée pour envoyer"
+
+msgid "repo map refreshed ({files, plural, one {# file} other {# files}}, {read} read for symbols)"
+msgstr "carte du dépôt rafraîchie ({files, plural, one {# fichier} other {# fichiers}}, {read} lus pour les symboles)"
+
+msgid "Repo-wide"
+msgstr "Tout le dépôt"
+
+msgid "Reported by {from}: {path} is outside its boundary, so it cannot change it itself."
+msgstr "Signalé par {from} : {path} est hors de sa frontière, il ne peut donc pas le modifier lui-même."
+
+msgid "Repos with DCO enabled won't accept commits without this line"
+msgstr "Les dépôts avec DCO activé refusent les commits sans cette ligne"
+
+msgid "Repositories"
+msgstr "Dépôts"
+
+msgid "Repository"
+msgstr "Dépôt"
+
+msgid "Request changes"
+msgstr "Demander des modifications"
+
+msgid "Requirement"
+msgstr "Exigence"
+
+msgid "Requirement name…"
+msgstr "Nom de l'exigence…"
+
+msgid "requirements"
+msgstr "exigences"
+
+msgid "Requirements running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page."
+msgstr "Exigences qui tournent en même temps. En général, un autre plafond arrive d'abord : deux groupes ne peuvent pas posséder des chemins qui se recoupent, et un compte a sa propre limite de débit. Si vous l'augmentez, surveillez le taux de cache sur la page des coûts."
+
+msgid "Rescan"
+msgstr "Rescanner"
+
+msgid "Reset to default"
+msgstr "Rétablir la valeur par défaut"
+
+msgid "Reset to the image in config"
+msgstr "Rétablir l'image de la configuration"
+
+msgid "resets in {span}"
+msgstr "réinitialisation dans {span}"
+
+msgid "Resetting soon"
+msgstr "Réinitialisation imminente"
+
+msgid "resolved review thread on {path}"
+msgstr "fil de revue résolu sur {path}"
+
+msgid "resolved review thread on {path}: {note}"
+msgstr "fil de revue résolu sur {path} : {note}"
+
+msgid "Resource lease"
+msgstr "Réservation de ressource"
+
+msgid "Restart"
+msgstr "Redémarrer"
+
+msgid "Restart container"
+msgstr "Redémarrer le conteneur"
+
+msgid "Restart the sandbox server?"
+msgstr "Redémarrer le serveur de bac à sable ?"
+
+msgid "Restarted {cold} times across {turns} turns: {why}. Each restart rebuilds the cache prefix from scratch"
+msgstr "Redémarré {cold} fois sur {turns} tours : {why}. Chaque redémarrage reconstruit le préfixe de cache de zéro"
+
+msgid "Restarted; containers will restart on demand"
+msgstr "Redémarré ; les conteneurs redémarreront à la demande"
+
+msgid "Restarting…"
+msgstr "Redémarrage…"
+
+msgid "Restore all"
+msgstr "Tout restaurer"
+
+msgid "Resume"
+msgstr "Reprendre"
+
+msgid "resumed"
+msgstr "reprise"
+
+msgid "Retrieval"
+msgstr "Recherche"
+
+msgid "Retrospective"
+msgstr "Rétrospective"
+
+msgid "Retry this view"
+msgstr "Réessayer cette vue"
+
+msgid "Return for re-decomposition"
+msgstr "Renvoyer pour un nouveau découpage"
+
+msgid "Return to the checkpoint before this round started; all changes in this turn are discarded."
+msgstr "Revient au point de reprise d'avant cette manche ; toutes les modifications de ce tour sont jetées."
+
+msgid "Review threads"
+msgstr "Fils de relecture"
+
+msgid "Revoke and take over"
+msgstr "Révoquer et reprendre la main"
+
+msgid "revoked {by}'s answer"
+msgstr "réponse de {by} révoquée"
+
+msgid "revoked {by}'s answer and rolled back to {sha}"
+msgstr "réponse de {by} révoquée et retour à {sha}"
+
+msgid "revoked the answer"
+msgstr "réponse révoquée"
+
+msgid "revoked the answer and rolled back to {sha}"
+msgstr "réponse révoquée et retour à {sha}"
+
+msgid "Risk"
+msgstr "Risque"
+
+msgid "Roll back to the checkpoint when the question was asked; all subsequent changes are discarded. You'll answer it again."
+msgstr "Revient au point de reprise du moment de la question ; toutes les modifications ultérieures sont jetées et vous y répondrez à nouveau."
+
+msgid "Roughly 4k token. This answer lands in the transcript, and every remaining turn in the session re-reads it—so a generous answer keeps billing long after the question is answered."
+msgstr "Environ 4k tokens. Cette réponse reste dans la transcription et chaque tour restant de la session la relit — une réponse généreuse continue de coûter longtemps après la question."
+
+msgid "Routine watchdog"
+msgstr "Chien de garde de routine"
+
+msgid "Run brew install uv. opensandbox-server is a Python package, so without uv there is nothing to start."
+msgstr "Exécutez brew install uv. opensandbox-server est un paquet Python : sans uv, il n'y a rien à lancer."
+
+msgid "Run claude setup-token in the container"
+msgstr "Exécuter claude setup-token dans le conteneur"
+
+msgid "Run docker build -f docker/agent.Dockerfile -t {image} . — an image with no registry prefix can only be built locally."
+msgstr "Exécutez docker build -f docker/agent.Dockerfile -t {image} . — une image sans préfixe de registry ne peut être construite qu'en local."
+
+msgid "Run docker pull opensandbox/egress:v1.1.6, then point [egress] image at it. v1.1.4 403s every scoped package as soon as a credential is bound."
+msgstr "Exécutez docker pull opensandbox/egress:v1.1.6, puis faites pointer [egress] image dessus. v1.1.4 renvoie 403 sur chaque paquet scopé dès qu'un identifiant est associé."
+
+msgid "Run one turn"
+msgstr "Lancer un tour"
+
+msgid "Run tests"
+msgstr "Lancer les tests"
+
+msgid "Run the official CLI's login once in the tool container; store the credential here. No setup needed locally. Official accounts only; custom gateways use API key."
+msgstr "Lancez une fois la connexion du CLI officiel dans le conteneur d'outils ; l'identifiant est stocké ici. Rien à installer en local. Comptes officiels uniquement ; les passerelles personnalisées utilisent une clé d'API."
+
+msgid "Run top-to-bottom; drag to reorder"
+msgstr "Exécutés de haut en bas ; glissez pour réordonner"
+
+msgid "Run uvx opensandbox-server --config ~/.sandbox.toml listening on {server}, with [egress] mode = \"dns+nft\"."
+msgstr "Exécutez uvx opensandbox-server --config ~/.sandbox.toml en écoute sur {server}, avec [egress] mode = \"dns+nft\"."
+
+msgid "Run uvx opensandbox-server on the host, not here: this orchestrator is inside a container and the sandbox server needs the host's docker. Then point ORCH_SANDBOX_SERVER at it — host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux."
+msgstr "Exécutez uvx opensandbox-server sur l'hôte, pas ici : cet orchestrateur est dans un conteneur et le serveur de bac à sable a besoin du docker de l'hôte. Faites ensuite pointer ORCH_SANDBOX_SERVER dessus — host.docker.internal:8080 sur Docker Desktop, l'IP de l'hôte ou --network host sous Linux."
+
+msgid "running"
+msgstr "en cours d'exécution"
+
+msgid "Running"
+msgstr "En cours"
+
+msgid "running {live}/{maxGroups}"
+msgstr "en cours {live}/{maxGroups}"
+
+msgid "Running, but we can't control it"
+msgstr "En marche, mais hors de notre contrôle"
+
+msgid "Running, not started by us; using as-is"
+msgstr "En marche, non démarré par nous ; utilisé tel quel"
+
+msgid "Running, started by us"
+msgstr "En marche, démarré par nous"
+
+msgid "Running: {running}"
+msgstr "En cours : {running}"
+
+msgid "S{seq} \"{title}\" failed {from} {n} times. Latest:\n"
+"{feedback}"
+msgstr "S{seq} « {title} » a échoué {n} fois sur {from}. Dernier :\n"
+"{feedback}"
+
+msgid "S{seq} \"{title}\" is ready for you"
+msgstr "S{seq} « {title} » est prête pour toi"
+
+msgid "S{seq} {verdict}"
+msgstr "S{seq} {verdict}"
+
+msgid "S{seq} {verdict}: {note}"
+msgstr "S{seq} {verdict} : {note}"
+
+msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
+msgstr "S{seq} a échoué chez {from} {n} fois — ce sont probablement les critères d'acceptation, pas le code"
+
+msgid "S{seq} failed {from} {n}x in a row"
+msgstr "S{seq} a échoué {n} fois d'affilée à {from}"
+
+msgid "S{seq} sent back by {from} (attempt {n})"
+msgstr "S{seq} renvoyée par {from} (tentative {n})"
+
+#. placeholder {0}: endonymOf(localeOf(i18n.locale))
+msgid "Same as the panel ({0})"
+msgstr "Comme le panneau ({0})"
+
+msgid "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way."
+msgstr "Même ordre de grandeur que la réservation, même nature — une vraie compilation. Trop serré, l'échec ressemble à « ce projet est cassé » plutôt qu'à « délai dépassé », et dans les deux cas les groupes se bloquent."
+
+msgid "Sandbox"
+msgstr "Bac à sable"
+
+msgid "Sandbox defaults"
+msgstr "Réglages par défaut du bac à sable"
+
+msgid "Sandbox operation"
+msgstr "Opération du bac à sable"
+
+msgid "Sandbox server"
+msgstr "Serveur de bac à sable"
+
+msgid "Sandbox server ping"
+msgstr "Ping du serveur de bac à sable"
+
+msgid "Sandbox setup"
+msgstr "Préparation du bac à sable"
+
+msgid "Sandbox TTL"
+msgstr "Durée de vie du bac à sable"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgid "Save checkpoint"
+msgstr "Enregistrer un point de reprise"
+
+msgid "Saved {at}"
+msgstr "Enregistré {at}"
+
+msgid "Scope change"
+msgstr "Changement de périmètre"
+
+msgid "Search skills"
+msgstr "Rechercher des compétences"
+
+msgid "Selected"
+msgstr "Sélectionné"
+
+msgid "Self"
+msgstr "Propre"
+
+msgid "Self-review"
+msgstr "Auto-relecture"
+
+msgid "Send"
+msgstr "Envoyer"
+
+msgid "Send message"
+msgstr "Envoyer un message"
+
+msgid "Send to PM"
+msgstr "Envoyer au PM"
+
+msgid "sent back"
+msgstr "renvoyé"
+
+msgid "sent back {times} times"
+msgstr "renvoyé {times} fois"
+
+msgid "Server"
+msgstr "Serveur"
+
+msgid "server rejected the API key"
+msgstr "le serveur a rejeté la clé API"
+
+msgid "server requires an API key and none was sent"
+msgstr "le serveur exige une clé API et aucune n'a été envoyée"
+
+msgid "Session restarts"
+msgstr "Redémarrages de session"
+
+msgid "Session rotation threshold"
+msgstr "Seuil de rotation de session"
+
+msgid "Set"
+msgstr "Défini"
+
+msgid "Set [server] api_key = \"…\" in the server's TOML, restart it, then Settings → Sandbox server → Read from server. The containers hold the checkout, the mailbox token and the CLI logins."
+msgstr "Définissez [server] api_key = \"…\" dans le TOML du serveur, redémarrez-le, puis Réglages → Serveur de bac à sable → Lire depuis le serveur. Les conteneurs contiennent le checkout, le jeton de la boîte aux lettres et les connexions des CLI."
+
+msgid "Set a token limit for this requirement"
+msgstr "Fixer une limite de tokens pour cette exigence"
+
+msgid "Settings"
+msgstr "Réglages"
+
+msgid "Settings → Claude → sign in. It runs the official claude setup-token inside the utility container, so nothing is installed here; paste the code that page gives you back into the input and it is stored. Good for a year."
+msgstr "Réglages → Claude → se connecter. Cela exécute le claude setup-token officiel dans le conteneur utilitaire : rien n'est installé ici. Collez le code que la page vous donne dans le champ et il est enregistré. Valable un an."
+
+msgid "Settings → codex → sign in, which runs the official device-code flow; codex is not installed here. Pasting an API key works too."
+msgstr "Réglages → codex → se connecter, ce qui lance le flux device-code officiel ; codex n'est pas installé ici. Coller une clé API fonctionne aussi."
+
+msgid "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S"
+msgstr "Réglages : compte, environnement, compétences, thème, gates et bac à sable de ce projet ⌘S"
+
+msgid "Shared across all projects"
+msgstr "Partagé entre tous les projets"
+
+msgid "Shared across requirements"
+msgstr "Partagé entre exigences"
+
+msgid "Shared cache"
+msgstr "Cache partagé"
+
+msgid "Shared cache directories"
+msgstr "Répertoires de cache partagés"
+
+msgid "Show the idle ones too ({idleCount})"
+msgstr "Afficher aussi les inactifs ({idleCount})"
+
+msgid "Show the other {restCount} ({restCeiling})"
+msgstr "Afficher les {restCount} autres ({restCeiling})"
+
+msgid "showing {span}"
+msgstr "affichage {span}"
+
+msgid "Silence this long and the group is asked what it is doing. Not a failure — a long compile is silent too — so this is hours rather than minutes."
+msgstr "Passé ce silence, on demande au groupe ce qu'il fait. Ce n'est pas un échec — une longue compilation est silencieuse aussi — d'où des heures plutôt que des minutes."
+
+msgid "Skills"
+msgstr "Compétences"
+
+msgid "Skills are mounted but the directory inside is empty: host {hostPath} has {onHost}, and {at} in the container has 0.\n"
+"The container runtime cannot read that host path, so binding it delivers an empty directory — on macOS docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's allowed_host_paths, and restart it. Until then agents have no skills at all."
+msgstr "Les skills sont montées mais le dossier à l'intérieur est vide : l'hôte {hostPath} en a {onHost}, et {at} dans le conteneur en a 0.\n"
+"Le runtime du conteneur ne peut pas lire ce chemin hôte, donc le monter livre un dossier vide — sur macOS docker tourne dans une VM, et les chemins en dehors (/var/tmp et consorts) ne sont jamais partagés. Pointez skillsDir vers un emplacement partagé ($HOME convient), ajoutez-le aux allowed_host_paths d'opensandbox-server, et redémarrez-le. D'ici là les agents n'ont aucune skill."
+
+msgid "Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list {path}. Add it and reopen this group's container; until then agents can only use the skills named in the input box."
+msgstr "Les skills ne sont pas montées dans le bac à sable : les allowed_host_paths d'opensandbox-server ne listent pas {path}. Ajoutez-le et rouvrez le conteneur de ce groupe ; d'ici là les agents ne peuvent utiliser que les skills nommées dans le champ de saisie."
+
+msgid "Skills staging directory"
+msgstr "Répertoire de préparation des compétences"
+
+msgid "Slice"
+msgstr "Tranche"
+
+msgid "slice {id}"
+msgstr "tranche {id}"
+
+msgid "Slice baseline was lost in rebase; showing the entire branch relative to origin/main"
+msgstr "La référence de la tranche a été perdue au rebase ; affichage de toute la branche par rapport à origin/main"
+
+msgid "Slice durations"
+msgstr "Durée des tranches"
+
+msgid "slices pending"
+msgstr "tranches en attente"
+
+msgid "Someone else is handling it"
+msgstr "Quelqu'un d'autre s'en occupe"
+
+msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
+msgstr "quelque chose que nous n'avons pas démarré écoute sur {server}, et la clé d'API ne correspond pas — mets l'api_key de ce serveur dans les Réglages, ou pointe vers une autre adresse."
+
+msgid "Spec"
+msgstr "Spécification"
+
+msgid "Spent {spent} tokens against a {cap} limit. Only raising the limit moves it — \"resume\" does nothing."
+msgstr "{spent} tokens dépensés pour une limite de {cap}. Seule l'augmentation de la limite change quelque chose — « reprendre » ne fait rien."
+
+msgid "split into {n} separate requirements: {names}"
+msgstr "découpé en {n} exigences indépendantes : {names}"
+
+msgid "split into {n} separate requirements: {names} — {why}"
+msgstr "découpé en {n} exigences indépendantes : {names} — {why}"
+
+msgid "Split out of the requirement {from}."
+msgstr "Détaché de l'exigence {from}."
+
+msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
+msgstr "Détaché de l'exigence {from}. La demande d'origine, en entier, est dans la note #{note}."
+
+msgid "squashed {why}"
+msgstr "squash effectué ({why})"
+
+msgid "Stage durations"
+msgstr "Durée des étapes"
+
+msgid "Standing post"
+msgstr "Poste permanent"
+
+msgid "Start"
+msgstr "Démarrer"
+
+msgid "Start Docker Desktop, or run colima start, and wait for it to report running."
+msgstr "Lancez Docker Desktop, ou exécutez colima start, et attendez qu'il indique running."
+
+msgid "Start from this branch"
+msgstr "Démarrer depuis cette branche"
+
+msgid "Started"
+msgstr "Démarré"
+
+msgid "Started at"
+msgstr "Démarré à"
+
+msgid "Starting…"
+msgstr "Démarrage…"
+
+msgid "Starts after approval"
+msgstr "Démarre après approbation"
+
+msgid "Step {nth}"
+msgstr "Étape {nth}"
+
+msgid "Steps one turn may take before it is cut off. Most turns finish in about 36; the long tail is an agent lost rather than working, and it costs the most because every step re-reads the transcript. Changing it restarts every session."
+msgstr "Étapes qu'un tour peut franchir avant d'être coupé. La plupart finissent vers 36 ; la longue traîne, c'est un agent perdu plutôt qu'au travail, et c'est le plus coûteux car chaque étape relit la transcription. Le modifier redémarre toutes les sessions."
+
+msgid "still not up after {secs}s"
+msgstr "toujours pas démarré après {secs} s"
+
+msgid "still not up after {secs}s. It printed:\n"
+"{tail}"
+msgstr "toujours pas démarré après {secs} s. Il a affiché :\n"
+"{tail}"
+
+msgid "Stop denying {d}"
+msgstr "Cesser de refuser {d}"
+
+msgid "Stop dispatching; branch is kept but not merged. A retrospective is still required."
+msgstr "Arrête la distribution ; la branche est conservée mais non fusionnée. La rétrospective reste obligatoire."
+
+msgid "Stop here (archive)"
+msgstr "S'arrêter ici (archiver)"
+
+msgid "Stop the current turn; keep changes. The next turn will be informed."
+msgstr "Arrête le tour en cours en gardant les modifications. Le tour suivant en sera informé."
+
+msgid "Stopped"
+msgstr "Arrêté"
+
+msgid "Storage & streams"
+msgstr "Stockage et flux"
+
+msgid "stored as {label}"
+msgstr "enregistré comme {label}"
+
+msgid "Submit"
+msgstr "Soumettre"
+
+msgid "Submit task"
+msgstr "Soumettre la tâche"
+
+msgid "Subscription"
+msgstr "Abonnement"
+
+msgid "Swap sessions when context hits this much of the window. Fallback trigger; real rotation is slice-end—clean semantic boundary, cheap handoff."
+msgstr "Change de session quand le contexte atteint cette part de la fenêtre. C'est le déclencheur de secours ; la vraie rotation a lieu en fin de tranche — frontière sémantique nette, passation peu coûteuse."
+
+msgid "Switch project"
+msgstr "Changer de projet"
+
+msgid "Switch requirement"
+msgstr "Changer d'exigence"
+
+msgid "System"
+msgstr "Système"
+
+msgid "System timing"
+msgstr "Temps système"
+
+msgid "Take note"
+msgstr "Noter"
+
+msgid "task {task} done"
+msgstr "tâche {task} terminée"
+
+msgid "The {runtime} credential stopped working: {why}\n"
+"Go to settings → {runtime} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done."
+msgstr "L'identifiant {runtime} ne fonctionne plus : {why}\n"
+"Va dans les réglages → {runtime} → connexion et configures-en un autre. La connexion lance la CLI officielle dans le conteneur utilitaire, donc rien à installer ici. Le groupe repart tout seul une fois que c'est fait."
+
+msgid "the approval did not take"
+msgstr "l'approbation n'a pas pris"
+
+msgid "the approval did not take: {err}"
+msgstr "l'approbation n'a pas pris : {err}"
+
+msgid "The approval did not take: {err}. It has been withdrawn — approve again once that is fixed."
+msgstr "L'approbation n'a pas pris : {err}. Elle a été retirée — approuvez de nouveau une fois le problème corrigé."
+
+msgid "the base branch moved from {was} to {now}, because the default branch on the remote changed. Every clone, rebase and diff from here on is against it."
+msgstr "la branche de base est passée de {was} à {now}, parce que la branche par défaut du dépôt distant a changé. Désormais chaque clone, rebase et diff se fait par rapport à elle."
+
+msgid "the boundary still overlaps"
+msgstr "la frontière se chevauche toujours"
+
+msgid "The branch is finished but the PR will not open: {why}\n"
+"\n"
+"Answer this once it is fixed and the group retries by itself."
+msgstr "La branche est terminée mais la PR ne s'ouvre pas : {why}\n"
+"\n"
+"Répondez à ceci une fois le problème réglé et le groupe réessaiera de lui-même."
+
+msgid "the branch was not pushed to the remote, and the next slice's acceptance will try again: {reason}"
+msgstr "la branche n'a pas été poussée vers le dépôt distant ; l'acceptation de la tranche suivante réessaiera : {reason}"
+
+msgid "The browser can't read this. Drag folders in instead."
+msgstr "Le navigateur ne peut pas le lire. Glissez plutôt les dossiers ici."
+
+msgid "the checks could not run: {error}"
+msgstr "les vérifications n'ont pas pu s'exécuter : {error}"
+
+msgid "The chosen skill is sent with this turn; it only costs for this one turn."
+msgstr "La compétence choisie est envoyée avec ce tour ; elle ne coûte que pour ce tour."
+
+msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
+msgstr "L'échange du refresh-token codex, exécuté dans le conteneur utilitaire. Plus long qu'une lecture d'usage : il démarre un processus et fait un aller-retour OAuth."
+
+msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
+msgstr "L'exigence entière retourne au Dispatcher pour un découpage plus fin ; ce commentaire devient le fait prioritaire, et le code déjà écrit reste sur la branche."
+
+msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
+msgstr "L'exigence entière retourne au Répartiteur pour creuser davantage ; ce commentaire est l'élément prioritaire."
+
+msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, requirements left running"
+msgstr "l'hôte a perdu le réseau ; {n, plural, one {# tour retenu et remis en file} other {# tours retenus et remis en file}}, les exigences restent en cours"
+
+msgid "the index cannot be refreshed: this project's container will not start ({why})"
+msgstr "impossible de rafraîchir l'index : le conteneur de ce projet ne démarre pas ({why})"
+
+msgid "the index pass threw: {reason}"
+msgstr "la passe d'indexation a levé une erreur : {reason}"
+
+msgid "The last step repeats for as long as nobody answers"
+msgstr "Le dernier palier se répète tant que personne ne répond"
+
+msgid "the last turn was cut off, so the worktree may hold unfinished changes. Run `git diff` before carrying on rather than assuming it is complete."
+msgstr "le tour précédent a été interrompu, donc le worktree peut contenir des modifications inachevées. Lance `git diff` avant de continuer plutôt que de le supposer complet."
+
+msgid "the login is fresh; renewal runs inside the utility container, so codex is not needed here"
+msgstr "la connexion est récente ; le renouvellement se fait dans le conteneur utilitaire, codex n'est donc pas nécessaire ici"
+
+msgid "The name of a row under Model account, never the key"
+msgstr "Le nom d'une ligne sous « Compte du modèle », jamais la clé"
+
+msgid "The name of that line in 'Model account', not the key itself. Key in config is key in shell history and every backup."
+msgstr "Le nom de cette ligne dans « Compte du modèle », pas la clé elle-même. Une clé dans la configuration, c'est une clé dans l'historique du shell et dans chaque sauvegarde."
+
+msgid "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone."
+msgstr "L'autre moitié de « bloqué » : le même fichier réécrit autant de fois d'affilée. Un agent qui converge touche aussi ses voisins ; un agent bloqué réécrit un seul fichier jusqu'à épuisement du budget."
+
+msgid "the PR will not open"
+msgstr "la PR ne s'ouvre pas"
+
+msgid "the project is gone (project {project} is not there), so /work is still empty — there is no code to run this turn"
+msgstr "le projet a disparu (project {project} est introuvable), donc /work est toujours vide — il n'y a pas de code à exécuter ce tour-ci"
+
+msgid "the repo map cannot be refreshed: {repo} — {why}"
+msgstr "impossible de rafraîchir la carte du dépôt : {repo} — {why}"
+
+msgid "the repo map cannot be refreshed: {repo} has no remote recorded, so there is nothing to mirror"
+msgstr "impossible de rafraîchir la carte du dépôt : {repo} n'a aucun distant enregistré, il n'y a donc rien à répliquer"
+
+msgid "the repo map cannot be refreshed: {repo}, and git gave no reason, which is itself a bug"
+msgstr "impossible de rafraîchir la carte du dépôt : {repo}, et git n'a donné aucune raison, ce qui est déjà un bug"
+
+msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
+msgstr "la carte du dépôt est restée à sa version précédente : le conteneur de {repo} ne peut pas lire HEAD, et la reconstruire ne donnerait qu'une carte sans symboles"
+
+msgid "the repository was renamed on GitHub: {was} → {now}. We have followed it, and clones and PRs point at the new one."
+msgstr "le dépôt a été renommé sur GitHub : {was} → {now}. Nous avons suivi, et les clones et les PR pointent vers le nouveau."
+
+msgid "the same feedback for the {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} time; asking the CoS to make it a project rule"
+msgstr "le même retour pour la {n}e fois ; je demande au CoS d'en faire une règle du projet"
+
+msgid "the same ground as {others}"
+msgstr "le même terrain que {others}"
+
+msgid "the sandbox is new — putting {branch} and the dependencies back"
+msgstr "le sandbox est neuf — on y remet {branch} et les dépendances"
+
+msgid "the sandbox server is up — we started it (pid {pid})"
+msgstr "le serveur de bac à sable est lancé — c'est nous qui l'avons démarré (pid {pid})"
+
+msgid "the sandbox server is up (pid {pid})"
+msgstr "le serveur de bac à sable est lancé (pid {pid})"
+
+msgid "The sandbox server rejects this key. Enter the one written in that server's own config."
+msgstr "Le serveur de bac à sable refuse cette clé. Saisissez celle qui figure dans la configuration de ce serveur."
+
+msgid "the sandbox server was already running, so this used the one that was there"
+msgstr "le serveur de bac à sable tournait déjà, celui qui était là a été réutilisé"
+
+msgid "the sandbox server was restarted, so every container it held is gone"
+msgstr "le serveur de bac à sable a redémarré, donc tous les conteneurs qu'il tenait ont disparu"
+
+msgid "The sandbox was rebuilt, but the workspace was not restored: {why}"
+msgstr "Le bac à sable a été reconstruit, mais l'espace de travail n'a pas été restauré : {why}"
+
+msgid "the server asks for no API key, so any process on this machine can enter a container"
+msgstr "le serveur ne demande aucune clé API : n'importe quel processus de cette machine peut entrer dans un conteneur"
+
+msgid "The service that launches containers"
+msgstr "Le service qui lance les conteneurs"
+
+msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
+msgstr "L'appel modèle le plus fréquent de tout le système : pure synthèse, aucune décision, aucun outil, aucun tableau partagé. La première chose à sortir d'un abonnement premium."
+
+msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
+msgstr "les sous-modules ne sont pas remontés, la copie de travail est peut-être incomplète : {why}"
+
+msgid "The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst."
+msgstr "Ce point d'accès n'est pas documenté et répond 429 pendant des heures à un sondage trop rapide — et votre propre /status puise dans le même budget. Dix minutes dans une fenêtre de cinq heures, c'est au pire 3 % d'erreur."
+
+msgid "the watchdog threw this tick and the rules after it did not run: {why}\n"
+"It retries every 30s, but until it is fixed everything it drives — stalled groups, expired sandboxes, the rebase after a base moves, the clocks on what is waiting for you — stays where it is."
+msgstr "le watchdog a levé une exception à ce tick et les règles suivantes n'ont pas tourné : {why}\n"
+"Il réessaie toutes les 30 s, mais tant que ce n'est pas corrigé, tout ce qu'il pousse — groupes bloqués, bacs à sable expirés, le rebase après un déplacement de base, les horloges de ce qui t'attend — reste sur place."
+
+msgid "the whole branch sent back {n}x by {from}"
+msgstr "toute la branche renvoyée {n} fois par {from}"
+
+msgid "Theme"
+msgstr "Thème"
+
+msgid "there is no recipient called \"{to}\", and no roles are configured"
+msgstr "il n'y a pas de destinataire nommé « {to} », et aucun rôle n'est configuré"
+
+msgid "there is no recipient called \"{to}\". The roles that exist: {known}"
+msgstr "il n'y a pas de destinataire nommé « {to} ». Les rôles qui existent : {known}"
+
+msgid "these belong to no group: {paths} — changes there go through the boss or the Architect"
+msgstr "ceux-ci n'appartiennent à aucun groupe : {paths} — les changements y passent par le boss ou l'Architecte"
+
+msgid "These paths from the card don't exist in the repo"
+msgstr "Ces chemins de la carte n'existent pas dans le dépôt"
+
+msgid "This account has no window"
+msgstr "Ce compte n'a pas de fenêtre"
+
+msgid "This browser doesn't support it"
+msgstr "Ce navigateur ne le prend pas en charge"
+
+msgid "this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again"
+msgstr "cette connexion ChatGPT est assez ancienne pour devoir être renouvelée — le prochain conteneur s'en charge, et si cela échoue encore il faudra recoller le auth.json"
+
+msgid "This log is empty"
+msgstr "Ce journal est vide"
+
+msgid "This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward."
+msgstr "Ce processus n'a pas été démarré par nous — c'est peut-être quelque chose que vous utilisez. Redémarrez-le vous-même si besoin ; nous le reconnaîtrons ensuite."
+
+msgid "This project hasn't run any activity yet."
+msgstr "Ce projet n'a encore enregistré aucune activité."
+
+msgid "this question became requirement {name} (grp {grp})"
+msgstr "cette question est devenue l'exigence {name} (grp {grp})"
+
+msgid "this repository needs nothing installed"
+msgstr "ce dépôt n'a rien à installer"
+
+msgid "This requirement has been archived or no longer exists."
+msgstr "Cette exigence a été archivée ou n'existe plus."
+
+msgid "This requirement hasn't run any activity yet."
+msgstr "Cette exigence n'a encore enregistré aucune activité."
+
+msgid "this server has no GitHub client"
+msgstr "ce serveur n'a pas de client GitHub"
+
+msgid "This slice hasn't produced changes yet and has no verdict."
+msgstr "Cette tranche n'a encore produit aucune modification et n'a pas de verdict."
+
+msgid "This view crashed"
+msgstr "Cette vue a planté"
+
+msgid "This window needs {count} buckets, more than fits"
+msgstr "Cette fenêtre demande {count} intervalles, plus qu'il n'en tient"
+
+msgid "Time"
+msgstr "Temps"
+
+msgid "Timeouts"
+msgstr "Délais"
+
+msgid "Timeouts, polling and retention. Come here when something is broken"
+msgstr "Délais, sondage et rétention. Venez ici quand quelque chose est cassé"
+
+msgid "Timing for all activity on this machine, last 24h"
+msgstr "Temps de toute l'activité sur cette machine, dernières 24 h"
+
+msgid "Timing report cache"
+msgstr "Cache du rapport de temps"
+
+msgid "To do"
+msgstr "À faire"
+
+msgid "to do {waiting}"
+msgstr "à faire {waiting}"
+
+msgid "Today"
+msgstr "Aujourd'hui"
+
+msgid "Token"
+msgstr "Token"
+
+msgid "Token ceiling for one slice. Set it above your worst finished slice and below the outliers — it exists to stop an agent that is lost, not to trim a slow day. New slices only."
+msgstr "Plafond de tokens pour une tranche. Placez-le au-dessus de votre pire tranche terminée et sous les valeurs aberrantes — il sert à arrêter un agent perdu, pas à rogner une journée lente. Ne vaut que pour les nouvelles tranches."
+
+msgid "Token limit per slice"
+msgstr "Limite de tokens par tranche"
+
+msgid "Token refresh"
+msgstr "Renouvellement du token"
+
+msgid "tokens · project total"
+msgstr "tokens · total du projet"
+
+msgid "tokens · share"
+msgstr "tokens · part"
+
+msgid "tokens must be a positive number, or null to lift the cap"
+msgstr "les jetons doivent être un nombre positif, ou null pour lever la limite"
+
+msgid "triaged as {as}: {note}"
+msgstr "trié comme {as} : {note}"
+
+msgid "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
+msgstr "Essayées dans l'ordre, et seulement quand rien d'autre ne répond : la branche de base propre au projet l'emporte, puis le default_branch de GitHub. C'est le repli d'un dépôt dont le distant est injoignable."
+
+msgid "Try again"
+msgstr "Réessayer"
+
+msgid "turn done ({steps, plural, one {# step} other {# steps}}, {total} tokens)"
+msgstr "tour terminé ({steps, plural, one {# étape} other {# étapes}}, {total} jetons)"
+
+msgid "turn ran past {min} min and was killed"
+msgstr "le tour a dépassé {min} min et a été coupé"
+
+msgid "Turn timeout"
+msgstr "Délai d'un tour"
+
+msgid "Turned off, but page alerts and tab title counts still work—just no pop-ups."
+msgstr "Désactivé, mais les alertes dans la page et le compteur dans le titre de l'onglet fonctionnent toujours — il n'y a simplement pas de pop-up."
+
+msgid "Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed."
+msgstr "Tours consécutifs sans le moindre changement avant que le chien de garde déclare un blocage. En dessous de trois, il se déclenche sur un agent encore en lecture ; bien au-dessus, une boucle tourne tout l'après-midi sans qu'on le voie."
+
+msgid "Turns without progress"
+msgstr "Tours sans progrès"
+
+msgid "Two sources only: our releases (ghcr.io/pamin-labs/…) and local builds with no registry prefix. Agents run your code inside this image, so an untrusted one hands away the boundary — and the panel cannot tell."
+msgstr "Deux sources seulement : nos publications (ghcr.io/pamin-labs/…) et les builds locaux sans préfixe de registre. Les agents exécutent votre code dans cette image : une image non fiable cède la frontière elle-même — et le panneau n'y voit que du feu."
+
+msgid "Type a model ID to add a row"
+msgstr "Saisissez un ID de modèle pour ajouter une ligne"
+
+msgid "Undefined"
+msgstr "Non défini"
+
+msgid "Under {account}, this App can see no repository at all. It may have been installed with only a few ticked."
+msgstr "Sous {account}, cette App ne voit aucun dépôt. Elle a peut-être été installée avec seulement quelques cases cochées."
+
+msgid "Unit for {label}"
+msgstr "Unité de {label}"
+
+msgid "Unread digest threshold"
+msgstr "Seuil de résumé des non-lus"
+
+msgid "Unreadable"
+msgstr "Illisible"
+
+msgid "Update code index"
+msgstr "Mettre à jour l'index du code"
+
+msgid "Usage not displayed"
+msgstr "Usage non affiché"
+
+msgid "Usage read"
+msgstr "Lecture de l'usage"
+
+msgid "Use 'defer' to archive without deleting; that keeps records"
+msgstr "Utilisez « différer » pour archiver sans supprimer ; les enregistrements sont conservés"
+
+msgid "Use draft"
+msgstr "Utiliser le brouillon"
+
+msgid "Use host:port, or https://host:port — for example 127.0.0.1:8081 or sandbox.tail1234.ts.net:8080."
+msgstr "Utilisez host:port, ou https://host:port — par exemple 127.0.0.1:8081 ou sandbox.tail1234.ts.net:8080."
+
+msgid "Use this only if you can't reopen an old PR on GitHub. Use when the branch has been force-pushed or deleted: it will re-open using the current branch and rejoin the merge queue."
+msgstr "À n'utiliser que si vous ne pouvez pas rouvrir une ancienne PR sur GitHub. Pour une branche force-pushée ou supprimée : elle rouvrira avec la branche actuelle et reprendra sa place dans la file de fusion."
+
+msgid "Use when the container is stuck, missing dependencies, or credentials changed. The next turn will re-clone and reinstall; the branch in the host repo stays."
+msgstr "À utiliser quand le conteneur est bloqué, qu'il manque des dépendances ou que les identifiants ont changé. Le tour suivant reclonera et réinstallera ; la branche dans le dépôt de l'hôte est conservée."
+
+msgid "Used when a project has not set its own"
+msgstr "Utilisé quand un projet n'a pas défini le sien"
+
+msgid "uvx available"
+msgstr "uvx disponible"
+
+msgid "Valid for one year"
+msgstr "Valable un an"
+
+msgid "Valid until {when}"
+msgstr "Valable jusqu'au {when}"
+
+msgid "View diff"
+msgstr "Voir le diff"
+
+msgid "View log"
+msgstr "Voir le journal"
+
+msgid "waited {short}"
+msgstr "a attendu {short}"
+
+msgid "Waiting"
+msgstr "En attente"
+
+msgid "Waiting for prior slice"
+msgstr "En attente de la tranche précédente"
+
+msgid "Waiting for you"
+msgstr "Vous attend"
+
+msgid "Waiting for you to approve in the browser…"
+msgstr "En attente de votre approbation dans le navigateur…"
+
+msgid "Waiting for you to approve on GitHub…"
+msgstr "En attente de votre approbation sur GitHub…"
+
+msgid "Wake"
+msgstr "Réveiller"
+
+msgid "Walk depth"
+msgstr "Profondeur du parcours"
+
+msgid "Walk the index tree"
+msgstr "Parcourir l'arbre d'index"
+
+msgid "Walk width"
+msgstr "Largeur du parcours"
+
+msgid "Wants a percentage between 0 and 100, like 60%"
+msgstr "Attend un pourcentage entre 0 et 100, par exemple 60 %"
+
+msgid "Was connected, but GitHub no longer recognizes this token"
+msgstr "Était connecté, mais GitHub ne reconnaît plus ce token"
+
+msgid "Watchdog"
+msgstr "Chien de garde"
+
+msgid "Watchdog interval"
+msgstr "Intervalle du chien de garde"
+
+msgid "Watchdog rule"
+msgstr "Règle du chien de garde"
+
+msgid "watchdog rule {rule} ({ruleName}) threw; the rest of the tick ran: {why}"
+msgstr "la règle {rule} ({ruleName}) du watchdog a levé une exception ; le reste du tick a tourné : {why}"
+
+msgid "We did not start this sandbox server, so we will not touch it — it may be your own, configured for something else. Restart it yourself and this page will recognise it afterwards."
+msgstr "Ce serveur de bac à sable n'a pas été démarré par nous, nous n'y toucherons donc pas — il est peut-être le vôtre, configuré pour autre chose. Redémarrez-le vous-même et cette page le reconnaîtra ensuite."
+
+msgid "Webhook timeout"
+msgstr "Délai du webhook"
+
+msgid "Week"
+msgstr "Semaine"
+
+msgid "Weight:"
+msgstr "Poids :"
+
+msgid "What"
+msgstr "Quoi"
+
+msgid "What has to be here"
+msgstr "Ce qui doit être là"
+
+msgid "What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session."
+msgstr "La langue dans laquelle écrivent les agents. Code, commits, branches, PR et erreurs restent en anglais. Le modifier redémarre toutes les sessions."
+
+msgid "What this browser reads. What the agents write is the output language, under Models & budget — and this follows it unless you pick one here."
+msgstr "Ce que lit ce navigateur. Ce qu'écrivent les agents, c'est la langue de sortie, sous Modèles et budget — et celle-ci la suit tant que vous n'en choisissez pas une ici."
+
+msgid "What's not satisfactory. Cmd+Enter to reject"
+msgstr "Ce qui ne va pas. Cmd+Entrée pour refuser"
+
+msgid "When the limit is reached, the group pauses until you decide whether to increase it."
+msgstr "Une fois la limite atteinte, le groupe se met en pause jusqu'à ce que vous décidiez de l'augmenter ou non."
+
+msgid "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint."
+msgstr "Quand la même chose ressort N fois, ça devrait devenir une règle du projet, pas la N+1-ième plainte."
+
+msgid "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP."
+msgstr "Où réside opensandbox-server. Il doit être en mode dns+nft, sinon l'injection d'identifiants échoue en silence. Pas besoin que ce soit cette machine — un pair Tailscale ou une machine cloud conviennent : le SDK ne parle qu'HTTP."
+
+msgid "Which model handles each difficulty, per CLI. Which role uses which CLI is in roles/*.yaml. Only affects newly hired agents — a model is frozen at hire time."
+msgstr "Quel modèle traite quelle difficulté, par CLI. Quel rôle utilise quel CLI est dans roles/*.yaml. N'affecte que les agents nouvellement recrutés — le modèle est figé à l'embauche."
+
+msgid "Which model runs what, and what it may spend"
+msgstr "Quel modèle fait quoi, et ce qu'il peut dépenser"
+
+msgid "which repository? (owner/name)"
+msgstr "quel dépôt ? (owner/name)"
+
+msgid "Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you."
+msgstr "Quels niveaux sautent votre relecture finale après avoir passé les quatre gates. Trivial et normal par défaut ; le difficile vous attend toujours."
+
+msgid "Which window"
+msgstr "Quelle fenêtre"
+
+msgid "Who · Model"
+msgstr "Qui · Modèle"
+
+msgid "Why this value"
+msgstr "Pourquoi cette valeur"
+
+msgid "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM"
+msgstr "Sera lu au début du tour suivant. Collez les captures directement ; / pour insérer une compétence. Cmd+Entrée pour envoyer au PM"
+
+msgid "woken up"
+msgstr "réveillé"
+
+msgid "Workflow"
+msgstr "Workflow"
+
+msgid "Workspace"
+msgstr "Espace de travail"
+
+msgid "Write a description, break into plan cards, then come back for review."
+msgstr "Rédige une description, la découpe en cartes de plan, puis revient pour relecture."
+
+msgid "Write the full /v1/embeddings address and remote retrieval switches on."
+msgstr "Écrivez l'adresse complète de /v1/embeddings et la récupération distante s'active."
+
+msgid "Writes {bot} into Co-Authored-By"
+msgstr "Inscrit {bot} dans Co-Authored-By"
+
+msgid "You can edit the card and re-approve."
+msgstr "Vous pouvez modifier la carte puis l'approuver à nouveau."
+
+msgid "you sent S{seq} back, but autoAdvance had already started {n, plural, one {# slice} other {# slices}} after it, and they were built on this one. The whole group has stopped: either let it fix this slice first, or send the later ones back with it."
+msgstr "vous avez renvoyé S{seq}, mais autoAdvance avait déjà lancé {n, plural, one {# tranche} other {# tranches}} après elle, et elles reposent sur celle-ci. Le groupe entier s'est arrêté : soit vous le laissez corriger cette tranche d'abord, soit vous renvoyez les suivantes avec."
+
+msgid "zoomed to {zoomLevel}×"
+msgstr "zoom {zoomLevel}×"

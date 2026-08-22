@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { transaction } from "../platform/persistence/database.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -96,7 +97,7 @@ async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Prom
     grpId: lease.grp_id,
     author: "runner",
     kind: "tool_summary",
-    body: `lease ${lease.resource} #${leaseId} started`,
+    say: msg`lease ${{ resource: lease.resource }} #${{ id: leaseId }} started`,
   });
 
   // Same runner as the gates use. This used to spawn its own process, which meant
@@ -147,7 +148,7 @@ async function finishLease(
       grpId: lease.grp_id,
       author: "runner",
       kind: "lease_result",
-      body: `lease #${leaseId} exit ${code}`,
+      say: msg`lease #${{ id: leaseId }} exit ${{ code }}`,
       meta: { lease_id: leaseId, exit_code: code },
     });
     if (lease.agent_id) {

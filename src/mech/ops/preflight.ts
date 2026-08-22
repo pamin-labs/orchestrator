@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { existsSync, readdirSync } from "node:fs";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { resolve } from "node:path";
@@ -14,6 +15,8 @@ import { isStale, parseAuth } from "../sandbox/chatgpt.ts";
 import { decode } from "hono/jwt";
 import { z } from "zod";
 import { isNotNull } from "drizzle-orm";
+import type { Said } from "../../contracts/said.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
 import { agent } from "../../platform/persistence/schema.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "../../platform/config/load.ts";
 
@@ -31,9 +34,30 @@ import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "../../platform/conf
 export interface Check {
   name: string;
   ok: boolean;
+  /** English, rendered from `MESSAGES.en`. `/readyz`, the console and the panel's fallback read this. */
   detail: string;
-  /** How the boss fixes it. Shown verbatim. */
+  /** How the boss fixes it. */
   fix?: string;
+  /** The same sentence as a key and its values, for a panel that holds ten catalogues. */
+  said: Said;
+  fixSaid?: Said;
+}
+
+/**
+ * One check, said twice: English for the log, the descriptor for the panel.
+ *
+ * `/readyz` is read by monitoring and `report()` writes a log, so both stay
+ * English whatever the panel is set to — `renderSaid("en", …)` is the same door
+ * the event bus renders through, and English is the `message` the macro hashed.
+ */
+export function makeCheck(name: string, ok: boolean, said: Said, fix?: Said): Check {
+  return {
+    name,
+    ok,
+    detail: renderSaid("en", said),
+    said,
+    ...(fix ? { fix: renderSaid("en", fix), fixSaid: fix } : {}),
+  };
 }
 
 /**
@@ -42,25 +66,27 @@ export interface Check {
  * `/v1/sandboxes` is the cheapest *authenticated* call — a list, no side effect.
  * An unauthenticated endpoint answers for a server that rejects every real call.
  */
-async function reachable(url: string, apiKey: string, timeoutMs: number): Promise<{ ok: boolean; detail: string }> {
+async function reachable(url: string, apiKey: string, timeoutMs: number): Promise<Verdict> {
   try {
     // fallow-ignore-next-line security-sink -- the one caller builds `url` from `cfg.sandbox.server`, the address the boss set for their own sandbox server, and `sandboxKeyFor` is what makes "the key stored for that same address" true rather than assumed: a stored key carries the address it was accepted by, and is withheld when the two disagree.
     const res = await fetch(`${url}/v1/sandboxes`, {
       headers: apiKey ? { [SANDBOX_API_KEY_HEADER]: apiKey } : {},
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (res.ok) return { ok: true, detail: "reachable" };
+    if (res.ok) return { ok: true, said: msg`reachable` };
     // The two the boss can act on, said in their own words.
     if (res.status === 401) {
       const why = await res.text().catch(() => "");
       return {
         ok: false,
-        detail: why.includes("MISSING") ? "服务器开了鉴权，我们没带密钥" : "密钥不对，服务器不认",
+        said: why.includes("MISSING")
+          ? msg`server requires an API key and none was sent`
+          : msg`server rejected the API key`,
       };
     }
-    return { ok: false, detail: `HTTP ${res.status}` };
+    return { ok: false, said: msg`HTTP ${{ status: res.status }}` };
   } catch (e) {
-    return { ok: false, detail: String(e).slice(0, 120) };
+    return { ok: false, said: msg`cannot reach it: ${{ error: String(e).slice(0, 120) }}` };
   }
 }
 
@@ -73,7 +99,7 @@ async function reachable(url: string, apiKey: string, timeoutMs: number): Promis
  * expires is inside the JWT it stores. Cached, because the settings page asks on
  * every open.
  */
-const seen = new Map<string, { at: number; ok: boolean; detail: string }>();
+const seen = new Map<string, { at: number; ok: boolean; said: Said }>();
 
 const accepted: Verify = async (runtime, auth, cfg = DEFAULTS) => {
   // Hashed, not a tail: a pasted auth.json ends in `"}}` no matter whose login
@@ -82,7 +108,7 @@ const accepted: Verify = async (runtime, auth, cfg = DEFAULTS) => {
   const hit = seen.get(key);
   // The same window the reachability probe re-asks on: both are "we asked this
   // recently enough", which is why they are one setting.
-  if (hit && Date.now() - hit.at < cfg.intervals.recheckMs) return { ok: hit.ok, detail: hit.detail };
+  if (hit && Date.now() - hit.at < cfg.intervals.recheckMs) return { ok: hit.ok, said: hit.said };
 
   const out = await ask(runtime, auth, cfg.timeouts.credentialCheckMs);
   seen.set(key, { at: Date.now(), ...out });
@@ -98,23 +124,28 @@ const accepted: Verify = async (runtime, auth, cfg = DEFAULTS) => {
  * container" a prerequisite for reporting that we cannot. **A check that needs
  * the thing it checks is not a check.**
  */
-async function ask(runtime: string, auth: RuntimeAuth, timeoutMs: number): Promise<{ ok: boolean; detail: string }> {
+async function ask(runtime: string, auth: RuntimeAuth, timeoutMs: number): Promise<Verdict> {
   if (auth.mode === "chatgpt") return chatgptAccepted(auth);
   if (runtime === "github") return githubAccepted(auth, timeoutMs);
   return modelAccepted(runtime, auth, timeoutMs);
 }
 
-function chatgptAccepted(auth: RuntimeAuth): { ok: boolean; detail: string } {
+function chatgptAccepted(auth: RuntimeAuth): Verdict {
+  const mode = auth.mode;
   // The refresh token is what matters and it is not ours to test; the access
   // token carries its own expiry, and codex rotates it from the host.
   const exp = jwtExpiry(parseAuth(auth.secret)?.tokens?.access_token);
-  if (!exp) return { ok: true, detail: "存着" };
+  if (!exp) return { ok: true, said: msg`${{ mode }} · stored` };
   const days = Math.round((exp - Date.now()) / 86_400_000);
-  if (exp <= Date.now()) return { ok: false, detail: "过期了，重新登录一次" };
-  return { ok: true, detail: days >= 1 ? `还有 ${days} 天` : "快过期了" };
+  if (exp <= Date.now()) return { ok: false, said: msg`${{ mode }} · expired — sign in again` };
+  return {
+    ok: true,
+    said: days >= 1 ? msg`${{ mode }} · ${{ days }} days left` : msg`${{ mode }} · expires within a day`,
+  };
 }
 
-async function githubAccepted(auth: RuntimeAuth, timeoutMs: number): Promise<{ ok: boolean; detail: string }> {
+async function githubAccepted(auth: RuntimeAuth, timeoutMs: number): Promise<Verdict> {
+  const mode = auth.mode;
   // GitHub is not a model provider and has no `/v1/models`. A missing credential
   // otherwise surfaces only when the utility container tries to push a branch.
   try {
@@ -122,12 +153,13 @@ async function githubAccepted(auth: RuntimeAuth, timeoutMs: number): Promise<{ o
       headers: { authorization: `Bearer ${auth.secret}`, "user-agent": "orchestrator" },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (response.ok) return { ok: true, detail: "能用" };
+    if (response.ok) return { ok: true, said: msg`${{ mode }} · accepted` };
     // GitHub deliberately uses 404 for resources a token cannot see.
-    if ([401, 403, 404].includes(response.status)) return { ok: false, detail: "GitHub 不认这个 token 了" };
-    return { ok: true, detail: `没验成（HTTP ${response.status}）` };
+    if ([401, 403, 404].includes(response.status))
+      return { ok: false, said: msg`${{ mode }} · GitHub no longer accepts this token` };
+    return { ok: true, said: msg`${{ mode }} · not verified (HTTP ${{ status: response.status }})` };
   } catch {
-    return { ok: true, detail: "连不上，没验" };
+    return { ok: true, said: msg`${{ mode }} · unreachable, not verified` };
   }
 }
 
@@ -162,23 +194,21 @@ export function modelProbe(runtime: string, auth: RuntimeAuth): { url: string; h
  * it is would send the boss to re-paste a token that was fine. Only 401 and 403
  * are the token; everything else is reported as unverified, which is what it is.
  */
-export function credentialVerdict(status: number): { ok: boolean; detail: string } {
-  if (status >= 200 && status < 300) return { ok: true, detail: "能用" };
-  if (status === 401 || status === 403) return { ok: false, detail: "对面不认这个凭据" };
-  return { ok: true, detail: `没验成（HTTP ${status}）` };
+export function credentialVerdict(status: number, mode: string): Verdict {
+  if (status >= 200 && status < 300) return { ok: true, said: msg`${{ mode }} · accepted` };
+  if (status === 401 || status === 403)
+    return { ok: false, said: msg`${{ mode }} · the provider rejected this credential` };
+  return { ok: true, said: msg`${{ mode }} · not verified (HTTP ${{ status }})` };
 }
 
-async function modelAccepted(
-  runtime: string,
-  auth: RuntimeAuth,
-  timeoutMs: number,
-): Promise<{ ok: boolean; detail: string }> {
+async function modelAccepted(runtime: string, auth: RuntimeAuth, timeoutMs: number): Promise<Verdict> {
+  const mode = auth.mode;
   const { url, headers } = modelProbe(runtime, auth);
   try {
     // fallow-ignore-next-line security-sink -- `modelProbe` builds the URL from the provider default or `runtime_auth.base_url`, and the secret it sends is the one stored in that same row; the gateway and the credential are set together by the boss and cannot be substituted for each other.
-    return credentialVerdict((await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) })).status);
+    return credentialVerdict((await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) })).status, auth.mode);
   } catch {
-    return { ok: true, detail: "连不上，没验" };
+    return { ok: true, said: msg`${{ mode }} · unreachable, not verified` };
   }
 }
 
@@ -232,7 +262,13 @@ export interface PreflightInput {
  * How a credential is verified. `cfg` is optional so a test's two-argument spy
  * still satisfies it — the real one reads two timeouts out of it.
  */
-export type Verify = (runtime: string, auth: RuntimeAuth, cfg?: Config) => Promise<{ ok: boolean; detail: string }>;
+export type Verify = (runtime: string, auth: RuntimeAuth, cfg?: Config) => Promise<Verdict>;
+
+/** What one credential probe found, before the mode is folded into it. */
+export interface Verdict {
+  ok: boolean;
+  said: Said;
+}
 
 /** Is this exact image:tag on this machine? */
 function localImages(ref: string): boolean {
@@ -281,14 +317,14 @@ const defaultProbe: Probe = (bin, argv = ["--version"]) => {
 };
 
 function dockerCheck(docker: boolean, installed: boolean): Check {
-  return {
-    name: "docker",
-    ok: docker,
-    detail: docker ? "running" : installed ? "装了，但没启动（daemon 不理人）" : "not reachable",
-    fix: installed
-      ? "Docker 装了但没跑起来 —— 启动 Docker Desktop（或 colima start），等它变绿再回来。"
-      : "装 Docker（或 Colima / Podman，任何提供 docker socket 的都行）并启动。",
-  };
+  return makeCheck(
+    "docker",
+    docker,
+    docker ? msg`running` : installed ? msg`installed, but the daemon is not answering` : msg`not reachable`,
+    installed
+      ? msg`Start Docker Desktop, or run colima start, and wait for it to report running.`
+      : msg`Install Docker — or Colima, or Podman, anything that provides a docker socket — and start it.`,
+  );
 }
 
 function hostToolChecks(contained: boolean, probe: Probe): { checks: Check[]; docker: boolean } {
@@ -300,56 +336,54 @@ function hostToolChecks(contained: boolean, probe: Probe): { checks: Check[]; do
     docker,
     checks: [
       dockerCheck(docker, installed),
-      {
-        name: "uv / python",
-        ok: uvx,
-        detail: uvx ? "uvx available" : "no uvx on PATH",
-        fix: "brew install uv —— opensandbox-server 是个 Python 包，没有它就没东西可启动。",
-      },
+      makeCheck(
+        "uv / python",
+        uvx,
+        uvx ? msg`uvx available` : msg`no uvx on PATH`,
+        msg`Run brew install uv. opensandbox-server is a Python package, so without uv there is nothing to start.`,
+      ),
     ],
   };
 }
 
-function sandboxServerCheck(input: PreflightInput, contained: boolean, server: { ok: boolean; detail: string }): Check {
-  return {
-    name: "opensandbox-server",
-    ok: server.ok,
-    detail: server.detail,
-    fix: contained
-      ? `这个 orchestrator 跑在容器里，起不了沙盒服务器，也不该起 —— 它要的是宿主的 docker。` +
-        `在宿主上跑 uvx opensandbox-server，然后用 ORCH_SANDBOX_SERVER 指过去` +
-        `（Docker Desktop 上是 host.docker.internal:8080，Linux 上用宿主 IP 或 --network host）。`
-      : `uvx opensandbox-server --config ~/.sandbox.toml，监听 ${input.sandbox.server}，[egress] mode 要是 "dns+nft"`,
-  };
+function sandboxServerCheck(input: PreflightInput, contained: boolean, server: Verdict): Check {
+  return makeCheck(
+    "opensandbox-server",
+    server.ok,
+    server.said,
+    contained
+      ? msg`Run uvx opensandbox-server on the host, not here: this orchestrator is inside a container and the sandbox server needs the host's docker. Then point ORCH_SANDBOX_SERVER at it — host.docker.internal:8080 on Docker Desktop, the host IP or --network host on Linux.`
+      : msg`Run uvx opensandbox-server --config ~/.sandbox.toml listening on ${{ server: input.sandbox.server }}, with [egress] mode = "dns+nft".`,
+  );
 }
 
 function hostEnvironmentCheck(contained: boolean): Check | null {
   if (!contained) return null;
-  return {
-    name: "宿主环境",
-    ok: true,
-    detail: "docker、uv、egress 镜像都归跑沙盒服务器的那台机器管，这儿看不到",
-    fix: "那台机器上要有：docker、uvx opensandbox-server、docker pull opensandbox/egress:v1.1.6。",
-  };
+  return makeCheck(
+    "host environment",
+    true,
+    msg`docker, uv and the egress image belong to the machine running the sandbox server, not to this one`,
+    msg`On that machine: install docker, run uvx opensandbox-server, and docker pull opensandbox/egress:v1.1.6.`,
+  );
 }
 
 function sandboxAuthCheck(serverOk: boolean, key: string): Check | null {
   if (!serverOk || key) return null;
-  return {
-    name: "沙盒服务器鉴权",
-    ok: false,
-    detail: "服务器没开鉴权，本机任何进程都能进容器",
-    fix:
-      `在服务器的 TOML 里写 [server] api_key = "…"，重启，然后设置 → 沙盒服务器 → 「从服务器读」。` +
-      `容器里有仓库、信箱令牌和 CLI 登录。`,
-  };
+  return makeCheck(
+    "sandbox server auth",
+    false,
+    msg`the server asks for no API key, so any process on this machine can enter a container`,
+    msg`Set [server] api_key = "…" in the server's TOML, restart it, then Settings → Sandbox server → Read from server. The containers hold the checkout, the mailbox token and the CLI logins.`,
+  );
 }
 
-function egressDetail(good: string[], stale: string[]): string {
-  if (good.length === 0 && stale.length === 0) return "no opensandbox/egress image pulled";
-  if (good.length === 0) return `only ${stale.join(", ")}, which is too old`;
-  if (stale.length > 0) return `${good.join(", ")} (also has ${stale.join(", ")} — check [egress] image)`;
-  return good.join(", ");
+/** Tag lists are values, joined here because a docker tag is not a translated word. */
+function egressDetail(good: string[], stale: string[]): Said {
+  if (good.length === 0 && stale.length === 0) return msg`no opensandbox/egress image pulled`;
+  if (good.length === 0) return msg`only ${{ stale: stale.join(", ") }}, which is too old`;
+  if (stale.length > 0)
+    return msg`${{ good: good.join(", ") }} (also has ${{ stale: stale.join(", ") }} — check [egress] image)`;
+  return msg`${{ good: good.join(", ") }}`;
 }
 
 function egressCheck(contained: boolean, probe: Probe): Check | null {
@@ -357,22 +391,22 @@ function egressCheck(contained: boolean, probe: Probe): Check | null {
   const egress = probe("docker") ? egressImages() : [];
   const good = egress.filter((tag) => newEnough(tag));
   const stale = egress.filter((tag) => !newEnough(tag));
-  return {
-    name: "egress sidecar",
-    ok: good.length > 0,
-    detail: egressDetail(good, stale),
-    fix: "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
-  };
+  return makeCheck(
+    "egress sidecar",
+    good.length > 0,
+    egressDetail(good, stale),
+    msg`Run docker pull opensandbox/egress:v1.1.6, then point [egress] image at it. v1.1.4 403s every scoped package as soon as a credential is bound.`,
+  );
 }
 
 function agentImageCheck(image: string, docker: boolean): Check | null {
   if (hasRegistry(image) || (docker && localImages(image))) return null;
-  return {
-    name: "agent image",
-    ok: false,
-    detail: `${image} 不在本机`,
-    fix: `docker build -f docker/agent.Dockerfile -t ${image} . —— 没有 registry 前缀的镜像只能本地构建。`,
-  };
+  return makeCheck(
+    "agent image",
+    false,
+    msg`${{ image }} is not on this machine`,
+    msg`Run docker build -f docker/agent.Dockerfile -t ${{ image }} . — an image with no registry prefix can only be built locally.`,
+  );
 }
 
 function skillsMountCheck(input: PreflightInput, contained: boolean): { check: Check; staged: string } {
@@ -380,16 +414,14 @@ function skillsMountCheck(input: PreflightInput, contained: boolean): { check: C
   const skills = existsSync(staged) ? readdirSync(staged).length : 0;
   return {
     staged,
-    check: {
-      name: "skills mount",
-      ok: skills > 0,
-      detail: skills ? `${skills} staged at ${staged}` : "没有勾选的技能",
-      fix: contained
-        ? `${staged} 是这个容器里的路径，而挂载是沙盒服务器的 docker 做的 —— 它按自己看到的路径挂。` +
-          `两边要用同一个绝对路径（-v <宿主路径>:${staged}），并且写进沙盒服务器的 allowed_host_paths。` +
-          `不一致不会报错，只会挂个空目录。`
-        : `沙盒服务器的 allowed_host_paths 要包含 ${staged}，否则每个组开容器都会失败。技能在设置里勾。`,
-    },
+    check: makeCheck(
+      "skills mount",
+      skills > 0,
+      skills ? msg`${{ count: skills }} staged at ${{ path: staged }}` : msg`no skills ticked`,
+      contained
+        ? msg`${{ path: staged }} is a path inside this container, and the mount is made by the sandbox server's docker, which resolves it on its own filesystem. Use one absolute path on both sides (-v <host path>:${{ path: staged }}) and add it to the sandbox server's allowed_host_paths. A mismatch does not fail; it mounts an empty directory.`
+        : msg`Add ${{ path: staged }} to the sandbox server's allowed_host_paths, or every group fails to open a container. Tick the skills in Settings.`,
+    ),
   };
 }
 
@@ -397,24 +429,24 @@ function allowedPathsCheck(input: PreflightInput, staged: string): Check {
   const allowed = allowedHostPaths();
   const wanted = [staged, ...Object.values(input.cacheDirs ?? {})].map((path) => hostPathForDaemon(resolve(path)));
   const missing = allowed ? wanted.filter((path) => !coveredBy(allowed.paths, path)) : [];
-  const detail = !allowed
-    ? "找不到 opensandbox-server 的配置文件，没法核对"
+  const detail: Said = !allowed
+    ? msg`no opensandbox-server config file found, so there is nothing to check against`
     : missing.length
-      ? `${allowed.config} 不含 ${missing.join(", ")}`
-      : `${allowed.config} 覆盖了要挂的 ${wanted.length} 个路径`;
-  const fix =
+      ? msg`${{ config: allowed.config }} does not list ${{ missing: missing.join(", ") }}`
+      : msg`${{ config: allowed.config }} covers all ${{ count: wanted.length }} paths to be mounted`;
+  const fix: Said | undefined =
     allowed && missing.length
-      ? `把这一行写进 ${allowed.config} 的 [sandbox] 段，然后重启 opensandbox-server：\n` +
-        `      allowed_host_paths = [${[...allowed.paths, ...missing].map((path) => `"${path}"`).join(", ")}]`
+      ? msg`Put this line in the [sandbox] section of ${{ config: allowed.config }}, then restart opensandbox-server: allowed_host_paths = [${{ line: [...allowed.paths, ...missing].map((path) => `"${path}"`).join(", ") }}]`
       : undefined;
-  return { name: "allowed_host_paths", ok: !allowed || missing.length === 0, detail, ...(fix ? { fix } : {}) };
+  return makeCheck("allowed_host_paths", !allowed || missing.length === 0, detail, fix);
 }
 
-function credentialFix(runtime: string): string {
+function credentialFix(runtime: string): Said {
   if (runtime === "claude")
-    return "设置页 → Claude → 登录。在工具容器里跑官方的 claude setup-token，本机不用装；页面给的码贴回输入框就存下了。一年有效。";
-  if (runtime === "github") return "设置页里连一次 GitHub。分支是靠它推上去的 —— 没有它，每个切片都会在最后一步被拒。";
-  return "设置页 → codex → 登录，走官方的设备码流程，本机不用装 codex。也可以直接贴一个 API key。";
+    return msg`Settings → Claude → sign in. It runs the official claude setup-token inside the utility container, so nothing is installed here; paste the code that page gives you back into the input and it is stored. Good for a year.`;
+  if (runtime === "github")
+    return msg`Connect GitHub once in Settings. Branches are pushed with it — without one, every slice is refused at its last step.`;
+  return msg`Settings → codex → sign in, which runs the official device-code flow; codex is not installed here. Pasting an API key works too.`;
 }
 
 async function credentialRuntimes(db: DB): Promise<string[]> {
@@ -427,16 +459,14 @@ async function credentialRuntimes(db: DB): Promise<string[]> {
 }
 
 async function credentialCheck(input: PreflightInput, runtime: string): Promise<Check> {
+  const name = `credential:${runtime}`;
   const auth = await loadAuth(input.db, runtime);
-  const live = auth
-    ? await (input.verify ?? accepted)(runtime, auth, input.cfg ?? DEFAULTS)
-    : { ok: false, detail: "没配" };
-  return {
-    name: `credential:${runtime}`,
-    ok: live.ok,
-    detail: auth ? `${auth.mode} · ${live.detail}` : live.detail,
-    fix: credentialFix(runtime),
-  };
+  if (!auth) return makeCheck(name, false, msg`not configured`, credentialFix(runtime));
+  const live = await (input.verify ?? accepted)(runtime, auth, input.cfg ?? DEFAULTS);
+  // `mode` is interpolated where each sentence is written — `api_key` is an
+  // identifier the panel prints, not a word it translates, and merging it into
+  // somebody else's `values` afterwards was a second place to keep in step.
+  return makeCheck(name, live.ok, live.said, credentialFix(runtime));
 }
 
 async function codexRefresherCheck(db: DB): Promise<Check | null> {
@@ -444,14 +474,14 @@ async function codexRefresherCheck(db: DB): Promise<Check | null> {
   if (auth?.mode !== "chatgpt") return null;
   const parsed = parseAuth(auth.secret);
   const stale = !parsed || isStale(parsed);
-  return {
-    name: "codex-refresher",
-    ok: !stale,
-    detail: stale
-      ? "这个 ChatGPT 登录已经旧到该续期了 —— 下一个容器起来时会自动续，续不上就要重新贴 auth.json"
-      : "登录还新，续期在工具容器里跑，本机不需要装 codex",
-    fix: "续期是在工具容器里跑真 codex 做的。如果一直续不上，去设置页重新贴一次 ~/.codex/auth.json，或者换成 API key —— API key 不需要续期。",
-  };
+  return makeCheck(
+    "codex-refresher",
+    !stale,
+    stale
+      ? msg`this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again`
+      : msg`the login is fresh; renewal runs inside the utility container, so codex is not needed here`,
+    msg`Renewal runs the real codex inside the utility container. If it keeps failing, paste ~/.codex/auth.json again in Settings, or switch to an API key — an API key never needs renewing.`,
+  );
 }
 
 export async function preflight(input: PreflightInput): Promise<Check[]> {

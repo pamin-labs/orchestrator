@@ -1,4 +1,6 @@
+import { msg, plural } from "@lingui/core/macro";
 import { errText } from "../platform/process/text.ts";
+import { renderSaid } from "../platform/text/lang.ts";
 import { makeNoteIndex } from "../mech/knowledge/note-index.ts";
 import { existsSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -7,7 +9,7 @@ import { landGroup } from "../api/panel/group.ts";
 import { roleFor, type Ctx } from "../mech/ctx.ts";
 import { joinQueue } from "../mech/flow/mergequeue.ts";
 import { bindSandboxKey } from "../mech/sandbox/auth.ts";
-import { and, asc, count, eq, inArray, isNull, like, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Bus, trimEvents } from "../platform/persistence/event-bus.ts";
 import { projectOfGrp } from "../mech/util/rows.ts";
 import { maxMs, escalation, grp, job, project, runtime_auth as runtimeAuth } from "../platform/persistence/schema.ts";
@@ -27,7 +29,7 @@ import { REAL, sandboxHeld, type Scope } from "../mech/sandbox/sandbox.ts";
 import type { DB } from "../platform/persistence/database.ts";
 import { startMailbox } from "../mech/sandbox/mailbox.ts";
 import { baseRefFor, createCheckout, treeHeads } from "../mech/git/checkout.ts";
-import { preflight, report, type Check } from "../mech/ops/preflight.ts";
+import { makeCheck, preflight, type Check } from "../mech/ops/preflight.ts";
 import { restageSkills } from "../mech/skills.ts";
 import { ensureServer, type ServerState } from "../mech/sandbox/server.ts";
 import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "../mech/ops/notify.ts";
@@ -51,7 +53,7 @@ import { reclaimOrphans, resumeReclaimed, Scheduler } from "../platform/scheduli
 import { abortAll } from "../platform/process/running-turns.ts";
 import { isOnline } from "../mech/sandbox/net.ts";
 import { hold } from "../mech/flow/intercept.ts";
-import { raise } from "../mech/flow/escalate.ts";
+import { escalationKey, raise } from "../mech/flow/escalate.ts";
 import { restoreWorkspace } from "../mech/flow/start.ts";
 import { closeTelemetry, runtimeStatus, type RuntimeStatus } from "../platform/observability/metrics.ts";
 import { ACTIVE_JOB_STATES } from "../contracts/states.ts";
@@ -59,6 +61,7 @@ import { configureTracing } from "../platform/observability/otel.ts";
 import { trimSpans } from "../platform/observability/span-store.ts";
 import { configureStructuredLogging } from "../platform/observability/logging.ts";
 import { VERSION } from "../platform/process/version.ts";
+import { outputLanguage } from "../contracts/config.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -90,7 +93,7 @@ export async function refreshRuntimeReadiness(
     runtime.ready = checks.every((check) => check.ok);
   } catch (error) {
     runtime.ready = false;
-    runtime.checks = [{ name: "preflight", ok: false, detail: errText(error) }];
+    runtime.checks = [makeCheck("preflight", false, msg`the checks could not run: ${{ error: errText(error) }}`)];
   }
 }
 
@@ -280,7 +283,7 @@ export function reportRejection(bus: Bus, e: unknown, said: string): string {
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
-      body: `有个后台任务崩了，服务没跟着退出。这是个 bug，请把这段贴给开发：\n${why.slice(0, 400)}`,
+      say: msg`A background task crashed and the server carried on without it. That is a bug — please send this to whoever maintains it:\n${{ stack: why.slice(0, 400) }}`,
     })
     .catch(() => {});
   return why;
@@ -315,13 +318,17 @@ export async function applyPrOutcome(ctx: Ctx, f: Feedback, url: string, notifie
 async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): Promise<void> {
   const [g] = await ctx.db.select({ name: grp.name }).from(grp).where(eq(grp.id, grpId));
   await hold(ctx.db, grpId, { reason: "merge", settled: true, from: "PR_OPEN", leaveQueue: true });
+  // `key`, not the opening line. Two matchers find this row again — `prReopened`
+  // below and `replacePr` in `api/panel/group.ts` — and both used to compare the
+  // sentence, so translating it was enough to strand a group in `Awaiting your decision` forever.
+  // The text is still rendered here because `delta.ts` splices it into a prompt.
   await raise(ctx.db, {
     grpId,
-    brief: "PR 被关掉了，要不要重开",
+    key: escalationKey.prClosed(prNumber),
+    lang: outputLanguage(ctx.config),
+    brief: msg`PR closed — reopen it or not`,
     chain: "boss",
-    question:
-      `PR #${prNumber} 被关掉了（没有合入）。这一组已经停下并让出了合入队列。\n` +
-      `要继续：在 GitHub 上重开这个 PR，它会自己回到队列。不想要了：在这个需求上点「不做了」。`,
+    question: msg`PR #${{ pr: prNumber }} was closed without merging. This group has stopped and left the merge queue.\nTo carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement.`,
   });
   await ctx.bus.emit({
     grpId,
@@ -329,13 +336,18 @@ async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, 
     kind: "escalation",
     intent: "ask",
     severity: "blocker",
-    body: `PR #${prNumber} was closed without merging`,
+    say: msg`PR #${{ pr: prNumber }} was closed without merging`,
     meta: { pr: prNumber },
   });
   void notifier.push({
     key: `pr-closed:${grpId}:${prNumber}`,
     tier: "immediate",
-    body: `${g?.name ?? grpId}: PR #${prNumber} 被关了 — 重开或不做了`,
+    // A notification leaves this machine for a person, so it is rendered here in
+    // the output language rather than sent as a descriptor: ADR 035 §3 row two.
+    body: renderSaid(
+      outputLanguage(ctx.config),
+      msg`${{ name: g?.name ?? grpId }}: PR #${{ pr: prNumber }} was closed — reopen it or drop the requirement`,
+    ),
     url: `${url}/#g=${grpId}&v=progress`,
   });
 }
@@ -346,11 +358,10 @@ async function prReopened(ctx: Ctx, grpId: number, prNumber: number): Promise<vo
     .update(grp)
     .set({ status: "PR_OPEN", paused_at: null, pause_reason: null })
     .where(and(eq(grp.id, grpId), eq(grp.status, "PAUSED")));
-  // The question this answers is the one `prClosed` asked, matched on its opening
-  // line. `substr(question, 1, length(?)) = ?` was a prefix test; `like` with the
-  // prefix escaped is the same test, and the escape matters — a PR number cannot
-  // contain `%`, but the rest of the prefix is not ours to promise about.
-  const prefix = `PR #${prNumber} 被关掉了`;
+  // The question this answers is the one `prClosed` asked, found by the key it
+  // filed under. It was a prefix test over the question's first line, escaped
+  // for LIKE; the key is per-PR, so this now also cannot close a question about
+  // a different PR in the same group, which the prefix could not distinguish.
   await ctx.db
     .update(escalation)
     .set({ chain_state: "answered", answered_by: "github", answer: "reopened" })
@@ -358,7 +369,7 @@ async function prReopened(ctx: Ctx, grpId: number, prNumber: number): Promise<vo
       and(
         eq(escalation.grp_id, grpId),
         isNull(escalation.answer),
-        like(escalation.question, `${prefix.replaceAll(/[%_\\]/g, "\\$&")}%`),
+        eq(escalation.dedupe_key, escalationKey.prClosed(prNumber)),
       ),
     );
   await joinQueue(ctx.db, grpId);
@@ -366,7 +377,7 @@ async function prReopened(ctx: Ctx, grpId: number, prNumber: number): Promise<vo
     grpId,
     author: "pr-watcher",
     kind: "state_change",
-    body: `PR #${prNumber} was reopened; back in the merge queue`,
+    say: msg`PR #${{ pr: prNumber }} was reopened; back in the merge queue`,
     meta: { pr: prNumber },
   });
   await ctx.sched.tick();
@@ -479,7 +490,7 @@ export async function reportServerState(ctx: Ctx, st: ServerState): Promise<void
     await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: `沙盒服务器起好了（我们起的，pid ${st.pid}）`,
+      say: msg`the sandbox server is up — we started it (pid ${{ pid: st.pid }})`,
     });
     return;
   }
@@ -488,22 +499,26 @@ export async function reportServerState(ctx: Ctx, st: ServerState): Promise<void
     return;
   }
   if (st.kind === "down") {
-    consola.warn(`opensandbox-server: ${st.why}`);
+    consola.warn(`opensandbox-server: ${renderSaid("en", st.why)}`);
     return;
   }
   // `ours` is a server this orchestrator started and is still driving. The chain
   // this replaced had no branch for it and fell out silently, which was right by
   // accident: a reconnect to our own process is not news.
   if (st.kind === "ours") return;
-  consola.warn(`opensandbox-server running (pid ${st.pid}) but not drivable: ${st.why}`);
+  consola.warn(`opensandbox-server running (pid ${st.pid}) but not drivable: ${renderSaid("en", st.why)}`);
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "escalation",
     intent: "inform",
     severity: "blocker",
-    body:
-      `沙盒服务器在跑（pid ${st.pid}），但我们驱动不了：${st.why}\n` +
-      `没敢自动重启它 —— 这个进程可能是你自己起的，配的是别的东西。设置 → 沙盒服务器 那里有按钮。`,
+    // `st.why` verbatim, not wrapped: a descriptor cannot nest in another, and
+    // rendering it to a string to interpolate is one sentence in two languages.
+    // Nothing is lost — `say()` in `sandbox/server.ts` already names the way out
+    // for each `Probe`, and "we left it alone" is what "that we did not start"
+    // there already means. The pid is data, so it rides in `meta`.
+    say: st.why,
+    meta: { pid: st.pid },
   });
 }
 
@@ -515,7 +530,7 @@ export async function indexThrew(ctx: Ctx, error: unknown, now = Date.now()): Pr
   // news however many times it happens, and a different one is worth saying.
   if (reason === mem.lastError) return;
   mem.lastError = reason;
-  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${reason}` });
+  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", say: msg`the index pass threw: ${{ reason }}` });
 }
 
 export async function indexPaused(db: DB, projectId: number): Promise<boolean> {
@@ -587,7 +602,7 @@ async function warnIndexOnce(ctx: Ctx, projectId: number, error: unknown): Promi
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body: `索引刷不了：这个项目的容器起不来（${errText(error)}）。`,
+    say: msg`the index cannot be refreshed: this project's container will not start (${{ why: errText(error) }})`,
   });
 }
 
@@ -641,7 +656,7 @@ export async function recordIndexResult(
   await ctx.bus.emit({
     author: roleFor(ctx, "compress_context"),
     kind: "state_change",
-    body: `PageIndex: summarised ${result.calls - result.failed} node(s), ${result.files} files indexed`,
+    say: msg`PageIndex: summarised ${plural({ n: result.calls - result.failed }, { one: "# node", other: "# nodes" })}, ${plural({ files: result.files }, { one: "# file", other: "# files" })} indexed`,
   });
 }
 
@@ -677,7 +692,7 @@ async function warnModelDown(ctx: Ctx, projectId: number, failed: number): Promi
     kind: "escalation",
     intent: "inform",
     severity: "blocker",
-    body: `PageIndex 建不起来：${failed} 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。`,
+    say: msg`PageIndex cannot be built: all ${{ n: failed }} calls came back with nothing. Check in settings whether the account the index runs on still works.`,
   });
 }
 
@@ -735,7 +750,11 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   // send it anywhere else.
   await bindSandboxKey(db, cfg.sandbox.server);
 
-  const bus = new Bus(db);
+  // The thunk, not `outputLanguage(cfg)`: `applyOverrides` above and the settings pane
+  // below both rewrite this object while the fleet runs, and the bus outlives
+  // both. It renders the `body` column, which ADR 035 §3 keeps in output.language
+  // for the readers that are not a browser.
+  const bus = new Bus(db, () => outputLanguage(cfg));
   const roles = loadRoles();
   // Before anything can dispatch. A capability no role declares reaches a job
   // payload as an undefined role and becomes a turn that never runs; a capability
@@ -762,7 +781,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
     repoHeld: (projectId) => repoHeld(db, projectId),
   });
 
-  const gh = makeGithub(db, undefined, cfg.language, cfg.timeouts.githubApiMs);
+  const gh = makeGithub(db, undefined, outputLanguage(cfg), cfg.timeouts.githubApiMs);
   const ctx: Ctx = {
     db,
     bus,
@@ -839,8 +858,9 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
         await hold(ctx.db, grpId, { reason: "merge", settled: true, leaveQueue: true });
         await raise(db, {
           grpId,
-          question: `分支做完了但 PR 开不出来：${r.error}\n\n修好之后回答这条，这一组会自己重试。`,
-          brief: "PR 开不出来",
+          lang: outputLanguage(ctx.config),
+          question: msg`The branch is finished but the PR will not open: ${{ why: r.error }}\n\nAnswer this once it is fixed and the group retries by itself.`,
+          brief: msg`the PR will not open`,
           chain: "boss",
         });
         await ctx.bus.emit({
@@ -849,12 +869,15 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
           kind: "escalation",
           intent: "ask",
           severity: "blocker",
-          body: `could not open a PR: ${r.error}`,
+          say: msg`could not open a PR: ${{ why: r.error }}`,
         });
         void notifier.push({
           key: `pr-open:${grpId}`,
           tier: "immediate",
-          body: `${group?.name ?? grpId}: PR 开不出来 — ${r.error}`.slice(0, 200),
+          body: renderSaid(
+            outputLanguage(ctx.config),
+            msg`${{ name: group?.name ?? grpId }}: the PR will not open — ${{ why: r.error }}`,
+          ).slice(0, 200),
           url,
         });
       }
@@ -875,6 +898,10 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   // configured endpoint only the SQLite processor is registered.
   configureTracing(db);
   const runtime = runtimeStatus(false);
+  // What the readiness timer found, where the panel can reach it. A getter, so
+  // the snapshot reads the current array rather than the one that existed at
+  // wiring time — and a read, so it never triggers the checks themselves.
+  ctx.checks = () => runtime.checks;
   const app = makeApp(ctx, runtime);
   const webDir = join(ROOT, "web");
   const background = new Set<Promise<unknown>>();
@@ -908,6 +935,11 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
     },
   });
 
+  // What it actually bound, not what it was asked for. `port: 0` means "any free
+  // one" to `Bun.serve` and is refused by `ConfigSchema`, so leaving the zero in
+  // the config made every endpoint that parses it answer 500 — the settings
+  // dialog among them, which is the one `scripts/browse.ts` most needs to open.
+  if (server.port) cfg.port = server.port;
   const url = `http://${cfg.host === "::1" ? "[::1]" : cfg.host}:${server.port}`;
   // Environment handed to every spawned turn: the URL plus the agent's own
   // token. Identity is never a request-body field.
@@ -917,6 +949,11 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
     deliver: busDeliver(bus, cfg.notifyWebhook, cfg.timeouts.webhookMs),
     batchMs: cfg.intervals.notifyBatchMs,
     backoffMs: cfg.intervals.notifyBackoffMs,
+    // The one string the boss reads outside the panel, so it is the one that
+    // cannot follow the panel's locale: `busDeliver` also POSTs it to a webhook,
+    // where no browser is involved. ADR 035's test is whether anything but a
+    // browser reads the string, and here something does.
+    lang: outputLanguage(cfg),
   });
   ctx.onFinding = (rule, severity, body, grpId) => {
     // The finding is already an event in the timeline. A notification on top of it
@@ -954,7 +991,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
     await bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: `reclaimed ${orphans.length} turn(s) left running by the previous server, resumed ${resumed}`,
+      say: msg`reclaimed ${plural({ n: orphans.length }, { one: "# turn", other: "# turns" })} left running by the previous server, resumed ${{ resumed }}`,
       meta: { orphans: orphans.length, resumed },
     });
   }
@@ -991,12 +1028,20 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
       .catch((e: unknown) => consola.error(`ensureServer: ${errText(e)}`)),
   );
 
-  // Say what is missing here, once, rather than letting every group discover it
+  // Find what is missing here, once, rather than letting every group discover it
   // one failed turn at a time. Not fatal: the panel can be opened and the
   // settings page is where three of these are fixed.
+  //
+  // Nothing is printed. A console line is written to a terminal the boss does not
+  // watch, and re-written every tick for as long as the fault lasts; the same
+  // finding now leaves through `ctx.checks` into the panel snapshot, which
+  // notifies once per fault and can be dismissed.
   let readinessWork: Promise<void> | null = null;
-  const refreshReadiness = () => {
-    if (readinessWork) return;
+  // Returns the work rather than starting it and walking away: `ctx.recheck`
+  // needs to await the run that is already in flight, and a second one started
+  // beside it would be the same host round trips twice.
+  const refreshReadiness = (): Promise<void> => {
+    if (readinessWork) return readinessWork;
     readinessWork = track(
       refreshRuntimeReadiness(runtime, () =>
         sandboxServer.then(() =>
@@ -1005,22 +1050,32 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
               // A real round trip, not a handle that exists: `open()` migrated it
               // at boot, and what this reports is whether it still answers.
               await db.execute(sql`select 1`);
-              return [{ name: "database", ok: true, detail: "migrated and queryable" }, ...checks];
+              return [makeCheck("database", true, msg`migrated and queryable`), ...checks];
             },
           ),
         ),
-      ).then(() => {
-        const bad = report([...runtime.checks]);
-        if (bad) consola.warn(`preflight:\n${bad}`);
-      }),
+      ),
     ).finally(() => {
       readinessWork = null;
     });
+    return readinessWork;
   };
-  refreshReadiness();
+  // The settings page's `/preflight` goes through here rather than running its
+  // own: one owner for the answer, so the pane and the shell's banner cannot
+  // disagree about whether the host is well.
+  ctx.recheck = async () => {
+    await refreshReadiness();
+    return runtime.checks;
+  };
+  void refreshReadiness();
   // The second of the two timers reading `watchdogIntervalMs`; see `reArming`
   // for why neither may resolve it once at boot.
-  const stopReadiness = reArming(() => readinessPeriodMs(cfg.watchdogIntervalMs), refreshReadiness);
+  // `void`, because `refreshReadiness` returns its work now for `ctx.recheck`
+  // to await, and the timer is the caller that does not.
+  const stopReadiness = reArming(
+    () => readinessPeriodMs(cfg.watchdogIntervalMs),
+    () => void refreshReadiness(),
+  );
 
   await sched.tick();
   let stopped = false;
@@ -1093,10 +1148,10 @@ function reportConfig(cfg: Config): void {
     else consola.warn(line);
   }
   if (all.some((f) => f.level === "fatal")) {
-    consola.box("配置有问题，起不来。改完 config/default.yaml 再跑一次。");
+    consola.box("The config is wrong, so this will not start. Fix config/default.yaml and run it again.");
     process.exit(1);
   }
-  consola.success(`配置 config/default.yaml · ${changed(cfg)} 项改过默认值`);
+  consola.success(`config/default.yaml · ${changed(cfg)} settings differ from the defaults`);
 }
 
 if (import.meta.main) {
@@ -1118,7 +1173,8 @@ if (import.meta.main) {
     const newest = readdirSync(join(ROOT, "web/src"), { recursive: true, withFileTypes: true })
       .filter((e) => e.isFile())
       .reduce((m, e) => Math.max(m, statSync(join(e.parentPath, e.name)).mtimeMs), 0);
-    if (newest > dist) consola.warn("web/dist 比 web/src 旧 —— 跑一次 `bun run build:web`，不然页面是旧的");
+    if (newest > dist)
+      consola.warn("web/dist is older than web/src — run `bun run build:web`, or the page served is the old one");
   }
 
   // A detached rejection must not end the fleet: bun exits the process on one,

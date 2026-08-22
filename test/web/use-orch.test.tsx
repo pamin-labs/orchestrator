@@ -58,8 +58,8 @@ mockHttp(
  * The two reads the whole panel is built on, and the scope that is *in* one of them.
  *
  * `cost` used to be read against a `lastProject` ref because every stream frame
- * called `refresh()` with no argument, which swapped 成本 from this project to every
- * project while the heading still said 这个项目累计. The project is part of the query
+ * called `refresh()` with no argument, which swapped `Cost` from this project to every
+ * project while the heading still said it was this project's total. The project is part of the query
  * key now, so a reply for one cannot be filed under another — but only a test that
  * switches scope can say the key is really doing that rather than a ref having come
  * back under another name.

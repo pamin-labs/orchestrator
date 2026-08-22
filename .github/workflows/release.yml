@@ -120,7 +120,7 @@ jobs:
           SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
         run: |
           set -euo pipefail
-          bun build --minify --target=bun --define "__ORCH_VERSION__=\"$RELEASE_VERSION\"" src/orch/cli.ts --outfile dist/orch-cli.ts
+          bun run build:server src/orch/cli.ts dist/orch-cli.ts
           for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
             root="orch-server-$RELEASE_VERSION-$target"; exe=orch-server; bun_target="bun-$target"
             case "$target" in
@@ -128,7 +128,7 @@ jobs:
               windows-x64) exe=orch-server.exe; bun_target=bun-windows-x64-baseline ;;
             esac
             mkdir -p "dist/$root/web" "dist/$root/src/orch"
-            bun build --compile --minify --target="$bun_target" --define "__ORCH_VERSION__=\"$RELEASE_VERSION\"" src/composition/server.ts --outfile "dist/$root/$exe"
+            bun run build:server src/composition/server.ts "dist/$root/$exe" "$bun_target"
             cp -R roles config drizzle "dist/$root/"
             cp -R web/dist "dist/$root/web/dist"
             cp web/index.html web/icon.png web/favicon-32.png web/apple-touch-icon.png "dist/$root/web/"

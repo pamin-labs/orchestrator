@@ -26,6 +26,7 @@ import {
   trendLabel,
 } from "../../web/src/features/telemetry/model.ts";
 import { duration } from "../../web/src/shared/format.ts";
+import { i18n } from "../../web/src/i18n.ts";
 
 /**
  * The shaping, without a browser.
@@ -126,19 +127,25 @@ describe("a scope has something to draw when it has either stages or traces", ()
 
 test("the trend axis reads as hours inside two days and as dates beyond", () => {
   const day = 24 * 60 * 60 * 1_000;
-  const hour = 60 * 60 * 1_000;
-  expect(trendLabel(new Date(2026, 7, 17, 9, 0).getTime(), day, hour)).toBe("09:00");
-  expect(trendLabel(new Date(2026, 7, 17, 9, 0).getTime(), 7 * day, 6 * hour)).toBe("8/17");
+  expect(trendLabel(new Date(2026, 7, 17, 9, 0).getTime(), day)).toBe("09:00");
+  // Under `en`, which `setup.ts` does not activate — so this is the *format*,
+  // taken from `Intl` rather than built as `${month + 1}/${date}`. That build
+  // printed `8/17` to a German reader too, who reads it as 8 August.
+  expect(trendLabel(new Date(2026, 7, 17, 9, 0).getTime(), 7 * day)).toBe(
+    new Intl.DateTimeFormat(i18n.locale, { month: "numeric", day: "numeric" }).format(new Date(2026, 7, 17)),
+  );
 });
 
-test("a bucket finer than an hour puts its minutes on the axis", () => {
+test("the axis prints the minutes it was given, at every bucket size", () => {
   const day = 24 * 60 * 60 * 1_000;
-  const at = new Date(2026, 7, 17, 2, 45).getTime();
   // The bug this pins: the minutes were the literal `:00`, so four consecutive
   // quarter-hour points all read `02:00` and the axis claimed one instant four
-  // times. The window is unchanged between these two — only the bucket moves.
-  expect(trendLabel(at, day, 15 * 60_000)).toBe("02:45");
-  expect(trendLabel(at, day, 60 * 60_000)).toBe("02:00");
+  // times. It came back once as a `formatToParts` walk that blanked them for
+  // hourly buckets — a no-op on a whole-hour offset, and a lie on `+05:30`,
+  // where the 14:30 bucket read 14:00. `trendLabel` no longer takes the bucket.
+  expect(trendLabel(new Date(2026, 7, 17, 2, 45).getTime(), day)).toBe("02:45");
+  expect(trendLabel(new Date(2026, 7, 17, 2, 0).getTime(), day)).toBe("02:00");
+  expect(trendLabel(new Date(2026, 7, 17, 14, 30).getTime(), day)).toBe("14:30");
 });
 
 test("a duration is printed in the coarsest unit that keeps its meaning", () => {
@@ -329,7 +336,7 @@ test("a known span name reads as what it is", () => {
   expect(humanName("sandbox.create")).toBe("开一个新环境");
   expect(humanName("turn.provider")).toBe("模型在想");
   expect(humanName("watchdog.repo_map")).toBe("更新代码索引");
-  expect(humanName("GET /api/v1/auth/github")).toBe("连 GitHub");
+  expect(humanName("GET /api/v1/auth/github")).toBe("连接 GitHub");
 });
 
 test("an unmapped name falls through to itself, never to nothing", () => {
@@ -353,7 +360,7 @@ test("a span's kind comes from its own prefix, so a new name needs no code chang
 
 test("a prefix nobody has named becomes its own group, not a dumping ground", () => {
   // `pr.poll` and `lease.run` are named; something invented tomorrow is not, and
-  // it still has to be findable as itself rather than swept into 其他.
+  // it still has to be findable as itself rather than swept into `Other`.
   expect(spanKind("pr.poll").label).toBe("合并请求");
   expect(spanKind("brandnew.thing")).toEqual({ key: "brandnew", label: "brandnew" });
   // Only a name with no prefix at all falls back.

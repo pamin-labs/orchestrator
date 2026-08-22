@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import type { Said } from "../../src/contracts/said.ts";
+import { renderSaid } from "../../src/platform/text/lang.ts";
+import { said } from "../support/said.ts";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -86,7 +89,7 @@ test("drift is reported with the line to paste, not a description of it", async 
       skillsDir: "/Users/me/.orch-cache/skills",
       cacheDirs: { "/root/.bun/install/cache": "/Users/me/.orch-cache/bun" },
       probe: () => false,
-      verify: async () => ({ ok: true, detail: "" }),
+      verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
     });
     const c = checks.find((x) => x.name === "allowed_host_paths")!;
     expect(c.ok).toBe(false);
@@ -101,7 +104,7 @@ test("drift is reported with the line to paste, not a description of it", async 
       sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
       skillsDir: "/var/tmp/orch-cache/skills",
       probe: () => false,
-      verify: async () => ({ ok: true, detail: "" }),
+      verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
     });
     expect(ok.find((x) => x.name === "allowed_host_paths")!.ok).toBe(true);
   } finally {
@@ -149,6 +152,9 @@ function stuckServer(kill: (signal: "SIGTERM" | "SIGKILL") => void) {
   };
 }
 
+/** `restartServer` names its failure rather than writing it; these assert the English. */
+const en = (said: Said | null): string => (said ? renderSaid("en", said) : "");
+
 test("a failed SIGKILL cannot be reported as a successful restart", async () => {
   const server = stuckServer((signal) => {
     if (signal === "SIGKILL") throw new Error("operation not permitted");
@@ -156,8 +162,8 @@ test("a failed SIGKILL cannot be reported as a successful restart", async () => 
 
   const error = await restartServer(LIVE_SERVER.argv, undefined, server.ops);
 
-  expect(error).toContain("could not force-stop pid 42");
-  expect(error).toContain("operation not permitted");
+  expect(en(error)).toContain("could not force-stop pid 42");
+  expect(en(error)).toContain("operation not permitted");
   expect(server.starts()).toBe(0);
 });
 
@@ -166,7 +172,7 @@ test("a process still alive after SIGKILL blocks a second server", async () => {
 
   const error = await restartServer(LIVE_SERVER.argv, undefined, server.ops);
 
-  expect(error).toBe("pid 42 is still running after SIGKILL");
+  expect(en(error)).toBe("pid 42 is still running after SIGKILL");
   expect(server.starts()).toBe(0);
 });
 
@@ -204,7 +210,7 @@ test("a server that is already there is handed back untouched, whatever state it
   for (const seen of [
     { kind: "ours", pid: "1" },
     { kind: "theirs", pid: "2" },
-    { kind: "stuck", pid: "3", why: "密钥对不上" },
+    { kind: "stuck", pid: "3", why: said("the API key does not match") },
   ] as const) {
     expect(startPlan(seen, HERE, true)).toEqual(seen);
   }
@@ -213,7 +219,10 @@ test("a server that is already there is handed back untouched, whatever state it
 test("without uvx there is nothing to start, and the reason already says so", () => {
   // opensandbox-server is a Python package. Reporting "could not start" over
   // this would hide the one command that fixes it.
-  const down = { kind: "down", why: "没有 uvx —— opensandbox-server 是个 Python 包，装 uv 才起得来" } as const;
+  const down = {
+    kind: "down",
+    why: said("no uvx — opensandbox-server is a Python package, so install uv before one can start"),
+  } as const;
   expect(startPlan(down, HERE, false)).toEqual(down);
 });
 
@@ -221,14 +230,14 @@ test("a remote address is never started locally, however silent it is", () => {
   // Pointed at a Tailscale peer or a cloud box, "nothing answers" means that
   // host is down. Spawning one here would bind a port nobody is asking about
   // and report success.
-  const plan = startPlan({ kind: "down", why: "没在跑" }, "sandbox.tailnet.ts.net:8080", true);
+  const plan = startPlan({ kind: "down", why: said("not running") }, "sandbox.tailnet.ts.net:8080", true);
   expect(plan.kind).toBe("down");
-  expect(plan.kind === "down" && plan.why).toContain("不是本机地址");
+  expect(plan.kind === "down" && renderSaid("en", plan.why)).toContain("not an address on this machine");
 });
 
 test("every shape of a local address is startable, including the IPv6 loopback", () => {
   for (const addr of ["localhost:8080", "127.0.0.1:8080", "127.5.5.5:9", "[::1]:8080", "https://LOCALHOST:8443"]) {
-    expect(startPlan({ kind: "down", why: "没在跑" }, addr, true).kind).toBe("start");
+    expect(startPlan({ kind: "down", why: said("not running") }, addr, true).kind).toBe("start");
   }
 });
 
@@ -247,7 +256,7 @@ async function waiting(dataDir: string, log?: string) {
   return ctx;
 }
 
-const never = async () => ({ kind: "none", why: "Unable to connect" }) as const;
+const never = async () => ({ kind: "none", why: said("Unable to connect") }) as const;
 
 test("a server that dies on its config is reported with what it printed, not with our probe", async () => {
   const dir = tempDir("orch-srv-");
@@ -262,8 +271,8 @@ test("a server that dies on its config is reported with what it printed, not wit
   });
 
   expect(up.ok).toBe(false);
-  expect(up.why).toContain("exit 1");
-  expect(up.why).toContain("ValidationError");
+  expect(renderSaid("en", up.why)).toContain("exit 1");
+  expect(renderSaid("en", up.why)).toContain("ValidationError");
   // And it stops the moment the process is gone rather than sitting out the
   // whole 45 seconds on a process that is already dead.
   expect(slept).toEqual([]);
@@ -277,8 +286,8 @@ test("a process that died silently says that, rather than leaving a blank where 
     sleep: async () => {},
   });
 
-  expect(up.why).toContain("exit 2");
-  expect(up.why).toContain("什么都没打印");
+  expect(renderSaid("en", up.why)).toContain("exit 2");
+  expect(renderSaid("en", up.why)).toContain("printing nothing");
 });
 
 test("a server that never answers gives up at the deadline and says how long it waited", async () => {
@@ -287,7 +296,7 @@ test("a server that never answers gives up at the deadline and says how long it 
   //
   // The deadline is real time — `waitUp` closes over `Date.now()`, and only its
   // `sleep` is injected — so this test costs whatever deadline it is given. 600ms
-  // is the cheapest one that still rounds to the "等了 1 秒" below, and it was
+  // is the cheapest one that still rounds to the "after 1s" below, and it was
   // 1200ms: the same two assertions for twice the wall clock.
   const ctx = await waiting(tempDir("orch-srv-"), "Address already in use\n");
   let probes = 0;
@@ -295,14 +304,14 @@ test("a server that never answers gives up at the deadline and says how long it 
   const up = await waitUp(ctx, { exited: new Promise<number>(() => {}) }, HERE, "k", 600, {
     probe: async () => {
       probes++;
-      return { kind: "none", why: "Unable to connect" };
+      return { kind: "none", why: said("Unable to connect") };
     },
     sleep: async () => {},
   });
 
   expect(up.ok).toBe(false);
-  expect(up.why).toContain("等了 1 秒");
-  expect(up.why).toContain("Address already in use");
+  expect(renderSaid("en", up.why)).toContain("after 1s");
+  expect(renderSaid("en", up.why)).toContain("Address already in use");
   expect(probes).toBeGreaterThan(0);
 });
 
@@ -317,7 +326,7 @@ test("a server holding somebody else's key is reported as that, not as unreachab
   });
 
   expect(up.ok).toBe(false);
-  expect(up.why).toContain("exit 0");
+  expect(renderSaid("en", up.why)).toContain("exit 0");
 });
 
 test("a server that comes up on a later probe is up, and the wait ends there", async () => {
@@ -325,11 +334,11 @@ test("a server that comes up on a later probe is up, and the wait ends there", a
   let n = 0;
 
   const up = await waitUp(ctx, { exited: new Promise<number>(() => {}) }, HERE, "k", 10_000, {
-    probe: async () => (++n < 3 ? { kind: "none" as const, why: "no" } : { kind: "ok" as const }),
+    probe: async () => (++n < 3 ? { kind: "none" as const, why: said("no") } : { kind: "ok" as const }),
     sleep: async () => {},
   });
 
-  expect(up).toEqual({ ok: true, why: "" });
+  expect(up.ok).toBe(true);
   expect(n).toBe(3);
 });
 

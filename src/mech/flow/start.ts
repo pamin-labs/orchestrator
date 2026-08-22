@@ -1,8 +1,9 @@
+import { msg } from "@lingui/core/macro";
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { agent, channel, escalation, grp as grpTable, project, resource } from "../../platform/persistence/schema.ts";
-import { say } from "../../platform/text/lang.ts";
+
 import { createCheckout, remoteFor } from "../git/checkout.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
@@ -14,7 +15,9 @@ import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { projectConfig } from "../util/rows.ts";
 import { errText } from "../../platform/process/text.ts";
 import { raise } from "./escalate.ts";
+import { BOOTSTRAP_FAILED, BOOTSTRAP_OK, BOOTSTRAP_START } from "../../contracts/events.ts";
 import { JsonObject, valueOr } from "../../contracts/json.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /** `project.config_json.install`, or null. */
 async function installFor(db: DB, projectId: number): Promise<string | null> {
@@ -34,7 +37,7 @@ async function installFor(db: DB, projectId: number): Promise<string | null> {
 /**
  * Wind a group up without merging it: it should not be done.
  *
- * The boss's 不做了 and the CoS triaging a complaint as `reject` are one path, or
+ * The boss's `Don't proceed` and the CoS triaging a complaint as `reject` are one path, or
  * the two disagree about what "dropped" means. Rejecting used to only cancel the
  * queue, so the group kept its ACTIVE status and went on holding its paths against
  * every other group forever.
@@ -61,7 +64,7 @@ export async function dropGroup(ctx: Ctx, grpId: number, why: string): Promise<v
     await tx.update(agent).set({ state: "retired", session_id: null, token: null }).where(eq(agent.grp_id, grpId));
     await tx.update(channel).set({ status: "archived" }).where(eq(channel.grp_id, grpId));
     // Anything it had asked the boss dies with it, or the question outlives the
-    // requirement and sits in 待办 forever.
+    // requirement and sits in `To do` forever.
     await tx
       .update(escalation)
       .set({ chain_state: "revoked", answered_at: Date.now() })
@@ -70,7 +73,11 @@ export async function dropGroup(ctx: Ctx, grpId: number, why: string): Promise<v
       grpId,
       author: "boss",
       kind: "state_change",
-      body: say(ctx.config.language, "group.dropped", { why: why ? `：${why}` : "" }),
+      // Two keys, not one key and a separator built here: the separator is part
+      // of the sentence and belongs in the row that owns the sentence. Built
+      // here it was a fullwidth `：`, which went into the English row too —
+      // `dropped by the boss：ran out of budget`.
+      say: why ? msg`dropped by the boss: ${{ why }}` : msg`dropped by the boss`,
     });
   });
 }
@@ -112,7 +119,14 @@ export async function runInstall(ctx: Ctx, grpId: number, cmd: string): Promise<
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: end.code === 0 ? `装好了：${cmd}` : `装失败了（exit ${end.code}）：${cmd}\n${tail}`,
+    // `meta.step` and not the body: the bootstrap pane has to find the start and
+    // the end of one run, and the body is now rendered in whichever of ten
+    // languages that browser reads. A protocol key is the same on both sides.
+    meta: { step: end.code === 0 ? BOOTSTRAP_OK : BOOTSTRAP_FAILED },
+    say:
+      end.code === 0
+        ? msg`installed: ${{ cmd }}`
+        : msg`install failed (exit ${{ code: end.code }}): ${{ cmd }}\n${{ tail }}`,
   });
   return { ok: end.code === 0, tail };
 }
@@ -150,7 +164,8 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: `沙盒是新的，把 ${grp.branch} 和依赖装回去`,
+    meta: { step: BOOTSTRAP_START },
+    say: msg`the sandbox is new — putting ${{ branch: grp.branch }} and the dependencies back`,
   });
   // The branch comes back off the remote, not out of a bundle the host kept:
   // `pushBranch` put it there at the last slice boundary, and `createCheckout`
@@ -178,7 +193,9 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     priority: 9,
     payload: {
       role: roleFor(ctx, "bootstrap_env"),
-      ...(known ? { rejection: `沙盒重建后，记下来的安装命令跑不通：${known}` } : {}),
+      ...(known
+        ? { rejection: `The sandbox was rebuilt and the install command on record does not work any more: ${known}` }
+        : {}),
     },
   });
 }
@@ -305,17 +322,18 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
       kind: "escalation",
       intent: "ask",
       severity: "advisory",
-      body:
-        `no gates detected in this repository. Every slice will fail review until this project ` +
-        `has at least one: add a resource template and list its name in the project's gates.`,
+      say: msg`no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates.`,
     });
     return;
   }
+  const found = gates.map((g) => g.name).join(", ");
   await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: `闸门看出来了：${gates.map((g) => g.name).join("、")}${next.install ? ` · 装依赖 ${next.install}` : ""}`,
+    say: next.install
+      ? msg`gates found: ${{ gates: found }} · install with ${{ install: next.install }}`
+      : msg`gates found: ${{ gates: found }}`,
     meta: { gates: next.gates, detected: gates },
   });
 }
@@ -339,7 +357,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
           grpId,
           author: "orchestrator",
           kind: "state_change",
-          body: say(ctx.config.language, "group.worktree", { branch }),
+          say: msg`checkout on ${{ branch }}`,
         });
 
         // The first moment the repository exists anywhere readable. It runs
@@ -360,7 +378,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
               priority: 9,
               payload: {
                 role: roleFor(ctx, "bootstrap_env"),
-                rejection: `记下来的安装命令跑不通了：${known}\n${dep.tail}`,
+                rejection: `The install command on record does not work any more: ${known}\n${dep.tail}`,
               },
             });
         } else {
@@ -378,7 +396,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
   }
 
   await ctx.db.update(grpTable).set({ status: "RUNNING", approved_at: null }).where(eq(grpTable.id, grpId));
-  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config.language, "group.approved") });
+  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", say: msg`DRAFT approved` });
   // Approving a plan that then sits still is the most confusing failure there is:
   // it looks like the system ignored you.
   await startNextSlice(ctx, grpId);
@@ -412,11 +430,16 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
     // and this runs on the watchdog tick, so leaving the intent set retried it
     // every thirty seconds forever, returning an error to nobody.
     await ctx.db.update(grpTable).set({ approved_at: null }).where(eq(grpTable.id, g.id));
+    // No `key`: nothing matches this subject, so there is nothing for a matcher
+    // to lose. `raise` still stores the descriptor beside the rendered text, so
+    // the panel reads it in the browser's language and the prompt that splices
+    // `question` reads it in the boss's.
     await raise(ctx.db, {
       grpId: g.id,
-      brief: "批准没能落地",
+      lang: outputLanguage(ctx.config),
+      brief: msg`the approval did not take`,
       chain: "boss",
-      question: `批准没能落地：${err}。这次批准已撤回，修好之后再批一次。`,
+      question: msg`The approval did not take: ${{ err }}. It has been withdrawn — approve again once that is fixed.`,
     });
     await ctx.bus.emit({
       grpId: g.id,
@@ -424,7 +447,7 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
       kind: "escalation",
       intent: "ask",
       severity: "blocker",
-      body: `批准没能落地：${err}`,
+      say: msg`the approval did not take: ${{ err }}`,
     });
   }
   return started;

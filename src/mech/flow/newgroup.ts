@@ -1,6 +1,7 @@
 import type { Ctx } from "../../mech/ctx.ts";
 import { channel, grp as grpTable } from "../../platform/persistence/schema.ts";
 import { addNote } from "../util/rows.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /**
  * Starting a requirement: the writes that have to happen together.
@@ -78,7 +79,7 @@ export async function newGroup(ctx: Ctx, g: NewGroup): Promise<{ id: number; cha
       projectId: g.projectId,
       grpId: grp.id,
       kind: "fact",
-      lang: ctx.config.language,
+      lang: outputLanguage(ctx.config),
       body: g.note ?? g.idea,
     });
     // Inside, not after. It sat after because the bus held the pool and not this

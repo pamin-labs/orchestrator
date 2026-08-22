@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { useLingui } from "@lingui/react/macro";
 import { R, type RingInput, ringView, staleMark } from "./model";
 import type { Usage } from "../../shared/api";
 import { cn } from "../../ui/cn";
@@ -8,7 +9,7 @@ import { Tip } from "../../ui/tooltip";
  * How much of each subscription is left, in the header.
  *
  * A deliberate exception to the rule the header keeps: it carries what the boss
- * acts on, and spend went to 成本 because it is merely true. This is not that. Work
+ * acts on, and spend went to `Cost` because it is merely true. This is not that. Work
  * runs overnight against two accounts, and "the weekly window is at 90%" is the one
  * usage fact that changes what you start next.
  */
@@ -45,6 +46,7 @@ export function windowRing(u: Usage, w: "five" | "week"): { v?: number; at?: num
 }
 
 function UsageRow({ usage }: { usage: Usage }) {
+  const { t } = useLingui();
   const shared = {
     read: usage.at,
     stale: staleMark(usage),
@@ -54,7 +56,7 @@ function UsageRow({ usage }: { usage: Usage }) {
     <Fragment>
       <span className="truncate text-right text-ink-3">{usage.runtime}</span>
       <Ring label="5h" {...windowRing(usage, "five")} {...shared} />
-      <Ring label="周" {...windowRing(usage, "week")} {...shared} />
+      <Ring label={t`Week`} {...windowRing(usage, "week")} {...shared} />
     </Fragment>
   );
 }

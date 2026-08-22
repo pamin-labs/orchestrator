@@ -6,11 +6,12 @@ import { note } from "../../src/platform/persistence/schema.ts";
 import { sameComplaint, sediment, SIMILARITY_FLOOR } from "../../src/mech/knowledge/lessons.ts";
 import { bossFact } from "../../src/api/panel/attach.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
-import { AgentTurnPayloadSchema, Scheduler, type Job } from "../../src/platform/scheduling/scheduler.ts";
+import { AgentTurnPayloadSchema, type Job } from "../../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 /**
  * docs/project/plan.md §7③. Without this the boss's dissatisfaction produces N isolated facts:
@@ -25,7 +26,7 @@ async function harness() {
   const ctx: Ctx = {
     db,
     bus: new Bus(db),
-    sched: new Scheduler(db, async (j) => void ran.push(j)),
+    sched: newScheduler(db, async (j) => void ran.push(j)),
     sandbox: fakeSandbox(),
     waiters: new Map(),
     config: { ...loadConfig(), feedbackSedimentThreshold: 3 },

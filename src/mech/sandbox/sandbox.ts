@@ -1,3 +1,5 @@
+import { msg } from "@lingui/core/macro";
+import type { Said } from "../../contracts/said.ts";
 import type { Bus } from "../../platform/persistence/event-bus.ts";
 import { desc, eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
@@ -301,18 +303,14 @@ async function waitForServerExit(ops: RestartOps): Promise<boolean> {
  * differently-configured server beside the wedged one. Everything it was running
  * dies with it, turns in flight included.
  */
-export async function restartServer(
-  argv: string[],
-  log?: string,
-  ops: RestartOps = restartOps,
-): Promise<string | null> {
-  if (!argv.length) return "nothing recorded about how this server was started";
+export async function restartServer(argv: string[], log?: string, ops: RestartOps = restartOps): Promise<Said | null> {
+  if (!argv.length) return msg`nothing recorded about how this server was started`;
   const live = ops.running();
   if (live) {
     try {
       ops.kill(Number(live.pid), "SIGTERM");
     } catch (e) {
-      return `could not stop pid ${live.pid}: ${errText(e)}`;
+      return msg`could not stop pid ${{ pid: live.pid }}: ${{ error: errText(e) }}`;
     }
     // It has containers to let go of. SIGKILL after, or a wedged process never
     // releases the port and the restart lands on an address already in use.
@@ -320,9 +318,9 @@ export async function restartServer(
       try {
         ops.kill(Number(live.pid), "SIGKILL");
       } catch (e) {
-        return `could not force-stop pid ${live.pid}: ${errText(e)}`;
+        return msg`could not force-stop pid ${{ pid: live.pid }}: ${{ error: errText(e) }}`;
       }
-      if (!(await waitForServerExit(ops))) return `pid ${live.pid} is still running after SIGKILL`;
+      if (!(await waitForServerExit(ops))) return msg`pid ${{ pid: live.pid }} is still running after SIGKILL`;
     }
   }
   try {
@@ -333,7 +331,7 @@ export async function restartServer(
     ops.start(argv, log);
     return null;
   } catch (e) {
-    return `could not start ${argv[0]}: ${errText(e)}`;
+    return msg`could not start ${{ bin: argv[0] ?? "" }}: ${{ error: errText(e) }}`;
   }
 }
 
@@ -500,15 +498,17 @@ async function markDown<T>(ctx: Ctx, e: T, now = Date.now()): Promise<void> {
     kind: "escalation",
     intent: "inform",
     severity: "blocker",
-    body:
-      `开不了容器，所有 turn 先挂起：${errText(e, 200)}\n` +
-      `多半是 docker 没起或者 opensandbox-server 没在跑 —— 设置页的自检那一栏会说是哪个。好了自动继续。`,
+    say: msg`Cannot open a container, so every turn is held: ${{ why: errText(e, 200) }}\nUsually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back.`,
   });
 }
 
 async function markUp(bus: Bus): Promise<void> {
   if (saidDown) {
-    await bus?.emit({ author: "orchestrator", kind: "state_change", body: "容器又能开了，挂起的活自动继续" });
+    await bus?.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      say: msg`Containers open again; the held work resumes on its own.`,
+    });
   }
   downUntil = 0;
   saidDown = false;
@@ -604,9 +604,7 @@ async function createMountedSandbox(
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
-      body:
-        `技能没挂进沙盒：opensandbox-server 的 allowed_host_paths 不含 ${skills[0]!.host?.path}。` +
-        `加上它再重开这个组的容器；在那之前 agent 只能用你在输入框里点名的技能。`,
+      say: msg`Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list ${{ path: skills[0]!.host?.path ?? "" }}. Add it and reopen this group's container; until then agents can only use the skills named in the input box.`,
     });
     return { sandbox: await createSandbox(ctx, scope, spec, cached), skillsMounted: false };
   }
@@ -650,9 +648,7 @@ async function installVaultCredentials(
         author: "orchestrator",
         kind: "state_change",
         severity: "blocker",
-        body:
-          `这个容器的凭据没绑上，里面的假值会原样发出去 —— 接下来每次模型调用都会 401，` +
-          `而那不是 token 的问题，重新登录也没用。原因：${errText(error, 400)}`,
+        say: msg`Credentials did not bind to this container, so the decoy values inside go out unchanged — every model call from here 401s. That is not the token's fault, and signing in again will not help. Cause: ${{ why: errText(error, 400) }}`,
       });
     });
 }
@@ -665,7 +661,7 @@ async function restoreGroupWorkspace(ctx: Ctx, scope: Scope): Promise<void> {
       author: "orchestrator",
       kind: "state_change",
       severity: "warn",
-      body: `沙盒重建了，但工作区没装回去：${errText(error)}`,
+      say: msg`The sandbox was rebuilt, but the workspace was not restored: ${{ why: errText(error) }}`,
     });
   });
 }
@@ -845,12 +841,7 @@ export async function checkSkillsMount(bus: Bus, sb: Counter, hostPath: string, 
     author: "orchestrator",
     kind: "state_change",
     severity: "blocker",
-    body:
-      `技能挂进去了但里面是空的：宿主 ${hostPath} 有 ${onHost} 个，容器里 ${at} 有 0 个。\n` +
-      `容器运行时读不到宿主这个路径，绑上去就是个空目录 —— macOS 上 docker 跑在虚拟机里，` +
-      `虚拟机外的路径（/var/tmp 这类）不会被共享进去。把 skillsDir 指到一个能共享的位置` +
-      `（$HOME 下面的就行），让 opensandbox-server 的 allowed_host_paths 也包含它，然后重启它。` +
-      `在那之前 agent 一个技能都用不上。`,
+    say: msg`Skills are mounted but the directory inside is empty: host ${{ hostPath }} has ${{ onHost }}, and ${{ at }} in the container has 0.\nThe container runtime cannot read that host path, so binding it delivers an empty directory — on macOS docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's allowed_host_paths, and restart it. Until then agents have no skills at all.`,
   });
 }
 

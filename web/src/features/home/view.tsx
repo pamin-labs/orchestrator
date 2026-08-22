@@ -5,15 +5,23 @@ import { H2, Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { cardStyles } from "../../ui/card";
 import { Queue } from "../queue/view";
+import { Trans, useLingui } from "@lingui/react/macro";
+
+/** Which requirements are running, on one line. */
+const RunningNames = ({ names }: { names: string[] }) => {
+  const { t } = useLingui();
+  const running = names.join(t`, `);
+  return <div className="mt-1.5 truncate text-secondary text-ink-2">{t`Running: ${running}`}</div>;
+};
 
 /**
  * Every project at once, plus what wants the boss across all of them.
  *
- * "谁在等我" does not care which project it is in, so the queue spans them and each row
+ * "who is waiting on me" does not care which project it is in, so the queue spans them and each row
  * names its own. No timeline here: cross-project chatter is noise while deciding.
  *
  * The rows are held to a measure. Three short facts stretched across a 76rem shell
- * put 个需求 and tokens at the far right edge — the strongest position a row has — and
+ * put `requirements` and tokens at the far right edge — the strongest position a row has — and
  * left the eye no reason to land on the name.
  */
 export function Home({
@@ -31,7 +39,7 @@ export function Home({
   onAdd: () => void;
   refresh: () => void;
 }) {
-  // 都处理完了 reports on work that got processed. With no requirement anywhere
+  // "nothing left" reports on work that got processed. With no requirement anywhere
   // there is none, and a green line claiming otherwise is the first thing a fresh
   // install reads.
   const anyWork = st.groups.length > 0;
@@ -39,7 +47,9 @@ export function Home({
     <>
       {anyWork && <Queue st={st} projectId={null} onOpen={onOpen} refresh={refresh} />}
       <div className="max-w-[44rem]">
-        <H2 className={cn(anyWork && "mt-9")}>项目</H2>
+        <H2 className={cn(anyWork && "mt-9")}>
+          <Trans>Projects</Trans>
+        </H2>
         <div className="flex flex-col gap-2.5">
           {homeRows(st).map((p) => {
             const { n, state, bits, live, meta } = projectRow(st, p.id);
@@ -73,18 +83,16 @@ export function Home({
                   {n ? (
                     <div className="mt-1 text-body font-semibold text-accent">{bits.join(" · ")}</div>
                   ) : (
-                    // 空着 is said by the button beside it, in a form you can act on.
-                    !state.fresh && <div className="mt-1 text-secondary text-ink-3">{state.zh}</div>
+                    // `Empty` is said by the button beside it, in a form you can act on.
+                    !state.fresh && <div className="mt-1 text-secondary text-ink-3">{state.label}</div>
                   )}
-                  {live.length > 0 && (
-                    <div className="mt-1.5 truncate text-secondary text-ink-2">在跑：{live.join("、")}</div>
-                  )}
+                  {live.length > 0 && <RunningNames names={live} />}
                 </div>
                 {state.fresh ? (
                   // Nothing has ever been asked of this project, so the row is where to
                   // ask. `relative` puts it above the stretched name, not on it.
                   <Button className="relative" onClick={() => onNew(p.id)}>
-                    ＋ 新需求
+                    <Trans>+ New requirement</Trans>
                   </Button>
                 ) : (
                   meta.length > 0 && <Meta className="whitespace-nowrap">{meta.join(" · ")}</Meta>
@@ -95,7 +103,7 @@ export function Home({
         </div>
         {/* Adding a project happens once. It does not outrank the rows it adds to. */}
         <Button variant="quiet" className="mt-2.5" onClick={onAdd}>
-          ＋ 添加项目
+          <Trans>+ Add project</Trans>
         </Button>
       </div>
     </>

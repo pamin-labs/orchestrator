@@ -130,3 +130,48 @@ const terminalEscalationStates = new Set<EscalationState>(ESCALATION_TERMINAL_ST
 export const isDispatchableGrpState = (state: GrpState): boolean => dispatchableGrpStates.has(state);
 export const isTerminalEscalationState = (state: EscalationState): state is EscalationTerminalState =>
   terminalEscalationStates.has(state);
+
+/**
+ * What a question is about — one required word, and the routing is which half of
+ * the list it falls in.
+ *
+ * This was two enums on one call: a `kind` for the queue heading that fell back
+ * to `other`, and a `reserved` topic that decided whether the PM may answer. Two
+ * axes for one fact, and the second needed a `none` — a reason that is not a
+ * reason. An escalation is always *about* something, so naming that once decides
+ * both.
+ */
+/**
+ * ASCII, and the same word whatever the asker writes in: this is a protocol key,
+ * which is one of ADR 035's three exemptions from the panel's own language.
+ * It replaced ten rows of per-language keyword regex whose own comment recorded
+ * sixteen of eighteen probes leaking.
+ */
+/**
+ * Ordered, and the order is the rule: a question can be about two of these —
+ * "swap Postgres for SQLite to cut hosting cost" is `design` and `budget` — so
+ * the asker picks **the one that raises highest**, and the five that raise are
+ * first. `TO_BOSS` is the reserved half; the rest start at the PM.
+ */
+export const ASK_KINDS = [
+  "budget",
+  "merge",
+  "credential",
+  "deploy",
+  "scope",
+  "env",
+  "spec",
+  "boundary",
+  "design",
+] as const;
+export type AskKind = (typeof ASK_KINDS)[number];
+
+/**
+ * The five the PM may not answer on the boss's behalf. Declaring one of the
+ * other four does not *stop* the gate — `chain.ts` asks a second reader whether
+ * the question is one of these anyway, because the agent that saves a round trip
+ * by misfiling is the same agent that files.
+ */
+export const TO_BOSS: ReadonlySet<AskKind> = new Set<AskKind>(["budget", "merge", "credential", "deploy", "scope"]);
+
+export const isAskKind = (value: string): value is AskKind => (ASK_KINDS as readonly string[]).includes(value);

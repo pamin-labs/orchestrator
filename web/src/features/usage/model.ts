@@ -1,4 +1,7 @@
 import type { Usage } from "../../shared/api";
+import { msg, t } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { labelOf } from "../../shared/select";
 
 const WARN_AT = 80;
 
@@ -12,26 +15,30 @@ const WARN_AT = 80;
  */
 const STALE_MS = 60 * 60_000;
 
-const WHY: Record<string, string> = {
-  rate_limited: "读用量被限流了，过一会自己恢复",
-  unreachable: "连不上用量接口",
-  no_windows: "这个账号没有窗口",
+const WHY: Record<string, MessageDescriptor> = {
+  rate_limited: msg`Rate limited reading usage; it recovers by itself shortly`,
+  unreachable: msg`Cannot reach the usage endpoint`,
+  no_windows: msg`This account has no window`,
 };
+
+const resetsIn = (span: string): string => t`resets in ${span}`;
+const readAgo = (minutes: number): string => t`${minutes}m ago`;
 
 /** Ring geometry. Hand-drawn at 15px, so the arc is a dash pattern, not a chart. */
 export const R = 5.5;
 const C = 2 * Math.PI * R;
 export type RingInput = { v?: number; at?: number; read?: number; stale: boolean; why?: string };
 
-/** "3h12m" / "2天4h". A reset three days out is not worth a minute count. */
+/** "3h12m" / "2d4h". A reset three days out is not worth a minute count. */
 export function until(unixSecs?: number): string {
   if (!unixSecs) return "";
   const ms = unixSecs * 1000 - Date.now();
-  if (ms <= 0) return "即将重置";
+  if (ms <= 0) return t`Resetting soon`;
   const min = Math.floor(ms / 60_000);
   const h = Math.floor(min / 60);
   const d = Math.floor(h / 24);
-  if (d >= 1) return `${d}天${h % 24}h`;
+  const hoursLeft = h % 24;
+  if (d >= 1) return t`${d}d${hoursLeft}h`;
   return h >= 1 ? `${h}h${min % 60}m` : `${min}m`;
 }
 
@@ -42,7 +49,7 @@ export const ringArc = (v?: number) => (v === undefined ? null : `${(Math.min(10
 
 /**
  * Terse: a number and when it resets, or why there is no number. The sentence it
- * replaced said "5 小时窗口" next to a ring already labelled 5h, and repeated the
+ * replaced said "5-hour window" next to a ring already labelled 5h, and repeated the
  * failure text under every window it had already been shown for.
  *
  * The age only when it is old enough to matter. The poll is deliberately slow —
@@ -51,9 +58,11 @@ export const ringArc = (v?: number) => (v === undefined ? null : `${(Math.min(10
  * not been refreshed" stop being the same sentence.
  */
 export function ringTip(p: RingInput): string {
-  if (p.v === undefined) return WHY[p.why ?? ""] ?? "读不到";
+  if (p.v === undefined) return labelOf(WHY[p.why ?? ""], t`Unreadable`);
   const age = p.read ? Math.round((Date.now() - p.read) / 60_000) : 0;
-  return `${Math.round(p.v)}%${p.at ? ` · ${until(p.at)}后重置` : ""}${age >= 15 ? ` · ${age}m 前` : ""}`;
+  const resets = p.at ? ` · ${resetsIn(until(p.at))}` : "";
+  const read = age >= 15 ? ` · ${readAgo(age)}` : "";
+  return `${Math.round(p.v)}%${resets}${read}`;
 }
 
 /**

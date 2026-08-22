@@ -23,6 +23,7 @@ import { browseListing, browseRow, days, entryMeta, repoRow } from "../../web/sr
 import {
   badCell,
   durationScale,
+  embeddingSwitch,
   invalidFlag,
   labelledBy,
   mateValue,
@@ -94,7 +95,7 @@ test("the gates that run are listed in run order, numbered, above the ones that 
   getByText("命令");
   // A detected command nobody turned on sits under its own heading, unnumbered,
   // and is offered as an unpressed toggle rather than as text.
-  getByText("关掉的");
+  getByText("未启用");
   getByText("点一下加到最后一道");
   const off = getAllByRole("button", { pressed: false });
   expect(off.map((row) => row.textContent)).toEqual(["typecheckbun run typecheck"]);
@@ -116,7 +117,7 @@ test("a project with no gates on is told what that costs, and one with no comman
   const bare = render(<Gates d={config({ config: {}, resources: [] })} patch={() => {}} />);
   bare.getByText("没探到可跑的命令。");
   expect(bare.queryAllByText(/一道都没开/)).toHaveLength(0);
-  expect(bare.queryAllByText("关掉的")).toHaveLength(0);
+  expect(bare.queryAllByText("未启用")).toHaveLength(0);
   expect(bare.queryAllByRole("button")).toHaveLength(0);
 });
 
@@ -140,7 +141,7 @@ test("reordering a gate returns a new order, and a drop that changed nothing ret
   expect(moveGate(["a", "b", "c"], 0, 2)).toEqual(["b", "c", "a"]);
   expect(moveGate(["a", "b", "c"], 2, 0)).toEqual(["c", "a", "b"]);
   // Null, not the same list: the caller writes whatever it gets back, and a drag
-  // that ended where it started would otherwise be a save and a 已保存 for an
+  // that ended where it started would otherwise be a save and a saved stamp for an
   // order identical to the stored one.
   expect(moveGate(["a", "b"], 1, 1)).toBeNull();
   expect(moveGate(["a", "b"], -1, 0)).toBeNull();
@@ -165,7 +166,7 @@ test("the sandbox pane shows every unset override as an empty box with the defau
   const { getByLabelText, getByPlaceholderText, getByText } = render(
     <Sandbox d={config()} busy={false} patch={() => {}} />,
   );
-  getByText("沙盒");
+  getByText("沙箱");
   getByText("灰字是默认值");
   // The inherited value is the placeholder, never the value: a box pre-filled
   // with the default saves that default as this project's own the first time it
@@ -410,14 +411,30 @@ describe("a row is 已改 when either half of it is", () => {
   const on = { overridden: true };
   const off = { overridden: false };
   test.each([
-    ["neither half", off, null, false],
-    ["the first half", on, null, true],
-    // One row, so one 已改 — the index runtime and its model are one decision.
-    ["the second half", off, on, true],
-    ["both halves untouched", off, off, false],
+    ["neither half", off, [], false],
+    ["the first half", on, [], true],
+    // One row, so one `Modified` — the index runtime and its model are one decision.
+    ["the second half", off, [on], true],
+    ["both halves untouched", off, [off], false],
+    // The embedding row carries three: mode, model, endpoint, credential.
+    ["the third of several halves", off, [off, off, on], true],
   ])("%s", (_case, first, second, changed) => {
     expect(rowChanged(first, second)).toBe(changed);
   });
+});
+
+test("a remote embedding is only sent once it could be stored", () => {
+  // `ConfigSchema` refuses the mode without both, and a refused write stores
+  // nothing — so sending it buys a Zod `error` from `contracts`, in English,
+  // under a Chinese row. Going back to local is never refused.
+  const url = "https://api.example.com/v1/embeddings";
+  expect(embeddingSwitch("remote", url, "openai")).toBe(true);
+  expect(embeddingSwitch("remote", url, "")).toBe(false);
+  expect(embeddingSwitch("remote", "", "openai")).toBe(false);
+  // Not a URL. A hostname is the shape somebody types when the field says
+  // "endpoint", and it is the one the schema rejects.
+  expect(embeddingSwitch("remote", "api.example.com", "openai")).toBe(false);
+  expect(embeddingSwitch("local", "", "")).toBe(true);
 });
 
 test("rows whose control cannot carry a label name themselves through their title", () => {
@@ -444,13 +461,16 @@ test("a stored value becomes the text its box holds, whatever shape it is", () =
   expect(rec([1, 2])).toEqual({});
   expect(rec(null)).toEqual({});
   expect(rec(7)).toEqual({});
-  expect(mateValue(null)).toBeNull();
-  expect(mateValue({ value: "claude-opus-5" })).toBe("claude-opus-5");
+  // Addressed by path now, because a row can have three other halves and the
+  // editor needs a named one rather than "the second".
+  expect(mateValue([], "indexModel.model")).toBeNull();
+  expect(mateValue([{ path: "indexModel.model", value: "claude-opus-5" }], "indexModel.model")).toBe("claude-opus-5");
+  expect(mateValue([{ path: "embedding.model", value: "x" }], "embedding.endpoint")).toBeNull();
 });
 
 test("a duration knob is scaled to milliseconds for the picker and back to its own unit", () => {
   // `turnTimeoutMs` is milliseconds and `sandbox.ttlSeconds` is seconds, and
-  // both are typed in 分钟 / 小时 — so the picker works in one scale and this is
+  // both are typed in `min` / `hr` — so the picker works in one scale and this is
   // the only place the other one is named.
   expect(durationScale("ms")).toBe(1);
   expect(durationScale("seconds")).toBe(1000);

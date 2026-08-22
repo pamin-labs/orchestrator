@@ -6,13 +6,14 @@ import { runInvariants } from "../../src/mech/ops/invariants.ts";
 import { sendBack } from "../../src/mech/flow/review.ts";
 import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
-import { Scheduler, type Job } from "../../src/platform/scheduling/scheduler.ts";
+import type { Job } from "../../src/platform/scheduling/scheduler.ts";
 import { eq } from "drizzle-orm";
 import { slice, task } from "../../src/platform/persistence/schema.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import * as fx from "../support/factories.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 /**
  * The deadlock that stopped eight groups at once, from both ends.
@@ -34,7 +35,7 @@ async function harness() {
   await seedAuth(db);
   const bus = new Bus(db);
   const ran: Job[] = [];
-  const sched = new Scheduler(db, async (j) => void ran.push(j));
+  const sched = newScheduler(db, async (j) => void ran.push(j));
   const cfg = { ...loadConfig(), gateRetries: 5 };
   const ctx: Ctx = {
     db,

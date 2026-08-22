@@ -88,7 +88,7 @@ export function query(opts: QueryOptions): Promise<string> {
   // No model call in here — four database reads and an in-memory Orama search.
   // It carries a span for comparison: ADR 020 measured this half at 0.32ms while
   // the other spends up to three model calls, and only a span on both puts that
-  // difference in 系统耗时 rather than in a document.
+  // difference in `System timing` rather than in a document.
   return activeTracer().startActiveSpan(
     "ctx.assemble",
     { attributes: scopeAttributes({ grpId: opts.grpId, projectId: opts.projectId }) },

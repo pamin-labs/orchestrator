@@ -141,7 +141,7 @@ export function makeApp(ctx: Ctx, runtime: RuntimeStatus = runtimeStatus()): (re
   });
   app.use(
     "/api/v1/attach",
-    bodyLimit({ maxSize: UPLOAD_LIMIT, onError: () => failure(`一次最多传 ${UPLOAD_LIMIT >> 20}MB`, 413) }),
+    bodyLimit({ maxSize: UPLOAD_LIMIT, onError: () => failure(`at most ${UPLOAD_LIMIT >> 20}MB per upload`, 413) }),
   );
   app.use("/api/v1/*", idempotency(ctx.db));
 

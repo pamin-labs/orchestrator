@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -5,7 +6,7 @@ import { type Config, ROOT } from "../../platform/config/load.ts";
 import { gitTrailers } from "./ghlogin.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
-import { say } from "../../platform/text/lang.ts";
+
 import { squashWip } from "./gitops.ts";
 import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
 import type { Github } from "./github.ts";
@@ -98,7 +99,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     grpId,
     author: "orchestrator",
     kind: "commit",
-    body: sq.squashed ? `squashed ${sq.reason}` : `no squash (${sq.reason})`,
+    say: sq.squashed ? msg`squashed ${{ why: sq.reason }}` : msg`no squash (${{ why: sq.reason }})`,
   });
 
   // The seam that used to be here is gone with 007 step 5. Two different things
@@ -142,7 +143,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "pr.opened", { n: number }),
+    say: msg`PR #${{ n: number }} opened`,
   });
   return { number };
 }
@@ -1102,7 +1103,7 @@ export async function dispatchFeedback(ctx: Ctx, f: Feedback): Promise<void> {
     author: "pr-watcher",
     kind: "say",
     intent: "request",
-    body: `PR #${f.prNumber} has feedback:\n${lines}`.slice(0, 2000),
+    say: msg`PR #${{ pr: f.prNumber }} has feedback:\n${{ lines: lines.slice(0, 1900) }}`,
     meta: { pr: f.prNumber, comments: f.comments.length, failingChecks: f.failingChecks.map((c) => c.name) },
   });
   // Deliberately not moved out of PR_OPEN. That flip made the group deaf to

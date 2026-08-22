@@ -2,16 +2,18 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { api, mutate, readApi } from "../../shared/api";
-import { DURATION_UNITS, KNOB_SHAPE, WANTS, msOf, readNumber, showNumber, splitDuration } from "./units";
+import { KNOB_SHAPE, WANTS_PERCENT, readNumber } from "./units";
 import type { ModelSources } from "./models";
 import {
   Amount,
+  DurationAmount,
   Box,
   Embedding,
   Caps,
   CountAmount,
   IndexModel,
-  LANGUAGES,
+  LANGUAGE_SUGGESTIONS,
+  Ladder,
   Lines,
   ModelTable,
   PERCENT,
@@ -38,16 +40,28 @@ import {
   textOf,
 } from "./model";
 import { Combobox } from "../../ui/combobox";
-import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "../../ui/field";
-import { Head, Meta } from "../../ui/bits";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "../../ui/field";
+import { cn } from "../../ui/cn";
+import { Empty, Head, Meta, Working } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { Segment, Toggles } from "../../ui/segment";
 import { Switch } from "../../ui/switch";
 import { Help, Tip } from "../../ui/tooltip";
 import { z } from "zod";
 import type { Json } from "../../../../src/contracts/json";
-import { ConfigSchema, SettingWriteSchema, type SettingWrite } from "../../../../src/contracts/config";
+import {
+  ConfigSchema,
+  endonymOf,
+  localeOf,
+  SettingWriteSchema,
+  type SettingWrite,
+} from "../../../../src/contracts/config";
 import type { InferResponseType } from "hono/client";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../../i18n";
+import { clock } from "../../shared/format.ts";
 
 /**
  * The operating knobs, as rows.
@@ -78,117 +92,220 @@ const KnobSchema = z.custom<Knob>((value) => {
 });
 const SettingsResponseSchema: z.ZodType<SettingsResponse> = z.object({ settings: z.array(KnobSchema) });
 
-export type KnobSection = "sched" | "models" | "turn" | "boxdefaults" | "notify" | "waits";
+/** Every knob pane, as the values themselves: a caller that walks them all —
+ *  the render check does — should not have to assert its way back to the type. */
+export const KNOB_SECTIONS = ["ops", "models", "internals", "notify", "boxdefaults", "repo"] as const;
+export type KnobSection = (typeof KNOB_SECTIONS)[number];
 
-/** Which rows a section shows, in the order they are shown. */
 /**
  * Knobs a section deliberately does not draw, because another control owns them.
  *
  * Exported so the coverage check can tell "owned elsewhere" from "forgotten" —
  * the second is what put thirteen keys on the API and nowhere on the page.
  */
-export const KNOBS_ELSEWHERE = new Set(["sandbox.server", "sandbox.image"]);
+/**
+ * `sandbox.server` and `sandbox.image` belong to the `Sandbox` pane, which validates an
+ * address and lists what the registry actually holds.
+ *
+ * `embedding.model` and `indexModel.model` belong to the `PAIRED` row their
+ * runtime is picked on: that row already draws the model as a picker offering
+ * only what the chosen runtime can run, and a second row for the same value was
+ * a free-text box holding the same string one line below it.
+ */
+/**
+ * `embedding.endpoint` and `embedding.credential` joined them: they were two
+ * empty boxes under a segment reading `Local`, which is a form for a mode nobody
+ * had chosen. The embedding row draws them when remote is pressed.
+ */
+export const KNOBS_ELSEWHERE = new Set([
+  // Preferences owns it: the reader picks the panel's language there, and a
+  // second control for one fact is two controls that can disagree. It is
+  // settable through the API because that is how the menu writes it.
+  "panelLanguage",
+  "sandbox.server",
+  "sandbox.image",
+  "embedding.model",
+  "indexModel.model",
+  "embedding.endpoint",
+  "embedding.credential",
+]);
 
-export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] }> = {
-  sched: {
-    zh: "调度",
-    note: "同时开工多少、谁等谁",
-    paths: [
-      "maxGroups",
-      "leaseSlots",
-      "watchdogIntervalMs",
-      "autoAdvance",
-      "autoAcceptTiers",
-      "parkAfterPausedMs",
-      "watchdog.idleTurns",
-      "watchdog.sameFile",
-      "watchdog.reemitMs",
-      "watchdog.nudgeAfterMs",
-      "watchdog.nudgeReemitMs",
-      "watchdog.pausedNotifyMs",
-      "watchdog.repoMapEveryMs",
-      "prPoll.prs",
-      "prPoll.messages",
-      "prPoll.checks",
-      "prPoll.threads",
-      "prPoll.threadComments",
-      "baseBranchFallbacks",
-    ],
-  },
-  models: {
-    zh: "模型与预算",
-    note: "花钱的那几个旋钮",
-    paths: [
-      "difficultyModel",
-      "indexModel.runtime",
-      "contextWindow",
-      "sliceBudgetTokens",
-      "language",
-      "embedding.mode",
-      "embedding.endpoint",
-      "embedding.credential",
-      "embedding.model",
-      "indexModel.model",
-      "pageindex.enabled",
-      "pageindex.depth",
-      "pageindex.width",
-    ],
-  },
-  turn: {
-    zh: "turn 与上下文",
-    note: "一轮能跑多久、能读多少",
-    paths: [
-      "turnTimeoutMs",
-      "maxTurnsPerJob",
-      "sessionRotateFraction",
-      "ctxBudgetChars",
-      "unreadDigestThreshold",
-      "feedbackSedimentThreshold",
-      "gateRetries",
-      "leaseTimeoutMs",
-      "installTimeoutMs",
-      "skillsDir",
-      "telemetryCacheMs",
-      "eventRetentionMs",
-      "streamBacklog",
-    ],
-  },
-  waits: {
-    zh: "等待与重试",
-    // Everything here bounds a wait on something outside this process: GitHub, a
-    // container, the network. They were eighteen literals across seven files, and
-    // the only ones anybody could change were the three turn budgets.
-    note: "等外面的东西多久算超时",
-    paths: [
-      "timeouts.githubApiMs",
-      "timeouts.credentialCheckMs",
-      "timeouts.sandboxPingMs",
-      "timeouts.networkPingMs",
-      "timeouts.tokenRefreshMs",
-      "timeouts.usageReadMs",
-      "timeouts.transferMs",
-      "intervals.recheckMs",
-      "intervals.usagePollMs",
-      "intervals.usageBackoffMs",
-      "dbPoolSize",
-    ],
-  },
-  notify: {
-    zh: "通知",
-    note: "有事叫你的方式",
-    paths: ["notifyWebhook", "timeouts.webhookMs", "intervals.notifyBatchMs", "intervals.notifyBackoffMs"],
-  },
-  boxdefaults: {
-    zh: "沙盒默认值",
-    note: "没自己设的项目用这些",
-    // Not `sandbox.server` or `sandbox.image`: the pane this section renders
-    // inside owns both, with an address row that validates and an image row that
-    // lists what the registry has. A knob row for the image is a plain text box,
-    // which is how "the image dropdown disappeared" happened — two controls for
-    // one value, and the reader found the other one.
-    paths: ["sandbox.cpu", "sandbox.memory", "sandbox.ttlSeconds", "sandbox.denyDomains", "sandbox.cacheDirs"],
-  },
-};
+/**
+ * A run of rows under one subject. The first group of a section is the section's
+ * own subject and carries no legend — `Head` has already named it — while a later
+ * group names itself, because eighteen rows in one undivided list is a list whose
+ * bottom half nobody reads.
+ */
+export interface KnobGroup {
+  legend?: MessageDescriptor;
+  paths: string[];
+}
+
+/**
+ * `msg` at module scope, `i18n._` at call scope. A descriptor is locale-free
+ * data, so a table built once at import is still right after the locale changes
+ * — which a resolved string would not be: it freezes at first evaluation.
+ */
+export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: MessageDescriptor; groups: KnobGroup[] }> =
+  {
+    ops: {
+      title: msg`How agents run`,
+      // Three groups, one subject: how hard the fleet is pushed, what one turn is
+      // allowed, and when to decide it is stuck. They were split across a
+      // scheduling section and a turns-and-context one,
+      // two panes apart — with `leaseTimeoutMs` in the first and `turnTimeoutMs`
+      // in the second, both answering "how long may one piece of agent work
+      // take", and a comment in each explaining why it was not next to the
+      // other.
+      note: msg`How hard the fleet is pushed, and when to stop waiting on it`,
+      groups: [
+        {
+          paths: [
+            "maxGroups",
+            "leaseSlots",
+            // Beside the slots they hold and the retries they feed, not under
+            // turns-and-context: a lease is a compile, and neither number bounds a turn.
+            "leaseTimeoutMs",
+            "installTimeoutMs",
+            "gateRetries",
+            "autoAdvance",
+            "autoAcceptTiers",
+            "parkAfterPausedMs",
+          ],
+        },
+        {
+          legend: msg`One turn`,
+          paths: [
+            "turnTimeoutMs",
+            "maxTurnsPerJob",
+            "sessionRotateFraction",
+            "ctxBudgetChars",
+            "unreadDigestThreshold",
+            "feedbackSedimentThreshold",
+          ],
+        },
+        {
+          // The interval was settable and every threshold it enforces was not, so
+          // the one knob on the page changed how often the rules ran and nothing
+          // about what they decided. They are one subject and they read as one.
+          legend: msg`Watchdog`,
+          paths: [
+            "watchdogIntervalMs",
+            "watchdog.idleTurns",
+            "watchdog.sameFile",
+            "watchdog.reemitMs",
+            "watchdog.nudgeAfterMs",
+            "watchdog.nudgeReemitMs",
+            "watchdog.pausedNotifyMs",
+            "watchdog.repoMapEveryMs",
+          ],
+        },
+      ],
+    },
+    models: {
+      title: msg`Models & budget`,
+      note: msg`Which model runs what, and what it may spend`,
+      groups: [
+        { paths: ["difficultyModel", "sliceBudgetTokens", "contextWindow", "indexModel.runtime", "language"] },
+        {
+          // How `orch ctx query` finds anything. Its own group because it is the
+          // one block on this pane that is not about spend at all, and because
+          // the two halves — the tree walk and the vectors — are read together.
+          legend: msg`Retrieval`,
+          paths: ["pageindex.enabled", "pageindex.depth", "pageindex.width", "embedding.mode"],
+        },
+      ],
+    },
+    internals: {
+      title: msg`Plumbing`,
+      // Everything in the first two groups bounds a wait on something outside this
+      // process: GitHub, a container, the network. They were eighteen literals
+      // across seven files, and the only ones anybody could change were the three
+      // turn budgets. The third group is this machine's own plumbing, which sat
+      // under turns-and-context, where it was neither a turn nor a context.
+      // Named for when you come here rather than for what it holds: nothing on
+      // this pane changes what the fleet decides, only how patiently it waits and
+      // how much it keeps. The three groups were split across scheduling and
+      // waits-and-storage on a naming axis — a poll size is not a wait — where the axis
+      // that actually separates them is whether anybody ever touches them.
+      note: msg`Timeouts, polling and retention. Come here when something is broken`,
+      groups: [
+        {
+          legend: msg`Timeouts`,
+          paths: [
+            "timeouts.githubApiMs",
+            "timeouts.credentialCheckMs",
+            "timeouts.sandboxPingMs",
+            "timeouts.networkPingMs",
+            "timeouts.tokenRefreshMs",
+            "timeouts.usageReadMs",
+            "timeouts.transferMs",
+          ],
+        },
+        {
+          legend: msg`Polling intervals`,
+          paths: [
+            "intervals.recheckMs",
+            "intervals.usagePollMs",
+            "intervals.usageBackoffMs",
+            // A page size, not a wait — which is why it never fitted under
+            // scheduling either. What it bounds is how much of GitHub one poll reads.
+            "prPoll.prs",
+            "prPoll.messages",
+            "prPoll.checks",
+            "prPoll.threads",
+            "prPoll.threadComments",
+          ],
+        },
+        {
+          legend: msg`Storage & streams`,
+          paths: ["dbPoolSize", "eventRetentionMs", "streamBacklog", "telemetryCacheMs"],
+        },
+      ],
+    },
+    repo: {
+      title: msg`Repositories`,
+      note: msg`How a checkout is read when GitHub cannot be asked`,
+      // Under pull requests until somebody read its own tooltip: this is tried when a
+      // project has no base branch of its own *and* the remote cannot be reached
+      // to supply `default_branch`. That is a fact about a checkout, and the last
+      // place it applies is a pull request — which is why it renders under
+      // GitHub, where the reader is already looking at repositories.
+      groups: [{ paths: ["baseBranchFallbacks"] }],
+    },
+    notify: {
+      title: msg`Notifications`,
+      note: msg`How to alert you`,
+      groups: [
+        { paths: ["notifyWebhook", "timeouts.webhookMs", "intervals.notifyBatchMs", "intervals.notifyBackoffMs"] },
+      ],
+    },
+    boxdefaults: {
+      title: msg`Sandbox defaults`,
+      note: msg`Used when a project has not set its own`,
+      // Not `sandbox.server` or `sandbox.image`: the pane this section renders
+      // inside owns both, with an address row that validates and an image row that
+      // lists what the registry has. A knob row for the image is a plain text box,
+      // which is how "the image dropdown disappeared" happened — two controls for
+      // one value, and the reader found the other one.
+      groups: [
+        {
+          // `skillsDir` is here rather than under turns-and-context because it is the
+          // same fact as `sandbox.cacheDirs`: a host directory mounted into every
+          // container, which fails the same way when the sandbox server's
+          // allowed_host_paths does not list it.
+          paths: [
+            "sandbox.cpu",
+            "sandbox.memory",
+            "sandbox.ttlSeconds",
+            "sandbox.denyDomains",
+            "sandbox.cacheDirs",
+            "skillsDir",
+          ],
+        },
+      ],
+    },
+  };
 
 /**
  * Label, the reason the default is what it is, and what an empty box would mean.
@@ -198,145 +315,298 @@ export const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: st
  * that wraps to three lines pushes its own value out of line with the value
  * above it, which is the whole reason the values are in a column.
  */
-const COPY: Record<string, { zh: string; why?: string; ph?: string }> = {
+/** `ph` is either — `8Gi` and `127.0.0.1:8080` are examples of the value and
+ *  stay verbatim, while "Empty = 1/4 of host cores" is a sentence. */
+export const COPY: Record<
+  string,
+  { label: MessageDescriptor; why?: MessageDescriptor; ph?: MessageDescriptor | string }
+> = {
   maxGroups: {
-    zh: "同时开工的需求数",
-    why: "先撞上的天花板通常不是这个数：两个组不能拥有重叠路径，所以可分的模块少的项目达不到 10；再就是账号自己的限流。调高了记得看成本页的 cache 命中率——同一个订阅上并发多，节流最先在那里现形。",
+    label: msg`Concurrent jobs`,
+    why: msg`Requirements running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page.`,
   },
   leaseSlots: {
-    zh: "闸门并发",
-    why: "一个 lease 是一次真的编译或测试。十个同时跑会把机器拖垮，而且卡死的 lease 会占着槽位到超时。browser 单独给 1，因为每个都是一个真的 Chromium——不分池的话所有闸门都得排在一次截图后面。",
+    label: msg`Gate concurrency`,
+    why: msg`How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium.`,
   },
   watchdogIntervalMs: {
-    zh: "看门狗周期",
-    why: "确定性规则多久跑一遍。也是没有显式 tick 的入队要等多久才被派发。",
+    label: msg`Watchdog interval`,
+    why: msg`How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch.`,
   },
   autoAdvance: {
-    zh: "批了就往下做",
-    why: "关掉的话一个组做完一片就停到早上，等于放弃了这套系统存在的理由。代价说清楚：某一片方向错了，后面几片是在它基础上做的——你退回那一片时全组会停下并说明，而不是悄悄在已完成的工作底下改地基。",
+    label: msg`Auto-advance when approved`,
+    why: msg`On, a group starts the next slice without waiting for you. Off, it finishes one and stops. The cost: later slices build on an earlier one, so reverting it pauses the whole group.`,
   },
   autoAcceptTiers: {
-    zh: "自动查收",
-    why: "四道闸（自评 / 对账 / 跑测试 / QA）全过之后，省掉的是第五层「你亲自看一眼」。默认 trivial 和 normal，hard 仍然等你——那一眼在最便宜的两档上最不值钱。",
+    label: msg`Auto-accept tiers`,
+    why: msg`Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you.`,
   },
   parkAfterPausedMs: {
-    zh: "暂停多久后封存",
-    why: "封存会退掉沙盒。挂起太久的组占着并发名额而没人在推它。",
+    label: msg`Archive after paused`,
+    why: msg`Archive releases the sandbox. Groups parked too long hog concurrency slots for nothing.`,
+  },
+  "watchdog.idleTurns": {
+    label: msg`Turns without progress`,
+    why: msg`Turns in a row that changed nothing before the watchdog calls it stuck. Below three it fires on an agent that is still reading; far above it, a loop runs all afternoon unnoticed.`,
+  },
+  "watchdog.sameFile": {
+    label: msg`Edits to one file`,
+    why: msg`The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone.`,
+  },
+  "watchdog.reemitMs": {
+    label: msg`Repeat a stuck notice`,
+    why: msg`How long before the same stuck report is worth saying again. Shorter turns one stuck group into a feed of its own.`,
+  },
+  "watchdog.nudgeAfterMs": {
+    label: msg`Nudge a silent group`,
+    why: msg`Silence this long and the group is asked what it is doing. Not a failure — a long compile is silent too — so this is hours rather than minutes.`,
+  },
+  "watchdog.nudgeReemitMs": {
+    label: msg`Repeat the nudge`,
+    why: msg`How long before a group that answered nothing is nudged again. Longer than the first wait, or the nudge becomes the noise it was meant to cut through.`,
+  },
+  "watchdog.pausedNotifyMs": {
+    label: msg`Remind about paused`,
+    why: msg`A paused group is waiting on you and costs a concurrency slot while it waits. This is how often it says so before 'Archive after paused' takes the slot back.`,
+  },
+  "watchdog.repoMapEveryMs": {
+    label: msg`Recheck the repo map`,
+    why: msg`How often the shared repository map is re-checked. Deliberately far longer than the watchdog tick: the map only changes on a push, and checking costs a container round trip.`,
+  },
+  baseBranchFallbacks: {
+    label: msg`Base branch fallbacks`,
+    ph: msg`One branch name per line, most likely first`,
+    why: msg`Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached.`,
+  },
+  "prPoll.prs": {
+    label: msg`Pull requests per poll`,
+    why: msg`How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota.`,
+  },
+  "prPoll.messages": {
+    label: msg`Conversation comments`,
+    why: msg`Comments on the pull request itself, newest first. Past this, the oldest are never read — which is a reviewer's first comment going unanswered.`,
+  },
+  "prPoll.checks": {
+    label: msg`Check runs`,
+    why: msg`One CI run can post fifty of these. Set below what your workflow produces and the fleet decides a pull request is green while a check it never saw is red.`,
+  },
+  "prPoll.threads": {
+    label: msg`Review threads`,
+    why: msg`Line-level review threads read per pull request. Set it below what the repository actually produces and the oldest threads are never seen.`,
+  },
+  "prPoll.threadComments": {
+    label: msg`Replies per thread`,
+    why: msg`How far down one review thread the poll reads. A long argument in a thread is the case this truncates.`,
   },
   difficultyModel: {
-    zh: "难度 → 模型",
-    why: "Dispatcher 给每片打难度标签，这张表把标签换成模型。哪个角色用哪个 CLI 写在 roles/*.yaml，这里只管「那个 CLI 上，这个难度用哪个模型」。改了只影响之后新雇的 agent——模型在雇的时候就冻进 agent 行了。",
+    label: msg`Difficulty → Model`,
+    why: msg`Which model handles each difficulty, per CLI. Which role uses which CLI is in roles/*.yaml. Only affects newly hired agents — a model is frozen at hire time.`,
   },
   "embedding.mode": {
-    zh: "向量检索",
-    why: "本地还是远程。今天两者都不接检索——ADR 031 实测拒绝了向量：同语言内排序是对的，跨语言时问题所在语言的一段无关文字会盖过另一种语言里真正相关的那段，而跨语言正是这个功能唯一存在的理由。它的重开条件是一条能跑的检查（`bun run embedding:check`），而这条检查的远程那一半跑不了，因为它需要你自己选的 endpoint。这个开关就是为了让那个拒绝可以被证伪。远程会把语料发出去，而语料里有你写的需求和验收标准——所以默认是本地，切远程是一次决定。",
+    label: msg`Embedding mode`,
+    why: msg`Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision.`,
   },
   "embedding.endpoint": {
-    zh: "远程 endpoint",
-    why: "OpenAI 形状的 /v1/embeddings 完整地址。写全而不是只写主机名，因为「这家用哪个路径」是个只能靠猜的问题。仅在模式为远程时使用。",
+    label: msg`Remote endpoint`,
+    why: msg`Full /v1/embeddings address, OpenAI-shaped. Write full, not just hostname—which path a provider uses is pure guesswork. Used only when mode is remote.`,
   },
   "embedding.credential": {
-    zh: "远程凭据名",
-    why: "「模型账号」里那一行的名字，不是密钥本身。密钥写进配置文件就等于写进 shell 历史和它的每一份备份里。",
+    label: msg`Remote credential name`,
+    why: msg`The name of that line in 'Model account', not the key itself. Key in config is key in shell history and every backup.`,
+  },
+  "pageindex.enabled": {
+    label: msg`Walk the index tree`,
+    why: msg`On, a question walks the index tree before it is answered — one model call. Off skips the walk entirely and falls through to keyword search, which is the comparison this switch is for.`,
+  },
+  "pageindex.depth": {
+    label: msg`Walk depth`,
+    why: msg`Levels of the tree one question may descend, and each level is a serial model call with its own 60s timeout — two per question at 3. This is the single knob on the most frequent model spend here.`,
+  },
+  "pageindex.width": {
+    label: msg`Walk width`,
+    why: msg`How many nodes the model may name at one level. Width costs tokens in a single call, where depth costs another call.`,
   },
   "indexModel.runtime": {
-    zh: "索引模型",
-    why: "全系统调用最频繁的一个模型调用：纯摘要、不做决策、不用工具、不碰黑板。第一个该从贵订阅上挪走的就是它。",
+    label: msg`Index model`,
+    why: msg`The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription.`,
   },
   contextWindow: {
-    zh: "上下文窗口",
-    why: "轮换 session 的分母。两个 CLI 在 turn 里都会报真实值，那个值优先；这张表管的是一个 session 的第一个 turn。写死成 200k 的那阵子，强模型一直在 1M 窗口的 12% 处轮换，每轮换一次就扔掉一次花钱建起来的缓存前缀。",
+    label: msg`Context window`,
+    why: msg`Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time.`,
   },
   sliceBudgetTokens: {
-    zh: "每片 token 上限",
-    why: "取自本仓库 16 个真实切片：trivial 均值 4.0M（有一个 12.0M 跑飞的），normal 均值 7.3M 尾部 16.1M。卡在「跑完的最坏一片」之上、「跑飞那一片」之下——这个上限是给已经迷路的 agent 用的，不是给今天状态不好的那个。改了只影响新切片。",
+    label: msg`Token limit per slice`,
+    why: msg`Token ceiling for one slice. Set it above your worst finished slice and below the outliers — it exists to stop an agent that is lost, not to trim a slow day. New slices only.`,
   },
   language: {
-    zh: "对外语言",
-    why:
-      "管 journal / 频道消息 / 问你的问题 / 状态摘要。这些都是 agent 写的，所以写什么语言都行——列表只是省打字，不是能选的全部。" +
-      "代码、commit message、分支名、PR、错误信息永远是英文。" +
-      "orchestrator 自己那二十几条状态文案只有中文和英文两套，别的语言它们会退回英文——agent 写的东西不受影响。" +
-      "改这一项会让全舰队轮换一次 session——它在缓存前缀里。",
+    label: msg`Output language`,
+    why: msg`What the agents write in. Code, commits, branches, PRs and errors stay English. Changing it restarts every session.`,
   },
   turnTimeoutMs: {
-    zh: "单轮墙钟上限",
-    why: "超过就由看门狗打断。实测最长的一次单轮是 8.2 分钟。",
+    label: msg`Turn timeout`,
+    why: msg`Exceeded, watchdog kills it. Real max single-turn was 8.2 minutes.`,
   },
   maxTurnsPerJob: {
-    zh: "单轮最多几步",
-    why: "实测 259 个真实 turn：中位数 36 步，p90 是 93，最大 144——而超过 60 步的那 23% 吃掉了整个 cache-read 账单的 59%，因为每一步都要重读整条 transcript。36 是活儿，尾巴是一个已经迷路、正在 grep 的 agent。砍尾巴不动中位数。改这一项会让全舰队轮换一次 session。",
+    label: msg`Max steps per turn`,
+    why: msg`Steps one turn may take before it is cut off. Most turns finish in about 36; the long tail is an agent lost rather than working, and it costs the most because every step re-reads the transcript. Changing it restarts every session.`,
   },
   sessionRotateFraction: {
-    zh: "换会话的水位",
-    why: "上下文用到窗口的这么多就换一个会话。兜底触发器，真正的轮换点是切片做完——那是个干净的语义边界，交接也便宜。",
+    label: msg`Session rotation threshold`,
+    why: msg`Swap sessions when context hits this much of the window. Fallback trigger; real rotation is slice-end—clean semantic boundary, cheap handoff.`,
   },
   ctxBudgetChars: {
-    zh: "ctx 答案上限",
-    why: "约等于 4k token。这个答案会落进 transcript，而 transcript 这个会话剩下的每一轮都要重读一遍——所以慷慨的答案在问题被回答完很久之后还在收费。",
+    label: msg`Context response limit`,
+    why: msg`Roughly 4k token. This answer lands in the transcript, and every remaining turn in the session re-reads it—so a generous answer keeps billing long after the question is answered.`,
   },
-  unreadDigestThreshold: { zh: "未读摘要条数", why: "一轮最多把多少条频道消息塞进 delta。" },
+  unreadDigestThreshold: {
+    label: msg`Unread digest threshold`,
+    why: msg`Max channel messages to cram into one delta per turn.`,
+  },
   feedbackSedimentThreshold: {
-    zh: "几次抱怨变规则",
-    why: "同一件事说到第 N 次，它就该是项目的一条规则，而不是第 N+1 次抱怨。",
+    label: msg`Feedback threshold to become a rule`,
+    why: msg`When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint.`,
   },
-  gateRetries: { zh: "闸门重试次数", why: "同一片连着几次没过就升级给人，而不是一直重试同一条路。" },
+  gateRetries: {
+    label: msg`Gate retries`,
+    why: msg`After a slice fails several times straight, escalate to a person instead of retrying the same path.`,
+  },
   leaseTimeoutMs: {
-    zh: "单条闸门上限",
-    why: "大项目的一次编译是小时级；完全没有上限的话，一个挂死的 build 会永远占着 lease 槽位，而槽位是全局的、少的——一条卡死的命令能让整个舰队再也过不了闸门。",
+    label: msg`Lease timeout`,
+    why: msg`Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates.`,
   },
   installTimeoutMs: {
-    zh: "装依赖上限",
-    why: "和 lease 同一个量级，因为是同一类东西——真的在编译。卡太紧的失败长得像「这个项目坏了」而不像「超时了」，而组在两种情况下都一样卡住。",
+    label: msg`Install timeout`,
+    why: msg`Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way.`,
+  },
+  "timeouts.githubApiMs": {
+    label: msg`GitHub API call`,
+    why: msg`One REST call whose answer is work somebody asked for—opening a pull request, reading a review. Longer than the credential check below because something is blocked on it.`,
+  },
+  "timeouts.credentialCheckMs": {
+    label: msg`Credential check`,
+    why: msg`'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it.`,
+  },
+  "timeouts.sandboxPingMs": {
+    label: msg`Sandbox server ping`,
+    why: msg`Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet.`,
+  },
+  "timeouts.networkPingMs": {
+    label: msg`Network ping`,
+    why: msg`Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open.`,
+  },
+  "timeouts.tokenRefreshMs": {
+    label: msg`Token refresh`,
+    why: msg`The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip.`,
+  },
+  "timeouts.usageReadMs": {
+    label: msg`Usage read`,
+    why: msg`Reading how much of the subscription window is left, curl'd from the utility container. Nothing is blocked on it; the header simply shows no percentage.`,
+  },
+  "timeouts.transferMs": {
+    label: msg`Clone, fetch or image pull`,
+    why: msg`One network operation that moves a repository or an image — clone, fetch, submodule init, image pull. Minutes rather than seconds.`,
+  },
+  "intervals.recheckMs": {
+    label: msg`Recheck reachability`,
+    why: msg`How long 'we asked recently' lasts — both the reachability probe's interval and how long a credential verdict stays cached for this page.`,
+  },
+  "intervals.usagePollMs": {
+    label: msg`Poll subscription usage`,
+    why: msg`The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst.`,
+  },
+  "intervals.usageBackoffMs": {
+    label: msg`Back off after a 429`,
+    why: msg`How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones.`,
+  },
+  "timeouts.webhookMs": {
+    label: msg`Webhook timeout`,
+    why: msg`How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification.`,
+  },
+  "intervals.notifyBatchMs": {
+    label: msg`Batch window`,
+    why: msg`How long a notification waits for company before it is sent. This is the knob between one alert an hour and one per event.`,
+  },
+  "intervals.notifyBackoffMs": {
+    label: msg`Reminder ladder`,
+    why: msg`How long an unanswered notification waits before each repeat. It holds at the last step for as long as nobody answers. At least one step: an empty ladder repeats every tick.`,
+  },
+  dbPoolSize: {
+    label: msg`Database connections`,
+    why: msg`Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections.`,
+  },
+  eventRetentionMs: {
+    label: msg`Keep machine events`,
+    why: msg`How long the rest of a group's events are kept. The conversation itself — what was said, asked and escalated — is never dropped.`,
+  },
+  streamBacklog: {
+    label: msg`Live stream backlog`,
+    why: msg`How many live frames wait for one slow tab before they are dropped. A tab that stopped reading is the only thing here that grows without bound. Dropping is safe: the panel re-reads its state on the next event.`,
+  },
+  telemetryCacheMs: {
+    label: msg`Timing report cache`,
+    why: msg`How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway.`,
   },
   "sandbox.server": {
-    zh: "沙盒服务器",
+    label: msg`Sandbox server`,
     ph: "127.0.0.1:8080",
-    why: "opensandbox-server 在哪。必须是 dns+nft 模式，否则凭据注入静默失效。它不一定在这台机器上——Tailscale 上的一台或者一台云机器都行，SDK 只跟它说 HTTP。",
+    why: msg`Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP.`,
   },
   "sandbox.image": {
-    zh: "默认镜像",
-    why: "只认两个来源：我们发布的 ghcr.io/pamin-labs/…，和没有 registry 前缀的本机 build。这里面跑的是 agent，而 agent 手里有你的代码——换一个来路不明的镜像就是把整条边界交给别人，而且从面板上看不出任何异常。",
+    label: msg`Default image`,
+    why: msg`Two sources only: our releases (ghcr.io/pamin-labs/…) and local builds with no registry prefix. Agents run your code inside this image, so an untrusted one hands away the boundary — and the panel cannot tell.`,
   },
   "sandbox.cpu": {
-    zh: "CPU",
-    ph: "留空 = 宿主核数的 1/4",
-    why: '留空 = 宿主核数的 1/4。SDK 自己的默认值是 "1"，这个仓库的 tsc --noEmit 因此要 7.6 秒（6 核是 3.2 秒）。',
+    label: msg`CPU`,
+    ph: msg`Empty = 1/4 of host cores`,
+    why: msg`Empty = 1/4 of host cores. SDK's own default is 1; tsc --noEmit here takes 7.6s (3.2s on 6 cores).`,
   },
-  "sandbox.memory": { zh: "内存", ph: "8Gi", why: "每个沙盒的内存上限。" },
+  "sandbox.memory": { label: msg`Memory`, ph: "8Gi", why: msg`Memory ceiling per sandbox.` },
   "sandbox.ttlSeconds": {
-    zh: "沙盒存活时间",
-    why: "turn 开始时会续期，所以这是「没人管了多久回收」，不是任务时长上限。",
+    label: msg`Sandbox TTL`,
+    why: msg`Renewed when a turn starts, so this is 'recover after idle', not 'task time limit'.`,
   },
   "sandbox.denyDomains": {
-    zh: "禁止访问的域名",
-    ph: "一行一个域名，留空就都放行",
-    why: "黑名单而不是白名单——白名单才是穷举不完的那个（每个 registry、每个文档站）。凭据安全不靠它：真 token 在 sidecar 里，沙盒里是格式合法的假值。",
+    label: msg`Denied domains`,
+    ph: msg`One domain per line; empty allows all`,
+    why: msg`Domains the sandbox may not reach. A blocklist, not an allowlist — an allowlist would have to name every registry and docs site. Credentials do not depend on this: the sandbox only ever holds fakes.`,
   },
   "sandbox.cacheDirs": {
-    zh: "共享缓存目录",
+    label: msg`Shared cache directories`,
     ph: "/root/.bun/install/cache",
-    why: "所有沙盒共享的宿主目录，「容器里的挂载点: 宿主路径」。只放包管理器缓存。实测这个仓库第二个组的 bun install：不共享 2.9 秒，共享 1.2 秒——小是因为仓库小，到 monorepo 上是分钟级差别。默认关，因为这个仓库最惨的一次事故就是所有 worktree 共用一份 node_modules，两个闸门同时装，组把 EEXIST 当成自己的 build 坏了。另外沙盒服务端的 allowed_host_paths 也得列上这个路径。",
+    why: msg`Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths.`,
   },
   notifyWebhook: {
-    zh: "转发到 webhook",
-    ph: "留空就只有这个页面会叫你",
-    why: "留空就只有这个页面会叫你。填了的话每条通知会 POST 一份 JSON（title / message / url）过去——ntfy、Bark、群机器人、你今天下午写的东西，都行。出站前会过一遍脱敏，因为这是唯一一个把内容送出这台机器的通道。",
+    label: msg`Forward to webhook`,
+    ph: msg`Empty: only this page notifies you`,
+    why: msg`Empty, only this page notifies you. Filled, each notification POSTs JSON (title / message / url) — ntfy, Bark, a group bot, anything. Content is scrubbed first: this is the only channel that leaves the machine.`,
   },
   skillsDir: {
-    zh: "技能暂存目录",
-    why: "勾中的技能复制到这里，每个沙盒只读挂上去。改这里要同步改沙盒服务端的 allowed_host_paths，否则开容器直接失败——而那是响的失败，比一个静默的空目录好得多。",
+    label: msg`Skills staging directory`,
+    why: msg`Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount.`,
   },
 };
 
 /** The two rows whose value is a map, and what an unnamed key box suggests. */
-const PAIRS: Record<string, { kind: PairKind; keyPh: string }> = {
-  leaseSlots: { kind: "int", keyPh: "闸门名" },
-  "sandbox.cacheDirs": { kind: "text", keyPh: "挂载点" },
+const PAIRS: Record<string, { kind: PairKind; keyPh: MessageDescriptor }> = {
+  leaseSlots: { kind: "int", keyPh: msg`gate name` },
+  "sandbox.cacheDirs": { kind: "text", keyPh: msg`mount point` },
 };
 
 /**
- * Two settings the page shows as one row, because they are one decision.
+ * The two rows whose value is a list of strings, for the same reason `PAIRS`
+ * exists: one control, and only the schema that parses the value differs.
+ *
+ * Each keeps its own schema rather than a shared `z.array(z.string())` — that
+ * is what refuses `["main","master"]` typed as JSON into a textarea, which is
+ * what `baseBranchFallbacks` was before it had one.
+ */
+const LINES: Record<string, z.ZodType<string[]>> = {
+  "sandbox.denyDomains": ConfigSchema.shape.sandbox.shape.denyDomains,
+  baseBranchFallbacks: ConfigSchema.shape.baseBranchFallbacks,
+};
+
+/**
+ * Settings the page shows as one row, because they are one decision.
  *
  * The settings table splits any object with fixed keys into a path each, so the
  * server offers `indexModel.runtime` and `indexModel.model` and never
@@ -344,9 +614,32 @@ const PAIRS: Record<string, { kind: PairKind; keyPh: string }> = {
  * model belongs to a CLI: two rows invite codex plus an Anthropic model, which
  * boots and then fails on every index call.
  */
-const PAIRED: Record<string, string> = {
-  "indexModel.runtime": "indexModel.model",
-  "embedding.mode": "embedding.model",
+/**
+ * The embedding row takes all three of its remote fields for a second reason.
+ *
+ * `ConfigSchema` refuses `mode: remote` unless the endpoint parses as a URL and
+ * a credential is named, so the write that flips the mode bounces until they are
+ * filled — and rows gated on the *stored* mode would still be hidden at exactly
+ * the moment somebody needs to type in them. One control owns the whole
+ * decision, and it reveals the fields on the press rather than on the write.
+ */
+const PAIRED: Record<string, string[]> = {
+  "indexModel.runtime": ["indexModel.model"],
+  "embedding.mode": ["embedding.model", "embedding.endpoint", "embedding.credential"],
+};
+
+/**
+ * Rows that only mean something under another row's value.
+ *
+ * A depth for a tree walk that is switched off, or a timeout for a webhook
+ * nobody set, is a control over something that cannot happen — and reads as a
+ * setting somebody forgot to fill in. Written as predicates rather than a value
+ * to match, because "is not empty" is as common a gate here as "equals".
+ */
+const ONLY_WHEN: Record<string, (at: (path: string) => Json | undefined) => boolean> = {
+  "pageindex.depth": (at) => at("pageindex.enabled") === true,
+  "pageindex.width": (at) => at("pageindex.enabled") === true,
+  "timeouts.webhookMs": (at) => at("notifyWebhook") !== "",
 };
 
 type Write = (write: SettingWrite) => Promise<{ ok: boolean; text: string }>;
@@ -365,16 +658,18 @@ export function Knobs({
   section: KnobSection;
   bare?: boolean;
 }) {
+  const { t } = useLingui();
   const queries = useQueryClient();
   const [saved, setSaved] = useState<string | null>(null);
+  const savedAt = (at: string): string => t`Saved ${at}`;
 
   // Every section of this dialog reads the same machine settings, so they share
   // one entry rather than each mounting its own effect and asking again.
   //
   // The throw keeps a failed re-read from emptying the page: `readApi` has
   // already shown the refusal, and returning `null` would replace the knobs with
-  // 读取中…. An error leaves the last good answer in place.
-  const { data: knobs = null } = useQuery({
+  // `Loading…`. An error leaves the last good answer in place.
+  const { data: knobs = null, isError } = useQuery({
     queryKey: ["settings"],
     queryFn: async () => {
       const d = await readApi(api.settings.$get(), SettingsResponseSchema);
@@ -385,11 +680,15 @@ export function Knobs({
 
   const write: Write = async (body) => {
     // Destructured: `post` returns `{ok, text}`, so `if (!ok)` on the object
-    // itself is always false and a refused write still says 已保存. `quiet`
+    // itself is always false and a refused write still reports itself saved. `quiet`
     // because the row shows the reason where the value is.
     const r = await mutate(api.settings.$post({ json: body }), true);
     if (r.ok) {
-      setSaved(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
+      // The active locale, not `toLocaleTimeString("zh-CN")`: the saved-at stamp
+      // sat beside a row the reader had just read in one of ten languages, and
+      // said the time in Chinese conventions to all of them. `clock` is the same
+      // formatter the timeline column uses, so the two agree by construction.
+      setSaved(clock(Date.now()));
       await queries.invalidateQueries({ queryKey: ["settings"] });
     }
     return r;
@@ -397,7 +696,7 @@ export function Knobs({
 
   const spec = SECTIONS[section];
   // Built from every knob, not from this section's rows: the model pickers on
-  // 模型与预算 read three different paths, and a section that shows one of them
+  // `Models & budget` read three different paths, and a section that shows one of them
   // still needs the other two to know what to offer.
   const at = (path: string) => (knobs ?? []).find((k) => k.path === path)?.value;
   const indexRuntime = ConfigSchema.shape.indexModel.shape.runtime.optional().parse(at("indexModel.runtime"));
@@ -412,63 +711,164 @@ export function Knobs({
       ...(indexModel !== undefined ? { model: indexModel } : {}),
     },
   };
-  const rows = (knobs ?? []).filter((k) => spec.paths.includes(k.path));
-  rows.sort((a, b) => spec.paths.indexOf(a.path) - spec.paths.indexOf(b.path));
+  // Per group, in the order the group lists them. A path the server did not send
+  // simply has no row, a row whose gate is shut is not drawn at all, and a group
+  // left with none draws nothing rather than an empty legend over a hairline.
+  const rowsOf = (paths: string[]) =>
+    paths
+      .filter((path) => ONLY_WHEN[path]?.(at) ?? true)
+      .flatMap((path) => (knobs ?? []).filter((k) => k.path === path));
 
   return (
     // The dialog's shared label column is 5rem. These labels are sentences
-    // rather than nouns — 暂停多久后封存 — so the five knob panes share a wider
+    // rather than nouns — `Archive after paused` — so the five knob panes share a wider
     // one among themselves rather than each row wrapping to three lines.
     <div className="[--label:8.5rem]">
       {/* Where a save button would be. There is none: a field is written when it
           loses focus, and this says the write landed. */}
       {bare ? (
-        saved && <Meta className="mb-1 block">已保存 {saved}</Meta>
+        saved && <Meta className="mb-1 block">{savedAt(saved)}</Meta>
       ) : (
-        <Head title={spec.zh} note={spec.note}>
+        <Head title={t(spec.title)} note={t(spec.note)}>
           {/* Clear of the dialog's close button, which is absolutely positioned
               over this band and was sitting on the last character of the time. */}
-          {saved && <Meta className="mr-7">已保存 {saved}</Meta>}
+          {saved && <Meta className="mr-7">{savedAt(saved)}</Meta>}
         </Head>
       )}
-      {knobs === null ? (
-        <Meta className="block py-2">读取中…</Meta>
+      {/* Three states, not two. A read that failed used to leave `Loading…` on the
+          screen forever, which is a page claiming to be busy while nothing is in
+          flight — and the toast that said otherwise is long gone by the time
+          anybody looks. */}
+      {knobs === null && isError ? (
+        <Empty>
+          <Trans>Couldn't read the settings from the server.</Trans>{" "}
+          <Button variant="quiet" size="sm" onClick={() => void queries.refetchQueries({ queryKey: ["settings"] })}>
+            <RotateCcw className="size-3" />
+            <Trans>Try again</Trans>
+          </Button>
+        </Empty>
+      ) : knobs === null ? (
+        <Working>
+          <Trans>Loading…</Trans>
+        </Working>
       ) : (
-        // The permission is a row of this list, not a block above it: two
-        // `FieldGroup`s stacked leave exactly one missing hairline where they
-        // meet, which reads as a list that lost a row.
-        <FieldGroup>
-          {section === "notify" && <Permission />}
-          {rows.map((k) => {
-            const mate = knobs.find((x) => x.path === PAIRED[k.path]) ?? null;
-            return <Row key={k.path} knob={k} mate={mate} src={src} onWrite={write} />;
-          })}
-        </FieldGroup>
+        // Space between groups, hairlines inside them: a legend that sat on the
+        // same rule as the row above it made a section boundary and a row
+        // boundary look like the same thing.
+        //
+        // A wider label column than the shared default, because these labels are
+        // the longest in the dialog — "Clone, fetch or image pull" wrapped at
+        // 10rem, and one row taller than its neighbours breaks the column the
+        // eye is reading down.
+        <div className="flex flex-col gap-5 [--label:13rem]">
+          {spec.groups.map((group, i) => (
+            <Group
+              key={group.paths[0]}
+              group={group}
+              rows={rowsOf(group.paths)}
+              knobs={knobs}
+              src={src}
+              // The permission belongs to the first group's list rather than
+              // above it: two `FieldGroup`s stacked leave exactly one missing
+              // hairline where they meet, which reads as a list that lost a row.
+              permission={i === 0 && section === "notify"}
+              onWrite={write}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
+/** One run of rows, with the legend that names it when it has one. */
+function Group({
+  group,
+  rows,
+  knobs,
+  src,
+  permission,
+  onWrite,
+}: {
+  group: KnobGroup;
+  rows: Knob[];
+  /** Every knob, not just this group's: a `PAIRED` row's other halves can sit anywhere. */
+  knobs: Knob[];
+  src: ModelSources;
+  permission: boolean;
+  onWrite: Write;
+}) {
+  const { t } = useLingui();
+  if (!rows.length && !permission) return null;
+  // Two columns once a group is long enough to scroll for. Every row here is a
+  // label and one narrow control, so half the width was empty and the reader
+  // paid for it in scrolling — scheduling was thirteen rows in a dialog that shows
+  // nine. A tab would have shortened it too, by hiding half of it behind a
+  // click; this hides nothing.
+  const wide = rows.length > 6 && !permission;
+  // A row whose editor is more than one control — a map, a pair table, a ladder,
+  // a list of lines — takes the whole width. In a two-column grid it sets the
+  // height of its row, so the single control beside it sits above a hole the
+  // size of the map. `object` and `array` are exactly those editors.
+  const tall = (k: Knob) => k.type === "object" || k.type === "array";
+  const body = (
+    <FieldGroup className={wide ? "grid grid-cols-2 gap-x-10 divide-y-0 [--label:9.5rem]" : undefined}>
+      {permission && <Permission />}
+      {rows.map((k) => (
+        <Row
+          key={k.path}
+          knob={k}
+          // The hairline is per row rather than from `divide-y`, which in a grid
+          // draws between grid *items* and would rule the two columns apart.
+          className={wide ? cn("border-rule-soft border-b", tall(k) && "col-span-2") : undefined}
+          mates={(PAIRED[k.path] ?? []).flatMap((path) => knobs.filter((x) => x.path === path))}
+          src={src}
+          onWrite={onWrite}
+        />
+      ))}
+    </FieldGroup>
+  );
+  if (!group.legend) return body;
+  return (
+    <FieldSet>
+      {/* `label`, not `legend`: this names a run of rows inside a pane whose own
+          name is already in the band above, so it sits at the row scale rather
+          than competing with it. */}
+      <FieldLegend variant="label">{t(group.legend)}</FieldLegend>
+      {body}
+    </FieldSet>
+  );
+}
+
 /** Label and reason for a knob, falling back to the raw path. */
-const copyFor = (k: Knob) => COPY[k.path] ?? { zh: k.path, why: undefined, ph: undefined };
+/** Resolved here rather than in the table: a descriptor is what survives a
+ *  locale change, and this runs on every render. */
+const said = (m: MessageDescriptor | string | undefined): string | undefined =>
+  m === undefined || typeof m === "string" ? m : i18n._(m);
+
+const copyFor = (k: Knob): { label: string; why: string | undefined; ph: string | undefined } => {
+  const c = COPY[k.path];
+  return { label: c ? i18n._(c.label) : k.path, why: said(c?.why), ph: said(c?.ph) };
+};
 
 function KnobLabel({ knob, id }: { knob: Knob; id: string }) {
   const copy = copyFor(knob);
   const title = selfNamed(knob.path, knob.type);
   return (
     <div className="flex min-w-0 items-baseline gap-1.5">
-      {title ? <FieldTitle id={id}>{copy.zh}</FieldTitle> : <FieldLabel htmlFor={id}>{copy.zh}</FieldLabel>}
+      {title ? <FieldTitle id={id}>{copy.label}</FieldTitle> : <FieldLabel htmlFor={id}>{copy.label}</FieldLabel>}
       {copy.why && <Help>{copy.why}</Help>}
     </div>
   );
 }
 
 function ResetOverride({ onReset }: { onReset: () => void }) {
+  const { t } = useLingui();
   return (
-    <Tip label="恢复默认">
-      <Button variant="quiet" size="sm" aria-label="恢复默认" className="shrink-0" onClick={onReset}>
+    <Tip label={t`Reset to default`}>
+      <Button variant="quiet" size="sm" aria-label={t`Reset to default`} className="shrink-0" onClick={onReset}>
         <RotateCcw className="size-3" />
-        已改
+        <Trans>Modified</Trans>
       </Button>
     </Tip>
   );
@@ -476,7 +876,7 @@ function ResetOverride({ onReset }: { onReset: () => void }) {
 
 async function saveKnob(target: Knob, value: Json, onWrite: Write): Promise<string | null> {
   // Typing the shipped value back is not an override. Otherwise the row reads
-  // 已改 while being identical to the default, and clearing appears to do nothing.
+  // `Modified` while being identical to the default, and clearing appears to do nothing.
   const same = JSON.stringify(value) === JSON.stringify(target.default);
   const body = SettingWriteSchema.safeParse({ path: target.path, value: same ? null : value });
   if (!body.success) return z.prettifyError(body.error);
@@ -484,14 +884,21 @@ async function saveKnob(target: Knob, value: Json, onWrite: Write): Promise<stri
   return result.ok ? null : result.text;
 }
 
-function resetKnobs(knob: Knob, mate: Knob | null, write: (target: Knob, value: Json) => void) {
-  write(knob, knob.default);
-  if (mate) write(mate, mate.default);
-}
-
-function Row({ knob, mate, src, onWrite }: { knob: Knob; mate: Knob | null; src: ModelSources; onWrite: Write }) {
+function Row({
+  knob,
+  mates,
+  src,
+  className,
+  onWrite,
+}: {
+  knob: Knob;
+  mates: Knob[];
+  src: ModelSources;
+  className?: string | undefined;
+  onWrite: Write;
+}) {
   // What is wrong, and which box it is wrong in. A table row can hold six boxes
-  // and "要一个数量" under all of them says nothing about which.
+  // and "wants a number" under all of them says nothing about which.
   const [bad, setBad] = useState<Complaint>(NO_COMPLAINT);
   const id = `knob-${knob.path.replace(/\W/g, "-")}`;
 
@@ -500,8 +907,19 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate: Knob | null; src:
     setBad(why ? { why, at: "" } : NO_COMPLAINT);
   };
 
+  // A wide table gets its label above it, not beside it. The label column is
+  // sized for the longest name in the pane, so a four-character one next to a
+  // grid that starts past it leaves a column of nothing — which is what the
+  // model pane looked like: three tables, each indented past 13rem of blank.
+  const stacked = TABLES.has(knob.path);
+
   return (
-    <Field data-invalid={invalidFlag(bad)} aria-labelledby={labelledBy(knob.path, knob.type, id)}>
+    <Field
+      orientation={stacked ? "vertical" : "horizontal"}
+      className={className}
+      data-invalid={invalidFlag(bad)}
+      aria-labelledby={labelledBy(knob.path, knob.type, id)}
+    >
       {/* The `?` is a sibling of the label, not a child of it: inside a
           `<label htmlFor>` every click on it would also focus the field it
           explains, which is a control that moves the cursor somewhere else. */}
@@ -514,18 +932,25 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate: Knob | null; src:
           <Value
             id={id}
             knob={knob}
-            mate={mate}
+            mates={mates}
             src={src}
             bad={badCell(bad)}
             onWrite={(v) => void put(knob, v)}
-            onWriteMate={(v) => void put(mate ?? knob, v)}
+            onWriteMate={(path, v) => void put(mates.find((m) => m.path === path) ?? knob, v)}
             onRefuse={(why, at) => setBad({ why, at })}
             onClear={() => setBad(NO_COMPLAINT)}
           />
           {/* Neutral, not the accent: the accent means "waiting on you" and this
               is only "not the shipped value". */}
-          {rowChanged(knob, mate) && (
-            <ResetOverride onReset={() => resetKnobs(knob, mate, (target, next) => void put(target, next))} />
+          {/* Resets the row and everything grouped with it: a single-row reset
+              would leave a pair half-overridden, which reads as a knob that
+              refused to reset. */}
+          {rowChanged(knob, mates) && (
+            <ResetOverride
+              onReset={() => {
+                for (const target of [knob, ...mates]) void put(target, target.default);
+              }}
+            />
           )}
         </div>
         {bad.why && <span className="text-meta leading-snug text-accent">{bad.why}</span>}
@@ -534,30 +959,34 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate: Knob | null; src:
   );
 }
 
-function modelValue({ knob, mate, src, onWrite, onWriteMate }: Editor) {
+function modelValue({ knob, mates, src, onWrite, onWriteMate }: Editor) {
   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- this renderer intentionally owns only model knobs
   switch (knob.path) {
     case "difficultyModel":
       return <ModelTable table={ConfigSchema.shape.difficultyModel.parse(knob.value)} src={src} onWrite={onWrite} />;
     case "sliceBudgetTokens":
       return <Caps caps={ConfigSchema.shape.sliceBudgetTokens.parse(knob.value)} onWrite={onWrite} />;
-    case "embedding.mode":
+    case "embedding.mode": {
+      const shape = ConfigSchema.shape.embedding.shape;
       return (
         <Embedding
-          mode={ConfigSchema.shape.embedding.shape.mode.parse(knob.value)}
-          model={ConfigSchema.shape.embedding.shape.model.catch("").parse(mateValue(mate))}
+          mode={shape.mode.parse(knob.value)}
+          model={shape.model.catch("").parse(mateValue(mates, "embedding.model"))}
+          endpoint={shape.endpoint.catch("").parse(mateValue(mates, "embedding.endpoint"))}
+          credential={shape.credential.catch("").parse(mateValue(mates, "embedding.credential"))}
           onMode={onWrite}
-          onModel={onWriteMate}
+          onField={onWriteMate}
         />
       );
+    }
     case "indexModel.runtime":
       return (
         <IndexModel
           runtime={ConfigSchema.shape.indexModel.shape.runtime.parse(knob.value)}
-          model={ConfigSchema.shape.indexModel.shape.model.catch("").parse(mateValue(mate))}
+          model={ConfigSchema.shape.indexModel.shape.model.catch("").parse(mateValue(mates, "indexModel.model"))}
           src={src}
           onRuntime={onWrite}
-          onModel={onWriteMate}
+          onModel={(v) => onWriteMate("indexModel.model", v)}
         />
       );
     default:
@@ -577,7 +1006,7 @@ function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
       <Pairs
         map={rec(knob.value)}
         kind={pairs.kind}
-        keyPh={keyPh(knob, pairs.keyPh)}
+        keyPh={keyPh(knob, i18n._(pairs.keyPh))}
         bad={bad}
         onWrite={onWrite}
         onRefuse={onRefuse}
@@ -590,33 +1019,64 @@ function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
     case "contextWindow":
       return <Windows map={ConfigSchema.shape.contextWindow.parse(knob.value)} src={src} onWrite={onWrite} />;
     case "sandbox.denyDomains":
-      return (
-        <Lines
-          list={ConfigSchema.shape.sandbox.shape.denyDomains.parse(knob.value)}
-          ph={copyFor(knob).ph}
-          onWrite={onWrite}
-        />
-      );
+    case "baseBranchFallbacks":
+      // A list of names, in the order they are tried, which is exactly what a
+      // textarea preserves. `baseBranchFallbacks` was a text box holding
+      // `["main","master"]`, where adding a third meant getting JSON right by
+      // hand.
+      return <Lines list={LINES[knob.path]!.parse(knob.value)} ph={copyFor(knob).ph} onWrite={onWrite} />;
+    case "intervals.notifyBackoffMs":
+      return <Ladder list={ConfigSchema.shape.intervals.shape.notifyBackoffMs.parse(knob.value)} onWrite={onWrite} />;
     default:
       return null;
   }
 }
+
+/** The suggestions with this browser's own language at the front, because "same
+ *  as what I am reading" is the answer most of the time and typing it is the only
+ *  other way to get it. Read off the *active* locale rather than the stored
+ *  preference: what leads the list should be the language actually on screen. */
+/**
+ * Follow first, then the presets, with the reader's own language at the head of
+ * those.
+ *
+ * `""` is what "follow" writes, and it is the shipped default — so the first row
+ * is the state most installations are already in, and picking anything else is a
+ * deliberate divergence. The panel's own language leads the rest because "the
+ * one I am reading" is the usual answer when they do diverge.
+ */
+/**
+ * `Combobox` is free text, so its options *are* their values and there is no
+ * `{value,label}` to hang an empty string on. The follow row is therefore a
+ * sentence that reads as one, mapped to `""` at this one edge — a boss who types
+ * it by hand gets what they asked for either way.
+ */
+const followRow = () => i18n._(msg`Same as the panel (${endonymOf(localeOf(i18n.locale))})`);
+
+const languageOptions = (): string[] => {
+  const reading = endonymOf(localeOf(i18n.locale));
+  return [followRow(), reading, ...LANGUAGE_SUGGESTIONS.filter((l) => l !== reading)];
+};
 
 function choiceValue({ knob, onWrite }: Editor) {
   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- this renderer intentionally owns only choice knobs
   switch (knob.path) {
     case "language":
       // Any language, suggested rather than restricted: this governs what the
-      // *agents* write, and a model writes whatever it is told to. `say()`'s
-      // table is only the orchestrator's own status lines — a smaller fact, and
-      // it is in the row's note.
+      // *agents* write, and a model writes whatever it is told to. The panel's
+      // own language is a separate choice, in Preferences — ADR 035 keeps them
+      // two values because what I read is not what my customers read.
+      //
+      // "Follow" is a real option now, and it used to be a lie: the server never
+      // learned what this browser was set to, so a value promising to track it
+      // could not. The locale menu writes `panelLanguage` through, so it can.
       return (
         <Combobox
           free
-          value={ConfigSchema.shape.language.parse(knob.value)}
-          options={LANGUAGES}
-          placeholder="中文 / English / 日本語 …"
-          onCommit={onWrite}
+          value={ConfigSchema.shape.language.parse(knob.value) || followRow()}
+          options={languageOptions()}
+          placeholder={LANGUAGE_SUGGESTIONS.slice(0, 3).join(" / ")}
+          onCommit={(next) => onWrite(next === followRow() ? "" : next)}
         />
       );
     case "autoAcceptTiers":
@@ -626,7 +1086,7 @@ function choiceValue({ knob, onWrite }: Editor) {
           // Sorted back into tier order before it is written: a toggle group
           // hands back the order things were pressed in, and ["normal",
           // "trivial"] is the shipped default with its elements swapped — which
-          // this page would then have to call 已改.
+          // this page would then have to call `Modified`.
           onValueChange={(picked) => onWrite(TIERS.filter((t) => picked.includes(t)))}
           className="flex items-center gap-0.5"
         >
@@ -661,20 +1121,17 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
   const scale = durationScale(shape);
 
   if (scale) {
-    const { n, unit } = splitDuration(now * scale);
     return (
-      <Amount
-        n={n}
-        unit={unit}
-        units={DURATION_UNITS}
-        label={copyFor(knob).zh}
+      <DurationAmount
+        ms={now * scale}
+        label={copyFor(knob).label}
         invalid={bad === ""}
-        onCommit={(next, u) => onWrite(Math.round(msOf(next, u) / scale))}
+        onWrite={(next) => onWrite(Math.round(next / scale))}
       />
     );
   }
   if (shape === "count") {
-    return <CountAmount value={now} label={copyFor(knob).zh} invalid={bad === ""} onWrite={onWrite} />;
+    return <CountAmount value={now} label={copyFor(knob).label} invalid={bad === ""} onWrite={onWrite} />;
   }
   // Stored as a fraction of one and read as a percentage, which is the row
   // where a typo is quietest: `6` typed over `60%` is a legal fraction and
@@ -686,10 +1143,10 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
         n={Math.round(now * 1000) / 10}
         unit="%"
         units={PERCENT}
-        label={copyFor(knob).zh}
+        label={copyFor(knob).label}
         invalid={bad === ""}
         onCommit={(pct) => {
-          if (pct <= 0 || pct > 100) return onRefuse(WANTS.percent, "");
+          if (pct <= 0 || pct > 100) return onRefuse(i18n._(WANTS_PERCENT), "");
           // Divided, not multiplied: 600 / 1000 is the same double as 0.6.
           onWrite(Math.round(pct * 10) / 1000);
         }}
@@ -699,13 +1156,13 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
   return (
     <Box
       id={id}
-      value={showNumber(now, shape)}
+      value={String(now)}
       invalid={bad === ""}
       className="w-[9rem] flex-none"
       onUnchanged={onClear}
       onCommit={(raw) => {
-        const n = readNumber(raw, now, shape);
-        if (n === null) return onRefuse(shape ? WANTS[shape] : "要一个数字", "");
+        const n = readNumber(raw);
+        if (n === null) return onRefuse(i18n._(msg`A number`), "");
         onWrite(n);
       }}
     />

@@ -13,9 +13,10 @@
  * exit code is non-zero only if something failed. Steps needing a binary this
  * repository does not vendor say so and name what CI will do instead.
  *
- * Not a replacement for CI: `security-codeql` runs on GitHub's infrastructure, and
- * `pr-plan` reads a pull request body that does not exist yet. Both are named at
- * the end of every run.
+ * Not a replacement for CI: four checks have no local form at all, and the end
+ * of every run names them. That list lives at the bottom of this file; a copy
+ * here would be the second owner, which is the class of defect this whole file
+ * was written to close.
  */
 import { $ } from "bun";
 
@@ -28,21 +29,25 @@ interface Step {
   run: () => Promise<Outcome | { outcome: Outcome; note: string }>;
 }
 
-/** A command's exit status, with its output shown only when it matters. */
+/**
+ * A command's exit status, with its output shown only when it matters.
+ *
+ * Through bun's `$`, which the rest of this file already uses: the hand-built
+ * `Bun.spawn(["sh", "-c", …])` plus two `new Response(...).text()` was a second
+ * way to run a command in a file that had one.
+ */
 async function cmd(line: string): Promise<Outcome> {
-  const proc = Bun.spawn(["sh", "-c", line], { stdout: "pipe", stderr: "pipe" });
-  const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-  const code = await proc.exited;
-  if (code !== 0) {
-    process.stdout.write(`${out}${err}`);
-    return "fail";
-  }
-  return "pass";
+  const r = await $`sh -c ${line}`.quiet().nothrow();
+  if (r.exitCode === 0) return "pass";
+  process.stdout.write(`${r.stdout.toString()}${r.stderr.toString()}`);
+  return "fail";
 }
 
 /** Whether a binary is on PATH, for the steps that need one we do not ship. */
 /** Pinned beside `security.yml`'s copy; a governance test keeps the two equal. */
 const ACTIONLINT_VERSION = "1.7.12";
+/** Pinned beside `security.yml`'s copy, for the same reason. */
+const ZIZMOR_VERSION = "1.29.0";
 
 const has = async (bin: string): Promise<boolean> => (await $`command -v ${bin}`.quiet().nothrow()).exitCode === 0;
 
@@ -54,13 +59,17 @@ const has = async (bin: string): Promise<boolean> => (await $`command -v ${bin}`
  * function over the threshold for no reason a reader would recognise.
  */
 async function unsigned(): Promise<string[]> {
-  const author = (await $`git config user.name`.text()).trim();
-  const email = (await $`git config user.email`.text()).trim();
   const shas = (await $`git rev-list --no-merges origin/main..HEAD`.text()).trim().split("\n").filter(Boolean);
   const missing: string[] = [];
   for (const sha of shas) {
+    // Each commit's own author, which is what `dco` compares. Read from
+    // `git config` instead, this reported every commit somebody else wrote as
+    // unsigned the moment a branch carried one — and the fix it printed,
+    // `rebase --signoff`, would have put this machine's name on their work.
+    const author = (await $`git log -1 --format=${"%an <%ae>"} ${sha}`.text()).trim();
+    if (author.endsWith("[bot]@users.noreply.github.com>")) continue;
     const body = await $`git log -1 --format=%B ${sha}`.text();
-    if (!body.includes(`Signed-off-by: ${author} <${email}>`)) missing.push(sha.slice(0, 9));
+    if (!body.toLowerCase().includes(`signed-off-by: ${author}`.toLowerCase())) missing.push(sha.slice(0, 9));
   }
   return missing;
 }
@@ -77,7 +86,44 @@ const steps: Step[] = [
   { name: "format", job: "quality", run: () => cmd("bun run format:check") },
   { name: "types", job: "quality", run: () => cmd("bun run typecheck") },
   { name: "lint", job: "quality", run: () => cmd("bun run lint") },
-  { name: "web bundle", job: "quality", run: () => cmd("bun run build:web") },
+  // Editing an English `<Trans>` retires its id, so eight catalogs lose that
+  // string at once. The step below regenerates and diffs, which a *complete*
+  // catalogue satisfies — the rows are gone from it too. This is the gate that
+  // says no.
+  {
+    name: "every message is translated and keeps its placeholders",
+    job: "quality",
+    run: () => cmd("bun run i18n:validate"),
+  },
+  /**
+   * The catalogues are a current snapshot of the source, and nothing else asks.
+   *
+   * Nine translations were lost inside this branch: `extract --clean` retired
+   * ids that a later edit brought back as `msg` templates, and no gate saw it.
+   * `i18n:validate` could not — the catalogue was *complete*, because the rows
+   * were gone from it too — and regenerating the README only reads a count.
+   */
+  /**
+   * Writes rather than checks, and the diff is what asks: `lingui extract` has
+   * no `--check`, and running it is the only thing that answers the question.
+   *
+   * `i18n:extract` derives all three — the catalogues, `zh-Hant` from `zh`, and
+   * the README's table — because all three are a function of the same source.
+   * They were three steps until it was clear that two of them only ever failed
+   * when somebody forgot to run a second command.
+   */
+  {
+    name: "catalogues match the source",
+    job: "quality",
+    run: () => cmd("bun run i18n:check"),
+  },
+  // `test`, not `quality`: the bundle moved to that job so a PR compiles it once
+  // (`ci.yml` says so where it moved it). This line's whole job is to name the
+  // check an author will go and look at.
+  { name: "web bundle", job: "test", run: () => cmd("bun run build:web") },
+  // CI runs this straight after the bundle and preflight did not, so a size
+  // regression was red there and green here. The bundle above is its input.
+  { name: "size budgets", job: "test", run: () => cmd("bun run perf:budget") },
   // Through `bun run test`, not `bun test` directly: that wrapper retries an arm64
   // worker panic once and nothing else, and this is the command a developer runs
   // before every commit on the machine where that panic happens. CI keeps calling
@@ -90,12 +136,18 @@ const steps: Step[] = [
   {
     name: "security candidates",
     job: "security-fallow",
-    run: () => cmd("bunx fallow security --changed-since main --gate newly-reachable --quiet"),
+    // `origin/main`, which is what CI diffs against — a local `main` can sit
+    // behind it, and then this answers about a range nobody chose. `signOff`
+    // above already had it right.
+    run: () => cmd("bunx fallow security --changed-since origin/main --gate newly-reachable --quiet"),
   },
   {
     name: "dependency advisories",
     job: "security-dependencies",
-    run: () => cmd("bun audit --audit-level=high"),
+    // Bare, as CI runs it and as the enforcement matrix names it. With
+    // `--audit-level=high` a moderate advisory passed here and failed there,
+    // which is the divergence that costs a round trip.
+    run: () => cmd("bun audit"),
   },
   { name: "sign-off", job: "pr", run: signOff },
   {
@@ -121,6 +173,19 @@ const steps: Step[] = [
         );
       }
       return { outcome: "skip", note: "no actionlint and no docker — CI runs it" };
+    },
+  },
+  {
+    name: "workflow security",
+    job: "workflow-static",
+    run: async () => {
+      // The other half of that job, and the enforcement matrix names zizmor as
+      // its owner — preflight ran actionlint alone and understated a job it
+      // claims to stand in for. Measured at 0.04s against this repository, and
+      // a workflow edit is both the likeliest thing to trip `--pedantic` and
+      // the one edit preflight could not see.
+      if (await has("uvx")) return cmd(`uvx --from zizmor==${ZIZMOR_VERSION} zizmor --pedantic .github/workflows`);
+      return { outcome: "skip", note: "no uvx — CI runs zizmor" };
     },
   },
   {
@@ -171,7 +236,12 @@ const total = results.reduce((sum, r) => sum + r.ms, 0);
 
 console.log(`\n${(total / 1000).toFixed(1)}s total`);
 if (skipped.length > 0) console.log(`${skipped.length} skipped — CI will run them.`);
-console.log("Never local: security-codeql (GitHub infrastructure), pr-plan (needs a pull request body).");
+console.log(
+  "Never local: security-codeql (GitHub infrastructure), " +
+    "dependency-review (GitHub's API over the PR's range), " +
+    "codecov/patch (posted after CI reports, by a second workflow), " +
+    "pr / verify engineering plan sections (reads a pull request body).",
+);
 
 if (failed.length > 0) {
   console.log(`\n${failed.length} failed: ${failed.map((r) => r.step.job).join(", ")}`);

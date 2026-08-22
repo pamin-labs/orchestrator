@@ -75,7 +75,7 @@ test("Desk, ownership and cost surfaces render observable empty and populated st
   const rendered = render(<CostView cost={cost} />);
   shown(rendered, "500");
   shown(rendered, "按需求");
-  shown(rendered, "cache 命中");
+  shown(rendered, "缓存命中率");
 });
 
 const owning = (id: number, name: string, owns: string[]) => ({
@@ -110,7 +110,6 @@ test("requirements with disjoint boundaries are cleared to run at once, and the 
   st.groups.push(owning(1, "改闸门", ["src/mech/**"]), owning(2, "改面板", ["web/src/**"]), owning(3, "没划", []));
   const pane = render(<Owns st={st} projectId={1} />);
 
-  shown(pane, "2 个需求各改各的，可以一起跑");
-  shown(pane, "还有 1 个没分");
+  shown(pane, "2 个需求各改各的，可以一起跑（还有 1 个没分）");
   gone(pane, "压着");
 });

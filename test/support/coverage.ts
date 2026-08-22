@@ -11,32 +11,21 @@ import type { instrument as oxcInstrumentFn } from "oxc-coverage-instrument";
  */
 /**
  * The rewrite happens at load time, so counters land in `globalThis.__coverage__`
- * and what comes out is a standard Istanbul map. Loaded only by
- * `bun run test:coverage`: instrumentation costs real time and the default
+ * and what comes out is a standard Istanbul map. `test/support/loader.ts` owns
+ * the plugin and requires this file only under `ORCH_COVERAGE=1`, so loading it
+ * at all is the switch: instrumentation costs real time and the default
  * `bun test` is kept fast on purpose.
+ */
+/**
+ * Bun does not chain `onLoad` handlers — the first registered for a path wins
+ * and the rest are never called, and returning nothing is a `TypeError` rather
+ * than "leave this one alone". Both measured against 1.3.14. So this file
+ * cannot register its own plugin beside the macro expander; it exports a
+ * transform and `loader.ts` composes the two.
  */
 
 const COVERAGE_DIR = process.env.COVERAGE_DIR ?? "coverage";
 const root = process.cwd();
-
-/**
- * The switch is an environment variable because there is nowhere else to put it.
- *
- * This file is imported as the first line of `setup.ts`, the only position early
- * enough to instrument what the resets there import — a plugin registered after a
- * module has loaded does not reach it. So the question is whether the *loading*
- * can be conditional instead, and it cannot.
- */
-/**
- * Measured against Bun 1.3.14: `bunfig.toml`'s `preload` runs **before** a
- * command-line `--preload`, so `bun test --preload ./test/support/coverage.ts`
- * registers the plugin after `setup.ts` has loaded; and `bun test` has no
- * `--config`, which is read as a test-file filter and matches nothing.
- *
- * The preload list is therefore static, and a static list can only be made
- * conditional from inside the thing it loads.
- */
-const enabled = process.env.ORCH_COVERAGE === "1";
 
 /** Source we own. Tests, fixtures and dependencies are not the subject. */
 function isSubject(path: string): boolean {
@@ -46,55 +35,43 @@ function isSubject(path: string): boolean {
 }
 
 /**
- * Babel has to understand the syntax before it can instrument it, but it must
- * not compile it — Bun does that, and a second transpile would change what the
- * test actually runs.
- *
- * `jsx` only for `.tsx`. Enabled for a `.ts` file it reads the generic arrow
- * `const track = <T>(work: Promise<T>) => …` in src/server.ts as an unclosed JSX
- * tag, and the file then loads uninstrumented with a syntax error on the way
- * past — coverage silently missing for whatever it touched.
- */
-function instrument(source: string, path: string, _jsx: boolean): string {
-  return oxcInstrument(source, path).code;
-}
-
-/**
- * The rewriter itself, loaded only when it is going to be used.
- *
- * A static `import` here is paid by every one of the 149 test files — twice over
- * under `--parallel`, which implies `--isolate` and re-evaluates the module graph
- * per file — for a plugin the default run never registers.
- */
-/**
  * `require`, not `await import`. Measured against Bun 1.3.14: a preload's top-level
  * `await` does not hold back the module it was preloading for, so under `--parallel`
  * the plugin would register after the source it exists to instrument had already
  * loaded. `require` keeps registration on the synchronous path, where the ordering
  * the preload buys still holds.
  */
-let oxcInstrument: typeof oxcInstrumentFn;
+const load = createRequire(import.meta.url) as <T>(id: string) => T;
+const oxcInstrument: typeof oxcInstrumentFn =
+  load<typeof import("oxc-coverage-instrument")>("oxc-coverage-instrument").instrument;
 
-if (enabled) {
-  // Typed by the caller: `createRequire` returns `any`, and the module named
-  // here is a literal, so the generic is just saying what it already is.
-  const load = createRequire(import.meta.url) as <T>(id: string) => T;
-  oxcInstrument = load<typeof import("oxc-coverage-instrument")>("oxc-coverage-instrument").instrument;
-  Bun.plugin({
-    name: "istanbul-instrument",
-    setup(build) {
-      build.onLoad({ filter: /\.tsx?$/ }, async (args) => {
-        const jsx = args.path.endsWith(".tsx");
-        const loader = jsx ? "tsx" : "ts";
-        const source = await Bun.file(args.path).text();
-        // `onLoad` has to hand back a module either way — returning nothing is
-        // an error rather than "leave this one alone", so anything outside the
-        // subject is passed through untouched.
-        if (!isSubject(args.path)) return { contents: source, loader };
-        return { contents: instrument(source, args.path, jsx), loader };
-      });
-    },
-  });
+/**
+ * Instrumented if it is ours, handed back untouched if it is not.
+ *
+ * `inputSourceMap` is how a file that something else already rewrote still gets
+ * counters against its own lines: `composeInputSourceMap` folds the map in
+ * during instrumentation, so the emitted `statementMap` carries original-source
+ * positions keyed by the original path. Macro expansion runs first and hands
+ * its map here — without it the panel's coverage would describe generated code,
+ * and `fallow audit` reads that map to decide which function it is looking at.
+ */
+/**
+ * The Istanbul map comes back beside the code, so a caller that needs to know
+ * *what* was instrumented does not have to go looking for it in the emitted
+ * source. `loader-transforms-compose.test.ts` did, by counting braces from
+ * `coverageData = {` and `JSON.parse`-ing the slice — a second hand-written
+ * bracket matcher in a tree that had just deleted one. The loader takes `.code`
+ * and ignores the rest, which is one export rather than two.
+ */
+export function instrumented(
+  source: string,
+  path: string,
+  inputSourceMap?: string | null,
+): { code: string; coverageMap: string | null } {
+  if (!isSubject(path)) return { code: source, coverageMap: null };
+  const options = inputSourceMap ? { inputSourceMap, composeInputSourceMap: true } : undefined;
+  const out = oxcInstrument(source, path, options);
+  return { code: out.code, coverageMap: out.coverageMap };
 }
 
 declare global {

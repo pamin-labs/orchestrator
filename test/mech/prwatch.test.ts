@@ -19,7 +19,7 @@ import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { evictOldestLessons, LESSON_CAP } from "../../src/mech/knowledge/lessons.ts";
 import { landed } from "../../src/mech/flow/mergequeue.ts";
-import { AgentTurnPayloadSchema, Scheduler } from "../../src/platform/scheduling/scheduler.ts";
+import { AgentTurnPayloadSchema } from "../../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
@@ -34,6 +34,7 @@ import {
   project as projectTable,
 } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 async function harness(
   handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({}),
@@ -49,7 +50,7 @@ async function harness(
   const ctx: Ctx = {
     db,
     bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
+    sched: newScheduler(db, async () => {}),
     // `git bundle create` carries the branch out of the group's container; the
     // utility container fetches from the bundle and pushes. Both are containers,
     // so both are this one fake.

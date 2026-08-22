@@ -5,7 +5,12 @@ import { z } from "zod";
 import type { Json } from "../../../src/contracts/json.ts";
 import { hc, type InferResponseType } from "hono/client";
 import type { ApiType, TelemetryReport } from "../../../src/http/routes/panel.ts";
-import { displayJson, readJsonResponse, TextResponseSchema } from "../../../src/contracts/protocol.ts";
+import {
+  displayJson,
+  ErrorResponseSchema,
+  readJsonResponse,
+  TextResponseSchema,
+} from "../../../src/contracts/protocol.ts";
 
 /**
  * The payload types, from the server that produces them.
@@ -28,12 +33,15 @@ import {
   type Archived,
   type Escalation,
   type Group,
+  type HostFailure,
   type Slice,
   type Snapshot,
 } from "../../../src/contracts/panel.ts";
 import { appendFrame, notifyFrom, raise, readWire, type PanelFrame } from "./stream.ts";
+import { saidText } from "./said.ts";
+import type { Said } from "../../../src/contracts/said.ts";
 
-export type { Agent, Archived, Escalation, Group, Slice };
+export type { Agent, Archived, Escalation, Group, HostFailure, Slice };
 export type State = Snapshot;
 export type Usage = State["usage"][number];
 export type Cost = CostReport;
@@ -61,7 +69,14 @@ const browserFetch: typeof fetch = Object.assign(
   { preconnect: fetch.preconnect },
 );
 
-export const api = hc<ApiType>("/api/v1", { fetch: browserFetch });
+/**
+ * Annotated rather than inferred: every route's error type now carries the
+ * refusal descriptor, and the client's inferred type crossed what `tsc` will
+ * serialise into a declaration file ("exceeds the maximum length"). Naming it
+ * through the instantiation expression is the annotation without writing the
+ * type out.
+ */
+export const api: ReturnType<typeof hc<ApiType>> = hc<ApiType>("/api/v1", { fetch: browserFetch });
 
 export const EvidenceSchema: z.ZodType<InferResponseType<(typeof api.slices)[":id"]["evidence"]["$get"], 200>> =
   z.object({
@@ -203,6 +218,7 @@ const EMPTY: State = {
   // Assume wired until told otherwise: a mark on the header before the first
   // poll lands would flash on every reload.
   ready: true,
+  failing: [],
   projects: [],
   groups: [],
   slices: [],
@@ -237,12 +253,19 @@ export async function readApi<S extends z.ZodType>(request: Promise<Response>, s
   return result.data;
 }
 
+/** The sentence a refusal named, if it named one — read through the contract
+ *  the server writes it with rather than a second model of the same body. */
+const saidIn = (body: Json): Said | null => ErrorResponseSchema.safeParse(body).data?.said ?? null;
+
 export type ApiResult<T> = { ok: true; data: T; text: string } | { ok: false; data: null; text: string };
 
 export async function readJson<S extends z.ZodType>(r: Response, schema: S): Promise<ApiResult<z.output<S>>> {
   const body = await readJsonResponse(r);
   if (!body.ok) return { ok: false, data: null, text: "Server returned a non-JSON response" };
-  if (!r.ok) return { ok: false, data: null, text: displayJson(body.data) };
+  // The refusal in the reader's language when the server named one, and the
+  // English it sent alongside when it did not. `said` is where `bad()` puts the
+  // descriptor; anything else about the body is unchanged.
+  if (!r.ok) return { ok: false, data: null, text: saidText(saidIn(body.data), displayJson(body.data)) };
   const parsed = schema.safeParse(body.data);
   if (!parsed.success) {
     return { ok: false, data: null, text: `Server returned invalid JSON: ${z.prettifyError(parsed.error)}` };
@@ -312,8 +335,8 @@ const ORCH = ["orch"];
  * The two reads the whole panel is built on, plus the stream that invalidates them.
  *
  * The project scope used to be a ref, because every SSE event called `refresh()`
- * with no argument and swapped 成本 from this project to every project while the
- * page still said 这个项目累计. It is a query key now: the scope is *in* the identity
+ * with no argument and swapped `Cost` from this project to every project while the
+ * page still said it was this project's total. It is a query key now: the scope is *in* the identity
  * of the cached answer, so there is no version of this where a reply for one
  * project lands under another's heading.
  */
@@ -340,7 +363,7 @@ export function useOrch() {
     refetchInterval: 60_000,
   });
   const cost = useQuery({
-    // The nav says 成本 is this project's, so ask for this project's.
+    // The nav says `Cost` is this project's, so ask for this project's.
     queryKey: ORCH.concat("cost", String(project)),
     queryFn: () => get(api.cost.$get({ query: project ? { project: String(project) } : {} }), CostReportSchema),
     refetchInterval: 60_000,

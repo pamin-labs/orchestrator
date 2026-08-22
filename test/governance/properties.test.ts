@@ -79,14 +79,20 @@ test("idempotency replays every JSON payload and conflicts on changed payloads",
   // to test a middleware that keys on a uuid and therefore cannot collide with
   // its own earlier cases anyway. Locally that was 20% of this file; on CI, with
   // coverage instrumentation and four cores, it was the 30s timeout.
+  // The app is built once for the same reason, and it was the half of that fix
+  // that did not get made: a hundred cases meant a hundred `new Hono()` with
+  // their middleware and route registered again. The key is a fresh uuid per
+  // case, so one app cannot confuse two of them; only `writes` is per-case.
   const db = await openMemory();
+  const app = new Hono();
+  let writes = 0;
+  app.use("*", idempotency(db));
+  app.post("/write", async (c) => json({ write: ++writes, value: JsonValue.parse(await c.req.json()) }));
+
   await fc.assert(
     fc.asyncProperty(fc.uuid(), fc.jsonValue(), async (key, value) => {
       const payload = JsonValue.parse(value);
-      const app = new Hono();
-      let writes = 0;
-      app.use("*", idempotency(db));
-      app.post("/write", async (c) => json({ write: ++writes, value: JsonValue.parse(await c.req.json()) }));
+      writes = 0;
       const send = (body: Json) =>
         app.request("/write", {
           method: "POST",
@@ -101,7 +107,12 @@ test("idempotency replays every JSON payload and conflicts on changed payloads",
       expect(writes).toBe(1);
       expect((await send({ changed: true, value: payload })).status).toBe(409);
     }),
-    propertyOptions,
+    // Its own count, a quarter of the default. Every case is three real round
+    // trips to Postgres, and this middleware does not read the payload — it
+    // hashes the serialised body — so the hundredth arbitrary JSON value
+    // exercises exactly what the twenty-fifth did. It timed out at 30s on CI
+    // twice, at case 76 and case 91, and passed locally in 0.6s both times.
+    { ...propertyOptions, numRuns: Math.min(propertyOptions.numRuns ?? 100, 25) },
   );
 }, 30_000);
 

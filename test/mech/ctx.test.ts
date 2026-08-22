@@ -16,8 +16,8 @@ const queryWith = (db: DB, rest: Omit<Parameters<typeof query>[0], "db" | "index
  *
  * The rented list and the rented segmenter disagree about what a token is: \`zho\` is
  * 78 entries and every one is a single character, because it was built for a
- * character-splitting tokeniser. ICU hands back words, so 这 and 个 were both
- * filtered while 这个 sailed through as a content word — and it is one of the most
+ * character-splitting tokeniser. ICU hands back words, so `这` and `个` were both
+ * filtered while `这个` sailed through as a content word — and it is one of the most
  * common tokens in any Chinese sentence.
  */
 /**
@@ -29,8 +29,8 @@ const queryWith = (db: DB, rest: Omit<Parameters<typeof query>[0], "db" | "index
  * path or a diff into the index as a term.
  */
 test("length is judged by script, not by counting characters", () => {
-  // Latin singles and bare digits go; a Han single stays, because 钱, 锁 and 图 are
-  // words a query would reasonably be. 中 is not one of them here — it is on the
+  // Latin singles and bare digits go; a Han single stays, because `钱`, `锁` and `图` are
+  // words a query would reasonably be. `中` is not one of them here — it is on the
   // rented stop list, which is a different rule and would hide this one.
   expect(terms("a b x 7 _ 钱 锁")).toEqual(["钱", "锁"]);
   expect(terms("run x() twice")).toEqual(["run", "twice"]);
@@ -71,7 +71,7 @@ test("an alphabetic word built from stop letters survives", () => {
 /**
  * Deliberately under-inclusive: only what the rented list already covers, composed.
  *
- * 可以 and 没有 survive because 可 and 有 are not on it. Widening this by hand would
+ * `可以` and `没有` survive because `可` and `有` are not on it. Widening this by hand would
  * be the second stop word table ADR 021 refused, one script at a time.
  */
 test("a word with one content character is content", () => {
@@ -93,7 +93,7 @@ test("terms are words in whatever script the writing uses, and stopwords go", ()
   expect(zh).not.toContain("的");
   expect(zh).not.toContain("是");
   // Words, not characters. This used to split Han per character because a regex
-  // cannot do better; ICU's word breaker can, so a query for 凭据 matches a term
+  // cannot do better; ICU's word breaker can, so a query for `凭据` matches a term
   // rather than two of the commonest characters in the language.
   expect(terms("中文问候")).toEqual(["中文", "问候"]);
   // A path splits into components on purpose: a query for "auth" should match a
@@ -268,7 +268,11 @@ test("the budget is a hard cap, not a suggestion", async () => {
 
   const tight = await queryWith(db, { grpId: 1, projectId: 1, question: "middleware token", budget: 800 });
   expect(tight.length).toBeLessThanOrEqual(800);
-});
+  // 200 sequential inserts is this test's own cost, not the query's: it runs in
+  // 3s alone and crossed Bun's 5s default the first time anything else was added
+  // to the parallel suite beside it. The budget being tested is a character
+  // count, so the wall clock here says nothing about the code under test.
+}, 20_000);
 
 test("when the budget truncates, it says how many matches were dropped", async () => {
   const db = await seeded();

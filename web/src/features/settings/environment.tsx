@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { api, mutate } from "../../shared/api";
+import { SaidSchema, type Said } from "../../../../src/contracts/said.ts";
 import { cn } from "../../ui/cn";
 import { Head, Input, Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
@@ -12,17 +13,38 @@ import { Field, FieldContent, FieldGroup, FieldLabel, InputGroup } from "../../u
 import { Tip } from "../../ui/tooltip";
 import { ImageRow } from "../project/view";
 import type { AuthRow, HostCheck } from "./auth";
+import { saidText } from "../../shared/said";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { msg, ph } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
 
 /** Can this machine build a sandbox at all. Four facts, one line each. */
+/**
+ * Why nothing will start: docker, uv, the sidecar image, the mounts.
+ *
+ * `allowed_host_paths` is dropped, and only here — `ServerDrift` above already
+ * draws it, with the exact TOML line to paste. Both panes used to read this same
+ * array from two entries apart in the navigation; now that they are one pane it
+ * would be the same fact twice on one screen.
+ */
 export function EnvPane({ checks }: { checks: HostCheck[] }) {
+  const { t } = useLingui();
+  const rest = checks.filter((c) => c.name !== "allowed_host_paths");
   return (
     <>
-      <Head title="环境" note="沙盒要用的" />
-      {!checks.length && <Meta className="block py-2">读取中…</Meta>}
+      <Head
+        title={t`What has to be here`}
+        note={t`Read-only. Every one of these has to pass before a container starts`}
+      />
+      {!rest.length && (
+        <Meta className="block py-2">
+          <Trans>Loading…</Trans>
+        </Meta>
+      )}
       {/* One idiom for row rules across the dialog: the list draws them, not the
           rows, so there is no `first:` exception to forget. */}
       <div className="divide-y divide-rule-soft">
-        {checks.map((c) => (
+        {rest.map((c) => (
           <EnvironmentCheck key={c.name} check={c} />
         ))}
       </div>
@@ -36,7 +58,7 @@ function EnvironmentCheck({ check }: { check: HostCheck }) {
       <div className="flex items-baseline gap-2">
         <CheckIcon ok={check.ok} />
         <span className={cn("text-body", !check.ok && "text-accent")}>{check.name}</span>
-        <Meta className="min-w-0 truncate">{check.detail}</Meta>
+        <Meta className="min-w-0 truncate">{saidText(check.said, check.detail)}</Meta>
       </div>
       <CheckFix check={check} />
     </div>
@@ -56,7 +78,7 @@ function CheckFix({ check }: { check: HostCheck }) {
   if (check.ok || !check.fix) return null;
   return (
     <span className="mt-1 ml-5 block rounded-md bg-sunk px-2 py-1 font-mono text-meta leading-relaxed text-ink-2">
-      {check.fix}
+      {saidText(check.fixSaid, check.fix)}
     </span>
   );
 }
@@ -66,7 +88,7 @@ export const ServerInfoSchema: z.ZodType<InferResponseType<(typeof api)["sandbox
   addr: z.string(),
   inClear: z.boolean(),
   state: z.enum(["ours", "theirs", "stuck", "started", "down"]),
-  why: z.string().nullable(),
+  why: SaidSchema.nullable(),
   pid: z.string().nullable(),
   config: z.string().nullable(),
   argv: z.array(z.string()),
@@ -79,12 +101,12 @@ export const ServerInfoSchema: z.ZodType<InferResponseType<(typeof api)["sandbox
 export type ServerInfo = z.infer<typeof ServerInfoSchema>;
 
 /** One line each, because the difference between them is what to do next. */
-const SERVER_STATE: Record<ServerInfo["state"], { zh: string; ok: boolean }> = {
-  ours: { zh: "在跑，我们起的", ok: true },
-  started: { zh: "刚起好", ok: true },
-  theirs: { zh: "在跑，不是我们起的，直接用", ok: true },
-  stuck: { zh: "在跑，但我们驱动不了", ok: false },
-  down: { zh: "没在跑", ok: false },
+const SERVER_STATE: Record<ServerInfo["state"], { said: MessageDescriptor; ok: boolean }> = {
+  ours: { said: msg`Running, started by us`, ok: true },
+  started: { said: msg`Just started`, ok: true },
+  theirs: { said: msg`Running, not started by us; using as-is`, ok: true },
+  stuck: { said: msg`Running, but we can't control it`, ok: false },
+  down: { said: msg`Not running`, ok: false },
 };
 
 /**
@@ -114,9 +136,10 @@ export function ServerPane(props: {
   onRefreshImages: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useLingui();
   return (
     <>
-      <Head title="沙盒服务器" note="开容器的那个服务" />
+      <Head title={t`Sandbox server`} note={t`The service that launches containers`} />
       <ServerStatus server={props.server} onRefresh={props.onRefreshServer} />
       {/* Silent when wrong, so it is loud here: a path missing from the
           allowlist mounts an empty directory rather than failing. */}
@@ -144,7 +167,13 @@ function ServerStatus({ server, onRefresh }: { server: ServerInfo | null; onRefr
 }
 
 function StatusSummary({ server }: { server: ServerInfo | null }) {
-  if (!server) return <Meta>读取中…</Meta>;
+  const { t } = useLingui();
+  if (!server)
+    return (
+      <Meta>
+        <Trans>Loading…</Trans>
+      </Meta>
+    );
   const state = SERVER_STATE[server.state];
   return (
     <>
@@ -153,7 +182,7 @@ function StatusSummary({ server }: { server: ServerInfo | null }) {
       ) : (
         <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-accent" />
       )}
-      <span className={cn("text-body", !state.ok && "text-accent")}>{state.zh}</span>
+      <span className={cn("text-body", !state.ok && "text-accent")}>{t(state.said)}</span>
     </>
   );
 }
@@ -163,6 +192,7 @@ function serverIdentity(server: ServerInfo) {
 }
 
 function ServerDetails({ server }: { server: ServerInfo | null }) {
+  const { t } = useLingui();
   if (!server) return null;
   // Two identifiers for one process, on one line. They were a Meta beside the
   // status and a Meta three rows below it, and neither is a fact you read on the
@@ -170,21 +200,22 @@ function ServerDetails({ server }: { server: ServerInfo | null }) {
   const ident = serverIdentity(server);
   return (
     <>
-      <ServerWhy why={server.why} state={SERVER_STATE[server.state].zh} />
+      <ServerWhy why={server.why} state={t(SERVER_STATE[server.state].said)} />
       <ServerIdentity value={ident} />
       <ServerLog log={server.log} />
     </>
   );
 }
 
-function ServerWhy({ why, state }: { why: string | null; state: string }) {
+function ServerWhy({ why, state }: { why: Said | null; state: string }) {
   // Under the line it explains, indented past the icon, and only when it adds
-  // something — `没在跑` was rendering twice, once as the status and once as
+  // something — the not-running state was rendering twice, once as the status and once as
   // its own reason, which reads as a stuck panel. It was a bordered box on
   // `sunk` too: a frame around one sentence, on the surface reserved for what a
   // machine produced.
-  if (!why || why === state) return null;
-  return <p className="mt-1 ml-5 text-secondary leading-relaxed text-ink-2">{why}</p>;
+  const text = saidText(why, "");
+  if (!text || text === state) return null;
+  return <p className="mt-1 ml-5 text-secondary leading-relaxed text-ink-2">{text}</p>;
 }
 
 function ServerIdentity({ value }: { value: string }) {
@@ -202,13 +233,16 @@ function ServerLog({ log }: { log: string }) {
 }
 
 function ServerControl({ server, onRefresh }: { server: ServerInfo | null; onRefresh: () => void }) {
+  const { t } = useLingui();
   if (!server) return null;
   if (server.state === "down") return <StartButton onRefresh={onRefresh} />;
   if (server.restartable) return <RestartButton server={server} onRefresh={onRefresh} />;
   return (
-    <Tip label="这个进程不是我们起的，可能是你自己在用的那个。要重启就自己重启，之后这里会认得它。">
+    <Tip
+      label={t`This process wasn't started by us—it might be something you're using. Restart it yourself if needed; we'll recognize it afterward.`}
+    >
       <Button size="sm" disabled>
-        重启
+        <Trans>Restart</Trans>
       </Button>
     </Tip>
   );
@@ -218,31 +252,31 @@ function StartButton({ onRefresh }: { onRefresh: () => void }) {
   // The re-read is inside the pending window now. Clearing the flag before
   // `onRefresh()` let the button go live again while the line beside it still
   // said what it said before the server was started.
+  const { t } = useLingui();
   const [busy, startTransition] = useTransition();
   const start = () =>
     startTransition(async () => {
       const response = await mutate(api["sandbox-server"].start.$post());
       onRefresh();
-      if (response.ok) toast.success("起来了");
+      if (response.ok) toast.success(t`Started`);
     });
   return (
     <Button size="sm" variant="go" disabled={busy} onClick={start}>
-      {busy ? "起中…" : "起一个"}
+      {busy ? t`Starting…` : t`Start`}
     </Button>
   );
 }
 
 function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: () => void }) {
+  const { t } = useLingui();
   const [busy, startTransition] = useTransition();
   const restart = async () => {
     const yes = await ask({
-      title: "重启沙盒服务器？",
+      title: t`Restart the sandbox server?`,
       // The evidence beside the button: this is not a service bounce, it is
       // every container going away and every turn inside them dying with it.
-      body:
-        `所有容器都会没：${server.containers} 个组的沙盒，还有 ${server.runningTurns} 个正在跑的 turn。` +
-        `\n\n没跑完的 turn 就白跑了，组会自己重开容器接着做，代码和分支不受影响。`,
-      yes: "重启",
+      body: `${t`Every container goes: sandboxes for ${ph({ groups: server.containers })} groups, and ${ph({ turns: server.runningTurns })} turns currently running.`}\n\n${t`An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected.`}`,
+      yes: t`Restart`,
       danger: true,
     });
     if (!yes) return;
@@ -252,20 +286,21 @@ function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: (
     startTransition(async () => {
       const response = await mutate(api["sandbox-server"].restart.$post());
       onRefresh();
-      if (response.ok) toast.success("重启了，容器会按需重开");
+      if (response.ok) toast.success(t`Restarted; containers will restart on demand`);
     });
   };
   return (
     <Button size="sm" disabled={busy} onClick={restart}>
-      {busy ? "重启中…" : "重启"}
+      {busy ? t`Restarting…` : t`Restart`}
     </Button>
   );
 }
 
 function ServerDrift({ server, checks }: { server: ServerInfo | null; checks: HostCheck[] }) {
+  const { t } = useLingui();
   const drift = server ? server.drift : null;
   return drift ? (
-    <DriftNotice detail="配置里没允许我们要挂的路径" fix={allowedPathsLine(drift.want)} />
+    <DriftNotice detail={t`Configuration doesn't allow the path we need to mount`} fix={allowedPathsLine(drift.want)} />
   ) : (
     <PathNotice checks={checks} />
   );
@@ -287,7 +322,10 @@ function DriftNotice({ detail, fix }: { detail: string; fix: string }) {
     <div className="mt-2.5 rounded-md bg-sunk px-3 py-2">
       <div className="text-body text-accent">{detail}</div>
       <p className="mt-1 text-secondary text-ink-3">
-        容器不报错，只挂个空目录，勾上的技能就这么没了。把这行写进配置，然后重启：
+        <Trans>
+          Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then
+          restart:
+        </Trans>
       </p>
       <pre className="mt-1.5 overflow-x-auto font-mono text-meta leading-relaxed text-ink-2 select-all">{fix}</pre>
     </div>
@@ -298,6 +336,7 @@ type ServerPaneProps = Parameters<typeof ServerPane>[0];
 type AuthJson = NonNullable<Parameters<typeof api.auth.$post>[0]>["json"];
 
 function ServerFields(props: ServerPaneProps) {
+  const { t } = useLingui();
   const [key, setKey] = useState("");
   const [busy, startTransition] = useTransition();
 
@@ -306,7 +345,7 @@ function ServerFields(props: ServerPaneProps) {
    *
    * The re-ask is the point of the merge: whether we can drive the server is a
    * function of the key, and clearing the key while the line above still reads
-   * 在跑，直接用 is the shape this project keeps paying for — a stale answer that
+   * "it is running, use it" is the shape this project keeps paying for — a stale answer that
    * looks like a healthy one.
    */
   const sendKey = (json: AuthJson) =>
@@ -327,7 +366,7 @@ function ServerFields(props: ServerPaneProps) {
       // answer, and a write that was accepted is not a write that stored
       // this exact string.
       props.onRefreshImages();
-      toast.success(image ? `以后新项目都用 ${image}` : "改回配置文件里的了");
+      toast.success(image ? t`New projects will use ${image}` : t`Reset to the image in config`);
     });
 
   return (
@@ -340,10 +379,10 @@ function ServerFields(props: ServerPaneProps) {
           the same way it gets the remote's default branch without being
           asked. The per-project row overrides it and is usually left alone. */}
       <ImageRow
-        label="默认镜像"
+        label={t`Default image`}
         value={props.image}
         busy={busy}
-        placeholder="新项目默认用它，留空跟配置文件"
+        placeholder={t`New projects use this; leave blank to follow config`}
         onSave={saveImage}
       />
       <KeyRow
@@ -355,33 +394,37 @@ function ServerFields(props: ServerPaneProps) {
       />
       {/* No "now put this in the server's config" line: that instruction is what
           got followed halfway, and a key only this side knows locks the fleet out
-          of every container. 存下 refuses a key the server rejects. */}
+          of every container. `Save` refuses a key the server rejects. */}
     </FieldGroup>
   );
 }
 
 function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefresh: () => void }) {
+  const { t } = useLingui();
   return (
     // The other way out of "that one is not ours", and the reason this is a
     // control rather than a yaml key: the fix for a taken port is a
     // different port, and an edit-and-restart is not a fix you make while
     // reading this.
     <Field>
-      <FieldLabel htmlFor="sb-addr">地址</FieldLabel>
+      <FieldLabel htmlFor="sb-addr">
+        <Trans>Address</Trans>
+      </FieldLabel>
       {/* A column, because the warning under the box is a third child and a
           two-column grid put it in the label gutter. */}
       <FieldContent className="flex-col items-stretch gap-1">
         <Input
           id="sb-addr"
           className="font-mono"
-          placeholder="127.0.0.1:8080 或 https://host:port"
+          placeholder={t`127.0.0.1:8080 or https://host:port`}
           defaultValue={server ? server.addr : ""}
           onKeyDown={async (event) => {
             if (event.key !== "Enter") return;
             const addr = event.currentTarget.value;
+            const next = addr.trim();
             const response = await mutate(api["sandbox-server"].addr.$post({ json: { addr } }));
             onRefresh();
-            if (response.ok) toast.success(addr.trim() ? `改成 ${addr.trim()} 了` : "改回配置文件里的了");
+            if (response.ok) toast.success(next ? t`Changed to ${next}` : t`Reset to the image in config`);
           }}
         />
         {/* The server does not have to be on this machine — a Tailscale peer
@@ -390,7 +433,10 @@ function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefres
             api_key and every container payload cross it in the clear. */}
         {server?.inClear && (
           <span className="text-secondary text-accent">
-            不在本机，也不在加密内网，走的还是明文 http。密钥和容器流量都是裸的，用 https 或者 Tailscale。
+            <Trans>
+              Not local, not on an encrypted network—traffic is unencrypted HTTP. Keys and container traffic are
+              exposed; use HTTPS or Tailscale.
+            </Trans>
           </span>
         )}
       </FieldContent>
@@ -398,8 +444,9 @@ function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefres
   );
 }
 
-function keyPlaceholder(current?: AuthRow) {
-  return current ? `已存 ${current.hint}，粘新的就换掉` : "留空 = 服务器没开鉴权";
+function keyPlaceholder(current?: AuthRow): MessageDescriptor {
+  if (!current) return msg`Empty = server has no authentication`;
+  return msg`${{ hint: current.hint }} stored; paste a new one to replace it`;
 }
 
 function KeyRow({
@@ -415,26 +462,31 @@ function KeyRow({
   onChange: (value: string) => void;
   onSend: (json: AuthJson) => void;
 }) {
+  const { t } = useLingui();
   return (
     <Field>
-      <FieldLabel htmlFor="sandbox-key">密钥</FieldLabel>
+      <FieldLabel htmlFor="sandbox-key">
+        <Trans>Key</Trans>
+      </FieldLabel>
       <InputGroup>
         <Input
           id="sandbox-key"
           className="min-w-0 flex-1 font-mono"
           // What is stored, in the box that stores it — same as the accounts.
-          placeholder={keyPlaceholder(current)}
+          placeholder={t(keyPlaceholder(current))}
           value={value}
           onChange={(event) => onChange(event.target.value)}
         />
         {/* The server owns this value, so it is read rather than invented. */}
-        <Tip label="从沙盒服务器自己的配置里读（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）。值不经过浏览器。">
+        <Tip
+          label={t`Read from the sandbox server's own config (OPENSANDBOX_CONFIG, ./sandbox.toml, ~/.sandbox.toml). Values don't pass through the browser.`}
+        >
           <Button
             size="sm"
             disabled={busy}
             onClick={() => onSend({ runtime: "sandbox", mode: "api_key", adopt: true })}
           >
-            从服务器读
+            <Trans>Read from server</Trans>
           </Button>
         </Tip>
         <ClearKeyButton {...(current ? { current } : {})} busy={busy} onSend={onSend} />
@@ -458,7 +510,7 @@ function ClearKeyButton({
   if (!current) return null;
   return (
     <Button size="sm" variant="quiet" disabled={busy} onClick={() => onSend({ runtime: "sandbox", clear: true })}>
-      清掉
+      <Trans>Clear</Trans>
     </Button>
   );
 }
@@ -476,7 +528,7 @@ function SaveKeyButton({ value, busy, onSend }: { value: string; busy: boolean; 
       disabled={busy}
       onClick={() => onSend({ runtime: "sandbox", mode: "api_key", secret: key })}
     >
-      存下
+      <Trans>Save</Trans>
     </Button>
   );
 }

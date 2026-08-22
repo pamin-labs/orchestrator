@@ -123,7 +123,7 @@ The scale has names, in `web/style.css`, and nothing writes a rem literal:
 | `text-lead` | 1 | the line above a section |
 | `text-card` | 1.0625 | card heading |
 | `text-title` | 1.25 | page heading |
-| `text-figure` | 1.375 | the one big number in 成本 |
+| `text-figure` | 1.375 | the one big number in `Cost` |
 
 Layout widths and grid templates stay inline, deliberately. The scale above was
 eleven values over 262 call sites — one shared ruler that had drifted. The layout
@@ -143,9 +143,9 @@ pixel; it made the disagreement impossible to have again, and
 ## Layout
 
 - One header row: project trail, the five views, subscription usage, waiting
-  count, connection. 设置 is the gear, not a sixth view — it opens over the work. It was two rows for a while and the second was a tab strip
+  count, connection. `Settings` is the gear, not a sixth view — it opens over the work. It was two rows for a while and the second was a tab strip
   above pages that had their own tab strips. Spend is not here — it belongs in
-  成本, where it can be attributed. Usage is, because it is a constraint on what
+  `Cost`, where it can be attributed. Usage is, because it is a constraint on what
   to start next — and only for an account that has a window. A per-token key or a
   self-hosted gateway shows nothing there rather than a percentage read off some
   other subscription.
@@ -160,7 +160,7 @@ pixel; it made the disagreement impossible to have again, and
   container no matter what `min-h-0` says above it, so pin the row to
   `minmax(0,1fr)`. `overflow: hidden` on `body` is not a fix; it hides the
   content that could not be reached.
-- One count, one name. 待办 is the queue of things waiting on the boss, and it
+- One count, one name. `To do` is the queue of things waiting on the boss, and it
   appears once — as the tab that holds it, and as the header badge. Two lists
   with the same name and different counts is how a number stops being trusted.
 - Chat is a collapsible right sidebar, never the spine.
@@ -180,7 +180,7 @@ choreography.
 
 Every control has default / hover / focus-visible / active / disabled. One button
 shape everywhere: `.go` for the primary action, plain for secondary, `.quiet` for
-destructive-adjacent (打断, 封存).
+destructive-adjacent (`Interrupt`, `Archive`).
 
 Empty states teach the interface instead of reporting absence. With no project at
 all, the page is one panel with the one field it needs, not a tutorial.
@@ -191,7 +191,7 @@ Side-stripe accent borders, gradient text, decorative glass, hero metrics,
 identical card grids, modal-as-first-thought, decorative motion, em dashes in
 copy.
 
-The one dialog that is not a view is 设置, and it took four page versions to earn
+The one dialog that is not a view is `Settings`, and it took four page versions to earn
 it. A view is 76rem wide and settings is a dozen fields, so every page version
 was mostly white, and the two scopes — this server, this repository — read as the
 same thing because they were built from the same three components. A dialog sizes
@@ -201,12 +201,26 @@ say about itself. It is also the only surface here nobody is ever *in*: you come
 to fix something and go back to the work, which is what closing a dialog does and
 what navigating back from a view does not. Modal-as-first-thought stays banned;
 this was the fifth. The one `—` that remains is inside the DRAFT card placeholder, because the
-validator parses `标题 [normal] — 验收方式` and the placeholder must show real
+validator parses `title [normal] — accept` and the placeholder must show real
 syntax.
 
 ## Copy
 
-Chinese for status, questions, journals. English for code, branches, commits, PR
-titles, errors. Plain words over internal vocabulary: 跑测试 not 闸门, 别人替你答的
-not 代答, 轮到你 not `chain_state=boss`. If the boss would need the source to
-understand a label, the label is wrong.
+English in the source, and the reader's language on the screen. Every sentence a
+person reads is named — `<Trans>` in JSX, the hook's `t` inside a component,
+`msg` outside one — and a catalogue renders it in whichever of ten languages the
+reader chose. Which text follows which language is the table in
+[ADR 035](../adr/035-language-follows-who-wrote-it.md) §3; how it is wired is
+[ADR 044](../adr/044-what-the-panel-and-the-server-actually-say.md). Three
+things are not translated: what a model reads, what a log or `/readyz` carries,
+and a protocol key.
+
+This section used to read *"Chinese for status, questions, journals"*, which was
+the panel's design until PR #9 and is the opposite of the rule now.
+
+Plain words over internal vocabulary, which is the part that did not change and
+is the part a catalogue cannot enforce: `Run tests` not `Gate`, `answered for
+you` not `delegated`, `Your turn` not `chain_state=boss`. If the boss would need
+the source to understand a label, the label is wrong — and the English is the
+source every translator works from, so a label that reads as jargon here reads
+as jargon in ten languages.

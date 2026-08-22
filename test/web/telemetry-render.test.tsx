@@ -222,7 +222,7 @@ test("a width change re-lays out the flamegraph instead of rebuilding it", async
     await waitFor(() => expect(frames(view).length).toBeGreaterThan(0));
 
     // The node identity is the assertion: with `width` a dependency of the
-    // effect that creates the chart, opening 设置 rebuilt it — 「打开设置页面，
+    // effect that creates the chart, opening `Settings` rebuilt it — 「打开设置页面，
     // 前者会闪一下」. A re-layout keeps the same svg; a rebuild does not.
     const before = view.container.querySelector("svg.d3-flame-graph");
     expect(before).not.toBeNull();
@@ -565,8 +565,8 @@ test("scrolling the trend zooms it, and re-reads every block", async () => {
 });
 
 test("耗时 is a view of its own, not a tab under 需求", async () => {
-  // A sibling of 需求 rather than a tab inside it: as a tab, a project with no
-  // requirements could not reach 耗时 at all.
+  // A sibling of `Requirement` rather than a tab inside it: as a tab, a project with no
+  // requirements could not reach `Time` at all.
   const { contentSlot, VIEWS } = await import("../../web/src/features/navigation/model.ts");
   expect(VIEWS.map(([view]) => view)).toContain("time");
   expect(contentSlot(1, false, "time", 0, false, false)).toBe("time");
@@ -612,7 +612,7 @@ test("a trend with one bucket keeps its section, and therefore its controls", as
   const view = show(<Telemetry scope={{ kind: "project", id: 7 }} trend />);
 
   // Hiding the whole block on a thin trend also hid the bucket picker and
-  // 回到整段时间, so narrowing to one bucket deleted the way back out of the
+  // the reset-to-full-range control, so narrowing to one bucket deleted the way back out of the
   // state it created. It stays and says it is empty, in the chart's own slot.
   await waitFor(() => expect(view.getAllByText("stage")).toHaveLength(1));
   expect(view.getAllByText("每次运行的耗时")).toHaveLength(1);
@@ -630,7 +630,7 @@ test("the table says what a stage is, not what the code calls it", async () => {
   const view = show(<Telemetry scope={{ kind: "group", id: 3 }} />);
 
   // Two stages in two different kinds, so the groups are what is on screen
-  // first: 容器操作 for sandbox, 跑一轮 for turn.
+  // first: `Sandbox operation` for sandbox, `Run one turn` for turn.
   await waitFor(() => expect(view.getAllByText("容器操作")).toHaveLength(1));
   expect(view.getAllByText("跑一轮")).toHaveLength(1);
   openGroup(view, "容器操作");
@@ -780,7 +780,7 @@ test("a group total is a selection, and it reaches the flamegraph", async () => 
   // A total worth showing is a total worth clicking, and clicking it has to
   // reach the other chart. This is the bug that produced `search: 0 of
   // 11271164.5 total samples`: the selection used to be handed over as the kind
-  // label 巡检规则, which no frame has ever been called.
+  // label `Watchdog rule`, which no frame has ever been called.
   fireEvent.click(view.getAllByRole("button", { name: /^17\.0s$/ })[0]!);
 
   await waitFor(() => {

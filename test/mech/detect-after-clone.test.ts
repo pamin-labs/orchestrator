@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { sayIn } from "../../src/contracts/said.ts";
+import { said } from "../support/said.ts";
 import { z } from "zod";
 import type { Json } from "../../src/contracts/json.ts";
 import { asc, desc } from "drizzle-orm";
@@ -140,7 +142,15 @@ test("a repository with nothing detectable says so instead of failing silently l
   // Still marked, so the second group does not ask the same question again.
   expect((await config(h.db)).detected).toBe(true);
 
-  const [esc] = await h.db.select({ body: event.body, kind: event.kind }).from(event).orderBy(desc(event.seq)).limit(1);
+  const [esc] = await h.db
+    .select({ meta: event.meta_json, kind: event.kind })
+    .from(event)
+    .orderBy(desc(event.seq))
+    .limit(1);
   expect(esc!.kind).toBe("escalation");
-  expect(esc!.body).toContain("no gates detected");
+  expect(sayIn(esc!.meta)?.id).toBe(
+    said(
+      "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates.",
+    ).id,
+  );
 });

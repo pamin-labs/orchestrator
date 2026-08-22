@@ -16,6 +16,7 @@ import { Minimap } from "./minimap";
 import { useWheel } from "../../shared/use-wheel";
 import { duration } from "../../shared/format";
 import { type FlameNode, humanName, isRenamed, type TimeWindow, WHOLE, wheelWindow } from "./model";
+import { Trans, useLingui } from "@lingui/react/macro";
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /**
  * One flame row, and the type that sits in it. 20 holds the 0.6875rem meta size
@@ -152,7 +153,7 @@ function useFlameChart({
       .transitionDuration(0)
       .setColorMapper(flameColor)
       // `frame.value` and not `frame.data.value`: the first is what the frame was
-      // laid out by and follows the 自身 / 含下游 toggle, the second is always self
+      // laid out by and follows the `Self` / `Including downstream` toggle, the second is always self
       // time. The words in the frame, the identifier after them — the detail line
       // is wide enough to carry both rather than making the reader choose.
       .setLabelHandler((frame) =>
@@ -218,6 +219,7 @@ function useFlameChart({
 }
 
 export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked: readonly string[] }) {
+  const { t } = useLingui();
   const [view, setView] = useState<TimeWindow>({ from: 0, to: 1 });
   const zoom = view.to - view.from;
   const { host, port, details, chart, zoomed, setZoomed } = useFlameChart({ tree, self, picked, zoom });
@@ -234,6 +236,8 @@ export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; 
     event.preventDefault();
     setView(next);
   });
+
+  const zoomLevel = (1 / zoom).toFixed(0);
 
   return (
     <div className="mt-2">
@@ -255,17 +259,23 @@ export function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; 
               "transition-colors hover:text-ink",
             )}
           >
-            ← 回到全部
+            <Trans>← Back to all</Trans>
           </button>
         )}
-        {zoomed !== null && <span className="shrink-0 text-meta text-ink-3">看的是 {humanName(zoomed)}</span>}
+        {zoomed !== null && (
+          <span className="shrink-0 text-meta text-ink-3">
+            <Trans>showing {{ span: humanName(zoomed) }}</Trans>
+          </span>
+        )}
         {zoomed === null && zoom < 1 && (
-          <span className="shrink-0 text-meta text-ink-3">放大到 {(1 / zoom).toFixed(0)}×</span>
+          <span className="shrink-0 text-meta text-ink-3">
+            <Trans>zoomed to {zoomLevel}×</Trans>
+          </span>
         )}
         <div ref={details} className="min-w-0 truncate font-mono text-meta text-ink-2" />
       </div>
       <div className="mb-1">
-        <Minimap view={view} limit={WHOLE} label="看的是哪一段" onPan={setView} />
+        <Minimap view={view} limit={WHOLE} label={t`Which window`} onPan={setView} />
       </div>
 
       {/* The viewport. The chart inside it is rendered `1/zoom` times wider and

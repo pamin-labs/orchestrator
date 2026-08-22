@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { t } from "@lingui/core/macro";
 
 /** Not exported: the derived types are the contract, this is how they are built. */
 const AttachedSchema = z.object({
@@ -29,7 +30,7 @@ export type Skill = z.infer<typeof SkillSchema>;
  * Both callers wrote `String(projectId ?? "")`, which sends `project=`. The
  * server's `.optional()` only short-circuits on an absent value, so an empty
  * string still reached `z.coerce.number()`, became 0, and failed `.positive()`:
- * 技能 is machine-scope, and it answered a Zod error whenever no project was
+ * `Skills` is machine-scope, and it answered a Zod error whenever no project was
  * selected. One builder so a third caller cannot reinvent the empty string.
  */
 export const skillsQuery = (projectId?: number | null): { project?: string } =>
@@ -84,16 +85,21 @@ export const skillsForSlash = (skills: Skill[] | null, slash: Slash | null): Ski
         (sk) => !slash.q || sk.name.toLowerCase().includes(slash.q) || sk.path.toLowerCase().includes(slash.q),
       );
 
-const kindOf = (type: string) => (type === "inode/directory" ? "目录" : type.startsWith("image/") ? "图" : "附件");
+const kindOf = (type: string) =>
+  type === "inode/directory"
+    ? t`Folder`
+    : type.startsWith("image/")
+      ? t({ message: "Image", context: "a picture, not a container image" })
+      : t`Attach`;
 
 /**
  * A name for each file, written into the text where it was added.
  *
- * Two screenshots and a sentence saying "这里不对" leaves the agent guessing which
- * one 这里 is — and the agent cannot ask cheaply, because asking costs the boss a
- * turn in 待办. So every attachment gets 图N / 附件N, the marker goes in at the
+ * Two screenshots and a sentence saying "this part is wrong" leaves the agent
+ * guessing which part — and it cannot ask cheaply, because asking costs the boss a
+ * turn in `To do`. So every attachment gets an `Image N` / `Attach N` marker, which goes in at the
  * caret, and the same marker labels the path in the assembled prompt. The text
- * can then say 按 [图2] 改, and both ends mean the same file.
+ * can then say "change [Image 2]", and both ends mean the same file.
  */
 export function attachmentLabel(type: string, taken: string[]): string {
   const kind = kindOf(type);

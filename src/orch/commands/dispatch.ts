@@ -1,3 +1,4 @@
+import { ASK_KINDS, isAskKind } from "../../contracts/states.ts";
 import { Command, CommanderError } from "commander";
 import type { hc } from "hono/client";
 import { ChangedFilesClaimSchema, MailIntent, SplitRequirements } from "../../contracts/orch.ts";
@@ -63,9 +64,15 @@ async function askBoss(
 ): Promise<CommandResponse> {
   const question = words.join(" ");
   if (!question) return usageError("ask-boss needs a question");
+  // Checked here as well as by the schema, so a missing or misspelled word comes
+  // back as the nine rather than as a 400 an agent has to go and read. It used to
+  // fall back to `other`, which is what let a budget question file itself as a
+  // question about nothing and route to the PM.
+  const kind = opts.kind?.trim();
+  if (!kind || !isAskKind(kind)) return usageError(`--kind takes one of: ${ASK_KINDS.join(" | ")}`);
   return api.send(
     api.orch["ask-boss"].$post({
-      json: { severity: opts.severity ?? "advisory", question, brief: opts.brief, kind: opts.kind },
+      json: { severity: opts.severity ?? "advisory", question, brief: opts.brief, kind },
     }),
   );
 }
@@ -384,7 +391,12 @@ function buildProgram(api: DispatchContext, act: Act, out: string[], err: string
     .command("ask-boss <question...>")
     .description("escalate to the boss and wait for the answer")
     .option("--severity <severity>", "blocker|advisory", "advisory")
-    .option("--kind <kind>", "env|spec|boundary|design|other")
+    // Required, and the five that reach the boss are named first because the rule
+    // for a question that is two of these is "pick the one that raises highest".
+    .option(
+      "--kind <kind>",
+      "required — budget|merge|credential|deploy|scope (the boss decides these) or env|spec|boundary|design",
+    )
     .option("--brief <brief>", "<=20 chars, what it is about")
     .action(bind(askBoss));
 

@@ -120,8 +120,173 @@ export const StoredProjectConfigSchema = z
 
 export type StoredProjectConfig = z.infer<typeof StoredProjectConfigSchema>;
 
+/**
+ * Every language the panel can be read in. One line, because it is one fact:
+ * which `.po` files are in `locales/`.
+ *
+ * `en` first, because it is the source and the fallback. This was a table with
+ * three columns — the code, the name the language calls itself, and a regular
+ * expression for every spelling a person might type it as. The other two columns
+ * are CLDR's, and the runtime already ships CLDR.
+ */
+export const LOCALES = ["en", "zh", "zh-Hant", "ja", "ko", "es", "fr", "de", "pt", "ru"] as const;
+
+export type Locale = (typeof LOCALES)[number];
+
+/** A predicate rather than a cast, so nothing here narrows a `string` by assertion. */
+const isLocale = (value: string): value is Locale => (LOCALES as readonly string[]).includes(value);
+
+/**
+ * The tag to *name* a locale by, which is not always the tag its catalog is
+ * filed under. `zh` is "Chinese", and in a menu that also offers 繁體中文 that
+ * is not an answer; `zh-Hans` is the same catalog said unambiguously — 简体中文,
+ * `Chinese, Simplified`, `chinois simplifié`.
+ */
+const named = (locale: Locale): string => (locale === "zh" ? "zh-Hans" : locale);
+
+/**
+ * What a language calls itself — the only spelling every reader of that row can
+ * read. A menu that says "Chinese" is no help to somebody who cannot read the
+ * pane it is on.
+ *
+ * `français` is lower case and stays lower case: that is how French writes a
+ * language name, and title-casing it is editing CLDR — the same edit
+ * `shared/format.ts` records deleting when it stopped lowercasing English's `K`.
+ */
+export const endonymOf = (locale: Locale): string =>
+  new Intl.DisplayNames([named(locale)], { type: "language" }).of(named(locale)) ?? locale;
+
+/**
+ * A language tag, if this text is one. `_` for `-` first, because `zh_CN` is
+ * what a person types and what the knob's own suggestions used to show.
+ *
+ * `Intl.Locale` throws on anything that is not well-formed, which is the test:
+ * `繁體中文` and `Русский` throw and fall through to the names below. What it
+ * does *not* reject is a long word — `new Intl.Locale("Spanish").language` is
+ * `"spanish"` — so the result still has to be a language we have a catalog for.
+ */
+const tagged = (text: string): Locale | null => {
+  let locale: Intl.Locale;
+  try {
+    locale = new Intl.Locale(text.replace(/_/g, "-"));
+  } catch {
+    return null;
+  }
+  // CLDR's `likelySubtags`, in the runtime rather than in a column: `zh`, `zh-CN`
+  // and `zh-SG` maximise to `Hans`; `zh-TW`/`HK`/`MO`, `zh-Hant` and `yue` to
+  // `Hant`. This used to be an ordered regex table whose order was load-bearing —
+  // `zh`'s `[中汉漢華华]` matched `繁體中文` — and which knew only the seven tags
+  // somebody had written down. `zh-Hans-MO` and `cmn-Hant` are right for free now.
+  if (["zh", "cmn", "yue"].includes(locale.language)) return locale.maximize().script === "Hant" ? "zh-Hant" : "zh";
+  return isLocale(locale.language) ? locale.language : null;
+};
+
+/**
+ * Every name each of these ten languages has, in each of these ten languages —
+ * a hundred strings, all of them CLDR's.
+ *
+ * This replaced ten hand-written regular expressions that between them knew
+ * English and the endonym: they had no Japanese word for German and no Russian
+ * word for Spanish, so a boss who wrote `ドイツ語` into the knob got English.
+ * Bare `zh` is in the list beside `zh-Hans`, because `中文` and `Chinese` are
+ * what people write for Simplified as often as `简体中文`.
+ */
+const NAMES: { locale: Locale; words: string[] }[] = LOCALES.flatMap((locale) =>
+  [...new Set([named(locale), locale])].map((tag) => ({
+    locale,
+    // Split on everything that is not a letter, so `Chinese, Traditional`
+    // becomes two words and matches somebody who wrote them the other way round.
+    // De-duplicated, because ten readers repeat each other — `中文` is what both
+    // Chinese rows call `zh`, and counting it twice tied Simplified with
+    // Traditional on the word `繁體中文`, which only Traditional has.
+    words: [
+      ...new Set(
+        LOCALES.map((reader) => new Intl.DisplayNames([reader], { type: "language" }).of(tag) ?? "")
+          .join(" ")
+          .toLowerCase()
+          .split(/[^\p{L}]+/u)
+          .filter(Boolean),
+      ),
+    ],
+  })),
+);
+
+/**
+ * How much of a name the text spells. Zero is no match.
+ *
+ * Characters and not rows, so the most specific name wins wherever two overlap
+ * and no ordering has to be maintained: `繁體中文` scores 4 for Traditional and
+ * 2 for the `中文` inside it, and `Traditional Chinese` scores 18 for
+ * `Chinese, Traditional` against 7 for `Chinese` — written either way round,
+ * because the words are matched one at a time.
+ */
+/**
+ * A prefix counts too, from two characters up: people abbreviate from the front,
+ * and CLDR spells Traditional Chinese `繁體中文` where somebody typing it often
+ * stops at `繁體`. A prefix and not a substring, or `an` — two letters nobody
+ * means as a language — would match the middle of `japanese` and `alemán`.
+ */
+const spelled = (text: string, words: string[]): number =>
+  words.filter((w) => text.includes(w) || (text.length > 1 && w.startsWith(text))).reduce((n, w) => n + w.length, 0);
+
+/**
+ * Which catalog a `language` asks for — a tag from a browser, or the free text a
+ * person typed into the knob. Here rather than in `platform/text` because the
+ * panel needs the same answer and may only import contracts — two copies of this
+ * question already got two answers once: `escalation.ts` asked `language === "en"`
+ * against a `"中文"` default, so its English branch was unreachable for every
+ * spelling including `"English"`.
+ */
+/** Anything with no catalog is English, which is the source: an unrecognised
+ *  language reads in the language the panel was written in, not in nothing. */
+export function localeOf(lang: string | undefined): Locale {
+  const tag = tagged(lang ?? "");
+  if (tag) return tag;
+  const text = (lang ?? "").toLowerCase();
+  let best: Locale = "en";
+  let score = 0;
+  for (const row of NAMES) {
+    const hit = spelled(text, row.words);
+    if (hit > score) [best, score] = [row.locale, hit];
+  }
+  return best;
+}
+
+/**
+ * The language that leaves this machine for a person, resolved.
+ *
+ * Three values and one rule: what the boss set for output wins, otherwise the
+ * language they are reading the panel in, otherwise English. So a fresh
+ * installation has no language written down anywhere — a Chinese boss's first
+ * visit detects `zh` from the browser and the agents write Chinese, a German
+ * one gets German, and neither edits a file. `""` is "not chosen", which is why
+ * `language` is no longer `.min(1)`.
+ */
+/**
+ * This replaced a language hardcoded in `load.ts`. Two things were wrong with
+ * it: it was the one fallback in this design that was not English — and
+ * `escalation.ts` compared `language === "en"` against it, so its English branch
+ * was unreachable for every spelling including "English" — and changing it meant
+ * knowing there was a default to change. ADR 035 keeps the two languages
+ * separate on purpose (what I read is not what my customers read); this only
+ * decides what "nobody has said" means.
+ */
+export const outputLanguage = (cfg: { language: string; panelLanguage: string }): string =>
+  cfg.language || cfg.panelLanguage || "en";
+
 export const ConfigSchema = z.object({
-  language: z.string().min(1),
+  /** What the agents write in, and what a webhook carries. `""` follows the panel. */
+  language: z.string(),
+  /**
+   * Which of the ten the panel is being read in, written by the locale menu.
+   *
+   * Not a knob on the settings page — `KNOBS_ELSEWHERE` — because the reader
+   * already chose it in Preferences and a second control for one fact is two
+   * controls that can disagree. It is here rather than in `localStorage` alone
+   * because the server has to be able to answer "what should output follow", and
+   * a browser key is not something it can read.
+   */
+  panelLanguage: z.enum([...LOCALES, ""] as const),
   maxGroups: count,
   /** One number for the whole Runner pool, or one pool per resource tag. */
   leaseSlots: LeaseSlots,
@@ -314,7 +479,7 @@ export const ConfigSchema = z.object({
    */
   indexModel: ModelRef,
   /**
-   * How long one 系统耗时 report is reused before it is computed again.
+   * How long one `System timing` report is reused before it is computed again.
    *
    * The report is five window-function queries over the whole span table, run
    * synchronously — so while it computes, every other request and the SSE
@@ -369,7 +534,7 @@ export const ConfigSchema = z.object({
    *
    * The conversation — `say`, `boss_say`, `note`, `escalation` — is never dropped:
    * it is the record, and the unread cursor walks it. This bounds the rest, which
-   * is read inside a day (成本's chart asks for 24 hours) and then never again.
+   * is read inside a day (`Cost`'s chart asks for 24 hours) and then never again.
    */
   eventRetentionMs: count,
   /**
@@ -421,7 +586,7 @@ export const ConfigSchema = z.object({
       .min(1)
       .regex(
         /^(?:\[[0-9a-fA-F:]+\]|[a-zA-Z0-9._-]+)(?::\d{1,5})?$/,
-        "sandbox.server 只能是 host 或 host:port，不能带协议、路径、查询或凭据",
+        "sandbox.server must be host or host:port — no scheme, path, query, or credentials",
       ),
     apiKey: z.string(),
   }),
@@ -492,9 +657,12 @@ export function schemaAt(path: string): z.ZodType | null {
   let node: z.ZodType = ConfigSchema;
   for (const key of path.split(".")) {
     if (!(node instanceof z.ZodObject)) return null;
-    const next = (node.shape as Record<string, z.ZodType>)[key];
-    if (!next) return null;
-    node = next;
+    // `Object.hasOwn`, not indexing: `shape` is a plain object, so `shape.__proto__`
+    // is `Object.prototype` — truthy, and enough to make `isSettingPath("__proto__")`
+    // answer yes. It was refused anyway, by `path in SETTING_DENIALS` finding the same
+    // inherited key one line up, which is an accident rather than a guard.
+    if (!Object.hasOwn(node.shape, key)) return null;
+    node = (node.shape as Record<string, z.ZodType>)[key]!;
   }
   return node;
 }
@@ -503,7 +671,7 @@ export function schemaAt(path: string): z.ZodType | null {
 export function settingSchema<P extends SettingPath>(path: P): SchemaAtPath<typeof ConfigSchema, P>;
 export function settingSchema(path: string): z.ZodType | null;
 export function settingSchema(path: string): z.ZodType | null {
-  return path in SETTING_DENIALS ? null : schemaAt(path);
+  return Object.hasOwn(SETTING_DENIALS, path) ? null : schemaAt(path);
 }
 
 export const isSettingPath = (path: string): path is SettingPath => settingSchema(path) !== null;
@@ -529,7 +697,18 @@ export const SettingWriteSchema = SettingInput.transform((input, ctx): SettingWr
   }
   const schema = settingSchema(input.path);
   if (!schema) {
-    ctx.addIssue({ code: "custom", path: ["path"], message: `no setting called ${input.path}` });
+    // `namesPath`, because the message already spells the path and a caller that
+    // prefixes it would print `maxGroups: no setting called maxGroups`.
+    // `settings.ts` used to decide that by `startsWith("no setting called ")` —
+    // one sentence, matched in another file, and rewording it here broke that
+    // silently. Zod carries `params` through `safeParse`; the denial above keeps
+    // its prefix because its text names no path.
+    ctx.addIssue({
+      code: "custom",
+      path: ["path"],
+      params: { namesPath: true },
+      message: `no setting called ${input.path}`,
+    });
     return z.NEVER;
   }
   if (input.value !== null) {

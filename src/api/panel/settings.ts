@@ -1,7 +1,8 @@
+import { msg } from "@lingui/core/macro";
 import { currentFor, defaultFor, overrides, putSetting, settablePaths } from "../../platform/config/settings.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { badText, json, message } from "../../http/respond.ts";
 import { ConfigSchema, SettingWriteSchema, type SettingPath, type SettingValue } from "../../contracts/config.ts";
 import type { Config } from "../../platform/config/load.ts";
 import type { Json } from "../../contracts/json.ts";
@@ -38,12 +39,18 @@ export const SettingBody = SettingWriteSchema;
 export const postSetting = (async (ctx, _req, _p, b) => {
   const cfg = ConfigSchema.parse(ctx.config);
   const why = await putSetting(ctx.db, cfg, b.path, b.value);
-  if (why) return bad(why);
+  if (why) return badText(why);
   Object.assign(ctx.config, cfg);
   await ctx.bus.emit({
     author: "boss",
     kind: "state_change",
-    body: `设置：${b.path} = ${b.value === null ? "恢复默认" : JSON.stringify(b.value)}`,
+    // Two whole sentences rather than one with a branch inside the values: a
+    // parameter holding "back to default" would be half of this line rendered
+    // here and half of it in the browser.
+    say:
+      b.value === null
+        ? msg`${{ path: b.path }} is back to its default`
+        : msg`${{ path: b.path }} is now ${{ value: JSON.stringify(b.value) }}`,
     meta: { setting: b.path },
   });
   // Some of these change what may be dispatched right now — raising `maxGroups`

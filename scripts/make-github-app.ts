@@ -52,15 +52,20 @@ const where = org
   ? `https://github.com/organizations/${org}/settings/apps/new`
   : "https://github.com/settings/apps/new";
 
-const page = `<!doctype html><meta charset="utf-8"><title>创建 GitHub App</title>
+/**
+ * English, like every other setup script: this runs once from a terminal, has no
+ * `config.language` to read and no catalogue loaded, and it is the third row of
+ * ADR 035's table — the same place `/readyz` and the console sit.
+ */
+const page = `<!doctype html><meta charset="utf-8"><title>Create a GitHub App</title>
 <body style="font:15px/1.6 -apple-system,system-ui;max-width:34rem;margin:12vh auto;padding:0 1.5rem">
-<h2 style="font-size:1.1rem">创建 GitHub App「${name}」</h2>
-<p>下面这个按钮把 app 的描述交给 GitHub。权限已经填好：Contents 读写、Pull requests 读写、Metadata 只读，不订阅任何 webhook。名字可以在 GitHub 的页面上改。</p>
+<h2 style="font-size:1.1rem">Create the GitHub App “${name}”</h2>
+<p>The button below hands GitHub this app's description. The permissions are already filled in: Contents read/write, Pull requests read/write, Metadata read-only, and no webhook subscriptions. You can rename it on GitHub's own page.</p>
 <form action="${where}" method="post">
   <input type="hidden" name="manifest" value='${JSON.stringify(manifest).replaceAll("'", "&apos;")}'>
-  <button type="submit" style="font:inherit;padding:.5rem 1rem;cursor:pointer">去 GitHub 创建</button>
+  <button type="submit" style="font:inherit;padding:.5rem 1rem;cursor:pointer">Create it on GitHub</button>
 </form>
-<p style="color:#666;font-size:.9rem">创建完会自动跳回这里，然后这个页面就可以关掉了。</p>
+<p style="color:#666;font-size:.9rem">You land back here once it exists, and this page can be closed.</p>
 </body>`;
 
 const html = { "content-type": "text/html; charset=utf-8" };
@@ -83,16 +88,18 @@ const server = Bun.serve({
       // to that call is written to disk as an app's private key.
       const code = u.searchParams.get("code");
       if (!code || !/^[\w-]+$/.test(code))
-        return new Response("没有拿到 code，重来一次。", { status: 400, headers: html });
+        return new Response("No code came back — start again.", { status: 400, headers: html });
       resolve(code);
-      return new Response("<body style='font:15px -apple-system'>好了，回终端看。</body>", { headers: html });
+      return new Response("<body style='font:15px -apple-system'>Done — back to the terminal.</body>", {
+        headers: html,
+      });
     }
     return new Response(page, { headers: html });
   },
 });
 
 const url = `http://127.0.0.1:${PORT}/`;
-console.log(`\n打开 ${url} —— 浏览器起不来的话自己贴过去\n`);
+console.log(`\nOpen ${url} — paste it by hand if the browser does not come up\n`);
 // Their Chrome, with their session. `open` falls back to the default browser.
 // Not awaited on purpose — the server below is what this waits on, and a browser
 // that never opens is a URL the reader pastes by hand. `void` says so out loud.
@@ -144,12 +151,12 @@ if (!res.ok) {
   // carries no key, but printing an unparsed response wholesale is how one
   // eventually will — and the message is the part a person can act on.
   const said = body !== null && typeof body === "object" && "message" in body ? String(body.message) : "";
-  console.error(`GitHub 拒绝了这次转换：${res.status} ${said}`);
+  console.error(`GitHub refused the conversion: ${res.status} ${said}`);
   process.exit(1);
 }
 const parsed = AppSchema.safeParse(body);
 if (!parsed.success) {
-  console.error("GitHub 的回复不是预期的形状，没有写任何文件：", parsed.error.issues);
+  console.error("GitHub's reply was not the expected shape; nothing was written:", parsed.error.issues);
   process.exit(1);
 }
 const app = parsed.data;
@@ -168,25 +175,28 @@ chmodSync(pem, 0o600);
 // exactly what they are.
 // fallow-ignore-next-line security-sink -- public identifiers of a just-created GitHub App; the private key is written to a 0600 file and only its path is printed. See the note above.
 console.log(`
-建好了：${app.html_url}
+Created: ${app.html_url}
 
   client_id   ${app.client_id}
   slug        ${app.slug}
   app id      ${app.id}
   owner       ${app.owner.login}
-  private key ${pem}   (0600，不进仓库)
+  private key ${pem}   (0600, never in the repo)
 
-client_id 和 slug 不是机密，填进 config/default.yaml 的 github.clientId / github.appSlug。
+client_id and slug are not secrets. Put them in config/default.yaml as
+github.clientId / github.appSlug.
 
-还有两件事只能手点，manifest 表达不了，而且两个都会以别的样子失败：
+Two things a manifest cannot express, both of which fail as something else:
 
-  1. Settings → Optional features → 勾上 "Enable Device Flow"
-     不勾：取码那一步直接被拒，登录根本开不了头。
+  1. Settings → Optional features → tick "Enable Device Flow"
+     Without it the code request is refused outright and sign-in cannot start.
 
-  2. Settings → Optional features → 确认 "user-to-server token expiration" 是关的
-     开着：登录今天好用，八小时后全舰队 401，而刷新需要我们 ship 不了的 client secret。
+  2. Settings → Optional features → confirm "user-to-server token expiration" is OFF
+     With it on, sign-in works today and the whole fleet 401s eight hours later —
+     and refreshing needs a client secret we cannot ship.
 
   ${app.html_url}
 
-然后 Install App，装到要跑的账号或 org 上 —— 授权和安装是两件事，只有装了才够得到仓库。
+Then Install App on the account or org that will run — authorising and installing
+are two things, and only installing reaches the repositories.
 `);

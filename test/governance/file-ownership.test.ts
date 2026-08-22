@@ -1,4 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { sayIn } from "../../src/contracts/said.ts";
+import { said } from "../support/said.ts";
+
+/** The one sentence both rollback tests below are about, named once. */
+const ROLLBACK_FAILED = said(
+  "could not roll back {n, plural, one {# file} other {# files}} outside this group's paths ({files}): {out}",
+).id;
+import type { Said } from "../../src/contracts/said.ts";
+import { renderSaid } from "../../src/platform/text/lang.ts";
 import { eq } from "drizzle-orm";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { grp, project } from "../../src/platform/persistence/schema.ts";
@@ -35,6 +44,9 @@ async function seed(groups: Array<{ name: string; owns: string[]; status?: GrpSt
   }
   return db;
 }
+
+/** `canStart` names its refusal rather than writing it; these assert the English. */
+const en = (said: Said | undefined): string => (said ? renderSaid("en", said) : "");
 
 test("static prefix stops at a path boundary, but a literal path is itself", async () => {
   expect(staticPrefix("src/auth/**")).toBe("src/auth/");
@@ -78,8 +90,8 @@ test("starting undeclared beside a group that HAS declared is refused", async ()
   const r = await canStart(db, 2);
   // An undeclared group silently claims everything, including their paths.
   expect(r.ok).toBe(false);
-  expect(r.reason).toContain("auth");
-  expect(r.reason).toContain("boundary");
+  expect(en(r.reason)).toContain("auth");
+  expect(en(r.reason)).toContain("boundary");
 });
 
 test("two undeclared groups are allowed — two blanks cannot be shown to overlap", async () => {
@@ -98,8 +110,8 @@ test("overlapping groups cannot run in parallel, and the message names both", as
   const r = await canStart(db, 2);
   expect(r.ok).toBe(false);
   expect(r.conflicts[0]!.name).toBe("auth");
-  expect(r.reason).toContain("src/auth/mw.ts");
-  expect(r.reason).toContain("Architect");
+  expect(en(r.reason)).toContain("src/auth/mw.ts");
+  expect(en(r.reason)).toContain("Architect");
 });
 
 test("disjoint groups start together", async () => {
@@ -131,7 +143,7 @@ test("shared files belong to no group", async () => {
   const r = await canStart(db, 1);
   expect(r.ok).toBe(false);
   expect(r.sharedClaimed).toContain("package.json");
-  expect(r.reason).toContain("no group");
+  expect(en(r.reason)).toContain("no group");
 });
 
 test("a project may declare extra shared paths", async () => {
@@ -325,9 +337,11 @@ test("a revert that changed nothing says so instead of claiming it worked", asyn
 
   await reconcileOwnership({ ctx }, { role: "engineer" }, { grp_id: 1 }, { owns_json: ["src/auth/**"] });
 
-  const all = (await ctx.bus.since(0)).map((event) => event.body).join(" ");
-  expect(all).toContain("could not roll back");
-  expect(all).toContain("web/stray.ts");
+  // The descriptor, not the rendered sentence: what the boss reads is the
+  // catalogue's, and the file left outside the boundary is this test's.
+  const failure = (await ctx.bus.since(0)).map((event) => sayIn(event.meta)).find(Boolean);
+  expect(failure?.id).toBe(ROLLBACK_FAILED);
+  expect(failure?.values).toMatchObject({ n: 1, files: "web/stray.ts" });
 });
 
 test("a DRAFT group owns its paths for the boundary check, and blocks nobody's start", async () => {
@@ -383,9 +397,9 @@ test("a partial rollback is not announced as a boundary that held", async () => 
   expect(ran).not.toContain("'checkout' '--' 'README.md' 'docs/plan.md'");
   expect(ran).toContain("'clean' '-fd' '--' 'docs/plan.md'");
   // And what is still outside the group's paths is what gets said.
-  const said = (await ctx.bus.since(0)).map((e) => e.body).join(" ");
-  expect(said).toContain("could not roll back");
-  expect(said).toContain("README.md");
+  const failure = (await ctx.bus.since(0)).map((e) => sayIn(e.meta)).find(Boolean);
+  expect(failure?.id).toBe(ROLLBACK_FAILED);
+  expect(failure?.values).toMatchObject({ n: 1, files: "README.md" });
 });
 
 /**

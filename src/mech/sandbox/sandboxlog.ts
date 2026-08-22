@@ -4,7 +4,7 @@ import type { Bus } from "../../platform/persistence/event-bus.ts";
  * The last few hundred lines a group's container printed, in memory.
  *
  * Live frames already carry this to a panel that is open, and that was the whole
- * story — so a boss opening the 工作区 tab thirty seconds into a two-minute clone saw
+ * story — so a boss opening the `Workspace` tab thirty seconds into a two-minute clone saw
  * an empty box and a spinner.
  *
  * Capped and gone on restart, on purpose: this is the machine talking to itself

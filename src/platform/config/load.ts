@@ -4,6 +4,7 @@ import { ConfigSchema } from "../../contracts/config.ts";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { findHijack, RolePromptHijackError } from "../text/prompt-guard.ts";
 
 /**
  * Roles are configuration, not code.
@@ -112,7 +113,18 @@ function defaultSkillsDir(): string {
 export type Config = z.infer<typeof ConfigSchema>;
 
 const DEFAULTS: Config = {
-  language: "中文",
+  /**
+   * Nothing, and that is the design rather than an omission.
+   *
+   * `outputLanguage()` resolves it: what the boss set wins, otherwise the
+   * language they are reading the panel in, otherwise English. A fresh
+   * installation therefore has no language written down anywhere — a Chinese
+   * boss's first visit detects `zh` from the browser and the agents write
+   * Chinese, a German one gets German, and neither has a file to edit.
+   */
+  language: "",
+  /** Written by the panel's locale menu, so the server can answer what output follows. */
+  panelLanguage: "",
   maxGroups: 10,
   // `{default: 2, browser: 1}`, not a flat 2: each browser lease is a real
   // Chromium, and one global number could only ever be the browser's, which
@@ -193,7 +205,7 @@ const DEFAULTS: Config = {
   // Deep enough that a browser catching up after a tab wakes never drops, and
   // shallow enough that a dead socket cannot hold a turn's worth of tokens.
   streamBacklog: 256,
-  // A week, against 成本's 24-hour window: enough that a question asked on Monday
+  // A week, against `Cost`'s 24-hour window: enough that a question asked on Monday
   // about Friday still has its evidence, and bounded so an installation that has
   // run for a year is not replaying a year to every reconnecting tab.
   eventRetentionMs: 7 * 24 * 60 * 60 * 1_000,
@@ -369,6 +381,18 @@ export function loadRoles(dir = join(ROOT, "roles")): Map<string, RoleDef> {
     const r = RoleDefSchema.parse(Bun.YAML.parse(readFileSync(join(dir, f), "utf8")), {
       error: () => `${f}: invalid role`,
     });
+    // Fail closed: a role whose prompt contains text impersonating an instruction
+    // does not start. Better a role that will not load than one running a backdoor
+    // its author never read — a role file can arrive by copy-paste from somebody
+    // else's installation. The message names the file and quotes the span, because
+    // "this role is unsafe" tells the boss to worry and not what to delete.
+    //
+    // `untrusted_data`, not `trusted_instruction`: `trusted_instruction` is the
+    // sink for text that is ALLOWED to command the model, so nothing is ever
+    // `blocked` under it and the gate would pass everything. A role file is checked
+    // precisely because it may have been copied from another installation.
+    const hijack = findHijack(r.prompt, "untrusted_data");
+    if (hijack) throw new RolePromptHijackError(`roles/${f}`, hijack);
     out.set(r.name, r);
   }
   return out;

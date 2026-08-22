@@ -8,12 +8,13 @@ import { openMemory, type DB } from "../../src/platform/persistence/database.ts"
 import * as t from "../../src/platform/persistence/schema.ts";
 import type { TurnResult, TurnSpec } from "../../src/runtime/claude.ts";
 import { cacheRatio, type ExecDeps, hire, LOST_SESSION, makeExecutor } from "../../src/application/executor.ts";
-import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../../src/platform/scheduling/scheduler.ts";
+import { AgentTurnPayloadSchema, type Executor } from "../../src/platform/scheduling/scheduler.ts";
 import { abortJob } from "../../src/platform/process/running-turns.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { tempDir } from "../support/temp.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 function ok(over: Partial<TurnResult> = {}): TurnResult {
   return {
@@ -36,7 +37,7 @@ async function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
   const cfg = { ...loadConfig(), dataDir: tempDir("orch-data-") };
   const specs: TurnSpec[] = [];
   let exec: Executor;
-  const sched = new Scheduler(db, (j) => exec(j));
+  const sched = newScheduler(db, (j) => exec(j));
   const sandbox = fakeSandbox();
   const ctx: Ctx = {
     db,

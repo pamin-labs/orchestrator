@@ -41,8 +41,8 @@ export function Accordion({
 /**
  * Which to use is a question about the content, not a preference. One-at-a-time is
  * right when the rows are alternatives and reading one means not reading the
- * others. Many-at-a-time is right when the rows are *comparable* — 巡检规则 against
- * 代码索引 — where the whole reason to open the second is to see it beside the first.
+ * others. Many-at-a-time is right when the rows are *comparable* — `Watchdog rule` against
+ * `Code index` — where the whole reason to open the second is to see it beside the first.
  */
 export function MultiAccordion({
   value,
