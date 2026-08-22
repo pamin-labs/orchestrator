@@ -1061,6 +1061,35 @@ both name `locales/po.d.ts`.
   which is the thing `scripts/generated-file.ts` was extracted from this exact
   pair to hold.
 
+- **The panel's source language changed and its comments did not.** 172 of them
+  went on naming 待办, 成本, 批准开工, 轮次与上下文 — labels the source now spells
+  in English, so a reader grepping for what a comment says finds nothing. Not a
+  translation task: a stale reference that happened to be in another language.
+  `AGENTS.md`'s first coding rule already said English for comments, and both
+  Chinese guards parsed the file and then walked only its literals. `ast.comments`
+  is on the same parse.
+
+- **What stays Chinese is what is *about* Chinese**, and saying which is the
+  whole judgement: 21 literals (endonyms, the regexes recognising what a boss
+  typed, the parser for Chinese agent cards, CJK escalation patterns, one Unicode
+  range) plus 28 comments quoting them. `test/`'s 922 Chinese assertions are the
+  point rather than an oversight — they are what makes a catalogue derived
+  mechanically from another branch's JSON a tested thing.
+
+- **The layer i18n never reached was a setup script.** `make-github-app.ts`
+  served a Chinese HTML page and printed Chinese to a terminal, with no
+  `config.language` to read and no catalogue loaded. Nobody looked because it is
+  not the panel and not the server.
+
+- **DRY, found by asking rather than by a tool.** `i18n._(id, values, message)`
+  written out on both sides including the comment explaining its third argument;
+  ten locales listed in `lingui.config.js` beside a comment asking a reader to
+  keep them in step with `LOCALES`; four guards each spelling out the same
+  `parseSync` options; two CJK character classes that disagreed about kana for
+  no reason either guard could state — the panel's could not see a Japanese
+  literal at all. Fallow reports duplication at twenty lines; all of these are
+  shorter than that and none of them were found by it.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run
