@@ -3,6 +3,7 @@ import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trac
 import { StoredSpanExporter } from "../../src/platform/observability/span-store.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
+import { outputLanguage } from "../../src/contracts/config.ts";
 import { renderSaid } from "../../src/platform/text/lang.ts";
 import { said } from "../support/said.ts";
 import { escalationKey } from "../../src/mech/flow/escalate.ts";
@@ -258,7 +259,7 @@ test("the same lease failing twice on unchanged code blames the environment", as
   // The body follows output.language (Chinese here); the resource name is a technical
   // term and stays verbatim in both.
   expect(env.say.values?.resource).toBe("build");
-  expect(renderSaid(h.ctx.config.language, env.say)).toContain("环境");
+  expect(renderSaid(outputLanguage(h.ctx.config), env.say)).toContain("treat the environment as the suspect");
 });
 
 test("two failures at different commits are just two failures", async () => {
@@ -1272,7 +1273,9 @@ test("losing the network is announced once, by the path that dedups", async () =
   const found = await runWatchdog({ ...h.deps, probe: async () => offline });
 
   expect(found.filter((f) => f.rule === "network_lost")).toHaveLength(1);
-  const said = (await h.db.select({ c: count() }).from(eventTable).where(like(eventTable.body, "%断网%")))[0]!.c;
+  const said = (
+    await h.db.select({ c: count() }).from(eventTable).where(like(eventTable.body, "%lost its network%"))
+  )[0]!.c;
   expect(said).toBe(1);
 });
 
@@ -1641,5 +1644,5 @@ test("a finding reaches the notifier as a sentence in output.language, not as an
     say: said("turn ran past {min} min and was killed", { min: 30 }),
   });
 
-  expect(seen).toEqual(["一个 turn 超过 30 分钟，已掐断"]);
+  expect(seen).toEqual(["turn ran past 30 min and was killed"]);
 });

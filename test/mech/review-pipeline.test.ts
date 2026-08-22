@@ -558,9 +558,9 @@ test("a trivial slice is accepted automatically once all three gates pass", asyn
       .select({ author: eventTable.author, body: eventTable.body })
       .from(eventTable)
       .orderBy(desc(eventTable.seq))
-  ).find((e) => e.body.includes("自动查收"))!;
+  ).find((e) => e.body.includes("auto-accepted, all three gates passed"))!;
   expect(said.author).toBe("orchestrator");
-  expect(said.body).toContain("自动查收");
+  expect(said.body).toContain("auto-accepted, all three gates passed");
   // And the next slice starts, which is the point of the whole thing.
   expect(
     (await h.db.select({ status: sliceTable.status }).from(sliceTable).where(eq(sliceTable.id, 2)))[0]!.status,

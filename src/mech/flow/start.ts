@@ -17,6 +17,7 @@ import { errText } from "../../platform/process/text.ts";
 import { raise } from "./escalate.ts";
 import { BOOTSTRAP_FAILED, BOOTSTRAP_OK, BOOTSTRAP_START } from "../../contracts/events.ts";
 import { JsonObject, valueOr } from "../../contracts/json.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /** `project.config_json.install`, or null. */
 async function installFor(db: DB, projectId: number): Promise<string | null> {
@@ -435,7 +436,7 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
     // `question` reads it in the boss's.
     await raise(ctx.db, {
       grpId: g.id,
-      lang: ctx.config.language,
+      lang: outputLanguage(ctx.config),
       brief: msg`the approval did not take`,
       chain: "boss",
       question: msg`The approval did not take: ${{ err }}. It has been withdrawn — approve again once that is fixed.`,

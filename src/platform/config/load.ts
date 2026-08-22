@@ -113,7 +113,18 @@ function defaultSkillsDir(): string {
 export type Config = z.infer<typeof ConfigSchema>;
 
 const DEFAULTS: Config = {
-  language: "中文",
+  /**
+   * Nothing, and that is the design rather than an omission.
+   *
+   * `outputLanguage()` resolves it: what the boss set wins, otherwise the
+   * language they are reading the panel in, otherwise English. A fresh
+   * installation therefore has no language written down anywhere — a Chinese
+   * boss's first visit detects `zh` from the browser and the agents write
+   * Chinese, a German one gets German, and neither has a file to edit.
+   */
+  language: "",
+  /** Written by the panel's locale menu, so the server can answer what output follows. */
+  panelLanguage: "",
   maxGroups: 10,
   // `{default: 2, browser: 1}`, not a flat 2: each browser lease is a real
   // Chromium, and one global number could only ever be the browser's, which

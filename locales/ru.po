@@ -2586,6 +2586,10 @@ msgstr "S{seq} не прошёл {from} {n} раз подряд"
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} возвращена {from} (попытка {n})"
 
+#. placeholder {0}: endonymOf(localeOf(i18n.locale))
+msgid "Same as the panel ({0})"
+msgstr "Как в панели ({0})"
+
 msgid "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way."
 msgstr "Тот же порядок, что и аренда, и та же природа — настоящая сборка. Слишком туго, и отказ выглядит как «этот проект сломан», а не «истекло время»; группы застревают в обоих случаях."
 

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { renderSaid } from "../../src/platform/text/lang.ts";
+import { outputLanguage } from "../../src/contracts/config.ts";
 import { said } from "../support/said.ts";
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -737,7 +738,7 @@ test("the snapshot carries the boss's original words alongside the card", async 
 });
 
 test("an approval a boundary blocks is recorded, not thrown away", async () => {
-  const { app, db, f } = await harness();
+  const { app, db, f, ctx } = await harness();
   await db
     .update(grp)
     .set({ owns_json: ["src/**"] })
@@ -767,7 +768,10 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
   // The framing sentence, not a word out of one translation of it: the toast has
   // to say the click landed, or a 200 reads like the 422 it deliberately is not.
   expect(await held.text()).toContain(
-    renderSaid("zh", said("Approval recorded — it starts by itself once the boundary clears.")),
+    // The server's own effective language, not a locale pinned here: the point is
+    // that the toast carries the framing sentence, and pinning one was how this
+    // read as green while the default said something else.
+    renderSaid(outputLanguage(ctx.config), said("Approval recorded — it starts by itself once the boundary clears.")),
   );
 
   const g = (await first(
@@ -1323,7 +1327,7 @@ test("one box holding several unrelated asks becomes several requirements", asyn
   // Nothing the boss typed is lost: each child points back at the original paragraph.
   const child = (await first(db.select({ body: note.body }).from(note).where(eq(note.grp_id, 2))))!;
   expect(child.body).toContain("记住我");
-  expect(child.body).toContain("原始整段见 note #1");
+  expect(child.body).toContain("The whole of what was originally asked for is note #1.");
 
   // g1's own dispatcher cannot reach into a child: each child gets its own turn
   // and its own agent, and a token is only good for the group it was hired into.
@@ -1504,7 +1508,7 @@ test("a worktree that cannot be created withdraws the approval instead of retryi
   // The message by its identity, not a copy of its text: `said()` hashes the
   // English source, so a reworded sentence reddens this and a retranslated one
   // does not. The locale is the one `Bus.prepare` reads, never a literal.
-  expect(esc.brief).toBe(renderSaid(h.ctx.config.language, said("the approval did not take")));
+  expect(esc.brief).toBe(renderSaid(outputLanguage(h.ctx.config), said("the approval did not take")));
   // And the reason itself reaches the boss, which is the part no catalogue owns.
   expect(esc.question).toContain("disk full");
 });

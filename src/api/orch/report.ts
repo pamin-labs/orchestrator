@@ -13,6 +13,7 @@ import type { JournalKind } from "../../mech/util/validate.ts";
 import { validateJournal } from "../../mech/util/validate.ts";
 import { Id, Prose } from "../../contracts/fields.ts";
 import { agent, grp as grps, note as notes, slice } from "../../platform/persistence/schema.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /**
  * What an agent says about itself: the one-line status, and the journal.
@@ -134,7 +135,7 @@ export const postJournal = (async (ctx, _req, a, _p, b) => {
     grpId: a.grp_id,
     sliceId: b.slice_id ?? null,
     kind: v.kind,
-    lang: ctx.config.language,
+    lang: outputLanguage(ctx.config),
     body: v.body,
     frontmatter,
     exportPath,

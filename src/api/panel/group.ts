@@ -25,6 +25,7 @@ import type { Said } from "../../contracts/said.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 import { escalation, event, grp as grps, note, project, slice, task } from "../../platform/persistence/schema.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /** What the boss first asked for, for this group. */
 async function firstIdea(db: DB, groupId: number): Promise<string> {
@@ -135,7 +136,7 @@ async function sendBack(ctx: Ctx, grpId: number, b: z.infer<typeof DraftDecision
   // boss said to a plan that no longer exists.
   const why = withAttachments(b.reason ?? "respec", b.attachments);
   await ctx.bus.transaction(async (tx) => {
-    await addNote(tx, { projectId, grpId, kind: "fact", lang: ctx.config.language, body: fact });
+    await addNote(tx, { projectId, grpId, kind: "fact", lang: outputLanguage(ctx.config), body: fact });
     await tx
       .update(grps)
       .set({ status: "PLANNING", approved_at: null })
@@ -279,7 +280,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
     // with the other rendered into its values. Joining two rendered sentences is
     // safe because nothing renders the result again; a descriptor carrying one is
     // not, because the panel renders the outer in the language *it* reads.
-    const lang = ctx.config.language;
+    const lang = outputLanguage(ctx.config);
     return message(
       `${renderSaid(lang, msg`Approval recorded — it starts by itself once the boundary clears.`)} ${renderSaid(lang, why)}`,
     );

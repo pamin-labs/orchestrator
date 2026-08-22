@@ -2586,6 +2586,10 @@ msgstr "S{seq} が {from} を {n} 回連続で通りませんでした"
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} は {from} に差し戻されました（{n} 回目）"
 
+#. placeholder {0}: endonymOf(localeOf(i18n.locale))
+msgid "Same as the panel ({0})"
+msgstr "パネルと同じ（{0}）"
+
 msgid "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way."
 msgstr "リースと同じ桁、同じ性質——本物のコンパイルです。短すぎると「タイムアウト」ではなく「このプロジェクトは壊れている」という形で落ち、どちらにせよグループは詰まります。"
 

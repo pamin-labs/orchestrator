@@ -2586,6 +2586,10 @@ msgstr "S{seq} ist {n}-mal in Folge an {from} gescheitert"
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} von {from} zurückgegeben (Versuch {n})"
 
+#. placeholder {0}: endonymOf(localeOf(i18n.locale))
+msgid "Same as the panel ({0})"
+msgstr "Wie die Oberfläche ({0})"
+
 msgid "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way."
 msgstr "Gleiche Größenordnung wie das Lease, gleiche Art — ein echter Compile. Zu knapp scheitert es als „dieses Projekt ist kaputt“ statt als „Zeitüberschreitung“, und Gruppen hängen so oder so fest."
 

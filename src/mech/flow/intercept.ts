@@ -12,6 +12,7 @@ import { WORK } from "../sandbox/sandbox.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
 
 import { GRP_TERMINAL_STATES, type GrpState } from "../../contracts/states.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /**
  * Three levels of getting in the way, all of them operations on the job queue.
@@ -296,9 +297,9 @@ export async function interrupt(
     await addNote(ctx.db, {
       grpId,
       kind: "fact",
-      lang: ctx.config.language,
+      lang: outputLanguage(ctx.config),
       body: renderSaid(
-        ctx.config.language,
+        outputLanguage(ctx.config),
         msg`the last turn was cut off, so the worktree may hold unfinished changes. Run \`git diff\` before carrying on rather than assuming it is complete.`,
       ),
     });

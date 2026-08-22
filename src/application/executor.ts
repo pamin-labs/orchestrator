@@ -60,6 +60,7 @@ import { buildTurnDelta } from "../application/turn/delta.ts";
 import type { TurnResult } from "../runtime/claude.ts";
 import { clampEffort, type Provider, providerFor } from "../runtime/providers.ts";
 import { track, untrack } from "../platform/process/running-turns.ts";
+import { outputLanguage } from "../contracts/config.ts";
 
 /**
  * Turns a queued `job` into work that actually happens.
@@ -713,7 +714,7 @@ async function buildStableFor(
     rolePrompt: role.prompt,
     ...(onboarding ? { onboarding } : {}),
     lessons,
-    language: cfg.language,
+    language: outputLanguage(cfg),
     model: agent.model,
     // Clamped to what this role's provider accepts before it is hashed, so the
     // prefix hash describes the turn that was actually sent.
@@ -1004,7 +1005,7 @@ async function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: T
       grpId: job.grp_id,
       agentId: agent.id,
       kind: "env",
-      lang: ctx.config.language,
+      lang: outputLanguage(ctx.config),
       brief: msg`${{ runtime }} credential expired`,
       key: escalationKey.auth(runtime),
       dedupe: { scope: "global" },
@@ -1103,7 +1104,7 @@ async function runWatchdogJob(deps: ExecDeps): Promise<void> {
  * on that path, which is ADR 035 §3's test for staying server-rendered.
  */
 export function publishWatchdogFinding(ctx: Ctx, finding: Finding): void {
-  ctx.onFinding?.(finding.rule, finding.severity, renderSaid(ctx.config.language, finding.say), finding.grpId);
+  ctx.onFinding?.(finding.rule, finding.severity, renderSaid(outputLanguage(ctx.config), finding.say), finding.grpId);
 }
 
 export async function publishStandupItem(

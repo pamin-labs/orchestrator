@@ -2586,6 +2586,10 @@ msgstr "S{seq} 連著 {n} 次沒過 {from}"
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} 被 {from} 打回（第 {n} 次）"
 
+#. placeholder {0}: endonymOf(localeOf(i18n.locale))
+msgid "Same as the panel ({0})"
+msgstr "跟隨網站語言（{0}）"
+
 msgid "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way."
 msgstr "和 lease 同一個量級，因為是同一類東西——真的在編譯。卡太緊的失敗長得像「這個專案壞了」而不像「逾時了」，而組在兩種情況下都一樣卡住。"
 

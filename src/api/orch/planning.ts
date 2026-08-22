@@ -24,6 +24,7 @@ import { GroupRef } from "../../contracts/fields.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
 import { channel, grp as grps, note as notes, project, slice } from "../../platform/persistence/schema.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 async function actingGroup(
   ctx: Ctx,
@@ -109,7 +110,7 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
       projectId: grp.project_id,
       grpId,
       kind: "fact",
-      lang: ctx.config.language,
+      lang: outputLanguage(ctx.config),
       body: b.card,
       frontmatter: {
         draft_card: true,
@@ -216,7 +217,7 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
         // A note body, not a key: ADR 035 §3 keeps these server-rendered, and
         // `addNote` stamps the same `output.language` on the row beside it.
         note: `${item.idea.trim()}\n\n${renderSaid(
-          ctx.config.language,
+          outputLanguage(ctx.config),
           original
             ? msg`Split out of the requirement ${{ from: grp.name }}. The whole of what was originally asked for is note #${{ note: original.id }}.`
             : msg`Split out of the requirement ${{ from: grp.name }}.`,
@@ -329,8 +330,8 @@ export const postDrop = (async (ctx, _req, a, _p, b) => {
       projectId: owner?.project_id ?? null,
       grpId: gid,
       kind: "decision",
-      lang: ctx.config.language,
-      body: `${why}\n\n${renderSaid(ctx.config.language, msg`Evidence: ${{ evidence }}`)}`,
+      lang: outputLanguage(ctx.config),
+      body: `${why}\n\n${renderSaid(outputLanguage(ctx.config), msg`Evidence: ${{ evidence }}`)}`,
       frontmatter: { drop_proposal: 1 },
     });
     // DRAFT, so the group stops being dispatchable and the boss is asked. Left in
@@ -433,7 +434,7 @@ async function routeBlockedPath(
   const name = slug(`${path} ${why}`).slice(0, 40) || `fix-${groupId}`;
   const grant = claimsShared([path], await sharedFor(ctx.db, group.project_id));
   const idea = `${why}\n\n${renderSaid(
-    ctx.config.language,
+    outputLanguage(ctx.config),
     msg`Reported by ${{ from: group.name }}: ${{ path }} is outside its boundary, so it cannot change it itself.`,
   )}`;
   const created = await newGroup(ctx, {

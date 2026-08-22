@@ -118,6 +118,10 @@ export type KnobSection = (typeof KNOB_SECTIONS)[number];
  * had chosen. The embedding row draws them when remote is pressed.
  */
 export const KNOBS_ELSEWHERE = new Set([
+  // Preferences owns it: the reader picks the panel's language there, and a
+  // second control for one fact is two controls that can disagree. It is
+  // settable through the API because that is how the menu writes it.
+  "panelLanguage",
   "sandbox.server",
   "sandbox.image",
   "embedding.model",
@@ -1032,9 +1036,26 @@ function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
  *  as what I am reading" is the answer most of the time and typing it is the only
  *  other way to get it. Read off the *active* locale rather than the stored
  *  preference: what leads the list should be the language actually on screen. */
-const withReadingFirst = (): string[] => {
+/**
+ * Follow first, then the presets, with the reader's own language at the head of
+ * those.
+ *
+ * `""` is what "follow" writes, and it is the shipped default — so the first row
+ * is the state most installations are already in, and picking anything else is a
+ * deliberate divergence. The panel's own language leads the rest because "the
+ * one I am reading" is the usual answer when they do diverge.
+ */
+/**
+ * `Combobox` is free text, so its options *are* their values and there is no
+ * `{value,label}` to hang an empty string on. The follow row is therefore a
+ * sentence that reads as one, mapped to `""` at this one edge — a boss who types
+ * it by hand gets what they asked for either way.
+ */
+const followRow = () => i18n._(msg`Same as the panel (${endonymOf(localeOf(i18n.locale))})`);
+
+const languageOptions = (): string[] => {
   const reading = endonymOf(localeOf(i18n.locale));
-  return [reading, ...LANGUAGE_SUGGESTIONS.filter((l) => l !== reading)];
+  return [followRow(), reading, ...LANGUAGE_SUGGESTIONS.filter((l) => l !== reading)];
 };
 
 function choiceValue({ knob, onWrite }: Editor) {
@@ -1043,21 +1064,19 @@ function choiceValue({ knob, onWrite }: Editor) {
     case "language":
       // Any language, suggested rather than restricted: this governs what the
       // *agents* write, and a model writes whatever it is told to. The panel's
-      // own language is a separate choice, in Preferences — a smaller fact, and
-      // it is in the row's note.
-      // The panel's own language leads the list, because "same as what I am
-      // reading" is the answer most of the time and typing it is the only way to
-      // get it otherwise. It writes that language's name, not a "follow" token:
-      // the server never learns what this browser is set to — that lives in
-      // `localStorage` — so a value promising to track it would be a lie the
-      // moment the reader changed panes.
+      // own language is a separate choice, in Preferences — ADR 035 keeps them
+      // two values because what I read is not what my customers read.
+      //
+      // "Follow" is a real option now, and it used to be a lie: the server never
+      // learned what this browser was set to, so a value promising to track it
+      // could not. The locale menu writes `panelLanguage` through, so it can.
       return (
         <Combobox
           free
-          value={ConfigSchema.shape.language.parse(knob.value)}
-          options={withReadingFirst()}
+          value={ConfigSchema.shape.language.parse(knob.value) || followRow()}
+          options={languageOptions()}
           placeholder={LANGUAGE_SUGGESTIONS.slice(0, 3).join(" / ")}
-          onCommit={onWrite}
+          onCommit={(next) => onWrite(next === followRow() ? "" : next)}
         />
       );
     case "autoAcceptTiers":

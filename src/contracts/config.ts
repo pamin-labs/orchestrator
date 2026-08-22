@@ -196,8 +196,41 @@ export const endonymOf = (locale: Locale): string => LANGUAGES.find((l) => l.loc
 export const localeOf = (lang: string | undefined): Locale =>
   LANGUAGES.find((l) => l.spelled.test(lang ?? ""))?.locale ?? "en";
 
+/**
+ * The language that leaves this machine for a person, resolved.
+ *
+ * Three values and one rule: what the boss set for output wins, otherwise the
+ * language they are reading the panel in, otherwise English. So a fresh
+ * installation has no language written down anywhere — a Chinese boss's first
+ * visit detects `zh` from the browser and the agents write Chinese, a German
+ * one gets German, and neither edits a file. `""` is "not chosen", which is why
+ * `language` is no longer `.min(1)`.
+ */
+/**
+ * This replaced a language hardcoded in `load.ts`. Two things were wrong with
+ * it: it was the one fallback in this design that was not English — and
+ * `escalation.ts` compared `language === "en"` against it, so its English branch
+ * was unreachable for every spelling including "English" — and changing it meant
+ * knowing there was a default to change. ADR 035 keeps the two languages
+ * separate on purpose (what I read is not what my customers read); this only
+ * decides what "nobody has said" means.
+ */
+export const outputLanguage = (cfg: { language: string; panelLanguage: string }): string =>
+  cfg.language || cfg.panelLanguage || "en";
+
 export const ConfigSchema = z.object({
-  language: z.string().min(1),
+  /** What the agents write in, and what a webhook carries. `""` follows the panel. */
+  language: z.string(),
+  /**
+   * Which of the ten the panel is being read in, written by the locale menu.
+   *
+   * Not a knob on the settings page — `KNOBS_ELSEWHERE` — because the reader
+   * already chose it in Preferences and a second control for one fact is two
+   * controls that can disagree. It is here rather than in `localStorage` alone
+   * because the server has to be able to answer "what should output follow", and
+   * a browser key is not something it can read.
+   */
+  panelLanguage: z.enum([...LOCALES, ""] as const),
   maxGroups: count,
   /** One number for the whole Runner pool, or one pool per resource tag. */
   leaseSlots: LeaseSlots,
@@ -608,7 +641,18 @@ export const SettingWriteSchema = SettingInput.transform((input, ctx): SettingWr
   }
   const schema = settingSchema(input.path);
   if (!schema) {
-    ctx.addIssue({ code: "custom", path: ["path"], message: `no setting called ${input.path}` });
+    // `namesPath`, because the message already spells the path and a caller that
+    // prefixes it would print `maxGroups: no setting called maxGroups`.
+    // `settings.ts` used to decide that by `startsWith("no setting called ")` —
+    // one sentence, matched in another file, and rewording it here broke that
+    // silently. Zod carries `params` through `safeParse`; the denial above keeps
+    // its prefix because its text names no path.
+    ctx.addIssue({
+      code: "custom",
+      path: ["path"],
+      params: { namesPath: true },
+      message: `no setting called ${input.path}`,
+    });
     return z.NEVER;
   }
   if (input.value !== null) {

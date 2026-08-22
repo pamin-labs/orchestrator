@@ -2586,6 +2586,10 @@ msgstr "S{seq}이(가) {from}을(를) {n}번 연속으로 통과하지 못했습
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq}이(가) {from}에 의해 반려되었습니다 ({n}번째)"
 
+#. placeholder {0}: endonymOf(localeOf(i18n.locale))
+msgid "Same as the panel ({0})"
+msgstr "패널과 동일 ({0})"
+
 msgid "Same magnitude as lease, same category—real compilation. Too tight fails like 'this project is broken' not 'timeout', and groups get stuck either way."
 msgstr "리스와 같은 자릿수, 같은 성격 — 진짜 컴파일입니다. 너무 빡빡하면 '타임아웃'이 아니라 '이 프로젝트가 망가졌다'처럼 실패하고, 어느 쪽이든 그룹은 멈춥니다."
 

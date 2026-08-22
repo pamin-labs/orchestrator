@@ -158,7 +158,7 @@ test("--none records that the repository needs nothing and says so", async () =>
   expect(await config(h)).toEqual({ install: null });
   const said = await oneEvent(h, "state_change");
   expect(said?.author).toBe("bootstrap");
-  expect(said?.body).toContain("不需要装");
+  expect(said?.body).toContain("needs nothing installed");
 });
 
 test("a failed install is reported with its tail and is not remembered", async () => {

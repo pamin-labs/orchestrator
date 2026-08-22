@@ -25,6 +25,7 @@ import { joinQueue, position } from "./mergequeue.ts";
 import { hold } from "./intercept.ts";
 import { raise } from "./escalate.ts";
 import { z } from "zod";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /**
  * Slice-level review, in the one order that makes sense.
@@ -233,7 +234,7 @@ export async function sendBack(deps: ReviewDeps, sliceId: number, feedback: stri
     // earlier that the boss had no way to see.
     await raise(ctx.db, {
       grpId: slice.grp_id,
-      lang: ctx.config.language,
+      lang: outputLanguage(ctx.config),
       question: msg`S${{ seq: slice.seq }} "${{ title: slice.title }}" failed ${{ from }} ${{ n: retries }} times. Latest:\n${{ feedback }}`,
       brief: msg`S${{ seq: slice.seq }} failed ${{ from }} ${{ n: retries }}x in a row`,
       kind: "spec",
@@ -338,7 +339,7 @@ export async function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number)
       ctx,
       sliceId,
       "orchestrator",
-      renderSaid(ctx.config.language, msg`${{ tier: slice.difficulty }} auto-accepted, all three gates passed`),
+      renderSaid(outputLanguage(ctx.config), msg`${{ tier: slice.difficulty }} auto-accepted, all three gates passed`),
     );
     return;
   }
@@ -651,7 +652,7 @@ async function branchRework(deps: ReviewDeps, grpId: number, from: string, why: 
   await hold(ctx.db, grpId, { reason: "escalation", settled: true });
   await raise(ctx.db, {
     grpId,
-    lang: ctx.config.language,
+    lang: outputLanguage(ctx.config),
     question: msg`${{ from }} has sent the whole branch back ${{ n }} times. That is usually the acceptance criteria rather than the code:\n${{ why }}`,
     brief: msg`the whole branch sent back ${{ n }}x by ${{ from }}`,
     kind: "spec",

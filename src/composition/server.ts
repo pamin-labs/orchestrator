@@ -61,6 +61,7 @@ import { configureTracing } from "../platform/observability/otel.ts";
 import { trimSpans } from "../platform/observability/span-store.ts";
 import { configureStructuredLogging } from "../platform/observability/logging.ts";
 import { VERSION } from "../platform/process/version.ts";
+import { outputLanguage } from "../contracts/config.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -324,7 +325,7 @@ async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, 
   await raise(ctx.db, {
     grpId,
     key: escalationKey.prClosed(prNumber),
-    lang: ctx.config.language,
+    lang: outputLanguage(ctx.config),
     brief: msg`PR closed — reopen it or not`,
     chain: "boss",
     question: msg`PR #${{ pr: prNumber }} was closed without merging. This group has stopped and left the merge queue.\nTo carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement.`,
@@ -344,7 +345,7 @@ async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, 
     // A notification leaves this machine for a person, so it is rendered here in
     // the output language rather than sent as a descriptor: ADR 035 §3 row two.
     body: renderSaid(
-      ctx.config.language,
+      outputLanguage(ctx.config),
       msg`${{ name: g?.name ?? grpId }}: PR #${{ pr: prNumber }} was closed — reopen it or drop the requirement`,
     ),
     url: `${url}/#g=${grpId}&v=progress`,
@@ -749,11 +750,11 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   // send it anywhere else.
   await bindSandboxKey(db, cfg.sandbox.server);
 
-  // The thunk, not `cfg.language`: `applyOverrides` above and the settings pane
+  // The thunk, not `outputLanguage(cfg)`: `applyOverrides` above and the settings pane
   // below both rewrite this object while the fleet runs, and the bus outlives
   // both. It renders the `body` column, which ADR 035 §3 keeps in output.language
   // for the readers that are not a browser.
-  const bus = new Bus(db, () => cfg.language);
+  const bus = new Bus(db, () => outputLanguage(cfg));
   const roles = loadRoles();
   // Before anything can dispatch. A capability no role declares reaches a job
   // payload as an undefined role and becomes a turn that never runs; a capability
@@ -780,7 +781,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
     repoHeld: (projectId) => repoHeld(db, projectId),
   });
 
-  const gh = makeGithub(db, undefined, cfg.language, cfg.timeouts.githubApiMs);
+  const gh = makeGithub(db, undefined, outputLanguage(cfg), cfg.timeouts.githubApiMs);
   const ctx: Ctx = {
     db,
     bus,
@@ -857,7 +858,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
         await hold(ctx.db, grpId, { reason: "merge", settled: true, leaveQueue: true });
         await raise(db, {
           grpId,
-          lang: ctx.config.language,
+          lang: outputLanguage(ctx.config),
           question: msg`The branch is finished but the PR will not open: ${{ why: r.error }}\n\nAnswer this once it is fixed and the group retries by itself.`,
           brief: msg`the PR will not open`,
           chain: "boss",
@@ -874,7 +875,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
           key: `pr-open:${grpId}`,
           tier: "immediate",
           body: renderSaid(
-            ctx.config.language,
+            outputLanguage(ctx.config),
             msg`${{ name: group?.name ?? grpId }}: the PR will not open — ${{ why: r.error }}`,
           ).slice(0, 200),
           url,
@@ -952,7 +953,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
     // cannot follow the panel's locale: `busDeliver` also POSTs it to a webhook,
     // where no browser is involved. ADR 035's test is whether anything but a
     // browser reads the string, and here something does.
-    lang: cfg.language,
+    lang: outputLanguage(cfg),
   });
   ctx.onFinding = (rule, severity, body, grpId) => {
     // The finding is already an event in the timeline. A notification on top of it

@@ -1,4 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
+import { HttpResponse, http } from "msw";
+import { mockHttp } from "../support/http.ts";
 import { cleanup, fireEvent, render, waitFor } from "../support/render.tsx";
 import { LocaleChoice } from "../../web/src/features/settings/locale-choice.tsx";
 import { i18n, preference, setPreference } from "../../web/src/i18n.ts";
@@ -13,7 +15,22 @@ import { endonymOf, localeOf } from "../../src/contracts/config.ts";
  * not that and must not cost that.
  */
 
+/**
+ * The picker tells the server as well as this browser: `output.language`
+ * defaults to following the panel, so the server has to be able to answer what
+ * the reader is reading (ADR 043). Captured rather than merely allowed, because
+ * the write is the behaviour.
+ */
+const written: unknown[] = [];
+mockHttp(
+  http.post("*/api/v1/settings", async ({ request }) => {
+    written.push(await request.json());
+    return HttpResponse.json({ ok: true });
+  }),
+);
+
 afterEach(() => {
+  written.length = 0;
   cleanup();
   localStorage.clear();
   i18n.activate("zh");
@@ -55,6 +72,8 @@ test("the picker names each language in that language, and stores what is picked
 
   // Stored at once, so a reload lands on it either way.
   expect(preference()).toBe("ja");
+  // And told to the server, which is what lets `output.language` follow it.
+  await waitFor(() => expect(written).toEqual([{ path: "panelLanguage", value: "ja" }]));
   // Shown once the chunk is in. This is the trade the control makes: a tick that
   // waits for the catalog is a tick that never names a language the panel is not
   // actually reading in.

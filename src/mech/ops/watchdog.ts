@@ -80,6 +80,7 @@ import {
   ESCALATION_TERMINAL_STATES,
   type GrpState,
 } from "../../contracts/states.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /**
  * Six rules, all deterministic, all cheap. No LLM is consulted.
@@ -953,7 +954,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         // to carry a literal `budget: ` prefix for a `LIKE` to find.
         await raise(ctx.db, {
           grpId: g.id,
-          lang: ctx.config.language,
+          lang: outputLanguage(ctx.config),
           brief: msg`out of budget — raise it or not`,
           chain: "boss",
           key: escalationKey.budget,
