@@ -1,15 +1,15 @@
 import { Check } from "lucide-react";
 import { useLingui } from "@lingui/react/macro";
 import { Menu, MenuItem } from "../../ui/menu";
-import { PrefSchema, setPreference } from "../../i18n";
-import { endonymOf, type Locale } from "../../../../src/contracts/config";
+import { LOCALES, setPreference } from "../../i18n";
+import { endonymOf, localeOf, type Locale } from "../../../../src/contracts/config";
 import { api, mutate } from "../../shared/api";
 
 /**
  * Which language this browser reads, and nothing else.
  *
  * A menu, not a combobox: a combobox is an `<input>`, so it carries a caret and
- * invites typing — and this is nine fixed values, none of which the reader is
+ * invites typing — and this is ten fixed values, none of which the reader is
  * meant to invent. The one beside it in `Models & budget` stays a combobox for the
  * opposite reason: `output.language` is free text that reaches a model.
  */
@@ -39,11 +39,11 @@ export function LocaleChoice() {
   // already re-renders its consumers on `activate`, which is what the hand-rolled
   // `orch:locale` event used to do less well.
   const { i18n } = useLingui();
-  const pref = PrefSchema.catch("en").parse(i18n.locale);
+  const pref = localeOf(i18n.locale);
 
   return (
     <Menu label={endonymOf(pref)}>
-      {PrefSchema.options.map((locale) => (
+      {LOCALES.map((locale) => (
         <MenuItem key={locale} onSelect={() => choose(locale)}>
           <span className="flex items-center gap-2">
             {/* The tick holds its width either way, so the names stay on one

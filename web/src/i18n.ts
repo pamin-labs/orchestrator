@@ -1,7 +1,4 @@
 import { i18n, type Messages } from "@lingui/core";
-import { compileMessageOrThrow } from "@lingui/message-utils/compileMessage";
-import { detect, fromNavigator, fromStorage } from "@lingui/detect-locale";
-import { z } from "zod";
 import { type Locale, LOCALES, localeOf } from "../../src/contracts/config.ts";
 
 /**
@@ -18,19 +15,6 @@ import { type Locale, LOCALES, localeOf } from "../../src/contracts/config.ts";
  * cycle between panel modules, and PR #9's third commit exists because its i18n
  * folder imported `ui/segment` while `shared/select.ts` imported i18n.
  */
-
-/**
- * The compiler for the fallback path, and only that path.
- *
- * `build-web.ts` sets `NODE_ENV=production`, which is what takes React's dev
- * runtime out — and with it Lingui's dev-only default compiler. Catalogue rows
- * arrive already compiled from `lingui-catalogs.ts`, so the only strings that
- * reach this are the ones with no row: the English the macro left beside each
- * id. Without it a plural falls back as the literal `{n, plural, …}`.
- */
-i18n.setMessagesCompiler(compileMessageOrThrow);
-
-const PrefSchema = z.enum(LOCALES);
 
 const KEY = "orch.locale";
 
@@ -69,14 +53,33 @@ const CATALOGS: Record<Locale, () => Promise<{ messages: Messages }>> = {
  * that, and must not cost that.
  */
 /**
- * `detect` is Lingui's own, and it owns the fiddly half: reading storage without
- * throwing where storage is denied, then falling through to the navigator. What
- * it hands back is a raw string, so `localeOf` still decides which catalog can
- * serve it — the stored value is one of nine, `navigator.language` is whatever
- * the browser says.
+ * The read is guarded, because `localStorage` is not always there to read.
+ * Chrome's "block all cookies", Firefox's `dom.storage.enabled=false` and a
+ * handful of enterprise policies make the *getter* throw, not return null, and
+ * `startLocale()` is awaited before `createRoot().render()` — so the whole panel
+ * was a blank page.
  */
-export const preference = (): Locale =>
-  PrefSchema.catch(localeOf(detect(fromNavigator()) ?? "en")).parse(detect(fromStorage(KEY)) ?? "");
+/**
+ * It used to go through `@lingui/detect-locale`, on the strength of a comment
+ * saying it owned that. Its `detectFromStorage` is a bare
+ * `globalThis.localStorage.getItem(key)`, and `fromStorage(KEY)` was evaluated
+ * at the call site anyway, so the throw landed before `detect` was entered.
+ */
+/**
+ * `localeOf` and nothing else, where this used to be `z.enum(LOCALES)` over the
+ * stored value with a `detect(fromNavigator())` fallback. It is total by
+ * construction (`?? "en"`), it takes a stored `Locale` and a raw
+ * `navigator.language` identically, and it accepts the legacy values a `z.enum`
+ * would have thrown away — a browser holding `"zh-CN"` from before this key was
+ * a `Locale` reads Simplified rather than English.
+ */
+export const preference = (): Locale => {
+  let stored = "";
+  try {
+    stored = localStorage.getItem(KEY) ?? "";
+  } catch {}
+  return localeOf(stored || navigator.language);
+};
 
 /** Activate, fetching the catalog the first time it is asked for. A no-op when
  *  the locale has not moved. */
@@ -88,8 +91,8 @@ export const preference = (): Locale =>
  * English source is every message's fallback, which is exactly the state to land
  * in: readable, in the language the code is written in.
  */
-async function applyLocale(): Promise<void> {
-  const next = preference();
+async function applyLocale(want?: Locale): Promise<void> {
+  const next = want ?? preference();
   if (i18n.locale === next) return;
   try {
     // `loadAndActivate`, not `load` then `activate`: those are two `change`
@@ -102,7 +105,31 @@ async function applyLocale(): Promise<void> {
     // Said out loud rather than swallowed: reading in the wrong language is a
     // thing somebody has to be able to find out about.
     console.error(`orch: the ${next} catalog did not load; reading in ${i18n.locale || "en"}`, cause);
-    if (!i18n.locale) i18n.activate("en");
+    await english();
+  }
+}
+
+/**
+ * The floor: English, with its rows compiled, and only when nothing is active.
+ *
+ * `i18n.activate("en")` on its own was the old floor, and it is what kept
+ * `setMessagesCompiler` in the bundle — with no catalog loaded every id falls
+ * back to ICU source, which needs a compiler in the browser to render a plural.
+ * Loading `en.po` takes the same door every other locale takes, and
+ * `@messageformat/parser` stops shipping: 19,903 bytes off `main.js`.
+ */
+/**
+ * Its own `catch`, because this is the fallback: if the English chunk is gone
+ * too then the deploy is gone, and `activate` at least gives React a locale to
+ * render the untranslated source strings under.
+ */
+async function english(): Promise<void> {
+  if (i18n.locale) return;
+  try {
+    const { messages } = await CATALOGS.en();
+    i18n.loadAndActivate({ locale: "en", messages });
+  } catch {
+    i18n.activate("en");
   }
 }
 
@@ -114,12 +141,16 @@ export function setPreference(pref: Locale): void {
   try {
     localStorage.setItem(KEY, pref);
   } catch {}
+  // The value, not a re-read of the store. Writing it can be refused — the same
+  // policies that make the getter throw — and re-reading then returned the old
+  // one, so picking a language did nothing and said nothing.
+  //
   // No event of our own: `I18nProvider` re-renders every `useLingui` consumer on
   // `activate`, and the control that shows the choice is one of them.
   //
   // `void` and not a dangling promise: `applyLocale` handles its own failure and
   // resolves either way, so there is no rejection here to lose.
-  void applyLocale();
+  void applyLocale(pref);
 }
 
-export { i18n, PrefSchema };
+export { i18n, LOCALES };
