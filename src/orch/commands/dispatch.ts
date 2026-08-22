@@ -1,3 +1,4 @@
+import { RESERVED_TOPICS } from "../../contracts/states.ts";
 import { Command, CommanderError } from "commander";
 import type { hc } from "hono/client";
 import { ChangedFilesClaimSchema, MailIntent, SplitRequirements } from "../../contracts/orch.ts";
@@ -59,13 +60,32 @@ async function setup(api: DispatchContext, opts: { cmd?: string; none?: boolean 
 async function askBoss(
   api: DispatchContext,
   words: string[],
-  opts: { severity?: string; kind?: string; brief?: string },
+  opts: { severity?: string; kind?: string; brief?: string; reserved?: string },
 ): Promise<CommandResponse> {
   const question = words.join(" ");
   if (!question) return usageError("ask-boss needs a question");
+  // Checked here as well as by the schema, so a typo comes back as the five
+  // words rather than as a 400 an agent has to go and read. The server refuses
+  // it too: this decides whether the PM may answer, and a word it does not know
+  // must not quietly become "no topic given".
+  const given = opts.reserved?.trim();
+  // Found in the tuple rather than tested against it, so the narrow type comes
+  // from the lookup instead of from an assertion the compiler has to be told to
+  // trust. A typo comes back as the five words here rather than as a 400 an
+  // agent has to go and read; the server refuses it too, because this decides
+  // whether the PM may answer and a word it does not know must not quietly
+  // become "no topic given".
+  const reserved = RESERVED_TOPICS.find((topic) => topic === given);
+  if (given && !reserved) return usageError(`--reserved takes one of: ${RESERVED_TOPICS.join(" | ")}`);
   return api.send(
     api.orch["ask-boss"].$post({
-      json: { severity: opts.severity ?? "advisory", question, brief: opts.brief, kind: opts.kind },
+      json: {
+        severity: opts.severity ?? "advisory",
+        question,
+        brief: opts.brief,
+        kind: opts.kind,
+        reserved,
+      },
     }),
   );
 }
@@ -385,6 +405,10 @@ function buildProgram(api: DispatchContext, act: Act, out: string[], err: string
     .description("escalate to the boss and wait for the answer")
     .option("--severity <severity>", "blocker|advisory", "advisory")
     .option("--kind <kind>", "env|spec|boundary|design|other")
+    // Not a synonym for `--kind`: that one groups the queue, this one decides
+    // whether the PM may answer at all. Saying it sends the question straight to
+    // the boss; saying nothing leaves it to the patterns, which still fire.
+    .option("--reserved <topic>", "budget|merge|credential|deploy|scope — the boss decides this one")
     .option("--brief <brief>", "<=20 chars, what it is about")
     .action(bind(askBoss));
 

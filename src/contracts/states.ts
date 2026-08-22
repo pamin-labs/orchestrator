@@ -130,3 +130,22 @@ const terminalEscalationStates = new Set<EscalationState>(ESCALATION_TERMINAL_ST
 export const isDispatchableGrpState = (state: GrpState): boolean => dispatchableGrpStates.has(state);
 export const isTerminalEscalationState = (state: EscalationState): state is EscalationTerminalState =>
   terminalEscalationStates.has(state);
+
+/**
+ * The five topics, as a word the asker can say instead of a sentence to grep.
+ *
+ * Same lesson as `dedupe_key` and `question_said`: the machine matches a key,
+ * not prose. An agent writes its question in `output.language` and the gate does
+ * not get to know which, so `RESERVED` is ten languages of keyword and admits it
+ * — sixteen of eighteen probes leaked before the other eight rows existed.
+ * Naming the topic is exact where a keyword list is a guess.
+ */
+/**
+ * Declaring only ever raises. `--reserved budget` sends the question to the boss;
+ * saying nothing leaves it to the patterns, which still fire. There is no value
+ * that routes *away* from the boss, because the point of the gate is that a PM —
+ * itself a model — must not answer "may we spend this" on the boss's behalf, and
+ * a gate a model can talk its way out of is not one.
+ */
+export const RESERVED_TOPICS = ["budget", "merge", "credential", "deploy", "scope"] as const;
+export type ReservedTopic = (typeof RESERVED_TOPICS)[number];

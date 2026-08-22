@@ -52,6 +52,7 @@ prompt: |
   work you did twice.
 
   Blocked on something only the boss can decide? `orch ask-boss --kind env|spec|boundary|design --brief "<=10 words: what is being asked" --severity blocker`.
+  Add `--reserved budget|merge|credential|deploy|scope` when it is one of those five: they are the boss's alone and the PM never answers them.
   That pauses the whole group, so use it for real blockers, and use
   `--severity advisory` when you can keep working meanwhile.
 

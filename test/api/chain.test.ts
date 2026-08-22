@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { DB } from "../../src/platform/persistence/database.ts";
 import { abstain, answer, entryPoint, isReserved, revoke, route, triage, TRIAGE } from "../../src/mech/flow/chain.ts";
+import { RESERVED_TOPICS } from "../../src/contracts/states.ts";
 import { SayBody } from "../../src/api/orch/messaging.ts";
 import { TriageBody } from "../../src/api/orch/escalation.ts";
 import { AgentTurnPayloadSchema } from "../../src/platform/scheduling/scheduler.ts";
@@ -97,6 +98,38 @@ describe("reserved topics skip the whole chain and go straight to the boss", () 
 
   test("a question about implementation is not reserved", () => {
     expect(isReserved("which validation library should we use?")).toBe(false);
+  });
+});
+
+/**
+ * The asker naming the topic, which is the exact form of the question the
+ * patterns can only guess at.
+ *
+ * An agent writes in `output.language` and the gate does not get to know which,
+ * so `RESERVED` is ten rows of keyword and admits it — sixteen of eighteen
+ * probes leaked before the other eight rows existed. A word is not a guess.
+ */
+describe("a declared topic decides the entry point, and only upward", () => {
+  test("a topic sends an otherwise ordinary question to the boss", () => {
+    const ordinary = "which validation library should we use?";
+    expect(isReserved(ordinary)).toBe(false);
+    expect(entryPoint(ordinary)).toBe("pm");
+    for (const topic of RESERVED_TOPICS) expect(entryPoint(ordinary, topic)).toBe("boss");
+  });
+
+  /**
+   * The half that matters. The PM is a model, and a gate a model can talk its
+   * way out of is not one — so there is no value that routes *away* from the
+   * boss. Saying nothing is the only other option, and the patterns still fire.
+   */
+  test("saying nothing does not lower a question the patterns catch", () => {
+    const money = "should we pay for the higher API tier?";
+    expect(entryPoint(money)).toBe("boss");
+    expect(entryPoint(money, undefined)).toBe("boss");
+  });
+
+  test("the vocabulary is the five topics the patterns encode", () => {
+    expect([...RESERVED_TOPICS]).toEqual(["budget", "merge", "credential", "deploy", "scope"]);
   });
 });
 

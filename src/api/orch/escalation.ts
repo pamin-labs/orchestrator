@@ -12,6 +12,7 @@ import {
   TRIAGE,
   triage,
 } from "../../mech/flow/chain.ts";
+import { RESERVED_TOPICS } from "../../contracts/states.ts";
 import { raise } from "../../mech/flow/escalate.ts";
 import { hold } from "../../mech/flow/intercept.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
@@ -23,6 +24,7 @@ import { bossFact } from "../panel/attach.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
 import { badText, json, message } from "../../http/respond.ts";
 import { renderSaid } from "../../platform/text/lang.ts";
+import { firstSentence } from "../../contracts/sentence.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
 import {
@@ -32,6 +34,7 @@ import {
   note as notes,
   slice as slices,
 } from "../../platform/persistence/schema.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /**
  * A question that an agent could not answer for itself, and everything that
@@ -60,33 +63,15 @@ export const askKind = (given: string | undefined): AskKind => {
   return isAskKind(value) ? value : "other";
 };
 
-/**
- * ICU's sentence break, not a punctuation set of ours.
- *
- * `[\n。.!?！？]` cut on every full stop, so `playwright 1.62.1 is missing` filed
- * as `playwright 1` and `e.g. the gate…` filed as `e` — a queue row whose whole
- * job is naming which question to open. `Intl.Segmenter` is the same ICU
- * `terms()` already segments words with, and it knows a version from a sentence.
- */
-/** Trimmed with Unicode's own `Terminal_Punctuation` property, so the brief
- *  reads as a phrase rather than ending in the stop it was cut at — a property,
- *  not a second list. */
-/**
- * Pinned to `en` because sentence break is locale-independent across the ten
- * languages this ships in. The exception is Greek, whose `;` is a question mark,
- * and Greek is not one of them — a locale would have to be threaded from
- * `output.language` to buy that, for a language with no catalogue.
- */
-const SENTENCES = new Intl.Segmenter("en", { granularity: "sentence" });
-const ENDING = /[\p{Terminal_Punctuation}\s]+$/u;
-
 export function brief(given: string | undefined, question: string): string {
-  // The terminator is stripped from the sentence *this* cut, not from a brief
-  // the agent wrote: those are its own words and its own punctuation.
-  const first = ([...SENTENCES.segment(question)][0]?.segment ?? "").replace(ENDING, "");
-  const raw = (given ?? first).trim();
-  return raw.length > 40 ? `${raw.slice(0, 39)}…` : raw;
+  // The agent's own brief is its own words and its own punctuation; only the
+  // sentence *this* derives is trimmed and cut.
+  return given?.trim() ? cut(given.trim()) : firstSentence(question, 40);
 }
+
+/** The same 40 the derived one gets, so a written brief and a derived one are
+ *  the same width in the queue. */
+const cut = (s: string) => (s.length > 40 ? `${s.slice(0, 39)}…` : s);
 
 /**
  * `kind` and `severity` fall back rather than refuse.
@@ -101,6 +86,13 @@ export const AskBossBody = z.object({
   severity: z.string().max(20).optional(),
   brief: z.string().max(200).optional(),
   kind: z.string().max(40).optional(),
+  /**
+   * The one field here that does not fall back. `kind` and `severity` are
+   * filing, and a wrong guess costs a queue heading; this decides whether the PM
+   * may answer, so an unrecognised word must be a 400 rather than a silent
+   * "never mind, back to the patterns". `z.enum` is that refusal.
+   */
+  reserved: z.enum(RESERVED_TOPICS).optional(),
 });
 
 export const postAskBoss = (async (ctx, _req, a, _p, b) => {
@@ -113,7 +105,7 @@ export const postAskBoss = (async (ctx, _req, a, _p, b) => {
     question: b.question,
     brief: brief(b.brief, b.question),
     kind: askKind(b.kind),
-    chain: entryPoint(b.question),
+    chain: entryPoint(b.question, b.reserved),
   }))!;
   // Before `route()`, not after: it can hand the question to a stand-in that
   // answers within the same tick, and an answer with no waiter yet is dropped.
@@ -250,7 +242,10 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
         // A stored column the boss reads back in the queue, so it is rendered
         // rather than keyed — ADR 035 §3's exemption for escalation rows. The
         // sentence the *agent* gets is `answered()` below, and stays English.
-        answer: renderSaid(ctx.config.language, msg`opened as requirement ${{ name }} (grp ${{ grp: created.id }})`),
+        answer: renderSaid(
+          outputLanguage(ctx.config),
+          msg`opened as requirement ${{ name }} (grp ${{ grp: created.id }})`,
+        ),
         answered_by: "boss",
         chain_state: "answered",
         answered_at: Date.now(),

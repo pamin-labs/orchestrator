@@ -17,7 +17,9 @@ import {
   isTerminalEscalationState,
   type EscalationOpenState,
   type EscalationState,
+  type ReservedTopic,
 } from "../../contracts/states.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /**
  * The answer chain: PM -> Architect -> CoS -> the boss.
@@ -121,8 +123,8 @@ export function isReserved(question: string): boolean {
 }
 
 /** Where a new question should start. */
-export function entryPoint(question: string): (typeof CHAIN)[number] {
-  return isReserved(question) ? "boss" : "pm";
+export function entryPoint(question: string, topic?: ReservedTopic): (typeof CHAIN)[number] {
+  return topic || isReserved(question) ? "boss" : "pm";
 }
 
 export interface ChainDeps {
@@ -475,7 +477,7 @@ export async function triage(
   const body = `boss (${as}): ${note}`;
   if (deps.bossFact) await deps.bossFact(grpId, body);
   else {
-    await addNote(ctx.db, { grpId, kind: "fact", lang: ctx.config.language, body });
+    await addNote(ctx.db, { grpId, kind: "fact", lang: outputLanguage(ctx.config), body });
   }
   await ctx.bus.emit({
     grpId,
