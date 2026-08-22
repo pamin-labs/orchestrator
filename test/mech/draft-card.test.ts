@@ -189,23 +189,11 @@ test("heading depth and a trailing colon do not change the card", () => {
   expect(validateDraftCard(loose)).toEqual(validateDraftCard(good));
 });
 
-test("a tests-only slice is refused — tests belong with their change", () => {
-  // The exact shape a real run produced: "add the parameter" / "implement the
-  // branch" / "add the tests".
-  for (const title of ["补充测试用例", "添加单元测试", "add tests", "测试"]) {
-    const card = good.replace(
-      "| 补 middleware 单测 | normal | 覆盖 401/403 两条路径 |",
-      `| ${title} | trivial | 覆盖两条路径 |`,
-    );
-    const r = validateDraftCard(card);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("Tests belong with");
-  }
-});
-
-test("a slice that adds a test suite for something specific is still allowed", () => {
-  // The guard is narrow on purpose: only bare "tests" is refused, because a named
-  // test target can genuinely be its own deliverable.
+test("a slice that adds a test suite for something specific is allowed", () => {
+  // Kept from the tests-only check ADR 046 removed: it passes trivially now and
+  // still records that a named test target can be its own deliverable. There is
+  // deliberately no test asserting that a bare "add tests" slice is *accepted* —
+  // that would pin the gap as a feature rather than record it as one.
   const card = good.replace("| 补 middleware 单测 | normal |", "| legacy client 回归测试套件 | normal |");
   expect(validateDraftCard(card).ok).toBe(true);
 });
@@ -237,6 +225,7 @@ greet 支持 zh
   expect(validateDraftCard(one).ok).toBe(true);
 });
 
+// It cannot overlap with anything, which is now the whole of `checkSplit`.
 test("a lone slice is never blamed for a bad split", () => {
   const one = `## goal
 x
@@ -373,4 +362,81 @@ test("headings are matched without regard to case", () => {
     .replace("## non-goals", "## Non-Goals")
     .replace("## accept", "## ACCEPT");
   expect(validateDraftCard(caps).ok).toBe(true);
+});
+
+/**
+ * A card's verdict does not depend on which language it is written in.
+ *
+ * `GENERIC_GATE` was a pattern of English and Chinese words used to *suppress* a
+ * hard rejection, so its miss cost a correct card refused rather than a missed
+ * catch. Measured before ADR 046: a slice restating a card criterion was refused
+ * as nested acceptance in German, French, Spanish, Portuguese and Russian, and
+ * accepted in Korean and Japanese only because the normalised text fell under
+ * the eight-character floor.
+ */
+const shipped = (accept: string, nested: string) => `## goal
+ship it
+
+## non-goals
+nothing
+
+## accept
+- ${accept}
+- the panel renders
+
+## slices
+| slice | difficulty | accept |
+| --- | --- | --- |
+| one | normal | ${accept} |
+| two | normal | ${nested} |
+
+## risk
+- none
+
+## objection
+none`;
+
+/** One row per shipped locale: the criterion, and the same criterion with a
+ *  clause added so the pair is nested by construction. */
+const SAYS_THE_SUITE_PASSES: [string, string, string][] = [
+  ["en", "bun test passes", "bun test passes and it reads zh from env"],
+  ["zh", "bun test 全绿", "bun test 全绿，并且从 env 读 zh"],
+  ["de", "die Testsuite ist grün", "die Testsuite ist grün und liest zh aus env"],
+  ["fr", "la suite de tests passe", "la suite de tests passe et lit zh depuis env"],
+  ["es", "la suite de pruebas pasa", "la suite de pruebas pasa y lee zh de env"],
+  ["pt", "a suite de testes passa", "a suite de testes passa e lê zh do env"],
+  ["ru", "набор тестов проходит", "набор тестов проходит и читает zh из env"],
+];
+
+test.each(SAYS_THE_SUITE_PASSES)(
+  "a %s slice restating a card criterion is not a nested acceptance",
+  (_locale, accept, nested) => {
+    expect(validateDraftCard(shipped(accept, nested)).ok).toBe(true);
+  },
+);
+
+test.each(SAYS_THE_SUITE_PASSES)("a %s slice nested inside another is still caught", (_locale, accept, nested) => {
+  // Same pair, with the card's own criteria naming something else — so the
+  // suppressor has nothing to suppress and the rejection stands.
+  const card = shipped(accept, nested).replace(
+    `- ${accept}\n- the panel renders`,
+    "- something else entirely\n- and this",
+  );
+  const r = validateDraftCard(card);
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.error).toContain("nested acceptance criteria");
+});
+
+/**
+ * The one length heuristic left, and its direction is the safe one.
+ *
+ * `short.length < 8` counts characters, and a dense script says more per
+ * character — `테스트 통과` normalises to five. So Korean and Japanese pairs below
+ * the floor are not examined. That is *lenient*: it declines to reject, which is
+ * the direction a hard refusal should fail in, and it is why the two rows above
+ * do not include them.
+ */
+test("the eight-character floor is lenient for dense scripts, and stays that way", () => {
+  expect(validateDraftCard(shipped("테스트 통과", "테스트 통과하고 env 에서 zh 를 읽음")).ok).toBe(true);
+  expect(validateDraftCard(shipped("テスト通過", "テスト通過し env から zh を読む")).ok).toBe(true);
 });

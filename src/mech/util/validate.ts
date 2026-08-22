@@ -361,7 +361,7 @@ export function validateDraftCard(text: string): Result<DraftOk> {
   if (!parsedSlices.ok) return parsedSlices;
   const slices = parsedSlices.slices;
 
-  const split = checkSplit(slices);
+  const split = checkSplit(slices, accept.map(norm));
   if (split) return { ok: false, error: split };
 
   const risk = many(RISK);
@@ -393,7 +393,7 @@ export function validateDraftCard(text: string): Result<DraftOk> {
  * already in the Dispatcher's prompt when a real run produced three steps of one
  * change. These three cases are the ones that can be caught without judgement.
  */
-function overlapError(a: string, b: string, left: DraftSlice, i: number, j: number): string | null {
+function overlapError(a: string, b: string, left: DraftSlice, i: number, j: number, generic: string[]): string | null {
   if (!a || !b) return null;
   if (a === b)
     return (
@@ -401,44 +401,46 @@ function overlapError(a: string, b: string, left: DraftSlice, i: number, j: numb
       `so they are one deliverable, not two. Merge them.`
     );
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
-  if (short.length < 8 || !long.includes(short) || GENERIC_GATE.test(short)) return null;
+  // The card's own `## accept` is the generic-gate list, and it is in whatever
+  // language the card is written in. A slice criterion that only restates a
+  // requirement-level one is true of every slice by construction, which is the
+  // property the hand-written pattern was reaching for — while knowing English
+  // and Chinese only. Containment rather than equality: a card criterion is
+  // often the slice gate plus a clause.
+  if (short.length < 8 || !long.includes(short) || generic.some((g) => g.includes(short))) return null;
   return (
     `slice ${i + 1} and slice ${j + 1} have nested acceptance criteria, so one is finished ` +
     `by finishing the other. Split them by what could ship alone, or merge them.`
   );
 }
 
-function splitOverlap(slices: DraftSlice[]): string | null {
-  const norm = (value: string) => value.toLowerCase().replace(/[\s\p{P}]+/gu, "");
+/** Case and punctuation off, so two criteria that differ only in how they were
+ *  typed compare equal. Used by the overlap check and by the generic-gate list. */
+const norm = (value: string) => value.toLowerCase().replace(/[\s\p{P}]+/gu, "");
+
+function splitOverlap(slices: DraftSlice[], generic: string[]): string | null {
   for (let i = 0; i < slices.length; i++) {
     for (let j = i + 1; j < slices.length; j++) {
-      const error = overlapError(norm(slices[i]!.accept), norm(slices[j]!.accept), slices[i]!, i, j);
+      const error = overlapError(norm(slices[i]!.accept), norm(slices[j]!.accept), slices[i]!, i, j, generic);
       if (error) return error;
     }
   }
   return null;
 }
 
-function checkSplit(slices: DraftSlice[]): string | null {
-  const overlap = splitOverlap(slices);
-  if (overlap) return overlap;
-  // "Add tests" is never a deliverable on its own: tests belong with the change
-  // they test, and a slice of them can only be accepted after another slice is.
-  const testOnly =
-    /^(补充?|添加|新增|加上?|补齐|write|add|create)?\s*(单元)?(测试|单测|test|tests|unit ?tests?|用例|测试用例)\s*$/i;
-  const idx = slices.findIndex((s) => testOnly.test(s.title.trim()));
-  if (idx !== -1 && slices.length > 1) {
-    return (
-      `slice ${idx + 1} ("${slices[idx]!.title}") is tests on their own. Tests belong with the ` +
-      `change they test — fold them into the slice that makes the change.`
-    );
-  }
-  return null;
-}
-
-/** "the suite passes" and friends: true of every slice, so never evidence of overlap. */
-const GENERIC_GATE =
-  /^(bun|npm|pnpm|yarn|cargo|go|pytest|dotnet|make)?(test|tests|check|build|lint|typecheck)?(全绿|绿|通过|pass|passes|passing|ok|green|全部通过)?$/i;
+/**
+ * "Tests on their own" is not checked here any more, and ADR 046 says why.
+ *
+ * It matched the slice *title*, which is prose in `output.language`, so the rule
+ * existed for two of the ten locales and never for the other eight. All three
+ * ways out fail, and 046 argues each.
+ */
+/**
+ * It keeps three owners that do read ten languages: `roles/dispatcher.yaml`
+ * states it with a worked example, the boss reads the card, and `reconcile`
+ * catches the consequence as "nothing was claimed and nothing changed".
+ */
+const checkSplit = (slices: DraftSlice[], generic: string[]): string | null => splitOverlap(slices, generic);
 
 /**
  * Self-review that says nothing is not self-review. It must reference the
@@ -496,6 +498,13 @@ function nonEmptyLines(s: string): string[] {
  * Politeness and hedging carry no information and cost tokens forever.
  * No `\b` on the CJK patterns — word boundaries do not exist between Han
  * characters, so `\b其实\b` never matches inside a Chinese sentence.
+ */
+/**
+ * **English and Chinese only, and that is the decision rather than an oversight.**
+ * This is a cost nudge, not a correctness gate: a miss lets a hedge through and
+ * costs a handful of tokens, so the two enforced locales pay a retry the other
+ * eight do not. Ten hand-kept lexicons is the shape ADR 045 removed and a model
+ * call costs more than the tokens it would save. ADR 046 records the bound.
  */
 const FILLER = [
   /(基本上|其实|实际上|简单来说|需要注意的是|值得一提的是)/,

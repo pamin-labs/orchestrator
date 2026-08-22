@@ -1,6 +1,8 @@
 # 045 A question names what it is about, once
 
-**Status**: accepted
+**Status**: accepted. Narrowed by [`046`](046-a-validator-cannot-read-ten-languages.md),
+which finds that neither half of this remedy transfers to `validate.ts`'s three
+per-language regexes, and says what does.
 **Date**: 2026-08-23
 
 ## Context
