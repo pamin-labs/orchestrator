@@ -59,10 +59,15 @@ test("a message hands its attachments back as things the panel can open", () => 
   expect(files[0]!.url).toBe("/api/v1/attach/1755-0-Screenshot.png");
 });
 
-test("a message that merely mentions attachments keeps its own body", () => {
-  const body = "附件（路径如下）：\n还没传呢";
-  expect(splitAttachments(body).text).toBe(body);
-  expect(splitAttachments("没有附件").files).toEqual([]);
+test("the boss's own list is a list, not attachments", () => {
+  // The block is found by its shape now rather than by its header, so what keeps
+  // an ordinary markdown list out is that an entry's path contains a `/` and
+  // that a blank line separates the block from the text above it.
+  expect(splitAttachments("要做的：\n- 先重构\n- 再补测试").files).toEqual([]);
+  expect(splitAttachments("附件（路径如下）：\n还没传呢").files).toEqual([]);
+  // A header written in any language still works, because none is matched.
+  const de = "sieh dir das an\n\nAnhänge (Pfade folgen):\n- /data/a.png (image)";
+  expect(splitAttachments(de)).toMatchObject({ text: "sieh dir das an", files: [{ path: "/data/a.png" }] });
 });
 
 test("labelled image paths still reach codex as -i flags", () => {

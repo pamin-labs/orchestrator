@@ -209,7 +209,7 @@ test("attachments of the removed project go, and files it never named stay", asy
   await h.f.note.create({
     project_id: 1,
     grp_id: grpId,
-    body: `看这个\n\n附件（路径如下）：\n- [图1] ${mine} (image)\n- ${outside}`,
+    body: `看这个\n\nAttachments (paths follow):\n- [图1] ${mine} (image)\n- ${outside}`,
   });
 
   await del(h.app, "/api/v1/projects/1");

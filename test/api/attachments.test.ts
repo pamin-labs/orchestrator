@@ -43,7 +43,7 @@ test("an attachment is copied into the sandbox and the prompt points at the copy
   const host = join(h.dir, "attachments", "20260815-0-shot.png");
   writeFileSync(host, "PNGDATA");
 
-  const prompt = `按图改一下\n\n附件（路径如下）：\n- [图1] ${host} (image)`;
+  const prompt = `按图改一下\n\nAttachments (paths follow):\n- [图1] ${host} (image)`;
   const out = await stageAttachments(h.deps, { grp: 1 }, prompt, 1);
 
   const inside = `${ATTACH_DIR}/20260815-0-shot.png`;
@@ -61,8 +61,8 @@ test("an attachment is copied into the sandbox and the prompt points at the copy
 test("only paths under the attachments directory are touched", async () => {
   const h = await harness();
   // An agent's own bullet list, and a boss path pointing somewhere else entirely.
-  // Parsing the `附件（路径如下）：` header instead would make both of these
-  // candidates for being copied into the container.
+  // Staging works off the attachments directory, not off the block: parsing the
+  // header would make both of these candidates for copying into the container.
   const prompt = `计划：\n- /etc/passwd\n- [注意] /Users/someone/secrets.txt\n- src/api.ts 要改`;
   const out = await stageAttachments(h.deps, { grp: 1 }, prompt, 1);
   expect(out).toBe(prompt);
@@ -72,7 +72,7 @@ test("only paths under the attachments directory are touched", async () => {
 test("an attachment that cannot be staged is said out loud", async () => {
   const h = await harness();
   const missing = join(h.dir, "attachments", "gone.png");
-  const prompt = `附件（路径如下）：\n- ${missing} (image)`;
+  const prompt = `Attachments (paths follow):\n- ${missing} (image)`;
   await stageAttachments(h.deps, { grp: 1 }, prompt, 1);
 
   const [said] = await h.ctx.db

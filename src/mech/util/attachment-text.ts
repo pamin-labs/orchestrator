@@ -1,15 +1,27 @@
 import type { z } from "zod";
-import { ATTACHMENT_HEADER, type Attachment as AttachmentSchema } from "../../contracts/fields.ts";
+import type { Attachment as AttachmentSchema } from "../../contracts/fields.ts";
 
 export type Attachment = z.infer<typeof AttachmentSchema>;
 
 const IMAGE_TAG = " (image)";
 
+/**
+ * English, and it has exactly one reader: the agent, in a prompt. The panel
+ * strips this line before drawing, so no person ever sees it — translating it
+ * into nine languages would have been nine rows nobody reads, and ADR 035 §2
+ * keeps what a model reads in English anyway.
+ *
+ * It was matched back by an identical literal in `web/src/ui/attach.ts`, which
+ * is what made it a protocol key. Nothing matches it now — the panel finds the
+ * block by its shape — so it is free to be reworded.
+ */
+const HEADER = "Attachments (paths follow):";
+
 export function withAttachments(text: string, attachments?: Attachment[]): string {
   const files = (attachments ?? []).filter((f) => f?.path);
   if (!files.length) return text;
   return (
-    `${text}\n\n${ATTACHMENT_HEADER}\n` +
+    `${text}\n\n${HEADER}\n` +
     files
       .map((f) => `- ${f.label ? `[${f.label}] ` : ""}${f.path}${f.type?.startsWith("image/") ? IMAGE_TAG : ""}`)
       .join("\n")
