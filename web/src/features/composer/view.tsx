@@ -11,6 +11,7 @@ import { cn } from "../../ui/cn";
 import { FilePicker } from "../picker/view";
 import { z } from "zod";
 import { api, readApi, readJson } from "../../shared/api";
+import { saidText } from "../../shared/said";
 import type { InferResponseType } from "hono/client";
 import {
   appendLine,
@@ -437,7 +438,7 @@ export function Composer({
       const r = await api.attach.local.$post({ json: { paths } }).catch(() => null);
       if (!r) return void toast.error(t`Failed to add`, { duration: 8000 });
       const result = await readJson(r, AttachmentsSchema);
-      if (!result.ok) return void toast.error(result.text, { duration: 8000 });
+      if (!result.ok) return void toast.error(saidText(result.said, result.text), { duration: 8000 });
       addFiles(result.data.files);
     });
 
@@ -461,7 +462,7 @@ export function Composer({
       // A file that silently fails to attach is worse than one never added: the text
       // goes out referencing a path, and the agent is told to Read something missing.
       const result = await readJson(r, AttachmentsSchema);
-      if (!result.ok) return void toast.error(result.text, { duration: 8000 });
+      if (!result.ok) return void toast.error(saidText(result.said, result.text), { duration: 8000 });
       // Preview from the local File, not a server round trip.
       addFiles(
         result.data.files,

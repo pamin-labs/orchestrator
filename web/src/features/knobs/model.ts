@@ -1,6 +1,8 @@
 import type { InferResponseType } from "hono/client";
 import type { Json } from "../../../../src/contracts/json";
 import { api } from "../../shared/api";
+import type { Refusal } from "../../shared/said";
+import type { Said } from "../../../../src/contracts/said";
 import type { ModelSources } from "./models";
 
 /** One settings row, as the endpoint hands it over. */
@@ -45,13 +47,18 @@ export const labelledBy = (path: string, type: string, id: string): string | und
   selfNamed(path, type) ? id : undefined;
 
 /** What is wrong, and which box on the row it is wrong in. `""` is the row itself. */
+/**
+ * `why` is a `Refusal` and not a rendered string, because a complaint sits on
+ * the row until the boss fixes it — long enough for them to change the panel's
+ * language underneath it. The row renders it; nothing stores the words.
+ */
 export interface Complaint {
-  why: string;
+  why: Refusal | null;
   at: string;
 }
 
 /** Nothing has been refused, so no box is marked and no reason is shown. */
-export const NO_COMPLAINT: Complaint = { why: "", at: "" };
+export const NO_COMPLAINT: Complaint = { why: null, at: "" };
 
 /**
  * Which cell the complaint is about, or null when there is none. `""` is the
@@ -163,7 +170,7 @@ export interface Editor {
   bad: string | null;
   onWrite: (value: Json) => void;
   onWriteMate: (path: string, value: Json) => void;
-  onRefuse: (why: string, at: string) => void;
+  onRefuse: (why: Said, at: string) => void;
   /** Nothing changed, so nothing this row said about the last attempt still holds. */
   onClear: () => void;
 }

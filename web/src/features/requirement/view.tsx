@@ -731,7 +731,7 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
         },
         async () => {
           const r = await groupAction(grpId, "newpr");
-          if (!r.ok) await ask({ title: t`Failed to open`, body: r.text, yes: t`Got it` });
+          if (!r.ok) await ask({ title: t`Failed to open`, body: saidText(r.said, r.text), yes: t`Got it` });
         },
         refresh,
       )}

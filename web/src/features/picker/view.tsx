@@ -5,6 +5,7 @@ import { Button, LinkButton } from "../../ui/button";
 import { Badge } from "../../ui/badge";
 import { Menu, MenuItem } from "../../ui/menu";
 import { api, mutate, readJson } from "../../shared/api";
+import { refusalText, type Refusal } from "../../shared/said";
 import { cn } from "../../ui/cn";
 import { browseListing, browseRow, repoRow, type Entry } from "./model";
 import { z } from "zod";
@@ -157,7 +158,9 @@ function Browse({
   chosen: (path: string) => boolean;
 }) {
   const [d, setD] = useState<Dirs | null>(null);
-  const [err, setErr] = useState("");
+  // The refusal, not its rendering: this outlives the fetch, and the locale can
+  // move while it is on screen.
+  const [err, setErr] = useState<Refusal | null>(null);
 
   const load = useCallback(
     async (path?: string | null) => {
@@ -167,8 +170,8 @@ function Browse({
         }),
         DirsSchema,
       );
-      if (!result.ok) return setErr(result.text);
-      setErr("");
+      if (!result.ok) return setErr(result);
+      setErr(null);
       setD(result.data);
     },
     [files],
@@ -201,7 +204,7 @@ function Browse({
       <BrowseRows
         here={d}
         rows={rows}
-        err={err}
+        err={refusalText(err)}
         pick={!!pick}
         chosen={chosen}
         onRow={onRow}
@@ -476,7 +479,7 @@ function Repos({
 }) {
   const { t } = useLingui();
   const [d, setD] = useState<RepoList | null>(cached);
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState("");
   const [q, setQ] = useState("");
 
@@ -486,8 +489,8 @@ function Repos({
       await api.github.repos.$get({ query: want ? { installation: String(want) } : {} }),
       RepoListSchema,
     );
-    if (!result.ok) return setErr(result.text);
-    setErr("");
+    if (!result.ok) return setErr(result);
+    setErr(null);
     const next = result.data;
     lastInstallation = next.selected;
     cached = next;
@@ -534,7 +537,7 @@ function Repos({
         />
       )}
       <div className="max-h-[46vh] overflow-y-auto">
-        <RepoStates data={d} error={err} empty={empty} account={here?.account} onSettings={onSettings} />
+        <RepoStates data={d} error={refusalText(err)} empty={empty} account={here?.account} onSettings={onSettings} />
         <RepositoryList data={d} busy={busy} select={selectRepo} />
       </div>
       <RepoFooter data={d} onCancel={onCancel} />

@@ -402,9 +402,10 @@ test("a refusal marks the cell it is about, and nothing at all when there is non
   // into one, every box on the pane rendered invalid the moment it appeared.
   expect(badCell(NO_COMPLAINT)).toBeNull();
   expect(invalidFlag(NO_COMPLAINT)).toBeUndefined();
-  expect(badCell({ why: "要一个整数", at: "browser" })).toBe("browser");
-  expect(badCell({ why: "要一个数字", at: "" })).toBe("");
-  expect(invalidFlag({ why: "要一个整数", at: "browser" })).toBe("true");
+  const refused = { said: null, text: "needs an integer" };
+  expect(badCell({ why: refused, at: "browser" })).toBe("browser");
+  expect(badCell({ why: refused, at: "" })).toBe("");
+  expect(invalidFlag({ why: refused, at: "browser" })).toBe("true");
 });
 
 describe("a row is 已改 when either half of it is", () => {

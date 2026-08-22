@@ -247,7 +247,7 @@ export async function readApi<S extends z.ZodType>(request: Promise<Response>, s
   const r = await request;
   const result = await readJson(r, schema);
   if (!result.ok) {
-    toast.error(result.text, { duration: 8000 });
+    toast.error(saidText(result.said, result.text), { duration: 8000 });
     return null;
   }
   return result.data;
@@ -257,20 +257,42 @@ export async function readApi<S extends z.ZodType>(request: Promise<Response>, s
  *  the server writes it with rather than a second model of the same body. */
 const saidIn = (body: Json): Said | null => ErrorResponseSchema.safeParse(body).data?.said ?? null;
 
-export type ApiResult<T> = { ok: true; data: T; text: string } | { ok: false; data: null; text: string };
+/**
+ * A refusal, carried rather than rendered.
+ *
+ * `text` is what the server wrote — English from `bad()`, or whatever a
+ * validator or GitHub handed back; `said` is the descriptor beside it when there
+ * was one. `readJson` used to call `saidText` here and hand back a string, so a
+ * caller that kept the refusal on a field kept it in the language of the moment
+ * the request went out: switching the panel to Chinese left one line Portuguese,
+ * under a Chinese heading and above a Chinese button.
+ */
+/**
+ * Fixed at the entry point rather than at the four call sites that store one: as
+ * long as this returned a rendered string, storing it was the obvious thing to
+ * do and the fifth caller would do it again.
+ */
+export type ApiResult<T> =
+  | { ok: true; data: T; text: string; said: null }
+  | { ok: false; data: null; text: string; said: Said | null };
 
 export async function readJson<S extends z.ZodType>(r: Response, schema: S): Promise<ApiResult<z.output<S>>> {
   const body = await readJsonResponse(r);
-  if (!body.ok) return { ok: false, data: null, text: "Server returned a non-JSON response" };
-  // The refusal in the reader's language when the server named one, and the
-  // English it sent alongside when it did not. `said` is where `bad()` puts the
-  // descriptor; anything else about the body is unchanged.
-  if (!r.ok) return { ok: false, data: null, text: saidText(saidIn(body.data), displayJson(body.data)) };
+  if (!body.ok) return { ok: false, data: null, text: "Server returned a non-JSON response", said: null };
+  // The descriptor the server named, unrendered. `said` is where `bad()` puts
+  // it; `text` is the English it sent alongside, which is what a refusal with no
+  // descriptor — a validator, a subprocess, GitHub — has to be shown as.
+  if (!r.ok) return { ok: false, data: null, text: displayJson(body.data), said: saidIn(body.data) };
   const parsed = schema.safeParse(body.data);
   if (!parsed.success) {
-    return { ok: false, data: null, text: `Server returned invalid JSON: ${z.prettifyError(parsed.error)}` };
+    return {
+      ok: false,
+      data: null,
+      text: `Server returned invalid JSON: ${z.prettifyError(parsed.error)}`,
+      said: null,
+    };
   }
-  return { ok: true, data: parsed.data, text: displayJson(body.data) };
+  return { ok: true, data: parsed.data, text: displayJson(body.data), said: null };
 }
 
 const JsonBody = z.record(z.string(), z.json());
@@ -297,7 +319,7 @@ export async function mutate<S extends z.ZodType>(
 export async function mutate(request: Promise<Response>, quiet = false, schema: z.ZodType = JsonBody) {
   const r = await request;
   const result = await readJson(r, schema);
-  if (!result.ok && !quiet) toast.error(result.text, { duration: 12_000 });
+  if (!result.ok && !quiet) toast.error(saidText(result.said, result.text), { duration: 12_000 });
   return result;
 }
 

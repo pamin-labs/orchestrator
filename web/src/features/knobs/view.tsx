@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { api, mutate, readApi } from "../../shared/api";
 import { KNOB_SHAPE, WANTS_PERCENT, readNumber } from "./units";
+import { refusalText, type Refusal } from "../../shared/said";
 import type { ModelSources } from "./models";
 import {
   Amount,
@@ -642,7 +643,9 @@ const ONLY_WHEN: Record<string, (at: (path: string) => Json | undefined) => bool
   "timeouts.webhookMs": (at) => at("notifyWebhook") !== "",
 };
 
-type Write = (write: SettingWrite) => Promise<{ ok: boolean; text: string }>;
+/** `said` alongside `text`, because a refused write is shown on the row and stays
+ *  there: what is handed back has to survive a locale change. */
+type Write = (write: SettingWrite) => Promise<{ ok: boolean } & Refusal>;
 
 export function Knobs({
   section,
@@ -874,14 +877,20 @@ function ResetOverride({ onReset }: { onReset: () => void }) {
   );
 }
 
-async function saveKnob(target: Knob, value: Json, onWrite: Write): Promise<string | null> {
+/** The one refusal this file names itself; the rest come from `units.ts` or the
+ *  server. A descriptor because the row keeps it. */
+const WANTS_A_NUMBER = msg`A number`;
+
+async function saveKnob(target: Knob, value: Json, onWrite: Write): Promise<Refusal | null> {
   // Typing the shipped value back is not an override. Otherwise the row reads
   // `Modified` while being identical to the default, and clearing appears to do nothing.
   const same = JSON.stringify(value) === JSON.stringify(target.default);
   const body = SettingWriteSchema.safeParse({ path: target.path, value: same ? null : value });
-  if (!body.success) return z.prettifyError(body.error);
+  // No descriptor: this is Zod's own prose about the value, not a sentence the
+  // server named.
+  if (!body.success) return { said: null, text: z.prettifyError(body.error) };
   const result = await onWrite(body.data);
-  return result.ok ? null : result.text;
+  return result.ok ? null : result;
 }
 
 function Row({
@@ -937,7 +946,7 @@ function Row({
             bad={badCell(bad)}
             onWrite={(v) => void put(knob, v)}
             onWriteMate={(path, v) => void put(mates.find((m) => m.path === path) ?? knob, v)}
-            onRefuse={(why, at) => setBad({ why, at })}
+            onRefuse={(said, at) => setBad({ why: { said, text: "" }, at })}
             onClear={() => setBad(NO_COMPLAINT)}
           />
           {/* Neutral, not the accent: the accent means "waiting on you" and this
@@ -953,7 +962,7 @@ function Row({
             />
           )}
         </div>
-        {bad.why && <span className="text-meta leading-snug text-accent">{bad.why}</span>}
+        {bad.why && <span className="text-meta leading-snug text-accent">{refusalText(bad.why)}</span>}
       </FieldContent>
     </Field>
   );
@@ -1146,7 +1155,7 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
         label={copyFor(knob).label}
         invalid={bad === ""}
         onCommit={(pct) => {
-          if (pct <= 0 || pct > 100) return onRefuse(i18n._(WANTS_PERCENT), "");
+          if (pct <= 0 || pct > 100) return onRefuse(WANTS_PERCENT, "");
           // Divided, not multiplied: 600 / 1000 is the same double as 0.6.
           onWrite(Math.round(pct * 10) / 1000);
         }}
@@ -1162,7 +1171,7 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
       onUnchanged={onClear}
       onCommit={(raw) => {
         const n = readNumber(raw);
-        if (n === null) return onRefuse(i18n._(msg`A number`), "");
+        if (n === null) return onRefuse(WANTS_A_NUMBER, "");
         onWrite(n);
       }}
     />

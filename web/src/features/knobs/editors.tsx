@@ -36,6 +36,17 @@ import { COUNT_UNITS, countOf, DURATION_UNITS, PER, splitCount, splitDuration, u
 import { Trans, useLingui } from "@lingui/react/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
+import type { Said } from "../../../../src/contracts/said";
+
+/**
+ * What a refused box says, as descriptors rather than as `` t`…` ``.
+ *
+ * A complaint is held on the row until the boss fixes it, so the words cannot be
+ * chosen at the moment of refusal — `msg` at module scope, rendered by whoever
+ * draws the row. Same rule the settings tables already follow.
+ */
+const WANTS_INTEGER = msg`Needs an integer`;
+const NEEDS_A_NAME = msg`Name can't be empty; use the × on the right to delete`;
 
 export const PERCENT = ["%"] as const;
 
@@ -378,7 +389,7 @@ export function Pairs({
   keyPh: string;
   bad: string | null;
   onWrite: (v: Json) => void;
-  onRefuse: (why: string, at: string) => void;
+  onRefuse: (why: Said, at: string) => void;
   onClear: () => void;
 }) {
   const { t } = useLingui();
@@ -389,7 +400,7 @@ export function Pairs({
   const vw = kind === "text" ? "" : "w-[9rem] flex-none";
   const commit = (k: string, raw: string) => {
     if (kind === "text") return onWrite({ ...map, [k]: raw });
-    if (!/^\d+$/.test(raw)) return onRefuse(t`Needs an integer`, k);
+    if (!/^\d+$/.test(raw)) return onRefuse(WANTS_INTEGER, k);
     const n = Number(raw);
     onWrite({ ...map, [k]: n });
   };
@@ -404,7 +415,7 @@ export function Pairs({
             className="w-[13rem] flex-none"
             onCommit={(next) => {
               const name = next.trim();
-              if (!name) return onRefuse(t`Name can't be empty; use the × on the right to delete`, k);
+              if (!name) return onRefuse(NEEDS_A_NAME, k);
               // Rebuilt in place rather than deleted and re-added, so a rename
               // does not send the row to the bottom of the list mid-edit.
               onWrite(Object.fromEntries(entries.map(([ek, ev]) => [ek === k ? name : ek, ev])));

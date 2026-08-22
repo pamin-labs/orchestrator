@@ -21,7 +21,16 @@ import { readFileSync } from "node:fs";
  */
 
 const SUBSCRIBES = /useLingui\(|<Trans\b|<Plural\b|<Select\b|<SelectOrdinal\b/;
-const TRANSLATES = /\bt`|\bt\(\{|i18n\._\(/;
+/**
+ * `saidText`/`refusalText`/`labelOf` are the same finding three helpers over:
+ * each renders against the module singleton `i18n`, so a memoised component
+ * drawing one keeps the old wording after a locale change. They are legal inside
+ * an ordinary component — there is no hook form of "render what the server
+ * said" — which is why they belong here and not in
+ * `a-component-takes-t-from-the-hook.test.ts`. The two guards ask different
+ * questions of the same call.
+ */
+const TRANSLATES = /\bt`|\bt\(\{|i18n\._\(|saidText\(|refusalText\(|labelOf\(/;
 
 /**
  * The source of each `memo(...)` call.
@@ -78,4 +87,14 @@ test("it reads the argument and not the file around it", () => {
   expect(offenders("p.tsx", "const v = useMemo(() => t`Skills`, []);")).toEqual([]);
   const commented = `// useLingui() lives in the parent\n${memoised("() => <p>{t`Skills`}</p>")}`;
   expect(offenders("p.tsx", commented)).toHaveLength(1);
+
+  // The three helpers that render a stored descriptor against the singleton.
+  // Added after a refusal held in `useState` kept its old language across a
+  // locale change — the same failure one memo away.
+  expect(offenders("p.tsx", memoised("({ e }) => <p>{saidText(e.said, e.detail)}</p>"))).toHaveLength(1);
+  expect(offenders("p.tsx", memoised("({ e }) => <p>{refusalText(e)}</p>"))).toHaveLength(1);
+  expect(offenders("p.tsx", memoised("({ g }) => <p>{labelOf(g.label, g.name)}</p>"))).toHaveLength(1);
+  expect(
+    offenders("p.tsx", memoised("({ e }) => { useLingui(); return <p>{saidText(e.said, e.detail)}</p>; }")),
+  ).toEqual([]);
 });

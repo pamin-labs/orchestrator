@@ -16,3 +16,17 @@ import { i18n } from "../i18n";
  */
 export const saidText = (said: Said | null | undefined, fallback: string): string =>
   said ? renderWith(i18n, said) : fallback;
+
+/**
+ * A refusal held for later, which is the shape `readJson` returns on failure.
+ *
+ * The panel keeps refusals on fields and in dialogs, and a sentence kept is a
+ * sentence that outlives the locale it was fetched under. So what is kept is the
+ * descriptor, and `refusalText` is where it becomes words — inside a render,
+ * under whichever catalogue is active then.
+ */
+export type Refusal = { said: Said | null; text: string };
+
+/** The refusal, in the language being read now. Empty for no refusal, because
+ *  every caller renders it into a prop that is a string. */
+export const refusalText = (refusal: Refusal | null): string => (refusal ? saidText(refusal.said, refusal.text) : "");
