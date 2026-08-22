@@ -1127,6 +1127,28 @@ both name `locales/po.d.ts`.
   a two-line `renderWith` is the shorter road, and now the comment above it says
   which two roads were compared.
 
+- **A rule in `AGENTS.md` that neither call site followed.** "Audit a branch
+  with `--base main`" was written after the trap bit once, and then `preflight`
+  and `ci.yml` both invoked `fallow audit` with no base at all. Measured: 15
+  changed files and 45 functions against 287 and 5140 — the local audit had been
+  scanning only what had happened since the last push, and saying `✓ No issues`
+  about it. `.fallowrc.json` cannot hold the base (its `AuditConfig` has `gate`,
+  `css`, three baseline paths, `cacheMaxAgeDays` and `typeAware`, and no base),
+  so the pin is `FALLOW_AUDIT_BASE=origin/main` on all three `audit` scripts —
+  which is the one place that covers CI's `bun run audit --`, preflight's
+  `audit:crap`, and a person typing `bun run audit`.
+
+- **`--gate all` was measured rather than argued about, twice, and rejected.**
+  It fails on findings *inherited* into changed files. At the 15-file scope and
+  again at the real 287-file one, the inherited columns are `dead_code: 0`,
+  `complexity: 0`, `duplication: 0` and `styling: 4` — and counting those four
+  leaves the verdict `warn` and the exit code 0. It gates nothing new. What it
+  costs is measurable: it skips the base-snapshot attribution pass, so
+  `duplication_introduced: 1` and `styling_introduced: 80` both read 0 under it,
+  and those numbers are what `ci.yml` renders as PR annotations. Faster (3.3s
+  against 5.0s) for exactly that reason. The trigger to revisit is an inherited
+  column going non-zero in a category that can reach `fail`.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run

@@ -79,11 +79,16 @@ findings across thirty files, once as a single finding against a function with
 twelve passing unit tests. The structural findings in plain `audit` — boundaries,
 cycles, dead code, duplication — are unaffected and can be trusted.
 
-**Audit a branch with `--base main`.** The default base is the merge-base with
-the branch's own remote, so once a branch is pushed that base *is* `HEAD` and
-the scan reports `✓ No issues in 0 changed files` — a green tick over nothing
-examined, which is worse than a red one. Both traps have the same shape: a
-command that answers about a scope you did not choose, and answers cheerfully.
+**The audit base is pinned, and you no longer have to remember it.** All three
+`audit` scripts carry `FALLOW_AUDIT_BASE=origin/main`. Left to itself the base
+is the merge-base with the branch's *upstream*, so on a pushed branch it is
+`HEAD` and the scan reports `✓ No issues in 0 changed files` — a green tick over
+nothing examined, which is worse than a red one. Measured on this branch before
+the pin: 15 files and 45 functions against 287 and 5140. It was preflight-only —
+a CI `pull_request` checkout has no upstream and already fell through to main —
+but a rule written down and followed by neither call site is a rule. Both traps
+on this page have the same shape: a command that answers about a scope you did
+not choose, and answers cheerfully.
 
 Do not run overlapping enforcement owners. Replacing TypeScript, Oxlint,
 Fallow, Bun test, CodeQL, or another owner requires an ADR and migration
