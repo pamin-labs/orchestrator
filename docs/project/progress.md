@@ -1384,3 +1384,108 @@ question. ADR 045.
   while the branch was still open, including the bundle table — which said
   +4.7% where the artefact measures −13.4%, because the two findings that moved
   it (React's development runtime, and the ICU parser) are not i18n.
+
+## A third pass, and what a user found that three explorers did not
+
+The branch was read twice more — three parallel explorers over the whole diff,
+two design passes on the pieces ADR 042 and 045 had left open, and the branch's
+own tooling turned on itself again. What actually opened the round was a
+screenshot: a Chinese page with one line of Portuguese in it.
+
+### The screenshot
+
+`readJson` rendered the `Said` the moment the response landed, and four call
+sites keep that string — `Repos` in `useState` until the next fetch, each knob
+row until the boss fixes the value. `I18nProvider` re-renders every `useLingui`
+consumer on `activate`, but a string in state consumes nothing. So the heading,
+the button and the host-check banner all followed the locale menu and the red
+line between them did not.
+
+Fixed at `readJson` rather than at the four call sites: `ApiResult` carries
+`said` beside the server's own `text` and nothing is rendered until it is shown,
+so there is no pre-rendered string left to store. That half is what stops the
+fifth caller doing it again. `translation-resubscribes` learned `saidText(`,
+`refusalText(` and `labelOf(` — the same defect one `memo` away.
+
+It is the branch's own lesson, one turn further on. Separate the key the machine
+matches on from the prose a person reads, then separate the descriptor from its
+rendering.
+
+### Hardcoded language lists, once that was the thing being searched for
+
+Reviewing the ADR 046 commit, the boss asked why a two-language lexicon was
+being defended in a branch whose whole argument is that they do not work. Three
+more turned up, and one of them was not in Chinese, so no guard here could see it.
+
+- **`FILLER`** refused a journal containing `basically` or 其实. The comment
+  written for it called it "a cost nudge, not a correctness gate"; the code
+  returns `ok: false`, which is a 400. And `validateJournal` caps the body at six
+  lines four lines above — "be terse", counted rather than recognised, in every
+  language. A lexicon beside it was a second enforcement owner of one rule.
+- **`NOT_ENGLISH`** in `checkPrMessage` was kana, Han and hangul: three
+  hand-picked ranges from when the only other language was Chinese. `перенести
+  проверку`, `μετακίνηση ελέγχου` and `نقل الفحص` all passed. Unicode has the
+  rule itself.
+- **`validateSelfReview`** counted `ok`, `met` and `not met` as verdicts and
+  refused a fixed list of English non-answers, so `looks ok` counted and
+  `bestanden` did not. `pass|fail` is what the two role files hand out.
+
+`src/` is at 26 Chinese literals across 10 files, from 407 across 36, and the
+four left in `validate.ts` are `ALIAS`'s legacy DRAFT headings — retiring at
+0.2.0 against an assertion `version.test.ts` now carries, rather than against
+three comments saying so.
+
+### The one that was refusing correct work
+
+`GENERIC_GATE` is a false-positive *suppressor*: when it misses, the enclosing
+"nested acceptance criteria" refusal fires. Measured on one card written seven
+ways — German, French, Spanish, Portuguese and Russian **refused**, English and
+Chinese accepted because the pattern knew those words, Korean and Japanese
+accepted only because `테스트통과` is five characters and falls under an
+eight-character floor. The verdict depended on script density, twice per card
+since approval re-validates. The card's own `## accept` is the list, already
+parsed four lines above the call. ADR 046.
+
+### The wall ADR 042 built around turned out not to be one
+
+042 deferred L2 fencing because promptpurify's nonce is random per call and its
+preamble names it in the system text, so fencing appeared to move
+`StablePrompt.hash` every turn. Reading the installed package: the caller cannot
+supply a nonce and the fence primitive is not exported, so 042's own proposed fix
+is unreachable — and the nonce does not belong in the hashed half anyway. It
+buys the property that an attacker cannot *close* a fence they cannot guess, and
+that needs it only where the fence is. A constant notice in `systemAppend`, every
+fenced block in the delta, and `needsRotation` cannot see fencing at all. ADR 047.
+
+042 also claimed L2 has no false-positive cost. It does: hardening strips
+indentation and chat-template tokens from what it fences, which is why `mail.body`
+is not fenced — `finishLease` puts a test log there.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1848 pass, 6 skip, 0 fail, 1854 across 226 files |
+| `bun run preflight` | fifteen steps, 116.7s, all green |
+| coverage | 82.91% statements, 73.12% branches, 78.24% functions |
+| `fallow audit --gate all` | no issues in 340 changed files |
+| `web/dist/main.js` | 1,470,385 B |
+| `endonymOf` over the ten | 55.6µs → 0.147µs |
+| the CLDR name table | eager 2.08ms → lazy, and never built on the panel's path |
+| `buildMessages` at 20kB | 0.306ms, CPU only |
+
+### Not taken, with the measurement that decided it
+
+- **Deleting ADR 041.** It was added and superseded inside one branch, which
+  reads as redundant, but it is the record of why a hand-written key layer looked
+  necessary and of the measurement that removed it.
+- **`getFormat()`/`FormatterWrapper` in `i18n-hant.ts`.** The API is real and
+  filename-in, filename-out; `hant(po, existing)` is deliberately string-in,
+  string-out so a guard can drive it over three messages.
+- **Merging the two bundle guards.** Measured 484ms and 722ms on different
+  workers; merging would make a static assertion inherit a viewport fake and a
+  temp directory to save a third of a second.
+- **The eight-character floor in `overlapError`.** Still counts characters, so a
+  dense script says more per character. It fails *lenient* — declines to refuse,
+  which is how a hard refusal should fail — and the test says so rather than
+  pretending uniformity.
