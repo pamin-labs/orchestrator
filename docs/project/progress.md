@@ -1090,6 +1090,30 @@ both name `locales/po.d.ts`.
   literal at all. Fallow reports duplication at twenty lines; all of these are
   shorter than that and none of them were found by it.
 
+- **Lingui ships two `t`, and this branch used both.** `@lingui/core/macro`'s
+  renders against the global instance and returns a string that never changes
+  again; `@lingui/react/macro`'s `useLingui` binds to the provider's and
+  re-renders on `activate`. Eight files imported each, and which a given line
+  got was whichever import was at the top. It was not broken — `I18nProvider`
+  re-renders the subtree, so a global `t` inside a component was re-evaluated
+  anyway — but it was one rule with two spellings, and only one of them survives
+  a `React.memo`. 103 call sites in thirteen panes moved to the hook, and 24
+  more that drew a module table with `i18n._(…)`: the same defect one API over.
+
+- **The 13 helpers that keep the global `t` are a constraint, not a leftover.**
+  The macro only expands `useLingui` in a variable declaration, so a plain
+  function cannot have one. What a helper can do instead is return a `msg`
+  descriptor and let the caller render it, which is what the module-scope tables
+  already did — four helpers moved that way because a parameter default runs
+  before the hook, and `imageHint` turned out shorter inlined than exported.
+
+- **Four places to write a sentence, and the place decides which.** The rule was
+  spread across eleven comments before it was a table in `AGENTS.md`: `<Trans>`
+  in JSX, the hook's `t` inside a component, `msg` outside one, `say:` on an
+  emitter. `a-component-takes-t-from-the-hook` is what makes the second row
+  checkable — the outermost enclosing function is the component, and a `t` or
+  `i18n._` inside one that is not a hook binding is the finding.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run
