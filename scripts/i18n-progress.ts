@@ -32,8 +32,6 @@ import { write } from "./generated-file.ts";
  * Nor fetched live: a badge moves where the number is baked rather than removing
  * it, since the JSON still has to be generated and can only live in a
  * checked-in file — the same staleness twice — or somewhere review cannot see.
- * These bars were an `inlang.com/badge` first, the service every "translation
- * status" answer points at, and it 404s for every repository now.
  */
 
 const MARK = { open: "<!-- i18n:table -->", close: "<!-- /i18n:table -->" };

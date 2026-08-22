@@ -23,6 +23,7 @@ export const said = (message: string, values?: Record<string, string | number>) 
   ...(values ? { values } : {}),
 });
 
-/** Stated once, so the inferred shape above cannot drift from the contract. */
-const _fits: Said = said("x");
-void _fits;
+/** Stated once, so the inferred shape above cannot drift from the contract.
+ *  Type-only, like `said.ts`'s own claim about the macro. */
+type Holds<T extends true> = T;
+type _Fits = Holds<ReturnType<typeof said> extends Said ? true : false>;

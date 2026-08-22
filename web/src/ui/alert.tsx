@@ -1,4 +1,3 @@
-import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "./cn";
 
 /**
@@ -15,25 +14,17 @@ import { cn } from "./cn";
  * grid cell instead: the row is one line tall, so an overlay would cover the
  * description at the width where it matters.
  */
-const alertStyles = cva(
-  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 border-b px-6 py-2 text-body",
-  {
-    variants: {
-      tone: {
-        bad: "border-bad/25 bg-bad-soft text-ink",
-        warn: "border-warn/25 bg-sunk text-ink",
-      },
-    },
-    defaultVariants: { tone: "bad" },
-  },
-);
+/**
+ * One tone, not a `cva`. It shipped with `bad` and `warn` and a
+ * `defaultVariants`; the one caller renders it with no `tone` at all, so the
+ * variant map and the dependency on `class-variance-authority` were describing a
+ * choice nothing makes. A second tone can bring the `cva` back with it.
+ */
+const ALERT =
+  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 border-b border-bad/25 bg-bad-soft px-6 py-2 text-body text-ink";
 
-export function Alert({
-  className,
-  tone,
-  ...rest
-}: React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof alertStyles>) {
-  return <div role="alert" className={cn(alertStyles({ tone }), className)} {...rest} />;
+export function Alert({ className, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div role="alert" className={cn(ALERT, className)} {...rest} />;
 }
 
 export function AlertTitle({ className, ...rest }: React.HTMLAttributes<HTMLSpanElement>) {

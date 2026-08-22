@@ -1,7 +1,8 @@
 import type { Escalation, Group, Slice, State } from "../../shared/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "./rank";
 import { pending, prUrl } from "../../shared/select";
-import { brief, cardGoal } from "../../shared/prose";
+import { cardGoal } from "../../shared/prose";
+import { firstSentence } from "../../../../src/contracts/sentence";
 import { saidText } from "../../shared/said";
 import { t } from "@lingui/core/macro";
 
@@ -137,9 +138,17 @@ function askReason(st: State, escalation: Escalation, now: number) {
  * descriptor the server rendered from. A row an agent filed, or one stored
  * before the column existed, has none and falls back to the stored text.
  */
+/**
+ * 40, which is what `src/api/orch/escalation.ts` derives with. A one-line
+ * re-export in `shared/prose.ts` had defaulted this to 44 under a comment saying
+ * both sides followed one rule — so the column the server filled and the column
+ * the panel filled were four characters apart.
+ */
+const BRIEF = 40;
+
 const askWhat = (escalation: Escalation) =>
   saidText(escalation.briefSaid, escalation.brief ?? "").trim() ||
-  brief(saidText(escalation.said, escalation.question));
+  firstSentence(saidText(escalation.said, escalation.question), BRIEF);
 const askWhere = (st: State, escalation: Escalation) =>
   escalation.grp_id ? groupName(st, escalation.grp_id) : t`Standing post`;
 const askWho = (escalation: Escalation) => escalation.asker ?? t`System`;

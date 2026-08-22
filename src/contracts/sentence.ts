@@ -31,7 +31,13 @@ const ENDING = /[\p{Terminal_Punctuation}\s]+$/u;
  */
 const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
 
-const cut = (s: string, max: number): string => {
+/**
+ * Exported because `escalation.ts` had written its own — `s.slice(0, 39)`, which
+ * is the UTF-16 cut this exists to avoid — for the half of `brief()` that trims
+ * what an agent wrote, while the derived half went through here. Two widths on
+ * one queue column, one of them able to leave a lone surrogate.
+ */
+export const cut = (s: string, max: number): string => {
   const parts = [...GRAPHEMES.segment(s)];
   return parts.length > max
     ? `${parts

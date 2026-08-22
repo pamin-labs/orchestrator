@@ -141,8 +141,12 @@ async function run(): Promise<{ code: number; crashed: boolean }> {
   // output in memory to answer a question about the last few.
   let saw = "";
   const tee = async (from: ReadableStream<Uint8Array>, to: typeof Bun.stdout) => {
+    // One decoder per stream, streaming: a fresh one per chunk both allocates
+    // per read and mangles any UTF-8 sequence a pipe split across two of them,
+    // which is a `` in the middle of whichever marker `CRASHED` is looking for.
+    const decoder = new TextDecoder();
     for await (const chunk of from) {
-      saw = (saw + new TextDecoder().decode(chunk)).slice(-8192);
+      saw = (saw + decoder.decode(chunk, { stream: true })).slice(-8192);
       await Bun.write(to, chunk);
     }
   };

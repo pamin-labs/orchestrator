@@ -1,5 +1,5 @@
 import { i18n, type Messages } from "@lingui/core";
-import { type Locale, LOCALES, localeOf } from "../../src/contracts/config.ts";
+import { type Locale, localeOf } from "../../src/contracts/config.ts";
 
 /**
  * The panel's catalogs, compiled.
@@ -91,7 +91,7 @@ export const preference = (): Locale => {
  * English source is every message's fallback, which is exactly the state to land
  * in: readable, in the language the code is written in.
  */
-async function applyLocale(want?: Locale): Promise<void> {
+export async function startLocale(want?: Locale): Promise<void> {
   const next = want ?? preference();
   if (i18n.locale === next) return;
   try {
@@ -105,37 +105,23 @@ async function applyLocale(want?: Locale): Promise<void> {
     // Said out loud rather than swallowed: reading in the wrong language is a
     // thing somebody has to be able to find out about.
     console.error(`orch: the ${next} catalog did not load; reading in ${i18n.locale || "en"}`, cause);
-    await english();
+    // The floor, and only when nothing is active. `i18n.activate("en")` alone was
+    // the old floor and it is what kept `setMessagesCompiler` in the bundle: with
+    // no catalog loaded every id falls back to ICU source, which needs a compiler
+    // in the browser to render a plural. Loading `en.po` takes the same door every
+    // other locale takes and the rows arrive compiled — 19,903 bytes of
+    // `@messageformat/parser` off `main.js`.
+    if (i18n.locale) return;
+    try {
+      const { messages } = await CATALOGS.en();
+      i18n.loadAndActivate({ locale: "en", messages });
+    } catch {
+      // If the English chunk is gone too then the deploy is gone; `activate` at
+      // least gives React a locale to render the untranslated sources under.
+      i18n.activate("en");
+    }
   }
 }
-
-/**
- * The floor: English, with its rows compiled, and only when nothing is active.
- *
- * `i18n.activate("en")` on its own was the old floor, and it is what kept
- * `setMessagesCompiler` in the bundle — with no catalog loaded every id falls
- * back to ICU source, which needs a compiler in the browser to render a plural.
- * Loading `en.po` takes the same door every other locale takes, and
- * `@messageformat/parser` stops shipping: 19,903 bytes off `main.js`.
- */
-/**
- * Its own `catch`, because this is the fallback: if the English chunk is gone
- * too then the deploy is gone, and `activate` at least gives React a locale to
- * render the untranslated source strings under.
- */
-async function english(): Promise<void> {
-  if (i18n.locale) return;
-  try {
-    const { messages } = await CATALOGS.en();
-    i18n.loadAndActivate({ locale: "en", messages });
-  } catch {
-    i18n.activate("en");
-  }
-}
-
-/** `startLocale` at the call site, because that is when it runs: before the
- *  first paint, with no server answer yet. */
-export { applyLocale as startLocale };
 
 export function setPreference(pref: Locale): void {
   try {
@@ -148,9 +134,9 @@ export function setPreference(pref: Locale): void {
   // No event of our own: `I18nProvider` re-renders every `useLingui` consumer on
   // `activate`, and the control that shows the choice is one of them.
   //
-  // `void` and not a dangling promise: `applyLocale` handles its own failure and
+  // `void` and not a dangling promise: `startLocale` handles its own failure and
   // resolves either way, so there is no rejection here to lose.
-  void applyLocale(pref);
+  void startLocale(pref);
 }
 
-export { i18n, LOCALES };
+export { i18n };

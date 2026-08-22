@@ -52,16 +52,21 @@ export type Said = z.infer<typeof SaidSchema>;
  * which demands the two be *equal*. One type through `src` and a two-line
  * `renderWith` paying the difference is the shorter of the two roads.
  */
-const _fromMacro = (descriptor: MessageDescriptor & { id: string }): Said => descriptor;
-void _fromMacro;
+/** Type-only, so the claim costs no bytes in the bundle: it was a function and a
+ *  `void` of it, which is a runtime expression to say a compile-time thing. */
+type Holds<T extends true> = T;
+type _FromMacro = Holds<MessageDescriptor & { id: string } extends Said ? true : false>;
 
 /**
- * `message` required here and only here. This is the one input that is untrusted
- * JSON — a row read back out of `event.meta_json` — so a descriptor stored
- * before the macro named these is refused at the parse rather than checked for
- * later: `sayIn` returns null and the body stored beside it is drawn.
+ * `message` required for anything read back out of the database, and only there.
+ * A stored descriptor is untrusted JSON — `event.meta_json`, `question_said` —
+ * so one written before the macro named these is refused at the parse rather
+ * than checked for later: the reader returns null and the prose column stored
+ * beside it is drawn.
  */
-const MetaSchema = z.object({ say: SaidSchema.extend({ message: z.string() }).optional() });
+const StoredSchema = SaidSchema.extend({ message: z.string() });
+
+const MetaSchema = z.object({ say: StoredSchema.optional() });
 
 /**
  * One `Said`, through one `i18n`. The server hands its per-locale instance and
@@ -82,3 +87,15 @@ export const renderWith = (i18n: Pick<I18n, "_">, said: Said): string =>
  * out in.
  */
 export const sayIn = (meta: unknown): Said | null => MetaSchema.safeParse(meta).data?.say ?? null;
+
+/**
+ * The same read one column over: a `*_said` column, which holds the descriptor
+ * on its own rather than under a key.
+ *
+ * Beside `sayIn` rather than in `api/panel/snapshot.ts`, where it was a second
+ * function called `saidIn` — one letter apart, `message` optional where this one
+ * requires it, and `undefined` where this one returns null. Nothing writes those
+ * columns but the emitters, so the strict schema is the right one for both and
+ * there is no reason for two.
+ */
+export const saidFrom = (value: unknown): Said | null => StoredSchema.safeParse(value).data ?? null;

@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
-import { brief } from "../../web/src/shared/prose.ts";
+
 import { firstSentence } from "../../src/contracts/sentence.ts";
+
+/** The width the queue derives at, and there is one now: the panel's re-export
+ *  had defaulted to 44 while `src/api/orch/escalation.ts` wrote 40. */
+const BRIEF = 40;
+const first = (s: string) => firstSentence(s, BRIEF);
 
 /**
  * The queue row's whole job is naming which question to open.
@@ -12,16 +17,14 @@ import { firstSentence } from "../../src/contracts/sentence.ts";
  * those are the rows in the queue today.
  */
 test("a version and an abbreviation are not the end of a sentence", () => {
-  expect(brief("playwright 1.62.1 is missing from the sandbox image")).toBe(
-    "playwright 1.62.1 is missing from the sandb…",
-  );
-  expect(brief("e.g. the gate is red, what now?")).toBe("e.g. the gate is red, what now");
-  expect(brief("Node v22.3.0 vs 20.11.1 mismatch")).toBe("Node v22.3.0 vs 20.11.1 mismatch");
+  expect(first("playwright 1.62.1 is missing from the sandbox image")).toBe("playwright 1.62.1 is missing from the s…");
+  expect(first("e.g. the gate is red, what now?")).toBe("e.g. the gate is red, what now");
+  expect(first("Node v22.3.0 vs 20.11.1 mismatch")).toBe("Node v22.3.0 vs 20.11.1 mismatch");
 });
 
 test("the breaks it did get right still break", () => {
-  expect(brief("予算を上げますか。残りは後で")).toBe("予算を上げますか");
-  expect(brief("budget?\nthe rest can wait")).toBe("budget");
+  expect(first("予算を上げますか。残りは後で")).toBe("予算を上げますか");
+  expect(first("budget?\nthe rest can wait")).toBe("budget");
 });
 
 /**

@@ -1,5 +1,3 @@
-import { firstSentence } from "../../../src/contracts/sentence.ts";
-
 /**
  * Text an agent wrote, made readable where it is read.
  *
@@ -19,17 +17,6 @@ import { firstSentence } from "../../../src/contracts/sentence.ts";
  * i18n-exempt: what an agent wrote, quoted.
  */
 export const nl = (s: string) => s.replace(/\\n/g, "\n");
-
-/**
- * One line of what a long agent message is about.
- *
- * The server asks for `--brief` and derives one when it is missing, but every
- * question filed before that column existed has none — and those are exactly the
- * ones sitting in the queue today. The rule is the same on both sides, so it is
- * one function in `contracts` and not two: this copy still cut on every full
- * stop after the server's stopped.
- */
-export const brief = (s: string, max = 44): string => firstSentence(s, max);
 
 /**
  * The goal line of a plan card.

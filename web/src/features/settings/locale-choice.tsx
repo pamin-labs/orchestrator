@@ -1,8 +1,8 @@
 import { Check } from "lucide-react";
 import { useLingui } from "@lingui/react/macro";
 import { Menu, MenuItem } from "../../ui/menu";
-import { LOCALES, setPreference } from "../../i18n";
-import { endonymOf, localeOf, type Locale } from "../../../../src/contracts/config";
+import { setPreference } from "../../i18n";
+import { endonymOf, LOCALES, localeOf, type Locale } from "../../../../src/contracts/config";
 import { api, mutate } from "../../shared/api";
 
 /**
