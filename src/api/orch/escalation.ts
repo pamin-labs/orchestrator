@@ -67,10 +67,10 @@ export const askKind = (given: string | undefined): AskKind => {
  * as `playwright 1` and `e.g. the gate…` filed as `e` — a queue row whose whole
  * job is naming which question to open. `Intl.Segmenter` is the same ICU
  * `terms()` already segments words with, and it knows a version from a sentence.
- * Trimmed with Unicode's own `Terminal_Punctuation` property, so the brief reads
- * as a phrase rather than ending in the stop it was cut at — again a property,
- * not a list.
  */
+/** Trimmed with Unicode's own `Terminal_Punctuation` property, so the brief
+ *  reads as a phrase rather than ending in the stop it was cut at — a property,
+ *  not a second list. */
 /**
  * Pinned to `en` because sentence break is locale-independent across the ten
  * languages this ships in. The exception is Greek, whose `;` is a question mark,

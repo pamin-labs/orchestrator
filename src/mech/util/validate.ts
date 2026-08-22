@@ -180,11 +180,11 @@ function textOf(node: Nodes): string {
 /**
  * The DRAFT field this heading names, or null if it names something else.
  *
- * NFKC before the match, not a `[:：]` pair. Unicode's own compatibility fold
- * maps every fullwidth form to its ASCII one — `：`, `；`, `（`, digits — so the
- * heading an agent typed on a CJK keyboard matches without this file keeping a
- * list of which characters it has seen so far. It normalises the lookup key
- * only; the card's text is never rewritten.
+ * NFKC before the match, not a hand-written pair of colons. Unicode's own
+ * compatibility fold maps every fullwidth form to its ASCII one, so a heading
+ * typed on a CJK keyboard matches without this file keeping a list of the
+ * characters it has met. It normalises the lookup key only; the card's text is
+ * never rewritten.
  */
 function headingField(node: Nodes): Field | null {
   return fieldOf(textOf(node).normalize("NFKC").trim().replace(/:\s*$/, ""));
@@ -472,12 +472,10 @@ export function validateSelfReview(text: string, criteriaCount: number): Result<
  * Only semicolons and newlines, never the comma: Chinese prose uses `，` as ordinary
  * punctuation, so counting those would demand five verdicts for one criterion and
  * teach the writer to pad. A single-clause spec asks for one verdict, which is the
- * same floor self-review already has — this only bites on specs that genuinely
- * listed several things and got one word back.
- *
- * NFKC first, so a fullwidth `；` is a semicolon here without the split naming
- * one. Only the count leaves this function, so folding the text is free.
+ * same floor self-review already has.
  */
+/** NFKC first, so a fullwidth semicolon is a semicolon here without the split
+ *  naming one. Only the count leaves this function, so folding is free. */
 export function criteriaIn(acceptSpec: string): number {
   const parts = (acceptSpec ?? "")
     .normalize("NFKC")
