@@ -14,10 +14,16 @@ import type { CatalogFormatter } from "@lingui/conf";
  */
 /**
  * Compiling here is what keeps `lingui compile` and its generated artefact out
- * of the tree — every one of `build:web`, `bun test`, `preflight`, `browse.ts`
- * and three workflows would have had to run it first — *and* keeps the ICU
- * parser out of the browser, which is what the docs mean by "catalogs should
- * always be compiled".
+ * of the tree: every one of `build:web`, `bun test`, `preflight`, `browse.ts`
+ * and three workflows would have had to run it first.
+ */
+/**
+ * It does not keep the ICU parser out of the browser, which an earlier version
+ * of this comment claimed. `web/src/i18n.ts` installs one deliberately, so a
+ * message with no catalogue row still renders its plural — under
+ * `NODE_ENV=production` Lingui installs none, and the fallback comes out as the
+ * literal `{n, plural, …}`. What compiling here buys is that no catalogue *row*
+ * is parsed at runtime, which is every string on the screen but the fallbacks.
  */
 
 const load = createRequire(import.meta.url) as <T>(id: string) => T;

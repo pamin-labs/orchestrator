@@ -1,4 +1,5 @@
 import { i18n, type Messages } from "@lingui/core";
+import { compileMessageOrThrow } from "@lingui/message-utils/compileMessage";
 import { detect, fromNavigator, fromStorage } from "@lingui/detect-locale";
 import { z } from "zod";
 import { type Locale, LOCALES, localeOf } from "../../src/contracts/config.ts";
@@ -17,6 +18,17 @@ import { type Locale, LOCALES, localeOf } from "../../src/contracts/config.ts";
  * cycle between panel modules, and PR #9's third commit exists because its i18n
  * folder imported `ui/segment` while `shared/select.ts` imported i18n.
  */
+
+/**
+ * The compiler for the fallback path, and only that path.
+ *
+ * `build-web.ts` sets `NODE_ENV=production`, which is what takes React's dev
+ * runtime out — and with it Lingui's dev-only default compiler. Catalogue rows
+ * arrive already compiled from `lingui-catalogs.ts`, so the only strings that
+ * reach this are the ones with no row: the English the macro left beside each
+ * id. Without it a plural falls back as the literal `{n, plural, …}`.
+ */
+i18n.setMessagesCompiler(compileMessageOrThrow);
 
 const PrefSchema = z.enum(LOCALES);
 

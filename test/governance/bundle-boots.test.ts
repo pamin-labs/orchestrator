@@ -6,8 +6,7 @@ import { waitFor } from "../support/render.tsx";
 import { tempDir } from "../support/temp.ts";
 import { inFlight, mockHttp, server } from "../support/http.ts";
 import { emptyState } from "../../web/src/shared/api.ts";
-import { linguiCatalogs } from "../../scripts/lingui-catalogs.ts";
-import { linguiMacros } from "../../scripts/lingui-macros.ts";
+import { WEB_BUILD } from "../../scripts/build-web.ts";
 
 /**
  * The bundle the browser is actually served, booted.
@@ -25,17 +24,6 @@ import { linguiMacros } from "../../scripts/lingui-macros.ts";
  * worker with it. A test that needs a bundle should produce one, and a test that
  * reaches for a global owes it back.
  */
-
-/** The same entry point `build:web` uses; anything else boots a different bundle. */
-/**
- * The panel's real entry, which is also the only thing that runs `main.tsx`.
- *
- * It is in `fallow health --coverage-gaps` as untested, and statically that is true:
- * no test imports it, because importing it would call `createRoot` at module scope.
- * This builds it and boots the result, so the file is executed by the artefact rather
- * than by an import — the only way a bootstrap can be.
- */
-const ENTRY = "web/src/app/main.tsx";
 
 let workdir = "";
 
@@ -126,13 +114,20 @@ test("the built bundle mounts 耗时 without throwing", async () => {
   // The plugin is passed, never registered globally: a `Bun.plugin` does not
   // reach an in-process `Bun.build`, so a bundle built without it keeps the
   // unexpanded macro and throws "outside the context of compilation" on mount.
-  const built = await Bun.build({
-    entrypoints: [ENTRY],
-    target: "browser",
-    minify: true,
-    outdir: workdir,
-    plugins: [linguiMacros, linguiCatalogs],
-  });
+  /**
+   * `build:web`'s own configuration, not a second one shaped like it. Without
+   * the `define` this booted a bundle carrying React's dev runtime and Lingui's
+   * dev-only compiler, which is not what a browser is served — and its
+   * entrypoint was a second copy of the same path.
+   */
+  /**
+   * `main.tsx` is in `fallow health --coverage-gaps` as untested, and statically
+   * that is true: no test imports it, because importing it would call
+   * `createRoot` at module scope. This builds it and boots the result, so the
+   * file is executed by the artefact rather than by an import — the only way a
+   * bootstrap can be.
+   */
+  const built = await Bun.build({ ...WEB_BUILD, outdir: workdir });
   expect(built.success).toBe(true);
 
   // The bundle picks its language from `localStorage` and falls back to

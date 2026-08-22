@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { linguiCatalogs } from "../../scripts/lingui-catalogs.ts";
-import { linguiMacros } from "../../scripts/lingui-macros.ts";
+import { WEB_BUILD } from "../../scripts/build-web.ts";
 
 /**
  * Every export the browser bundle names has something behind it.
@@ -18,13 +17,7 @@ import { linguiMacros } from "../../scripts/lingui-macros.ts";
 
 /** The same entry point and flags `build:web` uses; anything else tests a different bundle. */
 async function bundle(): Promise<string> {
-  const built = await Bun.build({
-    entrypoints: ["web/src/app/main.tsx"],
-    target: "browser",
-    minify: true,
-    splitting: true,
-    plugins: [linguiMacros, linguiCatalogs],
-  });
+  const built = await Bun.build(WEB_BUILD);
   expect(built.success).toBe(true);
   // Named, not `outputs[0]`: with splitting on, a catalog chunk can come first
   // and this would then assert against a file of Chinese strings.

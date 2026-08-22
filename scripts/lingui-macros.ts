@@ -76,13 +76,12 @@ function boot(): (source: string, path: string) => Expanded {
       // loads `{}` for English on purpose, so every id falls back to the source
       // the macro hashed. Drop `message` and there is nothing to fall back to:
       // an English reader gets `cfg2rE` where the heading should be, and so does
-      // every untranslated string in every other language. Nothing sets
-      // `NODE_ENV=production` here today, which is exactly what makes it worth
-      // pinning — the day a Dockerfile or a workflow adds that line, the panel
-      // renders hashes and the build stays green.
+      // every untranslated string in every other language. `build-web.ts` sets
+      // `NODE_ENV=production` now, so this pin is load-bearing rather than
+      // precautionary — it was written for exactly that day.
       //
-      // Lingui documents this as one half of a two-line recipe; the other half,
-      // `setMessagesCompiler`, was already in `web/src/i18n.ts`.
+      // Lingui documents this as one half of a two-line recipe; the other half
+      // is `setMessagesCompiler`, in `web/src/i18n.ts`.
       // https://lingui.dev/guides/optimizing-bundle-size
       plugins: [[macro, { linguiConfig, descriptorFields: "message" }]],
     });
