@@ -20,19 +20,19 @@ test("a token count never prints in a unit that does not exist", () => {
   // the last half-percent of each one rolled over inside its own label: 999500
   // came out "1000k" and 999999999 came out "1000M". Both are on the header and
   // the 成本 table, which is where the boss decides whether to double a budget.
-  expect(K(999_500)).toBe("999.5k");
+  expect(K(999_500)).toBe("999.5K");
   expect(K(999_999_999)).toBe("1B");
   expect(K(9_999_999)).toBe("10M");
 
   // 1200 tokens rendered as "1k": rounding to whole thousands threw away a fifth
   // of a number small enough that the fifth is the interesting part.
-  expect(K(1200)).toBe("1.2k");
+  expect(K(1200)).toBe("1.2K");
   expect(K(999)).toBe("999");
   expect(K(0)).toBe("0");
 
-  // Lowercase k, because units.ts writes the settings rows that way and both
-  // sit on the same page. English is the only locale whose suffix has a K in it.
-  expect(K(272_000)).toBe("272k");
+  // CLDR's own suffix, not lowercased to match the settings box: `fmtCount`
+  // there writes a value that gets typed back in, this is a number that gets read.
+  expect(K(272_000)).toBe("272K");
   expect(K(1_834_000)).toBe("1.8M");
 });
 

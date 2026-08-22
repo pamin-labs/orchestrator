@@ -5,8 +5,7 @@
  * is right for the agents — a path costs a dozen tokens and an image costs
  * thousands on every turn that carries it. But the panel is a browser, and the
  * boss's own screenshot came back to them as a line of text naming a file they
- * could not open. The block is machine-written and fixed, so reading it back is
- * a parse, not a guess.
+ * could not open.
  */
 export interface Attached {
   /** 图1 / 附件2, when the message that carried it named its files. */
@@ -18,31 +17,46 @@ export interface Attached {
   image: boolean;
 }
 
-// i18n-exempt: protocol, not copy. `src/mech/util/attachment-text.ts` writes this
-// exact header as a hardcoded literal, so this parses what the server emits — the
-// same reason the DRAFT card's section keys are matched and not translated. It
-// does *not* follow `output.language`; if that header is ever reworded, both
-// sides move together or the panel stops finding attachments.
-const HEAD = /\n*附件（路径如下）：\n/;
+/**
+ * One entry. The path must contain a `/`, which is what keeps an ordinary
+ * markdown list in the boss's own message from being read as attachments.
+ */
+const ITEM = /^- (?:\[([^\]]+)\] )?(\S*\/\S*)( \(image\))?\s*$/;
 
+/**
+ * Found by its shape, not by its header.
+ *
+ * The header was matched as a literal — the same sentence typed into this file
+ * and into `mech/util/attachment-text.ts` — which is prose as a protocol key,
+ * and pinned the panel to whichever language the server wrote it in.
+ */
+/** `withAttachments` writes `text`, a blank line, the header, then entries to
+ *  the end. So the trailing run of entries plus the line above it is the block,
+ *  whatever that line says. */
 export function splitAttachments(body: string): { text: string; files: Attached[] } {
-  const at = body.search(HEAD);
-  if (at < 0) return { text: body, files: [] };
-  const head = HEAD.exec(body.slice(at))!;
-  const files: Attached[] = [];
-  for (const line of body.slice(at + head[0].length).split("\n")) {
-    const m = /^- (?:\[([^\]]+)\] )?(\S+)( \(image\))?\s*$/.exec(line);
-    // A line that is not an entry ends the block: the list is always last, but a
-    // message that merely contains the words should not swallow its own body.
-    if (!m) break;
+  const lines = body.split("\n");
+  let at = lines.length;
+  while (at > 0 && ITEM.test(lines[at - 1]!)) at--;
+  // `at - 1` is the header and `at - 2` the blank line before it. Without that
+  // blank this is a list somebody wrote, not a block somebody appended.
+  if (at === lines.length || at < 2 || lines[at - 2] !== "") return { text: body, files: [] };
+
+  const files = lines.slice(at).map((line) => {
+    const m = ITEM.exec(line)!;
     const path = m[2]!;
-    files.push({
+    return {
       label: m[1] ?? "",
       name: path.split("/").pop() ?? path,
       path,
       url: `/api/v1/attach/${encodeURIComponent(path.split("/").pop() ?? "")}`,
       image: !!m[3],
-    });
-  }
-  return files.length ? { text: body.slice(0, at).trimEnd(), files } : { text: body, files: [] };
+    };
+  });
+  return {
+    text: lines
+      .slice(0, at - 2)
+      .join("\n")
+      .trimEnd(),
+    files,
+  };
 }

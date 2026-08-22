@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { Attachment as AttachmentSchema } from "../../contracts/fields.ts";
+import { ATTACHMENT_HEADER, type Attachment as AttachmentSchema } from "../../contracts/fields.ts";
 
 export type Attachment = z.infer<typeof AttachmentSchema>;
 
@@ -9,7 +9,7 @@ export function withAttachments(text: string, attachments?: Attachment[]): strin
   const files = (attachments ?? []).filter((f) => f?.path);
   if (!files.length) return text;
   return (
-    `${text}\n\n附件（路径如下）：\n` +
+    `${text}\n\n${ATTACHMENT_HEADER}\n` +
     files
       .map((f) => `- ${f.label ? `[${f.label}] ` : ""}${f.path}${f.type?.startsWith("image/") ? IMAGE_TAG : ""}`)
       .join("\n")

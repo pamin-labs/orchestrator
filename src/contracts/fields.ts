@@ -43,6 +43,15 @@ export const IdParams = z.object({ id: Id });
  * `imagePaths` reads the second to decide what has to leave as an `-i` flag —
  * an attachment missing either is one that renders as `undefined` in a prompt.
  */
+/**
+ * The line between a message and the files attached to it.
+ *
+ * English because only machines read it: the agents get it inside a prompt and
+ * the panel strips it before drawing. Nothing matches it — `web/src/ui/attach.ts`
+ * finds the block by its shape — so rewording or translating it breaks nothing.
+ */
+export const ATTACHMENT_HEADER = "Attachments (paths follow):";
+
 export const Attachment = z.object({
   name: z.string().min(1).max(300),
   path: z.string().min(1).max(4000),

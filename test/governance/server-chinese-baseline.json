@@ -3,8 +3,6 @@
   "contracts/config.ts": 8,
   "mech/flow/chain.ts": 4,
   "mech/git/prwatch.ts": 1,
-  "mech/util/attachment-text.ts": 1,
   "mech/util/validate.ts": 6,
-  "platform/config/load.ts": 1,
-  "platform/observability/redaction.ts": 1
+  "platform/config/load.ts": 1
 }
