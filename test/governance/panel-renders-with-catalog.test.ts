@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { scan } from "../support/ast.ts";
 
 /**
  * `<Trans>` reads its catalog from context, so a pane mounted outside
@@ -9,14 +10,13 @@ import { expect, test } from "bun:test";
  * past it to `@testing-library/react` and broke the day the composer's first
  * macro landed, which is the day this check would have named the cause.
  */
-test("web tests mount panes through support/render, which supplies the catalog", async () => {
-  const offenders: string[] = [];
-  for (const file of new Bun.Glob("test/**/*.{ts,tsx}").scanSync(".")) {
-    if (file === "test/support/render.tsx") continue;
-    const source = await Bun.file(file).text();
-    // `act`, `waitFor` and friends are stateless helpers and travel fine; it is
-    // `render` that has to carry the provider with it.
-    if (/import\s*{[^}]*\brender\b[^}]*}\s*from\s*"@testing-library\/react"/.test(source)) offenders.push(file);
-  }
-  expect(offenders).toEqual([]);
+// `act`, `waitFor` and friends are stateless helpers and travel fine; it is
+// `render` that has to carry the provider with it.
+const REACHES_PAST = /import\s*{[^}]*\brender\b[^}]*}\s*from\s*"@testing-library\/react"/;
+
+const offenders = (file: string, source: string): string[] =>
+  file !== "test/support/render.tsx" && REACHES_PAST.test(source) ? [file] : [];
+
+test("web tests mount panes through support/render, which supplies the catalog", () => {
+  expect(scan("test/**/*.{ts,tsx}", offenders)).toEqual([]);
 });

@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { cjkHits } from "../support/ast.ts";
-import { readFileSync } from "node:fs";
+import { cjkHits, scan } from "../support/ast.ts";
 import BASELINE from "./server-chinese-baseline.json";
 
 /**
@@ -20,7 +19,6 @@ import BASELINE from "./server-chinese-baseline.json";
  * the literals where a translation breaks behaviour rather than reading oddly.
  * `panel-speaks-english.test.ts` visits it too now.
  */
-const ROOT = `${process.cwd()}/src`;
 
 /**
  * No exemption any more.
@@ -46,20 +44,21 @@ const ROOT = `${process.cwd()}/src`;
  * one found nothing. Counted per comment rather than per line: a block that
  * wraps is one decision.
  */
-const countIn = (path: string): number => cjkHits(path, readFileSync(path, "utf8")).length;
-
 const baseline = BASELINE as Record<string, number>;
 
+/** `path` is repository-relative, as `scan` hands it over; the baseline is keyed
+ *  from `src/` down, which is what the file reads as. */
+const moved = (path: string, source: string): string[] => {
+  const file = path.slice("src/".length);
+  const now = cjkHits(path, source).length;
+  const was = baseline[file] ?? 0;
+  return now === was ? [] : [`${now > was ? "grew" : "shrank"} ${file}: ${was} → ${now}`];
+};
+
 test("no file under src grows its count of Chinese literals", () => {
-  const grew: string[] = [];
-  const shrank: string[] = [];
-  for (const found of new Bun.Glob("src/**/*.ts").scanSync(".")) {
-    const file = found.slice("src/".length);
-    const now = countIn(`${ROOT}/${file}`);
-    const was = baseline[file] ?? 0;
-    if (now > was) grew.push(`${file}: ${was} → ${now}`);
-    if (now < was) shrank.push(`${file}: ${was} → ${now}`);
-  }
+  const changed = scan("src/**/*.ts", moved);
+  const grew = changed.filter((line) => line.startsWith("grew "));
+  const shrank = changed.filter((line) => line.startsWith("shrank "));
   // Growing is the failure this exists for: a new hardcoded sentence is one more
   // string a Korean reader will meet in Chinese.
   expect(grew).toEqual([]);
@@ -69,8 +68,9 @@ test("no file under src grows its count of Chinese literals", () => {
 });
 
 test("a file with no baseline entry may not introduce one", () => {
-  const fresh = [...new Bun.Glob("src/**/*.ts").scanSync(".")]
-    .map((p) => p.slice("src/".length))
-    .filter((f) => !(f in baseline) && countIn(`${ROOT}/${f}`) > 0);
+  const fresh = scan("src/**/*.ts", (path, source) => {
+    const file = path.slice("src/".length);
+    return !(file in baseline) && cjkHits(path, source).length > 0 ? [file] : [];
+  });
   expect(fresh).toEqual([]);
 });

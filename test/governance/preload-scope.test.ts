@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
+import { scan } from "../support/ast.ts";
 import { z } from "zod";
-import { readFileSync } from "node:fs";
 import { needsDom } from "../../scripts/needs-dom.ts";
 import { stressFiles } from "../../scripts/stress-tests.ts";
 
@@ -50,9 +50,7 @@ test("every place that runs `bun test` either isolates files or leaves the brows
   // `package.json` is how this rule got out in the first place, so the shapes
   // are matched rather than the one that happened to be looked at.
   const runsBunTest = (src: string) => /\[\s*"bun",\s*"test"\s*,|=\s*\[\s*"test"\s*,/.test(src);
-  const spawners = [...new Bun.Glob("scripts/**/*.ts").scanSync(".")]
-    .filter((file) => runsBunTest(readFileSync(file, "utf8")))
-    .toSorted();
+  const spawners = scan("scripts/**/*.ts", (file, source) => (runsBunTest(source) ? [file] : [])).toSorted();
   // Named, so a second one is a decision somebody has to make rather than a
   // silent third way of running the suite.
   expect(spawners).toEqual(["scripts/stress-tests.ts", "scripts/test.ts"]);
