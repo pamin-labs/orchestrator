@@ -1149,14 +1149,43 @@ both name `locales/po.d.ts`.
   against 5.0s) for exactly that reason. The trigger to revisit is an inherited
   column going non-zero in a category that can reach `fail`.
 
+## Thirty schedulers were dispatching into the tests that came after them
+
+`review-pipeline`'s retro test failed on CI a second time, having already been
+loosened once — `1cda0ce`, "the assertion depended on which turn the scheduler
+finished last". The first fix treated the symptom, and this is what was under
+it.
+
+- **`setup.ts` closed one scheduler and twenty-two files built thirty.** Its own
+  comment named the scope it wanted — "Nineteen files build a Scheduler; this is
+  one file" — and `stopSchedulers` only ever saw the one `testContext` makes.
+  Measured by counting live instances at each `beforeEach`: **30 still accepting
+  by the end of `test/mech/review-pipeline.test.ts`**, one per test, after the
+  fix **0**.
+
+- **What a stale one does is claim the next test's work.** A finished job ticks
+  from a detached `.finally`, and the tests in a file share one database that
+  `openMemory()` empties between them. The stale sweep takes the current test's
+  `pending` row, runs it against the *previous* harness's executor, and the spec
+  lands in a `specs` array nothing is asserting on. Different victim each run,
+  and re-running is green — which is why two rounds of reading the scheduler
+  found nothing wrong with it. Nothing is.
+
+- **`test/support/scheduler.ts` is the one registry, and it deleted two.**
+  `test-context.ts` and `job-queue.test.ts` had each written this factory for
+  themselves; the third copy is the shared one.
+  `a-test-closes-its-scheduler` keeps it — `new Scheduler(` under `test/` is a
+  governance failure outside the factory — and was shown failing against a real
+  reverted call site. A guard that has to spell the shape it forbids exempts
+  itself by `import.meta.path`, not by a name a rename would leave behind.
+
+- **Not claimed: that this is the CI failure.** It did not reproduce locally —
+  the file alone, `test/mech` under six competing CPU hogs, and two full suites
+  under eight. What is measured is the leak and its removal, and that the leak's
+  shape and the failure's shape are the same one. If the retro test fails again,
+  this was not it.
+
 ## Found and not fixed
-- **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
-  resumes PR-level review instead of dead-ending` failed once on #9's x64 run
-  and passed on a rerun of the same commit, with 5 local runs of the file and 3
-  full local suites green. `1cda0ce` already fixed one ordering assumption in
-  this file — "the assertion depended on which turn the scheduler finished last"
-  — so this is the second symptom of the same shape and the first one was not
-  the whole cause. Worth a seeded replay rather than another local rerun.
 
 - `test/support/factories.ts` is on Fishery's `onCreate` with the database as a
   transient — 407 lines to 172. It was deferred until the driver moved, and the
