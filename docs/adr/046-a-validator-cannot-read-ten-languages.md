@@ -13,7 +13,7 @@ holding the same shape, in three places:
 |---|---|---|
 | `GENERIC_GATE` | whether a slice criterion is boilerplate | **over-rejects** — it suppresses a hard refusal, so a miss refuses a correct card |
 | `testOnly` | whether a slice is tests on their own | under-enforces — the rule existed for 2 of 10 locales |
-| `FILLER` | whether agent prose is padded | under-enforces, and the miss is free |
+| `FILLER` | whether a journal is padded | refuses in 2 of 10 locales, **and is a second owner of a rule the line cap already holds** |
 
 They are three different defects and they get three different answers. That is
 the finding: "apply 045's remedy" is not a thing one does to a class.
@@ -87,14 +87,24 @@ example slice had to be worded `add tests` rather than `add test cases`, because
 the compiled pattern carried neither `more` nor `cases`. A prompt whose prose has
 to be checked against a regex is a coupling nobody should have to remember.
 
-## `FILLER` stays, bounded in writing
+## `FILLER` is deleted, because the line cap already owned it
 
-English and Chinese only, and that is the decision. It is a cost nudge, not a
-correctness gate: a miss lets a hedge through and costs a handful of tokens, so
-the two enforced locales pay a retry the other eight do not. Ten hand-kept
-lexicons is the shape 045 removed, and a model call to detect the word
-"basically" costs more than the tokens it saves. Stated here rather than left to
-look like an oversight.
+Two rows of Chinese hedges and two of English ones, and — read the call site — it
+returns `ok: false`. It **refuses a journal**, at 400. Not a nudge: a gate, in two
+of the ten languages an agent writes in, so the same padded entry was accepted
+from a German agent and refused from an English one.
+
+The first draft of this ADR argued for keeping it, on the grounds that a miss is
+free. That was wrong twice over. A miss is not free when the hit refuses, and
+more importantly the rule already has an owner: `validateJournal` caps the body
+at `JOURNAL_MAX_LINES` four lines above, which is "be terse" enforced by counting
+rather than by recognising words, in every language. A lexicon beside it is a
+second enforcement owner of one rule, which `CLAUDE.md` forbids outright.
+
+So it goes the way `testOnly` went, for the same reason plus that one. The test
+that pinned it is replaced by one asserting the cap refuses padding in English,
+Chinese and German alike, and that a short entry is accepted in all three — which
+the lexicon was refusing in two.
 
 ## What is left that is language-dependent
 

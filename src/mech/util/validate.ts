@@ -70,13 +70,12 @@ export function validateJournal(input: JournalInput): Result<JournalOk> {
         `\`orch ctx query\` can retrieve it.`,
     };
   }
-  const filler = findFiller(lines.join(" "));
-  if (filler) {
-    return {
-      ok: false,
-      error: `drop filler (${filler}). State the change, the reason, the risk.`,
-    };
-  }
+  // Padding is refused by the line cap above and by nothing else. There was a
+  // second check here — two rows of Chinese hedges and two of English ones — and
+  // it refused a journal, in two of the ten languages an agent writes in. Same
+  // shape as `GENERIC_GATE` and `testOnly`, and one more reason besides: the cap
+  // already owns "be terse", in every language, so a lexicon beside it was a
+  // second owner of one rule. ADR 046.
   return { ok: true, kind: parsedKind.data, body: lines.join("\n"), lines: lines.length };
 }
 
@@ -492,30 +491,4 @@ function nonEmptyLines(s: string): string[] {
     .split("\n")
     .map((l) => l.trimEnd())
     .filter((l) => l.trim().length > 0);
-}
-
-/**
- * Politeness and hedging carry no information and cost tokens forever.
- * No `\b` on the CJK patterns — word boundaries do not exist between Han
- * characters, so `\b其实\b` never matches inside a Chinese sentence.
- */
-/**
- * **English and Chinese only, and that is the decision rather than an oversight.**
- * This is a cost nudge, not a correctness gate: a miss lets a hedge through and
- * costs a handful of tokens, so the two enforced locales pay a retry the other
- * eight do not. Ten hand-kept lexicons is the shape ADR 045 removed and a model
- * call costs more than the tokens it would save. ADR 046 records the bound.
- */
-const FILLER = [
-  /(基本上|其实|实际上|简单来说|需要注意的是|值得一提的是)/,
-  /\b(basically|actually|simply|just to be clear|it should be noted)\b/i,
-  /\b(as (an )?AI|I('| a)?m happy to|certainly|of course)\b/i,
-];
-
-function findFiller(s: string): string | null {
-  for (const re of FILLER) {
-    const m = re.exec(s);
-    if (m) return m[0];
-  }
-  return null;
 }

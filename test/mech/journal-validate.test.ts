@@ -24,11 +24,30 @@ test("empty body is rejected", () => {
   expect(validateJournal({ kind: "retro", body: "   \n  " }).ok).toBe(false);
 });
 
-test("filler is rejected — it costs tokens forever and says nothing", () => {
-  const r = validateJournal({ kind: "decision", body: "Basically we moved the check." });
-  expect(r.ok).toBe(false);
-  if (!r.ok) expect(r.error).toContain("filler");
-  expect(validateJournal({ kind: "decision", body: "其实这里改了 middleware。" }).ok).toBe(false);
+/**
+ * Terseness has one owner, and it reads ten languages.
+ *
+ * A second check refused a journal containing "basically" or 其实 — two
+ * languages of lexicon in a product that writes in ten, so an entry a German
+ * agent padded was accepted and the same entry in English was not. The line cap
+ * is the language-free rule that was already doing this job. ADR 046.
+ */
+test("padding is refused by the line cap, in whatever language it is padded in", () => {
+  const padded = (line: string) => validateJournal({ kind: "decision", body: Array(9).fill(line).join("\n") });
+  for (const line of ["basically we moved the check", "其实这里改了 middleware", "wir haben die Prüfung verschoben"]) {
+    const r = padded(line);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("max");
+  }
+  // And a short entry is accepted whichever of the ten it is written in — the
+  // lexicon refused two of them and nothing else.
+  for (const line of [
+    "Basically we moved the check.",
+    "其实这里改了 middleware。",
+    "Wir haben die Prüfung verschoben.",
+  ]) {
+    expect(validateJournal({ kind: "decision", body: line }).ok).toBe(true);
+  }
 });
 
 test("a real entry passes and is normalised", () => {
