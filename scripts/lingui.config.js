@@ -1,5 +1,6 @@
 import { formatter } from "@lingui/format-po";
 import { LOCALES } from "../src/contracts/config.ts";
+import { ROOT } from "./lingui-catalogs.ts";
 
 /**
  * The panel's messages, keyed by their English source.
@@ -38,7 +39,7 @@ export default {
    * Same fix `lingui-macros.ts` already applies for `browse.ts`, which runs
    * `build:web` with the cwd set to a worktree.
    */
-  rootDir: new URL("..", import.meta.url).pathname,
+  rootDir: ROOT,
   sourceLocale: "en",
   // `LOCALES` itself, not a copy of it: that list decides whether a catalog can
   // be reached at all, and one spelled here and not there extracts into a file

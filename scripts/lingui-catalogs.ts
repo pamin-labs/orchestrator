@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import type { BunPlugin } from "bun";
 import type { CatalogFormatter } from "@lingui/conf";
 
@@ -29,7 +29,23 @@ import type { CatalogFormatter } from "@lingui/conf";
 const load = createRequire(import.meta.url) as <T>(id: string) => T;
 /** Absolute, so `getConfig` does not search upward from a cwd `browse.ts` moved.
  *  Exported because `lingui-macros.ts` resolves the same file. */
-export const CONFIG = new URL("./lingui.config.js", import.meta.url).pathname;
+export const CONFIG = join(import.meta.dirname, "lingui.config.js");
+
+/**
+ * The checkout root, with its trailing separator, for the three callers that
+ * need an absolute path into this tree: the macro plugin's cache directory and
+ * its `OURS` pattern, and `lingui.config.js`'s `rootDir`.
+ */
+/**
+ * One definition where there were two, both spelled
+ * `new URL("..", import.meta.url).pathname` — and a pathname is percent-encoded,
+ * so a checkout under `~/My Projects` gave `/Users/…/My%20Projects/`: a cache
+ * directory with a literal `%20` in it and an `OURS` that matches no file, which
+ * per the note on `OURS` is every macro left unexpanded rather than a build
+ * error. `import.meta.dirname` is already decoded and needs no `node:url`, which
+ * matters for the caller that is a `.js` file outside the TypeScript program.
+ */
+export const ROOT = join(import.meta.dirname, "..") + sep;
 
 type Api = typeof import("@lingui/cli/api");
 type Catalogs = Awaited<ReturnType<Api["getCatalogs"]>>;

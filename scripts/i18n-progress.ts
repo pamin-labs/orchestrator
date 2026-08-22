@@ -41,7 +41,17 @@ const BAR = (percent: number) => `https://progress-bar.xyz/${percent}?width=140&
 
 type Row = { label: string; done: number; total: number; source?: boolean };
 
-const pct = (r: Row): number => (r.total === 0 ? 100 : Math.round((r.done / r.total) * 100));
+/**
+ * Zero messages is a broken extraction, not a finished translation.
+ *
+ * This file exists because `"100%" counted a row whose translation was the
+ * English`. `total === 0 ? 100` is the same reasoning one step up: a catalog
+ * that extracted nothing reported complete, and the README said so.
+ */
+const pct = (r: Row): number => {
+  if (r.total === 0) throw new Error(`${r.label} has no messages — extraction produced an empty catalog`);
+  return Math.round((r.done / r.total) * 100);
+};
 
 async function panelRows(): Promise<Row[]> {
   const rows: Row[] = [];

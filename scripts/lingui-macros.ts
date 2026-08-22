@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { BunPlugin } from "bun";
-import { CONFIG } from "./lingui-catalogs.ts";
+import { CONFIG, ROOT } from "./lingui-catalogs.ts";
 
 /**
  * Lingui macros, expanded at load time, for the only two things that read
@@ -18,7 +18,6 @@ import { CONFIG } from "./lingui-catalogs.ts";
 
 const load = createRequire(import.meta.url) as <T>(id: string) => T;
 
-const ROOT = new URL("../", import.meta.url).pathname;
 
 /**
  * Babel is resolved on first use, not at import. This module is imported by the
