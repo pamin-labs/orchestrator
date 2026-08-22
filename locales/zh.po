@@ -1143,7 +1143,7 @@ msgid "Empty: only this page notifies you"
 msgstr "留空就只有这个页面会叫你"
 
 msgid "Endpoint"
-msgstr "Endpoint"
+msgstr "接口地址"
 
 msgid "Entire branch"
 msgstr "整条分支"
@@ -3250,7 +3250,7 @@ msgid "Was connected, but GitHub no longer recognizes this token"
 msgstr "连过，但 GitHub 现在不认这个令牌了"
 
 msgid "Watchdog"
-msgstr "Watchdog"
+msgstr "巡检"
 
 msgid "Watchdog interval"
 msgstr "看门狗周期"

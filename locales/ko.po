@@ -1703,7 +1703,7 @@ msgid "mount point"
 msgstr "마운트 지점"
 
 msgid "ms"
-msgstr "ms"
+msgstr "밀리초"
 
 msgid "Name"
 msgstr "이름"

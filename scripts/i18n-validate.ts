@@ -112,3 +112,31 @@ if (bad > 0) {
   process.exit(1);
 }
 console.log(`${LOCALES.length - 1} catalogs complete, placeholders intact`);
+
+/**
+ * Rows whose translation *is* the English, which the README's table counts as
+ * done because the `msgstr` is not empty.
+ *
+ * Reported, not failed: `Name` is German, `p50` is a statistic and `HTTP
+ * {status}` is two placeholders and a protocol word. But `ms` sat here in
+ * Japanese and Korean under a unit menu whose other four rows were translated,
+ * and nothing counted it — which is what "100%" was hiding.
+ */
+const asSource = new Map<string, string[]>();
+for (const locale of LOCALES) {
+  if (locale === "en") continue;
+  const { messages } = await translations(locale);
+  const same = Object.entries(messages)
+    .filter(([id, text]) => text && source[id] === text)
+    .map(([id]) => source[id] ?? id);
+  if (same.length) asSource.set(locale, same);
+}
+if (asSource.size) {
+  const total = [...asSource.values()].reduce((n, list) => n + list.length, 0);
+  console.log(`\n${total} row(s) left as the English source, which the table counts as translated:`);
+  for (const [locale, list] of asSource) {
+    console.log(
+      `  ${locale.padEnd(8)} ${list.length.toString().padStart(3)}  ${list.map((t) => t.slice(0, 28)).join(" · ")}`,
+    );
+  }
+}

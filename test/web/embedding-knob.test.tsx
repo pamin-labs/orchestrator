@@ -59,12 +59,12 @@ test("remote suggests nothing, because the endpoint's model names are not ours t
 
 test("the address and the credential are hidden until remote is chosen", () => {
   const { view } = row();
-  expect(view.queryAllByLabelText("Endpoint")).toHaveLength(0);
+  expect(view.queryAllByLabelText("接口地址")).toHaveLength(0);
   expect(view.queryAllByLabelText("凭据名")).toHaveLength(0);
 
   // On the press, not on the write: the write is what cannot land yet.
   goRemote(view);
-  expect(view.getAllByLabelText("Endpoint")).toHaveLength(1);
+  expect(view.getAllByLabelText("接口地址")).toHaveLength(1);
   expect(view.getAllByLabelText("凭据名")).toHaveLength(1);
 });
 

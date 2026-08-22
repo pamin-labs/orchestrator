@@ -1703,7 +1703,7 @@ msgid "mount point"
 msgstr "マウント先"
 
 msgid "ms"
-msgstr "ms"
+msgstr "ミリ秒"
 
 msgid "Name"
 msgstr "名前"
