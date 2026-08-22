@@ -46,7 +46,7 @@ jobs:
       container: ${{ steps.filter.outputs.container }}
       workflows: ${{ steps.filter.outputs.workflows }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request'
         with:
           # The pull request is checked out as its merge commit, so the first
@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-bun
@@ -129,11 +129,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: scan repository
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
@@ -154,7 +154,7 @@ jobs:
         # generations cost 28s per run and nothing gates on them. `release.yml`
         # produces its own from the exact source it publishes.
         if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
@@ -167,7 +167,7 @@ jobs:
         # generations cost 28s per run and nothing gates on them. `release.yml`
         # produces its own from the exact source it publishes.
         if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
@@ -184,7 +184,7 @@ jobs:
       # `load: true` because the scanner below reads it from the local daemon
       # rather than a registry — this image is built to be inspected, never
       # pushed.
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -198,7 +198,7 @@ jobs:
           cache-from: type=gha,scope=orch-agent-amd64
           cache-to: type=gha,mode=max,scope=orch-agent-amd64
       - name: scan container
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orchestrator-agent:ci
@@ -224,7 +224,7 @@ jobs:
       # gated, and never silent.
       - name: report advisories with no fix available
         continue-on-error: true
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orchestrator-agent:ci
@@ -253,7 +253,7 @@ jobs:
         # generations cost 28s per run and nothing gates on them. `release.yml`
         # produces its own from the exact source it publishes.
         if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orchestrator-agent:ci
@@ -265,7 +265,7 @@ jobs:
         # generations cost 28s per run and nothing gates on them. `release.yml`
         # produces its own from the exact source it publishes.
         if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orchestrator-agent:ci
@@ -293,7 +293,7 @@ jobs:
       contents: read
       attestations: read # Verify actionlint release provenance.
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: verify and run actionlint release
@@ -308,7 +308,7 @@ jobs:
           gh attestation verify "$archive" --repo rhysd/actionlint
           tar -xzf "$archive" actionlint
           ./actionlint -color
-      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           version: 0.12.2
           enable-cache: false
