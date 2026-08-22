@@ -26,69 +26,26 @@
         "name": "shared-contracts",
         "patterns": ["src/contracts/**"]
       },
-      {
-        "name": "web",
-        "patterns": ["web/**"]
-      },
-      {
-        "name": "public-rpc",
-        "patterns": ["src/http/routes/**"]
-      },
-      {
-        "name": "composition",
-        "patterns": ["src/composition/**"]
-      },
-      {
-        "name": "application",
-        "patterns": ["src/application/**"]
-      },
-      {
-        "name": "build-info",
-        "patterns": ["src/platform/process/version.ts"]
-      },
+      { "name": "web", "patterns": ["web/**"] },
+      { "name": "public-rpc", "patterns": ["src/http/routes/**"] },
+      { "name": "composition", "patterns": ["src/composition/**"] },
+      { "name": "application", "patterns": ["src/application/**"] },
+      { "name": "build-info", "patterns": ["src/platform/process/version.ts"] },
       {
         "name": "platform",
         "patterns": ["src/platform/**"]
       },
-      {
-        "name": "http-edge",
-        "patterns": ["src/http/**"]
-      },
-      {
-        "name": "api",
-        "patterns": ["src/api/**"]
-      },
-      {
-        "name": "prompt",
-        "patterns": ["src/prompt/**"]
-      },
-      {
-        "name": "runtime-adapters",
-        "patterns": ["src/runtime/**"]
-      },
-      {
-        "name": "mechanisms",
-        "patterns": ["src/mech/**"]
-      },
-      {
-        "name": "cli",
-        "patterns": ["src/orch/**"]
-      },
-      {
-        "name": "tests",
-        "patterns": ["test/**"]
-      },
-      {
-        "name": "scripts",
-        "patterns": ["scripts/**"]
-      }
+      { "name": "http-edge", "patterns": ["src/http/**"] },
+      { "name": "api", "patterns": ["src/api/**"] },
+      { "name": "prompt", "patterns": ["src/prompt/**"] },
+      { "name": "runtime-adapters", "patterns": ["src/runtime/**"] },
+      { "name": "mechanisms", "patterns": ["src/mech/**"] },
+      { "name": "cli", "patterns": ["src/orch/**"] },
+      { "name": "tests", "patterns": ["test/**"] },
+      { "name": "scripts", "patterns": ["scripts/**"] }
     ],
     "rules": [
-      {
-        "from": "web",
-        "allow": ["web", "shared-contracts"],
-        "allowTypeOnly": ["public-rpc"]
-      },
+      { "from": "web", "allow": ["web", "shared-contracts"], "allowTypeOnly": ["public-rpc"] },
       {
         "from": "public-rpc",
         "allow": ["public-rpc", "http-edge", "api", "mechanisms", "platform", "shared-contracts"]
@@ -130,50 +87,19 @@
         "allow": ["runtime-adapters", "platform", "shared-contracts"],
         "allowTypeOnly": ["prompt"]
       },
-      {
-        "from": "prompt",
-        "allow": ["prompt", "shared-contracts"]
-      },
-      {
-        "from": "build-info",
-        "allow": ["build-info"]
-      },
-      {
-        "from": "platform",
-        "allow": ["platform", "shared-contracts"]
-      },
-      {
-        "from": "shared-contracts",
-        "allow": ["shared-contracts"]
-      },
-      {
-        "from": "cli",
-        "allow": ["cli", "build-info", "shared-contracts"],
-        "allowTypeOnly": ["public-rpc"]
-      }
+      { "from": "prompt", "allow": ["prompt", "shared-contracts"] },
+      { "from": "build-info", "allow": ["build-info"] },
+      { "from": "platform", "allow": ["platform", "shared-contracts"] },
+      { "from": "shared-contracts", "allow": ["shared-contracts"] },
+      { "from": "cli", "allow": ["cli", "build-info", "shared-contracts"], "allowTypeOnly": ["public-rpc"] }
     ],
-    "coverage": {
-      "requireAllFiles": true,
-      "allowUnmatched": ["drizzle.config.ts"]
-    },
+    "coverage": { "requireAllFiles": true, "allowUnmatched": ["drizzle.config.ts"] },
     "calls": {
       "forbidden": [
-        {
-          "from": "web",
-          "callee": "node:child_process.*"
-        },
-        {
-          "from": "web",
-          "callee": "Bun.spawn"
-        },
-        {
-          "from": "http-edge",
-          "callee": "node:child_process.*"
-        },
-        {
-          "from": "public-rpc",
-          "callee": "node:child_process.*"
-        }
+        { "from": "web", "callee": "node:child_process.*" },
+        { "from": "web", "callee": "Bun.spawn" },
+        { "from": "http-edge", "callee": "node:child_process.*" },
+        { "from": "public-rpc", "callee": "node:child_process.*" }
       ]
     }
   },

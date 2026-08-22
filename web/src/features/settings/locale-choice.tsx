@@ -13,17 +13,11 @@ import { endonymOf } from "../../../../src/contracts/config";
  * opposite reason: `output.language` is free text that reaches a model.
  */
 /**
- * Every language names itself. "Chinese" is no help to somebody who cannot read
- * the pane it is on, so the names are endonyms and come from the one table in
- * contracts rather than from a copy here.
- */
-/**
- * The tick follows the locale that is *live*, not the one that was asked for.
- *
- * They differ while a catalog chunk is in flight, and they stay different if it
- * never arrives — `applyLocale` falls back to English rather than leaving the
- * panel unrendered. A tick on the language that failed to load would be the one
- * thing on this pane that is not true.
+ * Endonyms, from the one table in contracts: "Chinese" is no help to somebody
+ * who cannot read the pane it is on. The tick follows the locale that is *live*
+ * rather than the one asked for — they differ while a chunk is in flight, and
+ * stay different if it never arrives, and a tick on a language that failed to
+ * load would be the one thing here that is not true.
  */
 export function LocaleChoice() {
   // `useLingui`, and no second copy of the value in React state: the provider

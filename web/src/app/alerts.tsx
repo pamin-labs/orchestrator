@@ -15,29 +15,15 @@ import { saidText } from "../shared/said";
  * new hook.
  */
 /**
- * One row in the shell, not a toast, and that is the whole design.
- *
- * The first version stacked every failure with its `fix` paragraph into a
- * floating toast: 700px of overlay, in the corner, covering the board this panel
- * exists to show.
+ * One row in the shell, not a toast. A toast reports an event and leaves; a
+ * broken host check holds until somebody fixes it — and the first version put
+ * every failure and its `fix` paragraph into 700px of overlay covering the board
+ * this panel exists to show, which the Environment pane already renders better.
  */
-/**
- * Two things were wrong with it. A toast reports an event and leaves; a broken
- * host check is a state that holds until somebody fixes it. And the details were
- * already on screen — the Environment pane renders every check with its
- * `detail` and `fix`, so the overlay was a worse copy of the surface its own
- * button points at.
- */
-
 /**
  * What is worth interrupting for is the *transition*, not the state: the
- * snapshot arrives on a 60s poll and again on every stream frame, so keying the
- * banner off what it says would revive a dismissed one a hundred times an hour.
- */
-/**
- * The whole failing set is fingerprinted, so a check going bad, a detail moving,
- * or one of three recovering are each news exactly once, and dismissing holds
- * until the set itself changes.
+ * snapshot arrives on a 60s poll and on every stream frame, so the whole failing
+ * set is fingerprinted and dismissal holds until that set changes.
  */
 const fingerprint = (failing: readonly HostFailure[]): string =>
   failing.map((check) => `${check.name}\u0000${check.detail}`).join("\u001f");

@@ -94,8 +94,9 @@ for (const locale of LOCALES) {
     const english = source[id];
     if (!translation || !english || translation === english) continue;
     const want = referenced(compileMessageOrThrow(english));
-    const gone = missing(want, referenced(compileMessageOrThrow(translation)));
-    const extra = missing(referenced(compileMessageOrThrow(translation)), want);
+    const got = referenced(compileMessageOrThrow(translation));
+    const gone = missing(want, got);
+    const extra = missing(got, want);
     if (gone.length === 0 && extra.length === 0) continue;
     const what = [
       gone.length > 0 && `dropped ${gone.join(", ")}`,

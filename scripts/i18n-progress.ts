@@ -1,5 +1,6 @@
 import { endonymOf, LOCALES } from "../src/contracts/config.ts";
 import { translations } from "./lingui-catalogs.ts";
+import { writeOrCheck } from "./generated-file.ts";
 
 /**
  * How much of what the orchestrator says has been translated, one bar per
@@ -78,23 +79,14 @@ function splice(doc: string, next: string): string {
   return doc.slice(0, from) + next + doc.slice(to + MARK.close.length);
 }
 
-const check = process.argv.includes("--check");
 const panel = await panelRows();
-let stale = false;
 
+// `writeOrCheck`, the same door `i18n-hant.ts` writes through: `--check` is what
+// preflight runs, and two scripts deriving a checked-in file from `locales/*.po`
+// had two copies of it until Fallow found them as one clone.
 for (const [doc, copy] of Object.entries(COPY)) {
-  const current = await Bun.file(doc).text();
-  const next = splice(current, block(panel, copy));
-  if (next === current) continue;
-  if (check) {
-    console.error(`${doc}: translation progress is stale — run \`bun run i18n:progress\``);
-    stale = true;
-    continue;
-  }
-  await Bun.write(doc, next);
-  console.log(`${doc}: updated`);
+  await writeOrCheck(doc, splice(await Bun.file(doc).text(), block(panel, copy)), "locales/*.po", "i18n:progress");
 }
 
-if (stale) process.exit(1);
-if (!check)
+if (!process.argv.includes("--check"))
   for (const r of panel) console.log(`${r.label.padEnd(10)} ${String(pct(r)).padStart(3)}%  ${r.done}/${r.total}`);
