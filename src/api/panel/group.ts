@@ -489,7 +489,7 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
     grpId,
     author: "boss",
     kind: "state_change",
-    body: `opened PR #${r.number} to replace the closed one`,
+    say: msg`opened PR #${{ pr: r.number }} to replace the closed one`,
     meta: { pr: r.number },
   });
   return json({ number: r.number });

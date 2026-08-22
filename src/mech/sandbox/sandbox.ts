@@ -498,9 +498,7 @@ async function markDown<T>(ctx: Ctx, e: T, now = Date.now()): Promise<void> {
     kind: "escalation",
     intent: "inform",
     severity: "blocker",
-    body:
-      `Cannot open a container, so every turn is held: ${errText(e, 200)}\n` +
-      `Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back.`,
+    say: msg`Cannot open a container, so every turn is held: ${{ why: errText(e, 200) }}\nUsually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back.`,
   });
 }
 
@@ -509,7 +507,7 @@ async function markUp(bus: Bus): Promise<void> {
     await bus?.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: "Containers open again; the held work resumes on its own.",
+      say: msg`Containers open again; the held work resumes on its own.`,
     });
   }
   downUntil = 0;
@@ -606,10 +604,7 @@ async function createMountedSandbox(
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
-      body:
-        `Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list ` +
-        `${skills[0]!.host?.path}. Add it and reopen this group's container; until then agents can only use ` +
-        `the skills named in the input box.`,
+      say: msg`Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list ${{ path: skills[0]!.host?.path ?? "" }}. Add it and reopen this group's container; until then agents can only use the skills named in the input box.`,
     });
     return { sandbox: await createSandbox(ctx, scope, spec, cached), skillsMounted: false };
   }
@@ -653,10 +648,7 @@ async function installVaultCredentials(
         author: "orchestrator",
         kind: "state_change",
         severity: "blocker",
-        body:
-          `Credentials did not bind to this container, so the decoy values inside go out unchanged — every ` +
-          `model call from here 401s. That is not the token's fault, and signing in again will not help. ` +
-          `Cause: ${errText(error, 400)}`,
+        say: msg`Credentials did not bind to this container, so the decoy values inside go out unchanged — every model call from here 401s. That is not the token's fault, and signing in again will not help. Cause: ${{ why: errText(error, 400) }}`,
       });
     });
 }
@@ -669,7 +661,7 @@ async function restoreGroupWorkspace(ctx: Ctx, scope: Scope): Promise<void> {
       author: "orchestrator",
       kind: "state_change",
       severity: "warn",
-      body: `The sandbox was rebuilt, but the workspace was not restored: ${errText(error)}`,
+      say: msg`The sandbox was rebuilt, but the workspace was not restored: ${{ why: errText(error) }}`,
     });
   });
 }
@@ -849,13 +841,7 @@ export async function checkSkillsMount(bus: Bus, sb: Counter, hostPath: string, 
     author: "orchestrator",
     kind: "state_change",
     severity: "blocker",
-    body:
-      `Skills are mounted but the directory inside is empty: host ${hostPath} has ${onHost}, and ${at} in ` +
-      `the container has 0.\n` +
-      `The container runtime cannot read that host path, so binding it delivers an empty directory — on macOS ` +
-      `docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point ` +
-      `skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's ` +
-      `allowed_host_paths, and restart it. Until then agents have no skills at all.`,
+    say: msg`Skills are mounted but the directory inside is empty: host ${{ hostPath }} has ${{ onHost }}, and ${{ at }} in the container has 0.\nThe container runtime cannot read that host path, so binding it delivers an empty directory — on macOS docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's allowed_host_paths, and restart it. Until then agents have no skills at all.`,
   });
 }
 

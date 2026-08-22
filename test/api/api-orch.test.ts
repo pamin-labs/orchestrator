@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { sayIn } from "../../src/contracts/said.ts";
+import { said } from "../support/said.ts";
 import { z } from "zod";
 import { makeApp } from "../../src/composition/api.ts";
 import { eq, isNotNull } from "drizzle-orm";
@@ -67,7 +69,12 @@ const config = async (h: Harness) =>
   (await h.db.select({ c: project.config_json }).from(project).where(eq(project.id, 1)))[0]?.c;
 
 const oneEvent = async (h: Harness, kind: string) =>
-  (await h.db.select({ author: event.author, body: event.body }).from(event).where(eq(event.kind, kind)))[0];
+  (
+    await h.db
+      .select({ author: event.author, body: event.body, meta: event.meta_json })
+      .from(event)
+      .where(eq(event.kind, kind))
+  )[0];
 
 const BODY = "The Scribe had no way to say what the branch is. This is that message.";
 
@@ -121,7 +128,9 @@ test("an accepted message is stored, announced, and publishes the branch", async
   expect(g?.pr_title).toBe("fix(pr): say what landed");
   expect(g?.pr_summary).toBe(BODY);
   expect(h.published).toEqual([1]);
-  expect(await oneEvent(h, "note")).toEqual({ author: "scribe", body: "fix(pr): say what landed" });
+  // The Scribe's own commit message, stored verbatim: this body is not a
+  // sentence this repository writes, so there is no descriptor beside it.
+  expect(await oneEvent(h, "note")).toMatchObject({ author: "scribe", body: "fix(pr): say what landed" });
 });
 
 // --------------------------------------------------------------- orch/setup
@@ -336,9 +345,13 @@ test("a thread inside the boundary is closed, and the group's record says so", a
   const r = await h.send({ group_id: 1, thread_id: "PRRT_x", note: "guarded it, test at pr.test.ts:40" });
   expect(r.status).toBe(200);
   expect(h.calls).toEqual(["locate", "resolve"]);
-  expect(await oneEvent(h, "note")).toEqual({
-    author: "engineer",
-    body: "resolved review thread on src/api/orch/pr.ts: guarded it, test at pr.test.ts:40",
+  const note = await oneEvent(h, "note");
+  expect(note?.author).toBe("engineer");
+  // The path and the agent's own note, which is what this call carried; the
+  // sentence around them belongs to the catalogue the reader's panel holds.
+  expect(sayIn(note?.meta)).toMatchObject({
+    ...said("resolved review thread on {path}: {note}"),
+    values: { path: "src/api/orch/pr.ts", note: "guarded it, test at pr.test.ts:40" },
   });
 });
 

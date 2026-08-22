@@ -44,6 +44,12 @@ msgstr "{base} сдвинулась на {sha}; {name} отстала, ей ве
 msgid "{branch} (per the remote)"
 msgstr "{branch} (по данным удалённого)"
 
+msgid "{by} passed this up, with no reason given"
+msgstr "{by} передал(а) выше, без объяснения причины"
+
+msgid "{by} passed this up: {why}"
+msgstr "{by} передал(а) выше: {why}"
+
 msgid "{config} covers all {count} paths to be mounted"
 msgstr "{config} покрывает все монтируемые пути ({count})"
 
@@ -329,6 +335,9 @@ msgstr "{runningCount} выполняется · всего {total}"
 msgid "{runtime} credential expired"
 msgstr "учётные данные {runtime} истекли"
 
+msgid "{runtime} credentials rejected"
+msgstr "учётные данные {runtime} отклонены"
+
 msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
 msgstr "{server} отвечает, но это не sandbox server (HTTP {status}) — укажите другой адрес."
 
@@ -508,6 +517,9 @@ msgstr "Образ должен быть либо нашим (ghcr.io/pamin-labs
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
 msgstr "Незавершённый ход пропадает; группа перезапускает контейнер и продолжает сама. Код и ветки не затрагиваются."
 
+msgid "answer revoked, but the rollback to {sha} failed: {why}"
+msgstr "ответ отозван, но откат к {sha} не удался: {why}"
+
 msgid "Answered on your behalf"
 msgstr "Отвечено за вас"
 
@@ -567,6 +579,18 @@ msgstr "Не более {maxGroups} групп одновременно. Ког�
 
 msgid "Attach"
 msgstr "Приложить"
+
+msgid "audit {verdict}"
+msgstr "аудит {verdict}"
+
+msgid "audit {verdict}: {note}"
+msgstr "аудит {verdict}: {note}"
+
+msgid "audit passed — queued to merge, {place} of {total}"
+msgstr "аудит пройден — в очереди на слияние, {place} из {total}"
+
+msgid "audit passed — ready for you to merge"
+msgstr "аудит пройден — можно сливать"
 
 msgid "Author"
 msgstr "Автор"
@@ -637,6 +661,14 @@ msgstr "границы всё ещё пересекаются"
 msgid "Branch"
 msgstr "Ветка"
 
+msgid "branch gate failed:\n"
+"{gates}"
+msgstr "ворота ветки не пройдены:\n"
+"{gates}"
+
+msgid "branch sent back by {from} {n, plural, one {# time} other {# times}} — stopping rather than paying for another round"
+msgstr "{from} вернул(а) ветку {n, plural, one {# раз} few {# раза} many {# раз} other {# раза}} — останавливаемся здесь, вместо того чтобы платить за ещё один круг"
+
 msgid "Branches, PRs and code on GitHub"
 msgstr "Ветки, PR и код на GitHub"
 
@@ -699,6 +731,14 @@ msgstr "Отменяет все ходы в очереди и возвращае
 
 msgid "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
 msgstr "Отменяет все ходы в очереди и возвращает занятый слот другой группе. Код, ветка и записи сохраняются."
+
+msgid "cancelled {n, plural, one {# job} other {# jobs}} queued for a dissolved group"
+msgstr "отменено {n, plural, one {# задание} few {# задания} many {# заданий} other {# задания}} в очереди распущенного требования"
+
+msgid "Cannot open a container, so every turn is held: {why}\n"
+"Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back."
+msgstr "не удаётся открыть контейнер, поэтому все ходы приостановлены: {why}\n"
+"Обычно docker не запущен или не работает opensandbox-server — панель самопроверки в настройках скажет, что именно. Работа продолжится сама, как только он вернётся."
 
 msgid "cannot reach it: {error}"
 msgstr "не удаётся подключиться: {error}"
@@ -874,6 +914,9 @@ msgstr "Контейнер будет выброшен. Следующий хо�
 msgid "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:"
 msgstr "Контейнер не упадёт, а просто смонтирует пустой каталог — включённые навыки исчезнут. Добавьте эту строку в конфигурацию и перезапустите:"
 
+msgid "Containers open again; the held work resumes on its own."
+msgstr "Контейнеры снова открываются; отложенная работа продолжится сама."
+
 msgid "context full"
 msgstr "контекст заполнен"
 
@@ -898,17 +941,32 @@ msgstr "CoS работает"
 msgid "Cost"
 msgstr "Расходы"
 
+msgid "could not check file ownership this turn (git status in the sandbox: {out})"
+msgstr "на этом ходу не удалось проверить принадлежность файлов (git status в песочнице: {out})"
+
 msgid "could not force-stop pid {pid}: {error}"
 msgstr "не удалось принудительно остановить pid {pid}: {error}"
 
 msgid "Could not generate a draft; you'll need to write this one yourself."
 msgstr "Черновик не получился; этот придётся написать самому."
 
+msgid "could not open a PR: {why}"
+msgstr "не удалось открыть PR: {why}"
+
+msgid "could not put {file} into the sandbox: {why}"
+msgstr "не удалось положить {file} в песочницу: {why}"
+
+msgid "could not roll back {n, plural, one {# file} other {# files}} outside this group's paths ({files}): {out}"
+msgstr "не удалось откатить {n, plural, one {# файл} few {# файла} many {# файлов} other {# файла}} вне путей этой группы ({files}): {out}"
+
 msgid "could not start {bin}: {error}"
 msgstr "не удалось запустить {bin}: {error}"
 
 msgid "could not stop pid {pid}: {error}"
 msgstr "не удалось остановить pid {pid}: {error}"
+
+msgid "could not take {branch} out of the sandbox: {why}"
+msgstr "не удалось забрать {branch} из песочницы: {why}"
 
 msgid "Couldn't read the settings from the server."
 msgstr "Не удалось прочитать настройки с сервера."
@@ -930,6 +988,9 @@ msgstr "Проверка учётных данных"
 
 msgid "Credential name"
 msgstr "Имя учётных данных"
+
+msgid "Credentials did not bind to this container, so the decoy values inside go out unchanged — every model call from here 401s. That is not the token's fault, and signing in again will not help. Cause: {why}"
+msgstr "Учётные данные не привязались к этому контейнеру, поэтому подставные значения внутри уходят как есть — каждый вызов модели отсюда даёт 401. Токен здесь ни при чём, и повторный вход не поможет. Причина: {why}"
 
 msgid "Custom gateway; usage not displayed in header"
 msgstr "Свой шлюз; расход в шапке не показывается"
@@ -1029,6 +1090,12 @@ msgstr "Удвоить до {doubledLabel}"
 
 msgid "DRAFT approved"
 msgstr "DRAFT одобрен"
+
+msgid "DRAFT card filed: {goal}"
+msgstr "карточка DRAFT подана: {goal}"
+
+msgid "DRAFT card filed: {goal} ({n, plural, one {# planning turn} other {# planning turns}} dropped)"
+msgstr "карточка DRAFT подана: {goal} (отброшено {n, plural, one {# ход планирования} few {# хода планирования} many {# ходов планирования} other {# хода планирования}})"
 
 msgid "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
 msgstr "Ниже 50% сборка промпта сломана: ход дороже в 3–5 раз"
@@ -1181,6 +1248,9 @@ msgstr "По ширине окна"
 
 msgid "Follow window—updates as window changes, fits without crowding"
 msgstr "Следует за окном: обновляется при изменении размера и помещается без тесноты"
+
+msgid "for you: {question}"
+msgstr "вам: {question}"
 
 msgid "Forward to webhook"
 msgstr "Пересылать в вебхук"
@@ -1424,6 +1494,9 @@ msgstr "В работе"
 msgid "Including downstream"
 msgstr "Включая зависящее"
 
+msgid "index call ({total} tokens)"
+msgstr "вызов индексации ({total} токенов)"
+
 msgid "Index model"
 msgstr "Модель индекса"
 
@@ -1465,6 +1538,15 @@ msgstr "Прервать и откатить"
 msgid "Interrupt, keep changes"
 msgstr "Прервать, изменения оставить"
 
+msgid "interrupted ({mode}), killed {killed}"
+msgstr "прервано ({mode}), остановлено {killed}"
+
+msgid "interrupted ({mode}), killed {killed}, rolled back to {sha}"
+msgstr "прервано ({mode}), остановлено {killed}, откат к {sha}"
+
+msgid "interrupted, but the rollback to {sha} failed: {why}. The checkout is dirty."
+msgstr "прервано, но откат к {sha} не удался: {why}. Рабочая копия грязная."
+
 msgid "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
 msgstr "Поднят ли сервер песочниц и принимает ли он наш ключ. Обычно это loopback, и его ответ лишь заполняет отчёт — тогда как сетевой пинг ниже открывает или закрывает ворота всему флоту."
 
@@ -1505,6 +1587,12 @@ msgstr "Ключ"
 
 msgid "Last 24 hours, per hour"
 msgstr "Последние 24 часа, по часам"
+
+msgid "lease {resource} #{id} started"
+msgstr "аренда {resource} #{id} началась"
+
+msgid "lease #{id} exit {code}"
+msgstr "аренда #{id} код выхода {code}"
 
 msgid "Lease timeout"
 msgstr "Таймаут аренды"
@@ -1692,8 +1780,14 @@ msgstr "Событий нет"
 msgid "no file"
 msgstr "нет файла"
 
+msgid "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
+msgstr "в этом репозитории не найдено ни одних ворот. Каждый срез будет проваливать ревью, пока у проекта не появится хотя бы одни: добавьте шаблон ресурса и впишите его имя в gates проекта."
+
 msgid "No gates enabled; LLM review has no floor."
 msgstr "Не включены ворота; у проверки LLM нет опоры."
+
+msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
+msgstr "группы {grp} нет в таблице grp, поэтому /work всё ещё пуст — на этом ходу нечего запускать"
 
 msgid "no login is waiting for a code — start one first"
 msgstr "ни один вход не ждёт код — сначала начните его"
@@ -1758,6 +1852,9 @@ msgstr "Требований в работе нет. Нажмите + справ
 msgid "No requirements yet"
 msgstr "Требований пока нет"
 
+msgid "no retro yet — the group cannot wind up without one"
+msgstr "ретро ещё нет — без него группу не закрыть"
+
 msgid "No runnable commands found."
 msgstr "Исполняемых команд не найдено."
 
@@ -1772,6 +1869,9 @@ msgstr "Без среза"
 
 msgid "No slices"
 msgstr "Срезов нет"
+
+msgid "no squash ({why})"
+msgstr "без squash ({why})"
 
 msgid "no such group"
 msgstr "такой группы нет"
@@ -1917,6 +2017,9 @@ msgstr "Открыть PR ↗"
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "заведено как требование {name} (grp {grp})"
 
+msgid "opened PR #{pr} to replace the closed one"
+msgstr "открыт PR #{pr} взамен закрытого"
+
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server пропал и был перезапущен (попытка {n}). Приостановленная работа продолжится сама."
 
@@ -1950,6 +2053,9 @@ msgstr "пересекается с {overlapping}"
 msgid "Ownership"
 msgstr "Владение"
 
+msgid "owns {paths}"
+msgstr "границы заданы: {paths}"
+
 msgid "p50"
 msgstr "p50"
 
@@ -1965,8 +2071,14 @@ msgstr "P95"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "PageIndex не собирается: все {n} вызовов вернулись пустыми. Проверьте в настройках, работает ли ещё аккаунт, на котором идёт индексация."
 
+msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
+msgstr "PageIndex: обобщено {n, plural, one {# узел} few {# узла} many {# узлов} other {# узла}}, проиндексировано {files, plural, one {# файл} few {# файла} many {# файлов} other {# файла}}"
+
 msgid "Panel language"
 msgstr "Язык панели"
+
+msgid "parked ({reason}); {n, plural, one {# queued turn} other {# queued turns}} dropped, worktree untouched"
+msgstr "на стоянке ({reason}); отброшено {n, plural, one {# ход} few {# хода} many {# ходов} other {# хода}} из очереди, рабочее дерево не тронуто"
 
 msgid "Pass"
 msgstr "Прошло"
@@ -1980,6 +2092,9 @@ msgstr "Вставьте; после сохранения скрывается"
 msgid "Pause"
 msgstr "Пауза"
 
+msgid "paused"
+msgstr "на паузе"
+
 msgid "Paused"
 msgstr "На паузе"
 
@@ -1988,6 +2103,9 @@ msgstr "НА ПАУЗЕ"
 
 msgid "Pausing"
 msgstr "Останавливаем"
+
+msgid "pausing — waiting for {n, plural, one {# turn} other {# turns}} to land"
+msgstr "ставим на паузу — ждём, пока приземлится {n, plural, one {# ход} few {# хода} many {# ходов} other {# хода}}"
 
 msgid "Pending"
 msgstr "Ожидает"
@@ -2052,10 +2170,21 @@ msgstr "Интервалы опроса"
 msgid "PR #{n} opened"
 msgstr "PR #{n} открыт"
 
+msgid "PR #{pr} has feedback:\n"
+"{lines}"
+msgstr "по PR #{pr} есть замечания:\n"
+"{lines}"
+
+msgid "PR #{pr} was closed without merging"
+msgstr "PR #{pr} закрыт без слияния"
+
 msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
 "To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
 msgstr "PR #{pr} закрыт без слияния. Эта группа остановлена и вышла из очереди слияния.\n"
 "Чтобы продолжить: переоткройте PR на GitHub, и он сам вернётся в очередь. Чтобы отказаться: снимите требование."
+
+msgid "PR #{pr} was reopened; back in the merge queue"
+msgstr "PR #{pr} снова открыт; вернулся в очередь на слияние"
 
 msgid "PR closed — reopen it or not"
 msgstr "PR закрыт — открывать заново?"
@@ -2080,6 +2209,9 @@ msgstr "Подготовка хода"
 
 msgid "Private"
 msgstr "Приватный"
+
+msgid "project {project} has no remote recorded, so there is nothing to clone — /work is still empty and there is no code to run this turn"
+msgstr "у проекта {project} не записан удалённый репозиторий, клонировать нечего — /work всё ещё пуст, и на этом ходу нечего запускать"
 
 msgid "Project name…"
 msgstr "Название проекта…"
@@ -2123,8 +2255,8 @@ msgstr "квота вернулась, продолжаем"
 msgid "Rate limited reading usage; it recovers by itself shortly"
 msgstr "Лимит запросов при чтении расхода; вскоре восстановится само"
 
-msgid "rate limited; everything on this CLI holds until the window reopens (~{at}) and resumes itself — the quota belongs to the account, so no model spends less of it"
-msgstr "достигнут лимит; всё на этом CLI приостановлено до открытия окна (~{at}) и продолжится само — квота принадлежит аккаунту, так что смена модели её не экономит"
+msgid "rate limited; everything on this CLI holds until the window reopens (~{at, date, short} {at, time, short}) and resumes itself — the quota belongs to the account, so no model spends less of it"
+msgstr "достигнут лимит; всё на этом CLI приостановлено до открытия окна (~{at, date, short} {at, time, short}) и продолжится само — квота принадлежит аккаунту, так что смена модели её не экономит"
 
 msgid "reachable"
 msgstr "доступен"
@@ -2144,11 +2276,19 @@ msgstr "Читает, сколько осталось от окна подпис
 msgid "Real tokens don't enter the sandbox"
 msgstr "Настоящие токены в песочницу не попадают"
 
+msgid "rebase onto the base branch failed while waking up:\n"
+"{out}"
+msgstr "при пробуждении не удался rebase на базовую ветку:\n"
+"{out}"
+
 msgid "Recheck reachability"
 msgstr "Перепроверить доступность"
 
 msgid "Recheck the repo map"
 msgstr "Перепроверить карту репозитория"
+
+msgid "reclaimed {n, plural, one {# turn} other {# turns}} left running by the previous server, resumed {resumed}"
+msgstr "возвращено {n, plural, one {# ход} few {# хода} many {# ходов} other {# хода}}, оставленных запущенными прошлым сервером, возобновлено {resumed}"
 
 msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
 msgstr "сверка на S{seq} не прошла: заявлено, но не изменено — {files}"
@@ -2170,6 +2310,9 @@ msgstr "Обновлено локально"
 
 msgid "Reject this slice"
 msgstr "Отклонить этот срез"
+
+msgid "rejected"
+msgstr "отклонено"
 
 msgid "Rejected"
 msgstr "Отклонено"
@@ -2243,6 +2386,9 @@ msgstr "Ответьте. Отправка разблокирует ждущег
 msgid "Reply… Cmd+Enter to send"
 msgstr "Ответить… Cmd+Enter — отправить"
 
+msgid "repo map refreshed ({files, plural, one {# file} other {# files}}, {read} read for symbols)"
+msgstr "карта репозитория обновлена ({files, plural, one {# файл} few {# файла} many {# файлов} other {# файла}}, из них {read} прочитано ради символов)"
+
 msgid "Repo-wide"
 msgstr "По всему репозиторию"
 
@@ -2287,6 +2433,12 @@ msgstr "сбросится через {span}"
 
 msgid "Resetting soon"
 msgstr "Скоро сбросится"
+
+msgid "resolved review thread on {path}"
+msgstr "ветка обсуждения ревью на {path} закрыта"
+
+msgid "resolved review thread on {path}: {note}"
+msgstr "ветка обсуждения ревью на {path} закрыта: {note}"
 
 msgid "Resource lease"
 msgstr "Аренда ресурса"
@@ -2338,6 +2490,18 @@ msgstr "Ветки ревью"
 
 msgid "Revoke and take over"
 msgstr "Отозвать и взять на себя"
+
+msgid "revoked {by}'s answer"
+msgstr "ответ {by} отозван"
+
+msgid "revoked {by}'s answer and rolled back to {sha}"
+msgstr "ответ {by} отозван, откат к {sha}"
+
+msgid "revoked the answer"
+msgstr "ответ отозван"
+
+msgid "revoked the answer and rolled back to {sha}"
+msgstr "ответ отозван, откат к {sha}"
 
 msgid "Risk"
 msgstr "Риск"
@@ -2409,6 +2573,12 @@ msgstr "S{seq} «{title}» падал на {from} {n} раз. Последний
 
 msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq} «{title}» готова, ждёт вашей приёмки"
+
+msgid "S{seq} {verdict}"
+msgstr "S{seq} {verdict}"
+
+msgid "S{seq} {verdict}: {note}"
+msgstr "S{seq} {verdict}: {note}"
 
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} не прошла у {from} {n} раз подряд — дело, скорее всего, в критериях приёмки, а не в коде"
@@ -2551,6 +2721,14 @@ msgstr "После такого молчания у группы спрашив�
 msgid "Skills"
 msgstr "Навыки"
 
+msgid "Skills are mounted but the directory inside is empty: host {hostPath} has {onHost}, and {at} in the container has 0.\n"
+"The container runtime cannot read that host path, so binding it delivers an empty directory — on macOS docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's allowed_host_paths, and restart it. Until then agents have no skills at all."
+msgstr "Навыки примонтированы, но каталог внутри пуст: на хосте {hostPath} их {onHost}, а в {at} внутри контейнера — 0.\n"
+"Среда контейнера не может прочитать этот путь на хосте, поэтому монтирование отдаёт пустой каталог — на macOS docker работает внутри виртуальной машины, и пути за её пределами (/var/tmp и подобные) внутрь не пробрасываются. Укажите skillsDir на общий каталог (подойдёт $HOME), добавьте его в allowed_host_paths у opensandbox-server и перезапустите его. До тех пор у агентов не будет ни одного навыка."
+
+msgid "Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list {path}. Add it and reopen this group's container; until then agents can only use the skills named in the input box."
+msgstr "Навыки не примонтированы в песочницу: в allowed_host_paths у opensandbox-server нет {path}. Добавьте его и переоткройте контейнер этой группы; до тех пор агенты могут пользоваться только навыками, названными в поле ввода."
+
 msgid "Skills staging directory"
 msgstr "Каталог подготовки навыков"
 
@@ -2592,6 +2770,9 @@ msgstr "Выделено из требования {from}."
 
 msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
 msgstr "Выделено из требования {from}. Исходная просьба целиком — в заметке #{note}."
+
+msgid "squashed {why}"
+msgstr "squash выполнен ({why})"
 
 msgid "Stage durations"
 msgstr "Длительность этапов"
@@ -2682,6 +2863,9 @@ msgstr "Системное время"
 msgid "Take note"
 msgstr "Записать"
 
+msgid "task {task} done"
+msgstr "задача {task} готова"
+
 msgid "The {runtime} credential stopped working: {why}\n"
 "Go to settings → {runtime} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done."
 msgstr "Учётные данные {runtime} перестали работать: {why}\n"
@@ -2757,6 +2941,9 @@ msgstr "Вторая половина «зависания»: один и тот
 msgid "the PR will not open"
 msgstr "PR не открывается"
 
+msgid "the project is gone (project {project} is not there), so /work is still empty — there is no code to run this turn"
+msgstr "проект пропал (project {project} отсутствует), поэтому /work всё ещё пуст — на этом ходу нечего запускать"
+
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "карту репозитория не удаётся обновить: {repo} — {why}"
 
@@ -2795,6 +2982,9 @@ msgstr "песочный сервер уже работал, поэтому ис
 
 msgid "the sandbox server was restarted, so every container it held is gone"
 msgstr "песочный сервер перезапущен, поэтому все контейнеры, которые он держал, пропали"
+
+msgid "The sandbox was rebuilt, but the workspace was not restored: {why}"
+msgstr "Песочница пересобрана, но рабочее пространство не восстановлено: {why}"
 
 msgid "the server asks for no API key, so any process on this machine can enter a container"
 msgstr "сервер не требует API-ключ, поэтому любой процесс на этой машине может войти в контейнер"
@@ -2924,11 +3114,17 @@ msgstr "токенов · доля"
 msgid "tokens must be a positive number, or null to lift the cap"
 msgstr "токены должны быть положительным числом или null, чтобы снять ограничение"
 
+msgid "triaged as {as}: {note}"
+msgstr "разобрано как {as}: {note}"
+
 msgid "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
 msgstr "Пробуются по порядку и только когда ничто другое не ответило: сначала собственная базовая ветка проекта, затем default_branch с GitHub. Это то, к чему откатывается репозиторий, когда до удалённого не достучаться."
 
 msgid "Try again"
 msgstr "Повторить"
+
+msgid "turn done ({steps, plural, one {# step} other {# steps}}, {total} tokens)"
+msgstr "ход завершён ({steps, plural, one {# шаг} few {# шага} many {# шагов} other {# шага}}, {total} токенов)"
 
 msgid "turn ran past {min} min and was killed"
 msgstr "ход перевалил за {min} мин и был прерван"
@@ -3127,6 +3323,9 @@ msgstr "Почему такое значение"
 
 msgid "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM"
 msgstr "Прочитается в начале следующего хода. Скриншоты вставляйте прямо сюда; / вставляет навык. Cmd+Enter — отправить PM"
+
+msgid "woken up"
+msgstr "разбужено"
 
 msgid "Workflow"
 msgstr "Рабочий процесс"

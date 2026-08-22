@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { sayIn } from "../../src/contracts/said.ts";
 import { said } from "../support/said.ts";
 import {
   applyPrOutcome,
@@ -110,8 +111,15 @@ test("an index pass only marks the tree fresh when it did work and none of it fa
   const p = await project(ctx.db);
 
   await recordIndexResult(ctx, p, "sha-1", { calls: 3, failed: 0, files: 9 });
-  const [said] = await ctx.db.select({ body: tbl.event.body }).from(tbl.event).orderBy(desc(tbl.event.seq));
-  expect(said?.body).toContain("3 node(s), 9 files");
+  // The counts, not the sentence carrying them: the wording is the catalogue's
+  // and the boss reads it in whichever of ten languages the panel is set to.
+  const [pass] = await ctx.db.select({ meta: tbl.event.meta_json }).from(tbl.event).orderBy(desc(tbl.event.seq));
+  expect(sayIn(pass?.meta)).toMatchObject({
+    ...said(
+      "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed",
+    ),
+    values: { n: 3, files: 9 },
+  });
 
   // Every call failed: that is the model being down, not the repository being
   // broken, and it is reported once rather than every pass.

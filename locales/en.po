@@ -44,6 +44,12 @@ msgstr "{base} moved to {sha}; {name} is behind it and has been told to rebase f
 msgid "{branch} (per the remote)"
 msgstr "{branch} (per the remote)"
 
+msgid "{by} passed this up, with no reason given"
+msgstr "{by} passed this up, with no reason given"
+
+msgid "{by} passed this up: {why}"
+msgstr "{by} passed this up: {why}"
+
 msgid "{config} covers all {count} paths to be mounted"
 msgstr "{config} covers all {count} paths to be mounted"
 
@@ -329,6 +335,9 @@ msgstr "{runningCount} running · {total} total"
 msgid "{runtime} credential expired"
 msgstr "{runtime} credential expired"
 
+msgid "{runtime} credentials rejected"
+msgstr "{runtime} credentials rejected"
+
 msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
 msgstr "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
 
@@ -508,6 +517,9 @@ msgstr "An image has to be one we publish (ghcr.io/pamin-labs/…) or one you bu
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
 msgstr "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
 
+msgid "answer revoked, but the rollback to {sha} failed: {why}"
+msgstr "answer revoked, but the rollback to {sha} failed: {why}"
+
 msgid "Answered on your behalf"
 msgstr "Answered on your behalf"
 
@@ -567,6 +579,18 @@ msgstr "At most {maxGroups} groups at once. When it is full, approved requiremen
 
 msgid "Attach"
 msgstr "Attach"
+
+msgid "audit {verdict}"
+msgstr "audit {verdict}"
+
+msgid "audit {verdict}: {note}"
+msgstr "audit {verdict}: {note}"
+
+msgid "audit passed — queued to merge, {place} of {total}"
+msgstr "audit passed — queued to merge, {place} of {total}"
+
+msgid "audit passed — ready for you to merge"
+msgstr "audit passed — ready for you to merge"
 
 msgid "Author"
 msgstr "Author"
@@ -637,6 +661,14 @@ msgstr "boundary still overlaps"
 msgid "Branch"
 msgstr "Branch"
 
+msgid "branch gate failed:\n"
+"{gates}"
+msgstr "branch gate failed:\n"
+"{gates}"
+
+msgid "branch sent back by {from} {n, plural, one {# time} other {# times}} — stopping rather than paying for another round"
+msgstr "branch sent back by {from} {n, plural, one {# time} other {# times}} — stopping rather than paying for another round"
+
 msgid "Branches, PRs and code on GitHub"
 msgstr "Branches, PRs and code on GitHub"
 
@@ -699,6 +731,14 @@ msgstr "Cancel all queued turns; return the occupied slot to another group."
 
 msgid "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
 msgstr "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
+
+msgid "cancelled {n, plural, one {# job} other {# jobs}} queued for a dissolved group"
+msgstr "cancelled {n, plural, one {# job} other {# jobs}} queued for a dissolved group"
+
+msgid "Cannot open a container, so every turn is held: {why}\n"
+"Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back."
+msgstr "Cannot open a container, so every turn is held: {why}\n"
+"Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back."
 
 msgid "cannot reach it: {error}"
 msgstr "cannot reach it: {error}"
@@ -874,6 +914,9 @@ msgstr "Container will be discarded. The next turn will rebuild it: re-clone the
 msgid "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:"
 msgstr "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:"
 
+msgid "Containers open again; the held work resumes on its own."
+msgstr "Containers open again; the held work resumes on its own."
+
 msgid "context full"
 msgstr "context full"
 
@@ -898,17 +941,32 @@ msgstr "CoS working"
 msgid "Cost"
 msgstr "Cost"
 
+msgid "could not check file ownership this turn (git status in the sandbox: {out})"
+msgstr "could not check file ownership this turn (git status in the sandbox: {out})"
+
 msgid "could not force-stop pid {pid}: {error}"
 msgstr "could not force-stop pid {pid}: {error}"
 
 msgid "Could not generate a draft; you'll need to write this one yourself."
 msgstr "Could not generate a draft; you'll need to write this one yourself."
 
+msgid "could not open a PR: {why}"
+msgstr "could not open a PR: {why}"
+
+msgid "could not put {file} into the sandbox: {why}"
+msgstr "could not put {file} into the sandbox: {why}"
+
+msgid "could not roll back {n, plural, one {# file} other {# files}} outside this group's paths ({files}): {out}"
+msgstr "could not roll back {n, plural, one {# file} other {# files}} outside this group's paths ({files}): {out}"
+
 msgid "could not start {bin}: {error}"
 msgstr "could not start {bin}: {error}"
 
 msgid "could not stop pid {pid}: {error}"
 msgstr "could not stop pid {pid}: {error}"
+
+msgid "could not take {branch} out of the sandbox: {why}"
+msgstr "could not take {branch} out of the sandbox: {why}"
 
 msgid "Couldn't read the settings from the server."
 msgstr "Couldn't read the settings from the server."
@@ -930,6 +988,9 @@ msgstr "Credential check"
 
 msgid "Credential name"
 msgstr "Credential name"
+
+msgid "Credentials did not bind to this container, so the decoy values inside go out unchanged — every model call from here 401s. That is not the token's fault, and signing in again will not help. Cause: {why}"
+msgstr "Credentials did not bind to this container, so the decoy values inside go out unchanged — every model call from here 401s. That is not the token's fault, and signing in again will not help. Cause: {why}"
 
 msgid "Custom gateway; usage not displayed in header"
 msgstr "Custom gateway; usage not displayed in header"
@@ -1029,6 +1090,12 @@ msgstr "Double to {doubledLabel}"
 
 msgid "DRAFT approved"
 msgstr "DRAFT approved"
+
+msgid "DRAFT card filed: {goal}"
+msgstr "DRAFT card filed: {goal}"
+
+msgid "DRAFT card filed: {goal} ({n, plural, one {# planning turn} other {# planning turns}} dropped)"
+msgstr "DRAFT card filed: {goal} ({n, plural, one {# planning turn} other {# planning turns}} dropped)"
 
 msgid "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
 msgstr "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
@@ -1181,6 +1248,9 @@ msgstr "Follow window"
 
 msgid "Follow window—updates as window changes, fits without crowding"
 msgstr "Follow window—updates as window changes, fits without crowding"
+
+msgid "for you: {question}"
+msgstr "for you: {question}"
 
 msgid "Forward to webhook"
 msgstr "Forward to webhook"
@@ -1424,6 +1494,9 @@ msgstr "In progress"
 msgid "Including downstream"
 msgstr "Including downstream"
 
+msgid "index call ({total} tokens)"
+msgstr "index call ({total} tokens)"
+
 msgid "Index model"
 msgstr "Index model"
 
@@ -1465,6 +1538,15 @@ msgstr "Interrupt and rollback"
 msgid "Interrupt, keep changes"
 msgstr "Interrupt, keep changes"
 
+msgid "interrupted ({mode}), killed {killed}"
+msgstr "interrupted ({mode}), killed {killed}"
+
+msgid "interrupted ({mode}), killed {killed}, rolled back to {sha}"
+msgstr "interrupted ({mode}), killed {killed}, rolled back to {sha}"
+
+msgid "interrupted, but the rollback to {sha} failed: {why}. The checkout is dirty."
+msgstr "interrupted, but the rollback to {sha} failed: {why}. The checkout is dirty."
+
 msgid "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
 msgstr "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
 
@@ -1505,6 +1587,12 @@ msgstr "Key"
 
 msgid "Last 24 hours, per hour"
 msgstr "Last 24 hours, per hour"
+
+msgid "lease {resource} #{id} started"
+msgstr "lease {resource} #{id} started"
+
+msgid "lease #{id} exit {code}"
+msgstr "lease #{id} exit {code}"
 
 msgid "Lease timeout"
 msgstr "Lease timeout"
@@ -1692,8 +1780,14 @@ msgstr "No events"
 msgid "no file"
 msgstr "no file"
 
+msgid "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
+msgstr "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
+
 msgid "No gates enabled; LLM review has no floor."
 msgstr "No gates enabled; LLM review has no floor."
+
+msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
+msgstr "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 
 msgid "no login is waiting for a code — start one first"
 msgstr "no login is waiting for a code — start one first"
@@ -1758,6 +1852,9 @@ msgstr "No requirements in progress. Click + for a new one in the top right."
 msgid "No requirements yet"
 msgstr "No requirements yet"
 
+msgid "no retro yet — the group cannot wind up without one"
+msgstr "no retro yet — the group cannot wind up without one"
+
 msgid "No runnable commands found."
 msgstr "No runnable commands found."
 
@@ -1772,6 +1869,9 @@ msgstr "No slice"
 
 msgid "No slices"
 msgstr "No slices"
+
+msgid "no squash ({why})"
+msgstr "no squash ({why})"
 
 msgid "no such group"
 msgstr "no such group"
@@ -1917,6 +2017,9 @@ msgstr "Open PR ↗"
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "opened as requirement {name} (grp {grp})"
 
+msgid "opened PR #{pr} to replace the closed one"
+msgstr "opened PR #{pr} to replace the closed one"
+
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 
@@ -1950,6 +2053,9 @@ msgstr "overlaps {overlapping}"
 msgid "Ownership"
 msgstr "Ownership"
 
+msgid "owns {paths}"
+msgstr "owns {paths}"
+
 msgid "p50"
 msgstr "p50"
 
@@ -1965,8 +2071,14 @@ msgstr "P95"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 
+msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
+msgstr "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
+
 msgid "Panel language"
 msgstr "Panel language"
+
+msgid "parked ({reason}); {n, plural, one {# queued turn} other {# queued turns}} dropped, worktree untouched"
+msgstr "parked ({reason}); {n, plural, one {# queued turn} other {# queued turns}} dropped, worktree untouched"
 
 msgid "Pass"
 msgstr "Pass"
@@ -1980,6 +2092,9 @@ msgstr "Paste it; hidden after saving"
 msgid "Pause"
 msgstr "Pause"
 
+msgid "paused"
+msgstr "paused"
+
 msgid "Paused"
 msgstr "Paused"
 
@@ -1988,6 +2103,9 @@ msgstr "PAUSED"
 
 msgid "Pausing"
 msgstr "Pausing"
+
+msgid "pausing — waiting for {n, plural, one {# turn} other {# turns}} to land"
+msgstr "pausing — waiting for {n, plural, one {# turn} other {# turns}} to land"
 
 msgid "Pending"
 msgstr "Pending"
@@ -2052,10 +2170,21 @@ msgstr "Polling intervals"
 msgid "PR #{n} opened"
 msgstr "PR #{n} opened"
 
+msgid "PR #{pr} has feedback:\n"
+"{lines}"
+msgstr "PR #{pr} has feedback:\n"
+"{lines}"
+
+msgid "PR #{pr} was closed without merging"
+msgstr "PR #{pr} was closed without merging"
+
 msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
 "To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
 msgstr "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
 "To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
+
+msgid "PR #{pr} was reopened; back in the merge queue"
+msgstr "PR #{pr} was reopened; back in the merge queue"
 
 msgid "PR closed — reopen it or not"
 msgstr "PR closed — reopen it or not"
@@ -2080,6 +2209,9 @@ msgstr "Prepare this turn"
 
 msgid "Private"
 msgstr "Private"
+
+msgid "project {project} has no remote recorded, so there is nothing to clone — /work is still empty and there is no code to run this turn"
+msgstr "project {project} has no remote recorded, so there is nothing to clone — /work is still empty and there is no code to run this turn"
 
 msgid "Project name…"
 msgstr "Project name…"
@@ -2123,8 +2255,8 @@ msgstr "quota is back, resuming"
 msgid "Rate limited reading usage; it recovers by itself shortly"
 msgstr "Rate limited reading usage; it recovers by itself shortly"
 
-msgid "rate limited; everything on this CLI holds until the window reopens (~{at}) and resumes itself — the quota belongs to the account, so no model spends less of it"
-msgstr "rate limited; everything on this CLI holds until the window reopens (~{at}) and resumes itself — the quota belongs to the account, so no model spends less of it"
+msgid "rate limited; everything on this CLI holds until the window reopens (~{at, date, short} {at, time, short}) and resumes itself — the quota belongs to the account, so no model spends less of it"
+msgstr "rate limited; everything on this CLI holds until the window reopens (~{at, date, short} {at, time, short}) and resumes itself — the quota belongs to the account, so no model spends less of it"
 
 msgid "reachable"
 msgstr "reachable"
@@ -2144,11 +2276,19 @@ msgstr "Reading how much of the subscription window is left, curl'd from the uti
 msgid "Real tokens don't enter the sandbox"
 msgstr "Real tokens don't enter the sandbox"
 
+msgid "rebase onto the base branch failed while waking up:\n"
+"{out}"
+msgstr "rebase onto the base branch failed while waking up:\n"
+"{out}"
+
 msgid "Recheck reachability"
 msgstr "Recheck reachability"
 
 msgid "Recheck the repo map"
 msgstr "Recheck the repo map"
+
+msgid "reclaimed {n, plural, one {# turn} other {# turns}} left running by the previous server, resumed {resumed}"
+msgstr "reclaimed {n, plural, one {# turn} other {# turns}} left running by the previous server, resumed {resumed}"
 
 msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
 msgstr "reconcile failed on S{seq}: claimed but not changed — {files}"
@@ -2170,6 +2310,9 @@ msgstr "Refreshed locally"
 
 msgid "Reject this slice"
 msgstr "Reject this slice"
+
+msgid "rejected"
+msgstr "rejected"
 
 msgid "Rejected"
 msgstr "Rejected"
@@ -2243,6 +2386,9 @@ msgstr "Reply. Sending this will unblock the waiting agent. Cmd+Enter to send"
 msgid "Reply… Cmd+Enter to send"
 msgstr "Reply… Cmd+Enter to send"
 
+msgid "repo map refreshed ({files, plural, one {# file} other {# files}}, {read} read for symbols)"
+msgstr "repo map refreshed ({files, plural, one {# file} other {# files}}, {read} read for symbols)"
+
 msgid "Repo-wide"
 msgstr "Repo-wide"
 
@@ -2287,6 +2433,12 @@ msgstr "resets in {span}"
 
 msgid "Resetting soon"
 msgstr "Resetting soon"
+
+msgid "resolved review thread on {path}"
+msgstr "resolved review thread on {path}"
+
+msgid "resolved review thread on {path}: {note}"
+msgstr "resolved review thread on {path}: {note}"
 
 msgid "Resource lease"
 msgstr "Resource lease"
@@ -2338,6 +2490,18 @@ msgstr "Review threads"
 
 msgid "Revoke and take over"
 msgstr "Revoke and take over"
+
+msgid "revoked {by}'s answer"
+msgstr "revoked {by}'s answer"
+
+msgid "revoked {by}'s answer and rolled back to {sha}"
+msgstr "revoked {by}'s answer and rolled back to {sha}"
+
+msgid "revoked the answer"
+msgstr "revoked the answer"
+
+msgid "revoked the answer and rolled back to {sha}"
+msgstr "revoked the answer and rolled back to {sha}"
 
 msgid "Risk"
 msgstr "Risk"
@@ -2409,6 +2573,12 @@ msgstr "S{seq} \"{title}\" failed {from} {n} times. Latest:\n"
 
 msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq} \"{title}\" is ready for you"
+
+msgid "S{seq} {verdict}"
+msgstr "S{seq} {verdict}"
+
+msgid "S{seq} {verdict}: {note}"
+msgstr "S{seq} {verdict}: {note}"
 
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
@@ -2551,6 +2721,14 @@ msgstr "Silence this long and the group is asked what it is doing. Not a failure
 msgid "Skills"
 msgstr "Skills"
 
+msgid "Skills are mounted but the directory inside is empty: host {hostPath} has {onHost}, and {at} in the container has 0.\n"
+"The container runtime cannot read that host path, so binding it delivers an empty directory — on macOS docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's allowed_host_paths, and restart it. Until then agents have no skills at all."
+msgstr "Skills are mounted but the directory inside is empty: host {hostPath} has {onHost}, and {at} in the container has 0.\n"
+"The container runtime cannot read that host path, so binding it delivers an empty directory — on macOS docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's allowed_host_paths, and restart it. Until then agents have no skills at all."
+
+msgid "Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list {path}. Add it and reopen this group's container; until then agents can only use the skills named in the input box."
+msgstr "Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list {path}. Add it and reopen this group's container; until then agents can only use the skills named in the input box."
+
 msgid "Skills staging directory"
 msgstr "Skills staging directory"
 
@@ -2592,6 +2770,9 @@ msgstr "Split out of the requirement {from}."
 
 msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
 msgstr "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
+
+msgid "squashed {why}"
+msgstr "squashed {why}"
 
 msgid "Stage durations"
 msgstr "Stage durations"
@@ -2682,6 +2863,9 @@ msgstr "System timing"
 msgid "Take note"
 msgstr "Take note"
 
+msgid "task {task} done"
+msgstr "task {task} done"
+
 msgid "The {runtime} credential stopped working: {why}\n"
 "Go to settings → {runtime} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done."
 msgstr "The {runtime} credential stopped working: {why}\n"
@@ -2757,6 +2941,9 @@ msgstr "The other half of stuck: the same file rewritten this many times running
 msgid "the PR will not open"
 msgstr "the PR will not open"
 
+msgid "the project is gone (project {project} is not there), so /work is still empty — there is no code to run this turn"
+msgstr "the project is gone (project {project} is not there), so /work is still empty — there is no code to run this turn"
+
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "the repo map cannot be refreshed: {repo} — {why}"
 
@@ -2795,6 +2982,9 @@ msgstr "the sandbox server was already running, so this used the one that was th
 
 msgid "the sandbox server was restarted, so every container it held is gone"
 msgstr "the sandbox server was restarted, so every container it held is gone"
+
+msgid "The sandbox was rebuilt, but the workspace was not restored: {why}"
+msgstr "The sandbox was rebuilt, but the workspace was not restored: {why}"
 
 msgid "the server asks for no API key, so any process on this machine can enter a container"
 msgstr "the server asks for no API key, so any process on this machine can enter a container"
@@ -2924,11 +3114,17 @@ msgstr "tokens · share"
 msgid "tokens must be a positive number, or null to lift the cap"
 msgstr "tokens must be a positive number, or null to lift the cap"
 
+msgid "triaged as {as}: {note}"
+msgstr "triaged as {as}: {note}"
+
 msgid "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
 msgstr "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
 
 msgid "Try again"
 msgstr "Try again"
+
+msgid "turn done ({steps, plural, one {# step} other {# steps}}, {total} tokens)"
+msgstr "turn done ({steps, plural, one {# step} other {# steps}}, {total} tokens)"
 
 msgid "turn ran past {min} min and was killed"
 msgstr "turn ran past {min} min and was killed"
@@ -3127,6 +3323,9 @@ msgstr "Why this value"
 
 msgid "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM"
 msgstr "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM"
+
+msgid "woken up"
+msgstr "woken up"
 
 msgid "Workflow"
 msgstr "Workflow"

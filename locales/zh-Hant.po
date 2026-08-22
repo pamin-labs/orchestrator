@@ -44,6 +44,12 @@ msgstr "{base} 動到了 {sha}，{name} 的基線落後了，已經讓它先 reb
 msgid "{branch} (per the remote)"
 msgstr "{branch}（遠端說的）"
 
+msgid "{by} passed this up, with no reason given"
+msgstr "{by} 往上遞了，沒給原因"
+
+msgid "{by} passed this up: {why}"
+msgstr "{by} 往上遞了：{why}"
+
 msgid "{config} covers all {count} paths to be mounted"
 msgstr "{config} 覆蓋了要掛載的全部 {count} 個路徑"
 
@@ -329,6 +335,9 @@ msgstr "在跑 {runningCount} · 共 {total}"
 msgid "{runtime} credential expired"
 msgstr "{runtime} 憑證過期"
 
+msgid "{runtime} credentials rejected"
+msgstr "{runtime} 的憑證被拒了"
+
 msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
 msgstr "{server} 有應答，但它不是 sandbox server（HTTP {status}）——換個地址。"
 
@@ -508,6 +517,9 @@ msgstr "映像只能是我們發布的（ghcr.io/pamin-labs/…）或者你本�
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
 msgstr "沒跑完的 turn 就白跑了，組會自己重開容器接著做，程式碼和分支不受影響。"
 
+msgid "answer revoked, but the rollback to {sha} failed: {why}"
+msgstr "答覆已撤銷，但復原到 {sha} 失敗了：{why}"
+
 msgid "Answered on your behalf"
 msgstr "替你答過"
 
@@ -567,6 +579,18 @@ msgstr "並行上限 {maxGroups} 組。滿了已批准的需求排隊等槽位�
 
 msgid "Attach"
 msgstr "附件"
+
+msgid "audit {verdict}"
+msgstr "審計 {verdict}"
+
+msgid "audit {verdict}: {note}"
+msgstr "審計 {verdict}：{note}"
+
+msgid "audit passed — queued to merge, {place} of {total}"
+msgstr "審計通過 —— 排隊等合併，第 {place} 個，共 {total} 個"
+
+msgid "audit passed — ready for you to merge"
+msgstr "審計通過 —— 可以合併了"
 
 msgid "Author"
 msgstr "作者"
@@ -637,6 +661,14 @@ msgstr "邊界仍然重疊"
 msgid "Branch"
 msgstr "分支"
 
+msgid "branch gate failed:\n"
+"{gates}"
+msgstr "分支閘門沒過：\n"
+"{gates}"
+
+msgid "branch sent back by {from} {n, plural, one {# time} other {# times}} — stopping rather than paying for another round"
+msgstr "分支被 {from} 打回 {n, plural, other {# 次}} —— 不再為下一輪買單，就此停住"
+
 msgid "Branches, PRs and code on GitHub"
 msgstr "GitHub 上的分支、PR、程式碼"
 
@@ -699,6 +731,14 @@ msgstr "排隊的 turn 全取消，佔的路徑交還給別的組"
 
 msgid "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
 msgstr "排隊的 turn 全取消，佔的路徑交還給別的組。程式碼、分支和記錄都留著"
+
+msgid "cancelled {n, plural, one {# job} other {# jobs}} queued for a dissolved group"
+msgstr "取消了 {n, plural, other {# 個}}排在已解散需求下的任務"
+
+msgid "Cannot open a container, so every turn is held: {why}\n"
+"Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back."
+msgstr "起不了容器，所有回合都擱置了：{why}\n"
+"通常是 docker 沒起來，或者 opensandbox-server 沒執行 —— 設定裡的自檢面板會說是哪個。恢復之後活會自己接著跑。"
 
 msgid "cannot reach it: {error}"
 msgstr "連不上：{error}"
@@ -874,6 +914,9 @@ msgstr "容器會被扔掉，下一個 turn 重建：重新 clone 分支、重�
 msgid "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:"
 msgstr "容器不報錯，只掛個空目錄，勾上的技能就這麼沒了。把這行寫進配置，然後重啟："
 
+msgid "Containers open again; the held work resumes on its own."
+msgstr "容器又能起了，擱置的活自己會接著跑。"
+
 msgid "context full"
 msgstr "上下文滿了"
 
@@ -898,17 +941,32 @@ msgstr "CoS 處理中"
 msgid "Cost"
 msgstr "成本"
 
+msgid "could not check file ownership this turn (git status in the sandbox: {out})"
+msgstr "這一回合沒能檢查檔案歸屬（沙箱裡的 git status：{out}）"
+
 msgid "could not force-stop pid {pid}: {error}"
 msgstr "強制停止 pid {pid} 失敗：{error}"
 
 msgid "Could not generate a draft; you'll need to write this one yourself."
 msgstr "沒能擬出來，這條得你自己寫。"
 
+msgid "could not open a PR: {why}"
+msgstr "開不了 PR：{why}"
+
+msgid "could not put {file} into the sandbox: {why}"
+msgstr "沒能把 {file} 放進沙箱：{why}"
+
+msgid "could not roll back {n, plural, one {# file} other {# files}} outside this group's paths ({files}): {out}"
+msgstr "沒能復原 {n, plural, other {# 個}}越出這個需求邊界的檔案（{files}）：{out}"
+
 msgid "could not start {bin}: {error}"
 msgstr "起不來 {bin}：{error}"
 
 msgid "could not stop pid {pid}: {error}"
 msgstr "停止 pid {pid} 失敗：{error}"
+
+msgid "could not take {branch} out of the sandbox: {why}"
+msgstr "沒能把 {branch} 從沙箱裡取出來：{why}"
 
 msgid "Couldn't read the settings from the server."
 msgstr "讀不到伺服器上的設定。"
@@ -930,6 +988,9 @@ msgstr "憑證檢查"
 
 msgid "Credential name"
 msgstr "憑證名"
+
+msgid "Credentials did not bind to this container, so the decoy values inside go out unchanged — every model call from here 401s. That is not the token's fault, and signing in again will not help. Cause: {why}"
+msgstr "憑證沒綁進這個容器，裡面的假值會原樣發出去 —— 從這裡發出的每次模型呼叫都會 401。這不是 token 的問題，重新登入也沒用。原因：{why}"
 
 msgid "Custom gateway; usage not displayed in header"
 msgstr "自建閘道，頭部不顯示額度"
@@ -1029,6 +1090,12 @@ msgstr "翻倍到 {doubledLabel}"
 
 msgid "DRAFT approved"
 msgstr "計劃卡批准，開工"
+
+msgid "DRAFT card filed: {goal}"
+msgstr "DRAFT 卡片已歸檔：{goal}"
+
+msgid "DRAFT card filed: {goal} ({n, plural, one {# planning turn} other {# planning turns}} dropped)"
+msgstr "DRAFT 卡片已歸檔：{goal}（丟掉了 {n, plural, other {# 個}}規劃回合）"
 
 msgid "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
 msgstr "掉到 50% 以下＝prompt 組裝被改壞，每個 turn 貴 3-5 倍"
@@ -1181,6 +1248,9 @@ msgstr "跟隨視窗"
 
 msgid "Follow window—updates as window changes, fits without crowding"
 msgstr "視窗一變就跟著變，夠畫又不擠"
+
+msgid "for you: {question}"
+msgstr "給你的：{question}"
 
 msgid "Forward to webhook"
 msgstr "轉發到 webhook"
@@ -1424,6 +1494,9 @@ msgstr "進行中"
 msgid "Including downstream"
 msgstr "含下游"
 
+msgid "index call ({total} tokens)"
+msgstr "索引呼叫（{total} tokens）"
+
 msgid "Index model"
 msgstr "索引模型"
 
@@ -1465,6 +1538,15 @@ msgstr "打斷並復原"
 msgid "Interrupt, keep changes"
 msgstr "打斷，保留改動"
 
+msgid "interrupted ({mode}), killed {killed}"
+msgstr "已打斷（{mode}），殺掉 {killed} 個"
+
+msgid "interrupted ({mode}), killed {killed}, rolled back to {sha}"
+msgstr "已打斷（{mode}），殺掉 {killed} 個，復原到 {sha}"
+
+msgid "interrupted, but the rollback to {sha} failed: {why}. The checkout is dirty."
+msgstr "已打斷，但復原到 {sha} 失敗了：{why}。工作區是髒的。"
+
 msgid "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
 msgstr "沙箱伺服器在不在，認不認我們的金鑰。通常是迴環，而且它的答案只是填一份報告——下面那個網路探測才卡著整個 fleet。"
 
@@ -1505,6 +1587,12 @@ msgstr "金鑰"
 
 msgid "Last 24 hours, per hour"
 msgstr "近 24 小時，按小時"
+
+msgid "lease {resource} #{id} started"
+msgstr "租約 {resource} #{id} 開始了"
+
+msgid "lease #{id} exit {code}"
+msgstr "租約 #{id} 退出碼 {code}"
 
 msgid "Lease timeout"
 msgstr "單條閘門上限"
@@ -1692,8 +1780,14 @@ msgstr "無事件"
 msgid "no file"
 msgstr "沒有檔案"
 
+msgid "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
+msgstr "這個儲存庫裡沒檢測到任何閘門。在專案至少有一個之前，每個切片的審查都會失敗：加一個資源模板，並把它的名字寫進專案的 gates。"
+
 msgid "No gates enabled; LLM review has no floor."
 msgstr "一道都沒開，LLM 審閱底下就沒有地板。"
+
+msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
+msgstr "grp 表裡沒有 {grp} 這個需求，所以 /work 還是空的 —— 這一回合沒有程式碼可跑"
 
 msgid "no login is waiting for a code — start one first"
 msgstr "沒有在等碼的登入 —— 先點登入"
@@ -1758,6 +1852,9 @@ msgstr "沒有在辦的需求。右上角 ＋ 新需求。"
 msgid "No requirements yet"
 msgstr "還沒有需求"
 
+msgid "no retro yet — the group cannot wind up without one"
+msgstr "還沒寫復盤 —— 沒有復盤，這個需求收不了尾"
+
 msgid "No runnable commands found."
 msgstr "沒探到可跑的命令。"
 
@@ -1772,6 +1869,9 @@ msgstr "沒歸到切片"
 
 msgid "No slices"
 msgstr "無切片"
+
+msgid "no squash ({why})"
+msgstr "沒有壓縮提交（{why}）"
 
 msgid "no such group"
 msgstr "沒有這個組"
@@ -1917,6 +2017,9 @@ msgstr "開啟 PR ↗"
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "開成需求 {name}（grp {grp}）"
 
+msgid "opened PR #{pr} to replace the closed one"
+msgstr "開了 PR #{pr}，頂替被關掉的那個"
+
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server 沒了，重啟了（第 {n} 次）。擱置的活會自己繼續。"
 
@@ -1950,6 +2053,9 @@ msgstr "壓著 {overlapping}"
 msgid "Ownership"
 msgstr "所有權"
 
+msgid "owns {paths}"
+msgstr "邊界劃為 {paths}"
+
 msgid "p50"
 msgstr "一半的情況"
 
@@ -1965,8 +2071,14 @@ msgstr "最慢"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "PageIndex 建不起來：{n} 次呼叫全部沒有返回。去設定頁看看索引用的那個賬號還能不能用。"
 
+msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
+msgstr "PageIndex：總結了 {n, plural, other {# 個}}節點，索引了 {files, plural, other {# 個}}檔案"
+
 msgid "Panel language"
 msgstr "介面語言"
+
+msgid "parked ({reason}); {n, plural, one {# queued turn} other {# queued turns}} dropped, worktree untouched"
+msgstr "已停放（{reason}）；丟掉了 {n, plural, other {# 個}}排隊回合，工作區沒動"
 
 msgid "Pass"
 msgstr "過"
@@ -1980,6 +2092,9 @@ msgstr "貼上進來，存下之後看不到"
 msgid "Pause"
 msgstr "暫停"
 
+msgid "paused"
+msgstr "已暫停"
+
 msgid "Paused"
 msgstr "已暫停"
 
@@ -1988,6 +2103,9 @@ msgstr "全組已暫停"
 
 msgid "Pausing"
 msgstr "正在停"
+
+msgid "pausing — waiting for {n, plural, one {# turn} other {# turns}} to land"
+msgstr "正在暫停 —— 等 {n, plural, other {# 個}}回合落地"
 
 msgid "Pending"
 msgstr "待查收"
@@ -2052,10 +2170,21 @@ msgstr "輪詢間隔"
 msgid "PR #{n} opened"
 msgstr "PR #{n} 已開"
 
+msgid "PR #{pr} has feedback:\n"
+"{lines}"
+msgstr "PR #{pr} 有反饋：\n"
+"{lines}"
+
+msgid "PR #{pr} was closed without merging"
+msgstr "PR #{pr} 沒合併就被關了"
+
 msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
 "To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
 msgstr "PR #{pr} 被關掉了（沒有合入）。這一組已經停下並讓出了合入佇列。\n"
 "要繼續：在 GitHub 上重開這個 PR，它會自己回到佇列。不想要了：在這個需求上點「不做了」。"
+
+msgid "PR #{pr} was reopened; back in the merge queue"
+msgstr "PR #{pr} 又開啟了，重新進合併佇列"
 
 msgid "PR closed — reopen it or not"
 msgstr "PR 被關掉了，要不要重開"
@@ -2080,6 +2209,9 @@ msgstr "準備這一輪"
 
 msgid "Private"
 msgstr "私有"
+
+msgid "project {project} has no remote recorded, so there is nothing to clone — /work is still empty and there is no code to run this turn"
+msgstr "專案 {project} 沒記錄遠端，沒有東西可複製 —— /work 還是空的，這一回合沒有程式碼可跑"
 
 msgid "Project name…"
 msgstr "專案名…"
@@ -2123,8 +2255,8 @@ msgstr "額度恢復，自動繼續"
 msgid "Rate limited reading usage; it recovers by itself shortly"
 msgstr "讀用量被限流了，過一會自己恢復"
 
-msgid "rate limited; everything on this CLI holds until the window reopens (~{at}) and resumes itself — the quota belongs to the account, so no model spends less of it"
-msgstr "撞到限額，這個 CLI 上的活全部擱置等額度恢復（約 {at}），到點自動繼續 —— 換模型不換池子，等是唯一的選擇"
+msgid "rate limited; everything on this CLI holds until the window reopens (~{at, date, short} {at, time, short}) and resumes itself — the quota belongs to the account, so no model spends less of it"
+msgstr "撞到限額，這個 CLI 上的活全部擱置等額度恢復（約 {at, date, short} {at, time, short}），到點自動繼續 —— 換模型不換池子，等是唯一的選擇"
 
 msgid "reachable"
 msgstr "能連上"
@@ -2144,11 +2276,19 @@ msgstr "讀訂閱視窗還剩多少，從工具容器裡 curl。沒有東西等�
 msgid "Real tokens don't enter the sandbox"
 msgstr "真權杖不進沙箱"
 
+msgid "rebase onto the base branch failed while waking up:\n"
+"{out}"
+msgstr "醒來時往基線分支上 rebase 失敗了：\n"
+"{out}"
+
 msgid "Recheck reachability"
 msgstr "重新檢查可達性"
 
 msgid "Recheck the repo map"
 msgstr "重新檢查儲存庫地圖"
+
+msgid "reclaimed {n, plural, one {# turn} other {# turns}} left running by the previous server, resumed {resumed}"
+msgstr "回收了上一個服務端留下的 {n, plural, other {# 個}}在跑回合，恢復了 {resumed} 個"
 
 msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
 msgstr "S{seq} 的對賬沒過：認領了但沒改動——{files}"
@@ -2170,6 +2310,9 @@ msgstr "本機統一重新整理"
 
 msgid "Reject this slice"
 msgstr "退回這一片"
+
+msgid "rejected"
+msgstr "打回"
 
 msgid "Rejected"
 msgstr "退回"
@@ -2243,6 +2386,9 @@ msgstr "答覆。發出去直接解開被阻塞的 agent。⌘Enter 傳送"
 msgid "Reply… Cmd+Enter to send"
 msgstr "回答…  ⌘↵ 傳送"
 
+msgid "repo map refreshed ({files, plural, one {# file} other {# files}}, {read} read for symbols)"
+msgstr "儲存庫地圖重新整理了（{files, plural, other {# 個}}檔案，讀了 {read} 個取符號）"
+
 msgid "Repo-wide"
 msgstr "隨儲存庫"
 
@@ -2287,6 +2433,12 @@ msgstr "{span}後重置"
 
 msgid "Resetting soon"
 msgstr "即將重置"
+
+msgid "resolved review thread on {path}"
+msgstr "解決了 {path} 上的審查討論"
+
+msgid "resolved review thread on {path}: {note}"
+msgstr "解決了 {path} 上的審查討論：{note}"
 
 msgid "Resource lease"
 msgstr "借用資源"
@@ -2338,6 +2490,18 @@ msgstr "審閱執行緒數"
 
 msgid "Revoke and take over"
 msgstr "撤銷並接管"
+
+msgid "revoked {by}'s answer"
+msgstr "撤銷了 {by} 的答覆"
+
+msgid "revoked {by}'s answer and rolled back to {sha}"
+msgstr "撤銷了 {by} 的答覆，並復原到 {sha}"
+
+msgid "revoked the answer"
+msgstr "撤銷了這條答覆"
+
+msgid "revoked the answer and rolled back to {sha}"
+msgstr "撤銷了這條答覆，並復原到 {sha}"
 
 msgid "Risk"
 msgstr "風險"
@@ -2409,6 +2573,12 @@ msgstr "S{seq}「{title}」在 {from} 上連著掛了 {n} 次。最近一次：\
 
 msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq}「{title}」做完了，等你查收"
+
+msgid "S{seq} {verdict}"
+msgstr "S{seq} {verdict}"
+
+msgid "S{seq} {verdict}: {note}"
+msgstr "S{seq} {verdict}：{note}"
 
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} 連續 {n} 次沒過 {from} —— 大概是驗收標準的問題，不是程式碼"
@@ -2551,6 +2721,14 @@ msgstr "沉默這麼久，就會去問這個組在幹什麼。不是失敗——
 msgid "Skills"
 msgstr "技能"
 
+msgid "Skills are mounted but the directory inside is empty: host {hostPath} has {onHost}, and {at} in the container has 0.\n"
+"The container runtime cannot read that host path, so binding it delivers an empty directory — on macOS docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's allowed_host_paths, and restart it. Until then agents have no skills at all."
+msgstr "技能目錄掛上了，但容器裡是空的：宿主機 {hostPath} 有 {onHost} 個，容器裡的 {at} 有 0 個。\n"
+"容器執行時讀不到那個宿主路徑，綁上去只會得到一個空目錄 —— macOS 上 docker 跑在虛擬機器裡，虛擬機器外的路徑（/var/tmp 之類）從來不會共享進去。把 skillsDir 指到一個能共享的位置（$HOME 就行），加進 opensandbox-server 的 allowed_host_paths，然後重啟它。在那之前 agent 一個技能都沒有。"
+
+msgid "Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list {path}. Add it and reopen this group's container; until then agents can only use the skills named in the input box."
+msgstr "技能沒掛進沙箱：opensandbox-server 的 allowed_host_paths 裡沒有 {path}。加進去並重開這個需求的容器；在那之前 agent 只能用輸入框裡點名的技能。"
+
 msgid "Skills staging directory"
 msgstr "技能暫存目錄"
 
@@ -2592,6 +2770,9 @@ msgstr "從「{from}」拆出來的一條。"
 
 msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
 msgstr "從「{from}」拆出來的一條。原始整段見 note #{note}。"
+
+msgid "squashed {why}"
+msgstr "已壓縮提交（{why}）"
 
 msgid "Stage durations"
 msgstr "各環節耗時"
@@ -2682,6 +2863,9 @@ msgstr "系統耗時"
 msgid "Take note"
 msgstr "記筆記"
 
+msgid "task {task} done"
+msgstr "任務 {task} 完成"
+
 msgid "The {runtime} credential stopped working: {why}\n"
 "Go to settings → {runtime} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done."
 msgstr "{runtime} 的憑證不好使了：{why}\n"
@@ -2757,6 +2941,9 @@ msgstr "「卡住」的另一半：同一個檔案連著被覆寫這麼多次。
 msgid "the PR will not open"
 msgstr "PR 開不出來"
 
+msgid "the project is gone (project {project} is not there), so /work is still empty — there is no code to run this turn"
+msgstr "專案沒了（project {project} 不在），所以 /work 還是空的 —— 這一回合沒有程式碼可跑"
+
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "儲存庫地圖沒法重新整理了：{repo} —— {why}"
 
@@ -2795,6 +2982,9 @@ msgstr "沙箱伺服器本來就在跑，直接用了原來那個"
 
 msgid "the sandbox server was restarted, so every container it held is gone"
 msgstr "沙箱伺服器重啟了，它手上的容器都沒了"
+
+msgid "The sandbox was rebuilt, but the workspace was not restored: {why}"
+msgstr "沙箱重建了，但工作區沒恢復：{why}"
 
 msgid "the server asks for no API key, so any process on this machine can enter a container"
 msgstr "伺服器根本不要 API key，這臺機器上任何行程都能進容器"
@@ -2924,11 +3114,17 @@ msgstr "tokens · 佔比"
 msgid "tokens must be a positive number, or null to lift the cap"
 msgstr "token 必須是正數，或者填 null 取消上限"
 
+msgid "triaged as {as}: {note}"
+msgstr "分診為 {as}：{note}"
+
 msgid "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
 msgstr "按順序試，只在別的都沒答話時才用：專案自己的基線分支優先，然後是 GitHub 的 default_branch。遠端連不上時就落到這裡。"
 
 msgid "Try again"
 msgstr "重試"
+
+msgid "turn done ({steps, plural, one {# step} other {# steps}}, {total} tokens)"
+msgstr "回合結束（{steps, plural, other {# 步}}，{total} tokens）"
 
 msgid "turn ran past {min} min and was killed"
 msgstr "一個 turn 超過 {min} 分鐘，已掐斷"
@@ -3127,6 +3323,9 @@ msgstr "為什麼是這個值"
 
 msgid "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM"
 msgstr "下一個 turn 開頭就會讀到。截圖直接粘，/ 插技能路徑。⌘Enter 發給 PM"
+
+msgid "woken up"
+msgstr "已喚醒"
 
 msgid "Workflow"
 msgstr "走流程"

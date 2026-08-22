@@ -1,3 +1,5 @@
+import { msg } from "@lingui/core/macro";
+import type { Said } from "../../contracts/said.ts";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import type { Locale } from "../../contracts/config.ts";
 import { answered, roleFor, type Ctx } from "../../mech/ctx.ts";
@@ -191,7 +193,7 @@ export async function route(deps: ChainDeps, escId: number): Promise<string> {
         kind: "escalation",
         intent: "ask",
         severity: esc.severity,
-        body: `for you: ${esc.question}`,
+        say: msg`for you: ${{ question: esc.question }}`,
         meta: { escalation_id: escId, chain_state: "boss" },
       });
       return "boss";
@@ -346,11 +348,26 @@ export async function abstain(
     kind: "escalation",
     intent: "ask",
     severity: esc.severity,
-    body: `${by} passed this up: ${why || "no reason given"}`,
+    say: why ? msg`${{ by }} passed this up: ${{ why }}` : msg`${{ by }} passed this up, with no reason given`,
     meta: { escalation_id: escId, next },
   });
   await route(deps, escId);
   return { ok: true };
+}
+
+/**
+ * Four sentences rather than an English article passed as a value.
+ *
+ * This was one template with `answered_by ?? "the"` in it, which put the word
+ * "the" on the wire and read as "撤销了 the 的答复" in every language that has no
+ * article. Out here rather than inline, so that naming the four does not make
+ * `revoke` itself a branchier function than it is.
+ */
+function revoked(by: string | null, sha: string | undefined): Said {
+  const at = sha?.slice(0, 8);
+  if (by)
+    return at ? msg`revoked ${{ by }}'s answer and rolled back to ${{ sha: at }}` : msg`revoked ${{ by }}'s answer`;
+  return at ? msg`revoked the answer and rolled back to ${{ sha: at }}` : msg`revoked the answer`;
 }
 
 /**
@@ -388,7 +405,7 @@ export async function revoke(deps: ChainDeps, escId: number): Promise<{ rolledBa
         kind: "escalation",
         intent: "inform",
         severity: "advisory",
-        body: `answer revoked, but the rollback to ${esc.checkpoint_sha.slice(0, 8)} failed: ${back.error}`,
+        say: msg`answer revoked, but the rollback to ${{ sha: esc.checkpoint_sha.slice(0, 8) }} failed: ${{ why: back.error ?? "" }}`,
       });
     }
   }
@@ -396,9 +413,7 @@ export async function revoke(deps: ChainDeps, escId: number): Promise<{ rolledBa
     grpId: esc.grp_id,
     author: "boss",
     kind: "state_change",
-    body:
-      `revoked ${esc.answered_by ?? "the"} answer` +
-      (rolledBackTo ? ` and rolled back to ${rolledBackTo.slice(0, 8)}` : ""),
+    say: revoked(esc.answered_by, rolledBackTo),
     meta: { escalation_id: escId, ...(rolledBackTo ? { rolledBackTo } : {}) },
   });
   return {
@@ -467,7 +482,7 @@ export async function triage(
     author: roleFor(ctx, "triage_boss_feedback"),
     kind: "state_change",
     intent: "decision",
-    body: `triaged as ${as}: ${note}`,
+    say: msg`triaged as ${{ as: as }}: ${{ note }}`,
     meta: { triage: as },
   });
 

@@ -99,7 +99,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     grpId,
     author: "orchestrator",
     kind: "commit",
-    body: sq.squashed ? `squashed ${sq.reason}` : `no squash (${sq.reason})`,
+    say: sq.squashed ? msg`squashed ${{ why: sq.reason }}` : msg`no squash (${{ why: sq.reason }})`,
   });
 
   // The seam that used to be here is gone with 007 step 5. Two different things
@@ -1103,7 +1103,7 @@ export async function dispatchFeedback(ctx: Ctx, f: Feedback): Promise<void> {
     author: "pr-watcher",
     kind: "say",
     intent: "request",
-    body: `PR #${f.prNumber} has feedback:\n${lines}`.slice(0, 2000),
+    say: msg`PR #${{ pr: f.prNumber }} has feedback:\n${{ lines: lines.slice(0, 1900) }}`,
     meta: { pr: f.prNumber, comments: f.comments.length, failingChecks: f.failingChecks.map((c) => c.name) },
   });
   // Deliberately not moved out of PR_OPEN. That flip made the group deaf to

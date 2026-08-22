@@ -1,4 +1,4 @@
-import { msg } from "@lingui/core/macro";
+import { msg, plural } from "@lingui/core/macro";
 import { transaction } from "../../platform/persistence/database.ts";
 import { and, asc, count, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
@@ -544,7 +544,7 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
       grpId,
       author: "orchestrator",
       kind: "state_change",
-      body: "no retro yet — the group cannot wind up without one",
+      say: msg`no retro yet — the group cannot wind up without one`,
     });
     await ctx.sched.tick();
     return;
@@ -564,7 +564,7 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
       grpId,
       author: "orchestrator",
       kind: "gate_result",
-      body: `branch gate failed:\n${gateOut.feedback}`,
+      say: msg`branch gate failed:\n${{ gates: gateOut.feedback }}`,
     });
     if (await branchRework(deps, grpId, "the branch gate", gateOut.feedback)) return;
     await ctx.sched.enqueue("agent_turn", {
@@ -610,10 +610,10 @@ export async function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolea
       grpId,
       author: roleFor(ctx, "audit_branch"),
       kind: "state_change",
-      body:
+      say:
         pos && pos.position > 1
-          ? `audit passed — queued to merge, ${pos.position} of ${pos.total}`
-          : "audit passed — ready for you to merge",
+          ? msg`audit passed — queued to merge, ${{ place: pos.position }} of ${{ total: pos.total }}`
+          : msg`audit passed — ready for you to merge`,
       meta: { audit: "pass", ...pos },
     });
     return;
@@ -663,7 +663,7 @@ async function branchRework(deps: ReviewDeps, grpId: number, from: string, why: 
     kind: "escalation",
     intent: "ask",
     severity: "blocker",
-    body: `branch sent back by ${from} ${n} times — stopping rather than paying for another round`,
+    say: msg`branch sent back by ${{ from }} ${plural({ n }, { one: "# time", other: "# times" })} — stopping rather than paying for another round`,
   });
   return true;
 }

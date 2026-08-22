@@ -573,7 +573,7 @@ async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise
     await ctx.bus.emit({
       author: roleFor(ctx, "compress_context"),
       kind: "state_change",
-      body: `repo map refreshed (${files.length} files, ${heads.size} read for symbols)`,
+      say: msg`repo map refreshed (${plural({ files: files.length }, { one: "# file", other: "# files" })}, ${{ read: heads.size }} read for symbols)`,
     });
   }
   // After the map is stored, never before: a tick that refreshed nothing must not
@@ -1144,7 +1144,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       await ctx.bus.emit({
         author: "orchestrator",
         kind: "state_change",
-        body: `cancelled ${orphanQueued.length} job(s) queued for a dissolved group`,
+        say: msg`cancelled ${plural({ n: orphanQueued.length }, { one: "# job", other: "# jobs" })} queued for a dissolved group`,
       });
     }
   });

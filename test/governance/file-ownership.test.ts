@@ -1,4 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { sayIn } from "../../src/contracts/said.ts";
+import { said } from "../support/said.ts";
+
+/** The one sentence both rollback tests below are about, named once. */
+const ROLLBACK_FAILED = said(
+  "could not roll back {n, plural, one {# file} other {# files}} outside this group's paths ({files}): {out}",
+).id;
 import type { Said } from "../../src/contracts/said.ts";
 import { renderSaid } from "../../src/platform/text/lang.ts";
 import { eq } from "drizzle-orm";
@@ -330,9 +337,11 @@ test("a revert that changed nothing says so instead of claiming it worked", asyn
 
   await reconcileOwnership({ ctx }, { role: "engineer" }, { grp_id: 1 }, { owns_json: ["src/auth/**"] });
 
-  const all = (await ctx.bus.since(0)).map((event) => event.body).join(" ");
-  expect(all).toContain("could not roll back");
-  expect(all).toContain("web/stray.ts");
+  // The descriptor, not the rendered sentence: what the boss reads is the
+  // catalogue's, and the file left outside the boundary is this test's.
+  const failure = (await ctx.bus.since(0)).map((event) => sayIn(event.meta)).find(Boolean);
+  expect(failure?.id).toBe(ROLLBACK_FAILED);
+  expect(failure?.values).toMatchObject({ n: 1, files: "web/stray.ts" });
 });
 
 test("a DRAFT group owns its paths for the boundary check, and blocks nobody's start", async () => {
@@ -388,9 +397,9 @@ test("a partial rollback is not announced as a boundary that held", async () => 
   expect(ran).not.toContain("'checkout' '--' 'README.md' 'docs/plan.md'");
   expect(ran).toContain("'clean' '-fd' '--' 'docs/plan.md'");
   // And what is still outside the group's paths is what gets said.
-  const said = (await ctx.bus.since(0)).map((e) => e.body).join(" ");
-  expect(said).toContain("could not roll back");
-  expect(said).toContain("README.md");
+  const failure = (await ctx.bus.since(0)).map((e) => sayIn(e.meta)).find(Boolean);
+  expect(failure?.id).toBe(ROLLBACK_FAILED);
+  expect(failure?.values).toMatchObject({ n: 1, files: "README.md" });
 });
 
 /**

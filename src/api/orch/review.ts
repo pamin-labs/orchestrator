@@ -55,7 +55,7 @@ export const postAudit = (async (ctx, _req, a, _p, b) => {
     author: roleFor(ctx, "audit_branch"),
     kind: "gate_result",
     intent: "decision",
-    body: `audit ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
+    say: b.note ? msg`audit ${{ verdict: b.verdict }}: ${{ note: b.note }}` : msg`audit ${{ verdict: b.verdict }}`,
     meta: { verdict: b.verdict },
   });
   await ctx.auditVerdict?.(gid, b.verdict === "pass", b.note ?? "");
@@ -105,7 +105,9 @@ export const postReview = (async (ctx, _req, a, _p, b) => {
     author: a.role,
     kind: "gate_result",
     intent: "decision",
-    body: `S${slice.seq} ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
+    say: b.note
+      ? msg`S${{ seq: slice.seq }} ${{ verdict: b.verdict }}: ${{ note: b.note }}`
+      : msg`S${{ seq: slice.seq }} ${{ verdict: b.verdict }}`,
     meta: { slice_id: slice.id, verdict: b.verdict },
   });
   await ctx.reviewVerdict?.(slice.id, b.verdict === "pass", b.note ?? "");
@@ -274,7 +276,10 @@ export const postSliceDecision = (async (ctx, _req, params, raw) => {
       author: "boss",
       kind: "boss_say",
       intent: "request",
-      body: b.feedback ?? "rejected",
+      // The boss's own words when there are any, and a sentence of ours when
+      // there are not — the fallback is the only half this file writes, so it is
+      // the only half that is a key.
+      ...(b.feedback ? { body: b.feedback } : { say: msg`rejected` }),
       meta: { slice_id: id },
     });
     // Only when the boss said something. A rejection with no words is already the

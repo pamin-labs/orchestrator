@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { eq } from "drizzle-orm";
 import { checkPrMessage, resolveReviewThread, reviewThreadAt } from "../../mech/git/prwatch.ts";
 import { outsideOwns, parseOwns } from "../../mech/flow/ownership.ts";
@@ -135,7 +136,9 @@ export const postPrResolve = (async (ctx, req, a, _p, b) => {
     author: a.role,
     kind: "note",
     intent: "note",
-    body: `resolved review thread on ${at.path}${b.note ? `: ${b.note}` : ""}`,
+    say: b.note
+      ? msg`resolved review thread on ${{ path: at.path }}: ${{ note: b.note }}`
+      : msg`resolved review thread on ${{ path: at.path }}`,
   });
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof PrResolveBody>>;

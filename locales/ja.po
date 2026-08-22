@@ -44,6 +44,12 @@ msgstr "{base} が {sha} に移動し、{name} が遅れているため、先に
 msgid "{branch} (per the remote)"
 msgstr "{branch}（リモート基準）"
 
+msgid "{by} passed this up, with no reason given"
+msgstr "{by} が上に回しました。理由の記載はありません"
+
+msgid "{by} passed this up: {why}"
+msgstr "{by} が上に回しました: {why}"
+
 msgid "{config} covers all {count} paths to be mounted"
 msgstr "{config} はマウント予定の {count} 個のパスをすべて含んでいます"
 
@@ -329,6 +335,9 @@ msgstr "{runningCount} 件実行中 · 全 {total} 件"
 msgid "{runtime} credential expired"
 msgstr "{runtime} の認証情報が失効"
 
+msgid "{runtime} credentials rejected"
+msgstr "{runtime} の認証情報が拒否されました"
+
 msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
 msgstr "{server} は応答しますが、sandbox server ではありません（HTTP {status}）。別のアドレスを指定してください。"
 
@@ -508,6 +517,9 @@ msgstr "イメージは、こちらが公開しているもの（ghcr.io/pamin-l
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
 msgstr "未完了のターンは破棄され、グループはコンテナを再起動して自分で続けます。コードとブランチには影響しません。"
 
+msgid "answer revoked, but the rollback to {sha} failed: {why}"
+msgstr "回答を取り消しましたが、{sha} へのロールバックに失敗しました: {why}"
+
 msgid "Answered on your behalf"
 msgstr "代わりに回答済み"
 
@@ -567,6 +579,18 @@ msgstr "同時に最大 {maxGroups} グループ。埋まっている間、承�
 
 msgid "Attach"
 msgstr "添付"
+
+msgid "audit {verdict}"
+msgstr "監査 {verdict}"
+
+msgid "audit {verdict}: {note}"
+msgstr "監査 {verdict}: {note}"
+
+msgid "audit passed — queued to merge, {place} of {total}"
+msgstr "監査を通過 — マージ待ち {total} 件中 {place} 番目です"
+
+msgid "audit passed — ready for you to merge"
+msgstr "監査を通過 — マージできます"
 
 msgid "Author"
 msgstr "作成者"
@@ -637,6 +661,14 @@ msgstr "境界がまだ重なっています"
 msgid "Branch"
 msgstr "ブランチ"
 
+msgid "branch gate failed:\n"
+"{gates}"
+msgstr "ブランチのゲートが失敗しました:\n"
+"{gates}"
+
+msgid "branch sent back by {from} {n, plural, one {# time} other {# times}} — stopping rather than paying for another round"
+msgstr "ブランチが {from} に {n, plural, other {# 回}}差し戻されました — もう一周ぶん払うより、ここで止めます"
+
 msgid "Branches, PRs and code on GitHub"
 msgstr "GitHub 上のブランチ、PR、コード"
 
@@ -699,6 +731,14 @@ msgstr "キュー中のターンをすべて取り消し、占有していた枠
 
 msgid "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
 msgstr "キュー中のターンをすべて取り消し、占有していた枠を他のグループに返します。コード・ブランチ・記録は残ります。"
+
+msgid "cancelled {n, plural, one {# job} other {# jobs}} queued for a dissolved group"
+msgstr "解散した要件に積まれていたジョブを {n, plural, other {# 件}}取り消しました"
+
+msgid "Cannot open a container, so every turn is held: {why}\n"
+"Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back."
+msgstr "コンテナを開けないため、すべてのターンを保留しています: {why}\n"
+"多くは docker が止まっているか opensandbox-server が動いていないかで、設定の自己診断ペインがどちらかを教えてくれます。復旧すれば作業は自動的に再開します。"
 
 msgid "cannot reach it: {error}"
 msgstr "到達できません: {error}"
@@ -874,6 +914,9 @@ msgstr "コンテナを破棄します。次のターンで作り直します：
 msgid "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:"
 msgstr "コンテナはエラーにならず、空のディレクトリをマウントするだけです。有効にしたスキルが消えます。設定にこの行を足して再起動してください："
 
+msgid "Containers open again; the held work resumes on its own."
+msgstr "コンテナがまた開けるようになりました。保留していた作業は自動的に再開します。"
+
 msgid "context full"
 msgstr "コンテキスト満杯"
 
@@ -898,17 +941,32 @@ msgstr "CoS 作業中"
 msgid "Cost"
 msgstr "コスト"
 
+msgid "could not check file ownership this turn (git status in the sandbox: {out})"
+msgstr "このターンではファイルの担当を確認できませんでした（サンドボックス内の git status: {out}）"
+
 msgid "could not force-stop pid {pid}: {error}"
 msgstr "pid {pid} の強制停止に失敗しました: {error}"
 
 msgid "Could not generate a draft; you'll need to write this one yourself."
 msgstr "下書きを作れませんでした。これは自分で書いてください。"
 
+msgid "could not open a PR: {why}"
+msgstr "PR を開けませんでした: {why}"
+
+msgid "could not put {file} into the sandbox: {why}"
+msgstr "{file} をサンドボックスに入れられませんでした: {why}"
+
+msgid "could not roll back {n, plural, one {# file} other {# files}} outside this group's paths ({files}): {out}"
+msgstr "この要件の担当範囲外のファイルを {n, plural, other {# 件}}戻せませんでした（{files}）: {out}"
+
 msgid "could not start {bin}: {error}"
 msgstr "{bin} を起動できません: {error}"
 
 msgid "could not stop pid {pid}: {error}"
 msgstr "pid {pid} の停止に失敗しました: {error}"
+
+msgid "could not take {branch} out of the sandbox: {why}"
+msgstr "{branch} をサンドボックスから取り出せませんでした: {why}"
 
 msgid "Couldn't read the settings from the server."
 msgstr "サーバーから設定を読めませんでした。"
@@ -930,6 +988,9 @@ msgstr "資格情報の確認"
 
 msgid "Credential name"
 msgstr "資格情報の名前"
+
+msgid "Credentials did not bind to this container, so the decoy values inside go out unchanged — every model call from here 401s. That is not the token's fault, and signing in again will not help. Cause: {why}"
+msgstr "認証情報がこのコンテナに結び付かなかったため、中のダミー値がそのまま送られます — ここからのモデル呼び出しはすべて 401 になります。トークンのせいではなく、サインインし直しても直りません。原因: {why}"
 
 msgid "Custom gateway; usage not displayed in header"
 msgstr "独自ゲートウェイのため、使用量はヘッダーに出ません"
@@ -1029,6 +1090,12 @@ msgstr "{doubledLabel} に倍増"
 
 msgid "DRAFT approved"
 msgstr "DRAFT を承認しました"
+
+msgid "DRAFT card filed: {goal}"
+msgstr "DRAFT カードを提出しました: {goal}"
+
+msgid "DRAFT card filed: {goal} ({n, plural, one {# planning turn} other {# planning turns}} dropped)"
+msgstr "DRAFT カードを提出しました: {goal}（計画ターンを {n, plural, other {# 件}}破棄）"
 
 msgid "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
 msgstr "50% を切ったらプロンプト組み立てが壊れています。1 ターンあたり 3〜5 倍高くつきます"
@@ -1181,6 +1248,9 @@ msgstr "ウィンドウに追従"
 
 msgid "Follow window—updates as window changes, fits without crowding"
 msgstr "ウィンドウに追従。幅が変わると更新され、詰まらずに収まります"
+
+msgid "for you: {question}"
+msgstr "あなた宛て: {question}"
 
 msgid "Forward to webhook"
 msgstr "Webhook に転送"
@@ -1424,6 +1494,9 @@ msgstr "進行中"
 msgid "Including downstream"
 msgstr "下流を含む"
 
+msgid "index call ({total} tokens)"
+msgstr "インデックス呼び出し（{total} トークン）"
+
 msgid "Index model"
 msgstr "インデックスモデル"
 
@@ -1465,6 +1538,15 @@ msgstr "中断してロールバック"
 msgid "Interrupt, keep changes"
 msgstr "中断して変更は残す"
 
+msgid "interrupted ({mode}), killed {killed}"
+msgstr "中断しました（{mode}）。{killed} 件を停止"
+
+msgid "interrupted ({mode}), killed {killed}, rolled back to {sha}"
+msgstr "中断しました（{mode}）。{killed} 件を停止し、{sha} へロールバック"
+
+msgid "interrupted, but the rollback to {sha} failed: {why}. The checkout is dirty."
+msgstr "中断しましたが、{sha} へのロールバックに失敗しました: {why}。チェックアウトは汚れたままです。"
+
 msgid "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
 msgstr "サンドボックスサーバーが動いていて、こちらの鍵を受け取るか。通常はループバックで、その答えはレポートを埋めるだけです。下のネットワーク ping のほうは艦隊全体のゲートになります。"
 
@@ -1505,6 +1587,12 @@ msgstr "キー"
 
 msgid "Last 24 hours, per hour"
 msgstr "直近 24 時間、1 時間ごと"
+
+msgid "lease {resource} #{id} started"
+msgstr "リース {resource} #{id} を開始しました"
+
+msgid "lease #{id} exit {code}"
+msgstr "リース #{id} 終了コード {code}"
 
 msgid "Lease timeout"
 msgstr "リースの上限時間"
@@ -1692,8 +1780,14 @@ msgstr "イベントなし"
 msgid "no file"
 msgstr "ファイルがありません"
 
+msgid "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
+msgstr "このリポジトリではゲートが見つかりません。少なくとも一つ用意するまで、すべてのスライスがレビューで落ちます: リソーステンプレートを追加し、その名前をプロジェクトの gates に書いてください。"
+
 msgid "No gates enabled; LLM review has no floor."
 msgstr "ゲートが 1 つも有効になっていません。LLM のレビューに下限がない状態です。"
+
+msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
+msgstr "grp テーブルに {grp} がないため /work は空のままです — このターンで動かすコードがありません"
 
 msgid "no login is waiting for a code — start one first"
 msgstr "コード待ちのログインがありません。まずログインを開始してください"
@@ -1758,6 +1852,9 @@ msgstr "進行中の要件はありません。右上の + で新しく作れま
 msgid "No requirements yet"
 msgstr "要件はまだありません"
 
+msgid "no retro yet — the group cannot wind up without one"
+msgstr "振り返りがまだありません — 振り返りなしにこの要件は畳めません"
+
 msgid "No runnable commands found."
 msgstr "実行できるコマンドが見つかりません。"
 
@@ -1772,6 +1869,9 @@ msgstr "スライスなし"
 
 msgid "No slices"
 msgstr "スライスなし"
+
+msgid "no squash ({why})"
+msgstr "スカッシュなし（{why}）"
 
 msgid "no such group"
 msgstr "そのグループはありません"
@@ -1917,6 +2017,9 @@ msgstr "PR を開く ↗"
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "要件 {name}（grp {grp}）として起票しました"
 
+msgid "opened PR #{pr} to replace the closed one"
+msgstr "閉じられた PR の代わりに PR #{pr} を開きました"
+
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server が消失したため再起動しました（{n} 回目）。保留中の作業は自動的に再開します。"
 
@@ -1950,6 +2053,9 @@ msgstr "{overlapping} と重なります"
 msgid "Ownership"
 msgstr "担当"
 
+msgid "owns {paths}"
+msgstr "担当範囲を {paths} に決めました"
+
 msgid "p50"
 msgstr "p50"
 
@@ -1965,8 +2071,14 @@ msgstr "P95"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "PageIndex を作れません：{n} 回の呼び出しがすべて空で返りました。設定で、インデックスが使っているアカウントがまだ生きているか確認してください。"
 
+msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
+msgstr "PageIndex: ノードを {n, plural, other {# 件}}要約し、ファイルを {files, plural, other {# 件}}索引しました"
+
 msgid "Panel language"
 msgstr "画面の言語"
+
+msgid "parked ({reason}); {n, plural, one {# queued turn} other {# queued turns}} dropped, worktree untouched"
+msgstr "停車しました（{reason}）。積まれていたターンを {n, plural, other {# 件}}破棄し、ワークツリーはそのままです"
 
 msgid "Pass"
 msgstr "合格"
@@ -1980,6 +2092,9 @@ msgstr "貼り付けてください。保存後は隠されます"
 msgid "Pause"
 msgstr "一時停止"
 
+msgid "paused"
+msgstr "一時停止しました"
+
 msgid "Paused"
 msgstr "一時停止中"
 
@@ -1988,6 +2103,9 @@ msgstr "一時停止中"
 
 msgid "Pausing"
 msgstr "停止中…"
+
+msgid "pausing — waiting for {n, plural, one {# turn} other {# turns}} to land"
+msgstr "一時停止しています — {n, plural, other {# 件}}のターンが着地するのを待っています"
 
 msgid "Pending"
 msgstr "未処理"
@@ -2052,10 +2170,21 @@ msgstr "ポーリング間隔"
 msgid "PR #{n} opened"
 msgstr "PR #{n} を作成しました"
 
+msgid "PR #{pr} has feedback:\n"
+"{lines}"
+msgstr "PR #{pr} にフィードバックがあります:\n"
+"{lines}"
+
+msgid "PR #{pr} was closed without merging"
+msgstr "PR #{pr} はマージされずに閉じられました"
+
 msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
 "To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
 msgstr "PR #{pr} がマージされずにクローズされました。このグループは停止し、マージキューから外れています。\n"
 "続けるなら: GitHub でこの PR を再オープンすれば自動的にキューへ戻ります。やめるなら: この要求を取り下げてください。"
+
+msgid "PR #{pr} was reopened; back in the merge queue"
+msgstr "PR #{pr} が再オープンされ、マージ待ち行列に戻りました"
 
 msgid "PR closed — reopen it or not"
 msgstr "PR がクローズ — 再オープンするか"
@@ -2080,6 +2209,9 @@ msgstr "このターンの準備"
 
 msgid "Private"
 msgstr "プライベート"
+
+msgid "project {project} has no remote recorded, so there is nothing to clone — /work is still empty and there is no code to run this turn"
+msgstr "プロジェクト {project} にリモートの記録がなく、クローンする先がありません — /work は空のままで、このターンで動かすコードがありません"
 
 msgid "Project name…"
 msgstr "プロジェクト名…"
@@ -2123,8 +2255,8 @@ msgstr "枠が戻りました。再開します"
 msgid "Rate limited reading usage; it recovers by itself shortly"
 msgstr "使用量の読み取りがレート制限に当たりました。しばらくすると自然に戻ります"
 
-msgid "rate limited; everything on this CLI holds until the window reopens (~{at}) and resumes itself — the quota belongs to the account, so no model spends less of it"
-msgstr "レート制限にかかりました。この CLI 上の作業はすべて枠が戻る（{at} 頃）まで保留し、自動的に再開します — 枠はアカウント単位なので、モデルを替えても消費は減りません"
+msgid "rate limited; everything on this CLI holds until the window reopens (~{at, date, short} {at, time, short}) and resumes itself — the quota belongs to the account, so no model spends less of it"
+msgstr "レート制限にかかりました。この CLI 上の作業はすべて枠が戻る（{at, date, short} {at, time, short} 頃）まで保留し、自動的に再開します — 枠はアカウント単位なので、モデルを替えても消費は減りません"
 
 msgid "reachable"
 msgstr "到達可能"
@@ -2144,11 +2276,19 @@ msgstr "サブスクの残り枠を読み取ります。ユーティリティコ
 msgid "Real tokens don't enter the sandbox"
 msgstr "本物のトークンはサンドボックスに入りません"
 
+msgid "rebase onto the base branch failed while waking up:\n"
+"{out}"
+msgstr "復帰時のベースブランチへのリベースに失敗しました:\n"
+"{out}"
+
 msgid "Recheck reachability"
 msgstr "到達性を再確認"
 
 msgid "Recheck the repo map"
 msgstr "リポジトリマップを再確認"
+
+msgid "reclaimed {n, plural, one {# turn} other {# turns}} left running by the previous server, resumed {resumed}"
+msgstr "前のサーバーが動かしたままだったターンを {n, plural, other {# 件}}回収し、{resumed} 件を再開しました"
 
 msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
 msgstr "S{seq} の突き合わせに失敗: 宣言はあるが変更なし — {files}"
@@ -2170,6 +2310,9 @@ msgstr "ローカルで更新しました"
 
 msgid "Reject this slice"
 msgstr "このスライスを差し戻す"
+
+msgid "rejected"
+msgstr "差し戻し"
 
 msgid "Rejected"
 msgstr "差し戻し済み"
@@ -2243,6 +2386,9 @@ msgstr "返信します。送るとエージェントの待ちが解けます。
 msgid "Reply… Cmd+Enter to send"
 msgstr "返信… Cmd+Enter で送信"
 
+msgid "repo map refreshed ({files, plural, one {# file} other {# files}}, {read} read for symbols)"
+msgstr "リポジトリマップを更新しました（{files, plural, other {# ファイル}}、うち {read} 件はシンボルのために読み込み）"
+
 msgid "Repo-wide"
 msgstr "リポジトリ全体"
 
@@ -2287,6 +2433,12 @@ msgstr "{span} でリセット"
 
 msgid "Resetting soon"
 msgstr "まもなくリセット"
+
+msgid "resolved review thread on {path}"
+msgstr "{path} のレビュースレッドを解決しました"
+
+msgid "resolved review thread on {path}: {note}"
+msgstr "{path} のレビュースレッドを解決しました: {note}"
 
 msgid "Resource lease"
 msgstr "リソースのリース"
@@ -2338,6 +2490,18 @@ msgstr "レビュースレッド"
 
 msgid "Revoke and take over"
 msgstr "取り上げて自分でやる"
+
+msgid "revoked {by}'s answer"
+msgstr "{by} の回答を取り消しました"
+
+msgid "revoked {by}'s answer and rolled back to {sha}"
+msgstr "{by} の回答を取り消し、{sha} へロールバックしました"
+
+msgid "revoked the answer"
+msgstr "この回答を取り消しました"
+
+msgid "revoked the answer and rolled back to {sha}"
+msgstr "この回答を取り消し、{sha} へロールバックしました"
 
 msgid "Risk"
 msgstr "リスク"
@@ -2409,6 +2573,12 @@ msgstr "S{seq}「{title}」が {from} で {n} 回失敗しました。直近:\n"
 
 msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq}「{title}」が完了しました。確認をお願いします"
+
+msgid "S{seq} {verdict}"
+msgstr "S{seq} {verdict}"
+
+msgid "S{seq} {verdict}: {note}"
+msgstr "S{seq} {verdict}: {note}"
 
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} が {from} で {n} 回連続して不合格 — コードではなく受け入れ基準の問題と思われます"
@@ -2551,6 +2721,14 @@ msgstr "これだけ黙っていると、グループに何をしているか尋
 msgid "Skills"
 msgstr "スキル"
 
+msgid "Skills are mounted but the directory inside is empty: host {hostPath} has {onHost}, and {at} in the container has 0.\n"
+"The container runtime cannot read that host path, so binding it delivers an empty directory — on macOS docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's allowed_host_paths, and restart it. Until then agents have no skills at all."
+msgstr "スキルはマウントされていますが、コンテナ内のディレクトリが空です: ホストの {hostPath} には {onHost} 件あり、コンテナ内の {at} には 0 件です。\n"
+"コンテナランタイムがそのホストパスを読めないため、バインドしても空のディレクトリになります — macOS の docker は VM の中で動いており、その外のパス（/var/tmp など）は共有されません。skillsDir を共有される場所（$HOME で十分です）に変え、opensandbox-server の allowed_host_paths に加えて再起動してください。それまでエージェントはスキルを一つも使えません。"
+
+msgid "Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list {path}. Add it and reopen this group's container; until then agents can only use the skills named in the input box."
+msgstr "スキルがサンドボックスにマウントされていません: opensandbox-server の allowed_host_paths に {path} がありません。追加してこの要件のコンテナを開き直してください。それまでエージェントは入力欄で名指しされたスキルしか使えません。"
+
 msgid "Skills staging directory"
 msgstr "スキルの中継ディレクトリ"
 
@@ -2592,6 +2770,9 @@ msgstr "要件「{from}」から分けた一件です。"
 
 msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
 msgstr "要件「{from}」から分けた一件です。もともとの全文は note #{note} にあります。"
+
+msgid "squashed {why}"
+msgstr "スカッシュしました（{why}）"
 
 msgid "Stage durations"
 msgstr "段階ごとの所要時間"
@@ -2682,6 +2863,9 @@ msgstr "システム耗時"
 msgid "Take note"
 msgstr "書き留める"
 
+msgid "task {task} done"
+msgstr "タスク {task} 完了"
+
 msgid "The {runtime} credential stopped working: {why}\n"
 "Go to settings → {runtime} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done."
 msgstr "{runtime} の認証情報が使えなくなりました: {why}\n"
@@ -2757,6 +2941,9 @@ msgstr "「詰まり」のもう半分：同じファイルをこれだけ連続
 msgid "the PR will not open"
 msgstr "PR を開けない"
 
+msgid "the project is gone (project {project} is not there), so /work is still empty — there is no code to run this turn"
+msgstr "プロジェクトが消えています（project {project} が存在しません）。/work は空のままで、このターンで動かすコードがありません"
+
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "リポジトリマップを更新できません: {repo} — {why}"
 
@@ -2795,6 +2982,9 @@ msgstr "サンドボックスサーバーはすでに動いていたので、そ
 
 msgid "the sandbox server was restarted, so every container it held is gone"
 msgstr "サンドボックスサーバーを再起動したため、抱えていたコンテナはすべて消えました"
+
+msgid "The sandbox was rebuilt, but the workspace was not restored: {why}"
+msgstr "サンドボックスを作り直しましたが、ワークスペースは復元されませんでした: {why}"
 
 msgid "the server asks for no API key, so any process on this machine can enter a container"
 msgstr "サーバーが API キーを求めていないため、このマシンのどのプロセスでもコンテナに入れます"
@@ -2924,11 +3114,17 @@ msgstr "トークン · 割合"
 msgid "tokens must be a positive number, or null to lift the cap"
 msgstr "トークンは正の数、または上限を外すなら null にしてください"
 
+msgid "triaged as {as}: {note}"
+msgstr "{as} として振り分けました: {note}"
+
 msgid "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
 msgstr "上から順に試し、他に答えるものがないときだけ使います。プロジェクト自身のベースブランチが最優先、次に GitHub の default_branch。リモートに届かないリポジトリが最後に頼るのがこれです。"
 
 msgid "Try again"
 msgstr "もう一度"
+
+msgid "turn done ({steps, plural, one {# step} other {# steps}}, {total} tokens)"
+msgstr "ターン終了（{steps, plural, other {# ステップ}}、{total} トークン）"
 
 msgid "turn ran past {min} min and was killed"
 msgstr "ターンが {min} 分を超えたため打ち切りました"
@@ -3127,6 +3323,9 @@ msgstr "なぜこの値か"
 
 msgid "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM"
 msgstr "次のターンの冒頭で読まれます。スクショはそのまま貼り付け可、/ でスキル挿入。Cmd+Enter で PM に送信"
+
+msgid "woken up"
+msgstr "復帰しました"
 
 msgid "Workflow"
 msgstr "ワークフロー"

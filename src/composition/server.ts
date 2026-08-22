@@ -1,4 +1,4 @@
-import { msg } from "@lingui/core/macro";
+import { msg, plural } from "@lingui/core/macro";
 import { errText } from "../platform/process/text.ts";
 import { renderSaid } from "../platform/text/lang.ts";
 import { makeNoteIndex } from "../mech/knowledge/note-index.ts";
@@ -335,7 +335,7 @@ async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, 
     kind: "escalation",
     intent: "ask",
     severity: "blocker",
-    body: `PR #${prNumber} was closed without merging`,
+    say: msg`PR #${{ pr: prNumber }} was closed without merging`,
     meta: { pr: prNumber },
   });
   void notifier.push({
@@ -376,7 +376,7 @@ async function prReopened(ctx: Ctx, grpId: number, prNumber: number): Promise<vo
     grpId,
     author: "pr-watcher",
     kind: "state_change",
-    body: `PR #${prNumber} was reopened; back in the merge queue`,
+    say: msg`PR #${{ pr: prNumber }} was reopened; back in the merge queue`,
     meta: { pr: prNumber },
   });
   await ctx.sched.tick();
@@ -655,7 +655,7 @@ export async function recordIndexResult(
   await ctx.bus.emit({
     author: roleFor(ctx, "compress_context"),
     kind: "state_change",
-    body: `PageIndex: summarised ${result.calls - result.failed} node(s), ${result.files} files indexed`,
+    say: msg`PageIndex: summarised ${plural({ n: result.calls - result.failed }, { one: "# node", other: "# nodes" })}, ${plural({ files: result.files }, { one: "# file", other: "# files" })} indexed`,
   });
 }
 
@@ -868,7 +868,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
           kind: "escalation",
           intent: "ask",
           severity: "blocker",
-          body: `could not open a PR: ${r.error}`,
+          say: msg`could not open a PR: ${{ why: r.error }}`,
         });
         void notifier.push({
           key: `pr-open:${grpId}`,
@@ -990,7 +990,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
     await bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: `reclaimed ${orphans.length} turn(s) left running by the previous server, resumed ${resumed}`,
+      say: msg`reclaimed ${plural({ n: orphans.length }, { one: "# turn", other: "# turns" })} left running by the previous server, resumed ${{ resumed }}`,
       meta: { orphans: orphans.length, resumed },
     });
   }

@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { and, count, eq, inArray, isNull, ne, notInArray, or } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { z } from "zod";
@@ -303,7 +304,7 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
       grpId: a.grp_id,
       author: a.role,
       kind: "state_change",
-      body: `task ${b.task_id} done`,
+      say: msg`task ${{ task: b.task_id }} done`,
       meta: { task_id: b.task_id, claim },
     });
     return shouldTick;

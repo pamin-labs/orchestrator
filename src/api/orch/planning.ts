@@ -1,4 +1,4 @@
-import { msg } from "@lingui/core/macro";
+import { msg, plural } from "@lingui/core/macro";
 import { and, asc, count, eq, inArray, ne } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Json } from "../../contracts/json.ts";
@@ -125,7 +125,9 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
       grpId,
       author: a.role,
       kind: "state_change",
-      body: `DRAFT card filed: ${v.goal}${dropped ? ` (${dropped} planning turn(s) dropped)` : ""}`,
+      say: dropped
+        ? msg`DRAFT card filed: ${{ goal: v.goal }} (${plural({ n: dropped }, { one: "# planning turn", other: "# planning turns" })} dropped)`
+        : msg`DRAFT card filed: ${{ goal: v.goal }}`,
       meta: { slices: v.slices.length, objection: v.objection },
     });
   });
@@ -525,7 +527,11 @@ export const postOwns = (async (ctx, _req, a, _p, b) => {
       author: roleFor(ctx, "cut_boundary"),
       kind: "decision",
       intent: "decision",
-      body: `owns ${b.paths.join(", ")}${result.ok || !result.reason ? "" : ` — still blocked: ${renderSaid("en", result.reason)}`}`,
+      // The boundary is the decision; what still holds the group is current
+      // state, which the panel already draws from `approvedBlocked` and which
+      // `meta.ok` records here. Rendering the reason into this sentence pinned
+      // half of it to English inside a row the panel renders in the reader's own.
+      say: msg`owns ${{ paths: b.paths.join(", ") }}`,
       meta: { paths: b.paths, ok: result.ok },
     });
     return result;

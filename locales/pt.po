@@ -44,6 +44,12 @@ msgstr "{base} passou para {sha}; {name} ficou para trás e foi mandada fazer re
 msgid "{branch} (per the remote)"
 msgstr "{branch} (segundo o remoto)"
 
+msgid "{by} passed this up, with no reason given"
+msgstr "{by} passou isto para cima, sem dar motivo"
+
+msgid "{by} passed this up: {why}"
+msgstr "{by} passou isto para cima: {why}"
+
 msgid "{config} covers all {count} paths to be mounted"
 msgstr "{config} cobre todos os {count} caminhos a montar"
 
@@ -329,6 +335,9 @@ msgstr "{runningCount} em execução · {total} no total"
 msgid "{runtime} credential expired"
 msgstr "credencial do {runtime} expirada"
 
+msgid "{runtime} credentials rejected"
+msgstr "as credenciais de {runtime} foram recusadas"
+
 msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
 msgstr "{server} responde, mas não é um sandbox server (HTTP {status}) — aponte para outro endereço."
 
@@ -508,6 +517,9 @@ msgstr "A imagem tem de ser uma que publicamos (ghcr.io/pamin-labs/…) ou uma q
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
 msgstr "O turno inacabado se perde; o grupo reinicia o contêiner e segue sozinho. Código e branches não mudam."
 
+msgid "answer revoked, but the rollback to {sha} failed: {why}"
+msgstr "resposta revogada, mas a reversão para {sha} falhou: {why}"
+
 msgid "Answered on your behalf"
 msgstr "Respondido em seu nome"
 
@@ -567,6 +579,18 @@ msgstr "No máximo {maxGroups} grupos por vez. Quando lota, requisitos aprovados
 
 msgid "Attach"
 msgstr "Anexar"
+
+msgid "audit {verdict}"
+msgstr "auditoria {verdict}"
+
+msgid "audit {verdict}: {note}"
+msgstr "auditoria {verdict}: {note}"
+
+msgid "audit passed — queued to merge, {place} of {total}"
+msgstr "auditoria aprovada — na fila de integração, {place} de {total}"
+
+msgid "audit passed — ready for you to merge"
+msgstr "auditoria aprovada — pronta para integrares"
 
 msgid "Author"
 msgstr "Autor"
@@ -637,6 +661,14 @@ msgstr "a fronteira continua sobreposta"
 msgid "Branch"
 msgstr "Branch"
 
+msgid "branch gate failed:\n"
+"{gates}"
+msgstr "o portão do ramo falhou:\n"
+"{gates}"
+
+msgid "branch sent back by {from} {n, plural, one {# time} other {# times}} — stopping rather than paying for another round"
+msgstr "o ramo foi devolvido por {from} {n, plural, one {# vez} other {# vezes}} — para-se aqui em vez de pagar mais uma volta"
+
 msgid "Branches, PRs and code on GitHub"
 msgstr "Branches, PRs e código no GitHub"
 
@@ -699,6 +731,14 @@ msgstr "Cancela todos os turnos na fila e devolve a vaga ocupada a outro grupo."
 
 msgid "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
 msgstr "Cancela todos os turnos na fila e devolve a vaga ocupada a outro grupo. Código, branch e registros ficam."
+
+msgid "cancelled {n, plural, one {# job} other {# jobs}} queued for a dissolved group"
+msgstr "{n, plural, one {# trabalho em fila cancelado} other {# trabalhos em fila cancelados}} de um requisito dissolvido"
+
+msgid "Cannot open a container, so every turn is held: {why}\n"
+"Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back."
+msgstr "não é possível abrir um contentor, por isso todos os turnos ficam retidos: {why}\n"
+"Normalmente o docker está em baixo ou o opensandbox-server não está a correr — o painel de autodiagnóstico nas Definições diz qual. O trabalho retoma sozinho assim que voltar."
 
 msgid "cannot reach it: {error}"
 msgstr "não foi possível conectar: {error}"
@@ -874,6 +914,9 @@ msgstr "O contêiner será descartado. O próximo turno o reconstrói: clonar a 
 msgid "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:"
 msgstr "O contêiner não dá erro, só monta um diretório vazio — as skills ativas somem. Adicione esta linha à configuração e reinicie:"
 
+msgid "Containers open again; the held work resumes on its own."
+msgstr "Os contentores voltam a abrir; o trabalho retido retoma sozinho."
+
 msgid "context full"
 msgstr "contexto cheio"
 
@@ -898,17 +941,32 @@ msgstr "CoS trabalhando"
 msgid "Cost"
 msgstr "Custo"
 
+msgid "could not check file ownership this turn (git status in the sandbox: {out})"
+msgstr "não foi possível verificar a titularidade dos ficheiros neste turno (git status no sandbox: {out})"
+
 msgid "could not force-stop pid {pid}: {error}"
 msgstr "não deu para forçar a parada do pid {pid}: {error}"
 
 msgid "Could not generate a draft; you'll need to write this one yourself."
 msgstr "Não deu para gerar um rascunho; este você vai ter que escrever."
 
+msgid "could not open a PR: {why}"
+msgstr "não foi possível abrir um PR: {why}"
+
+msgid "could not put {file} into the sandbox: {why}"
+msgstr "não foi possível pôr {file} no sandbox: {why}"
+
+msgid "could not roll back {n, plural, one {# file} other {# files}} outside this group's paths ({files}): {out}"
+msgstr "não foi possível reverter {n, plural, one {# ficheiro} other {# ficheiros}} fora dos caminhos deste grupo ({files}): {out}"
+
 msgid "could not start {bin}: {error}"
 msgstr "não deu para iniciar {bin}: {error}"
 
 msgid "could not stop pid {pid}: {error}"
 msgstr "não deu para parar o pid {pid}: {error}"
+
+msgid "could not take {branch} out of the sandbox: {why}"
+msgstr "não foi possível tirar {branch} do sandbox: {why}"
 
 msgid "Couldn't read the settings from the server."
 msgstr "Não foi possível ler as configurações do servidor."
@@ -930,6 +988,9 @@ msgstr "Verificação de credenciais"
 
 msgid "Credential name"
 msgstr "Nome da credencial"
+
+msgid "Credentials did not bind to this container, so the decoy values inside go out unchanged — every model call from here 401s. That is not the token's fault, and signing in again will not help. Cause: {why}"
+msgstr "As credenciais não ficaram ligadas a este contentor, por isso os valores-isco lá dentro saem tal como estão — cada chamada ao modelo daqui dá 401. A culpa não é do token, e voltar a iniciar sessão não resolve. Causa: {why}"
 
 msgid "Custom gateway; usage not displayed in header"
 msgstr "Gateway próprio; o uso não aparece no cabeçalho"
@@ -1029,6 +1090,12 @@ msgstr "Dobrar para {doubledLabel}"
 
 msgid "DRAFT approved"
 msgstr "DRAFT aprovado"
+
+msgid "DRAFT card filed: {goal}"
+msgstr "cartão DRAFT arquivado: {goal}"
+
+msgid "DRAFT card filed: {goal} ({n, plural, one {# planning turn} other {# planning turns}} dropped)"
+msgstr "cartão DRAFT arquivado: {goal} ({n, plural, one {# turno de planeamento descartado} other {# turnos de planeamento descartados}})"
 
 msgid "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
 msgstr "Abaixo de 50% a montagem do prompt está quebrada: 3-5× mais caro por turno"
@@ -1181,6 +1248,9 @@ msgstr "Seguir a janela"
 
 msgid "Follow window—updates as window changes, fits without crowding"
 msgstr "Segue a janela — atualiza quando ela muda e cabe sem apertar"
+
+msgid "for you: {question}"
+msgstr "para ti: {question}"
 
 msgid "Forward to webhook"
 msgstr "Encaminhar para webhook"
@@ -1424,6 +1494,9 @@ msgstr "Em andamento"
 msgid "Including downstream"
 msgstr "Incluindo o que vem depois"
 
+msgid "index call ({total} tokens)"
+msgstr "chamada de indexação ({total} tokens)"
+
 msgid "Index model"
 msgstr "Modelo de índice"
 
@@ -1465,6 +1538,15 @@ msgstr "Interromper e reverter"
 msgid "Interrupt, keep changes"
 msgstr "Interromper e manter as alterações"
 
+msgid "interrupted ({mode}), killed {killed}"
+msgstr "interrompido ({mode}), {killed} terminados"
+
+msgid "interrupted ({mode}), killed {killed}, rolled back to {sha}"
+msgstr "interrompido ({mode}), {killed} terminados, revertido para {sha}"
+
+msgid "interrupted, but the rollback to {sha} failed: {why}. The checkout is dirty."
+msgstr "interrompido, mas a reversão para {sha} falhou: {why}. O checkout está sujo."
+
 msgid "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
 msgstr "Se o servidor de sandbox está no ar e aceita nossa chave. Normalmente é loopback, e a resposta só preenche um relatório — já o ping de rede abaixo condiciona a frota inteira."
 
@@ -1505,6 +1587,12 @@ msgstr "Chave"
 
 msgid "Last 24 hours, per hour"
 msgstr "Últimas 24 horas, por hora"
+
+msgid "lease {resource} #{id} started"
+msgstr "locação {resource} #{id} iniciada"
+
+msgid "lease #{id} exit {code}"
+msgstr "locação #{id} saída {code}"
 
 msgid "Lease timeout"
 msgstr "Tempo limite do lease"
@@ -1692,8 +1780,14 @@ msgstr "Sem eventos"
 msgid "no file"
 msgstr "nenhum ficheiro"
 
+msgid "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
+msgstr "não foi detetado nenhum portão neste repositório. Cada fatia vai chumbar na revisão até este projeto ter pelo menos um: acrescenta um modelo de recurso e escreve o nome dele nas gates do projeto."
+
 msgid "No gates enabled; LLM review has no floor."
 msgstr "Nenhum portão ativado; a revisão do LLM não tem piso."
+
+msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
+msgstr "não existe grupo {grp} na tabela grp, por isso /work continua vazio — não há código para correr neste turno"
 
 msgid "no login is waiting for a code — start one first"
 msgstr "nenhum início de sessão aguarda um código — comece um primeiro"
@@ -1758,6 +1852,9 @@ msgstr "Nenhum requisito em andamento. Clique em + no canto superior direito par
 msgid "No requirements yet"
 msgstr "Ainda sem requisitos"
 
+msgid "no retro yet — the group cannot wind up without one"
+msgstr "ainda não há retrospetiva — o grupo não se fecha sem uma"
+
 msgid "No runnable commands found."
 msgstr "Nenhum comando executável encontrado."
 
@@ -1772,6 +1869,9 @@ msgstr "Sem fatia"
 
 msgid "No slices"
 msgstr "Sem fatias"
+
+msgid "no squash ({why})"
+msgstr "sem squash ({why})"
 
 msgid "no such group"
 msgstr "não existe esse grupo"
@@ -1917,6 +2017,9 @@ msgstr "Abrir PR ↗"
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "aberto como requisito {name} (grp {grp})"
 
+msgid "opened PR #{pr} to replace the closed one"
+msgstr "aberto o PR #{pr} para substituir o que foi fechado"
+
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "o opensandbox-server tinha desaparecido e foi reiniciado (tentativa {n}). O trabalho retido retoma sozinho."
 
@@ -1950,6 +2053,9 @@ msgstr "sobrepõe {overlapping}"
 msgid "Ownership"
 msgstr "Divisão"
 
+msgid "owns {paths}"
+msgstr "fronteira definida em {paths}"
+
 msgid "p50"
 msgstr "p50"
 
@@ -1965,8 +2071,14 @@ msgstr "P95"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "Não dá para construir o PageIndex: as {n} chamadas voltaram vazias. Veja nas configurações se a conta que o índice usa ainda funciona."
 
+msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
+msgstr "PageIndex: resumidos {n, plural, one {# nó} other {# nós}}, indexados {files, plural, one {# ficheiro} other {# ficheiros}}"
+
 msgid "Panel language"
 msgstr "Idioma do painel"
+
+msgid "parked ({reason}); {n, plural, one {# queued turn} other {# queued turns}} dropped, worktree untouched"
+msgstr "estacionado ({reason}); {n, plural, one {# turno em fila descartado} other {# turnos em fila descartados}}, árvore de trabalho intacta"
 
 msgid "Pass"
 msgstr "Passa"
@@ -1980,6 +2092,9 @@ msgstr "Cole aqui; fica oculto depois de salvar"
 msgid "Pause"
 msgstr "Pausar"
 
+msgid "paused"
+msgstr "em pausa"
+
 msgid "Paused"
 msgstr "Pausado"
 
@@ -1988,6 +2103,9 @@ msgstr "EM PAUSA"
 
 msgid "Pausing"
 msgstr "Pausando"
+
+msgid "pausing — waiting for {n, plural, one {# turn} other {# turns}} to land"
+msgstr "a pausar — à espera que {n, plural, one {# turno} other {# turnos}} aterre"
 
 msgid "Pending"
 msgstr "Pendente"
@@ -2052,10 +2170,21 @@ msgstr "Intervalos de consulta"
 msgid "PR #{n} opened"
 msgstr "PR #{n} aberto"
 
+msgid "PR #{pr} has feedback:\n"
+"{lines}"
+msgstr "o PR #{pr} tem comentários:\n"
+"{lines}"
+
+msgid "PR #{pr} was closed without merging"
+msgstr "o PR #{pr} foi fechado sem integrar"
+
 msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
 "To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
 msgstr "O PR #{pr} foi fechado sem merge. Este grupo parou e saiu da fila de merge.\n"
 "Para continuar: reabre o PR no GitHub e ele volta sozinho para a fila. Para desistir: descarta o requisito."
+
+msgid "PR #{pr} was reopened; back in the merge queue"
+msgstr "o PR #{pr} foi reaberto; de volta à fila de integração"
 
 msgid "PR closed — reopen it or not"
 msgstr "PR fechado — reabrir ou não"
@@ -2080,6 +2209,9 @@ msgstr "Preparar este turno"
 
 msgid "Private"
 msgstr "Privado"
+
+msgid "project {project} has no remote recorded, so there is nothing to clone — /work is still empty and there is no code to run this turn"
+msgstr "o projeto {project} não tem remoto registado, por isso não há nada para clonar — /work continua vazio e não há código para correr neste turno"
 
 msgid "Project name…"
 msgstr "Nome do projeto…"
@@ -2123,8 +2255,8 @@ msgstr "a quota voltou, a retomar"
 msgid "Rate limited reading usage; it recovers by itself shortly"
 msgstr "Limite de taxa ao ler o uso; se recupera sozinho em pouco tempo"
 
-msgid "rate limited; everything on this CLI holds until the window reopens (~{at}) and resumes itself — the quota belongs to the account, so no model spends less of it"
-msgstr "limite de utilização atingido; tudo o que passa por esta CLI fica retido até a janela reabrir (~{at}) e retoma sozinho — a quota é da conta, portanto nenhum modelo gasta menos"
+msgid "rate limited; everything on this CLI holds until the window reopens (~{at, date, short} {at, time, short}) and resumes itself — the quota belongs to the account, so no model spends less of it"
+msgstr "limite de utilização atingido; tudo o que passa por esta CLI fica retido até a janela reabrir (~{at, date, short} {at, time, short}) e retoma sozinho — a quota é da conta, portanto nenhum modelo gasta menos"
 
 msgid "reachable"
 msgstr "acessível"
@@ -2144,11 +2276,19 @@ msgstr "Lê quanto sobrou da janela da assinatura, via curl a partir do contêin
 msgid "Real tokens don't enter the sandbox"
 msgstr "Tokens reais não entram no sandbox"
 
+msgid "rebase onto the base branch failed while waking up:\n"
+"{out}"
+msgstr "o rebase sobre o ramo base falhou ao acordar:\n"
+"{out}"
+
 msgid "Recheck reachability"
 msgstr "Reverificar o alcance"
 
 msgid "Recheck the repo map"
 msgstr "Reconferir o mapa do repositório"
+
+msgid "reclaimed {n, plural, one {# turn} other {# turns}} left running by the previous server, resumed {resumed}"
+msgstr "recuperados {n, plural, one {# turno} other {# turnos}} que o servidor anterior deixou a correr, {resumed} retomados"
 
 msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
 msgstr "a conciliação falhou em S{seq}: reivindicado mas sem mudança — {files}"
@@ -2170,6 +2310,9 @@ msgstr "Atualizado localmente"
 
 msgid "Reject this slice"
 msgstr "Rejeitar esta fatia"
+
+msgid "rejected"
+msgstr "rejeitado"
 
 msgid "Rejected"
 msgstr "Rejeitado"
@@ -2243,6 +2386,9 @@ msgstr "Responda. Enviar destrava o agente que está esperando. Cmd+Enter para e
 msgid "Reply… Cmd+Enter to send"
 msgstr "Responder… Cmd+Enter para enviar"
 
+msgid "repo map refreshed ({files, plural, one {# file} other {# files}}, {read} read for symbols)"
+msgstr "mapa do repositório atualizado ({files, plural, one {# ficheiro} other {# ficheiros}}, {read} lidos para símbolos)"
+
 msgid "Repo-wide"
 msgstr "Todo o repositório"
 
@@ -2287,6 +2433,12 @@ msgstr "reinicia em {span}"
 
 msgid "Resetting soon"
 msgstr "Reinicia em breve"
+
+msgid "resolved review thread on {path}"
+msgstr "resolvido o tópico de revisão em {path}"
+
+msgid "resolved review thread on {path}: {note}"
+msgstr "resolvido o tópico de revisão em {path}: {note}"
 
 msgid "Resource lease"
 msgstr "Lease de recurso"
@@ -2338,6 +2490,18 @@ msgstr "Threads de revisão"
 
 msgid "Revoke and take over"
 msgstr "Revogar e assumir"
+
+msgid "revoked {by}'s answer"
+msgstr "revogada a resposta de {by}"
+
+msgid "revoked {by}'s answer and rolled back to {sha}"
+msgstr "revogada a resposta de {by} e revertido para {sha}"
+
+msgid "revoked the answer"
+msgstr "resposta revogada"
+
+msgid "revoked the answer and rolled back to {sha}"
+msgstr "resposta revogada e revertido para {sha}"
 
 msgid "Risk"
 msgstr "Risco"
@@ -2409,6 +2573,12 @@ msgstr "S{seq} «{title}» falhou {n} vezes em {from}. A última:\n"
 
 msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq} «{title}» está pronta para ti"
+
+msgid "S{seq} {verdict}"
+msgstr "S{seq} {verdict}"
+
+msgid "S{seq} {verdict}: {note}"
+msgstr "S{seq} {verdict}: {note}"
 
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} falhou em {from} {n} vezes — provavelmente são os critérios de aceitação, não o código"
@@ -2551,6 +2721,14 @@ msgstr "Depois desse silêncio, o grupo é perguntado sobre o que está fazendo.
 msgid "Skills"
 msgstr "Skills"
 
+msgid "Skills are mounted but the directory inside is empty: host {hostPath} has {onHost}, and {at} in the container has 0.\n"
+"The container runtime cannot read that host path, so binding it delivers an empty directory — on macOS docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's allowed_host_paths, and restart it. Until then agents have no skills at all."
+msgstr "As skills estão montadas mas o diretório lá dentro está vazio: o host {hostPath} tem {onHost}, e {at} no contentor tem 0.\n"
+"O runtime do contentor não consegue ler esse caminho do host, por isso montá-lo entrega um diretório vazio — no macOS o docker corre dentro de uma VM, e caminhos fora dela (/var/tmp e afins) nunca são partilhados. Aponta o skillsDir para um local partilhado ($HOME serve), acrescenta-o aos allowed_host_paths do opensandbox-server e reinicia-o. Até lá os agentes não têm skill nenhuma."
+
+msgid "Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list {path}. Add it and reopen this group's container; until then agents can only use the skills named in the input box."
+msgstr "As skills não estão montadas no sandbox: os allowed_host_paths do opensandbox-server não listam {path}. Acrescenta-o e reabre o contentor deste grupo; até lá os agentes só podem usar as skills nomeadas na caixa de entrada."
+
 msgid "Skills staging directory"
 msgstr "Diretório de preparo das skills"
 
@@ -2592,6 +2770,9 @@ msgstr "Desmembrado do requisito {from}."
 
 msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
 msgstr "Desmembrado do requisito {from}. O pedido original, por inteiro, está na nota #{note}."
+
+msgid "squashed {why}"
+msgstr "squash feito ({why})"
 
 msgid "Stage durations"
 msgstr "Duração por etapa"
@@ -2682,6 +2863,9 @@ msgstr "Tempos do sistema"
 msgid "Take note"
 msgstr "Anotar"
 
+msgid "task {task} done"
+msgstr "tarefa {task} concluída"
+
 msgid "The {runtime} credential stopped working: {why}\n"
 "Go to settings → {runtime} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done."
 msgstr "A credencial do {runtime} deixou de funcionar: {why}\n"
@@ -2757,6 +2941,9 @@ msgstr "A outra metade de 'travado': o mesmo arquivo reescrito esta quantidade d
 msgid "the PR will not open"
 msgstr "o PR não abre"
 
+msgid "the project is gone (project {project} is not there), so /work is still empty — there is no code to run this turn"
+msgstr "o projeto desapareceu (project {project} não existe), por isso /work continua vazio — não há código para correr neste turno"
+
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "não é possível atualizar o mapa do repositório: {repo} — {why}"
 
@@ -2795,6 +2982,9 @@ msgstr "o servidor de sandbox já estava a correr, por isso usou-se o que lá es
 
 msgid "the sandbox server was restarted, so every container it held is gone"
 msgstr "o servidor de sandbox foi reiniciado, por isso todos os contentores que tinha desapareceram"
+
+msgid "The sandbox was rebuilt, but the workspace was not restored: {why}"
+msgstr "O sandbox foi reconstruído, mas o espaço de trabalho não foi restaurado: {why}"
 
 msgid "the server asks for no API key, so any process on this machine can enter a container"
 msgstr "o servidor não pede nenhuma API key, então qualquer processo desta máquina pode entrar num contêiner"
@@ -2924,11 +3114,17 @@ msgstr "tokens · fatia"
 msgid "tokens must be a positive number, or null to lift the cap"
 msgstr "os tokens têm de ser um número positivo, ou null para levantar o limite"
 
+msgid "triaged as {as}: {note}"
+msgstr "triado como {as}: {note}"
+
 msgid "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
 msgstr "Testadas em ordem, e só quando nada mais responde: a branch base do próprio projeto vence, depois o default_branch do GitHub. É o recurso de um repositório quando o remoto não pode ser alcançado."
 
 msgid "Try again"
 msgstr "Tentar de novo"
+
+msgid "turn done ({steps, plural, one {# step} other {# steps}}, {total} tokens)"
+msgstr "turno concluído ({steps, plural, one {# passo} other {# passos}}, {total} tokens)"
 
 msgid "turn ran past {min} min and was killed"
 msgstr "o turno passou dos {min} min e foi cortado"
@@ -3127,6 +3323,9 @@ msgstr "Por que este valor"
 
 msgid "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM"
 msgstr "Será lido no início do próximo turno. Cole capturas direto; / insere uma skill. Cmd+Enter para enviar ao PM"
+
+msgid "woken up"
+msgstr "acordado"
 
 msgid "Workflow"
 msgstr "Fluxo de trabalho"

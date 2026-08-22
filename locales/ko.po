@@ -44,6 +44,12 @@ msgstr "{base}이(가) {sha}로 옮겨져 {name}이(가) 뒤처졌고, 먼저 re
 msgid "{branch} (per the remote)"
 msgstr "{branch} (원격 기준)"
 
+msgid "{by} passed this up, with no reason given"
+msgstr "{by}이(가) 위로 넘겼습니다. 이유는 적지 않았습니다"
+
+msgid "{by} passed this up: {why}"
+msgstr "{by}이(가) 위로 넘겼습니다: {why}"
+
 msgid "{config} covers all {count} paths to be mounted"
 msgstr "{config}가 마운트할 경로 {count}개를 모두 포함합니다"
 
@@ -329,6 +335,9 @@ msgstr "{runningCount}개 실행 중 · 총 {total}개"
 msgid "{runtime} credential expired"
 msgstr "{runtime} 자격 증명 만료"
 
+msgid "{runtime} credentials rejected"
+msgstr "{runtime} 자격 증명이 거부되었습니다"
+
 msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
 msgstr "{server}는 응답하지만 sandbox server가 아닙니다(HTTP {status}). 다른 주소를 지정하세요."
 
@@ -508,6 +517,9 @@ msgstr "이미지는 우리가 배포한 것(ghcr.io/pamin-labs/…)이거나 �
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
 msgstr "끝나지 않은 턴은 버려지고, 그룹이 컨테이너를 다시 띄워 스스로 이어갑니다. 코드와 브랜치는 그대로입니다."
 
+msgid "answer revoked, but the rollback to {sha} failed: {why}"
+msgstr "답변을 취소했지만 {sha}(으)로 롤백하지 못했습니다: {why}"
+
 msgid "Answered on your behalf"
 msgstr "대신 답변함"
 
@@ -567,6 +579,18 @@ msgstr "동시에 최대 {maxGroups}개 그룹. 꽉 차면 승인된 요건은 �
 
 msgid "Attach"
 msgstr "첨부"
+
+msgid "audit {verdict}"
+msgstr "감사 {verdict}"
+
+msgid "audit {verdict}: {note}"
+msgstr "감사 {verdict}: {note}"
+
+msgid "audit passed — queued to merge, {place} of {total}"
+msgstr "감사 통과 — 머지 대기열 {total}개 중 {place}번째입니다"
+
+msgid "audit passed — ready for you to merge"
+msgstr "감사 통과 — 이제 머지하시면 됩니다"
 
 msgid "Author"
 msgstr "작성자"
@@ -637,6 +661,14 @@ msgstr "경계가 아직 겹칩니다"
 msgid "Branch"
 msgstr "브랜치"
 
+msgid "branch gate failed:\n"
+"{gates}"
+msgstr "브랜치 게이트가 실패했습니다:\n"
+"{gates}"
+
+msgid "branch sent back by {from} {n, plural, one {# time} other {# times}} — stopping rather than paying for another round"
+msgstr "{from}이(가) 브랜치를 {n, plural, other {#번}} 돌려보냈습니다 — 한 바퀴 더 돌리는 값을 치르느니 여기서 멈춥니다"
+
 msgid "Branches, PRs and code on GitHub"
 msgstr "GitHub의 브랜치, PR, 코드"
 
@@ -699,6 +731,14 @@ msgstr "대기 중인 턴을 모두 취소하고 차지하던 슬롯을 다른 �
 
 msgid "Cancel all queued turns; return the occupied slot to another group. Code, branch, and records are kept."
 msgstr "대기 중인 턴을 모두 취소하고 차지하던 슬롯을 다른 그룹에 돌려줍니다. 코드, 브랜치, 기록은 남습니다."
+
+msgid "cancelled {n, plural, one {# job} other {# jobs}} queued for a dissolved group"
+msgstr "해산된 요구사항에 쌓여 있던 작업 {n, plural, other {#건}}을 취소했습니다"
+
+msgid "Cannot open a container, so every turn is held: {why}\n"
+"Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back."
+msgstr "컨테이너를 열 수 없어 모든 턴을 보류했습니다: {why}\n"
+"대개 docker가 내려갔거나 opensandbox-server가 떠 있지 않은 경우이고, 설정의 자체 점검 창이 어느 쪽인지 알려줍니다. 돌아오면 작업은 알아서 다시 진행됩니다."
 
 msgid "cannot reach it: {error}"
 msgstr "연결할 수 없습니다: {error}"
@@ -874,6 +914,9 @@ msgstr "컨테이너를 버립니다. 다음 턴에서 다시 만듭니다: 브�
 msgid "Container won't error, just mounts an empty directory—enabled skills disappear. Add this line to config, then restart:"
 msgstr "컨테이너는 오류를 내지 않고 빈 디렉터리를 마운트합니다 — 켜둔 스킬이 사라집니다. 설정에 이 줄을 넣고 재시작하세요:"
 
+msgid "Containers open again; the held work resumes on its own."
+msgstr "컨테이너가 다시 열립니다. 보류된 작업은 알아서 다시 진행됩니다."
+
 msgid "context full"
 msgstr "컨텍스트 가득"
 
@@ -898,17 +941,32 @@ msgstr "CoS 작업 중"
 msgid "Cost"
 msgstr "비용"
 
+msgid "could not check file ownership this turn (git status in the sandbox: {out})"
+msgstr "이번 턴에는 파일 담당을 확인하지 못했습니다(샌드박스의 git status: {out})"
+
 msgid "could not force-stop pid {pid}: {error}"
 msgstr "pid {pid} 강제 종료에 실패했습니다: {error}"
 
 msgid "Could not generate a draft; you'll need to write this one yourself."
 msgstr "초안을 만들지 못했습니다. 이건 직접 써야 합니다."
 
+msgid "could not open a PR: {why}"
+msgstr "PR을 열지 못했습니다: {why}"
+
+msgid "could not put {file} into the sandbox: {why}"
+msgstr "{file}을(를) 샌드박스에 넣지 못했습니다: {why}"
+
+msgid "could not roll back {n, plural, one {# file} other {# files}} outside this group's paths ({files}): {out}"
+msgstr "이 요구사항의 경계 밖 파일 {n, plural, other {#개}}를 되돌리지 못했습니다({files}): {out}"
+
 msgid "could not start {bin}: {error}"
 msgstr "{bin}을(를) 시작할 수 없습니다: {error}"
 
 msgid "could not stop pid {pid}: {error}"
 msgstr "pid {pid} 종료에 실패했습니다: {error}"
+
+msgid "could not take {branch} out of the sandbox: {why}"
+msgstr "{branch}을(를) 샌드박스에서 꺼내지 못했습니다: {why}"
 
 msgid "Couldn't read the settings from the server."
 msgstr "서버에서 설정을 읽지 못했습니다."
@@ -930,6 +988,9 @@ msgstr "자격 증명 확인"
 
 msgid "Credential name"
 msgstr "자격 증명 이름"
+
+msgid "Credentials did not bind to this container, so the decoy values inside go out unchanged — every model call from here 401s. That is not the token's fault, and signing in again will not help. Cause: {why}"
+msgstr "자격 증명이 이 컨테이너에 묶이지 않아 안의 더미 값이 그대로 나갑니다 — 여기서 나가는 모든 모델 호출이 401입니다. 토큰 잘못이 아니고, 다시 로그인해도 해결되지 않습니다. 원인: {why}"
 
 msgid "Custom gateway; usage not displayed in header"
 msgstr "커스텀 게이트웨이라 사용량이 헤더에 뜨지 않습니다"
@@ -1029,6 +1090,12 @@ msgstr "{doubledLabel}(으)로 두 배"
 
 msgid "DRAFT approved"
 msgstr "DRAFT를 승인했습니다"
+
+msgid "DRAFT card filed: {goal}"
+msgstr "DRAFT 카드를 제출했습니다: {goal}"
+
+msgid "DRAFT card filed: {goal} ({n, plural, one {# planning turn} other {# planning turns}} dropped)"
+msgstr "DRAFT 카드를 제출했습니다: {goal}(계획 턴 {n, plural, other {#건}}을 버림)"
 
 msgid "Drop below 50% = prompt assembly broken, 3-5× more expensive per turn"
 msgstr "50% 아래로 떨어지면 프롬프트 조립이 깨진 것입니다. 턴당 비용이 3~5배가 됩니다"
@@ -1181,6 +1248,9 @@ msgstr "창에 맞춤"
 
 msgid "Follow window—updates as window changes, fits without crowding"
 msgstr "창에 맞춤 — 창 크기가 바뀌면 따라 갱신되고, 빽빽해지지 않습니다"
+
+msgid "for you: {question}"
+msgstr "당신에게: {question}"
 
 msgid "Forward to webhook"
 msgstr "웹훅으로 전달"
@@ -1424,6 +1494,9 @@ msgstr "진행 중"
 msgid "Including downstream"
 msgstr "하위 포함"
 
+msgid "index call ({total} tokens)"
+msgstr "인덱스 호출({total} 토큰)"
+
 msgid "Index model"
 msgstr "인덱스 모델"
 
@@ -1465,6 +1538,15 @@ msgstr "중단하고 롤백"
 msgid "Interrupt, keep changes"
 msgstr "중단하되 변경은 유지"
 
+msgid "interrupted ({mode}), killed {killed}"
+msgstr "중단했습니다({mode}). {killed}건을 종료"
+
+msgid "interrupted ({mode}), killed {killed}, rolled back to {sha}"
+msgstr "중단했습니다({mode}). {killed}건을 종료하고 {sha}(으)로 롤백"
+
+msgid "interrupted, but the rollback to {sha} failed: {why}. The checkout is dirty."
+msgstr "중단했지만 {sha}(으)로 롤백하지 못했습니다: {why}. 체크아웃이 더럽습니다."
+
 msgid "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
 msgstr "샌드박스 서버가 떠 있고 우리 키를 받는지. 보통 루프백이고, 그 답은 리포트를 채울 뿐입니다 — 아래의 네트워크 핑은 전체 함대의 게이트입니다."
 
@@ -1505,6 +1587,12 @@ msgstr "키"
 
 msgid "Last 24 hours, per hour"
 msgstr "최근 24시간, 시간별"
+
+msgid "lease {resource} #{id} started"
+msgstr "리스 {resource} #{id} 시작"
+
+msgid "lease #{id} exit {code}"
+msgstr "리스 #{id} 종료 코드 {code}"
 
 msgid "Lease timeout"
 msgstr "리스 제한 시간"
@@ -1692,8 +1780,14 @@ msgstr "이벤트 없음"
 msgid "no file"
 msgstr "파일이 없습니다"
 
+msgid "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
+msgstr "이 저장소에서 게이트를 하나도 찾지 못했습니다. 최소한 하나가 생기기 전까지 모든 슬라이스가 리뷰에서 떨어집니다: 리소스 템플릿을 추가하고 그 이름을 프로젝트의 gates에 적어 주세요."
+
 msgid "No gates enabled; LLM review has no floor."
 msgstr "게이트가 하나도 켜져 있지 않습니다. LLM 리뷰에 바닥이 없습니다."
+
+msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
+msgstr "grp 테이블에 {grp}이(가) 없어 /work가 비어 있습니다 — 이번 턴에 돌릴 코드가 없습니다"
 
 msgid "no login is waiting for a code — start one first"
 msgstr "코드를 기다리는 로그인이 없습니다 — 먼저 로그인을 시작하세요"
@@ -1758,6 +1852,9 @@ msgstr "진행 중인 요건이 없습니다. 오른쪽 위 +로 새로 만드�
 msgid "No requirements yet"
 msgstr "아직 요건 없음"
 
+msgid "no retro yet — the group cannot wind up without one"
+msgstr "회고가 아직 없습니다 — 회고 없이는 이 요구사항을 마무리할 수 없습니다"
+
 msgid "No runnable commands found."
 msgstr "실행할 수 있는 명령을 찾지 못했습니다."
 
@@ -1772,6 +1869,9 @@ msgstr "슬라이스 없음"
 
 msgid "No slices"
 msgstr "슬라이스 없음"
+
+msgid "no squash ({why})"
+msgstr "스쿼시 없음({why})"
 
 msgid "no such group"
 msgstr "그런 그룹이 없습니다"
@@ -1917,6 +2017,9 @@ msgstr "PR 열기 ↗"
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "요구사항 {name} (grp {grp}) 로 만들었습니다"
 
+msgid "opened PR #{pr} to replace the closed one"
+msgstr "닫힌 PR을 대신할 PR #{pr}을(를) 열었습니다"
+
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server가 사라져 다시 시작했습니다({n}번째). 보류된 작업은 알아서 재개합니다."
 
@@ -1950,6 +2053,9 @@ msgstr "{overlapping}와(과) 겹침"
 msgid "Ownership"
 msgstr "소유"
 
+msgid "owns {paths}"
+msgstr "경계를 {paths}로 정했습니다"
+
 msgid "p50"
 msgstr "p50"
 
@@ -1965,8 +2071,14 @@ msgstr "P95"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "PageIndex 를 만들 수 없습니다: 호출 {n} 번이 전부 빈 응답이었습니다. 설정에서 인덱스가 쓰는 계정이 아직 살아 있는지 확인하세요."
 
+msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
+msgstr "PageIndex: 노드 {n, plural, other {#개}}를 요약하고 파일 {files, plural, other {#개}}를 색인했습니다"
+
 msgid "Panel language"
 msgstr "화면 언어"
+
+msgid "parked ({reason}); {n, plural, one {# queued turn} other {# queued turns}} dropped, worktree untouched"
+msgstr "주차했습니다({reason}). 대기 중이던 턴 {n, plural, other {#건}}을 버렸고 워크트리는 그대로입니다"
 
 msgid "Pass"
 msgstr "통과"
@@ -1980,6 +2092,9 @@ msgstr "붙여넣으세요. 저장하면 가려집니다"
 msgid "Pause"
 msgstr "일시정지"
 
+msgid "paused"
+msgstr "일시정지했습니다"
+
 msgid "Paused"
 msgstr "일시정지됨"
 
@@ -1988,6 +2103,9 @@ msgstr "일시 정지됨"
 
 msgid "Pausing"
 msgstr "정지하는 중"
+
+msgid "pausing — waiting for {n, plural, one {# turn} other {# turns}} to land"
+msgstr "일시정지하는 중 — 턴 {n, plural, other {#건}}이 끝나기를 기다립니다"
 
 msgid "Pending"
 msgstr "대기 중"
@@ -2052,10 +2170,21 @@ msgstr "폴링 주기"
 msgid "PR #{n} opened"
 msgstr "PR #{n}을(를) 열었습니다"
 
+msgid "PR #{pr} has feedback:\n"
+"{lines}"
+msgstr "PR #{pr}에 피드백이 있습니다:\n"
+"{lines}"
+
+msgid "PR #{pr} was closed without merging"
+msgstr "PR #{pr}이(가) 머지되지 않고 닫혔습니다"
+
 msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
 "To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
 msgstr "PR #{pr}이(가) 머지되지 않고 닫혔습니다. 이 그룹은 멈췄고 머지 큐에서 빠졌습니다.\n"
 "계속하려면: GitHub에서 이 PR을 다시 열면 알아서 큐로 돌아옵니다. 그만두려면: 이 요구사항을 접으세요."
+
+msgid "PR #{pr} was reopened; back in the merge queue"
+msgstr "PR #{pr}이(가) 다시 열려 머지 대기열로 돌아왔습니다"
 
 msgid "PR closed — reopen it or not"
 msgstr "PR 닫힘 — 다시 열지 결정"
@@ -2080,6 +2209,9 @@ msgstr "이번 턴 준비"
 
 msgid "Private"
 msgstr "비공개"
+
+msgid "project {project} has no remote recorded, so there is nothing to clone — /work is still empty and there is no code to run this turn"
+msgstr "프로젝트 {project}에 원격이 기록되어 있지 않아 클론할 대상이 없습니다 — /work는 비어 있고 이번 턴에 돌릴 코드가 없습니다"
 
 msgid "Project name…"
 msgstr "프로젝트 이름…"
@@ -2123,8 +2255,8 @@ msgstr "한도가 회복되었습니다. 재개합니다"
 msgid "Rate limited reading usage; it recovers by itself shortly"
 msgstr "사용량 조회가 레이트 리밋에 걸렸습니다. 잠시 뒤 저절로 회복됩니다"
 
-msgid "rate limited; everything on this CLI holds until the window reopens (~{at}) and resumes itself — the quota belongs to the account, so no model spends less of it"
-msgstr "사용량 한도에 걸렸습니다. 이 CLI의 모든 작업은 한도가 풀릴 때({at}쯤)까지 보류되었다가 알아서 재개합니다 — 한도는 계정에 붙어 있어 모델을 바꿔도 덜 쓰지 않습니다"
+msgid "rate limited; everything on this CLI holds until the window reopens (~{at, date, short} {at, time, short}) and resumes itself — the quota belongs to the account, so no model spends less of it"
+msgstr "사용량 한도에 걸렸습니다. 이 CLI의 모든 작업은 한도가 풀릴 때({at, date, short} {at, time, short}쯤)까지 보류되었다가 알아서 재개합니다 — 한도는 계정에 붙어 있어 모델을 바꿔도 덜 쓰지 않습니다"
 
 msgid "reachable"
 msgstr "연결 가능"
@@ -2144,11 +2276,19 @@ msgstr "구독 창이 얼마나 남았는지 읽습니다. 유틸리티 컨테�
 msgid "Real tokens don't enter the sandbox"
 msgstr "진짜 토큰은 샌드박스에 들어가지 않습니다"
 
+msgid "rebase onto the base branch failed while waking up:\n"
+"{out}"
+msgstr "깨어나면서 베이스 브랜치로 리베이스하는 데 실패했습니다:\n"
+"{out}"
+
 msgid "Recheck reachability"
 msgstr "도달성 재확인"
 
 msgid "Recheck the repo map"
 msgstr "저장소 맵 재확인"
+
+msgid "reclaimed {n, plural, one {# turn} other {# turns}} left running by the previous server, resumed {resumed}"
+msgstr "이전 서버가 돌린 채로 둔 턴 {n, plural, other {#건}}을 회수하고 {resumed}건을 재개했습니다"
 
 msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
 msgstr "S{seq} 대조 실패: 선언했지만 바뀐 것이 없습니다 — {files}"
@@ -2170,6 +2310,9 @@ msgstr "로컬에서 갱신됨"
 
 msgid "Reject this slice"
 msgstr "이 슬라이스 반려"
+
+msgid "rejected"
+msgstr "반려"
 
 msgid "Rejected"
 msgstr "반려됨"
@@ -2243,6 +2386,9 @@ msgstr "답장합니다. 보내면 기다리던 에이전트가 풀립니다. Cm
 msgid "Reply… Cmd+Enter to send"
 msgstr "답장… Cmd+Enter로 전송"
 
+msgid "repo map refreshed ({files, plural, one {# file} other {# files}}, {read} read for symbols)"
+msgstr "저장소 지도를 갱신했습니다(파일 {files, plural, other {#개}}, 그중 {read}개는 심볼을 위해 읽음)"
+
 msgid "Repo-wide"
 msgstr "저장소 전체"
 
@@ -2287,6 +2433,12 @@ msgstr "{span} 후 초기화"
 
 msgid "Resetting soon"
 msgstr "곧 초기화"
+
+msgid "resolved review thread on {path}"
+msgstr "{path}의 리뷰 스레드를 해결했습니다"
+
+msgid "resolved review thread on {path}: {note}"
+msgstr "{path}의 리뷰 스레드를 해결했습니다: {note}"
 
 msgid "Resource lease"
 msgstr "리소스 리스"
@@ -2338,6 +2490,18 @@ msgstr "리뷰 스레드"
 
 msgid "Revoke and take over"
 msgstr "회수하고 직접 처리"
+
+msgid "revoked {by}'s answer"
+msgstr "{by}의 답변을 취소했습니다"
+
+msgid "revoked {by}'s answer and rolled back to {sha}"
+msgstr "{by}의 답변을 취소하고 {sha}(으)로 롤백했습니다"
+
+msgid "revoked the answer"
+msgstr "이 답변을 취소했습니다"
+
+msgid "revoked the answer and rolled back to {sha}"
+msgstr "이 답변을 취소하고 {sha}(으)로 롤백했습니다"
 
 msgid "Risk"
 msgstr "리스크"
@@ -2409,6 +2573,12 @@ msgstr "S{seq} 「{title}」이(가) {from}에서 {n}번 실패했습니다. 가
 
 msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq}「{title}」이(가) 끝났습니다. 확인해 주세요"
+
+msgid "S{seq} {verdict}"
+msgstr "S{seq} {verdict}"
+
+msgid "S{seq} {verdict}: {note}"
+msgstr "S{seq} {verdict}: {note}"
 
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq}이(가) {from}에서 {n}회 연속 실패 — 코드가 아니라 인수 기준의 문제로 보입니다"
@@ -2551,6 +2721,14 @@ msgstr "이만큼 조용하면 그룹에게 뭘 하고 있는지 묻습니다. �
 msgid "Skills"
 msgstr "스킬"
 
+msgid "Skills are mounted but the directory inside is empty: host {hostPath} has {onHost}, and {at} in the container has 0.\n"
+"The container runtime cannot read that host path, so binding it delivers an empty directory — on macOS docker runs inside a VM, and paths outside it (/var/tmp and the like) are never shared in. Point skillsDir at a location that is shared ($HOME works), add it to opensandbox-server's allowed_host_paths, and restart it. Until then agents have no skills at all."
+msgstr "스킬은 마운트되었지만 컨테이너 안 디렉터리가 비어 있습니다: 호스트의 {hostPath}에는 {onHost}개가 있고 컨테이너의 {at}에는 0개입니다.\n"
+"컨테이너 런타임이 그 호스트 경로를 읽지 못해 바인딩해도 빈 디렉터리가 됩니다 — macOS의 docker는 VM 안에서 돌고, 그 밖의 경로(/var/tmp 같은)는 공유되지 않습니다. skillsDir를 공유되는 위치($HOME이면 충분합니다)로 옮기고 opensandbox-server의 allowed_host_paths에 추가한 뒤 다시 시작하세요. 그전까지 에이전트는 스킬을 하나도 쓸 수 없습니다."
+
+msgid "Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list {path}. Add it and reopen this group's container; until then agents can only use the skills named in the input box."
+msgstr "스킬이 샌드박스에 마운트되지 않았습니다: opensandbox-server의 allowed_host_paths에 {path}가 없습니다. 추가한 뒤 이 요구사항의 컨테이너를 다시 여세요. 그전까지 에이전트는 입력창에서 지목한 스킬만 쓸 수 있습니다."
+
 msgid "Skills staging directory"
 msgstr "스킬 스테이징 디렉터리"
 
@@ -2592,6 +2770,9 @@ msgstr "요구사항 「{from}」에서 갈라져 나온 건입니다."
 
 msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
 msgstr "요구사항 「{from}」에서 갈라져 나온 건입니다. 원래 요청 전문은 note #{note} 에 있습니다."
+
+msgid "squashed {why}"
+msgstr "스쿼시했습니다({why})"
 
 msgid "Stage durations"
 msgstr "단계별 소요 시간"
@@ -2682,6 +2863,9 @@ msgstr "시스템 소요시간"
 msgid "Take note"
 msgstr "메모하기"
 
+msgid "task {task} done"
+msgstr "작업 {task} 완료"
+
 msgid "The {runtime} credential stopped working: {why}\n"
 "Go to settings → {runtime} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done."
 msgstr "{runtime} 자격 증명이 더는 통하지 않습니다: {why}\n"
@@ -2757,6 +2941,9 @@ msgstr "'멈춤'의 나머지 절반: 같은 파일을 이만큼 연속으로 �
 msgid "the PR will not open"
 msgstr "PR 을 열 수 없음"
 
+msgid "the project is gone (project {project} is not there), so /work is still empty — there is no code to run this turn"
+msgstr "프로젝트가 사라졌습니다(project {project}이(가) 없습니다). /work는 비어 있고 이번 턴에 돌릴 코드가 없습니다"
+
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "저장소 맵을 갱신할 수 없습니다: {repo} — {why}"
 
@@ -2795,6 +2982,9 @@ msgstr "샌드박스 서버가 이미 돌고 있어서, 있던 것을 그대로 
 
 msgid "the sandbox server was restarted, so every container it held is gone"
 msgstr "샌드박스 서버를 다시 시작해서, 그것이 쥐고 있던 컨테이너는 모두 사라졌습니다"
+
+msgid "The sandbox was rebuilt, but the workspace was not restored: {why}"
+msgstr "샌드박스를 다시 만들었지만 워크스페이스는 복원되지 않았습니다: {why}"
 
 msgid "the server asks for no API key, so any process on this machine can enter a container"
 msgstr "서버가 API 키를 요구하지 않으므로 이 머신의 어떤 프로세스든 컨테이너에 들어갈 수 있습니다"
@@ -2924,11 +3114,17 @@ msgstr "토큰 · 비중"
 msgid "tokens must be a positive number, or null to lift the cap"
 msgstr "토큰은 양수여야 하며, 상한을 없애려면 null 로 두세요"
 
+msgid "triaged as {as}: {note}"
+msgstr "{as}(으)로 분류했습니다: {note}"
+
 msgid "Tried in order, and only when nothing else answered: a project's own base branch wins, then GitHub's default_branch. This is what a repository falls back to when its remote cannot be reached."
 msgstr "위에서부터 시도하며, 다른 것이 답하지 못할 때만 씁니다. 프로젝트 자신의 기준 브랜치가 우선이고 그다음이 GitHub의 default_branch입니다. 원격에 닿지 못하는 저장소가 마지막으로 기대는 곳입니다."
 
 msgid "Try again"
 msgstr "다시 시도"
+
+msgid "turn done ({steps, plural, one {# step} other {# steps}}, {total} tokens)"
+msgstr "턴 종료({steps, plural, other {#단계}}, {total} 토큰)"
 
 msgid "turn ran past {min} min and was killed"
 msgstr "턴이 {min}분을 넘겨 중단했습니다"
@@ -3127,6 +3323,9 @@ msgstr "왜 이 값인가"
 
 msgid "Will be read at the start of the next turn. Paste screenshots directly; / to insert a skill. Cmd+Enter to send to PM"
 msgstr "다음 턴 시작에 읽힙니다. 스크린샷은 바로 붙여넣고, /로 스킬 삽입. Cmd+Enter로 PM에게 전송"
+
+msgid "woken up"
+msgstr "깨어났습니다"
 
 msgid "Workflow"
 msgstr "워크플로"

@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { sayIn } from "../../src/contracts/said.ts";
+import { said as descriptorOf } from "../support/said.ts";
 import { eq, sql } from "drizzle-orm";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { event } from "../../src/platform/persistence/schema.ts";
@@ -56,7 +58,7 @@ async function harness(opts: { project?: boolean; grp?: boolean; remote?: boolea
       if (orphan) await db.execute(sql`SET session_replication_role = origin`);
     }
   }
-  const said = () => db.select({ body: event.body }).from(event).where(eq(event.severity, "blocker"));
+  const said = () => db.select({ meta: event.meta_json }).from(event).where(eq(event.severity, "blocker"));
   return { ctx, sandbox, said };
 }
 
@@ -72,19 +74,38 @@ test("the clone is blobless, so history survives it", async () => {
 test("every way out that is not a clone says which one it was", async () => {
   // Built one at a time: each harness empties the one database, so holding three
   // of them would leave the first two describing rows that are gone.
-  const cases: [string, () => Promise<Awaited<ReturnType<typeof harness>>>, number][] = [
-    ["no group 2", () => harness(), 2],
-    ["the project is gone", () => harness({ project: false }), 1],
-    ["has no remote recorded", () => harness({ remote: false }), 1],
+  // Named by descriptor rather than by a phrase in the rendered sentence: these
+  // three go out in the language the panel is read in, and what distinguishes
+  // them is which of the three messages was chosen.
+  const cases: [{ id: string }, () => Promise<Awaited<ReturnType<typeof harness>>>, number][] = [
+    [
+      descriptorOf("no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"),
+      () => harness(),
+      2,
+    ],
+    [
+      descriptorOf(
+        "the project is gone (project {project} is not there), so /work is still empty — there is no code to run this turn",
+      ),
+      () => harness({ project: false }),
+      1,
+    ],
+    [
+      descriptorOf(
+        "project {project} has no remote recorded, so there is nothing to clone — /work is still empty and there is no code to run this turn",
+      ),
+      () => harness({ remote: false }),
+      1,
+    ],
   ];
 
-  for (const [needle, make, grpId] of cases) {
+  for (const [want, make, grpId] of cases) {
     const h = await make();
     await ensureCheckout(h.ctx, grpId);
     expect(h.sandbox.commands).toEqual([]);
-    const bodies = (await h.said()).map((e) => e.body);
-    expect(bodies.length).toBe(1);
-    expect(bodies[0]).toContain(needle);
+    const events = await h.said();
+    expect(events.length).toBe(1);
+    expect(sayIn(events[0]?.meta)?.id).toBe(want.id);
   }
 });
 

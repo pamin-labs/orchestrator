@@ -634,7 +634,7 @@ async function preserveTurnBranch(ctx: Ctx, job: Job<"agent_turn">, group: TurnG
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: `could not take ${group.branch} out of the sandbox: ${kept.reason}`,
+    say: msg`could not take ${{ branch: group.branch }} out of the sandbox: ${{ why: kept.reason }}`,
   });
 }
 
@@ -764,7 +764,7 @@ export async function stageAttachments(
         author: "orchestrator",
         kind: "state_change",
         severity: "blocker",
-        body: `could not put ${basename(host)} into the sandbox: ${errText(e)}`,
+        say: msg`could not put ${{ file: basename(host) }} into the sandbox: ${{ why: errText(e) }}`,
       });
       continue;
     }
@@ -820,7 +820,7 @@ export async function reconcileOwnership(
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
-      body: `could not check file ownership this turn (git status in the sandbox: ${status.out.slice(0, 200)})`,
+      say: msg`could not check file ownership this turn (git status in the sandbox: ${{ out: status.out.slice(0, 200) }})`,
     });
     return;
   }
@@ -857,9 +857,7 @@ export async function reconcileOwnership(
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
-      body:
-        `could not roll back ${left.size} file(s) outside this group's paths ` +
-        `(${[...left].slice(0, 5).join(", ")}): ${(co?.out || cl?.out || "git changed nothing").slice(0, 200)}`,
+      say: msg`could not roll back ${plural({ n: left.size }, { one: "# file", other: "# files" })} outside this group's paths (${{ files: [...left].slice(0, 5).join(", ") }}): ${{ out: (co?.out || cl?.out || "git changed nothing").slice(0, 200) }}`,
       meta: { left: [...left], reverted, stray, owns },
     });
     return;
@@ -917,7 +915,7 @@ async function recordCost(
     grpId: job.grp_id,
     author: agent.role,
     kind: "tool_summary",
-    body: `turn done (${r.numTurns} steps, ${total} tokens)`,
+    say: msg`turn done (${plural({ steps: r.numTurns }, { one: "# step", other: "# steps" })}, ${{ total }} tokens)`,
     // The provider, recorded rather than inferred: the `model LIKE 'gpt%'` split
     // 成本 used breaks on any rename, and the event row has no agent to join to.
     meta: {
@@ -1021,7 +1019,7 @@ async function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: T
     kind: "escalation",
     intent: "ask",
     severity: "blocker",
-    body: `${runtime} credentials rejected`,
+    say: msg`${{ runtime }} credentials rejected`,
   });
 }
 
@@ -1048,7 +1046,19 @@ async function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: Tur
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    say: msg`rate limited; everything on this CLI holds until the window reopens (~${{ at: new Date(resetsMs).toLocaleString() }}) and resumes itself — the quota belongs to the account, so no model spends less of it`,
+    // Written as ICU rather than a `msg` template, because the template macro
+    // can name a value but not say how to format it — and `toLocaleString()`
+    // here formatted the one thing in the sentence a reader acts on in the
+    // *server's* locale, then handed the panel a finished string to drop into
+    // whichever of ten languages it reads. `{at, date, short}` is resolved
+    // where it is read, by the same `Intl` the rest of the panel goes through.
+    say: {
+      ...msg({
+        message:
+          "rate limited; everything on this CLI holds until the window reopens (~{at, date, short} {at, time, short}) and resumes itself — the quota belongs to the account, so no model spends less of it",
+      }),
+      values: { at: new Date(resetsMs) },
+    },
     meta: rl,
   });
   if (job.grp_id) {

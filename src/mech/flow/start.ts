@@ -321,9 +321,7 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
       kind: "escalation",
       intent: "ask",
       severity: "advisory",
-      body:
-        `no gates detected in this repository. Every slice will fail review until this project ` +
-        `has at least one: add a resource template and list its name in the project's gates.`,
+      say: msg`no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates.`,
     });
     return;
   }

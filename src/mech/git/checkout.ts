@@ -1,4 +1,5 @@
 import { msg } from "@lingui/core/macro";
+import type { Said } from "../../contracts/said.ts";
 import { errText, tail } from "../../platform/process/text.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { activeTracer } from "../../platform/observability/traces.ts";
@@ -730,27 +731,38 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
   // `on`, not `grpId`, for exactly one of them: `event.grp_id` is a foreign key
   // to `grp`, so an event about a group that is not in the table cannot be
   // written against it. That one goes out unscoped and names the id in its body.
-  const report = async (why: string, on: number | null = grpId): Promise<void> => {
-    await ctx.bus.emit({
-      grpId: on,
-      author: "orchestrator",
-      kind: "state_change",
-      severity: "blocker",
-      body: `${why}, so /work is still empty — there is no code to run this turn`,
-    });
+  /**
+   * The whole sentence each time, not a reason threaded into a shared tail.
+   * A descriptor rendered into another descriptor's values is frozen in one
+   * language inside a sentence rendered in another — `contracts/said.ts` calls
+   * that "values, never text", and three repeated clauses is what not doing it
+   * costs.
+   */
+  const report = async (say: Said, on: number | null = grpId): Promise<void> => {
+    await ctx.bus.emit({ grpId: on, author: "orchestrator", kind: "state_change", severity: "blocker", say });
   };
 
   const [grp] = await ctx.db
     .select({ name: grps.name, project_id: grps.project_id, branch: grps.branch })
     .from(grps)
     .where(eq(grps.id, grpId));
-  if (!grp) return report(`no group ${grpId} in the grp table`, null);
+  if (!grp)
+    return report(
+      msg`no group ${{ grp: grpId }} in the grp table, so /work is still empty — there is no code to run this turn`,
+      null,
+    );
   // Still two questions, not one: a project that is gone and a project with no
   // remote recorded send the reader to different places.
   const [found] = await ctx.db.select({ remote: project.remote }).from(project).where(eq(project.id, grp.project_id));
-  if (!found) return report(`the project is gone (project ${grp.project_id} is not there)`);
+  if (!found)
+    return report(
+      msg`the project is gone (project ${{ project: grp.project_id }} is not there), so /work is still empty — there is no code to run this turn`,
+    );
   const remote = await remoteFor(ctx.db, grp.project_id);
-  if (!remote) return report(`project ${grp.project_id} has no remote recorded, so there is nothing to clone`);
+  if (!remote)
+    return report(
+      msg`project ${{ project: grp.project_id }} has no remote recorded, so there is nothing to clone — /work is still empty and there is no code to run this turn`,
+    );
   await createCheckout(
     ctx,
     { grp: grpId },
