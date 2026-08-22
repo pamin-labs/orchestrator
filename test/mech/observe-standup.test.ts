@@ -139,3 +139,34 @@ test("a standup line about no group at all still lands", async () => {
   const [row] = await ctx.db.select({ grp_id: event.grp_id }).from(event).where(eq(event.author, "standup"));
   expect(row?.grp_id).toBeNull();
 });
+
+/**
+ * The de-duplication compares a descriptor against the column it was stored in,
+ * and two things could make that silently never match.
+ *
+ * `EventBus.prepare` scrubs `meta` as serialised text, so a credential-shaped
+ * value is `[credential redacted]` in the row and the needle goes through the
+ * same `scrub`. And bun-sql sends a JS string as a JSON *value*, so a bare
+ * `::jsonb` yields a jsonb string where `::text::jsonb` yields the object.
+ * Either mistake reads as the standup re-emitting every pass, quietly.
+ */
+test("a finding carrying a credential-shaped value still de-duplicates", async () => {
+  const ctx = await testContext();
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p" });
+  await f.grp.create({ project_id: p.id, name: "g" });
+  const item: StandupItem = {
+    kind: "repeat_failure",
+    say: {
+      id: "k1",
+      message: "{resource} keeps failing",
+      values: { resource: "ghp_0123456789abcdefghijklmnopqrstuv" },
+    },
+    grpIds: [1],
+  };
+
+  await publishStandupItem(ctx, item);
+  await publishStandupItem(ctx, item);
+
+  expect(await standupLines(ctx.db)).toBe(1);
+});

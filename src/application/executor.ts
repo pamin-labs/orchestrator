@@ -40,6 +40,7 @@ import {
   sendBack,
 } from "../mech/flow/review.ts";
 import { runStandup, type StandupItem } from "../mech/flow/standup.ts";
+import { scrub } from "../platform/observability/redaction.ts";
 import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { gitTrailers } from "../mech/git/ghlogin.ts";
 import { changedSince, checkpoint, porcelainEntries, porcelainPaths, STATUS_Z } from "../mech/git/gitops.ts";
@@ -1115,16 +1116,28 @@ export function publishWatchdogFinding(ctx: Ctx, finding: Finding): void {
  * for the panel; `renderSaid` produces the one the notifier posts to a webhook.
  */
 /**
- * De-duplicated on the descriptor's id and values rather than on the rendered
- * body: the prose is free to change now, and the same finding in two languages
- * is one finding.
+ * De-duplicated on the descriptor rather than on the rendered body: the prose is
+ * free to change now, and the same finding in two languages is one finding.
+ */
+/**
+ * Through the same `scrub` the row was written with. `EventBus.prepare`
+ * serialises `meta` and scrubs it as text, so a value that looks like a
+ * credential is `[credential redacted]` in the column, and an unscrubbed needle
+ * silently never matches — the standup re-emitting every pass, quietly.
+ */
+/**
+ * `::text::jsonb`, not `::jsonb`. bun-sql sends a JS string as a JSON *value*,
+ * so the bare cast produces a jsonb string rather than an object and the
+ * comparison is always false. Measured: `jsonb_typeof` says `string` for one and
+ * `object` for the other. jsonb equality then ignores key order, which is what
+ * makes comparing a whole descriptor safe.
  */
 export async function publishStandupItem(ctx: Ctx, item: StandupItem): Promise<void> {
-  const key = JSON.stringify([item.say.id, item.say.values ?? {}]);
+  const said = scrub(JSON.stringify(item.say));
   const [seen] = await ctx.db
     .select({ at: maxMs(events.at) })
     .from(events)
-    .where(and(eq(events.author, "standup"), sql`${events.meta_json}->>'key' = ${key}`));
+    .where(and(eq(events.author, "standup"), sql`${events.meta_json}->'say' = ${said}::text::jsonb`));
   if (seen?.at && Date.now() - seen.at < ctx.config.watchdog.reemitMs) return;
   const groupId = item.grpIds[0] ?? null;
   await ctx.bus.emit({
@@ -1132,7 +1145,7 @@ export async function publishStandupItem(ctx: Ctx, item: StandupItem): Promise<v
     author: "standup",
     kind: "state_change",
     say: item.say,
-    meta: { kind: item.kind, groups: item.grpIds, key },
+    meta: { kind: item.kind, groups: item.grpIds },
   });
   ctx.onFinding?.(item.kind, "advisory", renderSaid(outputLanguage(ctx.config), item.say), groupId);
 }
