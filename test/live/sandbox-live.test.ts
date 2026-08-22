@@ -84,7 +84,7 @@ function dockerUp(): boolean {
  */
 async function boot(): Promise<{ key: string; started: string | null } | { why: string }> {
   if (!ENABLED) return { why: "ORCH_LIVE_SANDBOX is not 1" };
-  if (!dockerUp()) return { why: "docker daemon 不应答 —— 起不了容器，这几个测试没有意义" };
+  if (!dockerUp()) return { why: "the docker daemon does not answer — no containers, so these prove nothing" };
 
   const db = await openMemory();
   const held = serverKeyOnDisk();

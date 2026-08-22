@@ -19,7 +19,7 @@ import { messages as ru } from "../../../locales/ru.po";
  * This was two hand-kept tables — English and Simplified Chinese — behind an
  * `isChinese()` test, which is a language *pair*. A boss whose `output.language`
  * was `한국어` got English, however that knob was set, because there was no third
- * row to get. They are the same nine catalogues the panel reads, compiled into
+ * row to get. They are the same ten catalogues the panel reads, compiled into
  * this binary by the same plugin: `Bun.build` takes one, and only `bun build`
  * the CLI does not.
  */

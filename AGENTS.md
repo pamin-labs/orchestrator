@@ -206,7 +206,7 @@ or run the full suite unless they own integration.
   `activeTracer().startActiveSpan`, names it after what it does rather than a
   number, and sets `SpanStatusCode.ERROR` before rethrowing. Put the span at the
   one place every case passes through, not at each caller: the twenty-fifth
-  caller is the one that will not have it. Untimed work is invisible in 系统耗时,
+  caller is the one that will not have it. Untimed work is invisible in `System timing`,
   and the panel is where "which one is slow" gets asked — a watchdog tick
   reported 50s against a 30s interval for as long as it was a single span.
   Details in [`observability`](docs/standards/observability.md).

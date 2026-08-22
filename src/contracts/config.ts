@@ -390,7 +390,7 @@ export const ConfigSchema = z.object({
    */
   indexModel: ModelRef,
   /**
-   * How long one 系统耗时 report is reused before it is computed again.
+   * How long one `System timing` report is reused before it is computed again.
    *
    * The report is five window-function queries over the whole span table, run
    * synchronously — so while it computes, every other request and the SSE
@@ -445,7 +445,7 @@ export const ConfigSchema = z.object({
    *
    * The conversation — `say`, `boss_say`, `note`, `escalation` — is never dropped:
    * it is the record, and the unread cursor walks it. This bounds the rest, which
-   * is read inside a day (成本's chart asks for 24 hours) and then never again.
+   * is read inside a day (`Cost`'s chart asks for 24 hours) and then never again.
    */
   eventRetentionMs: count,
   /**

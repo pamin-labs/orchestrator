@@ -1,6 +1,6 @@
 {
   "api/orch/escalation.ts": 1,
-  "contracts/config.ts": 14,
+  "contracts/config.ts": 12,
   "contracts/said.ts": 1,
   "mech/flow/chain.ts": 9,
   "mech/flow/review.ts": 1,
@@ -10,6 +10,6 @@
   "mech/knowledge/note-index.ts": 1,
   "mech/knowledge/terms.ts": 2,
   "mech/util/validate.ts": 10,
-  "platform/config/load.ts": 2,
+  "platform/config/load.ts": 1,
   "platform/text/lang.ts": 1
 }

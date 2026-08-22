@@ -28,6 +28,13 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      # Same server `ci.yml`'s test job starts, from the same compose file, and
+      # for the same reason: `openMemory()` is how every one of these reaches a
+      # database. Without it both jobs died on `ERR_POSTGRES_CONNECTION_CLOSED`
+      # before touching what they exist to test — `sandbox-live` reported two
+      # unnamed failures rather than six live tests, every night.
+      - name: the suite's postgres, from the file that configures it
+        run: bun run db:test:up
       - run: bun run build:web
       - run: bun run perf:bench
       - env:
@@ -94,6 +101,13 @@ jobs:
       # The first `uvx` of a package downloads and installs it, and the tests
       # give the server 45s from spawn to first answer. Paid here instead.
       - run: uvx opensandbox-server --help
+      # Same server `ci.yml`'s test job starts, from the same compose file, and
+      # for the same reason: `openMemory()` is how every one of these reaches a
+      # database. Without it both jobs died on `ERR_POSTGRES_CONNECTION_CLOSED`
+      # before touching what they exist to test — `sandbox-live` reported two
+      # unnamed failures rather than six live tests, every night.
+      - name: the suite's postgres, from the file that configures it
+        run: bun run db:test:up
       # `tee`, and a check that nothing skipped. The tests skip themselves when
       # this machine cannot run containers, which is right on a laptop and is
       # this job failing to do its one job — and a skip is not a non-zero exit.

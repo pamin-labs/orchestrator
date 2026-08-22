@@ -30,7 +30,7 @@ bounded.
 
 Anything that waits: a container round trip, a network call, a subprocess, a
 filesystem walk. The rule is not "instrument the interesting parts" — a stage
-with no span is not slow in 系统耗时, it is absent from it, and absent reads as
+with no span is not slow in `System timing`, it is absent from it, and absent reads as
 free.
 
 - Open it with `activeTracer().startActiveSpan`, and end it in `finally`.

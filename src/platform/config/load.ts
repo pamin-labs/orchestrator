@@ -194,7 +194,7 @@ const DEFAULTS: Config = {
   // Deep enough that a browser catching up after a tab wakes never drops, and
   // shallow enough that a dead socket cannot hold a turn's worth of tokens.
   streamBacklog: 256,
-  // A week, against 成本's 24-hour window: enough that a question asked on Monday
+  // A week, against `Cost`'s 24-hour window: enough that a question asked on Monday
   // about Friday still has its evidence, and bounded so an installation that has
   // run for a year is not replaying a year to every reconnecting tab.
   eventRetentionMs: 7 * 24 * 60 * 60 * 1_000,
