@@ -282,7 +282,8 @@ function ownershipModel(all: Group[]) {
 /** One agent's cost so far, said in the tooltip rather than in a column: the
  *  table was nine wide and this is the question people hover for. */
 /** Which other requirements claim this path. `、` is the separator a Chinese
- *  reader expects and a comma is not, so it is a message of its own. */
+ *  reader expects and a comma is not, so it is a message of its own.
+ *  i18n-exempt: the separator is the subject. */
 const sameGround = (names: string[]): string => {
   const others = names.join(t`, `);
   return t`the same ground as ${others}`;

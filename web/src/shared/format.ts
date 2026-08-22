@@ -28,6 +28,7 @@ function per<T>(make: (locale: string) => T): () => T {
  * `183.4万`, `1,8 Mio.`, and English's `K`. This used to lowercase that K to
  * match the settings rows, which is editing what CLDR said; `fmtCount` there is
  * lowercase because it is a value typed back into a box.
+ * i18n-exempt: how each language writes a number is the subject.
  */
 const compact = per((locale) => new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }));
 

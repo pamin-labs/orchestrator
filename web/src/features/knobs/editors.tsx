@@ -97,7 +97,7 @@ export const LANGUAGE_SUGGESTIONS = [
  * Uncontrolled and keyed on the stored value: a refused edit keeps the text that
  * was typed (so it can be fixed rather than retyped) and an accepted one snaps
  * to what the server actually holds, which is how `20 分钟` appears after
- * someone types `1200s`.
+ * someone types `1200s`. (i18n-exempt: a spelling `units.ts` accepts.)
  */
 /**
  * A number and its unit, as two controls instead of one string to spell.
@@ -106,8 +106,8 @@ export const LANGUAGE_SUGGESTIONS = [
  * leaves digits as the only free text, and the input refuses everything else.
  *
  * Integer-only, which is why `splitCount` exists next to `fmtCount`: the reading
- * format prints 8500000 as `8.5M`, and 8.5 is not something a spinner can step
- * or an integer field can hold. The picker shows 8500k instead.
+ * format prints 8500000 as `8.5M`, which a spinner cannot step and an integer
+ * field cannot hold; the picker shows 8500k. (i18n-exempt: `units.ts` spellings.)
  */
 /**
  * A duration as one field: `15 秒`, `3h`, `2 分钟` — typed the way it reads.
@@ -117,6 +117,7 @@ export const LANGUAGE_SUGGESTIONS = [
  * numbers, and the unit segment repeated so often it stopped carrying meaning.
  * `parseDuration` already accepted every spelling a person types, so the
  * buttons were offering what the field could take anyway.
+ * i18n-exempt: spellings `units.ts` accepts.
  */
 /**
  * A duration, as a number and the unit it is counted in.
@@ -125,6 +126,7 @@ export const LANGUAGE_SUGGESTIONS = [
  * asked the reader to know that `分钟` was a word this field would take. The
  * unit is a closed set of five, so it is a menu — `Amount` draws one past four
  * options rather than spending five buttons of width on a row that has twelve.
+ * i18n-exempt: spellings `units.ts` accepts.
  */
 export function DurationAmount({
   ms,
@@ -225,6 +227,7 @@ export function Amount<U extends string>({
       ) : (
         <Segments
           value={unit}
+          // i18n-exempt: the unit names a person types, from `units.ts`.
           // Nothing selected *is* the answer when a bare number is legal, so the
           // empty member is never drawn: pressing the lit one turns it off,
           // which is what a toggle group already means. A unit set with no empty
@@ -366,6 +369,7 @@ function RemoveRow({ name, onRemove }: { name: string; onRemove?: () => void }) 
  * what this is for — so it is rows plus one empty row, not a form. Naming the
  * empty row is what adds an entry; there is no ＋ button, because a button that
  * makes a blank row and a blank row are the same thing one click apart.
+ * (i18n-exempt: the fullwidth ＋ is a glyph, not copy.)
  */
 export function Pairs({
   map,
@@ -714,7 +718,7 @@ const LOCAL_EMBEDDINGS = ["Xenova/multilingual-e5-small", "Xenova/multilingual-e
  */
 /**
  * The endpoint and credential were rows of their own, drawn as two empty boxes
- * under a segment reading 本地 — fields for a mode nobody had chosen.
+ * under a segment reading `Local` — fields for a mode nobody had chosen.
  *
  * They cannot be gated on the *stored* mode either. `ConfigSchema` refuses
  * `mode: remote` unless the endpoint parses and a credential is named, and a
@@ -833,7 +837,7 @@ function Sub({ label, children }: { label: string; children: React.ReactNode }) 
  * The browser's own permission, asked for where the boss can see why.
  *
  * A button rather than a prompt on load: asking before the page has said
- * anything worth being notified about gets 拒绝, and that decision is sticky.
+ * anything worth being notified about gets denied, and that decision is sticky.
  */
 /** What each answer means, and where the reader has to go to change it. */
 const NOTIFY_SAID: Record<NotifyState, MessageDescriptor | ""> = {
@@ -849,7 +853,7 @@ const NOTIFY_SAID: Record<NotifyState, MessageDescriptor | ""> = {
  *
  * The permission is the browser's — asked for once, and a page cannot take it
  * back. The switch is the boss's, and it is the only one a settings pane can
- * offer; without it "已开" was a dead end with no way to turn these off short of
+ * offer; without it an enabled state was a dead end with no way to turn these off short of
  * the browser's own site settings. Off falls back to a toast, which is what an
  * ungranted permission already does.
  */

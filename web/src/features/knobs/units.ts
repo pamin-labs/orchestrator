@@ -16,6 +16,7 @@ import { i18n } from "../../i18n";
  * directions for every value the config ships — `read(show(x)) === x` — and
  * `knob-units.test.ts` is that sentence as a check, because a rounding bug here is
  * the silent kind: the field reads right and the fleet runs on a different number.
+ * i18n-exempt: a spelling this table accepts.
  */
 
 export type Shape =
@@ -102,6 +103,7 @@ export const PER: Record<DurationUnit, number> = { ms: 1, s: 1000, min: 60_000, 
  * `168 小时` is the same defect one unit up: a number nobody can check without
  * dividing. Only two shipped values are a whole number of days, and both read
  * better as one.
+ * i18n-exempt: a spelling this table accepts.
  */
 /** Biggest first, which is also the order the unit menu offers them. */
 export const DURATION_UNITS: readonly DurationUnit[] = ["d", "h", "min", "s", "ms"];
@@ -111,11 +113,13 @@ export const DURATION_UNITS: readonly DurationUnit[] = ["d", "h", "min", "s", "m
  *
  * Whole, not nearest: 90 分钟 stays 90 分钟 rather than becoming 1.5 小时, and
  * every split can be multiplied back to exactly the number that came in.
+ *
+ * i18n-exempt: a spelling this table accepts.
  */
 export function splitDuration(ms: number): { n: number; unit: DurationUnit } {
   for (const unit of DURATION_UNITS) {
     const n = ms / PER[unit];
-    // Zero is a whole number of hours too; it should read as 0 秒.
+    // i18n-exempt: Zero is a whole number of hours too; it should read as 0 秒.
     if (Number.isInteger(n) && (n !== 0 || unit === "s")) return { n, unit };
   }
   return { n: ms, unit: "ms" };
@@ -253,6 +257,8 @@ export function showNumber(value: number, shape?: Shape): string {
  *
  * `current` supplies the unit for a bare number, so typing 30 over `20 分钟`
  * means thirty minutes and not thirty of whatever the parser felt like.
+ *
+ * i18n-exempt: a spelling this table accepts.
  */
 export function readNumber(raw: string, current: number, shape?: Shape): number | null {
   switch (shape) {

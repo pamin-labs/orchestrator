@@ -78,6 +78,17 @@ function offenders(file: string, source: string): string[] {
       if (CJK.test(p.node.pattern)) report(p.node.loc?.start.line ?? 0, p.node.pattern);
     },
   });
+  // Comments too, and they outnumbered the literals: the panel's source language
+  // became English and its comments went on naming 待办 and 成本, labels a reader
+  // can no longer find in the source. `AGENTS.md`'s first coding rule already
+  // said English; nothing enforced it.
+  //
+  // A comment carries its own exemption rather than borrowing the line-range
+  // rule above: the range starts at the marker, and a marker inside a block
+  // starts below the line this reports.
+  for (const c of ast.comments ?? []) {
+    if (CJK.test(c.value) && !EXEMPT.test(c.value)) report(c.loc?.start.line ?? 0, c.value);
+  }
   return found;
 }
 

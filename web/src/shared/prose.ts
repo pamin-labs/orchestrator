@@ -14,6 +14,7 @@
  * `…通过。\n验收 2（被挡卡不可代批）…` in the middle of a sentence they have to
  * read to make a decision. Fixing it where it is written would mean fixing every
  * path that writes agent prose; fixing it where it is read is one function.
+ * i18n-exempt: what an agent wrote, quoted.
  */
 export const nl = (s: string) => s.replace(/\\n/g, "\n");
 
@@ -39,11 +40,13 @@ export const brief = (s: string, max = 44): string => {
  * the key, in every grammar a stored card can have — `## goal` since the keys
  * became ASCII, `## 目标` before that, and the pre-Markdown `目标: …` inline form
  * that ADR 016 replaced.
+ * i18n-exempt: the card's own section keys, in every grammar one can have.
  */
 /**
  * Both readers used to do `startsWith("目标")`, which a Markdown card never
  * satisfies — its first line is `## 目标`. Every card in the queue read
  * `Plan card not submitted` with the card sitting right there.
+ * i18n-exempt: the key this used to match, quoted.
  */
 // i18n-exempt: protocol, not copy — the same two spellings `ALIAS` in
 // `src/mech/util/validate.ts` accepts, for the same stored cards, and they retire
