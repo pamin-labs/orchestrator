@@ -28,42 +28,26 @@ export type Shape =
   | "percent";
 
 /**
- * Which knobs are not the plain number they look like.
+ * Which shape a knob is, read off the name the server stores it under.
  *
- * Keyed by the same dotted path the server sends. A knob missing from here is
- * drawn as its own digits, which is right for `maxGroups` and wrong for anything
- * whose name ends in `Ms` — the check asserts that, so a new duration knob
- * cannot ship rendering as 1200000.
+ * This was twenty-six rows keyed by dotted path, and every one of them followed
+ * the suffix: twenty-three `…Ms`, one `…Seconds`, one `…Fraction`, one `…Chars`.
+ * The rule was already written down — in this file's own guard, as
+ * `/(Ms|Seconds|Fraction)$/` — so the table was that rule's second copy, and the
+ * copy is the one that goes stale. A knob whose name ends in none of these is
+ * drawn as its own digits, which is right for `maxGroups`.
  */
-export const KNOB_SHAPE: Record<string, Shape> = {
-  turnTimeoutMs: "ms",
-  leaseTimeoutMs: "ms",
-  installTimeoutMs: "ms",
-  parkAfterPausedMs: "ms",
-  watchdogIntervalMs: "ms",
-  eventRetentionMs: "ms",
-  "watchdog.reemitMs": "ms",
-  "watchdog.nudgeAfterMs": "ms",
-  "watchdog.nudgeReemitMs": "ms",
-  "watchdog.pausedNotifyMs": "ms",
-  "watchdog.repoMapEveryMs": "ms",
-  "timeouts.githubApiMs": "ms",
-  "timeouts.credentialCheckMs": "ms",
-  "timeouts.webhookMs": "ms",
-  "timeouts.sandboxPingMs": "ms",
-  "timeouts.networkPingMs": "ms",
-  "timeouts.tokenRefreshMs": "ms",
-  "timeouts.usageReadMs": "ms",
-  "timeouts.transferMs": "ms",
-  "intervals.recheckMs": "ms",
-  "intervals.usagePollMs": "ms",
-  "intervals.usageBackoffMs": "ms",
-  "intervals.notifyBatchMs": "ms",
-  telemetryCacheMs: "ms",
-  "sandbox.ttlSeconds": "seconds",
-  sessionRotateFraction: "percent",
-  ctxBudgetChars: "count",
-};
+/** Ordered, because `endsWith` is a first match: nothing here is a suffix of
+ *  anything else today, and the tuple says so rather than a `Record` implying
+ *  the order does not matter. */
+const SHAPES: readonly (readonly [string, Shape])[] = [
+  ["Ms", "ms"],
+  ["Seconds", "seconds"],
+  ["Fraction", "percent"],
+  ["Chars", "count"],
+];
+
+export const shapeOf = (path: string): Shape | undefined => SHAPES.find(([suffix]) => path.endsWith(suffix))?.[1];
 
 /**
  * What to say when a percentage is out of range. Shown on the row.

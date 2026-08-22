@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { api, mutate, readApi } from "../../shared/api";
-import { KNOB_SHAPE, WANTS_PERCENT, readNumber } from "./units";
+import { WANTS_PERCENT, readNumber, shapeOf } from "./units";
 import { refusalText, type Refusal } from "../../shared/said";
 import type { ModelSources } from "./models";
 import {
@@ -1120,12 +1120,14 @@ function Value(props: Editor) {
 /**
  * A number and its unit, for the four shapes a stored number can have.
  *
- * A duration or a count is a number and a unit, so it gets two controls. The
- * text parser below still handles the rest — and still accepts `3h` typed into
- * the digits box's sibling — but nobody has to spell anything.
+ * A duration, a count and a percentage each get two controls — a digits box and
+ * a unit beside it — so nobody has to spell anything. Everything else is the
+ * digits box alone, and `readNumber` is `Number()`: the free-text parser that
+ * used to take `3h` here is gone, and this is the second comment that outlived
+ * it.
  */
 function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
-  const shape = KNOB_SHAPE[knob.path];
+  const shape = shapeOf(knob.path);
   const now = Number(knob.value);
   const scale = durationScale(shape);
 

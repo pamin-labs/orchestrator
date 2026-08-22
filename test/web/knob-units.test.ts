@@ -1,14 +1,13 @@
 import { expect, test } from "bun:test";
 import { settablePaths, defaultFor } from "../../src/platform/config/settings.ts";
-import { isSettingPath } from "../../src/contracts/config.ts";
 import { COPY, KNOBS_ELSEWHERE, SECTIONS } from "../../web/src/features/knobs/view.tsx";
 import {
   COUNT_UNITS,
   countOf,
   DURATION_UNITS,
-  KNOB_SHAPE,
   PER,
   readNumber,
+  shapeOf,
   splitCount,
   splitDuration,
   unitLabel,
@@ -103,23 +102,53 @@ test("a plain number row takes digits and refuses everything else", () => {
   expect(readNumber("20 光年")).toBeNull();
 });
 
-test("every duration knob the server offers has a unit on the page", () => {
-  // The check that makes the table above maintainable rather than a snapshot: a
-  // knob named `somethingMs` that nobody added to KNOB_SHAPE renders as seven
-  // digits, which is the bug this whole file exists to prevent.
-  const missing = [...settablePaths()]
-    .filter(([path, type]) => type === "number" && /(Ms|Seconds|Fraction)$/.test(path.split(".").at(-1)!))
-    .filter(([path]) => !KNOB_SHAPE[path])
-    .map(([path]) => path);
-  expect(missing).toEqual([]);
+/**
+ * The suffix rule answers for every numeric knob the server offers.
+ *
+ * This used to compare a twenty-six-row table against this regex — the rule
+ * written twice, once as a rule and once as a transcript of it. `shapeOf` is the
+ * rule, so what is left to assert is that the rule is *complete*: no numeric
+ * knob ends in a duration-shaped suffix without getting a unit, and every path
+ * the rule does answer for is really a number.
+ */
+test("every numeric knob whose name says it is a duration gets a unit", () => {
+  const numeric = [...settablePaths()].filter(([, type]) => type === "number");
 
-  // And every shape matches a default that is really a number.
-  for (const path of Object.keys(KNOB_SHAPE).filter(isSettingPath)) {
+  // The failure this whole file exists to prevent: a knob named `somethingMs`
+  // rendered as seven digits.
+  const unshaped = numeric.filter(([path]) => !shapeOf(path)).map(([path]) => path);
+  expect(unshaped.filter((path) => /(Ms|Seconds|Fraction|Chars)$/.test(path))).toEqual([]);
+
+  // And nothing the rule answers for is anything but a finite number.
+  for (const [path] of numeric.filter(([path]) => shapeOf(path))) {
     const value = defaultFor(path);
     expect(typeof value).toBe("number");
     if (typeof value !== "number") throw new Error(`${path} is not numeric`);
     expect(Number.isFinite(value)).toBe(true);
   }
+
+  // The rule itself, on names rather than on the config — so it is still a check
+  // when a knob is renamed, and so this line fails if a suffix is dropped.
+  expect(shapeOf("turnTimeoutMs")).toBe("ms");
+  expect(shapeOf("sandbox.ttlSeconds")).toBe("seconds");
+  expect(shapeOf("sessionRotateFraction")).toBe("percent");
+  expect(shapeOf("ctxBudgetChars")).toBe("count");
+  // A knob that is the plain number it looks like gets no unit, which is right.
+  expect(shapeOf("maxGroups")).toBeUndefined();
+});
+
+/**
+ * `shapeOf` reads a name, and one name in the config is not a scalar.
+ *
+ * `intervals.notifyBackoffMs` is `z.array(count)` — a reminder ladder — so the
+ * suffix answers `ms` for it where the old table, keyed by path, simply had no
+ * row. It is unreachable: `scalarValue` sends only `type === "number"` to
+ * `numberValue`, which is the one caller. Pinned rather than explained, because
+ * the day an array editor wants a unit is the day this line has to be read.
+ */
+test("the suffix answers for a path no number editor ever asks about", () => {
+  expect(shapeOf("intervals.notifyBackoffMs")).toBe("ms");
+  expect([...settablePaths()].find(([path]) => path === "intervals.notifyBackoffMs")?.[1]).toBe("array");
 });
 
 test("every settable knob appears in a section, or the settings page cannot draw it", () => {
