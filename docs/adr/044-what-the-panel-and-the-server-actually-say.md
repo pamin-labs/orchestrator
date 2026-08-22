@@ -101,6 +101,60 @@ The dependency is gone with it: `localeOf` already answers for a stored `Locale`
 and a raw `navigator.language` alike, and accepts the legacy values a `z.enum`
 would have thrown away.
 
+## The Bun plugin that does exist
+
+`scripts/lingui-catalogs.ts` said "there is none for Bun, which is the only
+reason this file exists rather than a dependency". That was wrong as written.
+Lingui's own tooling page lists **`bun-plugin-lingui-macro`** — community, MIT,
+v1.1.3, last published 2026-04-07, ~1.2k downloads a week, 6 stars and 6
+commits — and it does both jobs: `builder.onLoad` for the macro transform and a
+second one for `.po`. `docs/standards/dependencies.md` says a capability a
+maintained library already provides is not written here, so this needs a
+measurement rather than an omission. Read at 1.1.3, four things decided it.
+
+**A compilation error is a `console.warn`.** `createCompiledCatalog` returns
+`errors`, and the plugin prints them and returns the code anyway. `compile()`
+here throws, and the comment beside it is the reason: a message that will not
+compile renders as **nothing at all**, inside a React render, where no boundary
+above it can say which string it was. That turns a failed `build:web` into a
+blank span in one language — the exact class of defect the branch's
+`i18n:validate` exists to catch, moved from build time to a user's screen.
+
+**There is no seam for the test loader.** It exports a `BunPlugin` and nothing
+else. `test/support/loader.ts` needs `expandMacros(source, path)` returning code
+*and* a map object, because `oxc-coverage-instrument` takes the map as
+`inputSourceMap` — the documented way to instrument a file something else has
+already rewritten. The plugin does emit a map, but as `sourceMaps: "inline"`
+inside the returned string, which a caller would have to parse back out of a
+`//# sourceMappingURL=data:` comment.
+
+**It re-transforms every time.** `--parallel` implies `--isolate`, so one panel
+module is expanded once per test process that reaches it — 58 of them for the
+same bytes. Measured without the content-addressed cache: **+22% CPU** across
+the suite.
+
+**`filename` is `path.relative(process.cwd(), …)`.** That name becomes the map's
+`sources[0]`, which becomes the key the composed coverage map is filed under.
+`lingui-macros.ts` pins it absolute for exactly that reason; relative to a cwd
+`browse.ts` moves is how every panel file landed in the report as `view.tsx`
+with no directory. The plugin also defaults `getConfig()` with no `configPath`,
+which searches upward from that same cwd.
+
+Two of the four are passable — `linguiConfig` and `babelPluginOptions` are
+options, so the config path and `descriptorFields: "message"` can be handed in.
+The first two are not, and they are the ones that matter: a warning where a
+throw belongs, and no way for the test loader to reach the transform.
+
+### What would change this answer
+
+If it throws on a compilation error **and** exports the transform beside the
+plugin, adopt it: that deletes `scripts/lingui-macros.ts` and most of
+`scripts/lingui-catalogs.ts`, and the cache can go on top as our own `onLoad`
+wrapper. Adopting it into `lingui/js-lingui` would also settle the maintenance
+question, which today is one person and six commits against a path five entry
+points depend on — `build:web`, `build:server`, `preload.ts`, the test loader
+and `browse.ts`.
+
 ## Reopen
 
 041's conditions still stand: if the suite's CPU regresses past +15% on a

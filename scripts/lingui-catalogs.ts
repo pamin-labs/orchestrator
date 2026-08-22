@@ -8,9 +8,15 @@ import type { CatalogFormatter } from "@lingui/conf";
  *
  * This is what `@lingui/vite-plugin` does for Vite, through the same four public
  * calls from `@lingui/cli/api`: find the catalog a file belongs to, read its
- * translations, compile them, hand back an ES module. Lingui ships that plugin
- * for Vite, a loader for webpack and a transformer for Metro; there is none for
- * Bun, which is the only reason this file exists rather than a dependency.
+ * translations, compile them, hand back an ES module.
+ */
+/**
+ * Lingui ships that plugin for Vite, a loader for webpack and a transformer for
+ * Metro. For Bun there is `bun-plugin-lingui-macro` — community, listed on
+ * Lingui's own tooling page — and it does both this file's job and
+ * `lingui-macros.ts`'s. It was read and declined; ADR 044 has the four
+ * measurements, the first of which is that it `console.warn`s a compilation
+ * error where this throws.
  */
 /**
  * Compiling here is what keeps `lingui compile` and its generated artefact out
