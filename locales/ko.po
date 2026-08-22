@@ -2640,12 +2640,6 @@ msgstr "보내기"
 msgid "Send message"
 msgstr "메시지 보내기"
 
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch."
-msgstr "요건 전체를 디스패처로 돌려보내 더 파고들게 합니다. 이미 쓴 코드는 브랜치에 남습니다."
-
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact."
-msgstr "요건 전체를 디스패처로 돌려보내 더 파고들게 합니다. 이 댓글이 최우선 사실이 됩니다."
-
 msgid "Send to PM"
 msgstr "PM에게 보내기"
 
@@ -2905,6 +2899,9 @@ msgstr "고른 스킬은 이번 턴에만 실려 가고, 비용도 이 한 턴 �
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "유틸리티 컨테이너에서 도는 codex 리프레시 토큰 교환. 사용량 조회보다 긴 이유는 프로세스를 띄우고 OAuth 왕복을 하기 때문입니다."
 
+msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
+msgstr "요구사항 전체를 Dispatcher로 되돌려 다시 나눕니다. 이 의견이 최우선 사실이 되고, 이미 작성된 코드는 브랜치에 남습니다."
+
 msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
 msgstr "요건 전체가 디스패처로 돌아가 다시 파헤쳐집니다. 이 댓글이 최우선 사실이 됩니다."
 
@@ -3029,9 +3026,6 @@ msgstr "이 브라우저는 지원하지 않습니다"
 
 msgid "this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again"
 msgstr "이 ChatGPT 로그인은 갱신이 필요할 만큼 오래됐습니다 — 다음 컨테이너가 갱신하며, 계속 실패하면 auth.json을 다시 붙여 넣어야 합니다"
-
-msgid "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch."
-msgstr "이 댓글이 최우선 사실이 되고, 요건 전체가 디스패처로 돌아가 다시 파헤쳐집니다. 코드는 브랜치에 남습니다."
 
 msgid "This log is empty"
 msgstr "이 로그는 비었습니다"
@@ -3338,9 +3332,6 @@ msgstr "/v1/embeddings 전체 주소를 적으면 원격 조회로 바뀝니다.
 
 msgid "Writes {bot} into Co-Authored-By"
 msgstr "Co-Authored-By에 {bot}을(를) 씁니다"
-
-msgid "Wrong direction"
-msgstr "방향이 틀림"
 
 msgid "You can edit the card and re-approve."
 msgstr "카드를 고친 뒤 다시 승인할 수 있습니다."

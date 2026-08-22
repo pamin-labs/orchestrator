@@ -2640,12 +2640,6 @@ msgstr "Отправить"
 msgid "Send message"
 msgstr "Отправить сообщение"
 
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch."
-msgstr "Возвращает требование целиком Диспетчеру, чтобы копнуть глубже; уже написанный код остаётся в ветке."
-
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact."
-msgstr "Возвращает требование целиком Диспетчеру, чтобы копнуть глубже; этот комментарий — факт высшего приоритета."
-
 msgid "Send to PM"
 msgstr "Отправить PM"
 
@@ -2905,6 +2899,9 @@ msgstr "Выбранный навык уходит вместе с этим хо
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "Обмен refresh-токена codex, выполняемый в служебном контейнере. Дольше чтения расхода: он поднимает процесс и делает OAuth-обход."
 
+msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
+msgstr "Всё требование возвращается Dispatcher на более подробную разбивку; этот комментарий становится фактом высшего приоритета, а уже написанный код остаётся в ветке."
+
 msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
 msgstr "Требование целиком возвращается Диспетчеру, чтобы копнуть глубже; этот комментарий — факт высшего приоритета."
 
@@ -3029,9 +3026,6 @@ msgstr "Этот браузер такого не умеет"
 
 msgid "this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again"
 msgstr "этот вход в ChatGPT достаточно старый, чтобы требовать обновления — его обновит следующий контейнер, а если это продолжит не получаться, придётся снова вставить auth.json"
-
-msgid "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch."
-msgstr "Этот комментарий становится фактом высшего приоритета; требование целиком возвращается Диспетчеру, чтобы копнуть глубже. Код остаётся в ветке."
 
 msgid "This log is empty"
 msgstr "Этот лог пуст"
@@ -3338,9 +3332,6 @@ msgstr "Впишите полный адрес /v1/embeddings — включит
 
 msgid "Writes {bot} into Co-Authored-By"
 msgstr "Пишет {bot} в Co-Authored-By"
-
-msgid "Wrong direction"
-msgstr "Не туда"
 
 msgid "You can edit the card and re-approve."
 msgstr "Карточку можно поправить и одобрить снова."

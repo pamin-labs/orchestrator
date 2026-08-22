@@ -2640,12 +2640,6 @@ msgstr "送信"
 msgid "Send message"
 msgstr "メッセージを送る"
 
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch."
-msgstr "要件をまるごとディスパッチャに戻して掘り直させます。すでに書かれたコードはブランチに残ります。"
-
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact."
-msgstr "要件をまるごとディスパッチャに戻して掘り直させます。このコメントが最優先の材料になります。"
-
 msgid "Send to PM"
 msgstr "PM に送る"
 
@@ -2905,6 +2899,9 @@ msgstr "選んだスキルはこのターンだけに添えられ、費用もこ
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "ユーティリティコンテナで走る codex のリフレッシュトークン交換。使用量の読み取りより長いのは、プロセスを起こして OAuth の往復をするからです。"
 
+msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
+msgstr "要件全体を Dispatcher に差し戻して切り直します。このコメントが最優先の事実になり、すでに書かれたコードはブランチに残ります。"
+
 msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
 msgstr "要件はまるごとディスパッチャに戻り、掘り直されます。このコメントが最優先の材料になります。"
 
@@ -3029,9 +3026,6 @@ msgstr "このブラウザは対応していません"
 
 msgid "this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again"
 msgstr "この ChatGPT ログインは更新が必要なほど古くなっています — 次のコンテナが更新しますが、それが失敗し続けるなら auth.json を貼り直す必要があります"
-
-msgid "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch."
-msgstr "このコメントが最優先の材料になり、要件はまるごとディスパッチャに戻って掘り直されます。コードはブランチに残ります。"
 
 msgid "This log is empty"
 msgstr "このログは空です"
@@ -3338,9 +3332,6 @@ msgstr "/v1/embeddings の完全なアドレスを書くとリモート取得に
 
 msgid "Writes {bot} into Co-Authored-By"
 msgstr "Co-Authored-By に {bot} を書きます"
-
-msgid "Wrong direction"
-msgstr "方向が違う"
 
 msgid "You can edit the card and re-approve."
 msgstr "カードを直してから、もう一度承認できます。"

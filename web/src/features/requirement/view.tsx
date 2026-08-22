@@ -508,6 +508,22 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
  * same weight as `Pause` they read as ordinary, and one of them discards a turn's
  * work.
  */
+/**
+ * Said twice on each of the two screens that can send a requirement back — the
+ * tip and the confirm it opens — and the only difference between the screens is
+ * whether code exists yet.
+ */
+/**
+ * It was four messages, two of them the same clause with the verb flipped:
+ * `difflib` over all 1,100 msgids put that pair at 0.92, the highest
+ * non-placeholder score in the catalogue. Four sentences translated nine times
+ * is 36 translations of what is really two.
+ */
+const respecBody = (started: boolean): MessageDescriptor =>
+  started
+    ? msg`The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch.`
+    : msg`The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact.`;
+
 /** Said twice, from the two places a requirement can be dropped. */
 const dropBody = (name: string): MessageDescriptor =>
   msg`${{ name }} leaves the board and every queued turn is cancelled. The code and the record are both kept.`;
@@ -1014,11 +1030,11 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
               </Button>
             </Tip>
             <SendAs
-              label={t`Wrong direction`}
-              tip={t`Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch.`}
+              label={t`Return for re-decomposition`}
+              tip={t(respecBody(true))}
               spec={{
                 title: t`Return for re-decomposition`,
-                body: t`This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch.`,
+                body: t(respecBody(true)),
                 yes: t`Return for re-decomposition`,
               }}
               disabled={busy || !text}
@@ -1215,10 +1231,10 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
           <>
             <SendAs
               label={t`Return for re-decomposition`}
-              tip={t`Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact.`}
+              tip={t(respecBody(false))}
               spec={{
                 title: t`Return for re-decomposition`,
-                body: t`The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact.`,
+                body: t(respecBody(false)),
                 yes: t`Return for re-decomposition`,
               }}
               disabled={busy || !text}

@@ -2640,12 +2640,6 @@ msgstr "Senden"
 msgid "Send message"
 msgstr "Nachricht senden"
 
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch."
-msgstr "Gibt die ganze Anforderung an den Dispatcher zurück, um tiefer zu graben; bereits geschriebener Code bleibt auf dem Branch."
-
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact."
-msgstr "Gibt die ganze Anforderung an den Dispatcher zurück, um tiefer zu graben; dieser Kommentar hat oberste Priorität."
-
 msgid "Send to PM"
 msgstr "An den PM senden"
 
@@ -2905,6 +2899,9 @@ msgstr "Der gewählte Skill geht mit diesem Zug mit; er kostet nur für diesen e
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "Der codex-Refresh-Token-Tausch, ausgeführt im Utility-Container. Länger als ein Verbrauchsabruf: er startet einen Prozess und macht einen OAuth-Roundtrip."
 
+msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
+msgstr "Die ganze Anforderung geht zur feineren Zerlegung an den Dispatcher zurück; dieser Kommentar wird zum Fakt mit der höchsten Priorität, und bereits geschriebener Code bleibt auf dem Branch."
+
 msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
 msgstr "Die ganze Anforderung geht zum Dispatcher zurück, um tiefer zu graben; dieser Kommentar hat oberste Priorität."
 
@@ -3029,9 +3026,6 @@ msgstr "Dieser Browser unterstützt das nicht"
 
 msgid "this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again"
 msgstr "dieses ChatGPT-Login ist alt genug, um erneuert werden zu müssen — der nächste Container erneuert es, und wenn das weiter fehlschlägt, muss die auth.json neu eingefügt werden"
-
-msgid "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch."
-msgstr "Dieser Kommentar wird zur wichtigsten Tatsache; die ganze Anforderung geht zum Dispatcher zurück, um tiefer zu graben. Der Code bleibt auf dem Branch."
 
 msgid "This log is empty"
 msgstr "Dieses Log ist leer"
@@ -3338,9 +3332,6 @@ msgstr "Schreib die vollständige /v1/embeddings-Adresse, dann schaltet der Remo
 
 msgid "Writes {bot} into Co-Authored-By"
 msgstr "Schreibt {bot} in Co-Authored-By"
-
-msgid "Wrong direction"
-msgstr "Falsche Richtung"
 
 msgid "You can edit the card and re-approve."
 msgstr "Du kannst die Karte bearbeiten und erneut freigeben."

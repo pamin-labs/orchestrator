@@ -2640,12 +2640,6 @@ msgstr "Envoyer"
 msgid "Send message"
 msgstr "Envoyer un message"
 
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch."
-msgstr "Renvoie l'exigence entière au Répartiteur pour creuser davantage ; le code déjà écrit reste sur la branche."
-
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact."
-msgstr "Renvoie l'exigence entière au Répartiteur pour creuser davantage ; ce commentaire est l'élément prioritaire."
-
 msgid "Send to PM"
 msgstr "Envoyer au PM"
 
@@ -2905,6 +2899,9 @@ msgstr "La compétence choisie est envoyée avec ce tour ; elle ne coûte que po
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "L'échange du refresh-token codex, exécuté dans le conteneur utilitaire. Plus long qu'une lecture d'usage : il démarre un processus et fait un aller-retour OAuth."
 
+msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
+msgstr "L'exigence entière retourne au Dispatcher pour un découpage plus fin ; ce commentaire devient le fait prioritaire, et le code déjà écrit reste sur la branche."
+
 msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
 msgstr "L'exigence entière retourne au Répartiteur pour creuser davantage ; ce commentaire est l'élément prioritaire."
 
@@ -3029,9 +3026,6 @@ msgstr "Ce navigateur ne le prend pas en charge"
 
 msgid "this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again"
 msgstr "cette connexion ChatGPT est assez ancienne pour devoir être renouvelée — le prochain conteneur s'en charge, et si cela échoue encore il faudra recoller le auth.json"
-
-msgid "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch."
-msgstr "Ce commentaire devient l'élément prioritaire ; l'exigence entière retourne au Répartiteur pour creuser. Le code reste sur la branche."
 
 msgid "This log is empty"
 msgstr "Ce journal est vide"
@@ -3338,9 +3332,6 @@ msgstr "Écrivez l'adresse complète de /v1/embeddings et la récupération dist
 
 msgid "Writes {bot} into Co-Authored-By"
 msgstr "Inscrit {bot} dans Co-Authored-By"
-
-msgid "Wrong direction"
-msgstr "Mauvaise direction"
 
 msgid "You can edit the card and re-approve."
 msgstr "Vous pouvez modifier la carte puis l'approuver à nouveau."

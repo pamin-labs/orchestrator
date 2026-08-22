@@ -2640,12 +2640,6 @@ msgstr "傳送"
 msgid "Send message"
 msgstr "發訊息"
 
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; code already written stays on the branch."
-msgstr "整個需求退回 Dispatcher 重新深挖，已寫的程式碼留在分支上"
-
-msgid "Send the entire requirement back to Dispatcher for a deeper dive; this comment is the highest-priority fact."
-msgstr "整條需求退回 Dispatcher 重新深挖，這句話作為最高優先順序 fact"
-
 msgid "Send to PM"
 msgstr "發給 PM"
 
@@ -2905,6 +2899,9 @@ msgstr "選中的技能，正文隨這一個 turn 發給 agent，只花這一次
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "codex 換 refresh token 的呼叫，在工具容器裡跑。比讀用量慢：它要起一個行程，還要走一次 OAuth 往返。"
 
+msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
+msgstr "整條需求退回給 Dispatcher 重新拆解；這條意見是最高優先順序的事實，已經寫好的程式碼留在分支上。"
+
 msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
 msgstr "整個需求退回 Dispatcher 重新深挖，這句話作為最高優先順序 fact。"
 
@@ -3029,9 +3026,6 @@ msgstr "這個瀏覽器不支援"
 
 msgid "this ChatGPT login is old enough to need renewing — the next container renews it, and if that keeps failing the auth.json has to be pasted again"
 msgstr "這個 ChatGPT 登入已經舊到該續期了 —— 下一個容器會去續，要是一直續不上，就得重新粘一次 auth.json"
-
-msgid "This comment becomes the highest-priority fact; the entire requirement returns to Dispatcher for a deeper dive. Code stays on the branch."
-msgstr "這句話作為最高優先順序 fact，整個需求退回 Dispatcher 重新深挖。已寫的程式碼留在分支上。"
 
 msgid "This log is empty"
 msgstr "這份日誌是空的"
@@ -3338,9 +3332,6 @@ msgstr "寫完整的 /v1/embeddings 地址，遠端檢索就會開啟。"
 
 msgid "Writes {bot} into Co-Authored-By"
 msgstr "把 {bot} 寫進 Co-Authored-By"
-
-msgid "Wrong direction"
-msgstr "方向錯了"
 
 msgid "You can edit the card and re-approve."
 msgstr "卡可以直接改再批"
