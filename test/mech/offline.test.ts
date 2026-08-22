@@ -9,12 +9,14 @@ import { DEFAULTS_FOR_CHECK } from "../../src/platform/config/load.ts";
 /** The probe's cadence is `intervals.recheckMs` now; the shipped default is five minutes. */
 const PROBE_EVERY_MS = DEFAULTS_FOR_CHECK.intervals.recheckMs;
 import { ensureSandbox, resetSandboxHold, sandboxHeld } from "../../src/mech/sandbox/sandbox.ts";
-import { type Job, resumeReclaimed, Scheduler } from "../../src/platform/scheduling/scheduler.ts";
+import { type Job, resumeReclaimed } from "../../src/platform/scheduling/scheduler.ts";
 import { and, asc, count, eq } from "drizzle-orm";
 import { agent, event, grp, job } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { z } from "zod";
+import { newScheduler } from "../support/scheduler.ts";
+import type { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 
 /**
  * The host loses its network.
@@ -36,7 +38,7 @@ async function seed(): Promise<{ db: DB; ctx: Ctx; sched: Scheduler; ran: Job[];
   await saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: "sk-ant-oat01-x" });
   const online = { v: true };
   const ran: Job[] = [];
-  const sched = new Scheduler(db, async (j) => void ran.push(j), { online: () => online.v });
+  const sched = newScheduler(db, async (j) => void ran.push(j), { online: () => online.v });
   const ctx = await testContext({ db, sched });
   return { db, ctx, sched, ran, online };
 }
@@ -225,7 +227,7 @@ test("no container to open holds every turn instead of failing each group once",
   // groups, ten blockers, one fact.
   resetSandboxHold();
   const h = await seed();
-  const sched = new Scheduler(h.db, async () => {}, { sandboxReady: () => !sandboxHeld() });
+  const sched = newScheduler(h.db, async () => {}, { sandboxReady: () => !sandboxHeld() });
   const id = await sched.enqueue("agent_turn", { grp_id: 1, agent_id: 1, payload: { role: "engineer" } });
 
   // Driven through the real `ensureSandbox` rather than by poking the flag: the

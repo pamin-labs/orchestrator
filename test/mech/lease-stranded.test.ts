@@ -4,12 +4,13 @@ import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { agent as agentTable, job, lease as leaseTable } from "../../src/platform/persistence/schema.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
-import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../../src/platform/scheduling/scheduler.ts";
+import { AgentTurnPayloadSchema, type Executor } from "../../src/platform/scheduling/scheduler.ts";
 import { execIn, REAL, resourceExec, EXEC_UNAVAILABLE } from "../../src/mech/sandbox/sandbox.ts";
 import { makeExecutor } from "../../src/application/executor.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import * as fx from "../support/factories.ts";
 import { tempDir } from "../support/temp.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 /**
  * A gate whose container cannot be opened must fail, not disappear.
@@ -34,7 +35,7 @@ async function stranded() {
     sandbox: { ...base.sandbox, server: "127.0.0.1:9" },
   };
   let exec: Executor;
-  const sched = new Scheduler(db, (j) => exec(j));
+  const sched = newScheduler(db, (j) => exec(j));
   const ctx = {
     db,
     bus: new Bus(db),

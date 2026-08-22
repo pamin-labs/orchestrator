@@ -1,19 +1,15 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { asc, count, eq, like } from "drizzle-orm";
 import type { GrpState } from "../../src/contracts/states.ts";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import * as tbl from "../../src/platform/persistence/schema.ts";
 import { requestContext } from "../../src/platform/observability/request-context.ts";
-import {
-  AgentTurnPayloadSchema,
-  reclaimOrphans,
-  Scheduler,
-  type Job,
-} from "../../src/platform/scheduling/scheduler.ts";
+import { AgentTurnPayloadSchema, reclaimOrphans, type Job } from "../../src/platform/scheduling/scheduler.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { z } from "zod";
 import * as fx from "../support/factories.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 const LeaseJobPayload = z.object({ lease_id: z.number() });
 
@@ -51,32 +47,12 @@ function gate() {
   };
 }
 
-/**
- * Every scheduler a test makes, stopped when it ends.
- *
- * A finished job ticks from a detached `.finally`, so one nobody holds any more
- * keeps dispatching — and the tests in a file share one database, so what it
- * dispatches belongs to whichever test is running by then. That is an ordering
- * flake, and it is the reason `stop()` exists.
- */
-
-const running: Scheduler[] = [];
-const schedule = (...args: ConstructorParameters<typeof Scheduler>): Scheduler => {
-  const made = new Scheduler(...args);
-  running.push(made);
-  return made;
-};
-
-afterEach(() => {
-  for (const s of running.splice(0)) s.quiesce();
-});
-
 test("per-group concurrency is 1 — the group's single writer", async () => {
   const db = await openMemory();
   const [g] = await seed(db, 1);
   const g1 = g!;
   const { started, release, exec } = gate();
-  const s = schedule(db, exec);
+  const s = newScheduler(db, exec);
   await s.enqueue("agent_turn", { grp_id: g1 });
   await s.enqueue("agent_turn", { grp_id: g1 });
   await s.tick();
@@ -92,7 +68,7 @@ test("HTTP correlation survives the durable queue and becomes the event's parent
   {
     const group = (await seed(db, 1))[0]!;
     const bus = new Bus(db);
-    const scheduler = schedule(db, async () => {
+    const scheduler = newScheduler(db, async () => {
       await bus.emit({ grpId: group, author: "worker", kind: "state_change", body: "done" });
     });
     const jobId = await requestContext.run(
@@ -133,7 +109,7 @@ test("a job enqueued off-request still carries a trace, and explicit ids win ove
   const db = await openMemory();
   {
     const group = (await seed(db, 1))[0]!;
-    const scheduler = schedule(db, async () => {});
+    const scheduler = newScheduler(db, async () => {});
 
     // No request around the enqueue: the row still gets ids of its own, or a
     // queued turn is invisible to every trace that follows it.
@@ -223,7 +199,7 @@ test("maxGroups caps how many groups run at once", async () => {
   const db = await openMemory();
   const ids = await seed(db, 5);
   const { started, release, exec } = gate();
-  const s = schedule(db, exec, { maxGroups: 3 });
+  const s = newScheduler(db, exec, { maxGroups: 3 });
   for (const id of ids) await s.enqueue("agent_turn", { grp_id: id });
   await s.tick();
 
@@ -238,7 +214,7 @@ test("leases use their own pool and do not consume group slots", async () => {
   const ids = await seed(db, 3);
   await fx.on(db).resource.create({ name: "build", template: "echo build" });
   const { started, release, exec } = gate();
-  const s = schedule(db, exec, { maxGroups: 3, leaseSlots: 1 });
+  const s = newScheduler(db, exec, { maxGroups: 3, leaseSlots: 1 });
   for (const id of ids) await s.enqueue("agent_turn", { grp_id: id });
   await s.enqueue("lease", { grp_id: idAt(ids, 0) });
   await s.enqueue("lease", { grp_id: idAt(ids, 1) });
@@ -260,7 +236,7 @@ test("a tagged resource draws from its own pool, so one browser cannot stall eve
   const mk = async (resource: string, grp: number) => (await fx.on(db).lease.create({ resource, grp_id: grp })).id;
 
   const { started, release, exec } = gate();
-  const s = schedule(db, exec, { maxGroups: 3, leaseSlots: { default: 2, browser: 1 } });
+  const s = newScheduler(db, exec, { maxGroups: 3, leaseSlots: { default: 2, browser: 1 } });
   for (const g of ids) await s.enqueue("lease", { grp_id: g, payload: { lease_id: await mk("browser", g) } });
   for (const g of ids) await s.enqueue("lease", { grp_id: g, payload: { lease_id: await mk("typecheck", g) } });
   await s.tick();
@@ -280,7 +256,7 @@ test("legacy resource tags with the wrong JSON shape fall back to the default po
   await fx.on(db).resource.create({ name: "build", template: "echo build", tags_json: "repo" });
   const lease = await fx.on(db).lease.create({ resource: "build", grp_id: grp });
   const ran: Job[] = [];
-  const scheduler = schedule(db, async (job) => void ran.push(job));
+  const scheduler = newScheduler(db, async (job) => void ran.push(job));
 
   await scheduler.enqueue("lease", { grp_id: grp, payload: { lease_id: lease.id } });
   await scheduler.tick();
@@ -294,7 +270,7 @@ test("non-RUNNING group status is a barrier — this IS intercept L2", async () 
   const [g] = await seed(db, 1, "PAUSED");
   const g1 = g!;
   const ran: Job[] = [];
-  const s = schedule(db, async (j) => void ran.push(j));
+  const s = newScheduler(db, async (j) => void ran.push(j));
   await s.enqueue("agent_turn", { grp_id: g1 });
   await s.drain();
   expect(ran.length).toBe(0);
@@ -313,7 +289,7 @@ test("DRAFT stops the writers, not the planners", async () => {
   const [g] = await seed(db, 1, "DRAFT");
   const g1 = g!;
   const ran: Job[] = [];
-  const s = schedule(db, async (j) => void ran.push(j));
+  const s = newScheduler(db, async (j) => void ran.push(j));
   await s.enqueue("agent_turn", { grp_id: g1, payload: { role: "engineer" } });
   await s.drain();
   expect(ran.length).toBe(0);
@@ -336,7 +312,7 @@ test("exhausted slice budget blocks dispatch before the group budget does", asyn
     spent_tokens: 1000,
   });
   const ran: Job[] = [];
-  const s = schedule(db, async (j) => void ran.push(j));
+  const s = newScheduler(db, async (j) => void ran.push(j));
   await s.enqueue("agent_turn", { grp_id: g1, slice_id: sl.id });
   await s.drain();
   expect(ran.length).toBe(0);
@@ -351,7 +327,7 @@ test("watchdog and notify bypass the group slot pool", async () => {
   const [g] = await seed(db, 1);
   const g1 = g!;
   const { started, release, exec } = gate();
-  const s = schedule(db, exec, { maxGroups: 1 });
+  const s = newScheduler(db, exec, { maxGroups: 1 });
   await s.enqueue("agent_turn", { grp_id: g1 });
   await s.enqueue("watchdog", { grp_id: g1 });
   await s.enqueue("notify", { grp_id: g1 });
@@ -369,7 +345,7 @@ test("a job never stays in `running` — success and failure both settle", async
   const [g] = await seed(db, 1);
   const g1 = g!;
   let first = true;
-  const s = schedule(db, async () => {
+  const s = newScheduler(db, async () => {
     if (first) {
       first = false;
       throw new Error("boom");
@@ -390,7 +366,7 @@ test("cancelPending drops queued work but leaves the in-flight job alone (park)"
   const [g] = await seed(db, 1);
   const g1 = g!;
   const { started, release, exec } = gate();
-  const s = schedule(db, exec);
+  const s = newScheduler(db, exec);
   await s.enqueue("agent_turn", { grp_id: g1 });
   await s.enqueue("agent_turn", { grp_id: g1 });
   await s.enqueue("agent_turn", { grp_id: g1 });
@@ -410,7 +386,7 @@ test("higher priority dispatches first", async () => {
   const db = await openMemory();
   const ids = await seed(db, 2);
   const { started, release, exec } = gate();
-  const s = schedule(db, exec, { maxGroups: 1 });
+  const s = newScheduler(db, exec, { maxGroups: 1 });
   await s.enqueue("agent_turn", { grp_id: idAt(ids, 0), priority: 0 });
   await s.enqueue("agent_turn", { grp_id: idAt(ids, 1), priority: 10 });
   await s.tick();
@@ -423,7 +399,7 @@ test("a standing agent's turn takes a slot like anyone else's", async () => {
   const db = await openMemory();
   await seed(db, 1);
   const { started, release, exec } = gate();
-  const s = schedule(db, exec, { maxGroups: 1 });
+  const s = newScheduler(db, exec, { maxGroups: 1 });
   await s.enqueue("agent_turn", { grp_id: null, payload: { role: "librarian" } });
   await s.enqueue("agent_turn", { grp_id: 1 });
   await s.tick();
@@ -451,7 +427,7 @@ test("two standing agents run at once — they share nothing", async () => {
   const lib = idAt(standingIds, 0);
   const arch = idAt(standingIds, 1);
   const { started, release, exec } = gate();
-  const s = schedule(db, exec, { maxGroups: 3 });
+  const s = newScheduler(db, exec, { maxGroups: 3 });
   await s.enqueue("agent_turn", { grp_id: null, agent_id: lib, payload: { role: "librarian" } });
   await s.enqueue("agent_turn", { grp_id: null, agent_id: arch, payload: { role: "architect" } });
   await s.tick();
@@ -470,7 +446,7 @@ test("one standing agent still writes one transcript at a time", async () => {
   await seed(db, 1);
   const lib = idAt(await standing(db, "librarian"), 0);
   const { started, release, exec } = gate();
-  const s = schedule(db, exec, { maxGroups: 3 });
+  const s = newScheduler(db, exec, { maxGroups: 3 });
   await s.enqueue("agent_turn", { grp_id: null, agent_id: lib });
   await s.enqueue("agent_turn", { grp_id: null, agent_id: lib });
   await s.tick();
@@ -487,7 +463,7 @@ test("standing turns still count against maxGroups", async () => {
   const lib = idAt(standingIds, 0);
   const arch = idAt(standingIds, 1);
   const { started, release, exec } = gate();
-  const s = schedule(db, exec, { maxGroups: 1 });
+  const s = newScheduler(db, exec, { maxGroups: 1 });
   await s.enqueue("agent_turn", { grp_id: null, agent_id: lib });
   await s.enqueue("agent_turn", { grp_id: null, agent_id: arch });
   await s.tick();
@@ -501,7 +477,7 @@ test("maxGroups 0 means nothing runs at all", async () => {
   const db = await openMemory();
   await seed(db, 1);
   const ran: Job[] = [];
-  const s = schedule(db, async (j) => void ran.push(j), { maxGroups: 0 });
+  const s = newScheduler(db, async (j) => void ran.push(j), { maxGroups: 0 });
   await s.enqueue("agent_turn", { grp_id: 1 });
   await s.enqueue("agent_turn", { grp_id: null });
   await s.drain();
@@ -528,7 +504,7 @@ test("a turn left running by a dead server is reclaimed, not left holding the sl
 
   // And the queue moves again — which it never would have while the slot was held.
   const ran: Job[] = [];
-  await schedule(db, async (job) => void ran.push(job)).drain();
+  await newScheduler(db, async (job) => void ran.push(job)).drain();
   expect(ran.map((r) => r.kind)).toEqual(["reconcile"]);
 });
 
@@ -565,7 +541,7 @@ test("a restart resumes the turn it interrupted, but only once", async () => {
   await fx.on(db).job.create({ kind: "watchdog", state: "running", pid: 89992, started_at: 0 });
 
   const { reclaimOrphans, resumeReclaimed } = await import("../../src/platform/scheduling/scheduler.ts");
-  const sched = schedule(db, async () => {});
+  const sched = newScheduler(db, async () => {});
   expect(await resumeReclaimed(sched, await reclaimOrphans(db, { alive: () => false }))).toBe(1);
 
   const back = await db
@@ -609,7 +585,7 @@ test("a restart resumes the turn it interrupted, but only once", async () => {
 test("two gates of one repo do not run at once, but two repos still do", async () => {
   const db = await openMemory();
   const { release, exec } = gate();
-  const sched = schedule(db, exec);
+  const sched = newScheduler(db, exec);
   for (const [id, name] of [
     [1, "a"],
     [2, "b"],
@@ -654,7 +630,7 @@ test("two gates of one repo do not run at once, but two repos still do", async (
 });
 
 test("the per-repo gate pool is one, whatever the default lease slots are", async () => {
-  // The test above passes `schedule(db, exec)`, so `poolSizes(undefined)` is
+  // The test above passes `newScheduler(db, exec)`, so `poolSizes(undefined)` is
   // `{default: 1}` and a `repo:<id>` pool resolves to 1 by accident. The shipped
   // config is `{default: 2, browser: 1}` (load.ts:107), nothing sets a `repo` key,
   // and `claimLeaseCapacity` falls back to `default` — so in production two gates
@@ -662,7 +638,7 @@ test("the per-repo gate pool is one, whatever the default lease slots are", asyn
   // exists to make structurally impossible.
   const db = await openMemory();
   const { release, exec } = gate();
-  const sched = schedule(db, exec, { leaseSlots: { default: 2, browser: 1 } });
+  const sched = newScheduler(db, exec, { leaseSlots: { default: 2, browser: 1 } });
   await fx.on(db).project.create({ id: 1, name: "a", repo_path: "/a" });
   await fx.on(db).runningGrp.create({ id: 1, project_id: 1, name: "g1" });
   await fx.on(db).runningGrp.create({ id: 2, project_id: 1, name: "g1b" });
@@ -697,7 +673,7 @@ test("a finished job dispatches what it queued, without anyone remembering to", 
   const db = await openMemory();
   await seed(db, 1);
   const started: number[] = [];
-  const s = schedule(db, async (j) => {
+  const s = newScheduler(db, async (j) => {
     started.push(j.id);
     // What a turn does at its end and then does not dispatch.
     if (started.length === 1) await s.enqueue("reconcile", { grp_id: 1 });
@@ -722,7 +698,7 @@ test("staging a batch still dispatches it in priority order", async () => {
   const db = await openMemory();
   const ids = await seed(db, 2);
   const order: (number | null)[] = [];
-  const s = schedule(db, async (j) => void order.push(j.grp_id));
+  const s = newScheduler(db, async (j) => void order.push(j.grp_id));
   await s.enqueue("agent_turn", { grp_id: idAt(ids, 0), priority: 0 });
   await s.enqueue("agent_turn", { grp_id: idAt(ids, 1), priority: 10 });
   await s.tick();
@@ -742,7 +718,7 @@ test("staging a batch still dispatches it in priority order", async () => {
 test("a job records the sampling decision of the request that enqueued it", async () => {
   const db = await openMemory();
   const group = (await seed(db, 1))[0]!;
-  const scheduler = schedule(db, async () => {});
+  const scheduler = newScheduler(db, async () => {});
 
   const dropped = await requestContext.run(
     {
@@ -776,7 +752,7 @@ test("a group over its budget is not dispatched", async () => {
   const db = await openMemory();
   const [group] = await seed(db, 1);
   const ran: number[] = [];
-  const scheduler = schedule(db, async (job) => void ran.push(job.id));
+  const scheduler = newScheduler(db, async (job) => void ran.push(job.id));
 
   await db.update(tbl.grp).set({ budget_tokens: 1000, spent_tokens: 1000 }).where(eq(tbl.grp.id, group!));
   await scheduler.enqueue("agent_turn", { grp_id: group! });
@@ -799,7 +775,7 @@ test("a group with no budget set is not treated as having spent it", async () =>
   const db = await openMemory();
   const [group] = await seed(db, 1);
   const ran: number[] = [];
-  const scheduler = schedule(db, async (job) => void ran.push(job.id));
+  const scheduler = newScheduler(db, async (job) => void ran.push(job.id));
 
   await db.update(tbl.grp).set({ budget_tokens: null, spent_tokens: 999999 }).where(eq(tbl.grp.id, group!));
   await scheduler.enqueue("agent_turn", { grp_id: group! });
@@ -820,7 +796,7 @@ test("a slice over its own budget stops even while its group has room", async ()
   const [group] = await seed(db, 1);
   const slice = await fx.on(db).slice.create({ grp_id: group!, budget_tokens: 100, spent_tokens: 100 });
   const ran: number[] = [];
-  const scheduler = schedule(db, async (job) => void ran.push(job.id));
+  const scheduler = newScheduler(db, async (job) => void ran.push(job.id));
 
   await db.update(tbl.grp).set({ budget_tokens: 1000000, spent_tokens: 0 }).where(eq(tbl.grp.id, group!));
   await scheduler.enqueue("agent_turn", { grp_id: group!, slice_id: slice.id });
@@ -844,7 +820,7 @@ test("drain returns only once nothing is dispatchable, however the ticks interle
   const group = await f.runningGrp.create({});
 
   const ran: number[] = [];
-  const scheduler = schedule(db, async (job) => {
+  const scheduler = newScheduler(db, async (job) => {
     ran.push(job.id);
   });
   // Same group, so the second waits for the first's slot: it can only be

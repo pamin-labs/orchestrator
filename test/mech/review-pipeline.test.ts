@@ -13,7 +13,7 @@ import { TaskClaimSchema } from "../../src/mech/flow/reconcile.ts";
 import { runInvariants } from "../../src/mech/ops/invariants.ts";
 import { handToBoss } from "../../src/mech/flow/review.ts";
 import { checkpoint } from "../../src/mech/git/gitops.ts";
-import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../../src/platform/scheduling/scheduler.ts";
+import { AgentTurnPayloadSchema, type Executor } from "../../src/platform/scheduling/scheduler.ts";
 import { makeAuditVerdict, makeExecutor, makeReviewVerdict, type ExecDeps } from "../../src/application/executor.ts";
 import type { TurnResult, TurnSpec } from "../../src/runtime/claude.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
@@ -34,6 +34,7 @@ import {
 import * as fx from "../support/factories.ts";
 import { z } from "zod";
 import { tempDir } from "../support/temp.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 const GateResults = z.record(z.string(), z.string());
 
@@ -72,7 +73,7 @@ async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
   const cfg = { ...loadConfig(), dataDir: tempDir("orch-rp-data-"), gateRetries: 2 };
   const specs: TurnSpec[] = [];
   let exec: Executor;
-  const sched = new Scheduler(db, (j) => exec(j));
+  const sched = newScheduler(db, (j) => exec(j));
   const ctx: Ctx = {
     db,
     bus,

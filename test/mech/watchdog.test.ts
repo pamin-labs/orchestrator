@@ -20,7 +20,7 @@ import {
 } from "../../src/mech/ops/watchdog.ts";
 import { existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { AgentTurnPayloadSchema, Scheduler } from "../../src/platform/scheduling/scheduler.ts";
+import { AgentTurnPayloadSchema } from "../../src/platform/scheduling/scheduler.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { and, count, desc, eq, like, sql } from "drizzle-orm";
@@ -40,6 +40,7 @@ import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { z } from "zod";
 import { tempDir } from "../support/temp.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 /** The shipped thresholds. The subject is the rule, not the number it is tuned to. */
 const LIMITS = loadConfig().watchdog;
@@ -101,7 +102,7 @@ const EVERY_MAP_TICK = {
 
 async function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
   const db = await watchdogDb();
-  const sched = new Scheduler(db, async () => {});
+  const sched = newScheduler(db, async () => {});
   const cfg = { ...loadConfig(), ...over };
   // The bus renders the `body` column from the key an emitter names, so it needs
   // the same `output.language` the rest of this context has.

@@ -2,7 +2,7 @@ import { afterAll, beforeEach } from "bun:test";
 import { rmSync } from "node:fs";
 import { createdRoot } from "./temp.ts";
 import { closeTestDatabases } from "../../src/platform/persistence/database.ts";
-import { stopSchedulers } from "./test-context.ts";
+import { stopSchedulers } from "./scheduler.ts";
 import { resetRepoHolds } from "../../src/mech/git/repository.ts";
 import { resetNet } from "../../src/mech/sandbox/net.ts";
 import { resetSandboxHold } from "../../src/mech/sandbox/sandbox.ts";

@@ -6,13 +6,13 @@ import { asc, sql } from "drizzle-orm";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { job } from "../../src/platform/persistence/schema.ts";
 import { runtimeStatus } from "../../src/platform/observability/metrics.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { refreshRuntimeReadiness, shutdownRuntime } from "../../src/composition/server.ts";
 import { makeCheck } from "../../src/mech/ops/preflight.ts";
 import * as fx from "../support/factories.ts";
 import { said } from "../support/said.ts";
 
 import { testContext } from "../support/test-context.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 test("health, cached readiness, metrics, and correlation describe the running process", async () => {
   const status = runtimeStatus(false);
@@ -118,7 +118,7 @@ test("a quiesced scheduler drains only work already in flight", async () => {
       release = resolve;
     });
     const ran: number[] = [];
-    const scheduler = new Scheduler(db, async (job) => {
+    const scheduler = newScheduler(db, async (job) => {
       ran.push(job.id);
       entered();
       await held;

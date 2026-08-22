@@ -17,11 +17,11 @@ import {
   type SpanRow,
 } from "../../src/platform/observability/span-store.ts";
 import { endSpan, installTracerProvider, startTrace } from "../../src/platform/observability/traces.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { heartbeat } from "../../src/composition/server.ts";
 import { makeGithub } from "../../src/mech/git/github.ts";
 import { Notifier } from "../../src/mech/ops/notify.ts";
 import { testContext } from "../support/test-context.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 /**
  * The production arrangement: the exporter behind the SDK's own
@@ -81,14 +81,14 @@ test("a job's span joins the trace of the request that enqueued it, through stor
       signal: new AbortController().signal,
     },
     async () => {
-      await new Scheduler(db, async () => {}).enqueue("watchdog", {});
+      await newScheduler(db, async () => {}).enqueue("watchdog", {});
     },
   );
   observeHttp("POST", "/api/v1/ideas", 200, request);
 
   // A different Scheduler, as a later tick in the same process is: the join must
   // survive the row, not a live object.
-  const later = new Scheduler(db, async () => {});
+  const later = newScheduler(db, async () => {});
   await later.tick();
   await later.drain();
   await provider.forceFlush();
@@ -105,7 +105,7 @@ test("a failed job's span records the failure rather than being dropped", async 
   const db = await openMemory();
   const provider = recording(db);
 
-  const sched = new Scheduler(db, async () => {
+  const sched = newScheduler(db, async () => {
     throw new Error("boom");
   });
   const request = startTrace();

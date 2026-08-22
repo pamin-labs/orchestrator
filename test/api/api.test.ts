@@ -5,7 +5,7 @@ import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { and, asc, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
-import { AgentTurnPayloadSchema, Scheduler, type Job } from "../../src/platform/scheduling/scheduler.ts";
+import { AgentTurnPayloadSchema, type Job } from "../../src/platform/scheduling/scheduler.ts";
 import { makeApp } from "../../src/composition/api.ts";
 import { askKind, brief } from "../../src/api/orch/escalation.ts";
 import { landGroup } from "../../src/api/panel/group.ts";
@@ -45,6 +45,7 @@ import { JsonValue, type Json } from "../../src/contracts/json.ts";
 import { ErrorResponseSchema } from "../../src/contracts/protocol.ts";
 import type { Github } from "../../src/mech/git/github.ts";
 import { tempDir } from "../support/temp.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 const BoundaryPayload = z.object({ boundary: z.array(z.object({ id: z.number() })) });
 const BoundaryIdeasPayload = z.object({ boundary: z.array(z.object({ id: z.number(), idea: z.string() })) });
@@ -63,7 +64,7 @@ async function harness(handle?: (cmd: string, cwd: string) => { code?: number; o
   const ran: Job[] = [];
   const sandbox = fakeSandbox(handle);
   const db = await openMemory();
-  const ctx = await testContext({ db, sandbox, sched: new Scheduler(db, async (j) => void ran.push(j)) });
+  const ctx = await testContext({ db, sandbox, sched: newScheduler(db, async (j) => void ran.push(j)) });
   await seedAuth(db);
   const app = makeApp(ctx);
 

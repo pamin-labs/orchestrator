@@ -7,7 +7,6 @@ import { makeGithub, type Github } from "../../src/mech/git/github.ts";
 import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
@@ -26,6 +25,7 @@ import {
   startDeviceFlow,
   type DeviceFlowFetcher,
 } from "../../src/mech/git/ghlogin.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 /** A fetcher that answers from a script and records what it was sent. */
 function scripted(answers: Json[]): { fetchFn: DeviceFlowFetcher; sent: Array<{ url: string; body: string }> } {
@@ -298,7 +298,7 @@ async function server(answer: (url: string) => Json) {
   await seedAuth(db);
   await saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_x" });
   const bus = new Bus(db);
-  const sched = new Scheduler(db, async () => {});
+  const sched = newScheduler(db, async () => {});
   const asked: string[] = [];
   const ctx: Ctx = {
     db,

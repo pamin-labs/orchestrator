@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 import { z } from "zod";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
-import { Scheduler, type Job } from "../../src/platform/scheduling/scheduler.ts";
+import type { Job } from "../../src/platform/scheduling/scheduler.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { makeGithub, type GithubFetcher } from "../../src/mech/git/github.ts";
 import { escalationKey } from "../../src/mech/flow/escalate.ts";
@@ -10,6 +10,8 @@ import type { Json } from "../../src/contracts/json.ts";
 import { and, eq, isNull, notInArray } from "drizzle-orm";
 import { escalation, job, project } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
+import { newScheduler } from "../support/scheduler.ts";
+import type { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 
 /**
  * The fifth admission gate: GitHub stopped accepting us.
@@ -34,7 +36,7 @@ async function seed(): Promise<{ db: DB; sched: Scheduler; ran: Job[] }> {
     await f.agent.create({ project_id: g, grp_id: g, runtime: "claude", token: `tok-${g}` });
   }
   const ran: Job[] = [];
-  const sched = new Scheduler(db, async (j) => void ran.push(j), {
+  const sched = newScheduler(db, async (j) => void ran.push(j), {
     maxGroups: 5,
     repoHeld: (projectId) => repoHeld(db, projectId),
   });
