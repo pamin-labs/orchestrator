@@ -1,4 +1,4 @@
-import { render, type Said } from "../../../src/contracts/said.ts";
+import { renderWith, type Said } from "../../../src/contracts/said.ts";
 import { i18n } from "../i18n";
 
 /**
@@ -15,4 +15,4 @@ import { i18n } from "../i18n";
  * trimmed at seven days rather than migrated, so the fallback is the migration.
  */
 export const saidText = (said: Said | null | undefined, fallback: string): string =>
-  said ? render(i18n, said) : fallback;
+  said ? renderWith(i18n, said) : fallback;

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { parseSync, traverse } from "@babel/core";
+import { traverse } from "@babel/core";
+import { parse } from "../support/ast.ts";
 
 /**
  * Nothing renders a sentence inside a template that is itself going to be
@@ -34,12 +35,7 @@ const RENDERERS = new Set(["renderSaid"]);
 const MACROS = new Set(["msg", "t"]);
 
 function offenders(file: string, source: string): string[] {
-  const ast = parseSync(source, {
-    filename: file,
-    configFile: false,
-    babelrc: false,
-    parserOpts: { plugins: ["typescript"] },
-  });
+  const ast = parse(file, source);
   if (!ast) return [];
 
   // What this file calls it, which is not always what it is called.

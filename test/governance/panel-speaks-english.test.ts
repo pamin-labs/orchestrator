@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { parseSync, traverse } from "@babel/core";
+import { traverse } from "@babel/core";
+import { CJK, parse } from "../support/ast.ts";
 import { LANGUAGE_SUGGESTIONS } from "../../web/src/features/knobs/editors.tsx";
 
 /**
@@ -24,7 +25,6 @@ import { LANGUAGE_SUGGESTIONS } from "../../web/src/features/knobs/editors.tsx";
  * rather than reading oddly, and there are two live ones — both matching text
  * the server hardcodes, so both are protocol and both say so where they sit.
  */
-const CJK = /[一-鿿　-〿＀-￯]/;
 const EXEMPT = /i18n-exempt/;
 
 /** Data, not copy: `LANGUAGE_SUGGESTIONS` is what `output.language` is set to —
@@ -50,12 +50,7 @@ function exemptLines(source: string): Set<number> {
 }
 
 function offenders(file: string, source: string): string[] {
-  const ast = parseSync(source, {
-    filename: file,
-    configFile: false,
-    babelrc: false,
-    parserOpts: { plugins: file.endsWith(".tsx") ? ["typescript", "jsx"] : ["typescript"] },
-  });
+  const ast = parse(file, source);
   if (!ast) return [];
   const exempt = exemptLines(source);
   const found: string[] = [];

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { parseSync, traverse } from "@babel/core";
+import { traverse } from "@babel/core";
+import { parse } from "../support/ast.ts";
 
 /**
  * An event the panel draws names its sentence; it does not write one.
@@ -25,12 +26,7 @@ const PROSE = /[A-Za-z]{3,}/;
 
 function offenders(file: string, source: string): string[] {
   if (!source.includes(".emit(")) return [];
-  const ast = parseSync(source, {
-    filename: file,
-    configFile: false,
-    babelrc: false,
-    parserOpts: { plugins: ["typescript"] },
-  });
+  const ast = parse(file, source);
   if (!ast) return [];
 
   const found: string[] = [];

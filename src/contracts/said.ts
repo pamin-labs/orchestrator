@@ -51,7 +51,7 @@ const MetaSchema = z.object({ say: SaidSchema.extend({ message: z.string() }).op
  * `message` spelled in only when there is one: `exactOptionalPropertyTypes`
  * refuses an explicit `undefined` on Lingui's optional field.
  */
-export const render = (i18n: Pick<I18n, "_">, said: Said): string =>
+export const renderWith = (i18n: Pick<I18n, "_">, said: Said): string =>
   i18n._(said.id, said.values, said.message === undefined ? undefined : { message: said.message });
 
 /**

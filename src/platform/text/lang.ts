@@ -1,7 +1,7 @@
 import { setupI18n, type I18n, type Messages } from "@lingui/core";
 import { compileMessageOrThrow } from "@lingui/message-utils/compileMessage";
 import { localeOf, type Locale } from "../../contracts/config.ts";
-import { render, type Said } from "../../contracts/said.ts";
+import { renderWith, type Said } from "../../contracts/said.ts";
 import { messages as en } from "../../../locales/en.po";
 import { messages as zh } from "../../../locales/zh.po";
 import { messages as zhHant } from "../../../locales/zh-Hant.po";
@@ -56,4 +56,5 @@ function of(locale: Locale): I18n {
  * `output.language` is free text a person typed, so `localeOf` decides which of
  * the ten it asks for.
  */
-export const renderSaid = (lang: string | undefined, sentence: Said): string => render(of(localeOf(lang)), sentence);
+export const renderSaid = (lang: string | undefined, sentence: Said): string =>
+  renderWith(of(localeOf(lang)), sentence);

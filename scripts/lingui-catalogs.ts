@@ -21,7 +21,9 @@ import type { CatalogFormatter } from "@lingui/conf";
  */
 
 const load = createRequire(import.meta.url) as <T>(id: string) => T;
-const CONFIG = new URL("./lingui.config.js", import.meta.url).pathname;
+/** Absolute, so `getConfig` does not search upward from a cwd `browse.ts` moved.
+ *  Exported because `lingui-macros.ts` resolves the same file. */
+export const CONFIG = new URL("./lingui.config.js", import.meta.url).pathname;
 
 type Api = typeof import("@lingui/cli/api");
 type Catalogs = Awaited<ReturnType<Api["getCatalogs"]>>;

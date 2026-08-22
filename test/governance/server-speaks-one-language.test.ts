@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
-import { parseSync, traverse } from "@babel/core";
-import { readdirSync, readFileSync } from "node:fs";
+import { traverse } from "@babel/core";
+import { CJK, parse } from "../support/ast.ts";
+import { readFileSync } from "node:fs";
 import BASELINE from "./server-chinese-baseline.json";
 
 /**
@@ -20,7 +21,6 @@ import BASELINE from "./server-chinese-baseline.json";
  * the literals where a translation breaks behaviour rather than reading oddly.
  * `panel-speaks-english.test.ts` visits it too now.
  */
-const CJK = /[一-鿿ぁ-ヿ가-힯　-〿＀-￯]/;
 const ROOT = `${process.cwd()}/src`;
 
 /**
@@ -31,19 +31,10 @@ const ROOT = `${process.cwd()}/src`;
  * The catalogues are `.po` files the server imports now, and `src/` is back to
  * being one language of source with nothing to carve out.
  */
-const walk = (dir: string): string[] =>
-  readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith(".ts") ? [`${dir}/${e.name}`] : [],
-  );
 
 /** Parsed, not grepped, so a comment in Chinese is not a finding. */
 function countIn(path: string): number {
-  const ast = parseSync(readFileSync(path, "utf8"), {
-    filename: path,
-    configFile: false,
-    babelrc: false,
-    parserOpts: { plugins: ["typescript"] },
-  });
+  const ast = parse(path, readFileSync(path, "utf8"));
   if (!ast) return 0;
   let n = 0;
   traverse(ast, {
@@ -66,9 +57,9 @@ const baseline = BASELINE as Record<string, number>;
 test("no file under src grows its count of Chinese literals", () => {
   const grew: string[] = [];
   const shrank: string[] = [];
-  for (const path of walk(ROOT)) {
-    const file = path.slice(ROOT.length + 1);
-    const now = countIn(path);
+  for (const found of new Bun.Glob("src/**/*.ts").scanSync(".")) {
+    const file = found.slice("src/".length);
+    const now = countIn(`${ROOT}/${file}`);
     const was = baseline[file] ?? 0;
     if (now > was) grew.push(`${file}: ${was} → ${now}`);
     if (now < was) shrank.push(`${file}: ${was} → ${now}`);
@@ -82,8 +73,8 @@ test("no file under src grows its count of Chinese literals", () => {
 });
 
 test("a file with no baseline entry may not introduce one", () => {
-  const fresh = walk(ROOT)
-    .map((p) => p.slice(ROOT.length + 1))
+  const fresh = [...new Bun.Glob("src/**/*.ts").scanSync(".")]
+    .map((p) => p.slice("src/".length))
     .filter((f) => !(f in baseline) && countIn(`${ROOT}/${f}`) > 0);
   expect(fresh).toEqual([]);
 });
