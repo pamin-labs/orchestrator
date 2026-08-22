@@ -1729,3 +1729,84 @@ rebased in. The generalisation is the one this branch keeps re-learning in
 another costume: **a reachability argument is not a rendering argument.** Nothing
 here is allowed to say what a pane shows without having rendered it, which is why
 `knobs-render.test.tsx` exists.
+
+## A sixth pass, on prose that restates a vocabulary the compiler owns
+
+The fifth pass looked for a rule written down twice. This one asked a narrower
+question and got more out of it: **where is a typed vocabulary restated as
+prose** — in an error message, in a prompt, in a role file — with nothing
+between the two. Every hit is the same failure: the word list grows, the prose
+does not, and nothing fails.
+
+### The gate's second reader was asked about a transcript
+
+`chain.ts` shows a reserved question to a model that is not the PM, and the
+paragraph it shows was `TO_BOSS` typed out in sentences. Its own comment said so
+— "the list is `TO_BOSS` said in sentences" — and read as a note about placement
+rather than as the defect it was describing.
+
+`TO_BOSS` is a `Set`, and a `Set` cannot make a missing sentence a compile error.
+So a sixth reserved topic would have raised at the **asking** end and been
+invisible at the **answering** one, which is the half where the damage happens,
+with nothing red: `chain.test.ts` pins the membership, and membership is not what
+the second reader is shown. `RESERVED` is a tuple now and the prose is
+`satisfies Record<Reserved, string>`. Shown failing by adding `env`: three type
+errors. The generated string was diffed against the paragraph before the
+paragraph was deleted — byte-identical.
+
+### Two more of the same, found by asking the same question again
+
+`validate.ts` spells `trivial|normal|hard` twice in rejection prose, beside the
+`z.enum` that owns it — and four lines above, the same file already interpolates
+`DRAFT_FIELDS` for exactly this reason, with the reason written out. A rejection
+naming a tag the parser no longer accepts sends the model to write one it will
+refuse.
+
+`roles/*.yaml` carry four hand-typed lists: the nine ask kinds twice, "the first
+five are the boss's alone" twice, the six card headings once. `dispatch.ts`
+derives its `--help` from the contracts; the prompts, which are the only manual a
+sandboxed agent has, did not. `roles-quote-the-contract` is the guard. Its third
+assertion is the one worth having — "the first five" is a **positional** claim,
+so it goes wrong the moment `RESERVED` and the head of `ASK_KINDS` disagree, and
+no test of either list alone can see that.
+
+A guard rather than templating the role files: templating moves the vocabulary
+somewhere an author cannot read while writing the paragraph around it, for a list
+that changes about once a release.
+
+### And a fallback that live code had started writing into
+
+`raise()` took `kind?: string | null` and four of its eight callers passed
+nothing — a PR closed without merging, a PR that will not open, an approval that
+did not take, a group out of budget. All four are the boss's own queue and all
+four drew no topic chip, on the null branch `select.ts` keeps for rows filed
+*before* the vocabulary existed.
+
+Three of the four had the answer one line above them, in the `hold()` they sit
+beside: `reason: "merge"`, `reason: "budget"`. The word was already written down
+and the question next to it did not carry it.
+
+Two owners, each doing the half it can: `AskKind | null` makes a wrong word a
+compile error, and `every-question-names-its-topic` reads the call sites for a
+missing one — because `kind` has to stay optional for the API path, where the
+CLI has already refused it. Both halves shown failing, including the assertion
+that the scanner reaches eight calls at all: this guard's failure mode is
+otherwise silence, which reads exactly like success.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1864 pass, 6 skip, 0 fail, 1870 across 229 files |
+| `fallow audit --gate all` | no issues in 360 changed files |
+| new guards | 2, each shown failing before it was kept |
+
+### Not taken
+
+- **A helper for `raise` + `bus.emit`.** The two share eight lines at six sites,
+  and `fallow` reports no duplication because four constant fields is not a
+  clone. Two call sites is not a pattern; the emit's `say` differs at every one.
+- **`kind` required on `EscalationRequest`.** It is the same object
+  `api/orch/escalation.ts` builds from a validated body, where the CLI already
+  refuses a missing one — requiring it in the type would push a redundant
+  assertion into the API path to satisfy the compiler.
