@@ -1615,9 +1615,13 @@ conjunction, so every one of those sentences was missing the word its language
 puts before the last name. `Intl.ListFormat`. 1100 messages to 1099.
 
 `type: "unit"` reads like the mode for a plain enumeration and is not: it is for
-measurement, so CLDR renders `zh` with **no separator at all** — `abc`. Measured
-across the ten and pinned in the test, because there is no CLDR mode meaning
-"the reader's separators, no conjunction" in every language. The sixth call site
+measurement, so CLDR renders `zh` with **no separator at all** — `abc`, and `ja`
+with a space. That much is pinned. What is *not* pinned, and is the better
+finding: `style: "narrow"` looks like the remaining answer and its output moves
+with the runtime's ICU data — the same commit renders `zh` narrow as `a、b和c`
+on Bun 1.3.14/macOS and `a、b、c` on the Linux runner. The first cut of that test
+asserted the local answer and went red on CI, which is the second time this
+branch has measured one machine and written down a universal. The sixth call site
 — repository paths in a monospace span — is a plain `join(", ")` for that
 reason: data, like the SI symbols in `duration()`.
 
@@ -1692,10 +1696,36 @@ else.
 - **`SECTIONS` and `KNOBS_ELSEWHERE`.** Hand-written path lists, but grouping and
   order are not derivable from anything and a guard already holds them.
 
-## Found and not fixed
+### One finding was wrong, and the branch had already fixed it
 
-- **A duration ladder renders as raw milliseconds.**
-  `intervals.notifyBackoffMs` is `z.array(count)`, so the settings page draws it
-  through the map editor and the boss reads `300000, 900000, 3600000`. `shapeOf`
-  answers `ms` for the path and no array editor asks. It is one knob, and the
-  fix is an array-of-durations editor rather than a line.
+Recorded here because the commit that carries it says otherwise, and a claim in
+a commit body outlives the round that made it.
+
+`refactor(knobs)` says the reminder ladder "still renders as three seven-digit
+numbers, which is the defect `units.ts` exists to prevent, one shape out of its
+reach", and an entry went into **Found and not fixed** saying the same. It is
+**false**. The reasoning went from "`shapeOf` answers `ms` for
+`intervals.notifyBackoffMs` and no number editor asks" to "so nothing gives that
+knob a unit" — which does not follow, and was never checked against the render.
+
+`mapValue` sends the path to `Ladder`, which splits every step through
+`splitDuration` and draws it as a `DurationAmount`. It landed earlier in this
+same branch, under `refactor(knobs): delete what the unit buttons needed`, and
+`test/web/knobs-render.test.tsx` has held it since: *the reminder ladder is a
+row per step, not a line of JSON* — three `第 N 级` rows, and an assertion that
+no input holds the JSON. Re-run to confirm before writing this: 6 pass.
+
+The half that is true is the one the test pins: `shapeOf` answers for a path no
+number editor ever asks about. That is a property of reading a *name*, and it is
+unreachable because `Ladder` gets its unit from `splitDuration` directly and
+never asks `shapeOf` at all. The comment on that test said "the day an array
+editor wants a unit is the day this line has to be read", which was the same
+mistake in smaller type — that day is behind us, not ahead.
+
+Not amended in place: five commits are pushed with CI on them, and this is the
+failure `AGENTS.md` already names for a wrong label in a pushed commit — the tree
+is correct, the claim is not, and the correction is cheaper written down than
+rebased in. The generalisation is the one this branch keeps re-learning in
+another costume: **a reachability argument is not a rendering argument.** Nothing
+here is allowed to say what a pane shows without having rendered it, which is why
+`knobs-render.test.tsx` exists.

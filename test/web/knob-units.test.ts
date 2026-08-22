@@ -141,11 +141,15 @@ test("every numeric knob whose name says it is a duration gets a unit", () => {
  * `shapeOf` reads a name, and one name in the config is not a scalar.
  *
  * `intervals.notifyBackoffMs` is `z.array(count)` — a reminder ladder — so the
- * suffix answers `ms` for it where the old table, keyed by path, simply had no
- * row. It is unreachable: `scalarValue` sends only `type === "number"` to
- * `numberValue`, which is the one caller. Pinned rather than explained, because
- * the day an array editor wants a unit is the day this line has to be read.
+ * suffix answers `ms` for it where the old table, keyed by path, had no row.
+ * Unreachable twice over: `scalarValue` sends only `type === "number"` to
+ * `numberValue`, and `mapValue` sends this path to `Ladder`, which splits every
+ * step through `splitDuration` and never asks here at all.
  */
+/** So the answer is unused rather than wrong, and that is what this pins. The
+ *  ladder's own rendering is `knobs-render.test.tsx`'s — *a row per step, not a
+ *  line of JSON* — because whether a pane shows seven digits is a question only
+ *  a render answers, never a reachability argument about this function. */
 test("the suffix answers for a path no number editor ever asks about", () => {
   expect(shapeOf("intervals.notifyBackoffMs")).toBe("ms");
   expect([...settablePaths()].find(([path]) => path === "intervals.notifyBackoffMs")?.[1]).toBe("array");

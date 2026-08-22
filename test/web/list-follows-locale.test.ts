@@ -36,18 +36,22 @@ test("the separator and the conjunction both follow the reader's language", () =
 /**
  * `type: "unit"` is not the mode for a plain enumeration, whatever it reads like.
  *
- * It is for measurement — `3 ft 7 in` — so CLDR gives `zh` and `ja` no separator
- * at all. Pinned here because "drop the conjunction" is the obvious next request
- * and this is the measurement that answers it: there is no CLDR mode meaning
- * "the reader's separators, no conjunction" in every language. A run of paths is
- * data and joins itself.
+ * It is for measurement — `3 ft 7 in` — so CLDR gives `zh` no separator at all
+ * and `ja` a space. Pinned because "drop the conjunction" is the obvious next
+ * request, and this is the measurement that answers it.
  */
-test("there is no CLDR mode for separators without a conjunction", () => {
+/**
+ * `style: "narrow"` is the other thing that looks like an answer, and it is not
+ * asserted here on purpose: it moves with the runtime's ICU data. Measured on
+ * the same commit — Bun 1.3.14 on macOS renders `zh` narrow as `a、b和c`, the
+ * Linux runner as `a、b、c`. A first cut of this file asserted the macOS answer
+ * and went red on CI. Whatever else it is, a mode whose output depends on which
+ * machine ran it is not one to build a rendering rule on.
+ */
+test('`type: "unit"` is measurement, not a list', () => {
   const items = ["a", "b", "c"];
   expect(new Intl.ListFormat("zh", { type: "unit" }).format(items)).toBe("abc");
   expect(new Intl.ListFormat("ja", { type: "unit" }).format(items)).toBe("a b c");
-  // And narrow only drops it where the language separates with a comma anyway.
-  expect(new Intl.ListFormat("zh", { type: "conjunction", style: "narrow" }).format(items)).toBe("a、b和c");
 });
 
 test("one name is that name, and none is the empty string", () => {
