@@ -5,7 +5,7 @@ import { ph, t } from "@lingui/core/macro"; /**
  * which entries a listing shows and in what order, which single fact the right
  * edge of a row is worth spending on, and what a repository row offers when the
  * boss lands on it. All of that was inline in the JSX, where the only way to ask
- * "does a directory that is already a project still say 已添加" was to render a
+ * "does a directory that is already a project still say `Added`" was to render a
  * dialog Radix will not render on a server at all.
  */
 
@@ -47,7 +47,7 @@ export function browseListing(dirs: Listing | null): { parts: string[]; rows: [E
  *
  * First match wins, and the order is what the boss is deciding: whether this row
  * is already picked beats whether it is already a project, which beats what kind
- * of thing it is, which beats how big it is. 已添加 outranks git 仓库 because a
+ * of thing it is, which beats how big it is. `Added` outranks `Git repo` because a
  * repository that is already a project is not one you can add again.
  */
 export function entryMeta(entry: Entry, selected: boolean, pick: boolean): string {
@@ -76,7 +76,7 @@ export function browseRow(entry: Entry, isDir: boolean, pick: boolean, selected:
   return { glyph: repo ? "◆" : isDir ? "▸" : "·", repo, meta: entryMeta(entry, selected, pick) };
 }
 
-/** "今天" / "3 天前" / "2 个月前". Age, at the resolution anyone acts on. */
+/** "today" / "3 days ago" / "2 months ago". Age, at the resolution anyone acts on. */
 export function days(at: number): string {
   if (!at) return "";
   const d = Math.round((Date.now() - at) / 86_400_000);

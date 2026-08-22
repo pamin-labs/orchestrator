@@ -23,12 +23,12 @@ import { ph } from "@lingui/core/macro";
  */
 /**
  * A tab on the requirement rather than a sixth peer view: a container belongs to one
- * group, so a top-level 工作区 would open with a list of groups to pick from, asking
+ * group, so a top-level `Workspace` would open with a list of groups to pick from, asking
  * the boss to re-find what they were just reading. The `Bootstrap` strip is the other
  * half — it interrupts while a rebuild runs, this is where you go to look.
  *
  * The log is in memory, capped and gone on restart — said on the panel rather than
- * implied, because the outcome that matters is already a line in 记录.
+ * implied, because the outcome that matters is already a line in `Notes`.
  */
 
 const LineSchema = z.object({ at: z.number(), kind: z.enum(["cmd", "out", "end"]), text: z.string() });

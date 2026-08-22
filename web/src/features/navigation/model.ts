@@ -60,7 +60,7 @@ export const VIEWS: [View, MessageDescriptor][] = [
   ["notes", msg`Notes`],
   ["owns", msg`Ownership`],
   ["cost", msg`Cost`],
-  // Top level, beside the other four. It was a tab inside 需求, one rank down,
+  // Top level, beside the other four. It was a tab inside `Requirement`, one rank down,
   // which put "where did this project's wall clock go" underneath "which
   // requirements are running" — but a project's spans are every route and
   // container operation that named it, most of them belonging to no requirement
@@ -213,7 +213,7 @@ export function requirementItem(group: State["groups"][number], status: string) 
 /**
  * It takes the **resolved** view, not `selection.view`, and that is the whole fix.
  * The raw value becomes `settings` the moment a dialog opens, so keying on it threw
- * away the page *behind* the dialog and rebuilt it: on 耗时 both charts and the table
+ * away the page *behind* the dialog and rebuilt it: on `Time` both charts and the table
  * vanished and came back as the modal appeared, each re-reading its endpoint.
  *
  * The project and the group stay in the key because those really are different

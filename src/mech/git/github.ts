@@ -186,7 +186,7 @@ async function holdRepo(db: DB, lang: string | undefined, slug: string, why: str
  * It works again, so take the question back.
  *
  * A boss who reconnects GitHub and watches the fleet resume should not also have
- * to dismiss a 待办 item about it. Revoked rather than answered: nobody answered
+ * to dismiss a `To do` item about it. Revoked rather than answered: nobody answered
  * it, and `dropGroup` already uses `revoked` for a question the world made moot.
  */
 export async function clearEscalation(db: DB, slug: string): Promise<void> {

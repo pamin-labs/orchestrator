@@ -18,7 +18,7 @@ export const H2 = ({ children, className }: { children: React.ReactNode; classNa
  * A section's title band: what it is, one line of what it does, and whatever acts
  * on it pushed to the right.
  *
- * Lifted out of 工位墙 and 所有权, which both had it inline. A heading with a count
+ * Lifted out of `Desk wall` and `Ownership`, which both had it inline. A heading with a count
  * beside it and a control at the far end is the shape every pane here wants, and
  * three hand-written copies of it drift.
  */
@@ -99,7 +99,7 @@ export const Pane = ({ children, className }: { children: React.ReactNode; class
  * usually made by line three and the rest is there to check the reasoning against.
  *
  * The toggle appears only when the text is actually longer than the clamp, or every
- * two-word question grows a 展开 that does nothing.
+ * two-word question grows a `Expand` that does nothing.
  */
 export function Clamp({ lines = 2, children }: { lines?: number; children: React.ReactNode }) {
   const { t } = useLingui();

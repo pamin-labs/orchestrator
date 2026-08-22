@@ -18,7 +18,7 @@ import { i18n } from "../../i18n";
 /**
  * Everything waiting on the boss, ordered by what ignoring it costs.
  *
- * It can reach zero, and that matters: "都处理完了" is achievable, where a board always
+ * It can reach zero, and that matters: "nothing left" is achievable, where a board always
  * looks half empty and trains the reader to ignore it.
  */
 /**
@@ -56,7 +56,7 @@ export function Queue({
     node: <Cluster key={cluster.grpId} st={st} c={cluster} onOpen={onOpen} refresh={refresh} />,
   }));
 
-  // No card, no second 待办 label: the tab this renders into already carries the
+  // No card, no second `To do` label: the tab this renders into already carries the
   // name and the count, and a titled card inside a titled tab was the same word
   // twice with two different numbers under it.
   // The sort order used to be printed above the list. Every row already carries
@@ -89,7 +89,7 @@ function Paged({ blocks }: { blocks: { node: React.ReactNode }[] }) {
 }
 
 /**
- * One requirement and everything waiting on it, in the shape 进行中 already uses.
+ * One requirement and everything waiting on it, in the shape `In progress` already uses.
  *
  * Identity on the left, the things themselves as cards in a track, the way out on
  * the right. That page reads well because the eye lands on one fixed column of names
@@ -303,9 +303,9 @@ function TicketReply({ item, standing, refresh }: { item: QueueItem; standing: b
  * Answer a question from the list.
  *
  * `orch ask-boss` blocks its caller until this lands, and the Architect files
- * questions with no requirement behind them — those had a 去回答 button that opened
+ * questions with no requirement behind them — those had an answer button that opened
  * a requirement id of null, so the one class of question the boss cannot navigate to
- * was also the one they could not clear. 知道了 is the whole point for an FYI: the
+ * was also the one they could not clear. `Got it` is the whole point for an FYI: the
  * answer text is unimportant, unblocking the agent is not.
  */
 function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh: () => void }) {
@@ -379,7 +379,7 @@ function handleReplyKey(event: React.KeyboardEvent, close: () => void, send: () 
 /**
  * The drafted answer, offered from the queue as well as the requirement page.
  *
- * This is where the boss actually answers now — 待办 is one tab and the question
+ * This is where the boss actually answers now — `To do` is one tab and the question
  * has its reply box on the row — so a draft that only existed on the drill-in was
  * a draft nobody saw. Same call, same rule: computed on open, never stored, and
  * it goes into the box rather than to the agent.

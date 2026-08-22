@@ -153,7 +153,7 @@ function useFlameChart({
       .transitionDuration(0)
       .setColorMapper(flameColor)
       // `frame.value` and not `frame.data.value`: the first is what the frame was
-      // laid out by and follows the 自身 / 含下游 toggle, the second is always self
+      // laid out by and follows the `Self` / `Including downstream` toggle, the second is always self
       // time. The words in the frame, the identifier after them — the detail line
       // is wide enough to carry both rather than making the reader choose.
       .setLabelHandler((frame) =>

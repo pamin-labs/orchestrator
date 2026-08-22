@@ -30,7 +30,7 @@ export const R = 5.5;
 const C = 2 * Math.PI * R;
 export type RingInput = { v?: number; at?: number; read?: number; stale: boolean; why?: string };
 
-/** "3h12m" / "2天4h". A reset three days out is not worth a minute count. */
+/** "3h12m" / "2d4h". A reset three days out is not worth a minute count. */
 export function until(unixSecs?: number): string {
   if (!unixSecs) return "";
   const ms = unixSecs * 1000 - Date.now();
@@ -50,7 +50,7 @@ export const ringArc = (v?: number) => (v === undefined ? null : `${(Math.min(10
 
 /**
  * Terse: a number and when it resets, or why there is no number. The sentence it
- * replaced said "5 小时窗口" next to a ring already labelled 5h, and repeated the
+ * replaced said "5-hour window" next to a ring already labelled 5h, and repeated the
  * failure text under every window it had already been shown for.
  *
  * The age only when it is old enough to matter. The poll is deliberately slow —

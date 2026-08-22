@@ -416,7 +416,7 @@ async function withCounts(
 /** Where the boss installs the app. One app, so one address. */
 const INSTALL_URL = `https://github.com/apps/${APP_SLUG}/installations/new`;
 
-/** `fresh=1` skips the cached snapshot. The 刷新 path and nothing else. */
+/** `fresh=1` skips the cached snapshot. The `Refresh` path and nothing else. */
 export const GithubLoginQuery = z.object({ fresh: z.coerce.boolean().optional() });
 
 /**
@@ -433,7 +433,7 @@ export const GithubLoginQuery = z.object({ fresh: z.coerce.boolean().optional() 
  * api.github.com every time the pane opened, measured at **1.2s** against a live
  * server while every other settings endpoint answered in 16–160ms.
  *
- * The comment defending it named a real failure — a stored name still saying 已连接
+ * The comment defending it named a real failure — a stored name still saying `Connected`
  * for a token revoked last week — but this is not where that is caught. ADR 029
  * routes a 401 from real work to the boss, holds the project and says so once, and
  * a settings pane nobody has opened cannot notice anything at all.
@@ -445,7 +445,7 @@ const SNAPSHOT_KEY = "github_connection";
  *
  * An account changes when the boss connects a different one, which clears this
  * outright. Installations change on github.com, out of band — so the pane needs
- * some way to notice, and `?fresh=1` is the one the 刷新 path uses. The TTL is the
+ * some way to notice, and `?fresh=1` is the one the `Refresh` path uses. The TTL is the
  * floor under a reader who never presses it.
  */
 const SNAPSHOT_TTL_MS = 10 * 60_000;
@@ -481,7 +481,7 @@ async function readConnection(ctx: Ctx, gh: NonNullable<Ctx["gh"]>, signal?: Abo
     at: Date.now(),
   };
   // Only a usable answer is kept. Storing a failed read would turn one
-  // unreachable moment into ten minutes of 连接已失效.
+  // unreachable moment into ten minutes of `Connection expired`.
   if (account) await writeSetting(ctx.db, SNAPSHOT_KEY, JSON.stringify(snapshot));
   return snapshot;
 }
@@ -494,13 +494,13 @@ export const getGithubLogin = (async (ctx, req, _params, query) => {
   //
   // Authorized is not installed. A GitHub App's user token reaches exactly the
   // repositories the app is installed on, so zero installations is the state that
-  // looks like success and is not: a green 已连接 over a repo list that can never
+  // looks like success and is not: a green `Connected` over a repo list that can never
   // fill.
   //
   // Both at once when they do have to be asked. They were serial, and the second
   // only used the first as a truthiness gate — never its data. Overlapping them
   // costs one wasted request when the token has been revoked, which is the case
-  // where the panel is about to say 连接已失效 and nobody is waiting on a list.
+  // where the panel is about to say `Connection expired` and nobody is waiting on a list.
   const shown = usable ?? (a && ctx.gh ? await readConnection(ctx, ctx.gh, req.signal) : null);
   // Read after the requests above, not before: a code that expired while they
   // were in flight is not a code the panel should still be offering.
@@ -561,7 +561,7 @@ export const getGithubRepos = (async (ctx, req, _params, { installation: asked =
 
   // Seam (007 step 6): a project's identity is still `repo_path`, which for a
   // repository added here is `owner/name`.
-  // Which project, not whether: naming it makes an 已添加 row a route rather than
+  // Which project, not whether: naming it makes an `Added` row a route rather than
   // a dead end.
   const registered = await ctx.db
     .select({ id: project.id, name: project.name, repo_path: project.repo_path })

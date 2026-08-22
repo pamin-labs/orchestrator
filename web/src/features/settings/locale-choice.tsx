@@ -9,7 +9,7 @@ import { endonymOf } from "../../../../src/contracts/config";
  *
  * A menu, not a combobox: a combobox is an `<input>`, so it carries a caret and
  * invites typing — and this is nine fixed values, none of which the reader is
- * meant to invent. The one beside it in 模型与预算 stays a combobox for the
+ * meant to invent. The one beside it in `Models & budget` stays a combobox for the
  * opposite reason: `output.language` is free text that reaches a model.
  */
 /**

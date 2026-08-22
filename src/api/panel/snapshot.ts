@@ -209,13 +209,13 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
     // detail: a millisecond is not an ordering key, so a card and an objection
     // can share one, and a strict > then drops the objection entirely. That is
     // precisely the failure this clause exists to prevent — approving a card
-    // that still reads 反对：无 while somebody has already said otherwise. The
+    // that still reads `Objection: none` while somebody has already said otherwise. The
     // boundary has to fall on the side that shows it. Nothing else can land
     // here: a card is a note, not an event, and the only say events considered
     // are other agents'. The Dispatcher does not
     // wait for the Architect — a card nobody filed is worth less than a card with
     // no objection on it — so a real objection can land a minute later, while the
-    // card still reads 反对 : 无. Approving that is approving something the boss
+    // card still reads `Objection: none`. Approving that is approving something the boss
     // was never shown. Measured: the late objection was "the locale-inference
     // slice contradicts the acceptance criterion that says behaviour is unchanged".
     db
@@ -292,7 +292,7 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
       .where(notInArray(escalation.chain_state, [...ESCALATION_TERMINAL_STATES]))
       .orderBy(escalation.created_at, escalation.id),
     db.select({ id: project.id }).from(project),
-    // Delivered work, so 收尾 stops meaning "vanished". A group that merged is the
+    // Delivered work, so winding up stops meaning "vanished". A group that merged is the
     // only proof the system did what it was asked, and it was leaving no trace
     // anywhere in the panel. Two correlated scalars again, and the second is also
     // the sort key — bound once and used in both places rather than written twice.
@@ -310,11 +310,11 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
       .from(grp)
       .where(eq(grp.status, "DISSOLVED"))
       // `nulls last` for the same reason as `answered`: a dissolved group with no
-      // events would otherwise sort to the top of 已交付.
+      // events would otherwise sort to the top of `Done`.
       .orderBy(sql`${lastEventAt(db)} desc nulls last`, desc(grp.id))
       .limit(12),
     // How much of each subscription is gone. Not spend — spend is attributable and
-    // belongs in 成本. This answers "can this still run tonight", which is the one
+    // belongs in `Cost`. This answers "can this still run tonight", which is the one
     // usage question that changes what the boss does next.
     db
       .select({ runtime: usage_snapshot.runtime, json: usage_snapshot.json, at: usage_snapshot.at })
@@ -384,7 +384,7 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
     }),
     mergeQueue: mergeQueue.flat(),
     archived,
-    // The panel shows "并行 3/3" from this: without the cap, a queued group looks
+    // The panel shows "3/3 in parallel" from this: without the cap, a queued group looks
     // stuck rather than queued, which is the difference between a bug and a setting.
     limits: {
       maxGroups: ctx.config.maxGroups,

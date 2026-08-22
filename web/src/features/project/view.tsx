@@ -62,7 +62,7 @@ const GATE_ROW = "grid grid-cols-[1.25rem_1.5rem_7rem_minmax(0,1fr)] items-basel
  * in the run order, so the screen read 4, 1, 3, 2. The order is the whole point of
  * the section, so it is the order of the rows: the ones that run on top, numbered,
  * draggable; the ones that do not under a rule, unnumbered. Position, number and
- * the 关掉的 heading say the same thing three ways.
+ * the closed heading say the same thing three ways.
  */
 /**
  * Reordering is the platform's own drag and drop. Radix has no drag primitive, and
@@ -138,7 +138,7 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
                 >
                   <GripVertical size={12} strokeWidth={2} className="translate-y-0.5 text-ink-3" />
                 </span>
-                {/* The digit alone. 「第 N 道」 wrapped to two lines in a column this
+                {/* The digit alone. Spelling it out as an ordinal wrapped to two lines in a column this
                     narrow, and the header already says what the column is. */}
                 <Meta>{i + 1}</Meta>
                 <span className="truncate text-body">{name}</span>
@@ -147,7 +147,7 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
             ))}
             {off.length > 0 && (
               // Space, not a rule: the rows below draw their own, and a heavier
-              // line here made the break between 开着的 and 关掉的 look like one
+              // line here made the break between the open and closed groups look like one
               // more row boundary.
               <div className="flex items-baseline gap-3 px-2 pt-6 pb-1.5">
                 <Meta>
@@ -355,9 +355,9 @@ export const ImageChoicesSchema = z
  * both lists are simply shown.
  */
 /**
- * 远程 first, because the published image is the answer for everybody not
+ * `Remote` first, because the published image is the answer for everybody not
  * developing this project: pulled on first use, needing nothing on this machine.
- * 本地 is the other half of that rule, and is exactly what a bare tag means.
+ * `Local` is the other half of that rule, and is exactly what a bare tag means.
  *
  * Empty lists say which kind of empty they are: "nothing published yet" and "could
  * not reach ghcr.io" send a reader to different places.
@@ -420,7 +420,7 @@ export function ImageRow({
           <Combobox
             value={value}
             options={options}
-            // The default says 分支: this is the branch picker's control, and a
+            // The default says `Branch`: this is the branch picker's control, and a
             // filtered image list telling you there is no matching branch is one
             // word away from reading as a broken page.
             empty={t`No matching images`}

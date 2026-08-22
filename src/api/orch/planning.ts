@@ -139,9 +139,9 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
  * One idea, several requirements.
  *
  * What lands in the box is often not one thing. Until this existed the shape of
- * the system forced all of it into ONE requirement — one DRAFT card, one 目标 line,
+ * the system forced all of it into ONE requirement — one DRAFT card, one goal line,
  * one branch, one Engineer working serially, one PR. The Dispatcher could drop
- * most of it or write a 目标 that was not true, and `checkSplit` would not object,
+ * most of it or write a goal that was not true, and `checkSplit` would not object,
  * because four unrelated slices genuinely do have four acceptance criteria.
  */
 /**

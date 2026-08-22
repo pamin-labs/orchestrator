@@ -9,7 +9,7 @@ import { Tip } from "../../ui/tooltip";
  * How much of each subscription is left, in the header.
  *
  * A deliberate exception to the rule the header keeps: it carries what the boss
- * acts on, and spend went to 成本 because it is merely true. This is not that. Work
+ * acts on, and spend went to `Cost` because it is merely true. This is not that. Work
  * runs overnight against two accounts, and "the weekly window is at 90%" is the one
  * usage fact that changes what you start next.
  */

@@ -116,7 +116,7 @@ export const DraftDecisionBody = z.object({
  * The boss sent the card back.
  *
  * PLANNING, not DRAFT: left in DRAFT it still counted as a decision waiting on
- * the boss, still showed the rejected card, and 批准开工 still worked on it — one
+ * the boss, still showed the rejected card, and `Approve and start` still worked on it — one
  * stray click approves the very plan that was just sent back. `approved_at` goes
  * with it, or the next card to reach DRAFT starts itself on the strength of a yes
  * the boss said to a plan that no longer exists.
@@ -127,7 +127,7 @@ async function sendBack(ctx: Ctx, grpId: number, b: z.infer<typeof DraftDecision
   const projectId = owner?.project_id ?? null;
   // Back to PLANNING, which is what the group actually is now. Left in DRAFT it
   // still counted as a decision waiting on the boss, still showed the rejected
-  // card, and 批准开工 still worked on it — one stray click approves the very
+  // card, and `Approve and start` still worked on it — one stray click approves the very
   // plan that was just sent back.
   //
   // Clearing approved_at as well: sending a plan back withdraws the approval, or
@@ -215,7 +215,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
   }
 
   // The boss usually approves what the Dispatcher filed; an edited card in the
-  // request body is the "改完批准" path.
+  // request body is the edit-then-approve path.
   const [filed] = await ctx.db
     .select({ body: note.body })
     .from(note)
@@ -362,7 +362,7 @@ export const GroupControlBody = z.object({
 
 async function changeBudget(ctx: Ctx, grpId: number, tokens: number | null | undefined): Promise<Response> {
   // Budget exhaustion suspends the group, and until this existed there was no
-  // route out of it: 继续 un-paused a group the scheduler refused to admit,
+  // route out of it: `Resume` un-paused a group the scheduler refused to admit,
   // so the next tick suspended it again. A limit needs a way to be raised.
   const t = normalizeBudget(tokens);
   const [spent] = await ctx.db
@@ -401,7 +401,7 @@ async function recordBudget(ctx: Ctx, grpId: number, tokens: number | null): Pro
     body: description,
   });
   // Raising the cap is the answer to the question the watchdog asked, so it
-  // also closes it: a stale "out of budget" row in 等你 is worse than none.
+  // also closes it: a stale "out of budget" row in `To do` is worse than none.
   await ctx.db
     .update(escalation)
     .set({
@@ -470,7 +470,7 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
   await ctx.db.update(grps).set({ status: "PR_OPEN", paused_at: null, pause_reason: null }).where(eq(grps.id, grpId));
   await joinQueue(ctx.db, grpId);
   // The question `prClosed` filed about *this* PR, by the key it filed under.
-  // The `LIKE 'PR #%被关掉了%'` this replaces matched any closed-PR question in
+  // The `LIKE` over a Chinese sentence fragment this replaces matched any closed-PR question in
   // the group, and a group with no PR number at all still ran it — closing a
   // question about some other PR is worse than leaving this one open.
   if (g.pr_number !== null) {
@@ -496,8 +496,8 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
 }
 
 async function dropRequirement(ctx: Ctx, grpId: number, why: string | undefined): Promise<Response> {
-  // 不做了. A requirement that turned out to be a duplicate, or that someone
-  // else already fixed, had no way off the board: 退回重拆 sends it back to the
+  // `Don't proceed`. A requirement that turned out to be a duplicate, or that someone
+  // else already fixed, had no way off the board: `Return for re-decomposition` sends it back to the
   // Dispatcher, which writes another card for work nobody wants. The paths it
   // held stayed held, so a group waiting on them waited forever.
   const [g] = await ctx.db.select({ status: grps.status, name: grps.name }).from(grps).where(eq(grps.id, grpId));

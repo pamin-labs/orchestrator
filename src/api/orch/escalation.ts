@@ -179,7 +179,7 @@ export const postTriage = (async (ctx, _req, a, _p, b) => {
  * The commonest thing on the boss's queue is a blocker no answer resolves: a config
  * file is wrong, a shared fixture is broken, four groups are red on one line.
  * Answering means typing the fix into a chat box for an agent not allowed to apply
- * it, so these sat in 待办 until the boss did the work by hand.
+ * it, so these sat in `To do` until the boss did the work by hand.
  *
  * `orch blocked` is the same move made by an agent.
  */
@@ -394,7 +394,7 @@ export const getAnswerDraft = (async (ctx, _req, params) => {
 /**
  * Hand a question back down the chain instead of answering it.
  *
- * docs/project/plan.md §8 puts `[回答] [转 Architect]` on the same line for a reason: plenty of
+ * docs/project/plan.md §8 puts answer-or-forward on one line for a reason: plenty of
  * what reaches the boss is a technical call somebody else should make, and
  * without this the only ways out are answering it or leaving it to rot.
  */

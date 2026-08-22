@@ -387,7 +387,7 @@ function RepoStates(props: {
  *
  * The action hides until the row is the one under the cursor, so the list reads
  * as ages rather than as thirty offers. A row already being added has neither —
- * it says 添加中… and stops offering to be pressed again.
+ * it says `Adding…` and stops offering to be pressed again.
  */
 function RepoEdge({ marks }: { marks: ReturnType<typeof repoRow> }) {
   if (marks.adding) return <span className="whitespace-nowrap text-secondary text-ink-3">{marks.meta}</span>;

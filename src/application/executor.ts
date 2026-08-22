@@ -661,7 +661,7 @@ export const LOST_SESSION = /no rollout found for thread|No conversation found w
 /**
  * What a turn's checkpoint commit says about itself.
  *
- * `S2: engineer — 闸门放行的卡…`: slice number first, then who did it, then the
+ * `S2: engineer — the card the gate let through…`: slice number first, then who did it, then the
  * only sentence anyone wrote about this work. It names the turn that **just
  * ended**, not the one about to start — the checkpoint commits the previous
  * turn's output, so the incoming job's role filed the Engineer's diff as `qa`.
@@ -917,7 +917,7 @@ async function recordCost(
     kind: "tool_summary",
     say: msg`turn done (${plural({ steps: r.numTurns }, { one: "# step", other: "# steps" })}, ${{ total }} tokens)`,
     // The provider, recorded rather than inferred: the `model LIKE 'gpt%'` split
-    // 成本 used breaks on any rename, and the event row has no agent to join to.
+    // `Cost` used breaks on any rename, and the event row has no agent to join to.
     meta: {
       usage: r.usage,
       cacheRatio: cacheRatio(r),

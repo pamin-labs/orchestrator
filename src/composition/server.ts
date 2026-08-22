@@ -319,7 +319,7 @@ async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, 
   await hold(ctx.db, grpId, { reason: "merge", settled: true, from: "PR_OPEN", leaveQueue: true });
   // `key`, not the opening line. Two matchers find this row again — `prReopened`
   // below and `replacePr` in `api/panel/group.ts` — and both used to compare the
-  // sentence, so translating it was enough to strand a group in 待你决策 forever.
+  // sentence, so translating it was enough to strand a group in `Awaiting your decision` forever.
   // The text is still rendered here because `delta.ts` splices it into a prompt.
   await raise(ctx.db, {
     grpId,

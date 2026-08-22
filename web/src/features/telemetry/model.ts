@@ -92,7 +92,7 @@ export function verdict(split: StageSplit): Verdict | null {
   if (split.fast.length > 0) {
     // Two names and a count, not seven names: the sentence exists to be read
     // instead of the table, so it has to be shorter than it. Unmapped identifiers
-    // are counted rather than pasted in — 「更新代码索引、git.ls_tree」 reads as two
+    // are counted rather than pasted in — "refresh the code index, git.ls_tree" reads as two
     // different kinds of thing, and half a translated sentence is worse than none.
     const named = split.slow.filter((stage) => isRenamed(stage.name));
     const unnamed = split.slow.length - named.length;
@@ -105,7 +105,7 @@ export function verdict(split: StageSplit): Verdict | null {
   }
   const [worst, second] = split.slow;
   if (!worst || !second) return null;
-  // A second place at zero makes the ratio infinite, and 「Infinity 倍」 is not a
+  // A second place at zero makes the ratio infinite, and "Infinity×" is not a
   // number. It is also the clearest possible gap, so it is reported as one.
   if (second.p95 <= 0) {
     const named = isRenamed(worst.name);
@@ -119,7 +119,7 @@ export function verdict(split: StageSplit): Verdict | null {
  * What each span name is, in words, for the person reading this page.
  *
  * An exact table and nothing cleverer: a pattern turning `foo.create` into
- * 「开一个 foo」 invents sentences about spans nobody has read. **Unmapped falls
+ * inventing "open a foo" makes up sentences about spans nobody has read. **Unmapped falls
  * through to the identifier** — the set of names grows every time somebody adds a
  * stage, and a missing entry must degrade to a name the reader can search for.
  */
@@ -182,7 +182,7 @@ export function spanKind(name: string): { key: string; label: string } {
   const prefix = name.split(".")[0] ?? "";
   const label = KIND_NAMES[prefix];
   // A prefix nobody has named keeps its own, so a new family of spans is its own
-  // group on the day it ships rather than being swept into 其他.
+  // group on the day it ships rather than being swept into `Other`.
   if (label) return { key: prefix, label: i18n._(label) };
   return name.includes(".") ? { key: prefix, label: prefix } : { key: "other", label: t`Other` };
 }

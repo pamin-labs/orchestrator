@@ -13,7 +13,7 @@ type FilingState = EscalationOpenState;
  * What a question is about, as data rather than as its opening line.
  *
  * Four subjects were matched by their prose — `starts_with(question, "PR #12
- * 被关掉了")` and three like it, in five files. That is a primary key made of a
+ * matching a Chinese sentence fragment, and three like it, in five files. That is a primary key made of a
  * sentence: editing it, or translating it, silently stops the matcher. A union
  * rather than `string`, because filing and matching are in different modules and
  * a typo in either is that same silent failure again.

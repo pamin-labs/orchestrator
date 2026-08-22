@@ -207,7 +207,7 @@ function ServerDetails({ server }: { server: ServerInfo | null }) {
 
 function ServerWhy({ why, state }: { why: Said | null; state: string }) {
   // Under the line it explains, indented past the icon, and only when it adds
-  // something — `没在跑` was rendering twice, once as the status and once as
+  // something — the not-running state was rendering twice, once as the status and once as
   // its own reason, which reads as a stuck panel. It was a bordered box on
   // `sunk` too: a frame around one sentence, on the surface reserved for what a
   // machine produced.
@@ -338,7 +338,7 @@ function ServerFields(props: ServerPaneProps) {
    *
    * The re-ask is the point of the merge: whether we can drive the server is a
    * function of the key, and clearing the key while the line above still reads
-   * 在跑，直接用 is the shape this project keeps paying for — a stale answer that
+   * "it is running, use it" is the shape this project keeps paying for — a stale answer that
    * looks like a healthy one.
    */
   const sendKey = (json: AuthJson) =>
@@ -387,7 +387,7 @@ function ServerFields(props: ServerPaneProps) {
       />
       {/* No "now put this in the server's config" line: that instruction is what
           got followed halfway, and a key only this side knows locks the fleet out
-          of every container. 存下 refuses a key the server rejects. */}
+          of every container. `Save` refuses a key the server rejects. */}
     </FieldGroup>
   );
 }

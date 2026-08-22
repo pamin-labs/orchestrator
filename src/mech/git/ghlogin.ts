@@ -290,7 +290,7 @@ export async function listRepos(
  *
  * Also the only proof it still works, which is why the settings page asks for it
  * rather than reading a name stored beside the token: a stored name keeps saying
- * "connected" for a token GitHub revoked last week (决策 007 §6). `null` means
+ * "connected" for a token GitHub revoked last week (`Decision` 007 §6). `null` means
  * the token no longer answers — deliberately not split into why, because
  * GitHub answers 404 for "cannot see it" as well as "gone".
  */

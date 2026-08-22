@@ -74,7 +74,7 @@ const KEPT_FOREVER = ["say", "boss_say", "note", "escalation"] as const;
 /**
  * The chatter is read inside a day and never again.
  *
- * `tool_summary` feeds 成本's hourly chart, which asks for the last 24 hours;
+ * `tool_summary` feeds `Cost`'s hourly chart, which asks for the last 24 hours;
  * `state_change` is the largest kind by emitters and nothing reads it back at
  * all. There was no `DELETE FROM event` anywhere but project deletion, so both
  * accumulated for the life of the installation — and a stale SSE cursor replays

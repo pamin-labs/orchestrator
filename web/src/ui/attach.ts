@@ -8,7 +8,7 @@
  * could not open.
  */
 export interface Attached {
-  /** 图1 / 附件2, when the message that carried it named its files. */
+  /** `Image1` / `Attach2` — the marker the message that carried it used. */
   label: string;
   name: string;
   path: string;

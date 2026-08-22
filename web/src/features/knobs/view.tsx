@@ -105,7 +105,7 @@ export type KnobSection = (typeof KNOB_SECTIONS)[number];
  * the second is what put thirteen keys on the API and nowhere on the page.
  */
 /**
- * `sandbox.server` and `sandbox.image` belong to the 沙箱 pane, which validates an
+ * `sandbox.server` and `sandbox.image` belong to the `Sandbox` pane, which validates an
  * address and lists what the registry actually holds.
  *
  * `embedding.model` and `indexModel.model` belong to the `PAIRED` row their
@@ -115,7 +115,7 @@ export type KnobSection = (typeof KNOB_SECTIONS)[number];
  */
 /**
  * `embedding.endpoint` and `embedding.credential` joined them: they were two
- * empty boxes under a segment reading 本地, which is a form for a mode nobody
+ * empty boxes under a segment reading `Local`, which is a form for a mode nobody
  * had chosen. The embedding row draws them when remote is pressed.
  */
 export const KNOBS_ELSEWHERE = new Set([
@@ -148,7 +148,8 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
     ops: {
       title: msg`How agents run`,
       // Three groups, one subject: how hard the fleet is pushed, what one turn is
-      // allowed, and when to decide it is stuck. They were 调度 and 轮次与上下文,
+      // allowed, and when to decide it is stuck. They were split across a
+      // scheduling section and a turns-and-context one,
       // two panes apart — with `leaseTimeoutMs` in the first and `turnTimeoutMs`
       // in the second, both answering "how long may one piece of agent work
       // take", and a comment in each explaining why it was not next to the
@@ -160,7 +161,7 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
             "maxGroups",
             "leaseSlots",
             // Beside the slots they hold and the retries they feed, not under
-            // 轮次与上下文: a lease is a compile, and neither number bounds a turn.
+            // turns-and-context: a lease is a compile, and neither number bounds a turn.
             "leaseTimeoutMs",
             "installTimeoutMs",
             "gateRetries",
@@ -218,11 +219,11 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
       // process: GitHub, a container, the network. They were eighteen literals
       // across seven files, and the only ones anybody could change were the three
       // turn budgets. The third group is this machine's own plumbing, which sat
-      // under 轮次与上下文 where it was neither a turn nor a context.
+      // under turns-and-context, where it was neither a turn nor a context.
       // Named for when you come here rather than for what it holds: nothing on
       // this pane changes what the fleet decides, only how patiently it waits and
-      // how much it keeps. The three groups were split across 调度 and
-      // 等待与存储 on a naming axis — a poll size is not a wait — where the axis
+      // how much it keeps. The three groups were split across scheduling and
+      // waits-and-storage on a naming axis — a poll size is not a wait — where the axis
       // that actually separates them is whether anybody ever touches them.
       note: msg`Timeouts, polling and retention. Come here when something is broken`,
       groups: [
@@ -245,7 +246,7 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
             "intervals.usagePollMs",
             "intervals.usageBackoffMs",
             // A page size, not a wait — which is why it never fitted under
-            // 调度 either. What it bounds is how much of GitHub one poll reads.
+            // scheduling either. What it bounds is how much of GitHub one poll reads.
             "prPoll.prs",
             "prPoll.messages",
             "prPoll.checks",
@@ -262,7 +263,7 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
     repo: {
       title: msg`Repositories`,
       note: msg`How a checkout is read when GitHub cannot be asked`,
-      // Under 拉取请求 until somebody read its own tooltip: this is tried when a
+      // Under pull requests until somebody read its own tooltip: this is tried when a
       // project has no base branch of its own *and* the remote cannot be reached
       // to supply `default_branch`. That is a fact about a checkout, and the last
       // place it applies is a pull request — which is why it renders under
@@ -286,7 +287,7 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
       // one value, and the reader found the other one.
       groups: [
         {
-          // `skillsDir` is here rather than under 轮次与上下文 because it is the
+          // `skillsDir` is here rather than under turns-and-context because it is the
           // same fact as `sandbox.cacheDirs`: a host directory mounted into every
           // container, which fails the same way when the sandbox server's
           // allowed_host_paths does not list it.
@@ -650,7 +651,7 @@ export function Knobs({
   //
   // The throw keeps a failed re-read from emptying the page: `readApi` has
   // already shown the refusal, and returning `null` would replace the knobs with
-  // 读取中…. An error leaves the last good answer in place.
+  // `Loading…`. An error leaves the last good answer in place.
   const { data: knobs = null, isError } = useQuery({
     queryKey: ["settings"],
     queryFn: async () => {
@@ -662,7 +663,7 @@ export function Knobs({
 
   const write: Write = async (body) => {
     // Destructured: `post` returns `{ok, text}`, so `if (!ok)` on the object
-    // itself is always false and a refused write still says 已保存. `quiet`
+    // itself is always false and a refused write still reports itself saved. `quiet`
     // because the row shows the reason where the value is.
     const r = await mutate(api.settings.$post({ json: body }), true);
     if (r.ok) {
@@ -678,7 +679,7 @@ export function Knobs({
 
   const spec = SECTIONS[section];
   // Built from every knob, not from this section's rows: the model pickers on
-  // 模型与预算 read three different paths, and a section that shows one of them
+  // `Models & budget` read three different paths, and a section that shows one of them
   // still needs the other two to know what to offer.
   const at = (path: string) => (knobs ?? []).find((k) => k.path === path)?.value;
   const indexRuntime = ConfigSchema.shape.indexModel.shape.runtime.optional().parse(at("indexModel.runtime"));
@@ -703,7 +704,7 @@ export function Knobs({
 
   return (
     // The dialog's shared label column is 5rem. These labels are sentences
-    // rather than nouns — 暂停多久后封存 — so the five knob panes share a wider
+    // rather than nouns — `Archive after paused` — so the five knob panes share a wider
     // one among themselves rather than each row wrapping to three lines.
     <div className="[--label:8.5rem]">
       {/* Where a save button would be. There is none: a field is written when it
@@ -717,7 +718,7 @@ export function Knobs({
           {saved && <Meta className="mr-7">{savedAt(saved)}</Meta>}
         </Head>
       )}
-      {/* Three states, not two. A read that failed used to leave 读取中… on the
+      {/* Three states, not two. A read that failed used to leave `Loading…` on the
           screen forever, which is a page claiming to be busy while nothing is in
           flight — and the toast that said otherwise is long gone by the time
           anybody looks. */}
@@ -783,7 +784,7 @@ function Group({
   if (!rows.length && !permission) return null;
   // Two columns once a group is long enough to scroll for. Every row here is a
   // label and one narrow control, so half the width was empty and the reader
-  // paid for it in scrolling — 调度 was thirteen rows in a dialog that shows
+  // paid for it in scrolling — scheduling was thirteen rows in a dialog that shows
   // nine. A tab would have shortened it too, by hiding half of it behind a
   // click; this hides nothing.
   const wide = rows.length > 6 && !permission;
@@ -856,7 +857,7 @@ function ResetOverride({ onReset }: { onReset: () => void }) {
 
 async function saveKnob(target: Knob, value: Json, onWrite: Write): Promise<string | null> {
   // Typing the shipped value back is not an override. Otherwise the row reads
-  // 已改 while being identical to the default, and clearing appears to do nothing.
+  // `Modified` while being identical to the default, and clearing appears to do nothing.
   const same = JSON.stringify(value) === JSON.stringify(target.default);
   const body = SettingWriteSchema.safeParse({ path: target.path, value: same ? null : value });
   if (!body.success) return z.prettifyError(body.error);
@@ -882,7 +883,7 @@ function Row({
   onWrite: Write;
 }) {
   // What is wrong, and which box it is wrong in. A table row can hold six boxes
-  // and "要一个数量" under all of them says nothing about which.
+  // and "wants a number" under all of them says nothing about which.
   const [bad, setBad] = useState<Complaint>(NO_COMPLAINT);
   const id = `knob-${knob.path.replace(/\W/g, "-")}`;
 
@@ -1056,7 +1057,7 @@ function choiceValue({ knob, onWrite }: Editor) {
           // Sorted back into tier order before it is written: a toggle group
           // hands back the order things were pressed in, and ["normal",
           // "trivial"] is the shipped default with its elements swapped — which
-          // this page would then have to call 已改.
+          // this page would then have to call `Modified`.
           onValueChange={(picked) => onWrite(TIERS.filter((t) => picked.includes(t)))}
           className="flex items-center gap-0.5"
         >

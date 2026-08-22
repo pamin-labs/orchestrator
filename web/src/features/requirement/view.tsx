@@ -164,7 +164,7 @@ export function Requirement({
             <Tab value="slice" count={slices.length}>
               <Trans>Slice</Trans>
             </Tab>
-            {/* Only the ones on the boss are 待你决策. The rest are open questions
+            {/* Only the ones on the boss are `Awaiting your decision`. The rest are open questions
                 the chain is still holding, and counting them under that heading
                 made the badge lie about how much of this was a decision. */}
             <Tab value="ask" count={asks.length} mine={mine.length > 0}>
@@ -174,13 +174,13 @@ export function Requirement({
               <Trans>Notes</Trans>
             </Tab>
             {/* No count: a container is one or none, and a badge reading 1 next
-                to 工作区 says nothing the tab does not already. */}
+                to `Workspace` says nothing the tab does not already. */}
             <Tab value="work">
               <Trans>Workspace</Trans>
             </Tab>
-            {/* No count either, and for a stronger reason than 工作区's: the number
+            {/* No count either, and for a stronger reason than `Workspace`'s: the number
                 of spans a requirement has produced is not a quantity anybody is
-                waiting on, and a badge reading 1,482 beside 耗时 would be the
+                waiting on, and a badge reading 1,482 beside `Time` would be the
                 loudest number on the tab strip while meaning the least. */}
             <Tab value="time">
               <Trans>Time</Trans>
@@ -349,8 +349,8 @@ function AskLanes({
         {sub === "held" && <Held rows={others} />}
         {/* An answer a stand-in gave for the boss belongs with the questions,
             which is where someone goes looking for it. It used to sit in a
-            roster tab: 这个组的人 listed role, activity, turns and tokens for
-            every agent in the group — the 工位墙 in miniature, one column
+            roster tab listed role, activity, turns and tokens for
+            every agent in the group — the desk wall in miniature, one column
             narrower, on a page about a requirement rather than about people.
             The tab is gone; this was the only part of it doing work. */}
         {sub === "done" && <Delegated rows={answered} refresh={refresh} />}
@@ -504,7 +504,7 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
 
 /**
  * Interrupt and park are rare and consequential. Sitting in the header at the
- * same weight as 暂停 they read as ordinary, and one of them discards a turn's
+ * same weight as `Pause` they read as ordinary, and one of them discards a turn's
  * work.
  */
 /** Said twice, from the two places a requirement can be dropped. */
@@ -569,7 +569,7 @@ function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
       >
         <Trans>Restart container</Trans>
       </MenuItem>
-      {/* 退回重拆 sends it back to the Dispatcher, which writes another card for
+      {/* `Return for re-decomposition` sends it back to the Dispatcher, which writes another card for
           work nobody wants. A requirement that turned out to be a duplicate, or
           that someone already fixed, needs to leave the board instead. */}
       <MenuItem
@@ -802,7 +802,7 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
  * The way out of budget exhaustion.
  *
  * The watchdog suspends the group and the scheduler then refuses to admit it, so
- * 继续 changes nothing — the next tick suspends it again. Raising the cap is the
+ * `Resume` changes nothing — the next tick suspends it again. Raising the cap is the
  * only thing that moves it.
  */
 function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
@@ -882,7 +882,7 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
             </Button>
           </div>
           {/* An exchange, laid out as one: what was asked on the left, what was
-                said back on the right. Labelled rows in a gutter (`问` / `答`) read
+                said back on the right. Labelled rows in a gutter (`Q` / `A`) read
                 as a form, and a paragraph over a grey slab read as two unrelated
                 blocks — this is a conversation the boss was not in, and the shape
                 everyone already knows for that is two sides. */}
@@ -933,7 +933,7 @@ function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
 /**
  * One button that confirms before it sends, in the row under the composer.
  *
- * 方向错了, 不做了 and 退回重拆 are the same control three times: a tip saying who
+ * `Wrong direction`, `Don't proceed` and `Return for re-decomposition` are the same control three times: a tip saying who
  * receives the sentence, a confirm carrying the weight, and a send that clears
  * the box only if it went.
  */
@@ -1050,7 +1050,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
     <>
       {idea && <div className="my-2 border-l border-rule pl-2.5 text-body text-ink-2">{idea}</div>}
       {/* An objection that arrived after the card was filed. Without this the card
-          reads 反对 : 无 and the boss approves a plan somebody already argued with. */}
+          reads `Objection: none` and the boss approves a plan somebody already argued with. */}
       {late.map((o) => (
         <div
           key={`${o.author}:${o.body}`}
@@ -1086,14 +1086,14 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
       {proposal && <DropProposal g={g} body={proposal.body} refresh={refresh} />}
       {!filed ? (
         // Nothing to approve yet. An empty textarea and an approve button asks the
-        // boss to sign off on nothing, which is why this screen read as "我该干嘛".
+        // boss to sign off on nothing, which is why this screen read as "what am I meant to do".
         <Working>
           <Trans>Dispatcher is writing the plan card; it will appear here when done.</Trans>
         </Working>
       ) : g.approved_at ? (
-        // Already decided. Showing 批准开工 again asks for a click that changes
+        // Already decided. Showing `Approve and start` again asks for a click that changes
         // nothing and reads as "the last one was ignored" — which is what it was.
-        // 退回重拆 below is still the way out: it withdraws the approval.
+        // `Return for re-decomposition` below is still the way out: it withdraws the approval.
         <>
           <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-body">
             <b className="font-semibold text-warn">
@@ -1223,7 +1223,7 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
               run={async () => (await send({ text, attachments }, "respec")) && clear()}
             />
             {/* Not a red button. Two filled buttons on one row and the destructive
-                one outweighs 批准开工, which is the answer this screen usually wants.
+                one outweighs `Approve and start`, which is the answer this screen usually wants.
                 The confirm carries the weight instead. */}
             <SendAs
               label={t`Don't proceed`}
@@ -1263,7 +1263,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
   // and a controlled value here would fight them for it. Nothing is sent by the
   // draft — its button fills the box and the boss sends it.
   //
-  // Keyed by a counter, not by the text. Keyed by the text, pressing 填进输入框 a
+  // Keyed by a counter, not by the text. Keyed by the text, pressing `Fill in` a
   // second time produced the same key, so the composer never remounted and the
   // button did nothing — which is exactly when you press it: after editing the
   // draft into something worse and wanting it back.
@@ -1286,8 +1286,8 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
     <>
       {/* Who is waiting, how long, and what it costs — in that order, because the
           cost is what decides which of two questions to open first. It read
-          `qa · 阻塞 · 待你决策 · 等待 3h` inside the tab called 待你决策: the tab
-          already said the third and 等待 is what a duration means.
+          `qa · blocked · awaiting your decision · waiting 3h` inside the tab of the same
+          name: the tab already said the third, and "waiting" is what a duration means.
 
           Collapsed, the question gets two lines rather than one truncated one. A
           question cut mid-clause cannot be triaged, which is the only thing a
@@ -1387,7 +1387,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                 {/* The commonest blocker here is one no answer resolves — a config file
                   is wrong, a shared fixture is broken. Answering it means typing the
                   fix into a chat box for an agent that is not allowed to apply it, so
-                  these sat in 待办 until the boss did the work by hand.
+                  these sat in `To do` until the boss did the work by hand.
 
                   Not `go`: two filled violet buttons side by side is two primaries,
                   and answering is the primary here. */}

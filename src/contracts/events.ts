@@ -5,7 +5,7 @@ import type { Said } from "./said.ts";
  * `meta.step`: which step of which process a row is, for a pane that draws one.
  *
  * The pane that draws a sandbox rebuild used to find its start and end by
- * matching the event body — `沙箱是新的`, `/^装好了|^装失败了/` — which stopped
+ * matching the event body against Chinese sentence prefixes — which stopped
  * working the moment those bodies became `msg` templates rendered in the
  * reader's own language. These are protocol keys both sides import rather than
  * a sentence either side re-spells.

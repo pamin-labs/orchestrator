@@ -175,7 +175,7 @@ function Desks({
             {name}
           </span>
         </Tip>
-        {/* Who is running, by role. "2 在跑" makes you open the row to learn the
+        {/* Who is running, by role. A bare "2 running" makes you open the row to learn the
             one thing you opened it for. */}
         <Meta className="truncate">
           {runners > 0
@@ -316,8 +316,9 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Said the way the boss would say it. 「边界互相压着」「并行会踩到同一批文件」
-          「得让 Architect 重新切」 is three pieces of our vocabulary for one fact
+      {/* Said the way the boss would say it. "the boundaries overlap", "running them
+          in parallel touches the same files", "the Architect has to re-cut it" are
+          three pieces of our vocabulary for one fact
           they act on: two requirements want the same files, so they cannot run at
           once. */}
       <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">

@@ -75,30 +75,32 @@ const EMPTY_PREFLIGHT = { checks: [] as HostCheck[] };
  * Behaviour is Radix: focus trap, Esc, restored focus, aria wiring.
  */
 
-/** Host facts only. The credential rows are the 账号 section, said once. */
+/** Host facts only. The credential rows are the account section, said once. */
 const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
 
 const NAV: Array<{ key: Section; label: MessageDescriptor; icon: typeof KeyRound; project?: true }> = [
-  // 凭据 named the storage, not the thing: what is picked here is which account
-  // the fleet works as, and the boss thinks of it as an account. 模型账号 rather
-  // than 模型, because which model runs a turn is `roles/*.yaml` and
+  // Naming it after credentials named the storage, not the thing: what is picked
+  // here is which account
+  // the fleet works as, and the boss thinks of it as an account. `Model account` rather
+  // than model, because which model runs a turn is `roles/*.yaml` and
   // `difficultyModel` — one word for two things sends people here for the wrong
   // control.
   { key: "cred", label: msg`Model account`, icon: KeyRound },
-  // Its own section, not a row in 模型账号. Those are interchangeable, metered,
+  // Its own section, not a row in `Model account`. Those are interchangeable, metered,
   // one per role and about to be six; this is one connection, not metered, with
-  // a two-step flow and a repository list. Named GitHub rather than 代码源
+  // a two-step flow and a repository list. Named GitHub rather than a generic
+  // "code host"
   // because there is only GitHub, and the day there is a second one, renaming a
   // nav item is one string.
   { key: "github", label: msg`GitHub`, icon: GitBranch },
   // The server, what stops it starting, and what it builds by default — one
-  // subject, one pane. It was two: 环境 held the host prerequisites and 沙箱 held
+  // subject, one pane. It was two: `Environment` held the host prerequisites and `Sandbox` held
   // the server, on the argument that "a prerequisite is not a setting". The
   // split never took. Both panes read the same `checks` array, and both drew
   // `allowed_host_paths` from it — the same fact printed twice, two entries
   // apart in a list of eleven.
   //
-  // Named `Sandbox server`, not `Sandbox`: a project has a pane called 沙箱 too,
+  // Named `Sandbox server`, not `Sandbox`: a project has a pane called `Sandbox` too,
   // and two navigation rows reading the same word is how somebody opens the
   // wrong one. The `<Head>` inside already said `Sandbox server`, so the name
   // was on screen the whole time — one row above it said something else.
@@ -134,7 +136,7 @@ const NAV: Array<{ key: Section; label: MessageDescriptor; icon: typeof KeyRound
 const PROJECT_SECTIONS = new Set<Section>(["gates", "sandbox", "remove"]);
 
 /** Which pane the dialog actually shows. The hash keeps asking for the section
- *  it was written with, so a link into 闸门 opened with no project selected has
+ *  it was written with, so a link into `Gates` opened with no project selected has
  *  to land on a pane that exists rather than on an empty right-hand column. */
 export const visibleSection = (section: Section, projectId: number | null): Section =>
   projectId === null && PROJECT_SECTIONS.has(section) ? "cred" : section;
@@ -277,7 +279,7 @@ function SettingsContent({
           had picked three widths, so switching between them moved every value
           sideways — and a width chosen inside a pane is a width the next pane
           cannot know about. 5rem holds the longest label in the dialog
-          (基线分支, API 密钥). */}
+          (base branch, API key). */}
       <div className="flex min-h-0 flex-col px-6 pt-4 pb-5 [--label:5rem]">
         <SettingsPanes
           open={open}
@@ -307,7 +309,7 @@ function SettingsContent({
  *
  * This was one `load()` closing over `projectId`, fired from an effect with
  * nothing to say which call a reply belonged to. Two quick project switches and
- * the slower reply won: one project's 闸门 beside another's base branch, no error
+ * the slower reply won: one project's gates beside another's base branch, no error
  * anywhere. A key does not have to remember — a reply for project 3 cannot be
  * written into project 7's entry, so the bug has no shape.
  */
@@ -343,7 +345,7 @@ function useSettingsData(open: boolean, projectId: number | null, signin: Signin
  *
  * Landed: a login that has arrived is a row with a newer `updatedAt` than the one we
  * started from — the panel polled on a timer alone before, so the credential
- * arrived, the row updated, and both buttons stayed 等你在浏览器里批准… for five minutes.
+ * arrived, the row updated, and both buttons stayed `Waiting for you to approve in the browser…` for five minutes.
  *
  * Timed out: on its own clock rather than folded into the landed check, because that
  * one runs only when the answer *changes*.
@@ -439,7 +441,7 @@ function SettingsPanes({
       <>
         <GithubSettings open={open} section={section} />
         {/* Which branch a checkout is based on when the remote cannot answer.
-            It sat under 拉取请求 in the scheduling pane; a base branch is a fact
+            It sat under pull requests in the scheduling pane; a base branch is a fact
             about a repository, and this is the pane about repositories. */}
         <Knobs section="repo" />
       </>
@@ -452,7 +454,7 @@ function SettingsPanes({
             their own controls. */}
         <EnvPane checks={checks.filter((c) => !isCredential(c))} />
         {/* What a container is built with, for a project that says nothing. A
-            project's own 沙箱 pane overrides these. */}
+            project's own `Sandbox` pane overrides these. */}
         <Knobs section="boxdefaults" />
       </>
     ),
@@ -533,8 +535,8 @@ function Preferences() {
       <Head title={t`Preferences`} note={t`Local to this machine only, not tied to the project`} />
       {/* Two subjects in one pane, so each says which it is. A `<fieldset>` with a
           `<legend>` rather than a heading over a div: the grouping is the
-          accessible fact, and a reader hears 通知 with the switch inside it rather
-          than a bare 开. Notifications were their own nav item for one knob and a
+          accessible fact, and a reader hears "notifications" with the switch inside it
+          rather than a bare "on". Notifications were their own nav item for one knob and a
           browser permission — both of which are exactly what this pane is. */}
       <FieldSet className="mb-6">
         <FieldLegend>
@@ -552,7 +554,7 @@ function Preferences() {
               <ThemeChoice />
             </FieldContent>
           </Field>
-          {/* Here rather than beside 对外语言 in the knobs: that one travels with
+          {/* Here rather than beside `Output language` in the knobs: that one travels with
               the project and tells the agents what to write, this one is only
               this browser's chrome. The pane already says so at the top. */}
           <Field aria-labelledby="pref-locale">
@@ -636,7 +638,7 @@ function SettingsNavigation({
         onSection={onSection}
       />
       {projectId !== null && (
-        // Same shape as 服务器 above it: the group names the scope, the small
+        // Same shape as `Server` above it: the group names the scope, the small
         // line says which one, and the path is a hover away.
         <SettingsGroup
           items={items}

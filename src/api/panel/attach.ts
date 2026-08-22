@@ -74,7 +74,7 @@ export const AttachForm = z.object({
 export const postAttach = (async (ctx, _req, _params, { file: files, rel: rels }) => {
   // Each file's path relative to what was dropped. A loose file has none; a file
   // from inside a dropped folder has `<folder>/…/name`, and the folder is what the
-  // boss meant to attach — "看这个目录" is one reference, not forty.
+  // boss meant to attach — "look at this directory" is one reference, not forty.
   if (!files.length) return bad(msg`no file`);
   const root = join(ctx.config.dataDir, "attachments");
   const out: { name: string; path: string; type: string; size: number }[] = [];

@@ -104,7 +104,7 @@ export const getNotes = (async (ctx, _req, _params, query) => {
  * mounted into every group of every project, so the list exists before any
  * project does. A project only adds its own repository's skills on top. This was
  * the one required `project` in the panel API while every sibling query made it
- * optional, so opening 技能 with no project selected answered a Zod error.
+ * optional, so opening `Skills` with no project selected answered a Zod error.
  */
 export const SkillsQuery = z.object({ project: z.coerce.number().int().positive().optional() });
 

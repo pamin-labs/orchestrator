@@ -21,7 +21,8 @@ export interface Reason {
   points: number;
   /**
    * What this reason is, for a reader that needs the reason itself rather than
-   * its sentence. The queue used to find the wait by `why.startsWith("等了")`
+   * its sentence. The queue used to find the wait by matching the prefix of a Chinese
+   * sentence
    * and slice the prefix off — a label doing duty as a tag, which stops being
    * true the moment the label is translated.
    */

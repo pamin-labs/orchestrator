@@ -335,8 +335,8 @@ const ORCH = ["orch"];
  * The two reads the whole panel is built on, plus the stream that invalidates them.
  *
  * The project scope used to be a ref, because every SSE event called `refresh()`
- * with no argument and swapped 成本 from this project to every project while the
- * page still said 这个项目累计. It is a query key now: the scope is *in* the identity
+ * with no argument and swapped `Cost` from this project to every project while the
+ * page still said it was this project's total. It is a query key now: the scope is *in* the identity
  * of the cached answer, so there is no version of this where a reply for one
  * project lands under another's heading.
  */
@@ -363,7 +363,7 @@ export function useOrch() {
     refetchInterval: 60_000,
   });
   const cost = useQuery({
-    // The nav says 成本 is this project's, so ask for this project's.
+    // The nav says `Cost` is this project's, so ask for this project's.
     queryKey: ORCH.concat("cost", String(project)),
     queryFn: () => get(api.cost.$get({ query: project ? { project: String(project) } : {} }), CostReportSchema),
     refetchInterval: 60_000,

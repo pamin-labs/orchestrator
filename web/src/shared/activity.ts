@@ -10,7 +10,7 @@ import { i18n } from "../i18n";
  * The raw string is `command_execution: orch ctx query "…"`. Stripping the tool name
  * was not enough: a wall of shell is read command by command, and the question this
  * page answers is "who is stuck", which needs one glance per row. So a command is
- * classified into what it is *for* — 查索引 / 跑测试 / 改文件 — with arguments as detail.
+ * classified into what it is *for* — `Query index` / `Run tests` / `Edit file` — with arguments as detail.
  *
  * Anything unmatched keeps its command verbatim: a wrong category is worse than none.
  */

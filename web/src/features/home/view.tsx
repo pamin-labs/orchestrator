@@ -17,11 +17,11 @@ const RunningNames = ({ names }: { names: string[] }) => {
 /**
  * Every project at once, plus what wants the boss across all of them.
  *
- * "谁在等我" does not care which project it is in, so the queue spans them and each row
+ * "who is waiting on me" does not care which project it is in, so the queue spans them and each row
  * names its own. No timeline here: cross-project chatter is noise while deciding.
  *
  * The rows are held to a measure. Three short facts stretched across a 76rem shell
- * put 个需求 and tokens at the far right edge — the strongest position a row has — and
+ * put `requirements` and tokens at the far right edge — the strongest position a row has — and
  * left the eye no reason to land on the name.
  */
 export function Home({
@@ -39,7 +39,7 @@ export function Home({
   onAdd: () => void;
   refresh: () => void;
 }) {
-  // 都处理完了 reports on work that got processed. With no requirement anywhere
+  // "nothing left" reports on work that got processed. With no requirement anywhere
   // there is none, and a green line claiming otherwise is the first thing a fresh
   // install reads.
   const anyWork = st.groups.length > 0;
@@ -83,7 +83,7 @@ export function Home({
                   {n ? (
                     <div className="mt-1 text-body font-semibold text-accent">{bits.join(" · ")}</div>
                   ) : (
-                    // 空着 is said by the button beside it, in a form you can act on.
+                    // `Empty` is said by the button beside it, in a form you can act on.
                     !state.fresh && <div className="mt-1 text-secondary text-ink-3">{state.zh}</div>
                   )}
                   {live.length > 0 && <RunningNames names={live} />}

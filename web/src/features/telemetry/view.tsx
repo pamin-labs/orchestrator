@@ -42,11 +42,11 @@ import { ph, t } from "@lingui/core/macro";
 import { i18n } from "../../i18n";
 
 /**
- * 耗时 — where a scope's wall clock went.
+ * `Time` — where a scope's wall clock went.
  *
  * Three surfaces read this: one component with a different scope, because a
  * requirement, a project and the host ask the same question about different work.
- * Two libraries — `recharts`, already bundled for 成本, and `d3-flame-graph` —
+ * Two libraries — `recharts`, already bundled for `Cost`, and `d3-flame-graph` —
  * both rendering SVG, because a canvas chart is one node with an image in it.
  */
 
@@ -70,7 +70,7 @@ const rowTone = (selected: boolean) => (selected ? "bg-accent-soft hover:bg-acce
  * The four columns, in one place because three rows have to agree on them.
  *
  * `auto` on the three numeric tracks rather than fixed rem widths, which gives
- * each number exactly what it needs and hands the rest to `minmax(0,1fr)`. `次数`
+ * each number exactly what it needs and hands the rest to `minmax(0,1fr)`. `Count`
  * stays a column rather than moving to a tooltip: it is the cheapest of the three
  * to render and the one that proves a brushed window took effect.
  */
@@ -239,8 +239,8 @@ function StageTable({
   const { t } = useLingui();
   // Shut by default: the reader opens the group that looks expensive — and then
   // the next one, which is why this is a set rather than a single value. The
-  // question 巡检规则 raises is "against what", and answering it by closing
-  // 巡检规则 is the one thing the control must not do.
+  // question `Watchdog rule` raises is "against what", and answering it by closing
+  // `Watchdog rule` is the one thing the control must not do.
   const [openKinds, setOpenKinds] = useState<string[]>([]);
   // The stages below the distribution's own largest gap are the absence of an
   // answer rather than an answer, and `ui.md` gives absence a sentence rather
@@ -283,7 +283,7 @@ function StageTable({
           twenty-four rules summing to 1.1s is one line. Grouping comes from the
           span-name prefix rather than a list, because a list drops every new span
           family into nothing. Radix owns the expand, the keyboard and the ARIA
-          (CLAUDE.md 硬约束 4). */}
+          (CLAUDE.md hard constraint 4). */}
       <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: PANE_MAX_PX }}>
         <MultiAccordion value={openKinds} onValueChange={setOpenKinds}>
           {groupByKind([...slow, ...(showRest ? fast : [])]).map((group) => (
@@ -481,8 +481,8 @@ function FlameBlock({ folded, picked }: { folded: Report["flame"]; picked: reado
       title={t`Flame distribution`}
       aside={
         <Segments value={self ? "self" : "total"} onValueChange={(next) => setSelf(next === "self")}>
-          {/* Not two skins on one chart: 自身 makes a frame as wide as the time it
-              spent itself, 含下游 as wide as everything it called. A parent that
+          {/* Not two skins on one chart: `Self` makes a frame as wide as the time it
+              spent itself, `Including downstream` as wide as everything it called. A parent that
               only waits is full width under one and a sliver under the other. */}
           <Segment value="self">
             <Trans>Self</Trans>
@@ -752,7 +752,7 @@ function TrendBlock({
   onPickBucket: (ms: number | null) => void;
   window: TimeWindow;
   limit: TimeWindow;
-  /** Whether the reader narrowed it, which is the only thing 回到整段时间 needs. */
+  /** Whether the reader narrowed it, which is the only thing the reset-to-full-range control needs. */
   chosen: TimeWindow | null;
   onWindow: (next: TimeWindow | null) => void;
 }) {
@@ -810,7 +810,7 @@ function useSelection() {
    * filter — the rows around a selection are what made it worth selecting.
    */
   const [picked, setPicked] = useState<readonly string[]>([]);
-  /** Names the reader has said they do not want to see. Right-click, 不看这一段. */
+  /** Names the reader has said they do not want to see. Right-click, `Hide this stage`. */
   const [excluded, setExcluded] = useState<readonly string[]>([]);
   return {
     picked,
@@ -1008,9 +1008,9 @@ function Excluded({
 const HOST: TelemetryScope = { kind: "system" };
 
 /**
- * 系统耗时, as a page of its own.
+ * `System timing`, as a page of its own.
  *
- * In 设置 because it is the thing you go looking for once, on the day the panel
+ * In `Settings` because it is the thing you go looking for once, on the day the panel
  * feels slow — `ui.md` puts exactly that there. The window is the endpoint's own
  * default day: a week is the project view's question ("is this project getting
  * slower"), the host's is "is it slow now".

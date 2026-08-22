@@ -126,9 +126,9 @@ function CredentialRow({
  * One account: what is stored, how it is paid for, and the two things to paste.
  *
  * The mode sits on the title line because it is what this account *is* — a field
- * called 怎么拿 with a selector, a command and a price crammed into one row was
+ * called "how to get one", with a selector, a command and a price crammed into one row, was
  * four facts wearing one label. One save at the end covers the token and the base
- * URL together: they are one credential, and hanging 存下 off the URL row while
+ * URL together: they are one credential, and hanging `Save` off the URL row while
  * disabling it unless a token was typed meant a gateway address could not be
  * changed on its own.
  */
@@ -428,7 +428,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
         <Field orientation="vertical">
           <DeviceCode code={login.device.code} url={login.device.url} go={t`Go to ChatGPT to enter code`} />
           <div className="mt-1.5 flex items-baseline gap-2">
-            {/* The real expiry, not a remembered one. `15 分钟` was written into
+            {/* The real expiry, not a remembered one. A hardcoded `15 min` was written into
                 the copy while `expiresAt` sat two lines up driving the timer
                 that clears this block. */}
             <Meta>{t`Valid until ${ph({ when: clock(login.device.expiresAt) })}`}</Meta>
@@ -494,7 +494,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
               </Button>
             </InputGroup>
             {/* No validity line here: this flow hands back no expiry, and the
-                one that was written in said 10 分钟 on nothing. */}
+                one that was written in said 10 min on nothing. */}
             <div className="mt-1.5 flex items-baseline gap-2">
               <span className="grow" />
               <Button

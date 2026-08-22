@@ -44,7 +44,7 @@ export const MailBody = z.object({
 export const postMail = (async (ctx, _req, a, _p, b) => {
   // An empty message wakes someone with nothing to answer. Measured: the
   // Dispatcher invented a `--wait` flag, the parser took it, and the mail went
-  // out with no body — the Architect burned a turn on "收到的 ask 消息内容为空".
+  // out with no body — the Architect burned a turn on an ask whose content was empty.
   if (!b.body.trim()) {
     return badText(
       `mail to "${b.target}" has an empty body. Put the message in quotes as the last ` +
@@ -70,7 +70,7 @@ export const postMail = (async (ctx, _req, a, _p, b) => {
   // A standing agent has no group of its own, so stamping the sender's group
   // would file its reply under nothing and drop it out of the group's timeline.
   // Measured: the Architect's objection to a DRAFT card landed with grp_id NULL
-  // and the boss approved a card that said 反对 : 无.
+  // and the boss approved a card that said `Objection: none`.
   await ctx.bus.emit({
     grpId: a.grp_id ?? target?.grpId ?? null,
     author: a.role,
@@ -172,7 +172,7 @@ async function deliver(
 }
 
 export const postSay = (async (ctx, _req, _p, b) => {
-  // A screenshot is as useful when saying "这里不对" as when filing the idea.
+  // A screenshot is as useful when saying "this part is wrong" as when filing the idea.
   const said = withAttachments(b.body.trim(), b.attachments);
   const grpId = b.group_id == null ? null : await resolveGroup(ctx, b.group_id);
   if (b.group_id != null && !grpId) return badText("no such requirement");

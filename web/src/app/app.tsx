@@ -289,8 +289,8 @@ export function App() {
     // No `windowMs`. It asked for a week, on a comment claiming retention kept
     // seven days — retention is one, and the endpoint caps the parameter at
     // exactly that, so every project read came back
-    // `Too big: expected number to be <=86400000` and the page said 「这个项目还
-    // 没跑过任何活」 over a table full of rows. Letting the endpoint choose its
+    // `Too big: expected number to be <=86400000` and the page said this project had
+    // never run anything, over a table full of rows. Letting the endpoint choose its
     // own default is also the only version that stays correct when retention
     // moves, which is the reason the number should not have been here at all.
     time: () => (

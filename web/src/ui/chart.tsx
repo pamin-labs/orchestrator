@@ -3,7 +3,7 @@ import { Tooltip } from "recharts";
 /**
  * The two things every chart on this page shares: its axes' ink, and its hover card.
  *
- * Both were written twice — in 成本's burn chart and in 耗时's trend — and differed
+ * Both were written twice — in `Cost`'s burn chart and in `Time`'s trend — and differed
  * only in which formatter they called. That is the whole variation, so it is a
  * parameter and everything else is stated once. Two hover cards drifting apart is
  * the kind of thing nobody notices until the panel has two visual vocabularies.
@@ -18,7 +18,7 @@ export const AXIS = { stroke: "var(--color-ink-3)", fontSize: 10, fontFamily: "v
 
 /**
  * The card a hover draws, exported because one chart's tooltip is not a series
- * list at all — 成本's split is a single line with a percentage in it — and that
+ * list at all — `Cost`'s split is a single line with a percentage in it — and that
  * one needs the surface without the contents.
  */
 export const CHART_CARD =

@@ -4,7 +4,7 @@ import { AXIS, CHART_CARD, ChartTooltip } from "../../ui/chart";
 import { Trans } from "@lingui/react/macro";
 
 /**
- * The two charts 成本 earns, and nothing else.
+ * The two charts `Cost` earns, and nothing else.
  *
  * A chart has to answer something a sorted list cannot. Two things here do: how fast
  * it is burning right now, which is a shape over time, and how a whole splits when

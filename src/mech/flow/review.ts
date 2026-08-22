@@ -228,7 +228,7 @@ export async function sendBack(deps: ReviewDeps, sliceId: number, feedback: stri
     // usually means the acceptance criteria are wrong, not the code.
     // 'boss', not the default 'pm'. The next line pauses the group, so the PM this
     // was addressed to cannot run — the question sat at chain_state='pm' forever,
-    // never reached 待你决策, and the only visible symptom was a paused group with
+    // never reached `Awaiting your decision`, and the only visible symptom was a paused group with
     // no reason attached. Observed on pm-ai-agent: a blocker filed two hours
     // earlier that the boss had no way to see.
     await raise(ctx.db, {

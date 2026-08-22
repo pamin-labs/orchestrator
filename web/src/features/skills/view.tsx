@@ -129,7 +129,7 @@ export function Skills({ projectId }: { projectId: number | null }) {
                 />
               )}
               <span className="font-mono text-secondary text-ink">{r.name}</span>
-              {/* Only the exception is marked. 全局 on every other row was a word
+              {/* Only the exception is marked. `Global` on every other row was a word
                   repeated a hundred and seventy-eight times to say "normal". */}
               {fixed && (
                 <Badge className="shrink-0 self-center">

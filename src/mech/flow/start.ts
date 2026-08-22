@@ -36,7 +36,7 @@ async function installFor(db: DB, projectId: number): Promise<string | null> {
 /**
  * Wind a group up without merging it: it should not be done.
  *
- * The boss's 不做了 and the CoS triaging a complaint as `reject` are one path, or
+ * The boss's `Don't proceed` and the CoS triaging a complaint as `reject` are one path, or
  * the two disagree about what "dropped" means. Rejecting used to only cancel the
  * queue, so the group kept its ACTIVE status and went on holding its paths against
  * every other group forever.
@@ -63,7 +63,7 @@ export async function dropGroup(ctx: Ctx, grpId: number, why: string): Promise<v
     await tx.update(agent).set({ state: "retired", session_id: null, token: null }).where(eq(agent.grp_id, grpId));
     await tx.update(channel).set({ status: "archived" }).where(eq(channel.grp_id, grpId));
     // Anything it had asked the boss dies with it, or the question outlives the
-    // requirement and sits in 待办 forever.
+    // requirement and sits in `To do` forever.
     await tx
       .update(escalation)
       .set({ chain_state: "revoked", answered_at: Date.now() })

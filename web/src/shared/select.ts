@@ -18,7 +18,7 @@ const GatesSchema = z.record(z.string(), z.string());
 /**
  * DRAFT with the boss's yes already on it: waiting on a boundary, not on the boss.
  *
- * It has to be one predicate, because a row that sits in 待办 while the 待办 badge
+ * It has to be one predicate, because a row that sits in `To do` while the `To do` badge
  * does not count it is worse than either answer alone.
  */
 export const heldApproved = (g: Group) => g.status === "DRAFT" && !!g.approved_at;
@@ -76,8 +76,9 @@ const hasDraftDecision = (st: State, id: number) =>
 /**
  * Everything that cannot move without the boss, per docs/project/plan.md's three approval points.
  *
- * Called 待办 everywhere in the panel. It used to be 等你 in the nav, 等你决策 in the
- * requirement list and 无待办 when empty — three names for one concept, one of which
+ * Called `To do` everywhere in the panel. It used to be "waiting on you" in the nav,
+ * "awaiting your decision" in the
+ * requirement list and `No pending items` when empty — three names for one concept, one of which
  * was a verb phrase doing a noun's job in a nav badge.
  */
 export function pending(st: State, projectId: number | null) {
@@ -117,7 +118,7 @@ export const countWaiting = (st: State, p: number | null) =>
  *
  * `fresh` is "nothing was ever asked of this project", which is not the same as
  * "no live group": a project whose requirements all merged also has none, and
- * calling that 空着 denies the only work the system ever finished.
+ * calling that `Empty` denies the only work the system ever finished.
  */
 export function projectState(st: State, p: number): { zh: string; mine: boolean; live?: boolean; fresh?: boolean } {
   const n = countWaiting(st, p);
@@ -149,7 +150,7 @@ const projectRemote = (st: State, projectId: number) => st.projects.find((p) => 
 /**
  * This group's open questions. Answered ones are history, not a decision.
  *
- * Unfiltered, this fed a heading that said 待你决策 — so a question the boss had
+ * Unfiltered, this fed a heading that said `Awaiting your decision` — so a question the boss had
  * already answered, and one the PM was still holding, both sat at the top of the
  * page under a label claiming they needed the boss.
  */

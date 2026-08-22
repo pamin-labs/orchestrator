@@ -119,7 +119,7 @@ function Remove({
           {/* The one line on this page that never reached a catalog: it was a
               Chinese literal in JSX, which the governance check reads out of the
               transpiler's output and so never sees. It is also the only counted
-              thing in the dialog, and it said 1 个需求 either way. */}
+              thing in the dialog, and it said `1 requirement` either way. */}
           <Trans>
             <Plural value={groups} one="# requirement" other="# requirements" /> in{" "}
             <span className="font-mono text-secondary">{repoPath}</span>

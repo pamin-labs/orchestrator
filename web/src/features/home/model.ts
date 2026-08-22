@@ -5,7 +5,7 @@ import { t } from "@lingui/core/macro";
 
 const LIVE = new Set(["RUNNING", "PLANNING"]);
 
-// A zero is not a fact worth the right edge. 0 个需求 next to 空着 is the same
+// A zero is not a fact worth the right edge. 0 `requirements` next to `Empty` is the same
 // absence twice, and 0 tokens is what every project starts at.
 const count = (n: number, zh: string) => (n ? `${n} ${zh}` : "");
 

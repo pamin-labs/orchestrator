@@ -68,7 +68,7 @@ export interface Override {
   overridden: boolean;
 }
 
-/** One row, so one 已改 — a paired row is changed if any of its halves is. */
+/** One row, so one `Modified` — a paired row is changed if any of its halves is. */
 export const rowChanged = (knob: Override, mates: Override[]): boolean =>
   [knob, ...mates].some((item) => item.overridden);
 
@@ -87,7 +87,7 @@ export const textOf = (v: Json): string =>
  * How many stored units one millisecond is, 0 for a knob that is no duration.
  *
  * `turnTimeoutMs` is milliseconds and `sandbox.ttlSeconds` is seconds, and both
- * are typed in 分钟 / 小时 — so the picker works in one scale and this is the
+ * are typed in `min` / `hr` — so the picker works in one scale and this is the
  * only place the other one is named.
  */
 export const durationScale = (shape: Shape | undefined): number =>
@@ -144,8 +144,8 @@ export const TIERS = ["trivial", "normal", "hard"] as const;
 /**
  * Three tracks, one per tier.
  *
- * 难度 → 模型 needs a fourth column on the left for its runtime names; 每片
- * token 上限 does not and carries none. The eye runs down the *page*, where
+ * `Difficulty → Model` needs a fourth column on the left for its runtime names;
+ * the per-slice token ceiling does not and carries none. The eye runs down the *page*, where
  * every row's control starts at the same x, rather than across to the block
  * above; both still read as the same three things, being labelled the same.
  */

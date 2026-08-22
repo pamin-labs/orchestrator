@@ -41,7 +41,7 @@ export type GhStatus = z.infer<typeof GhStatusSchema>;
 export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; onRefresh: () => void }) {
   return (
     <>
-      {/* 真令牌不进沙箱 is already the note on 模型账号, and a sentence repeated on
+      {/* `Real tokens don't enter the sandbox` is already the note on `Model account`, and a sentence repeated on
           two panes stops being read on either. */}
       <Head title="GitHub" note={t`Code comes from here`} />
       <Connection status={s} onRefresh={onRefresh} />
@@ -82,8 +82,9 @@ function Connection({ status, onRefresh }: { status: GhStatus | null; onRefresh:
         <DisconnectButton status={status} busy={busy} onDisconnect={disconnect} />
         <ConnectButton status={status} busy={busy} onConnect={connect} />
       </div>
-      {/* What the pane's own title and note already say — 克隆私有仓库、推分支、
-          开 PR — is cut. What is left is the part that is not obvious. */}
+      {/* What the pane's own title and note already say — clone private repositories,
+          push branches, open pull requests — is cut. What is left is the part that
+          is not obvious. */}
       <Meta className="block">
         <Trans>One connection manages all projects</Trans>
       </Meta>
@@ -119,7 +120,7 @@ function ConnectedStatus({ status }: { status: GhStatus }) {
   }
   if (status.installed === false) {
     // Authorized and installed are different acts, and only the second one
-    // can reach a repository. Saying 已连 here would be a green tick over a
+    // can reach a repository. Saying `Connected` here would be a green tick over a
     // repo list that can never fill.
     const accountName = accountLabel(status.account, t`Authorized`);
     return (
@@ -170,7 +171,7 @@ function ConnectButton({ status, busy, onConnect }: { status: GhStatus | null; b
   if (!status) return null;
   if (!canConnect(status)) return null;
   // A dead token is a stuck state, so the way out is on the row that says so —
-  // not behind 断开 first.
+  // not behind `Disconnect` first.
   return (
     <Button size="sm" disabled={connectDisabled(status, busy)} onClick={onConnect}>
       {connectLabel(status, busy)}

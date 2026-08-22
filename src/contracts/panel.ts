@@ -25,7 +25,7 @@ export const Project = z.object({
   name: z.string(),
   repo_path: z.string(),
   remote: z.string().nullable(),
-  /** Empty means "ask the remote". Taken from GitHub at add time, correctable in 设置. */
+  /** Empty means "ask the remote". Taken from GitHub at add time, correctable in `Settings`. */
   base_branch: z.string().nullable(),
 });
 
@@ -53,7 +53,7 @@ export const Slice = z.object({
   status: z.enum(SLICE_STATES),
   gates_json: JsonValue,
   spent_tokens: z.number(),
-  /** When it started waiting on the boss. The clock on 白干的单位. */
+  /** When it started waiting on the boss. The clock on wasted-work-per-hour. */
   awaiting_at: z.number().nullable(),
 });
 

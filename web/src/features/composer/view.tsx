@@ -259,7 +259,7 @@ function useAutoGrow(box: RefObject<HTMLTextAreaElement | null>, text: string, r
  */
 /**
  * The first read is the module cache, synchronously, so a composer that remounts —
- * every 填进输入框 does — starts with the list it had. Without it the 插技能 button
+ * every `Fill in` does — starts with the list it had. Without it the `Insert skill` button
  * popped in a beat after the other two on every open: the fetch is fast, but "fast"
  * is exactly the timing that reads as a flicker.
  */
@@ -315,7 +315,7 @@ function Send({
  *
  * There were four of these: the idea dialog with attachments and paste, a bare
  * textarea for talking to the group, and two one-line inputs for "why I am sending
- * this back". A screenshot is exactly as useful attached to "这里不对" as to a new
+ * this back". A screenshot is exactly as useful attached to "this part is wrong" as to a new
  * idea, and the reasons the boss gives become blackboard facts the whole group
  * reasons from. One component, so every one of them gets files, paste, ⌘Enter and
  * the same failure messages.

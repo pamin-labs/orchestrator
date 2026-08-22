@@ -37,7 +37,7 @@ export interface Bootstrap {
 /**
  * `failed` had already rotted the same way. It tested the body against the
  * panel's own translation of "Bootstrap failed", which matched only because
- * zh.po renders that as 装失败了 — the characters `start.ts` happened to
+ * zh.po renders that as `Bootstrap failed` — the characters `start.ts` happened to
  * hardcode. In every other language a failed run reported itself as finished.
  */
 const ended = (step: string | undefined): boolean => step === BOOTSTRAP_OK || step === BOOTSTRAP_FAILED;

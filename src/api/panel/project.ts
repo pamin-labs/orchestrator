@@ -263,7 +263,7 @@ function projectRows(db: DB, id: number) {
  * **The one place in this codebase where deleting is right**, against the rule
  * everywhere else. `dropGroup` is correct that archiving must never mean
  * deleting — what a group did is the record. A project being removed is the boss
- * saying they do not want the record either. 不做了 archives; this erases, and the
+ * saying they do not want the record either. `Don't proceed` archives; this erases, and the
  * panel must never let one be mistaken for the other.
  */
 /**

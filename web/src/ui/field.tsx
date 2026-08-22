@@ -23,7 +23,7 @@ import { cn } from "./cn";
  *
  * A `<fieldset>` with a `<legend>`, not a div with a heading: the grouping is the
  * accessible fact, and a screen reader announces the legend with every control it
- * contains — the difference between hearing "开" and "通知：开".
+ * contains — the difference between hearing "on" and "notifications: on".
  */
 /**
  * Structure and slots are shadcn's `field` registry item, read from it rather than
@@ -36,8 +36,8 @@ import { cn } from "./cn";
 /**
  * Block, not flex. A `<legend>` is not laid out as a child of its `<fieldset>` —
  * the browser lifts it out of the box's normal flow — so in a flex fieldset it
- * stops participating and lands *on top of* the first row. 多久再问一次 sat over
- * 重新检查可达性 in the waiting pane for exactly this reason.
+ * stops participating and lands *on top of* the first row. A two-line label sat over
+ * `Recheck reachability` in the waiting pane for exactly this reason.
  *
  * Nothing is lost: `FieldGroup` below is already the flex column, which is where
  * the rows actually live.

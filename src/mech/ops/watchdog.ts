@@ -946,7 +946,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         });
         await hold(ctx.db, g.id, { reason: "budget", settled: true });
         // A notification says it stopped; it does not put a decision in front of
-        // anyone. Without a row in the queue the group sat suspended, 继续 did
+        // anyone. Without a row in the queue the group sat suspended, `Resume` did
         // nothing the scheduler would honour, and the only visible state was a
         // paused group with no reason attached. The key is what `raiseBudget` in
         // `api/panel/group.ts` closes, so the sentence is only a sentence: it used
@@ -1152,7 +1152,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // 11. A question stranded below the boss on a group that cannot answer it.
   // route() sends these to the boss, but only at the moment they are routed — a
   // group can stop *after* a question was handed to its PM. The symptom is the
-  // worst kind: a stopped group, and a 待办 count of zero.
+  // worst kind: a stopped group, and a `To do` count of zero.
   await step({ id: "11", name: "stranded_question", every: EVERY_TICK }, async () => {
     // Blockers only, same reason route() lifts only blockers: an advisory that
     // nobody answers costs nothing, and a clearance denial is a JSON blob about

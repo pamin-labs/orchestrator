@@ -2,7 +2,7 @@
  * The one thing no role could do: open the page and click it.
  *
  * Every front-end slice carries an acceptance line like "the menu opens and shows
- * 不做了", and there is no browser in any sandbox — so QA passed on a code
+ * `Don't proceed`", and there is no browser in any sandbox — so QA passed on a code
  * reading, the Auditor refused the branch for missing evidence, and the boss was
  * asked to click by hand. Three groups sat on that at once.
  */

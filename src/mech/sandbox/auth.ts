@@ -174,7 +174,7 @@ export async function probeHosts(db: DB): Promise<string[]> {
     // configured it was the *only* entry, and since any one host answering is
     // enough, "is the internet up" was decided by whether something listens on
     // localhost:443. Nothing does. Measured: fails in 5ms, every tick, and the
-    // panel says 宿主断网了.
+    // panel says the host is offline.
     const bound = BINDINGS[a.runtime];
     if (!bound) continue;
     if (a.base_url) {

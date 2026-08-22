@@ -25,7 +25,7 @@ interface Bucket {
   mine?: boolean;
 }
 
-/** 待办 renders the boss queue; 进行中 owns every undelivered requirement. */
+/** `To do` renders the boss queue; `In progress` owns every undelivered requirement. */
 const BUCKETS: Bucket[] = [
   { key: "mine", label: msg`To do`, of: [], mine: true },
   { key: "live", label: msg`In progress`, of: ["RUNNING", "PLANNING", "PAUSING", "DRAFT", "PR_OPEN"] },
@@ -46,7 +46,7 @@ const AwaitingBadge = ({ waiting }: { waiting: number }) => (
 
 const SliceCount = ({ n }: { n: number }) => <Plural value={n} one="# slice" other="# slices" />;
 
-/** `已查收 3/7`, in one message rather than three fragments. */
+/** `Accepted 3/7`, in one message rather than three fragments. */
 const acceptedOf = (done: number, total: number): string => t`accepted ${done}/${total}`;
 
 export function Progress({
@@ -65,7 +65,7 @@ export function Progress({
   /** From the hash, so it survives opening a requirement and coming back. */
   tab: string | null;
   onTab: (t: string) => void;
-  /** What needs the boss. Rendered as the 待办 tab, not above it. */
+  /** What needs the boss. Rendered as the `To do` tab, not above it. */
   queue?: React.ReactNode;
 }) {
   const { t } = useLingui();
@@ -86,7 +86,7 @@ export function Progress({
     : (BUCKETS.slice(1).find((b) => of(b).length)?.key ?? (archived.length ? DONE : "live"));
 
   // No early return for "this project has no requirements". It said, in its own
-  // words, what `emptyOf("live")` already says inside the 进行中 bucket.
+  // words, what `emptyOf("live")` already says inside the `In progress` bucket.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Tabs value={tab ?? fallback} onValueChange={onTab} className="flex min-h-0 flex-1 flex-col">
@@ -135,7 +135,7 @@ export function Progress({
   );
 }
 
-/** Absence, with the reason it is absent. A bare "无" teaches nothing. */
+/** Absence, with the reason it is absent. A bare "none" teaches nothing. */
 function emptyOf(key: string): string {
   // No `mine` case: that bucket renders the queue, which carries its own empty
   // line. The copy that lived here was a second, drifting version of it.
@@ -357,7 +357,7 @@ function Seg({ s }: { s: Slice }) {
   );
 }
 
-/** Delivered work. 收尾 dissolves the group, and it used to leave no trace at all. */
+/** Delivered work. Winding up dissolves the group, and it used to leave no trace at all. */
 function Done({ rows }: { rows: Archived[] }) {
   const { page, rest, more, total } = usePaged(rows, 25);
   if (!rows.length) {

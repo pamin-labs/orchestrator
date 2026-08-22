@@ -22,7 +22,7 @@ import { labelOf } from "../../shared/select";
 /**
  * The blackboard's static half.
  *
- * The journal is where "做了啥 + 为啥 + 风险" lives, the retro is the only thing a
+ * The journal is where "what was done, why, and the risk" lives, the retro is the only thing a
  * dissolved group leaves behind, and the lesson list is the single mechanism by
  * which the twentieth group is smarter than the first. All of it was written,
  * exported to the repo, injected into prompts — and unreadable from the panel, which
@@ -178,8 +178,8 @@ export function NotesBoard({
           </Tab>
         ))}
       </TabList>
-      {/* No hint line under the strip. 「每个 turn 的产出：做了啥、为什么、风险。硬性
-          ≤6 行」 sat above the journals themselves, which say all of that by being
+      {/* No hint line under the strip. "Each turn's output: what was done, why, and
+          the risk. Six lines at most" sat above the journals themselves, which say all of that by being
           journals — and it cost a row of height on every tab, every visit. */}
       {present.map(([k]) => (
         <TabPanel key={k} value={k} className="flex min-h-0 flex-1 flex-col">
@@ -202,7 +202,8 @@ function List({ notes, size, showKind }: { notes: Note[]; size: number; showKind
       {rest > 0 && (
         <Button variant="quiet" size="sm" className="mt-2" onClick={more}>
           {/* Its own message, not the one the requirement list uses: a note is
-              counted in 条 and a requirement in 个. */}
+              counted with one measure word and a requirement with another — a distinction the
+              Chinese draws and the English does not. */}
           <Trans context="notes">
             {rest} more of {total}
           </Trans>
@@ -245,7 +246,7 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
         {/* The deterministic anchors, under the prose they are meant to check: the
             files it touched and the gate's verdict are what stop a journal being
             self-congratulation. The export path was the widest thing on the old
-            header — 60 characters of docs/journal/<一个很长的中文需求名>/020-journal.md
+            header — 60 characters of docs/journal/<a very long requirement name>/020-journal.md
             saying less than the requirement name inside it. It is a hover. */}
         <Evidence note={n} gate={gate} files={files} />
       </div>
