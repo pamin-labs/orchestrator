@@ -1,4 +1,5 @@
 import { formatter } from "@lingui/format-po";
+import { LOCALES } from "../src/contracts/config.ts";
 
 /**
  * The panel's messages, keyed by their English source.
@@ -39,14 +40,12 @@ export default {
    */
   rootDir: new URL("..", import.meta.url).pathname,
   sourceLocale: "en",
-  // Kept in step with `LOCALES` in `src/contracts/config.ts`, which is what
-  // decides whether a catalog can be reached at all; a locale here and not there
-  // extracts into a file nothing loads.
-  // `zh-Hant` is generated from `zh` by `scripts/i18n-hant.ts` rather than
-  // translated, but it is listed here all the same: `lingui extract` is what
-  // adds and retires message ids, and a catalog it does not know about goes
-  // stale the first time an English string is reworded.
-  locales: ["en", "zh", "zh-Hant", "ja", "ko", "es", "fr", "de", "pt", "ru"],
+  // `LOCALES` itself, not a copy of it: that list decides whether a catalog can
+  // be reached at all, and one spelled here and not there extracts into a file
+  // nothing loads. `zh-Hant` is generated from `zh` rather than translated and is
+  // still in it — `lingui extract` is what adds and retires ids, and a catalog it
+  // does not know about goes stale the first time an English string is reworded.
+  locales: LOCALES,
   catalogs: [{ path: "<rootDir>/locales/{locale}", include: ["<rootDir>/src", "<rootDir>/web/src"] }],
   format: formatter({ origins: false }),
 };

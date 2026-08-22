@@ -1,3 +1,4 @@
+import type { I18n } from "@lingui/core";
 import { z } from "zod";
 
 /**
@@ -40,6 +41,18 @@ export type Said = z.infer<typeof SaidSchema>;
  * later: `sayIn` returns null and the body stored beside it is drawn.
  */
 const MetaSchema = z.object({ say: SaidSchema.extend({ message: z.string() }).optional() });
+
+/**
+ * One `Said`, through one `i18n`. The server hands its per-locale instance and
+ * the panel hands the browser's — the call is the same three arguments either
+ * way, and it was written out in both places, including the reason for the
+ * third one.
+ *
+ * `message` spelled in only when there is one: `exactOptionalPropertyTypes`
+ * refuses an explicit `undefined` on Lingui's optional field.
+ */
+export const render = (i18n: Pick<I18n, "_">, said: Said): string =>
+  i18n._(said.id, said.values, said.message === undefined ? undefined : { message: said.message });
 
 /**
  * The sentence an event's `meta` names, if it names one. In the contract
