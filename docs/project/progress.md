@@ -1022,6 +1022,45 @@ both name `locales/po.d.ts`.
   sixth time on this branch — three repeated clauses is what not doing it
   costs, and it is cheap.
 
+- **Two of the twenty-three "mechanism" literals were prose.** The baseline said
+  `src/` still holds Chinese literals that break if translated, and it was right
+  about twenty-one of them. The mask in `redaction.ts` was not one: it lands in
+  logs, in `/readyz` and inside event bodies that ten catalogues render around
+  it, so a German reader got `「凭据已抹掉」` inside a German sentence. Nor was
+  the attachment header, which was the same sentence typed into
+  `mech/util/attachment-text.ts` and into `web/src/ui/attach.ts` with a comment
+  on each saying the other had to move with it. A ratchet counts; it does not
+  read.
+
+- **The fix for prose-as-a-protocol-key is not to translate it.** Ten spellings
+  to match and no way to know which language an already-stored row used — the
+  `escalation` bug again, worse. The panel stops reading the header: the block
+  is the trailing run of `- path` entries plus the line above it, whatever that
+  line says. Then briefly the wrong lesson was applied on top — the header got a
+  `msg` template and nine translations — before the obvious question: who reads
+  it? The panel strips it, so nobody but the agent, and ADR 035 §2 keeps what a
+  model reads in English. Nine rows nobody would ever have read.
+
+- **A formatter is a language, and `.replace("K", "k")` is editing CLDR.** The
+  lowercase was there to match the settings rows, comparing a number that gets
+  read with a value that gets typed back into a box. Measured on the way out:
+  `new Intl.NumberFormat` per call is 10.05µs against 0.225µs reused, 45×, on a
+  table that formats hundreds of numbers a frame. The comment claiming "the
+  engine caches the format instance behind the constructor" was written from
+  memory and was wrong.
+
+- **`i18n.number` and `i18n.date` are deprecated in Lingui v6.** Reaching for
+  them was the obvious move; oxlint's `no-deprecated` refused it within the
+  minute. The library's answer is `Intl` at `i18n.locale`.
+
+- **98 lines of reformatting around two real changes.** `.fallowrc.json`'s zones
+  and rules were re-expanded by an editor, so a reviewer had to diff the
+  boundary table by eye to find that only `entry` and `ignoreDependencies` had
+  moved. Also stale: `biome.json` still ignored `**/*.generated.ts` for a file
+  this branch deleted, and `i18n-progress.ts` kept its own copy of `--check` —
+  which is the thing `scripts/generated-file.ts` was extracted from this exact
+  pair to hold.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run
