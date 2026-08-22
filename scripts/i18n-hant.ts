@@ -1,6 +1,6 @@
 import * as OpenCC from "opencc-js/core";
 import * as Locale from "opencc-js/preset";
-import { writeOrCheck } from "./generated-file.ts";
+import { write } from "./generated-file.ts";
 import { catalogFormat } from "./lingui-catalogs.ts";
 
 /**
@@ -24,7 +24,8 @@ import { catalogFormat } from "./lingui-catalogs.ts";
 /**
  * Checked in because `build:web`, every `bun test` worker and `preflight` all
  * load catalogs, and `opencc-js`'s dictionary is 1.1MB — twenty times the
- * catalog it would be generating. `--check` keeps it honest.
+ * catalog it would be generating. `i18n:extract` regenerates it, and the diff
+ * after that is what keeps it honest.
  */
 
 /**
@@ -118,7 +119,8 @@ export async function hant(po: string, existing?: string): Promise<string> {
   }
   // `existing` is what carries the header: without it the formatter writes a
   // fresh one, and its `POT-Creation-Date` would be a new value every run — a
-  // file that never matches `--check`. With it, `Language: zh-Hant` and the rest
+  // file the diff after `i18n:extract` would never call clean. With it,
+  // `Language: zh-Hant` and the rest
   // are whatever the checked-in catalogue already says.
   return await format.serialize(catalog, { ...ctx, locale: "zh-Hant", existing });
 }
@@ -131,5 +133,5 @@ if (import.meta.main) {
   const current = await Bun.file(TARGET)
     .text()
     .catch(() => undefined);
-  await writeOrCheck(TARGET, await hant(await Bun.file(SOURCE).text(), current), SOURCE, "i18n:hant");
+  await write(TARGET, await hant(await Bun.file(SOURCE).text(), current));
 }

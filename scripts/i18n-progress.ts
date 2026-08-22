@@ -1,6 +1,6 @@
 import { endonymOf, LOCALES } from "../src/contracts/config.ts";
 import { translations } from "./lingui-catalogs.ts";
-import { writeOrCheck } from "./generated-file.ts";
+import { write } from "./generated-file.ts";
 
 /**
  * How much of what the orchestrator says has been translated, one bar per
@@ -81,12 +81,11 @@ function splice(doc: string, next: string): string {
 
 const panel = await panelRows();
 
-// `writeOrCheck`, the same door `i18n-hant.ts` writes through: `--check` is what
-// preflight runs, and two scripts deriving a checked-in file from `locales/*.po`
-// had two copies of it until Fallow found them as one clone.
+// The same door `i18n-hant.ts` writes through: two scripts deriving a
+// checked-in file from `locales/*.po` had two copies of it until Fallow found
+// them as one clone.
 for (const [doc, copy] of Object.entries(COPY)) {
-  await writeOrCheck(doc, splice(await Bun.file(doc).text(), block(panel, copy)), "locales/*.po", "i18n:progress");
+  await write(doc, splice(await Bun.file(doc).text(), block(panel, copy)));
 }
 
-if (!process.argv.includes("--check"))
-  for (const r of panel) console.log(`${r.label.padEnd(10)} ${String(pct(r)).padStart(3)}%  ${r.done}/${r.total}`);
+for (const r of panel) console.log(`${r.label.padEnd(10)} ${String(pct(r)).padStart(3)}%  ${r.done}/${r.total}`);

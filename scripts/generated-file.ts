@@ -1,26 +1,25 @@
 /**
- * Write a generated file, or check that the one on disk is what we would write.
+ * Write a generated file, saying whether it moved.
  *
- * Two scripts derive a checked-in file from `locales/*.po`, and both
- * need the same `--check` so preflight can say "stale" instead of a reviewer
- * noticing. Shared because it was copied first: `fallow audit` found the two
- * halves as one 21-line clone.
+ * Two scripts derive a checked-in file from `locales/*.po` and both wrote the
+ * same read-compare-write; `fallow audit` found the halves as one 21-line clone.
  */
-export async function writeOrCheck(target: string, next: string, source: string, script: string): Promise<void> {
+/**
+ * No `--check` mode any more. It existed so preflight could say "stale" without
+ * writing, and both callers are reached through `i18n:extract` now — which
+ * regenerates and lets `git diff --exit-code` ask the question. A mode with no
+ * caller is a mode the docs go on believing is running: the enforcement matrix
+ * named `i18n:progress --check` as a CI gate for a week after CI stopped having
+ * one.
+ */
+export async function write(target: string, next: string): Promise<void> {
   const current = await Bun.file(target)
     .text()
     .catch(() => "");
-  if (process.argv.includes("--check")) {
-    if (next === current) {
-      console.log(`${target}: up to date`);
-      return;
-    }
-    console.error(`${target} does not match ${source} — run \`bun run ${script}\``);
-    process.exit(1);
+  if (next === current) {
+    console.log(`${target}: unchanged`);
+    return;
   }
-  if (next === current) console.log(`${target}: unchanged`);
-  else {
-    await Bun.write(target, next);
-    console.log(`${target}: written`);
-  }
+  await Bun.write(target, next);
+  console.log(`${target}: written`);
 }

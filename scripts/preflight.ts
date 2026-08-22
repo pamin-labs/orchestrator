@@ -96,7 +96,7 @@ const steps: Step[] = [
    * Nine translations were lost inside this branch: `extract --clean` retired
    * ids that a later edit brought back as `msg` templates, and no gate saw it.
    * `i18n:validate` could not — the catalogue was *complete*, because the rows
-   * were gone from it too — and `i18n:progress --check` only reads a README.
+   * were gone from it too — and regenerating the README only reads a count.
    */
   /**
    * Writes rather than checks, and the diff is what asks: `lingui extract` has

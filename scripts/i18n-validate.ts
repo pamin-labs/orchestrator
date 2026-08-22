@@ -62,10 +62,9 @@ const source = (await translations("en")).messages;
  *
  * The id is a hash of the source text, so rewording one `<Trans>` retires its id
  * and eight catalogs lose that string at once. Nothing stopped that from being
- * merged: `i18n:progress --check` only asks whether the README's table matches
- * the catalogs, so running `bun run i18n:progress` once made the table say 99.9%
- * and the gate go green. The panel then renders English inside a Russian pane,
- * for as long as nobody reads the table.
+ * merged: the README's table is regenerated from the catalogues, so a catalogue
+ * that lost a row is a table that agrees with it. The panel then renders English
+ * inside a Russian pane, for as long as nobody reads the number.
  */
 /**
  * Strict on purpose, with the escape written down rather than built: if a real

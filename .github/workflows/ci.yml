@@ -70,6 +70,20 @@ jobs:
       # well-formed ICU rendering the wrong sentence.
       - name: every message is translated and keeps its placeholders
         run: bun run i18n:validate
+      # Regenerated, not merely validated: `lingui extract` has no `--check`, so
+      # running it and diffing is the only thing that answers whether the
+      # catalogues and the READMEs' tables still describe the source.
+      # `i18n:extract` derives all three — the catalogues, `zh-Hant` from `zh`,
+      # and the progress table in both READMEs — because all three are a
+      # function of the same messages.
+      #
+      # `preflight` ran this and CI did not, which made a voluntary local
+      # command the only gate on a checked-in generated file. The `git diff`
+      # below could not stand in for it: a stale table nothing regenerates is
+      # not a dirty tree. Measured on a commit whose table read 42% against
+      # complete catalogues — `i18n:validate` passed it and so did the diff.
+      - name: catalogues and the README tables match the source
+        run: bun run i18n:extract && git diff --exit-code -- locales/ README.md README.zh-CN.md
       # Nothing above may leave the tree dirty — a formatter or a build that
       # writes into the repository is a diff the author never saw.
       - name: nothing was rewritten
