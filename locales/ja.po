@@ -2426,6 +2426,9 @@ msgstr "修正を依頼"
 msgid "Requirement"
 msgstr "要件"
 
+msgid "Requirement created"
+msgstr "要件を作成しました"
+
 msgid "Requirement name…"
 msgstr "要件名…"
 

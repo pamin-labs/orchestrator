@@ -2426,6 +2426,9 @@ msgstr "Pedir mudanças"
 msgid "Requirement"
 msgstr "Requisito"
 
+msgid "Requirement created"
+msgstr "Requisito criado"
+
 msgid "Requirement name…"
 msgstr "Nome do requisito…"
 

@@ -2426,6 +2426,9 @@ msgstr "수정 요청"
 msgid "Requirement"
 msgstr "요건"
 
+msgid "Requirement created"
+msgstr "요구사항을 만들었습니다"
+
 msgid "Requirement name…"
 msgstr "요건 이름…"
 

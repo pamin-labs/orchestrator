@@ -2426,6 +2426,9 @@ msgstr "Запросить правки"
 msgid "Requirement"
 msgstr "Требование"
 
+msgid "Requirement created"
+msgstr "Требование создано"
+
 msgid "Requirement name…"
 msgstr "Название требования…"
 

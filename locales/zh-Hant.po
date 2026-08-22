@@ -2426,6 +2426,9 @@ msgstr "要求修改"
 msgid "Requirement"
 msgstr "需求"
 
+msgid "Requirement created"
+msgstr "需求已建立"
+
 msgid "Requirement name…"
 msgstr "需求名…"
 
