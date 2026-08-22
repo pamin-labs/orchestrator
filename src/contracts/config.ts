@@ -134,7 +134,7 @@ export const LOCALES = ["en", "zh", "zh-Hant", "ja", "ko", "es", "fr", "de", "pt
 export type Locale = (typeof LOCALES)[number];
 
 /** A predicate rather than a cast, so nothing here narrows a `string` by assertion. */
-export const isLocale = (value: string): value is Locale => (LOCALES as readonly string[]).includes(value);
+const isLocale = (value: string): value is Locale => (LOCALES as readonly string[]).includes(value);
 
 /**
  * The tag to *name* a locale by, which is not always the tag its catalog is
@@ -177,8 +177,7 @@ const tagged = (text: string): Locale | null => {
   // `Hant`. This used to be an ordered regex table whose order was load-bearing —
   // `zh`'s `[中汉漢華华]` matched `繁體中文` — and which knew only the seven tags
   // somebody had written down. `zh-Hans-MO` and `cmn-Hant` are right for free now.
-  if (["zh", "cmn", "yue"].includes(locale.language))
-    return locale.maximize().script === "Hant" ? "zh-Hant" : "zh";
+  if (["zh", "cmn", "yue"].includes(locale.language)) return locale.maximize().script === "Hant" ? "zh-Hant" : "zh";
   return isLocale(locale.language) ? locale.language : null;
 };
 
@@ -228,9 +227,7 @@ const NAMES: { locale: Locale; words: string[] }[] = LOCALES.flatMap((locale) =>
  * means as a language — would match the middle of `japanese` and `alemán`.
  */
 const spelled = (text: string, words: string[]): number =>
-  words
-    .filter((w) => text.includes(w) || (text.length > 1 && w.startsWith(text)))
-    .reduce((n, w) => n + w.length, 0);
+  words.filter((w) => text.includes(w) || (text.length > 1 && w.startsWith(text))).reduce((n, w) => n + w.length, 0);
 
 /**
  * Which catalog a `language` asks for — a tag from a browser, or the free text a

@@ -684,6 +684,9 @@ msgstr "브라우저가 거부했습니다. 켜려면 주소창 왼쪽의 사이
 msgid "Browser permission"
 msgstr "브라우저 권한"
 
+msgid "Budget"
+msgstr "예산"
+
 msgid "Budget exhausted"
 msgstr "예산 소진"
 
@@ -980,6 +983,9 @@ msgstr "새 샌드박스 만들기"
 msgid "Create requirement"
 msgstr "요건 만들기"
 
+msgid "Credential"
+msgstr "자격 증명"
+
 msgid "Credential check"
 msgstr "자격 증명 확인"
 
@@ -1027,6 +1033,9 @@ msgstr "이 행 삭제"
 
 msgid "Denied domains"
 msgstr "거부 도메인"
+
+msgid "Deploy"
+msgstr "배포"
 
 msgid "Design choice"
 msgstr "설계 선택"
@@ -1656,6 +1665,9 @@ msgstr "메모리"
 
 msgid "Memory ceiling per sandbox."
 msgstr "샌드박스당 메모리 상한."
+
+msgid "Merge to main"
+msgstr "main 에 머지"
 
 msgid "merged into main"
 msgstr "main에 병합했습니다"
@@ -2607,6 +2619,9 @@ msgstr "체크포인트 저장"
 
 msgid "Saved {at}"
 msgstr "{at}에 저장됨"
+
+msgid "Scope change"
+msgstr "범위 변경"
 
 msgid "Search skills"
 msgstr "스킬 검색"

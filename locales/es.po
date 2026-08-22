@@ -684,6 +684,9 @@ msgstr "El navegador lo denegó. Para activarlo, cámbialo en los ajustes del si
 msgid "Browser permission"
 msgstr "Permiso del navegador"
 
+msgid "Budget"
+msgstr "Presupuesto"
+
 msgid "Budget exhausted"
 msgstr "Presupuesto agotado"
 
@@ -980,6 +983,9 @@ msgstr "Crear sandbox nuevo"
 msgid "Create requirement"
 msgstr "Crear requisito"
 
+msgid "Credential"
+msgstr "Credencial"
+
 msgid "Credential check"
 msgstr "Comprobación de credenciales"
 
@@ -1027,6 +1033,9 @@ msgstr "Eliminar esta fila"
 
 msgid "Denied domains"
 msgstr "Dominios denegados"
+
+msgid "Deploy"
+msgstr "Despliegue"
 
 msgid "Design choice"
 msgstr "Decisión de diseño"
@@ -1656,6 +1665,9 @@ msgstr "Memoria"
 
 msgid "Memory ceiling per sandbox."
 msgstr "Techo de memoria por sandbox."
+
+msgid "Merge to main"
+msgstr "Fusionar en main"
 
 msgid "merged into main"
 msgstr "fusionada en main"
@@ -2607,6 +2619,9 @@ msgstr "Guardar punto de control"
 
 msgid "Saved {at}"
 msgstr "Guardado {at}"
+
+msgid "Scope change"
+msgstr "Cambio de alcance"
 
 msgid "Search skills"
 msgstr "Buscar habilidades"

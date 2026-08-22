@@ -684,6 +684,9 @@ msgstr "ブラウザが拒否しました。有効にするにはアドレスバ
 msgid "Browser permission"
 msgstr "ブラウザの許可"
 
+msgid "Budget"
+msgstr "予算"
+
 msgid "Budget exhausted"
 msgstr "予算切れ"
 
@@ -980,6 +983,9 @@ msgstr "サンドボックスを新規作成"
 msgid "Create requirement"
 msgstr "要件を作る"
 
+msgid "Credential"
+msgstr "認証情報"
+
 msgid "Credential check"
 msgstr "資格情報の確認"
 
@@ -1027,6 +1033,9 @@ msgstr "この行を削除"
 
 msgid "Denied domains"
 msgstr "拒否するドメイン"
+
+msgid "Deploy"
+msgstr "デプロイ"
 
 msgid "Design choice"
 msgstr "設計の選択"
@@ -1656,6 +1665,9 @@ msgstr "メモリ"
 
 msgid "Memory ceiling per sandbox."
 msgstr "サンドボックス 1 つあたりのメモリ上限。"
+
+msgid "Merge to main"
+msgstr "main へマージ"
 
 msgid "merged into main"
 msgstr "main にマージしました"
@@ -2607,6 +2619,9 @@ msgstr "チェックポイントを保存"
 
 msgid "Saved {at}"
 msgstr "{at} に保存"
+
+msgid "Scope change"
+msgstr "範囲の変更"
 
 msgid "Search skills"
 msgstr "スキルを検索"

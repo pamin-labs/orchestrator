@@ -684,6 +684,9 @@ msgstr "Der Browser hat es abgelehnt. Zum Aktivieren in den Website-Einstellunge
 msgid "Browser permission"
 msgstr "Browser-Berechtigung"
 
+msgid "Budget"
+msgstr "Budget"
+
 msgid "Budget exhausted"
 msgstr "Budget erschöpft"
 
@@ -980,6 +983,9 @@ msgstr "Neue Sandbox anlegen"
 msgid "Create requirement"
 msgstr "Anforderung anlegen"
 
+msgid "Credential"
+msgstr "Zugangsdaten"
+
 msgid "Credential check"
 msgstr "Prüfung der Zugangsdaten"
 
@@ -1027,6 +1033,9 @@ msgstr "Diese Zeile löschen"
 
 msgid "Denied domains"
 msgstr "Abgelehnte Domains"
+
+msgid "Deploy"
+msgstr "Deployment"
 
 msgid "Design choice"
 msgstr "Entwurfsentscheidung"
@@ -1656,6 +1665,9 @@ msgstr "Speicher"
 
 msgid "Memory ceiling per sandbox."
 msgstr "Speicherobergrenze pro Sandbox."
+
+msgid "Merge to main"
+msgstr "Merge nach main"
 
 msgid "merged into main"
 msgstr "in main gemerged"
@@ -2607,6 +2619,9 @@ msgstr "Checkpoint speichern"
 
 msgid "Saved {at}"
 msgstr "Gespeichert {at}"
+
+msgid "Scope change"
+msgstr "Umfangsänderung"
 
 msgid "Search skills"
 msgstr "Skills suchen"

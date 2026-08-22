@@ -684,6 +684,9 @@ msgstr "Браузер отказал. Чтобы включить, измени
 msgid "Browser permission"
 msgstr "Разрешение браузера"
 
+msgid "Budget"
+msgstr "Бюджет"
+
 msgid "Budget exhausted"
 msgstr "Бюджет исчерпан"
 
@@ -980,6 +983,9 @@ msgstr "Создать песочницу"
 msgid "Create requirement"
 msgstr "Создать требование"
 
+msgid "Credential"
+msgstr "Учётные данные"
+
 msgid "Credential check"
 msgstr "Проверка учётных данных"
 
@@ -1027,6 +1033,9 @@ msgstr "Удалить эту строку"
 
 msgid "Denied domains"
 msgstr "Запрещённые домены"
+
+msgid "Deploy"
+msgstr "Деплой"
 
 msgid "Design choice"
 msgstr "Выбор в дизайне"
@@ -1656,6 +1665,9 @@ msgstr "Память"
 
 msgid "Memory ceiling per sandbox."
 msgstr "Потолок памяти на песочницу."
+
+msgid "Merge to main"
+msgstr "Влить в main"
 
 msgid "merged into main"
 msgstr "влито в main"
@@ -2607,6 +2619,9 @@ msgstr "Сохранить контрольную точку"
 
 msgid "Saved {at}"
 msgstr "Сохранено {at}"
+
+msgid "Scope change"
+msgstr "Изменение объёма"
 
 msgid "Search skills"
 msgstr "Искать навыки"

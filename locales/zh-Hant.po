@@ -684,6 +684,9 @@ msgstr "被瀏覽器拒了。要開的話在位址列左邊的站點設定裡改
 msgid "Browser permission"
 msgstr "瀏覽器許可"
 
+msgid "Budget"
+msgstr "預算"
+
 msgid "Budget exhausted"
 msgstr "預算用盡"
 
@@ -980,6 +983,9 @@ msgstr "開一個新環境"
 msgid "Create requirement"
 msgstr "開成需求"
 
+msgid "Credential"
+msgstr "憑證"
+
 msgid "Credential check"
 msgstr "憑證檢查"
 
@@ -1027,6 +1033,9 @@ msgstr "刪掉這一行"
 
 msgid "Denied domains"
 msgstr "禁止訪問的域名"
+
+msgid "Deploy"
+msgstr "上線"
 
 msgid "Design choice"
 msgstr "設計取捨"
@@ -1656,6 +1665,9 @@ msgstr "記憶體"
 
 msgid "Memory ceiling per sandbox."
 msgstr "每個沙箱的記憶體上限。"
+
+msgid "Merge to main"
+msgstr "合併到 main"
 
 msgid "merged into main"
 msgstr "已合入 main"
@@ -2607,6 +2619,9 @@ msgstr "存一次檔"
 
 msgid "Saved {at}"
 msgstr "已儲存 {at}"
+
+msgid "Scope change"
+msgstr "範圍變更"
 
 msgid "Search skills"
 msgstr "搜技能"

@@ -684,6 +684,9 @@ msgstr "O navegador negou. Para ativar, mude nas configurações do site (à esq
 msgid "Browser permission"
 msgstr "Permissão do navegador"
 
+msgid "Budget"
+msgstr "Orçamento"
+
 msgid "Budget exhausted"
 msgstr "Orçamento esgotado"
 
@@ -980,6 +983,9 @@ msgstr "Criar sandbox novo"
 msgid "Create requirement"
 msgstr "Criar requisito"
 
+msgid "Credential"
+msgstr "Credencial"
+
 msgid "Credential check"
 msgstr "Verificação de credenciais"
 
@@ -1027,6 +1033,9 @@ msgstr "Excluir esta linha"
 
 msgid "Denied domains"
 msgstr "Domínios negados"
+
+msgid "Deploy"
+msgstr "Implantação"
 
 msgid "Design choice"
 msgstr "Escolha de design"
@@ -1656,6 +1665,9 @@ msgstr "Memória"
 
 msgid "Memory ceiling per sandbox."
 msgstr "Teto de memória por sandbox."
+
+msgid "Merge to main"
+msgstr "Mesclar na main"
 
 msgid "merged into main"
 msgstr "integrada em main"
@@ -2607,6 +2619,9 @@ msgstr "Salvar checkpoint"
 
 msgid "Saved {at}"
 msgstr "Salvo {at}"
+
+msgid "Scope change"
+msgstr "Mudança de escopo"
 
 msgid "Search skills"
 msgstr "Buscar skills"

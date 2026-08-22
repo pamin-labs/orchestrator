@@ -684,6 +684,9 @@ msgstr "Browser denied it. To enable, change it in site settings (left of addres
 msgid "Browser permission"
 msgstr "Browser permission"
 
+msgid "Budget"
+msgstr "Budget"
+
 msgid "Budget exhausted"
 msgstr "Budget exhausted"
 
@@ -980,6 +983,9 @@ msgstr "Create new sandbox"
 msgid "Create requirement"
 msgstr "Create requirement"
 
+msgid "Credential"
+msgstr "Credential"
+
 msgid "Credential check"
 msgstr "Credential check"
 
@@ -1027,6 +1033,9 @@ msgstr "Delete this row"
 
 msgid "Denied domains"
 msgstr "Denied domains"
+
+msgid "Deploy"
+msgstr "Deploy"
 
 msgid "Design choice"
 msgstr "Design choice"
@@ -1656,6 +1665,9 @@ msgstr "Memory"
 
 msgid "Memory ceiling per sandbox."
 msgstr "Memory ceiling per sandbox."
+
+msgid "Merge to main"
+msgstr "Merge to main"
 
 msgid "merged into main"
 msgstr "merged into main"
@@ -2607,6 +2619,9 @@ msgstr "Save checkpoint"
 
 msgid "Saved {at}"
 msgstr "Saved {at}"
+
+msgid "Scope change"
+msgstr "Scope change"
 
 msgid "Search skills"
 msgstr "Search skills"

@@ -393,7 +393,10 @@ function buildProgram(api: DispatchContext, act: Act, out: string[], err: string
     .option("--severity <severity>", "blocker|advisory", "advisory")
     // Required, and the five that reach the boss are named first because the rule
     // for a question that is two of these is "pick the one that raises highest".
-    .option("--kind <kind>", "required — budget|merge|credential|deploy|scope (the boss decides these) or env|spec|boundary|design")
+    .option(
+      "--kind <kind>",
+      "required — budget|merge|credential|deploy|scope (the boss decides these) or env|spec|boundary|design",
+    )
     .option("--brief <brief>", "<=20 chars, what it is about")
     .action(bind(askBoss));
 

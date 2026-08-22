@@ -684,6 +684,9 @@ msgstr "Le navigateur a refusé. Pour l'activer, modifiez-le dans les paramètre
 msgid "Browser permission"
 msgstr "Autorisation du navigateur"
 
+msgid "Budget"
+msgstr "Budget"
+
 msgid "Budget exhausted"
 msgstr "Budget épuisé"
 
@@ -980,6 +983,9 @@ msgstr "Créer un bac à sable"
 msgid "Create requirement"
 msgstr "Créer une exigence"
 
+msgid "Credential"
+msgstr "Identifiants"
+
 msgid "Credential check"
 msgstr "Vérification des identifiants"
 
@@ -1027,6 +1033,9 @@ msgstr "Supprimer cette ligne"
 
 msgid "Denied domains"
 msgstr "Domaines refusés"
+
+msgid "Deploy"
+msgstr "Déploiement"
 
 msgid "Design choice"
 msgstr "Choix de conception"
@@ -1656,6 +1665,9 @@ msgstr "Mémoire"
 
 msgid "Memory ceiling per sandbox."
 msgstr "Plafond mémoire par bac à sable."
+
+msgid "Merge to main"
+msgstr "Fusion dans main"
 
 msgid "merged into main"
 msgstr "fusionnée dans main"
@@ -2607,6 +2619,9 @@ msgstr "Enregistrer un point de reprise"
 
 msgid "Saved {at}"
 msgstr "Enregistré {at}"
+
+msgid "Scope change"
+msgstr "Changement de périmètre"
 
 msgid "Search skills"
 msgstr "Rechercher des compétences"

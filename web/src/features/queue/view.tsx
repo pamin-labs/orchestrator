@@ -7,7 +7,7 @@ import { AnswerDraftSchema, api, mutate, readApi } from "../../shared/api";
 import { usePaged } from "../../shared/page";
 import type { State } from "../../shared/api";
 import { groupName } from "./rank";
-import { KIND_LABEL } from "../../shared/select";
+import { kindOf } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { foldQueueItems, queueClusters, queueItems, type QueueCluster, type QueueItem } from "./model";
@@ -286,7 +286,7 @@ function TicketMeta({ item, n }: { item: QueueItem; n: number }) {
 
 function TicketAbout({ item }: { item: QueueItem }) {
   const { t } = useLingui();
-  const kind = item.about ? KIND_LABEL[item.about] : undefined;
+  const kind = kindOf(item.about);
   return kind ? <span className="text-ink-2">{t(kind)}</span> : null;
 }
 

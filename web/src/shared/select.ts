@@ -2,7 +2,7 @@ import type { Escalation, Group, Slice, State } from "./api";
 import { githubRepo } from "./github";
 import { z } from "zod";
 import { valueOr } from "../../../src/contracts/json.ts";
-import type { GrpState } from "../../../src/contracts/states.ts";
+import type { AskKind, EscalationOpenState, GrpState } from "../../../src/contracts/states.ts";
 import { msg, t } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../i18n";
@@ -48,12 +48,23 @@ export const STATUS_LABEL: Record<GrpState, MessageDescriptor> = {
   PR_OPEN: msg`PR open`,
   DISSOLVED: msg`Dissolved`,
 };
-export const WHERE_LABEL: Record<string, MessageDescriptor> = {
+/**
+ * Where a question is sitting. `satisfies`, so a fifth open state is a compile
+ * error here rather than a raw `architect` on the panel — the same check
+ * `STATUS_LABEL` gets from being a total `Record`, which this could not be: the
+ * column also holds `answered` and `revoked`, which have no row and want none.
+ */
+const WHERE = {
   pm: msg`PM working`,
   architect: msg`Architect working`,
   cos: msg`CoS working`,
   boss: msg`Awaiting your decision`,
-};
+} satisfies Record<EscalationOpenState, MessageDescriptor>;
+
+const isOpen = (state: string): state is EscalationOpenState => Object.hasOwn(WHERE, state);
+
+/** The raw state where there is no row, which is what a terminal one gets. */
+export const whereLabel = (state: string): string => (isOpen(state) ? i18n._(WHERE[state]) : state);
 /**
  * The layers actually recorded, in order.
  *
@@ -162,10 +173,34 @@ export const asksOf = (st: State, id: number): Escalation[] =>
 /** Of those, the ones actually waiting on the boss. */
 export const mineOf = (asks: Escalation[]): Escalation[] => asks.filter((e) => e.chain_state === "boss");
 
-/** What a question is about, in the boss's words. `other` gets no label. */
-export const KIND_LABEL: Record<string, MessageDescriptor> = {
+/**
+ * What a question is about, in the boss's words — all nine, since `--kind` became
+ * required and lost its `other`.
+ *
+ * `satisfies Record<AskKind, …>`, so a tenth word in the vocabulary is a compile
+ * error here rather than a bare `credential` on the queue. It was
+ * `Record<string, …>` with four rows and a `?? raw` at the call site, which is
+ * how the five reserved topics arrived unlabelled.
+ */
+const KIND = {
+  budget: msg`Budget`,
+  merge: msg`Merge to main`,
+  credential: msg`Credential`,
+  deploy: msg`Deploy`,
+  scope: msg`Scope change`,
   env: msg`Environment`,
   spec: msg`Acceptance criteria`,
   boundary: msg`Boundary`,
   design: msg`Design choice`,
-};
+} satisfies Record<AskKind, MessageDescriptor>;
+
+const isKind = (kind: string): kind is AskKind => Object.hasOwn(KIND, kind);
+
+/**
+ * The descriptor, for a component to render with its own `t`.
+ *
+ * Null where a row predates the vocabulary: the queue shows no chip rather than
+ * a word from a taxonomy that no longer holds it.
+ */
+export const kindOf = (kind: string | null | undefined): MessageDescriptor | null =>
+  kind && isKind(kind) ? KIND[kind] : null;

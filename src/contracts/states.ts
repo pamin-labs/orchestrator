@@ -153,7 +153,17 @@ export const isTerminalEscalationState = (state: EscalationState): state is Esca
  * the asker picks **the one that raises highest**, and the five that raise are
  * first. `TO_BOSS` is the reserved half; the rest start at the PM.
  */
-export const ASK_KINDS = ["budget", "merge", "credential", "deploy", "scope", "env", "spec", "boundary", "design"] as const;
+export const ASK_KINDS = [
+  "budget",
+  "merge",
+  "credential",
+  "deploy",
+  "scope",
+  "env",
+  "spec",
+  "boundary",
+  "design",
+] as const;
 export type AskKind = (typeof ASK_KINDS)[number];
 
 /**

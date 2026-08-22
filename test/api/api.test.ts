@@ -306,12 +306,7 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
 
 test("reserved ask-boss questions start at the boss after filing", async () => {
   const { app, db } = await harness();
-  const pending = post(
-    app,
-    "/orch/v1/ask-boss",
-    { question: "what is the API token?", kind: "credential" },
-    "tok-eng",
-  );
+  const pending = post(app, "/orch/v1/ask-boss", { question: "what is the API token?", kind: "credential" }, "tok-eng");
   const filed = await until(
     () => first(db.select({ severity: escalation.severity, chain_state: escalation.chain_state }).from(escalation)),
     (row) => row !== undefined,

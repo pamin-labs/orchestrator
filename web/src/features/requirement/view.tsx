@@ -24,7 +24,7 @@ import {
   type State,
 } from "../../shared/api";
 import type { PanelFrame } from "../../shared/stream";
-import { asksOf, gates, labelOf, mineOf, prUrl, statusLabel, WHERE_LABEL } from "../../shared/select";
+import { asksOf, gates, mineOf, prUrl, statusLabel, whereLabel } from "../../shared/select";
 import { K, waited } from "../../shared/format";
 import { nl } from "../../shared/prose";
 import { cn } from "../../ui/cn";
@@ -955,6 +955,21 @@ function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
  * receives the sentence, a confirm carrying the weight, and a send that clears
  * the box only if it went.
  */
+/**
+ * The one button both action rows have, in the two states its body has.
+ *
+ * `fallow audit`'s only clone group in this tree: fifteen lines twice, differing
+ * in the `true`/`false` handed to `respecBody`. The label is one sentence and
+ * the confirm reuses it as its title and its yes, so there is nothing here for a
+ * caller to vary except that flag.
+ */
+function Respec({ started, disabled, run }: { started: boolean; disabled: boolean; run: () => Promise<unknown> }) {
+  const { t } = useLingui();
+  const label = t`Return for re-decomposition`;
+  const body = t(respecBody(started));
+  return <SendAs label={label} tip={body} spec={{ title: label, body, yes: label }} disabled={disabled} run={run} />;
+}
+
 function SendAs({
   label,
   tip,
@@ -1029,14 +1044,8 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
                 <Trans>Fix this</Trans>
               </Button>
             </Tip>
-            <SendAs
-              label={t`Return for re-decomposition`}
-              tip={t(respecBody(true))}
-              spec={{
-                title: t`Return for re-decomposition`,
-                body: t(respecBody(true)),
-                yes: t`Return for re-decomposition`,
-              }}
+            <Respec
+              started
               disabled={busy || !text}
               run={async () => (await send({ text, attachments }, "respec")) && clear()}
             />
@@ -1229,14 +1238,8 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
         onSubmit={(d) => send(d, "patch")}
         actions={({ text, attachments, busy, clear }) => (
           <>
-            <SendAs
-              label={t`Return for re-decomposition`}
-              tip={t(respecBody(false))}
-              spec={{
-                title: t`Return for re-decomposition`,
-                body: t(respecBody(false)),
-                yes: t`Return for re-decomposition`,
-              }}
+            <Respec
+              started={false}
               disabled={busy || !text}
               run={async () => (await send({ text, attachments }, "respec")) && clear()}
             />
@@ -1471,7 +1474,7 @@ function Held({ rows }: { rows: Escalation[] }) {
             <span>{waited(e.created_at)}</span>
           </div>
           <Asked body={e.question} className="mt-1.5" tone="text-ink-2" />
-          <Typing label={labelOf(WHERE_LABEL[e.chain_state], e.chain_state)} />
+          <Typing label={whereLabel(e.chain_state)} />
         </div>
       ))}
     </div>
