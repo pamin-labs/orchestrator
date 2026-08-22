@@ -16,7 +16,6 @@ import { NotesResponseSchema, type PanelNote as Note } from "../../../../src/con
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ph, msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
-import { i18n } from "../../i18n";
 import { labelOf } from "../../shared/select";
 
 /**
@@ -57,7 +56,7 @@ function Evidence({ note, gate, files }: { note: Note; gate: string | null; file
   const { t } = useLingui();
   if (![gate, note.exportPath, ...files].some(Boolean)) return null;
   const found = gate ? GATES[gate] : undefined;
-  const verdict = gate ? { ...found, text: found ? i18n._(found.text) : gate } : null;
+  const verdict = gate ? { ...found, text: found ? t(found.text) : gate } : null;
   return (
     <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
       {verdict && <Meta className={verdict.className}>{t`gate ${ph({ verdict: verdict.text })}`}</Meta>}
@@ -143,6 +142,7 @@ export function NotesBoard({
   tab?: string | null;
   onTab?: (t: string) => void;
 }) {
+  const { t } = useLingui();
   if (!notes)
     return (
       <Meta>
@@ -174,7 +174,7 @@ export function NotesBoard({
       <TabList>
         {present.map(([k, label]) => (
           <Tab key={k} value={k} count={notes.filter((n) => n.kind === k).length}>
-            {i18n._(label)}
+            {t(label)}
           </Tab>
         ))}
       </TabList>

@@ -14,7 +14,6 @@ import {
 } from "../../../../src/contracts/login-flow";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { msg, ph } from "@lingui/core/macro";
-import { i18n } from "../../i18n";
 import type { MessageDescriptor } from "@lingui/core";
 
 export interface Runtime {
@@ -259,6 +258,7 @@ function Credential(props: CredentialProps) {
 }
 
 function CredentialIntro({ state }: { state: CredentialState }) {
+  const { t } = useLingui();
   const { props, form } = state;
   const spec = props.runtime.modes.find((candidate) => candidate.mode === form.mode) ?? props.runtime.modes[0]!;
   // How to get one, and what it costs — instructions for a decision already
@@ -266,12 +266,13 @@ function CredentialIntro({ state }: { state: CredentialState }) {
   if (props.current && props.current.mode === form.mode) return null;
   return (
     <Meta className="mb-1.5 block">
-      {typeof spec.how === "string" ? spec.how : i18n._(spec.how)} · {i18n._(spec.cost)}
+      {typeof spec.how === "string" ? spec.how : t(spec.how)} · {t(spec.cost)}
     </Meta>
   );
 }
 
 function CredentialHeader({ state }: { state: CredentialState }) {
+  const { t } = useLingui();
   const { props, form, changeForm } = state;
   return (
     <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -287,7 +288,7 @@ function CredentialHeader({ state }: { state: CredentialState }) {
       >
         {props.runtime.modes.map((m) => (
           <Segment key={m.mode} value={m.mode}>
-            {i18n._(m.label)}
+            {t(m.label)}
           </Segment>
         ))}
       </Segments>
@@ -296,6 +297,7 @@ function CredentialHeader({ state }: { state: CredentialState }) {
 }
 
 function CredentialStatus({ state }: { state: CredentialState }) {
+  const { t } = useLingui();
   const { props, form } = state;
   if (!props.current)
     return (
@@ -303,7 +305,7 @@ function CredentialStatus({ state }: { state: CredentialState }) {
         <Trans>Not configured</Trans>
       </span>
     );
-  const labels = Object.fromEntries(props.runtime.modes.map((mode) => [mode.mode, i18n._(mode.label)]));
+  const labels = Object.fromEntries(props.runtime.modes.map((mode) => [mode.mode, t(mode.label)]));
   return (
     <>
       {/* Which mode is stored is only worth a word when it is not the one
@@ -375,7 +377,7 @@ function SecretField({ state }: { state: CredentialState }) {
       {/* The label is what this mode calls the thing. It said `token` under an
           API key too, which is two words for one field. */}
       <FieldLabel htmlFor={`${props.runtime.key}-secret`} className="text-ink-3">
-        {i18n._(SECRET_LABEL[mode])}
+        {t(SECRET_LABEL[mode])}
       </FieldLabel>
       <InputGroup>
         <Input

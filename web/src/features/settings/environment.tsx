@@ -17,7 +17,6 @@ import { saidText } from "../../shared/said";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { msg, ph } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
-import { i18n } from "../../i18n";
 
 /** Can this machine build a sandbox at all. Four facts, one line each. */
 /**
@@ -168,6 +167,7 @@ function ServerStatus({ server, onRefresh }: { server: ServerInfo | null; onRefr
 }
 
 function StatusSummary({ server }: { server: ServerInfo | null }) {
+  const { t } = useLingui();
   if (!server)
     return (
       <Meta>
@@ -182,7 +182,7 @@ function StatusSummary({ server }: { server: ServerInfo | null }) {
       ) : (
         <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-accent" />
       )}
-      <span className={cn("text-body", !state.ok && "text-accent")}>{i18n._(state.said)}</span>
+      <span className={cn("text-body", !state.ok && "text-accent")}>{t(state.said)}</span>
     </>
   );
 }
@@ -192,6 +192,7 @@ function serverIdentity(server: ServerInfo) {
 }
 
 function ServerDetails({ server }: { server: ServerInfo | null }) {
+  const { t } = useLingui();
   if (!server) return null;
   // Two identifiers for one process, on one line. They were a Meta beside the
   // status and a Meta three rows below it, and neither is a fact you read on the
@@ -199,7 +200,7 @@ function ServerDetails({ server }: { server: ServerInfo | null }) {
   const ident = serverIdentity(server);
   return (
     <>
-      <ServerWhy why={server.why} state={i18n._(SERVER_STATE[server.state].said)} />
+      <ServerWhy why={server.why} state={t(SERVER_STATE[server.state].said)} />
       <ServerIdentity value={ident} />
       <ServerLog log={server.log} />
     </>

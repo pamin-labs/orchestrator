@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { Segment, Segments } from "./segment";
 import { z } from "zod";
 import { msg } from "@lingui/core/macro";
+import { useLingui } from "@lingui/react/macro";
 import type { MessageDescriptor } from "@lingui/core";
-import { i18n } from "../i18n";
 
 /**
  * Light / dark / follow the system.
@@ -77,6 +77,7 @@ export function startTheme(): void {
 
 /** The three states, said out loud. ⌘⇧L still cycles them from anywhere. */
 export function ThemeChoice() {
+  const { t } = useLingui();
   const [pref, setPref] = useState<Pref>(read);
   useEffect(() => {
     const sync = () => setPref(read());
@@ -95,7 +96,7 @@ export function ThemeChoice() {
     >
       {PrefSchema.options.map((p) => (
         <Segment key={p} value={p}>
-          {i18n._(LABEL[p])}
+          {t(LABEL[p])}
         </Segment>
       ))}
     </Segments>

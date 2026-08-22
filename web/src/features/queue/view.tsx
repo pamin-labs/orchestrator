@@ -13,7 +13,6 @@ import { cn } from "../../ui/cn";
 import { foldQueueItems, queueClusters, queueItems, type QueueCluster, type QueueItem } from "./model";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
-import { i18n } from "../../i18n";
 
 /**
  * Everything waiting on the boss, ordered by what ignoring it costs.
@@ -286,8 +285,9 @@ function TicketMeta({ item, n }: { item: QueueItem; n: number }) {
 }
 
 function TicketAbout({ item }: { item: QueueItem }) {
+  const { t } = useLingui();
   const kind = item.about ? KIND_LABEL[item.about] : undefined;
-  return kind ? <span className="text-ink-2">{i18n._(kind)}</span> : null;
+  return kind ? <span className="text-ink-2">{t(kind)}</span> : null;
 }
 
 function TicketReply({ item, standing, refresh }: { item: QueueItem; standing: boolean; refresh: () => void }) {

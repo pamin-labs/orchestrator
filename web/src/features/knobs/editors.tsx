@@ -36,7 +36,6 @@ import { COUNT_UNITS, countOf, DURATION_UNITS, PER, splitCount, splitDuration, u
 import { Trans, useLingui } from "@lingui/react/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
-import { i18n } from "../../i18n";
 
 export const PERCENT = ["%"] as const;
 
@@ -864,11 +863,12 @@ const NOTIFY_SAID: Record<NotifyState, MessageDescriptor | ""> = {
  * ungranted permission already does.
  */
 export function Permission() {
+  const { t } = useLingui();
   const supported = typeof Notification !== "undefined";
   const [state, setState] = useState(supported ? Notification.permission : "denied");
   const [want, setWant] = useState(notifyWanted);
   const message = NOTIFY_SAID[notifyState(supported, state)];
-  const said = message === "" ? "" : i18n._(message);
+  const said = message === "" ? "" : t(message);
   return (
     <>
       <Field aria-labelledby="notify-perm">

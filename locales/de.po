@@ -359,9 +359,6 @@ msgstr "{staged}/{ticked} angehakt erreichen die Sandbox, {fromRepo} aus dem Rep
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
 msgstr "{staged}/{ticked} angehakt erreichen die Sandbox, etwa {tokens}k Tokens Präfix pro Zug"
 
-msgid "{storedHint} stored; paste a new one to replace it"
-msgstr "{storedHint} gespeichert; zum Ersetzen einen neuen einfügen"
-
 msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} automatisch abgenommen, alle drei Tore bestanden"
 

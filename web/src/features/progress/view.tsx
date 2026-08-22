@@ -14,7 +14,6 @@ import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
-import { i18n } from "../../i18n";
 
 /** Requirements are state-filtered, paged, and counted on their tabs. */
 
@@ -98,7 +97,7 @@ export function Progress({
               count={b.mine ? todo : of(b).length}
               {...(b.mine !== undefined ? { mine: b.mine } : {})}
             >
-              {i18n._(b.label)}
+              {t(b.label)}
             </Tab>
           ))}
           <Tab value={DONE} count={archived.length}>

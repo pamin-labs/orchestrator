@@ -712,7 +712,7 @@ export function Knobs({
       {bare ? (
         saved && <Meta className="mb-1 block">{savedAt(saved)}</Meta>
       ) : (
-        <Head title={i18n._(spec.title)} note={i18n._(spec.note)}>
+        <Head title={t(spec.title)} note={t(spec.note)}>
           {/* Clear of the dialog's close button, which is absolutely positioned
               over this band and was sitting on the last character of the time. */}
           {saved && <Meta className="mr-7">{savedAt(saved)}</Meta>}
@@ -781,6 +781,7 @@ function Group({
   permission: boolean;
   onWrite: Write;
 }) {
+  const { t } = useLingui();
   if (!rows.length && !permission) return null;
   // Two columns once a group is long enough to scroll for. Every row here is a
   // label and one narrow control, so half the width was empty and the reader
@@ -816,7 +817,7 @@ function Group({
       {/* `label`, not `legend`: this names a run of rows inside a pane whose own
           name is already in the band above, so it sits at the row scale rather
           than competing with it. */}
-      <FieldLegend variant="label">{i18n._(group.legend)}</FieldLegend>
+      <FieldLegend variant="label">{t(group.legend)}</FieldLegend>
       {body}
     </FieldSet>
   );

@@ -116,7 +116,7 @@ function Crumb({
 }
 
 export function App() {
-  const { t, i18n } = useLingui();
+  const { t } = useLingui();
   const { state: st, cost, frames, live, refresh } = useOrch();
   const [sel, setSel] = useState<Selection>(() => parseSelection(location.hash));
   const { ui, setAdding, setPickProject, setPickReq, setPicking, setSide } = useUi();
@@ -325,7 +325,7 @@ export function App() {
         label={t`Switch requirement`}
         placeholder={t`Requirement name…`}
         empty={t`No other requirements for this project`}
-        items={groups.map((group) => requirementItem(group, i18n._(STATUS_LABEL[group.status])))}
+        items={groups.map((group) => requirementItem(group, t(STATUS_LABEL[group.status])))}
         onPick={(id) => go({ view: "req", g: id })}
       />
       {choose(
@@ -394,7 +394,7 @@ export function App() {
                     viewClass(viewActive(view, key)),
                   )}
                 >
-                  {i18n._(label)}
+                  {t(label)}
                 </button>
               ))}
             </span>,

@@ -39,7 +39,6 @@ import type { InferResponseType } from "hono/client";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
-import { i18n } from "../../i18n";
 
 const AuthResponseSchema: z.ZodType<InferResponseType<typeof api.auth.$get, 200>> = z.object({
   runtimes: z.array(AuthRowSchema),
@@ -186,7 +185,7 @@ export function SettingsDialog({
                      rounded-xl border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in
                      max-[44rem]:grid-cols-1 max-[44rem]:grid-rows-[auto_minmax(0,1fr)]"
         >
-          <Dialog.Title className="sr-only">{i18n._(NAV.find((n) => n.key === here)!.label)}</Dialog.Title>
+          <Dialog.Title className="sr-only">{t(NAV.find((n) => n.key === here)!.label)}</Dialog.Title>
           <Dialog.Close
             aria-label={t`Close`}
             className="absolute top-3 right-3 grid size-6.5 cursor-pointer place-items-center rounded-md
@@ -760,7 +759,7 @@ function Item({
       )}
     >
       <Icon size={14} strokeWidth={1.75} className="shrink-0" />
-      <span className="truncate">{i18n._(n.label)}</span>
+      <span className="truncate">{t(n.label)}</span>
       <span className="grow" />
       {nag && <i className="size-1.5 shrink-0 rounded-full bg-accent" aria-label={t`Waiting for you`} />}
     </button>

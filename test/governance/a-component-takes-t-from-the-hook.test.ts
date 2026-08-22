@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { traverse } from "@babel/core";
+import { traverse, type NodePath } from "@babel/core";
 import { parse } from "../support/ast.ts";
 
 /**
@@ -23,7 +23,29 @@ function offenders(file: string, source: string): string[] {
   const ast = parse(file, source);
   if (!ast) return [];
   const found: string[] = [];
+  /** The outermost enclosing function, which is the component; anything nested
+   *  is a callback inside it and shares its scope. */
+  const componentAround = (p: NodePath): string => {
+    let top = p.getFunctionParent();
+    if (!top) return "";
+    for (let up = top.getFunctionParent(); up; up = up.getFunctionParent()) top = up;
+    return top.isFunctionDeclaration() && top.node.id
+      ? top.node.id.name
+      : top.parentPath?.isVariableDeclarator() && top.parentPath.node.id.type === "Identifier"
+        ? top.parentPath.node.id.name
+        : "";
+  };
+
   traverse(ast, {
+    // `i18n._(descriptor)` is the same finding one API over: it renders against
+    // the global instance, so a component drawing a module-scope table through
+    // it kept the old wording after a locale change.
+    MemberExpression(p) {
+      if (p.node.object.type !== "Identifier" || p.node.object.name !== "i18n") return;
+      if (p.node.property.type !== "Identifier" || p.node.property.name !== "_") return;
+      const named = componentAround(p);
+      if (/^[A-Z]/.test(named)) found.push(`${file}:${p.node.loc?.start.line ?? 0} ${named} (i18n._)`);
+    },
     Identifier(p) {
       if (p.node.name !== "t") return;
       const used =
@@ -34,17 +56,7 @@ function offenders(file: string, source: string): string[] {
       // this test wants.
       if (p.scope.getBinding("t")?.path.isVariableDeclarator()) return;
 
-      // The outermost enclosing function is the component; anything nested is a
-      // callback inside it and shares its scope.
-      let top = p.getFunctionParent();
-      if (!top) return;
-      for (let up = top.getFunctionParent(); up; up = up.getFunctionParent()) top = up;
-      const named =
-        top.isFunctionDeclaration() && top.node.id
-          ? top.node.id.name
-          : top.parentPath?.isVariableDeclarator() && top.parentPath.node.id.type === "Identifier"
-            ? top.parentPath.node.id.name
-            : "";
+      const named = componentAround(p);
       if (/^[A-Z]/.test(named)) found.push(`${file}:${p.node.loc?.start.line ?? 0} ${named}`);
     },
   });
@@ -68,8 +80,12 @@ test("it fires on a component and not on a helper or a hook binding", () => {
     1,
   );
 
-  expect(offenders("p.tsx", `${global}const note = (n: number) => t\`${"${n}"} left\`;`)).toEqual([]);
+  expect(offenders("p.tsx", `${global}const note = (n: number) => t\`{n} left\`;`)).toEqual([]);
   expect(
     offenders("p.tsx", "export function Pane() { const { t } = useLingui(); return <p>{t`Skills`}</p>; }"),
   ).toEqual([]);
+
+  // Same rule, one API over.
+  expect(offenders("p.tsx", "export function Pane() { return <p>{i18n._(LABEL)}</p>; }")).toHaveLength(1);
+  expect(offenders("p.tsx", "const label = (k: string) => i18n._(LABEL[k]);")).toEqual([]);
 });

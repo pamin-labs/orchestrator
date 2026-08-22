@@ -359,9 +359,6 @@ msgstr "{staged}/{ticked} cochés atteignent le bac à sable, {fromRepo} du dép
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
 msgstr "{staged}/{ticked} cochés atteignent le bac à sable, environ {tokens}k tokens de préfixe par tour"
 
-msgid "{storedHint} stored; paste a new one to replace it"
-msgstr "{storedHint} enregistré ; collez-en un nouveau pour le remplacer"
-
 msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} acceptée automatiquement, les trois portes sont passées"
 

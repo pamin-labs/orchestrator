@@ -359,9 +359,6 @@ msgstr "チェックした {staged}/{ticked} がサンドボックスに届き�
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
 msgstr "チェックした {staged}/{ticked} がサンドボックスに届きます、1 ターンあたり前置き約 {tokens}k トークン"
 
-msgid "{storedHint} stored; paste a new one to replace it"
-msgstr "{storedHint} を保存済み。差し替えるには新しい値を貼り付けてください"
-
 msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} を自動受理しました。三つのゲートすべて通過"
 

@@ -359,9 +359,6 @@ msgstr "勾中的 {staged}/{ticked} 个进沙箱，仓库自带 {fromRepo} 个�
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
 msgstr "勾中的 {staged}/{ticked} 个进沙箱，每 turn 前缀约 {tokens}k tokens"
 
-msgid "{storedHint} stored; paste a new one to replace it"
-msgstr "已存 {storedHint}，粘新的就换掉"
-
 msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} 自动查收，三道闸全过"
 

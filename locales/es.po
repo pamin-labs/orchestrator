@@ -359,9 +359,6 @@ msgstr "{staged}/{ticked} marcados llegan al sandbox, {fromRepo} del repositorio
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
 msgstr "{staged}/{ticked} marcados llegan al sandbox, unos {tokens}k tokens de prefijo por turno"
 
-msgid "{storedHint} stored; paste a new one to replace it"
-msgstr "{storedHint} guardado; pega uno nuevo para reemplazarlo"
-
 msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} aceptada automáticamente, las tres puertas pasaron"
 

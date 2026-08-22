@@ -359,9 +359,6 @@ msgstr "{staged}/{ticked} отмеченных попадают в песочн�
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
 msgstr "{staged}/{ticked} отмеченных попадают в песочницу, около {tokens}k токенов префикса за ход"
 
-msgid "{storedHint} stored; paste a new one to replace it"
-msgstr "{storedHint} сохранён; вставьте новый, чтобы заменить"
-
 msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} принята автоматически, все три ворот пройдены"
 

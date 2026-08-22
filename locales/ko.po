@@ -359,9 +359,6 @@ msgstr "체크한 {staged}/{ticked}이 샌드박스에 전달됩니다, 저장�
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
 msgstr "체크한 {staged}/{ticked}이 샌드박스에 전달됩니다, 턴당 프리픽스 약 {tokens}k 토큰"
 
-msgid "{storedHint} stored; paste a new one to replace it"
-msgstr "{storedHint} 저장됨. 바꾸려면 새 값을 붙여넣으세요"
-
 msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} 자동 수락, 세 관문 모두 통과"
 
