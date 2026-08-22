@@ -67,9 +67,11 @@ test("a project row prints only the counts that are facts", () => {
   st.groups.push(group(1, 1, { spent_tokens: 1200 }), group(2, 1, { status: "RUNNING", name: "在跑的" }));
   const page = home(st);
 
-  // 2 需求 and 1.2k tokens are the row's right edge, and both exist here.
+  // 2 需求 and the spend are the row's right edge, and both exist here. The
+  // count is written the way this catalog's language writes it: Chinese groups
+  // by 万, so 1200 is below its first tier and prints in full.
   shown(page, "2 个需求");
-  shown(page, "1.2k tokens");
+  shown(page, "1200 tokens");
   // A running requirement names itself, so the boss knows what is spending.
   shown(page, "在跑：在跑的");
   shown(page, "1 个在跑");
@@ -235,7 +237,7 @@ test("a project's row data is decided before anything is drawn", () => {
   const row = projectRow(st, 1);
   // PLANNING counts as running on this line; PAUSED does not.
   expect(row.live).toEqual(["在想"]);
-  expect(row.meta).toEqual(["2 个需求", "1.2k tokens"]);
+  expect(row.meta).toEqual(["2 个需求", "1200 tokens"]);
   expect(row.bits).toEqual([]);
   expect(row.n).toBe(0);
 

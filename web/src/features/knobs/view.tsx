@@ -62,6 +62,7 @@ import { t } from "@lingui/core/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
+import { clock } from "../../shared/format.ts";
 
 /**
  * The operating knobs, as rows.
@@ -665,7 +666,11 @@ export function Knobs({
     // because the row shows the reason where the value is.
     const r = await mutate(api.settings.$post({ json: body }), true);
     if (r.ok) {
-      setSaved(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
+      // The active locale, not `toLocaleTimeString("zh-CN")`: the saved-at stamp
+      // sat beside a row the reader had just read in one of ten languages, and
+      // said the time in Chinese conventions to all of them. `clock` is the same
+      // formatter the timeline column uses, so the two agree by construction.
+      setSaved(clock(Date.now()));
       await queries.invalidateQueries({ queryKey: ["settings"] });
     }
     return r;

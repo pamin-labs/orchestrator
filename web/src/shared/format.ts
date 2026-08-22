@@ -1,4 +1,11 @@
-import { t } from "@lingui/core/macro"; /**
+import { i18n } from "@lingui/core";
+import { t } from "@lingui/core/macro";
+
+/** Whatever the panel is being read in. Empty until the first `activate`, and
+ *  `Intl` throws on an empty tag rather than falling back. */
+const locale = () => i18n.locale || "en";
+
+/**
  * Token counts, in the unit that fits.
  *
  * Stopped at k, so a real project's total printed as "1834k" — wrong as a unit and
@@ -12,21 +19,38 @@ import { t } from "@lingui/core/macro"; /**
  * fifth of it gone. `Intl` picks the tier from the rounded value, so neither can
  * happen.
  */
-const COMPACT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+/**
+ * `Intl` at the active locale, not an `Intl.NumberFormat` of our own pinned to
+ * `en-US`. The compact tier is a language's own: `183.4万` is how a Chinese
+ * reader writes the number `1834000`, and `1,8 Mio.` is how a German one does. A
+ * formatter frozen to one locale put every other reader's spend on screen in
+ * English notation.
+ */
+/**
+ * Built per call rather than once at module scope, and `Intl.NumberFormat`
+ * rather than `i18n.number`: the locale moves while the page is open, and
+ * Lingui deprecated its own wrapper in v6 in favour of calling `Intl` directly.
+ * The engine caches the format instance behind the constructor.
+ */
 export const K = (v?: number | null) => {
   const n = v ?? 0;
   // A count that is not a number used to reach the screen spelled "NaN".
   if (!Number.isFinite(n)) return "0";
-  // en-US stamps the thousands tier "K"; the rest of the panel — the settings
-  // rows in features/knobs/units.ts — writes it lowercase, and M / B already agree.
-  return COMPACT.format(n).replace("K", "k");
+  // The one thing still spelled by hand, and it is typography rather than
+  // language: English's compact tier is `K`, and the settings rows beside this
+  // on the same page write it lowercase. No other locale's suffix contains one.
+  return new Intl.NumberFormat(locale(), { notation: "compact", maximumFractionDigits: 1 }).format(n).replace("K", "k");
 };
 
 /** A timestamp as wall-clock time, for rows the boss scans against their own day. */
-export const clock = (ms: number) => {
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
+/**
+ * `hourCycle: "h23"` rather than the locale's default, and that is the one thing
+ * here that is not the reader's choice: these sit in a fixed-width column beside
+ * each other, and `6:53 AM` next to `18:53` is a column that no longer lines up.
+ * Everything else — separator, digit shaping — comes from the active locale.
+ */
+export const clock = (ms: number) =>
+  new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(ms);
 
 /**
  * How long something took, in the coarsest unit that does not lose the point.

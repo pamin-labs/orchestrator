@@ -1,7 +1,21 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
+import { i18n } from "../../web/src/i18n.ts";
 import { K } from "../../web/src/shared/format.ts";
 
+/**
+ * A token count, in the notation of the language the panel is being read in.
+ *
+ * It was an `Intl.NumberFormat` of our own pinned to `en-US`, so the header and
+ * the 成本 table printed English notation to all ten readers. `i18n.number` is
+ * the same `Intl` reached through the active locale, and the tiers below are a
+ * language's own: `1.8M` is not a translation of `183.4万`, it is a different
+ * way of writing the same quantity.
+ */
+
+afterEach(() => i18n.activate("zh"));
+
 test("a token count never prints in a unit that does not exist", () => {
+  i18n.activate("en");
   // The tiers were hand-written and the tier was picked before the rounding, so
   // the last half-percent of each one rolled over inside its own label: 999500
   // came out "1000k" and 999999999 came out "1000M". Both are on the header and
@@ -17,13 +31,32 @@ test("a token count never prints in a unit that does not exist", () => {
   expect(K(0)).toBe("0");
 
   // Lowercase k, because units.ts writes the settings rows that way and both
-  // sit on the same page.
+  // sit on the same page. English is the only locale whose suffix has a K in it.
   expect(K(272_000)).toBe("272k");
   expect(K(1_834_000)).toBe("1.8M");
+});
 
-  // A missing count is 0, and so is one that arrived as NaN — which used to
-  // reach the screen spelled "NaN".
-  expect(K(null)).toBe("0");
-  expect(K(undefined)).toBe("0");
-  expect(K(Number.NaN)).toBe("0");
+test("the same count, in the notation each language actually uses", () => {
+  // Chinese groups by 万, not by thousand, so 1200 is below its first tier and
+  // 272000 is 27.2 of them. A reader of this panel writes it no other way.
+  i18n.activate("zh");
+  expect(K(1200)).toBe("1200");
+  expect(K(272_000)).toBe("27.2万");
+  expect(K(1_834_000)).toBe("183.4万");
+
+  // Russian for the decimal comma as much as for the suffix, and the space
+  // before the suffix is the non-breaking one CLDR specifies — a locale can move
+  // the separator, the suffix and the space without moving the tier.
+  i18n.activate("ru");
+  expect(K(1_834_000)).toBe("1,8\u00a0\u043c\u043b\u043d");
+});
+
+test("a count that is not a number is zero, in every language", () => {
+  // Which used to reach the screen spelled "NaN".
+  for (const locale of ["en", "zh"]) {
+    i18n.activate(locale);
+    expect(K(null)).toBe("0");
+    expect(K(undefined)).toBe("0");
+    expect(K(Number.NaN)).toBe("0");
+  }
 });
