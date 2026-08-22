@@ -83,6 +83,16 @@ export function validateJournal(input: JournalInput): Result<JournalOk> {
 const DifficultySchema = z.enum(["trivial", "normal", "hard"]);
 export type Difficulty = z.infer<typeof DifficultySchema>;
 
+/**
+ * The three words, for the two rejections that have to quote them.
+ *
+ * Interpolated rather than spelled out again — the same rule `DRAFT_FIELDS`
+ * already gets four lines up, not applied here: a rejection naming a difficulty
+ * the schema no longer parses sends the model to write a tag it will refuse.
+ * `z.enum` publishes `.options`, so there is nothing to keep in step.
+ */
+const DIFFICULTIES = DifficultySchema.options.join("|");
+
 export interface DraftSlice {
   title: string;
   difficulty: Difficulty;
@@ -212,7 +222,7 @@ function tableSlices(rows: string[][]): Result<{ slices: DraftSlice[] }> {
     const accept = row[2]?.trim() ?? "";
     if (!title || !accept || !difficulty.success)
       return invalid(
-        `slice row ${JSON.stringify(row.join(" | "))} must be "| title | trivial|normal|hard | ` +
+        `slice row ${JSON.stringify(row.join(" | "))} must be "| title | ${DIFFICULTIES} | ` +
           `how it is accepted |". The difficulty column picks the model, so it is not optional.`,
       );
     slices.push({ title, difficulty: difficulty.data, accept });
@@ -258,7 +268,7 @@ function legacySlices(rawSlices: string[]): Result<{ slices: DraftSlice[] }> {
     const accept = m?.[3]?.trim();
     if (!title || !accept || !difficulty.success)
       return invalid(
-        `slice ${JSON.stringify(raw)} must read "title [trivial|normal|hard] — how it is ` +
+        `slice ${JSON.stringify(raw)} must read "title [${DIFFICULTIES}] — how it is ` +
           `accepted". The difficulty tag picks the model, so it is not optional.`,
       );
     slices.push({ title, difficulty: difficulty.data, accept });

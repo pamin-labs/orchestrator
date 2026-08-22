@@ -20,6 +20,8 @@ import {
   type EscalationOpenState,
   type EscalationState,
   isAskKind,
+  RESERVED,
+  type Reserved,
   TO_BOSS,
 } from "../../contracts/states.ts";
 import { outputLanguage } from "../../contracts/config.ts";
@@ -196,19 +198,36 @@ async function citationError(db: DB, input: AnswerInput): Promise<string | null>
 const RESERVED_REFUSAL = "this one is reserved for the boss whatever the precedent";
 
 /**
- * The five reserved topics, as a question for a reader who is not the PM.
+ * The reserved topics, one sentence each, for a reader who is not the PM.
  *
  * English, and not through `msg`: the reader is a model, which is ADR 035's
- * first exemption. The list is `TO_BOSS` said in sentences, and it is here
- * rather than in `states.ts` because the vocabulary is a contract and the way it
- * is asked is not.
+ * first exemption. The words are here rather than in `states.ts` because the
+ * vocabulary is a contract and the way it is asked is not.
  */
+/**
+ * `satisfies Record<Reserved, string>`, which is the whole point of the shape.
+ * This was one paragraph transcribed from `TO_BOSS` — its own comment said so —
+ * so a sixth reserved topic would have raised at the asking end and been
+ * **invisible here**, in the half where the damage happens, with nothing failing.
+ * A missing sentence is a compile error now.
+ */
+const ASKED_AS = {
+  budget: "spending money, or a budget",
+  merge: "merging to the main branch",
+  credential: "a credential, secret, token or API key",
+  deploy: "deploying or releasing to production",
+  scope: "changing what is in scope for the requirement",
+} satisfies Record<Reserved, string>;
+
 const CLASSIFY = [
   "Answer with one word, yes or no, and nothing else.",
   "Does the question below ask a person to decide any of these:",
-  "spending money, or a budget; merging to the main branch; a credential, secret,",
-  "token or API key; deploying or releasing to production; or changing what is in",
-  "scope for the requirement?",
+  // Semicolons and a trailing `or`, so the list reads as one question however
+  // many topics it holds — the paragraph this replaced had the `or` welded into
+  // its fourth line.
+  `${RESERVED.slice(0, -1)
+    .map((k) => ASKED_AS[k])
+    .join("; ")}; or ${ASKED_AS[RESERVED[RESERVED.length - 1]!]}?`,
   "",
   "question:",
 ].join("\n");

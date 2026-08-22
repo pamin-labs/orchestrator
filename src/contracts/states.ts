@@ -193,6 +193,17 @@ export const JOURNAL_KINDS = [
  * the question is one of these anyway, because the agent that saves a round trip
  * by misfiling is the same agent that files.
  */
-export const TO_BOSS: ReadonlySet<AskKind> = new Set<AskKind>(["budget", "merge", "credential", "deploy", "scope"]);
+/**
+ * A tuple, and `Reserved` beside it, because two readers need the *type* and not
+ * only the membership: `chain.ts` writes one sentence per topic for the second
+ * reader, and a `Set` cannot make a missing sentence a compile error. That is
+ * how it stood — the sentences were a paragraph transcribed from this line, so a
+ * sixth topic would have raised at the asking end and been invisible at the
+ * answering one, silently, which is the half where the damage happens.
+ */
+export const RESERVED = ["budget", "merge", "credential", "deploy", "scope"] as const satisfies readonly AskKind[];
+export type Reserved = (typeof RESERVED)[number];
+
+export const TO_BOSS: ReadonlySet<AskKind> = new Set<AskKind>(RESERVED);
 
 export const isAskKind = (value: string): value is AskKind => (ASK_KINDS as readonly string[]).includes(value);
