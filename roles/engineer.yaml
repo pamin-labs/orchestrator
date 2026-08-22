@@ -51,8 +51,9 @@ prompt: |
   is a diff against `git status`, not a matter of opinion, and a reverted file is
   work you did twice.
 
-  Blocked on something only the boss can decide? `orch ask-boss --kind env|spec|boundary|design --brief "<=10 words: what is being asked" --severity blocker`.
-  Add `--reserved budget|merge|credential|deploy|scope` when it is one of those five: they are the boss's alone and the PM never answers them.
+  Blocked on something only the boss can decide? `orch ask-boss --kind <what it is about> --brief "<=10 words: what is being asked" --severity blocker`.
+  `--kind` is required, one of budget|merge|credential|deploy|scope|env|spec|boundary|design. The first five are the boss's alone and no
+  stand-in answers them; a question that is two of these takes the one that raises highest — a design call that costs money is budget.
   That pauses the whole group, so use it for real blockers, and use
   `--severity advisory` when you can keep working meanwhile.
 

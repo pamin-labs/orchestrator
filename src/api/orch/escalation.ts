@@ -6,13 +6,12 @@ import {
   abstain,
   CHAIN,
   answer as chainAnswer,
-  entryPoint,
   revoke,
   route,
   TRIAGE,
   triage,
 } from "../../mech/flow/chain.ts";
-import { RESERVED_TOPICS } from "../../contracts/states.ts";
+import { ASK_KINDS, TO_BOSS } from "../../contracts/states.ts";
 import { raise } from "../../mech/flow/escalate.ts";
 import { hold } from "../../mech/flow/intercept.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
@@ -46,23 +45,6 @@ import { outputLanguage } from "../../contracts/config.ts";
  * own are one subject, not five.
  */
 
-/**
- * What kind of question it is, from a closed set.
- *
- * Closed, because the queue groups by it: free text would give twelve spellings
- * of "environment" and group nothing. Unknown or missing falls to `other` rather
- * than being rejected — same rule as the brief, an agent must never be stuck on
- * a taxonomy.
- */
-const ASK_KINDS = ["env", "spec", "boundary", "design", "other"] as const;
-export type AskKind = (typeof ASK_KINDS)[number];
-const isAskKind = (value: string): value is AskKind => ASK_KINDS.some((kind) => kind === value);
-
-export const askKind = (given: string | undefined): AskKind => {
-  const value = given?.trim() ?? "";
-  return isAskKind(value) ? value : "other";
-};
-
 export function brief(given: string | undefined, question: string): string {
   // The agent's own brief is its own words and its own punctuation; only the
   // sentence *this* derives is trimmed and cut.
@@ -74,25 +56,23 @@ export function brief(given: string | undefined, question: string): string {
 const cut = (s: string) => (s.length > 40 ? `${s.slice(0, 39)}…` : s);
 
 /**
- * `kind` and `severity` fall back rather than refuse.
- *
- * Same rule the brief follows: a question that cannot be filed is an agent stuck
- * on a taxonomy, and the fallbacks are right often enough. `askKind` maps
- * anything unfamiliar to `other`; anything that is not the word "blocker" is
- * advisory, because promoting a question to a blocker on a typo stops a group.
+ * `severity` falls back rather than refuses: anything that is not the word
+ * "blocker" is advisory, because promoting a question to a blocker on a typo
+ * stops a group.
+ */
+/**
+ * `kind` does not, and used to. It was filing — a wrong guess cost a queue
+ * heading — so it mapped anything unfamiliar to `other`. It decides the routing
+ * now, and a word the vocabulary does not know is a usage error rather than a
+ * silent "file it under nothing and let the PM take it". There is no `other`
+ * left to fall back to: an escalation is about something, and `none` is not a
+ * reason.
  */
 export const AskBossBody = z.object({
   question: Prose(),
   severity: z.string().max(20).optional(),
   brief: z.string().max(200).optional(),
-  kind: z.string().max(40).optional(),
-  /**
-   * The one field here that does not fall back. `kind` and `severity` are
-   * filing, and a wrong guess costs a queue heading; this decides whether the PM
-   * may answer, so an unrecognised word must be a 400 rather than a silent
-   * "never mind, back to the patterns". `z.enum` is that refusal.
-   */
-  reserved: z.enum(RESERVED_TOPICS).optional(),
+  kind: z.enum(ASK_KINDS),
 });
 
 export const postAskBoss = (async (ctx, _req, a, _p, b) => {
@@ -104,8 +84,12 @@ export const postAskBoss = (async (ctx, _req, a, _p, b) => {
     severity,
     question: b.question,
     brief: brief(b.brief, b.question),
-    kind: askKind(b.kind),
-    chain: entryPoint(b.question, b.reserved),
+    kind: b.kind,
+    // The whole gate at the asking end: a word, and which half of the list it is
+    // in. `entryPoint` used to test the question's prose against ten languages of
+    // keyword. The other half of the gate is in `chain.ts`, where the PM tries to
+    // answer.
+    chain: TO_BOSS.has(b.kind) ? "boss" : "pm",
   }))!;
   // Before `route()`, not after: it can hand the question to a stand-in that
   // answers within the same tick, and an answer with no waiter yet is dropped.

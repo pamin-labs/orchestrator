@@ -1,4 +1,4 @@
-import { RESERVED_TOPICS } from "../../contracts/states.ts";
+import { ASK_KINDS, isAskKind } from "../../contracts/states.ts";
 import { Command, CommanderError } from "commander";
 import type { hc } from "hono/client";
 import { ChangedFilesClaimSchema, MailIntent, SplitRequirements } from "../../contracts/orch.ts";
@@ -60,32 +60,19 @@ async function setup(api: DispatchContext, opts: { cmd?: string; none?: boolean 
 async function askBoss(
   api: DispatchContext,
   words: string[],
-  opts: { severity?: string; kind?: string; brief?: string; reserved?: string },
+  opts: { severity?: string; kind?: string; brief?: string },
 ): Promise<CommandResponse> {
   const question = words.join(" ");
   if (!question) return usageError("ask-boss needs a question");
-  // Checked here as well as by the schema, so a typo comes back as the five
-  // words rather than as a 400 an agent has to go and read. The server refuses
-  // it too: this decides whether the PM may answer, and a word it does not know
-  // must not quietly become "no topic given".
-  const given = opts.reserved?.trim();
-  // Found in the tuple rather than tested against it, so the narrow type comes
-  // from the lookup instead of from an assertion the compiler has to be told to
-  // trust. A typo comes back as the five words here rather than as a 400 an
-  // agent has to go and read; the server refuses it too, because this decides
-  // whether the PM may answer and a word it does not know must not quietly
-  // become "no topic given".
-  const reserved = RESERVED_TOPICS.find((topic) => topic === given);
-  if (given && !reserved) return usageError(`--reserved takes one of: ${RESERVED_TOPICS.join(" | ")}`);
+  // Checked here as well as by the schema, so a missing or misspelled word comes
+  // back as the nine rather than as a 400 an agent has to go and read. It used to
+  // fall back to `other`, which is what let a budget question file itself as a
+  // question about nothing and route to the PM.
+  const kind = opts.kind?.trim();
+  if (!kind || !isAskKind(kind)) return usageError(`--kind takes one of: ${ASK_KINDS.join(" | ")}`);
   return api.send(
     api.orch["ask-boss"].$post({
-      json: {
-        severity: opts.severity ?? "advisory",
-        question,
-        brief: opts.brief,
-        kind: opts.kind,
-        reserved,
-      },
+      json: { severity: opts.severity ?? "advisory", question, brief: opts.brief, kind },
     }),
   );
 }
@@ -404,11 +391,9 @@ function buildProgram(api: DispatchContext, act: Act, out: string[], err: string
     .command("ask-boss <question...>")
     .description("escalate to the boss and wait for the answer")
     .option("--severity <severity>", "blocker|advisory", "advisory")
-    .option("--kind <kind>", "env|spec|boundary|design|other")
-    // Not a synonym for `--kind`: that one groups the queue, this one decides
-    // whether the PM may answer at all. Saying it sends the question straight to
-    // the boss; saying nothing leaves it to the patterns, which still fire.
-    .option("--reserved <topic>", "budget|merge|credential|deploy|scope — the boss decides this one")
+    // Required, and the five that reach the boss are named first because the rule
+    // for a question that is two of these is "pick the one that raises highest".
+    .option("--kind <kind>", "required — budget|merge|credential|deploy|scope (the boss decides these) or env|spec|boundary|design")
     .option("--brief <brief>", "<=20 chars, what it is about")
     .action(bind(askBoss));
 

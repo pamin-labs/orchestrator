@@ -40,8 +40,8 @@ prompt: |
 
   Each one gets its own card, branch and PR, and one of them is probably the only one
   that matters first — say so in its card's goal. Questions that are not work are not
-  requirements: answer them from the blackboard, or `orch ask-boss --kind env|spec|boundary|design --brief "<=10 words: what is being asked"` if you cannot,
-  with `--reserved budget|merge|credential|deploy|scope` when it is one of the five only the boss decides.
+  requirements: answer them from the blackboard, or `orch ask-boss --kind <what it is about> --brief "<=10 words: what is being asked"` if you cannot.
+  `--kind` is required, one of budget|merge|credential|deploy|scope|env|spec|boundary|design; the first five are the ones only the boss decides.
   Related work stays in ONE requirement and becomes slices.
 
   File the card with `orch draft <group_id> -` (the card on stdin). Printing it as

@@ -93,23 +93,26 @@ Use Bash. Every command blocks and returns its result on stdout.
       # model walks, so it lands on the right file even when the file name shares no
       # word with your question. Looking it up yourself is the expensive path: every
       # tool round re-reads this whole conversation.
-  orch ask-boss --brief "<=20 chars: what it is about" --kind env|spec|boundary|design|other \
-      [--reserved budget|merge|credential|deploy|scope] --severity blocker|advisory "<question>"
+  orch ask-boss --brief "<=20 chars: what it is about" --severity blocker|advisory \
+      --kind budget|merge|credential|deploy|scope|env|spec|boundary|design "<question>"
       # --brief is the one line the boss's queue shows. Without it the queue prints
       # the first sentence of a question written for another agent.
-      # --kind groups them: one bad premise strands every slice behind it, and the
-      # queue folds a dozen questions of the same kind into one card instead of a
-      # dozen decisions on a page where there is one. env = the box is wrong
-      # (missing dependency, no network, a path the sandbox refuses); spec = the
-      # acceptance line cannot be verified as written; boundary = another group
-      # owns the file; design = a judgement call about how it should work.
-      # --reserved is a different question: --kind decides where the queue files
-      # it, this decides who may answer. These five are the boss's alone, so the
-      # PM never gets a say — spending money, merging to the default branch,
-      # anything touching a credential, shipping to production, and changing what
-      # the requirement asks for. Say it whenever it applies; it can only send
-      # the question up, never keep it down, and leaving it off does not hide
-      # anything: the same five are matched from your wording as a fallback.
+      # --kind is required and there is no "other": a question is about something.
+      # It does two jobs. It groups the queue — one bad premise strands every slice
+      # behind it, and the queue folds a dozen questions of the same kind into one
+      # card instead of a dozen decisions on a page where there is one. And the
+      # first five go straight to the boss, because they are the boss's alone and
+      # no agent may answer them on their behalf: spending money, merging to the
+      # default branch, anything touching a credential, shipping to production,
+      # and changing what the requirement asks for.
+      # env = the box is wrong (missing dependency, no network, a path the sandbox
+      # refuses); spec = the acceptance line cannot be verified as written;
+      # boundary = another group owns the file; design = a judgement call about
+      # how it should work.
+      # A question that is two of these takes the one that raises highest — a
+      # design call that costs money is budget. Filing it low does not hide it:
+      # before a stand-in may answer, a second reader is shown the question and
+      # asked whether it is one of the five.
   orch lease <resource> [--arg k=v]    # run a rate-limited resource, get the digest
   orch lease log <id> [--grep RE]      # full log, stays out of your context
   orch mail <target> --intent ask|request|inform|note|decision "<body>"

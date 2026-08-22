@@ -1,14 +1,16 @@
 import { msg } from "@lingui/core/macro";
 import type { Said } from "../../contracts/said.ts";
 import { and, eq, isNull, ne } from "drizzle-orm";
-import type { Locale } from "../../contracts/config.ts";
 import { answered, roleFor, type Ctx } from "../../mech/ctx.ts";
 import { addNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { agent as agentTable, escalation, grp, note as noteTable } from "../../platform/persistence/schema.ts";
+import { activeTracer } from "../../platform/observability/traces.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { errText } from "../../platform/process/text.ts";
 import { rollbackTo } from "../git/gitops.ts";
 import { sandboxGit } from "../git/checkout.ts";
-import { WORK } from "../sandbox/sandbox.ts";
+import { UTIL, WORK } from "../sandbox/sandbox.ts";
 import { dropGroup } from "./start.ts";
 import { release } from "./intercept.ts";
 import {
@@ -17,7 +19,8 @@ import {
   isTerminalEscalationState,
   type EscalationOpenState,
   type EscalationState,
-  type ReservedTopic,
+  isAskKind,
+  TO_BOSS,
 } from "../../contracts/states.ts";
 import { outputLanguage } from "../../contracts/config.ts";
 
@@ -32,100 +35,6 @@ import { outputLanguage } from "../../contracts/config.ts";
  */
 
 export const CHAIN = ESCALATION_OPEN_STATES;
-
-/**
- * Topics that never route through the chain, however clear the precedent.
- *
- * ponytail: keyword matching, so it over-triggers rather than under-triggers.
- * A question wrongly sent to the boss costs one interruption; one wrongly
- * answered by an agent can cost money or a merge.
- */
-/**
- * Keyed by locale, and typed `Record<Locale, ...>` so an eleventh language is
- * caught by the compiler rather than by a boss who was never asked. Five topics,
- * in the same order on every row: money, merging to `main`, credentials, going
- * to production, changing the requirement.
- */
-/**
- * This gate was written when the panel spoke two languages. It speaks ten now
- * and an agent writes its question in `output.language`, so the other eight
- * walked straight through it — and so did two topics in the two it knew.
- * Two probes per language, "raise the budget?" and "merge into main?": sixteen
- * of eighteen leaked, English `budget increase` (never the word order anyone
- * uses) and Chinese (no word for merge at all) among them.
- */
-/**
- * No `\b` on the CJK rows — word boundaries are defined on ASCII word
- * characters, so `\b予算\b` never matches inside a Japanese sentence; the same
- * trap `FILLER` in `mech/util/validate.ts` documents. Nor on Cyrillic, which
- * inflects on top of it, so those are stems: `трат` covers трата/потратить/затраты.
- */
-/**
- * Nothing looks a row up. `PATTERNS` flattens all ten and every question is
- * tested against all of them, because an agent writes in whatever
- * `output.language` says and the gate does not get to know which. The keys buy
- * one thing and it is worth the shape: `Record<Locale, …>` makes an eleventh
- * language a compile error.
- */
-const RESERVED: Record<Locale, readonly RegExp[]> = {
-  // `subscri` sat inside the `\b(…)\b` group, so it could never match: every real
-  // word continues past it into another word character and the closing `\b` fails.
-  // Dead since it was written, for the one topic with a recurring bill attached.
-  en: [
-    /\b(spend|pay(ment|ing|s)?|purchase|buy|subscri\w*|billing|invoice|budget)\b/i,
-    /\b(merge|merging)\b.*\b(main|master)\b/i,
-    /\b(secret|credential|api[_ -]?key|token|password|\.env)\b/i,
-    /\b(deploy|publish|release)\b.*\b(prod|production|live)\b/i,
-    /\b(scope|out of scope|drop the|add a feature|instead of what)\b/i,
-  ],
-  zh: [/(花钱|付费|采购|订阅|预算|合并|密钥|凭据|上线|发布到生产|需求范围|范围变更)/],
-  // Its own row rather than characters bolted onto `zh`'s: 金鑰 is not 密钥 and
-  // 憑證 is not 凭据 — Traditional Chinese differs from Simplified by vocabulary
-  // here, not only by glyph, the same reason `zh-Hant.po` is generated through a
-  // phrase dictionary and not a character table.
-  "zh-Hant": [/(花錢|付費|採購|訂閱|預算|合併|金鑰|憑證|上線|發布到生產|需求範圍|範圍變更)/],
-  // 予算 is not 预算 and 範囲 is not 范围: sharing the Han script is not sharing
-  // the characters. Kana as well as kanji where the kana spelling is ordinary.
-  ja: [
-    /(支払|しはら|課金|購入|サブスク|有料|予算|マージ|取り込|秘密鍵|パスワード|認証情報|クレデンシャル|api\s*キー|本番|ほんばん|デプロイ|リリース|スコープ|要件|範囲)/i,
-  ],
-  ko: [
-    /(결제|지불|구매|구독|유료|예산|머지|병합|비밀번호|비밀\s*키|자격\s*증명|인증\s*정보|api\s*키|배포|프로덕션|운영\s*환경|스코프|요구\s*사항|범위)/i,
-  ],
-  // `\bpag[ao]` anchored at the front, or it fires on English "propagate".
-  es: [
-    /(\bpag[ao]|compra|suscri|factura|presupuesto|fusion|clave|contraseña|credencial|producci|despleg|desplieg|alcance|requisito)/i,
-  ],
-  // `en production`, not bare `production`: the French preposition keeps this off
-  // every English sentence about a production database, which `en` pairs with a verb.
-  fr: [
-    /(payer|paiement|payant|achat|acheter|abonnement|facture|budget|fusionner|clé|mot de passe|identifiants|déploi|en production|périmètre|exigence)/i,
-  ],
-  // `\babos?\b`, because a bare `\babo` is every English "about" and "abort".
-  de: [
-    /(bezahl|zahlung|kauf|\babos?\b|rechnung|budget|mergen|zusammenführ|schlüssel|passwort|zugangsdaten|geheimnis|produktion|produktiv|ausliefer|veröffentlich|umfang|anforderung)/i,
-  ],
-  pt: [
-    /(\bpaga|compra|assinatura|fatura|orçamento|mesclar|fundir|chave|senha|credenci|segredo|produç|implantar|publicar|escopo|âmbito|requisito)/i,
-  ],
-  // `ключ` needs the lookbehind: without it every включить — "shall we enable" —
-  // is a question about a key. `в прод`/`на прод` for the same reason, since a
-  // bare `прод` is продукт and продолжать.
-  ru: [
-    /(оплат|плати|платеж|платёж|трат|купить|покуп|подписк|бюджет|мерж|влить|слить|(?<![а-яё])ключ|пароль|секрет|уч[её]тные|токен|в прод|на прод|продакш|деплой|выкат|релиз|требован|скоуп|рамк)/i,
-  ],
-};
-
-const PATTERNS = Object.values(RESERVED).flat();
-
-export function isReserved(question: string): boolean {
-  return PATTERNS.some((re) => re.test(question));
-}
-
-/** Where a new question should start. */
-export function entryPoint(question: string, topic?: ReservedTopic): (typeof CHAIN)[number] {
-  return topic || isReserved(question) ? "boss" : "pm";
-}
 
 export interface ChainDeps {
   /** Wired by api.ts: records a boss fact and checks whether it is the third of its kind. */
@@ -142,6 +51,9 @@ interface EscRow {
   severity: string;
   question: string;
   chain_state: EscalationState;
+  /** What the asker said it is about. Null on every row filed before the column,
+   *  and on the system-raised ones `escalate.ts` files with no kind at all. */
+  kind: string | null;
 }
 
 async function load(db: DB, id: number): Promise<EscRow | null> {
@@ -153,6 +65,7 @@ async function load(db: DB, id: number): Promise<EscRow | null> {
       severity: escalation.severity,
       question: escalation.question,
       chain_state: escalation.chain_state,
+      kind: escalation.kind,
     })
     .from(escalation)
     .where(eq(escalation.id, id));
@@ -280,15 +193,89 @@ async function citationError(db: DB, input: AnswerInput): Promise<string | null>
   return `note ${input.refNoteId} is a ${note.kind}, not a decision`;
 }
 
-async function answerError(db: DB, esc: EscRow, input: AnswerInput): Promise<string | null> {
+const RESERVED_REFUSAL = "this one is reserved for the boss whatever the precedent";
+
+/**
+ * The five reserved topics, as a question for a reader who is not the PM.
+ *
+ * English, and not through `msg`: the reader is a model, which is ADR 035's
+ * first exemption. The list is `TO_BOSS` said in sentences, and it is here
+ * rather than in `states.ts` because the vocabulary is a contract and the way it
+ * is asked is not.
+ */
+const CLASSIFY = [
+  "Answer with one word, yes or no, and nothing else.",
+  "Does the question below ask a person to decide any of these:",
+  "spending money, or a budget; merging to the main branch; a credential, secret,",
+  "token or API key; deploying or releasing to production; or changing what is in",
+  "scope for the requirement?",
+  "",
+  "question:",
+].join("\n");
+
+/**
+ * Whether this is reserved, asked of somebody other than the asker.
+ *
+ * The gate at the asking end is one word — `TO_BOSS.has(kind)` — and the agent
+ * that saves itself a round trip by filing a budget question as `env` is the
+ * same agent that files. So the PM's own attempt to answer is where it is asked
+ * again, which is also the moment the damage would happen. That replaced ten
+ * rows of per-language keyword regex; a model reads all ten languages, and the
+ * regex's own comment recorded sixteen of eighteen probes leaking.
+ */
+/**
+ * This is not "a gate a model can talk its way out of": the reader is not the
+ * PM, it is not in the conversation, and it is shown the question rather than an
+ * argument about the question.
+ */
+/**
+ * Three edges, and they are not the same edge. No `askIn` at all is a
+ * *configuration* — `indexModel.model` empty turns the cheap tier off — so the
+ * second reader does not exist and this abstains; failing closed there would
+ * leave a stand-in unable to answer anything on a deployment that chose to run
+ * without it.
+ */
+/**
+ * A call that throws, times out, or answers something that is not yes or no is a
+ * check that did not run, and raises. That is what keeps the property the
+ * declared topic had: no path routes a question *away* from the boss.
+ *
+ * ponytail: no cache and no deadline of its own — one call per answer attempt,
+ * inside `modelAsk`'s own 60s. Bound it here if answer attempts ever get cheap
+ * enough for that to be the slow part.
+ */
+async function secondOpinion(ctx: Ctx, esc: EscRow): Promise<boolean> {
+  const askIn = ctx.askIn;
+  if (!askIn) return false;
+  return activeTracer().startActiveSpan("chain.reserved", async (span) => {
+    try {
+      const said = (await askIn(esc.grp_id ? { grp: esc.grp_id } : UTIL)(`${CLASSIFY}\n${esc.question.slice(0, 2000)}`))
+        .trim()
+        .toLowerCase();
+      if (said.startsWith("yes")) return true;
+      if (said.startsWith("no")) return false;
+      throw new Error(`not a verdict: ${said.slice(0, 40)}`);
+    } catch (cause) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(cause) });
+      return true;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+async function answerError(ctx: Ctx, esc: EscRow, input: AnswerInput): Promise<string | null> {
   if (esc.chain_state === "answered") return "already answered";
   const responder = responderError(esc, input.by, input.actorGrpId);
   if (responder) return responder;
-  const citation = await citationError(db, input);
+  const citation = await citationError(ctx.db, input);
   if (citation) return citation;
-  return input.by !== "boss" && isReserved(esc.question)
-    ? "this one is reserved for the boss whatever the precedent"
-    : null;
+  if (input.by === "boss") return null;
+  // The stored word, not the question's prose: the same move `dedupe_key` made,
+  // one column over. A row filed before the column has none and falls to the
+  // reader below, which is why nothing had to be backfilled.
+  if (esc.kind !== null && isAskKind(esc.kind) && TO_BOSS.has(esc.kind)) return RESERVED_REFUSAL;
+  return (await secondOpinion(ctx, esc)) ? RESERVED_REFUSAL : null;
 }
 
 /** A level answers. Resolves whoever is blocked on `orch ask-boss`. */
@@ -299,7 +286,7 @@ export async function answer(
   const { ctx } = deps;
   const esc = await load(ctx.db, input.escId);
   if (!esc) return { ok: false, error: `no escalation ${input.escId}` };
-  const refused = await answerError(ctx.db, esc, input);
+  const refused = await answerError(ctx, esc, input);
   if (refused) return { ok: false, error: refused };
 
   await ctx.db

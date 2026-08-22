@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { DB } from "../../src/platform/persistence/database.ts";
-import { abstain, answer, entryPoint, isReserved, revoke, route, triage, TRIAGE } from "../../src/mech/flow/chain.ts";
-import { RESERVED_TOPICS } from "../../src/contracts/states.ts";
+import { abstain, answer, revoke, route, triage, TRIAGE } from "../../src/mech/flow/chain.ts";
+import { ASK_KINDS, TO_BOSS, type AskKind } from "../../src/contracts/states.ts";
 import { SayBody } from "../../src/api/orch/messaging.ts";
 import { TriageBody } from "../../src/api/orch/escalation.ts";
 import { AgentTurnPayloadSchema } from "../../src/platform/scheduling/scheduler.ts";
@@ -14,11 +14,21 @@ import type { Json } from "../../src/contracts/json.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
-async function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: boolean } = {}) {
+async function harness(
+  opts: {
+    withArchitect?: boolean;
+    withCos?: boolean;
+    withPm?: boolean;
+    /** The second reader `answerError` consults before a stand-in may answer.
+     *  Absent by default, which is the "no cheap model configured" deployment. */
+    verdict?: (prompt: string) => Promise<string>;
+  } = {},
+) {
   const notified: number[] = [];
   const ctx = await testContext({
     sandbox: fakeSandbox(),
     notifyBoss: (id) => void notified.push(id),
+    ...(opts.verdict ? { askIn: () => opts.verdict! } : {}),
   });
   const db = ctx.db;
   const sched = ctx.sched;
@@ -38,8 +48,8 @@ async function harness(opts: { withArchitect?: boolean; withCos?: boolean; withP
   }
 
   // `created_at` is now, not 0: the chain's timers are read against the clock.
-  const ask = async (question: string, severity = "advisory") =>
-    (await f.escalation.create({ grp_id: 1, agent_id: 1, severity, question, created_at: Date.now() })).id;
+  const ask = async (question: string, severity = "advisory", kind: AskKind | null = "design") =>
+    (await f.escalation.create({ grp_id: 1, agent_id: 1, severity, question, kind, created_at: Date.now() })).id;
 
   const app = makeApp(ctx);
   const post = (path: string, body?: Json, token?: string) =>
@@ -82,205 +92,110 @@ test("an ordinary question starts at the PM", async () => {
   expect((await jobsFor(h.db)).length).toBe(1);
 });
 
-describe("reserved topics skip the whole chain and go straight to the boss", () => {
-  test.each([
-    "should we pay for the higher API tier?",
-    "can I merge this into main?",
-    "what is the value of the API_KEY?",
-    "should we deploy to production now?",
-    "the boss wanted rate limiting — should we drop the audit log instead?",
-    "这个要花钱吗？",
-    "要不要改需求范围？",
-  ])("%s", (q) => {
-    expect(isReserved(q)).toBe(true);
-    expect(entryPoint(q)).toBe("boss");
+/**
+ * The gate at the asking end: one word, and which half of the vocabulary it is
+ * in.
+ *
+ * This was ten rows of per-language keyword regex against the question's prose —
+ * about sixty lines, whose own comment recorded sixteen of eighteen probes
+ * leaking before the other eight language rows existed. An agent writes in
+ * `output.language` and a keyword list is a guess; the word is not.
+ */
+describe("the kind decides where a question starts", () => {
+  test("the five reserved kinds go straight to the boss", () => {
+    expect([...TO_BOSS].sort()).toEqual(["budget", "credential", "deploy", "merge", "scope"]);
   });
 
-  test("a question about implementation is not reserved", () => {
-    expect(isReserved("which validation library should we use?")).toBe(false);
+  test("and the rest start at the PM", () => {
+    expect(ASK_KINDS.filter((k) => !TO_BOSS.has(k))).toEqual(["env", "spec", "boundary", "design"]);
+  });
+
+  /** There is no `other`, and no `none`: an escalation is about something, and
+   *  the two enums this replaced were two axes for one fact. */
+  test("the vocabulary has no way to say nothing", () => {
+    expect(ASK_KINDS).not.toContain("other");
+    expect(ASK_KINDS).not.toContain("none");
   });
 });
 
 /**
- * The asker naming the topic, which is the exact form of the question the
- * patterns can only guess at.
+ * The gate at the answering end, which is where the damage would happen.
  *
- * An agent writes in `output.language` and the gate does not get to know which,
- * so `RESERVED` is ten rows of keyword and admits it — sixteen of eighteen
- * probes leaked before the other eight rows existed. A word is not a guess.
+ * The word above is the asker's, and the agent that saves itself a round trip by
+ * filing a budget question as `env` is the same agent that files. So before a
+ * stand-in may answer, the stored kind is checked and — if it is not one of the
+ * five — a second reader is shown the question and asked whether it is anyway.
  */
-describe("a declared topic decides the entry point, and only upward", () => {
-  test("a topic sends an otherwise ordinary question to the boss", () => {
-    const ordinary = "which validation library should we use?";
-    expect(isReserved(ordinary)).toBe(false);
-    expect(entryPoint(ordinary)).toBe("pm");
-    for (const topic of RESERVED_TOPICS) expect(entryPoint(ordinary, topic)).toBe("boss");
+describe("a stand-in may not answer a reserved question", () => {
+  const stand = async (h: Awaited<ReturnType<typeof harness>>, id: number) => {
+    await h.db.update(escalation).set({ chain_state: "cos" }).where(eq(escalation.id, id));
+    const precedent = await h.f.note.create({ grp_id: 1, kind: "decision", body: "approved once before" });
+    return answer(h.deps, { escId: id, by: "cos", answer: "yes, we did before", refNoteId: precedent.id });
+  };
+
+  /** The stored word, read as a key. The prose is not consulted at all — the same
+   *  move `dedupe_key` made one column over. */
+  test("the stored kind is enough, and the question's wording is never read", async () => {
+    const h = await harness({ withCos: true });
+    // Wording that no keyword list would have caught, and a kind that says it.
+    const id = await h.ask("can we go ahead with the thing we discussed?", "advisory", "budget");
+    const r = await stand(h, id);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("reserved for the boss");
+    expect((await answer(h.deps, { escId: id, by: "boss", answer: "no" })).ok).toBe(true);
+  });
+
+  /** The half a declaration cannot buy: the asker filed it low. */
+  test("a misfiled question is caught by the second reader", async () => {
+    const h = await harness({ withCos: true, verdict: async () => "yes" });
+    const id = await h.ask("should we pay for more quota?", "advisory", "env");
+    const r = await stand(h, id);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("reserved for the boss");
+  });
+
+  test("and an ordinary question is not", async () => {
+    const h = await harness({ withCos: true, verdict: async () => "no" });
+    const id = await h.ask("which validation library should we use?", "advisory", "design");
+    expect((await stand(h, id)).ok).toBe(true);
   });
 
   /**
-   * The half that matters. The PM is a model, and a gate a model can talk its
-   * way out of is not one — so there is no value that routes *away* from the
-   * boss. Saying nothing is the only other option, and the patterns still fire.
+   * A check that could not run is not a check that passed. This is what keeps
+   * the property the declared-topic flag had: no path routes a question *away*
+   * from the boss.
    */
-  test("saying nothing does not lower a question the patterns catch", () => {
-    const money = "should we pay for the higher API tier?";
-    expect(entryPoint(money)).toBe("boss");
-    expect(entryPoint(money, undefined)).toBe("boss");
+  const broken: [string, () => Promise<string>][] = [
+    ["the reader throws", () => Promise.reject(new Error("container gone"))],
+    ["the reader says something that is not a verdict", async () => "I think probably not, because"],
+    ["the reader says nothing", async () => ""],
+  ];
+  test.each(broken)("%s, so it raises", async (_name, verdict) => {
+    const h = await harness({ withCos: true, verdict });
+    const id = await h.ask("should we pay for more quota?", "advisory", "env");
+    const r = await stand(h, id);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("reserved for the boss");
   });
 
-  test("the vocabulary is the five topics the patterns encode", () => {
-    expect([...RESERVED_TOPICS]).toEqual(["budget", "merge", "credential", "deploy", "scope"]);
-  });
-});
-
-/**
- * The panel speaks ten languages and an agent writes its question in
- * `output.language`, so the gate has to read all ten. Against the version that
- * covered English and Simplified Chinese, sixteen of the eighteen budget/merge
- * probes here leaked — English "increase the budget" among them, since the
- * pattern spelled it `budget increase`.
- */
-/**
- * One question per topic per language, and the same five topics in the same
- * order everywhere, so a language added without a pattern shows up as a column
- * of failures rather than as a question the boss is never asked.
- */
-describe.each([
-  [
-    "en",
-    "should we increase the budget for this?",
-    "can I merge this into main?",
-    "what is the value of the API_KEY?",
-    "should we deploy to production now?",
-    "should we drop the audit log instead?",
-    "which validation library should we use?",
-  ],
-  [
-    "zh",
-    "这个要不要加预算？",
-    "能不能把这个合并到 main？",
-    "密钥放在哪里？",
-    "现在要上线吗？",
-    "要不要改需求范围？",
-    "这个函数应该放在哪个模块？",
-  ],
-  [
-    "zh-Hant",
-    "這個要不要加預算？",
-    "能不能把這個合併到 main？",
-    "金鑰放在哪裡？",
-    "現在要上線嗎？",
-    "要不要改需求範圍？",
-    "這個函式應該放在哪個模組？",
-  ],
-  [
-    "ja",
-    "この件、予算を増やしますか？",
-    "これを main にマージしてもいいですか？",
-    "APIキーの値は何ですか？",
-    "今すぐ本番にデプロイしますか？",
-    "要件の範囲を変更しますか？",
-    "このZodスキーマはどのモジュールに置くべきですか？",
-  ],
-  [
-    "ko",
-    "이 건 예산을 늘릴까요?",
-    "이걸 main 에 머지해도 될까요?",
-    "API 키 값이 뭔가요?",
-    "지금 프로덕션에 배포할까요?",
-    "요구 사항 범위를 변경할까요?",
-    "이 함수는 어느 모듈에 두는 게 좋을까요?",
-  ],
-  [
-    "es",
-    "¿aumentamos el presupuesto para esto?",
-    "¿puedo fusionar esto en main?",
-    "¿cuál es el valor de la clave de API?",
-    "¿desplegamos a producción ahora?",
-    "¿cambiamos el alcance del requisito?",
-    "¿qué biblioteca de validación deberíamos usar?",
-  ],
-  [
-    "fr",
-    "faut-il augmenter le budget pour cela ?",
-    "puis-je fusionner ceci dans main ?",
-    "quelle est la valeur de la clé API ?",
-    "on déploie en production maintenant ?",
-    "doit-on changer le périmètre des exigences ?",
-    "quelle bibliothèque de validation devrions-nous utiliser ?",
-  ],
-  [
-    "de",
-    "sollen wir dafür das Budget erhöhen?",
-    "kann ich das nach main mergen?",
-    "wie lautet der Wert des API-Schlüssels?",
-    "sollen wir jetzt in die Produktion ausliefern?",
-    "sollen wir den Umfang der Anforderung ändern?",
-    "welche Validierungsbibliothek sollen wir verwenden?",
-  ],
-  [
-    "pt",
-    "devemos aumentar o orçamento para isto?",
-    "posso mesclar isto para main?",
-    "qual é o valor da chave de API?",
-    "vamos publicar em produção agora?",
-    "mudamos o escopo do requisito?",
-    "qual biblioteca de validação devemos usar?",
-  ],
-  [
-    "ru",
-    "нужно ли увеличить бюджет на это?",
-    "можно влить это в main?",
-    "какое значение у API-ключа?",
-    "выкатываем в прод сейчас?",
-    "меняем объём требований?",
-    "какую библиотеку валидации использовать?",
-  ],
-])("%s", (_locale, money, merge, credentials, production, requirement, ordinary) => {
-  test.each([
-    ["money", money],
-    ["merge to main", merge],
-    ["credentials", credentials],
-    ["production", production],
-    ["requirement", requirement],
-  ])("%s goes to the boss", (_topic, question) => {
-    expect(isReserved(question)).toBe(true);
-    expect(entryPoint(question)).toBe("boss");
+  /**
+   * No second reader at all is a *configuration*, not a failed check:
+   * `indexModel.model` empty turns the cheap tier off. Failing closed here would
+   * leave a stand-in unable to answer anything on such a deployment.
+   */
+  test("with no cheap model wired at all, the declared kind is the whole gate", async () => {
+    const h = await harness({ withCos: true });
+    expect((await stand(h, await h.ask("which library?", "advisory", "design"))).ok).toBe(true);
+    const money = await h.ask("should we pay for more quota?", "advisory", "budget");
+    expect((await stand(h, money)).ok).toBe(false);
   });
 
-  // Over-triggering is the deliberate bias, but a gate that reserves every
-  // question reserves none: the boss stops reading it and the next real one is
-  // lost in the noise. One ordinary question per language holds the other edge.
-  test("an ordinary technical question is not reserved", () => {
-    expect(isReserved(ordinary)).toBe(false);
-  });
-});
-
-/**
- * The trap each of these was written against, kept because the pattern that
- * fails them still matches every question in the table above.
- */
-describe("patterns that read one language must not fire on another", () => {
-  test.each([
-    // A bare `\babo` for German Abo is every English "about" and "abort".
-    "should we abort the run and ask about the retry policy?",
-    // A bare `pag` for Spanish/Portuguese pagar is inside "propagate".
-    "should we propagate the error to the caller?",
-    // A bare `production` for French is every English sentence about prod data.
-    "is the production schema versioned in the repo?",
-  ])("%s", (question) => {
-    expect(isReserved(question)).toBe(false);
-  });
-
-  // `ключ` without its lookbehind is inside включить, "to enable" — the most
-  // ordinary verb in the language.
-  test("включить is not a question about a key", () => {
-    expect(isReserved("нужно ли включить строгий режим в tsconfig?")).toBe(false);
-  });
-
-  // A bare `прод` is продукт and продолжать.
-  test("продолжаем is not a question about production", () => {
-    expect(isReserved("продолжаем рефакторинг парсера?")).toBe(false);
+  /** Rows filed before the column exists carry no kind, and reach the reader on
+   *  their prose — which is why nothing had to be backfilled. */
+  test("a row with no kind at all still reaches the second reader", async () => {
+    const h = await harness({ withCos: true, verdict: async () => "yes" });
+    const id = await h.ask("should we pay for more quota?", "advisory", null);
+    expect((await stand(h, id)).ok).toBe(false);
   });
 });
 
@@ -344,18 +259,6 @@ test("the CoS may only answer from a recorded decision", async () => {
   expect(ok.ok).toBe(true);
   const [cited] = await h.db.select({ ref: escalation.ref_note_id }).from(escalation).where(eq(escalation.id, id));
   expect(cited?.ref).toBe(decision.id);
-});
-
-test("no stand-in may answer a reserved question, precedent or not", async () => {
-  const h = await harness({ withCos: true });
-  const id = await h.ask("should we pay for more quota?");
-  await h.db.update(escalation).set({ chain_state: "cos" }).where(eq(escalation.id, id));
-  const precedent = await h.f.note.create({ grp_id: 1, kind: "decision", body: "以前批过一次" });
-  const r = await answer(h.deps, { escId: id, by: "cos", answer: "yes, we did before", refNoteId: precedent.id });
-  expect(r.ok).toBe(false);
-  if (!r.ok) expect(r.error).toContain("reserved for the boss");
-  // The boss still can.
-  expect((await answer(h.deps, { escId: id, by: "boss", answer: "no" })).ok).toBe(true);
 });
 
 test("revoking a stand-in's answer reopens it and rolls the checkout back", async () => {
@@ -715,6 +618,6 @@ test("an answer that arrives before the question has finished filing still reach
     void h.post("/api/v1/escalations/1/answer", { answer: "middleware" });
   });
 
-  const asked = await h.post("/orch/v1/ask-boss", { question: "middleware or handler?" }, "tok-eng");
+  const asked = await h.post("/orch/v1/ask-boss", { question: "middleware or handler?", kind: "design" }, "tok-eng");
   expect(await asked.json()).toEqual({ message: "middleware" });
 }, 3_000);

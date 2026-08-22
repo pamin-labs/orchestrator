@@ -8,7 +8,7 @@ import { and, asc, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { AgentTurnPayloadSchema, type Job } from "../../src/platform/scheduling/scheduler.ts";
 import { makeApp } from "../../src/composition/api.ts";
-import { askKind, brief } from "../../src/api/orch/escalation.ts";
+import { brief } from "../../src/api/orch/escalation.ts";
 import { landGroup } from "../../src/api/panel/group.ts";
 import { cacheProjectSkills, listSkills, projectSkills } from "../../src/mech/skills.ts";
 import { landed } from "../../src/mech/flow/mergequeue.ts";
@@ -306,7 +306,12 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
 
 test("reserved ask-boss questions start at the boss after filing", async () => {
   const { app, db } = await harness();
-  const pending = post(app, "/orch/v1/ask-boss", { question: "what is the API token?" }, "tok-eng");
+  const pending = post(
+    app,
+    "/orch/v1/ask-boss",
+    { question: "what is the API token?", kind: "credential" },
+    "tok-eng",
+  );
   const filed = await until(
     () => first(db.select({ severity: escalation.severity, chain_state: escalation.chain_state }).from(escalation)),
     (row) => row !== undefined,
@@ -1540,15 +1545,17 @@ test("a question carries one line for the queue, given or derived", () => {
   expect(brief(undefined, "budget?\nthe rest can wait")).toBe("budget");
 });
 
-test("what a question is about comes from a closed set", () => {
-  // Closed because the queue groups by it: free text gives twelve spellings of
-  // "environment" and groups nothing.
-  expect(askKind("env")).toBe("env");
-  expect(askKind(" spec ")).toBe("spec");
-  // Unknown or missing falls to `other` rather than being rejected. An agent
-  // must never be stuck on a taxonomy — same rule as the brief.
-  expect(askKind("环境")).toBe("other");
-  expect(askKind(undefined)).toBe("other");
+test("what a question is about is required, and refused when it is not one of the nine", async () => {
+  // It used to fall back to `other`, on the rule that an agent must never be
+  // stuck on a taxonomy. That was right while the word only chose a queue
+  // heading; it now chooses whether a stand-in may answer, so an unknown word
+  // has to come back as a 400 rather than quietly file a budget question under
+  // nothing. There is no `other` left to fall back to.
+  const { app } = await harness();
+  for (const body of [{}, { kind: "" }, { kind: "环境" }, { kind: "other" }]) {
+    const r = await post(app, "/orch/v1/ask-boss", { question: "which library?", ...body }, "tok-eng");
+    expect(r.status).toBe(400);
+  }
 });
 
 test("reads are scoped by the token too, not only writes", async () => {
