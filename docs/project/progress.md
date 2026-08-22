@@ -1580,3 +1580,122 @@ file away.
   today and adopting it means promoting it to a direct dependency.
 - **The eight-character floor in `overlapError`.** Still counts characters. It
   fails *lenient*, which is how a hard refusal should fail.
+
+## A fifth pass, on what two owners look like when neither is Chinese
+
+Four passes had gone over this branch and it was green — `typecheck`, `lint`,
+`fallow audit --gate all` on 356 files, no `TODO` in the tree, nothing left in
+*Next executable items* that is not the boss's call. So this pass looked for the
+shape the earlier four were not scanning for: **a rule written down twice**,
+where neither copy is in the wrong language and so no guard here could see it.
+
+### A twenty-six-row transcript of a four-line rule
+
+`KNOB_SHAPE` keyed a config path to `ms|seconds|percent|count`. Its own guard
+then checked the table against `/(Ms|Seconds|Fraction)$/` — so the rule existed
+as a rule *and* as a hand-written copy of itself, and every one of the
+twenty-six rows followed the suffix with no exception. `shapeOf(path)` is the
+rule; the guard now asserts completeness instead of transcription, and was shown
+failing with the `Ms` row commented out.
+
+It also answers for a path the table had no row for. `intervals.notifyBackoffMs`
+is `z.array(count)` — a reminder ladder — and the suffix says `ms`. Unreachable,
+because `scalarValue` sends only `type === "number"` to `numberValue`. But the
+ladder does render as `300000, 900000, 3600000` on the settings page, which is
+the defect `units.ts` exists to prevent, in the one shape it cannot reach. In
+**Found and not fixed**.
+
+### The fifth Intl, in the place four passes had already walked past
+
+"Intl already knew" was the largest finding of the review pass and it named four:
+`DisplayNames`, `RelativeTimeFormat`, `NumberFormat({style:"unit"})`,
+`Segmenter`. Five call sites still wrote `names.join(t`, `)`, which made `", "`
+a catalogue row translated nine times — and a joined string cannot produce the
+conjunction, so every one of those sentences was missing the word its language
+puts before the last name. `Intl.ListFormat`. 1100 messages to 1099.
+
+`type: "unit"` reads like the mode for a plain enumeration and is not: it is for
+measurement, so CLDR renders `zh` with **no separator at all** — `abc`. Measured
+across the ten and pinned in the test, because there is no CLDR mode meaning
+"the reader's separators, no conjunction" in every language. The sixth call site
+— repository paths in a monospace span — is a plain `join(", ")` for that
+reason: data, like the SI symbols in `duration()`.
+
+### Two owners for which word names a card's goal
+
+`validateDraftCard` parsed a card through `fieldOf`; the panel matched the same
+heading with a `(goal|目标)` regex of its own, across the `web/src` boundary.
+They had disagreed once already — `startsWith("目标")` against a Markdown card —
+and that fix left the second copy standing. The vocabulary is
+`src/contracts/card.ts` now and the panel keeps only the two *shapes* a heading
+can have.
+
+The guard that was **not kept** is the point of this entry. "Both sides read the
+same goal off the same card" passes against the old two-owner code too, because
+both spellings were in both copies — a guard that cannot be shown failing is
+evidence of nothing. What replaced it is `nothing but the contract maps a
+Chinese heading to a card section`, red against the previous `prose.ts`.
+
+Two ratchets moved with it: the 0.2.0 shim list in `version.test.ts` goes from
+three markers across two boundaries to two in one, and the Chinese-literal
+baseline moves four counts between files — both edits required, since it refuses
+a shrinking count as well as a growing one.
+
+### A dependency argued away in a sentence
+
+`scripts/lingui-catalogs.ts` said "there is none for Bun, which is the only
+reason this file exists rather than a dependency". `bun-plugin-lingui-macro` is
+on Lingui's own tooling page — community, MIT, v1.1.3, 2026-04-07 — and does
+both this file's job and `lingui-macros.ts`'s. Nothing in the branch named it,
+and `docs/standards/dependencies.md` says declining needs measured evidence.
+
+Read at 1.1.3 and declined on four, the first of which is not an option it takes:
+a compilation error is a `console.warn`, so a broken plural becomes a blank span
+in one language instead of a failed build. Then: no seam for the test loader
+(its map is `sourceMaps: "inline"`, and `oxc-coverage-instrument` wants an
+object), no cache (+22% CPU), and a `filename` relative to `process.cwd()`,
+which is the bare-basename coverage failure this repo already pinned absolute.
+ADR 044 carries it with the reopen condition.
+
+### The PR body disagreed with itself in six places
+
+The top table and the Evidence block at the bottom were measured a round apart:
+1855 against 1817 passing, 226 against 223 files, sixteen steps against fifteen,
+356 against 324 changed files, 1,470,702 B against 1,470,287, and a message count
+of 1092 against the README's own generated 1100. The same defect this branch
+found in ADR 041's bundle table. One run now, one set of numbers, quoted nowhere
+else.
+
+### Measured
+
+| | |
+|---|---|
+| messages, all ten catalogues at 100% | 1099 |
+| `bun run test` | 1860 pass, 6 skip, 0 fail, 1866 across 227 files |
+| `bun run preflight` | sixteen steps, all green, 73.2s |
+| `fallow audit --gate all` | no issues in 358 changed files |
+| `web/dist/main.js` | 1,470,333 B |
+| coverage | 83.09% statements, 73.13% branches, 78.30% functions |
+
+### Not taken, with the measurement
+
+- **Trimming the comments.** 28% of the changed `.ts`/`.tsx` is comment, and the
+  top files run 60–85%. But `origin/main` is already 4.0 stacked JSDoc blocks per
+  kloc against this branch's 5.3 — it is the house voice, not something this
+  branch introduced, and `comment-blocks.test.ts` already caps a block at eight
+  body lines. What was deleted is the one that was *wrong*: a second comment
+  promising the free-text unit parser still takes `3h`.
+- **Adopting `bun-plugin-lingui-macro`** — four measurements above.
+- **`localeOf`'s free-text branch.** It looks like hand-written fuzzy matching,
+  and it is, but it serves `output.language`, which ADR 035 and 043 argue has to
+  stay free text. There is no `Intl` locale matcher.
+- **`SECTIONS` and `KNOBS_ELSEWHERE`.** Hand-written path lists, but grouping and
+  order are not derivable from anything and a guard already holds them.
+
+## Found and not fixed
+
+- **A duration ladder renders as raw milliseconds.**
+  `intervals.notifyBackoffMs` is `z.array(count)`, so the settings page draws it
+  through the map editor and the boss reads `300000, 900000, 3600000`. `shapeOf`
+  answers `ms` for the path and no array editor asks. It is one knob, and the
+  fix is an array-of-durations editor rather than a line.
