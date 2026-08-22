@@ -15,6 +15,7 @@ import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { projectConfig } from "../util/rows.ts";
 import { errText } from "../../platform/process/text.ts";
 import { raise } from "./escalate.ts";
+import { BOOTSTRAP_FAILED, BOOTSTRAP_OK, BOOTSTRAP_START } from "../../contracts/events.ts";
 import { JsonObject, valueOr } from "../../contracts/json.ts";
 
 /** `project.config_json.install`, or null. */
@@ -117,7 +118,14 @@ export async function runInstall(ctx: Ctx, grpId: number, cmd: string): Promise<
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: end.code === 0 ? `装好了：${cmd}` : `装失败了（exit ${end.code}）：${cmd}\n${tail}`,
+    // `meta.step` and not the body: the bootstrap pane has to find the start and
+    // the end of one run, and the body is now rendered in whichever of ten
+    // languages that browser reads. A protocol key is the same on both sides.
+    meta: { step: end.code === 0 ? BOOTSTRAP_OK : BOOTSTRAP_FAILED },
+    say:
+      end.code === 0
+        ? msg`installed: ${{ cmd }}`
+        : msg`install failed (exit ${{ code: end.code }}): ${{ cmd }}\n${{ tail }}`,
   });
   return { ok: end.code === 0, tail };
 }
@@ -155,7 +163,8 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: `沙箱是新的，把 ${grp.branch} 和依赖装回去`,
+    meta: { step: BOOTSTRAP_START },
+    say: msg`the sandbox is new — putting ${{ branch: grp.branch }} and the dependencies back`,
   });
   // The branch comes back off the remote, not out of a bundle the host kept:
   // `pushBranch` put it there at the last slice boundary, and `createCheckout`
@@ -183,7 +192,9 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     priority: 9,
     payload: {
       role: roleFor(ctx, "bootstrap_env"),
-      ...(known ? { rejection: `沙箱重建后，记下来的安装命令跑不通：${known}` } : {}),
+      ...(known
+        ? { rejection: `The sandbox was rebuilt and the install command on record does not work any more: ${known}` }
+        : {}),
     },
   });
 }
@@ -316,11 +327,14 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
     });
     return;
   }
+  const found = gates.map((g) => g.name).join(", ");
   await ctx.bus.emit({
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: `闸门看出来了：${gates.map((g) => g.name).join("、")}${next.install ? ` · 装依赖 ${next.install}` : ""}`,
+    say: next.install
+      ? msg`gates found: ${{ gates: found }} · install with ${{ install: next.install }}`
+      : msg`gates found: ${{ gates: found }}`,
     meta: { gates: next.gates, detected: gates },
   });
 }
@@ -365,7 +379,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
               priority: 9,
               payload: {
                 role: roleFor(ctx, "bootstrap_env"),
-                rejection: `记下来的安装命令跑不通了：${known}\n${dep.tail}`,
+                rejection: `The install command on record does not work any more: ${known}\n${dep.tail}`,
               },
             });
         } else {
@@ -417,11 +431,16 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
     // and this runs on the watchdog tick, so leaving the intent set retried it
     // every thirty seconds forever, returning an error to nobody.
     await ctx.db.update(grpTable).set({ approved_at: null }).where(eq(grpTable.id, g.id));
+    // No `key`: nothing matches this subject, so there is nothing for a matcher
+    // to lose. `raise` still stores the descriptor beside the rendered text, so
+    // the panel reads it in the browser's language and the prompt that splices
+    // `question` reads it in the boss's.
     await raise(ctx.db, {
       grpId: g.id,
-      brief: "批准没能落地",
+      lang: ctx.config.language,
+      brief: msg`the approval did not take`,
       chain: "boss",
-      question: `批准没能落地：${err}。这次批准已撤回，修好之后再批一次。`,
+      question: msg`The approval did not take: ${{ err }}. It has been withdrawn — approve again once that is fixed.`,
     });
     await ctx.bus.emit({
       grpId: g.id,
@@ -429,7 +448,7 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
       kind: "escalation",
       intent: "ask",
       severity: "blocker",
-      body: `批准没能落地：${err}`,
+      say: msg`the approval did not take: ${{ err }}`,
     });
   }
   return started;

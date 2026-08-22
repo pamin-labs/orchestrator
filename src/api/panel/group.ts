@@ -1,10 +1,11 @@
 import { msg } from "@lingui/core/macro";
-import { and, asc, desc, eq, inArray, isNull, like, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { dropSlices } from "../../platform/persistence/database.ts";
 import { addNote, baseBranchOf } from "../../mech/util/rows.ts";
 import { interrupt, park, pause, resume, unpark } from "../../mech/flow/intercept.ts";
 import { dropGroup, startGroup, sweepApproved } from "../../mech/flow/start.ts";
+import { escalationKey } from "../../mech/flow/escalate.ts";
 import { openPr, prBody, prTitle } from "../../mech/git/prwatch.ts";
 import { joinQueue, landed } from "../../mech/flow/mergequeue.ts";
 import { validateDraftCard } from "../../mech/util/validate.ts";
@@ -410,12 +411,15 @@ async function recordBudget(ctx: Ctx, grpId: number, tokens: number | null): Pro
       answered_at: Date.now(),
     })
     // `isNull`: an unanswered row is what this closes, and `= NULL` matches none.
+    // `dedupe_key`, not `question LIKE 'budget:%'` — the watchdog had to glue a
+    // `budget: ` prefix onto the front of a translated sentence to keep that
+    // pattern working, which is the seam this column removes.
     .where(
       and(
         eq(escalation.grp_id, grpId),
         eq(escalation.chain_state, "boss"),
         isNull(escalation.answer),
-        like(escalation.question, "budget:%"),
+        eq(escalation.dedupe_key, escalationKey.budget),
       ),
     );
 }
@@ -465,10 +469,22 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
   }
   await ctx.db.update(grps).set({ status: "PR_OPEN", paused_at: null, pause_reason: null }).where(eq(grps.id, grpId));
   await joinQueue(ctx.db, grpId);
-  await ctx.db
-    .update(escalation)
-    .set({ chain_state: "answered", answered_by: "boss", answer: `opened #${r.number} instead` })
-    .where(and(eq(escalation.grp_id, grpId), isNull(escalation.answer), like(escalation.question, "PR #%被关掉了%")));
+  // The question `prClosed` filed about *this* PR, by the key it filed under.
+  // The `LIKE 'PR #%被关掉了%'` this replaces matched any closed-PR question in
+  // the group, and a group with no PR number at all still ran it — closing a
+  // question about some other PR is worse than leaving this one open.
+  if (g.pr_number !== null) {
+    await ctx.db
+      .update(escalation)
+      .set({ chain_state: "answered", answered_by: "boss", answer: `opened #${r.number} instead` })
+      .where(
+        and(
+          eq(escalation.grp_id, grpId),
+          isNull(escalation.answer),
+          eq(escalation.dedupe_key, escalationKey.prClosed(g.pr_number)),
+        ),
+      );
+  }
   await ctx.bus.emit({
     grpId,
     author: "boss",

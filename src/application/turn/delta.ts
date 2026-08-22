@@ -173,7 +173,7 @@ function sedimentCard(payload: TurnPayload): string | undefined {
     `A fact attached to one group is invisible to the next, so this has to become a project rule.\n\n` +
     sediment.map((text, index) => `${index + 1}. ${text}`).join("\n") +
     `\n\nWrite ONE rule with \`orch journal add --kind lesson -\` — at most 6 lines, phrased as an ` +
-    `instruction a later group can follow without knowing this history ("QA 必须…", not "老板不满意…"). ` +
+    `instruction a later group can follow without knowing this history ("QA must …", not "the boss is unhappy about …"). ` +
     `If these are not actually the same complaint, say so with \`orch mail cos --intent note\` and write nothing.`
   );
 }
@@ -305,7 +305,7 @@ async function digestBacklog(
     say: msg`${{ n: behind.c }} unread — the Librarian is compressing them`,
     meta: { channel_id: channelId, behind: behind.c },
   });
-  return `\n\n(${behind.c} 条更早的还没读，Librarian 正在压成一条摘要，别自己去翻)`;
+  return `\n\n(${behind.c} older messages are still unread; the Librarian is compressing them into one summary, so do not go digging through them yourself)`;
 }
 
 async function enqueueDigestOnce(

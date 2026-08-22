@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { errText, tail } from "../../platform/process/text.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { activeTracer } from "../../platform/observability/traces.ts";
@@ -65,7 +66,7 @@ async function followRename(
     author: "orchestrator",
     kind: "state_change",
     severity: "advisory",
-    body: `仓库在 GitHub 上改名了：${was} → ${repo.full_name}。已经跟着改，克隆和 PR 都指新的。`,
+    say: msg`the repository was renamed on GitHub: ${{ was }} → ${{ now: repo.full_name }}. We have followed it, and clones and PRs point at the new one.`,
   });
 }
 
@@ -119,7 +120,7 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
         author: "orchestrator",
         kind: "state_change",
         severity: "advisory",
-        body: `基线分支从 ${row.base_branch} 改成 ${found}（远端上的默认分支变了）。往后的 clone、rebase 和 diff 都对着它。`,
+        say: msg`the base branch moved from ${{ was: row.base_branch }} to ${{ now: found }}, because the default branch on the remote changed. Every clone, rebase and diff from here on is against it.`,
       });
     }
   }
@@ -334,7 +335,7 @@ async function initSubmodules(ctx: Ctx, scope: Scope): Promise<void> {
       author: "orchestrator",
       kind: "state_change",
       severity: "warn",
-      body: `子模块没拉起来，代码可能不全：${(r.err || r.out).slice(-300)}`,
+      say: msg`the submodules did not come up, so the checkout may be incomplete: ${{ why: (r.err || r.out).slice(-300) }}`,
     });
   }
 }

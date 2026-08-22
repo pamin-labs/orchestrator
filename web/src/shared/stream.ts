@@ -66,6 +66,10 @@ export interface PanelFrame {
   intent?: string | null;
   text: string;
   agentId?: number | null;
+  /** `meta.step`: which step of which process this row is, when it is one of
+   *  those. A pane that draws a process reads this instead of matching the
+   *  body, which is rendered in whichever language its reader chose. */
+  step?: string;
 }
 
 const KIND: Record<string, PanelFrame["cls"]> = {
@@ -79,6 +83,9 @@ const KIND: Record<string, PanelFrame["cls"]> = {
   tool_summary: "tool",
   digest: "tool",
 };
+
+/** Untrusted JSON out of `event.meta_json`, so it is parsed rather than cast. */
+const StepSchema = z.object({ step: z.string().optional() });
 
 type LiveWire = Extract<Wire, { type: "live" }>;
 type EventWire = Extract<Wire, { type: "event" }>;
@@ -110,6 +117,7 @@ function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[]
   // is stable, so the overlap is dropped instead of duplicating a React key.
   const id = `e${f.seq}`;
   if (next.some((x) => x.id === id)) return next;
+  const step = StepSchema.safeParse(f.meta).data?.step;
   return [
     ...next,
     {
@@ -127,6 +135,7 @@ function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[]
       // the reader's own language. A row from before that existed has only the
       // body, and gets it.
       text: saidText(sayIn(f.meta), f.body ?? ""),
+      ...(step ? { step } : {}),
     },
   ];
 }

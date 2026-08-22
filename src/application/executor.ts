@@ -28,7 +28,7 @@ function mintToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
 import { renderSaid } from "../platform/text/lang.ts";
-import { raise } from "../mech/flow/escalate.ts";
+import { escalationKey, raise } from "../mech/flow/escalate.ts";
 import { hold } from "../mech/flow/intercept.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
 import {
@@ -650,7 +650,7 @@ async function repairLostSession(
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: `${turn.agent.role} 的会话记录没了，下一轮从新会话开始`,
+    say: msg`${{ role: turn.agent.role }}'s session record is gone; the next turn starts a new session`,
     meta: { agent_id: turn.agent.id, lost_session: turn.sessionId },
   });
 }
@@ -1006,11 +1006,11 @@ async function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: T
       grpId: job.grp_id,
       agentId: agent.id,
       kind: "env",
-      brief: `${runtime} 凭据过期`,
-      dedupe: { prefix: `${runtime} 的凭据`, scope: "global" },
-      question:
-        `${runtime} 的凭据不好使了：${r.text.slice(0, 200)}\n` +
-        `去设置页 → ${runtime} → 登录，重新配一个。登录是在工具容器里跑官方 CLI 做的，本机不用装。配完这一组会自己接着走。`,
+      lang: ctx.config.language,
+      brief: msg`${{ runtime }} credential expired`,
+      key: escalationKey.auth(runtime),
+      dedupe: { scope: "global" },
+      question: msg`The ${{ runtime }} credential stopped working: ${{ why: r.text.slice(0, 200) }}\nGo to settings → ${{ runtime }} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done.`,
     }) === null
   ) {
     return;

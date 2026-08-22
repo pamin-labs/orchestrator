@@ -36,6 +36,7 @@ import { Workspace } from "../workspace/view";
 import { EvidencePanel } from "../evidence/view";
 import { Notes } from "../notes/view";
 import { bootstrapOf } from "./bootstrap";
+import { saidText } from "../../shared/said";
 import {
   activeTab,
   answeredFor,
@@ -887,7 +888,7 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
                 everyone already knows for that is two sides. */}
           <div className="mt-1.5 space-y-1.5">
             <div className="max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2 text-secondary text-ink-3">
-              <Clamp lines={3}>{nl(a.question)}</Clamp>
+              <Clamp lines={3}>{nl(saidText(a.said, a.question))}</Clamp>
             </div>
             <div className="flex justify-end">
               <div className="max-w-[46rem] rounded-2xl rounded-tr-sm border border-rule bg-paper px-3.5 py-2 text-body text-ink-2">
@@ -1301,7 +1302,9 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             </span>
           )}
         </div>
-        {!open && <div className="mt-1 line-clamp-2 max-w-[72ch] text-body text-ink-2">{nl(e.question)}</div>}
+        {!open && (
+          <div className="mt-1 line-clamp-2 max-w-[72ch] text-body text-ink-2">{nl(saidText(e.said, e.question))}</div>
+        )}
       </AccordionTrigger>
 
       <AccordionBody className="bg-paper px-4 pb-3">
@@ -1315,7 +1318,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             Six lines, then a click. A watchdog escalation quotes three QA verdicts
             verbatim and runs to fifteen — the decision is usually made by line
             three, with the rest there to check the reasoning against. */}
-        <Asked body={e.question} />
+        <Asked body={saidText(e.said, e.question)} />
         {draft.busy && <Typing label={t`AI is thinking on your behalf`} />}
         {draft.text && (
           // On your side of the exchange, because that is what it is: a reply

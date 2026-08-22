@@ -4,6 +4,7 @@ import { openMemory, type DB } from "../../src/platform/persistence/database.ts"
 import { Scheduler, type Job } from "../../src/platform/scheduling/scheduler.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { makeGithub, type GithubFetcher } from "../../src/mech/git/github.ts";
+import { escalationKey } from "../../src/mech/flow/escalate.ts";
 import { repoHeld, resetRepoHolds, REPO_HOLD_MS } from "../../src/mech/git/repository.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { and, eq, isNull, notInArray } from "drizzle-orm";
@@ -47,7 +48,7 @@ const answer =
 
 const openEscalations = (db: DB) =>
   db
-    .select({ question: escalation.question })
+    .select({ dedupe_key: escalation.dedupe_key, question: escalation.question })
     .from(escalation)
     .where(and(isNull(escalation.answer), notInArray(escalation.chain_state, ["answered", "revoked"])));
 
@@ -151,7 +152,7 @@ test("a project that recovers and breaks again can warn a second time", async ()
   expect(await repoHeld(h.db, 1)).toBe(true);
 });
 
-test("recovery clears only the literal repository prefix", async () => {
+test("recovery clears one repository's question and not a lookalike's", async () => {
   const h = await seed();
   const bad = makeGithub(h.db, answer(401, { message: "Bad credentials" }));
   await bad.request("GET", "/repos/me/a_b/pulls/7", z.json());
@@ -161,7 +162,10 @@ test("recovery clears only the literal repository prefix", async () => {
   await makeGithub(h.db, answer(200, { number: 7 })).request("GET", "/repos/me/a_b/pulls/7", z.json());
   const remaining = await openEscalations(h.db);
   expect(remaining).toHaveLength(1);
-  expect(remaining[0]?.question).toContain("GitHub me/axb:");
+  // `a_b` against `axb`: a slug may contain `_`, and the `starts_with` this
+  // replaces existed only because `LIKE` would have read it as a wildcard. The
+  // key is compared with `=`, which has no pattern in it to go wrong.
+  expect(remaining[0]?.dedupe_key).toBe(escalationKey.githubRepo("me/axb"));
 });
 
 test("the escalation reaches the boss without waiting for an agent to pass it up", async () => {

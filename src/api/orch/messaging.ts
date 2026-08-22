@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
@@ -9,7 +10,7 @@ import { MailIntent } from "../../contracts/orch.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { bossFact } from "../panel/attach.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
-import { badText, message } from "../../http/respond.ts";
+import { bad, badText, message } from "../../http/respond.ts";
 import { resolveGroup } from "./access.ts";
 import { agent, grp, project as projects } from "../../platform/persistence/schema.ts";
 
@@ -143,8 +144,15 @@ async function deliver(
 ): Promise<Response | null> {
   const target = await resolveTarget(ctx, grpId, to, project);
   if (!target) {
+    // `bad`, not `badText`: this one door answers both the panel — `postSay` is
+    // mounted there — and an agent's `orch mail`. The descriptor is rendered by
+    // the browser, and `bad` renders the English into the 422 body the CLI reads.
     const known = (ctx.knownRoles?.() ?? []).join(", ");
-    return badText(`没有 "${to}" 这个收件人。现有角色：${known || "none configured"}`);
+    return bad(
+      known
+        ? msg`there is no recipient called "${{ to }}". The roles that exist: ${{ known }}`
+        : msg`there is no recipient called "${{ to }}", and no roles are configured`,
+    );
   }
   await ctx.bus.emit({
     grpId: grpId ?? target.grpId ?? null,

@@ -40,7 +40,7 @@ import type { Config } from "../../platform/config/load.ts";
 import type { Said } from "../../contracts/said.ts";
 import { hold, interrupt, park, release, unpark } from "../flow/intercept.ts";
 import { sweepApproved } from "../flow/start.ts";
-import { raise } from "../flow/escalate.ts";
+import { escalationKey, raise } from "../flow/escalate.ts";
 import { route } from "../flow/chain.ts";
 import { runInvariants } from "./invariants.ts";
 import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
@@ -948,16 +948,17 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         // A notification says it stopped; it does not put a decision in front of
         // anyone. Without a row in the queue the group sat suspended, 继续 did
         // nothing the scheduler would honour, and the only visible state was a
-        // paused group with no reason attached. `budget:` prefixes the question so
-        // raising the cap can close exactly this row.
+        // paused group with no reason attached. The key is what `raiseBudget` in
+        // `api/panel/group.ts` closes, so the sentence is only a sentence: it used
+        // to carry a literal `budget: ` prefix for a `LIKE` to find.
         await raise(ctx.db, {
           grpId: g.id,
-          brief: "预算烧穿了，加不加",
+          lang: ctx.config.language,
+          brief: msg`out of budget — raise it or not`,
           chain: "boss",
-          dedupe: { prefix: "budget:", scope: "group", grpId: g.id },
-          question:
-            `budget: ${g.name} 用完了 ${g.budget_tokens} tokens，全组已挂起。` +
-            `提高上限它就接着跑，或者就让它停在这里。`,
+          key: escalationKey.budget,
+          dedupe: { scope: "group", grpId: g.id },
+          question: msg`${{ name: g.name }} has spent all ${{ tokens: g.budget_tokens }} of its tokens and the whole group is suspended. Raise the cap and it carries on, or leave it stopped here.`,
         });
       } else if (frac >= 0.8) {
         findings.push({
@@ -1450,7 +1451,11 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         .set({
           chain_state: "revoked",
           answered_by: "orchestrator",
-          answer: "这条需求已经走到 PR，问题过期了，没人再等这个答复。",
+          // English, like every other answer this server writes itself — `escalation.answer`
+          // is a text column the panel draws raw, with no descriptor beside it, and
+          // `opened #N instead`, `reconfigured` and `reopened` are already its
+          // neighbours. A `Said` here would need a column to ride in.
+          answer: "the requirement reached PR, so this question expired; nobody is waiting on the reply",
           answered_at: now(),
         })
         .where(eq(escalation.id, e.id));

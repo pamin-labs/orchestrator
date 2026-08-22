@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { answered, awaitAnswer, roleFor, type Ctx } from "../../mech/ctx.ts";
@@ -21,6 +22,7 @@ import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { bossFact } from "../panel/attach.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
 import { badText, json, message } from "../../http/respond.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
 import {
@@ -222,7 +224,10 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
     await tx
       .update(escalations)
       .set({
-        answer: `开成需求 ${name}（grp ${created.id}）`,
+        // A stored column the boss reads back in the queue, so it is rendered
+        // rather than keyed — ADR 035 §3's exemption for escalation rows. The
+        // sentence the *agent* gets is `answered()` below, and stays English.
+        answer: renderSaid(ctx.config.language, msg`opened as requirement ${{ name }} (grp ${{ grp: created.id }})`),
         answered_by: "boss",
         chain_state: "answered",
         answered_at: Date.now(),
@@ -242,7 +247,7 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
         grpId: esc.grp_id,
         author: "boss",
         kind: "state_change",
-        body: `这个问题开成了需求 ${name}（grp ${created.id}）`,
+        say: msg`this question became requirement ${{ name }} (grp ${{ grp: created.id }})`,
         meta: { requirement: created.id, escalation_id: id },
       });
     }
@@ -415,7 +420,7 @@ export const postDelegate = (async (ctx, _req, params, b) => {
     author: "boss",
     kind: "escalation",
     intent: "request",
-    body: `转给 ${to}：${esc.question}`,
+    say: msg`handed to ${{ to }}: ${{ question: esc.question }}`,
     meta: { escalation_id: id, chain_state: to },
   });
   // route() skips a level with nobody in it, so this cannot strand the question:

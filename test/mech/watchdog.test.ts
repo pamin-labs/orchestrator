@@ -5,6 +5,7 @@ import { installTracerProvider } from "../../src/platform/observability/traces.t
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { renderSaid } from "../../src/platform/text/lang.ts";
 import { said } from "../support/said.ts";
+import { escalationKey } from "../../src/mech/flow/escalate.ts";
 import { publishWatchdogFinding } from "../../src/application/executor.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory, readSetting, type DB } from "../../src/platform/persistence/database.ts";
@@ -1408,10 +1409,13 @@ test("a burnt budget puts a decision in front of the boss, not only a line in th
 
   await runWatchdog(h.deps);
   const [e] = await h.db
-    .select({ chain_state: escalationTable.chain_state, question: escalationTable.question })
+    .select({ chain_state: escalationTable.chain_state, dedupe_key: escalationTable.dedupe_key })
     .from(escalationTable);
   expect(e!.chain_state).toBe("boss");
-  expect(e!.question).toStartWith("budget:");
+  // The key, not a `budget: ` prefix glued onto the front of the sentence so a
+  // `LIKE` could find it. That prefix was the whole reason the question could not
+  // be translated; raising the cap closes this row by the column instead.
+  expect(e!.dedupe_key).toBe(escalationKey.budget);
   expect(await grpStatus(h.db)).toBe("PAUSED");
 });
 

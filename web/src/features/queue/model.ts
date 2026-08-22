@@ -2,6 +2,7 @@ import type { Escalation, Group, Slice, State } from "../../shared/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "./rank";
 import { pending, prUrl } from "../../shared/select";
 import { brief, cardGoal } from "../../shared/prose";
+import { saidText } from "../../shared/said";
 import { t } from "@lingui/core/macro";
 
 export interface QueueItem {
@@ -131,7 +132,14 @@ function askReason(st: State, escalation: Escalation, now: number) {
   ]);
 }
 
-const askWhat = (escalation: Escalation) => escalation.brief?.trim() || brief(escalation.question);
+/**
+ * `saidText` on both, because the queue is a browser and the row carries the
+ * descriptor the server rendered from. A row an agent filed, or one stored
+ * before the column existed, has none and falls back to the stored text.
+ */
+const askWhat = (escalation: Escalation) =>
+  saidText(escalation.briefSaid, escalation.brief ?? "").trim() ||
+  brief(saidText(escalation.said, escalation.question));
 const askWhere = (st: State, escalation: Escalation) =>
   escalation.grp_id ? groupName(st, escalation.grp_id) : t`Standing post`;
 const askWho = (escalation: Escalation) => escalation.asker ?? t`System`;

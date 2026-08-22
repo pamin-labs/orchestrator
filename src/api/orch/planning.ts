@@ -211,7 +211,14 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
         projectId: grp.project_id,
         name,
         idea: item.idea.trim(),
-        note: `${item.idea.trim()}\n\n（从「${grp.name}」拆出来的一条${original ? `，原始整段见 note #${original.id}` : ""}）`,
+        // A note body, not a key: ADR 035 §3 keeps these server-rendered, and
+        // `addNote` stamps the same `output.language` on the row beside it.
+        note: `${item.idea.trim()}\n\n${renderSaid(
+          ctx.config.language,
+          original
+            ? msg`Split out of the requirement ${{ from: grp.name }}. The whole of what was originally asked for is note #${{ note: original.id }}.`
+            : msg`Split out of the requirement ${{ from: grp.name }}.`,
+        )}`,
       });
       await ctx.sched.enqueue("agent_turn", {
         grp_id: child.id,
@@ -227,11 +234,16 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
     await ctx.sched.cancelPending(gid, "split into separate requirements");
     await tx.update(grps).set({ status: "DISSOLVED" }).where(eq(grps.id, gid));
     await tx.update(channel).set({ status: "archived" }).where(eq(channel.grp_id, gid));
+    // Never one and never none — a split of fewer than two is refused above — so
+    // there is no plural to choose between here.
+    const names = created.map((m) => m.name).join(", ");
     await ctx.bus.emit({
       grpId: gid,
       author: a.role,
       kind: "state_change",
-      body: `拆成 ${created.length} 个独立需求：${created.map((m) => m.name).join("、")}${b.why ? ` —— ${b.why}` : ""}`,
+      say: b.why
+        ? msg`split into ${{ n: created.length }} separate requirements: ${{ names }} — ${{ why: b.why }}`
+        : msg`split into ${{ n: created.length }} separate requirements: ${{ names }}`,
       meta: { split: created.map((m) => m.id) },
     });
     return created;
@@ -316,7 +328,7 @@ export const postDrop = (async (ctx, _req, a, _p, b) => {
       grpId: gid,
       kind: "decision",
       lang: ctx.config.language,
-      body: `${why}\n\n证据：${evidence}`,
+      body: `${why}\n\n${renderSaid(ctx.config.language, msg`Evidence: ${{ evidence }}`)}`,
       frontmatter: { drop_proposal: 1 },
     });
     // DRAFT, so the group stops being dispatchable and the boss is asked. Left in
@@ -330,7 +342,7 @@ export const postDrop = (async (ctx, _req, a, _p, b) => {
       author: a.role,
       kind: "decision",
       intent: "decision",
-      body: `建议作废：${why}（${evidence}）`,
+      say: msg`proposing to drop this: ${{ why }} (${{ evidence }})`,
       meta: { drop_proposal: true, evidence },
     });
   });
@@ -400,7 +412,7 @@ async function routeBlockedPath(
       author: caller.role,
       kind: "say",
       intent: "request",
-      body: `${group.name} 被 ${path} 挡住了，那是你们的路径：${why}`,
+      say: msg`${{ name: group.name }} is blocked by ${{ path }}, which is inside your boundary: ${{ why }}`,
       meta: { from_group: groupId, path },
     });
     await ctx.sched.enqueue("agent_turn", {
@@ -418,7 +430,10 @@ async function routeBlockedPath(
   // for this one group, so every other group remains outside the boundary.
   const name = slug(`${path} ${why}`).slice(0, 40) || `fix-${groupId}`;
   const grant = claimsShared([path], await sharedFor(ctx.db, group.project_id));
-  const idea = `${why}\n\n（${group.name} 报的：${path} 不在它的边界内，它改不了）`;
+  const idea = `${why}\n\n${renderSaid(
+    ctx.config.language,
+    msg`Reported by ${{ from: group.name }}: ${{ path }} is outside its boundary, so it cannot change it itself.`,
+  )}`;
   const created = await newGroup(ctx, {
     projectId: group.project_id,
     name,

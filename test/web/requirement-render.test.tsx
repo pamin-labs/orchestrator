@@ -3,6 +3,7 @@ import { cleanup, render as mount, valueOf } from "../support/render.tsx";
 import { inFlight, mockHttp } from "../support/http.ts";
 import { emptyState, type Group, type Slice, type State } from "../../web/src/shared/api.ts";
 import type { PanelFrame } from "../../web/src/shared/stream.ts";
+import { BOOTSTRAP_FAILED, BOOTSTRAP_OK, BOOTSTRAP_START } from "../../src/contracts/events.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { WithQueries } from "./queries.tsx";
 import { Requirement } from "../../web/src/features/requirement/view.tsx";
@@ -187,7 +188,7 @@ test("a group that has spent its budget gets the wall instead of a working 继�
 test("the rebuild pane reports both steps while it runs and stays up when it fails", () => {
   const { st, g } = running();
   const started = [
-    frame({ id: "e1", cls: "state", text: "沙箱是新的", at: 1_000 }),
+    frame({ id: "e1", cls: "state", step: BOOTSTRAP_START, text: "沙箱是新的", at: 1_000 }),
     frame({ id: "e2", text: "$ bun install --frozen-lockfile", at: 2_000 }),
     frame({ id: "e3", text: "resolved 400 packages", at: 3_000 }),
   ];
@@ -198,11 +199,17 @@ test("the rebuild pane reports both steps while it runs and stays up when it fai
   shown(live, "resolved 400 packages");
   live.getByRole("button", { name: "收起" });
 
-  const broken = render(st, g, "slice", [...started, frame({ id: "e4", cls: "state", text: "装失败了", at: 4_000 })]);
+  const broken = render(st, g, "slice", [
+    ...started,
+    frame({ id: "e4", cls: "state", step: BOOTSTRAP_FAILED, text: "装失败了", at: 4_000 }),
+  ]);
   shown(broken, "装失败了");
   shown(broken, "交给 bootstrap 重试");
 
-  const done = render(st, g, "slice", [...started, frame({ id: "e5", cls: "state", text: "装好了", at: 4_000 })]);
+  const done = render(st, g, "slice", [
+    ...started,
+    frame({ id: "e5", cls: "state", step: BOOTSTRAP_OK, text: "装好了", at: 4_000 }),
+  ]);
   gone(done, "装依赖");
   // Nothing at all before a rebuild has been asked for.
   gone(render(st, g, "slice"), "克隆");

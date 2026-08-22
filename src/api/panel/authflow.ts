@@ -1,10 +1,11 @@
 import { msg } from "@lingui/core/macro";
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
 import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { release } from "../../mech/flow/intercept.ts";
+import { escalationKey } from "../../mech/flow/escalate.ts";
 import {
   APP_SLUG,
   BOT,
@@ -180,7 +181,11 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
   for (const g of await ctx.db.select({ id: grp.id }).from(grp).where(isNotNull(grp.sandbox_id))) {
     await killSandbox(ctx, { grp: g.id });
   }
-  const prefix = `${runtime} 的凭据`;
+  // The other end of this matcher is `executor.ts`, which files the question
+  // under the same key. It was a prefix test over the Chinese first line of the
+  // question, spelled in raw SQL because `substr`/`length` have no builder and
+  // `like` would read the `%` and `_` in a runtime name as wildcards. A key is
+  // an ordinary `=`, and translating the sentence no longer reaches it.
   await ctx.db
     .update(escalation)
     .set({
@@ -190,9 +195,7 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
       answered_at: Date.now(),
     })
     // `isNull`, not `eq(..., null)`: `= NULL` is NULL, which matches nothing.
-    // The prefix test stays raw — `substr`/`length` have no builder, and `like`
-    // would read the `%` and `_` in a runtime name as wildcards.
-    .where(and(isNull(escalation.answer), sql`substr(${escalation.question}, 1, length(${prefix})) = ${prefix}`));
+    .where(and(isNull(escalation.answer), eq(escalation.dedupe_key, escalationKey.auth(runtime))));
   // Only the groups this credential stopped. Unscoped, this matches every PAUSED
   // row there is — a hand-paused group, a budget-burnt one, a rate-limited one
   // still carrying `rl_resets_at` that watchdog rule 6 then never clears.
@@ -252,7 +255,7 @@ export const postClaudeLogin = (async (ctx) => {
     await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: r.ok ? "claude 登录好了" : `claude 登录没成：${r.detail}`,
+      say: r.ok ? msg`claude is signed in` : msg`claude could not sign in: ${{ detail: r.detail }}`,
     });
   });
   return json(claudeFlow);
@@ -309,10 +312,14 @@ export async function finishGithubLogin(ctx: Ctx, d: DeviceCode, fetchFn?: Devic
     await saveAuth(ctx.db, { runtime: "github", mode: "api_key", secret: token });
     // Every running sandbox holds the old (absent) credential in its sidecar.
     await credentialChanged(ctx, "github");
-    await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "GitHub 连上了" });
+    await ctx.bus.emit({ author: "orchestrator", kind: "state_change", say: msg`GitHub is connected` });
   } catch (e) {
     ghError = errText(e);
-    await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `GitHub 没连上：${ghError}` });
+    await ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      say: msg`GitHub is not connected: ${{ why: ghError }}`,
+    });
   } finally {
     ghFlow = null;
   }
@@ -369,7 +376,7 @@ export const postCodexDevice = (async (ctx) => {
     await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: r.ok ? "codex 登录好了" : `codex 登录没成：${r.detail}`,
+      say: r.ok ? msg`codex is signed in` : msg`codex could not sign in: ${{ detail: r.detail }}`,
     });
   });
   return json(codexFlow);

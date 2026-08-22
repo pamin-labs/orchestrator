@@ -233,8 +233,9 @@ export async function sendBack(deps: ReviewDeps, sliceId: number, feedback: stri
     // earlier that the boss had no way to see.
     await raise(ctx.db, {
       grpId: slice.grp_id,
-      question: `S${slice.seq} "${slice.title}" failed ${from} ${retries} times. Latest:\n${feedback}`,
-      brief: `S${slice.seq} 连着 ${retries} 次没过 ${from}`,
+      lang: ctx.config.language,
+      question: msg`S${{ seq: slice.seq }} "${{ title: slice.title }}" failed ${{ from }} ${{ n: retries }} times. Latest:\n${{ feedback }}`,
+      brief: msg`S${{ seq: slice.seq }} failed ${{ from }} ${{ n: retries }}x in a row`,
       kind: "spec",
       chain: "boss",
     });
@@ -440,7 +441,7 @@ export async function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: s
         author: "orchestrator",
         kind: "state_change",
         severity: "warn",
-        body: `分支没推上远端（下一个切片验收时会再试）：${r.reason}`,
+        say: msg`the branch was not pushed to the remote, and the next slice's acceptance will try again: ${{ reason: r.reason ?? "" }}`,
       });
     })
     .catch(() => {
@@ -650,8 +651,9 @@ async function branchRework(deps: ReviewDeps, grpId: number, from: string, why: 
   await hold(ctx.db, grpId, { reason: "escalation", settled: true });
   await raise(ctx.db, {
     grpId,
-    question: `整个分支被 ${from} 打回 ${n} 次了。多半是验收口径本身有问题，不是代码：\n${why}`,
-    brief: `整条分支被 ${from} 打回 ${n} 次`,
+    lang: ctx.config.language,
+    question: msg`${{ from }} has sent the whole branch back ${{ n }} times. That is usually the acceptance criteria rather than the code:\n${{ why }}`,
+    brief: msg`the whole branch sent back ${{ n }}x by ${{ from }}`,
     kind: "spec",
     chain: "boss",
   });

@@ -19,6 +19,7 @@ import { type DB, openMemory } from "../../src/platform/persistence/database.ts"
 import * as tbl from "../../src/platform/persistence/schema.ts";
 import { testContext } from "../support/test-context.ts";
 import { makeGithub } from "../../src/mech/git/github.ts";
+import { escalationKey } from "../../src/mech/flow/escalate.ts";
 import type { Feedback } from "../../src/mech/git/prwatch.ts";
 import { Notifier } from "../../src/mech/ops/notify.ts";
 import * as fx from "../support/factories.ts";
@@ -94,12 +95,14 @@ test("a close without a merge stops the group and asks the boss", async () => {
   await applyPrOutcome(ctx, feedback({ grpId: g, prNumber: 12, closed: true }), "http://x", silent);
 
   const [esc] = await ctx.db
-    .select({ question: tbl.escalation.question, chain_state: tbl.escalation.chain_state })
+    .select({ dedupe_key: tbl.escalation.dedupe_key, chain_state: tbl.escalation.chain_state })
     .from(tbl.escalation);
   expect(esc?.chain_state).toBe("boss");
-  // Nothing reopens it automatically: the close was deliberate, and undoing a
-  // deliberate act because a poller disagreed is the worst kind of helpful.
-  expect(esc?.question).toContain("重开");
+  // By the key and not by the sentence: two matchers find this row again, and the
+  // key is what they compare. Reopening is still something a person does — the
+  // close was deliberate, and undoing a deliberate act because a poller disagreed
+  // is the worst kind of helpful.
+  expect(esc?.dedupe_key).toBe(escalationKey.prClosed(12));
 });
 
 test("an index pass only marks the tree fresh when it did work and none of it failed", async () => {
@@ -255,10 +258,13 @@ test("an index model that answers nothing is not asked again until credentials c
     .select({ body: tbl.event.body })
     .from(tbl.event)
     .where(eq(tbl.event.severity, "blocker"));
-  expect(blockers.map((b) => b.body)).toEqual([
-    "PageIndex 建不起来：12 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。",
-    "PageIndex 建不起来：12 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。",
-  ]);
+  // The sentence belongs to the catalogue now, so what is asserted is that both
+  // events say the same thing and that it carries the number this test fed in —
+  // a copy of the English here would be a second author for it.
+  const bodies = blockers.map((b) => b.body);
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]).toBe(bodies[0]);
+  expect(bodies[0]).toContain("12");
 
   // A pass that worked clears it outright.
   await recordIndexResult(ctx, p, "sha-3", { calls: 4, failed: 0, files: 9 });
@@ -290,16 +296,24 @@ test("an index pass that throws backs off and says the reason once", async () =>
   expect(await indexTargets(ctx.db, t0 + INDEX_THROW_BACKOFF_MS - 1)).toEqual([]);
   expect((await indexTargets(ctx.db, t0 + INDEX_THROW_BACKOFF_MS)).map((t) => t.id)).toEqual([p]);
 
-  const said = async () =>
-    (await ctx.db.select({ c: count() }).from(tbl.event).where(like(tbl.event.body, "%索引刷新出错%")))[0]?.c;
-  expect(await said()).toBe(1);
+  // Counted by the reason this test threw rather than by the sentence around it:
+  // the sentence is the catalogue's, and the reason is the thing the dedupe keys
+  // on — so this asks the question the rule is about.
+  const saidAbout = async (reason: string) =>
+    (
+      await ctx.db
+        .select({ c: count() })
+        .from(tbl.event)
+        .where(like(tbl.event.body, `%${reason}%`))
+    )[0]?.c;
+  expect(await saidAbout("socket closed")).toBe(1);
   // The same socket failure is one piece of news however often it happens.
   await indexThrew(ctx, new Error("socket closed"), t0);
   await indexThrew(ctx, new Error("socket closed"), t0);
-  expect(await said()).toBe(1);
+  expect(await saidAbout("socket closed")).toBe(1);
   // A different one is worth saying.
   await indexThrew(ctx, new Error("no such container"), t0);
-  expect(await said()).toBe(2);
+  expect(await saidAbout("no such container")).toBe(1);
 });
 
 test("an empty index model turns the tree walk off rather than calling an empty one", async () => {

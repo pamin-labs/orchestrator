@@ -452,7 +452,11 @@ export async function vaultBindings(
 function chatgptHint(secret: string): string {
   const a = parseAuth(secret);
   const id = a?.tokens?.account_id;
-  return id ? `账号 …${id.slice(-6)}` : "auth.json";
+  // Data, and only data. The panel splices this into `${hint} stored; paste a new
+  // one…`, so a word here would be one sentence written in two languages — and
+  // the sibling hint beside this one is already a bare tail. Which kind of thing
+  // the tail identifies is what `mode` says.
+  return id ? `…${id.slice(-6)}` : "auth.json";
 }
 
 export interface VaultOpts {

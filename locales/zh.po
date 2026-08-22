@@ -80,6 +80,11 @@ msgstr "{fails} 条没过"
 msgid "{files} files"
 msgstr "{files} 个文件"
 
+msgid "{from} has sent the whole branch back {n} times. That is usually the acceptance criteria rather than the code:\n"
+"{why}"
+msgstr "整个分支被 {from} 打回 {n} 次了。多半是验收口径本身有问题，不是代码：\n"
+"{why}"
+
 msgid "{good}"
 msgstr "{good}"
 
@@ -191,6 +196,12 @@ msgstr "{n} 件待办"
 msgid "{n} unread — the Librarian is compressing them"
 msgstr "未读 {n} 条，已让 Librarian 压成摘要"
 
+msgid "{name} ({repo} · {branch}) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
+msgstr "{name}（{repo} · {branch}）加好了。闸门和安装命令等第一个组克隆完再猜，现在填也行：设置 → 闸门。"
+
+msgid "{name} ({repo}, on whatever the remote calls its default branch) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
+msgstr "{name}（{repo} · 远端自己的默认分支）加好了。闸门和安装命令等第一个组克隆完再猜，现在填也行：设置 → 闸门。"
+
 msgid "{name} dissolved; its sandbox is reclaimed"
 msgstr "{name} 解散了，沙箱回收"
 
@@ -200,8 +211,14 @@ msgstr "{name} 封存了 {hours} 小时，唤醒还是不做了？"
 msgid "{name} has been waiting {min} min for you"
 msgstr "{name} 已经等你 {min} 分钟"
 
+msgid "{name} has spent all {tokens} of its tokens and the whole group is suspended. Raise the cap and it carries on, or leave it stopped here."
+msgstr "{name} 用完了 {tokens} tokens，全组已挂起。提高上限它就接着跑，或者就让它停在这里。"
+
 msgid "{name} is at {pct}% of its budget"
 msgstr "{name} 预算用到 {pct}%"
+
+msgid "{name} is blocked by {path}, which is inside your boundary: {why}"
+msgstr "{name} 被 {path} 挡住了，那是你们的路径：{why}"
 
 msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name} 等的那件事已经了结，自动唤醒"
@@ -230,6 +247,15 @@ msgstr "{name} S{seq} 等你查收 {hours} 小时了"
 msgid "{name} spent its whole budget ({tokens} tokens) and is suspended"
 msgstr "{name} 把 {tokens} tokens 花完了，全组挂起"
 
+msgid "{name}: {n, plural, one {# running turn was} other {# running turns were}} killed before the data goes"
+msgstr "{name}：{n, plural, other {# 个在跑的 turn}} 先掐掉了，再删数据"
+
+msgid "{name}: PR #{pr} was closed — reopen it or drop the requirement"
+msgstr "{name}：PR #{pr} 被关了 —— 重开，或者这个需求不做了"
+
+msgid "{name}: the PR will not open — {why}"
+msgstr "{name}：PR 开不出来 —— {why}"
+
 msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
 msgstr "{name} 的容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。"
 
@@ -248,11 +274,23 @@ msgstr "{name} 的沙箱绑的是旧凭据，回收了，下一轮重建"
 msgid "{path} is a path inside this container, and the mount is made by the sandbox server's docker, which resolves it on its own filesystem. Use one absolute path on both sides (-v <host path>:{path}) and add it to the sandbox server's allowed_host_paths. A mismatch does not fail; it mounts an empty directory."
 msgstr "{path} 是这个容器里的路径，而挂载是沙箱服务器的 docker 做的，它在自己的文件系统上解析这个路径。两边用同一个绝对路径（-v <host path>:{path}），并把它加进沙箱服务器的 allowed_host_paths。对不上不会报错，只会挂上一个空目录。"
 
+msgid "{path} is back to its default"
+msgstr "{path} 恢复默认了"
+
+msgid "{path} is now {value}"
+msgstr "{path} 改成了 {value}"
+
 msgid "{path}: {error}"
 msgstr "{path}：{error}"
 
 msgid "{path}: cannot be read"
 msgstr "{path}：读不了"
+
+msgid "{repo} has been added, but this login cannot push to it: {why}. Deal with it now, rather than after the first slice is finished."
+msgstr "{repo} 加好了，但这个登录推不上去：{why}。现在处理，别等第一个切片做完。"
+
+msgid "{repo}'s own skills are not listed yet: the code only exists inside a container, so nothing can count them until the first group has cloned it (we look in {dirs}). After that they appear here by themselves, and you can name one in the composer with /name. Skills kept outside those directories are invisible to both."
+msgstr "{repo} 自带的技能还没列出来 —— 代码只在容器里，得等第一个组克隆完才数得清（找的是 {dirs}）。那之后它们会自动出现在这里，也能在输入框里 /名字 点名。技能放在这几个目录之外的话，两边都看不到。"
 
 msgid "{repoPath} is already registered as \"{name}\""
 msgstr "{repoPath} 已经注册为「{name}」"
@@ -282,8 +320,14 @@ msgstr "{role} 连着 {n} 个 turn 在改同一个文件 {file} —— 大概是
 msgid "{role} wrote {n, plural, one {# file} other {# files}} this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it"
 msgstr "{role} 改了本组不拥有的 {n} 个文件（{files}），已回滚 —— 这个 CLI 的沙箱拦不住写入，只能事后对账"
 
+msgid "{role}'s session record is gone; the next turn starts a new session"
+msgstr "{role} 的会话记录没了，下一轮从新会话开始"
+
 msgid "{runningCount} running · {total} total"
 msgstr "在跑 {runningCount} · 共 {total}"
+
+msgid "{runtime} credential expired"
+msgstr "{runtime} 凭据过期"
 
 msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
 msgstr "{server} 有应答，但它不是 sandbox server（HTTP {status}）——换个地址。"
@@ -348,11 +392,19 @@ msgstr "宿主核数的 1/4"
 msgid "127.0.0.1:8080 or https://host:port"
 msgstr "127.0.0.1:8080 或 https://host:port"
 
+msgid "A background task crashed and the server carried on without it. That is a bug — please send this to whoever maintains it:\n"
+"{stack}"
+msgstr "有个后台任务崩了，服务没跟着退出。这是个 bug，请把这段贴给开发：\n"
+"{stack}"
+
 msgid "A number"
 msgstr "要一个数字"
 
 msgid "A paused group is waiting on you and costs a concurrency slot while it waits. This is how often it says so before 'Archive after paused' takes the slot back."
 msgstr "暂停的组在等你，等的时候还占着一个并发位。这是它多久说一次，直到「暂停多久后封存」把位子收回去。"
+
+msgid "A project's config has to be a JSON object. One partial edit will not be allowed to replace the whole of it."
+msgstr "项目配置必须是一个 JSON 对象；拒绝用一次局部修改覆盖整份配置。"
 
 msgid "Abandon this requirement"
 msgstr "作废这个需求"
@@ -449,6 +501,9 @@ msgstr "已经花了 {tokens} tokens"
 
 msgid "also changed on S{seq}, unclaimed: {files}"
 msgstr "S{seq} 还改了这些但没声明：{files}"
+
+msgid "An image has to be one we publish (ghcr.io/pamin-labs/…) or one you built locally (orch/agent:1, say). The agent runs inside this image with your code in front of it, so pointing it somewhere else hands over the whole boundary — and nothing on the panel would show it."
+msgstr "镜像只能是我们发布的（ghcr.io/pamin-labs/…）或者你本地构建的（比如 orch/agent:1）。agent 在这个镜像里跑，而它面前是你的代码 —— 换成别处的镜像等于把整条边界交出去，而且从面板上看不出来。"
 
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
 msgstr "没跑完的 turn 就白跑了，组会自己重开容器接着做，代码和分支不受影响。"
@@ -699,6 +754,12 @@ msgstr "领任务"
 msgid "Claude Code writes this in Co-Authored-By when committing"
 msgstr "Claude Code 自己提交时写进 Co-Authored-By"
 
+msgid "claude could not sign in: {detail}"
+msgstr "claude 登录没成：{detail}"
+
+msgid "claude is signed in"
+msgstr "claude 登录好了"
+
 msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
 msgstr "claude 在容器里没打印出登录链接 —— 在镜像里跑 `claude setup-token` 看为什么。它需要 pty，没有 pty 时它什么都不打印然后正常退出。"
 
@@ -740,6 +801,12 @@ msgstr "代码索引"
 
 msgid "Code repository"
 msgstr "代码仓库"
+
+msgid "codex could not sign in: {detail}"
+msgstr "codex 登录没成：{detail}"
+
+msgid "codex is signed in"
+msgstr "codex 登录好了"
 
 msgid "codex printed no device code inside the container — run `codex login --device-auth` in the image to see why."
 msgstr "codex 在容器里没打印出设备码 —— 在镜像里跑 `codex login --device-auth` 看为什么。"
@@ -1035,6 +1102,9 @@ msgstr "事件流"
 msgid "Every container goes: sandboxes for {groups} groups, and {turns} turns currently running."
 msgstr "所有容器都会没：{groups} 个组的沙箱，还有 {turns} 个正在跑的 turn。"
 
+msgid "Evidence: {evidence}"
+msgstr "证据：{evidence}"
+
 msgid "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\n"
 "Drag in screenshots or designs, or paste. Cmd+Enter to submit"
 msgstr "例：登录页加「记住我」，勾了之后 30 天不用重新登录。\n"
@@ -1157,6 +1227,12 @@ msgstr "闸门"
 msgid "Gates / Install commands"
 msgstr "闸门 / 安装命令"
 
+msgid "gates found: {gates}"
+msgstr "闸门看出来了：{gates}"
+
+msgid "gates found: {gates} · install with {install}"
+msgstr "闸门看出来了：{gates} · 装依赖 {install}"
+
 msgid "Generate a draft from this group's notes without sending it."
 msgstr "用这一组的黑板现算一份草稿，不会发出去"
 
@@ -1181,14 +1257,27 @@ msgstr "去 GitHub → 这个 App → Install App"
 msgid "GitHub API call"
 msgstr "GitHub API 调用"
 
+msgid "GitHub is connected"
+msgstr "GitHub 连上了"
+
 msgid "GitHub is not connected — connect it in Settings first"
 msgstr "GitHub 还没连上 —— 先去设置里连"
 
-msgid "GitHub no longer accepts this login, so every turn on {repo} is held — retrying cannot help. Reconnect GitHub in settings and they resume on their own. Other projects are unaffected."
-msgstr "GitHub 认不了这个登录了，{repo} 这个项目的活先全部挂起 —— 重试帮不上忙。去设置页重连 GitHub，好了自动接着走。别的项目不受影响。"
+msgid "GitHub is not connected: {why}"
+msgstr "GitHub 没连上：{why}"
+
+msgid "GitHub no longer accepts the login for {repo}, so every turn on it is held — retrying cannot help: {why}\n"
+"\n"
+"Reconnect GitHub in settings and they resume on their own. Other projects are unaffected."
+msgstr "GitHub 认不了 {repo} 这个项目的登录了，这个项目的活先全部挂起 —— 重试帮不上忙：{why}\n"
+"\n"
+"去设置页重连 GitHub，好了自动接着走。别的项目不受影响。"
 
 msgid "GitHub not connected yet; using our bot account for now"
 msgstr "还没连 GitHub，先用我们的机器人账号"
+
+msgid "GitHub will not connect"
+msgstr "GitHub 连不上了"
 
 msgid "Global"
 msgstr "全局"
@@ -1228,6 +1317,9 @@ msgstr "这一组 RUNNING 但队列是空的，重排一轮也没救回来。最
 
 msgid "grp {target} landed; resuming by itself"
 msgstr "挡路的 grp {target} 已经落地，自动继续"
+
+msgid "handed to {to}: {question}"
+msgstr "转给 {to}：{question}"
 
 msgid "Has objections"
 msgstr "有反对意见"
@@ -1344,6 +1436,11 @@ msgstr "装依赖"
 msgid "Install Docker — or Colima, or Podman, anything that provides a docker socket — and start it."
 msgstr "装个 Docker —— 或者 Colima、Podman，能提供 docker socket 的都行 —— 然后起起来。"
 
+msgid "install failed (exit {code}): {cmd}\n"
+"{tail}"
+msgstr "装失败了（exit {code}）：{cmd}\n"
+"{tail}"
+
 msgid "Install on GitHub"
 msgstr "去 GitHub 装上"
 
@@ -1358,6 +1455,9 @@ msgstr "装在哪些账号上"
 
 msgid "installed, but the daemon is not answering"
 msgstr "装了，但 daemon 不应答"
+
+msgid "installed: {cmd}"
+msgstr "装好了：{cmd}"
 
 msgid "Interrupt and rollback"
 msgstr "打断并回滚"
@@ -1814,6 +1914,9 @@ msgstr "开新 PR"
 msgid "Open PR ↗"
 msgstr "打开 PR ↗"
 
+msgid "opened as requirement {name} (grp {grp})"
+msgstr "开成需求 {name}（grp {grp}）"
+
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server 没了，重启了（第 {n} 次）。挂起的活会自己继续。"
 
@@ -1831,6 +1934,9 @@ msgstr "组织"
 
 msgid "Other"
 msgstr "其他"
+
+msgid "out of budget — raise it or not"
+msgstr "预算烧穿了，加不加"
 
 msgid "out of budget ({spent}/{budget} tokens). Raise the cap first, or it stops again on the next tick."
 msgstr "预算用完了（{spent}/{budget} tokens）。先把上限提上去，否则下一个 tick 又会停。"
@@ -1855,6 +1961,9 @@ msgstr "最慢的那几次"
 
 msgid "P95"
 msgstr "最慢"
+
+msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
+msgstr "PageIndex 建不起来：{n} 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。"
 
 msgid "Panel language"
 msgstr "界面语言"
@@ -1943,6 +2052,14 @@ msgstr "轮询间隔"
 msgid "PR #{n} opened"
 msgstr "PR #{n} 已开"
 
+msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
+"To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
+msgstr "PR #{pr} 被关掉了（没有合入）。这一组已经停下并让出了合入队列。\n"
+"要继续：在 GitHub 上重开这个 PR，它会自己回到队列。不想要了：在这个需求上点「不做了」。"
+
+msgid "PR closed — reopen it or not"
+msgstr "PR 被关掉了，要不要重开"
+
 msgid "PR link not found"
 msgstr "未找到 PR 链接"
 
@@ -1969,6 +2086,9 @@ msgstr "项目名…"
 
 msgid "Projects"
 msgstr "项目"
+
+msgid "proposing to drop this: {why} ({evidence})"
+msgstr "建议作废：{why}（{evidence}）"
 
 msgid "Pull request"
 msgstr "合并请求"
@@ -2093,6 +2213,9 @@ msgstr "移除项目"
 msgid "Remove this project"
 msgstr "移除这个项目"
 
+msgid "Removed the project {name} ({repo}): {n, plural, one {# requirement} other {# requirements}}, the containers and the records are gone. Nothing on GitHub was touched."
+msgstr "移除了项目 {name}（{repo}）：{n, plural, other {# 个需求}}、容器和记录都清掉了。GitHub 上什么都没动。"
+
 msgid "Removing…"
 msgstr "移除中…"
 
@@ -2122,6 +2245,9 @@ msgstr "回答…  ⌘↵ 发送"
 
 msgid "Repo-wide"
 msgstr "随仓库"
+
+msgid "Reported by {from}: {path} is outside its boundary, so it cannot change it itself."
+msgstr "{from} 报的：{path} 不在它的边界内，它改不了。"
 
 msgid "Repos with DCO enabled won't accept commits without this line"
 msgstr "开了 DCO 的仓库不收没有这行的提交"
@@ -2276,11 +2402,19 @@ msgstr "在跑，我们起的"
 msgid "Running: {running}"
 msgstr "在跑：{running}"
 
+msgid "S{seq} \"{title}\" failed {from} {n} times. Latest:\n"
+"{feedback}"
+msgstr "S{seq}「{title}」在 {from} 上连着挂了 {n} 次。最近一次：\n"
+"{feedback}"
+
 msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq}「{title}」做完了，等你查收"
 
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} 连续 {n} 次没过 {from} —— 大概是验收标准的问题，不是代码"
+
+msgid "S{seq} failed {from} {n}x in a row"
+msgstr "S{seq} 连着 {n} 次没过 {from}"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} 被 {from} 打回（第 {n} 次）"
@@ -2447,6 +2581,18 @@ msgstr "规格"
 msgid "Spent {spent} tokens against a {cap} limit. Only raising the limit moves it — \"resume\" does nothing."
 msgstr "已花 {spent} tokens，上限 {cap}。加上限才动得了，「继续」不生效。"
 
+msgid "split into {n} separate requirements: {names}"
+msgstr "拆成 {n} 个独立需求：{names}"
+
+msgid "split into {n} separate requirements: {names} — {why}"
+msgstr "拆成 {n} 个独立需求：{names} —— {why}"
+
+msgid "Split out of the requirement {from}."
+msgstr "从「{from}」拆出来的一条。"
+
+msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
+msgstr "从「{from}」拆出来的一条。原始整段见 note #{note}。"
+
 msgid "Stage durations"
 msgstr "各环节耗时"
 
@@ -2536,8 +2682,35 @@ msgstr "系统耗时"
 msgid "Take note"
 msgstr "记笔记"
 
+msgid "The {runtime} credential stopped working: {why}\n"
+"Go to settings → {runtime} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done."
+msgstr "{runtime} 的凭据不好使了：{why}\n"
+"去设置页 → {runtime} → 登录，重新配一个。登录是在工具容器里跑官方 CLI 做的，本机不用装。配完这一组会自己接着走。"
+
+msgid "the approval did not take"
+msgstr "批准没能落地"
+
+msgid "the approval did not take: {err}"
+msgstr "批准没能落地：{err}"
+
+msgid "The approval did not take: {err}. It has been withdrawn — approve again once that is fixed."
+msgstr "批准没能落地：{err}。这次批准已撤回，修好之后再批一次。"
+
+msgid "the base branch moved from {was} to {now}, because the default branch on the remote changed. Every clone, rebase and diff from here on is against it."
+msgstr "基线分支从 {was} 改成 {now}（远端上的默认分支变了）。往后的 clone、rebase 和 diff 都对着它。"
+
 msgid "the boundary still overlaps"
 msgstr "边界仍然重叠"
+
+msgid "The branch is finished but the PR will not open: {why}\n"
+"\n"
+"Answer this once it is fixed and the group retries by itself."
+msgstr "分支做完了但 PR 开不出来：{why}\n"
+"\n"
+"修好之后回答这条，这一组会自己重试。"
+
+msgid "the branch was not pushed to the remote, and the next slice's acceptance will try again: {reason}"
+msgstr "分支没推上远端（下一个切片验收时会再试）：{reason}"
 
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "浏览器读不到这些内容。文件夹得拖进来。"
@@ -2557,6 +2730,12 @@ msgstr "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先
 msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, requirements left running"
 msgstr "宿主断网了，{n} 个 turn 挂起等联网 —— 需求还在跑的状态，活儿排着，通了自动接上"
 
+msgid "the index cannot be refreshed: this project's container will not start ({why})"
+msgstr "索引刷不了：这个项目的容器起不来（{why}）"
+
+msgid "the index pass threw: {reason}"
+msgstr "索引刷新出错：{reason}"
+
 msgid "The last step repeats for as long as nobody answers"
 msgstr "最后一级会一直重复，直到有人回"
 
@@ -2575,6 +2754,9 @@ msgstr "「模型账号」里那一行的名字，不是密钥本身。密钥写
 msgid "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone."
 msgstr "「卡住」的另一半：同一个文件连着被重写这么多次。在收敛的 agent 会碰到邻近的文件；卡住的 agent 会一直重写一个文件，直到预算烧完。"
 
+msgid "the PR will not open"
+msgstr "PR 开不出来"
+
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "仓库地图没法刷新了：{repo} —— {why}"
 
@@ -2587,11 +2769,17 @@ msgstr "仓库映射刷新不了：{repo}，而且 git 没给理由，这本身�
 msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
 msgstr "仓库地图停在上一次的版本：{repo} 的容器读不到 HEAD，重建只会得到一份没有符号的地图"
 
+msgid "the repository was renamed on GitHub: {was} → {now}. We have followed it, and clones and PRs point at the new one."
+msgstr "仓库在 GitHub 上改名了：{was} → {now}。已经跟着改，克隆和 PR 都指新的。"
+
 msgid "the same feedback for the {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} time; asking the CoS to make it a project rule"
 msgstr "同一类反馈第 {n} 次了，让 CoS 归纳成项目规约"
 
 msgid "the same ground as {others}"
 msgstr "和 {others} 是同一块地方"
+
+msgid "the sandbox is new — putting {branch} and the dependencies back"
+msgstr "沙箱是新的，把 {branch} 和依赖装回去"
 
 msgid "the sandbox server is up — we started it (pid {pid})"
 msgstr "沙箱服务器起好了 —— 我们起的（pid {pid}）"
@@ -2617,6 +2805,9 @@ msgstr "开容器的那个服务"
 msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
 msgstr "全系统调用最频繁的一个模型调用：纯摘要、不做决策、不用工具、不碰黑板。第一个该从贵订阅上挪走的就是它。"
 
+msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
+msgstr "子模块没拉起来，代码可能不全：{why}"
+
 msgid "The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst."
 msgstr "用量接口没有文档，轮得快了就连着几小时回 429——而你自己的 /status 花的是同一份额度。五小时窗口里十分钟一次，最坏也就 3% 的误差。"
 
@@ -2625,8 +2816,17 @@ msgid "the watchdog threw this tick and the rules after it did not run: {why}\n"
 msgstr "看门狗这一轮挂了，后面的规则都没跑：{why}\n"
 "每 30 秒都会再试一次，但在修好之前，靠它推的那些状态（卡住的组、过期的沙箱、基线变了要 rebase、等你决定的计时）都停在原地。"
 
+msgid "the whole branch sent back {n}x by {from}"
+msgstr "整条分支被 {from} 打回 {n} 次"
+
 msgid "Theme"
 msgstr "主题"
+
+msgid "there is no recipient called \"{to}\", and no roles are configured"
+msgstr "没有 \"{to}\" 这个收件人，而且一个角色都还没配"
+
+msgid "there is no recipient called \"{to}\". The roles that exist: {known}"
+msgstr "没有 \"{to}\" 这个收件人。现有角色：{known}"
 
 msgid "these belong to no group: {paths} — changes there go through the boss or the Architect"
 msgstr "这些不属于任何组：{paths}——那里的改动要走老板或架构师"
@@ -2654,6 +2854,12 @@ msgstr "这个进程不是我们起的，可能是你自己在用的那个。要
 
 msgid "This project hasn't run any activity yet."
 msgstr "这个项目还没跑过任何活。"
+
+msgid "this question became requirement {name} (grp {grp})"
+msgstr "这个问题开成了需求 {name}（grp {grp}）"
+
+msgid "this repository needs nothing installed"
+msgstr "这个仓库不需要装什么"
 
 msgid "This requirement has been archived or no longer exists."
 msgstr "这个需求已经归档或不存在了。"
@@ -2942,6 +3148,9 @@ msgstr "方向错了"
 
 msgid "You can edit the card and re-approve."
 msgstr "卡可以直接改再批"
+
+msgid "you sent S{seq} back, but autoAdvance had already started {n, plural, one {# slice} other {# slices}} after it, and they were built on this one. The whole group has stopped: either let it fix this slice first, or send the later ones back with it."
+msgstr "你退回了 S{seq}，但 autoAdvance 已经让后面 {n, plural, other {# 片}}开工了 —— 它们是在这一片的基础上做的。全组先停下：要么让它先修这一片，要么把后面几片一起退回。"
 
 msgid "zoomed to {zoomLevel}×"
 msgstr "放大到 {zoomLevel}×"

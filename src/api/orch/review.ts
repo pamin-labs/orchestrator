@@ -1,3 +1,4 @@
+import { msg, plural } from "@lingui/core/macro";
 import { and, asc, count, eq, gt, ne, sql } from "drizzle-orm";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
@@ -300,9 +301,7 @@ export const postSliceDecision = (async (ctx, _req, params, raw) => {
         kind: "escalation",
         intent: "ask",
         severity: "blocker",
-        body:
-          `你退回了 S${sl.seq}，但 autoAdvance 已经让后面 ${ahead} 片开工了 —— 它们是在这一片的基础上做的。` +
-          `全组先停下：要么让它先修这一片，要么把后面几片一起退回。`,
+        say: msg`you sent S${{ seq: sl.seq }} back, but autoAdvance had already started ${plural({ n: ahead }, { one: "# slice", other: "# slices" })} after it, and they were built on this one. The whole group has stopped: either let it fix this slice first, or send the later ones back with it.`,
       });
     }
     await ctx.sched.enqueue("agent_turn", { grp_id: sl.grp_id, slice_id: id, payload: { rejection: b.feedback } });

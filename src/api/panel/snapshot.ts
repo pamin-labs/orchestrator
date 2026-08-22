@@ -1,4 +1,5 @@
 import { UsageWindow, type Snapshot } from "../../contracts/panel.ts";
+import { SaidSchema, type Said } from "../../contracts/said.ts";
 import { valueOr } from "../../contracts/json.ts";
 import { costReport } from "../../mech/ops/cost.ts";
 import { canStart } from "../../mech/flow/ownership.ts";
@@ -251,6 +252,7 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
         id: escalation.id,
         grp_id: escalation.grp_id,
         question: escalation.question,
+        question_said: escalation.question_said,
         answer: escalation.answer,
         answered_by: escalation.answered_by,
         ref_note_id: escalation.ref_note_id,
@@ -274,7 +276,9 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
         grp_id: escalation.grp_id,
         severity: escalation.severity,
         question: escalation.question,
+        question_said: escalation.question_said,
         brief: escalation.brief,
+        brief_said: escalation.brief_said,
         kind: escalation.kind,
         chain_state: escalation.chain_state,
         answered_by: escalation.answered_by,
@@ -369,8 +373,15 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
     ideas,
     // `answered_by` is filtered above and the contract says it is a string, so
     // this narrows rather than asserts: the filter means nothing is dropped.
-    answered: answerable.flatMap((r) => (r.answered_by === null ? [] : [{ ...r, answered_by: r.answered_by }])),
-    escalations,
+    answered: answerable.flatMap(({ question_said, ...r }) => {
+      const said = saidIn(question_said);
+      return r.answered_by === null ? [] : [{ ...r, answered_by: r.answered_by, ...(said && { said }) }];
+    }),
+    escalations: escalations.map(({ question_said, brief_said, ...e }) => {
+      const said = saidIn(question_said);
+      const briefSaid = saidIn(brief_said);
+      return { ...e, ...(said && { said }), ...(briefSaid && { briefSaid }) };
+    }),
     mergeQueue: mergeQueue.flat(),
     archived,
     // The panel shows "并行 3/3" from this: without the cap, a queued group looks
@@ -397,6 +408,16 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
     lastSeq: newest[0]?.s ?? 0,
   };
 }
+
+/**
+ * The descriptor a row stored beside its rendered text, if it is still readable.
+ *
+ * Spread in by the caller rather than assigned, because `exactOptionalPropertyTypes`
+ * refuses an explicit `undefined` on an optional field. Unparseable or absent means
+ * the field is simply not there and the panel draws the text beside it, which is
+ * what every row written before the column does.
+ */
+const saidIn = (value: unknown): Said | undefined => SaidSchema.safeParse(value).data;
 
 /** How many turns this agent has finished. Correlated on the row being selected. */
 const agentTurns = (db: Ctx["db"]) =>

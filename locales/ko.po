@@ -80,6 +80,11 @@ msgstr "{fails}개 실패"
 msgid "{files} files"
 msgstr "파일 {files}개"
 
+msgid "{from} has sent the whole branch back {n} times. That is usually the acceptance criteria rather than the code:\n"
+"{why}"
+msgstr "브랜치 전체가 {from} 에게 {n} 번 반려됐습니다. 대개 코드가 아니라 수용 기준 쪽이 문제입니다:\n"
+"{why}"
+
 msgid "{good}"
 msgstr "{good}"
 
@@ -191,6 +196,12 @@ msgstr "{n}건 처리 대기"
 msgid "{n} unread — the Librarian is compressing them"
 msgstr "읽지 않은 {n}건 — Librarian이 요약하고 있습니다"
 
+msgid "{name} ({repo} · {branch}) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
+msgstr "{name}({repo} · {branch})을 추가했습니다. 게이트와 설치 명령은 첫 그룹이 클론한 뒤에 추측합니다. 지금 직접 채워도 됩니다: 설정 → 게이트."
+
+msgid "{name} ({repo}, on whatever the remote calls its default branch) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
+msgstr "{name}({repo} · 리모트가 기본으로 삼는 브랜치)을 추가했습니다. 게이트와 설치 명령은 첫 그룹이 클론한 뒤에 추측합니다. 지금 직접 채워도 됩니다: 설정 → 게이트."
+
 msgid "{name} dissolved; its sandbox is reclaimed"
 msgstr "{name}이(가) 해산되어 샌드박스를 회수했습니다"
 
@@ -200,8 +211,14 @@ msgstr "{name}이(가) {hours}시간째 보류 중입니다 — 깨울까요, �
 msgid "{name} has been waiting {min} min for you"
 msgstr "{name}이(가) {min}분째 당신을 기다리고 있습니다"
 
+msgid "{name} has spent all {tokens} of its tokens and the whole group is suspended. Raise the cap and it carries on, or leave it stopped here."
+msgstr "{name} 이(가) 토큰 {tokens} 개를 모두 써서 그룹 전체가 정지됐습니다. 상한을 올리면 이어서 진행하고, 여기서 멈춰 둘 수도 있습니다."
+
 msgid "{name} is at {pct}% of its budget"
 msgstr "{name}의 예산 사용률이 {pct}%입니다"
+
+msgid "{name} is blocked by {path}, which is inside your boundary: {why}"
+msgstr "{name} 이(가) {path} 에 막혔습니다. 그건 당신들 경계 안입니다: {why}"
 
 msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name}이(가) 기다리던 일이 끝났습니다 — 깨웠습니다"
@@ -230,6 +247,15 @@ msgstr "{name} S{seq}이(가) {hours}시간째 확인을 기다리고 있습니�
 msgid "{name} spent its whole budget ({tokens} tokens) and is suspended"
 msgstr "{name}이(가) 예산({tokens} 토큰)을 모두 쓰고 중단되었습니다"
 
+msgid "{name}: {n, plural, one {# running turn was} other {# running turns were}} killed before the data goes"
+msgstr "{name}: 실행 중인 turn {n, plural, other {#개}}를 먼저 죽인 뒤 데이터를 지웁니다"
+
+msgid "{name}: PR #{pr} was closed — reopen it or drop the requirement"
+msgstr "{name}: PR #{pr} 이(가) 닫혔습니다 —— 다시 열거나 이 요구사항을 접으세요"
+
+msgid "{name}: the PR will not open — {why}"
+msgstr "{name}: PR 을 열 수 없습니다 —— {why}"
+
 msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
 msgstr "{name}의 컨테이너를 버리고 다음 턴에서 다시 만듭니다: 브랜치 재클론, 의존성 재설치. 커밋하지 않은 변경은 사라집니다."
 
@@ -248,11 +274,23 @@ msgstr "{name}의 샌드박스가 옛 자격 증명에 묶여 있어 회수했�
 msgid "{path} is a path inside this container, and the mount is made by the sandbox server's docker, which resolves it on its own filesystem. Use one absolute path on both sides (-v <host path>:{path}) and add it to the sandbox server's allowed_host_paths. A mismatch does not fail; it mounts an empty directory."
 msgstr "{path}는 이 컨테이너 안의 경로지만, 마운트는 샌드박스 서버의 docker가 자신의 파일시스템에서 해석합니다. 양쪽에 같은 절대 경로를 쓰고(-v <host path>:{path}), 샌드박스 서버의 allowed_host_paths에 추가하세요. 어긋나도 실패하지 않고 빈 디렉터리가 마운트될 뿐입니다."
 
+msgid "{path} is back to its default"
+msgstr "{path} 을(를) 기본값으로 되돌렸습니다"
+
+msgid "{path} is now {value}"
+msgstr "{path} 을(를) {value} 로 바꿨습니다"
+
 msgid "{path}: {error}"
 msgstr "{path}: {error}"
 
 msgid "{path}: cannot be read"
 msgstr "{path}: 읽을 수 없습니다"
+
+msgid "{repo} has been added, but this login cannot push to it: {why}. Deal with it now, rather than after the first slice is finished."
+msgstr "{repo} 을(를) 추가했지만 이 로그인으로는 push 할 수 없습니다: {why}. 첫 슬라이스가 끝난 뒤가 아니라 지금 처리하세요."
+
+msgid "{repo}'s own skills are not listed yet: the code only exists inside a container, so nothing can count them until the first group has cloned it (we look in {dirs}). After that they appear here by themselves, and you can name one in the composer with /name. Skills kept outside those directories are invisible to both."
+msgstr "{repo} 가 가진 기능은 아직 목록에 없습니다. 코드는 컨테이너 안에만 있어서, 첫 조가 클론을 끝내기 전에는 셀 수가 없습니다 (찾는 곳은 {dirs} 입니다). 그 뒤에는 여기 저절로 나타나고, 입력창에서 /이름 으로 부를 수도 있습니다. 그 디렉터리 밖에 둔 기능은 양쪽 모두에서 보이지 않습니다."
 
 msgid "{repoPath} is already registered as \"{name}\""
 msgstr "{repoPath}은(는) 이미 \"{name}\"으로 등록되어 있습니다"
@@ -282,8 +320,14 @@ msgstr "{role}이(가) {n}턴 연속으로 {file}을(를) 고쳐 쓰고 있습�
 msgid "{role} wrote {n, plural, one {# file} other {# files}} this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it"
 msgstr "{role}이(가) 이 그룹 소유가 아닌 파일 {n}개를 고쳤습니다({files}) — 되돌렸습니다. 이 CLI의 샌드박스는 쓰기를 막지 못해 사후에 대조합니다"
 
+msgid "{role}'s session record is gone; the next turn starts a new session"
+msgstr "{role} 의 세션 기록이 사라졌습니다. 다음 턴은 새 세션으로 시작합니다"
+
 msgid "{runningCount} running · {total} total"
 msgstr "{runningCount}개 실행 중 · 총 {total}개"
+
+msgid "{runtime} credential expired"
+msgstr "{runtime} 자격 증명 만료"
 
 msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
 msgstr "{server}는 응답하지만 sandbox server가 아닙니다(HTTP {status}). 다른 주소를 지정하세요."
@@ -348,11 +392,19 @@ msgstr "호스트 코어의 1/4"
 msgid "127.0.0.1:8080 or https://host:port"
 msgstr "127.0.0.1:8080 또는 https://host:port"
 
+msgid "A background task crashed and the server carried on without it. That is a bug — please send this to whoever maintains it:\n"
+"{stack}"
+msgstr "백그라운드 작업이 죽었는데 서버는 그대로 돌고 있습니다. 버그입니다. 이 내용을 유지보수하는 사람에게 전달해 주세요:\n"
+"{stack}"
+
 msgid "A number"
 msgstr "숫자"
 
 msgid "A paused group is waiting on you and costs a concurrency slot while it waits. This is how often it says so before 'Archive after paused' takes the slot back."
 msgstr "일시정지된 그룹은 당신을 기다리며 그동안 동시 실행 슬롯을 하나 차지합니다. '일시정지 후 보관'이 슬롯을 회수하기 전까지 이 간격으로 알립니다."
+
+msgid "A project's config has to be a JSON object. One partial edit will not be allowed to replace the whole of it."
+msgstr "프로젝트 설정은 JSON 객체여야 합니다. 한 번의 부분 수정으로 설정 전체를 덮어쓰게 두지 않습니다."
 
 msgid "Abandon this requirement"
 msgstr "이 요건 포기"
@@ -449,6 +501,9 @@ msgstr "이미 {tokens} 토큰 사용"
 
 msgid "also changed on S{seq}, unclaimed: {files}"
 msgstr "S{seq}에서 신고 없이 바뀐 것: {files}"
+
+msgid "An image has to be one we publish (ghcr.io/pamin-labs/…) or one you built locally (orch/agent:1, say). The agent runs inside this image with your code in front of it, so pointing it somewhere else hands over the whole boundary — and nothing on the panel would show it."
+msgstr "이미지는 우리가 배포한 것(ghcr.io/pamin-labs/…)이거나 직접 로컬에서 빌드한 것(예: orch/agent:1)이어야 합니다. agent 는 이 이미지 안에서 당신의 코드를 앞에 두고 돌아갑니다. 다른 이미지를 가리키는 건 경계 전체를 넘겨주는 일이고, 패널에서는 티도 나지 않습니다."
 
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
 msgstr "끝나지 않은 턴은 버려지고, 그룹이 컨테이너를 다시 띄워 스스로 이어갑니다. 코드와 브랜치는 그대로입니다."
@@ -699,6 +754,12 @@ msgstr "작업 맡기"
 msgid "Claude Code writes this in Co-Authored-By when committing"
 msgstr "Claude Code가 커밋할 때 Co-Authored-By에 적는 값입니다"
 
+msgid "claude could not sign in: {detail}"
+msgstr "claude 로그인에 실패했습니다: {detail}"
+
+msgid "claude is signed in"
+msgstr "claude 에 로그인했습니다"
+
 msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
 msgstr "claude 가 컨테이너 안에서 로그인 링크를 출력하지 않았습니다 — 이미지에서 `claude setup-token` 을 실행해 원인을 확인하세요. pty 가 필요하며, 없으면 아무것도 출력하지 않고 정상 종료합니다."
 
@@ -740,6 +801,12 @@ msgstr "코드 인덱스"
 
 msgid "Code repository"
 msgstr "코드 저장소"
+
+msgid "codex could not sign in: {detail}"
+msgstr "codex 로그인에 실패했습니다: {detail}"
+
+msgid "codex is signed in"
+msgstr "codex 에 로그인했습니다"
 
 msgid "codex printed no device code inside the container — run `codex login --device-auth` in the image to see why."
 msgstr "codex 가 컨테이너 안에서 기기 코드를 출력하지 않았습니다 — 이미지에서 `codex login --device-auth` 를 실행해 원인을 확인하세요."
@@ -1035,6 +1102,9 @@ msgstr "이벤트 스트림"
 msgid "Every container goes: sandboxes for {groups} groups, and {turns} turns currently running."
 msgstr "컨테이너는 모두 잡힙니다: 그룹 {groups}개의 샌드박스와 현재 실행 중인 턴 {turns}개."
 
+msgid "Evidence: {evidence}"
+msgstr "근거: {evidence}"
+
 msgid "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\n"
 "Drag in screenshots or designs, or paste. Cmd+Enter to submit"
 msgstr "예: 로그인 페이지에 \"로그인 유지\" 체크박스를 추가하고, 체크하면 30일간 로그인 상태를 유지한다.\n"
@@ -1157,6 +1227,12 @@ msgstr "게이트"
 msgid "Gates / Install commands"
 msgstr "게이트 / 설치 명령"
 
+msgid "gates found: {gates}"
+msgstr "게이트를 찾았습니다: {gates}"
+
+msgid "gates found: {gates} · install with {install}"
+msgstr "게이트를 찾았습니다: {gates} · 의존성 설치는 {install}"
+
 msgid "Generate a draft from this group's notes without sending it."
 msgstr "이 그룹의 노트로 초안만 만듭니다. 보내지는 않습니다."
 
@@ -1181,14 +1257,27 @@ msgstr "GitHub → 이 App → Install App"
 msgid "GitHub API call"
 msgstr "GitHub API 호출"
 
+msgid "GitHub is connected"
+msgstr "GitHub 에 연결됐습니다"
+
 msgid "GitHub is not connected — connect it in Settings first"
 msgstr "GitHub 가 연결되지 않았습니다 — 먼저 설정에서 연결하세요"
 
-msgid "GitHub no longer accepts this login, so every turn on {repo} is held — retrying cannot help. Reconnect GitHub in settings and they resume on their own. Other projects are unaffected."
-msgstr "GitHub가 이 로그인을 더는 받아 주지 않아 {repo}의 모든 턴을 보류했습니다 — 재시도로는 해결되지 않습니다. 설정에서 GitHub를 다시 연결하면 알아서 재개합니다. 다른 프로젝트는 영향받지 않습니다."
+msgid "GitHub is not connected: {why}"
+msgstr "GitHub 에 연결하지 못했습니다: {why}"
+
+msgid "GitHub no longer accepts the login for {repo}, so every turn on it is held — retrying cannot help: {why}\n"
+"\n"
+"Reconnect GitHub in settings and they resume on their own. Other projects are unaffected."
+msgstr "GitHub가 {repo}의 로그인을 더는 받아 주지 않아 이 프로젝트의 모든 턴을 보류했습니다 — 재시도로는 해결되지 않습니다: {why}\n"
+"\n"
+"설정에서 GitHub를 다시 연결하면 알아서 재개합니다. 다른 프로젝트는 영향받지 않습니다."
 
 msgid "GitHub not connected yet; using our bot account for now"
 msgstr "GitHub이 아직 연결되지 않아 당분간 봇 계정을 씁니다"
+
+msgid "GitHub will not connect"
+msgstr "GitHub 에 연결되지 않습니다"
 
 msgid "Global"
 msgstr "전역"
@@ -1228,6 +1317,9 @@ msgstr "그룹은 RUNNING인데 대기열이 비었고, 한 번 다시 넣어도
 
 msgid "grp {target} landed; resuming by itself"
 msgstr "grp {target}이(가) 안착했습니다. 알아서 재개합니다"
+
+msgid "handed to {to}: {question}"
+msgstr "{to} 에게 넘겼습니다: {question}"
 
 msgid "Has objections"
 msgstr "이의 있음"
@@ -1344,6 +1436,11 @@ msgstr "의존성 설치"
 msgid "Install Docker — or Colima, or Podman, anything that provides a docker socket — and start it."
 msgstr "Docker를 설치하세요. Colima든 Podman이든 docker 소켓을 제공하는 것이면 됩니다. 설치한 뒤 실행하세요."
 
+msgid "install failed (exit {code}): {cmd}\n"
+"{tail}"
+msgstr "설치에 실패했습니다 (exit {code}): {cmd}\n"
+"{tail}"
+
 msgid "Install on GitHub"
 msgstr "GitHub에 설치"
 
@@ -1358,6 +1455,9 @@ msgstr "이 계정들에 설치됨"
 
 msgid "installed, but the daemon is not answering"
 msgstr "설치되어 있지만 데몬이 응답하지 않습니다"
+
+msgid "installed: {cmd}"
+msgstr "설치했습니다: {cmd}"
 
 msgid "Interrupt and rollback"
 msgstr "중단하고 롤백"
@@ -1814,6 +1914,9 @@ msgstr "새 PR 열기"
 msgid "Open PR ↗"
 msgstr "PR 열기 ↗"
 
+msgid "opened as requirement {name} (grp {grp})"
+msgstr "요구사항 {name} (grp {grp}) 로 만들었습니다"
+
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server가 사라져 다시 시작했습니다({n}번째). 보류된 작업은 알아서 재개합니다."
 
@@ -1831,6 +1934,9 @@ msgstr "조직"
 
 msgid "Other"
 msgstr "기타"
+
+msgid "out of budget — raise it or not"
+msgstr "예산 소진 —— 올릴지 말지"
 
 msgid "out of budget ({spent}/{budget} tokens). Raise the cap first, or it stops again on the next tick."
 msgstr "예산이 떨어졌습니다({spent}/{budget} 토큰). 상한을 먼저 올리지 않으면 다음 틱에서 또 멈춥니다."
@@ -1855,6 +1961,9 @@ msgstr "p95"
 
 msgid "P95"
 msgstr "P95"
+
+msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
+msgstr "PageIndex 를 만들 수 없습니다: 호출 {n} 번이 전부 빈 응답이었습니다. 설정에서 인덱스가 쓰는 계정이 아직 살아 있는지 확인하세요."
 
 msgid "Panel language"
 msgstr "화면 언어"
@@ -1943,6 +2052,14 @@ msgstr "폴링 주기"
 msgid "PR #{n} opened"
 msgstr "PR #{n}을(를) 열었습니다"
 
+msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
+"To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
+msgstr "PR #{pr}이(가) 머지되지 않고 닫혔습니다. 이 그룹은 멈췄고 머지 큐에서 빠졌습니다.\n"
+"계속하려면: GitHub에서 이 PR을 다시 열면 알아서 큐로 돌아옵니다. 그만두려면: 이 요구사항을 접으세요."
+
+msgid "PR closed — reopen it or not"
+msgstr "PR 닫힘 — 다시 열지 결정"
+
 msgid "PR link not found"
 msgstr "PR 링크를 찾을 수 없음"
 
@@ -1969,6 +2086,9 @@ msgstr "프로젝트 이름…"
 
 msgid "Projects"
 msgstr "프로젝트"
+
+msgid "proposing to drop this: {why} ({evidence})"
+msgstr "폐기를 제안합니다: {why}（{evidence}）"
 
 msgid "Pull request"
 msgstr "풀 리퀘스트"
@@ -2093,6 +2213,9 @@ msgstr "프로젝트 제거"
 msgid "Remove this project"
 msgstr "이 프로젝트 제거"
 
+msgid "Removed the project {name} ({repo}): {n, plural, one {# requirement} other {# requirements}}, the containers and the records are gone. Nothing on GitHub was touched."
+msgstr "프로젝트 {name}({repo})을(를) 제거했습니다: {n, plural, other {요구사항 #개}}와 그 컨테이너, 기록을 모두 지웠습니다. GitHub 쪽은 아무것도 건드리지 않았습니다."
+
 msgid "Removing…"
 msgstr "제거 중…"
 
@@ -2122,6 +2245,9 @@ msgstr "답장… Cmd+Enter로 전송"
 
 msgid "Repo-wide"
 msgstr "저장소 전체"
+
+msgid "Reported by {from}: {path} is outside its boundary, so it cannot change it itself."
+msgstr "{from} 이(가) 알린 건: {path} 는 그 경계 밖이라 직접 고칠 수 없습니다."
 
 msgid "Repos with DCO enabled won't accept commits without this line"
 msgstr "DCO를 켠 저장소는 이 줄이 없는 커밋을 받지 않습니다"
@@ -2276,11 +2402,19 @@ msgstr "돌고 있습니다. 우리가 띄웠습니다"
 msgid "Running: {running}"
 msgstr "실행 중: {running}"
 
+msgid "S{seq} \"{title}\" failed {from} {n} times. Latest:\n"
+"{feedback}"
+msgstr "S{seq} 「{title}」이(가) {from}에서 {n}번 실패했습니다. 가장 최근:\n"
+"{feedback}"
+
 msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq}「{title}」이(가) 끝났습니다. 확인해 주세요"
 
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq}이(가) {from}에서 {n}회 연속 실패 — 코드가 아니라 인수 기준의 문제로 보입니다"
+
+msgid "S{seq} failed {from} {n}x in a row"
+msgstr "S{seq} 이(가) {from} 을(를) {n} 번 연속으로 통과하지 못했습니다"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq}이(가) {from}에 의해 반려되었습니다 ({n}번째)"
@@ -2447,6 +2581,18 @@ msgstr "명세"
 msgid "Spent {spent} tokens against a {cap} limit. Only raising the limit moves it — \"resume\" does nothing."
 msgstr "상한 {cap}에 {spent} 토큰을 썼습니다. 상한을 올리는 것 말고는 움직이지 않으며, \"재개\"는 아무것도 하지 않습니다."
 
+msgid "split into {n} separate requirements: {names}"
+msgstr "{n} 개의 독립 요구사항으로 나눴습니다: {names}"
+
+msgid "split into {n} separate requirements: {names} — {why}"
+msgstr "{n} 개의 독립 요구사항으로 나눴습니다: {names} —— {why}"
+
+msgid "Split out of the requirement {from}."
+msgstr "요구사항 「{from}」에서 갈라져 나온 건입니다."
+
+msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
+msgstr "요구사항 「{from}」에서 갈라져 나온 건입니다. 원래 요청 전문은 note #{note} 에 있습니다."
+
 msgid "Stage durations"
 msgstr "단계별 소요 시간"
 
@@ -2536,8 +2682,35 @@ msgstr "시스템 소요시간"
 msgid "Take note"
 msgstr "메모하기"
 
+msgid "The {runtime} credential stopped working: {why}\n"
+"Go to settings → {runtime} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done."
+msgstr "{runtime} 자격 증명이 더는 통하지 않습니다: {why}\n"
+"설정 → {runtime} → 로그인에서 새로 하나 설정하세요. 로그인은 유틸리티 컨테이너 안에서 공식 CLI를 돌리므로 이 컴퓨터에는 아무것도 설치할 필요가 없습니다. 끝나면 이 그룹은 알아서 이어집니다."
+
+msgid "the approval did not take"
+msgstr "승인이 적용되지 않았습니다"
+
+msgid "the approval did not take: {err}"
+msgstr "승인이 적용되지 않았습니다: {err}"
+
+msgid "The approval did not take: {err}. It has been withdrawn — approve again once that is fixed."
+msgstr "승인이 적용되지 않았습니다: {err}. 이번 승인은 취소했으니, 고친 뒤에 다시 승인해 주세요."
+
+msgid "the base branch moved from {was} to {now}, because the default branch on the remote changed. Every clone, rebase and diff from here on is against it."
+msgstr "기준 브랜치가 {was} 에서 {now} 로 바뀌었습니다 (원격의 기본 브랜치가 바뀌었습니다). 앞으로의 clone, rebase, diff 는 모두 그걸 기준으로 합니다."
+
 msgid "the boundary still overlaps"
 msgstr "경계가 아직 겹칩니다"
+
+msgid "The branch is finished but the PR will not open: {why}\n"
+"\n"
+"Answer this once it is fixed and the group retries by itself."
+msgstr "브랜치는 끝났는데 PR 을 열 수 없습니다: {why}\n"
+"\n"
+"고친 뒤 이 질문에 답하면 그룹이 알아서 다시 시도합니다."
+
+msgid "the branch was not pushed to the remote, and the next slice's acceptance will try again: {reason}"
+msgstr "브랜치를 리모트에 push 하지 못했습니다. 다음 슬라이스 수용 때 다시 시도합니다: {reason}"
 
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "브라우저가 읽을 수 없습니다. 폴더를 끌어다 놓으세요."
@@ -2557,6 +2730,12 @@ msgstr "요건 전체가 디스패처로 돌아가 다시 파헤쳐집니다. �
 msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, requirements left running"
 msgstr "호스트의 네트워크가 끊겼습니다. 턴 {n}건을 보류하고 다시 넣었으며, 요구사항은 실행 중인 상태로 둡니다"
 
+msgid "the index cannot be refreshed: this project's container will not start ({why})"
+msgstr "인덱스를 갱신할 수 없습니다: 이 프로젝트의 컨테이너가 뜨지 않습니다({why})"
+
+msgid "the index pass threw: {reason}"
+msgstr "인덱스 작업이 예외로 죽었습니다: {reason}"
+
 msgid "The last step repeats for as long as nobody answers"
 msgstr "아무도 답하지 않으면 마지막 단계가 계속 반복됩니다"
 
@@ -2575,6 +2754,9 @@ msgstr "'모델 계정'에 있는 그 줄의 이름이지 키 자체가 아닙�
 msgid "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone."
 msgstr "'멈춤'의 나머지 절반: 같은 파일을 이만큼 연속으로 다시 쓴 경우. 수렴하는 에이전트는 이웃 파일도 건드립니다. 멈춘 에이전트는 예산이 바닥날 때까지 파일 하나만 계속 고쳐 씁니다."
 
+msgid "the PR will not open"
+msgstr "PR 을 열 수 없음"
+
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "저장소 맵을 갱신할 수 없습니다: {repo} — {why}"
 
@@ -2587,11 +2769,17 @@ msgstr "저장소 맵을 새로 고칠 수 없습니다: {repo}, 그리고 git�
 msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
 msgstr "저장소 맵이 지난 판에 멈춰 있습니다: {repo}의 컨테이너가 HEAD를 읽지 못해, 다시 만들어도 심볼 없는 맵만 나옵니다"
 
+msgid "the repository was renamed on GitHub: {was} → {now}. We have followed it, and clones and PRs point at the new one."
+msgstr "GitHub 에서 저장소 이름이 바뀌었습니다: {was} → {now}. 여기서도 따라 바꿨고, 클론과 PR 모두 새 이름을 가리킵니다."
+
 msgid "the same feedback for the {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} time; asking the CoS to make it a project rule"
 msgstr "같은 피드백이 {n}번째입니다. CoS에게 프로젝트 규약으로 정리하도록 맡깁니다"
 
 msgid "the same ground as {others}"
 msgstr "{others}와(과) 같은 자리"
+
+msgid "the sandbox is new — putting {branch} and the dependencies back"
+msgstr "샌드박스가 새것이라 {branch} 와 의존성을 다시 넣습니다"
 
 msgid "the sandbox server is up — we started it (pid {pid})"
 msgstr "샌드박스 서버가 떴습니다 — 우리가 시작했습니다 (pid {pid})"
@@ -2617,6 +2805,9 @@ msgstr "컨테이너를 띄우는 서비스"
 msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
 msgstr "시스템 전체에서 가장 많이 불리는 모델 호출. 순수 요약이며 판단도, 도구도, 블랙보드도 없습니다. 비싼 구독에서 가장 먼저 빼야 할 것입니다."
 
+msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
+msgstr "서브모듈을 가져오지 못했습니다. 코드가 온전하지 않을 수 있습니다: {why}"
+
 msgid "The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst."
 msgstr "이 사용량 엔드포인트는 문서화되어 있지 않고, 빨리 두드리면 몇 시간씩 429를 돌려줍니다 — 게다가 당신의 /status도 같은 예산에서 씁니다. 5시간 창에서 10분이면 최악이라도 3% 오차입니다."
 
@@ -2625,8 +2816,17 @@ msgid "the watchdog threw this tick and the rules after it did not run: {why}\n"
 msgstr "이번 틱에서 워치독이 예외를 던져 뒤의 규칙들이 실행되지 않았습니다: {why}\n"
 "30초마다 다시 시도하지만, 고쳐지기 전까지 워치독이 밀어 주던 것들(멈춘 그룹, 만료된 샌드박스, 베이스가 움직인 뒤의 rebase, 당신의 결정을 기다리는 시계)은 모두 그 자리에 멈춰 있습니다."
 
+msgid "the whole branch sent back {n}x by {from}"
+msgstr "브랜치 전체가 {from} 에게 {n} 번 반려됨"
+
 msgid "Theme"
 msgstr "테마"
+
+msgid "there is no recipient called \"{to}\", and no roles are configured"
+msgstr "\"{to}\" 라는 수신자는 없고, 설정된 역할도 하나도 없습니다"
+
+msgid "there is no recipient called \"{to}\". The roles that exist: {known}"
+msgstr "\"{to}\" 라는 수신자는 없습니다. 현재 있는 역할: {known}"
 
 msgid "these belong to no group: {paths} — changes there go through the boss or the Architect"
 msgstr "어느 그룹에도 속하지 않습니다: {paths} — 그쪽 변경은 보스나 아키텍트를 거칩니다"
@@ -2654,6 +2854,12 @@ msgstr "이 프로세스는 우리가 띄운 게 아닙니다 — 당신이 쓰�
 
 msgid "This project hasn't run any activity yet."
 msgstr "이 프로젝트에서는 아직 아무 활동도 없었습니다."
+
+msgid "this question became requirement {name} (grp {grp})"
+msgstr "이 질문은 요구사항 {name} (grp {grp}) 이 되었습니다"
+
+msgid "this repository needs nothing installed"
+msgstr "이 저장소는 설치할 게 없습니다"
 
 msgid "This requirement has been archived or no longer exists."
 msgstr "이 요건은 보관되었거나 더 이상 존재하지 않습니다."
@@ -2942,6 +3148,9 @@ msgstr "방향이 틀림"
 
 msgid "You can edit the card and re-approve."
 msgstr "카드를 고친 뒤 다시 승인할 수 있습니다."
+
+msgid "you sent S{seq} back, but autoAdvance had already started {n, plural, one {# slice} other {# slices}} after it, and they were built on this one. The whole group has stopped: either let it fix this slice first, or send the later ones back with it."
+msgstr "S{seq} 를 돌려보냈지만, autoAdvance 가 그 뒤의 {n, plural, other {# 조각}}을 이미 시작했습니다. 모두 이 조각 위에 쌓인 것들입니다. 조 전체를 멈췄습니다: 이 조각을 먼저 고치게 하거나, 뒤의 것들도 함께 돌려보내세요."
 
 msgid "zoomed to {zoomLevel}×"
 msgstr "{zoomLevel}×로 확대"

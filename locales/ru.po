@@ -80,6 +80,11 @@ msgstr "{fails} с ошибкой"
 msgid "{files} files"
 msgstr "{files} файлов"
 
+msgid "{from} has sent the whole branch back {n} times. That is usually the acceptance criteria rather than the code:\n"
+"{why}"
+msgstr "{from} возвращает всю ветку уже {n} раз. Обычно дело в критериях приёмки, а не в коде:\n"
+"{why}"
+
 msgid "{good}"
 msgstr "{good}"
 
@@ -191,6 +196,12 @@ msgstr "{n} к разбору"
 msgid "{n} unread — the Librarian is compressing them"
 msgstr "{n} непрочитанных — Librarian их сжимает"
 
+msgid "{name} ({repo} · {branch}) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
+msgstr "{name} ({repo} · {branch}) добавлен. Гейты и команду установки система угадает, когда первая группа склонирует репозиторий; можно заполнить их и сейчас: Настройки → Гейты."
+
+msgid "{name} ({repo}, on whatever the remote calls its default branch) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
+msgstr "{name} ({repo}, на той ветке, которую удалённый репозиторий считает основной) добавлен. Гейты и команду установки система угадает, когда первая группа склонирует репозиторий; можно заполнить их и сейчас: Настройки → Гейты."
+
 msgid "{name} dissolved; its sandbox is reclaimed"
 msgstr "{name} распущена; её песочница освобождена"
 
@@ -200,8 +211,14 @@ msgstr "{name} отложена уже {hours} ч — разбудить или 
 msgid "{name} has been waiting {min} min for you"
 msgstr "{name} ждёт вас уже {min} мин"
 
+msgid "{name} has spent all {tokens} of its tokens and the whole group is suspended. Raise the cap and it carries on, or leave it stopped here."
+msgstr "{name} израсходовал все свои токены ({tokens}), и вся группа остановлена. Поднимите лимит — и она продолжит, либо оставьте её здесь."
+
 msgid "{name} is at {pct}% of its budget"
 msgstr "{name} израсходовала {pct}% бюджета"
+
+msgid "{name} is blocked by {path}, which is inside your boundary: {why}"
+msgstr "{name} заблокирован из-за {path} — это внутри вашей границы: {why}"
 
 msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name} больше ничего не ждёт — разбужена"
@@ -230,6 +247,15 @@ msgstr "{name} S{seq} ждёт вашей приёмки уже {hours} ч"
 msgid "{name} spent its whole budget ({tokens} tokens) and is suspended"
 msgstr "{name} израсходовала весь бюджет ({tokens} токенов) и приостановлена"
 
+msgid "{name}: {n, plural, one {# running turn was} other {# running turns were}} killed before the data goes"
+msgstr "{name}: {n, plural, one {# идущий turn остановлен} few {# идущих turn остановлены} many {# идущих turn остановлено} other {# идущих turn остановлено}} перед удалением данных"
+
+msgid "{name}: PR #{pr} was closed — reopen it or drop the requirement"
+msgstr "{name}: PR #{pr} закрыт — откройте его снова или откажитесь от требования"
+
+msgid "{name}: the PR will not open — {why}"
+msgstr "{name}: PR не открывается — {why}"
+
 msgid "{name}'s container is discarded and the next turn rebuilds it: re-clone the branch, reinstall dependencies. Uncommitted changes are lost."
 msgstr "Контейнер {name} выбрасывается, следующий ход собирает его заново: заново клонировать ветку, переустановить зависимости. Незакоммиченные изменения теряются."
 
@@ -248,11 +274,23 @@ msgstr "песочница {name} привязана к устаревшим у�
 msgid "{path} is a path inside this container, and the mount is made by the sandbox server's docker, which resolves it on its own filesystem. Use one absolute path on both sides (-v <host path>:{path}) and add it to the sandbox server's allowed_host_paths. A mismatch does not fail; it mounts an empty directory."
 msgstr "{path} — это путь внутри контейнера, а монтирует docker сервера песочницы, который разрешает путь на своей файловой системе. Используйте один абсолютный путь с обеих сторон (-v <host path>:{path}) и добавьте его в allowed_host_paths сервера песочницы. Несовпадение не приводит к ошибке — монтируется пустой каталог."
 
+msgid "{path} is back to its default"
+msgstr "{path} вернулся к значению по умолчанию"
+
+msgid "{path} is now {value}"
+msgstr "{path} теперь {value}"
+
 msgid "{path}: {error}"
 msgstr "{path}: {error}"
 
 msgid "{path}: cannot be read"
 msgstr "{path}: не читается"
+
+msgid "{repo} has been added, but this login cannot push to it: {why}. Deal with it now, rather than after the first slice is finished."
+msgstr "{repo} добавлен, но этот логин не может делать push: {why}. Разберитесь сейчас, а не после того, как закончится первый срез."
+
+msgid "{repo}'s own skills are not listed yet: the code only exists inside a container, so nothing can count them until the first group has cloned it (we look in {dirs}). After that they appear here by themselves, and you can name one in the composer with /name. Skills kept outside those directories are invisible to both."
+msgstr "собственные навыки {repo} ещё не перечислены: код существует только внутри контейнера, поэтому их нельзя пересчитать, пока первая группа не сделает клон (мы смотрим в {dirs}). После этого они появятся здесь сами, а в поле ввода навык можно вызвать через /имя. Навыки за пределами этих каталогов не видны ни там, ни тут."
 
 msgid "{repoPath} is already registered as \"{name}\""
 msgstr "{repoPath} уже зарегистрирован как «{name}»"
@@ -282,8 +320,14 @@ msgstr "{role} переписывает {file} {n, plural, one {# ход} few {#
 msgid "{role} wrote {n, plural, one {# file} other {# files}} this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it"
 msgstr "{role} записал {n, plural, one {# файл} few {# файла} other {# файлов}}, которыми эта группа не владеет ({files}) — откачено; песочница этого CLI не может остановить запись, поэтому проверка идёт после неё"
 
+msgid "{role}'s session record is gone; the next turn starts a new session"
+msgstr "запись сессии {role} пропала; следующий ход начнётся с новой сессии"
+
 msgid "{runningCount} running · {total} total"
 msgstr "{runningCount} выполняется · всего {total}"
+
+msgid "{runtime} credential expired"
+msgstr "учётные данные {runtime} истекли"
 
 msgid "{server} answers, but it is not a sandbox server (HTTP {status}) — point at another address."
 msgstr "{server} отвечает, но это не sandbox server (HTTP {status}) — укажите другой адрес."
@@ -348,11 +392,19 @@ msgstr "1/4 ядер хоста"
 msgid "127.0.0.1:8080 or https://host:port"
 msgstr "127.0.0.1:8080 или https://host:port"
 
+msgid "A background task crashed and the server carried on without it. That is a bug — please send this to whoever maintains it:\n"
+"{stack}"
+msgstr "Фоновая задача упала, а сервер продолжил работать без неё. Это баг — передайте это тем, кто его сопровождает:\n"
+"{stack}"
+
 msgid "A number"
 msgstr "Число"
 
 msgid "A paused group is waiting on you and costs a concurrency slot while it waits. This is how often it says so before 'Archive after paused' takes the slot back."
 msgstr "Приостановленная группа ждёт вас и всё это время занимает слот параллелизма. С такой частотой она напоминает — пока «Архивировать после паузы» не вернёт слот."
+
+msgid "A project's config has to be a JSON object. One partial edit will not be allowed to replace the whole of it."
+msgstr "Конфигурация проекта должна быть JSON-объектом. Одна частичная правка не заменит её целиком."
 
 msgid "Abandon this requirement"
 msgstr "Бросить это требование"
@@ -449,6 +501,9 @@ msgstr "уже потрачено {tokens} токенов"
 
 msgid "also changed on S{seq}, unclaimed: {files}"
 msgstr "на S{seq} также изменено без заявки: {files}"
+
+msgid "An image has to be one we publish (ghcr.io/pamin-labs/…) or one you built locally (orch/agent:1, say). The agent runs inside this image with your code in front of it, so pointing it somewhere else hands over the whole boundary — and nothing on the panel would show it."
+msgstr "Образ должен быть либо нашим (ghcr.io/pamin-labs/…), либо собранным вами локально (например, orch/agent:1). Агент работает внутри этого образа, а перед ним — ваш код: указать на чужой значит отдать всю границу целиком, и на панели этого не будет видно."
 
 msgid "An unfinished turn is wasted; the group restarts its container and carries on by itself. Code and branches are unaffected."
 msgstr "Незавершённый ход пропадает; группа перезапускает контейнер и продолжает сама. Код и ветки не затрагиваются."
@@ -699,6 +754,12 @@ msgstr "Взять задачу"
 msgid "Claude Code writes this in Co-Authored-By when committing"
 msgstr "Claude Code пишет это в Co-Authored-By при коммите"
 
+msgid "claude could not sign in: {detail}"
+msgstr "claude не смог войти: {detail}"
+
+msgid "claude is signed in"
+msgstr "claude вошёл"
+
 msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
 msgstr "claude не вывел ссылку для входа внутри контейнера — запустите `claude setup-token` в образе, чтобы понять почему. Ему нужен pty: без него он ничего не печатает и выходит с кодом 0."
 
@@ -740,6 +801,12 @@ msgstr "Индекс кода"
 
 msgid "Code repository"
 msgstr "Репозиторий кода"
+
+msgid "codex could not sign in: {detail}"
+msgstr "codex не смог войти: {detail}"
+
+msgid "codex is signed in"
+msgstr "codex вошёл"
 
 msgid "codex printed no device code inside the container — run `codex login --device-auth` in the image to see why."
 msgstr "codex не вывел код устройства внутри контейнера — запустите `codex login --device-auth` в образе, чтобы понять почему."
@@ -1035,6 +1102,9 @@ msgstr "Поток событий"
 msgid "Every container goes: sandboxes for {groups} groups, and {turns} turns currently running."
 msgstr "Считается каждый контейнер: песочницы для {groups} групп и {turns} идущих сейчас ходов."
 
+msgid "Evidence: {evidence}"
+msgstr "Доказательство: {evidence}"
+
 msgid "Example: Add a \"Remember me\" checkbox to the login page; once checked, stay logged in for 30 days.\n"
 "Drag in screenshots or designs, or paste. Cmd+Enter to submit"
 msgstr "Пример: добавить на страницу входа галочку «Запомнить меня»; если отмечена — держать вход 30 дней.\n"
@@ -1157,6 +1227,12 @@ msgstr "Ворота"
 msgid "Gates / Install commands"
 msgstr "Ворота / Команды установки"
 
+msgid "gates found: {gates}"
+msgstr "гейты найдены: {gates}"
+
+msgid "gates found: {gates} · install with {install}"
+msgstr "гейты найдены: {gates} · установка через {install}"
+
 msgid "Generate a draft from this group's notes without sending it."
 msgstr "Создаёт черновик по заметкам этой группы, ничего не отправляя."
 
@@ -1181,14 +1257,27 @@ msgstr "GitHub → это App → Install App"
 msgid "GitHub API call"
 msgstr "Вызов GitHub API"
 
+msgid "GitHub is connected"
+msgstr "GitHub подключён"
+
 msgid "GitHub is not connected — connect it in Settings first"
 msgstr "GitHub не подключён — сначала подключите его в настройках"
 
-msgid "GitHub no longer accepts this login, so every turn on {repo} is held — retrying cannot help. Reconnect GitHub in settings and they resume on their own. Other projects are unaffected."
-msgstr "GitHub больше не принимает этот вход, поэтому все ходы по {repo} приостановлены — повторы не помогут. Переподключите GitHub в настройках, и они продолжатся сами. Другие проекты не затронуты."
+msgid "GitHub is not connected: {why}"
+msgstr "GitHub не подключён: {why}"
+
+msgid "GitHub no longer accepts the login for {repo}, so every turn on it is held — retrying cannot help: {why}\n"
+"\n"
+"Reconnect GitHub in settings and they resume on their own. Other projects are unaffected."
+msgstr "GitHub больше не принимает вход для {repo}, поэтому все ходы этого проекта приостановлены — повторы не помогут: {why}\n"
+"\n"
+"Переподключите GitHub в настройках, и они продолжатся сами. Другие проекты не затронуты."
 
 msgid "GitHub not connected yet; using our bot account for now"
 msgstr "GitHub ещё не подключён; пока используется наш бот-аккаунт"
+
+msgid "GitHub will not connect"
+msgstr "GitHub не подключается"
 
 msgid "Global"
 msgstr "Глобально"
@@ -1228,6 +1317,9 @@ msgstr "группа в состоянии RUNNING при пустой очер�
 
 msgid "grp {target} landed; resuming by itself"
 msgstr "grp {target} приземлилась; продолжаем сами"
+
+msgid "handed to {to}: {question}"
+msgstr "передано {to}: {question}"
 
 msgid "Has objections"
 msgstr "Есть возражения"
@@ -1344,6 +1436,11 @@ msgstr "Установить зависимости"
 msgid "Install Docker — or Colima, or Podman, anything that provides a docker socket — and start it."
 msgstr "Установите Docker — или Colima, или Podman, что угодно, что даёт docker-сокет — и запустите."
 
+msgid "install failed (exit {code}): {cmd}\n"
+"{tail}"
+msgstr "установка не удалась (exit {code}): {cmd}\n"
+"{tail}"
+
 msgid "Install on GitHub"
 msgstr "Установить на GitHub"
 
@@ -1358,6 +1455,9 @@ msgstr "Установлено в этих аккаунтах"
 
 msgid "installed, but the daemon is not answering"
 msgstr "установлен, но демон не отвечает"
+
+msgid "installed: {cmd}"
+msgstr "установлено: {cmd}"
 
 msgid "Interrupt and rollback"
 msgstr "Прервать и откатить"
@@ -1814,6 +1914,9 @@ msgstr "Открыть новый PR"
 msgid "Open PR ↗"
 msgstr "Открыть PR ↗"
 
+msgid "opened as requirement {name} (grp {grp})"
+msgstr "заведено как требование {name} (grp {grp})"
+
 msgid "opensandbox-server was gone and has been restarted (attempt {n}). Held work resumes by itself."
 msgstr "opensandbox-server пропал и был перезапущен (попытка {n}). Приостановленная работа продолжится сама."
 
@@ -1831,6 +1934,9 @@ msgstr "Организация"
 
 msgid "Other"
 msgstr "Прочее"
+
+msgid "out of budget — raise it or not"
+msgstr "бюджет исчерпан — поднимать или нет"
 
 msgid "out of budget ({spent}/{budget} tokens). Raise the cap first, or it stops again on the next tick."
 msgstr "бюджет исчерпан ({spent}/{budget} токенов). Сначала поднимите лимит, иначе остановится на следующем тике."
@@ -1855,6 +1961,9 @@ msgstr "p95"
 
 msgid "P95"
 msgstr "P95"
+
+msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
+msgstr "PageIndex не собирается: все {n} вызовов вернулись пустыми. Проверьте в настройках, работает ли ещё аккаунт, на котором идёт индексация."
 
 msgid "Panel language"
 msgstr "Язык панели"
@@ -1943,6 +2052,14 @@ msgstr "Интервалы опроса"
 msgid "PR #{n} opened"
 msgstr "PR #{n} открыт"
 
+msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
+"To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
+msgstr "PR #{pr} закрыт без слияния. Эта группа остановлена и вышла из очереди слияния.\n"
+"Чтобы продолжить: переоткройте PR на GitHub, и он сам вернётся в очередь. Чтобы отказаться: снимите требование."
+
+msgid "PR closed — reopen it or not"
+msgstr "PR закрыт — открывать заново?"
+
 msgid "PR link not found"
 msgstr "Ссылка на PR не найдена"
 
@@ -1969,6 +2086,9 @@ msgstr "Название проекта…"
 
 msgid "Projects"
 msgstr "Проекты"
+
+msgid "proposing to drop this: {why} ({evidence})"
+msgstr "предлагает это отменить: {why} ({evidence})"
 
 msgid "Pull request"
 msgstr "Пул-реквест"
@@ -2093,6 +2213,9 @@ msgstr "Убрать проект"
 msgid "Remove this project"
 msgstr "Убрать этот проект"
 
+msgid "Removed the project {name} ({repo}): {n, plural, one {# requirement} other {# requirements}}, the containers and the records are gone. Nothing on GitHub was touched."
+msgstr "Проект {name} ({repo}) удалён: {n, plural, one {# требование} few {# требования} many {# требований} other {# требований}}, их контейнеры и записи стёрты. На GitHub ничего не тронуто."
+
 msgid "Removing…"
 msgstr "Убираем…"
 
@@ -2122,6 +2245,9 @@ msgstr "Ответить… Cmd+Enter — отправить"
 
 msgid "Repo-wide"
 msgstr "По всему репозиторию"
+
+msgid "Reported by {from}: {path} is outside its boundary, so it cannot change it itself."
+msgstr "Сообщает {from}: {path} вне его границы, поэтому сам он это изменить не может."
 
 msgid "Repos with DCO enabled won't accept commits without this line"
 msgstr "Репозитории с включённым DCO не принимают коммиты без этой строки"
@@ -2276,11 +2402,19 @@ msgstr "Работает, запущено нами"
 msgid "Running: {running}"
 msgstr "Выполняется: {running}"
 
+msgid "S{seq} \"{title}\" failed {from} {n} times. Latest:\n"
+"{feedback}"
+msgstr "S{seq} «{title}» падал на {from} {n} раз. Последний:\n"
+"{feedback}"
+
 msgid "S{seq} \"{title}\" is ready for you"
 msgstr "S{seq} «{title}» готова, ждёт вашей приёмки"
 
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} не прошла у {from} {n} раз подряд — дело, скорее всего, в критериях приёмки, а не в коде"
+
+msgid "S{seq} failed {from} {n}x in a row"
+msgstr "S{seq} не прошёл {from} {n} раз подряд"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} возвращена {from} (попытка {n})"
@@ -2447,6 +2581,18 @@ msgstr "Спецификация"
 msgid "Spent {spent} tokens against a {cap} limit. Only raising the limit moves it — \"resume\" does nothing."
 msgstr "Потрачено {spent} токенов при лимите {cap}. Сдвинуть это может только повышение лимита — «возобновить» не делает ничего."
 
+msgid "split into {n} separate requirements: {names}"
+msgstr "разбито на {n} самостоятельных требований: {names}"
+
+msgid "split into {n} separate requirements: {names} — {why}"
+msgstr "разбито на {n} самостоятельных требований: {names} — {why}"
+
+msgid "Split out of the requirement {from}."
+msgstr "Выделено из требования {from}."
+
+msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
+msgstr "Выделено из требования {from}. Исходная просьба целиком — в заметке #{note}."
+
 msgid "Stage durations"
 msgstr "Длительность этапов"
 
@@ -2536,8 +2682,35 @@ msgstr "Системное время"
 msgid "Take note"
 msgstr "Записать"
 
+msgid "The {runtime} credential stopped working: {why}\n"
+"Go to settings → {runtime} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done."
+msgstr "Учётные данные {runtime} перестали работать: {why}\n"
+"Зайдите в настройки → {runtime} → вход и настройте новые. Вход запускает официальный CLI внутри служебного контейнера, так что здесь ничего ставить не нужно. После этого группа продолжит сама."
+
+msgid "the approval did not take"
+msgstr "одобрение не сработало"
+
+msgid "the approval did not take: {err}"
+msgstr "одобрение не сработало: {err}"
+
+msgid "The approval did not take: {err}. It has been withdrawn — approve again once that is fixed."
+msgstr "Одобрение не сработало: {err}. Оно отозвано — одобрите ещё раз, когда это будет исправлено."
+
+msgid "the base branch moved from {was} to {now}, because the default branch on the remote changed. Every clone, rebase and diff from here on is against it."
+msgstr "базовая ветка сменилась с {was} на {now}: на удалённом репозитории изменилась ветка по умолчанию. Дальше каждый клон, rebase и diff считаются относительно неё."
+
 msgid "the boundary still overlaps"
 msgstr "границы всё ещё пересекаются"
+
+msgid "The branch is finished but the PR will not open: {why}\n"
+"\n"
+"Answer this once it is fixed and the group retries by itself."
+msgstr "Ветка готова, но PR не открывается: {why}\n"
+"\n"
+"Ответьте здесь, когда это будет исправлено, и группа повторит попытку сама."
+
+msgid "the branch was not pushed to the remote, and the next slice's acceptance will try again: {reason}"
+msgstr "ветка не отправлена в удалённый репозиторий; приёмка следующего среза повторит попытку: {reason}"
 
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "Браузер это прочитать не может. Перетащите папки сюда."
@@ -2557,6 +2730,12 @@ msgstr "Требование целиком возвращается Диспе�
 msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, requirements left running"
 msgstr "хост потерял сеть; {n, plural, one {# ход приостановлен и возвращён в очередь} few {# хода приостановлены и возвращены в очередь} other {# ходов приостановлено и возвращено в очередь}}, требования остаются в работе"
 
+msgid "the index cannot be refreshed: this project's container will not start ({why})"
+msgstr "индекс не обновить: контейнер этого проекта не запускается ({why})"
+
+msgid "the index pass threw: {reason}"
+msgstr "проход индексации завершился ошибкой: {reason}"
+
 msgid "The last step repeats for as long as nobody answers"
 msgstr "Последняя ступень повторяется, пока никто не ответит"
 
@@ -2575,6 +2754,9 @@ msgstr "Имя той строки в «Аккаунте модели», а не
 msgid "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone."
 msgstr "Вторая половина «зависания»: один и тот же файл переписан столько раз подряд. Сходящийся агент трогает и соседние файлы; зависший переписывает один файл, пока не кончится бюджет."
 
+msgid "the PR will not open"
+msgstr "PR не открывается"
+
 msgid "the repo map cannot be refreshed: {repo} — {why}"
 msgstr "карту репозитория не удаётся обновить: {repo} — {why}"
 
@@ -2587,11 +2769,17 @@ msgstr "карту репозитория не обновить: {repo}, и git 
 msgid "the repo map is stuck on its last version: {repo}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it"
 msgstr "карта репозитория осталась на прошлой версии: контейнер {repo} не может прочитать HEAD, и пересборка дала бы лишь карту без символов"
 
+msgid "the repository was renamed on GitHub: {was} → {now}. We have followed it, and clones and PRs point at the new one."
+msgstr "репозиторий переименован на GitHub: {was} → {now}. Мы это учли — клоны и PR указывают на новый."
+
 msgid "the same feedback for the {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} time; asking the CoS to make it a project rule"
 msgstr "тот же отзыв в {n}-й раз; прошу CoS превратить его в правило проекта"
 
 msgid "the same ground as {others}"
 msgstr "та же территория, что и у {others}"
+
+msgid "the sandbox is new — putting {branch} and the dependencies back"
+msgstr "песочница новая — возвращаем {branch} и зависимости"
 
 msgid "the sandbox server is up — we started it (pid {pid})"
 msgstr "песочный сервер поднят — его запустили мы (pid {pid})"
@@ -2617,6 +2805,9 @@ msgstr "Служба, которая запускает контейнеры"
 msgid "The single most-called model call across the whole system: pure summarization, no decision-making, no tools, no blackboard. First thing to move off a premium subscription."
 msgstr "Самый частый вызов модели во всей системе: чистое суммирование, без решений, без инструментов, без общей доски. Первое, что стоит увести с дорогой подписки."
 
+msgid "the submodules did not come up, so the checkout may be incomplete: {why}"
+msgstr "сабмодули не поднялись, так что рабочая копия может быть неполной: {why}"
+
 msgid "The usage endpoint is undocumented and answers a faster poller with 429 for hours—and your own /status spends from the same budget. Ten minutes inside a five-hour window is a 3% error at worst."
 msgstr "Эндпоинт расхода недокументирован и часами отвечает 429 тому, кто опрашивает чаще, — а ваш собственный /status тратит из того же бюджета. Десять минут внутри пятичасового окна дают в худшем случае 3% погрешности."
 
@@ -2625,8 +2816,17 @@ msgid "the watchdog threw this tick and the rules after it did not run: {why}\n"
 msgstr "на этом тике watchdog выбросил исключение, и правила после него не отработали: {why}\n"
 "Он повторяет попытку каждые 30 с, но пока это не починят, всё, что он двигает — застрявшие группы, просроченные песочницы, rebase после сдвига базы, часы на том, что ждёт вас — стоит на месте."
 
+msgid "the whole branch sent back {n}x by {from}"
+msgstr "всю ветку {from} вернул {n} раз"
+
 msgid "Theme"
 msgstr "Тема"
+
+msgid "there is no recipient called \"{to}\", and no roles are configured"
+msgstr "получателя с именем «{to}» нет, и ни одна роль не настроена"
+
+msgid "there is no recipient called \"{to}\". The roles that exist: {known}"
+msgstr "получателя с именем «{to}» нет. Существующие роли: {known}"
 
 msgid "these belong to no group: {paths} — changes there go through the boss or the Architect"
 msgstr "эти не принадлежат ни одной группе: {paths} — изменения там идут через босса или Архитектора"
@@ -2654,6 +2854,12 @@ msgstr "Этот процесс запустили не мы — возможн�
 
 msgid "This project hasn't run any activity yet."
 msgstr "В этом проекте пока ничего не происходило."
+
+msgid "this question became requirement {name} (grp {grp})"
+msgstr "этот вопрос стал требованием {name} (grp {grp})"
+
+msgid "this repository needs nothing installed"
+msgstr "этому репозиторию ничего устанавливать не нужно"
 
 msgid "This requirement has been archived or no longer exists."
 msgstr "Это требование в архиве или больше не существует."
@@ -2942,6 +3148,9 @@ msgstr "Не туда"
 
 msgid "You can edit the card and re-approve."
 msgstr "Карточку можно поправить и одобрить снова."
+
+msgid "you sent S{seq} back, but autoAdvance had already started {n, plural, one {# slice} other {# slices}} after it, and they were built on this one. The whole group has stopped: either let it fix this slice first, or send the later ones back with it."
+msgstr "вы вернули S{seq}, но autoAdvance уже запустил после него {n, plural, one {# срез} few {# среза} many {# срезов} other {# среза}}, и все они построены на этом. Вся группа остановлена: либо дайте сначала починить этот срез, либо верните вместе с ним и последующие."
 
 msgid "zoomed to {zoomLevel}×"
 msgstr "увеличено в {zoomLevel}×"

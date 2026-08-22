@@ -1,4 +1,4 @@
-import { msg } from "@lingui/core/macro";
+import { msg, plural } from "@lingui/core/macro";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import { roleFor } from "../../mech/ctx.ts";
@@ -18,7 +18,6 @@ import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { forgetProjectSkills } from "../../mech/skills.ts";
 import { projectConfig } from "../../mech/util/rows.ts";
 import { errText } from "../../platform/process/text.ts";
-import type { Result } from "../../mech/util/validate.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
 import { ACTIVE_JOB_STATES } from "../../contracts/states.ts";
 import { IdParams } from "../../contracts/fields.ts";
@@ -106,7 +105,12 @@ export const postSetup = (async (ctx, _req, a, _p, b) => {
 
   if (b.none) {
     await rememberInstall(ctx.db, projectId, null);
-    await ctx.bus.emit({ grpId: a.grp_id, author: a.role, kind: "state_change", body: "这个仓库不需要装什么" });
+    await ctx.bus.emit({
+      grpId: a.grp_id,
+      author: a.role,
+      kind: "state_change",
+      say: msg`this repository needs nothing installed`,
+    });
     return message("ok");
   }
 
@@ -171,9 +175,12 @@ export const postProject = (async (ctx, req, _p, b) => {
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body:
-      `${name}（${repoPath} · ${baseBranch ?? "默认分支"}）加好了。闸门和安装命令等第一个组克隆完再猜，` +
-      `现在填也行：设置 → 闸门。`,
+    // Two whole sentences rather than one with `"the default branch"` handed in
+    // as a value: a parameter carrying a noun phrase is this line rendered half
+    // here and half in the browser.
+    say: baseBranch
+      ? msg`${{ name }} (${{ repo: repoPath }} · ${{ branch: baseBranch }}) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates.`
+      : msg`${{ name }} (${{ repo: repoPath }}, on whatever the remote calls its default branch) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates.`,
   });
   // Registered, and then told the truth about it. Read access is enough to clone
   // and work, so this does not refuse the repository — it refuses to let the boss
@@ -185,7 +192,7 @@ export const postProject = (async (ctx, req, _p, b) => {
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
-      body: `${repoPath} 加好了，但这个登录推不上去：${blocked}。现在处理，别等第一个切片做完。`,
+      say: msg`${{ repo: repoPath }} has been added, but this login cannot push to it: ${{ why: blocked }}. Deal with it now, rather than after the first slice is finished.`,
     });
   }
 
@@ -308,7 +315,7 @@ export const deleteProject = (async (ctx, _req, params) => {
     await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: `${p.name}：${stopped} 个在跑的 turn 先掐掉了，再删数据`,
+      say: msg`${{ name: p.name }}: ${plural({ n: stopped }, { one: "# running turn was", other: "# running turns were" })} killed before the data goes`,
     });
   }
 
@@ -367,7 +374,7 @@ export const deleteProject = (async (ctx, _req, params) => {
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body: `移除了项目 ${p.name}（${p.repo_path}）：${grps.length} 个需求、容器和记录都清掉了。GitHub 上什么都没动。`,
+    say: msg`Removed the project ${{ name: p.name }} (${{ repo: p.repo_path }}): ${plural({ n: grps.length }, { one: "# requirement", other: "# requirements" })}, the containers and the records are gone. Nothing on GitHub was touched.`,
   });
   await ctx.sched.tick();
   return json({ ok: true, groups: grps.length, failed });
@@ -398,9 +405,26 @@ export const ProjectConfigBody = z
 type StoredConfigPatch = Omit<z.infer<typeof ProjectConfigBody>, "baseBranch">;
 type StoredProjectConfig = z.infer<typeof StoredProjectConfigSchema>;
 
-function mergeProjectConfig(raw: unknown, patch: StoredConfigPatch): Result<{ config: StoredProjectConfig }> {
+/**
+ * A refusal rather than a reason, because two of the three are sentences the boss
+ * reads in the browser and one is zod's English.
+ *
+ * `Result<T>.error` is a string shown to an *agent* verbatim, which is the other
+ * kind — this route answers a panel, so `bad()` carries the descriptor beside the
+ * English and the browser picks the language. Returning the built refusal keeps
+ * that choice at the site that knows which of the two it is.
+ */
+type Merged = { ok: true; config: StoredProjectConfig } | { ok: false; refusal: ReturnType<typeof badText> };
+
+function mergeProjectConfig(raw: unknown, patch: StoredConfigPatch): Merged {
   const current = valueOr(raw, JsonObject.nullable(), null);
-  if (!current) return { ok: false, error: "项目配置必须是一个 JSON 对象；拒绝用一次局部修改覆盖整份配置" };
+  if (!current)
+    return {
+      ok: false,
+      refusal: bad(
+        msg`A project's config has to be a JSON object. One partial edit will not be allowed to replace the whole of it.`,
+      ),
+    };
 
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
@@ -408,14 +432,16 @@ function mergeProjectConfig(raw: unknown, patch: StoredConfigPatch): Result<{ co
     else current[key] = JsonValue.parse(value);
   }
   const checked = StoredProjectConfigSchema.safeParse(current);
-  if (!checked.success) return { ok: false, error: z.prettifyError(checked.error) };
+  // zod wrote this one, in English, and `bad()` cannot translate what it did not
+  // write — the same division `respond.ts` states for its two doors.
+  if (!checked.success) return { ok: false, refusal: badText(z.prettifyError(checked.error)) };
   const image = checked.data.sandbox?.image;
   if (image && !allowedImage(image)) {
     return {
       ok: false,
-      error:
-        `镜像只能是我们发布的（ghcr.io/pamin-labs/…）或者你本地构建的（比如 orch/agent:1）。` +
-        `agent 在这个镜像里跑，而它面前是你的代码 —— 换成别处的镜像等于把整条边界交出去，而且从面板上看不出来。`,
+      refusal: bad(
+        msg`An image has to be one we publish (ghcr.io/pamin-labs/…) or one you built locally (orch/agent:1, say). The agent runs inside this image with your code in front of it, so pointing it somewhere else hands over the whole boundary — and nothing on the panel would show it.`,
+      ),
     };
   }
   return { ok: true, config: checked.data };
@@ -435,7 +461,7 @@ export const patchProjectConfig = (async (ctx, _req, params, data) => {
     // Validate the whole merge so an unrelated patch cannot bless a malformed
     // field written by an older binary or a database-side repair.
     const merged = mergeProjectConfig(row.config_json, patch);
-    if (!merged.ok) return badText(merged.error);
+    if (!merged.ok) return merged.refusal;
     config = merged.config;
   }
 

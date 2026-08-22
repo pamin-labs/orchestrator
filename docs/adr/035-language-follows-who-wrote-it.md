@@ -75,18 +75,41 @@ id from the English at build time, and the English travels beside it on the wire
 as the descriptor's `message`. A panel that has never heard of a sentence renders
 that.
 
-### Three landings that stay server-rendered, and not for a language reason
+### What stays server-rendered, and not for a language reason
 
-- **Escalation `question` and `brief`.** They are matched as data:
-  `escalate.ts` dedupes on `starts_with(question, prefix)`, `api/panel/group.ts`
-  closes one with `like(question, "PR #%…%")`, and `delta.ts` splices `question`
-  verbatim into an agent's prompt. A key would break all three against rows
-  already stored.
 - **Note bodies.** `note.lang` records which language a note was written in,
   because retrieval has to reach it and an agent reads it back.
+- **A question an agent wrote.** `api/orch/escalation.ts` files the agent's own
+  words. That is category 1 above and is never rewritten, so it has no
+  descriptor and the panel draws the stored text.
 
-These are **load-bearing data**, not text somebody happens to read. That is why
-they are exempt, and the exemption survives any future move of the line above.
+### Escalation `question` and `brief` were exempt, and the exemption was the bug
+
+An earlier version of this section listed them beside note bodies: they were
+matched as data, so a key "would break all three against rows already stored".
+
+That was a description of the defect rather than a reason. Six predicates in
+five files compared the *prose* of a question — `starts_with(question, "PR #12
+被关掉了")`, `like(question, "budget:%")`, `substr(question, 1, length(...))` —
+which makes a sentence a primary key. Rewording one silently stops a matcher and
+nothing fails: `escalate.ts` files a second copy of a question it should have
+deduped, `credentialChanged` leaves an answered question sitting on the boss's
+queue forever, `prReopened` never reopens. It had already happened once in this
+PR's own history, to `沙箱是新的`. It is also why three of those sentences could
+not be translated at all, which is the rule this ADR exists to state.
+
+`escalation.dedupe_key` is that key now — a literal union in `escalate.ts`, one
+`=` per matcher, and no pattern to escape. `question` and `brief` are ordinary
+sentences again, so they take the same shape `event` does: rendered in the output
+language into the column that prompts splice, with the descriptor beside them in
+`question_said` / `brief_said`, and the panel prefers the descriptor. Rows stored
+before the column keep their prose and the panel falls back to it;
+`20260822013502_escalation_matches_a_key_not_prose` backfills their keys from the
+four literals, which is the last moment that mapping is known.
+
+`test/mech/escalate.test.ts` states the rule over the whole tree rather than over
+the six predicates that were fixed: no SQL compares `escalation.question` or
+`escalation.brief`. It was shown failing against each of them.
 
 The migration was additive: `event.meta_json` already existed, so an id and its
 values ride beside the rendered body, the panel prefers the id and falls back to

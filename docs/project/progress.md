@@ -989,15 +989,6 @@ both name `locales/po.d.ts`.
   — so this is the second symptom of the same shape and the first one was not
   the whole cause. Worth a seeded replay rather than another local rerun.
 
-- **`src/mech/flow/start.ts` emits two `bus.emit` bodies as hardcoded Chinese**
-  (`沙盒是新的…`, `装好了：…`) rather than through `say()`, which ADR 035
-  category 3 requires. `web/src/features/requirement/bootstrap.ts` matches those
-  strings by prefix to find where a sandbox rebuild started and ended, so that
-  pane already shows nothing for a boss whose `output.language` is English. The
-  match is marked `i18n-exempt` with the reason. The fix is a `SayKey` for each
-  plus a structured marker on the frame, so the panel stops parsing copy — it is
-  a change to what the bus carries, which is why it is not in the i18n commit.
-
 - `test/support/factories.ts` is on Fishery's `onCreate` with the database as a
   transient — 407 lines to 172. It was deferred until the driver moved, and the
   driver has moved: `TableFactory.insert`, the string-built `INSERT`, and the five

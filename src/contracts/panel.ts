@@ -102,6 +102,14 @@ export const Escalation = z.object({
   grp_id: z.number().nullable(),
   severity: z.string(),
   question: z.string(),
+  /**
+   * The descriptors `question` and `brief` were rendered from, where the server
+   * wrote them. Absent where an agent did — its own words are never rewritten —
+   * and absent on every row stored before the column existed, which is why the
+   * text beside them stays and the panel falls back to it.
+   */
+  said: SaidSchema.optional(),
+  briefSaid: SaidSchema.optional(),
   chain_state: z.enum(ESCALATION_STATES),
   /** One line of what it is about, for the queue. Written by whoever filed it. */
   brief: z.string().nullable(),
@@ -142,6 +150,8 @@ export const Answered = z.object({
   id: z.number(),
   grp_id: z.number().nullable(),
   question: z.string(),
+  /** As on `Escalation`: the descriptor if the server wrote the question. */
+  said: SaidSchema.optional(),
   answer: z.string().nullable(),
   answered_by: z.string(),
   ref_note_id: z.number().nullable(),

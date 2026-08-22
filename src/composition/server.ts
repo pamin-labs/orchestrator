@@ -9,7 +9,7 @@ import { landGroup } from "../api/panel/group.ts";
 import { roleFor, type Ctx } from "../mech/ctx.ts";
 import { joinQueue } from "../mech/flow/mergequeue.ts";
 import { bindSandboxKey } from "../mech/sandbox/auth.ts";
-import { and, asc, count, eq, inArray, isNull, like, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Bus, trimEvents } from "../platform/persistence/event-bus.ts";
 import { projectOfGrp } from "../mech/util/rows.ts";
 import { maxMs, escalation, grp, job, project, runtime_auth as runtimeAuth } from "../platform/persistence/schema.ts";
@@ -53,7 +53,7 @@ import { reclaimOrphans, resumeReclaimed, Scheduler } from "../platform/scheduli
 import { abortAll } from "../platform/process/running-turns.ts";
 import { isOnline } from "../mech/sandbox/net.ts";
 import { hold } from "../mech/flow/intercept.ts";
-import { raise } from "../mech/flow/escalate.ts";
+import { escalationKey, raise } from "../mech/flow/escalate.ts";
 import { restoreWorkspace } from "../mech/flow/start.ts";
 import { closeTelemetry, runtimeStatus, type RuntimeStatus } from "../platform/observability/metrics.ts";
 import { ACTIVE_JOB_STATES } from "../contracts/states.ts";
@@ -282,7 +282,7 @@ export function reportRejection(bus: Bus, e: unknown, said: string): string {
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
-      body: `有个后台任务崩了，服务没跟着退出。这是个 bug，请把这段贴给开发：\n${why.slice(0, 400)}`,
+      say: msg`A background task crashed and the server carried on without it. That is a bug — please send this to whoever maintains it:\n${{ stack: why.slice(0, 400) }}`,
     })
     .catch(() => {});
   return why;
@@ -317,13 +317,17 @@ export async function applyPrOutcome(ctx: Ctx, f: Feedback, url: string, notifie
 async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): Promise<void> {
   const [g] = await ctx.db.select({ name: grp.name }).from(grp).where(eq(grp.id, grpId));
   await hold(ctx.db, grpId, { reason: "merge", settled: true, from: "PR_OPEN", leaveQueue: true });
+  // `key`, not the opening line. Two matchers find this row again — `prReopened`
+  // below and `replacePr` in `api/panel/group.ts` — and both used to compare the
+  // sentence, so translating it was enough to strand a group in 待你决策 forever.
+  // The text is still rendered here because `delta.ts` splices it into a prompt.
   await raise(ctx.db, {
     grpId,
-    brief: "PR 被关掉了，要不要重开",
+    key: escalationKey.prClosed(prNumber),
+    lang: ctx.config.language,
+    brief: msg`PR closed — reopen it or not`,
     chain: "boss",
-    question:
-      `PR #${prNumber} 被关掉了（没有合入）。这一组已经停下并让出了合入队列。\n` +
-      `要继续：在 GitHub 上重开这个 PR，它会自己回到队列。不想要了：在这个需求上点「不做了」。`,
+    question: msg`PR #${{ pr: prNumber }} was closed without merging. This group has stopped and left the merge queue.\nTo carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement.`,
   });
   await ctx.bus.emit({
     grpId,
@@ -337,7 +341,12 @@ async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, 
   void notifier.push({
     key: `pr-closed:${grpId}:${prNumber}`,
     tier: "immediate",
-    body: `${g?.name ?? grpId}: PR #${prNumber} 被关了 — 重开或不做了`,
+    // A notification leaves this machine for a person, so it is rendered here in
+    // the output language rather than sent as a descriptor: ADR 035 §3 row two.
+    body: renderSaid(
+      ctx.config.language,
+      msg`${{ name: g?.name ?? grpId }}: PR #${{ pr: prNumber }} was closed — reopen it or drop the requirement`,
+    ),
     url: `${url}/#g=${grpId}&v=progress`,
   });
 }
@@ -348,11 +357,10 @@ async function prReopened(ctx: Ctx, grpId: number, prNumber: number): Promise<vo
     .update(grp)
     .set({ status: "PR_OPEN", paused_at: null, pause_reason: null })
     .where(and(eq(grp.id, grpId), eq(grp.status, "PAUSED")));
-  // The question this answers is the one `prClosed` asked, matched on its opening
-  // line. `substr(question, 1, length(?)) = ?` was a prefix test; `like` with the
-  // prefix escaped is the same test, and the escape matters — a PR number cannot
-  // contain `%`, but the rest of the prefix is not ours to promise about.
-  const prefix = `PR #${prNumber} 被关掉了`;
+  // The question this answers is the one `prClosed` asked, found by the key it
+  // filed under. It was a prefix test over the question's first line, escaped
+  // for LIKE; the key is per-PR, so this now also cannot close a question about
+  // a different PR in the same group, which the prefix could not distinguish.
   await ctx.db
     .update(escalation)
     .set({ chain_state: "answered", answered_by: "github", answer: "reopened" })
@@ -360,7 +368,7 @@ async function prReopened(ctx: Ctx, grpId: number, prNumber: number): Promise<vo
       and(
         eq(escalation.grp_id, grpId),
         isNull(escalation.answer),
-        like(escalation.question, `${prefix.replaceAll(/[%_\\]/g, "\\$&")}%`),
+        eq(escalation.dedupe_key, escalationKey.prClosed(prNumber)),
       ),
     );
   await joinQueue(ctx.db, grpId);
@@ -521,7 +529,7 @@ export async function indexThrew(ctx: Ctx, error: unknown, now = Date.now()): Pr
   // news however many times it happens, and a different one is worth saying.
   if (reason === mem.lastError) return;
   mem.lastError = reason;
-  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${reason}` });
+  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", say: msg`the index pass threw: ${{ reason }}` });
 }
 
 export async function indexPaused(db: DB, projectId: number): Promise<boolean> {
@@ -593,7 +601,7 @@ async function warnIndexOnce(ctx: Ctx, projectId: number, error: unknown): Promi
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body: `索引刷不了：这个项目的容器起不来（${errText(error)}）。`,
+    say: msg`the index cannot be refreshed: this project's container will not start (${{ why: errText(error) }})`,
   });
 }
 
@@ -683,7 +691,7 @@ async function warnModelDown(ctx: Ctx, projectId: number, failed: number): Promi
     kind: "escalation",
     intent: "inform",
     severity: "blocker",
-    body: `PageIndex 建不起来：${failed} 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。`,
+    say: msg`PageIndex cannot be built: all ${{ n: failed }} calls came back with nothing. Check in settings whether the account the index runs on still works.`,
   });
 }
 
@@ -849,8 +857,9 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
         await hold(ctx.db, grpId, { reason: "merge", settled: true, leaveQueue: true });
         await raise(db, {
           grpId,
-          question: `分支做完了但 PR 开不出来：${r.error}\n\n修好之后回答这条，这一组会自己重试。`,
-          brief: "PR 开不出来",
+          lang: ctx.config.language,
+          question: msg`The branch is finished but the PR will not open: ${{ why: r.error }}\n\nAnswer this once it is fixed and the group retries by itself.`,
+          brief: msg`the PR will not open`,
           chain: "boss",
         });
         await ctx.bus.emit({
@@ -864,7 +873,10 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
         void notifier.push({
           key: `pr-open:${grpId}`,
           tier: "immediate",
-          body: `${group?.name ?? grpId}: PR 开不出来 — ${r.error}`.slice(0, 200),
+          body: renderSaid(
+            ctx.config.language,
+            msg`${{ name: group?.name ?? grpId }}: the PR will not open — ${{ why: r.error }}`,
+          ).slice(0, 200),
           url,
         });
       }
@@ -1135,10 +1147,10 @@ function reportConfig(cfg: Config): void {
     else consola.warn(line);
   }
   if (all.some((f) => f.level === "fatal")) {
-    consola.box("配置有问题，起不来。改完 config/default.yaml 再跑一次。");
+    consola.box("The config is wrong, so this will not start. Fix config/default.yaml and run it again.");
     process.exit(1);
   }
-  consola.success(`配置 config/default.yaml · ${changed(cfg)} 项改过默认值`);
+  consola.success(`config/default.yaml · ${changed(cfg)} settings differ from the defaults`);
 }
 
 if (import.meta.main) {
@@ -1160,7 +1172,8 @@ if (import.meta.main) {
     const newest = readdirSync(join(ROOT, "web/src"), { recursive: true, withFileTypes: true })
       .filter((e) => e.isFile())
       .reduce((m, e) => Math.max(m, statSync(join(e.parentPath, e.name)).mtimeMs), 0);
-    if (newest > dist) consola.warn("web/dist 比 web/src 旧 —— 跑一次 `bun run build:web`，不然页面是旧的");
+    if (newest > dist)
+      consola.warn("web/dist is older than web/src — run `bun run build:web`, or the page served is the old one");
   }
 
   // A detached rejection must not end the fleet: bun exits the process on one,

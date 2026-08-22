@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { said } from "../support/said.ts";
 import { gitFixture, testGit } from "../support/git-runner.ts";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -259,12 +260,18 @@ test(
 
     const [esc] = await h.db.select().from(escalationTable);
     expect(esc!.severity).toBe("blocker");
-    expect(esc!.brief).toBe("S1 连着 3 次没过 gate");
+    // The three values it is built from, not a copy of the sentence they go into:
+    // the wording is the catalogue's and the boss reads it in their own language.
+    expect(esc!.brief).toContain("S1");
+    expect(esc!.brief).toContain("gate");
+    expect(esc!.brief).toContain("3");
     expect(esc!.kind).toBe("spec");
     expect(esc!.chain_state).toBe("boss");
-    // Two failures usually means the criteria are wrong, not the code — so the
-    // message says that rather than just reporting another failure.
-    expect(esc!.question).toContain("failed gate");
+    // The question carries the gate's own output, which is the part no catalogue
+    // owns — the sentence around it is the catalogue's, and the boss reads it in
+    // their own language. The identity of that sentence is checked by `said`.
+    expect(esc!.question).toContain("Reconcile failed");
+    expect(esc!.question_said).toMatchObject(said('S{seq} "{title}" failed {from} {n} times. Latest:\n{feedback}'));
     expect((await h.db.select({ status: grpTable.status }).from(grpTable).where(eq(grpTable.id, 1)))[0]!.status).toBe(
       "PAUSING",
     );
@@ -657,11 +664,15 @@ test("a branch the Auditor keeps rejecting stops instead of paying for another r
   const [esc] = await h.db.select().from(escalationTable).orderBy(desc(escalationTable.id)).limit(1);
   expect(esc!.severity).toBe("blocker");
   expect(esc!.chain_state).toBe("boss");
-  expect(esc!.brief).toBe("整条分支被 the Auditor 打回 3 次");
+  expect(esc!.brief).toContain("the Auditor");
+  expect(esc!.brief).toContain("3");
   expect(esc!.kind).toBe("spec");
   // The likely cause, said out loud: three rounds usually means the acceptance
-  // wording is wrong, not the code.
-  expect(esc!.question).toContain("验收口径");
+  // wording is wrong, not the code. Asserted through who rejected it and the
+  // reason they last gave, both of which this test supplied — the sentence
+  // carrying them is the catalogue's.
+  expect(esc!.question).toContain("the Auditor");
+  expect(esc!.question).toContain("and again");
 }, 30_000);
 
 test("a passed audit hires the Scribe, and nothing is published until it files", async () => {

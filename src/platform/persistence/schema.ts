@@ -439,10 +439,23 @@ export const escalation = pgTable(
     checkpoint_sha: text(),
     created_at: bigint({ mode: "number" }).notNull(),
     answered_at: bigint({ mode: "number" }),
+    // What the question is about, for the matchers. Dedupe, auto-answer and
+    // revoke used to compare the opening line of `question` — a primary key made
+    // of a sentence, so editing the sentence broke them and nothing failed.
+    // Null where nothing matches: an agent's own question is not a subject the
+    // server names. `escalate.ts` owns the vocabulary.
+    dedupe_key: text(),
     // One line of what the question is about, for the queue. `question` is an
     // agent writing to another agent, shown to a reader whose whole job here is
     // picking which one to open.
     brief: text(),
+    // The descriptors `question` and `brief` were rendered from, where the server
+    // wrote them. `event.meta_json.say` beside `event.body`, one table over: the
+    // text stays because prompts splice it and it is what leaves this machine,
+    // and the panel prefers the descriptor so a browser renders its own language.
+    // Null for a row an agent wrote and for every row stored before this column.
+    question_said: jsonb().$type<Json>(),
+    brief_said: jsonb().$type<Json>(),
     // What kind of thing is being asked. One bad premise strands every slice
     // behind it, so a requirement can hold a dozen open questions that are the
     // same problem said twelve times — twelve decisions on a page where there is

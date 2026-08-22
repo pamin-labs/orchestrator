@@ -20,6 +20,7 @@ import { testContext } from "../support/test-context.ts";
 const json = (body: unknown): Response =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 import { sweepApproved } from "../../src/mech/flow/start.ts";
+import { escalationKey } from "../../src/mech/flow/escalate.ts";
 import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { routeCalls } from "../support/route-source.ts";
@@ -1131,7 +1132,15 @@ test("nobody confirms a merge by hand: GitHub is the only source, and it winds t
 test("raising a budget resumes the group and closes the question that asked", async () => {
   const { app, db, f } = await harness();
   await db.update(grp).set({ status: "PAUSED", budget_tokens: 100, spent_tokens: 120 }).where(eq(grp.id, 1));
-  await f.escalation.create({ grp_id: 1, severity: "blocker", question: "budget: g1 用完了", chain_state: "boss" });
+  await f.escalation.create({
+    grp_id: 1,
+    severity: "blocker",
+    // Not the shipped sentence, and not in the shipped language: `dedupe_key` is
+    // what `raiseBudget` closes on, so the wording is free to be anything.
+    question: "rewritten by a translator",
+    dedupe_key: escalationKey.budget,
+    chain_state: "boss",
+  });
 
   // 继续 alone is a lie: the scheduler will not admit an over-budget group.
   const resumed = await post(app, "/api/v1/groups/1/resume");
@@ -1486,10 +1495,17 @@ test("a worktree that cannot be created withdraws the approval instead of retryi
   expect(g.approved_at).toBeNull();
   expect(g.status).toBe("DRAFT");
   const esc = (await first(
-    h.db.select({ chain_state: escalation.chain_state, question: escalation.question }).from(escalation),
+    h.db
+      .select({ chain_state: escalation.chain_state, brief: escalation.brief, question: escalation.question })
+      .from(escalation),
   ))!;
   expect(esc.chain_state).toBe("boss");
-  expect(esc.question).toContain("批准没能落地");
+  // The message by its identity, not a copy of its text: `said()` hashes the
+  // English source, so a reworded sentence reddens this and a retranslated one
+  // does not. The locale is the one `Bus.prepare` reads, never a literal.
+  expect(esc.brief).toBe(renderSaid(h.ctx.config.language, said("the approval did not take")));
+  // And the reason itself reaches the boss, which is the part no catalogue owns.
+  expect(esc.question).toContain("disk full");
 });
 
 test("a question carries one line for the queue, given or derived", () => {
