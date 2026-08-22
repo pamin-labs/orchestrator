@@ -8,6 +8,8 @@
 
 import { msg, plural } from "@lingui/core/macro";
 import { renderSaid } from "../../platform/text/lang.ts";
+import type { Said } from "../../contracts/said.ts";
+import { cut } from "../../contracts/sentence.ts";
 import { scrub } from "../../platform/observability/redaction.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../../platform/config/load.ts";
 import type { Bus } from "../../platform/persistence/event-bus.ts";
@@ -18,9 +20,22 @@ export interface Notification {
   /** Dedupe identity. Same key + same problem = the same interruption. */
   key: string;
   tier: Tier;
+  /**
+   * What a producer that has no `output.language` in scope wants said.
+   *
+   * `batchForBoss` is the one push that bypasses this class's own renderer, and
+   * it was composing English — `"3 waiting on you (1 blocking)"`, `"someone"`,
+   * no plural — for the same webhook `flush()` renders in ten languages twelve
+   * lines below. Rendered here, where `lang` is.
+   */
+  say?: Said;
   body: string;
   url?: string;
 }
+
+/** The body as it goes out: what the producer named, in the boss's language, or
+ *  the text it had already rendered. */
+const bodyOf = (lang: string | undefined, n: Notification): string => (n.say ? renderSaid(lang, n.say) : n.body);
 
 /** Reasons that always interrupt, however busy the boss is. */
 const IMMEDIATE_RULES = new Set([
@@ -132,7 +147,7 @@ export class Notifier {
     if (!this.dueNow(n.key)) return false;
 
     if (n.tier === "immediate") {
-      await this.deliver("orchestrator", n.body, n.url);
+      await this.deliver("orchestrator", bodyOf(this.lang, n), n.url);
       return true;
     }
 
@@ -151,9 +166,9 @@ export class Notifier {
     this.batch = [];
     const body =
       items.length === 1
-        ? items[0]!.body
+        ? bodyOf(this.lang, items[0]!)
         : `${renderSaid(this.lang, msg`${plural({ n: items.length }, { one: "# thing needs", other: "# things need" })} you:`)}\n` +
-          items.map((i) => `• ${i.body}`).join("\n");
+          items.map((i) => `• ${bodyOf(this.lang, i)}`).join("\n");
     // No lastSent write here: push() already stamped every key through dueNow,
     // and rewriting it would reset strikes to 1, pinning the backoff at its
     // first step forever.
@@ -247,35 +262,56 @@ export interface PendingItem {
   group: string | null;
 }
 
+/**
+ * One question, on its own. `cut`, not `slice`: `contracts/sentence.ts` counts
+ * graphemes, and this cut UTF-16 units straight into a phone notification.
+ */
+/**
+ * Two descriptors rather than an interpolated "someone": a translated word
+ * inside another sentence's values is one sentence in two languages.
+ */
+function oneForBoss(i: PendingItem, url?: string): Notification {
+  const question = cut(i.question, 200);
+  return {
+    key: `escalation:${i.id}`,
+    tier: i.severity === "blocker" ? "immediate" : "batched",
+    say: i.group ? msg`${{ group: i.group }}: ${{ question }}` : msg`Someone asked: ${{ question }}`,
+    body: `${i.group ?? "someone"}: ${question}`,
+    // Straight to the requirement that is asking, not the front page.
+    ...(url ? { url: i.grpId ? `${url}/#g=${i.grpId}&v=progress` : url } : {}),
+  };
+}
+
+/**
+ * The plural is inlined into each message rather than hoisted into a `const`:
+ * hoisted it renders first and arrives as a *value*, which is one sentence
+ * assembled in two languages — what `values-carry-no-rendered-text` forbids.
+ */
+const waitingOn = (n: number, blocking: number, lines: string): Said =>
+  blocking
+    ? msg`${plural({ n }, { one: "# thing is", other: "# things are" })} waiting on you (${{ blocking }} blocking):\n${{ lines }}`
+    : msg`${plural({ n }, { one: "# thing is", other: "# things are" })} waiting on you:\n${{ lines }}`;
+
 export function batchForBoss(items: PendingItem[], url?: string): Notification | null {
-  if (items.length === 0) return null;
-  const blockers = items.filter((i) => i.severity === "blocker");
+  const [only] = items;
+  if (!only) return null;
+  if (items.length === 1) return oneForBoss(only, url);
 
-  if (items.length === 1) {
-    const i = items[0]!;
-    return {
-      key: `escalation:${i.id}`,
-      tier: i.severity === "blocker" ? "immediate" : "batched",
-      body: `${i.group ?? "someone"}: ${i.question.slice(0, 200)}`,
-      // Straight to the requirement that is asking, not the front page.
-      ...(url ? { url: i.grpId ? `${url}/#g=${i.grpId}&v=progress` : url } : {}),
-    };
-  }
-
+  const blocking = items.filter((i) => i.severity === "blocker").length;
   // Keyed by the set, so the reminder backs off while the set is unchanged and
   // fires immediately when something new joins it.
   const key = `batch:${items
     .map((i) => i.id)
     .sort((a, b) => a - b)
     .join(",")}`;
-  const lines = items.map((i) => `• ${i.group ?? "?"}: ${i.question.slice(0, 120)}`);
+  // Data, not prose: a group's own name and the question an agent wrote. `?` is
+  // a placeholder for a row with no group, not a word.
+  const lines = items.map((i) => `• ${i.group ?? "?"}: ${cut(i.question, 120)}`).join("\n");
   return {
     key,
-    tier: blockers.length > 0 ? "immediate" : "batched",
+    tier: blocking > 0 ? "immediate" : "batched",
     ...(url ? { url } : {}),
-    body:
-      `${items.length} waiting on you` +
-      (blockers.length ? ` (${blockers.length} blocking)` : "") +
-      `:\n${lines.join("\n")}`,
+    say: waitingOn(items.length, blocking, lines),
+    body: `${items.length} waiting on you${blocking ? ` (${blocking} blocking)` : ""}:\n${lines}`,
   };
 }

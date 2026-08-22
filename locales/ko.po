@@ -100,6 +100,9 @@ msgstr "{good}"
 msgid "{good} (also has {stale} — check [egress] image)"
 msgstr "{good} ({stale}도 있습니다 — [egress] image를 확인하세요)"
 
+msgid "{group}: {question}"
+msgstr "{group}: {question}"
+
 msgid "{groupCount} requirements touch different files and can run together"
 msgstr "요건 {groupCount}개는 서로 다른 파일을 건드려 함께 실행할 수 있습니다"
 
@@ -192,6 +195,16 @@ msgstr "{mount} 읽기 전용"
 
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, other {슬라이스 #개}}"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you ({blocking} blocking):\n"
+"{lines}"
+msgstr "{n, plural, other {# 건}}이 당신을 기다리고 있습니다 ({blocking} 건은 막혀 있음):\n"
+"{lines}"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you:\n"
+"{lines}"
+msgstr "{n, plural, other {# 건}}이 당신을 기다리고 있습니다:\n"
+"{lines}"
 
 msgid "{n, plural, one {# thing needs} other {# things need}} you:"
 msgstr "처리를 기다리는 일이 {n}건 있습니다:"
@@ -2747,6 +2760,9 @@ msgstr "슬라이스 소요 시간"
 
 msgid "slices pending"
 msgstr "개 슬라이스 대기"
+
+msgid "Someone asked: {question}"
+msgstr "누군가 묻고 있습니다: {question}"
 
 msgid "Someone else is handling it"
 msgstr "다른 사람이 처리 중"

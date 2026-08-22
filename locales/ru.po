@@ -100,6 +100,9 @@ msgstr "{good}"
 msgid "{good} (also has {stale} — check [egress] image)"
 msgstr "{good} (есть также {stale} — проверьте [egress] image)"
 
+msgid "{group}: {question}"
+msgstr "{group}: {question}"
+
 msgid "{groupCount} requirements touch different files and can run together"
 msgstr "{groupCount} требований трогают разные файлы и могут идти вместе"
 
@@ -192,6 +195,16 @@ msgstr "{mount} только чтение"
 
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, one {# срез} few {# среза} many {# срезов} other {# среза}}"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you ({blocking} blocking):\n"
+"{lines}"
+msgstr "{n, plural, one {# дело ждёт} few {# дела ждут} many {# дел ждут} other {# дела ждут}} вас ({blocking} блокирует):\n"
+"{lines}"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you:\n"
+"{lines}"
+msgstr "{n, plural, one {# дело ждёт} few {# дела ждут} many {# дел ждут} other {# дела ждут}} вас:\n"
+"{lines}"
 
 msgid "{n, plural, one {# thing needs} other {# things need}} you:"
 msgstr "{n, plural, one {# дело ждёт} few {# дела ждут} other {# дел ждут}} вас:"
@@ -2747,6 +2760,9 @@ msgstr "Длительность срезов"
 
 msgid "slices pending"
 msgstr "срезов ждут"
+
+msgid "Someone asked: {question}"
+msgstr "Кто-то спрашивает: {question}"
 
 msgid "Someone else is handling it"
 msgstr "Этим занимается кто-то другой"

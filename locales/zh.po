@@ -100,6 +100,9 @@ msgstr "{good}"
 msgid "{good} (also has {stale} — check [egress] image)"
 msgstr "{good}（另外还有 {stale} —— 检查一下 [egress] image）"
 
+msgid "{group}: {question}"
+msgstr "{group}：{question}"
+
 msgid "{groupCount} requirements touch different files and can run together"
 msgstr "{groupCount} 个需求各改各的，可以一起跑"
 
@@ -192,6 +195,16 @@ msgstr "{mount} 只读"
 
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n} 片"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you ({blocking} blocking):\n"
+"{lines}"
+msgstr "{n, plural, other {# 件事}}在等你（{blocking} 件卡住了）：\n"
+"{lines}"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you:\n"
+"{lines}"
+msgstr "{n, plural, other {# 件事}}在等你：\n"
+"{lines}"
 
 msgid "{n, plural, one {# thing needs} other {# things need}} you:"
 msgstr "有 {n} 件事等你："
@@ -2747,6 +2760,9 @@ msgstr "各切片耗时"
 
 msgid "slices pending"
 msgstr "片待查收"
+
+msgid "Someone asked: {question}"
+msgstr "有人在问：{question}"
 
 msgid "Someone else is handling it"
 msgstr "别人在处理"

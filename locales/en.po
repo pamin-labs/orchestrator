@@ -100,6 +100,9 @@ msgstr "{good}"
 msgid "{good} (also has {stale} — check [egress] image)"
 msgstr "{good} (also has {stale} — check [egress] image)"
 
+msgid "{group}: {question}"
+msgstr "{group}: {question}"
+
 msgid "{groupCount} requirements touch different files and can run together"
 msgstr "{groupCount} requirements touch different files and can run together"
 
@@ -192,6 +195,16 @@ msgstr "{mount} read-only"
 
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, one {# slice} other {# slices}}"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you ({blocking} blocking):\n"
+"{lines}"
+msgstr "{n, plural, one {# thing is} other {# things are}} waiting on you ({blocking} blocking):\n"
+"{lines}"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you:\n"
+"{lines}"
+msgstr "{n, plural, one {# thing is} other {# things are}} waiting on you:\n"
+"{lines}"
 
 msgid "{n, plural, one {# thing needs} other {# things need}} you:"
 msgstr "{n, plural, one {# thing needs} other {# things need}} you:"
@@ -2747,6 +2760,9 @@ msgstr "Slice durations"
 
 msgid "slices pending"
 msgstr "slices pending"
+
+msgid "Someone asked: {question}"
+msgstr "Someone asked: {question}"
 
 msgid "Someone else is handling it"
 msgstr "Someone else is handling it"

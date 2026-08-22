@@ -15,6 +15,7 @@ import { hold } from "../../mech/flow/intercept.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { CLAIMING, canStart, claimsShared, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";
 import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
+import { terms } from "../../mech/knowledge/terms.ts";
 import { sweepApproved } from "../../mech/flow/start.ts";
 import { baseBranch, baseRefFor, sandboxGit, treeFiles } from "../../mech/git/checkout.ts";
 import { execIn, WORK } from "../../mech/sandbox/sandbox.ts";
@@ -309,13 +310,29 @@ async function dropEvidence(ctx: Ctx, gid: number, body: z.infer<typeof DropBody
   return commitEvidence(ctx, gid, body.commit.trim());
 }
 
+/**
+ * Enough of an answer to be one, in whatever language it is written in.
+ *
+ * This was `why.length < 10`, calibrated on English and enforced as a 400.
+ * `.length` counts UTF-16 units, so it refused complete Chinese, Japanese and
+ * Korean sentences — `需求二已完全覆盖` is eight — while `ok i think` is ten and
+ * passed, which is the non-answer the check exists to stop.
+ */
+/**
+ * `terms()` is this project's tokeniser: ICU word breaking plus rented stop-word
+ * lists, so it counts words in ten languages and drops the ones carrying
+ * nothing. Measured on those four cases, three terms accepts both refused
+ * sentences and refuses `ok i think`.
+ */
+const isASentence = (why: string): boolean => terms(why).length >= 3;
+
 export const postDrop = (async (ctx, _req, a, _p, b) => {
   if (!plans(ctx, a) && a.role !== roleFor(ctx, "cut_boundary"))
     return badText(`${a.role} does not propose dropping work`);
   const gid = await actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
   const why = b.why.trim();
-  if (why.length < 10) return badText("--why has to say what already covers it, in a sentence");
+  if (!isASentence(why)) return badText("--why has to say what already covers it, in a sentence");
 
   // Evidence the server can check. A sentence alone is a model's opinion of its
   // own workload, which is exactly what must not be able to close a requirement.
@@ -459,7 +476,7 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
   const path = b.path.trim().replace(/^\.\//, "");
   const why = b.why.trim();
   if (!path) return badText("--path <file> — which file you cannot change");
-  if (why.length < 10) return badText("--why has to say what is wrong with it, in a sentence");
+  if (!isASentence(why)) return badText("--why has to say what is wrong with it, in a sentence");
 
   const [me] = await ctx.db
     .select({ project_id: grps.project_id, name: grps.name, owns_json: grps.owns_json })

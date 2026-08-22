@@ -1863,3 +1863,23 @@ test("the connection is read once and served from the snapshot after that", asyn
   await open({ fresh: true });
   expect(asked).toBeGreaterThan(afterFirst);
 });
+
+/**
+ * `--why` has to be a sentence, and the floor counts words rather than UTF-16
+ * units.
+ *
+ * It was `why.length < 10`, calibrated on English and enforced as a 422. It
+ * refused `需求二已完全覆盖` — eight units, four words, a complete answer — and
+ * accepted `ok i think` at ten units and two words, which is the non-answer the
+ * check exists to stop. `terms()` is ICU word breaking plus the project's own
+ * stop lists, so it counts the same way in ten languages.
+ */
+test("--why is measured in words, so a short sentence in a dense script is still a sentence", async () => {
+  const h = await harness();
+  await h.f.agent.create({ project_id: 1, grp_id: 1, role: "dispatcher", token: "tok-d" });
+  await h.f.runningGrp.create({ project_id: 1, name: "other" });
+  const drop = (why: string) => post(h.app, "/orch/v1/drop", { group_id: 1, why, duplicate: 2 }, "tok-d");
+
+  expect((await drop("ok i think")).status).toBe(422);
+  expect((await drop("需求二已完全覆盖")).status).toBe(200);
+});

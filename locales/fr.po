@@ -100,6 +100,9 @@ msgstr "{good}"
 msgid "{good} (also has {stale} — check [egress] image)"
 msgstr "{good} (il y a aussi {stale} — vérifiez [egress] image)"
 
+msgid "{group}: {question}"
+msgstr "{group} : {question}"
+
 msgid "{groupCount} requirements touch different files and can run together"
 msgstr "{groupCount} exigences touchent des fichiers différents et peuvent tourner ensemble"
 
@@ -192,6 +195,16 @@ msgstr "{mount} lecture seule"
 
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, one {# tranche} other {# tranches}}"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you ({blocking} blocking):\n"
+"{lines}"
+msgstr "{n, plural, one {# chose attend} other {# choses attendent}} après vous ({blocking} bloquantes) :\n"
+"{lines}"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you:\n"
+"{lines}"
+msgstr "{n, plural, one {# chose attend} other {# choses attendent}} après vous :\n"
+"{lines}"
 
 msgid "{n, plural, one {# thing needs} other {# things need}} you:"
 msgstr "{n, plural, one {# chose a besoin} other {# choses ont besoin}} de toi :"
@@ -2747,6 +2760,9 @@ msgstr "Durée des tranches"
 
 msgid "slices pending"
 msgstr "tranches en attente"
+
+msgid "Someone asked: {question}"
+msgstr "Quelqu’un demande : {question}"
 
 msgid "Someone else is handling it"
 msgstr "Quelqu'un d'autre s'en occupe"

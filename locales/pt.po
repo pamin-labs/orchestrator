@@ -100,6 +100,9 @@ msgstr "{good}"
 msgid "{good} (also has {stale} — check [egress] image)"
 msgstr "{good} (também há {stale} — verifique [egress] image)"
 
+msgid "{group}: {question}"
+msgstr "{group}: {question}"
+
 msgid "{groupCount} requirements touch different files and can run together"
 msgstr "{groupCount} requisitos tocam arquivos diferentes e podem rodar juntos"
 
@@ -192,6 +195,16 @@ msgstr "{mount} somente leitura"
 
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, one {# fatia} other {# fatias}}"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you ({blocking} blocking):\n"
+"{lines}"
+msgstr "{n, plural, one {# coisa está} other {# coisas estão}} à tua espera ({blocking} a bloquear):\n"
+"{lines}"
+
+msgid "{n, plural, one {# thing is} other {# things are}} waiting on you:\n"
+"{lines}"
+msgstr "{n, plural, one {# coisa está} other {# coisas estão}} à tua espera:\n"
+"{lines}"
 
 msgid "{n, plural, one {# thing needs} other {# things need}} you:"
 msgstr "{n, plural, one {# coisa precisa} other {# coisas precisam}} de ti:"
@@ -2747,6 +2760,9 @@ msgstr "Duração das fatias"
 
 msgid "slices pending"
 msgstr "fatias pendentes"
+
+msgid "Someone asked: {question}"
+msgstr "Alguém pergunta: {question}"
 
 msgid "Someone else is handling it"
 msgstr "Outra pessoa está cuidando"
