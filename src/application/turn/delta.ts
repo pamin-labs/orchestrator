@@ -35,7 +35,7 @@ export interface TurnAgent {
 type TurnJob = Job<"agent_turn">;
 type TurnPayload = TurnJob["payload"];
 
-async function escalationCard(db: DB, payload: TurnPayload): Promise<string | undefined> {
+async function escalationCard(db: DB, payload: TurnPayload, delta: Delta): Promise<string | undefined> {
   if (!payload.escalation) return;
   const [esc] = await db
     .select({
@@ -51,14 +51,24 @@ async function escalationCard(db: DB, payload: TurnPayload): Promise<string | un
     esc.agent_id === null
       ? "someone"
       : ((await db.select({ role: agent.role }).from(agent).where(eq(agent.id, esc.agent_id)))[0]?.role ?? "someone");
+  quote(delta, "question", esc.question);
   return (
-    `${asker} is blocked and asked (severity ${esc.severity}):\n${esc.question}\n\n` +
+    `${asker} is blocked and asked (severity ${esc.severity}); their question is quoted below.\n\n` +
     `Answer it with \`orch answer ${esc.id} --answer "…"\`, or pass it up with ` +
     `\`orch answer ${esc.id} --abstain --why "…"\`. Abstaining is the right move if you are ` +
     `not sure — a guess becomes a premise the whole group then reasons from.`
   );
 }
 
+/**
+ * Not fenced, deliberately, and this is the one that looks like it should be.
+ *
+ * `finishLease` enqueues its digest on `payload.mail`, and hardening a fenced
+ * span canonicalises whitespace — so a test log's indentation would arrive
+ * flattened, in the one message whose shape is the answer. Mail is also directed
+ * agent-to-agent inside one fleet, the same trust domain as `handoff`; the open
+ * channel anything can write into is `unread`, and that is fenced.
+ */
 function mailCard(payload: TurnPayload): string | undefined {
   const mail = payload.mail;
   if (!mail) return;
@@ -136,7 +146,7 @@ async function scribeCard(ctx: Ctx, payload: TurnPayload): Promise<string | unde
   );
 }
 
-async function digestCard(db: DB, payload: TurnPayload): Promise<string | undefined> {
+async function digestCard(db: DB, payload: TurnPayload, delta: Delta): Promise<string | undefined> {
   const digest = payload.digest;
   if (!digest) return;
   const rows = await db
@@ -156,12 +166,13 @@ async function digestCard(db: DB, payload: TurnPayload): Promise<string | undefi
     .map((row) => `[${row.seq}] ${row.author}: ${row.body}`)
     .join("\n")
     .slice(0, 20_000);
+  quote(delta, "backlog", transcript);
   return (
-    `Compress this channel backlog so nobody has to read it again. ${rows.length} events, ` +
+    `Compress the channel backlog quoted below so nobody has to read it again. ${rows.length} events, ` +
     `seq ${digest.from}..${digest.to}.\n\n` +
     `File ONE note: \`orch journal add --kind journal -\`, at most 6 lines, covering what was ` +
     `decided, what is still open, and anything a later turn must not re-litigate. Names and ` +
-    `file paths verbatim; drop the pleasantries.\n\n${transcript}`
+    `file paths verbatim; drop the pleasantries.`
   );
 }
 
@@ -180,12 +191,12 @@ function sedimentCard(payload: TurnPayload): string | undefined {
 
 async function applyPayloadCards(ctx: Ctx, payload: TurnPayload, delta: Delta): Promise<void> {
   for (const card of [
-    await escalationCard(ctx.db, payload),
+    await escalationCard(ctx.db, payload, delta),
     mailCard(payload),
     boundaryCard(payload),
     auditCard(payload),
     await scribeCard(ctx, payload),
-    await digestCard(ctx.db, payload),
+    await digestCard(ctx.db, payload, delta),
     sedimentCard(payload),
     payload.idea ? `The boss wants: ${payload.idea}` : undefined,
   ]) {
@@ -377,6 +388,17 @@ async function readUnread(
   return rows.map((row) => `${row.author}${row.intent ? ` (${row.intent})` : ""}: ${row.body}`).join("\n") + tail;
 }
 
+/**
+ * Somebody else's words, put where the fence will reach them.
+ *
+ * The prose around them stays in the card: that half is the orchestrator's and
+ * carries the `orch` command this turn has to run, and fencing it would tell the
+ * model not to obey it.
+ */
+const quote = (delta: Delta, label: string, content: string): void => {
+  (delta.quoted ??= []).push({ label, content });
+};
+
 /** Build only the per-turn delta; stable prompt material is owned elsewhere. */
 export async function buildTurnDelta(
   deps: { ctx: Ctx; cfg: Config },
@@ -391,6 +413,9 @@ export async function buildTurnDelta(
   await applyHandoff(deps.ctx, job.grp_id, rotated, delta);
   const unread = await readUnread(deps.ctx, agent, job.grp_id, deps.cfg);
   await applySkills(deps.ctx, agent, job, scope, delta);
-  if (unread) delta.unread = unread;
+  // Every byte of this is written by other agents and by the boss, in a channel
+  // anything with `orch mail` can reach. It is the injection path this fence
+  // exists for.
+  if (unread) quote(delta, "channel", unread);
   return delta;
 }

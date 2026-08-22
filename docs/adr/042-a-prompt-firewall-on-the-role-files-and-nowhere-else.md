@@ -125,6 +125,16 @@ evidence rather than from memory.
 
 ## Known next step: L2 nonce fencing, and what blocks it
 
+> **Superseded by [`047`](047-the-fence-does-not-need-the-nonce-in-the-prefix.md).**
+> Three claims below are false against the installed package. L2 has no
+> false-positive cost — it does: `harden()` strips indentation and chat-template
+> tokens from what it fences. The way out is a per-session nonce — it is not
+> reachable, because `buildMessages` mints its own and exports no seam; the way
+> out is that the nonce does not belong in the hashed half at all. And this does
+> not address the injection path the rejected gate was aimed at: `orch ctx query`
+> output is a Bash result inside the agent's own session and never reaches
+> `assemble.ts`. The section is kept as the record of what was believed.
+
 The genuinely valuable half of this library is the one not adopted here.
 `buildMessages()` wraps untrusted spans in `<<DATA:label:nonce>> … <<END:…>>` and
 tells the model, in trusted text, that everything inside is data. It *transforms*

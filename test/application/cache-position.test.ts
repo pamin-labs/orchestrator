@@ -34,8 +34,8 @@ test("the delta lands only in prompt, never in the stable half", () => {
 
 test("two turns with different deltas share a byte-identical stable half", () => {
   const stable = buildStable(parts());
-  const a = assemble(stable, { card: "task A", unread: "PM: go" });
-  const b = assemble(stable, { card: "task B", leaseResult: "exit 0" });
+  const a = assemble(stable, { card: "task A", quoted: [{ label: "channel", content: "PM: go" }] });
+  const b = assemble(stable, { card: "task B", rejection: "exit 0" });
 
   expect(a.stable.systemAppend).toBe(b.stable.systemAppend);
   expect(a.stable.hash).toBe(b.stable.hash);
@@ -57,19 +57,21 @@ test("nothing turn-varying leaks into the stable half", () => {
 
 test("delta sections are ordered with the newest information last", () => {
   const body = buildDelta({
-    bossSay: "BOSS",
     card: "CARD",
     handoff: "HANDOFF",
-    unread: "UNREAD",
+    skills: "SKILL",
+    quoted: [{ label: "channel", content: "UNREAD" }],
   });
   const at = (s: string) => body.indexOf(s);
   expect(at("HANDOFF")).toBeLessThan(at("CARD"));
-  expect(at("CARD")).toBeLessThan(at("UNREAD"));
-  expect(at("UNREAD")).toBeLessThan(at("BOSS"));
+  expect(at("CARD")).toBeLessThan(at("SKILL"));
+  // Quoted material is last, after every instruction: the turn reads what it is
+  // being asked to do before it reads the thing it must not obey.
+  expect(at("SKILL")).toBeLessThan(at("UNREAD"));
 });
 
 test("empty delta parts are omitted, not rendered as blank headings", () => {
-  const body = buildDelta({ card: "only this", unread: "" });
+  const body = buildDelta({ card: "only this", rejection: "", quoted: [] });
   expect(body).toBe("## Your current work\n\nonly this");
 });
 
@@ -168,7 +170,11 @@ test("a skill the boss pointed at lands in the delta, never in the cached prefix
   expect(stable.systemAppend).not.toContain("guard clause");
   expect(prompt).toContain("guard clause first");
   // And after the card, before the boss's own words, which stay last.
-  const { prompt: both } = assemble(stable, { card: "S1", skills: body, bossSay: "别忘了 zh" });
+  const both = assemble(stable, {
+    card: "S1",
+    skills: body,
+    quoted: [{ label: "channel", content: "别忘了 zh" }],
+  }).prompt;
   expect(both.indexOf("guard clause")).toBeGreaterThan(both.indexOf("S1"));
   expect(both.indexOf("别忘了 zh")).toBeGreaterThan(both.indexOf("guard clause"));
 });
