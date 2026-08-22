@@ -141,7 +141,7 @@ test("reordering a gate returns a new order, and a drop that changed nothing ret
   expect(moveGate(["a", "b", "c"], 0, 2)).toEqual(["b", "c", "a"]);
   expect(moveGate(["a", "b", "c"], 2, 0)).toEqual(["c", "a", "b"]);
   // Null, not the same list: the caller writes whatever it gets back, and a drag
-  // that ended where it started would otherwise be a save and a 已保存 for an
+  // that ended where it started would otherwise be a save and a saved stamp for an
   // order identical to the stored one.
   expect(moveGate(["a", "b"], 1, 1)).toBeNull();
   expect(moveGate(["a", "b"], -1, 0)).toBeNull();
@@ -413,7 +413,7 @@ describe("a row is 已改 when either half of it is", () => {
   test.each([
     ["neither half", off, [], false],
     ["the first half", on, [], true],
-    // One row, so one 已改 — the index runtime and its model are one decision.
+    // One row, so one `Modified` — the index runtime and its model are one decision.
     ["the second half", off, [on], true],
     ["both halves untouched", off, [off], false],
     // The embedding row carries three: mode, model, endpoint, credential.
@@ -470,7 +470,7 @@ test("a stored value becomes the text its box holds, whatever shape it is", () =
 
 test("a duration knob is scaled to milliseconds for the picker and back to its own unit", () => {
   // `turnTimeoutMs` is milliseconds and `sandbox.ttlSeconds` is seconds, and
-  // both are typed in 分钟 / 小时 — so the picker works in one scale and this is
+  // both are typed in `min` / `hr` — so the picker works in one scale and this is
   // the only place the other one is named.
   expect(durationScale("ms")).toBe(1);
   expect(durationScale("seconds")).toBe(1000);

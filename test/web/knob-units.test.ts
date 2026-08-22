@@ -19,7 +19,7 @@ import {
  * The settings page shows `20 分钟` and posts 1200000.
  *
  * This is the one part of that page that can be wrong without looking wrong: a
- * field that reads 20 分钟 and stores 1_200_000.0000001 is refused by the type
+ * field that reads 20 `min` and stores 1_200_000.0000001 is refused by the type
  * check on the way in, and one that stores 1_800_000 is accepted and runs the
  * whole fleet on a different number. So every conversion is asserted in both
  * directions, on the values the config actually ships.
@@ -53,7 +53,7 @@ test("a duration survives the trip to the screen and back, exactly", () => {
 test("a bare number keeps the unit on the screen, a suffix overrides it", () => {
   // 1_200_000 shows as `20 分钟`, so typing 30 over it means thirty minutes.
   expect(readNumber("30", 1_200_000, "ms")).toBe(1_800_000);
-  // ...and the same box takes 45s, 3h, 2 小时 when the boss wants another unit.
+  // ...and the same box takes 45s, 3h, 2 `hr` when the boss wants another unit.
   expect(readNumber("45s", 1_200_000, "ms")).toBe(45_000);
   expect(readNumber("3h", 1_200_000, "ms")).toBe(10_800_000);
   expect(readNumber("2 小时", 1_200_000, "ms")).toBe(7_200_000);
@@ -73,7 +73,7 @@ test("the sandbox TTL is stored in seconds and still reads in days", () => {
   // Still accepted in the unit it used to be printed in.
   expect(readNumber("24 小时", 86_400, "seconds")).toBe(86_400);
   expect(readNumber("30 分钟", 86_400, "seconds")).toBe(1800);
-  // A bare number keeps the unit on the screen, and the screen now says 天: the
+  // A bare number keeps the unit on the screen, and the screen now says days: the
   // box holds `1 天`, so 12 is twelve days. Typing the old unit still says hours.
   expect(readNumber("12", 86_400, "seconds")).toBe(12 * 86_400);
   expect(readNumber("12 小时", 86_400, "seconds")).toBe(43_200);

@@ -53,8 +53,8 @@ function countIn(path: string): number {
   });
   // Comments count too, and they were 172 of the 265 this file found when that
   // was added. `AGENTS.md`'s first coding rule is English for comments — and by
-  // the time the panel's source language was English, a comment naming 待办 or
-  // 成本 pointed at a label no longer in the source, so a reader searching for
+  // the time the panel's source language was English, a comment naming `To do` or
+  // `Cost` pointed at a label no longer in the source, so a reader searching for
   // one found nothing. Counted per comment rather than per line: a block that
   // wraps is one decision.
   for (const c of ast.comments ?? []) if (CJK.test(c.value)) n++;

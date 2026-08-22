@@ -661,7 +661,7 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   expect(filed?.body).toContain("支持 zh");
 
   // An objection that lands after the card must reach the boss too: the card
-  // says 反对 : 无 because the Dispatcher does not wait for the Architect.
+  // says `Objection: none` because the Dispatcher does not wait for the Architect.
   await f.agent.create({ project_id: 1, role: "architect", token: "tok-arch" });
   await post(
     app,
@@ -894,7 +894,7 @@ test("a token is only good for the scope it was hired into", async () => {
 });
 
 test("dropping a requirement frees its paths and starts whoever was waiting", async () => {
-  // 退回重拆 was the only way off the approval screen, and it sends the plan back
+  // `Return for re-decomposition` was the only way off the approval screen, and it sends the plan back
   // to be written again. A duplicate needs to leave, and the group behind it needs
   // to stop waiting on paths nobody will ever use.
   const h = await harness();
@@ -915,7 +915,7 @@ test("dropping a requirement frees its paths and starts whoever was waiting", as
       .orderBy(desc(job.id)),
   );
   expect(lastTurn?.state).toBe("cancelled");
-  // A question that outlives its requirement sits in 待办 forever.
+  // A question that outlives its requirement sits in `To do` forever.
   const orphan = await first(
     h.db.select({ s: escalation.chain_state }).from(escalation).where(eq(escalation.grp_id, 1)),
   );
@@ -1142,7 +1142,7 @@ test("raising a budget resumes the group and closes the question that asked", as
     chain_state: "boss",
   });
 
-  // 继续 alone is a lie: the scheduler will not admit an over-budget group.
+  // `Resume` alone is a lie: the scheduler will not admit an over-budget group.
   const resumed = await post(app, "/api/v1/groups/1/resume");
   expect(resumed.status).toBe(422);
   expect(await resumed.text()).toContain("120/100");
@@ -1424,7 +1424,7 @@ test("a live group that owns the path gets it as an addition, not a rival group"
 test("a question no answer can resolve becomes a requirement, and the group waits for it", async () => {
   // The commonest blocker on the queue is one no answer resolves: a config file is
   // wrong, four groups are red on one line. Answering means typing the fix into a
-  // chat box for an agent that is not allowed to apply it, so these sat in 待办
+  // chat box for an agent that is not allowed to apply it, so these sat in `To do`
   // until the boss did the work by hand.
   const h = await harness();
   await h.db.update(grp).set({ status: "PAUSED", paused_at: 1 }).where(eq(grp.id, 1));

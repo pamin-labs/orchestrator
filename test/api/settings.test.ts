@@ -178,7 +178,7 @@ test("writing a setting does not edit what the default means", async () => {
  *
  * `embedding.mode` and its endpoint are two fields with one rule between them,
  * and the panel writes the mode the moment the segment is pressed. The write
- * stored the row and *then* validated, so pressing 远程 left
+ * stored the row and *then* validated, so pressing `Remote` left
  * `cfg.embedding.mode = "remote"` in the database with no endpoint — and the
  * next boot refused to start on it. The only control that could have corrected
  * the value was in the panel that would not come up.

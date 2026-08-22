@@ -15,7 +15,7 @@ import { LANGUAGE_SUGGESTIONS } from "../../web/src/features/knobs/editors.tsx";
  * from the transpiler's output, meaning to skip comments — but JSX does not
  * survive transpilation as source text either, so it could not see a single
  * Chinese string inside a `<Trans>`. It passed while `{repoPath} 的 {groups}
- * 个需求` sat in a settings pane, and passed again on an injected
+ * `requirements`` sat in a settings pane, and passed again on an injected
  * `<Trans>项目列表</Trans>`. Comments are dropped by the parser instead.
  */
 /**
@@ -79,7 +79,7 @@ function offenders(file: string, source: string): string[] {
     },
   });
   // Comments too, and they outnumbered the literals: the panel's source language
-  // became English and its comments went on naming 待办 and 成本, labels a reader
+  // became English and its comments went on naming `To do` and `Cost`, labels a reader
   // can no longer find in the source. `AGENTS.md`'s first coding rule already
   // said English; nothing enforced it.
   //

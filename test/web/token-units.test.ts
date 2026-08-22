@@ -6,7 +6,7 @@ import { K } from "../../web/src/shared/format.ts";
  * A token count, in the notation of the language the panel is being read in.
  *
  * It was an `Intl.NumberFormat` of our own pinned to `en-US`, so the header and
- * the 成本 table printed English notation to all ten readers. `i18n.number` is
+ * the `Cost` table printed English notation to all ten readers. `i18n.number` is
  * the same `Intl` reached through the active locale, and the tiers below are a
  * language's own: `1.8M` is not a translation of `183.4万`, it is a different
  * way of writing the same quantity.
@@ -19,7 +19,7 @@ test("a token count never prints in a unit that does not exist", () => {
   // The tiers were hand-written and the tier was picked before the rounding, so
   // the last half-percent of each one rolled over inside its own label: 999500
   // came out "1000k" and 999999999 came out "1000M". Both are on the header and
-  // the 成本 table, which is where the boss decides whether to double a budget.
+  // the `Cost` table, which is where the boss decides whether to double a budget.
   expect(K(999_500)).toBe("999.5K");
   expect(K(999_999_999)).toBe("1B");
   expect(K(9_999_999)).toBe("10M");
@@ -37,7 +37,7 @@ test("a token count never prints in a unit that does not exist", () => {
 });
 
 test("the same count, in the notation each language actually uses", () => {
-  // Chinese groups by 万, not by thousand, so 1200 is below its first tier and
+  // Chinese groups by `万`, not by thousand, so 1200 is below its first tier and
   // 272000 is 27.2 of them. A reader of this panel writes it no other way.
   i18n.activate("zh");
   expect(K(1200)).toBe("1200");

@@ -104,7 +104,7 @@ test("the next success clears the hold, with nobody clicking anything", async ()
   await makeGithub(h.db, answer(200, { number: 7 })).request("GET", "/repos/me/x/pulls/7", z.json());
   expect(await repoHeld(h.db, 1)).toBe(false);
   // And the question goes with it: a boss who reconnects GitHub and watches the
-  // fleet resume should not also have to dismiss a 待办 item about it.
+  // fleet resume should not also have to dismiss a `To do` item about it.
   expect(await openEscalations(h.db)).toHaveLength(0);
 });
 

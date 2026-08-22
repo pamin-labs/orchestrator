@@ -227,7 +227,7 @@ test("attachments of the removed project go, and files it never named stay", asy
 
 test("the restart button gets the two numbers it has to show, and never a guess", async () => {
   // Restarting the sandbox server kills every container and every turn in them,
-  // so those two counts are the evidence beside the button (硬约束 5). They come
+  // so those two counts are the evidence beside the button (hard constraint 5). They come
   // from the database, which is the half that is the same on every machine —
   // whether a server happens to be running here is not.
   const h = await harness();

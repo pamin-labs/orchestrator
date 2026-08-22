@@ -42,8 +42,8 @@ test("an empty project still teaches the interface", () => {
   // from `emptyOf("live")` inside the bucket that is actually empty — which is
   // where PRODUCT.md wants it: the empty screen still teaches the interface.
   //
-  // 耗时 is no longer asserted here because it is no longer a tab. It sits in
-  // the top nav beside 需求, a rank up: a project's spans are mostly routes and
+  // `Time` is no longer asserted here because it is no longer a tab. It sits in
+  // the top nav beside `Requirement`, a rank up: a project's spans are mostly routes and
   // container operations belonging to no requirement, so "where did this
   // project's time go" is a sibling of "which requirements are running" rather
   // than a detail inside it.

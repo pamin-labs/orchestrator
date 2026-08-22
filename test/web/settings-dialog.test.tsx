@@ -75,7 +75,7 @@ const open = (props: Partial<Parameters<typeof SettingsDialog>[0]> = {}) => {
 /**
  * The hash decides which pane opens, and it keeps deciding.
  *
- * A link to `#…&s=ops` that landed on 模型账号 would make every settings link in
+ * A link to `#…&s=ops` that landed on `Model account` would make every settings link in
  * the product point at the same place.
  */
 test("the dialog opens on the pane it was asked for", async () => {
@@ -86,7 +86,7 @@ test("the dialog opens on the pane it was asked for", async () => {
 /**
  * A pane that needs a project, with no project, falls back rather than drawing empty.
  *
- * 闸门, 沙盒 and 移除项目 are all about one repository. Opened with `projectId` null
+ * `Gates`, `Sandbox` and `Remove project` are all about one repository. Opened with `projectId` null
  * they have nothing to render and nothing to say about it — an empty dialog reads as
  * a broken one, and the hash can ask for this at any time because it is a URL.
  */
@@ -95,7 +95,7 @@ test("a project-scoped pane with no project falls back to one that works", async
   await waitFor(() => expect(current(view)).toBe("模型账号"));
 
   // And with a project it opens where it was asked to, so the fallback is a
-  // fallback rather than 闸门 being unreachable.
+  // fallback rather than `Gates` being unreachable.
   cleanup();
   const withProject = open({ initial: "gates", projectId: 1 });
   await waitFor(() => expect(current(withProject.view)).toBe("闸门"));

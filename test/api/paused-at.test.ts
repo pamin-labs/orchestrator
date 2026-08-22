@@ -115,7 +115,7 @@ test("signing in answers the runtime's question whatever the question says", asy
 });
 
 test("nothing stops or starts a group without going through hold/release", () => {
-  // 硬约束 7 is here because three callers wrote PAUSING and forgot `paused_at`,
+  // Hard constraint 7 is here because three callers wrote PAUSING and forgot `paused_at`,
   // and every watchdog timer keys on it — the group went invisible to the park
   // timer, the nudge and the unpark at once while looking perfectly healthy.
   // `pause_reason` added a second field with the same property. Thirteen call

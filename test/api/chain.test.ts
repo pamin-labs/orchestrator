@@ -405,7 +405,7 @@ test("triage records the boss's words verbatim on the blackboard, once", async (
   const h = await harness();
   // Wired the way the server wires it. `deps.bossFact?.(…) ?? fallback` always ran
   // the fallback too — bossFact returns undefined whether or not it fired — so
-  // every sentence was written twice and the 记录 tab showed each one doubled.
+  // every sentence was written twice and the `Notes` tab showed each one doubled.
   // Without a bossFact here the test takes the fallback branch and proves nothing.
   const deps = {
     ...h.deps,
@@ -552,7 +552,7 @@ test("a standing agent's mail is filed under the recipient's group, not nowhere"
 
   // Stamped with the sender's group, this lands as NULL and vanishes from the
   // group's timeline — which is how a real objection went unseen while the card
-  // it argued with said 反对 : 无.
+  // it argued with said `Objection: none`.
   const [e] = await h.db
     .select({ grp_id: event.grp_id, body: event.body })
     .from(event)

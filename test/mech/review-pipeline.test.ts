@@ -764,7 +764,7 @@ test("a slice the gate keeps rejecting asks the boss instead of going round agai
  * The question goes to the boss, not to the PM.
  *
  * The next line pauses the group, so a PM this was addressed to cannot run — the
- * question sat at `chain_state='pm'` forever, never reached 待你决策, and the only
+ * question sat at `chain_state='pm'` forever, never reached `Awaiting your decision`, and the only
  * visible symptom was a paused group with no reason attached. Observed live: a
  * blocker filed two hours before anyone could have seen it.
  */

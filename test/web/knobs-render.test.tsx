@@ -50,8 +50,8 @@ test("the models section draws every path it lists, embedding among them", async
   expect(view.getAllByText("向量检索")).toHaveLength(1);
   expect(view.getAllByText("走索引树")).toHaveLength(1);
   // The endpoint and the credential are not rows any more: they are fields of
-  // the 向量检索 row, drawn only under remote. Two empty boxes under a segment
-  // reading 本地 are a form for a mode nobody chose.
+  // the `Embedding mode` row, drawn only under remote. Two empty boxes under a segment
+  // reading `Local` are a form for a mode nobody chose.
   expect(view.queryAllByLabelText("Endpoint")).toHaveLength(0);
   expect(view.queryAllByLabelText("凭据名")).toHaveLength(0);
 });

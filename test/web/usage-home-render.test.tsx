@@ -67,9 +67,9 @@ test("a project row prints only the counts that are facts", () => {
   st.groups.push(group(1, 1, { spent_tokens: 1200 }), group(2, 1, { status: "RUNNING", name: "在跑的" }));
   const page = home(st);
 
-  // 2 需求 and the spend are the row's right edge, and both exist here. The
+  // 2 `Requirement` and the spend are the row's right edge, and both exist here. The
   // count is written the way this catalog's language writes it: Chinese groups
-  // by 万, so 1200 is below its first tier and prints in full.
+  // by `万`, so 1200 is below its first tier and prints in full.
   shown(page, "2 个需求");
   shown(page, "1200 tokens");
   // A running requirement names itself, so the boss knows what is spending.
@@ -82,7 +82,7 @@ test("a project with nothing spent prints neither a zero count nor a zero spend"
   st.projects.push(project(1, "alpha"));
   const page = home(st);
 
-  // 0 个需求 next to 空着 is the same absence twice.
+  // 0 `requirements` next to `Empty` is the same absence twice.
   gone(page, "0 个需求");
   gone(page, "0 tokens");
   // A project nothing was ever asked of carries its own action instead of a state.

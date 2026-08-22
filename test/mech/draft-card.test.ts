@@ -179,7 +179,8 @@ test("heading depth and a trailing colon do not change the card", () => {
 });
 
 test("a tests-only slice is refused — tests belong with their change", () => {
-  // The exact shape a real run produced: 加参数 / 实现分支 / 补充测试用例.
+  // The exact shape a real run produced: "add the parameter" / "implement the
+  // branch" / "add the tests".
   for (const title of ["补充测试用例", "添加单元测试", "add tests", "测试"]) {
     const card = good.replace(
       "| 补 middleware 单测 | normal | 覆盖 401/403 两条路径 |",
@@ -199,7 +200,7 @@ test("a slice that adds a test suite for something specific is still allowed", (
 });
 
 test("a one-slice card is accepted — padding to a floor invents scope", () => {
-  // Measured: with a floor of three, the Dispatcher filed "切片 2、3 是为满足最少
+  // Measured: with a floor of three, the Dispatcher filed "`Slice` 2、3 是为满足最少
   // 切片数补的相邻能力" as a risk on its own card, and one of those padded slices
   // would have changed what existing callers get. A small ask is one slice.
   const one = `## goal

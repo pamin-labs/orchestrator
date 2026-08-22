@@ -353,7 +353,7 @@ test("a span's kind comes from its own prefix, so a new name needs no code chang
 
 test("a prefix nobody has named becomes its own group, not a dumping ground", () => {
   // `pr.poll` and `lease.run` are named; something invented tomorrow is not, and
-  // it still has to be findable as itself rather than swept into 其他.
+  // it still has to be findable as itself rather than swept into `Other`.
   expect(spanKind("pr.poll").label).toBe("合并请求");
   expect(spanKind("brandnew.thing")).toEqual({ key: "brandnew", label: "brandnew" });
   // Only a name with no prefix at all falls back.

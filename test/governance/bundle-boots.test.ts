@@ -14,7 +14,7 @@ import { linguiMacros } from "../../scripts/lingui-macros.ts";
  *
  * Every other web test imports `web/src/**` directly, so none runs the artefact.
  * That gap let tree-shaking remove a `scalePoint` implementation while its export
- * getter survived, and 耗时 died on mount with `ij0 is not defined` — the source
+ * getter survived, and `Time` died on mount with `ij0 is not defined` — the source
  * correct, the bundle not, and 1,300 passing tests silent (`096cb8b`).
  */
 /**

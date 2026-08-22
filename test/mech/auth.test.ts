@@ -569,7 +569,7 @@ test("a key stored before the address travelled with it is bound at startup, onc
  * for a bound runtime, so the row put **127.0.0.1** into the probe list — and with
  * no provider configured it was the only entry. Since any one host answering is
  * enough, "is the internet up" was decided by whether anything listens on localhost
- * **443**. Nothing does; the panel announced 宿主断网了 on a machine that was online.
+ * **443**. Nothing does; the panel announced the host was offline on a machine that was online.
  */
 /**
  * The origin, not the hostname, for the reason this list is derived rather than

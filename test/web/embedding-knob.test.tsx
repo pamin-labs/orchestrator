@@ -18,7 +18,7 @@ afterEach(cleanup);
  * The endpoint and credential are on this row too, and only under remote.
  *
  * They were rows of their own, drawn as two empty boxes under a segment reading
- * 本地 — fields for a mode nobody had chosen. They cannot be hidden behind the
+ * `Local` — fields for a mode nobody had chosen. They cannot be hidden behind the
  * *stored* mode either: `ConfigSchema` refuses `mode: remote` without them and a
  * refused write stores nothing, so the stored mode is still local at exactly the
  * moment somebody needs a box to type in.

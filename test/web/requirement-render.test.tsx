@@ -135,7 +135,7 @@ test("the header shows the control that fits the group's state", () => {
   shown(head, "ship it");
   shown(head, "feature/ship");
   shown(head, "在跑");
-  // The controls are buttons, named — 暂停 as text could have been a caption.
+  // The controls are buttons, named — `Pause` as text could have been a caption.
   head.getByRole("button", { name: "暂停" });
   head.getByRole("button", { name: "更多" });
 
@@ -178,7 +178,7 @@ test("a group that has spent its budget gets the wall instead of a working 继�
   shown(wall, "预算用尽，全组挂起");
   wall.getByRole("button", { name: /翻倍到/ });
   wall.getByRole("button", { name: "取消上限" });
-  // 继续 would be a button that changes nothing: the scheduler refuses to admit it.
+  // `Resume` would be a button that changes nothing: the scheduler refuses to admit it.
   expect(wall.queryAllByRole("button", { name: "继续" })).toHaveLength(0);
 
   const capped = running({ budget_tokens: null });
@@ -239,7 +239,7 @@ test("each slice row says where it is in its own words", () => {
   shown(rows, "等前序切片");
   shown(rows, "已退回，等它修");
   shown(rows, "engineer ▸ 跑测试");
-  // Gate names come from the shared stop list, and 查收 is the boss's own column.
+  // Gate names come from the shared stop list, and `Accept` is the boss's own column.
   shown(rows, "自评");
   shown(rows, "对账");
   shown(rows, "测试");
@@ -385,8 +385,8 @@ test("the dock and the tab counts follow what the requirement holds", () => {
   const { st, g } = running();
   st.slices.push(slice({ id: 1, seq: 1 }), slice({ id: 2, seq: 2, status: "running", awaiting_at: null }));
   const tabs = render(st, g, "slice");
-  // Five tabs, in order, with 切片 the one that is open — none of which a
-  // substring of the markup could distinguish from a heading. 耗时 carries no
+  // Five tabs, in order, with `Slice` the one that is open — none of which a
+  // substring of the markup could distinguish from a heading. `Time` carries no
   // count on purpose: a span total is not a quantity anybody is waiting on.
   expect(tabs.getAllByRole("tab").map((t) => t.textContent)).toEqual(["切片2", "问题0", "记录", "工作区", "耗时"]);
   expect(tabs.getByRole("tab", { selected: true }).textContent).toBe("切片2");

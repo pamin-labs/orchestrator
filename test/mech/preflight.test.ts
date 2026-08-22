@@ -62,8 +62,8 @@ test("docker installed but not started is not 'running'", async () => {
   // Measured: `DOCKER_HOST=unix:///nonexistent.sock docker --version` exits 0.
   // So the version probe — which is what this check used — reported "running"
   // for Docker Desktop installed and never launched, the most common first-run
-  // state there is. The boss then got a blocker saying "多半是 docker 没起，
-  // 自检那栏会说是哪个" and a self-check saying it was up.
+  // state there is. The boss then got a blocker saying docker was probably down
+  // and the self-check would say which, beside a self-check saying it was up.
   const asked: string[][] = [];
   const checks = await preflight({
     db: await openMemory(),

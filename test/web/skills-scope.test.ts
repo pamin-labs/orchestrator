@@ -3,7 +3,7 @@ import { skillsQuery } from "../../web/src/features/composer/model.ts";
 import { SkillsQuery } from "../../src/api/panel/panel.ts";
 
 /**
- * 技能 is machine-scope: the staged directory is mounted into every group of every
+ * `Skills` is machine-scope: the staged directory is mounted into every group of every
  * project, so the list exists before any project does.
  *
  * Both callers built the query as `String(projectId ?? "")`, which sends `project=`

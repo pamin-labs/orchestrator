@@ -285,7 +285,7 @@ test("a remote embedding needs an endpoint and a credential name; local needs ne
 /**
  * The yaml holds boot parameters and nothing else.
  *
- * Everything else is in 设置, because those are decisions made while watching the
+ * Everything else is in `Settings`, because those are decisions made while watching the
  * thing run and a restart costs more than the change — and because this file
  * ships inside the release, so editing it means editing the download. The rule
  * was written in the file's own header and enforced by nobody: a key added here

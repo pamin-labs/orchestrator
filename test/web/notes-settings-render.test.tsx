@@ -332,7 +332,7 @@ test("with nothing to check against, or a free field, what was typed is kept", (
 test("the theme control says all three states, including the one a toggle cannot", () => {
   const { getAllByRole } = render(<ThemeChoice />);
   // Three segments, and exactly one of them lit: a two-state toggle cannot hold
-  // 跟随系统 at all, and which one is chosen is `aria-checked`, not a class.
+  // `Follow the system` at all, and which one is chosen is `aria-checked`, not a class.
   expect(getAllByRole("radio").map((r) => r.textContent)).toEqual(["跟随系统", "浅色", "深色"]);
   expect(getAllByRole("radio", { checked: true })).toHaveLength(1);
 });

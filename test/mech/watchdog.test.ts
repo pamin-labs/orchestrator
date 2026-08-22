@@ -254,7 +254,7 @@ test("the same lease failing twice on unchanged code blames the environment", as
   const f = await runWatchdog(h.deps);
   const env = f.find((x) => x.rule === "env_suspect")!;
   expect(env).toBeDefined();
-  // The body follows output.language (中文 here); the resource name is a technical
+  // The body follows output.language (Chinese here); the resource name is a technical
   // term and stays verbatim in both.
   expect(env.say.values?.resource).toBe("build");
   expect(renderSaid(h.ctx.config.language, env.say)).toContain("环境");
@@ -597,7 +597,7 @@ test("the group it was waiting on landed, so it starts again by itself", async (
 test("a question stranded on a stopped group is lifted to the boss", async () => {
   // route() handles this at routing time, but a group can stop *after* a question
   // was handed to its PM — and every one filed before that fix is still sitting
-  // where it was. Symptom: a stopped group and a 待办 count of zero.
+  // where it was. Symptom: a stopped group and a `To do` count of zero.
   const h = await harness();
   await h.db.update(grpTable).set({ status: "PAUSED", paused_at: 999_999 }).where(eq(grpTable.id, 1));
   await fx.on(h.db).escalation.create({ grp_id: 1, severity: "blocker", question: "S1 failed the gate 3 times" });
@@ -1402,7 +1402,7 @@ test("a sandbox older than the credential it is bound to is recycled, a newer on
 
 test("a burnt budget puts a decision in front of the boss, not only a line in the feed", async () => {
   // Suspending without a row to answer left the group stopped with no reason
-  // attached: 继续 did nothing the scheduler would honour, and the only visible
+  // attached: `Resume` did nothing the scheduler would honour, and the only visible
   // state was a paused requirement nobody could unpause.
   const h = await harness();
   await h.db.update(grpTable).set({ budget_tokens: 100, spent_tokens: 100 }).where(eq(grpTable.id, 1));

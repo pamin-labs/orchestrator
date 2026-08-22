@@ -30,7 +30,7 @@ import { MAINLAND, OVERCONVERTED, preset } from "../../scripts/i18n-hant.ts";
 /**
  * Three characters a naive derivation includes are deliberately out — `准`, `里`
  * and `游` are ordinary Traditional characters as well as Simplified ones
- * (批准, 里 as a unit of distance, 游 as in swimming), and banning them would
+ * (`批准`, `里` as a unit of distance, `游` as in swimming), and banning them would
  * fail a correct translation.
  *
  * A hand-written literal rather than a call into `opencc-js`: computing the

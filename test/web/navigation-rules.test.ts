@@ -50,7 +50,7 @@ describe("a requirement keeps its project's tab lit", () => {
 });
 
 /**
- * A link into 记录 on a machine with no project has nowhere to land, and the
+ * A link into `Notes` on a machine with no project has nowhere to land, and the
  * fallback has to happen here rather than at each view.
  */
 describe("no project is home, whatever the hash asked for", () => {
