@@ -1489,3 +1489,94 @@ is not fenced — `finishLease` puts a test log there.
   dense script says more per character. It fails *lenient* — declines to refuse,
   which is how a hard refusal should fail — and the test says so rather than
   pretending uniformity.
+
+## A fourth pass, on the shape rather than on the language
+
+The boss read the ADR 046 commit and asked why a two-language word list was
+being defended in a branch whose argument is that they do not work. That
+question, turned into a search for the *shape*, is what this round is.
+
+### The shape, and the three guards that could not see it
+
+A guard that counts Chinese literals cannot see an English one. Two of the four
+found here were English, and one was not a word list at all — three hand-picked
+Unicode ranges. Every one of them was a **hard gate**:
+
+- **`FILLER`** refused a journal containing `basically` or 其实. Its comment,
+  written one commit earlier, called it "a cost nudge, not a correctness gate";
+  the code returns `ok: false`. And the six-line cap four lines above already
+  enforced terseness, in every language — a second owner of one rule.
+- **`GENERIC_GATE`** was a false-positive *suppressor*, so a miss refused a
+  correct card. Measured on one card written seven ways: German, French,
+  Spanish, Portuguese and Russian refused; Korean and Japanese accepted only
+  because `테스트통과` falls under an eight-character floor. Script density
+  decided the verdict.
+- **`NOT_ENGLISH`** in `checkPrMessage` was kana, Han and hangul, so
+  `перенести проверку` and `نقل الفحص` walked past ADR 035's "commits are
+  English, always".
+- **`validateSelfReview`** counted `ok`, `met` and `not met` as verdicts and
+  refused a list of English non-answers, so `looks ok` counted and `bestanden`
+  did not.
+- **`--why has to say it in a sentence`** was `why.length < 10`: `需求二已完全覆盖`
+  is eight units and four words and was refused, while `ok i think` is ten units
+  and two words and passed.
+
+Each replacement is something the runtime or this repository already owns —
+`terms()` for word counting, `\p{Script=Latin}` for the script test, the card's
+own `## accept` for the boilerplate list, the line cap for terseness, and the
+`pass|fail` the role prompts hand out.
+
+### The same defect as the screenshot, in two more places
+
+**The timeline** rendered `meta.say` at ingest and appended the string to
+`useState`, so every row was frozen in the language its SSE frame arrived in —
+the surface with the most rows. **The burn chart's tooltip** drew the bucket key
+`08-13 20` beside a trend axis this branch had already taught to say `13.08.`.
+
+And two disclosure buttons guessed a display width from `text.length`: at
+`line-clamp-3` and `max-w-[72ch]` a CJK glyph is about two columns, so a
+150-glyph Korean verdict was clamped **with no way to open it**. `useClamped`
+asks the browser.
+
+### Sentences that never reached a catalogue
+
+`standup.ts` composed three in English and handed them to `bus.emit` as
+`body: item.body` — an identifier at the emit site, so
+`an-event-names-its-sentence` saw data passing through. `batchForBoss` composed
+another two and pushed them straight at the webhook, twelve lines below the
+`Notifier` method that renders its own summary in ten languages. Both are the
+same blind spot: the guard reads the emit site, and the sentence was written one
+file away.
+
+### Two live bugs that were not about language at all
+
+- **A card that lost the payload race left its fenced block behind.** Introduced
+  by the fencing commit; `escalationCard` and `digestCard` pushed their quoted
+  span as a side effect while only the last card survived.
+- **The boundary turn lost the command it exists to issue.** `group.ts` enqueued
+  `{ boundary, idea }` and `idea` is later in the list, so `orch owns <id>
+  --path …` was replaced by "The boss wants: …". In production, before this.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1854 pass, 6 skip, 0 fail, 1860 across 226 files |
+| `bun run preflight` | sixteen steps, all green |
+| `fallow audit --gate all` | no issues in 351 changed files |
+| `web/dist/main.js` | 1,470,667 B |
+| preflight's second suite run | deleted — CI runs only the instrumented one |
+
+### Not taken, each with the measurement
+
+- **`slug.ts`'s eleven-word English `STOP` list.** Pointing it at `terms()`
+  looked like deleting the last hand-written lexicon in `src/`. Retrieval drops
+  words carrying no *search* signal and a branch name wants the opposite:
+  `slug("remember-me")`, a name the caller chose, came back `remember`.
+- **`terms.ts`'s missing German, Spanish and Dutch stop lists.** Its own comment
+  has the measurement — `die`, `no` and `hier` would each eat an English word,
+  and `net` and `hit` are identifiers here.
+- **`mdast-util-to-string` for `textOf`.** Five lines, but it is transitive
+  today and adopting it means promoting it to a direct dependency.
+- **The eight-character floor in `overlapError`.** Still counts characters. It
+  fails *lenient*, which is how a hard refusal should fail.
