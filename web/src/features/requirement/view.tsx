@@ -84,8 +84,9 @@ import {
   tickTextClass,
   type StepState,
 } from "./model";
+import type { MessageDescriptor } from "@lingui/core";
+import { msg } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
 
 /**
  * Confirm, then act, then refresh — the shape every consequential control here
@@ -508,8 +509,8 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
  * work.
  */
 /** Said twice, from the two places a requirement can be dropped. */
-const dropBody = (name: string): string =>
-  t`${name} leaves the board and every queued turn is cancelled. The code and the record are both kept.`;
+const dropBody = (name: string): MessageDescriptor =>
+  msg`${{ name }} leaves the board and every queued turn is cancelled. The code and the record are both kept.`;
 
 function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
   const { t } = useLingui();
@@ -851,6 +852,7 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
   // Nothing at all when nobody has answered for you. A sentence explaining what
   // an empty block would have held is the page reporting an absence, which
   // PRODUCT.md says an empty state must not do.
+  const { t } = useLingui();
   if (!rows.length) return null;
   return (
     <div className="overflow-hidden rounded-lg border border-rule-soft">
@@ -1155,7 +1157,7 @@ function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: (
           onClick={confirmThen(
             {
               title: t`Abandon this requirement`,
-              body: dropBody(g.name),
+              body: t(dropBody(g.name)),
               yes: t`Abandoned`,
               danger: true,
             },
@@ -1230,7 +1232,7 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
               tip={t`Cancel all queued turns; return the occupied slot to another group.`}
               spec={{
                 title: t`Don't proceed`,
-                body: dropBody(g.name),
+                body: t(dropBody(g.name)),
                 yes: t`Don't proceed`,
                 danger: true,
               }}
@@ -1440,6 +1442,7 @@ function Asked({ body, className, tone }: { body: string; className?: string; to
  * Reference, not work.
  */
 function Held({ rows }: { rows: Escalation[] }) {
+  const { t } = useLingui();
   return (
     <div className="overflow-hidden rounded-lg border border-rule-soft">
       {rows.map((e) => (

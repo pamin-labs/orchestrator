@@ -9,8 +9,9 @@ import { api, mutate } from "../../shared/api";
 import { DeviceCode } from "./auth";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
-import { Trans } from "@lingui/react/macro";
-import { ph, t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { msg, ph } from "@lingui/core/macro";
 
 export const GhStatusSchema: z.ZodType<InferResponseType<typeof api.auth.github.$get, 200>> = z.object({
   connected: z.boolean(),
@@ -39,6 +40,7 @@ export type GhStatus = z.infer<typeof GhStatusSchema>;
  * because those two facts are useless apart.
  */
 export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; onRefresh: () => void }) {
+  const { t } = useLingui();
   return (
     <>
       {/* `Real tokens don't enter the sandbox` is already the note on `Model account`, and a sentence repeated on
@@ -111,6 +113,7 @@ function ConnectionStatus({ status }: { status: GhStatus | null }) {
 }
 
 function ConnectedStatus({ status }: { status: GhStatus }) {
+  const { t } = useLingui();
   if (status.stale) {
     return (
       <span className="text-body font-medium text-accent">
@@ -153,10 +156,10 @@ function DisconnectButton({
   );
 }
 
-function connectLabel(status: GhStatus, busy: boolean) {
-  if (status.pending) return t`Waiting for you to approve on GitHub…`;
-  if (busy) return t`Fetching login code…`;
-  return status.stale ? t`Reconnect` : t`Connect GitHub`;
+function connectLabel(status: GhStatus, busy: boolean): MessageDescriptor {
+  if (status.pending) return msg`Waiting for you to approve on GitHub…`;
+  if (busy) return msg`Fetching login code…`;
+  return status.stale ? msg`Reconnect` : msg`Connect GitHub`;
 }
 
 function canConnect(status: GhStatus) {
@@ -168,18 +171,20 @@ function connectDisabled(status: GhStatus, busy: boolean) {
 }
 
 function ConnectButton({ status, busy, onConnect }: { status: GhStatus | null; busy: boolean; onConnect: () => void }) {
+  const { t } = useLingui();
   if (!status) return null;
   if (!canConnect(status)) return null;
   // A dead token is a stuck state, so the way out is on the row that says so —
   // not behind `Disconnect` first.
   return (
     <Button size="sm" disabled={connectDisabled(status, busy)} onClick={onConnect}>
-      {connectLabel(status, busy)}
+      {t(connectLabel(status, busy))}
     </Button>
   );
 }
 
 function DeviceAuthorization({ status }: { status: GhStatus | null }) {
+  const { t } = useLingui();
   if (!status) return null;
   if (!status.pending) return null;
   return (
@@ -228,6 +233,7 @@ function InstallationSection({ status }: { status: GhStatus }) {
 }
 
 function InstallLink({ url }: { url: string }) {
+  const { t } = useLingui();
   if (url) {
     return (
       <LinkButton href={url} className="px-2 py-0.5 text-secondary">
@@ -269,6 +275,7 @@ function AccountList({ accounts }: { accounts: Installation[] }) {
 function AccountRow({ account }: { account: Installation }) {
   // Named by the binding rather than through `ph`: `${count}` extracts as
   // `{count}`, `${account.repos}` would be `{0}`.
+  const { t } = useLingui();
   const { repos: count } = account;
   return (
     <div className="flex items-baseline gap-2 py-1.5">
@@ -297,6 +304,7 @@ function CommitSettings({ status, onSaved }: { status: GhStatus | null; onSaved:
  * finished branch, and a diff an agent wrote should say so in the record.
  */
 function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
+  const { t } = useLingui();
   const [busy, start] = useTransition();
   const set = (next: { signoff?: boolean; coauthor?: boolean }) =>
     start(async () => {

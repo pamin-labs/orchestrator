@@ -4,8 +4,7 @@ import { z } from "zod";
 import { api } from "../../shared/api";
 import { SaidSchema } from "../../../../src/contracts/said.ts";
 import type { InferResponseType } from "hono/client";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 
 export const ModeSchema = z.enum(["oauth_token", "api_key", "chatgpt"]);
 export type Mode = z.infer<typeof ModeSchema>;
@@ -56,6 +55,7 @@ export const HostCheckSchema = z
  * clipboard.
  */
 export function DeviceCode({ code, url, go }: { code: string; url: string; go: string }) {
+  const { t } = useLingui();
   return (
     <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md bg-sunk px-3 py-2.5">
       <code className="font-mono text-figure leading-none font-semibold tracking-[0.3em] select-all">{code}</code>

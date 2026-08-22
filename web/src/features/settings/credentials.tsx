@@ -12,9 +12,8 @@ import {
   ClaudeLoginFlowSchema as ClaudeLoginSchema,
   CodexLoginFlowSchema as CodexLoginSchema,
 } from "../../../../src/contracts/login-flow";
-import { Trans } from "@lingui/react/macro";
-import { ph, t } from "@lingui/core/macro";
-import { msg } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { msg, ph } from "@lingui/core/macro";
 import { i18n } from "../../i18n";
 import type { MessageDescriptor } from "@lingui/core";
 
@@ -76,6 +75,7 @@ export function CredPane({
   onSaved: () => void;
   onWaitForLogin: (runtime: string, since: number) => void;
 }) {
+  const { t } = useLingui();
   return (
     <>
       <Head title={t`Model account`} note={t`Real tokens don't enter the sandbox`} />
@@ -319,19 +319,24 @@ function CredentialStatus({ state }: { state: CredentialState }) {
 
 /** Which mode is stored, when it differs from the one being looked at — the
  *  whole point of the row when they disagree. */
-const StoredAs = ({ label }: { label: string }) => (
-  <span className="text-secondary text-ink-2">{t`stored as ${label}`}</span>
-);
+function StoredAs({ label }: { label: string }) {
+  const { t } = useLingui();
+  return <span className="text-secondary text-ink-2">{t`stored as ${label}`}</span>;
+}
 
-function secretPlaceholder(props: CredentialProps, form: CredentialForm, fallback: string) {
+function secretPlaceholder(
+  props: CredentialProps,
+  form: CredentialForm,
+  fallback: MessageDescriptor,
+): MessageDescriptor {
   if (!props.current || props.current.mode !== form.mode) return fallback;
-  const storedHint = props.current.hint;
-  return t`${storedHint} stored; paste a new one to replace it`;
+  return msg`${{ hint: props.current.hint }} stored; paste a new one to replace it`;
 }
 
 const SECRET_LABEL = { oauth_token: msg`Token`, api_key: msg`API key` } as const;
 
 function SecretField({ state }: { state: CredentialState }) {
+  const { t } = useLingui();
   const { props, form, changeForm, changeLogin, updatedAt } = state;
   /**
    * Sign in, whichever way this runtime does it.
@@ -377,7 +382,7 @@ function SecretField({ state }: { state: CredentialState }) {
           id={`${props.runtime.key}-secret`}
           type="password"
           className="min-w-0 flex-1 font-mono"
-          placeholder={secretPlaceholder(props, form, t`Paste it; hidden after saving`)}
+          placeholder={t(secretPlaceholder(props, form, msg`Paste it; hidden after saving`))}
           value={form.secret}
           onChange={(e) => changeForm({ secret: e.target.value })}
         />
@@ -389,6 +394,7 @@ function SecretField({ state }: { state: CredentialState }) {
 }
 
 function ChatgptSecretField({ state, signIn }: { state: CredentialState; signIn: () => void }) {
+  const { t } = useLingui();
   const { props, form, changeForm } = state;
   return (
     <Field orientation="vertical">
@@ -404,7 +410,7 @@ function ChatgptSecretField({ state, signIn }: { state: CredentialState; signIn:
       <Textarea
         id={`${props.runtime.key}-secret`}
         className="min-h-16"
-        placeholder={secretPlaceholder(props, form, t`Full contents of ~/.codex/auth.json`)}
+        placeholder={t(secretPlaceholder(props, form, msg`Full contents of ~/.codex/auth.json`))}
         value={form.secret}
         onChange={(e) => changeForm({ secret: e.target.value })}
       />
@@ -413,6 +419,7 @@ function ChatgptSecretField({ state, signIn }: { state: CredentialState; signIn:
 }
 
 function LoginProgress({ state }: { state: CredentialState }) {
+  const { t } = useLingui();
   const { form, login, changeForm, changeLogin } = state;
   const sendCode = async () => {
     const code = login.paste.trim();
@@ -516,6 +523,7 @@ function LoginProgress({ state }: { state: CredentialState }) {
 }
 
 function CredentialSettings({ state }: { state: CredentialState }) {
+  const { t } = useLingui();
   const { props, form, changeForm } = state;
   return (
     <>
@@ -583,6 +591,7 @@ function CredentialSettings({ state }: { state: CredentialState }) {
  * whole OAuth exchange either way; nothing here forges one.
  */
 function Login({ busy, waiting, onClick }: { busy: boolean; waiting: boolean; onClick: () => void }) {
+  const { t } = useLingui();
   return (
     <Tip
       label={t`Run the official CLI's login once in the tool container; store the credential here. No setup needed locally. Official accounts only; custom gateways use API key.`}

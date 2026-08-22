@@ -14,9 +14,8 @@ import { Tip } from "../../ui/tooltip";
 import { ImageRow } from "../project/view";
 import type { AuthRow, HostCheck } from "./auth";
 import { saidText } from "../../shared/said";
-import { Trans } from "@lingui/react/macro";
-import { ph, t } from "@lingui/core/macro";
-import { msg } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { msg, ph } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
 
@@ -30,6 +29,7 @@ import { i18n } from "../../i18n";
  * would be the same fact twice on one screen.
  */
 export function EnvPane({ checks }: { checks: HostCheck[] }) {
+  const { t } = useLingui();
   const rest = checks.filter((c) => c.name !== "allowed_host_paths");
   return (
     <>
@@ -137,6 +137,7 @@ export function ServerPane(props: {
   onRefreshImages: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useLingui();
   return (
     <>
       <Head title={t`Sandbox server`} note={t`The service that launches containers`} />
@@ -231,6 +232,7 @@ function ServerLog({ log }: { log: string }) {
 }
 
 function ServerControl({ server, onRefresh }: { server: ServerInfo | null; onRefresh: () => void }) {
+  const { t } = useLingui();
   if (!server) return null;
   if (server.state === "down") return <StartButton onRefresh={onRefresh} />;
   if (server.restartable) return <RestartButton server={server} onRefresh={onRefresh} />;
@@ -249,6 +251,7 @@ function StartButton({ onRefresh }: { onRefresh: () => void }) {
   // The re-read is inside the pending window now. Clearing the flag before
   // `onRefresh()` let the button go live again while the line beside it still
   // said what it said before the server was started.
+  const { t } = useLingui();
   const [busy, startTransition] = useTransition();
   const start = () =>
     startTransition(async () => {
@@ -264,6 +267,7 @@ function StartButton({ onRefresh }: { onRefresh: () => void }) {
 }
 
 function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: () => void }) {
+  const { t } = useLingui();
   const [busy, startTransition] = useTransition();
   const restart = async () => {
     const yes = await ask({
@@ -292,6 +296,7 @@ function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: (
 }
 
 function ServerDrift({ server, checks }: { server: ServerInfo | null; checks: HostCheck[] }) {
+  const { t } = useLingui();
   const drift = server ? server.drift : null;
   return drift ? (
     <DriftNotice detail={t`Configuration doesn't allow the path we need to mount`} fix={allowedPathsLine(drift.want)} />
@@ -330,6 +335,7 @@ type ServerPaneProps = Parameters<typeof ServerPane>[0];
 type AuthJson = NonNullable<Parameters<typeof api.auth.$post>[0]>["json"];
 
 function ServerFields(props: ServerPaneProps) {
+  const { t } = useLingui();
   const [key, setKey] = useState("");
   const [busy, startTransition] = useTransition();
 
@@ -393,6 +399,7 @@ function ServerFields(props: ServerPaneProps) {
 }
 
 function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefresh: () => void }) {
+  const { t } = useLingui();
   return (
     // The other way out of "that one is not ours", and the reason this is a
     // control rather than a yaml key: the fix for a taken port is a
@@ -436,10 +443,9 @@ function AddressRow({ server, onRefresh }: { server: ServerInfo | null; onRefres
   );
 }
 
-function keyPlaceholder(current?: AuthRow) {
-  if (!current) return t`Empty = server has no authentication`;
-  const hint = current.hint;
-  return t`${hint} stored; paste a new one to replace it`;
+function keyPlaceholder(current?: AuthRow): MessageDescriptor {
+  if (!current) return msg`Empty = server has no authentication`;
+  return msg`${{ hint: current.hint }} stored; paste a new one to replace it`;
 }
 
 function KeyRow({
@@ -455,6 +461,7 @@ function KeyRow({
   onChange: (value: string) => void;
   onSend: (json: AuthJson) => void;
 }) {
+  const { t } = useLingui();
   return (
     <Field>
       <FieldLabel htmlFor="sandbox-key">
@@ -465,7 +472,7 @@ function KeyRow({
           id="sandbox-key"
           className="min-w-0 flex-1 font-mono"
           // What is stored, in the box that stores it — same as the accounts.
-          placeholder={keyPlaceholder(current)}
+          placeholder={t(keyPlaceholder(current))}
           value={value}
           onChange={(event) => onChange(event.target.value)}
         />

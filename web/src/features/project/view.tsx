@@ -25,7 +25,7 @@ import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 import { StoredProjectConfigSchema } from "../../../../src/contracts/config.ts";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ph, t } from "@lingui/core/macro";
+import { ph } from "@lingui/core/macro";
 
 const projectConfigPost = api.project[":id"].config.$post;
 export type ProjectPatch = NonNullable<Parameters<typeof projectConfigPost>[0]>["json"];
@@ -362,20 +362,11 @@ export const ImageChoicesSchema = z
  * Empty lists say which kind of empty they are: "nothing published yet" and "could
  * not reach ghcr.io" send a reader to different places.
  */
-/**
- * What an empty box means, once we know what "empty" is allowed to fall back to.
- *
- * Before the lists land there is no default to name, and a box promising one is
- * a box that has not asked yet.
- */
-const imageHint = (loaded: boolean, own: string | undefined) =>
-  loaded ? (own ?? t`Follow this machine's default`) : t`Loading…`;
-
 export function ImageRow({
   value,
   busy,
   onSave,
-  label = t`Image`,
+  label,
   placeholder,
 }: {
   value: string;
@@ -401,7 +392,7 @@ export function ImageRow({
   const { options, note } = imageOptions(src, c);
   return (
     <Field aria-labelledby="cfg-image">
-      <FieldTitle id="cfg-image">{label}</FieldTitle>
+      <FieldTitle id="cfg-image">{label ?? t`Image`}</FieldTitle>
       <FieldContent className="flex-col items-start gap-1.5">
         <div className="flex w-full items-center gap-2">
           <Segments
@@ -424,7 +415,10 @@ export function ImageRow({
             // filtered image list telling you there is no matching branch is one
             // word away from reading as a broken page.
             empty={t`No matching images`}
-            placeholder={imageHint(c !== null, placeholder)}
+            // What an empty box means, once we know what "empty" falls back to:
+            // before the lists land there is no default to name, and a box
+            // promising one is a box that has not asked yet.
+            placeholder={c !== null ? (placeholder ?? t`Follow this machine's default`) : t`Loading…`}
             disabled={busy}
             width="max-w-[22rem]"
             onCommit={onSave}

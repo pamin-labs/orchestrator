@@ -3,8 +3,7 @@ import type { State } from "../../shared/api";
 import { groupedRows, type PanelFrame } from "../../shared/stream";
 import { clock } from "../../shared/format";
 import { cn } from "../../ui/cn";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 
 const FRAME_TONE: Record<PanelFrame["cls"], string> = {
   say: "text-ink",
@@ -69,6 +68,7 @@ export function Timeline({
   grpId: number | null;
   projectId: number | null;
 }) {
+  const { t } = useLingui();
   let ids: Set<number> | null = null;
   let label = t`All`;
   if (grpId) {

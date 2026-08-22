@@ -167,19 +167,29 @@ or run the full suite unless they own integration.
   swallowed errors, or retries of non-idempotent work.
 - A bug fix must block the same bug class at its shared entrypoint, type,
   invariant, or source guard.
-- **A sentence a person reads is named, not written.** The panel writes
-  `<Trans>` / `` t`` ``; an emitter writes `` say: msg`merged into main` `` and
-  never `body:` — `bus.emit` renders one into the other and the panel draws it
-  from `meta.say` in whichever of ten languages its reader chose. Values carry
-  values, never a rendered fragment: a descriptor inside another's values is one
-  sentence in two languages. English is the source, so an unrecognised locale
-  falls back to it rather than to nothing. Three exceptions, and only three:
-  what a model reads, what a log or `/readyz` carries, and a protocol key. Which
-  text follows which language is the table in
+- **A sentence a person reads is named, not written.** Four places to write one,
+  and the place decides which:
+
+  | where | how |
+  |---|---|
+  | JSX | `<Trans>` / `<Plural>`, from `@lingui/react/macro` |
+  | inside a component | `` t`` `` from `const { t } = useLingui()` — it re-renders when the locale moves |
+  | outside one (module tables, helpers) | `` msg`` `` → a descriptor; the caller renders it with `t(…)` or `i18n._(…)` |
+  | the server | `` say: msg`merged into main` `` on `bus.emit`, never `body:` |
+
+  `bus.emit` renders `say` into `body` and stores the descriptor beside it, so
+  the panel draws the row from `meta.say` in whichever of ten languages its
+  reader chose. Values carry values, never a rendered fragment: a descriptor
+  inside another's values is one sentence in two languages. English is the
+  source, so an unrecognised locale falls back to it rather than to nothing.
+  Three exceptions, and only three: what a model reads, what a log or `/readyz`
+  carries, and a protocol key — and a comment that names a label spells it the
+  way the source does. Which text follows which language is the table in
   [`035`](docs/adr/035-language-follows-who-wrote-it.md); how it is wired is
   [`041`](docs/adr/041-the-panel-speaks-english-and-a-compiler-hashes-it.md).
   Guards: `panel-speaks-english`, `server-speaks-one-language`,
-  `values-carry-no-rendered-text`, `an-event-names-its-sentence`.
+  `values-carry-no-rendered-text`, `an-event-names-its-sentence`,
+  `a-component-takes-t-from-the-hook`.
 - Anything that costs wall-clock time carries a span. New work that waits on a
   container, a network call, a subprocess, or the filesystem opens one through
   `activeTracer().startActiveSpan`, names it after what it does rather than a

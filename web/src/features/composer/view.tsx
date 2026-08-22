@@ -35,8 +35,8 @@ import {
   type Skill,
   type Slash,
 } from "./model";
-import { Trans } from "@lingui/react/macro";
-import { ph, t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { ph } from "@lingui/core/macro";
 
 export type { Draft, Skill };
 
@@ -159,6 +159,7 @@ function gotoSkills() {
  * typing more of its name was the only way to find out otherwise.
  */
 export function SkillMenu({ matches, onPick }: { matches: Skill[]; onPick: (sk: Skill) => void }) {
+  const { t } = useLingui();
   if (!matches.length) return null;
   return (
     <div className="mx-2 mb-1 overflow-hidden rounded-md border border-rule bg-paper shadow-[0_6px_20px_var(--shade)]">
@@ -200,6 +201,7 @@ export function SkillMenu({ matches, onPick }: { matches: Skill[]; onPick: (sk: 
 
 /** What is attached, each tile carrying the marker the text refers to it by. */
 export function AttachmentTiles({ files, onRemove }: { files: Attached[]; onRemove: (i: number) => void }) {
+  const { t } = useLingui();
   if (!files.length) return null;
   return (
     <div className="flex flex-wrap gap-2 px-2 pb-2">
@@ -345,6 +347,7 @@ export function Composer({
    *  not a controlled value; the box belongs to whoever is typing in it. */
   initial?: string;
 }) {
+  const { t } = useLingui();
   const [text, setText] = useState(initial);
   const [files, setFiles] = useState<Attached[]>([]);
   // `useTransition`, not a `busy` flag written by hand. Each of the three async

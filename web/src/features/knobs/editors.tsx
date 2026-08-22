@@ -33,8 +33,7 @@ import {
   textOf,
 } from "./model";
 import { COUNT_UNITS, countOf, DURATION_UNITS, PER, splitCount, splitDuration, unitLabel } from "./units";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
@@ -172,6 +171,7 @@ export function Amount<U extends string>({
   labelOf?: (unit: U) => string;
   onCommit: (n: number, unit: U) => void;
 }) {
+  const { t } = useLingui();
   const show = labelOf ?? ((u: U) => String(u));
   // Held locally so that changing the unit keeps the digits already typed, and
   // so a value the server snapped to a different unit re-splits on the way back.
@@ -295,6 +295,7 @@ function ModelPick({
   disabled?: boolean;
   onCommit: (v: string) => void;
 }) {
+  const { t } = useLingui();
   return (
     <Combobox
       free
@@ -352,6 +353,7 @@ export function Box({
 }
 
 function RemoveRow({ name, onRemove }: { name: string; onRemove?: () => void }) {
+  const { t } = useLingui();
   if (!onRemove) return <span className="w-7 shrink-0" />;
   return (
     <Tip label={t`Delete this row`}>
@@ -388,6 +390,7 @@ export function Pairs({
   onRefuse: (why: string, at: string) => void;
   onClear: () => void;
 }) {
+  const { t } = useLingui();
   const entries = Object.entries(map);
   const show = textOf;
   // A number gets the same 9rem a number gets on every other row of this page;
@@ -469,6 +472,7 @@ export function Ladder({ list, onWrite }: { list: number[]; onWrite: (v: Json) =
   // position: two steps may legally hold the same duration, so the ordinal is
   // the only thing that tells them apart. The stored value rides along in the
   // key so an accepted write remounts the row it landed on.
+  const { t } = useLingui();
   const steps = list.map((ms, at) => {
     // `nth` is a named local so the extracted message reads `Step {nth}` rather
     // than `Step {0}`, which is a placeholder no translator can place.
@@ -586,6 +590,7 @@ export function Windows({
   // row falls back to, and deleting it drops all of them to `MIN_CONTEXT` — a
   // fleet-wide rotation nothing reports. Sorted, because the fallback belongs
   // above the exceptions to it.
+  const { t } = useLingui();
   const entries = Object.entries({ default: 0, ...map }).sort(([a], [b]) =>
     a === DEFAULT_KEY ? -1 : b === DEFAULT_KEY ? 1 : 0,
   );
@@ -741,6 +746,7 @@ export function Embedding({
   onMode: (v: string) => void;
   onField: (path: string, v: string) => void;
 }) {
+  const { t } = useLingui();
   const [picked, setPicked] = useState(mode);
   useEffect(() => setPicked(mode), [mode]);
   const remote = picked === "remote";

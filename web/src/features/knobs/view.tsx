@@ -57,8 +57,7 @@ import {
   type SettingWrite,
 } from "../../../../src/contracts/config";
 import type { InferResponseType } from "hono/client";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
@@ -642,6 +641,7 @@ export function Knobs({
   section: KnobSection;
   bare?: boolean;
 }) {
+  const { t } = useLingui();
   const queries = useQueryClient();
   const [saved, setSaved] = useState<string | null>(null);
   const savedAt = (at: string): string => t`Saved ${at}`;
@@ -845,6 +845,7 @@ function KnobLabel({ knob, id }: { knob: Knob; id: string }) {
 }
 
 function ResetOverride({ onReset }: { onReset: () => void }) {
+  const { t } = useLingui();
   return (
     <Tip label={t`Reset to default`}>
       <Button variant="quiet" size="sm" aria-label={t`Reset to default`} className="shrink-0" onClick={onReset}>
@@ -1133,7 +1134,7 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
       onUnchanged={onClear}
       onCommit={(raw) => {
         const n = readNumber(raw, now, shape);
-        if (n === null) return onRefuse(shape ? i18n._(WANTS[shape]) : t`A number`, "");
+        if (n === null) return onRefuse(i18n._(shape ? WANTS[shape] : msg`A number`), "");
         onWrite(n);
       }}
     />

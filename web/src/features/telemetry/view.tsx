@@ -38,7 +38,8 @@ import {
   wheelWindow,
 } from "./model";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ph, t } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { msg, ph } from "@lingui/core/macro";
 import { i18n } from "../../i18n";
 
 /**
@@ -130,18 +131,16 @@ if (typeof scalePoint !== "function") throw new Error("d3-scale's scalePoint was
 const DAY_MS = 24 * 3_600_000;
 
 /** Said around a bucket width, which is itself a message. */
-const perBucket = (width: string): string => t`${width} per bucket`;
+const perBucket = (width: string): MessageDescriptor => msg`${{ width }} per bucket`;
 
-const tooManyBuckets = (count: string): string => t`This window needs ${count} buckets, more than fits`;
+const tooManyBuckets = (count: string): MessageDescriptor =>
+  msg`This window needs ${{ count }} buckets, more than fits`;
 
-const sliceLabel = (id: number): string => t`slice ${id}`;
+const sliceLabel = (id: number): MessageDescriptor => msg`slice ${{ id }}`;
 
 /** How wide a bucket reads, in the units the picker offers. */
-const bucketLabel = (ms: number) => {
-  const minutes = ms / 60_000;
-  const hours = ms / 3_600_000;
-  return ms < 3_600_000 ? t`${minutes} min` : t`${hours} hr`;
-};
+const bucketLabel = (ms: number): MessageDescriptor =>
+  ms < 3_600_000 ? msg`${{ minutes: ms / 60_000 }} min` : msg`${{ hours: ms / 3_600_000 }} hr`;
 
 /**
  * Which bucket width the trend is using, and a way to choose another.
@@ -165,7 +164,7 @@ function BucketPicker({
 }) {
   const { t } = useLingui();
   return (
-    <Menu label={`${perBucket(bucketLabel(value))}${pinned ? "" : t`(following)`}`}>
+    <Menu label={`${t(perBucket(t(bucketLabel(value))))}${pinned ? "" : t`(following)`}`}>
       <MenuItem hint={t`Follow window—updates as window changes, fits without crowding`} onSelect={() => onPick(null)}>
         <Trans>Follow window</Trans>
       </MenuItem>
@@ -175,10 +174,10 @@ function BucketPicker({
           <MenuItem
             key={ms}
             disabled={!fits}
-            hint={fits ? undefined : tooManyBuckets(Math.round(windowMs / ms).toLocaleString())}
+            hint={fits ? undefined : t(tooManyBuckets(Math.round(windowMs / ms).toLocaleString()))}
             onSelect={() => onPick(ms)}
           >
-            {bucketLabel(ms)}
+            {t(bucketLabel(ms))}
           </MenuItem>
         );
       })}
@@ -828,7 +827,7 @@ export function Telemetry({
   scope,
   windowMs,
   trend: showTrend = false,
-  empty = t`No activity yet.`,
+  empty,
 }: {
   scope: TelemetryScope;
   windowMs?: number;
@@ -837,6 +836,9 @@ export function Telemetry({
   empty?: string;
 }) {
   const { t } = useLingui();
+  // Not a parameter default: that runs before the hook, so it would have needed
+  // the global `t` and this pane would keep its old wording after a locale change.
+  const nothingYet = empty ?? t`No activity yet.`;
   const { picked, excluded, pick, exclude, restore, restoreAll } = useSelection();
   /**
    * The stretch of time the page is showing, when the reader has chosen one.
@@ -881,10 +883,10 @@ export function Telemetry({
   const limit = report?.dataWindow ?? extent ?? report?.window ?? shownWindow;
 
   if (!report) {
-    return <div className="py-4 text-secondary text-ink-3">{loading ? t`Loading…` : empty}</div>;
+    return <div className="py-4 text-secondary text-ink-3">{loading ? t`Loading…` : nothingYet}</div>;
   }
   if (!hasSpans(report.stages, report.traces)) {
-    return <div className="py-4 text-secondary text-ink-3">{empty}</div>;
+    return <div className="py-4 text-secondary text-ink-3">{nothingYet}</div>;
   }
 
   const shown = report.stages.filter((stage) => !excluded.includes(stage.name));
@@ -938,6 +940,7 @@ export function Telemetry({
  * the requirement's spans, so a width really is a share of one total.
  */
 function Slices({ slices }: { slices: Report["slices"] }) {
+  const { t } = useLingui();
   if (slices.length < 2) return null;
   const total = slices.reduce((sum, row) => sum + row.totalMs, 0) || 1;
   return (
@@ -952,7 +955,7 @@ function Slices({ slices }: { slices: Report["slices"] }) {
                 roster belong to no slice, and leaving them out would make these add
                 up to less than the requirement with nothing explaining the gap. */}
             <span className="truncate text-secondary text-ink-2">
-              {row.sliceId === null ? t`No slice` : sliceLabel(row.sliceId)}
+              {row.sliceId === null ? t`No slice` : t(sliceLabel(row.sliceId))}
             </span>
             <div className="h-1.5 rounded-full bg-sunk">
               <div

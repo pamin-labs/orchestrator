@@ -36,8 +36,7 @@ import type { Section } from "./model";
 import { AuthRowSchema, HostCheckSchema, type AuthRow, type HostCheck } from "./auth";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
-import { Trans } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { msg } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
@@ -167,6 +166,7 @@ export function SettingsDialog({
   groupCount?: number;
   onRemoved?: () => void;
 }) {
+  const { t } = useLingui();
   const [section, setSection] = useState<Section>(initial);
   useEffect(() => setSection(initial), [initial]);
   const pick = (k: Section) => {
@@ -530,6 +530,7 @@ export function SandboxServerSettings({
 }
 
 function Preferences() {
+  const { t } = useLingui();
   return (
     <>
       <Head title={t`Preferences`} note={t`Local to this machine only, not tied to the project`} />
@@ -620,6 +621,7 @@ function SettingsNavigation({
 }) {
   // What is waiting on the boss, on the item that holds it. Same dot as the one on
   // the gear in the header, which is where they saw it before they clicked.
+  const { t } = useLingui();
   const nags: Partial<Record<Section, boolean>> = {
     cred: needsCredentials(rows),
     server: needsHostAttention(checks),
@@ -742,6 +744,7 @@ function Item({
   nag: boolean;
   go: () => void;
 }) {
+  const { t } = useLingui();
   const Icon = n.icon;
   return (
     <button

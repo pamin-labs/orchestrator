@@ -5,8 +5,8 @@ import { ask } from "../../ui/confirm";
 import { toast } from "sonner";
 import { api, mutate } from "../../shared/api";
 import { Gates, Sandbox, type ProjectConfig, type ProjectPatch } from "../project/view";
-import { Plural, Trans } from "@lingui/react/macro";
-import { plural, t } from "@lingui/core/macro";
+import { Plural, Trans, useLingui } from "@lingui/react/macro";
+import { plural } from "@lingui/core/macro";
 
 export type ProjectSection = "gates" | "sandbox" | "remove";
 
@@ -69,6 +69,7 @@ function Remove({
   groups: number;
   onRemoved: () => void;
 }) {
+  const { t } = useLingui();
   const [busy, startTransition] = useTransition();
   const go = async () => {
     const yes = await ask({
