@@ -54,7 +54,15 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun audit
-      - run: bun run audit
+      # `bun run audit` is not here, and the removal is the finding. It is scoped
+      # to changed files by design, and this job runs on `main`, where the base is
+      # `main` — so three consecutive nights printed `✓ No issues in 0 changed
+      # files`, a green tick over nothing examined. The structural audit runs per
+      # pull request in `ci.yml`, against a real diff and a real coverage file;
+      # here it could only ever be a second owner reporting on an empty set. Run
+      # from a branch it did fire, and with no coverage file every CRAP score
+      # falls back to the export-reference estimate — 11 phantom complexity
+      # findings, the trap `AGENTS.md` documents.
       - name: inventory all security candidates
         run: |
           bunx fallow security --surface --format json --quiet --output-file "$RUNNER_TEMP/fallow-security.json"

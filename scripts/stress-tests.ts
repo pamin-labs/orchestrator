@@ -1,3 +1,5 @@
+import { needsDom } from "./needs-dom.ts";
+
 /**
  * Suites that carry state across a run, so repeating them proves nothing.
  *
@@ -8,9 +10,24 @@
  */
 const NON_REPLAYABLE = /^test\/(live|integration)\//;
 
+/**
+ * A file that wants a document cannot be in this run, and that is a property of
+ * the run rather than a list.
+ *
+ * `test/support/dom.ts` registers happy-dom for one file, decided from
+ * `Bun.main`, which only names one file when each gets its own process. This run
+ * is deliberately *not* `--isolate` — cross-file order dependence is what it
+ * exists to find — so the preload is evaluated once and every browser test after
+ * the first got `HTMLElement is not defined`. Measured on the 2026-08-22 nightly:
+ * 195 failures, and 20 of the 21 distinct ones were this. They are covered by
+ * `bun run test`, which is `--parallel` and gives them their process.
+ *
+ * `needsDom` rather than a `.tsx` glob, so this asks the same question the
+ * preload asks and cannot answer it differently.
+ */
 export function stressFiles(): string[] {
   return [...new Bun.Glob("test/**/*.test.ts").scanSync({ cwd: ".", absolute: false })]
-    .filter((file) => !NON_REPLAYABLE.test(file))
+    .filter((file) => !NON_REPLAYABLE.test(file) && !needsDom(file))
     .toSorted();
 }
 
