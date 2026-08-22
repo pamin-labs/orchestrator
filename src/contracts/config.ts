@@ -189,8 +189,12 @@ export const endonymOf = (locale: Locale): string => LANGUAGES.find((l) => l.loc
  */
 /** Anything with no catalog is English, which is the source: an unrecognised
  *  language reads in the language the panel was written in, not in nothing. */
+/** Ten rows tried in order, English among them rather than skipped and then
+ *  used as the default — the `?? "en"` is what makes it the fallback, and a
+ *  row excluded from the loop it is a row of is a special case with nothing
+ *  left to do. */
 export const localeOf = (lang: string | undefined): Locale =>
-  LANGUAGES.find((l) => l.locale !== "en" && l.spelled.test(lang ?? ""))?.locale ?? "en";
+  LANGUAGES.find((l) => l.spelled.test(lang ?? ""))?.locale ?? "en";
 
 export const ConfigSchema = z.object({
   language: z.string().min(1),
