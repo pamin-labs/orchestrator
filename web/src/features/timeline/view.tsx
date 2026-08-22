@@ -2,6 +2,7 @@ import { memo } from "react";
 import type { State } from "../../shared/api";
 import { groupedRows, type PanelFrame } from "../../shared/stream";
 import { clock } from "../../shared/format";
+import { saidText } from "../../shared/said";
 import { cn } from "../../ui/cn";
 import { Trans, useLingui } from "@lingui/react/macro";
 
@@ -13,12 +14,23 @@ const FRAME_TONE: Record<PanelFrame["cls"], string> = {
   partial: "font-mono text-meta text-ink-3",
 };
 
+/**
+ * The sentence arrives rendered, because this row is the panel's one `memo`.
+ *
+ * A parent's re-render does not reach through `memo`, so a row that called
+ * `saidText` itself would keep the language it was first drawn in — which is
+ * what the whole timeline did while the frame carried the rendered string. The
+ * parent subscribes, so `text` changes when the locale does, and `memo` compares
+ * props and re-renders. That is `memo` working rather than being worked around.
+ */
 const TimelineRow = memo(function TimelineRow({
   f,
+  text,
   showHeader,
   showDivider,
 }: {
   f: PanelFrame;
+  text: string;
   showHeader: boolean;
   showDivider: boolean;
 }) {
@@ -32,7 +44,7 @@ const TimelineRow = memo(function TimelineRow({
       <span className="pt-px font-mono text-pill text-ink-3">{showHeader ? clock(f.at) : ""}</span>
       <div className="min-w-0">
         <FrameHeader frame={f} show={showHeader} />
-        <span className={cn("break-words", FRAME_TONE[f.cls])}>{f.text}</span>
+        <span className={cn("break-words", FRAME_TONE[f.cls])}>{text}</span>
       </div>
     </div>
   );
@@ -105,7 +117,13 @@ export function Timeline({
       )}
       <div className="[&>*:first-child]:border-t-0">
         {groupedRows(shown).map(({ f, showHeader, showDivider }) => (
-          <TimelineRow key={f.id} f={f} showHeader={showHeader} showDivider={showDivider} />
+          <TimelineRow
+            key={f.id}
+            f={f}
+            text={saidText(f.said, f.text)}
+            showHeader={showHeader}
+            showDivider={showDivider}
+          />
         ))}
       </div>
     </div>

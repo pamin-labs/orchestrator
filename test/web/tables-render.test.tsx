@@ -67,7 +67,7 @@ test("Desk, ownership and cost surfaces render observable empty and populated st
     byRole: [{ label: "engineer", tokens: 500 }],
     byDifficulty: [{ label: "hard", tokens: 500 }],
     byRuntime: [{ label: "claude", tokens: 500 }],
-    byHour: [{ hour: "12:00", claude: 500, codex: 0 }],
+    byHour: [{ hour: "08-13 12", at: Date.UTC(2026, 7, 13, 12), claude: 500, codex: 0 }],
     total: { label: "total", tokens: 500 },
     cacheRatio: 0.75,
     rotations: { turns: 4, byReason: { hash: 1 } },

@@ -1,7 +1,6 @@
 import { toast } from "sonner";
 import { notifyWanted } from "./desktop-notify";
-import { sayIn } from "../../../src/contracts/said.ts";
-import { saidText } from "./said";
+import { sayIn, type Said } from "../../../src/contracts/said.ts";
 import { z } from "zod";
 import { FrameSchema } from "../../../src/contracts/events.ts";
 
@@ -65,7 +64,21 @@ export interface PanelFrame {
   author: string;
   target?: string | null;
   intent?: string | null;
+  /**
+   * What to draw when the row names no sentence, and the fallback when it does:
+   * a stored `body`, or raw sandbox output, which is not ours to translate.
+   */
   text: string;
+  /**
+   * The sentence the server named, unrendered.
+   *
+   * Rendered here at ingest once, which froze every timeline row in whichever
+   * language was live when its SSE frame arrived — the frames are appended to
+   * `useState` and never rebuilt, so switching language left the whole timeline
+   * behind. Same defect as a refusal kept on a field, on the surface with the
+   * most rows.
+   */
+  said?: Said;
   agentId?: number | null;
   /** `meta.step`: which step of which process this row is, when it is one of
    *  those. A pane that draws a process reads this instead of matching the
@@ -119,6 +132,7 @@ function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[]
   const id = `e${f.seq}`;
   if (next.some((x) => x.id === id)) return next;
   const step = StepSchema.safeParse(f.meta).data?.step;
+  const sentence = sayIn(f.meta);
   return [
     ...next,
     {
@@ -132,10 +146,10 @@ function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[]
       ...(f.intent !== undefined ? { intent: f.intent } : {}),
       // Stored event bodies are optional; timeline text is not. Keep a broken
       // producer visible as a blank row instead of weakening PanelFrame's type.
-      // `meta.say` first: the server names the sentence and this renders it in
-      // the reader's own language. A row from before that existed has only the
-      // body, and gets it.
-      text: saidText(sayIn(f.meta), f.body ?? ""),
+      // The descriptor travels beside it and the row renders it, so the timeline
+      // follows the locale menu rather than the moment the frame arrived.
+      text: f.body ?? "",
+      ...(sentence ? { said: sentence } : {}),
       ...(step ? { step } : {}),
     },
   ];
