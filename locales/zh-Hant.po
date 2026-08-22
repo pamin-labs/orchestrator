@@ -36,7 +36,7 @@ msgid "{0, plural, one {# host check failed} other {# host checks failed}}"
 msgstr "{0, plural, other {# 項主機檢查未通過}}"
 
 msgid "{accountName}, but the App is not installed on any account yet"
-msgstr "{accountName}，但 App 還沒裝到任何賬號上"
+msgstr "{accountName}，但 App 還沒裝到任何帳號上"
 
 msgid "{base} moved to {sha}; {name} is behind it and has been told to rebase first"
 msgstr "{base} 動到了 {sha}，{name} 的基線落後了，已經讓它先 rebase"
@@ -324,7 +324,7 @@ msgid "{role} has rewritten {file} {n, plural, one {# turn} other {# turns}} run
 msgstr "{role} 連著 {n} 個 turn 在改同一個檔案 {file} —— 大概是設計問題，轉給 Architect"
 
 msgid "{role} wrote {n, plural, one {# file} other {# files}} this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it"
-msgstr "{role} 改了本組不擁有的 {n} 個檔案（{files}），已復原 —— 這個 CLI 的沙箱攔不住寫入，只能事後對賬"
+msgstr "{role} 改了本組不擁有的 {n} 個檔案（{files}），已復原 —— 這個 CLI 的沙箱攔不住寫入，只能事後對帳"
 
 msgid "{role}'s session record is gone; the next turn starts a new session"
 msgstr "{role} 的工作階段記錄沒了，下一輪從新工作階段開始"
@@ -694,7 +694,7 @@ msgid "Burn rate"
 msgstr "燒得多快"
 
 msgid "By account"
-msgstr "按賬號"
+msgstr "按帳號"
 
 msgid "By requirement"
 msgstr "按需求"
@@ -777,7 +777,7 @@ msgid "checkout on {branch}"
 msgstr "開好沙箱，分支 {branch}"
 
 msgid "Choose account"
-msgstr "選賬號"
+msgstr "選帳號"
 
 msgid "Choose attachments"
 msgstr "選附件"
@@ -888,7 +888,7 @@ msgid "Connected"
 msgstr "已連"
 
 msgid "Connected, but this GitHub App isn't installed on any account, so no repos are visible."
-msgstr "連上了，但這個 GitHub App 還沒裝到任何賬號上，所以一個儲存庫也看不見。"
+msgstr "連上了，但這個 GitHub App 還沒裝到任何帳號上，所以一個儲存庫也看不見。"
 
 msgid "Connecting"
 msgstr "連線中"
@@ -1253,7 +1253,7 @@ msgid "Forward to webhook"
 msgstr "轉發到 webhook"
 
 msgid "From your connected GitHub account"
-msgstr "取自你連的 GitHub 賬號"
+msgstr "取自你連的 GitHub 帳號"
 
 msgid "Frontend and server versions may be out of sync. Restart the service (<0>bun run dev</0>) to rebuild the frontend."
 msgstr "前端和服務端版本可能不一致。用 <0>bun run dev</0> 重啟服務即可重新建置前端。"
@@ -1341,7 +1341,7 @@ msgstr "GitHub 認不了 {repo} 這個專案的登入了，這個專案的活先
 "去設定頁重連 GitHub，好了自動接著走。別的專案不受影響。"
 
 msgid "GitHub not connected yet; using our bot account for now"
-msgstr "還沒連 GitHub，先用我們的機器人賬號"
+msgstr "還沒連 GitHub，先用我們的機器人帳號"
 
 msgid "GitHub will not connect"
 msgstr "GitHub 連不上了"
@@ -1518,10 +1518,10 @@ msgid "Install timeout"
 msgstr "裝依賴上限"
 
 msgid "Install to another account"
-msgstr "裝到別的賬號"
+msgstr "裝到別的帳號"
 
 msgid "Installed on these accounts"
-msgstr "裝在哪些賬號上"
+msgstr "裝在哪些帳號上"
 
 msgid "installed, but the daemon is not answering"
 msgstr "裝了，但 daemon 不應答"
@@ -1682,7 +1682,7 @@ msgid "min"
 msgstr "分鐘"
 
 msgid "Model account"
-msgstr "模型賬號"
+msgstr "模型帳號"
 
 msgid "Model ID"
 msgstr "模型 ID"
@@ -2066,7 +2066,7 @@ msgid "P95"
 msgstr "最慢"
 
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
-msgstr "PageIndex 建不起來：{n} 次呼叫全部沒有返回。去設定頁看看索引用的那個賬號還能不能用。"
+msgstr "PageIndex 建不起來：{n} 次呼叫全部沒有返回。去設定頁看看索引用的那個帳號還能不能用。"
 
 msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
 msgstr "PageIndex：總結了 {n, plural, other {# 個}}節點，索引了 {files, plural, other {# 個}}檔案"
@@ -2123,7 +2123,7 @@ msgid "Personal"
 msgstr "個人"
 
 msgid "Personal account"
-msgstr "個人賬號"
+msgstr "個人帳號"
 
 msgid "Pick a model to add a row"
 msgstr "選一個模型就多一行"
@@ -2288,13 +2288,13 @@ msgid "reclaimed {n, plural, one {# turn} other {# turns}} left running by the p
 msgstr "回收了上一個服務端留下的 {n, plural, other {# 個}}在跑回合，恢復了 {resumed} 個"
 
 msgid "reconcile failed on S{seq}: claimed but not changed — {files}"
-msgstr "S{seq} 的對賬沒過：認領了但沒改動——{files}"
+msgstr "S{seq} 的對帳沒過：認領了但沒改動——{files}"
 
 msgid "reconcile failed on S{seq}: nothing was claimed and nothing changed"
-msgstr "S{seq} 的對賬沒過：什麼都沒認領，也什麼都沒改"
+msgstr "S{seq} 的對帳沒過：什麼都沒認領，也什麼都沒改"
 
 msgid "Reconciliation"
-msgstr "對賬"
+msgstr "對帳"
 
 msgid "Reconnect"
 msgstr "重新連線"
@@ -2414,7 +2414,7 @@ msgid "requirements"
 msgstr "個需求"
 
 msgid "Requirements running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page."
-msgstr "同時開工的需求數。你通常會先撞到別的天花板：兩個組不能擁有重疊的路徑，而且一個賬號有自己的限流。調高之後，看一眼成本頁的快取命中率。"
+msgstr "同時開工的需求數。你通常會先撞到別的天花板：兩個組不能擁有重疊的路徑，而且一個帳號有自己的限流。調高之後，看一眼成本頁的快取命中率。"
 
 msgid "Rescan"
 msgstr "重新掃描"
@@ -2531,7 +2531,7 @@ msgid "Run tests"
 msgstr "跑測試"
 
 msgid "Run the official CLI's login once in the tool container; store the credential here. No setup needed locally. Official accounts only; custom gateways use API key."
-msgstr "在工具容器裡跑一次官方 CLI 的登入，拿到的憑證存在這兒。本機什麼都不用裝。僅限官方賬號；自建閘道走 API key。"
+msgstr "在工具容器裡跑一次官方 CLI 的登入，拿到的憑證存在這兒。本機什麼都不用裝。僅限官方帳號；自建閘道走 API key。"
 
 msgid "Run top-to-bottom; drag to reorder"
 msgstr "從上往下跑，拖著改順序"
@@ -2689,7 +2689,7 @@ msgid "Settings → codex → sign in, which runs the official device-code flow;
 msgstr "設定 → codex → 登入，走的是官方的 device-code 流程；本機沒裝 codex。粘一個 API key 也行。"
 
 msgid "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S"
-msgstr "設定：賬號、環境、技能、主題，以及這個專案的閘門和沙箱 ⌘S"
+msgstr "設定：帳號、環境、技能、主題，以及這個專案的閘門和沙箱 ⌘S"
 
 msgid "Shared across all projects"
 msgstr "所有專案共用"
@@ -2927,10 +2927,10 @@ msgid "the login is fresh; renewal runs inside the utility container, so codex i
 msgstr "登入是新的；續期在工具容器裡跑，本機不需要 codex"
 
 msgid "The name of a row under Model account, never the key"
-msgstr "「模型賬號」裡那一行的名字，不是金鑰本身"
+msgstr "「模型帳號」裡那一行的名字，不是金鑰本身"
 
 msgid "The name of that line in 'Model account', not the key itself. Key in config is key in shell history and every backup."
-msgstr "「模型賬號」裡那一行的名字，不是金鑰本身。金鑰寫進配置檔案就等於寫進 shell 歷史和它的每一份備份裡。"
+msgstr "「模型帳號」裡那一行的名字，不是金鑰本身。金鑰寫進配置檔案就等於寫進 shell 歷史和它的每一份備份裡。"
 
 msgid "The other half of stuck: the same file rewritten this many times running. An agent converging touches its neighbours; an agent stuck rewrites one file until the budget is gone."
 msgstr "「卡住」的另一半：同一個檔案連著被覆寫這麼多次。在收斂的 agent 會碰到鄰近的檔案；卡住的 agent 會一直覆寫一個檔案，直到預算燒完。"
@@ -3022,7 +3022,7 @@ msgid "These paths from the card don't exist in the repo"
 msgstr "卡里這些路徑儲存庫裡沒有"
 
 msgid "This account has no window"
-msgstr "這個賬號沒有視窗"
+msgstr "這個帳號沒有視窗"
 
 msgid "This browser doesn't support it"
 msgstr "這個瀏覽器不支援"
@@ -3268,7 +3268,7 @@ msgid "Webhook timeout"
 msgstr "Webhook 逾時"
 
 msgid "Week"
-msgstr "周"
+msgstr "週"
 
 msgid "Weight:"
 msgstr "分量："

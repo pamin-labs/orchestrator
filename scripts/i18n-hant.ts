@@ -52,7 +52,9 @@ export const MAINLAND: readonly (readonly [string, string])[] = [
   ["全局", "全域"], // s2twp: 全域性 — "槽位是全局的" became "全域性的"
   ["进程", "行程"], // s2twp: 程序, which is Taiwanese for *program*
   ["发布", "發布"], // s2twp: 釋出; 發布 is what Taiwan's own style guides use
+  ["账", "帳"], // s2twp: 賬 — the Mainland traditional variant; Taiwan writes 帳號, 對帳
   // OpenCC s2twp leaves these in Mainland form.
+  ["周", "週"], // s2twp: 周 — it converts 周期 but leaves the bare week. Both of this catalog's 周 are the time sense; 周圍/周到 would not be
   ["仓库", "儲存庫"], // git repository, as GitHub's own zh-TW UI names it
   ["凭据", "憑證"],
   ["并发", "並行"], // 併發 in Taiwan is a medical word: 併發症
