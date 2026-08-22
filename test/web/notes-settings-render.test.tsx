@@ -141,8 +141,29 @@ test("a note with nothing to check against renders no anchor row at all", () => 
   expect(queryAllByText("md")).toHaveLength(0);
 });
 
-test("a long note is clamped until the reader opens it; a short one is never clamped", () => {
+/**
+ * happy-dom lays nothing out, so `scrollHeight` and `clientHeight` are both 0
+ * and a component that *measures* its clamp can never see one.
+ *
+ * The disclosure used to guess from `text.length`, which a test could satisfy by
+ * passing a long string — and which was wrong for the reader this product mostly
+ * has: at `line-clamp-4` a CJK glyph is about two columns, so a note between
+ * ~145 and 320 characters was clamped with no way to open it. It asks the
+ * browser now, so the test has to supply the answer a browser would.
+ */
+const overflowing = (yes: boolean) => {
+  const of = (h: number) => ({ configurable: true, get: () => h });
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", of(100));
+  Object.defineProperty(HTMLElement.prototype, "scrollHeight", of(yes ? 400 : 100));
+};
+
+afterEach(() => {
+  for (const p of ["clientHeight", "scrollHeight"]) Reflect.deleteProperty(HTMLElement.prototype, p);
+});
+
+test("a note that overflows its clamp offers the way in; one that fits does not", () => {
   const body = "一".repeat(400);
+  overflowing(true);
   const long = render(<NotesBoard compact notes={[note({ body })]} />);
   const clamped = () => long.container.querySelectorAll(".line-clamp-4").length;
   long.getByText(body);
@@ -154,6 +175,7 @@ test("a long note is clamped until the reader opens it; a short one is never cla
   long.getByRole("button", { name: "收起" });
   long.unmount();
 
+  overflowing(false);
   const short = render(<NotesBoard compact notes={[note({ body: "两行\n就两行" })]} />);
   expect(short.queryAllByRole("button", { name: "展开" })).toHaveLength(0);
 });

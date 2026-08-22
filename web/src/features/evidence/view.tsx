@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useClamped } from "../../ui/clamped";
 import { api, type Evidence, EvidenceSchema, GateLogResponseSchema, readApi } from "../../shared/api";
 import { nl } from "../../shared/prose";
 import { cn } from "../../ui/cn";
@@ -215,6 +216,7 @@ const toggleLabel = (open: boolean) => (open ? t`Collapse` : t`Expand`);
 
 function VerdictRow({ author, body }: { author: string; body: string }) {
   const [open, setOpen] = useState(false);
+  const [ref, clamped] = useClamped<HTMLDivElement>(`${body}:${open}`);
   const no = failed({ body });
   return (
     <div className="border-t border-rule-soft py-2.5 first:border-t-0">
@@ -222,13 +224,14 @@ function VerdictRow({ author, body }: { author: string; body: string }) {
         <span className="font-mono text-meta text-ink-3">{author}</span>
         <span className={cn("text-meta font-semibold", verdictTone(no))}>{verdictLabel(no)}</span>
         <span className="grow" />
-        {body.length > 200 && (
+        {(clamped || open) && (
           <Button variant="quiet" size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>
             {toggleLabel(open)}
           </Button>
         )}
       </div>
       <div
+        ref={ref}
         className={cn(
           "mt-1 max-w-[72ch] whitespace-pre-wrap break-words text-body",
           no ? "text-bad" : "text-ink-2",

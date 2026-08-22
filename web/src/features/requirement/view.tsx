@@ -1426,7 +1426,10 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                         }),
                       );
                       refresh();
-                      if (r.ok) toast.success(r.text);
+                      // Not `r.text`: on success that is `displayJson(body)`, so
+                      // the boss got `{"grp_id":12,"name":"fix-login"}` in a
+                      // toast. The panel knows what it just did.
+                      if (r.ok) toast.success(t`Requirement created`);
                     }}
                   >
                     <Trans>Create requirement</Trans>

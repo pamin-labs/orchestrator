@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useClamped } from "../../ui/clamped";
 import { Meta, Pane } from "../../ui/bits";
 import { Badge } from "../../ui/badge";
 import { Tip } from "../../ui/tooltip";
@@ -265,10 +266,11 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
 function Body({ text }: { text: string }) {
   const { t } = useLingui();
   const [open, setOpen] = useState(false);
-  const long = text.split("\n").length > 4 || text.length > 320;
+  const [ref, clamped] = useClamped<HTMLDivElement>(`${text}:${open}`);
+  const long = clamped || open;
   return (
     <div className="mt-1.5">
-      <div className={cn("text-body leading-[1.7] text-ink-2", !open && long && "line-clamp-4")}>
+      <div ref={ref} className={cn("text-body leading-[1.7] text-ink-2", !open && "line-clamp-4")}>
         <WithAttachments body={text} />
       </div>
       {long && (

@@ -337,6 +337,14 @@ export const sliceDecision = (
   json: SliceDecisionRequest["json"] = {},
 ) => mutate(api.slices[":id"][":decision"].$post({ param: { id: String(id), decision }, json }));
 
+/**
+ * `throw`, and the message stays English on purpose.
+ *
+ * This is an `Error.message` — ADR 035's second exemption — and the two queries
+ * that use it (`state`, `cost`) surface nothing to a reader: `useOrch` returns
+ * `data` only, and the error boundary shows its own sentence. A `said` here
+ * would be a descriptor nothing renders.
+ */
 const get = async <S extends z.ZodType>(request: Promise<Response>, schema: S): Promise<z.output<S>> => {
   const result = await readJson(await request, schema);
   if (!result.ok) throw new Error(result.text);

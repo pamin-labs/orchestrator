@@ -103,3 +103,26 @@ test("a losing card does not leave its quoted span behind", async () => {
   // card that lost.
   expect((d.quoted ?? []).map((q) => q.label)).toEqual(["backlog"]);
 });
+
+/**
+ * The turn that cuts a boundary is told how to cut it.
+ *
+ * `applyPayloadCards` keeps the last builder that fired, and `idea` sits after
+ * `boundary` in that list — so `payload: { boundary, idea }`, which is what
+ * `api/panel/group.ts` enqueued, threw the boundary card away and left the turn
+ * reading "The boss wants: …" with no `orch owns` command anywhere in it. A
+ * live instance of the same loop the quoted-span fix above is about.
+ */
+test("a boundary turn keeps the command it exists to issue", async () => {
+  const d = await delta({
+    boundary: [{ id: 1, name: "g", idea: "add a cache" }],
+  });
+  expect(d.card).toContain("orch owns 1 --path");
+  // And the shape that was being enqueued, so the reason this test exists stays
+  // legible: `idea` after `boundary` wins the card and the command is gone.
+  const both = await delta({
+    boundary: [{ id: 1, name: "g", idea: "add a cache" }],
+    idea: "add a cache",
+  });
+  expect(both.card).not.toContain("orch owns");
+});

@@ -85,10 +85,15 @@ export const postIdea = (async (ctx, _req, _p, b) => {
         undeclared.map(async (o) => ({ id: o.id, name: o.name, idea: await firstIdea(ctx.db, o.id) })),
       )),
     ];
+    // `boundary` and nothing else. `applyPayloadCards` keeps the *last* builder
+    // that fired and `idea` is after `boundary` in that list, so sending both
+    // replaced the whole boundary card — the `orch owns <id> --path …` commands
+    // this turn exists to issue — with "The boss wants: …". The requirement is
+    // already the first row of `needBoundary`, so nothing is lost by dropping it.
     await ctx.sched.enqueue("agent_turn", {
       grp_id: grp.id,
       priority: 6,
-      payload: { role: roleFor(ctx, "cut_boundary"), boundary: needBoundary, idea: b.text },
+      payload: { role: roleFor(ctx, "cut_boundary"), boundary: needBoundary },
     });
   }
 
