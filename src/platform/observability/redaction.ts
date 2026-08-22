@@ -19,13 +19,9 @@
  */
 
 /**
- * English, and it is the third row of ADR 035's table rather than a translation
- * anybody skipped: this lands in log lines, in `/readyz` and in the stored
- * `body` of an event that ten catalogues then render around it. A Chinese mask
- * inside a German sentence is noise in both languages.
- *
- * No quote character in it, so a masked value inside serialised JSON leaves the
- * JSON parseable — `event-bus.ts` scrubs `meta` as text and depends on that.
+ * English: this lands in logs, in `/readyz` and inside event bodies that ten
+ * catalogues render around it. No quote character, which `event-bus.ts` depends
+ * on when it scrubs serialised `meta`.
  */
 const MASK = "[credential redacted]";
 

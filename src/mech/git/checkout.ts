@@ -732,11 +732,9 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
   // to `grp`, so an event about a group that is not in the table cannot be
   // written against it. That one goes out unscoped and names the id in its body.
   /**
-   * The whole sentence each time, not a reason threaded into a shared tail.
-   * A descriptor rendered into another descriptor's values is frozen in one
-   * language inside a sentence rendered in another — `contracts/said.ts` calls
-   * that "values, never text", and three repeated clauses is what not doing it
-   * costs.
+   * The whole sentence each time, not a reason threaded into a shared tail: a
+   * descriptor inside another's values is "values, never text". Three repeated
+   * clauses is what not doing it costs.
    */
   const report = async (say: Said, on: number | null = grpId): Promise<void> => {
     await ctx.bus.emit({ grpId: on, author: "orchestrator", kind: "state_change", severity: "blocker", say });

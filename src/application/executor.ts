@@ -1046,12 +1046,9 @@ async function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: Tur
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    // Written as ICU rather than a `msg` template, because the template macro
-    // can name a value but not say how to format it — and `toLocaleString()`
-    // here formatted the one thing in the sentence a reader acts on in the
-    // *server's* locale, then handed the panel a finished string to drop into
-    // whichever of ten languages it reads. `{at, date, short}` is resolved
-    // where it is read, by the same `Intl` the rest of the panel goes through.
+    // Raw ICU, because the template macro can name a value but not say how to
+    // format it: `toLocaleString()` here resolved the one thing a reader acts on
+    // in the *server's* locale. `{at, date, short}` resolves where it is read.
     say: {
       ...msg({
         message:

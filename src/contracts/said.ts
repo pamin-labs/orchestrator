@@ -55,11 +55,9 @@ export type Said = z.infer<typeof SaidSchema>;
 const MetaSchema = z.object({ say: SaidSchema.extend({ message: z.string() }).optional() });
 
 /**
- * The sentence an event's `meta` names, if it names one.
- *
- * In the contract rather than beside the panel's renderer, because both sides
- * read the same column: the panel to draw the row, and the server's own tests to
- * assert which sentence was chosen without asserting the language it came out
- * in.
+ * The sentence an event's `meta` names, if it names one. In the contract
+ * because both sides read that column — the panel to draw the row, the server's
+ * tests to assert which sentence was chosen rather than what language it came
+ * out in.
  */
 export const sayIn = (meta: unknown): Said | null => MetaSchema.safeParse(meta).data?.say ?? null;
