@@ -37,13 +37,13 @@ i18n.activate("zh");
  * `beforeEach`, not `beforeAll`: no test inherits a hold from whatever ran before
  * it, including the test above it in its own file.
  */
-beforeEach(() => {
+beforeEach(async () => {
   resetSandboxHold();
   resetRepoHolds();
   resetNet();
   resetServerRestarts();
   resetSkillsWarned();
-  stopSchedulers();
+  await stopSchedulers();
 });
 
 /**

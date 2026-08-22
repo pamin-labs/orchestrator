@@ -60,7 +60,12 @@ function holder(): number {
   }
 }
 
-function claim(): () => void {
+/**
+ * Exported, because the stress pass is a second suite run and used to take
+ * neither this nor the timeout below — it spawns `bun test` itself. Two runs
+ * share schema names, which is the incident this lock exists for.
+ */
+export function claim(): () => void {
   mkdirSync(dirname(LOCK), { recursive: true });
   for (let attempt = 0; ; attempt++) {
     // `wx` is `O_CREAT | O_EXCL`: it creates or it throws, with no window between
@@ -125,7 +130,8 @@ function claim(): () => void {
  * CI runs `test:coverage:ci` and never `test`. One definition, and the crash
  * retry and the run lock come along for free.
  */
-const LIMITS = ["--timeout=20000", `--max-concurrency=${Math.max(2, Math.round(cpus().length * 0.8))}`];
+export const TIMEOUT = "--timeout=20000";
+const LIMITS = [TIMEOUT, `--max-concurrency=${Math.max(2, Math.round(cpus().length * 0.8))}`];
 
 async function run(): Promise<{ code: number; crashed: boolean }> {
   const args = ["test", "--parallel", ...LIMITS, ...Bun.argv.slice(2)];

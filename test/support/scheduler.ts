@@ -21,6 +21,20 @@ const made: Scheduler[] = [];
 export const newScheduler = (...args: ConstructorParameters<typeof Scheduler>): Scheduler =>
   made[made.push(new Scheduler(...args)) - 1]!;
 
-export const stopSchedulers = (): void => {
-  for (const s of made.splice(0)) s.quiesce();
+/**
+ * Quiesced *and* settled: closing the queue does not stop what is already
+ * running, and a job in flight keeps writing.
+ *
+ * Its `bus.emit` lands after `openMemory()` deleted the next test's rows and
+ * reset `event.seq` with `setval`, so the sequence is behind the row that
+ * arrived — `duplicate key value violates unique constraint "event_pkey"` on an
+ * insert whose `seq` is `default`. Seen on CI in a test that touches none of it.
+ */
+/** `drain` on a closed queue returns as soon as nothing is in flight — it waits
+ *  for what is running and nothing can arrive behind it. A wedged job times the
+ *  hook out, which is visible; a stale write is not. */
+export const stopSchedulers = async (): Promise<void> => {
+  const closing = made.splice(0);
+  for (const s of closing) s.quiesce();
+  await Promise.all(closing.map((s) => s.drain().catch(() => {})));
 };

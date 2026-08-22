@@ -1,14 +1,13 @@
 /**
  * Whether a test file reaches the browser, asked in two places.
  *
- * `test/support/dom.ts` asks it about the file that is running, to decide
- * whether to register happy-dom. `scripts/stress-tests.ts` asks it about every
- * file, to leave the browser tests out of a run that is deliberately not
- * `--isolate` — that gate reads `Bun.main`, which names one file only when each
- * gets its own process. Here rather than in `dom.ts` because `scripts/` is a
- * different TypeScript project and cannot see `test/`; one copy of the question
- * is what keeps the two answers the same.
+ * `test/support/dom.ts` asks about the file that is running, to decide whether
+ * to register happy-dom. `scripts/stress-tests.ts` asks about every file, to
+ * leave the browser tests out of a run that is deliberately not `--isolate`.
  */
+/** Here rather than in `dom.ts` because `scripts/` is a different TypeScript
+ *  project and `tsc` will not let it see `test/`. One copy of the question is
+ *  what keeps the two answers the same. */
 import { readFileSync } from "node:fs";
 
 /**

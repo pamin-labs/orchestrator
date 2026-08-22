@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
+import { readFileSync } from "node:fs";
+import { needsDom } from "../../scripts/needs-dom.ts";
+import { stressFiles } from "../../scripts/stress-tests.ts";
 
 /**
  * The gate has no list to drift from any more, so what is left is its one
@@ -27,7 +30,7 @@ import { z } from "zod";
  * classifying every file from one path, until a later run tripped over
  * `HTMLElement is not defined` somewhere that looks nothing like a DOM test.
  */
-test("the test script isolates files, which is what dom.ts's gate reads Bun.main for", async () => {
+test("every place that runs `bun test` either isolates files or leaves the browser ones out", async () => {
   const { scripts } = z
     .object({ scripts: z.record(z.string(), z.string()) })
     .parse(await Bun.file(new URL("../../package.json", import.meta.url)).json());
@@ -37,4 +40,27 @@ test("the test script isolates files, which is what dom.ts's gate reads Bun.main
     .filter(([, script]) => !isolating(script))
     .map(([name]) => name);
   expect(offenders).toEqual([]);
+
+  // A script is the other way to run one, and it is how the rule got out: the
+  // check above reads `package.json`, and `test:stress` spawns `bun test` from
+  // TypeScript, so the string it looks for was never there. 195 failures, 20 of
+  // 21 distinct ones `HTMLElement is not defined`.
+  // The argv, with `test` as its first word: `["bun", "test", …]` and
+  // `[process.execPath, ...args]` where `args` opens `["test", …]`. Reading only
+  // `package.json` is how this rule got out in the first place, so the shapes
+  // are matched rather than the one that happened to be looked at.
+  const runsBunTest = (src: string) => /\[\s*"bun",\s*"test"\s*,|=\s*\[\s*"test"\s*,/.test(src);
+  const spawners = [...new Bun.Glob("scripts/**/*.ts").scanSync(".")]
+    .filter((file) => runsBunTest(readFileSync(file, "utf8")))
+    .toSorted();
+  // Named, so a second one is a decision somebody has to make rather than a
+  // silent third way of running the suite.
+  expect(spawners).toEqual(["scripts/stress-tests.ts", "scripts/test.ts"]);
+  // `test.ts` isolates. `stress-tests.ts` deliberately does not — cross-file
+  // order dependence is what it hunts, and `--parallel` implies `--isolate`,
+  // which is the configuration that cannot have the bug. So it owes the other
+  // half of the rule instead.
+  expect(stressFiles().filter(needsDom)).toEqual([]);
+  // And it is not excluding everything: the pass still has something to stress.
+  expect(stressFiles().length).toBeGreaterThan(100);
 });
