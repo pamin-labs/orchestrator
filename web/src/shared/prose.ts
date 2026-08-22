@@ -1,3 +1,5 @@
+import { fieldOf, INLINE_FIELD } from "../../../src/contracts/card";
+
 /**
  * Text an agent wrote, made readable where it is read.
  *
@@ -22,29 +24,34 @@ export const nl = (s: string) => s.replace(/\\n/g, "\n");
  * The goal line of a plan card.
  *
  * The card is a document an agent wrote, not copy this panel owns: its section
- * keys are protocol and its content follows `output.language`. So this matches
- * the key, in every grammar a stored card can have — `## goal` since the keys
- * became ASCII, `## 目标` before that, and the pre-Markdown `目标: …` inline form
- * that ADR 016 replaced.
- * i18n-exempt: the card's own section keys, in every grammar one can have.
+ * keys are protocol and its content follows `output.language`. Which word names
+ * which section is `fieldOf`'s answer, in `src/contracts/card.ts` — the same one
+ * `validateDraftCard` gets, so the panel cannot come to accept a heading the
+ * parser rejects. What is left here is the two *shapes* a heading can have.
  */
 /**
  * Both readers used to do `startsWith("目标")`, which a Markdown card never
  * satisfies — its first line is `## 目标`. Every card in the queue read
- * `Plan card not submitted` with the card sitting right there.
+ * `Plan card not submitted` with the card sitting right there. The fix left a
+ * `(goal|目标)` regex here, which is the same defect one layer up: a second copy
+ * of the vocabulary, on the far side of a boundary, and a `## Goal` the parser
+ * folds and this did not.
  * i18n-exempt: the key this used to match, quoted.
  */
-// i18n-exempt: protocol, not copy — the same two spellings `ALIAS` in
-// `src/mech/util/validate.ts` accepts, for the same stored cards, and they retire
-// together with it in 0.2.0. Invisible to this guard until it learned to read
-// regexes.
-const GOAL_KEY = /^\s*(?:#{1,6}\s*)?(goal|目标)\s*[:：]?\s*$/i;
-// i18n-exempt: the same key, in the pre-Markdown inline form ADR 016 replaced.
-const GOAL_INLINE = /^\s*(goal|目标)\s*[:：]\s*/i;
+/** Shape only: a Markdown heading, at any level, with an optional trailing
+ *  colon. NFKC before the lookup, so a fullwidth colon typed on a CJK keyboard
+ *  folds without this file keeping a list of the characters it has met.
+ *  i18n-exempt: the fullwidth colon is the subject. */
+const HEADING = /^\s*#{1,6}\s*(.+?)\s*[:：]?\s*$/;
+
+/** The name this line puts in the heading slot, if it is that shape at all. */
+const named = (line: string, shape: RegExp): RegExpExecArray | null => shape.exec(line.normalize("NFKC"));
+
+const isGoal = (match: RegExpExecArray | null): boolean => match?.[1] !== undefined && fieldOf(match[1]) === "goal";
 
 export function cardGoal(body: string): string {
   const lines = body.split("\n");
-  const heading = lines.findIndex((line) => GOAL_KEY.test(line));
+  const heading = lines.findIndex((line) => isGoal(named(line, HEADING)));
   if (heading >= 0)
     return (
       lines
@@ -52,6 +59,8 @@ export function cardGoal(body: string): string {
         .find((line) => line.trim())
         ?.trim() ?? ""
     );
-  const inline = lines.find((line) => GOAL_INLINE.test(line));
-  return inline?.replace(GOAL_INLINE, "").trim() ?? "";
+  // The pre-Markdown form ADR 016 replaced: `goal: …` on one line, the same
+  // shape `draftLegacy` walks a whole stored card with.
+  const inline = lines.map((line) => named(line, INLINE_FIELD)).find(isGoal);
+  return (inline?.[2] ?? "").trim();
 }
