@@ -956,6 +956,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           grpId: g.id,
           lang: outputLanguage(ctx.config),
           brief: msg`out of budget — raise it or not`,
+          kind: "budget",
           chain: "boss",
           key: escalationKey.budget,
           dedupe: { scope: "group", grpId: g.id },

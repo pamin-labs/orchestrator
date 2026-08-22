@@ -1,7 +1,7 @@
 import { and, eq, isNull, notInArray, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { escalation } from "../../platform/persistence/schema.ts";
-import { ESCALATION_TERMINAL_STATES, type EscalationOpenState } from "../../contracts/states.ts";
+import { type AskKind, ESCALATION_TERMINAL_STATES, type EscalationOpenState } from "../../contracts/states.ts";
 import type { Said } from "../../contracts/said.ts";
 import { JsonValue, jsonOr } from "../../contracts/json.ts";
 import { renderSaid } from "../../platform/text/lang.ts";
@@ -61,8 +61,15 @@ export interface Filing {
   brief?: Said | string | null;
   /** Which language `question` and `brief` are rendered in when they are descriptors. */
   lang?: string | undefined;
-  /** env | spec | boundary | design | other. Folds a requirement's questions. */
-  kind?: string | null;
+  /**
+   * What the question is about, from the one vocabulary. `AskKind` and not
+   * `string`: this was documented as `env | spec | boundary | design | other` —
+   * a list that lost `other` and never gained the five reserved topics — and
+   * four of the eight internal callers filed with no kind at all, riding the
+   * null branch `select.ts` keeps for rows that predate the vocabulary. The
+   * queue drew no chip on the orchestrator's own questions.
+   */
+  kind?: AskKind | null;
   /** `boss` skips the PM → Architect → CoS chain. Omitted questions start at PM. */
   chain?: EscalationOpenState | null;
 }

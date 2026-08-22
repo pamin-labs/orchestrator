@@ -438,6 +438,7 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
       grpId: g.id,
       lang: outputLanguage(ctx.config),
       brief: msg`the approval did not take`,
+      kind: "env",
       chain: "boss",
       question: msg`The approval did not take: ${{ err }}. It has been withdrawn — approve again once that is fixed.`,
     });

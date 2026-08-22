@@ -327,6 +327,7 @@ async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, 
     key: escalationKey.prClosed(prNumber),
     lang: outputLanguage(ctx.config),
     brief: msg`PR closed — reopen it or not`,
+    kind: "merge",
     chain: "boss",
     question: msg`PR #${{ pr: prNumber }} was closed without merging. This group has stopped and left the merge queue.\nTo carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement.`,
   });
@@ -861,6 +862,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
           lang: outputLanguage(ctx.config),
           question: msg`The branch is finished but the PR will not open: ${{ why: r.error }}\n\nAnswer this once it is fixed and the group retries by itself.`,
           brief: msg`the PR will not open`,
+          kind: "merge",
           chain: "boss",
         });
         await ctx.bus.emit({
