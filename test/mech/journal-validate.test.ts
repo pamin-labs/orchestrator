@@ -24,11 +24,30 @@ test("empty body is rejected", () => {
   expect(validateJournal({ kind: "retro", body: "   \n  " }).ok).toBe(false);
 });
 
-test("filler is rejected — it costs tokens forever and says nothing", () => {
-  const r = validateJournal({ kind: "decision", body: "Basically we moved the check." });
-  expect(r.ok).toBe(false);
-  if (!r.ok) expect(r.error).toContain("filler");
-  expect(validateJournal({ kind: "decision", body: "其实这里改了 middleware。" }).ok).toBe(false);
+/**
+ * Terseness has one owner, and it reads ten languages.
+ *
+ * A second check refused a journal containing "basically" or 其实 — two
+ * languages of lexicon in a product that writes in ten, so an entry a German
+ * agent padded was accepted and the same entry in English was not. The line cap
+ * is the language-free rule that was already doing this job. ADR 046.
+ */
+test("padding is refused by the line cap, in whatever language it is padded in", () => {
+  const padded = (line: string) => validateJournal({ kind: "decision", body: Array(9).fill(line).join("\n") });
+  for (const line of ["basically we moved the check", "其实这里改了 middleware", "wir haben die Prüfung verschoben"]) {
+    const r = padded(line);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("max");
+  }
+  // And a short entry is accepted whichever of the ten it is written in — the
+  // lexicon refused two of them and nothing else.
+  for (const line of [
+    "Basically we moved the check.",
+    "其实这里改了 middleware。",
+    "Wir haben die Prüfung verschoben.",
+  ]) {
+    expect(validateJournal({ kind: "decision", body: line }).ok).toBe(true);
+  }
 });
 
 test("a real entry passes and is normalised", () => {
@@ -44,12 +63,30 @@ test("a real entry passes and is normalised", () => {
   }
 });
 
+/**
+ * A non-answer is refused by counting verdicts, not by recognising the ways
+ * there are to say nothing.
+ *
+ * `pass` and `fail` are the two words `roles/engineer.yaml` and `roles/qa.yaml`
+ * hand out, so counting them is language-free. The lexicon this replaced knew
+ * `looks good`, `lgtm` and four more, in English, and also accepted `ok`, `met`
+ * and `not met` as verdicts — so `looks ok` counted and `bestanden` did not.
+ */
 describe("self-review must not be vacuous", () => {
-  test.each(["looks good", "LGTM", "no issues", "all good", ""])("%s is refused", (body) => {
-    const r = validateSelfReview(body, 2);
+  test("an empty review is its own message, because there is nothing to count", () => {
+    const r = validateSelfReview("", 2);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("carries no information");
+    if (!r.ok) expect(r.error).toContain("says nothing at all");
   });
+
+  test.each(["looks good", "LGTM", "no issues", "all good", "sieht gut aus", "看起来没问题", "looks ok"])(
+    "%s is refused",
+    (body) => {
+      const r = validateSelfReview(body, 2);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toContain("covered 0 of 2");
+    },
+  );
 });
 
 test("self-review must cover every acceptance criterion", () => {

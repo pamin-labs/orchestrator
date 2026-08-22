@@ -13,6 +13,7 @@ import { Combobox } from "../../ui/combobox";
 import { Field, FieldContent, FieldTitle } from "../../ui/field";
 import { Input, Meta, Textarea } from "../../ui/bits";
 import { Button } from "../../ui/button";
+import { Menu, MenuItem } from "../../ui/menu";
 import { Segment, Segments } from "../../ui/segment";
 import { Tip } from "../../ui/tooltip";
 import { Switch } from "../../ui/switch";
@@ -26,16 +27,36 @@ import {
   TIERS,
   TIERS_ONLY,
   TIER_GRID,
+  embeddingSwitch,
   notifyState,
   runtimeSwitch,
   textOf,
 } from "./model";
-import { COUNT_UNITS, countOf, splitCount } from "./units";
+import { COUNT_UNITS, countOf, DURATION_UNITS, PER, splitCount, splitDuration, unitLabel } from "./units";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import type { Said } from "../../../../src/contracts/said";
+
+/**
+ * What a refused box says, as descriptors rather than as `` t`…` ``.
+ *
+ * A complaint is held on the row until the boss fixes it, so the words cannot be
+ * chosen at the moment of refusal — `msg` at module scope, rendered by whoever
+ * draws the row. Same rule the settings tables already follow.
+ */
+const WANTS_INTEGER = msg`Needs an integer`;
+const NEEDS_A_NAME = msg`Name can't be empty; use the × on the right to delete`;
 
 export const PERCENT = ["%"] as const;
 
 /** The window every model without a row of its own falls back to. Not a model. */
 const DEFAULT_KEY = "default";
+
+/** Past this many options the unit becomes a menu rather than a segmented
+ *  control, because a segment spends a button of width on every option it is
+ *  not showing. Three: counts have three units and durations five. */
+const MANY = 3;
 
 /**
  * Unit sets where "none" is a real answer, so the toggle may be turned all the
@@ -48,7 +69,12 @@ const BARE_OK = new Set<string>(COUNT_UNITS);
  * model writes whatever it is told to — the list is here to save typing and to
  * say what the field wants, not to have an opinion about which languages exist.
  */
-export const LANGUAGES = [
+/**
+ * Suggestions for `output.language`, which is free text and reaches a model —
+ * so this is longer than the set of catalogs the panel has, and deliberately so.
+ * `LOCALES` in contracts is that other list.
+ */
+export const LANGUAGE_SUGGESTIONS = [
   "中文",
   "繁體中文",
   "English",
@@ -78,13 +104,39 @@ export const LANGUAGES = [
 ];
 
 /**
- * One box, written when it loses focus.
+ * A duration, as a number and the unit it is counted in.
  *
- * Uncontrolled and keyed on the stored value: a refused edit keeps the text that
- * was typed (so it can be fixed rather than retyped) and an accepted one snaps
- * to what the server actually holds, which is how `20 分钟` appears after
- * someone types `1200s`.
+ * It was one free-text box that accepted `15s` or `3 小时`, which read fine and
+ * asked the reader to know that `分钟` was a word this field would take. The
+ * unit is a closed set of five, so it is a menu — `Amount` draws one past four
+ * options rather than spending five buttons of width on a row that has twelve.
+ * i18n-exempt: spellings `units.ts` accepts.
  */
+export function DurationAmount({
+  ms,
+  label,
+  invalid,
+  onWrite,
+}: {
+  ms: number;
+  label: string;
+  invalid?: boolean;
+  onWrite: (ms: number) => void;
+}) {
+  const { n, unit } = splitDuration(ms);
+  return (
+    <Amount
+      n={n}
+      unit={unit}
+      units={DURATION_UNITS}
+      label={label}
+      labelOf={unitLabel}
+      {...(invalid !== undefined ? { invalid } : {})}
+      onCommit={(next, u) => onWrite(next * PER[u])}
+    />
+  );
+}
+
 /**
  * A number and its unit, as two controls instead of one string to spell.
  *
@@ -92,8 +144,8 @@ export const LANGUAGES = [
  * leaves digits as the only free text, and the input refuses everything else.
  *
  * Integer-only, which is why `splitCount` exists next to `fmtCount`: the reading
- * format prints 8500000 as `8.5M`, and 8.5 is not something a spinner can step
- * or an integer field can hold. The picker shows 8500k instead.
+ * format prints 8500000 as `8.5M`, which a spinner cannot step and an integer
+ * field cannot hold; the picker shows 8500k. (i18n-exempt: `units.ts` spellings.)
  */
 export function Amount<U extends string>({
   n,
@@ -101,6 +153,7 @@ export function Amount<U extends string>({
   units,
   invalid,
   label,
+  labelOf,
   onCommit,
 }: {
   n: number;
@@ -108,8 +161,13 @@ export function Amount<U extends string>({
   units: readonly U[];
   invalid?: boolean;
   label: string;
+  /** How a unit is spelled on screen. `k` and `M` are spelled the way they are
+   *  stored; a duration is not, since its key is ASCII and its label is not. */
+  labelOf?: (unit: U) => string;
   onCommit: (n: number, unit: U) => void;
 }) {
+  const { t } = useLingui();
+  const show = labelOf ?? ((u: U) => String(u));
   // Held locally so that changing the unit keeps the digits already typed, and
   // so a value the server snapped to a different unit re-splits on the way back.
   const [draft, setDraft] = useState(String(n));
@@ -131,10 +189,12 @@ export function Amount<U extends string>({
         value={draft}
         aria-label={label}
         aria-invalid={invalid || undefined}
-        // Shrinks rather than holding 6.5rem: three of these share the tier grid
-        // with a label column, and a fixed width pushed the unit toggle off the
-        // right edge of the dialog.
-        className="min-w-0 max-w-[6.5rem] flex-1 py-0.5 font-mono text-secondary aria-[invalid=true]:border-accent"
+        // `w-*`, not `max-w-*`: `Input` carries `w-full`, and a max-width beside
+        // it only bites where the row is wider still — so in a single-column
+        // group the box grew to the whole row and left a hand's width of nothing
+        // between the digits and their unit. Shrinkable, because three of these
+        // share the tier grid with a label column.
+        className="w-[6.5rem] min-w-0 shrink py-0.5 font-mono text-secondary aria-[invalid=true]:border-accent"
         onChange={(e) => setDraft(e.currentTarget.value)}
         onBlur={(e) => send(e.currentTarget.value, unit)}
         onKeyDown={(e) => {
@@ -146,27 +206,38 @@ export function Amount<U extends string>({
         }}
       />
       {/* One unit is not a choice, it is a suffix. */}
-      {units.length === 1 ? (
-        <Meta>{units[0]}</Meta>
+      {units.length === 1 && units[0] !== undefined ? (
+        <Meta>{show(units[0])}</Meta>
+      ) : units.length > MANY ? (
+        /* A menu past four, because a segmented control spends a button of width
+           on every option it is not showing. Five units down twelve rows is
+           sixty buttons to say twelve numbers — measured, on the waiting pane. */
+        <Menu label={show(unit)}>
+          {units.filter(Boolean).map((u) => (
+            <MenuItem key={u} onSelect={() => send(draft, u)}>
+              {show(u)}
+            </MenuItem>
+          ))}
+        </Menu>
       ) : (
         <Segments
           value={unit}
           // Nothing selected *is* the answer when a bare number is legal, so the
           // empty member is never drawn: pressing the lit one turns it off,
           // which is what a toggle group already means. A unit set with no empty
-          // member (毫秒/秒/分钟/小时) keeps what it had, because there is no
-          // such thing as a duration without one.
+          // member — the durations — keeps what it had, because there is no such
+          // thing as a duration without one.
           onValueChange={(u) => {
             const wanted = u || (BARE_OK.has(unit) ? "" : unit);
             const selected = units.find((candidate) => candidate === wanted);
             if (selected !== undefined) send(draft, selected);
           }}
-          aria-label={`${label} 的单位`}
+          aria-label={t`Unit for ${label}`}
           className="shrink-0"
         >
           {units.filter(Boolean).map((u) => (
             <Segment key={u} value={u}>
-              {u}
+              {show(u)}
             </Segment>
           ))}
         </Segments>
@@ -218,19 +289,28 @@ function ModelPick({
   disabled?: boolean;
   onCommit: (v: string) => void;
 }) {
+  const { t } = useLingui();
   return (
     <Combobox
       free
       {...(disabled !== undefined ? { disabled } : {})}
       value={value}
       options={options}
-      placeholder="模型 id"
-      empty="还没有别的模型，直接写就行"
+      placeholder={t`Model ID`}
+      empty={t`No other models yet; just type`}
       onCommit={onCommit}
     />
   );
 }
 
+/**
+ * One box, written when it loses focus.
+ *
+ * Uncontrolled and keyed on the stored value: a refused edit keeps the text that
+ * was typed (so it can be fixed rather than retyped) and an accepted one snaps
+ * to what the server actually holds, which is how `20 分钟` appears after
+ * someone types `1200s`. (i18n-exempt: a spelling `units.ts` accepts.)
+ */
 export function Box({
   value,
   onCommit,
@@ -275,10 +355,11 @@ export function Box({
 }
 
 function RemoveRow({ name, onRemove }: { name: string; onRemove?: () => void }) {
+  const { t } = useLingui();
   if (!onRemove) return <span className="w-7 shrink-0" />;
   return (
-    <Tip label="删掉这一行">
-      <Button variant="quiet" size="sm" aria-label={`删掉 ${name}`} className="shrink-0" onClick={onRemove}>
+    <Tip label={t`Delete this row`}>
+      <Button variant="quiet" size="sm" aria-label={t`Delete ${name}`} className="shrink-0" onClick={onRemove}>
         <X className="size-3" />
       </Button>
     </Tip>
@@ -292,6 +373,7 @@ function RemoveRow({ name, onRemove }: { name: string; onRemove?: () => void }) 
  * what this is for — so it is rows plus one empty row, not a form. Naming the
  * empty row is what adds an entry; there is no ＋ button, because a button that
  * makes a blank row and a blank row are the same thing one click apart.
+ * (i18n-exempt: the fullwidth ＋ is a glyph, not copy.)
  */
 export function Pairs({
   map,
@@ -307,17 +389,18 @@ export function Pairs({
   keyPh: string;
   bad: string | null;
   onWrite: (v: Json) => void;
-  onRefuse: (why: string, at: string) => void;
+  onRefuse: (why: Said, at: string) => void;
   onClear: () => void;
 }) {
+  const { t } = useLingui();
   const entries = Object.entries(map);
-  const show = textOf;
+
   // A number gets the same 9rem a number gets on every other row of this page;
   // only a path needs the rest of the width.
   const vw = kind === "text" ? "" : "w-[9rem] flex-none";
   const commit = (k: string, raw: string) => {
     if (kind === "text") return onWrite({ ...map, [k]: raw });
-    if (!/^\d+$/.test(raw)) return onRefuse("要一个整数", k);
+    if (!/^\d+$/.test(raw)) return onRefuse(WANTS_INTEGER, k);
     const n = Number(raw);
     onWrite({ ...map, [k]: n });
   };
@@ -328,18 +411,18 @@ export function Pairs({
         <div key={k} className="flex items-center gap-1.5">
           <Box
             value={k}
-            aria-label={`${k} 的名字`}
+            aria-label={t`Name for ${k}`}
             className="w-[13rem] flex-none"
             onCommit={(next) => {
               const name = next.trim();
-              if (!name) return onRefuse("名字不能空着，要删就按右边的 ×", k);
+              if (!name) return onRefuse(NEEDS_A_NAME, k);
               // Rebuilt in place rather than deleted and re-added, so a rename
               // does not send the row to the bottom of the list mid-edit.
               onWrite(Object.fromEntries(entries.map(([ek, ev]) => [ek === k ? name : ek, ev])));
             }}
           />
           <Box
-            value={show(v)}
+            value={textOf(v)}
             invalid={bad === k}
             aria-label={k}
             className={vw}
@@ -355,7 +438,7 @@ export function Pairs({
           key={`add-${entries.length}`}
           value=""
           placeholder={keyPh}
-          aria-label="加一项"
+          aria-label={t`Add a row`}
           className="w-[13rem] flex-none"
           // Same reason as the window table: an integer knob here is
           // `z.number().int().positive()`, so a row born at 0 is a row the
@@ -365,7 +448,61 @@ export function Pairs({
             if (name) onWrite({ ...map, [name]: kind === "text" ? "" : 1 });
           }}
         />
-        <Meta>填个名字就多一行</Meta>
+        <Meta>
+          <Trans>Fill in a name to add a row</Trans>
+        </Meta>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * An ordered list of durations, as rows rather than a line of JSON.
+ *
+ * `[300000,900000,3600000]` is three numbers whose whole meaning is their order:
+ * the first repeat waits the first step and the last one holds forever. As JSON
+ * it cannot be read without counting zeros, which is the complaint that put a
+ * unit on every other duration on this page — this row was simply the one shape
+ * the scalar parser had no branch for, so it fell through to a text box.
+ */
+/**
+ * The last step carries no delete: the schema wants at least one, and a missing
+ * button is an answer where a refused write is an error message.
+ */
+export function Ladder({ list, onWrite }: { list: number[]; onWrite: (v: Json) => void }) {
+  // Built before the JSX, because a ladder step has no identity but its
+  // position: two steps may legally hold the same duration, so the ordinal is
+  // the only thing that tells them apart. The stored value rides along in the
+  // key so an accepted write remounts the row it landed on.
+  const { t } = useLingui();
+  const steps = list.map((ms, at) => {
+    // `nth` is a named local so the extracted message reads `Step {nth}` rather
+    // than `Step {0}`, which is a placeholder no translator can place.
+    const nth = at + 1;
+    return { at, ms, key: `${at}-${ms}`, name: t`Step ${nth}`, ...splitDuration(ms) };
+  });
+  return (
+    <div className="flex w-full flex-col gap-1">
+      {steps.map(({ at, key, name, n, unit }) => (
+        <div key={key} className="flex items-center gap-1.5">
+          <Meta className="w-[3.25rem] shrink-0">{name}</Meta>
+          <DurationAmount
+            ms={list[at] ?? 0}
+            label={name}
+            onWrite={(next) => onWrite(list.map((old, j) => (j === at ? next : old)))}
+          />
+          {list.length > 1 && <RemoveRow name={name} onRemove={() => onWrite(list.filter((_, j) => j !== at))} />}
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        {/* Born as a copy of the last step rather than at zero: a ladder whose
+            steps do not grow is a ladder, and 0 is refused by the schema. */}
+        <Button size="sm" onClick={() => onWrite([...list, list.at(-1) ?? 300_000])}>
+          <Trans>Add a step</Trans>
+        </Button>
+        <Meta>
+          <Trans>The last step repeats for as long as nobody answers</Trans>
+        </Meta>
       </div>
     </div>
   );
@@ -455,6 +592,7 @@ export function Windows({
   // row falls back to, and deleting it drops all of them to `MIN_CONTEXT` — a
   // fleet-wide rotation nothing reports. Sorted, because the fallback belongs
   // above the exceptions to it.
+  const { t } = useLingui();
   const entries = Object.entries({ default: 0, ...map }).sort(([a], [b]) =>
     a === DEFAULT_KEY ? -1 : b === DEFAULT_KEY ? 1 : 0,
   );
@@ -502,7 +640,7 @@ export function Windows({
             }}
           />
         </div>
-        <Meta>{free.length ? "选一个模型就多一行" : "填个模型 id 就多一行"}</Meta>
+        <Meta>{free.length ? t`Pick a model to add a row` : t`Type a model ID to add a row`}</Meta>
       </div>
     </div>
   );
@@ -578,33 +716,127 @@ export function IndexModel({
 const LOCAL_EMBEDDINGS = ["Xenova/multilingual-e5-small", "Xenova/multilingual-e5-base", "BAAI/bge-m3"];
 
 /**
- * Local or remote, and which model — one row, because they are one decision.
+ * The whole embedding decision as one row: local or remote, which model, and —
+ * only under remote — the address and the credential name.
  *
  * Two rows would invite `mode: remote` with a local model id, which fails at the
  * first call to an endpoint that has never heard of `Xenova/…`. Same argument as
  * `IndexModel` above, same shape.
+ */
+/**
+ * The endpoint and credential were rows of their own, drawn as two empty boxes
+ * under a segment reading `Local` — fields for a mode nobody had chosen.
  *
- * Endpoint and credential stay their own rows: hiding them under `local` would make
- * a configured endpoint disappear the moment somebody switched back to compare.
+ * They cannot be gated on the *stored* mode either. `ConfigSchema` refuses
+ * `mode: remote` unless the endpoint parses and a credential is named, and a
+ * refused write stores nothing — so the stored mode is still `local` at exactly
+ * the moment the reader needs somewhere to type. The segment's own press is the
+ * gate, held here, and it survives the bounce.
  */
 export function Embedding({
   mode,
   model,
+  endpoint,
+  credential,
   onMode,
-  onModel,
+  onField,
 }: {
   mode: string;
   model: string;
+  endpoint: string;
+  credential: string;
   onMode: (v: string) => void;
-  onModel: (v: string) => void;
+  onField: (path: string, v: string) => void;
 }) {
+  const { t } = useLingui();
+  const [picked, setPicked] = useState(mode);
+  useEffect(() => setPicked(mode), [mode]);
+  const remote = picked === "remote";
   return (
-    <div className="flex w-full items-center gap-2">
-      <Segments value={mode} onValueChange={onMode}>
-        <Segment value="local">本地</Segment>
-        <Segment value="remote">远程</Segment>
-      </Segments>
-      <ModelPick value={model} options={mode === "local" ? LOCAL_EMBEDDINGS : []} onCommit={onModel} />
+    <div className="flex w-full flex-col gap-1.5">
+      <div className="flex w-full items-center gap-2">
+        <Segments
+          value={picked}
+          // The press always moves the segment, so the two fields appear; the
+          // write only goes when it would land. See `embeddingSwitch`.
+          onValueChange={(next) => {
+            if (!next) return;
+            setPicked(next);
+            if (embeddingSwitch(next, endpoint, credential)) onMode(next);
+          }}
+        >
+          <Segment value="local">
+            <Trans>Local</Trans>
+          </Segment>
+          <Segment value="remote">
+            <Trans>Remote</Trans>
+          </Segment>
+        </Segments>
+        <ModelPick
+          value={model}
+          options={remote ? [] : LOCAL_EMBEDDINGS}
+          onCommit={(v) => onField("embedding.model", v)}
+        />
+      </div>
+      {remote && (
+        <>
+          <Sub label={t`Endpoint`}>
+            <Box
+              value={endpoint}
+              placeholder="https://api.example.com/v1/embeddings"
+              aria-label={t`Endpoint`}
+              invalid={!URL.canParse(endpoint)}
+              onCommit={(v) => onField("embedding.endpoint", v)}
+            />
+          </Sub>
+          <Sub label={t`Credential name`}>
+            <Box
+              value={credential}
+              placeholder={t`The name of a row under Model account, never the key`}
+              aria-label={t`Credential name`}
+              invalid={!credential}
+              onCommit={(v) => onField("embedding.credential", v)}
+            />
+          </Sub>
+          <Missing endpoint={endpoint} credential={credential} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Which half of a remote embedding is still missing, in the panel's own words.
+ *
+ * The rule lives in `contracts` as a Zod `error` — a string the extractor cannot
+ * see and no catalog can hold, so it reached the pane in English under a Chinese
+ * row. The panel can name the missing half instead, because it is drawing the
+ * box that is empty.
+ */
+/**
+ * Read off the fields rather than off the stored mode: the mode lags a round
+ * trip behind the press, and gating on it flashed the sentence for one render
+ * after a write that had just succeeded.
+ */
+function Missing({ endpoint, credential }: { endpoint: string; credential: string }) {
+  const missing = !URL.canParse(endpoint) ? (
+    !credential ? (
+      <Trans>Fill in both and remote retrieval switches on. Until then it stays local.</Trans>
+    ) : (
+      <Trans>Write the full /v1/embeddings address and remote retrieval switches on.</Trans>
+    )
+  ) : !credential ? (
+    <Trans>Name a stored credential and remote retrieval switches on.</Trans>
+  ) : null;
+  return missing && <span className="text-meta leading-snug text-accent">{missing}</span>;
+}
+
+/** A field inside a row that already has a label: the block editors' own shape. */
+function Sub({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Meta className="w-[5.5rem] shrink-0">{label}</Meta>
+      {children}
     </div>
   );
 }
@@ -613,15 +845,16 @@ export function Embedding({
  * The browser's own permission, asked for where the boss can see why.
  *
  * A button rather than a prompt on load: asking before the page has said
- * anything worth being notified about gets 拒绝, and that decision is sticky.
+ * anything worth being notified about gets denied, and that decision is sticky.
  */
 /** What each answer means, and where the reader has to go to change it. */
-const NOTIFY_SAID: Record<NotifyState, string> = {
-  unsupported: "这个浏览器不支持",
-  granted: "浏览器已放行。面板在后台也会弹，浏览器整个关掉才收不到——那时重新打开会补上。",
-  denied: "被浏览器拒了。要开的话在地址栏左边的站点设置里改，然后刷新。",
-  // The only state with anything left to press.
-  ask: "",
+/** `ask` has no row: it is the only state with anything left to press, and a
+ *  `Partial` says that in the type rather than with an empty string standing in
+ *  for a message. */
+const NOTIFY_SAID: Partial<Record<NotifyState, MessageDescriptor>> = {
+  unsupported: msg`This browser doesn't support it`,
+  granted: msg`Browser allowed it. The panel will still notify in the background; only closing the entire browser stops notifications—reopen it to catch up.`,
+  denied: msg`Browser denied it. To enable, change it in site settings (left of address bar), then refresh.`,
 };
 
 /**
@@ -629,25 +862,29 @@ const NOTIFY_SAID: Record<NotifyState, string> = {
  *
  * The permission is the browser's — asked for once, and a page cannot take it
  * back. The switch is the boss's, and it is the only one a settings pane can
- * offer; without it "已开" was a dead end with no way to turn these off short of
+ * offer; without it an enabled state was a dead end with no way to turn these off short of
  * the browser's own site settings. Off falls back to a toast, which is what an
  * ungranted permission already does.
  */
 export function Permission() {
+  const { t } = useLingui();
   const supported = typeof Notification !== "undefined";
   const [state, setState] = useState(supported ? Notification.permission : "denied");
   const [want, setWant] = useState(notifyWanted);
-  const said = NOTIFY_SAID[notifyState(supported, state)];
+  const message = NOTIFY_SAID[notifyState(supported, state)];
+  const said = message && t(message);
   return (
     <>
       <Field aria-labelledby="notify-perm">
-        <FieldTitle id="notify-perm">浏览器许可</FieldTitle>
+        <FieldTitle id="notify-perm">
+          <Trans>Browser permission</Trans>
+        </FieldTitle>
         <FieldContent>
           {said ? (
             <Meta>{said}</Meta>
           ) : (
             <Button size="sm" onClick={() => void Notification.requestPermission().then(setState)}>
-              允许通知
+              <Trans>Allow notifications</Trans>
             </Button>
           )}
         </FieldContent>
@@ -657,7 +894,9 @@ export function Permission() {
           one thing left to press. */}
       {state === "granted" && (
         <Field aria-labelledby="notify-want">
-          <FieldTitle id="notify-want">弹到桌面</FieldTitle>
+          <FieldTitle id="notify-want">
+            <Trans>Desktop pop-ups</Trans>
+          </FieldTitle>
           <FieldContent className="flex-col items-start gap-1">
             <Switch
               aria-labelledby="notify-want"
@@ -668,7 +907,9 @@ export function Permission() {
                 setNotifyWanted(next);
               }}
             />
-            <Meta>关掉之后仍然会在页面里提示，标签页标题也照样带计数——只是不再弹出窗口。</Meta>
+            <Meta>
+              <Trans>Turned off, but page alerts and tab title counts still work—just no pop-ups.</Trans>
+            </Meta>
           </FieldContent>
         </Field>
       )}

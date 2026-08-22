@@ -27,4 +27,17 @@ export function slug(text: string): string {
   );
 }
 
+/**
+ * Eleven words, English, and measured against the alternative rather than left
+ * as an oversight.
+ *
+ * `terms()` is this project's one tokeniser and rents `stopword`'s 621-entry
+ * English list, so pointing this at it looked like deleting the last
+ * hand-written word list in `src/`. It is the wrong list for this job.
+ */
+/**
+ * Retrieval drops words carrying no *search* signal; a branch name wants the
+ * opposite. Measured: `slug("remember-me")`, a name the caller chose, came back
+ * `remember`. Only the ASCII branch reads this, so the eleven gate nobody.
+ */
 const STOP = new Set(["the", "a", "an", "and", "for", "with", "add", "to", "of", "in", "on"]);

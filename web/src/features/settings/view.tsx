@@ -4,21 +4,20 @@ import { useEffect, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
-  MonitorCog,
   Box,
   Coins,
   Gauge,
   GitBranch,
+  Hourglass,
   KeyRound,
   ListChecks,
   Server,
   SlidersHorizontal,
   Sparkles,
-  Timer,
   Trash2,
   X,
 } from "lucide-react";
-import { H2, Head, Meta, Pane } from "../../ui/bits";
+import { H2, Head, Meta, Pane, Working } from "../../ui/bits";
 import { Field, FieldContent, FieldGroup, FieldLegend, FieldSet, FieldTitle } from "../../ui/field";
 import { Tip } from "../../ui/tooltip";
 import { api, mutate, readApi } from "../../shared/api";
@@ -26,6 +25,7 @@ import { Knobs } from "../knobs/view";
 import { repoHref } from "../../shared/github";
 import { cn } from "../../ui/cn";
 import { ThemeChoice } from "../../ui/theme";
+import { LocaleChoice } from "./locale-choice";
 import { ImageChoicesSchema, ProjectConfigSchema, type ProjectPatch } from "../project/view";
 import { Skills } from "../skills/view";
 import { CredPane, RUNTIMES } from "./credentials";
@@ -36,6 +36,9 @@ import type { Section } from "./model";
 import { AuthRowSchema, HostCheckSchema, type AuthRow, type HostCheck } from "./auth";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
 
 const AuthResponseSchema: z.ZodType<InferResponseType<typeof api.auth.$get, 200>> = z.object({
   runtimes: z.array(AuthRowSchema),
@@ -70,64 +73,68 @@ const EMPTY_PREFLIGHT = { checks: [] as HostCheck[] };
  * Behaviour is Radix: focus trap, Esc, restored focus, aria wiring.
  */
 
-/** Host facts only. The credential rows are the 账号 section, said once. */
+/** Host facts only. The credential rows are the account section, said once. */
 const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
 
-const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: true }> = [
-  // 凭据 named the storage, not the thing: what is picked here is which account
-  // the fleet works as, and the boss thinks of it as an account. 模型账号 rather
-  // than 模型, because which model runs a turn is `roles/*.yaml` and
+const NAV: Array<{ key: Section; label: MessageDescriptor; icon: typeof KeyRound; project?: true }> = [
+  // Naming it after credentials named the storage, not the thing: what is picked
+  // here is which account
+  // the fleet works as, and the boss thinks of it as an account. `Model account` rather
+  // than model, because which model runs a turn is `roles/*.yaml` and
   // `difficultyModel` — one word for two things sends people here for the wrong
   // control.
-  { key: "cred", zh: "模型账号", icon: KeyRound },
-  // Its own section, not a row in 模型账号. Those are interchangeable, metered,
+  { key: "cred", label: msg`Model account`, icon: KeyRound },
+  // Its own section, not a row in `Model account`. Those are interchangeable, metered,
   // one per role and about to be six; this is one connection, not metered, with
-  // a two-step flow and a repository list. Named GitHub rather than 代码源
+  // a two-step flow and a repository list. Named GitHub rather than a generic
+  // "code host"
   // because there is only GitHub, and the day there is a second one, renaming a
   // nav item is one string.
-  { key: "github", zh: "GitHub", icon: GitBranch },
-  // What this machine has, which is a different question from how a container is
-  // configured: docker and uv are facts about the host, read-only, and the answer
-  // to "why will nothing start". Folded into 沙盒 once and taken back out — that
-  // pane is about the server and its defaults, and a prerequisite is not a
-  // setting.
-  { key: "host", zh: "环境", icon: MonitorCog },
-  // The server *and* what it is told to build, in one pane. These were two
-  // sections, and the comment on the second one already said it belonged "under
-  // 沙盒服务器, the same subject one level down" — while the rendering put five
-  // panes between them. Worse, they overlapped: `sandbox.server` and
-  // `sandbox.image` were knob rows *and* purpose-built rows here, so one value
-  // had two controls in two places, and the knob version of the image is a plain
-  // text box while this one lists what the registry actually has.
-  { key: "server", zh: "沙盒", icon: Server },
+  { key: "github", label: msg`GitHub`, icon: GitBranch },
+  // The server, what stops it starting, and what it builds by default — one
+  // subject, one pane. It was two: `Environment` held the host prerequisites and `Sandbox` held
+  // the server, on the argument that "a prerequisite is not a setting". The
+  // split never took. Both panes read the same `checks` array, and both drew
+  // `allowed_host_paths` from it — the same fact printed twice, two entries
+  // apart in a list of eleven.
+  //
+  // Named `Sandbox server`, not `Sandbox`: a project has a pane called `Sandbox` too,
+  // and two navigation rows reading the same word is how somebody opens the
+  // wrong one. The `<Head>` inside already said `Sandbox server`, so the name
+  // was on screen the whole time — one row above it said something else.
+  { key: "server", label: msg`Sandbox server`, icon: Server },
   // Not a setting, and it sits here anyway. It was an accordion at the foot of
   // the landing page, which is the page for what waits on the boss — and how
   // long `GET /state` took never waits on anybody. This dialog is where you come
   // to look at the machine and then leave, which is exactly the visit this pane
   // gets: once, on the day the panel feels slow.
-  { key: "timing", zh: "系统耗时", icon: Activity },
+  { key: "timing", label: msg`System timing`, icon: Activity },
   // This machine's skills, not this project's: the same staged directory is
   // mounted into every group of every project.
-  { key: "skills", zh: "技能", icon: Sparkles },
+  { key: "skills", label: msg`Skills`, icon: Sparkles },
   // The operating knobs, which used to be a yaml inside the release tarball.
-  // Three sections rather than one, because forty rows in one list is a list
-  // nobody reads to the bottom of — and the three answer different questions:
-  // how much runs at once, what it costs, how long one turn may take.
-  { key: "sched", zh: "调度", icon: Gauge },
-  { key: "models", zh: "模型与预算", icon: Coins },
-  { key: "turn", zh: "turn 与上下文", icon: Timer },
-  { key: "prefs", zh: "偏好", icon: SlidersHorizontal },
-  { key: "gates", zh: "闸门", icon: ListChecks, project: true },
-  { key: "sandbox", zh: "沙盒", icon: Box, project: true },
+  // Four sections rather than one, because sixty rows in one list is a list
+  // nobody reads to the bottom of — and the four answer different questions: how
+  // much runs at once, what it costs, how long one turn may take, and how long
+  // we wait on something that is not us.
+  { key: "ops", label: msg`How agents run`, icon: Gauge },
+  { key: "models", label: msg`Models & budget`, icon: Coins },
+  // Four rather than three. The knob section behind this existed, held eleven
+  // settable paths, and had no nav entry and no pane — so the coverage check saw
+  // them "placed" while the boss could not reach one of them from the panel.
+  { key: "internals", label: msg`Plumbing`, icon: Hourglass },
+  { key: "prefs", label: msg`Preferences`, icon: SlidersHorizontal },
+  { key: "gates", label: msg`Gates`, icon: ListChecks, project: true },
+  { key: "sandbox", label: msg`Sandbox`, icon: Box, project: true },
   // Last, alone, and the only irreversible thing in this dialog. Nowhere near
   // the switches somebody flips while working.
-  { key: "remove", zh: "移除项目", icon: Trash2, project: true },
+  { key: "remove", label: msg`Remove project`, icon: Trash2, project: true },
 ];
 
 const PROJECT_SECTIONS = new Set<Section>(["gates", "sandbox", "remove"]);
 
 /** Which pane the dialog actually shows. The hash keeps asking for the section
- *  it was written with, so a link into 闸门 opened with no project selected has
+ *  it was written with, so a link into `Gates` opened with no project selected has
  *  to land on a pane that exists rather than on an empty right-hand column. */
 export const visibleSection = (section: Section, projectId: number | null): Section =>
   projectId === null && PROJECT_SECTIONS.has(section) ? "cred" : section;
@@ -158,6 +165,7 @@ export function SettingsDialog({
   groupCount?: number;
   onRemoved?: () => void;
 }) {
+  const { t } = useLingui();
   const [section, setSection] = useState<Section>(initial);
   useEffect(() => setSection(initial), [initial]);
   const pick = (k: Section) => {
@@ -177,9 +185,9 @@ export function SettingsDialog({
                      rounded-xl border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in
                      max-[44rem]:grid-cols-1 max-[44rem]:grid-rows-[auto_minmax(0,1fr)]"
         >
-          <Dialog.Title className="sr-only">{NAV.find((n) => n.key === here)!.zh}</Dialog.Title>
+          <Dialog.Title className="sr-only">{t(NAV.find((n) => n.key === here)!.label)}</Dialog.Title>
           <Dialog.Close
-            aria-label="关掉"
+            aria-label={t`Close`}
             className="absolute top-3 right-3 grid size-6.5 cursor-pointer place-items-center rounded-md
                        text-ink-3 transition-colors hover:bg-sunk hover:text-ink"
           >
@@ -227,10 +235,18 @@ function SettingsContent({
   const [signin, setSignin] = useState<Signin | null>(null);
 
   const queries = useQueryClient();
-  // A credential landing changes more than the row it landed on: 主机 goes green
-  // and the header's readiness with it. Invalidating the lot rather than listing
-  // them is safe here — this fires when a human clicks 保存, not on a timer.
-  const load = () => void queries.invalidateQueries();
+  // A credential landing changes more than the row it landed on: the host checks
+  // go green and the shell's banner with them. Invalidating the lot rather than
+  // listing it is safe here — this fires when a human presses save, not on a
+  // timer.
+  //
+  // Preflight first and the rest after it, in that order: `/preflight` is what
+  // re-runs the checks and republishes them, so a snapshot fetched beside it
+  // rather than behind it still carries the answer from before the fix. That is
+  // the banner saying the sandbox server has no key while the pane behind it
+  // reads `reachable`.
+  const load = () =>
+    void queries.invalidateQueries({ queryKey: ["preflight"] }).then(() => queries.invalidateQueries());
 
   const { authData, rows, prefs, checks, proj } = useSettingsData(open, projectId, signin);
   useSigninEnd(authData, signin, setSignin);
@@ -262,7 +278,7 @@ function SettingsContent({
           had picked three widths, so switching between them moved every value
           sideways — and a width chosen inside a pane is a width the next pane
           cannot know about. 5rem holds the longest label in the dialog
-          (基线分支, API 密钥). */}
+          (base branch, API key). */}
       <div className="flex min-h-0 flex-col px-6 pt-4 pb-5 [--label:5rem]">
         <SettingsPanes
           open={open}
@@ -292,7 +308,7 @@ function SettingsContent({
  *
  * This was one `load()` closing over `projectId`, fired from an effect with
  * nothing to say which call a reply belonged to. Two quick project switches and
- * the slower reply won: one project's 闸门 beside another's base branch, no error
+ * the slower reply won: one project's gates beside another's base branch, no error
  * anywhere. A key does not have to remember — a reply for project 3 cannot be
  * written into project 7's entry, so the bug has no shape.
  */
@@ -328,7 +344,7 @@ function useSettingsData(open: boolean, projectId: number | null, signin: Signin
  *
  * Landed: a login that has arrived is a row with a newer `updatedAt` than the one we
  * started from — the panel polled on a timer alone before, so the credential
- * arrived, the row updated, and both buttons stayed 等你在浏览器里批准… for five minutes.
+ * arrived, the row updated, and both buttons stayed `Waiting for you to approve in the browser…` for five minutes.
  *
  * Timed out: on its own clock rather than folded into the landed check, because that
  * one runs only when the answer *changes*.
@@ -400,7 +416,9 @@ function SettingsPanes({
         }}
       />
     ) : (
-      <Meta className="block py-2">读取中…</Meta>
+      <Working>
+        <Trans>Loading…</Trans>
+      </Working>
     );
 
   const panes: Record<Section, React.ReactNode> = {
@@ -418,20 +436,31 @@ function SettingsPanes({
         onWaitForLogin={onWaitForLogin}
       />
     ),
-    github: <GithubSettings open={open} section={section} />,
-    host: <EnvPane checks={checks.filter((c) => !isCredential(c))} />,
+    github: (
+      <>
+        <GithubSettings open={open} section={section} />
+        {/* Which branch a checkout is based on when the remote cannot answer.
+            It sat under pull requests in the scheduling pane; a base branch is a fact
+            about a repository, and this is the pane about repositories. */}
+        <Knobs section="repo" />
+      </>
+    ),
     server: (
       <>
         <SandboxServerSettings open={open} section={section} rows={rows} checks={checks} onSaved={onSaved} />
+        {/* Why it will not start, under the thing that will not start. Read-only,
+            and the credential rows are dropped: those have their own pane and
+            their own controls. */}
+        <EnvPane checks={checks.filter((c) => !isCredential(c))} />
         {/* What a container is built with, for a project that says nothing. A
-            project's own 沙盒 pane overrides these. */}
+            project's own `Sandbox` pane overrides these. */}
         <Knobs section="boxdefaults" />
       </>
     ),
     skills: <Skills projectId={projectId} />,
-    sched: <Knobs section="sched" />,
+    ops: <Knobs section="ops" />,
     models: <Knobs section="models" />,
-    turn: <Knobs section="turn" />,
+    internals: <Knobs section="internals" />,
     prefs: <Preferences />,
     gates: projectPane("gates"),
     sandbox: projectPane("sandbox"),
@@ -500,30 +529,57 @@ export function SandboxServerSettings({
 }
 
 function Preferences() {
+  const { t } = useLingui();
   return (
     <>
-      <Head title="偏好" note="只在这台机器上，不跟着项目走" />
+      <Head title={t`Preferences`} note={t`Local to this machine only, not tied to the project`} />
       {/* Two subjects in one pane, so each says which it is. A `<fieldset>` with a
           `<legend>` rather than a heading over a div: the grouping is the
-          accessible fact, and a reader hears 通知 with the switch inside it rather
-          than a bare 开. Notifications were their own nav item for one knob and a
+          accessible fact, and a reader hears "notifications" with the switch inside it
+          rather than a bare "on". Notifications were their own nav item for one knob and a
           browser permission — both of which are exactly what this pane is. */}
       <FieldSet className="mb-6">
-        <FieldLegend>外观</FieldLegend>
+        <FieldLegend>
+          <Trans>Appearance</Trans>
+        </FieldLegend>
         <FieldGroup>
           {/* A toggle group has nothing a `<label>` can point at, so the
               row names itself: `Field` is already `role="group"`, and
               this is the one attribute that gives that group a name. */}
           <Field aria-labelledby="pref-theme">
-            <FieldTitle id="pref-theme">主题</FieldTitle>
+            <FieldTitle id="pref-theme">
+              <Trans>Theme</Trans>
+            </FieldTitle>
             <FieldContent>
               <ThemeChoice />
+            </FieldContent>
+          </Field>
+          {/* Here rather than beside `Output language` in the knobs: that one travels with
+              the project and tells the agents what to write, this one is only
+              this browser's chrome. The pane already says so at the top. */}
+          <Field aria-labelledby="pref-locale">
+            <FieldTitle id="pref-locale">
+              <Trans>Panel language</Trans>
+            </FieldTitle>
+            {/* The row says where the other one is, because there are two
+                settings a pane apart, both called a language, and nothing on
+                screen said how they differ. */}
+            <FieldContent className="flex-col items-start gap-1">
+              <LocaleChoice />
+              <Meta>
+                <Trans>
+                  What this browser reads. What the agents write is the output language, under Models &amp; budget — and
+                  this follows it unless you pick one here.
+                </Trans>
+              </Meta>
             </FieldContent>
           </Field>
         </FieldGroup>
       </FieldSet>
       <FieldSet>
-        <FieldLegend>通知</FieldLegend>
+        <FieldLegend>
+          <Trans>Notifications</Trans>
+        </FieldLegend>
         <Knobs section="notify" bare />
       </FieldSet>
     </>
@@ -564,9 +620,10 @@ function SettingsNavigation({
 }) {
   // What is waiting on the boss, on the item that holds it. Same dot as the one on
   // the gear in the header, which is where they saw it before they clicked.
+  const { t } = useLingui();
   const nags: Partial<Record<Section, boolean>> = {
     cred: needsCredentials(rows),
-    host: needsHostAttention(checks),
+    server: needsHostAttention(checks),
     gates: needsGates(project),
   };
 
@@ -575,19 +632,19 @@ function SettingsNavigation({
       <SettingsGroup
         items={items}
         project={false}
-        label="服务器"
-        note="所有项目共用"
+        label={t`Server`}
+        note={t`Shared across all projects`}
         section={section}
         nags={nags}
         onSection={onSection}
       />
       {projectId !== null && (
-        // Same shape as 服务器 above it: the group names the scope, the small
+        // Same shape as `Server` above it: the group names the scope, the small
         // line says which one, and the path is a hover away.
         <SettingsGroup
           items={items}
           project
-          label="项目"
+          label={t`Projects`}
           {...(projectName !== undefined ? { note: projectName } : {})}
           {...(project ? { hint: project.repoPath } : {})}
           section={section}
@@ -681,11 +738,12 @@ function Item({
   nag,
   go,
 }: {
-  n: { key: Section; zh: string; icon: typeof KeyRound };
+  n: { key: Section; label: MessageDescriptor; icon: typeof KeyRound };
   on: boolean;
   nag: boolean;
   go: () => void;
 }) {
+  const { t } = useLingui();
   const Icon = n.icon;
   return (
     <button
@@ -701,9 +759,9 @@ function Item({
       )}
     >
       <Icon size={14} strokeWidth={1.75} className="shrink-0" />
-      <span className="truncate">{n.zh}</span>
+      <span className="truncate">{t(n.label)}</span>
       <span className="grow" />
-      {nag && <i className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="有事等你" />}
+      {nag && <i className="size-1.5 shrink-0 rounded-full bg-accent" aria-label={t`Waiting for you`} />}
     </button>
   );
 }

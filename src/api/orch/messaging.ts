@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
@@ -9,7 +10,7 @@ import { MailIntent } from "../../contracts/orch.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { bossFact } from "../panel/attach.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
-import { bad, message } from "../../http/respond.ts";
+import { bad, badText, message } from "../../http/respond.ts";
 import { resolveGroup } from "./access.ts";
 import { agent, grp, project as projects } from "../../platform/persistence/schema.ts";
 
@@ -43,9 +44,9 @@ export const MailBody = z.object({
 export const postMail = (async (ctx, _req, a, _p, b) => {
   // An empty message wakes someone with nothing to answer. Measured: the
   // Dispatcher invented a `--wait` flag, the parser took it, and the mail went
-  // out with no body — the Architect burned a turn on "收到的 ask 消息内容为空".
+  // out with no body — the Architect burned a turn on an ask whose content was empty.
   if (!b.body.trim()) {
-    return bad(
+    return badText(
       `mail to "${b.target}" has an empty body. Put the message in quotes as the last ` +
         `argument: orch mail ${b.target} --intent ${b.intent} "…". There is no --wait flag; ` +
         `ask blocks on its own.`,
@@ -62,14 +63,14 @@ export const postMail = (async (ctx, _req, a, _p, b) => {
       const known = (ctx.knownRoles?.() ?? []).join(", ");
       // Never a silent no-op: an unreachable recipient is exactly how an agent
       // ends up asking a wall twice and then giving up.
-      return bad(`no such recipient "${b.target}". Roles that exist: ${known || "none configured"}`);
+      return badText(`no such recipient "${b.target}". Roles that exist: ${known || "none configured"}`);
     }
   }
 
   // A standing agent has no group of its own, so stamping the sender's group
   // would file its reply under nothing and drop it out of the group's timeline.
   // Measured: the Architect's objection to a DRAFT card landed with grp_id NULL
-  // and the boss approved a card that said 反对 : 无.
+  // and the boss approved a card that said `Objection: none`.
   await ctx.bus.emit({
     grpId: a.grp_id ?? target?.grpId ?? null,
     author: a.role,
@@ -143,8 +144,15 @@ async function deliver(
 ): Promise<Response | null> {
   const target = await resolveTarget(ctx, grpId, to, project);
   if (!target) {
+    // `bad`, not `badText`: this one door answers both the panel — `postSay` is
+    // mounted there — and an agent's `orch mail`. The descriptor is rendered by
+    // the browser, and `bad` renders the English into the 422 body the CLI reads.
     const known = (ctx.knownRoles?.() ?? []).join(", ");
-    return bad(`没有 "${to}" 这个收件人。现有角色：${known || "none configured"}`);
+    return bad(
+      known
+        ? msg`there is no recipient called "${{ to }}". The roles that exist: ${{ known }}`
+        : msg`there is no recipient called "${{ to }}", and no roles are configured`,
+    );
   }
   await ctx.bus.emit({
     grpId: grpId ?? target.grpId ?? null,
@@ -164,10 +172,10 @@ async function deliver(
 }
 
 export const postSay = (async (ctx, _req, _p, b) => {
-  // A screenshot is as useful when saying "这里不对" as when filing the idea.
+  // A screenshot is as useful when saying "this part is wrong" as when filing the idea.
   const said = withAttachments(b.body.trim(), b.attachments);
   const grpId = b.group_id == null ? null : await resolveGroup(ctx, b.group_id);
-  if (b.group_id != null && !grpId) return bad("no such requirement");
+  if (b.group_id != null && !grpId) return badText("no such requirement");
 
   const [owner] = grpId ? await ctx.db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, grpId)) : [];
   const project = owner?.project_id ?? null;
@@ -182,7 +190,7 @@ export const postSay = (async (ctx, _req, _p, b) => {
   const skills = skillNames(said, repo, await projectSkills(ctx.db, project));
 
   if (b.as) {
-    if (!grpId) return bad("triage needs a requirement");
+    if (!grpId) return badText("triage needs a requirement");
     await ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: said });
     await triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, grpId, b.as, said, skills);
     await ctx.sched.tick();

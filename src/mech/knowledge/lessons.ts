@@ -1,8 +1,9 @@
+import { msg, selectOrdinal } from "@lingui/core/macro";
 import { and, desc, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { grp, note } from "../../platform/persistence/schema.ts";
-import { say } from "../../platform/text/lang.ts";
+
 import { terms } from "./terms.ts";
 
 /**
@@ -122,7 +123,7 @@ export async function sediment(ctx: Ctx, projectId: number | null, threshold: nu
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "sediment", { n: kin.length }),
+    say: msg`the same feedback for the ${selectOrdinal({ n: kin.length }, { one: "#st", two: "#nd", few: "#rd", other: "#th" })} time; asking the CoS to make it a project rule`,
     meta: { notes: ids },
   });
   // The CoS writes it, because a rule the agents must follow has to read like a rule.

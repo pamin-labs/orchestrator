@@ -1,5 +1,7 @@
 import { toast } from "sonner";
 import { notifyWanted } from "./desktop-notify";
+import { sayIn, type Said } from "../../../src/contracts/said.ts";
+import { saidText } from "./said";
 import { z } from "zod";
 import { FrameSchema } from "../../../src/contracts/events.ts";
 
@@ -63,8 +65,30 @@ export interface PanelFrame {
   author: string;
   target?: string | null;
   intent?: string | null;
-  text: string;
+  /**
+   * The stored body, or raw sandbox output — **not** display text.
+   *
+   * It is named `body` and not `text` because it was `text` and three panes read
+   * it as if it were what to draw. Two of them stopped being right the moment
+   * the descriptor started travelling beside it, and the compiler is what found
+   * them. `frameText` is the one way to a string a person reads.
+   */
+  body: string;
+  /**
+   * The sentence the server named, unrendered.
+   *
+   * Rendered here at ingest once, which froze every timeline row in whichever
+   * language was live when its SSE frame arrived — the frames are appended to
+   * `useState` and never rebuilt, so switching language left the whole timeline
+   * behind. Same defect as a refusal kept on a field, on the surface with the
+   * most rows.
+   */
+  said?: Said;
   agentId?: number | null;
+  /** `meta.step`: which step of which process this row is, when it is one of
+   *  those. A pane that draws a process reads this instead of matching the
+   *  body, which is rendered in whichever language its reader chose. */
+  step?: string;
 }
 
 const KIND: Record<string, PanelFrame["cls"]> = {
@@ -79,6 +103,9 @@ const KIND: Record<string, PanelFrame["cls"]> = {
   digest: "tool",
 };
 
+/** Untrusted JSON out of `event.meta_json`, so it is parsed rather than cast. */
+const StepSchema = z.object({ step: z.string().optional() });
+
 type LiveWire = Extract<Wire, { type: "live" }>;
 type EventWire = Extract<Wire, { type: "event" }>;
 
@@ -86,7 +113,7 @@ function appendLive(next: PanelFrame[], f: LiveWire, liveSeq: { current: number 
   const cls = f.kind === "text" || f.kind === "thinking" ? "partial" : "tool";
   const last = next[next.length - 1];
   if (cls === "partial" && last?.cls === "partial" && last.agentId === f.agentId) {
-    next[next.length - 1] = { ...last, text: (last.text + f.body).slice(-300) };
+    next[next.length - 1] = { ...last, body: (last.body + f.body).slice(-300) };
     return next;
   }
   return [
@@ -98,7 +125,7 @@ function appendLive(next: PanelFrame[], f: LiveWire, liveSeq: { current: number 
       projectId: f.projectId ?? null,
       at,
       author: f.role ?? "agent",
-      text: f.body,
+      body: f.body,
       agentId: f.agentId,
     },
   ];
@@ -109,6 +136,8 @@ function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[]
   // is stable, so the overlap is dropped instead of duplicating a React key.
   const id = `e${f.seq}`;
   if (next.some((x) => x.id === id)) return next;
+  const step = StepSchema.safeParse(f.meta).data?.step;
+  const sentence = sayIn(f.meta);
   return [
     ...next,
     {
@@ -122,7 +151,11 @@ function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[]
       ...(f.intent !== undefined ? { intent: f.intent } : {}),
       // Stored event bodies are optional; timeline text is not. Keep a broken
       // producer visible as a blank row instead of weakening PanelFrame's type.
-      text: f.body ?? "",
+      // The descriptor travels beside it and the row renders it, so the timeline
+      // follows the locale menu rather than the moment the frame arrived.
+      body: f.body ?? "",
+      ...(sentence ? { said: sentence } : {}),
+      ...(step ? { step } : {}),
     },
   ];
 }
@@ -218,3 +251,12 @@ export function raise(f: Notice) {
     n.close();
   };
 }
+
+/**
+ * What this row says, in the language being read now.
+ *
+ * The one way from a frame to a string a person sees. Rendering at ingest froze
+ * every row in whichever catalogue was live when its SSE frame arrived, because
+ * frames are appended to `useState` and never rebuilt.
+ */
+export const frameText = (f: PanelFrame): string => saidText(f.said, f.body);

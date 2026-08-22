@@ -4,7 +4,7 @@ import { LeaseArgsSchema, loadResource, resolveLease } from "../../mech/lease.ts
 import { z } from "zod";
 import { IdParams } from "../../contracts/fields.ts";
 import type { AgentHandler } from "../../http/handler.ts";
-import { bad, message } from "../../http/respond.ts";
+import { badText, message } from "../../http/respond.ts";
 import { agent, lease as leases, nowMs } from "../../platform/persistence/schema.ts";
 
 /**
@@ -30,10 +30,10 @@ export const LeaseLogQuery = z.object({ grep: z.string().max(4000).optional() })
 
 export const postLease = (async (ctx, _req, a, _p, b) => {
   const def = await loadResource(ctx.db, b.resource);
-  if (!def) return bad(`unknown resource ${b.resource}. Ask the boss to add a template.`);
+  if (!def) return badText(`unknown resource ${b.resource}. Ask the boss to add a template.`);
 
   const r = resolveLease(def, b.args);
-  if (!r.ok) return bad(r.error);
+  if (!r.ok) return badText(r.error);
 
   // `transaction()` and not `ctx.db.transaction`: only this one publishes the
   // handle that `writeHandle` reads, and the `enqueue` below is what makes the

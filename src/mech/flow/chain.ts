@@ -1,11 +1,16 @@
+import { msg } from "@lingui/core/macro";
+import type { Said } from "../../contracts/said.ts";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { answered, roleFor, type Ctx } from "../../mech/ctx.ts";
 import { addNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { agent as agentTable, escalation, grp, note as noteTable } from "../../platform/persistence/schema.ts";
+import { activeTracer } from "../../platform/observability/traces.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { errText } from "../../platform/process/text.ts";
 import { rollbackTo } from "../git/gitops.ts";
 import { sandboxGit } from "../git/checkout.ts";
-import { WORK } from "../sandbox/sandbox.ts";
+import { UTIL, WORK } from "../sandbox/sandbox.ts";
 import { dropGroup } from "./start.ts";
 import { release } from "./intercept.ts";
 import {
@@ -14,7 +19,12 @@ import {
   isTerminalEscalationState,
   type EscalationOpenState,
   type EscalationState,
+  isAskKind,
+  RESERVED,
+  type Reserved,
+  TO_BOSS,
 } from "../../contracts/states.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /**
  * The answer chain: PM -> Architect -> CoS -> the boss.
@@ -27,31 +37,6 @@ import {
  */
 
 export const CHAIN = ESCALATION_OPEN_STATES;
-
-/**
- * Topics that never route through the chain, however clear the precedent.
- *
- * ponytail: keyword matching, so it over-triggers rather than under-triggers.
- * A question wrongly sent to the boss costs one interruption; one wrongly
- * answered by an agent can cost money or a merge.
- */
-const RESERVED = [
-  /\b(spend|pay|purchase|buy|subscri|billing|invoice|budget increase)\b/i,
-  /\b(merge|merging)\b.*\b(main|master)\b/i,
-  /\b(secret|credential|api[_ -]?key|token|password|\.env)\b/i,
-  /\b(deploy|publish|release)\b.*\b(prod|production|live)\b/i,
-  /\b(scope|out of scope|drop the|add a feature|instead of what)\b/i,
-  /(花钱|付费|采购|订阅|预算|密钥|凭据|上线|发布到生产|需求范围|范围变更)/,
-];
-
-export function isReserved(question: string): boolean {
-  return RESERVED.some((re) => re.test(question));
-}
-
-/** Where a new question should start. */
-export function entryPoint(question: string): (typeof CHAIN)[number] {
-  return isReserved(question) ? "boss" : "pm";
-}
 
 export interface ChainDeps {
   /** Wired by api.ts: records a boss fact and checks whether it is the third of its kind. */
@@ -68,6 +53,9 @@ interface EscRow {
   severity: string;
   question: string;
   chain_state: EscalationState;
+  /** What the asker said it is about. Null on every row filed before the column,
+   *  and on the system-raised ones `escalate.ts` files with no kind at all. */
+  kind: string | null;
 }
 
 async function load(db: DB, id: number): Promise<EscRow | null> {
@@ -79,6 +67,7 @@ async function load(db: DB, id: number): Promise<EscRow | null> {
       severity: escalation.severity,
       question: escalation.question,
       chain_state: escalation.chain_state,
+      kind: escalation.kind,
     })
     .from(escalation)
     .where(eq(escalation.id, id));
@@ -121,7 +110,7 @@ export async function route(deps: ChainDeps, escId: number): Promise<string> {
         kind: "escalation",
         intent: "ask",
         severity: esc.severity,
-        body: `for you: ${esc.question}`,
+        say: msg`for you: ${{ question: esc.question }}`,
         meta: { escalation_id: escId, chain_state: "boss" },
       });
       return "boss";
@@ -206,15 +195,106 @@ async function citationError(db: DB, input: AnswerInput): Promise<string | null>
   return `note ${input.refNoteId} is a ${note.kind}, not a decision`;
 }
 
-async function answerError(db: DB, esc: EscRow, input: AnswerInput): Promise<string | null> {
+const RESERVED_REFUSAL = "this one is reserved for the boss whatever the precedent";
+
+/**
+ * The reserved topics, one sentence each, for a reader who is not the PM.
+ *
+ * English, and not through `msg`: the reader is a model, which is ADR 035's
+ * first exemption. The words are here rather than in `states.ts` because the
+ * vocabulary is a contract and the way it is asked is not.
+ */
+/**
+ * `satisfies Record<Reserved, string>`, which is the whole point of the shape.
+ * This was one paragraph transcribed from `TO_BOSS` — its own comment said so —
+ * so a sixth reserved topic would have raised at the asking end and been
+ * **invisible here**, in the half where the damage happens, with nothing failing.
+ * A missing sentence is a compile error now.
+ */
+const ASKED_AS = {
+  budget: "spending money, or a budget",
+  merge: "merging to the main branch",
+  credential: "a credential, secret, token or API key",
+  deploy: "deploying or releasing to production",
+  scope: "changing what is in scope for the requirement",
+} satisfies Record<Reserved, string>;
+
+const CLASSIFY = [
+  "Answer with one word, yes or no, and nothing else.",
+  "Does the question below ask a person to decide any of these:",
+  // Semicolons and a trailing `or`, so the list reads as one question however
+  // many topics it holds — the paragraph this replaced had the `or` welded into
+  // its fourth line.
+  `${RESERVED.slice(0, -1)
+    .map((k) => ASKED_AS[k])
+    .join("; ")}; or ${ASKED_AS[RESERVED[RESERVED.length - 1]!]}?`,
+  "",
+  "question:",
+].join("\n");
+
+/**
+ * Whether this is reserved, asked of somebody other than the asker.
+ *
+ * The gate at the asking end is one word — `TO_BOSS.has(kind)` — and the agent
+ * that saves itself a round trip by filing a budget question as `env` is the
+ * same agent that files. So the PM's own attempt to answer is where it is asked
+ * again, which is also the moment the damage would happen. That replaced ten
+ * rows of per-language keyword regex; a model reads all ten languages, and the
+ * regex's own comment recorded sixteen of eighteen probes leaking.
+ */
+/**
+ * This is not "a gate a model can talk its way out of": the reader is not the
+ * PM, it is not in the conversation, and it is shown the question rather than an
+ * argument about the question.
+ */
+/**
+ * Three edges, and they are not the same edge. No `askIn` at all is a
+ * *configuration* — `indexModel.model` empty turns the cheap tier off — so the
+ * second reader does not exist and this abstains; failing closed there would
+ * leave a stand-in unable to answer anything on a deployment that chose to run
+ * without it.
+ */
+/**
+ * A call that throws, times out, or answers something that is not yes or no is a
+ * check that did not run, and raises. That is what keeps the property the
+ * declared topic had: no path routes a question *away* from the boss.
+ *
+ * ponytail: no cache and no deadline of its own — one call per answer attempt,
+ * inside `modelAsk`'s own 60s. Bound it here if answer attempts ever get cheap
+ * enough for that to be the slow part.
+ */
+async function secondOpinion(ctx: Ctx, esc: EscRow): Promise<boolean> {
+  const askIn = ctx.askIn;
+  if (!askIn) return false;
+  return activeTracer().startActiveSpan("chain.reserved", async (span) => {
+    try {
+      const said = (await askIn(esc.grp_id ? { grp: esc.grp_id } : UTIL)(`${CLASSIFY}\n${esc.question.slice(0, 2000)}`))
+        .trim()
+        .toLowerCase();
+      if (said.startsWith("yes")) return true;
+      if (said.startsWith("no")) return false;
+      throw new Error(`not a verdict: ${said.slice(0, 40)}`);
+    } catch (cause) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(cause) });
+      return true;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+async function answerError(ctx: Ctx, esc: EscRow, input: AnswerInput): Promise<string | null> {
   if (esc.chain_state === "answered") return "already answered";
   const responder = responderError(esc, input.by, input.actorGrpId);
   if (responder) return responder;
-  const citation = await citationError(db, input);
+  const citation = await citationError(ctx.db, input);
   if (citation) return citation;
-  return input.by !== "boss" && isReserved(esc.question)
-    ? "this one is reserved for the boss whatever the precedent"
-    : null;
+  if (input.by === "boss") return null;
+  // The stored word, not the question's prose: the same move `dedupe_key` made,
+  // one column over. A row filed before the column has none and falls to the
+  // reader below, which is why nothing had to be backfilled.
+  if (esc.kind !== null && isAskKind(esc.kind) && TO_BOSS.has(esc.kind)) return RESERVED_REFUSAL;
+  return (await secondOpinion(ctx, esc)) ? RESERVED_REFUSAL : null;
 }
 
 /** A level answers. Resolves whoever is blocked on `orch ask-boss`. */
@@ -225,7 +305,7 @@ export async function answer(
   const { ctx } = deps;
   const esc = await load(ctx.db, input.escId);
   if (!esc) return { ok: false, error: `no escalation ${input.escId}` };
-  const refused = await answerError(ctx.db, esc, input);
+  const refused = await answerError(ctx, esc, input);
   if (refused) return { ok: false, error: refused };
 
   await ctx.db
@@ -276,11 +356,26 @@ export async function abstain(
     kind: "escalation",
     intent: "ask",
     severity: esc.severity,
-    body: `${by} passed this up: ${why || "no reason given"}`,
+    say: why ? msg`${{ by }} passed this up: ${{ why }}` : msg`${{ by }} passed this up, with no reason given`,
     meta: { escalation_id: escId, next },
   });
   await route(deps, escId);
   return { ok: true };
+}
+
+/**
+ * Four sentences rather than an English article passed as a value.
+ *
+ * This was one template with `answered_by ?? "the"` in it, which put the word
+ * "the" on the wire and read as "撤销了 the 的答复" in every language that has no
+ * article. Out here rather than inline, so that naming the four does not make
+ * `revoke` itself a branchier function than it is.
+ */
+function revoked(by: string | null, sha: string | undefined): Said {
+  const at = sha?.slice(0, 8);
+  if (by)
+    return at ? msg`revoked ${{ by }}'s answer and rolled back to ${{ sha: at }}` : msg`revoked ${{ by }}'s answer`;
+  return at ? msg`revoked the answer and rolled back to ${{ sha: at }}` : msg`revoked the answer`;
 }
 
 /**
@@ -318,7 +413,7 @@ export async function revoke(deps: ChainDeps, escId: number): Promise<{ rolledBa
         kind: "escalation",
         intent: "inform",
         severity: "advisory",
-        body: `answer revoked, but the rollback to ${esc.checkpoint_sha.slice(0, 8)} failed: ${back.error}`,
+        say: msg`answer revoked, but the rollback to ${{ sha: esc.checkpoint_sha.slice(0, 8) }} failed: ${{ why: back.error ?? "" }}`,
       });
     }
   }
@@ -326,9 +421,7 @@ export async function revoke(deps: ChainDeps, escId: number): Promise<{ rolledBa
     grpId: esc.grp_id,
     author: "boss",
     kind: "state_change",
-    body:
-      `revoked ${esc.answered_by ?? "the"} answer` +
-      (rolledBackTo ? ` and rolled back to ${rolledBackTo.slice(0, 8)}` : ""),
+    say: revoked(esc.answered_by, rolledBackTo),
     meta: { escalation_id: escId, ...(rolledBackTo ? { rolledBackTo } : {}) },
   });
   return {
@@ -390,14 +483,14 @@ export async function triage(
   const body = `boss (${as}): ${note}`;
   if (deps.bossFact) await deps.bossFact(grpId, body);
   else {
-    await addNote(ctx.db, { grpId, kind: "fact", lang: ctx.config.language, body });
+    await addNote(ctx.db, { grpId, kind: "fact", lang: outputLanguage(ctx.config), body });
   }
   await ctx.bus.emit({
     grpId,
     author: roleFor(ctx, "triage_boss_feedback"),
     kind: "state_change",
     intent: "decision",
-    body: `triaged as ${as}: ${note}`,
+    say: msg`triaged as ${{ as: as }}: ${{ note }}`,
     meta: { triage: as },
   });
 

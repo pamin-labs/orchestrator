@@ -1,0 +1,137 @@
+import { compileMessageOrThrow } from "@lingui/message-utils/compileMessage";
+import { LOCALES } from "../src/contracts/config.ts";
+import { translations } from "./lingui-catalogs.ts";
+
+/**
+ * Every message is translated, and every translation still refers to the names
+ * its English source did.
+ *
+ * ICU syntax is checked by the build: `createCompiledCatalog` fails on a message
+ * it cannot parse, so a broken Russian plural stops `build:web` rather than
+ * throwing inside a React render.
+ */
+/**
+ * What no compiler catches is a translation that parses perfectly and dropped
+ * `{count}` on the way through — a sentence missing the one number it was
+ * written to carry, silently, and only in that language.
+ */
+/**
+ * Walked rather than pattern-matched: `compileMessageOrThrow` already returns
+ * the tokens, and a regex over the raw string has to re-derive which braces are
+ * a reference, which are a plural category and which are inside a branch.
+ */
+/**
+ * Green here does not mean the translations are complete. This reads `.po`
+ * against `.po` — a `msg` template added to `src/` or `web/src/` is invisible to
+ * it until `lingui extract` writes the id out, so a branch can add ten English
+ * strings and still print "catalogs complete". The half nobody else owns is
+ * `preflight.ts`'s `i18n:extract && git diff --exit-code -- locales/`, which is
+ * also what catches `--clean` retiring a row. Two owners, half each.
+ */
+
+/** A placeholder token's nested token lists: a plural's branches, a select's cases. */
+function branchesOf(token: readonly unknown[]): readonly unknown[][] {
+  const options: unknown = token[2];
+  if (!options || typeof options !== "object" || Array.isArray(options)) return [];
+  return Object.values(options).filter((branch): branch is unknown[] => Array.isArray(branch));
+}
+
+/** Every name one token refers to. A literal carries no names, only `<0>` slots. */
+function namesIn(token: unknown): string[] {
+  if (typeof token === "string") return [...token.matchAll(/<(\d+)>/g)].map(([, slot]) => `<${slot}>`);
+  if (!Array.isArray(token)) return [];
+  const self = typeof token[0] === "string" ? [token[0]] : [];
+  return [...self, ...branchesOf(token).flatMap((branch) => branch.flatMap(namesIn))];
+}
+
+/**
+ * A token is either a literal string or `[name, type?, options?]`; a plural's
+ * branches hang off `options` and hold tokens of their own. The tags are not
+ * tokens at all — they stay in the literals, so they are read from there.
+ */
+const referenced = (tokens: readonly unknown[]): Set<string> => new Set(tokens.flatMap(namesIn));
+
+const missing = (want: Set<string>, got: Set<string>): string[] => [...want].filter((name) => !got.has(name));
+
+let bad = 0;
+// The source catalog says which names each message is supposed to carry.
+const source = (await translations("en")).messages;
+
+/**
+ * A missing translation is what *editing English* looks like.
+ *
+ * The id is a hash of the source text, so rewording one `<Trans>` retires its id
+ * and nine catalogs lose that string at once. Nothing stopped that from being
+ * merged: the README's table is regenerated from the catalogues, so a catalogue
+ * that lost a row is a table that agrees with it. The panel then renders English
+ * inside a Russian pane, for as long as nobody reads the number.
+ */
+/**
+ * Strict on purpose, with the escape written down rather than built: if a real
+ * translator workflow ever lands — a service, a queue, somebody who is not the
+ * person writing the English — this becomes a report and the gate moves to
+ * "no locale regressed". Today the same person writes both, so "finish it"
+ * is the honest rule.
+ */
+/**
+ * Rows whose translation *is* the English, collected on the way past.
+ *
+ * Reported at the end, not failed: `Name` is German, `p50` is a statistic and
+ * `HTTP {status}` is two placeholders and a protocol word. But `ms` sat here in
+ * Japanese and Korean under a unit menu whose other four rows were translated,
+ * and nothing counted it — which is what "100%" was hiding.
+ */
+const asSource = new Map<string, string[]>();
+
+for (const locale of LOCALES) {
+  if (locale === "en") continue;
+  const { messages, missing: untranslated } = await translations(locale);
+  const same = Object.entries(messages)
+    .filter(([id, text]) => text && source[id] === text)
+    .map(([id]) => source[id] ?? id);
+  if (same.length) asSource.set(locale, same);
+  if (untranslated.length > 0) {
+    const names = untranslated.map((m) => source[m.id] ?? m.id);
+    console.error(
+      `${locale}.po is missing ${untranslated.length} translation(s):\n` +
+        names
+          .slice(0, 5)
+          .map((n) => `    ${n.slice(0, 72)}`)
+          .join("\n") +
+        (names.length > 5 ? `\n    …and ${names.length - 5} more` : "") +
+        `\n  Run \`bun run i18n:extract\` and fill in the empty msgstr entries.`,
+    );
+    bad += untranslated.length;
+  }
+  for (const [id, translation] of Object.entries(messages)) {
+    const english = source[id];
+    if (!translation || !english || translation === english) continue;
+    const want = referenced(compileMessageOrThrow(english));
+    const got = referenced(compileMessageOrThrow(translation));
+    const gone = missing(want, got);
+    const extra = missing(got, want);
+    if (gone.length === 0 && extra.length === 0) continue;
+    const what = [
+      gone.length > 0 && `dropped ${gone.join(", ")}`,
+      extra.length > 0 && `invented ${extra.join(", ")}`,
+    ].filter(Boolean);
+    console.error(`${locale}.po  ${id}\n  en: ${english}\n  ${locale}: ${translation}\n  ${what.join("; ")}`);
+    bad++;
+  }
+}
+
+if (bad > 0) {
+  console.error(`\n${bad} translation(s) missing or rendering the wrong thing.`);
+  process.exit(1);
+}
+console.log(`${LOCALES.length - 1} catalogs complete, placeholders intact`);
+
+if (asSource.size) {
+  const total = [...asSource.values()].reduce((n, list) => n + list.length, 0);
+  console.log(`\n${total} row(s) left as the English source, which the table counts as translated:`);
+  for (const [locale, list] of asSource) {
+    console.log(
+      `  ${locale.padEnd(8)} ${list.length.toString().padStart(3)}  ${list.map((t) => t.slice(0, 28)).join(" · ")}`,
+    );
+  }
+}

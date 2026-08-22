@@ -1,14 +1,14 @@
+import { msg } from "@lingui/core/macro";
 import type { DB } from "../../platform/persistence/database.ts";
 import { Octokit } from "@octokit/core";
 import QuickLRU from "quick-lru";
 import { retry } from "@octokit/plugin-retry";
 import { throttling } from "@octokit/plugin-throttling";
 import { z } from "zod";
-import { say } from "../../platform/text/lang.ts";
 import { loadAuth } from "../sandbox/auth.ts";
-import { raise } from "../flow/escalate.ts";
+import { escalationKey, raise } from "../flow/escalate.ts";
 import { jsonOr } from "../../contracts/json.ts";
-import { and, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { escalation } from "../../platform/persistence/schema.ts";
 import { clearRepositoryHold, holdRepository } from "./repository.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -168,15 +168,17 @@ async function holdRepo(db: DB, lang: string | undefined, slug: string, why: str
   // looks at `answer` alone treats a revoked question as still open — and a
   // project that recovered once could never file a second warning.
   await raise(db, {
-    // `why` goes in verbatim. It is the message built below, which deliberately
+    lang,
+    // `why` goes in verbatim. It is whatever GitHub said, which deliberately
     // does not guess which of the four causes it was — and a wrapper that
     // "helpfully" summarised it as "token expired" would put the guess back.
-    question: `GitHub ${slug}: ${why}\n\n${say(lang, "repo.held", { repo: slug })}`,
-    brief: "GitHub 连不上了",
+    question: msg`GitHub no longer accepts the login for ${{ repo: slug }}, so every turn on it is held — retrying cannot help: ${{ why }}\n\nReconnect GitHub in settings and they resume on their own. Other projects are unaffected.`,
+    brief: msg`GitHub will not connect`,
     kind: "env",
     // No agent can repair a project credential, and there is no group PM here.
     chain: "boss",
-    dedupe: { prefix: `GitHub ${slug}:`, scope: "global" },
+    key: escalationKey.githubRepo(slug),
+    dedupe: { scope: "global" },
   });
 }
 
@@ -184,11 +186,10 @@ async function holdRepo(db: DB, lang: string | undefined, slug: string, why: str
  * It works again, so take the question back.
  *
  * A boss who reconnects GitHub and watches the fleet resume should not also have
- * to dismiss a 待办 item about it. Revoked rather than answered: nobody answered
+ * to dismiss a `To do` item about it. Revoked rather than answered: nobody answered
  * it, and `dropGroup` already uses `revoked` for a question the world made moot.
  */
 export async function clearEscalation(db: DB, slug: string): Promise<void> {
-  const prefix = `GitHub ${slug}:`;
   await db
     .update(escalation)
     .set({ chain_state: "revoked", answered_at: Date.now() })
@@ -196,10 +197,10 @@ export async function clearEscalation(db: DB, slug: string): Promise<void> {
       and(
         isNull(escalation.answer),
         ne(escalation.chain_state, "revoked"),
-        // `starts_with`, not `like`: a repository named `my_repo` puts a LIKE
-        // wildcard in the prefix, and the question it matches then belongs to a
-        // different repository. Drizzle has no operator for an exact prefix.
-        sql`starts_with(${escalation.question}, ${prefix})`,
+        // The key `holdRepo` filed under. It was `starts_with(question, "GitHub
+        // <slug>:")` — a prefix rather than a `like`, because a repository named
+        // `my_repo` puts a LIKE wildcard in it. An `=` on a key has neither problem.
+        eq(escalation.dedupe_key, escalationKey.githubRepo(slug)),
       ),
     );
 }

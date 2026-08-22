@@ -46,5 +46,5 @@ test("a streaming partial frame only changes the row being streamed into", () =>
   // The row that never changed keeps the exact same PanelFrame reference (memo bails).
   expect(staticRowAfter.f).toBe(staticRow.f);
   // The streaming row is a new object (it must re-render), same id though (no remount).
-  expect(streamedRow.f.text).toBe("hello");
+  expect(streamedRow.f.body).toBe("hello");
 });

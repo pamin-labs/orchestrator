@@ -1,14 +1,16 @@
 # Decisions
 
-开发期的设计变更记录。一个文件一个决策，命名 `NNN-kebab-title.md`。
+Design changes made while building this. One decision per file, named `NNN-kebab-title.md`.
 
-**和运行期的 `note(kind=decision)` 不是一回事** —— 那个是 agent 在做项目时产生的决策记录，这个是我们开发 orchestrator 本身时的决策。
+**Not the same thing as a runtime `note(kind=decision)`** — that is a decision an agent recorded while working a project; this is a decision made while building the orchestrator itself.
 
-格式（保持短——**能装下证据的最短长度**，不是一个行数）：
+Format — keep it short, meaning **as short as the evidence fits in**, not a line count:
 
-「≤10 行」曾经写在这里，而实际的中位数在 25 行以上，最长一条 372 行。一条没人
-遵守的规则不会让文档变短，只会让下一个人要么忽略它、要么为了守它删掉度量数据。
-真正的判据是：读的人能不能不去翻代码就知道当时为什么这么定，以及什么条件下该重估。
+"≤10 lines" used to be written here while the actual median was over 25 and the
+longest was 372. A rule nobody follows does not shorten anything; it teaches the
+next person either to ignore it or to delete the measurements to meet it. The
+real test is whether a reader can tell, without opening the code, why it was
+decided that way and what would make it worth revisiting.
 
 ```markdown
 # 001 Use bun instead of node
@@ -22,4 +24,4 @@ Node would need better-sqlite3 + a server framework.
 **Consequence**: bun becomes a hard dependency; no build step needed.
 ```
 
-初始设计决策全部在 `docs/project/plan.md` 里，不重复记录。这里只记**开发过程中偏离 `docs/project/plan.md` 的地方**。
+The initial design decisions all live in `docs/project/plan.md` and are not repeated here. This directory records **where the build departed from `docs/project/plan.md`**.

@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { createElement } from "react";
-import { cleanup, render as mount } from "../support/render.tsx";
+import { cleanup, render as mount, shown } from "../support/render.tsx";
 import { emptyState } from "../../web/src/shared/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { Progress } from "../../web/src/features/progress/view.tsx";
@@ -33,17 +33,14 @@ const render = (state = emptyState(), tab: string | null = null) => {
   );
 };
 
-const shown = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
-
 test("an empty project still teaches the interface", () => {
   // This used to return one sentence in place of the whole view. The sentence
   // was right and the early return was not, so the onboarding line now comes
   // from `emptyOf("live")` inside the bucket that is actually empty — which is
   // where PRODUCT.md wants it: the empty screen still teaches the interface.
   //
-  // 耗时 is no longer asserted here because it is no longer a tab. It sits in
-  // the top nav beside 需求, a rank up: a project's spans are mostly routes and
+  // `Time` is no longer asserted here because it is no longer a tab. It sits in
+  // the top nav beside `Requirement`, a rank up: a project's spans are mostly routes and
   // container operations belonging to no requirement, so "where did this
   // project's time go" is a sibling of "which requirements are running" rather
   // than a detail inside it.

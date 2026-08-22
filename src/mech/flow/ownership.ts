@@ -1,3 +1,5 @@
+import { msg } from "@lingui/core/macro";
+import type { Said } from "../../contracts/said.ts";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { grp } from "../../platform/persistence/schema.ts";
@@ -125,7 +127,7 @@ export interface StartCheck {
   conflicts: OwnershipConflict[];
   /** Shared paths this group tried to claim; those belong to nobody. */
   sharedClaimed: string[];
-  reason?: string;
+  reason?: Said;
 }
 
 /**
@@ -166,9 +168,7 @@ function undeclaredStart(owns: string[], others: OtherOwner[]): StartCheck | nul
     ok: false,
     conflicts: [],
     sharedClaimed: [],
-    reason:
-      `no owned paths declared, and ${declared.map(({ name }) => name).join(", ")} ` +
-      `already hold theirs — the Architect has to cut the boundary before work starts`,
+    reason: msg`no owned paths declared, and ${{ holders: declared.map(({ name }) => name).join(", ") }} already hold theirs — the Architect has to cut the boundary before work starts`,
   };
 }
 
@@ -184,7 +184,7 @@ async function sharedStart(db: DB, grpId: number, projectId: number, owns: strin
     ok: false,
     conflicts: [],
     sharedClaimed: claimed,
-    reason: `these belong to no group: ${claimed.join(", ")} — changes there go through the boss or the Architect`,
+    reason: msg`these belong to no group: ${{ paths: claimed.join(", ") }} — changes there go through the boss or the Architect`,
   };
 }
 
@@ -212,7 +212,7 @@ export async function canStart(db: DB, grpId: number): Promise<StartCheck> {
       ok: false,
       conflicts: [],
       sharedClaimed: [],
-      reason: "no such group",
+      reason: msg`no such group`,
     };
 
   // `inArray(grp.status, WRITING)` binds the five states as placeholders, so the
@@ -240,7 +240,7 @@ export async function canStart(db: DB, grpId: number): Promise<StartCheck> {
       ok: false,
       conflicts,
       sharedClaimed: [],
-      reason: `${c.mine} overlaps ${c.theirs} owned by ${c.name} — wait for it, or ask the Architect for a different split`,
+      reason: msg`${{ mine: c.mine }} overlaps ${{ theirs: c.theirs }} owned by ${{ name: c.name }} — wait for it, or ask the Architect for a different split`,
     };
   }
   return startOk();

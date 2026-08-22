@@ -65,12 +65,12 @@ function counting(inner: SpanExporter): SpanExporter {
  *
  * Both destinations are batched through the same `BatchSpanProcessor` and the same
  * bounds, because the reason is the same in both cases: export is a side channel,
- * and the work being traced must not wait on it or slow down with it. SQLite being
- * faster than an HTTP collector changes how often the queue fills, not whether
- * `onEnd` should be writing to a file at all.
+ * and the work being traced must not wait on it or slow down with it. A local
+ * write being faster than an HTTP collector changes how often the queue fills,
+ * not whether `onEnd` should be doing the write at all.
  */
 /**
- * The SQLite one is unconditional: the panel is the one consumer that is always
+ * The stored one is unconditional: the panel is the one consumer that is always
  * present, and a boss asking where a requirement's time went has no collector to
  * ask. The OTLP one is added beside it only when an endpoint is configured, so with
  * no endpoint nothing is sent and no socket is opened.

@@ -3,29 +3,48 @@ import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { Tab, TabList, TabPanel, Tabs } from "../../ui/tabs";
 import { Tip } from "../../ui/tooltip";
-import { prUrl } from "../../shared/select";
+import { STOPS, countWaiting, gates, heldApproved, prUrl, statusLabel } from "../../shared/select";
+import { cardGoal } from "../../shared/prose";
 import type { Archived, Group, Slice, State } from "../../shared/api";
 import { usePaged } from "../../shared/page";
-import { STOPS, countWaiting, gates, heldApproved, statusLabel } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
+import { Plural, Trans, useLingui } from "@lingui/react/macro";
+import { msg, t } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
 
 /** Requirements are state-filtered, paged, and counted on their tabs. */
 
 interface Bucket {
   key: string;
-  zh: string;
+  label: MessageDescriptor;
   of: string[];
   mine?: boolean;
 }
 
-/** 待办 renders the boss queue; 进行中 owns every undelivered requirement. */
+/** `To do` renders the boss queue; `In progress` owns every undelivered requirement. */
 const BUCKETS: Bucket[] = [
-  { key: "mine", zh: "待办", of: [], mine: true },
-  { key: "live", zh: "进行中", of: ["RUNNING", "PLANNING", "PAUSING", "DRAFT", "PR_OPEN"] },
-  { key: "held", zh: "停着", of: ["PAUSED", "PARKED"] },
+  { key: "mine", label: msg`To do`, of: [], mine: true },
+  { key: "live", label: msg`In progress`, of: ["RUNNING", "PLANNING", "PAUSING", "DRAFT", "PR_OPEN"] },
+  { key: "held", label: msg`Stopped`, of: ["PAUSED", "PARKED"] },
 ];
 const DONE = "done";
+
+/**
+ * A placeholder takes the name of the expression that fills it, so
+ * `value={facts.waiting}` reaches a translator as `{0}` and a parameter reaches
+ * them as itself — which is the whole of the context they get for a plural.
+ */
+const AwaitingBadge = ({ waiting }: { waiting: number }) => (
+  <Badge tone="mine">
+    <Plural value={waiting} one="# slice awaiting acceptance" other="# slices awaiting acceptance" />
+  </Badge>
+);
+
+const SliceCount = ({ n }: { n: number }) => <Plural value={n} one="# slice" other="# slices" />;
+
+/** `Accepted 3/7`, in one message rather than three fragments. */
+const acceptedOf = (done: number, total: number): string => t`accepted ${done}/${total}`;
 
 export function Progress({
   st,
@@ -43,9 +62,10 @@ export function Progress({
   /** From the hash, so it survives opening a requirement and coming back. */
   tab: string | null;
   onTab: (t: string) => void;
-  /** What needs the boss. Rendered as the 待办 tab, not above it. */
+  /** What needs the boss. Rendered as the `To do` tab, not above it. */
   queue?: React.ReactNode;
 }) {
+  const { t } = useLingui();
   const groups = st.groups.filter((g) => g.project_id === projectId);
   const archived = (st.archived ?? []).filter((a) => a.project_id === projectId);
   // A group already approved is not the boss's to act on: it belongs with the
@@ -63,7 +83,7 @@ export function Progress({
     : (BUCKETS.slice(1).find((b) => of(b).length)?.key ?? (archived.length ? DONE : "live"));
 
   // No early return for "this project has no requirements". It said, in its own
-  // words, what `emptyOf("live")` already says inside the 进行中 bucket.
+  // words, what `emptyOf("live")` already says inside the `In progress` bucket.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Tabs value={tab ?? fallback} onValueChange={onTab} className="flex min-h-0 flex-1 flex-col">
@@ -75,19 +95,23 @@ export function Progress({
               count={b.mine ? todo : of(b).length}
               {...(b.mine !== undefined ? { mine: b.mine } : {})}
             >
-              {b.zh}
+              {t(b.label)}
             </Tab>
           ))}
           <Tab value={DONE} count={archived.length}>
-            已交付
+            <Trans>Done</Trans>
           </Tab>
           <span className="grow" />
           {/* The slot cap is why an approved requirement can sit still: queued, not
             stuck. Without it that difference is invisible. */}
           {maxGroups != null && (
-            <Tip label={`并发上限 ${maxGroups} 组。满了已批准的需求排队等槽位，不是卡住了。`}>
+            <Tip
+              label={t`At most ${maxGroups} groups at once. When it is full, approved requirements queue for a slot rather than being stuck.`}
+            >
               <Meta className={cn("self-center underline decoration-dotted", live >= maxGroups && "text-warn")}>
-                并行 {live}/{maxGroups}
+                <Trans>
+                  running {live}/{maxGroups}
+                </Trans>
               </Meta>
             </Tip>
           )}
@@ -108,12 +132,12 @@ export function Progress({
   );
 }
 
-/** Absence, with the reason it is absent. A bare "无" teaches nothing. */
+/** Absence, with the reason it is absent. A bare "none" teaches nothing. */
 function emptyOf(key: string): string {
   // No `mine` case: that bucket renders the queue, which carries its own empty
   // line. The copy that lived here was a second, drifting version of it.
-  if (key === "live") return "没有在办的需求。右上角 ＋ 新需求。";
-  return "没有停着的需求。预算用尽、或等你答问题超过 2 小时会封存到这里，工作不丢。";
+  if (key === "live") return t`No requirements in progress. Click + for a new one in the top right.`;
+  return t`No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept.`;
 }
 
 function List({
@@ -136,7 +160,9 @@ function List({
       ))}
       {rest > 0 && (
         <Button variant="quiet" size="sm" className="mt-2" onClick={more}>
-          还有 {rest} 个（共 {total}）
+          <Trans>
+            {rest} more of {total}
+          </Trans>
         </Button>
       )}
     </>
@@ -166,15 +192,29 @@ function rowFacts(st: State, group: Group): RowFacts {
 
 function rowBody(group: Group, facts: RowFacts): React.ReactNode {
   if (group.status === "PLANNING")
-    return <span className="text-secondary text-ink-3">Dispatcher 在深挖，还没有切片</span>;
-  if (heldApproved(group)) return <span className="text-secondary text-ink-3">已批准，边界让开就自动开工</span>;
+    return (
+      <span className="text-secondary text-ink-3">
+        <Trans>Dispatcher is analyzing; no slices yet</Trans>
+      </span>
+    );
+  if (heldApproved(group))
+    return (
+      <span className="text-secondary text-ink-3">
+        <Trans>Approved; starts automatically when boundaries clear</Trans>
+      </span>
+    );
   if (group.status === "DRAFT") {
     const goal = facts.card
-      ? (facts.card.body.split("\n").find((line) => line.startsWith("目标")) ?? "计划卡待批")
-      : "计划卡还没交";
+      ? cardGoal(facts.card.body) || t`Plan card pending approval`
+      : t`Plan card not submitted yet`;
     return <span className="block truncate text-secondary text-ink-2">{goal}</span>;
   }
-  if (!facts.slices.length) return <span className="text-secondary text-ink-3">无切片</span>;
+  if (!facts.slices.length)
+    return (
+      <span className="text-secondary text-ink-3">
+        <Trans>No slices</Trans>
+      </span>
+    );
   return (
     <div className="flex flex-wrap items-stretch gap-1.5">
       {facts.slices.map((slice) => (
@@ -197,8 +237,12 @@ function RowFlags({ st, group, facts }: { st: State; group: Group; facts: RowFac
   const url = group.status === "PR_OPEN" ? prUrl(st, group) : null;
   return (
     <span className="flex items-center gap-2 whitespace-nowrap">
-      {facts.broke && <Badge tone="mine">预算用尽</Badge>}
-      {facts.waiting > 0 && <Badge tone="mine">{facts.waiting} 片待查收</Badge>}
+      {facts.broke && (
+        <Badge tone="mine">
+          <Trans>Budget exhausted</Trans>
+        </Badge>
+      )}
+      {facts.waiting > 0 && <AwaitingBadge waiting={facts.waiting} />}
       {group.status === "PR_OPEN" &&
         (url ? (
           <Badge
@@ -210,10 +254,12 @@ function RowFlags({ st, group, facts }: { st: State; group: Group; facts: RowFac
               window.open(url, "_blank", "noopener");
             }}
           >
-            去合并 PR ↗
+            <Trans>Go merge PR ↗</Trans>
           </Badge>
         ) : (
-          <Badge tone="mine">PR 待合入</Badge>
+          <Badge tone="mine">
+            <Trans>PR pending merge</Trans>
+          </Badge>
         ))}
       <Meta>{group.branch ?? ""}</Meta>
     </span>
@@ -241,7 +287,7 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
         </div>
         <Meta>
           {statusLabel(g)}
-          {facts.slices.length ? ` · 已查收 ${facts.done}/${facts.slices.length}` : ""}
+          {facts.slices.length ? ` · ${acceptedOf(facts.done, facts.slices.length)}` : ""}
           {g.spent_tokens ? ` · ${K(g.spent_tokens)} tokens` : ""}
         </Meta>
       </div>
@@ -255,8 +301,8 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
 }
 
 function sliceMark(slice: Slice): string {
-  if (slice.status === "awaiting_boss") return "待查收";
-  const marks: Partial<Record<Slice["status"], string>> = { accepted: "✓", rejected: "退回", pending: "等" };
+  if (slice.status === "awaiting_boss") return t`Pending`;
+  const marks: Partial<Record<Slice["status"], string>> = { accepted: "✓", rejected: t`Rejected`, pending: t`Waiting` };
   return marks[slice.status] ?? "";
 }
 
@@ -308,11 +354,15 @@ function Seg({ s }: { s: Slice }) {
   );
 }
 
-/** Delivered work. 收尾 dissolves the group, and it used to leave no trace at all. */
+/** Delivered work. Winding up dissolves the group, and it used to leave no trace at all. */
 function Done({ rows }: { rows: Archived[] }) {
   const { page, rest, more, total } = usePaged(rows, 25);
   if (!rows.length) {
-    return <div className="text-body text-ink-3">还没有交付过。合入 main 之后的需求归档到这里。</div>;
+    return (
+      <div className="text-body text-ink-3">
+        <Trans>No deliveries yet. Requirements are archived here after merging to main.</Trans>
+      </div>
+    );
   }
   return (
     <>
@@ -325,12 +375,16 @@ function Done({ rows }: { rows: Archived[] }) {
             {a.name}
             {a.pr_number ? <Meta className="ml-2">#{a.pr_number}</Meta> : null}
           </span>
-          <Meta>{a.slices} 片</Meta>
+          <Meta>
+            <SliceCount n={a.slices} />
+          </Meta>
         </div>
       ))}
       {rest > 0 && (
         <Button variant="quiet" size="sm" className="mt-2" onClick={more}>
-          还有 {rest} 个（共 {total}）
+          <Trans>
+            {rest} more of {total}
+          </Trans>
         </Button>
       )}
     </>

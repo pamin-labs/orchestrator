@@ -14,6 +14,7 @@ import {
 } from "../../mech/skills.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
+import { msg } from "@lingui/core/macro";
 import { bad, json } from "../../http/respond.ts";
 import { expandHome } from "./attach.ts";
 import { errText } from "../../platform/process/text.ts";
@@ -103,7 +104,7 @@ export const getNotes = (async (ctx, _req, _params, query) => {
  * mounted into every group of every project, so the list exists before any
  * project does. A project only adds its own repository's skills on top. This was
  * the one required `project` in the panel API while every sibling query made it
- * optional, so opening 技能 with no project selected answered a Zod error.
+ * optional, so opening `Skills` with no project selected answered a Zod error.
  */
 export const SkillsQuery = z.object({ project: z.coerce.number().int().positive().optional() });
 
@@ -185,7 +186,7 @@ export const getDirs = (async (ctx, _req, _params, query) => {
   try {
     entries = readdirSync(path, { withFileTypes: true });
   } catch (e) {
-    return bad(`${path}: ${errText(e)}`);
+    return bad(msg`${{ path }}: ${{ error: errText(e) }}`);
   }
   const taken = new Set((await ctx.db.select({ repo_path: project.repo_path }).from(project)).map((r) => r.repo_path));
   const dirs = entries

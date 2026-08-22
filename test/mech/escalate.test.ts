@@ -4,7 +4,7 @@ import { asc, eq } from "drizzle-orm";
 import { join } from "node:path";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { escalation } from "../../src/platform/persistence/schema.ts";
-import { raise } from "../../src/mech/flow/escalate.ts";
+import { escalationKey, raise } from "../../src/mech/flow/escalate.ts";
 import * as fx from "../support/factories.ts";
 
 const rows = (db: DB) =>
@@ -90,10 +90,10 @@ test("raise owns the filing defaults and preserves explicit fields", async () =>
 
 test("global dedupe is independent of the group attached to the row", async () => {
   const db = await seeded();
-  const dedupe = { prefix: "claude credential", scope: "global" } as const;
+  const ask = { key: escalationKey.auth("claude"), dedupe: { scope: "global" } } as const;
 
-  expect(await raise(db, { grpId: 1, question: "claude credential expired", dedupe })).toBeNumber();
-  expect(await raise(db, { grpId: 2, question: "claude credential refused", dedupe })).toBeNull();
+  expect(await raise(db, { ...ask, grpId: 1, question: "claude credential expired" })).toBeNumber();
+  expect(await raise(db, { ...ask, grpId: 2, question: "claude credential refused" })).toBeNull();
   expect((await rows(db)).map((r) => r.grp_id)).toEqual([1]);
 });
 
@@ -102,8 +102,9 @@ test("group dedupe suppresses one group without hiding another", async () => {
   const ask = (grpId: number, suffix: string) =>
     raise(db, {
       grpId,
-      question: `budget: ${suffix}`,
-      dedupe: { prefix: "budget:", scope: "group", grpId },
+      question: `out of budget: ${suffix}`,
+      key: escalationKey.budget,
+      dedupe: { scope: "group", grpId },
     });
 
   expect(await ask(1, "first")).toBeNumber();
@@ -114,8 +115,12 @@ test("group dedupe suppresses one group without hiding another", async () => {
 
 test("answered and revoked questions re-arm the same subject", async () => {
   const db = await seeded();
-  const dedupe = { prefix: "GitHub me/x:", scope: "global" } as const;
-  const ask = () => raise(db, { question: "GitHub me/x: unavailable", dedupe });
+  const ask = () =>
+    raise(db, {
+      question: "GitHub me/x: unavailable",
+      key: escalationKey.githubRepo("me/x"),
+      dedupe: { scope: "global" },
+    });
 
   expect(await ask()).toBeNumber();
   expect(await ask()).toBeNull();
@@ -126,17 +131,38 @@ test("answered and revoked questions re-arm the same subject", async () => {
   expect(await rows(db)).toHaveLength(3);
 });
 
-test("dedupe prefixes are literal data, not LIKE patterns", async () => {
+test("the wording of a question is not its identity", async () => {
+  // The whole point of `dedupe_key`. Every sentence here is different from every
+  // other and none of them is what the product ships; the key is the same one,
+  // and that is what decides. Before this column the second call would have filed
+  // a second row, because `starts_with(question, prefix)` found nothing.
   const db = await seeded();
-  for (const [prefix, near] of [
-    ["rate%limit", "rateXlimit"],
-    ["under_score", "underXscore"],
-    [String.raw`path\\name`, String.raw`pathXname`],
-    ["quote' OR 1=1 --", "different"],
+  const ask = (question: string) =>
+    raise(db, { question, key: escalationKey.auth("claude"), dedupe: { scope: "global" } });
+
+  expect(await ask("The claude credential stopped working")).toBeNumber();
+  expect(await ask("Клод больше не принимает этот логин")).toBeNull();
+  expect(await ask("something else entirely, rewritten by a translator")).toBeNull();
+  expect(await rows(db)).toHaveLength(1);
+});
+
+test("a key with SQL metacharacters in it is compared literally", async () => {
+  // A repository slug or a provider name is interpolated into a key, and `%`,
+  // `_` and `\\` are ordinary characters in one. They were the reason the old
+  // matchers had to use `starts_with` and hand-escaped `LIKE`; an `=` has no
+  // pattern to escape, and this states that rather than assuming it.
+  const db = await seeded();
+  for (const [slug, near] of [
+    ["me/rate%limit", "me/rateXlimit"],
+    ["me/under_score", "me/underXscore"],
+    [String.raw`me/path\\name`, String.raw`me/pathXname`],
+    ["me/quote' OR 1=1 --", "me/different"],
   ] as const) {
-    expect(await raise(db, { question: `${near}: first`, dedupe: { prefix, scope: "global" } })).toBeNumber();
-    expect(await raise(db, { question: `${prefix}: exact`, dedupe: { prefix, scope: "global" } })).toBeNumber();
-    expect(await raise(db, { question: `${prefix}: again`, dedupe: { prefix, scope: "global" } })).toBeNull();
+    const ask = (s: string, q: string) =>
+      raise(db, { question: q, key: escalationKey.githubRepo(s), dedupe: { scope: "global" } });
+    expect(await ask(near, "a nearby repository")).toBeNumber();
+    expect(await ask(slug, "this repository")).toBeNumber();
+    expect(await ask(slug, "this repository again")).toBeNull();
   }
   expect(await rows(db)).toHaveLength(8);
 });
@@ -153,17 +179,16 @@ test("runtime escalation rows can only be filed through raise", () => {
   expect(offenders).toEqual([]);
 });
 
-test("dynamic escalation subjects are never matched as LIKE patterns", () => {
-  // Repository slugs and provider names may contain `_`, which LIKE treats as a
-  // one-character wildcard. Filing already compares literal prefixes; every
-  // reverse path that answers or revokes one must use the same identity rule.
-  // Drizzle spells it `like(escalation.question, …)`, and a constant pattern is
-  // fine — what must not appear is an interpolated one with no escape in it.
-  const offenders = sources().flatMap((source) => [
-    ...[...source.text.matchAll(/\b(?:question|brief|kind)\s+LIKE\s+\?/gi)].map(() => source.path),
-    ...[...source.text.matchAll(/\blike\(\s*escalation\.\w+,[^\n]*/gi)]
-      .filter((m) => m[0].includes("${") && !m[0].includes(String.raw`[%_\\]`))
-      .map(() => source.path),
-  ]);
+test("no SQL compares the prose of a question", () => {
+  // This is the rule the column exists for, and it is stated over the whole tree
+  // rather than over the five matchers that had to be fixed — the sixth is the
+  // one that will not remember. `question` and `brief` are sentences a translator
+  // may rewrite, so a predicate over either is a matcher that fails silently the
+  // next time somebody improves the wording. `dedupe_key` is what compares.
+  const compares =
+    /\b(?:like|ilike|starts_with|substr|position|left|right)\s*\(\s*(?:sql`\s*)?\$?\{?\s*escalations?\.(question|brief)\b/gi;
+  const offenders = sources().flatMap((source) =>
+    [...source.text.matchAll(compares)].map((m) => `${source.path}: ${m[1]}`),
+  );
   expect(offenders).toEqual([]);
 });

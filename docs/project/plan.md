@@ -76,7 +76,7 @@ src/http/routes
    -> src/api/panel | src/api/orch
    -> src/mech
    -> src/runtime and external adapters
-   -> SQLite | OpenSandbox | GitHub | provider CLI
+   -> PostgreSQL | OpenSandbox | GitHub | provider CLI
 ```
 
 The detailed dependency, data-flow, API, error, async, state, security,
@@ -106,10 +106,18 @@ observability, performance, and compatibility contracts are linked from
 5. Ship `/api/v1/*` and `/orch/v1/*` without legacy aliases.
 6. Add consistent errors, cancellation, idempotency, readiness, metrics, and
    graceful shutdown where the runtime requires them.
-7. Remove redundant tests, add focused property tests, and reduce median suite
-   time by at least 35% or to at most eight seconds.
+7. Remove redundant tests, add focused property tests, and keep the suite's wall
+   clock proportional to what it actually does. The "at most eight seconds"
+   written here was set against an in-process SQLite; tests talk to a real
+   PostgreSQL in a container now, one schema per worker, which is a floor this
+   target predates. What is held is the shape — no redundant test, no sleep for
+   synchronisation, and a run that says which file is slow.
 8. Replace mutating CI and release workflows with read-only PR checks and
    immutable, attested releases.
+9. The panel and everything the server says to a person read in ten languages:
+   the server names a sentence, the reader's own catalogue renders it. Which
+   text follows which language is [ADR 035](../adr/035-language-follows-who-wrote-it.md) §3;
+   how it is wired is [ADR 044](../adr/044-what-the-panel-and-the-server-actually-say.md).
 
 Acceptance and measured status for the active milestone live in
 `docs/project/progress.md`.

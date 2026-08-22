@@ -5,9 +5,12 @@ import {
   findById,
   isHome,
   navigationShortcut,
+  nextSelection,
   repairMissingGroup,
   projectForGroup,
   scrollClass,
+  type Selection,
+  selectionHash,
   settingsInitial,
   showNewRequirement,
   showRequirementCrumb,
@@ -47,7 +50,7 @@ describe("a requirement keeps its project's tab lit", () => {
 });
 
 /**
- * A link into 记录 on a machine with no project has nowhere to land, and the
+ * A link into `Notes` on a machine with no project has nowhere to land, and the
  * fallback has to happen here rather than at each view.
  */
 describe("no project is home, whatever the hash asked for", () => {
@@ -189,4 +192,29 @@ describe("⌘K opens the picker that has something in it", () => {
   ] as const)("%s", (_case, view, g, shortcut) => {
     expect(press("k", view, g)).toBe(shortcut);
   });
+});
+
+/**
+ * A tab belongs to the view it was opened in.
+ *
+ * `t` is a tab *within* a view, and it used to survive every navigation: the
+ * host banner's "fix this" landed on `#v=settings&t=done&s=server`, naming a tab
+ * the settings view does not have. The rule is in the model rather than at each
+ * caller because the callers are where it kept being forgotten — the header's
+ * own buttons pass `t: null` by hand, and the twenty-fifth one will not.
+ */
+test("changing view drops the tab the previous view was on", () => {
+  const at: Selection = { p: 1, view: "notes", g: null, t: "done", s: null };
+  expect(nextSelection(at, { view: "settings", s: "server" }).t).toBeNull();
+  // And the hash follows, which is the surface the boss actually reads.
+  expect(selectionHash(nextSelection(at, { view: "settings", s: "server" }))).toBe("#p=1&v=settings&s=server");
+});
+
+test("staying on a view keeps its tab, and an explicit tab still wins", () => {
+  const at: Selection = { p: 1, view: "notes", g: null, t: "done", s: null };
+  // Same view, so nothing about the tab was said and nothing changes.
+  expect(nextSelection(at, { p: 2 }).t).toBe("done");
+  // A patch that names the tab is applied last, so a caller can still land on
+  // one deliberately — which is what the header's own buttons do.
+  expect(nextSelection(at, { view: "req", t: "held" }).t).toBe("held");
 });

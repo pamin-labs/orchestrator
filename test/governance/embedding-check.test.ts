@@ -18,7 +18,7 @@ const scored = [
 ];
 
 test("the recorded failure is read as a failure", () => {
-  // 英-沙盒 (0.764) against 中-迁移 (0.845): the relevant other-language passage
+  // The English sandbox passage (0.764) against the Chinese migration one (0.845): the relevant other-language passage
   // loses to the irrelevant same-language one, which is what ADR 031 measured.
   expect(crossesLanguages(scored, { lang: "zh", topic: "sandbox" })).toBe(false);
 });

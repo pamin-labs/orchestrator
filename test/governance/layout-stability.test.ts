@@ -9,7 +9,7 @@ import { expect, test } from "bun:test";
 /**
  * Radix locks body scroll while a dialog is open. Without a reserved gutter that
  * takes the scrollbar's column away and hands it to the content, so every element
- * measured by a `ResizeObserver` re-lays out — on 耗时 that is both charts at once,
+ * measured by a `ResizeObserver` re-lays out — on `Time` that is both charts at once,
  * which is what 「打开设置闪一下」 was. The charts are not at fault; they are responding
  * to a width that genuinely changed.
  */

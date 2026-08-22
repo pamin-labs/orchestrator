@@ -37,7 +37,7 @@ export const gateTemplate = (resources: Resource[], name: string): string =>
  *
  * Null rather than the same array: the caller writes what it gets back, and a
  * drag that ends where it started would otherwise be a save, a refetch, and a
- * 已保存 for a list identical to the one already stored.
+ * a saved confirmation for a list identical to the one already stored.
  */
 export function moveGate(list: string[], from: number, to: number): string[] | null {
   if (from < 0 || to < 0 || from === to || to >= list.length) return null;

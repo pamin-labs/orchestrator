@@ -1,3 +1,4 @@
+import { msg, plural } from "@lingui/core/macro";
 import { transaction } from "../../platform/persistence/database.ts";
 import { and, asc, count, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
@@ -12,7 +13,7 @@ import {
   task,
 } from "../../platform/persistence/schema.ts";
 import type { Config } from "../../platform/config/load.ts";
-import { say } from "../../platform/text/lang.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
 import { valueOr } from "../../contracts/json.ts";
 import type { SliceState } from "../../contracts/states.ts";
 import { runGates, recordGate, gateState } from "../gate.ts";
@@ -24,6 +25,7 @@ import { joinQueue, position } from "./mergequeue.ts";
 import { hold } from "./intercept.ts";
 import { raise } from "./escalate.ts";
 import { z } from "zod";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /**
  * Slice-level review, in the one order that makes sense.
@@ -133,7 +135,13 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      body: say(ctx.config.language, "gate.reconcile", { seq: slice.seq, reason: rec.reason ?? "" }),
+      // `rec.reason` is prose we wrote, so it stays out of the descriptor and the
+      // two failing shapes get a key each. Both are reachable: every `pass: false`
+      // from `reconcile` either names phantom files or claimed nothing at all.
+      // Paths are values; a sentence would be one sentence in two languages.
+      say: rec.phantom.length
+        ? msg`reconcile failed on S${{ seq: slice.seq }}: claimed but not changed — ${{ files: rec.phantom.join(", ") }}`
+        : msg`reconcile failed on S${{ seq: slice.seq }}: nothing was claimed and nothing changed`,
       meta: { slice_id: sliceId, phantom: rec.phantom },
     });
     return {
@@ -160,7 +168,7 @@ export async function runDeterministicReview(
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "gate_result",
-    body: say(ctx.config.language, out.pass ? "gate.pass" : "gate.fail", { seq: slice.seq }),
+    say: out.pass ? msg`gate pass on S${{ seq: slice.seq }}` : msg`gate fail on S${{ seq: slice.seq }}`,
     meta: { slice_id: sliceId, results: out.results.map((r) => ({ name: r.name, pass: r.pass })) },
   });
   if (!out.pass) return { pass: false, feedback: out.feedback };
@@ -171,10 +179,7 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      body: say(ctx.config.language, "gate.unclaimed", {
-        seq: slice.seq,
-        files: rec.unclaimed.slice(0, 10).join(", "),
-      }),
+      say: msg`also changed on S${{ seq: slice.seq }}, unclaimed: ${{ files: rec.unclaimed.slice(0, 10).join(", ") }}`,
       meta: { slice_id: sliceId },
     });
   }
@@ -224,13 +229,14 @@ export async function sendBack(deps: ReviewDeps, sliceId: number, feedback: stri
     // usually means the acceptance criteria are wrong, not the code.
     // 'boss', not the default 'pm'. The next line pauses the group, so the PM this
     // was addressed to cannot run — the question sat at chain_state='pm' forever,
-    // never reached 待你决策, and the only visible symptom was a paused group with
+    // never reached `Awaiting your decision`, and the only visible symptom was a paused group with
     // no reason attached. Observed on pm-ai-agent: a blocker filed two hours
     // earlier that the boss had no way to see.
     await raise(ctx.db, {
       grpId: slice.grp_id,
-      question: `S${slice.seq} "${slice.title}" failed ${from} ${retries} times. Latest:\n${feedback}`,
-      brief: `S${slice.seq} 连着 ${retries} 次没过 ${from}`,
+      lang: outputLanguage(ctx.config),
+      question: msg`S${{ seq: slice.seq }} "${{ title: slice.title }}" failed ${{ from }} ${{ n: retries }} times. Latest:\n${{ feedback }}`,
+      brief: msg`S${{ seq: slice.seq }} failed ${{ from }} ${{ n: retries }}x in a row`,
       kind: "spec",
       chain: "boss",
     });
@@ -242,7 +248,7 @@ export async function sendBack(deps: ReviewDeps, sliceId: number, feedback: stri
       kind: "escalation",
       intent: "ask",
       severity: "blocker",
-      body: say(ctx.config.language, "slice.failed", { seq: slice.seq, from, n: retries }),
+      say: msg`S${{ seq: slice.seq }} failed ${{ from }} ${{ n: retries }}x — probably the acceptance criteria, not the code`,
       meta: { slice_id: sliceId },
     });
     return;
@@ -257,7 +263,7 @@ export async function sendBack(deps: ReviewDeps, sliceId: number, feedback: stri
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "slice.sentback", { seq: slice.seq, from, n: retries }),
+    say: msg`S${{ seq: slice.seq }} sent back by ${{ from }} (attempt ${{ n: retries }})`,
     meta: { slice_id: sliceId },
   });
   await ctx.sched.tick();
@@ -320,7 +326,7 @@ export async function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number)
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "slice.ready", { seq: slice.seq, title: slice.title }),
+    say: msg`S${{ seq: slice.seq }} "${{ title: slice.title }}" is ready for you`,
     meta: { slice_id: sliceId, gates: await gateState(ctx.db, sliceId) },
   });
 
@@ -333,7 +339,7 @@ export async function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number)
       ctx,
       sliceId,
       "orchestrator",
-      say(ctx.config.language, "slice.autoaccept", { tier: slice.difficulty }),
+      renderSaid(outputLanguage(ctx.config), msg`${{ tier: slice.difficulty }} auto-accepted, all three gates passed`),
     );
     return;
   }
@@ -349,7 +355,7 @@ export async function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number)
         grpId: slice.grp_id,
         author: "orchestrator",
         kind: "state_change",
-        body: say(ctx.config.language, "group.autoadvance"),
+        say: msg`autoAdvance: started the next slice without waiting for you`,
         meta: { slice_id: next },
       });
       await ctx.sched.tick();
@@ -405,11 +411,11 @@ export async function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: s
     grpId: sl.grp_id,
     author: by,
     kind: "state_change",
-    body: say(ctx.config.language, "slice.accepted", {
-      seq: sl.seq,
-      title: sl.title,
-      why: why ? `（${why}）` : "",
-    }),
+    // Two keys rather than a bracket pair spliced in here: built at the call site
+    // the brackets were fullwidth, so the English row read `accepted: S3 t（why）`.
+    say: why
+      ? msg`accepted: S${{ seq: sl.seq }} ${{ title: sl.title }} (${{ why }})`
+      : msg`accepted: S${{ seq: sl.seq }} ${{ title: sl.title }}`,
     meta: { slice_id: sliceId, by },
   });
 
@@ -436,7 +442,7 @@ export async function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: s
         author: "orchestrator",
         kind: "state_change",
         severity: "warn",
-        body: `分支没推上远端（下一个切片验收时会再试）：${r.reason}`,
+        say: msg`the branch was not pushed to the remote, and the next slice's acceptance will try again: ${{ reason: r.reason ?? "" }}`,
       });
     })
     .catch(() => {
@@ -500,7 +506,8 @@ async function carryOver(db: DB, sliceId: number, grpId: number): Promise<void> 
     `Gates: ${JSON.stringify(sl.gates_json)}\n` +
     (decisions.length ? `What it settled:\n${decisions.map((d) => `- ${d}`).join("\n")}` : "");
 
-  await addNote(db, { grpId, sliceId, kind: "handoff", body });
+  // Assembled from English above, and read by the next slice's agent.
+  await addNote(db, { grpId, sliceId, kind: "handoff", body, lang: "en" });
 }
 
 /**
@@ -538,7 +545,7 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
       grpId,
       author: "orchestrator",
       kind: "state_change",
-      body: "no retro yet — the group cannot wind up without one",
+      say: msg`no retro yet — the group cannot wind up without one`,
     });
     await ctx.sched.tick();
     return;
@@ -558,7 +565,7 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
       grpId,
       author: "orchestrator",
       kind: "gate_result",
-      body: `branch gate failed:\n${gateOut.feedback}`,
+      say: msg`branch gate failed:\n${{ gates: gateOut.feedback }}`,
     });
     if (await branchRework(deps, grpId, "the branch gate", gateOut.feedback)) return;
     await ctx.sched.enqueue("agent_turn", {
@@ -604,10 +611,10 @@ export async function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolea
       grpId,
       author: roleFor(ctx, "audit_branch"),
       kind: "state_change",
-      body:
+      say:
         pos && pos.position > 1
-          ? `audit passed — queued to merge, ${pos.position} of ${pos.total}`
-          : "audit passed — ready for you to merge",
+          ? msg`audit passed — queued to merge, ${{ place: pos.position }} of ${{ total: pos.total }}`
+          : msg`audit passed — ready for you to merge`,
       meta: { audit: "pass", ...pos },
     });
     return;
@@ -645,8 +652,9 @@ async function branchRework(deps: ReviewDeps, grpId: number, from: string, why: 
   await hold(ctx.db, grpId, { reason: "escalation", settled: true });
   await raise(ctx.db, {
     grpId,
-    question: `整个分支被 ${from} 打回 ${n} 次了。多半是验收口径本身有问题，不是代码：\n${why}`,
-    brief: `整条分支被 ${from} 打回 ${n} 次`,
+    lang: outputLanguage(ctx.config),
+    question: msg`${{ from }} has sent the whole branch back ${{ n }} times. That is usually the acceptance criteria rather than the code:\n${{ why }}`,
+    brief: msg`the whole branch sent back ${{ n }}x by ${{ from }}`,
     kind: "spec",
     chain: "boss",
   });
@@ -656,7 +664,7 @@ async function branchRework(deps: ReviewDeps, grpId: number, from: string, why: 
     kind: "escalation",
     intent: "ask",
     severity: "blocker",
-    body: `branch sent back by ${from} ${n} times — stopping rather than paying for another round`,
+    say: msg`branch sent back by ${{ from }} ${plural({ n }, { one: "# time", other: "# times" })} — stopping rather than paying for another round`,
   });
   return true;
 }

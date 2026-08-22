@@ -88,29 +88,34 @@ test("signing in restarts what the credential stopped, and nothing else", async 
   expect(stillReasoned).toHaveLength(0);
 });
 
-test("signing in answers only the literal runtime's escalation", async () => {
+test("signing in answers the runtime's question whatever the question says", async () => {
+  // The two halves of this matcher live in two files — `executor.ts` files the
+  // question, `credentialChanged` closes it — and they used to agree on a Chinese
+  // sentence. Neither question below is the sentence the product ships, or is
+  // even in the same language, and the row is still found: `dedupe_key` is what
+  // the two halves agree on now. `a_b` against `axb` because a runtime name may
+  // contain `_`, which the `LIKE` this replaces would have read as a wildcard.
   const db = await openMemory();
   const f = fx.on(db);
-  for (const question of ["a_b 的凭据不好使了", "axb 的凭据不好使了"]) {
-    await f.escalation.create({ question, chain_state: "boss" });
-  }
+  await f.escalation.create({ question: "rewritten entirely", dedupe_key: "auth:a_b", chain_state: "boss" });
+  await f.escalation.create({ question: "переписано целиком", dedupe_key: "auth:axb", chain_state: "boss" });
   const ctx = await testContext({ db });
 
   await credentialChanged(ctx, "a_b");
 
   expect(
     await db
-      .select({ question: escalation.question, chain_state: escalation.chain_state })
+      .select({ dedupe_key: escalation.dedupe_key, chain_state: escalation.chain_state })
       .from(escalation)
       .orderBy(asc(escalation.id)),
   ).toEqual([
-    { question: "a_b 的凭据不好使了", chain_state: "answered" },
-    { question: "axb 的凭据不好使了", chain_state: "boss" },
+    { dedupe_key: "auth:a_b", chain_state: "answered" },
+    { dedupe_key: "auth:axb", chain_state: "boss" },
   ]);
 });
 
 test("nothing stops or starts a group without going through hold/release", () => {
-  // 硬约束 7 is here because three callers wrote PAUSING and forgot `paused_at`,
+  // Hard constraint 7 is here because three callers wrote PAUSING and forgot `paused_at`,
   // and every watchdog timer keys on it — the group went invisible to the park
   // timer, the nudge and the unpark at once while looking perfectly healthy.
   // `pause_reason` added a second field with the same property. Thirteen call

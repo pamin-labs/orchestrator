@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { State } from "../../shared/api";
 import { SectionSchema, type Section } from "../settings/model";
+import { msg, t } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
 
 const ViewSchema = z.enum([
   "home",
@@ -51,18 +53,18 @@ const DIALOG: Partial<Record<View, Section>> = {
   sandbox: "sandbox",
 };
 
-export const VIEWS: [View, string][] = [
-  ["progress", "需求"],
-  ["desk", "工位墙"],
-  ["notes", "记录"],
-  ["owns", "所有权"],
-  ["cost", "成本"],
-  // Top level, beside the other four. It was a tab inside 需求, one rank down,
+export const VIEWS: [View, MessageDescriptor][] = [
+  ["progress", msg`Requirement`],
+  ["desk", msg`Desk wall`],
+  ["notes", msg`Notes`],
+  ["owns", msg`Ownership`],
+  ["cost", msg`Cost`],
+  // Top level, beside the other four. It was a tab inside `Requirement`, one rank down,
   // which put "where did this project's wall clock go" underneath "which
   // requirements are running" — but a project's spans are every route and
   // container operation that named it, most of them belonging to no requirement
   // at all. It is a sibling question, not a detail of that one.
-  ["time", "耗时"],
+  ["time", msg`Time`],
 ];
 
 export const choose = <T>(condition: boolean, yes: T, no: T): T => (condition ? yes : no);
@@ -87,8 +89,10 @@ export const viewActive = (view: View, candidate: View): boolean =>
   view === candidate || (view === "req" && candidate === "progress");
 export const viewClass = (active: boolean): string =>
   active ? "border-accent font-medium text-ink" : "border-transparent text-ink-3 hover:text-ink";
-export const connectionText = (live: string): string => (live === "retry" ? "连接断了，重连中" : "连接中");
-export const sideText = (side: boolean): string => (side ? "收起事件流" : "展开事件流：谁跟谁说了什么，按时间倒序");
+export const connectionText = (live: string): string =>
+  live === "retry" ? t`Connection lost; reconnecting` : t`Connecting`;
+export const sideText = (side: boolean): string =>
+  side ? t`Collapse event stream` : t`Expand event stream: who said what to whom, newest first`;
 export const sideClass = (side: boolean): string => (side ? "text-ink" : "text-ink-3 hover:text-ink");
 export const settingsClass = (active: boolean): string => (active ? "text-ink" : "text-ink-3 hover:text-ink");
 export const scrollClass = (view: View): string =>
@@ -114,6 +118,22 @@ export function parseSelection(hash: string): Selection {
     s: SectionSchema.nullable().catch(null).parse(value.get("s")),
   };
 }
+
+/**
+ * The next selection, given a patch. One rule lives here: a tab belongs to the
+ * view it was opened in, so changing view drops it.
+ *
+ * In the model rather than at the callers because the callers are where it kept
+ * being forgotten — the header's buttons pass `t: null` by hand and the host
+ * banner's "fix this" did not, which left `#v=settings&t=done&s=server` in the
+ * bar, naming a tab the settings view does not have. A patch that says what `t`
+ * should be still wins: it is applied last.
+ */
+export const nextSelection = (current: Selection, patch: Partial<Selection>): Selection => ({
+  ...current,
+  ...(patch.view && patch.view !== current.view ? { t: null } : {}),
+  ...patch,
+});
 
 export function selectionHash(selection: Selection): string {
   const value = new URLSearchParams();
@@ -175,7 +195,7 @@ export function projectItem(project: State["projects"][number], waiting: number)
     name: same ? project.repo_path : project.name,
     ...(same ? {} : { meta: project.repo_path }),
     rtlMeta: true,
-    ...(waiting > 0 ? { badge: `${waiting} 件待办` } : {}),
+    ...(waiting > 0 ? { badge: t`${waiting} to do` } : {}),
   };
 }
 
@@ -192,7 +212,7 @@ export function requirementItem(group: State["groups"][number], status: string) 
 /**
  * It takes the **resolved** view, not `selection.view`, and that is the whole fix.
  * The raw value becomes `settings` the moment a dialog opens, so keying on it threw
- * away the page *behind* the dialog and rebuilt it: on 耗时 both charts and the table
+ * away the page *behind* the dialog and rebuilt it: on `Time` both charts and the table
  * vanished and came back as the modal appeared, each re-reading its endpoint.
  *
  * The project and the group stay in the key because those really are different

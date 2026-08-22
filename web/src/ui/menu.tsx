@@ -7,7 +7,7 @@ import { cn } from "./cn";
  * shadcn's dropdown menu, on our tokens.
  *
  * For the actions that are rare and consequential. Sitting in a header at the same
- * weight as 暂停 they read as ordinary, and one of them discards a turn's work — so
+ * weight as `Pause` they read as ordinary, and one of them discards a turn's work — so
  * they go behind one click, each with a line saying what it actually does.
  */
 export function Menu({ label, children }: { label: string; children: React.ReactNode }) {

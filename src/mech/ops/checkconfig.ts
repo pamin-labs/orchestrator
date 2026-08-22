@@ -26,6 +26,15 @@ export interface Finding {
   level: Level;
   /** Dotted path, as it is written in the yaml. */
   key: string;
+  /**
+   * English, and not a `Said`. ADR 035 §3 sorts by who reads a string and where,
+   * and the only reader is `reportConfig` in `composition/server.ts`: it writes
+   * these to the console at boot and `process.exit(1)`s on a fatal one. That is
+   * the reason rather than "no route serves them" — at the moment one is read
+   * there is no panel to draw it in. `preflight.ts` is the contrast: it runs on
+   * the readiness timer with the server up and a browser attached, which is why
+   * its `Check` carries a descriptor and this does not.
+   */
   says: string;
 }
 
@@ -44,7 +53,7 @@ function unknownKey(at: string, key: string, legal: string[]): Finding {
   return {
     level: "warn",
     key: at ? `${at}.${key}` : key,
-    says: near ? `没这个键，是不是 ${at ? `${at}.` : ""}${near}` : "没这个键，被忽略了",
+    says: near ? `no such key — did you mean ${at ? `${at}.` : ""}${near}?` : "no such key; it is ignored",
   };
 }
 
@@ -57,7 +66,7 @@ function invalidValue(schema: ReturnType<typeof schemaAt>, value: Json, key: str
   const result = schema.safeParse(value);
   return result.success
     ? null
-    : { level: "fatal", key, says: result.error.issues.map(({ message }) => message).join("；") };
+    : { level: "fatal", key, says: result.error.issues.map(({ message }) => message).join("; ") };
 }
 
 /**
@@ -84,7 +93,7 @@ function walk(parsed: JsonMap, at: string, out: Finding[]): void {
       continue;
     }
     if (v === null || v === undefined) {
-      out.push({ level: "warn", key, says: "空的，用默认值" });
+      out.push({ level: "warn", key, says: "empty; the default is used" });
       continue;
     }
     // A block the schema enumerates is walked so its own keys get the same
@@ -101,7 +110,7 @@ function walk(parsed: JsonMap, at: string, out: Finding[]): void {
 
 export function checkConfig(path: string): { findings: Finding[]; overridden: number } {
   if (!existsSync(path)) {
-    return { findings: [{ level: "warn", key: path, says: "没有这个文件，全用默认值" }], overridden: 0 };
+    return { findings: [{ level: "warn", key: path, says: "no such file; every default applies" }], overridden: 0 };
   }
   let parsed: JsonMap;
   try {
@@ -109,7 +118,7 @@ export function checkConfig(path: string): { findings: Finding[]; overridden: nu
     if (!result.success) return { findings: [], overridden: 0 };
     parsed = result.data;
   } catch (e) {
-    return { findings: [{ level: "fatal", key: path, says: `读不了：${errText(e)}` }], overridden: 0 };
+    return { findings: [{ level: "fatal", key: path, says: `unreadable: ${errText(e)}` }], overridden: 0 };
   }
   const findings: Finding[] = [];
   walk(parsed, "", findings);
@@ -130,11 +139,19 @@ export function checkRoles(roles: Map<string, RoleDef>, runtimes: string[]): Fin
   const out: Finding[] = [];
   for (const [name, r] of roles) {
     if (r.effort && !EFFORTS.includes(r.effort))
-      out.push({ level: "warn", key: `${name}.effort`, says: `不认识 ${r.effort}，认的是 ${EFFORTS.join("/")}` });
+      out.push({
+        level: "warn",
+        key: `${name}.effort`,
+        says: `unknown ${r.effort}; the known ones are ${EFFORTS.join("/")}`,
+      });
     if (r.tier && !TIERS.includes(r.tier))
-      out.push({ level: "warn", key: `${name}.tier`, says: `不认识 ${r.tier}，认的是 ${TIERS.join("/")}` });
+      out.push({
+        level: "warn",
+        key: `${name}.tier`,
+        says: `unknown ${r.tier}; the known ones are ${TIERS.join("/")}`,
+      });
     if (r.runtime && !runtimes.includes(r.runtime))
-      out.push({ level: "warn", key: `${name}.runtime`, says: `没有 ${r.runtime} 这个 runtime` });
+      out.push({ level: "warn", key: `${name}.runtime`, says: `there is no runtime named ${r.runtime}` });
   }
   return out;
 }

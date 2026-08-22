@@ -9,6 +9,7 @@ test("malformed response bytes cannot become valid JSON null", async () => {
     ok: false,
     data: null,
     text: "Server returned a non-JSON response",
+    said: null,
   });
 });
 

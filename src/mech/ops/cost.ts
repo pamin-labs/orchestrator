@@ -69,6 +69,10 @@ const turnTokens = (meta: z.infer<typeof TurnMetaSchema>): number => {
 };
 
 /** `MM-DD HH`, in the orchestrator's own timezone — which is what the boss reads. */
+/** The top of the hour `at` falls in, in the boss's local time — the same
+ *  bucketing `hourLabel` does, as an instant the panel can format. */
+const hourStart = (at: number): number => new Date(at).setMinutes(0, 0, 0);
+
 const hourLabel = (at: number): string => {
   const d = new Date(at);
   const pad = (n: number): string => String(n).padStart(2, "0");
@@ -184,16 +188,18 @@ async function byHour(db: DB): Promise<CostReport["byHour"]> {
       ),
     );
 
-  const buckets = new Map<string, { hour: string; claude: number; codex: number }>();
+  const buckets = new Map<string, CostReport["byHour"][number]>();
   for (const row of rows) {
     const meta = valueOr(row.meta_json, TurnMetaSchema, {});
     const hour = hourLabel(row.at);
-    const bucket = buckets.get(hour) ?? { hour, claude: 0, codex: 0 };
+    const bucket = buckets.get(hour) ?? { hour, at: hourStart(row.at), claude: 0, codex: 0 };
     if (runtimeOf(meta) === "codex") bucket.codex += turnTokens(meta);
     else bucket.claude += turnTokens(meta);
     buckets.set(hour, bucket);
   }
-  return [...buckets.values()].sort((a, b) => a.hour.localeCompare(b.hour));
+  // On the instant, not on the label: `MM-DD` sorts December above January, and
+  // a 24-hour window can cross a year.
+  return [...buckets.values()].sort((a, b) => a.at - b.at);
 }
 
 /**

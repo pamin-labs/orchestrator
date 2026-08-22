@@ -15,8 +15,8 @@ import { openMemory } from "../../src/platform/persistence/database.ts";
 import { job } from "../../src/platform/persistence/schema.ts";
 import { MAX_REQUEST_SERIES, metricViews, prometheus } from "../../src/platform/observability/metrics.ts";
 import { installTracerProvider, startTrace, traceparent } from "../../src/platform/observability/traces.ts";
-import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { testContext } from "../support/test-context.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 /**
  * A provider of this test's own. The process-wide default exports nothing, so
@@ -77,7 +77,7 @@ test("a malformed traceparent starts a fresh trace rather than adopting a broken
 test("a job span joins the trace recorded on its job row", async () => {
   const db = await openMemory();
   {
-    const scheduler = new Scheduler(db, async () => {});
+    const scheduler = newScheduler(db, async () => {});
     await scheduler.enqueue("watchdog", { traceId: INCOMING_TRACE, parentSpanId: INCOMING_SPAN });
     void scheduler.tick();
     await scheduler.drain();
@@ -93,7 +93,7 @@ test("a job span joins the trace recorded on its job row", async () => {
 test("a failed job records an error span", async () => {
   const db = await openMemory();
   {
-    const scheduler = new Scheduler(db, async () => {
+    const scheduler = newScheduler(db, async () => {
       throw new Error("handler exploded");
     });
     await scheduler.enqueue("watchdog", {});
@@ -170,7 +170,7 @@ const dropped = (text: string): number => Number(/^orchestrator_telemetry_droppe
 test("a scrape reports job state, retries and telemetry loss under the orchestrator names", async () => {
   const ctx = await testContext();
   {
-    const scheduler = new Scheduler(ctx.db, async () => {});
+    const scheduler = newScheduler(ctx.db, async () => {});
     await scheduler.enqueue("watchdog", {});
     const text = await prometheus(ctx.db);
 
@@ -194,7 +194,7 @@ test("a scrape reports job state, retries and telemetry loss under the orchestra
 test("a drained queue reports zero rather than keeping the depth it last had", async () => {
   const ctx = await testContext();
   {
-    const scheduler = new Scheduler(ctx.db, async () => {});
+    const scheduler = newScheduler(ctx.db, async () => {});
     await scheduler.enqueue("watchdog", {});
     expect(await prometheus(ctx.db)).toContain('orchestrator_jobs{state="pending"} 1');
 

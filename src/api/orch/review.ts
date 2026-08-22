@@ -1,3 +1,4 @@
+import { msg, plural } from "@lingui/core/macro";
 import { and, asc, count, eq, gt, ne, sql } from "drizzle-orm";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
@@ -10,7 +11,7 @@ import { WORK } from "../../mech/sandbox/sandbox.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema, GroupRef, Id, IdParams } from "../../contracts/fields.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { badText, json, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { bossFact } from "../panel/attach.ts";
@@ -39,14 +40,14 @@ const Verdict = z.enum(["pass", "fail"]);
 export const AuditBody = z.object({ group_id: GroupRef, verdict: Verdict, note: z.string().max(8000).optional() });
 
 export const postAudit = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== roleFor(ctx, "audit_branch")) return bad(`${a.role} does not file audit verdicts`);
+  if (a.role !== roleFor(ctx, "audit_branch")) return badText(`${a.role} does not file audit verdicts`);
   const gid = await resolveGroup(ctx, b.group_id);
-  if (!gid) return bad("which group? pass its id or name");
+  if (!gid) return badText("which group? pass its id or name");
   // The Auditor is deliberately not a member of the group it reviews, so it is
   // the one role whose group check is inverted. It is still bounded by its
   // project — a pass here opens a PR, which is a host `git push`, and that is not
   // an action to leave addressable by any group id an agent cares to name.
-  if (a.grp_id === gid) return bad("an auditor may not audit its own group");
+  if (a.grp_id === gid) return badText("an auditor may not audit its own group");
   if (!(await mayAct(ctx.db, a, gid))) return message("not your project", 403);
 
   await ctx.bus.emit({
@@ -54,7 +55,7 @@ export const postAudit = (async (ctx, _req, a, _p, b) => {
     author: roleFor(ctx, "audit_branch"),
     kind: "gate_result",
     intent: "decision",
-    body: `audit ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
+    say: b.note ? msg`audit ${{ verdict: b.verdict }}: ${{ note: b.note }}` : msg`audit ${{ verdict: b.verdict }}`,
     meta: { verdict: b.verdict },
   });
   await ctx.auditVerdict?.(gid, b.verdict === "pass", b.note ?? "");
@@ -76,14 +77,14 @@ export const ReviewBody = z.object({
 
 export const postReview = (async (ctx, _req, a, _p, b) => {
   if (a.role !== roleFor(ctx, "review_slice") && a.role !== roleFor(ctx, "audit_branch"))
-    return bad(`${a.role} does not file review verdicts`);
+    return badText(`${a.role} does not file review verdicts`);
 
   const [slice] = await ctx.db
     .select({ id: slices.id, grp_id: slices.grp_id, seq: slices.seq, accept_spec: slices.accept_spec })
     .from(slices)
     .where(eq(slices.id, b.slice_id));
-  if (!slice) return bad(`no slice ${b.slice_id}`);
-  if (slice.grp_id !== a.grp_id) return bad("that slice belongs to another group");
+  if (!slice) return badText(`no slice ${b.slice_id}`);
+  if (slice.grp_id !== a.grp_id) return badText("that slice belongs to another group");
 
   // QA's verdict was the one review layer with no floor under it: `--verdict pass`
   // with an empty note was accepted, which makes the independent check a formality
@@ -93,7 +94,7 @@ export const postReview = (async (ctx, _req, a, _p, b) => {
   const need = criteriaIn(slice.accept_spec);
   const v = validateSelfReview(b.note ?? "", need);
   if (!v.ok) {
-    return bad(
+    return badText(
       `${v.error}\n\nAcceptance for S${slice.seq}: ${slice.accept_spec}\n` +
         `  orch review ${b.slice_id} --verdict ${b.verdict} --note "pass: <criterion> — <what you ran and saw>"`,
     );
@@ -104,7 +105,9 @@ export const postReview = (async (ctx, _req, a, _p, b) => {
     author: a.role,
     kind: "gate_result",
     intent: "decision",
-    body: `S${slice.seq} ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
+    say: b.note
+      ? msg`S${{ seq: slice.seq }} ${{ verdict: b.verdict }}: ${{ note: b.note }}`
+      : msg`S${{ seq: slice.seq }} ${{ verdict: b.verdict }}`,
     meta: { slice_id: slice.id, verdict: b.verdict },
   });
   await ctx.reviewVerdict?.(slice.id, b.verdict === "pass", b.note ?? "");
@@ -273,7 +276,10 @@ export const postSliceDecision = (async (ctx, _req, params, raw) => {
       author: "boss",
       kind: "boss_say",
       intent: "request",
-      body: b.feedback ?? "rejected",
+      // The boss's own words when there are any, and a sentence of ours when
+      // there are not — the fallback is the only half this file writes, so it is
+      // the only half that is a key.
+      ...(b.feedback ? { body: b.feedback } : { say: msg`rejected` }),
       meta: { slice_id: id },
     });
     // Only when the boss said something. A rejection with no words is already the
@@ -300,9 +306,7 @@ export const postSliceDecision = (async (ctx, _req, params, raw) => {
         kind: "escalation",
         intent: "ask",
         severity: "blocker",
-        body:
-          `你退回了 S${sl.seq}，但 autoAdvance 已经让后面 ${ahead} 片开工了 —— 它们是在这一片的基础上做的。` +
-          `全组先停下：要么让它先修这一片，要么把后面几片一起退回。`,
+        say: msg`you sent S${{ seq: sl.seq }} back, but autoAdvance had already started ${plural({ n: ahead }, { one: "# slice", other: "# slices" })} after it, and they were built on this one. The whole group has stopped: either let it fix this slice first, or send the later ones back with it.`,
       });
     }
     await ctx.sched.enqueue("agent_turn", { grp_id: sl.grp_id, slice_id: id, payload: { rejection: b.feedback } });

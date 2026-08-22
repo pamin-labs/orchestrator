@@ -2,6 +2,17 @@ import type { Escalation, Group, Slice, State } from "./api";
 import { githubRepo } from "./github";
 import { z } from "zod";
 import { valueOr } from "../../../src/contracts/json.ts";
+import type { AskKind, EscalationOpenState, GrpState } from "../../../src/contracts/states.ts";
+import { msg, t } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { i18n } from "../i18n";
+
+/** A label from a partial table, or the raw value where it has no row. Four
+ *  tables need it — `WHERE_LABEL` covers the four open chain states while
+ *  `chain_state` also carries `answered` and `revoked`, and the rotation, note
+ *  and usage tables are partial for their own reasons. A total table indexes
+ *  directly. */
+export const labelOf = (m: MessageDescriptor | undefined, fallback: string): string => (m ? i18n._(m) : fallback);
 
 const OwnsSchema = z.array(z.string());
 const GatesSchema = z.record(z.string(), z.string());
@@ -9,29 +20,51 @@ const GatesSchema = z.record(z.string(), z.string());
 /**
  * DRAFT with the boss's yes already on it: waiting on a boundary, not on the boss.
  *
- * It has to be one predicate, because a row that sits in 待办 while the 待办 badge
+ * It has to be one predicate, because a row that sits in `To do` while the `To do` badge
  * does not count it is worse than either answer alone.
  */
 export const heldApproved = (g: Group) => g.status === "DRAFT" && !!g.approved_at;
 
-export const statusLabel = (g: Group) => (heldApproved(g) ? "已批·等边界" : (STATUS_ZH[g.status] ?? g.status));
+export const statusLabel = (g: Group) =>
+  heldApproved(g) ? t`Approved · Awaiting boundary` : i18n._(STATUS_LABEL[g.status]);
 
-export const STATUS_ZH: Record<string, string> = {
-  PLANNING: "拆解中",
-  DRAFT: "待批",
-  RUNNING: "在跑",
-  PAUSING: "正在停",
-  PAUSED: "已暂停",
-  PARKED: "已封存",
-  PR_OPEN: "PR 开着",
-  DISSOLVED: "已解散",
+/**
+ * `msg` at module scope, `i18n._` at call scope. A descriptor is locale-free
+ * data, so a table built once at import stays right after the locale changes;
+ * a resolved string would freeze at whatever was active on first evaluation.
+ *
+ * `Record<GrpState, …>`, so a ninth state is a compile error rather than a raw
+ * `PR_OPEN` on the panel. `Group.status` is `z.enum(GRP_STATES)`, so there is no
+ * unknown state to fall back for: one this build has never heard of fails
+ * `SnapshotSchema.safeParse` before it reaches here.
+ */
+export const STATUS_LABEL: Record<GrpState, MessageDescriptor> = {
+  PLANNING: msg`Planning`,
+  DRAFT: msg`Pending review`,
+  RUNNING: msg`Running`,
+  PAUSING: msg`Pausing`,
+  PAUSED: msg`Paused`,
+  PARKED: msg`Archived`,
+  PR_OPEN: msg`PR open`,
+  DISSOLVED: msg`Dissolved`,
 };
-export const WHERE_ZH: Record<string, string> = {
-  pm: "PM 处理中",
-  architect: "Architect 处理中",
-  cos: "CoS 处理中",
-  boss: "待你决策",
-};
+/**
+ * Where a question is sitting. `satisfies`, so a fifth open state is a compile
+ * error here rather than a raw `architect` on the panel — the same check
+ * `STATUS_LABEL` gets from being a total `Record`, which this could not be: the
+ * column also holds `answered` and `revoked`, which have no row and want none.
+ */
+const WHERE = {
+  pm: msg`PM working`,
+  architect: msg`Architect working`,
+  cos: msg`CoS working`,
+  boss: msg`Awaiting your decision`,
+} satisfies Record<EscalationOpenState, MessageDescriptor>;
+
+const isOpen = (state: string): state is EscalationOpenState => Object.hasOwn(WHERE, state);
+
+/** The raw state where there is no row, which is what a terminal one gets. */
+export const whereLabel = (state: string): string => (isOpen(state) ? i18n._(WHERE[state]) : state);
 /**
  * The layers actually recorded, in order.
  *
@@ -39,11 +72,11 @@ export const WHERE_ZH: Record<string, string> = {
  * and taught the boss to ignore the row. It is back because `orch task done --review`
  * now records it — docs/project/plan.md §7 layer 1, the only one where the writer is the reviewer.
  */
-export const STOPS: [string, string][] = [
-  ["self", "自评"],
-  ["reconcile", "对账"],
-  ["gate", "测试"],
-  ["qa", "QA"],
+export const STOPS: [string, MessageDescriptor][] = [
+  ["self", msg`Self-review`],
+  ["reconcile", msg`Reconciliation`],
+  ["gate", msg`Gate`],
+  ["qa", msg`QA`],
 ];
 
 export const owns = (g: Group) => valueOr(g.owns_json, OwnsSchema, []);
@@ -56,8 +89,9 @@ const hasDraftDecision = (st: State, id: number) =>
 /**
  * Everything that cannot move without the boss, per docs/project/plan.md's three approval points.
  *
- * Called 待办 everywhere in the panel. It used to be 等你 in the nav, 等你决策 in the
- * requirement list and 无待办 when empty — three names for one concept, one of which
+ * Called `To do` everywhere in the panel. It used to be "waiting on you" in the nav,
+ * "awaiting your decision" in the
+ * requirement list and `No pending items` when empty — three names for one concept, one of which
  * was a verb phrase doing a noun's job in a nav badge.
  */
 export function pending(st: State, projectId: number | null) {
@@ -97,25 +131,25 @@ export const countWaiting = (st: State, p: number | null) =>
  *
  * `fresh` is "nothing was ever asked of this project", which is not the same as
  * "no live group": a project whose requirements all merged also has none, and
- * calling that 空着 denies the only work the system ever finished.
+ * calling that `Empty` denies the only work the system ever finished.
  */
-export function projectState(st: State, p: number): { zh: string; mine: boolean; live?: boolean; fresh?: boolean } {
+export function projectState(st: State, p: number): { label: string; mine: boolean; live?: boolean; fresh?: boolean } {
   const n = countWaiting(st, p);
-  if (n) return { zh: `${n} 件待办`, mine: true };
+  if (n) return { label: t`${n} to do`, mine: true };
   const gs = st.groups.filter((g) => g.project_id === p);
   return gs.length ? activeProjectState(gs) : emptyProjectState(st, p);
 }
 
 const emptyProjectState = (st: State, p: number) =>
   (st.archived ?? []).some((a) => a.project_id === p)
-    ? { zh: "都做完了", mine: false }
-    : { zh: "空着", mine: false, fresh: true };
+    ? { label: t`All done`, mine: false }
+    : { label: t`Empty`, mine: false, fresh: true };
 
 function activeProjectState(groups: Group[]) {
   const live = groups.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;
-  if (live) return { zh: `${live} 个在跑`, mine: false, live: true };
+  if (live) return { label: t`${live} running`, mine: false, live: true };
   const held = groups.filter((g) => ["PAUSED", "PARKED"].includes(g.status)).length;
-  return held ? { zh: `${held} 个停着`, mine: false } : { zh: "都做完了", mine: false };
+  return held ? { label: t`${held} stopped`, mine: false } : { label: t`All done`, mine: false };
 }
 
 /** Where the PR lives, so "go and merge it" is one click rather than a hunt. */
@@ -129,7 +163,7 @@ const projectRemote = (st: State, projectId: number) => st.projects.find((p) => 
 /**
  * This group's open questions. Answered ones are history, not a decision.
  *
- * Unfiltered, this fed a heading that said 待你决策 — so a question the boss had
+ * Unfiltered, this fed a heading that said `Awaiting your decision` — so a question the boss had
  * already answered, and one the PM was still holding, both sat at the top of the
  * page under a label claiming they needed the boss.
  */
@@ -139,10 +173,34 @@ export const asksOf = (st: State, id: number): Escalation[] =>
 /** Of those, the ones actually waiting on the boss. */
 export const mineOf = (asks: Escalation[]): Escalation[] => asks.filter((e) => e.chain_state === "boss");
 
-/** What a question is about, in the boss's words. `other` gets no label. */
-export const KIND_ZH: Record<string, string> = {
-  env: "环境",
-  spec: "验收口径",
-  boundary: "边界",
-  design: "设计取舍",
-};
+/**
+ * What a question is about, in the boss's words — all nine, since `--kind` became
+ * required and lost its `other`.
+ *
+ * `satisfies Record<AskKind, …>`, so a tenth word in the vocabulary is a compile
+ * error here rather than a bare `credential` on the queue. It was
+ * `Record<string, …>` with four rows and a `?? raw` at the call site, which is
+ * how the five reserved topics arrived unlabelled.
+ */
+const KIND = {
+  budget: msg`Budget`,
+  merge: msg`Merge to main`,
+  credential: msg`Credential`,
+  deploy: msg`Deploy`,
+  scope: msg`Scope change`,
+  env: msg`Environment`,
+  spec: msg`Acceptance criteria`,
+  boundary: msg`Boundary`,
+  design: msg`Design choice`,
+} satisfies Record<AskKind, MessageDescriptor>;
+
+const isKind = (kind: string): kind is AskKind => Object.hasOwn(KIND, kind);
+
+/**
+ * The descriptor, for a component to render with its own `t`.
+ *
+ * Null where a row predates the vocabulary: the queue shows no chip rather than
+ * a word from a taxonomy that no longer holds it.
+ */
+export const kindOf = (kind: string | null | undefined): MessageDescriptor | null =>
+  kind && isKind(kind) ? KIND[kind] : null;

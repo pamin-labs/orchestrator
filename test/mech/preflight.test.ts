@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { credentialVerdict, modelProbe, preflight } from "../../src/mech/ops/preflight.ts";
+import { renderSaid } from "../../src/platform/text/lang.ts";
 
 test("a ChatGPT login is called out when it is old, not when the host lacks codex", async () => {
   // This used to check `probe("codex")`. Since 007 step 7 the renewal runs real
@@ -24,7 +25,10 @@ test("a ChatGPT login is called out when it is old, not when the host lacks code
       sandbox: { server: "http://127.0.0.1:1", apiKey: "", image: "x" },
       // No codex on this host, and that is now fine.
       probe: (bin) => bin !== "codex",
-      verify: async () => ({ ok: true, detail: "ok" }),
+      verify: async () => ({
+        ok: true,
+        said: { id: "hash", message: "{mode} · accepted", values: { mode: "api_key" } },
+      }),
     });
   };
 
@@ -37,7 +41,7 @@ test("a ChatGPT login is called out when it is old, not when the host lacks code
   const fresh = (await withLogin(new Date().toISOString())).find((c) => c.name === "codex-refresher")!;
   expect(fresh.ok).toBe(true);
   // And it says where the renewal happens, so nobody re-adds the host requirement.
-  expect(fresh.detail).toContain("工具容器");
+  expect(fresh.detail).toContain("utility container");
 });
 
 test("the other credential modes need nothing on this host", async () => {
@@ -49,7 +53,7 @@ test("the other credential modes need nothing on this host", async () => {
     db,
     sandbox: { server: "http://127.0.0.1:1", apiKey: "", image: "x" },
     probe: () => false,
-    verify: async () => ({ ok: true, detail: "ok" }),
+    verify: async () => ({ ok: true, said: { id: "hash", message: "{mode} · accepted", values: { mode: "api_key" } } }),
   });
   expect(checks.find((c) => c.name === "codex-refresher")).toBeUndefined();
 });
@@ -58,8 +62,8 @@ test("docker installed but not started is not 'running'", async () => {
   // Measured: `DOCKER_HOST=unix:///nonexistent.sock docker --version` exits 0.
   // So the version probe — which is what this check used — reported "running"
   // for Docker Desktop installed and never launched, the most common first-run
-  // state there is. The boss then got a blocker saying "多半是 docker 没起，
-  // 自检那栏会说是哪个" and a self-check saying it was up.
+  // state there is. The boss then got a blocker saying docker was probably down
+  // and the self-check would say which, beside a self-check saying it was up.
   const asked: string[][] = [];
   const checks = await preflight({
     db: await openMemory(),
@@ -69,15 +73,15 @@ test("docker installed but not started is not 'running'", async () => {
       asked.push([bin, ...argv]);
       return bin === "docker" && argv[0] === "--version";
     },
-    verify: async () => ({ ok: true, detail: "" }),
+    verify: async () => ({ ok: true, said: { id: "hash", message: "{mode} · accepted", values: { mode: "api_key" } } }),
   });
   const docker = checks.find((c) => c.name === "docker")!;
   expect(asked).toContainEqual(["docker", "info"]);
   expect(docker.ok).toBe(false);
   // And the two failures are told apart, because they send the boss to
   // different places: a download, or one click.
-  expect(docker.detail).toContain("没启动");
-  expect(docker.fix).toContain("启动");
+  expect(docker.detail).toContain("installed, but the daemon is not answering");
+  expect(docker.fix).toContain("Start Docker Desktop");
 });
 
 /**
@@ -124,18 +128,35 @@ test("each runtime asks its own provider unless a gateway is configured", () => 
 });
 
 test("only 401 and 403 are read as the credential being refused", () => {
-  expect(credentialVerdict(200)).toEqual({ ok: true, detail: "能用" });
-  expect({ "401": credentialVerdict(401).ok, "403": credentialVerdict(403).ok }).toEqual({
+  // Asserted on the sentence rather than on its hash: the id is the macro's and
+  // a hash written down in a test is a number nobody can check.
+  const verdict = credentialVerdict(200, "api_key");
+  expect(verdict.ok).toBe(true);
+  expect(renderSaid("en", verdict.said)).toBe("api_key · accepted");
+  expect({ "401": credentialVerdict(401, "api_key").ok, "403": credentialVerdict(403, "api_key").ok }).toEqual({
     "401": false,
     "403": false,
   });
 
   // Everything else is unverified, not refused. A 500 or a 429 from a gateway
   // says nothing about the token, and calling it bad costs the boss a re-paste
-  // and leaves the real outage unreported.
+  // and leaves the real outage unreported. The status is a **value** in the
+  // sentence rather than text spliced into it, so the panel can say it in nine
+  // languages and still name the number.
   for (const status of [429, 500, 502, 404]) {
-    const v = credentialVerdict(status);
+    const v = credentialVerdict(status, "oauth_token");
     expect(v.ok).toBe(true);
-    expect(v.detail).toContain(String(status));
+    expect(v.said.values).toEqual({ mode: "oauth_token", status });
+    expect(renderSaid("en", v.said)).toBe(`oauth_token · not verified (HTTP ${status})`);
   }
 });
+
+/**
+ * The placeholder guard that used to live here is gone with its defect.
+ *
+ * It listed the value names `makeCheck`'s call sites pass, so a `{path}` nobody
+ * filled would show up rather than rendering as the empty string — `no skills
+ * ticked at `, a sentence that reads like somebody wrote it. A message is a
+ * `msg` template now: the ICU and the values come out of the same interpolation,
+ * so a placeholder without a value is no longer a thing that can be written.
+ */

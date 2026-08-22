@@ -8,7 +8,7 @@ import { runtime_auth } from "../../src/platform/persistence/schema.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { setTrailers } from "../../src/mech/git/ghlogin.ts";
-import { newEnough, preflight, report } from "../../src/mech/ops/preflight.ts";
+import { newEnough, preflight, report, type PreflightInput } from "../../src/mech/ops/preflight.ts";
 import {
   CODEX_HOME,
   decoy,
@@ -104,7 +104,7 @@ test("preflight names what is missing and how to fix it, rather than degrading",
     probe: () => false,
     // Injected: whether a provider still accepts a token is a network fact, and
     // a test that asks the network is a test that fails on a train.
-    verify: async () => ({ ok: true, detail: "能用" }),
+    verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
   });
   const by = Object.fromEntries(checks.map((c) => [c.name, c]));
   // The fix for a missing server is a uvx command, so a machine without uv has
@@ -127,7 +127,7 @@ test("preflight names what is missing and how to fix it, rather than degrading",
     db,
     sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
     probe: () => false,
-    verify: async () => ({ ok: true, detail: "能用" }),
+    verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
   });
   expect(after.find((c) => c.name === "credential:claude")!.ok).toBe(true);
 });
@@ -343,13 +343,13 @@ test("a secret that cannot be right is refused before it is stored", () => {
   // with a 401 that reads like an expired subscription.
   expect(
     wrongShape({ runtime: "claude", mode: "oauth_token", secret: "https://claude.com/cai/oauth/authorize?code=true" }),
-  ).toContain("网址");
+  ).toContain("is a URL, not a credential");
   expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: "sk-ant-api03-x" })).toContain("sk-ant-oat01-");
   expect(wrongShape({ runtime: "claude", mode: "api_key", secret: "sk-proj-x" })).toContain("sk-ant-");
   expect(wrongShape({ runtime: "codex", mode: "api_key", secret: "not-a-key" })).toContain("sk-");
   expect(wrongShape({ runtime: "codex", mode: "chatgpt", secret: "{}" })).toContain("refresh_token");
   expect(wrongShape({ runtime: "codex", mode: "chatgpt", secret: "half a file" })).toContain("JSON");
-  expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: "  " })).toBe("空的");
+  expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: "  " })).toBe("empty");
 
   // And the shapes that are right.
   expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: `sk-ant-oat01-${"A".repeat(40)}` })).toBeNull();
@@ -423,7 +423,7 @@ test("a chatgpt login is judged by the expiry it carries, without a request", as
   const dead = await preflight({ db, sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" }, probe: () => false });
   const row = dead.find((c) => c.name === "credential:codex")!;
   expect(row.ok).toBe(false);
-  expect(row.detail).toContain("过期");
+  expect(row.detail).toContain("expired — sign in again");
 });
 
 test("the codex device login shows a code with its link, and stores what the container wrote", async () => {
@@ -491,11 +491,11 @@ test("in a container, preflight stops answering questions about somebody else's 
   // running the sandbox server, and when the orchestrator ships as an image that
   // machine is somebody else's.
   const db = await openMemory();
-  const input = {
+  const input: PreflightInput = {
     db,
     sandbox: { server: "127.0.0.1:9", apiKey: "", image: "ghcr.io/pamin-labs/orch-agent:latest" },
     probe: () => false,
-    verify: async () => ({ ok: true, detail: "能用" }),
+    verify: async () => ({ ok: true, said: { id: "check.cred.accepted" } }),
   };
   const host = await preflight({ ...input, contained: false });
   const inside = await preflight({ ...input, contained: true });
@@ -507,7 +507,7 @@ test("in a container, preflight stops answering questions about somebody else's 
   }
   // Said once rather than dropped silently: somebody reading this pane should
   // learn where those questions went, not wonder whether they are still asked.
-  expect(names(inside)).toContain("宿主环境");
+  expect(names(inside)).toContain("host environment");
 
   // The one check that still means something is reachability — and its fix has
   // to stop telling a container to start a server it cannot start.
@@ -569,7 +569,7 @@ test("a key stored before the address travelled with it is bound at startup, onc
  * for a bound runtime, so the row put **127.0.0.1** into the probe list — and with
  * no provider configured it was the only entry. Since any one host answering is
  * enough, "is the internet up" was decided by whether anything listens on localhost
- * **443**. Nothing does; the panel announced 宿主断网了 on a machine that was online.
+ * **443**. Nothing does; the panel announced the host was offline on a machine that was online.
  */
 /**
  * The origin, not the hostname, for the reason this list is derived rather than

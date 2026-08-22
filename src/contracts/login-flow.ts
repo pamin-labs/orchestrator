@@ -5,7 +5,7 @@ import { z } from "zod";
  *
  * Its own file because it shares nothing with the panel snapshot beside it: the
  * snapshot is the fleet's state, re-read on every change, and this is a short-lived
- * handshake between clicking 连接 and the CLI coming back.
+ * handshake between clicking `Connect` and the CLI coming back.
  */
 /**
  * The seam it does cross is real, which is why it stays a contract rather than

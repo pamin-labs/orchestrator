@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { renderSaid } from "../../src/platform/text/lang.ts";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { grp as grpTable, project as projectTable } from "../../src/platform/persistence/schema.ts";
@@ -83,7 +84,7 @@ function dockerUp(): boolean {
  */
 async function boot(): Promise<{ key: string; started: string | null } | { why: string }> {
   if (!ENABLED) return { why: "ORCH_LIVE_SANDBOX is not 1" };
-  if (!dockerUp()) return { why: "docker daemon 不应答 —— 起不了容器，这几个测试没有意义" };
+  if (!dockerUp()) return { why: "the docker daemon does not answer — no containers, so these prove nothing" };
 
   const db = await openMemory();
   const held = serverKeyOnDisk();
@@ -99,7 +100,7 @@ async function boot(): Promise<{ key: string; started: string | null } | { why: 
   // Every "no" this returns is a different sentence and each names what to do,
   // which is the whole reason to go through it rather than probe a port.
   const state = await ensureServer(await testContext({ db, config: cfg }));
-  if (state.kind === "down" || state.kind === "stuck") return { why: state.why };
+  if (state.kind === "down" || state.kind === "stuck") return { why: renderSaid("en", state.why) };
   return {
     key: await sandboxKeyFor(db, cfg.sandbox.server, cfg.sandbox.apiKey),
     started: state.kind === "started" ? state.pid : null,

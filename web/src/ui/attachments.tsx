@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLingui } from "@lingui/react/macro";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { Tip } from "./tooltip";
@@ -32,6 +33,7 @@ export function WithAttachments({ body, className }: { body: string; className?:
 }
 
 function Attachments({ files }: { files: Attached[] }) {
+  const { t } = useLingui();
   const [full, setFull] = useState<Attached | null>(null);
   if (!files.length) return null;
   const images = files.filter((f) => f.image);
@@ -52,7 +54,7 @@ function Attachments({ files }: { files: Attached[] }) {
               >
                 <img src={f.url} alt={f.name} className="h-full w-auto max-w-[22rem] object-cover" loading="lazy" />
                 {/* The same marker the text uses. Three screenshots and a sentence
-                  about 「第二张」 is a puzzle without it. */}
+                  about "the second one" is a puzzle without it. */}
                 {f.label && (
                   <span className="absolute left-1 top-1 rounded-sm bg-ink/75 px-1 font-mono text-pill text-paper">
                     {f.label}
@@ -84,7 +86,7 @@ function Attachments({ files }: { files: Attached[] }) {
           handler sat on a `role="presentation"` div with no `tabIndex`, and focus
           stayed on the thumbnail button, which is this overlay's *sibling*, so
           the event never reached it. The way out was the mouse, on a page whose
-          own composer is driven from the keyboard. 硬约束 4: Radix owns Esc, the
+          own composer is driven from the keyboard. Hard constraint 4: Radix owns Esc, the
           focus trap, the return of focus to the thumbnail, and the scroll lock. */}
       <Dialog.Root open={!!full} onOpenChange={(o) => !o && setFull(null)}>
         <Dialog.Portal>
@@ -105,7 +107,7 @@ function Attachments({ files }: { files: Attached[] }) {
               />
             )}
             <Dialog.Close
-              aria-label="关掉"
+              aria-label={t`Close`}
               className="absolute right-4 top-4 grid size-8 cursor-pointer place-items-center rounded-md bg-paper/90 text-ink hover:bg-paper"
             >
               <X size={16} strokeWidth={2} />

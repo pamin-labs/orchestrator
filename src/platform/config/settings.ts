@@ -13,6 +13,7 @@ import {
   type SettingWrite,
 } from "../../contracts/config.ts";
 import { JsonObject, JsonValue, type Json } from "../../contracts/json.ts";
+import { consola } from "consola";
 
 /**
  * Settings the boss changes in the panel, layered over the file.
@@ -52,7 +53,8 @@ export function refuse(path: string, value: Json): string | null {
   const parsed = SettingWriteSchema.safeParse({ path, value });
   if (parsed.success) return null;
   const message = parsed.error.issues.map((issue) => issue.message).join("; ");
-  return message.startsWith("no setting called ") ? message : `${path}: ${message}`;
+  const namesPath = parsed.error.issues.some((issue) => issue.code === "custom" && issue.params?.namesPath === true);
+  return namesPath ? message : `${path}: ${message}`;
 }
 
 async function read(db: DB): Promise<SettingWrite[]> {
@@ -75,23 +77,46 @@ export async function overrides(db: DB): Promise<Record<string, Json>> {
   return out;
 }
 
-function assign(cfg: Config, path: SettingPath, value: Json): void {
+/**
+ * Overlay one value and validate the *whole* config, because some rules span
+ * fields: a remote embedding needs an endpoint and a credential, and the panel
+ * writes `mode` the moment the segment is pressed.
+ *
+ * Returns why the value cannot be applied, or null — and only mutates when it
+ * can. Nothing partially applied, so a refusal leaves the running fleet exactly
+ * as it was.
+ */
+function apply(cfg: Config, path: SettingPath, value: Json): string | null {
   const root = JsonObject.parse(structuredClone(cfg));
   const parts = path.split(".");
   let node = root;
   for (const p of parts.slice(0, -1)) {
     const next = node[p];
-    if (!next || Array.isArray(next) || typeof next !== "object")
-      throw new Error(`setting path is not an object: ${path}`);
+    if (!next || Array.isArray(next) || typeof next !== "object") return `path is not an object`;
     node = next;
   }
   node[parts.at(-1)!] = value;
-  Object.assign(cfg, ConfigSchema.parse(root));
+  const parsed = ConfigSchema.safeParse(root);
+  if (!parsed.success) return parsed.error.issues.map((issue) => issue.message).join("; ");
+  // fallow-ignore-next-line security-sink -- `parsed.data` is `ConfigSchema`'s output, so its keys are the schema's own and nothing arrives from the request that is not one of them. `path` reached here through `SettingWriteSchema`, which resolves it against `ConfigSchema`'s `shape` with `Object.hasOwn` and refuses anything else, so the walk above cannot end on a prototype either. Both halves are held by "a path that is not the config's own cannot be walked or written" in `test/api/settings.test.ts`.
+  Object.assign(cfg, parsed.data);
+  return null;
 }
 
-/** Overlay the stored overrides onto the config object. Mutates, at boot. */
+/**
+ * Overlay the stored overrides onto the config object. Mutates, at boot.
+ *
+ * A stored override that no longer applies is skipped and said out loud, never
+ * thrown: this runs before the server listens, and the only thing that can
+ * correct a bad value is the panel that server serves. Refusing to start over a
+ * row somebody can only reach through the panel is a door locked from inside.
+ */
 export async function applyOverrides(db: DB, cfg: Config): Promise<Config> {
-  for (const { path, value } of await read(db)) if (value !== null) assign(cfg, path, JsonValue.parse(value));
+  for (const { path, value } of await read(db)) {
+    if (value === null) continue;
+    const why = apply(cfg, path, JsonValue.parse(value));
+    if (why) consola.warn(`ignoring stored setting ${path}: ${why}`);
+  }
   return cfg;
 }
 
@@ -115,11 +140,16 @@ export async function putSetting<P extends SettingPath>(
     // Back to whatever the file said. Re-reading it would mean re-running the
     // env overrides too, so the default comes from the same table the panel
     // shows as "default".
-    assign(cfg, path, JsonValue.parse(defaultFor(path)));
+    apply(cfg, path, JsonValue.parse(defaultFor(path)));
     return null;
   }
+  // Applied before it is written, not after. The other order stored the row and
+  // then threw on the validation — so a half-finished remote embedding survived
+  // in the database, and the next boot refused to start over a value only the
+  // panel could fix.
+  const why = apply(cfg, path, JsonValue.parse(parsed.data.value));
+  if (why) return `${path}: ${why}`;
   await writeSetting(db, PREFIX + path, JSON.stringify(parsed.data.value));
-  assign(cfg, path, JsonValue.parse(parsed.data.value));
   return null;
 }
 

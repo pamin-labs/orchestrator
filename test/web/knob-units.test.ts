@@ -1,25 +1,24 @@
 import { expect, test } from "bun:test";
 import { settablePaths, defaultFor } from "../../src/platform/config/settings.ts";
-import { isSettingPath } from "../../src/contracts/config.ts";
-import { KNOBS_ELSEWHERE, SECTIONS } from "../../web/src/features/knobs/view.tsx";
+import { COPY, KNOBS_ELSEWHERE, SECTIONS } from "../../web/src/features/knobs/view.tsx";
 import {
-  KNOB_SHAPE,
-  fmtCount,
-  fmtDuration,
-  fmtPercent,
-  parseCount,
-  parseDuration,
-  parsePercent,
+  COUNT_UNITS,
+  countOf,
+  DURATION_UNITS,
+  PER,
   readNumber,
-  showNumber,
+  shapeOf,
+  splitCount,
   splitDuration,
+  unitLabel,
 } from "../../web/src/features/knobs/units.ts";
+import { i18n } from "../../web/src/i18n.ts";
 
 /**
- * The settings page shows `20 分钟` and posts 1200000.
+ * The settings page shows `20` beside `分钟` and posts 1200000.
  *
  * This is the one part of that page that can be wrong without looking wrong: a
- * field that reads 20 分钟 and stores 1_200_000.0000001 is refused by the type
+ * field that reads 20 `min` and stores 1_200_000.0000001 is refused by the type
  * check on the way in, and one that stores 1_800_000 is accepted and runs the
  * whole fleet on a different number. So every conversion is asserted in both
  * directions, on the values the config actually ships.
@@ -27,92 +26,133 @@ import {
 
 test("a duration survives the trip to the screen and back, exactly", () => {
   // Every duration in DEFAULTS, by the name the panel knows it by.
-  const shipped = [1_200_000, 10_800_000, 7_200_000, 30_000, 86_400_000];
+  const shipped = [1_200_000, 10_800_000, 7_200_000, 30_000, 86_400_000, 604_800_000];
   for (const ms of shipped) {
     const { n, unit } = splitDuration(ms);
-    expect(parseDuration(String(n), unit)).toBe(ms);
-    // And what the box actually holds, read back as typed.
-    expect(readNumber(fmtDuration(ms), ms, "ms")).toBe(ms);
+    // The two controls the row actually has: a digits box and a unit beside it.
+    expect(n * PER[unit]).toBe(ms);
+    expect(Number.isInteger(n)).toBe(true);
   }
-  // The readings themselves, so a change of unit is a change of this line.
-  expect(fmtDuration(1_200_000)).toBe("20 分钟");
-  expect(fmtDuration(10_800_000)).toBe("3 小时");
-  expect(fmtDuration(7_200_000)).toBe("2 小时");
-  expect(fmtDuration(30_000)).toBe("30 秒");
-  expect(fmtDuration(0)).toBe("0 秒");
-  // Not a whole number of any bigger unit, so it stays honest rather than round.
-  expect(fmtDuration(90_500)).toBe("90500 毫秒");
-  expect(readNumber("90500 毫秒", 90_500, "ms")).toBe(90_500);
+  // The units themselves, so a change of unit is a change of this line. Whole,
+  // not nearest: 90 minutes stays 90 minutes rather than becoming 1.5 hours.
+  expect(splitDuration(1_200_000)).toEqual({ n: 20, unit: "minute" });
+  expect(splitDuration(10_800_000)).toEqual({ n: 3, unit: "hour" });
+  expect(splitDuration(604_800_000)).toEqual({ n: 7, unit: "day" });
+  expect(splitDuration(5_400_000)).toEqual({ n: 90, unit: "minute" });
+  // Zero is a whole number of days too, and reads as seconds.
+  expect(splitDuration(0)).toEqual({ n: 0, unit: "second" });
+  // Nothing divides evenly, so it stays in the unit that keeps the number.
+  expect(splitDuration(90_500)).toEqual({ n: 90_500, unit: "millisecond" });
 });
 
-test("a bare number keeps the unit on the screen, a suffix overrides it", () => {
-  // 1_200_000 shows as `20 分钟`, so typing 30 over it means thirty minutes.
-  expect(readNumber("30", 1_200_000, "ms")).toBe(1_800_000);
-  // ...and the same box takes 45s, 3h, 2 小时 when the boss wants another unit.
-  expect(readNumber("45s", 1_200_000, "ms")).toBe(45_000);
-  expect(readNumber("3h", 1_200_000, "ms")).toBe(10_800_000);
-  expect(readNumber("2 小时", 1_200_000, "ms")).toBe(7_200_000);
-  expect(readNumber("1.5 小时", 1_200_000, "ms")).toBe(5_400_000);
-  // Junk is refused rather than turned into NaN or zero.
-  expect(readNumber("", 1_200_000, "ms")).toBeNull();
-  expect(readNumber("soon", 1_200_000, "ms")).toBeNull();
-  expect(readNumber("20 光年", 1_200_000, "ms")).toBeNull();
+/**
+ * The unit beside the digits is CLDR's word, not a catalogue row of ours.
+ *
+ * Five `msg` descriptors and fifty translated lines used to say what `Intl`
+ * already prints beside every other number on the page — fifty chances for the
+ * settings row to spell an hour differently from the cost chart.
+ */
+test("a unit is spelled the way the reader's language spells it", () => {
+  const was = i18n.locale;
+  // `loadAndActivate` with an empty catalogue, not `activate`: nothing here
+  // reads a message — `unitLabel` reads `i18n.locale` and asks CLDR — and
+  // `activate` on a locale with no catalogue loaded warns about exactly that.
+  const speak = (locale: string) => i18n.loadAndActivate({ locale, messages: {} });
+  try {
+    speak("zh");
+    expect(DURATION_UNITS.map(unitLabel)).toEqual(["天", "小时", "分钟", "秒", "毫秒"]);
+    speak("en");
+    expect(DURATION_UNITS.map(unitLabel)).toEqual(["day", "hr", "min", "sec", "ms"]);
+    speak("de");
+    expect(unitLabel("hour")).toBe("Std.");
+  } finally {
+    i18n.activate(was);
+  }
 });
 
-test("the sandbox TTL is stored in seconds and still reads in hours", () => {
-  // 86400 seconds. The one knob on the page whose unit is not milliseconds; a
-  // shared helper that forgot it would silently make the sandbox live 1000x too
-  // long, which is a bill rather than an error message.
-  expect(showNumber(86_400, "seconds")).toBe("24 小时");
-  expect(readNumber("24 小时", 86_400, "seconds")).toBe(86_400);
-  expect(readNumber("30 分钟", 86_400, "seconds")).toBe(1800);
-  expect(readNumber("12", 86_400, "seconds")).toBe(43_200);
-});
-
-test("token counts round-trip, including the tiers and every context window", () => {
+test("token counts split into a whole number and a tier", () => {
   const shipped = [8_000_000, 20_000_000, 30_000_000, 200_000, 1_000_000, 272_000, 16_000, 45, 0];
-  for (const n of shipped) expect(parseCount(fmtCount(n))).toBe(n);
-  expect(fmtCount(8_000_000)).toBe("8M");
-  expect(fmtCount(272_000)).toBe("272k");
-  expect(fmtCount(16_000)).toBe("16k");
-  expect(fmtCount(1_500_000)).toBe("1.5M");
-  expect(fmtCount(45)).toBe("45");
-  // Typed by hand, in any of the spellings a person uses for these.
-  expect(parseCount("8m")).toBe(8_000_000);
-  expect(parseCount("1,000,000")).toBe(1_000_000);
-  expect(parseCount("0.5M")).toBe(500_000);
-  expect(parseCount("")).toBeNull();
-  expect(parseCount("lots")).toBeNull();
+  for (const n of shipped) {
+    const split = splitCount(n);
+    expect(countOf(split.n, split.unit)).toBe(n);
+    expect(Number.isInteger(split.n)).toBe(true);
+  }
+  expect(splitCount(8_000_000)).toEqual({ n: 8, unit: "M" });
+  expect(splitCount(272_000)).toEqual({ n: 272, unit: "k" });
+  // 8.5 is not something an integer field can hold or a spinner can step, so
+  // the tier drops rather than the number gaining a decimal point.
+  expect(splitCount(8_500_000)).toEqual({ n: 8500, unit: "k" });
+  expect(splitCount(45)).toEqual({ n: 45, unit: "" });
+  expect(COUNT_UNITS).toEqual(["", "k", "M"]);
 });
 
-test("the rotation fraction is a percentage on the screen and a fraction underneath", () => {
-  // 0.6 * 100 is 60.00000000000001 in a double, and 60 * 0.01 is not 0.6.
-  expect(fmtPercent(0.6)).toBe("60%");
-  for (const f of [0.6, 0.5, 0.75, 0.85, 0.333, 1]) expect(parsePercent(fmtPercent(f))).toBe(f);
-  expect(parsePercent("60")).toBe(0.6);
-  // A fraction of one cannot be 0 or 140, and saying so beats storing it.
-  expect(parsePercent("0")).toBeNull();
-  expect(parsePercent("140")).toBeNull();
-  expect(parsePercent("half")).toBeNull();
+/**
+ * The one row that is still free text: a bare number with no unit at all.
+ *
+ * The four shaped rows each return their own editor before the text box is
+ * reached, which is why `readNumber` no longer takes a shape — and why
+ * `parseDuration`, `parseCount`, `parsePercent` and the alias table behind them
+ * were deleted rather than translated.
+ */
+test("a plain number row takes digits and refuses everything else", () => {
+  expect(readNumber("45")).toBe(45);
+  expect(readNumber("1.5")).toBe(1.5);
+  expect(readNumber("")).toBeNull();
+  expect(readNumber("soon")).toBeNull();
+  expect(readNumber("20 光年")).toBeNull();
 });
 
-test("every duration knob the server offers has a unit on the page", () => {
-  // The check that makes the table above maintainable rather than a snapshot: a
-  // knob named `somethingMs` that nobody added to KNOB_SHAPE renders as seven
-  // digits, which is the bug this whole file exists to prevent.
-  const missing = [...settablePaths()]
-    .filter(([path, type]) => type === "number" && /(Ms|Seconds|Fraction)$/.test(path.split(".").at(-1)!))
-    .filter(([path]) => !KNOB_SHAPE[path])
-    .map(([path]) => path);
-  expect(missing).toEqual([]);
+/**
+ * The suffix rule answers for every numeric knob the server offers.
+ *
+ * This used to compare a twenty-six-row table against this regex — the rule
+ * written twice, once as a rule and once as a transcript of it. `shapeOf` is the
+ * rule, so what is left to assert is that the rule is *complete*: no numeric
+ * knob ends in a duration-shaped suffix without getting a unit, and every path
+ * the rule does answer for is really a number.
+ */
+test("every numeric knob whose name says it is a duration gets a unit", () => {
+  const numeric = [...settablePaths()].filter(([, type]) => type === "number");
 
-  // And every shape matches a default that is really a number.
-  for (const path of Object.keys(KNOB_SHAPE).filter(isSettingPath)) {
+  // The failure this whole file exists to prevent: a knob named `somethingMs`
+  // rendered as seven digits.
+  const unshaped = numeric.filter(([path]) => !shapeOf(path)).map(([path]) => path);
+  expect(unshaped.filter((path) => /(Ms|Seconds|Fraction|Chars)$/.test(path))).toEqual([]);
+
+  // And nothing the rule answers for is anything but a finite number.
+  for (const [path] of numeric.filter(([path]) => shapeOf(path))) {
     const value = defaultFor(path);
     expect(typeof value).toBe("number");
     if (typeof value !== "number") throw new Error(`${path} is not numeric`);
-    expect(showNumber(value, KNOB_SHAPE[path])).not.toContain("NaN");
+    expect(Number.isFinite(value)).toBe(true);
   }
+
+  // The rule itself, on names rather than on the config — so it is still a check
+  // when a knob is renamed, and so this line fails if a suffix is dropped.
+  expect(shapeOf("turnTimeoutMs")).toBe("ms");
+  expect(shapeOf("sandbox.ttlSeconds")).toBe("seconds");
+  expect(shapeOf("sessionRotateFraction")).toBe("percent");
+  expect(shapeOf("ctxBudgetChars")).toBe("count");
+  // A knob that is the plain number it looks like gets no unit, which is right.
+  expect(shapeOf("maxGroups")).toBeUndefined();
+});
+
+/**
+ * `shapeOf` reads a name, and one name in the config is not a scalar.
+ *
+ * `intervals.notifyBackoffMs` is `z.array(count)` — a reminder ladder — so the
+ * suffix answers `ms` for it where the old table, keyed by path, had no row.
+ * Unreachable twice over: `scalarValue` sends only `type === "number"` to
+ * `numberValue`, and `mapValue` sends this path to `Ladder`, which splits every
+ * step through `splitDuration` and never asks here at all.
+ */
+/** So the answer is unused rather than wrong, and that is what this pins. The
+ *  ladder's own rendering is `knobs-render.test.tsx`'s — *a row per step, not a
+ *  line of JSON* — because whether a pane shows seven digits is a question only
+ *  a render answers, never a reachability argument about this function. */
+test("the suffix answers for a path no number editor ever asks about", () => {
+  expect(shapeOf("intervals.notifyBackoffMs")).toBe("ms");
+  expect([...settablePaths()].find(([path]) => path === "intervals.notifyBackoffMs")?.[1]).toBe("array");
 });
 
 test("every settable knob appears in a section, or the settings page cannot draw it", () => {
@@ -120,9 +160,34 @@ test("every settable knob appears in a section, or the settings page cannot draw
   // already paid for once with role names: a list nobody extends silently drops
   // what it does not mention. Thirteen keys landed settable through the API and
   // invisible on the page, which is a control the boss cannot find.
-  const placed = new Set(Object.values(SECTIONS).flatMap((s) => s.paths));
+  const placed = new Set(Object.values(SECTIONS).flatMap((s) => s.groups.flatMap((g) => g.paths)));
   const missing = [...settablePaths()]
     .map(([path]) => path)
     .filter((path) => !placed.has(path) && !KNOBS_ELSEWHERE.has(path));
   expect(missing).toEqual([]);
+});
+
+test("every knob a section draws has a human label, and no knob has two controls", () => {
+  // What the boss actually reported: `intervals.notifyBackoffMs` on the page as
+  // its own dotted path beside a raw number box. `copyFor` falls back to the path
+  // when `COPY` has no row, so a knob added to a section and forgotten here is
+  // invisible as a defect to everything except a person reading the pane —
+  // thirty-five of them were.
+  const placed = Object.values(SECTIONS).flatMap((s) => s.groups.flatMap((g) => g.paths));
+  expect(placed.filter((path) => !COPY[path])).toEqual([]);
+
+  // The other half of the same complaint: a value drawn twice, once by the
+  // control built for it and once by the generic row. A path in both lists is
+  // that bug, and it shipped as `embedding.model` under a picker already showing
+  // the same string.
+  expect(placed.filter((path) => KNOBS_ELSEWHERE.has(path))).toEqual([]);
+  // A section listing the same path twice draws it twice, with two React keys
+  // that are equal.
+  expect(placed.length).toBe(new Set(placed).size);
+
+  // And nothing is excused that the server never offered: a typo in
+  // KNOBS_ELSEWHERE excuses a path that does not exist while the real one stays
+  // undrawn, which is the coverage check above passing over a hole.
+  const settable = new Set<string>([...settablePaths()].map(([path]) => path));
+  expect([...KNOBS_ELSEWHERE].filter((path) => !settable.has(path))).toEqual([]);
 });

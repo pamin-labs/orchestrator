@@ -1,3 +1,5 @@
+import { msg } from "@lingui/core/macro";
+import type { Said } from "../../contracts/said.ts";
 import { errText, tail } from "../../platform/process/text.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { activeTracer } from "../../platform/observability/traces.ts";
@@ -65,7 +67,7 @@ async function followRename(
     author: "orchestrator",
     kind: "state_change",
     severity: "advisory",
-    body: `仓库在 GitHub 上改名了：${was} → ${repo.full_name}。已经跟着改，克隆和 PR 都指新的。`,
+    say: msg`the repository was renamed on GitHub: ${{ was }} → ${{ now: repo.full_name }}. We have followed it, and clones and PRs point at the new one.`,
   });
 }
 
@@ -119,7 +121,7 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
         author: "orchestrator",
         kind: "state_change",
         severity: "advisory",
-        body: `基线分支从 ${row.base_branch} 改成 ${found}（远端上的默认分支变了）。往后的 clone、rebase 和 diff 都对着它。`,
+        say: msg`the base branch moved from ${{ was: row.base_branch }} to ${{ now: found }}, because the default branch on the remote changed. Every clone, rebase and diff from here on is against it.`,
       });
     }
   }
@@ -155,9 +157,23 @@ export const baseRefFor = async (ctx: Ctx, projectId: number): Promise<string> =
  * home. No repo lock: each group has its own clone, so there is nothing left for
  * two groups to corrupt.
  */
+/**
+ * Git's own messages, in the language this code reads.
+ *
+ * Three call sites tell "nothing to push" from a real failure by matching
+ * `/empty bundle/i` against stderr, and git marks that string translatable —
+ * `die(_("Refusing to create empty bundle."))`. The shipped image sets no
+ * `LANG`, so it answers in English; a custom image (the boss can set one) with
+ * Debian's git l10n and a `LANG` would turn an ordinary empty branch into an
+ * escalated hard failure at all three.
+ */
+/** `LC_ALL`, not `LANG`: it is the one that wins over both. Insurance, not a
+ *  reproduction — no image this ships with translates. */
+const GIT_ENV = { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" } as const;
+
 export function sandboxGit(ctx: Ctx, scope: Scope): GitRunner {
   return async (argv, cwd) => {
-    const r = await execIn(ctx, scope, `git ${argv.map(shq).join(" ")}`, { cwd: cwd ?? WORK });
+    const r = await execIn(ctx, scope, `git ${argv.map(shq).join(" ")}`, { cwd: cwd ?? WORK, env: { ...GIT_ENV } });
     // stderr only when the command failed — that is where the reason lives and
     // callers read `out` for it. On success stderr is warnings, and porcelain `-z`
     // output is one NUL-terminated blob, so an appended line becomes a path.
@@ -269,7 +285,7 @@ async function createCheckoutInner(ctx: Ctx, scope: Scope, spec: CheckoutSpec): 
   const cloneCmd = `git clone --progress --filter=blob:none ${shq(spec.remote)} ${WORK}`;
   const clone = await streamed(ctx, scope, cloneCmd, {
     timeoutMs: ctx.config.timeouts.transferMs,
-    env: { GIT_TERMINAL_PROMPT: "0" },
+    env: { ...GIT_ENV },
   });
   if (clone.code !== 0) throw new Error(`git clone failed: ${clone.out.slice(-400)}`);
 
@@ -334,7 +350,7 @@ async function initSubmodules(ctx: Ctx, scope: Scope): Promise<void> {
       author: "orchestrator",
       kind: "state_change",
       severity: "warn",
-      body: `子模块没拉起来，代码可能不全：${(r.err || r.out).slice(-300)}`,
+      say: msg`the submodules did not come up, so the checkout may be incomplete: ${{ why: (r.err || r.out).slice(-300) }}`,
     });
   }
 }
@@ -368,7 +384,7 @@ export async function utilGit(ctx: Ctx, argv: string[], cwd?: string): Promise<{
   const r = await execIn(ctx, UTIL, cmd, {
     ...(cwd ? { cwd } : {}),
     timeoutMs: ctx.config.timeouts.transferMs,
-    env: { GIT_TERMINAL_PROMPT: "0" },
+    env: { ...GIT_ENV },
   });
   return { code: r.code, out: `${r.out}${r.err}`.trimEnd() };
 }
@@ -658,6 +674,7 @@ async function keep(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: st
   const name = `${branch.replaceAll("/", "-")}.bundle`;
   const made = await execIn(ctx, scope, `git bundle create ${shq(`/tmp/${name}`)} ${shq(branch)} --not ${shq(base)}`, {
     cwd: WORK,
+    env: { ...GIT_ENV },
   });
   // "Refusing to create empty bundle" is the ordinary answer for a group that
   // has committed nothing yet, not a failure worth escalating.
@@ -729,27 +746,36 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
   // `on`, not `grpId`, for exactly one of them: `event.grp_id` is a foreign key
   // to `grp`, so an event about a group that is not in the table cannot be
   // written against it. That one goes out unscoped and names the id in its body.
-  const report = async (why: string, on: number | null = grpId): Promise<void> => {
-    await ctx.bus.emit({
-      grpId: on,
-      author: "orchestrator",
-      kind: "state_change",
-      severity: "blocker",
-      body: `${why}，/work 还是空的 —— 这一轮没有代码可跑`,
-    });
+  /**
+   * The whole sentence each time, not a reason threaded into a shared tail: a
+   * descriptor inside another's values is "values, never text". Three repeated
+   * clauses is what not doing it costs.
+   */
+  const report = async (say: Said, on: number | null = grpId): Promise<void> => {
+    await ctx.bus.emit({ grpId: on, author: "orchestrator", kind: "state_change", severity: "blocker", say });
   };
 
   const [grp] = await ctx.db
     .select({ name: grps.name, project_id: grps.project_id, branch: grps.branch })
     .from(grps)
     .where(eq(grps.id, grpId));
-  if (!grp) return report(`grp 表里找不到组 ${grpId}`, null);
+  if (!grp)
+    return report(
+      msg`no group ${{ grp: grpId }} in the grp table, so /work is still empty — there is no code to run this turn`,
+      null,
+    );
   // Still two questions, not one: a project that is gone and a project with no
   // remote recorded send the reader to different places.
   const [found] = await ctx.db.select({ remote: project.remote }).from(project).where(eq(project.id, grp.project_id));
-  if (!found) return report(`项目不在了（project ${grp.project_id} 查不到）`);
+  if (!found)
+    return report(
+      msg`the project is gone (project ${{ project: grp.project_id }} is not there), so /work is still empty — there is no code to run this turn`,
+    );
   const remote = await remoteFor(ctx.db, grp.project_id);
-  if (!remote) return report(`project ${grp.project_id} 没记下 remote，无从 clone`);
+  if (!remote)
+    return report(
+      msg`project ${{ project: grp.project_id }} has no remote recorded, so there is nothing to clone — /work is still empty and there is no code to run this turn`,
+    );
   await createCheckout(
     ctx,
     { grp: grpId },

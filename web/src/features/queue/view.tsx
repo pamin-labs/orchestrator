@@ -7,15 +7,17 @@ import { AnswerDraftSchema, api, mutate, readApi } from "../../shared/api";
 import { usePaged } from "../../shared/page";
 import type { State } from "../../shared/api";
 import { groupName } from "./rank";
-import { KIND_ZH } from "../../shared/select";
+import { kindOf } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { foldQueueItems, queueClusters, queueItems, type QueueCluster, type QueueItem } from "./model";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 /**
  * Everything waiting on the boss, ordered by what ignoring it costs.
  *
- * It can reach zero, and that matters: "都处理完了" is achievable, where a board always
+ * It can reach zero, and that matters: "nothing left" is achievable, where a board always
  * looks half empty and trains the reader to ignore it.
  */
 /**
@@ -42,14 +44,18 @@ export function Queue({
   // things that would refill it and promising a notification. A queue that fills
   // itself does not need a paragraph saying it will.
   if (!items.length) {
-    return <div className="text-body text-ok">都处理完了</div>;
+    return (
+      <div className="text-body text-ok">
+        <Trans>All done</Trans>
+      </div>
+    );
   }
 
   const blocks = queueClusters(items).map((cluster) => ({
     node: <Cluster key={cluster.grpId} st={st} c={cluster} onOpen={onOpen} refresh={refresh} />,
   }));
 
-  // No card, no second 待办 label: the tab this renders into already carries the
+  // No card, no second `To do` label: the tab this renders into already carries the
   // name and the count, and a titled card inside a titled tab was the same word
   // twice with two different numbers under it.
   // The sort order used to be printed above the list. Every row already carries
@@ -73,7 +79,7 @@ function Paged({ blocks }: { blocks: { node: React.ReactNode }[] }) {
       {rest > 0 && (
         <div className="border-t border-rule-soft px-2 py-2">
           <Button variant="quiet" size="sm" onClick={more}>
-            还有 {rest} 条需求
+            <Trans>{rest} more requirements</Trans>
           </Button>
         </div>
       )}
@@ -82,7 +88,7 @@ function Paged({ blocks }: { blocks: { node: React.ReactNode }[] }) {
 }
 
 /**
- * One requirement and everything waiting on it, in the shape 进行中 already uses.
+ * One requirement and everything waiting on it, in the shape `In progress` already uses.
  *
  * Identity on the left, the things themselves as cards in a track, the way out on
  * the right. That page reads well because the eye lands on one fixed column of names
@@ -182,8 +188,10 @@ function ClusterIdentity({ st, c, standing, hard }: { st: State; c: QueueCluster
   );
 }
 
-const clusterName = (st: State, grpId: number, standing: boolean) => (standing ? "常驻岗" : groupName(st, grpId));
-const clusterWaiting = (hard: number, total: number) => (hard > 0 ? `${hard} 条卡着全组` : `${total} 条等你`);
+const clusterName = (st: State, grpId: number, standing: boolean) =>
+  standing ? t`Standing post` : groupName(st, grpId);
+const clusterWaiting = (hard: number, total: number) =>
+  hard > 0 ? t`${hard} blocking the whole group` : t`${total} waiting on you`;
 const clusterTokens = (tokens: number | undefined) => (tokens ? ` · ${K(tokens)} tokens` : "");
 
 function ClusterTickets({
@@ -197,13 +205,16 @@ function ClusterTickets({
   refresh: () => void;
   standing: boolean;
 }) {
+  const hiddenCount = folded.length - shown.length;
   return (
     <div className="flex min-w-0 flex-wrap items-stretch gap-1.5 max-[60rem]:col-span-full">
       {shown.map(({ item, n }) => (
         <Ticket key={item.key} item={item} n={n} refresh={refresh} standing={standing} />
       ))}
       {folded.length > shown.length && (
-        <span className="self-center font-mono text-meta text-ink-3">还有 {folded.length - shown.length} 条</span>
+        <span className="self-center font-mono text-meta text-ink-3">
+          <Trans>{hiddenCount} more</Trans>
+        </span>
       )}
     </div>
   );
@@ -224,7 +235,11 @@ function ClusterTickets({
  */
 function MergeAction({ items }: { items: QueueItem[] }) {
   const href = items.find((item) => item.href)?.href;
-  return href ? <LinkButton href={href}>去合并 PR ↗</LinkButton> : null;
+  return href ? (
+    <LinkButton href={href}>
+      <Trans>Go merge PR ↗</Trans>
+    </LinkButton>
+  ) : null;
 }
 
 function Ticket({
@@ -264,13 +279,15 @@ function TicketMeta({ item, n }: { item: QueueItem; n: number }) {
       <TicketAbout item={item} />
       {n > 1 && <span className="font-semibold text-ink-2">×{n}</span>}
       <span className="grow" />
-      {item.reasons.find((reason) => reason.why.startsWith("等了"))?.why.replace("等了 ", "")}
+      {item.reasons.find((reason) => reason.kind === "waited")?.short}
     </span>
   );
 }
 
 function TicketAbout({ item }: { item: QueueItem }) {
-  return item.about && KIND_ZH[item.about] ? <span className="text-ink-2">{KIND_ZH[item.about]}</span> : null;
+  const { t } = useLingui();
+  const kind = kindOf(item.about);
+  return kind ? <span className="text-ink-2">{t(kind)}</span> : null;
 }
 
 function TicketReply({ item, standing, refresh }: { item: QueueItem; standing: boolean; refresh: () => void }) {
@@ -286,12 +303,13 @@ function TicketReply({ item, standing, refresh }: { item: QueueItem; standing: b
  * Answer a question from the list.
  *
  * `orch ask-boss` blocks its caller until this lands, and the Architect files
- * questions with no requirement behind them — those had a 去回答 button that opened
+ * questions with no requirement behind them — those had an answer button that opened
  * a requirement id of null, so the one class of question the boss cannot navigate to
- * was also the one they could not clear. 知道了 is the whole point for an FYI: the
+ * was also the one they could not clear. `Got it` is the whole point for an FYI: the
  * answer text is unimportant, unblocking the agent is not.
  */
 function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh: () => void }) {
+  const { t } = useLingui();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [busy, startTransition] = useTransition();
@@ -309,15 +327,15 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
   };
   if (fyi) {
     return (
-      <Button variant="go" disabled={busy} onClick={() => send("知道了")}>
-        知道了
+      <Button variant="go" disabled={busy} onClick={() => send(t`Got it`)}>
+        <Trans>Got it</Trans>
       </Button>
     );
   }
   if (!open)
     return (
       <Button variant="go" onClick={() => setOpen(true)}>
-        回答
+        <Trans>Reply</Trans>
       </Button>
     );
   return (
@@ -334,11 +352,11 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
             () => send(text),
           )
         }
-        placeholder="回答…  ⌘↵ 发送"
+        placeholder={t`Reply… Cmd+Enter to send`}
         className="w-[20rem] resize-none rounded-md border border-rule bg-paper px-2 py-1.5 text-body outline-none focus:border-accent"
       />
       <Button variant="go" disabled={busy || !text.trim()} onClick={() => send(text)}>
-        发送
+        <Trans>Send</Trans>
       </Button>
     </span>
   );
@@ -361,7 +379,7 @@ function handleReplyKey(event: React.KeyboardEvent, close: () => void, send: () 
 /**
  * The drafted answer, offered from the queue as well as the requirement page.
  *
- * This is where the boss actually answers now — 待办 is one tab and the question
+ * This is where the boss actually answers now — `To do` is one tab and the question
  * has its reply box on the row — so a draft that only existed on the drill-in was
  * a draft nobody saw. Same call, same rule: computed on open, never stored, and
  * it goes into the box rather than to the agent.
@@ -384,7 +402,7 @@ function Draft({ escId, onUse }: { escId: number; onUse: (t: string) => void }) 
   return (
     <Tip label={text}>
       <Button size="sm" onClick={() => onUse(text)}>
-        用草稿
+        <Trans>Use draft</Trans>
       </Button>
     </Tip>
   );

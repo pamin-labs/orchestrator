@@ -1,9 +1,10 @@
 import { Area, AreaChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { K } from "../../shared/format";
+import { clock, day, K } from "../../shared/format";
 import { AXIS, CHART_CARD, ChartTooltip } from "../../ui/chart";
+import { Trans } from "@lingui/react/macro";
 
 /**
- * The two charts 成本 earns, and nothing else.
+ * The two charts `Cost` earns, and nothing else.
  *
  * A chart has to answer something a sorted list cannot. Two things here do: how fast
  * it is burning right now, which is a shape over time, and how a whole splits when
@@ -18,9 +19,17 @@ import { AXIS, CHART_CARD, ChartTooltip } from "../../ui/chart";
  */
 
 /** Hourly burn, stacked by which subscription paid for it. */
-export function BurnChart({ data }: { data: { hour: string; claude: number; codex: number }[] }) {
+/** The bucket's own hour, in the reader's language. Empty when a tick has no row
+ *  behind it, which recharts can ask for while the chart is resizing. */
+const hourOf = (at: number | undefined): string => (at === undefined ? "" : `${day(at)} ${clock(at)}`);
+
+export function BurnChart({ data }: { data: { hour: string; at: number; claude: number; codex: number }[] }) {
   if (data.length < 2) {
-    return <div className="py-4 text-secondary text-ink-3">还不够两个小时的数据。</div>;
+    return (
+      <div className="py-4 text-secondary text-ink-3">
+        <Trans>Not enough data for two hours.</Trans>
+      </div>
+    );
   }
   return (
     <div className="h-[8.5rem]">
@@ -38,7 +47,11 @@ export function BurnChart({ data }: { data: { hour: string; claude: number; code
             tickFormatter={(v: string) => v.slice(-2)}
           />
           <YAxis {...AXIS} tickLine={false} axisLine={false} width={34} tickFormatter={(v: number) => K(v)} />
-          <ChartTooltip format={K} />
+          {/* The tooltip's first line is the axis key unless it is told otherwise,
+              and the key is `MM-DD HH` — a shape the server bucketed by, sitting
+              next to a trend axis that says `13.08.` through `Intl`. `at` is the
+              instant behind the same bucket, so the reader gets their own. */}
+          <ChartTooltip format={K} label={(v) => hourOf(data.find((row) => row.hour === v)?.at)} />
           {/* Two flat fills, no gradient: the question is which is larger, and a
               fade to transparent makes the bottom band look like it is ending. */}
           <Area

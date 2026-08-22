@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useClamped } from "../../ui/clamped";
 import { Meta, Pane } from "../../ui/bits";
 import { Badge } from "../../ui/badge";
 import { Tip } from "../../ui/tooltip";
@@ -13,11 +14,15 @@ import { WithAttachments } from "../../ui/attachments";
 import { z } from "zod";
 import { jsonOr } from "../../../../src/contracts/json.ts";
 import { NotesResponseSchema, type PanelNote as Note } from "../../../../src/contracts/notes";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { ph, msg } from "@lingui/core/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { labelOf } from "../../shared/select";
 
 /**
  * The blackboard's static half.
  *
- * The journal is where "做了啥 + 为啥 + 风险" lives, the retro is the only thing a
+ * The journal is where "what was done, why, and the risk" lives, the retro is the only thing a
  * dissolved group leaves behind, and the lesson list is the single mechanism by
  * which the twentieth group is smarter than the first. All of it was written,
  * exported to the repo, injected into prompts — and unreadable from the panel, which
@@ -28,32 +33,34 @@ import { NotesResponseSchema, type PanelNote as Note } from "../../../../src/con
  * so the whole body is shown rather than truncated: a 6-line note with a "more" link
  * would be a click to see two extra lines.
  */
-const KINDS: [string, string][] = [
-  ["journal", "日志"],
-  ["decision", "决策"],
-  ["retro", "复盘"],
-  ["lesson", "教训"],
-  ["onboarding", "入职包"],
-  ["risk", "风险"],
-  ["fact", "老板说的"],
+const KINDS: [string, MessageDescriptor][] = [
+  ["journal", msg`Journal`],
+  ["decision", msg`Decision`],
+  ["retro", msg`Retrospective`],
+  ["lesson", msg`Lesson`],
+  ["onboarding", msg`Onboarding`],
+  ["risk", msg`Risk`],
+  ["fact", msg`Management directive`],
 ];
 
-const ZH = new Map(KINDS.map(([k, zh]) => [k, zh]));
+const KIND_LABEL = new Map(KINDS);
 const FrontmatterSchema = z.object({
   files: z.array(z.string()).optional(),
   gate: z.string().nullable().optional(),
 });
-const GATES: Record<string, { text: string; className?: string }> = {
-  pass: { text: "过", className: "text-ok" },
-  fail: { text: "没过", className: "text-bad" },
+const GATES: Record<string, { text: MessageDescriptor; className?: string }> = {
+  pass: { text: msg`Pass`, className: "text-ok" },
+  fail: { text: msg`Fail`, className: "text-bad" },
 };
 
 function Evidence({ note, gate, files }: { note: Note; gate: string | null; files: string[] }) {
+  const { t } = useLingui();
   if (![gate, note.exportPath, ...files].some(Boolean)) return null;
-  const verdict = gate ? (GATES[gate] ?? { text: gate }) : null;
+  const found = gate ? GATES[gate] : undefined;
+  const verdict = gate ? { ...found, text: found ? t(found.text) : gate } : null;
   return (
     <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
-      {verdict && <Meta className={verdict.className}>闸门 {verdict.text}</Meta>}
+      {verdict && <Meta className={verdict.className}>{t`gate ${ph({ verdict: verdict.text })}`}</Meta>}
       {files.map((file) => (
         <Tip key={file} label={file}>
           <Meta className="min-w-0 truncate font-mono">{file}</Meta>
@@ -136,11 +143,20 @@ export function NotesBoard({
   tab?: string | null;
   onTab?: (t: string) => void;
 }) {
-  if (!notes) return <Meta>读记录…</Meta>;
+  const { t } = useLingui();
+  if (!notes)
+    return (
+      <Meta>
+        <Trans>Loading notes…</Trans>
+      </Meta>
+    );
   if (!notes.length) {
     return (
       <div className="text-body text-ink-3">
-        还没有记录。agent 每个 turn 写 journal，组解散前写 retro，retro 归纳成教训注入后续组。
+        <Trans>
+          No notes yet. Agents write journals each turn; retrospectives are written before the group dissolves and
+          distilled into lessons for later groups.
+        </Trans>
       </div>
     );
   }
@@ -157,14 +173,14 @@ export function NotesBoard({
       className="flex min-h-0 flex-1 flex-col"
     >
       <TabList>
-        {present.map(([k, zh]) => (
+        {present.map(([k, label]) => (
           <Tab key={k} value={k} count={notes.filter((n) => n.kind === k).length}>
-            {zh}
+            {t(label)}
           </Tab>
         ))}
       </TabList>
-      {/* No hint line under the strip. 「每个 turn 的产出：做了啥、为什么、风险。硬性
-          ≤6 行」 sat above the journals themselves, which say all of that by being
+      {/* No hint line under the strip. "Each turn's output: what was done, why, and
+          the risk. Six lines at most" sat above the journals themselves, which say all of that by being
           journals — and it cost a row of height on every tab, every visit. */}
       {present.map(([k]) => (
         <TabPanel key={k} value={k} className="flex min-h-0 flex-1 flex-col">
@@ -186,7 +202,12 @@ function List({ notes, size, showKind }: { notes: Note[]; size: number; showKind
       ))}
       {rest > 0 && (
         <Button variant="quiet" size="sm" className="mt-2" onClick={more}>
-          还有 {rest} 条（共 {total}）
+          {/* Its own message, not the one the requirement list uses: a note is
+              counted with one measure word and a requirement with another — a distinction the
+              Chinese draws and the English does not. */}
+          <Trans context="notes">
+            {rest} more of {total}
+          </Trans>
         </Button>
       )}
     </>
@@ -212,7 +233,7 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-2">
-          {showKind && <Badge>{ZH.get(n.kind) ?? n.kind}</Badge>}
+          {showKind && <Badge>{labelOf(KIND_LABEL.get(n.kind), n.kind)}</Badge>}
           <Meta>{clock(n.at)}</Meta>
         </div>
         {n.group && (
@@ -226,7 +247,7 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
         {/* The deterministic anchors, under the prose they are meant to check: the
             files it touched and the gate's verdict are what stop a journal being
             self-congratulation. The export path was the widest thing on the old
-            header — 60 characters of docs/journal/<一个很长的中文需求名>/020-journal.md
+            header — 60 characters of docs/journal/<a very long requirement name>/020-journal.md
             saying less than the requirement name inside it. It is a hover. */}
         <Evidence note={n} gate={gate} files={files} />
       </div>
@@ -243,11 +264,13 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
  * know whether this is the one, and the rest is one click away.
  */
 function Body({ text }: { text: string }) {
+  const { t } = useLingui();
   const [open, setOpen] = useState(false);
-  const long = text.split("\n").length > 4 || text.length > 320;
+  const [ref, clamped] = useClamped<HTMLDivElement>(`${text}:${open}`);
+  const long = clamped || open;
   return (
     <div className="mt-1.5">
-      <div className={cn("text-body leading-[1.7] text-ink-2", !open && long && "line-clamp-4")}>
+      <div ref={ref} className={cn("text-body leading-[1.7] text-ink-2", !open && "line-clamp-4")}>
         <WithAttachments body={text} />
       </div>
       {long && (
@@ -256,7 +279,7 @@ function Body({ text }: { text: string }) {
           onClick={() => setOpen((v) => !v)}
           className="mt-0.5 cursor-pointer font-mono text-meta text-ink-3 hover:text-accent"
         >
-          {open ? "收起" : "展开"}
+          {open ? t`Collapse` : t`Expand`}
         </button>
       )}
     </div>

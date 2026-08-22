@@ -37,13 +37,16 @@ import {
   trendScale,
   wheelWindow,
 } from "./model";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { msg, ph } from "@lingui/core/macro";
 
 /**
- * 耗时 — where a scope's wall clock went.
+ * `Time` — where a scope's wall clock went.
  *
  * Three surfaces read this: one component with a different scope, because a
  * requirement, a project and the host ask the same question about different work.
- * Two libraries — `recharts`, already bundled for 成本, and `d3-flame-graph` —
+ * Two libraries — `recharts`, already bundled for `Cost`, and `d3-flame-graph` —
  * both rendering SVG, because a canvas chart is one node with an image in it.
  */
 
@@ -67,7 +70,7 @@ const rowTone = (selected: boolean) => (selected ? "bg-accent-soft hover:bg-acce
  * The four columns, in one place because three rows have to agree on them.
  *
  * `auto` on the three numeric tracks rather than fixed rem widths, which gives
- * each number exactly what it needs and hands the rest to `minmax(0,1fr)`. `次数`
+ * each number exactly what it needs and hands the rest to `minmax(0,1fr)`. `Count`
  * stays a column rather than moving to a tooltip: it is the cheapest of the three
  * to render and the one that proves a brushed window took effect.
  */
@@ -126,8 +129,17 @@ if (typeof scalePoint !== "function") throw new Error("d3-scale's scalePoint was
 /** The endpoint's own default window, so the first bucket is derived from the same number. */
 const DAY_MS = 24 * 3_600_000;
 
+/** Said around a bucket width, which is itself a message. */
+const perBucket = (width: string): MessageDescriptor => msg`${{ width }} per bucket`;
+
+const tooManyBuckets = (count: string): MessageDescriptor =>
+  msg`This window needs ${{ count }} buckets, more than fits`;
+
+const sliceLabel = (id: number): MessageDescriptor => msg`slice ${{ id }}`;
+
 /** How wide a bucket reads, in the units the picker offers. */
-const bucketLabel = (ms: number) => (ms < 3_600_000 ? `${ms / 60_000} 分钟` : `${ms / 3_600_000} 小时`);
+const bucketLabel = (ms: number): MessageDescriptor =>
+  ms < 3_600_000 ? msg`${{ minutes: ms / 60_000 }} min` : msg`${{ hours: ms / 3_600_000 }} hr`;
 
 /**
  * Which bucket width the trend is using, and a way to choose another.
@@ -149,10 +161,11 @@ function BucketPicker({
   windowMs: number;
   onPick: (ms: number | null) => void;
 }) {
+  const { t } = useLingui();
   return (
-    <Menu label={`每格 ${bucketLabel(value)}${pinned ? "" : "（跟随）"}`}>
-      <MenuItem hint="窗口一变就跟着变，够画又不挤" onSelect={() => onPick(null)}>
-        跟随窗口
+    <Menu label={`${t(perBucket(t(bucketLabel(value))))}${pinned ? "" : t`(following)`}`}>
+      <MenuItem hint={t`Follow window—updates as window changes, fits without crowding`} onSelect={() => onPick(null)}>
+        <Trans>Follow window</Trans>
       </MenuItem>
       {BUCKETS.map((ms) => {
         const fits = bucketFits(windowMs, ms);
@@ -160,10 +173,10 @@ function BucketPicker({
           <MenuItem
             key={ms}
             disabled={!fits}
-            hint={fits ? undefined : `这段时间要 ${Math.round(windowMs / ms).toLocaleString()} 格，画不下`}
+            hint={fits ? undefined : t(tooManyBuckets(Math.round(windowMs / ms).toLocaleString()))}
             onSelect={() => onPick(ms)}
           >
-            {bucketLabel(ms)}
+            {t(bucketLabel(ms))}
           </MenuItem>
         );
       })}
@@ -221,38 +234,54 @@ function StageTable({
   onPick: (names: readonly string[]) => void;
   onExclude: (name: string) => void;
 }) {
+  const { t } = useLingui();
   // Shut by default: the reader opens the group that looks expensive — and then
   // the next one, which is why this is a set rather than a single value. The
-  // question 巡检规则 raises is "against what", and answering it by closing
-  // 巡检规则 is the one thing the control must not do.
+  // question `Watchdog rule` raises is "against what", and answering it by closing
+  // `Watchdog rule` is the one thing the control must not do.
   const [openKinds, setOpenKinds] = useState<string[]>([]);
   // The stages below the distribution's own largest gap are the absence of an
   // answer rather than an answer, and `ui.md` gives absence a sentence rather
   // than equal billing.
   const { slow, fast, ceiling } = splitStages(stages);
+  // Named, because a placeholder takes the name of the expression that fills it.
+  // Under a millisecond the quoted ceiling rounds to "0ms", which reads as a
+  // broken number rather than as a fast stage, so it says so in words instead.
+  const restCount = fast.length;
+  // `ph` because the name the message wants is already taken by the number it
+  // formats — a binding called `ceiling` cannot also be `duration(ceiling)`.
+  const restCeiling = ceiling < 1 ? t`all under 1ms` : t`all under ${ph({ ceiling: duration(ceiling) })}`;
   return (
     <div>
       <div className={cn("grid gap-x-3 border-b border-rule pb-1 text-meta text-ink-3", COLS)}>
         {/* A head is not only a definition; it is what makes a header row look
             like one — three labelled cells beside one blank read as a header that
             failed to render, not as a self-evident column. */}
-        <div>在做什么</div>
+        <div>
+          <Trans>What</Trans>
+        </div>
         {/* Nouns, and the shortest ones that still separate the two durations:
             what it usually costs against what it costs on a bad day. The exact
             statistic stays one hover away for anybody who wants it. */}
-        <Tip label={P50_LABEL}>
-          <div className="text-right underline decoration-dotted underline-offset-2">一般</div>
+        <Tip label={t(P50_LABEL)}>
+          <div className="text-right underline decoration-dotted underline-offset-2">
+            <Trans>P50</Trans>
+          </div>
         </Tip>
-        <Tip label={P95_LABEL}>
-          <div className="text-right underline decoration-dotted underline-offset-2">最慢</div>
+        <Tip label={t(P95_LABEL)}>
+          <div className="text-right underline decoration-dotted underline-offset-2">
+            <Trans>P95</Trans>
+          </div>
         </Tip>
-        <div className="text-right">次数</div>
+        <div className="text-right">
+          <Trans>Count</Trans>
+        </div>
       </div>
       {/* Grouped by kind and shut by default, inside a box that does not grow:
           twenty-four rules summing to 1.1s is one line. Grouping comes from the
           span-name prefix rather than a list, because a list drops every new span
           family into nothing. Radix owns the expand, the keyboard and the ARIA
-          (CLAUDE.md 硬约束 4). */}
+          (CLAUDE.md hard constraint 4). */}
       <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: PANE_MAX_PX }}>
         <MultiAccordion value={openKinds} onValueChange={setOpenKinds}>
           {groupByKind([...slow, ...(showRest ? fast : [])]).map((group) => (
@@ -275,7 +304,9 @@ function StageTable({
                   />
                   <span className="truncate text-body text-ink">{group.label}</span>
                   {group.errors > 0 && (
-                    <span className="shrink-0 font-mono text-pill text-bad">{group.errors} 失败</span>
+                    <span className="shrink-0 font-mono text-pill text-bad">
+                      <Trans>{{ failed: group.errors }} failed</Trans>
+                    </span>
                   )}
                 </span>
                 {/* A shut group still answers "did this cost anything", which is
@@ -355,8 +386,10 @@ function StageTable({
                                only half a reader can act on. Under a `Tip`
                                because it is the newest failure's own words and
                                can be long — the row stays a row. */
-                            <Tip label={stage.reason ?? "没有记下原因"}>
-                              <span className="shrink-0 font-mono text-pill text-bad">{stage.errors} 失败</span>
+                            <Tip label={stage.reason ?? t`No reason recorded`}>
+                              <span className="shrink-0 font-mono text-pill text-bad">
+                                <Trans>{{ failed: stage.errors }} failed</Trans>
+                              </span>
                             </Tip>
                           )}
                         </div>
@@ -367,8 +400,12 @@ function StageTable({
                     </ContextMenu.Trigger>
                     <ContextMenu.Portal>
                       <ContextMenu.Content className={MENU}>
-                        <MenuAction onSelect={() => onPick([stage.name])}>只看这一段</MenuAction>
-                        <MenuAction onSelect={() => onExclude(stage.name)}>不看这一段</MenuAction>
+                        <MenuAction onSelect={() => onPick([stage.name])}>
+                          <Trans>Only this stage</Trans>
+                        </MenuAction>
+                        <MenuAction onSelect={() => onExclude(stage.name)}>
+                          <Trans>Hide this stage</Trans>
+                        </MenuAction>
                       </ContextMenu.Content>
                     </ContextMenu.Portal>
                   </ContextMenu.Root>
@@ -389,11 +426,7 @@ function StageTable({
           onClick={() => onShowRest(!showRest)}
           className="cursor-pointer pt-1.5 text-left text-secondary text-ink-3 transition-colors hover:text-ink"
         >
-          {/* Under a millisecond the quoted ceiling rounds to "0ms", and "都在
-              0ms 以内" reads as a broken number rather than as a fast stage. */}
-          {showRest
-            ? `收起另外 ${fast.length} 个`
-            : `展开另外 ${fast.length} 个（${ceiling < 1 ? "都不到 1ms" : `都在 ${duration(ceiling)} 以内`}）`}
+          {showRest ? t`Hide the other ${restCount}` : t`Show the other ${restCount} (${restCeiling})`}
         </button>
       )}
     </div>
@@ -430,6 +463,7 @@ function MenuAction({ onSelect, children }: { onSelect: () => void; children: Re
  * bounds the tree at 64 levels, since that walk would not terminate on a cycle.
  */
 function FlameBlock({ folded, picked }: { folded: Report["flame"]; picked: readonly string[] }) {
+  const { t } = useLingui();
   const [self, setSelf] = useState(true);
   const tree = useMemo(() => flameTree(folded), [folded]);
   const depth = flameDepth(tree);
@@ -442,14 +476,18 @@ function FlameBlock({ folded, picked }: { folded: Report["flame"]; picked: reado
       // Named for the question it answers, not for the chart it is: this is every
       // run in the scope stacked together, the trend beside it is one number per
       // bucket over time, and two charts of the same spans need that said.
-      title="耗时分布"
+      title={t`Flame distribution`}
       aside={
         <Segments value={self ? "self" : "total"} onValueChange={(next) => setSelf(next === "self")}>
-          {/* Not two skins on one chart: 自身 makes a frame as wide as the time it
-              spent itself, 含下游 as wide as everything it called. A parent that
+          {/* Not two skins on one chart: `Self` makes a frame as wide as the time it
+              spent itself, `Including downstream` as wide as everything it called. A parent that
               only waits is full width under one and a sliver under the other. */}
-          <Segment value="self">自身</Segment>
-          <Segment value="total">含下游</Segment>
+          <Segment value="self">
+            <Trans>Self</Trans>
+          </Segment>
+          <Segment value="total">
+            <Trans>Including downstream</Trans>
+          </Segment>
         </Segments>
       }
     >
@@ -490,6 +528,7 @@ function Trend({
   /** Drag and wheel write the same thing, and every block reads it. */
   onWindow: (next: TimeWindow | null) => void;
 }) {
+  const { t } = useLingui();
   const box = useRef<HTMLDivElement>(null);
   useWheel(box, (event) => {
     const el = box.current;
@@ -525,7 +564,7 @@ function Trend({
         {/* Which of the two absences it is. "Nothing was recorded here" and
             "nothing has been recorded yet" send the reader to different places,
             and the window is what tells them apart. */}
-        {trend.length === 0 ? "这段时间没有活动。" : "还不够两个时段的数据。"}
+        {trend.length === 0 ? t`No activity in this window.` : t`Not enough data for two periods.`}
       </div>
     );
   }
@@ -555,7 +594,7 @@ function Trend({
             // sparse series are not the edges of the window, so an axis fitted to
             // the points would silently re-scale itself as buckets came and went.
             domain={[window.from, window.to]}
-            tickFormatter={(at: number) => trendLabel(at, windowMs, bucketMs)}
+            tickFormatter={(at: number) => trendLabel(at, windowMs)}
             {...AXIS}
             tickLine={false}
             axisLine={false}
@@ -572,7 +611,7 @@ function Trend({
           />
           {/* The head line is the axis key, which is now an instant rather than a
               printed label — so it is spelled the same way the ticks are. */}
-          <ChartTooltip format={duration} label={(at) => trendLabel(Number(at), windowMs, bucketMs)} />
+          <ChartTooltip format={duration} label={(at) => trendLabel(Number(at), windowMs)} />
           {/* `connectNulls`, because the x axis is a number line.
               The objection to joining across a gap — that a quiet ten minutes and
               ten with no data would draw identically — is an objection to a
@@ -587,7 +626,7 @@ function Trend({
           <Area
             type="monotone"
             dataKey="p50"
-            name={P50_LABEL}
+            name={t(P50_LABEL)}
             stroke="var(--color-ink-3)"
             fill="var(--color-sunk)"
             dot={{ r: 1.5 }}
@@ -596,7 +635,7 @@ function Trend({
           <Area
             type="monotone"
             dataKey="p95"
-            name={P95_LABEL}
+            name={t(P95_LABEL)}
             stroke="var(--color-warn)"
             fill="transparent"
             dot={{ r: 1.5 }}
@@ -711,13 +750,14 @@ function TrendBlock({
   onPickBucket: (ms: number | null) => void;
   window: TimeWindow;
   limit: TimeWindow;
-  /** Whether the reader narrowed it, which is the only thing 回到整段时间 needs. */
+  /** Whether the reader narrowed it, which is the only thing the reset-to-full-range control needs. */
   chosen: TimeWindow | null;
   onWindow: (next: TimeWindow | null) => void;
 }) {
+  const { t } = useLingui();
   return (
     <Block
-      title="每次运行的耗时"
+      title={t`Per-run duration`}
       aside={
         <BucketPicker
           value={bucketMs}
@@ -737,14 +777,14 @@ function TrendBlock({
       />
       {/* The same strip the flamegraph has, against the whole stretch the data
           covers — which is what a `Brush` could not be. */}
-      <Minimap view={window} limit={limit} label="看的是哪一段" onPan={onWindow} />
+      <Minimap view={window} limit={limit} label={t`Which window`} onPan={onWindow} />
       {chosen !== null && (
         <button
           type="button"
           onClick={() => onWindow(null)}
           className="cursor-pointer self-start text-secondary text-ink-3 transition-colors hover:text-ink"
         >
-          ← 回到整段时间
+          <Trans>← Back to full timeline</Trans>
         </button>
       )}
     </Block>
@@ -768,7 +808,7 @@ function useSelection() {
    * filter — the rows around a selection are what made it worth selecting.
    */
   const [picked, setPicked] = useState<readonly string[]>([]);
-  /** Names the reader has said they do not want to see. Right-click, 不看这一段. */
+  /** Names the reader has said they do not want to see. Right-click, `Hide this stage`. */
   const [excluded, setExcluded] = useState<readonly string[]>([]);
   return {
     picked,
@@ -786,7 +826,7 @@ export function Telemetry({
   scope,
   windowMs,
   trend: showTrend = false,
-  empty = "还没有跑过任何活。",
+  empty,
 }: {
   scope: TelemetryScope;
   windowMs?: number;
@@ -794,6 +834,10 @@ export function Telemetry({
   trend?: boolean;
   empty?: string;
 }) {
+  const { t } = useLingui();
+  // Not a parameter default: that runs before the hook, so it would have needed
+  // the global `t` and this pane would keep its old wording after a locale change.
+  const nothingYet = empty ?? t`No activity yet.`;
   const { picked, excluded, pick, exclude, restore, restoreAll } = useSelection();
   /**
    * The stretch of time the page is showing, when the reader has chosen one.
@@ -838,10 +882,10 @@ export function Telemetry({
   const limit = report?.dataWindow ?? extent ?? report?.window ?? shownWindow;
 
   if (!report) {
-    return <div className="py-4 text-secondary text-ink-3">{loading ? "读取中…" : empty}</div>;
+    return <div className="py-4 text-secondary text-ink-3">{loading ? t`Loading…` : nothingYet}</div>;
   }
   if (!hasSpans(report.stages, report.traces)) {
-    return <div className="py-4 text-secondary text-ink-3">{empty}</div>;
+    return <div className="py-4 text-secondary text-ink-3">{nothingYet}</div>;
   }
 
   const shown = report.stages.filter((stage) => !excluded.includes(stage.name));
@@ -876,7 +920,7 @@ export function Telemetry({
         {/* Titled like its neighbours: three titled blocks and one bare table read
             as a layout that lost a heading, whatever the columns say for
             themselves. */}
-        <Block title="各环节耗时">
+        <Block title={t`Stage durations`}>
           <Stages stages={shown} picked={picked} onPick={pick} onExclude={exclude} />
           {excluded.length > 0 && <Excluded names={excluded} onClear={restoreAll} onRestore={restore} />}
         </Block>
@@ -895,11 +939,14 @@ export function Telemetry({
  * the requirement's spans, so a width really is a share of one total.
  */
 function Slices({ slices }: { slices: Report["slices"] }) {
+  const { t } = useLingui();
   if (slices.length < 2) return null;
   const total = slices.reduce((sum, row) => sum + row.totalMs, 0) || 1;
   return (
     <section className="flex flex-col gap-y-2">
-      <h3 className="border-b border-rule pb-1 text-body font-medium text-ink">各切片耗时</h3>
+      <h3 className="border-b border-rule pb-1 text-body font-medium text-ink">
+        <Trans>Slice durations</Trans>
+      </h3>
       <div className="flex flex-col gap-y-1.5">
         {slices.map((row) => (
           <div key={row.sliceId ?? "none"} className="grid grid-cols-[6rem_minmax(0,1fr)_4rem] items-center gap-x-3">
@@ -907,7 +954,7 @@ function Slices({ slices }: { slices: Report["slices"] }) {
                 roster belong to no slice, and leaving them out would make these add
                 up to less than the requirement with nothing explaining the gap. */}
             <span className="truncate text-secondary text-ink-2">
-              {row.sliceId === null ? "没归到切片" : `切片 ${row.sliceId}`}
+              {row.sliceId === null ? t`No slice` : t(sliceLabel(row.sliceId))}
             </span>
             <div className="h-1.5 rounded-full bg-sunk">
               <div
@@ -939,7 +986,9 @@ function Excluded({
 }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-secondary text-ink-3">
-      <span>不看：</span>
+      <span>
+        <Trans>Hiding:</Trans>
+      </span>
       {names.map((name) => (
         <button
           key={name}
@@ -951,7 +1000,7 @@ function Excluded({
         </button>
       ))}
       <button type="button" onClick={onClear} className="cursor-pointer underline transition-colors hover:text-ink">
-        全部恢复
+        <Trans>Restore all</Trans>
       </button>
     </div>
   );
@@ -961,18 +1010,19 @@ function Excluded({
 const HOST: TelemetryScope = { kind: "system" };
 
 /**
- * 系统耗时, as a page of its own.
+ * `System timing`, as a page of its own.
  *
- * In 设置 because it is the thing you go looking for once, on the day the panel
+ * In `Settings` because it is the thing you go looking for once, on the day the panel
  * feels slow — `ui.md` puts exactly that there. The window is the endpoint's own
  * default day: a week is the project view's question ("is this project getting
  * slower"), the host's is "is it slow now".
  */
 export function SystemTiming() {
+  const { t } = useLingui();
   return (
     <>
-      <Head title="系统耗时" note="这台机器上所有活动的耗时，最近一天" />
-      <Telemetry scope={HOST} trend empty="还没有记下任何系统活动。" />
+      <Head title={t`System timing`} note={t`Timing for all activity on this machine, last 24h`} />
+      <Telemetry scope={HOST} trend empty={t`No system activity recorded.`} />
     </>
   );
 }

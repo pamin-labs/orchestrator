@@ -1,3 +1,4 @@
+import { msg, plural } from "@lingui/core/macro";
 import {
   and,
   count,
@@ -36,10 +37,10 @@ import { valueOr } from "../../contracts/json.ts";
 import { errText, hours, minutes } from "../../platform/process/text.ts";
 import { answered, roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
-import { say, type SayKey } from "../../platform/text/lang.ts";
+import type { Said } from "../../contracts/said.ts";
 import { hold, interrupt, park, release, unpark } from "../flow/intercept.ts";
 import { sweepApproved } from "../flow/start.ts";
-import { raise } from "../flow/escalate.ts";
+import { escalationKey, raise } from "../flow/escalate.ts";
 import { route } from "../flow/chain.ts";
 import { runInvariants } from "./invariants.ts";
 import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
@@ -79,6 +80,7 @@ import {
   ESCALATION_TERMINAL_STATES,
   type GrpState,
 } from "../../contracts/states.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /**
  * Six rules, all deterministic, all cheap. No LLM is consulted.
@@ -105,7 +107,12 @@ export interface WatchdogDeps {
 export interface Finding {
   rule: string;
   grpId: number | null;
-  body: string;
+  /**
+   * Named, not rendered. ADR 035 §3: the panel is the only reader of the event
+   * body, so it renders this in its own locale — and `executor.ts` renders the
+   * same key in `output.language` for the notifier, which does reach a webhook.
+   */
+  say: Said;
   severity: "advisory" | "blocker";
 }
 
@@ -304,7 +311,7 @@ async function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number, nudgeAf
       rule: "waiting_card",
       grpId: g.id,
       severity: "advisory",
-      body: `${g.name} 的计划卡等你批 ${hours(now - (g.at ?? now))} 小时了`,
+      say: msg`${{ name: g.name }}'s plan card has been waiting ${{ hours: hours(now - (g.at ?? now)) }}h for you`,
     });
   }
 
@@ -317,7 +324,7 @@ async function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number, nudgeAf
       rule: "waiting_slice",
       grpId: s.grp_id,
       severity: "advisory",
-      body: `${s.name} S${s.seq} 等你查收 ${hours(now - (s.awaiting_at ?? now))} 小时了`,
+      say: msg`${{ name: s.name }} S${{ seq: s.seq }} has been waiting ${{ hours: hours(now - (s.awaiting_at ?? now)) }}h for you`,
     });
   }
 
@@ -364,9 +371,10 @@ async function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number, nudgeAf
       rule: "waiting_merge",
       grpId: q.id,
       severity: behind > 0 ? "blocker" : "advisory",
-      body:
-        `${q.name} 的 PR 排在队首 ${hours(now - (q.at ?? now))} 小时了` +
-        (behind > 0 ? `，后面还堵着 ${behind} 个` : ""),
+      say:
+        behind > 0
+          ? msg`${{ name: q.name }}'s PR has been at the head of the merge queue for ${{ hours: hours(now - (q.at ?? now)) }}h, with ${{ n: behind }} behind it`
+          : msg`${{ name: q.name }}'s PR has been at the head of the merge queue for ${{ hours: hours(now - (q.at ?? now)) }}h`,
     });
   }
   return out;
@@ -442,10 +450,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
           rule: "watchdog_broke",
           grpId: null,
           severity: "blocker",
-          body:
-            `看门狗这一轮挂了，后面的规则都没跑：${errText(e)}\n` +
-            `每 30 秒都会再试一次，但在修好之前，靠它推的那些状态（卡住的组、过期的沙盒、` +
-            `基线变了要 rebase、等你决定的计时）都停在原地。`,
+          say: msg`the watchdog threw this tick and the rules after it did not run: ${{ why: errText(e) }}\nIt retries every 30s, but until it is fixed everything it drives — stalled groups, expired sandboxes, the rebase after a base moves, the clocks on what is waiting for you — stays where it is.`,
         },
       ],
       deps.now ?? (() => Date.now()),
@@ -498,6 +503,20 @@ type MapProject = { id: number; repo_path: string; remote: string | null };
  * container execs and 0.8 MB every thirty seconds for a map identical to the
  * stored one.
  */
+/**
+ * Why the map could not be refreshed — a key per case, not one key with a
+ * fragment rendered into it: a value carrying prose we wrote is one sentence in
+ * two languages, which `contracts/said.ts` refuses. `{why}` is only ever git's
+ * own words. Its own function so the three cases do not sit inside `refreshMap`,
+ * where they read as branches of the rule rather than as one answer.
+ */
+const mapFailure = (repo: string, remote: boolean, why: string | null): Said =>
+  !remote
+    ? msg`the repo map cannot be refreshed: ${{ repo }} has no remote recorded, so there is nothing to mirror`
+    : why
+      ? msg`the repo map cannot be refreshed: ${{ repo }} — ${{ why }}`
+      : msg`the repo map cannot be refreshed: ${{ repo }}, and git gave no reason, which is itself a bug`;
+
 async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise<void> {
   const stamp = p.remote ? await mapStamp(ctx, p.id, p.repo_path) : "";
   // An unreadable stamp used to mean "do the work anyway", on the reasoning that a
@@ -516,14 +535,14 @@ async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise
       rule: "repo-map",
       grpId: null,
       severity: "advisory",
-      body: `仓库地图停在上一次的版本：${p.repo_path} 的容器读不到 HEAD，重建只会得到一份没有符号的地图`,
+      say: msg`the repo map is stuck on its last version: ${{ repo: p.repo_path }}'s container cannot read HEAD, and a rebuild would only produce a map with no symbols in it`,
     });
     return;
   }
   if (stamp && (await readSetting(ctx.db, MAP_KEY(p.id))) === stamp) return;
   const { files, why } = p.remote
     ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))
-    : { files: [], why: "这个项目没记下 remote，没有可以镜像的地址" };
+    : { files: [], why: null };
   // Said once per project: never means the map silently stops being refreshed,
   // and every tick is a feed nobody reads. Said with git's own words, because
   // naming possible causes in prose is a guess printed as a diagnosis.
@@ -534,7 +553,7 @@ async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise
       rule: "repo-map",
       grpId: null,
       severity: "advisory",
-      body: `仓库地图没法刷新了：${p.repo_path} —— ${why ?? "没有原因可说，这本身就是个 bug"}`,
+      say: mapFailure(p.repo_path, !!p.remote, why),
     });
     return;
   }
@@ -555,7 +574,7 @@ async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise
     await ctx.bus.emit({
       author: roleFor(ctx, "compress_context"),
       kind: "state_change",
-      body: `repo map refreshed (${files.length} files, ${heads.size} read for symbols)`,
+      say: msg`repo map refreshed (${plural({ files: files.length }, { one: "# file", other: "# files" })}, ${{ read: heads.size }} read for symbols)`,
     });
   }
   // After the map is stored, never before: a tick that refreshed nothing must not
@@ -629,7 +648,7 @@ function stepper(deps: WatchdogDeps, now: () => number, findings: Finding[]) {
             rule: `rule_broke:${rule.id}`,
             grpId: null,
             severity: "blocker",
-            body: `看门狗第 ${rule.id} 条（${rule.name}）挂了，这一轮其余的照跑：${errText(e)}`,
+            say: msg`watchdog rule ${{ rule: rule.id }} (${{ ruleName: rule.name }}) threw; the rest of the tick ran: ${{ why: errText(e) }}`,
           });
         } finally {
           span.end();
@@ -645,19 +664,14 @@ function stepper(deps: WatchdogDeps, now: () => number, findings: Finding[]) {
   };
 }
 
-type Translate = (key: SayKey, args?: Parameters<typeof say>[2]) => string;
-
 /** Stop network-dependent rules while offline and requeue interrupted turns once. */
-async function networkReady(
-  deps: WatchdogDeps,
-  findings: Finding[],
-  now: () => number,
-  t: Translate,
-): Promise<boolean> {
+async function networkReady(deps: WatchdogDeps, findings: Finding[], now: () => number): Promise<boolean> {
   const net = await (deps.probe ?? probe)(deps.ctx.db, now(), undefined, deps.ctx.config);
   if (!net.changed) return net.online;
   const held = net.online ? 0 : await holdForOffline(deps.ctx, now());
-  const body = net.online ? t("net.back") : t("net.lost", { n: held });
+  const what = net.online
+    ? msg`network is back, held work resumes`
+    : msg`the host lost its network; ${plural({ n: held }, { one: "# turn", other: "# turns" })} held and re-queued, requirements left running`;
   // The finding is the only announcement. There was a `bus.emit` here as well,
   // with the same sentence and no dedup, so the feed carried the line twice in
   // the same second — once from `orchestrator` as a state change, once from
@@ -668,7 +682,7 @@ async function networkReady(
     rule: net.online ? "network_back" : "network_lost",
     grpId: null,
     severity: net.online ? "advisory" : "blocker",
-    body,
+    say: what,
   });
   if (net.online) await deps.ctx.sched.tick();
   return net.online;
@@ -790,17 +804,15 @@ async function queueRebase(
     rule: "base_moved",
     grpId: group.id,
     severity: "advisory",
-    body: `${baseRef} 动到了 ${sha.slice(0, 8)}，${group.name} 的基线落后了，已经让它先 rebase`,
+    say: msg`${{ base: baseRef }} moved to ${{ sha: sha.slice(0, 8) }}; ${{ name: group.name }} is behind it and has been told to rebase first`,
   });
 }
 
 async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]> {
   const { ctx, cfg } = deps;
-  // Boss-facing findings follow output.language; agent feedback stays English.
-  const t = (k: SayKey, a?: Parameters<typeof say>[2]) => say(ctx.config.language, k, a);
   const now = deps.now ?? (() => Date.now());
   const step = stepper(deps, now, findings);
-  if (!(await networkReady(deps, findings, now, t))) return await emit(ctx, findings, now);
+  if (!(await networkReady(deps, findings, now))) return await emit(ctx, findings, now);
 
   // Liveness first: one row per state, each saying who pushes it (invariants.ts).
   // The rules below are the other question — "is this healthy" — and keeping the
@@ -829,7 +841,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "turn_timeout",
         grpId: j.grp_id,
         severity: "advisory",
-        body: t("wd.turn_timeout", { min: minutes(cfg.turnTimeoutMs) }),
+        say: msg`turn ran past ${{ min: minutes(cfg.turnTimeoutMs) }} min and was killed`,
       });
       if (j.grp_id) await interrupt(ctx, j.grp_id, "keep");
     }
@@ -846,7 +858,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "no_progress",
         grpId: a.grp_id,
         severity: "advisory",
-        body: t("wd.no_progress", { role: a.role, n: a.idle_turns }),
+        say: msg`${{ role: a.role }} finished ${plural({ n: a.idle_turns }, { one: "# turn", other: "# turns" })} without changing a file, a task or a note`,
       });
       await ctx.db.update(agent).set({ state: "blocked", idle_turns: 0 }).where(eq(agent.id, a.id));
     }
@@ -873,7 +885,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         // a design problem, and asking the writer to try harder does not fix it.
         // `loop_file` is still typed nullable — the predicate is a runtime fact and
         // not a type — so this reads it rather than asserting past it.
-        body: t("wd.circling", { role: a.role, file: a.loop_file ?? "", n: a.loop_count }),
+        say: msg`${{ role: a.role }} has rewritten ${{ file: a.loop_file ?? "" }} ${plural({ n: a.loop_count }, { one: "# turn", other: "# turns" })} running — probably a design problem, sending it to the Architect`,
       });
       await ctx.db.update(agent).set({ loop_count: 0 }).where(eq(agent.id, a.id));
     }
@@ -894,7 +906,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         severity: "advisory",
         // Same command, same code, same failure: the environment is the variable,
         // and letting the writer keep editing code is how hours disappear.
-        body: t("wd.env_suspect", { resource: l.resource, n: l.c }),
+        say: msg`${{ resource: l.resource }} failed ${{ n: l.c }}x with no code change in between — treat the environment as the suspect`,
       });
       await ctx.db
         .update(lease)
@@ -931,29 +943,31 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "budget_exhausted",
           grpId: g.id,
           severity: "blocker",
-          body: t("wd.budget_exhausted", { name: g.name, tokens: g.spent_tokens }),
+          say: msg`${{ name: g.name }} spent its whole budget (${{ tokens: g.spent_tokens }} tokens) and is suspended`,
         });
         await hold(ctx.db, g.id, { reason: "budget", settled: true });
         // A notification says it stopped; it does not put a decision in front of
-        // anyone. Without a row in the queue the group sat suspended, 继续 did
+        // anyone. Without a row in the queue the group sat suspended, `Resume` did
         // nothing the scheduler would honour, and the only visible state was a
-        // paused group with no reason attached. `budget:` prefixes the question so
-        // raising the cap can close exactly this row.
+        // paused group with no reason attached. The key is what `raiseBudget` in
+        // `api/panel/group.ts` closes, so the sentence is only a sentence: it used
+        // to carry a literal `budget: ` prefix for a `LIKE` to find.
         await raise(ctx.db, {
           grpId: g.id,
-          brief: "预算烧穿了，加不加",
+          lang: outputLanguage(ctx.config),
+          brief: msg`out of budget — raise it or not`,
+          kind: "budget",
           chain: "boss",
-          dedupe: { prefix: "budget:", scope: "group", grpId: g.id },
-          question:
-            `budget: ${g.name} 用完了 ${g.budget_tokens} tokens，全组已挂起。` +
-            `提高上限它就接着跑，或者就让它停在这里。`,
+          key: escalationKey.budget,
+          dedupe: { scope: "group", grpId: g.id },
+          question: msg`${{ name: g.name }} has spent all ${{ tokens: g.budget_tokens }} of its tokens and the whole group is suspended. Raise the cap and it carries on, or leave it stopped here.`,
         });
       } else if (frac >= 0.8) {
         findings.push({
           rule: "budget_80",
           grpId: g.id,
           severity: "advisory",
-          body: t("wd.budget_80", { name: g.name, pct: Math.round(frac * 100) }),
+          say: msg`${{ name: g.name }} is at ${{ pct: Math.round(frac * 100) }}% of its budget`,
         });
       }
     }
@@ -972,9 +986,14 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         grpId: g.id,
         author: "orchestrator",
         kind: "state_change",
-        body: t("rl.resumed"),
+        say: msg`quota is back, resuming`,
       });
-      findings.push({ rule: "rate_limit_resumed", grpId: g.id, severity: "advisory", body: t("rl.resumed") });
+      findings.push({
+        rule: "rate_limit_resumed",
+        grpId: g.id,
+        severity: "advisory",
+        say: msg`quota is back, resuming`,
+      });
     }
   });
 
@@ -1094,7 +1113,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "stalled",
         grpId: j.grp_id,
         severity: "blocker",
-        body: t("wd.stalled", { why: j.error ?? "" }),
+        // `{why}` is exception text, not a sentence of ours: `payloadError` in
+        // `scheduling/scheduler.ts` writes `invalid <kind> payload: <error.message>`,
+        // where the prefix is scaffolding that gives the message a context and the
+        // message is the content. Naming it would mean changing what the
+        // `jobs.error` column holds, which the scheduler and the CLI both read.
+        say: msg`group is RUNNING with an empty queue, and one re-queue did not revive it. Last failure: ${{ why: j.error ?? "" }}`,
       });
     }
     // No tick here: the server ticks on the same timer that enqueued this watchdog,
@@ -1122,7 +1146,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       await ctx.bus.emit({
         author: "orchestrator",
         kind: "state_change",
-        body: `cancelled ${orphanQueued.length} job(s) queued for a dissolved group`,
+        say: msg`cancelled ${plural({ n: orphanQueued.length }, { one: "# job", other: "# jobs" })} queued for a dissolved group`,
       });
     }
   });
@@ -1130,7 +1154,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // 11. A question stranded below the boss on a group that cannot answer it.
   // route() sends these to the boss, but only at the moment they are routed — a
   // group can stop *after* a question was handed to its PM. The symptom is the
-  // worst kind: a stopped group, and a 待办 count of zero.
+  // worst kind: a stopped group, and a `To do` count of zero.
   await step({ id: "11", name: "stranded_question", every: EVERY_TICK }, async () => {
     // Blockers only, same reason route() lifts only blockers: an advisory that
     // nobody answers costs nothing, and a clearance denial is a JSON blob about
@@ -1170,7 +1194,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         grpId: g.id,
         author: "orchestrator",
         kind: "state_change",
-        body: t("group.unblocked", { target: String(g.blocked_on) }),
+        say: msg`grp ${{ target: String(g.blocked_on) }} landed; resuming by itself`,
       });
       // Rule 8 above requeues a live group with an empty queue, so the turn itself
       // comes from there — this only has to make the group live again.
@@ -1178,7 +1202,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "unblocked",
         grpId: g.id,
         severity: "advisory",
-        body: t("group.unblocked", { target: String(g.blocked_on) }),
+        say: msg`grp ${{ target: String(g.blocked_on) }} landed; resuming by itself`,
       });
     }
   });
@@ -1202,14 +1226,14 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "parked",
           grpId: g.id,
           severity: "advisory",
-          body: t("wd.parked", { name: g.name, min: minutes(waited) }),
+          say: msg`${{ name: g.name }} parked after waiting ${{ min: minutes(waited) }} min — checkout kept, slot freed`,
         });
       } else if (waited >= limits(ctx).pausedNotifyMs) {
         findings.push({
           rule: "waiting_on_you",
           grpId: g.id,
           severity: "blocker",
-          body: t("wd.waiting_on_you", { name: g.name, min: minutes(waited) }),
+          say: msg`${{ name: g.name }} has been waiting ${{ min: minutes(waited) }} min for you`,
         });
       }
     }
@@ -1251,7 +1275,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       );
     for (const g of revivable) {
       await unpark(ctx, g.id);
-      findings.push({ rule: "unparked", grpId: g.id, severity: "advisory", body: t("wd.unparked", { name: g.name }) });
+      findings.push({
+        rule: "unparked",
+        grpId: g.id,
+        severity: "advisory",
+        say: msg`${{ name: g.name }} is no longer waiting on anything — woken up`,
+      });
     }
   });
 
@@ -1271,7 +1300,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "waiting_parked",
         grpId: g.id,
         severity: "advisory",
-        body: `${g.name} 封存了 ${hours(now() - (g.paused_at ?? now()))} 小时，唤醒还是不做了？`,
+        say: msg`${{ name: g.name }} has been parked ${{ hours: hours(now() - (g.paused_at ?? now())) }}h — wake it, or drop it?`,
       });
     }
   });
@@ -1291,7 +1320,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "sandbox_swept",
         grpId: g.id,
         severity: "advisory",
-        body: `${g.name} 解散了，沙盒回收`,
+        say: msg`${{ name: g.name }} dissolved; its sandbox is reclaimed`,
       });
     }
   });
@@ -1324,7 +1353,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "sandbox_stale_credential",
           grpId: g.id,
           severity: "advisory",
-          body: `${g.name} 的沙盒绑的是旧凭据，回收了，下一轮重建`,
+          say: msg`${{ name: g.name }}'s sandbox is bound to a superseded credential; reclaimed, and the next tick rebuilds it`,
         });
       }
       for (const p of await ctx.db
@@ -1379,9 +1408,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "server_gone",
           grpId: null,
           severity: "blocker",
-          body:
-            `opensandbox-server 起不来了，试了 ${SERVER_RESTART_CAP} 次，不再自动重试。` +
-            `手动跑一次看它报什么：${seenServerArgv!.join(" ")}`,
+          say: msg`opensandbox-server will not start; ${plural({ n: SERVER_RESTART_CAP }, { one: "# attempt", other: "# attempts" })} and no more automatic retries. Run it by hand to see what it says: ${{ cmd: seenServerArgv!.join(" ") }}`,
         });
         break;
       case "restart": {
@@ -1392,9 +1419,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           rule: "server_restarted",
           grpId: null,
           severity: err ? "blocker" : "advisory",
-          body: err
-            ? `opensandbox-server 没了，重启失败（第 ${serverRestarts} 次）：${err}`
-            : `opensandbox-server 没了，重启了（第 ${serverRestarts} 次）。挂起的活会自己继续。`,
+          // `err` verbatim: it is a descriptor now and one cannot nest in another.
+          // The attempt number leaves the failing branch with it — `give_up` below
+          // is what says how many there were, and it says it once.
+          say:
+            err ??
+            msg`opensandbox-server was gone and has been restarted (attempt ${{ n: serverRestarts }}). Held work resumes by itself.`,
         });
         break;
       }
@@ -1423,7 +1453,11 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         .set({
           chain_state: "revoked",
           answered_by: "orchestrator",
-          answer: "这条需求已经走到 PR，问题过期了，没人再等这个答复。",
+          // English, like every other answer this server writes itself — `escalation.answer`
+          // is a text column the panel draws raw, with no descriptor beside it, and
+          // `opened #N instead`, `reconfigured` and `reopened` are already its
+          // neighbours. A `Said` here would need a column to ride in.
+          answer: "the requirement reached PR, so this question expired; nobody is waiting on the reply",
           answered_at: now(),
         })
         .where(eq(escalation.id, e.id));
@@ -1433,7 +1467,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "stale_ask",
         grpId: e.grp_id,
         severity: "advisory",
-        body: `${e.name} 已经走到 PR，那条还挂着的问题过期了，自动关掉`,
+        say: msg`${{ name: e.name }} reached PR, so the question still hanging on it expired — closed by itself`,
       });
     }
   });
@@ -1480,7 +1514,7 @@ async function emit(ctx: Ctx, findings: Finding[], now: () => number): Promise<F
       kind: "escalation",
       intent: "ask",
       severity: f.severity,
-      body: f.body,
+      say: f.say,
       meta: { rule: f.rule },
     });
   }

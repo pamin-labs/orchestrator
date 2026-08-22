@@ -1,3 +1,4 @@
+import { msg, plural } from "@lingui/core/macro";
 import { and, asc, count, eq, inArray, ne } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Json } from "../../contracts/json.ts";
@@ -7,12 +8,14 @@ import { SplitRequirements } from "../../contracts/orch.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
-import { say } from "../../platform/text/lang.ts";
+import { bad, badText, json, message } from "../../http/respond.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
+
 import { hold } from "../../mech/flow/intercept.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { CLAIMING, canStart, claimsShared, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";
 import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
+import { terms } from "../../mech/knowledge/terms.ts";
 import { sweepApproved } from "../../mech/flow/start.ts";
 import { baseBranch, baseRefFor, sandboxGit, treeFiles } from "../../mech/git/checkout.ts";
 import { execIn, WORK } from "../../mech/sandbox/sandbox.ts";
@@ -22,6 +25,7 @@ import { GroupRef } from "../../contracts/fields.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
 import { channel, grp as grps, note as notes, project, slice } from "../../platform/persistence/schema.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 async function actingGroup(
   ctx: Ctx,
@@ -29,7 +33,7 @@ async function actingGroup(
   ref: z.infer<typeof GroupRef> | null | undefined,
 ): Promise<number | Response> {
   const groupId = await resolveGroup(ctx, ref, caller.grp_id);
-  if (!groupId) return bad("which group? pass its id or name");
+  if (!groupId) return badText("which group? pass its id or name");
   return (await mayAct(ctx.db, caller, groupId)) ? groupId : message("not your group", 403);
 }
 
@@ -66,15 +70,15 @@ const plans = (ctx: Ctx, a: Caller): boolean =>
 export const DraftBody = z.object({ group_id: GroupRef.optional(), card: z.string().min(1).max(20_000) });
 
 export const postDraft = (async (ctx, _req, a, _p, b) => {
-  if (!plans(ctx, a)) return bad(`${a.role} does not file DRAFT cards`);
+  if (!plans(ctx, a)) return badText(`${a.role} does not file DRAFT cards`);
 
   const v = validateDraftCard(b.card);
-  if (!v.ok) return bad(v.error);
+  if (!v.ok) return badText(v.error);
 
   const grpId = await actingGroup(ctx, a, b.group_id);
   if (grpId instanceof Response) return grpId;
   const [grp] = await ctx.db.select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, grpId));
-  if (!grp) return bad(`no group ${grpId}`);
+  if (!grp) return badText(`no group ${grpId}`);
 
   // Paths the card names that are not in the repo.
   //
@@ -107,7 +111,7 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
       projectId: grp.project_id,
       grpId,
       kind: "fact",
-      lang: ctx.config.language,
+      lang: outputLanguage(ctx.config),
       body: b.card,
       frontmatter: {
         draft_card: true,
@@ -123,7 +127,9 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
       grpId,
       author: a.role,
       kind: "state_change",
-      body: `DRAFT card filed: ${v.goal}${dropped ? ` (${dropped} planning turn(s) dropped)` : ""}`,
+      say: dropped
+        ? msg`DRAFT card filed: ${{ goal: v.goal }} (${plural({ n: dropped }, { one: "# planning turn", other: "# planning turns" })} dropped)`
+        : msg`DRAFT card filed: ${{ goal: v.goal }}`,
       meta: { slices: v.slices.length, objection: v.objection },
     });
   });
@@ -135,9 +141,9 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
  * One idea, several requirements.
  *
  * What lands in the box is often not one thing. Until this existed the shape of
- * the system forced all of it into ONE requirement — one DRAFT card, one 目标 line,
+ * the system forced all of it into ONE requirement — one DRAFT card, one goal line,
  * one branch, one Engineer working serially, one PR. The Dispatcher could drop
- * most of it or write a 目标 that was not true, and `checkSplit` would not object,
+ * most of it or write a goal that was not true, and `checkSplit` would not object,
  * because four unrelated slices genuinely do have four acceptance criteria.
  */
 /**
@@ -158,7 +164,7 @@ export const SplitBody = z.object({
 });
 
 export const postSplit = (async (ctx, _req, a, _p, b) => {
-  if (!plans(ctx, a)) return bad(`${a.role} does not split requirements`);
+  if (!plans(ctx, a)) return badText(`${a.role} does not split requirements`);
 
   const gid = await actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
@@ -168,20 +174,20 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
     .where(eq(grps.id, gid));
   if (!grp) return message("no such group", 404);
   if (grp.status !== "PLANNING") {
-    return bad(
+    return badText(
       `${grp.name} is ${grp.status}, not PLANNING. A split only makes sense before a card is approved; ` +
         `after that the branch exists and re-cutting the work is the boss's respec, not yours.`,
     );
   }
   const [work] = await ctx.db.select({ c: count() }).from(slice).where(eq(slice.grp_id, gid));
-  if ((work?.c ?? 0) > 0 || grp.branch) return bad(`${grp.name} already has slices or a branch; split before that`);
+  if ((work?.c ?? 0) > 0 || grp.branch) return badText(`${grp.name} already has slices or a branch; split before that`);
 
   const items = (b.requirements ?? []).filter((r) => r?.idea?.trim());
   if (items.length < 2) {
-    return bad("a split needs at least 2 requirements. If it is one thing, just file the card with `orch draft`.");
+    return badText("a split needs at least 2 requirements. If it is one thing, just file the card with `orch draft`.");
   }
   if (items.length > MAX_SPLIT) {
-    return bad(
+    return badText(
       `${items.length} is too many for one split (max ${MAX_SPLIT}). Group what shares an acceptance path, ` +
         `and ask the boss which of the rest matters first.`,
     );
@@ -209,7 +215,14 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
         projectId: grp.project_id,
         name,
         idea: item.idea.trim(),
-        note: `${item.idea.trim()}\n\n（从「${grp.name}」拆出来的一条${original ? `，原始整段见 note #${original.id}` : ""}）`,
+        // A note body, not a key: ADR 035 §3 keeps these server-rendered, and
+        // `addNote` stamps the same `output.language` on the row beside it.
+        note: `${item.idea.trim()}\n\n${renderSaid(
+          outputLanguage(ctx.config),
+          original
+            ? msg`Split out of the requirement ${{ from: grp.name }}. The whole of what was originally asked for is note #${{ note: original.id }}.`
+            : msg`Split out of the requirement ${{ from: grp.name }}.`,
+        )}`,
       });
       await ctx.sched.enqueue("agent_turn", {
         grp_id: child.id,
@@ -225,11 +238,16 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
     await ctx.sched.cancelPending(gid, "split into separate requirements");
     await tx.update(grps).set({ status: "DISSOLVED" }).where(eq(grps.id, gid));
     await tx.update(channel).set({ status: "archived" }).where(eq(channel.grp_id, gid));
+    // Never one and never none — a split of fewer than two is refused above — so
+    // there is no plural to choose between here.
+    const names = created.map((m) => m.name).join(", ");
     await ctx.bus.emit({
       grpId: gid,
       author: a.role,
       kind: "state_change",
-      body: `拆成 ${created.length} 个独立需求：${created.map((m) => m.name).join("、")}${b.why ? ` —— ${b.why}` : ""}`,
+      say: b.why
+        ? msg`split into ${{ n: created.length }} separate requirements: ${{ names }} — ${{ why: b.why }}`
+        : msg`split into ${{ n: created.length }} separate requirements: ${{ names }}`,
       meta: { split: created.map((m) => m.id) },
     });
     return created;
@@ -264,40 +282,60 @@ export const DropBody = z.object({
 
 async function duplicateEvidence(ctx: Ctx, gid: number, ref: z.infer<typeof GroupRef>): Promise<string | Response> {
   const duplicateId = await resolveGroup(ctx, ref);
-  if (!duplicateId) return bad(`no group ${ref}`);
-  if (duplicateId === gid) return bad("a group cannot be a duplicate of itself");
+  if (!duplicateId) return badText(`no group ${ref}`);
+  if (duplicateId === gid) return badText("a group cannot be a duplicate of itself");
   const [duplicate] = await ctx.db.select({ name: grps.name }).from(grps).where(eq(grps.id, duplicateId));
-  if (!duplicate) return bad(`no group ${ref}`);
+  if (!duplicate) return badText(`no group ${ref}`);
   return `duplicate of ${duplicate.name} (grp ${duplicateId})`;
 }
 
 async function commitEvidence(ctx: Ctx, gid: number, sha: string): Promise<string | Response> {
-  if (!/^[0-9a-f]{7,40}$/i.test(sha)) return bad("--commit takes a sha, 7 to 40 hex characters");
+  if (!/^[0-9a-f]{7,40}$/i.test(sha)) return badText("--commit takes a sha, 7 to 40 hex characters");
   const git = sandboxGit(ctx, { grp: gid });
   const commit = await git(["cat-file", "-t", sha], WORK);
-  if (commit.code !== 0 || commit.out.trim() !== "commit") return bad(`${sha} is not a commit in this repo`);
+  if (commit.code !== 0 || commit.out.trim() !== "commit") return badText(`${sha} is not a commit in this repo`);
   const [owner] = await ctx.db.select({ project_id: grps.project_id }).from(grps).where(eq(grps.id, gid));
   const projectId = owner?.project_id;
-  if (!projectId) return bad("no such group");
+  if (!projectId) return badText("no such group");
   const base = await baseRefFor(ctx, projectId);
   const merged = await git(["merge-base", "--is-ancestor", sha, base], WORK);
   return merged.code === 0
     ? `already landed in ${sha.slice(0, 8)}`
-    : bad(`${sha.slice(0, 8)} is a real commit but is not on ${base} yet`);
+    : badText(`${sha.slice(0, 8)} is a real commit but is not on ${base} yet`);
 }
 
 async function dropEvidence(ctx: Ctx, gid: number, body: z.infer<typeof DropBody>): Promise<string | Response> {
   if (body.duplicate != null) return await duplicateEvidence(ctx, gid, body.duplicate);
-  if (!body.commit) return bad("give evidence: --duplicate <group> or --commit <sha>");
+  if (!body.commit) return badText("give evidence: --duplicate <group> or --commit <sha>");
   return commitEvidence(ctx, gid, body.commit.trim());
 }
 
+/**
+ * Enough of an answer to be one, in whatever language it is written in.
+ *
+ * A floor against emptiness, and nothing more — `ok`, `短`, `嗯`, a full stop.
+ * It cannot tell a considered answer from `ok i think`, and it never could.
+ *
+ * It was `why.length < 10`, calibrated on English and enforced as a 422:
+ * `.length` counts UTF-16 units, so `需求二已完全覆盖` — eight units, a complete
+ * sentence — was refused while `ok i think` was ten and passed.
+ */
+/**
+ * `terms()` is this project's tokeniser, ICU word breaking plus rented stop-word
+ * lists, so it counts the same way in ten languages. **Two**, not three: at three
+ * it refused `grp2 covers it` and `remember to fix this`, which are answers —
+ * the same over-reach `slug.ts` records for pointing this list at a job it was
+ * not built for.
+ */
+const isASentence = (why: string): boolean => terms(why).length >= 2;
+
 export const postDrop = (async (ctx, _req, a, _p, b) => {
-  if (!plans(ctx, a) && a.role !== roleFor(ctx, "cut_boundary")) return bad(`${a.role} does not propose dropping work`);
+  if (!plans(ctx, a) && a.role !== roleFor(ctx, "cut_boundary"))
+    return badText(`${a.role} does not propose dropping work`);
   const gid = await actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
   const why = b.why.trim();
-  if (why.length < 10) return bad("--why has to say what already covers it, in a sentence");
+  if (!isASentence(why)) return badText("--why has to say what already covers it, in a sentence");
 
   // Evidence the server can check. A sentence alone is a model's opinion of its
   // own workload, which is exactly what must not be able to close a requirement.
@@ -312,8 +350,8 @@ export const postDrop = (async (ctx, _req, a, _p, b) => {
       projectId: owner?.project_id ?? null,
       grpId: gid,
       kind: "decision",
-      lang: ctx.config.language,
-      body: `${why}\n\n证据：${evidence}`,
+      lang: outputLanguage(ctx.config),
+      body: `${why}\n\n${renderSaid(outputLanguage(ctx.config), msg`Evidence: ${{ evidence }}`)}`,
       frontmatter: { drop_proposal: 1 },
     });
     // DRAFT, so the group stops being dispatchable and the boss is asked. Left in
@@ -327,7 +365,7 @@ export const postDrop = (async (ctx, _req, a, _p, b) => {
       author: a.role,
       kind: "decision",
       intent: "decision",
-      body: `建议作废：${why}（${evidence}）`,
+      say: msg`proposing to drop this: ${{ why }} (${{ evidence }})`,
       meta: { drop_proposal: true, evidence },
     });
   });
@@ -397,7 +435,7 @@ async function routeBlockedPath(
       author: caller.role,
       kind: "say",
       intent: "request",
-      body: `${group.name} 被 ${path} 挡住了，那是你们的路径：${why}`,
+      say: msg`${{ name: group.name }} is blocked by ${{ path }}, which is inside your boundary: ${{ why }}`,
       meta: { from_group: groupId, path },
     });
     await ctx.sched.enqueue("agent_turn", {
@@ -415,7 +453,10 @@ async function routeBlockedPath(
   // for this one group, so every other group remains outside the boundary.
   const name = slug(`${path} ${why}`).slice(0, 40) || `fix-${groupId}`;
   const grant = claimsShared([path], await sharedFor(ctx.db, group.project_id));
-  const idea = `${why}\n\n（${group.name} 报的：${path} 不在它的边界内，它改不了）`;
+  const idea = `${why}\n\n${renderSaid(
+    outputLanguage(ctx.config),
+    msg`Reported by ${{ from: group.name }}: ${{ path }} is outside its boundary, so it cannot change it itself.`,
+  )}`;
   const created = await newGroup(ctx, {
     projectId: group.project_id,
     name,
@@ -437,24 +478,24 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
   if (gid instanceof Response) return gid;
   const path = b.path.trim().replace(/^\.\//, "");
   const why = b.why.trim();
-  if (!path) return bad("--path <file> — which file you cannot change");
-  if (why.length < 10) return bad("--why has to say what is wrong with it, in a sentence");
+  if (!path) return badText("--path <file> — which file you cannot change");
+  if (!isASentence(why)) return badText("--why has to say what is wrong with it, in a sentence");
 
   const [me] = await ctx.db
     .select({ project_id: grps.project_id, name: grps.name, owns_json: grps.owns_json })
     .from(grps)
     .where(eq(grps.id, gid));
-  if (!me) return bad("no such group");
+  if (!me) return badText("no such group");
   // In the group's own checkout, not the host's. The caller named this path from
   // inside `/work`, and the host main checkout sits on whatever the boss last had
   // out — so a file the group created, or one that exists only on its branch,
   // came back as "not a file in this repo", which is both wrong and misleading.
   const seen = await execIn(ctx, { grp: gid }, `test -e ${shq(`${WORK}/${path}`)}`);
-  if (seen.code !== 0) return bad(`${path} is not a file in your checkout`);
+  if (seen.code !== 0) return badText(`${path} is not a file in your checkout`);
   // The whole justification. Inside its own boundary the group is expected to fix
   // it, and saying otherwise is the cheap way out of difficult work.
   if (parseOwns(me.owns_json).some((o) => overlaps(o, path))) {
-    return bad(`${path} is inside your own boundary — fix it`);
+    return badText(`${path} is inside your own boundary — fix it`);
   }
 
   const owner = await pathOwner(ctx.db, me.project_id, gid, path);
@@ -463,7 +504,7 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
   // nothing downstream would notice: both are PAUSED for a stated reason, and the
   // reason is each other.
   if (owner && (await waitsOn(ctx.db, owner.id, gid))) {
-    return bad(`${owner.name} is already waiting on you — one of you has to go first`);
+    return badText(`${owner.name} is already waiting on you — one of you has to go first`);
   }
   const routed = await ctx.bus.transaction(async (tx) => {
     // A ctx whose handle is the transaction. `routeBlockedPath` reads and writes
@@ -480,7 +521,7 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
       grpId: gid,
       author: a.role,
       kind: "state_change",
-      body: say(ctx.config.language, "group.blocked", { path, target: String(destination.target) }),
+      say: msg`blocked by ${{ path }}; handed to grp ${{ target: String(destination.target) }} and waiting for it to land`,
       meta: { blocked_on: destination.target, path },
     });
     return destination;
@@ -495,7 +536,7 @@ export const OwnsBody = z.object({
 });
 
 export const postOwns = (async (ctx, _req, a, _p, b) => {
-  if (a.role !== roleFor(ctx, "cut_boundary")) return bad(`${a.role} does not cut boundaries`);
+  if (a.role !== roleFor(ctx, "cut_boundary")) return badText(`${a.role} does not cut boundaries`);
   const gid = await actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
 
@@ -507,7 +548,11 @@ export const postOwns = (async (ctx, _req, a, _p, b) => {
       author: roleFor(ctx, "cut_boundary"),
       kind: "decision",
       intent: "decision",
-      body: `owns ${b.paths.join(", ")}${result.ok ? "" : ` — still blocked: ${result.reason}`}`,
+      // The boundary is the decision; what still holds the group is current
+      // state, which the panel already draws from `approvedBlocked` and which
+      // `meta.ok` records here. Rendering the reason into this sentence pinned
+      // half of it to English inside a row the panel renders in the reader's own.
+      say: msg`owns ${{ paths: b.paths.join(", ") }}`,
       meta: { paths: b.paths, ok: result.ok },
     });
     return result;
@@ -516,5 +561,5 @@ export const postOwns = (async (ctx, _req, a, _p, b) => {
   // is swept. Without this the boss's approval sat waiting on a boundary that had
   // already been drawn.
   await sweepApproved(ctx);
-  return check.ok ? message("ok") : bad(check.reason ?? "boundary still overlaps");
+  return check.ok ? message("ok") : bad(check.reason ?? msg`boundary still overlaps`);
 }) satisfies AgentHandler<z.infer<typeof OwnsBody>>;

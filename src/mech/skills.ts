@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import type { Ctx } from "../mech/ctx.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
 import { hostClaudeHome, hostCodexHome } from "./sandbox/auth.ts";
@@ -364,8 +365,6 @@ export async function projectSkillsPending(ctx: Ctx, projectId: number, repoPath
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body:
-      `${repoPath} 自带的技能还没列出来 —— 代码只在容器里，得等第一个组克隆完才数得清（找的是 ${PROJECT_SKILL_DIRS.join("、")}）。` +
-      `那之后它们会自动出现在这里，也能在输入框里 /名字 点名。技能放在这几个目录之外的话，两边都看不到。`,
+    say: msg`${{ repo: repoPath }}'s own skills are not listed yet: the code only exists inside a container, so nothing can count them until the first group has cloned it (we look in ${{ dirs: PROJECT_SKILL_DIRS.join(", ") }}). After that they appear here by themselves, and you can name one in the composer with /name. Skills kept outside those directories are invisible to both.`,
   });
 }

@@ -5,6 +5,17 @@ inputs:
   bun-version:
     description: Exact Bun version to install.
     required: true
+  # Three jobs start it — `ci`'s test job and both nightly jobs that reach a
+  # database — and each carried the same six-line comment saying why. The
+  # comment is the part that drifts, so it lives here once: `openMemory()` is
+  # how every test reaches a database, a `services:` block takes no `command`
+  # and so ran on PostgreSQL's default connection limit while the compose file
+  # raises it, and without it `sandbox-live` and `test-stress` died on
+  # `ERR_POSTGRES_CONNECTION_CLOSED` before touching what they exist to test.
+  postgres:
+    description: Start the suite's PostgreSQL, from the compose file that configures it.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -29,3 +40,6 @@ runs:
         restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-${{ inputs.bun-version }}-
     - shell: bash
       run: bun install --frozen-lockfile
+    - if: inputs.postgres == 'true'
+      shell: bash
+      run: bun run db:test:up

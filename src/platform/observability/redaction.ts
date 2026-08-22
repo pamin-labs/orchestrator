@@ -18,7 +18,12 @@
  * scans repositories rather than filtering a stream.
  */
 
-const MASK = "「凭据已抹掉」";
+/**
+ * English: this lands in logs, in `/readyz` and inside event bodies that ten
+ * catalogues render around it. No quote character, which `event-bus.ts` depends
+ * on when it scrubs serialised `meta`.
+ */
+const MASK = "[credential redacted]";
 
 /**
  * Shapes worth catching before they are stored.

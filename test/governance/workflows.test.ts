@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { TARGETS } from "../../scripts/build-server.ts";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 
@@ -33,6 +34,7 @@ const WorkflowSchema = z.object({
   ),
 });
 type Workflow = z.infer<typeof WorkflowSchema>;
+type Job = Workflow["jobs"][string];
 
 const CompositeActionSchema = z.object({
   runs: z.object({
@@ -167,7 +169,17 @@ describe("workflow governance", () => {
     // 24 each got. Two descriptions of one server is one description too many.
     const ci = await load("ci");
     expect(ci.jobs["test"]?.services).toBeUndefined();
-    expect(ci.jobs["test"]!.steps.some((step) => step.run?.includes("db:test:up"))).toBe(true);
+    // Through the composite action's `postgres` input, not a step of its own.
+    // Three jobs start this server — `ci`'s test job and both nightly jobs that
+    // reach a database — and each carried the same step under the same six-line
+    // comment about why.
+    const startsPostgres = (job: Job) =>
+      job.steps.some((step) => step.uses?.includes("setup-bun") && step.with?.["postgres"] === "true");
+    expect(startsPostgres(ci.jobs["test"]!)).toBe(true);
+    const nightly = await load("nightly");
+    expect(startsPostgres(nightly.jobs["test-stress"]!)).toBe(true);
+    expect(startsPostgres(nightly.jobs["sandbox-live"]!)).toBe(true);
+    expect(readFileSync(".github/actions/setup-bun/action.yml", "utf8")).toContain("bun run db:test:up");
 
     // And the setting that failure was about is stated where the server is
     // configured — the value moves as the pool and worker count do, so what is
@@ -508,13 +520,24 @@ describe("workflow governance", () => {
   test("release checksums and attests every published artifact", async () => {
     const workflow = await load("release");
     const release = await source("release");
-    for (const target of ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "windows-x64"]) {
-      expect(release).toContain(target);
-    }
+    // From the builder's own list rather than a second copy of it: the workflow
+    // spells the short name and derives `bun-$target`, and `build-server.ts`
+    // refuses a target it does not hold. Two lists that must agree, asserted to.
+    const shortNames = TARGETS.map((t) => t.replace(/^bun-/, "").replace(/-baseline$/, ""));
+    expect(shortNames).toEqual(["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "windows-x64"]);
+    for (const target of shortNames) expect(release).toContain(target);
     expect(release).toContain("release-manifest.json");
     expect(release).toContain("bun-linux-x64-baseline");
     expect(release).toContain("bun-windows-x64-baseline");
-    expect(release.match(/__ORCH_VERSION__/g)).toHaveLength(2);
+    // Both builds go through `build-server.ts`, because `bun build` the CLI
+    // takes no plugin and a server compiled without the Lingui macros throws on
+    // its first message. The version stamp travels with them, in the script.
+    expect(release).toContain("bun run build:server src/orch/cli.ts dist/orch-cli.ts");
+    expect(release).toContain('bun run build:server src/composition/server.ts "dist/$root/$exe" "$bun_target"');
+    const builder = await Bun.file("scripts/build-server.ts").text();
+    expect(builder).toContain("__ORCH_VERSION__");
+    expect(builder).toContain("RELEASE_VERSION");
+    expect(builder).toContain("linguiMacros");
     expect(release).toContain('bun "$root/src/orch/cli.ts" --version');
     expect(release).toContain('"$root/orch-server" --version');
     for (const path of [

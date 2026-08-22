@@ -1,3 +1,19 @@
+import type { Said } from "../contracts/said.ts";
+
+/**
+ * One preflight row, structurally rather than as `preflight.Check`, so this file
+ * keeps importing nothing but the `Said` contract — the panel's half of the same
+ * rows. Named once because two call-signature copies of it are two places to
+ * change and one place to forget.
+ */
+export interface CheckRow {
+  name: string;
+  ok: boolean;
+  detail: string;
+  fix?: string;
+  said: Said;
+  fixSaid?: Said;
+}
 import type { DB } from "../platform/persistence/database.ts";
 import type { Bus } from "../platform/persistence/event-bus.ts";
 import type { Scheduler } from "../platform/scheduling/scheduler.ts";
@@ -69,6 +85,23 @@ export interface Ctx {
   hire?: (grpId: number | null, role: string, projectId?: number | null) => Promise<number | null>;
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
+  /**
+   * Wired by the server: what the readiness timer last found, already computed.
+   *
+   * A getter and not a value because the timer replaces the array every tick.
+   * Running the checks costs host round trips and stays on that timer; *reading*
+   * the result costs nothing, which is why the panel snapshot may have it.
+   */
+  checks?: () => ReadonlyArray<CheckRow>;
+  /**
+   * Wired by the server: run them now, publish the result, hand it back.
+   *
+   * The settings page asks after the boss has just fixed something, and it used
+   * to run its own copy — so the pane went green while the shell's banner kept
+   * quoting the answer the timer last found. Two runs of one question is two
+   * answers, and the fresher one was the one nobody else could see.
+   */
+  recheck?: () => Promise<ReadonlyArray<CheckRow>>;
   /**
    * The roles this installation has, wired by the server.
    *

@@ -110,7 +110,8 @@ export interface NewNote {
   projectId?: number | null;
   grpId?: number | null;
   sliceId?: number | null;
-  lang?: string | null;
+  /** The language this note is written in; `null` for machine data. */
+  lang: string | null;
   /** The value itself: `frontmatter_json` is `jsonb`, so nothing here is serialised. */
   frontmatter?: Json;
   exportPath?: string | null;
@@ -119,20 +120,16 @@ export interface NewNote {
   at?: number;
 }
 
-/** `note.lang`'s schema default, stated here because a bound NULL cannot use it. */
-const DEFAULT_NOTE_LANG = "zh";
-
 export async function addNote(db: DB, note: NewNote): Promise<void> {
   await db.insert(notes).values({
     project_id: note.projectId ?? null,
     grp_id: note.grpId ?? null,
     slice_id: note.sliceId ?? null,
     kind: note.kind,
-    // The two columns carrying a schema default are spelled out rather than
-    // bound as NULL: `lang` and `frontmatter_json` are both `NOT NULL DEFAULT`,
-    // and a bound NULL overrides a default rather than falling back to it —
-    // which is a constraint failure, not the empty value the caller meant.
-    lang: note.lang ?? DEFAULT_NOTE_LANG,
+    lang: note.lang,
+    // Spelled out rather than bound as NULL: `frontmatter_json` is `NOT NULL
+    // DEFAULT`, and a bound NULL overrides a default rather than falling back to
+    // it — a constraint failure, not the empty value the caller meant.
     body: note.body,
     frontmatter_json: note.frontmatter ?? {},
     export_path: note.exportPath ?? null,
@@ -150,7 +147,8 @@ export async function saveSingletonNote(db: DB, projectId: number, kind: string,
     .limit(1);
   if (prev?.body === body) return false;
   if (prev) await db.delete(notes).where(eq(notes.id, prev.id));
-  await addNote(db, { projectId, kind, body });
+  // JSON, not prose: `repomap` and `pageindex` are the callers.
+  await addNote(db, { projectId, kind, body, lang: null });
   return true;
 }
 
