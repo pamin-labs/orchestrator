@@ -456,7 +456,16 @@ test("sending a DRAFT back records the reason and re-runs the dispatcher", async
 
   const notes = await db.select({ body: note.body }).from(note).where(eq(note.grp_id, grp_id)).orderBy(asc(note.id));
   expect(notes.at(-1)!.body).toContain("wrong layer");
-  const jobs = await db.select({ payload_json: job.payload_json }).from(job).where(eq(job.grp_id, grp_id));
+  // Ordered, like the notes query above it. A `SELECT` with no `ORDER BY` returns
+  // rows in whatever order the plan produces, so `at(-1)` was reading a position
+  // nothing had assigned — insertion order on a fresh heap and something else
+  // once pages have been reused. The stress pass is what found it: 6 of 10
+  // reruns, and green every time the file ran alone.
+  const jobs = await db
+    .select({ payload_json: job.payload_json })
+    .from(job)
+    .where(eq(job.grp_id, grp_id))
+    .orderBy(asc(job.id));
   expect(AgentTurnPayloadSchema.parse(jobs.at(-1)!.payload_json).respec).toBe("wrong layer");
 });
 

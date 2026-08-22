@@ -1185,7 +1185,83 @@ it.
   shape and the failure's shape are the same one. If the retro test fails again,
   this was not it.
 
+## Nightly had never been green, and three jobs failed three different ways
+
+Four scheduled runs, four failures, and nobody had read the log.
+
+- **`sandbox-live` and `test-stress` had no database.** `ci.yml`'s test job runs
+  `bun run db:test:up`; neither of these did, and `openMemory()` is how every
+  test in them reaches one. Both died on `ERR_POSTGRES_CONNECTION_CLOSED` in
+  under a minute. `sandbox-live` reported "Ran 2 tests" — two unnamed failures
+  from a module-scope `boot()` that threw — under a step named "the six live
+  tests, and proof they ran". Fixed and verified by dispatch: **1m52s green, the
+  six ran.**
+
+- **`security-full`'s `bun run audit` examined nothing.** `fallow audit` is
+  scoped to changed files by design and that job runs on `main`, where the base
+  is `main` — three consecutive nights printed `✓ No issues in 0 changed files`.
+  The same audit runs per pull request in `ci.yml` against a real diff and a real
+  coverage file, so the step is gone rather than rescoped: a second owner
+  reporting on an empty set. Run from a branch it *does* fire, and with no
+  coverage file every CRAP score falls back to the export-reference estimate —
+  11 phantom complexity findings, the trap `AGENTS.md` documents.
+
+- **`test-stress` was missing three things `scripts/test.ts` gives every caller
+  that goes through it.** It spawns `bun test` itself. No document (`dom.ts`
+  gates on `Bun.main`, which names one file only under `--isolate`, and this run
+  deliberately is not — 195 failures, 20 of 21 distinct ones `HTMLElement is not
+  defined`). No run lock, so two passes share schema names and empty each other's
+  tables — reproduced on myself by starting a second one. No `--timeout=20000`,
+  where Bun's 5000ms default sits 571ms above this suite's p99.9 and this pass
+  runs at Bun's *default* concurrency. All three now come from the one place that
+  measured them.
+
+- **And it immediately earned its keep.** 195 failures to **6**, one distinct
+  test: `sending a DRAFT back records the reason and re-runs the dispatcher`,
+  6 of 10 reruns. A `SELECT` with no `ORDER BY` read positionally — `at(-1)` on a
+  row order nothing had assigned, which is insertion order on a fresh heap and
+  something else once pages have been reused. Green every time the file ran
+  alone, which is why nothing had caught it. It is the only unordered
+  positional read of a table in the suite: `chain.ts`'s `jobsFor` orders, and
+  every other `at(-1)` is over an in-memory array.
+
+- **The rule that should have caught it had a back door.** `preload-scope` held
+  every `package.json` script containing `bun test` to `--parallel` or
+  `--isolate`; a script that spawns `bun test` from TypeScript has no such
+  string. It reads both argv shapes now and names every script that runs the
+  suite, so a third is a decision rather than a silent third way.
+  `stress-runner`'s duplicate half is gone. Shown failing on each half.
+
+## The test database is three times slower when it is full of dead rows
+
+Measured while chasing something else, and it explains most of the local timing
+spread this branch has been quoting.
+
+- `emptied()` uses `DELETE`, which is the right call per test — measured at 5x
+  faster than `TRUNCATE` on tables holding single-figure rows — and **never
+  returns a page to the OS**. One worker schema held `span` at 2,000 live rows
+  and **995,781 dead** ones, 134 MB. The data directory is a 4 GB tmpfs, so that
+  is resident memory by design.
+- Recreating the container: **857 MB → 117 MB**, and the suite went from ~90s to
+  **33s**. `bun run db:test:down && db:test:up` is worth doing between long
+  sessions.
+- Caching in CI was measured and rejected: `.cache/tsc` cold-to-warm is 2.27s →
+  0.07s, `.cache/lingui` 0.72s → 0.46s, and `.fallow` is inside the noise (4.09s
+  cold against 4.34s warm). Against a `test` job of 197–250s that is 2.5s, and a
+  cache of *analysis results* is the failure mode this branch has already paid
+  for three times. The dependency cache in `setup-bun` is the one that earns its
+  keep.
+
 ## Found and not fixed
+
+- **The old-generation collector only collects its own name.**
+  `dropMyOldGenerations` drops schemas sharing its `w<worker>[x<isolate>]`
+  suffix, and worker assignment moves between runs — so an isolate namespace's
+  older migration hashes are never asked for again. Measured: 594 relations,
+  7.6 MB, against 1,716 relations and 1,025 MB for the live generation. Small,
+  monotonic, and the collector's comment explains why it is not a whole-generation
+  sweep ("ran serially on the one connection and took minutes").
+
 
 - `test/support/factories.ts` is on Fishery's `onCreate` with the database as a
   transient — 407 lines to 172. It was deferred until the driver moved, and the
