@@ -980,6 +980,48 @@ both name `locales/po.d.ts`.
   `event.meta_json`, which is the only genuinely unknown input — buys the same
   guarantee.
 
+- **Half the emitters is a design nobody wrote down.** `bus.emit` has taken a
+  `say` descriptor since the first commit of this branch, and 62 call sites used
+  it. Sixty-four did not, and nothing said so — so a Korean boss read
+  `interrupted (boss), killed 2` under a heading that had been translated for
+  him. What made it invisible is that both spellings compile, both store a row,
+  and the untranslated one only looks wrong to a reader who is not reading
+  English. The guard judges the *shape of the expression*: a string literal or a
+  template with three letters in a row is a sentence this repository wrote, an
+  identifier or a call is somebody else's words passing through. Seventeen
+  emitters are legitimately the second kind, which is why "does it have `say`"
+  could not be the whole rule.
+
+- **A formatter is a language too.** `Intl.NumberFormat("en-US")` on every token
+  count, `toLocaleTimeString("zh-CN")` on the settings save, and a hand-built
+  `HH:MM` in the timeline column — three formatters, three different pinned
+  languages, none of them the reader's. The panel had been made to speak ten
+  languages while still writing their numbers in one. `1834000` is `1.8M`,
+  `183.4万` and `1,8 Mio.`, and those are not translations of each other.
+
+- **`i18n.number` and `i18n.date` are deprecated in Lingui v6.** Reaching for
+  them was the obvious move and oxlint's `no-deprecated` refused it within the
+  minute: the library's current answer is `Intl` at `i18n.locale`. The rule in
+  `AGENTS.md` about reading the installed version rather than recalling the API
+  paid for itself here without anyone having to remember it.
+
+- **The macro can name a value but not say how to format it.** A date inside a
+  `msg` template has to be rendered before it goes in, which pins it to the
+  *server's* locale inside a sentence the panel renders in the reader's. ICU
+  says it — `{at, date, short}` — and `msg({ message })` is the way to write
+  raw ICU past the template macro. `lingui extract` reads it, the runtime
+  compiler resolves it, and a `Date` survives the JSON round trip as an ISO
+  string that `Intl` still accepts. Measured before writing it, because the
+  alternative was believing a blog post.
+
+- **An article is not a value.** `revoked ${answered_by ?? "the"} answer` put
+  the English word "the" on the wire and rendered as `撤销了 the 的答复` in
+  every language that has no articles. Four sentences replace it. The same
+  shape, one layer over: `ensureCheckout` threaded three reasons into one
+  shared tail, which is `contracts/said.ts`'s "values, never text" for the
+  sixth time on this branch — three repeated clauses is what not doing it
+  costs, and it is cheap.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run
