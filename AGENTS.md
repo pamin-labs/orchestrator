@@ -218,10 +218,19 @@ repository does not vendor (`actionlint`, `shellcheck`, `docker`) says so and
 names what CI will do instead, because a preflight that silently skips the
 container scan promises a green run it never tested.
 
-Two checks have no local form and are named at the end of every run:
-`security-codeql` runs on GitHub's infrastructure, and `pr-plan` reads a pull
-request body that does not exist yet — fill in `.github/pull_request_template.md`
-and it passes.
+Four checks have no local form and are named at the end of every run:
+`security-codeql` runs on GitHub's infrastructure; `dependency-review` asks
+GitHub's API about the pull request's own range, which is where the licence
+allow-list is enforced; `codecov/patch` is posted by a second workflow *after*
+CI has already reported green, and it is the one status that can fail;
+and `pr / verify engineering plan sections` reads a pull request body that does
+not exist yet — fill in `.github/pull_request_template.md` and it passes.
+
+There were two until a parity sweep walked both sides. Preflight also ran
+`bun audit --audit-level=high` where CI runs it bare, so a moderate advisory
+was red there and green here, and `fallow security --changed-since main` where
+CI diffs `origin/main` — a local ref that can sit behind the remote is a scope
+nobody chose.
 
 CI minutes cost money and a red check costs a round trip. Push knowing the
 answer.

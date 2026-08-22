@@ -78,13 +78,16 @@ test("the prompts do not send an agent to a search that ignores .gitignore", () 
  * and a stale local one would mean contributors and CI disagree about what a valid
  * workflow is, which is the disagreement running it locally exists to prevent.
  */
-test("the actionlint version preflight runs is the one CI runs", () => {
+/** Both tools that job runs, for the same reason. zizmor was CI-only until the
+ *  parity sweep found it — the enforcement matrix named it as the owner of
+ *  "workflow security" while preflight ran actionlint alone. */
+test.each([
+  ["actionlint", /ACTIONLINT_VERSION:\s*([\d.]+)/, /ACTIONLINT_VERSION = "([\d.]+)"/],
+  ["zizmor", /zizmor==([\d.]+)/, /ZIZMOR_VERSION = "([\d.]+)"/],
+])("the %s version preflight runs is the one CI runs", (_name, inCi, inPreflight) => {
   const pinned = (text: string, re: RegExp): string | null => re.exec(text)?.[1] ?? null;
-  const ci = pinned(
-    readFileSync(join(ROOT, ".github/workflows/security.yml"), "utf8"),
-    /ACTIONLINT_VERSION:\s*([\d.]+)/,
-  );
-  const local = pinned(readFileSync(join(ROOT, "scripts/preflight.ts"), "utf8"), /ACTIONLINT_VERSION = "([\d.]+)"/);
+  const ci = pinned(readFileSync(join(ROOT, ".github/workflows/security.yml"), "utf8"), inCi);
+  const local = pinned(readFileSync(join(ROOT, "scripts/preflight.ts"), "utf8"), inPreflight);
   expect(local).not.toBeNull();
   expect(local).toBe(ci);
 });
