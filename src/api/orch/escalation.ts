@@ -60,8 +60,31 @@ export const askKind = (given: string | undefined): AskKind => {
   return isAskKind(value) ? value : "other";
 };
 
+/**
+ * ICU's sentence break, not a punctuation set of ours.
+ *
+ * `[\n。.!?！？]` cut on every full stop, so `playwright 1.62.1 is missing` filed
+ * as `playwright 1` and `e.g. the gate…` filed as `e` — a queue row whose whole
+ * job is naming which question to open. `Intl.Segmenter` is the same ICU
+ * `terms()` already segments words with, and it knows a version from a sentence.
+ * Trimmed with Unicode's own `Terminal_Punctuation` property, so the brief reads
+ * as a phrase rather than ending in the stop it was cut at — again a property,
+ * not a list.
+ */
+/**
+ * Pinned to `en` because sentence break is locale-independent across the ten
+ * languages this ships in. The exception is Greek, whose `;` is a question mark,
+ * and Greek is not one of them — a locale would have to be threaded from
+ * `output.language` to buy that, for a language with no catalogue.
+ */
+const SENTENCES = new Intl.Segmenter("en", { granularity: "sentence" });
+const ENDING = /[\p{Terminal_Punctuation}\s]+$/u;
+
 export function brief(given: string | undefined, question: string): string {
-  const raw = (given ?? question.split(/[\n。.!?！？]/)[0] ?? "").trim();
+  // The terminator is stripped from the sentence *this* cut, not from a brief
+  // the agent wrote: those are its own words and its own punctuation.
+  const first = ([...SENTENCES.segment(question)][0]?.segment ?? "").replace(ENDING, "");
+  const raw = (given ?? first).trim();
   return raw.length > 40 ? `${raw.slice(0, 39)}…` : raw;
 }
 

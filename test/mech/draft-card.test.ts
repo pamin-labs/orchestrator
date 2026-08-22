@@ -35,6 +35,17 @@ slices : 补 middleware 单测 [normal] — 覆盖 401/403 两条路径
 risk : 老 client 带 legacy header，加了兼容分支
 objection : 无`;
 
+/**
+ * The same card with the headings an agent typed on a CJK keyboard: fullwidth
+ * colon after each one. NFKC folds it, so the file keeps no list of which
+ * punctuation it has met — it used to match `[:：]` and nothing else.
+ */
+const fullwidth = good.replace(/^## (\w[\w-]*)$/gm, "## $1：");
+
+test("a heading typed with a fullwidth colon names the same field", () => {
+  expect(validateDraftCard(fullwidth).ok).toBe(true);
+});
+
 test("a well-formed card parses", () => {
   const r = validateDraftCard(good);
   expect(r.ok).toBe(true);

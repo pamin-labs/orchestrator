@@ -1517,6 +1517,14 @@ test("a question carries one line for the queue, given or derived", () => {
   expect(brief(undefined, "S2 的验收跑不了。原因是 worktree 里没装 playwright")).toBe("S2 的验收跑不了");
   // Long: cut, with the cut marked.
   expect(brief("x".repeat(60), "q")).toBe(`${"x".repeat(39)}…`);
+  // A version and an abbreviation, which is what the hand-written
+  // `[\n。.!?！？]` got wrong: it cut on every `.`, so these filed as
+  // `playwright 1` and `e` — a queue row naming nothing.
+  expect(brief(undefined, "playwright 1.62.1 is missing")).toBe("playwright 1.62.1 is missing");
+  expect(brief(undefined, "e.g. the gate needs a browser")).toBe("e.g. the gate needs a browser");
+  // And the breaks it did get right still break.
+  expect(brief(undefined, "予算を上げますか。残りは後で")).toBe("予算を上げますか");
+  expect(brief(undefined, "budget?\nthe rest can wait")).toBe("budget");
 });
 
 test("what a question is about comes from a closed set", () => {
