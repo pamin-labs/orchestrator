@@ -64,3 +64,42 @@ test("a turn with no payload card falls back to the slice list", async () => {
   const d = await delta({});
   expect(d.card).toContain("add the menu");
 });
+
+/**
+ * A card that loses takes its quoted span with it.
+ *
+ * Every builder in `applyPayloadCards` runs and the last one that fired wins, so
+ * a builder can lose — and nothing in `AgentTurnPayloadSchema` stops a payload
+ * carrying an escalation *and* a digest, because every field is independently
+ * optional. When a span was pushed as it was built rather than carried by its
+ * card, the loser's survived: a fenced `<<DATA:question:…>>` block in a turn
+ * whose prose is about compressing a backlog, with nothing to say what it was.
+ */
+test("a losing card does not leave its quoted span behind", async () => {
+  const ctx = await testContext({ sandbox: fakeSandbox() });
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p" });
+  const g = await f.grp.create({ project_id: p.id, name: "g" });
+  const a = await f.agent.create({ project_id: p.id, grp_id: g.id, token: "t" });
+  const channel = await f.channel.create({ grp_id: g.id });
+  const esc = await f.escalation.create({ grp_id: g.id, agent_id: a.id, question: "which base branch?" });
+
+  const job: Job<"agent_turn"> = {
+    id: 1,
+    kind: "agent_turn",
+    grp_id: g.id,
+    agent_id: null,
+    slice_id: null,
+    payload_json: JsonValue.parse({ escalation: esc.id, digest: { channel_id: channel.id, from: 0, to: 99 } }),
+    priority: 5,
+    state: "running",
+    payload: { escalation: esc.id, digest: { channel_id: channel.id, from: 0, to: 99 } },
+  };
+  const d = await buildTurnDelta({ ctx, cfg: loadConfig() }, agent, job, false, { grp: g.id });
+
+  // The digest is later in the list, so it wins the card.
+  expect(d.card).toContain("Compress the channel backlog");
+  // And it is the only thing quoted: the escalation's question went with the
+  // card that lost.
+  expect((d.quoted ?? []).map((q) => q.label)).toEqual(["backlog"]);
+});

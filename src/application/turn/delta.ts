@@ -18,7 +18,7 @@ import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { getFile, type Scope } from "../../mech/sandbox/sandbox.ts";
 import { listSkills, projectSkills, readSkillIn } from "../../mech/skills.ts";
-import type { Delta } from "../../prompt/assemble.ts";
+import type { Delta, Quoted } from "../../prompt/assemble.ts";
 import type { Job } from "../../platform/scheduling/scheduler.ts";
 import { ACTIVE_JOB_STATES } from "../../contracts/states.ts";
 
@@ -35,7 +35,7 @@ export interface TurnAgent {
 type TurnJob = Job<"agent_turn">;
 type TurnPayload = TurnJob["payload"];
 
-async function escalationCard(db: DB, payload: TurnPayload, delta: Delta): Promise<string | undefined> {
+async function escalationCard(db: DB, payload: TurnPayload): Promise<Card> {
   if (!payload.escalation) return;
   const [esc] = await db
     .select({
@@ -51,13 +51,14 @@ async function escalationCard(db: DB, payload: TurnPayload, delta: Delta): Promi
     esc.agent_id === null
       ? "someone"
       : ((await db.select({ role: agent.role }).from(agent).where(eq(agent.id, esc.agent_id)))[0]?.role ?? "someone");
-  quote(delta, "question", esc.question);
-  return (
-    `${asker} is blocked and asked (severity ${esc.severity}); their question is quoted below.\n\n` +
-    `Answer it with \`orch answer ${esc.id} --answer "…"\`, or pass it up with ` +
-    `\`orch answer ${esc.id} --abstain --why "…"\`. Abstaining is the right move if you are ` +
-    `not sure — a guess becomes a premise the whole group then reasons from.`
-  );
+  return {
+    card:
+      `${asker} is blocked and asked (severity ${esc.severity}); their question is quoted below.\n\n` +
+      `Answer it with \`orch answer ${esc.id} --answer "…"\`, or pass it up with ` +
+      `\`orch answer ${esc.id} --abstain --why "…"\`. Abstaining is the right move if you are ` +
+      `not sure — a guess becomes a premise the whole group then reasons from.`,
+    quote: { label: "question", content: esc.question },
+  };
 }
 
 /**
@@ -146,7 +147,7 @@ async function scribeCard(ctx: Ctx, payload: TurnPayload): Promise<string | unde
   );
 }
 
-async function digestCard(db: DB, payload: TurnPayload, delta: Delta): Promise<string | undefined> {
+async function digestCard(db: DB, payload: TurnPayload): Promise<Card> {
   const digest = payload.digest;
   if (!digest) return;
   const rows = await db
@@ -166,14 +167,15 @@ async function digestCard(db: DB, payload: TurnPayload, delta: Delta): Promise<s
     .map((row) => `[${row.seq}] ${row.author}: ${row.body}`)
     .join("\n")
     .slice(0, 20_000);
-  quote(delta, "backlog", transcript);
-  return (
-    `Compress the channel backlog quoted below so nobody has to read it again. ${rows.length} events, ` +
-    `seq ${digest.from}..${digest.to}.\n\n` +
-    `File ONE note: \`orch journal add --kind journal -\`, at most 6 lines, covering what was ` +
-    `decided, what is still open, and anything a later turn must not re-litigate. Names and ` +
-    `file paths verbatim; drop the pleasantries.`
-  );
+  return {
+    card:
+      `Compress the channel backlog quoted below so nobody has to read it again. ${rows.length} events, ` +
+      `seq ${digest.from}..${digest.to}.\n\n` +
+      `File ONE note: \`orch journal add --kind journal -\`, at most 6 lines, covering what was ` +
+      `decided, what is still open, and anything a later turn must not re-litigate. Names and ` +
+      `file paths verbatim; drop the pleasantries.`,
+    quote: { label: "backlog", content: transcript },
+  };
 }
 
 function sedimentCard(payload: TurnPayload): string | undefined {
@@ -190,17 +192,25 @@ function sedimentCard(payload: TurnPayload): string | undefined {
 }
 
 async function applyPayloadCards(ctx: Ctx, payload: TurnPayload, delta: Delta): Promise<void> {
+  // Every builder runs and the last one that fired wins, so a builder can lose —
+  // which is why a span travels with its card rather than being pushed as it is
+  // built. A loser's span used to survive its prose.
+  let won: Card;
   for (const card of [
-    await escalationCard(ctx.db, payload, delta),
+    await escalationCard(ctx.db, payload),
     mailCard(payload),
     boundaryCard(payload),
     auditCard(payload),
     await scribeCard(ctx, payload),
-    await digestCard(ctx.db, payload, delta),
+    await digestCard(ctx.db, payload),
     sedimentCard(payload),
     payload.idea ? `The boss wants: ${payload.idea}` : undefined,
   ]) {
-    if (card !== undefined) delta.card = card;
+    if (card !== undefined) won = card;
+  }
+  if (won !== undefined) {
+    delta.card = typeof won === "string" ? won : won.card;
+    if (typeof won !== "string") quote(delta, won.quote.label, won.quote.content);
   }
   if (payload.respec) delta.rejection = `The boss sent the DRAFT back: ${payload.respec}`;
   if (payload.rejection) delta.rejection = payload.rejection;
@@ -398,6 +408,17 @@ async function readUnread(
 const quote = (delta: Delta, label: string, content: string): void => {
   (delta.quoted ??= []).push({ label, content });
 };
+
+/**
+ * A card that carries a span for the fence, and it travels with the card rather
+ * than being pushed as a side effect.
+ *
+ * `applyPayloadCards` evaluates every builder and keeps the last one that fired,
+ * so a builder can lose. Pushing straight onto `delta.quoted` left the loser's
+ * span behind — and nothing in `AgentTurnPayloadSchema` stops one payload
+ * carrying both an escalation and a digest.
+ */
+type Card = string | { card: string; quote: Quoted } | undefined;
 
 /** Build only the per-turn delta; stable prompt material is owned elsewhere. */
 export async function buildTurnDelta(
