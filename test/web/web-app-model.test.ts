@@ -58,8 +58,8 @@ test("keyboard, labels and switcher rows preserve visible policy", () => {
 test("a dialog does not change the identity of the page behind it", () => {
   // `contentKey` feeds the error boundary's `key`, and a `key` change unmounts
   // and remounts the whole subtree. It used to be built from `selection.view`,
-  // which becomes `settings` the instant a dialog opens — so opening 设置 threw
-  // away the page underneath and rebuilt it. On 耗时 both charts and the table
+  // which becomes `settings` the instant a dialog opens — so opening `Settings` threw
+  // away the page underneath and rebuilt it. On `Time` both charts and the table
   // disappeared and came back as the modal appeared, each one re-reading the
   // endpoint on the way. The resolved view is what stays put.
   const behind = resolveNavigation(selection({ view: "settings", p: 1 }), "time");

@@ -85,7 +85,7 @@ async function form(fetchFn: DeviceFlowFetcher, url: string, params: Record<stri
     body: new URLSearchParams(params).toString(),
     signal: AbortSignal.timeout(15_000),
   });
-  if (!r.ok) throw new Error(`GitHub 回了 ${r.status}`);
+  if (!r.ok) throw new Error(`GitHub answered ${r.status}`);
   const parsed = DeviceFlowBody.safeParse(await r.json());
   if (!parsed.success) throw new Error("GitHub returned an invalid device-flow response");
   return parsed.data;
@@ -94,7 +94,7 @@ async function form(fetchFn: DeviceFlowFetcher, url: string, params: Record<stri
 /** Ask for a code. Returns as soon as there is something to show. */
 export async function startDeviceFlow(fetchFn: DeviceFlowFetcher = fetch): Promise<DeviceCode> {
   const b = await form(fetchFn, DEVICE_CODE_URL, { client_id: CLIENT_ID });
-  if (b.error || !b.device_code) throw new Error(b.error_description || b.error || "GitHub 没给出登录码");
+  if (b.error || !b.device_code) throw new Error(b.error_description || b.error || "GitHub returned no device code");
   return {
     userCode: b.user_code ?? "",
     verificationUri: b.verification_uri ?? "https://github.com/login/device",
@@ -137,19 +137,19 @@ export async function pollForToken(
         interval = b.interval ?? interval + 5;
         break;
       case "expired_token":
-        throw new Error("登录码过期了，重新点一次「连接 GitHub」");
+        throw new Error("the device code expired — click Connect GitHub again");
       case "access_denied":
-        throw new Error("在 GitHub 上拒绝了这次授权");
+        throw new Error("the authorization was denied on GitHub");
       // A `default` as well as the exhaustive cases: GitHub documents errors this
       // switch does not name — `device_flow_disabled`, `incorrect_client_credentials`
       // — and falling through to the loop reported "the code expired" fifteen
       // minutes later, naming the wrong cause.
       case undefined:
       default:
-        throw new Error(b.error_description || b.error || "GitHub 没给出 token");
+        throw new Error(b.error_description || b.error || "GitHub returned no token");
     }
   }
-  throw new Error("登录码过期了，重新点一次「连接 GitHub」");
+  throw new Error("the device code expired — click Connect GitHub again");
 }
 
 /**
@@ -290,7 +290,7 @@ export async function listRepos(
  *
  * Also the only proof it still works, which is why the settings page asks for it
  * rather than reading a name stored beside the token: a stored name keeps saying
- * "connected" for a token GitHub revoked last week (决策 007 §6). `null` means
+ * "connected" for a token GitHub revoked last week (`Decision` 007 §6). `null` means
  * the token no longer answers — deliberately not split into why, because
  * GitHub answers 404 for "cannot see it" as well as "gone".
  */

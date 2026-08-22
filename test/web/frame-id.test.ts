@@ -44,7 +44,7 @@ test("a streaming partial frame merges into the last live entry, keeping its id"
   frames = appendFrame(frames, { type: "live", agentId: 9, kind: "text", body: "lo", grpId: 1 }, live);
   expect(frames.length).toBe(1);
   expect(frames[0]!.id).toBe(id);
-  expect(frames[0]!.text).toBe("hello");
+  expect(frames[0]!.body).toBe("hello");
 });
 
 test("a full-history reconnect replay never leaves the frame array with duplicate ids", () => {

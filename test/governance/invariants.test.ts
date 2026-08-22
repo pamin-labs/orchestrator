@@ -12,6 +12,7 @@ import {
 import { escalation } from "../../src/platform/persistence/schema.ts";
 import { INVARIANT_TABLES, runInvariants, uncovered } from "../../src/mech/ops/invariants.ts";
 import * as fx from "../support/factories.ts";
+import { escalationKey } from "../../src/mech/flow/escalate.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -69,7 +70,10 @@ test("the project repair executes through the production registry", async () => 
   await f.project.create({ name: "p", remote: "git@github.com:me/x.git" });
   await f.escalation.create({
     severity: "blocker",
-    question: "GitHub me/x: unavailable",
+    // The key, not the sentence: `clearEscalation` finds the row by what it is
+    // about, so the wording below is deliberately not the one that ships.
+    question: "unavailable",
+    dedupe_key: escalationKey.githubRepo("me/x"),
     chain_state: "boss",
   });
 

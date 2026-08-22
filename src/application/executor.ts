@@ -1,3 +1,4 @@
+import { msg, plural } from "@lingui/core/macro";
 import { and, count, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { DB } from "../platform/persistence/database.ts";
 import {
@@ -26,8 +27,8 @@ import { roleFor, type Ctx } from "../mech/ctx.ts";
 function mintToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
-import { say } from "../platform/text/lang.ts";
-import { raise } from "../mech/flow/escalate.ts";
+import { renderSaid } from "../platform/text/lang.ts";
+import { escalationKey, raise } from "../mech/flow/escalate.ts";
 import { hold } from "../mech/flow/intercept.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
 import {
@@ -38,12 +39,13 @@ import {
   runPrReview,
   sendBack,
 } from "../mech/flow/review.ts";
-import { runStandup } from "../mech/flow/standup.ts";
+import { runStandup, type StandupItem } from "../mech/flow/standup.ts";
+import { scrub } from "../platform/observability/redaction.ts";
 import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { gitTrailers } from "../mech/git/ghlogin.ts";
 import { changedSince, checkpoint, porcelainEntries, porcelainPaths, STATUS_Z } from "../mech/git/gitops.ts";
 import { lessonsFor } from "../mech/knowledge/lessons.ts";
-import { gzipTurnLog, recordTurnOutcome, runWatchdog } from "../mech/ops/watchdog.ts";
+import { gzipTurnLog, recordTurnOutcome, runWatchdog, type Finding } from "../mech/ops/watchdog.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { scopeAttributes, type SpanScope } from "../platform/observability/metrics.ts";
 import { activeTracer } from "../platform/observability/traces.ts";
@@ -59,6 +61,7 @@ import { buildTurnDelta } from "../application/turn/delta.ts";
 import type { TurnResult } from "../runtime/claude.ts";
 import { clampEffort, type Provider, providerFor } from "../runtime/providers.ts";
 import { track, untrack } from "../platform/process/running-turns.ts";
+import { outputLanguage } from "../contracts/config.ts";
 
 /**
  * Turns a queued `job` into work that actually happens.
@@ -215,7 +218,7 @@ export async function hire(
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "hired", { role: roleName }),
+    say: msg`hired ${{ role: roleName }}`,
   });
   return row;
 }
@@ -633,7 +636,7 @@ async function preserveTurnBranch(ctx: Ctx, job: Job<"agent_turn">, group: TurnG
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: `could not take ${group.branch} out of the sandbox: ${kept.reason}`,
+    say: msg`could not take ${{ branch: group.branch }} out of the sandbox: ${{ why: kept.reason }}`,
   });
 }
 
@@ -649,7 +652,7 @@ async function repairLostSession(
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: `${turn.agent.role} 的会话记录没了，下一轮从新会话开始`,
+    say: msg`${{ role: turn.agent.role }}'s session record is gone; the next turn starts a new session`,
     meta: { agent_id: turn.agent.id, lost_session: turn.sessionId },
   });
 }
@@ -660,7 +663,7 @@ export const LOST_SESSION = /no rollout found for thread|No conversation found w
 /**
  * What a turn's checkpoint commit says about itself.
  *
- * `S2: engineer — 闸门放行的卡…`: slice number first, then who did it, then the
+ * `S2: engineer — the card the gate let through…`: slice number first, then who did it, then the
  * only sentence anyone wrote about this work. It names the turn that **just
  * ended**, not the one about to start — the checkpoint commits the previous
  * turn's output, so the incoming job's role filed the Engineer's diff as `qa`.
@@ -712,7 +715,7 @@ async function buildStableFor(
     rolePrompt: role.prompt,
     ...(onboarding ? { onboarding } : {}),
     lessons,
-    language: cfg.language,
+    language: outputLanguage(cfg),
     model: agent.model,
     // Clamped to what this role's provider accepts before it is hashed, so the
     // prefix hash describes the turn that was actually sent.
@@ -763,7 +766,7 @@ export async function stageAttachments(
         author: "orchestrator",
         kind: "state_change",
         severity: "blocker",
-        body: `could not put ${basename(host)} into the sandbox: ${errText(e)}`,
+        say: msg`could not put ${{ file: basename(host) }} into the sandbox: ${{ why: errText(e) }}`,
       });
       continue;
     }
@@ -819,7 +822,7 @@ export async function reconcileOwnership(
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
-      body: `could not check file ownership this turn (git status in the sandbox: ${status.out.slice(0, 200)})`,
+      say: msg`could not check file ownership this turn (git status in the sandbox: ${{ out: status.out.slice(0, 200) }})`,
     });
     return;
   }
@@ -856,9 +859,7 @@ export async function reconcileOwnership(
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
-      body:
-        `could not roll back ${left.size} file(s) outside this group's paths ` +
-        `(${[...left].slice(0, 5).join(", ")}): ${(co?.out || cl?.out || "git changed nothing").slice(0, 200)}`,
+      say: msg`could not roll back ${plural({ n: left.size }, { one: "# file", other: "# files" })} outside this group's paths (${{ files: [...left].slice(0, 5).join(", ") }}): ${{ out: (co?.out || cl?.out || "git changed nothing").slice(0, 200) }}`,
       meta: { left: [...left], reverted, stray, owns },
     });
     return;
@@ -868,11 +869,7 @@ export async function reconcileOwnership(
     author: "orchestrator",
     kind: "state_change",
     severity: "blocker",
-    body: say(deps.ctx.config.language, "owns.reverted", {
-      role: agent.role,
-      files: reverted.slice(0, 5).join(", "),
-      n: String(reverted.length),
-    }),
+    say: msg`${{ role: agent.role }} wrote ${plural({ n: String(reverted.length) }, { one: "# file", other: "# files" })} this group does not own (${{ files: reverted.slice(0, 5).join(", ") }}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it`,
     meta: { reverted, stray, owns },
   });
 }
@@ -920,9 +917,9 @@ async function recordCost(
     grpId: job.grp_id,
     author: agent.role,
     kind: "tool_summary",
-    body: `turn done (${r.numTurns} steps, ${total} tokens)`,
+    say: msg`turn done (${plural({ steps: r.numTurns }, { one: "# step", other: "# steps" })}, ${{ total }} tokens)`,
     // The provider, recorded rather than inferred: the `model LIKE 'gpt%'` split
-    // 成本 used breaks on any rename, and the event row has no agent to join to.
+    // `Cost` used breaks on any rename, and the event row has no agent to join to.
     meta: {
       usage: r.usage,
       cacheRatio: cacheRatio(r),
@@ -1009,11 +1006,11 @@ async function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: T
       grpId: job.grp_id,
       agentId: agent.id,
       kind: "env",
-      brief: `${runtime} 凭据过期`,
-      dedupe: { prefix: `${runtime} 的凭据`, scope: "global" },
-      question:
-        `${runtime} 的凭据不好使了：${r.text.slice(0, 200)}\n` +
-        `去设置页 → ${runtime} → 登录，重新配一个。登录是在工具容器里跑官方 CLI 做的，本机不用装。配完这一组会自己接着走。`,
+      lang: outputLanguage(ctx.config),
+      brief: msg`${{ runtime }} credential expired`,
+      key: escalationKey.auth(runtime),
+      dedupe: { scope: "global" },
+      question: msg`The ${{ runtime }} credential stopped working: ${{ why: r.text.slice(0, 200) }}\nGo to settings → ${{ runtime }} → sign in and set up another one. Signing in runs the official CLI inside the utility container, so nothing has to be installed here. The group carries on by itself once that is done.`,
     }) === null
   ) {
     return;
@@ -1024,7 +1021,7 @@ async function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: T
     kind: "escalation",
     intent: "ask",
     severity: "blocker",
-    body: `${runtime} credentials rejected`,
+    say: msg`${{ runtime }} credentials rejected`,
   });
 }
 
@@ -1051,7 +1048,16 @@ async function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: Tur
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "rl.waiting", { at: new Date(resetsMs).toLocaleString() }),
+    // Raw ICU, because the template macro can name a value but not say how to
+    // format it: `toLocaleString()` here resolved the one thing a reader acts on
+    // in the *server's* locale. `{at, date, short}` resolves where it is read.
+    say: {
+      ...msg({
+        message:
+          "rate limited; everything on this CLI holds until the window reopens (~{at, date, short} {at, time, short}) and resumes itself — the quota belongs to the account, so no model spends less of it",
+      }),
+      values: { at: new Date(resetsMs) },
+    },
     meta: rl,
   });
   if (job.grp_id) {
@@ -1090,31 +1096,58 @@ async function runWatchdogJob(deps: ExecDeps): Promise<void> {
   for (const item of await runStandup(deps.ctx.db)) await publishStandupItem(deps.ctx, item);
 }
 
-function publishWatchdogFinding(
-  ctx: Ctx,
-  finding: { rule: string; severity: string; body: string; grpId: number | null },
-): void {
-  ctx.onFinding?.(finding.rule, finding.severity, finding.body, finding.grpId);
+/**
+ * Rendered here, and in `output.language`.
+ *
+ * The event carrying this finding went out with a key on it, which the panel
+ * renders in its own locale. This is the other reader: `onFinding` feeds the
+ * `Notifier`, and `busDeliver` POSTs what it produces to a webhook — no browser
+ * on that path, which is ADR 035 §3's test for staying server-rendered.
+ */
+export function publishWatchdogFinding(ctx: Ctx, finding: Finding): void {
+  ctx.onFinding?.(finding.rule, finding.severity, renderSaid(outputLanguage(ctx.config), finding.say), finding.grpId);
 }
 
-export async function publishStandupItem(
-  ctx: Ctx,
-  item: { kind: string; body: string; grpIds: number[] },
-): Promise<void> {
+/**
+ * The same two readers as a watchdog finding, and now the same treatment.
+ *
+ * It took the sentence already written and emitted it as `body:`, so the panel
+ * had nothing to render and every locale read English. `say` goes on the wire
+ * for the panel; `renderSaid` produces the one the notifier posts to a webhook.
+ */
+/**
+ * De-duplicated on the descriptor rather than on the rendered body: the prose is
+ * free to change now, and the same finding in two languages is one finding.
+ */
+/**
+ * Through the same `scrub` the row was written with. `EventBus.prepare`
+ * serialises `meta` and scrubs it as text, so a value that looks like a
+ * credential is `[credential redacted]` in the column, and an unscrubbed needle
+ * silently never matches — the standup re-emitting every pass, quietly.
+ */
+/**
+ * `::text::jsonb`, not `::jsonb`. bun-sql sends a JS string as a JSON *value*,
+ * so the bare cast produces a jsonb string rather than an object and the
+ * comparison is always false. Measured: `jsonb_typeof` says `string` for one and
+ * `object` for the other. jsonb equality then ignores key order, which is what
+ * makes comparing a whole descriptor safe.
+ */
+export async function publishStandupItem(ctx: Ctx, item: StandupItem): Promise<void> {
+  const said = scrub(JSON.stringify(item.say));
   const [seen] = await ctx.db
     .select({ at: maxMs(events.at) })
     .from(events)
-    .where(and(eq(events.author, "standup"), eq(events.body, item.body)));
+    .where(and(eq(events.author, "standup"), sql`${events.meta_json}->'say' = ${said}::text::jsonb`));
   if (seen?.at && Date.now() - seen.at < ctx.config.watchdog.reemitMs) return;
   const groupId = item.grpIds[0] ?? null;
   await ctx.bus.emit({
     grpId: groupId,
     author: "standup",
     kind: "state_change",
-    body: item.body,
+    say: item.say,
     meta: { kind: item.kind, groups: item.grpIds },
   });
-  ctx.onFinding?.(item.kind, "advisory", item.body, groupId);
+  ctx.onFinding?.(item.kind, "advisory", renderSaid(outputLanguage(ctx.config), item.say), groupId);
 }
 
 /** Called by the server when the Auditor files a PR-level verdict. */

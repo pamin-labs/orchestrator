@@ -2,7 +2,7 @@
 #
 # Everything that used to be here — how many groups run at once, which model each
 # difficulty gets, how long a turn may take, the whole sandbox block — is in the
-# panel now, under 设置. Two reasons it moved, and the second is the one that
+# panel now, under Settings. Two reasons it moved, and the second is the one that
 # settled it:
 #
 #   1. Those are decisions made while watching the thing run, and a restart to
@@ -35,16 +35,20 @@
 # `src/config.ts`, because two files quietly answering the same question
 # differently is what this file was doing before.
 
-# 面板和 agent 信箱监听在哪。**只接受回环地址**，schema 里就是这么写死的
-# （127.0.0.1 / localhost / ::1），填别的启动直接报错。
-# 因为这个服务没有登录 —— 谁连得上谁就是老板，绑 0.0.0.0 等于把它交给同网段的所有人。
+# Where the panel and the agent mailbox listen. **Loopback only**, and the schema
+# says so rather than this comment: 127.0.0.1, localhost or ::1, and anything else
+# fails at startup.
 #
-# 这里以前写着「装在容器里必须改成 0.0.0.0」，而 schema 从来就不收 —— 照着做的人
-# 得到的是一条启动失败。容器要映射端口，用 docker 的 -p 127.0.0.1:47821:47821
-# 把宿主这一侧绑在回环上；容器内部这个进程仍然只听回环。
+# There is no login on this service — whoever can reach it is the boss — so
+# binding 0.0.0.0 hands it to everyone on the network segment. This used to say
+# "change it to 0.0.0.0 when running in a container", which the schema has never
+# accepted, so anyone following it got a startup failure instead. Publish a port
+# instead: `docker -p 127.0.0.1:47821:47821` binds the host side to loopback, and
+# inside the container this process still listens on loopback only.
 host: 127.0.0.1
 port: 47821
 
-# 数据库、turn 日志、闸门日志、附件都在这儿。相对路径会被解析成绝对路径 ——
-# 读它的那些东西跑在别的地方，相对路径解析出来的结果没有两次是一样的。
+# The database, the turn logs, the gate logs and the attachments all live here. A
+# relative path is resolved to an absolute one at load: the things that read it
+# run from somewhere else, and a relative path resolves differently every time.
 dataDir: data

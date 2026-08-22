@@ -37,7 +37,7 @@ const json = (body: unknown, status = 200): Response =>
 
 /** How many times the drift was said out loud. */
 const announced = async (db: DB) =>
-  (await db.select({ c: count() }).from(event).where(like(event.body, "%基线分支%")))[0]!.c;
+  (await db.select({ c: count() }).from(event).where(like(event.body, "%the base branch moved%")))[0]!.c;
 
 test("branches come back as names, in the order GitHub gave them", async () => {
   const { ctx, asked } = await project("me/x", () => json([{ name: "main" }, { name: "release/2" }]));

@@ -1,6 +1,8 @@
 import type { InferResponseType } from "hono/client";
 import type { Json } from "../../../../src/contracts/json";
 import { api } from "../../shared/api";
+import type { Refusal } from "../../shared/said";
+import type { Said } from "../../../../src/contracts/said";
 import type { ModelSources } from "./models";
 
 /** One settings row, as the endpoint hands it over. */
@@ -25,6 +27,9 @@ export const TABLES = new Set([
   "leaseSlots",
   "sandbox.cacheDirs",
   "sandbox.denyDomains",
+  "baseBranchFallbacks",
+  "intervals.notifyBackoffMs",
+  "embedding.mode",
 ]);
 
 /** Rows with no single control for a `<label>` to point at. They name themselves. */
@@ -42,13 +47,18 @@ export const labelledBy = (path: string, type: string, id: string): string | und
   selfNamed(path, type) ? id : undefined;
 
 /** What is wrong, and which box on the row it is wrong in. `""` is the row itself. */
+/**
+ * `why` is a `Refusal` and not a rendered string, because a complaint sits on
+ * the row until the boss fixes it — long enough for them to change the panel's
+ * language underneath it. The row renders it; nothing stores the words.
+ */
 export interface Complaint {
-  why: string;
+  why: Refusal | null;
   at: string;
 }
 
 /** Nothing has been refused, so no box is marked and no reason is shown. */
-export const NO_COMPLAINT: Complaint = { why: "", at: "" };
+export const NO_COMPLAINT: Complaint = { why: null, at: "" };
 
 /**
  * Which cell the complaint is about, or null when there is none. `""` is the
@@ -65,12 +75,13 @@ export interface Override {
   overridden: boolean;
 }
 
-/** One row, so one 已改 — a paired row is changed if either half is. */
-export const rowChanged = (knob: Override, mate: Override | null): boolean =>
-  [knob, mate].some((item) => item?.overridden);
+/** One row, so one `Modified` — a paired row is changed if any of its halves is. */
+export const rowChanged = (knob: Override, mates: Override[]): boolean =>
+  [knob, ...mates].some((item) => item.overridden);
 
-/** The second half of a paired row's stored value, or null when the row is single. */
-export const mateValue = (mate: { value: Json } | null): Json => (mate ? mate.value : null);
+/** One of a paired row's other stored values, or null when the row has no such half. */
+export const mateValue = (mates: { path: string; value: Json }[], path: string): Json =>
+  mates.find((m) => m.path === path)?.value ?? null;
 
 /** An object value, or an empty map for a row whose value is not one. */
 export const rec = (v: Json): Record<string, Json> => (v && !Array.isArray(v) && typeof v === "object" ? v : {});
@@ -83,7 +94,7 @@ export const textOf = (v: Json): string =>
  * How many stored units one millisecond is, 0 for a knob that is no duration.
  *
  * `turnTimeoutMs` is milliseconds and `sandbox.ttlSeconds` is seconds, and both
- * are typed in 分钟 / 小时 — so the picker works in one scale and this is the
+ * are typed in `min` / `hr` — so the picker works in one scale and this is the
  * only place the other one is named.
  */
 export const durationScale = (shape: Shape | undefined): number =>
@@ -108,6 +119,19 @@ export function runtimeSwitch(
   return { runtime: next, model: cheap && cheap !== model ? cheap : null };
 }
 
+/**
+ * Whether a mode change may be sent, or only shown.
+ *
+ * `ConfigSchema` refuses a remote embedding without a parseable endpoint and the
+ * name of a credential, and a refused write stores nothing — so the panel does
+ * not send that one. The reason travels back as a Zod `error` in `contracts`,
+ * which is a string no catalog can hold: sending it means printing English under
+ * a Chinese row. Beside `runtimeSwitch` because it is the same kind of rule, and
+ * out here for the same reason — it is a decision, not a rendering.
+ */
+export const embeddingSwitch = (next: string, endpoint: string, credential: string): boolean =>
+  next === "local" || (URL.canParse(endpoint) && !!credential);
+
 /** What the desktop-notification row can say. `ask` is the only one with a button. */
 export type NotifyState = "unsupported" | "granted" | "denied" | "ask";
 
@@ -127,8 +151,8 @@ export const TIERS = ["trivial", "normal", "hard"] as const;
 /**
  * Three tracks, one per tier.
  *
- * 难度 → 模型 needs a fourth column on the left for its runtime names; 每片
- * token 上限 does not and carries none. The eye runs down the *page*, where
+ * `Difficulty → Model` needs a fourth column on the left for its runtime names;
+ * the per-slice token ceiling does not and carries none. The eye runs down the *page*, where
  * every row's control starts at the same x, rather than across to the block
  * above; both still read as the same three things, being labelled the same.
  */
@@ -138,15 +162,15 @@ export const TIER_GRID = `${TIERS_ONLY} grid-cols-[3.25rem_repeat(3,minmax(0,1fr
 export interface Editor {
   id: string;
   knob: Knob;
-  /** The second half of a `PAIRED` row, null when the row is single. */
-  mate: Knob | null;
+  /** The other halves of a `PAIRED` row, empty when the row is single. */
+  mates: Knob[];
   /** Every model this config names, so a picker can offer them. */
   src: ModelSources;
   /** Which cell holds the bad value, `""` for the row itself, null for none. */
   bad: string | null;
   onWrite: (value: Json) => void;
-  onWriteMate: (value: Json) => void;
-  onRefuse: (why: string, at: string) => void;
+  onWriteMate: (path: string, value: Json) => void;
+  onRefuse: (why: Said, at: string) => void;
   /** Nothing changed, so nothing this row said about the last attempt still holds. */
   onClear: () => void;
 }

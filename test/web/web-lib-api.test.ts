@@ -70,7 +70,7 @@ test("a 200 that does not match the contract is a failure, and names the field",
 
 test("a good answer comes back parsed, with the raw body kept for display", async () => {
   const r = await readJson(json({ seq: 7 }), z.object({ seq: z.number() }));
-  expect(r).toEqual({ ok: true, data: { seq: 7 }, text: '{"seq":7}' });
+  expect(r).toEqual({ ok: true, data: { seq: 7 }, text: '{"seq":7}', said: null });
 });
 
 test("a quiet write hands its refusal back instead of raising a toast", async () => {

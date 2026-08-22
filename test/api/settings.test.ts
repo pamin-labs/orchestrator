@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import * as schema from "../../src/platform/persistence/schema.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import {
   applyOverrides,
@@ -10,6 +11,7 @@ import {
   settablePaths,
 } from "../../src/platform/config/settings.ts";
 import { makeApp } from "../../src/composition/api.ts";
+import { schemaAt, type SettingPath } from "../../src/contracts/config.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { z } from "zod";
 import * as fx from "../support/factories.ts";
@@ -38,7 +40,11 @@ test("the settable paths are the config's own, and nothing else is", () => {
     expect([...paths.keys()]).not.toContain(p);
     expect(refuse(p, 1)).toBeTruthy();
   }
+  // Unprefixed, because the message already names the path — and that is decided
+  // by a `params.namesPath` flag the issue carries, not by matching the sentence
+  // in another file. A denial keeps its prefix, because its text names nothing.
   expect(refuse("nonsense", 1)).toBe("no setting called nonsense");
+  expect(refuse("host", 1)).toStartWith("host: ");
   expect(refuse("maxGroups", "ten")).toContain("maxGroups");
 
   // The hole this schema closed. `busyGroups.size >= maxGroups()` is the
@@ -169,4 +175,69 @@ test("writing a setting does not edit what the default means", async () => {
   // Which is what makes clearing it mean anything.
   await putSetting(db, cfg, "sandbox.image", null);
   expect(cfg.sandbox.image).toBe(shipped);
+});
+
+/**
+ * A refused setting must not survive the refusal.
+ *
+ * `embedding.mode` and its endpoint are two fields with one rule between them,
+ * and the panel writes the mode the moment the segment is pressed. The write
+ * stored the row and *then* validated, so pressing `Remote` left
+ * `cfg.embedding.mode = "remote"` in the database with no endpoint — and the
+ * next boot refused to start on it. The only control that could have corrected
+ * the value was in the panel that would not come up.
+ */
+test("a value the whole config rejects is neither stored nor applied", async () => {
+  const db = await openMemory();
+  const cfg = loadConfig();
+  const before = structuredClone(cfg.embedding);
+
+  const why = await putSetting(db, cfg, "embedding.mode", "remote");
+
+  expect(why).toContain("endpoint");
+  // Not stored: a row nobody can apply is a boot this database cannot survive.
+  expect(await overrides(db)).toEqual({});
+  // Not applied: the fleet reading this object is still on the old value.
+  expect(cfg.embedding).toEqual(before);
+});
+
+/**
+ * The same value arriving from somewhere this process does not control — an
+ * older release, a hand-edited row, a restore — is skipped rather than thrown.
+ */
+test("a stored override that no longer applies is skipped, not fatal", async () => {
+  const db = await openMemory();
+  const cfg = loadConfig();
+  await db.insert(schema.setting).values({ k: "cfg.embedding.mode", v: JSON.stringify("remote") });
+
+  await applyOverrides(db, cfg);
+
+  expect(cfg.embedding.mode).toBe("local");
+});
+
+/**
+ * `apply` walks a dotted path into a clone of the config and assigns at the end
+ * of it, then writes the validated result back with `Object.assign`. Both steps
+ * are the shape CWE-915 describes, and what makes them safe is not local to
+ * either: the path is resolved against `ConfigSchema`'s own `shape` first, so it
+ * can only name a key the schema declares. That check is one `if` three files
+ * away from the assignment it protects, which is why it is tested here.
+ */
+test("a path that is not the config's own cannot be walked or written", async () => {
+  const db = await openMemory();
+  const cfg = loadConfig();
+
+  // `schemaAt` is exported and `mech/ops/checkconfig.ts` calls it on its own,
+  // where nothing masks the answer.
+  expect(schemaAt("__proto__")).toBeNull();
+
+  for (const path of ["__proto__", "__proto__.polluted", "constructor.prototype.polluted", "maxGroups.__proto__"]) {
+    expect(refuse(path, 1)).toBeTruthy();
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the point of the test is a path `SettingPath` cannot express
+    expect(await putSetting(db, cfg, path as SettingPath, 1)).toBeTruthy();
+  }
+
+  expect(await overrides(db)).toEqual({});
+  expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  expect(Object.prototype.hasOwnProperty.call(cfg, "polluted")).toBe(false);
 });

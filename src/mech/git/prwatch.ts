@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -5,7 +6,7 @@ import { type Config, ROOT } from "../../platform/config/load.ts";
 import { gitTrailers } from "./ghlogin.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
-import { say } from "../../platform/text/lang.ts";
+
 import { squashWip } from "./gitops.ts";
 import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
 import type { Github } from "./github.ts";
@@ -98,7 +99,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     grpId,
     author: "orchestrator",
     kind: "commit",
-    body: sq.squashed ? `squashed ${sq.reason}` : `no squash (${sq.reason})`,
+    say: sq.squashed ? msg`squashed ${{ why: sq.reason }}` : msg`no squash (${{ why: sq.reason }})`,
   });
 
   // The seam that used to be here is gone with 007 step 5. Two different things
@@ -142,7 +143,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "pr.opened", { n: number }),
+    say: msg`PR #${{ n: number }} opened`,
   });
   return { number };
 }
@@ -181,18 +182,24 @@ function version(): string {
  * The commit convention, as an `if`.
  *
  * Every rule here is one the Scribe's prompt states, and the prompt lists these
- * four refusals by name. That is not decoration: a prompt that permits what the
+ * five refusals by name. That is not decoration: a prompt that permits what the
  * validator rejects teaches the model to write something that will be thrown
  * away, and it finds out at the end of the only turn it gets.
  */
 const TYPES = ["feat", "fix", "docs", "test", "refactor", "perf", "build", "chore"] as const;
 // fallow-ignore-next-line security-sink -- the only interpolation is `TYPES`, a module-level `as const` tuple of eight literals; no PR title or body reaches the pattern (they are the `test` arguments below).
 const SUBJECT = new RegExp(`^(${TYPES.join("|")})(\\([a-z0-9._/-]+\\))?: \\S`);
-// CJK, kana and hangul. Not a general "is this English" test — it cannot be one
-// — but it catches the thing that actually happens: the panel's language is
-// Chinese, the journals are Chinese, and the message written next to them comes
-// out Chinese too.
-const NOT_ENGLISH = /[぀-ヿ㐀-鿿가-힯]/;
+/**
+ * A letter that is not written in the Latin script.
+ *
+ * It was three hand-picked ranges — kana, Han, hangul — chosen when the only
+ * other language was Chinese. `output.language` is ten now, and `перенести
+ * проверку`, `μετακίνηση ελέγχου` and `نقل الفحص` all walked past, so ADR 035's
+ * "commits and pull requests are English, always" held for three scripts and not
+ * the rest. Unicode's property is the whole rule: `Common` and `Inherited` keep
+ * digits, punctuation and combining marks legal, `Latin` keeps `déplacer` legal.
+ */
+const NOT_ENGLISH = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u;
 
 /** Null when the message may be published, otherwise what to fix. */
 export function checkPrMessage(title: string, body: string): string | null {
@@ -1102,7 +1109,7 @@ export async function dispatchFeedback(ctx: Ctx, f: Feedback): Promise<void> {
     author: "pr-watcher",
     kind: "say",
     intent: "request",
-    body: `PR #${f.prNumber} has feedback:\n${lines}`.slice(0, 2000),
+    say: msg`PR #${{ pr: f.prNumber }} has feedback:\n${{ lines: lines.slice(0, 1900) }}`,
     meta: { pr: f.prNumber, comments: f.comments.length, failingChecks: f.failingChecks.map((c) => c.name) },
   });
   // Deliberately not moved out of PR_OPEN. That flip made the group deaf to

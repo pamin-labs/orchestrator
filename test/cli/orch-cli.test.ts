@@ -164,7 +164,7 @@ test("malformed --arg entries are dropped rather than sent as junk", async () =>
 test("free text keeps arriving as one joined line", async () => {
   expect(body((await run(["status", "waiting", "on", "QA"])).sent)).toEqual({ text: "waiting on QA" });
   expect(body((await run(["ctx", "query", "who", "owns", "auth"])).sent)).toEqual({ question: "who owns auth" });
-  expect(body((await run(["ask-boss", "is", "this", "in", "scope"])).sent)).toMatchObject({
+  expect(body((await run(["ask-boss", "--kind", "scope", "is", "this", "in", "scope"])).sent)).toMatchObject({
     question: "is this in scope",
     severity: "advisory",
   });

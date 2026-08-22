@@ -9,6 +9,9 @@ import { api, mutate } from "../../shared/api";
 import { DeviceCode } from "./auth";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { MessageDescriptor } from "@lingui/core";
+import { msg, ph } from "@lingui/core/macro";
 
 export const GhStatusSchema: z.ZodType<InferResponseType<typeof api.auth.github.$get, 200>> = z.object({
   connected: z.boolean(),
@@ -37,11 +40,12 @@ export type GhStatus = z.infer<typeof GhStatusSchema>;
  * because those two facts are useless apart.
  */
 export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; onRefresh: () => void }) {
+  const { t } = useLingui();
   return (
     <>
-      {/* 真令牌不进沙盒 is already the note on 模型账号, and a sentence repeated on
+      {/* `Real tokens don't enter the sandbox` is already the note on `Model account`, and a sentence repeated on
           two panes stops being read on either. */}
-      <Head title="GitHub" note="代码从这儿来" />
+      <Head title="GitHub" note={t`Code comes from here`} />
       <Connection status={s} onRefresh={onRefresh} />
       <Installations status={s} />
       {/* Under the connection because both answers come from it: the author is
@@ -80,9 +84,12 @@ function Connection({ status, onRefresh }: { status: GhStatus | null; onRefresh:
         <DisconnectButton status={status} busy={busy} onDisconnect={disconnect} />
         <ConnectButton status={status} busy={busy} onConnect={connect} />
       </div>
-      {/* What the pane's own title and note already say — 克隆私有仓库、推分支、
-          开 PR — is cut. What is left is the part that is not obvious. */}
-      <Meta className="block">一个连接管所有项目</Meta>
+      {/* What the pane's own title and note already say — clone private repositories,
+          push branches, open pull requests — is cut. What is left is the part that
+          is not obvious. */}
+      <Meta className="block">
+        <Trans>One connection manages all projects</Trans>
+      </Meta>
       <DeviceAuthorization status={status} />
       <ConnectionError status={status} />
     </section>
@@ -90,26 +97,42 @@ function Connection({ status, onRefresh }: { status: GhStatus | null; onRefresh:
 }
 
 function ConnectionStatus({ status }: { status: GhStatus | null }) {
-  if (!status) return <Meta>读取中…</Meta>;
-  if (!status.connected) return <span className="text-body font-medium text-accent">没连</span>;
+  if (!status)
+    return (
+      <Meta>
+        <Trans>Loading…</Trans>
+      </Meta>
+    );
+  if (!status.connected)
+    return (
+      <span className="text-body font-medium text-accent">
+        <Trans>Not connected</Trans>
+      </span>
+    );
   return <ConnectedStatus status={status} />;
 }
 
 function ConnectedStatus({ status }: { status: GhStatus }) {
+  const { t } = useLingui();
   if (status.stale) {
-    return <span className="text-body font-medium text-accent">连过，但 GitHub 现在不认这个令牌了</span>;
-  }
-  if (status.installed === false) {
-    // Authorized and installed are different acts, and only the second one
-    // can reach a repository. Saying 已连 here would be a green tick over a
-    // repo list that can never fill.
     return (
       <span className="text-body font-medium text-accent">
-        {accountLabel(status.account, "授权了")}，但 App 还没装到任何账号上
+        <Trans>Was connected, but GitHub no longer recognizes this token</Trans>
       </span>
     );
   }
-  return <span className="text-body">{accountLabel(status.account, "已连")}</span>;
+  if (status.installed === false) {
+    // Authorized and installed are different acts, and only the second one
+    // can reach a repository. Saying `Connected` here would be a green tick over a
+    // repo list that can never fill.
+    const accountName = accountLabel(status.account, t`Authorized`);
+    return (
+      <span className="text-body font-medium text-accent">
+        {t`${accountName}, but the App is not installed on any account yet`}
+      </span>
+    );
+  }
+  return <span className="text-body">{accountLabel(status.account, t`Connected`)}</span>;
 }
 
 function accountLabel(account: string | null, fallback: string) {
@@ -128,15 +151,15 @@ function DisconnectButton({
   if (!status?.connected) return null;
   return (
     <Button size="sm" variant="quiet" disabled={busy} onClick={onDisconnect}>
-      断开
+      <Trans>Disconnect</Trans>
     </Button>
   );
 }
 
-function connectLabel(status: GhStatus, busy: boolean) {
-  if (status.pending) return "等你在 GitHub 上批准…";
-  if (busy) return "去拿登录码…";
-  return status.stale ? "重新连接" : "连接 GitHub";
+function connectLabel(status: GhStatus, busy: boolean): MessageDescriptor {
+  if (status.pending) return msg`Waiting for you to approve on GitHub…`;
+  if (busy) return msg`Fetching login code…`;
+  return status.stale ? msg`Reconnect` : msg`Connect GitHub`;
 }
 
 function canConnect(status: GhStatus) {
@@ -148,21 +171,29 @@ function connectDisabled(status: GhStatus, busy: boolean) {
 }
 
 function ConnectButton({ status, busy, onConnect }: { status: GhStatus | null; busy: boolean; onConnect: () => void }) {
+  const { t } = useLingui();
   if (!status) return null;
   if (!canConnect(status)) return null;
   // A dead token is a stuck state, so the way out is on the row that says so —
-  // not behind 断开 first.
+  // not behind `Disconnect` first.
   return (
     <Button size="sm" disabled={connectDisabled(status, busy)} onClick={onConnect}>
-      {connectLabel(status, busy)}
+      {t(connectLabel(status, busy))}
     </Button>
   );
 }
 
 function DeviceAuthorization({ status }: { status: GhStatus | null }) {
+  const { t } = useLingui();
   if (!status) return null;
   if (!status.pending) return null;
-  return <DeviceCode code={status.pending.userCode} url={status.pending.verificationUri} go="去 GitHub 输入" />;
+  return (
+    <DeviceCode
+      code={status.pending.userCode}
+      url={status.pending.verificationUri}
+      go={t`Go to GitHub to enter code`}
+    />
+  );
 }
 
 function ConnectionError({ status }: { status: GhStatus | null }) {
@@ -190,7 +221,9 @@ function InstallationSection({ status }: { status: GhStatus }) {
     // its rows were drawn with the same mark.
     <section className="mt-6">
       <div className="flex items-baseline gap-2">
-        <H2>装在哪些账号上</H2>
+        <H2>
+          <Trans>Installed on these accounts</Trans>
+        </H2>
         <span className="grow" />
         <InstallLink url={status.installUrl} />
       </div>
@@ -200,16 +233,19 @@ function InstallationSection({ status }: { status: GhStatus }) {
 }
 
 function InstallLink({ url }: { url: string }) {
+  const { t } = useLingui();
   if (url) {
     return (
       <LinkButton href={url} className="px-2 py-0.5 text-secondary">
-        装到别的账号
+        <Trans>Install to another account</Trans>
       </LinkButton>
     );
   }
   return (
-    <Tip label="config/default.yaml 里填上 github.appSlug，这里就是个直达链接。">
-      <Meta>去 GitHub → 这个 App → Install App</Meta>
+    <Tip label={t`Fill config/default.yaml with github.appSlug; this becomes a direct link.`}>
+      <Meta>
+        <Trans>GitHub → this App → Install App</Trans>
+      </Meta>
     </Tip>
   );
 }
@@ -219,7 +255,9 @@ type Installation = GhStatus["accounts"][number];
 function AccountList({ accounts }: { accounts: Installation[] }) {
   if (!accounts.length) {
     return (
-      <p className="text-secondary text-accent">一个也没有，这个连接看不见任何仓库。装的时候选所有仓库，或者挑几个。</p>
+      <p className="text-secondary text-accent">
+        <Trans>None; this connection sees no repositories. Install with all repos, or select specific ones.</Trans>
+      </p>
     );
   }
   return (
@@ -235,15 +273,19 @@ function AccountList({ accounts }: { accounts: Installation[] }) {
 }
 
 function AccountRow({ account }: { account: Installation }) {
+  // Named by the binding rather than through `ph`: `${count}` extracts as
+  // `{count}`, `${account.repos}` would be `{0}`.
+  const { t } = useLingui();
+  const { repos: count } = account;
   return (
     <div className="flex items-baseline gap-2 py-1.5">
       <span className="text-body">{account.account}</span>
-      <Badge>{account.kind === "Organization" ? "组织" : "个人"}</Badge>
+      <Badge>{account.kind === "Organization" ? t`Organization` : t`Personal`}</Badge>
       <span className="grow" />
       {/* Tabular figures: `86` and `5` share a right edge either way,
           but proportional digits make the two counts look like two
           different scales. */}
-      <Meta className="tabular-nums">{account.repos === null ? "数不出来" : `${account.repos} 个仓库`}</Meta>
+      <Meta className="tabular-nums">{count === null ? t`Can't count` : t`${count} repositories`}</Meta>
     </div>
   );
 }
@@ -262,6 +304,7 @@ function CommitSettings({ status, onSaved }: { status: GhStatus | null; onSaved:
  * finished branch, and a diff an agent wrote should say so in the record.
  */
 function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
+  const { t } = useLingui();
   const [busy, start] = useTransition();
   const set = (next: { signoff?: boolean; coauthor?: boolean }) =>
     start(async () => {
@@ -271,7 +314,9 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
   const bot = s.identity.name === s.bot.name;
   return (
     <section className="mt-6">
-      <H2>提交</H2>
+      <H2>
+        <Trans>Submit</Trans>
+      </H2>
       <FieldGroup>
         {/* The author, stated rather than configured. It was a name in a yaml file
             that routed nowhere, so a `Signed-off-by` carrying it certified nothing
@@ -282,10 +327,14 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
             and the name stops being 11px mono Chinese prose with one word tinted
             darker. `role="group"` is already on `Field`; this names it. */}
         <Field aria-labelledby="t-author" className="items-center">
-          <FieldTitle id="t-author">作者</FieldTitle>
+          <FieldTitle id="t-author">
+            <Trans>Author</Trans>
+          </FieldTitle>
           <FieldContent>
             <span className="font-mono text-secondary text-ink-2">{s.identity.name}</span>
-            <Meta>{bot ? "还没连 GitHub，先用我们的机器人账号" : "取自你连的 GitHub 账号"}</Meta>
+            <Meta>
+              {bot ? t`GitHub not connected yet; using our bot account for now` : t`From your connected GitHub account`}
+            </Meta>
           </FieldContent>
         </Field>
         <Field className="items-center">
@@ -297,7 +346,9 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
               disabled={busy}
               onCheckedChange={(v) => set({ signoff: v })}
             />
-            <Meta>开了 DCO 的仓库不收没有这行的提交</Meta>
+            <Meta>
+              <Trans>Repos with DCO enabled won't accept commits without this line</Trans>
+            </Meta>
           </FieldContent>
         </Field>
         <Field className="items-center">
@@ -309,7 +360,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
               disabled={busy}
               onCheckedChange={(v) => set({ coauthor: v })}
             />
-            <Meta>把 {s.bot.name} 写进 Co-Authored-By</Meta>
+            <Meta>{t`Writes ${ph({ bot: s.bot.name })} into Co-Authored-By`}</Meta>
           </FieldContent>
         </Field>
       </FieldGroup>

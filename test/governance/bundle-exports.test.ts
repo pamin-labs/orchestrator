@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { WEB_BUILD } from "../../scripts/build-web.ts";
 
 /**
  * Every export the browser bundle names has something behind it.
@@ -16,15 +17,13 @@ import { expect, test } from "bun:test";
 
 /** The same entry point and flags `build:web` uses; anything else tests a different bundle. */
 async function bundle(): Promise<string> {
-  const built = await Bun.build({
-    entrypoints: ["web/src/app/main.tsx"],
-    target: "browser",
-    minify: true,
-  });
+  const built = await Bun.build(WEB_BUILD);
   expect(built.success).toBe(true);
-  const [output] = built.outputs;
-  expect(output).toBeDefined();
-  return output!.text();
+  // Named, not `outputs[0]`: with splitting on, a catalog chunk can come first
+  // and this would then assert against a file of Chinese strings.
+  const entry = built.outputs.find((o) => o.kind === "entry-point");
+  expect(entry).toBeDefined();
+  return entry!.text();
 }
 
 /**

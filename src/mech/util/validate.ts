@@ -10,6 +10,8 @@ import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { z } from "zod";
+import { DRAFT_FIELDS, type Field, fieldOf, INLINE_FIELD } from "../../contracts/card.ts";
+import { JOURNAL_KINDS } from "../../contracts/states.ts";
 
 export interface Invalid {
   ok: false;
@@ -28,7 +30,6 @@ const JOURNAL_MAX_LINES = 6;
  */
 const DRAFT_MAX_LINES = 12;
 
-const JOURNAL_KINDS = ["fact", "decision", "journal", "retro", "handoff", "risk", "onboarding", "lesson"] as const;
 const JournalKindSchema = z.enum(JOURNAL_KINDS);
 export type JournalKind = z.infer<typeof JournalKindSchema>;
 
@@ -70,18 +71,27 @@ export function validateJournal(input: JournalInput): Result<JournalOk> {
         `\`orch ctx query\` can retrieve it.`,
     };
   }
-  const filler = findFiller(lines.join(" "));
-  if (filler) {
-    return {
-      ok: false,
-      error: `drop filler (${filler}). State the change, the reason, the risk.`,
-    };
-  }
+  // Padding is refused by the line cap above and by nothing else. There was a
+  // second check here — two rows of Chinese hedges and two of English ones — and
+  // it refused a journal, in two of the ten languages an agent writes in. Same
+  // shape as `GENERIC_GATE` and `testOnly`, and one more reason besides: the cap
+  // already owns "be terse", in every language, so a lexicon beside it was a
+  // second owner of one rule. ADR 046.
   return { ok: true, kind: parsedKind.data, body: lines.join("\n"), lines: lines.length };
 }
 
 const DifficultySchema = z.enum(["trivial", "normal", "hard"]);
 export type Difficulty = z.infer<typeof DifficultySchema>;
+
+/**
+ * The three words, for the two rejections that have to quote them.
+ *
+ * Interpolated rather than spelled out again — the same rule `DRAFT_FIELDS`
+ * already gets four lines up, not applied here: a rejection naming a difficulty
+ * the schema no longer parses sends the model to write a tag it will refuse.
+ * `z.enum` publishes `.options`, so there is nothing to keep in step.
+ */
+const DIFFICULTIES = DifficultySchema.options.join("|");
 
 export interface DraftSlice {
   title: string;
@@ -99,7 +109,17 @@ export interface DraftOk {
   lines: number;
 }
 
-const DRAFT_FIELDS = ["目标", "不做", "验收", "切片", "风险", "反对"] as const;
+/**
+ * The same six, named — so a rejection can be written in English and still quote
+ * the heading the Dispatcher has to type. Interpolated rather than spelled out
+ * again: an error naming a section that `DRAFT_FIELDS` no longer holds sends the
+ * model to write a heading the parser will not accept.
+ */
+const [GOAL, NOT_DOING, ACCEPT, SLICES, RISK, OBJECTION] = DRAFT_FIELDS;
+/** What the Architect writes when it has no objection. Content, not a key — so
+ *  the prompt asks for it in the agent's own output language rather than fixing
+ *  a word here. This is only what the rejection suggests. */
+const NO_OBJECTION = "none";
 
 /**
  * A card, structured, whichever grammar it arrived in.
@@ -124,12 +144,17 @@ function textOf(node: Nodes): string {
   return "";
 }
 
-/** The DRAFT field this heading names, or null if it names something else. */
-function headingField(node: Nodes): string | null {
-  const name = textOf(node)
-    .trim()
-    .replace(/[:：]\s*$/, "");
-  return (DRAFT_FIELDS as readonly string[]).includes(name) ? name : null;
+/**
+ * The DRAFT field this heading names, or null if it names something else.
+ *
+ * NFKC before the match, not a hand-written pair of colons. Unicode's own
+ * compatibility fold maps every fullwidth form to its ASCII one, so a heading
+ * typed on a CJK keyboard matches without this file keeping a list of the
+ * characters it has met. It normalises the lookup key only; the card's text is
+ * never rewritten.
+ */
+function headingField(node: Nodes): Field | null {
+  return fieldOf(textOf(node).normalize("NFKC").trim().replace(/:\s*$/, ""));
 }
 
 /** Which section is this node in: the nodes under each field heading, in order. */
@@ -173,7 +198,7 @@ function contentLines(node: RootContent): string[] {
  * Markdown, parsed as Markdown.
  *
  * Headings name the sections, list items and paragraphs are their content, and
- * 切片 is a GFM table because three fields per slice is a shape every Markdown
+ * `slices` is a GFM table because three fields per slice is a shape every Markdown
  * reader already understands. Returns null when the text has no headings at
  * all, which is the one signal that it predates this format.
  */
@@ -184,7 +209,7 @@ function draftMarkdown(text: string): CardParts | null {
   const grouped = bySection(root);
   const sections = new Map([...grouped].map(([field, nodes]) => [field, nodes.flatMap(contentLines)]));
   const count = [...sections.values()].reduce((n, lines) => n + lines.length, 0);
-  const rows = grouped.get("切片")?.flatMap((n) => (n.type === "table" ? tableRows(n) : [])) ?? [];
+  const rows = grouped.get(SLICES)?.flatMap((n) => (n.type === "table" ? tableRows(n) : [])) ?? [];
 
   return { sections, count, slices: () => tableSlices(rows) };
 }
@@ -197,7 +222,7 @@ function tableSlices(rows: string[][]): Result<{ slices: DraftSlice[] }> {
     const accept = row[2]?.trim() ?? "";
     if (!title || !accept || !difficulty.success)
       return invalid(
-        `slice row ${JSON.stringify(row.join(" | "))} must be "| title | trivial|normal|hard | ` +
+        `slice row ${JSON.stringify(row.join(" | "))} must be "| title | ${DIFFICULTIES} | ` +
           `how it is accepted |". The difficulty column picks the model, so it is not optional.`,
       );
     slices.push({ title, difficulty: difficulty.data, accept });
@@ -217,18 +242,20 @@ function draftLegacy(text: string): CardParts {
   const sections = new Map<string, string[]>();
   let current: string | null = null;
   for (const line of lines) {
-    const match = /^\s*([^\s:：]+)\s*[:：]\s*(.*)$/.exec(line);
-    const head = match?.[1];
-    if (head && (DRAFT_FIELDS as readonly string[]).includes(head)) {
+    const match = INLINE_FIELD.exec(line);
+    // Through `fieldOf`, so a card in either grammar keys `sections` by the
+    // canonical name — which is what lets every read below name one spelling.
+    const head = match?.[1] ? fieldOf(match[1]) : null;
+    if (match && head) {
       current = head;
       if (!sections.has(head)) sections.set(head, []);
-      const rest = match[2]!.trim().replace(/^[-•]\s*/, "");
+      const rest = (match[2] ?? "").trim().replace(/^[-•]\s*/, "");
       if (rest) sections.get(head)!.push(rest);
     } else if (current) {
       sections.get(current)!.push(line.replace(/^\s*[-•]\s*/, "").trim());
     }
   }
-  return { sections, count: lines.length, slices: () => legacySlices(sections.get("切片") ?? []) };
+  return { sections, count: lines.length, slices: () => legacySlices(sections.get(SLICES) ?? []) };
 }
 
 /** LEGACY, with `draftLegacy`: "title [difficulty] — how it is accepted". */
@@ -241,7 +268,7 @@ function legacySlices(rawSlices: string[]): Result<{ slices: DraftSlice[] }> {
     const accept = m?.[3]?.trim();
     if (!title || !accept || !difficulty.success)
       return invalid(
-        `slice ${JSON.stringify(raw)} must read "title [trivial|normal|hard] — how it is ` +
+        `slice ${JSON.stringify(raw)} must read "title [${DIFFICULTIES}] — how it is ` +
           `accepted". The difficulty tag picks the model, so it is not optional.`,
       );
     slices.push({ title, difficulty: difficulty.data, accept });
@@ -254,9 +281,10 @@ function legacySlices(rawSlices: string[]): Result<{ slices: DraftSlice[] }> {
  * long card and making the Dispatcher rewrite is cheaper than training the boss to
  * skim.
  *
- * Expected: `## 目标` and `## 不做` one line each, `## 验收` 2–3 executable list
- * items, `## 切片` a table of `| 切片 | 难度 | 验收 |` with 1–5 body rows, `## 风险` at
- * most 2 items, and `## 反对` the Architect's objection in at most 2 lines, or 无.
+ * Expected: `## goal` and `## non-goals` one line each, `## accept` 2–3
+ * executable list items, `## slices` a table of `| slice | difficulty | accept |`
+ * with 1–5 body rows, `## risk` at most 2 items, and `## objection` the
+ * Architect's objection in at most 2 lines, or a statement that there is none.
  */
 export function validateDraftCard(text: string): Result<DraftOk> {
   const card = draftMarkdown(text) ?? draftLegacy(text);
@@ -278,46 +306,48 @@ export function validateDraftCard(text: string): Result<DraftOk> {
     return { ok: false, error: `missing sections: ${missing.join(", ")}` };
   }
 
-  const one = (f: string) => (sections.get(f) ?? []).join(" ").trim();
-  const many = (f: string) => (sections.get(f) ?? []).filter(Boolean);
+  // `Field`, not `string`: a typo used to be a section that silently read empty,
+  // and the rejection then named a heading the card already had.
+  const one = (f: Field) => (sections.get(f) ?? []).join(" ").trim();
+  const many = (f: Field) => (sections.get(f) ?? []).filter(Boolean);
 
-  const accept = many("验收");
+  const accept = many(ACCEPT);
   if (accept.length < 2 || accept.length > 3) {
-    return { ok: false, error: `验收 needs 2-3 executable criteria (got ${accept.length})` };
+    return { ok: false, error: `${ACCEPT} needs 2-3 executable criteria (got ${accept.length})` };
   }
 
-  const rawSlices = many("切片");
+  const rawSlices = many(SLICES);
   // 1, not 3. A floor of three made the Dispatcher invent work: measured, it
   // filed "切片 2、3 是为满足最少切片数补的相邻能力" as a risk on its own card, and
   // one of those padded slices would have changed what existing callers get.
   // A one-line requirement is one slice, and the boss can read that in 5 seconds.
   if (rawSlices.length < 1 || rawSlices.length > 5) {
-    return { ok: false, error: `切片 needs 1-5 slices (got ${rawSlices.length})` };
+    return { ok: false, error: `${SLICES} needs 1-5 slices (got ${rawSlices.length})` };
   }
   const parsedSlices = card.slices();
   if (!parsedSlices.ok) return parsedSlices;
   const slices = parsedSlices.slices;
 
-  const split = checkSplit(slices);
+  const split = splitOverlap(slices, accept.map(norm));
   if (split) return { ok: false, error: split };
 
-  const risk = many("风险");
-  if (risk.length > 2) return { ok: false, error: `风险 max 2 lines (got ${risk.length})` };
+  const risk = many(RISK);
+  if (risk.length > 2) return { ok: false, error: `${RISK} max 2 lines (got ${risk.length})` };
 
-  if (!one("目标")) return { ok: false, error: "目标 is empty" };
-  if (!one("不做")) return { ok: false, error: "不做 is empty — say what is out of scope" };
-  if (!one("反对")) {
-    return { ok: false, error: "反对 is empty — write the Architect's objection, or 无" };
+  if (!one(GOAL)) return { ok: false, error: `${GOAL} is empty` };
+  if (!one(NOT_DOING)) return { ok: false, error: `${NOT_DOING} is empty — say what is out of scope` };
+  if (!one(OBJECTION)) {
+    return { ok: false, error: `${OBJECTION} is empty — write the Architect's objection, or ${NO_OBJECTION}` };
   }
 
   return {
     ok: true,
-    goal: one("目标"),
-    notDoing: one("不做"),
+    goal: one(GOAL),
+    notDoing: one(NOT_DOING),
     accept,
     slices,
     risk,
-    objection: one("反对"),
+    objection: one(OBJECTION),
     lines: card.count,
   };
 }
@@ -328,9 +358,10 @@ export function validateDraftCard(text: string): Result<DraftOk> {
  * Slicing is otherwise the only step in the whole pipeline with no automatic
  * guard, and the abstract rule ("each slice must be independently acceptable") was
  * already in the Dispatcher's prompt when a real run produced three steps of one
- * change. These three cases are the ones that can be caught without judgement.
+ * change. These two cases are the ones that can be caught without judgement; the
+ * third, a slice of tests alone, could not be and ADR 046 says why.
  */
-function overlapError(a: string, b: string, left: DraftSlice, i: number, j: number): string | null {
+function overlapError(a: string, b: string, left: DraftSlice, i: number, j: number, generic: string[]): string | null {
   if (!a || !b) return null;
   if (a === b)
     return (
@@ -338,62 +369,73 @@ function overlapError(a: string, b: string, left: DraftSlice, i: number, j: numb
       `so they are one deliverable, not two. Merge them.`
     );
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
-  if (short.length < 8 || !long.includes(short) || GENERIC_GATE.test(short)) return null;
+  // The card's own `## accept` is the generic-gate list, and it is in whatever
+  // language the card is written in. A slice criterion that only restates a
+  // requirement-level one is true of every slice by construction, which is the
+  // property the hand-written pattern was reaching for — while knowing English
+  // and Chinese only. Containment rather than equality: a card criterion is
+  // often the slice gate plus a clause.
+  if (short.length < 8 || !long.includes(short) || generic.some((g) => g.includes(short))) return null;
   return (
     `slice ${i + 1} and slice ${j + 1} have nested acceptance criteria, so one is finished ` +
     `by finishing the other. Split them by what could ship alone, or merge them.`
   );
 }
 
-function splitOverlap(slices: DraftSlice[]): string | null {
-  const norm = (value: string) => value.toLowerCase().replace(/[\s\p{P}]+/gu, "");
+/** Case and punctuation off, so two criteria that differ only in how they were
+ *  typed compare equal. Used by the overlap check and by the generic-gate list. */
+const norm = (value: string) => value.toLowerCase().replace(/[\s\p{P}]+/gu, "");
+
+/**
+ * The whole of the split check, since "tests on their own" left it — ADR 046.
+ *
+ * That rule matched the slice *title*, prose in `output.language`, so it existed
+ * for two of the ten locales. Three owners that do read ten keep it:
+ * `roles/dispatcher.yaml` with a worked example, the boss reading the card, and
+ * `reconcile`'s "nothing was claimed and nothing changed".
+ */
+function splitOverlap(slices: DraftSlice[], generic: string[]): string | null {
   for (let i = 0; i < slices.length; i++) {
     for (let j = i + 1; j < slices.length; j++) {
-      const error = overlapError(norm(slices[i]!.accept), norm(slices[j]!.accept), slices[i]!, i, j);
+      const error = overlapError(norm(slices[i]!.accept), norm(slices[j]!.accept), slices[i]!, i, j, generic);
       if (error) return error;
     }
   }
   return null;
 }
 
-function checkSplit(slices: DraftSlice[]): string | null {
-  const overlap = splitOverlap(slices);
-  if (overlap) return overlap;
-  // "Add tests" is never a deliverable on its own: tests belong with the change
-  // they test, and a slice of them can only be accepted after another slice is.
-  const testOnly =
-    /^(补充?|添加|新增|加上?|补齐|write|add|create)?\s*(单元)?(测试|单测|test|tests|unit ?tests?|用例|测试用例)\s*$/i;
-  const idx = slices.findIndex((s) => testOnly.test(s.title.trim()));
-  if (idx !== -1 && slices.length > 1) {
-    return (
-      `slice ${idx + 1} ("${slices[idx]!.title}") is tests on their own. Tests belong with the ` +
-      `change they test — fold them into the slice that makes the change.`
-    );
-  }
-  return null;
-}
-
-/** "the suite passes" and friends: true of every slice, so never evidence of overlap. */
-const GENERIC_GATE =
-  /^(bun|npm|pnpm|yarn|cargo|go|pytest|dotnet|make)?(test|tests|check|build|lint|typecheck)?(全绿|绿|通过|pass|passes|passing|ok|green|全部通过)?$/i;
-
 /**
  * Self-review that says nothing is not self-review. It must reference the
  * acceptance criteria and its own diff, or it is just self-congratulation.
  */
+/**
+ * `pass` and `fail`, which are the two words the prompt hands out.
+ *
+ * `roles/engineer.yaml` shows `--review "pass: …"` and `roles/qa.yaml` says
+ * "state pass or fail" — ASCII protocol keys, one of ADR 035's three exemptions,
+ * and what makes this check language-free.
+ */
+/**
+ * It also accepted `ok`, `met` and `not met`, three English words no prompt asks
+ * for, so `looks ok` counted as a verdict and `bestanden` did not. Invariant 8
+ * says the prompt and the validator describe the same behaviour; only half did.
+ */
+const VERDICT = /\b(pass|fail)\b/i;
+
 export function validateSelfReview(text: string, criteriaCount: number): Result<{ checked: number }> {
   const lines = nonEmptyLines(text);
-  const vacuous = /^(looks?\s+(good|fine|ok)|lgtm|no\s+(issues?|problems?)|all\s+good|seems?\s+(fine|correct))\b/i;
-  if (lines.length === 0 || (lines.length === 1 && vacuous.test(lines[0]!))) {
+  if (lines.length === 0) {
     return {
       ok: false,
       error:
         "self-review must state a verdict per acceptance criterion and cite the diff lines it " +
-        "checked. 'looks good' carries no information.",
+        "checked. An empty one says nothing at all.",
     };
   }
-  // One verdict per criterion, at minimum. Fewer means something went unchecked.
-  const verdicts = lines.filter((l) => /\b(pass|fail|ok|not\s+met|met)\b/i.test(l)).length;
+  // One verdict per criterion, at minimum. Fewer means something went unchecked —
+  // and it is what refuses "looks good", without a lexicon of the ways there are
+  // to say nothing, which is unbounded and was written in one language.
+  const verdicts = lines.filter((l) => VERDICT.test(l)).length;
   if (verdicts < criteriaCount) {
     return {
       ok: false,
@@ -406,15 +448,17 @@ export function validateSelfReview(text: string, criteriaCount: number): Result<
 /**
  * How many separate things an acceptance line asks for.
  *
- * Only `；;` and newlines, never the comma: Chinese prose uses `，` as ordinary
+ * Only semicolons and newlines, never the comma: Chinese prose uses `，` as ordinary
  * punctuation, so counting those would demand five verdicts for one criterion and
  * teach the writer to pad. A single-clause spec asks for one verdict, which is the
- * same floor self-review already has — this only bites on specs that genuinely
- * listed several things and got one word back.
+ * same floor self-review already has.
  */
+/** NFKC first, so a fullwidth semicolon is a semicolon here without the split
+ *  naming one. Only the count leaves this function, so folding is free. */
 export function criteriaIn(acceptSpec: string): number {
   const parts = (acceptSpec ?? "")
-    .split(/[；;\n]/)
+    .normalize("NFKC")
+    .split(/[;\n]/)
     .map((s) => s.trim())
     .filter(Boolean);
   return Math.max(1, parts.length);
@@ -425,23 +469,4 @@ function nonEmptyLines(s: string): string[] {
     .split("\n")
     .map((l) => l.trimEnd())
     .filter((l) => l.trim().length > 0);
-}
-
-/**
- * Politeness and hedging carry no information and cost tokens forever.
- * No `\b` on the CJK patterns — word boundaries do not exist between Han
- * characters, so `\b其实\b` never matches inside a Chinese sentence.
- */
-const FILLER = [
-  /(基本上|其实|实际上|简单来说|需要注意的是|值得一提的是)/,
-  /\b(basically|actually|simply|just to be clear|it should be noted)\b/i,
-  /\b(as (an )?AI|I('| a)?m happy to|certainly|of course)\b/i,
-];
-
-function findFiller(s: string): string | null {
-  for (const re of FILLER) {
-    const m = re.exec(s);
-    if (m) return m[0];
-  }
-  return null;
 }

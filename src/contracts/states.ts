@@ -130,3 +130,80 @@ const terminalEscalationStates = new Set<EscalationState>(ESCALATION_TERMINAL_ST
 export const isDispatchableGrpState = (state: GrpState): boolean => dispatchableGrpStates.has(state);
 export const isTerminalEscalationState = (state: EscalationState): state is EscalationTerminalState =>
   terminalEscalationStates.has(state);
+
+/**
+ * What a question is about — one required word, and the routing is which half of
+ * the list it falls in.
+ *
+ * This was two enums on one call: a `kind` for the queue heading that fell back
+ * to `other`, and a `reserved` topic that decided whether the PM may answer. Two
+ * axes for one fact, and the second needed a `none` — a reason that is not a
+ * reason. An escalation is always *about* something, so naming that once decides
+ * both.
+ */
+/**
+ * ASCII, and the same word whatever the asker writes in: this is a protocol key,
+ * which is one of ADR 035's three exemptions from the panel's own language.
+ * It replaced ten rows of per-language keyword regex whose own comment recorded
+ * sixteen of eighteen probes leaking.
+ */
+/**
+ * Ordered, and the order is the rule: a question can be about two of these —
+ * "swap Postgres for SQLite to cut hosting cost" is `design` and `budget` — so
+ * the asker picks **the one that raises highest**, and the five that raise are
+ * first. `TO_BOSS` is the reserved half; the rest start at the PM.
+ */
+export const ASK_KINDS = [
+  "budget",
+  "merge",
+  "credential",
+  "deploy",
+  "scope",
+  "env",
+  "spec",
+  "boundary",
+  "design",
+] as const;
+export type AskKind = (typeof ASK_KINDS)[number];
+
+/**
+ * What a journal entry can be, and it is a protocol vocabulary like the one
+ * above — the CLI offers it in `--help`, the validator parses it, the role
+ * prompts name three of these by hand.
+ *
+ * Here rather than in `mech/util/validate.ts` because `src/orch` may import
+ * contracts and nothing else: the CLI's help listed five of the eight by hand
+ * and left out `lesson`, `onboarding` and `handoff`, two of which the prompts
+ * tell agents to use, and `dispatch.ts` is the only manual a sandboxed agent has.
+ */
+export const JOURNAL_KINDS = [
+  "fact",
+  "decision",
+  "journal",
+  "retro",
+  "handoff",
+  "risk",
+  "onboarding",
+  "lesson",
+] as const;
+
+/**
+ * The five the PM may not answer on the boss's behalf. Declaring one of the
+ * other four does not *stop* the gate — `chain.ts` asks a second reader whether
+ * the question is one of these anyway, because the agent that saves a round trip
+ * by misfiling is the same agent that files.
+ */
+/**
+ * A tuple, and `Reserved` beside it, because two readers need the *type* and not
+ * only the membership: `chain.ts` writes one sentence per topic for the second
+ * reader, and a `Set` cannot make a missing sentence a compile error. That is
+ * how it stood — the sentences were a paragraph transcribed from this line, so a
+ * sixth topic would have raised at the asking end and been invisible at the
+ * answering one, silently, which is the half where the damage happens.
+ */
+export const RESERVED = ["budget", "merge", "credential", "deploy", "scope"] as const satisfies readonly AskKind[];
+export type Reserved = (typeof RESERVED)[number];
+
+export const TO_BOSS: ReadonlySet<AskKind> = new Set<AskKind>(RESERVED);
+
+export const isAskKind = (value: string): value is AskKind => (ASK_KINDS as readonly string[]).includes(value);

@@ -3,6 +3,11 @@ import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trac
 import { StoredSpanExporter } from "../../src/platform/observability/span-store.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
+import { outputLanguage } from "../../src/contracts/config.ts";
+import { renderSaid } from "../../src/platform/text/lang.ts";
+import { said } from "../support/said.ts";
+import { escalationKey } from "../../src/mech/flow/escalate.ts";
+import { publishWatchdogFinding } from "../../src/application/executor.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory, readSetting, type DB } from "../../src/platform/persistence/database.ts";
 import { busDeliver, Notifier, notifiable, tierFor, batchForBoss } from "../../src/mech/ops/notify.ts";
@@ -16,7 +21,7 @@ import {
 } from "../../src/mech/ops/watchdog.ts";
 import { existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { AgentTurnPayloadSchema, Scheduler } from "../../src/platform/scheduling/scheduler.ts";
+import { AgentTurnPayloadSchema } from "../../src/platform/scheduling/scheduler.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { and, count, desc, eq, like, sql } from "drizzle-orm";
@@ -36,6 +41,7 @@ import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { z } from "zod";
 import { tempDir } from "../support/temp.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 /** The shipped thresholds. The subject is the rule, not the number it is tuned to. */
 const LIMITS = loadConfig().watchdog;
@@ -97,9 +103,11 @@ const EVERY_MAP_TICK = {
 
 async function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
   const db = await watchdogDb();
-  const bus = new Bus(db);
-  const sched = new Scheduler(db, async () => {});
+  const sched = newScheduler(db, async () => {});
   const cfg = { ...loadConfig(), ...over };
+  // The bus renders the `body` column from the key an emitter names, so it needs
+  // the same `output.language` the rest of this context has.
+  const bus = new Bus(db, () => cfg.language);
   const ctx: Ctx = {
     db,
     bus,
@@ -155,7 +163,7 @@ test("a RUNNING group whose last turn failed is put back once, then handed to th
   await h.db.update(jobTable).set({ state: "failed", error: "same thing" }).where(eq(jobTable.state, "pending"));
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("stalled");
-  expect(f.find((x) => x.rule === "stalled")!.body).toContain("same thing");
+  expect(f.find((x) => x.rule === "stalled")!.say.values?.why).toContain("same thing");
   expect(await pending(h.db)).toHaveLength(0);
 });
 
@@ -228,7 +236,7 @@ test("rewriting one file every turn is caught and sent to the Architect", async 
   expect(circling).toBeDefined();
   // The message names the likely cause: telling the writer to try harder does
   // not fix a design problem.
-  expect(circling.body).toContain("Architect");
+  expect(renderSaid("en", circling.say)).toContain("Architect");
 });
 
 test("touching several files does not look like circling", async () => {
@@ -248,10 +256,10 @@ test("the same lease failing twice on unchanged code blames the environment", as
   const f = await runWatchdog(h.deps);
   const env = f.find((x) => x.rule === "env_suspect")!;
   expect(env).toBeDefined();
-  // The body follows output.language (中文 here); the resource name is a technical
+  // The body follows output.language (Chinese here); the resource name is a technical
   // term and stays verbatim in both.
-  expect(env.body).toContain("build");
-  expect(env.body).toContain("环境");
+  expect(env.say.values?.resource).toBe("build");
+  expect(renderSaid(outputLanguage(h.ctx.config), env.say)).toContain("treat the environment as the suspect");
 });
 
 test("two failures at different commits are just two failures", async () => {
@@ -591,7 +599,7 @@ test("the group it was waiting on landed, so it starts again by itself", async (
 test("a question stranded on a stopped group is lifted to the boss", async () => {
   // route() handles this at routing time, but a group can stop *after* a question
   // was handed to its PM — and every one filed before that fix is still sitting
-  // where it was. Symptom: a stopped group and a 待办 count of zero.
+  // where it was. Symptom: a stopped group and a `To do` count of zero.
   const h = await harness();
   await h.db.update(grpTable).set({ status: "PAUSED", paused_at: 999_999 }).where(eq(grpTable.id, 1));
   await fx.on(h.db).escalation.create({ grp_id: 1, severity: "blocker", question: "S1 failed the gate 3 times" });
@@ -1006,7 +1014,7 @@ test("one rule throwing costs that rule, not the twenty-four after it", async ()
   // The rule that threw names itself, so the finding is actionable — "rule 7d3
   // broke" rather than "the watchdog broke".
   expect(first.map((x) => x.rule)).toContain("rule_broke:7d3");
-  expect(first.find((x) => x.rule === "rule_broke:7d3")!.body).toContain("usage endpoint exploded");
+  expect(first.find((x) => x.rule === "rule_broke:7d3")!.say.values?.why).toContain("usage endpoint exploded");
 
   // The next tick, with 7d3 still throwing: the rules after it ran anyway, and
   // the breakage is not reported a second time — once per REEMIT_MS, or a rule
@@ -1265,7 +1273,9 @@ test("losing the network is announced once, by the path that dedups", async () =
   const found = await runWatchdog({ ...h.deps, probe: async () => offline });
 
   expect(found.filter((f) => f.rule === "network_lost")).toHaveLength(1);
-  const said = (await h.db.select({ c: count() }).from(eventTable).where(like(eventTable.body, "%断网%")))[0]!.c;
+  const said = (
+    await h.db.select({ c: count() }).from(eventTable).where(like(eventTable.body, "%lost its network%"))
+  )[0]!.c;
   expect(said).toBe(1);
 });
 
@@ -1338,7 +1348,9 @@ test("an unreadable container builds the map once, then reports instead of rebui
   expect(sandbox.commands.filter((c) => c.includes("ls-tree"))).toHaveLength(1);
   expect(await readSetting(h.db, "watchdog.repo_map.1")).toBeNull();
   // Said once, and it names why rebuilding would not help.
-  const said = ticks.flat().filter((f) => f.body.includes("仓库地图停在上一次的版本"));
+  // Matched on the sentence, not its hash: the id is whatever the macro made of
+  // this English, and the English is what a reader is promised.
+  const said = ticks.flat().filter((f) => f.say.message?.includes("the repo map is stuck on its last version"));
   expect(said).toHaveLength(1);
 });
 
@@ -1394,17 +1406,20 @@ test("a sandbox older than the credential it is bound to is recycled, a newer on
 
 test("a burnt budget puts a decision in front of the boss, not only a line in the feed", async () => {
   // Suspending without a row to answer left the group stopped with no reason
-  // attached: 继续 did nothing the scheduler would honour, and the only visible
+  // attached: `Resume` did nothing the scheduler would honour, and the only visible
   // state was a paused requirement nobody could unpause.
   const h = await harness();
   await h.db.update(grpTable).set({ budget_tokens: 100, spent_tokens: 100 }).where(eq(grpTable.id, 1));
 
   await runWatchdog(h.deps);
   const [e] = await h.db
-    .select({ chain_state: escalationTable.chain_state, question: escalationTable.question })
+    .select({ chain_state: escalationTable.chain_state, dedupe_key: escalationTable.dedupe_key })
     .from(escalationTable);
   expect(e!.chain_state).toBe("boss");
-  expect(e!.question).toStartWith("budget:");
+  // The key, not a `budget: ` prefix glued onto the front of the sentence so a
+  // `LIKE` could find it. That prefix was the whole reason the question could not
+  // be translated; raising the cap closes this row by the column instead.
+  expect(e!.dedupe_key).toBe(escalationKey.budget);
   expect(await grpStatus(h.db)).toBe("PAUSED");
 });
 
@@ -1568,7 +1583,7 @@ test("a merge queue held up behind the head interrupts, one PR waiting on its ow
   await queued2(2);
   const head = (await runWatchdog(h2.deps)).find((x) => x.rule === "waiting_merge")!;
   expect(head.severity).toBe("blocker");
-  expect(head.body).toContain("1");
+  expect(head.say.values?.n).toBe(1);
 });
 
 /**
@@ -1607,4 +1622,27 @@ test("the repo map is not asked about on every tick, and the period is configura
   const before = asked();
   await runWatchdog(fresh.deps);
   expect(asked()).toBe(before + 1);
+});
+
+/**
+ * The other half of ADR 035 §3, which the panel's half is easy to break.
+ *
+ * A finding now travels as an id, and the panel renders it. The notifier does
+ * not: `busDeliver` POSTs what it is handed to a webhook, and there is no
+ * browser on that path — so `publishWatchdogFinding` has to render, in
+ * `output.language`, before `onFinding` ever sees it.
+ */
+test("a finding reaches the notifier as a sentence in output.language, not as an id", async () => {
+  const h = await harness();
+  const seen: string[] = [];
+  h.ctx.onFinding = (_rule, _severity, body) => seen.push(body);
+
+  publishWatchdogFinding(h.ctx, {
+    rule: "turn_timeout",
+    grpId: 1,
+    severity: "advisory",
+    say: said("turn ran past {min} min and was killed", { min: 30 }),
+  });
+
+  expect(seen).toEqual(["turn ran past 30 min and was killed"]);
 });

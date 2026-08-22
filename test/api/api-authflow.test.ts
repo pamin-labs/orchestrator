@@ -1,3 +1,4 @@
+import { waitFor } from "@testing-library/dom";
 import { expect, test } from "bun:test";
 import { makeApp } from "../../src/composition/api.ts";
 import { asc, eq } from "drizzle-orm";
@@ -6,7 +7,10 @@ import { loadAuth } from "../../src/mech/sandbox/auth.ts";
 import type { DeviceFlowFetcher } from "../../src/mech/git/ghlogin.ts";
 import { finishGithubLogin, githubDeviceLogin } from "../../src/api/panel/authflow.ts";
 import { escalation, event } from "../../src/platform/persistence/schema.ts";
+import { renderSaid } from "../../src/platform/text/lang.ts";
+import { said } from "../support/said.ts";
 import * as fx from "../support/factories.ts";
+import { escalationKey } from "../../src/mech/flow/escalate.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -43,7 +47,7 @@ const reset = async (h: Harness) => {
   await h.post("/api/v1/auth/claude/login/cancel");
 };
 
-const said = async (h: Harness) =>
+const bodies = async (h: Harness) =>
   (
     await h.db.select({ body: event.body }).from(event).where(eq(event.kind, "state_change")).orderBy(asc(event.seq))
   ).map((r) => r.body);
@@ -67,7 +71,14 @@ test("the claude login hands back the link and nothing else", async () => {
   expect(text).not.toContain(CLAUDE_TOKEN);
   expect(text).not.toContain("sk-ant");
   // Stored where a credential belongs, and read back masked from there.
-  expect((await loadAuth(h.db, "claude"))?.secret).toBe(CLAUDE_TOKEN);
+  //
+  // Waited for, because the response is deliberately not the confirmation: the
+  // route hands back the link as soon as the CLI prints it and lets `run.done`
+  // write `runtime_auth` afterwards — the panel polls the credential row. Read
+  // straight after the POST this raced, and lost on a loaded CI runner while
+  // passing on every local run. Same `waitFor` as `test/mech/auth.test.ts:467`,
+  // for the same reason: it throws where the waiting happened.
+  await waitFor(async () => expect((await loadAuth(h.db, "claude"))?.secret).toBe(CLAUDE_TOKEN));
   await reset(h);
 });
 
@@ -90,11 +101,11 @@ test("a code with no login waiting for it is refused, and so is an empty one", a
   await reset(h);
   const empty = await h.post("/api/v1/auth/claude/login/code", { code: "   " });
   expect(empty.status).toBe(422);
-  expect(await empty.text()).toContain("没有码");
+  expect(await empty.text()).toContain("no code given");
 
   const orphan = await h.post("/api/v1/auth/claude/login/code", { code: "WDJB-MJHT" });
   expect(orphan.status).toBe(422);
-  expect(await orphan.text()).toContain("先点登录");
+  expect(await orphan.text()).toContain("start one first");
   await reset(h);
 });
 
@@ -162,7 +173,7 @@ test("the device flow mints once, reuses a live code, and never returns the one 
 
   // And the refusal that ends the poll clears the pending code, so the button is
   // pressable again rather than stuck on a code nobody can use.
-  expect(await denied).toContain("拒绝了这次授权");
+  expect(await denied).toContain("the authorization was denied on GitHub");
 });
 
 test("a poll that lands stores the token, kills the sandboxes and says so without the token", async () => {
@@ -172,7 +183,10 @@ test("a poll that lands stores the token, kills the sandboxes and says so withou
   await h.f.escalation.create({
     grp_id: g.id,
     severity: "blocker",
-    question: "github 的凭据没配",
+    // Found by its key. The sentence is deliberately not the one that ships, so
+    // that rewording the question cannot be what makes this test pass.
+    question: "no github credential",
+    dedupe_key: escalationKey.auth("github"),
     chain_state: "boss",
   });
 
@@ -193,8 +207,13 @@ test("a poll that lands stores the token, kills the sandboxes and says so withou
   // the question closes itself rather than sitting on the boss's queue.
   const [asked] = await h.db.select({ answer: escalation.answer }).from(escalation).where(eq(escalation.id, 1));
   expect(asked?.answer).toBe("reconfigured");
-  const lines = await said(h);
-  expect(lines).toContain("GitHub 连上了");
+  const lines = await bodies(h);
+  // The message named by its English source, not a copy of one translation of it:
+  // `said()` hashes the source the way the macro does, so rewording the `msg`
+  // template reds this line — which is right, because "this sentence was shown"
+  // is what the assertion says. Rendered in the harness's own language, the way
+  // `Bus.prepare` renders it.
+  expect(lines).toContain(renderSaid(h.ctx.config.language, said("GitHub is connected")));
   expect(lines.join("\n")).not.toContain("gho_secret_token");
 });
 
@@ -213,7 +232,7 @@ test("a poll GitHub denies is reported by reason, not by exchange", async () => 
   );
 
   expect(await loadAuth(h.db, "github")).toBeNull();
-  const lines = (await said(h)).join("\n");
-  expect(lines).toContain("拒绝了这次授权");
+  const lines = (await bodies(h)).join("\n");
+  expect(lines).toContain("the authorization was denied on GitHub");
   expect(lines).not.toContain("dev-secret-code");
 });

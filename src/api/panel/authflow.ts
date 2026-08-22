@@ -1,9 +1,11 @@
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { msg } from "@lingui/core/macro";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
 import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { release } from "../../mech/flow/intercept.ts";
+import { escalationKey } from "../../mech/flow/escalate.ts";
 import {
   APP_SLUG,
   BOT,
@@ -41,7 +43,8 @@ import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
 import { errText } from "../../platform/process/text.ts";
 import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/login-flow.ts";
 import type { Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { bad, badText, json, message } from "../../http/respond.ts";
+
 import { escalation, grp, project, runtime_auth } from "../../platform/persistence/schema.ts";
 
 /**
@@ -58,6 +61,17 @@ import { escalation, grp, project, runtime_auth } from "../../platform/persisten
  */
 // `trailers` rides along: the Claude block draws one of the three switches, and
 // a second fetch for one boolean is a second thing that can be stale.
+/**
+ * The install has no GitHub client, said the same way in all three places.
+ *
+ * It was three: two spellings of "this server has no GitHub client" and one
+ * with the words the other way round. Nothing chose between them and nothing
+ * would have noticed a fourth. English, and no id with it — this is a broken
+ * wiring rather than a value the boss can correct, which ADR 035 leaves in the
+ * English column.
+ */
+export const noGithubClient = () => bad(msg`this server has no GitHub client`);
+
 export const getAuth = (async (ctx) =>
   json({ runtimes: await listAuth(ctx.db), trailers: await trailers(ctx.db) })) satisfies Handler;
 
@@ -95,7 +109,7 @@ export const postAuth = (async (ctx, _req, _p, b) => {
     const found = serverKeyOnDisk();
     if (!found)
       return bad(
-        "没找到沙盒服务器的配置。它是用 --config 启动的，把那个文件的路径放进 OPENSANDBOX_CONFIG，或者放在 ./sandbox.toml、~/.sandbox.toml。",
+        msg`No sandbox server config found. It was started with --config, so put that file's path in OPENSANDBOX_CONFIG, or move the file to ./sandbox.toml or ~/.sandbox.toml.`,
       );
     await saveAuth(ctx.db, {
       runtime: SANDBOX_KEY,
@@ -113,15 +127,16 @@ export const postAuth = (async (ctx, _req, _p, b) => {
   // The sandbox key is ours, not a provider's, so it has no shape to check.
   if (auth.runtime !== SANDBOX_KEY) {
     const wrong = wrongShape(auth);
-    if (wrong) return bad(wrong);
+    if (wrong) return badText(wrong);
   }
   // The one credential whose owner we can ask, and the one where a wrong value
   // is silent and total: it overrides the environment, so a key the server does
   // not share 401s every turn, gate and diff. Refused rather than stored.
   if (auth.runtime === SANDBOX_KEY) {
     const server = ctx.config.sandbox?.server ?? "127.0.0.1:8080";
-    const said = await sandboxKeyWorks(server, auth.secret);
-    if (said === "invalid") return bad("沙盒服务器不认这个密钥。它自己的配置里写的是哪个，这里就得填哪个。");
+    const verdict = await sandboxKeyWorks(server, auth.secret);
+    if (verdict === "invalid")
+      return bad(msg`The sandbox server rejects this key. Enter the one written in that server's own config.`);
     // Stored with the address it was just accepted by, so moving the address
     // later cannot make this key follow it. `sandboxKeyFor` is the reader.
     auth = { ...auth, baseUrl: `http://${server}` };
@@ -166,7 +181,11 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
   for (const g of await ctx.db.select({ id: grp.id }).from(grp).where(isNotNull(grp.sandbox_id))) {
     await killSandbox(ctx, { grp: g.id });
   }
-  const prefix = `${runtime} 的凭据`;
+  // The other end of this matcher is `executor.ts`, which files the question
+  // under the same key. It was a prefix test over the Chinese first line of the
+  // question, spelled in raw SQL because `substr`/`length` have no builder and
+  // `like` would read the `%` and `_` in a runtime name as wildcards. A key is
+  // an ordinary `=`, and translating the sentence no longer reaches it.
   await ctx.db
     .update(escalation)
     .set({
@@ -176,9 +195,7 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
       answered_at: Date.now(),
     })
     // `isNull`, not `eq(..., null)`: `= NULL` is NULL, which matches nothing.
-    // The prefix test stays raw — `substr`/`length` have no builder, and `like`
-    // would read the `%` and `_` in a runtime name as wildcards.
-    .where(and(isNull(escalation.answer), sql`substr(${escalation.question}, 1, length(${prefix})) = ${prefix}`));
+    .where(and(isNull(escalation.answer), eq(escalation.dedupe_key, escalationKey.auth(runtime))));
   // Only the groups this credential stopped. Unscoped, this matches every PAUSED
   // row there is — a hand-paused group, a budget-burnt one, a rate-limited one
   // still carrying `rl_resets_at` that watchdog rule 6 then never clears.
@@ -228,7 +245,7 @@ export const postClaudeLogin = (async (ctx) => {
   if (!url) {
     run.cancel();
     return bad(
-      "容器里的 claude 没打印出登录链接 —— 镜像里跑一下 `claude setup-token` 看看（它需要一个 pty，没有 pty 时它什么都不打印就退出 0）。",
+      msg`claude printed no login link inside the container — run \`claude setup-token\` in the image to see why. It needs a pty, and without one it prints nothing and exits 0.`,
     );
   }
   claudeFlow = { url, expiresAt: startedAt + PASTE_TTL_MS };
@@ -238,7 +255,7 @@ export const postClaudeLogin = (async (ctx) => {
     await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: r.ok ? "claude 登录好了" : `claude 登录没成：${r.detail}`,
+      say: r.ok ? msg`claude is signed in` : msg`claude could not sign in: ${{ detail: r.detail }}`,
     });
   });
   return json(claudeFlow);
@@ -249,8 +266,8 @@ export const CodeBody = z.object({ code: z.string().max(4000).default("") });
 
 export const postClaudeCode = (async (ctx, _req, _p, b) => {
   const code = b.code.trim();
-  if (!code) return bad("没有码");
-  if (!claudeFlow) return bad("没有在等码的登录 —— 先点登录");
+  if (!code) return bad(msg`no code given`);
+  if (!claudeFlow) return bad(msg`no login is waiting for a code — start one first`);
   await startClaudeLogin(ctx).submit(code);
   return message("ok");
 }) satisfies Handler<z.infer<typeof CodeBody>>;
@@ -295,10 +312,14 @@ export async function finishGithubLogin(ctx: Ctx, d: DeviceCode, fetchFn?: Devic
     await saveAuth(ctx.db, { runtime: "github", mode: "api_key", secret: token });
     // Every running sandbox holds the old (absent) credential in its sidecar.
     await credentialChanged(ctx, "github");
-    await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "GitHub 连上了" });
+    await ctx.bus.emit({ author: "orchestrator", kind: "state_change", say: msg`GitHub is connected` });
   } catch (e) {
     ghError = errText(e);
-    await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `GitHub 没连上：${ghError}` });
+    await ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      say: msg`GitHub is not connected: ${{ why: ghError }}`,
+    });
   } finally {
     ghFlow = null;
   }
@@ -323,7 +344,7 @@ export async function githubDeviceLogin(ctx: Ctx, fetchFn?: DeviceFlowFetcher): 
   } catch (e) {
     // `errText`, not `e?.message`: a thrown non-Error has no `message`, and the
     // object itself reaches the response body as "[object Object]".
-    return bad(errText(e) || "GitHub 没给出登录码");
+    return badText(errText(e) || "GitHub returned no device code");
   }
   ghFlow = { userCode: d.userCode, verificationUri: d.verificationUri, expiresAt: Date.now() + d.expiresIn * 1000 };
   ghError = null;
@@ -345,7 +366,9 @@ export const postCodexDevice = (async (ctx) => {
   const both = await printed(run, () => (run.url && run.code ? { url: run.url, code: run.code } : null), 100);
   if (!both) {
     run.cancel();
-    return bad("容器里的 codex 没打印出登录码 —— 镜像里跑一下 `codex login --device-auth` 看看。");
+    return bad(
+      msg`codex printed no device code inside the container — run \`codex login --device-auth\` in the image to see why.`,
+    );
   }
   codexFlow = { code: both.code, url: both.url, expiresAt: startedAt + DEVICE_CODE_TTL_MS };
   void run.done.then(async (r) => {
@@ -353,7 +376,7 @@ export const postCodexDevice = (async (ctx) => {
     await ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: r.ok ? "codex 登录好了" : `codex 登录没成：${r.detail}`,
+      say: r.ok ? msg`codex is signed in` : msg`codex could not sign in: ${{ detail: r.detail }}`,
     });
   });
   return json(codexFlow);
@@ -393,7 +416,7 @@ async function withCounts(
 /** Where the boss installs the app. One app, so one address. */
 const INSTALL_URL = `https://github.com/apps/${APP_SLUG}/installations/new`;
 
-/** `fresh=1` skips the cached snapshot. The 刷新 path and nothing else. */
+/** `fresh=1` skips the cached snapshot. The `Refresh` path and nothing else. */
 export const GithubLoginQuery = z.object({ fresh: z.coerce.boolean().optional() });
 
 /**
@@ -410,7 +433,7 @@ export const GithubLoginQuery = z.object({ fresh: z.coerce.boolean().optional() 
  * api.github.com every time the pane opened, measured at **1.2s** against a live
  * server while every other settings endpoint answered in 16–160ms.
  *
- * The comment defending it named a real failure — a stored name still saying 已连接
+ * The comment defending it named a real failure — a stored name still saying `Connected`
  * for a token revoked last week — but this is not where that is caught. ADR 029
  * routes a 401 from real work to the boss, holds the project and says so once, and
  * a settings pane nobody has opened cannot notice anything at all.
@@ -422,7 +445,7 @@ const SNAPSHOT_KEY = "github_connection";
  *
  * An account changes when the boss connects a different one, which clears this
  * outright. Installations change on github.com, out of band — so the pane needs
- * some way to notice, and `?fresh=1` is the one the 刷新 path uses. The TTL is the
+ * some way to notice, and `?fresh=1` is the one the `Refresh` path uses. The TTL is the
  * floor under a reader who never presses it.
  */
 const SNAPSHOT_TTL_MS = 10 * 60_000;
@@ -458,7 +481,7 @@ async function readConnection(ctx: Ctx, gh: NonNullable<Ctx["gh"]>, signal?: Abo
     at: Date.now(),
   };
   // Only a usable answer is kept. Storing a failed read would turn one
-  // unreachable moment into ten minutes of 连接已失效.
+  // unreachable moment into ten minutes of `Connection expired`.
   if (account) await writeSetting(ctx.db, SNAPSHOT_KEY, JSON.stringify(snapshot));
   return snapshot;
 }
@@ -471,13 +494,13 @@ export const getGithubLogin = (async (ctx, req, _params, query) => {
   //
   // Authorized is not installed. A GitHub App's user token reaches exactly the
   // repositories the app is installed on, so zero installations is the state that
-  // looks like success and is not: a green 已连接 over a repo list that can never
+  // looks like success and is not: a green `Connected` over a repo list that can never
   // fill.
   //
   // Both at once when they do have to be asked. They were serial, and the second
   // only used the first as a truthiness gate — never its data. Overlapping them
   // costs one wasted request when the token has been revoked, which is the case
-  // where the panel is about to say 连接已失效 and nobody is waiting on a list.
+  // where the panel is about to say `Connection expired` and nobody is waiting on a list.
   const shown = usable ?? (a && ctx.gh ? await readConnection(ctx, ctx.gh, req.signal) : null);
   // Read after the requests above, not before: a code that expired while they
   // were in flight is not a code the panel should still be offering.
@@ -521,8 +544,8 @@ export const postTrailers = (async (ctx, _req, _p, b) => {
 export const GithubReposQuery = z.object({ installation: z.coerce.number().int().positive().optional() });
 
 export const getGithubRepos = (async (ctx, req, _params, { installation: asked = 0 }) => {
-  if (!ctx.gh) return bad("this server has no GitHub client");
-  if (!(await loadAuth(ctx.db, "github"))) return bad("还没连 GitHub，先去设置里连一下");
+  if (!ctx.gh) return noGithubClient();
+  if (!(await loadAuth(ctx.db, "github"))) return bad(msg`GitHub is not connected — connect it in Settings first`);
   // Both at once when the caller names an installation, which it does on every
   // open after the first. The first open of a session still has to learn the id
   // before it can ask.
@@ -530,15 +553,15 @@ export const getGithubRepos = (async (ctx, req, _params, { installation: asked =
     listInstallations(ctx.gh, req.signal),
     asked ? listRepos(ctx.gh, asked, req.signal) : Promise.resolve(null),
   ]);
-  if (!inst.ok) return bad(inst.message);
+  if (!inst.ok) return badText(inst.message);
 
   const selected = inst.data.find((i) => i.id === asked)?.id ?? inst.data[0]?.id ?? null;
   const repos = selected === asked ? guess : selected ? await listRepos(ctx.gh, selected, req.signal) : null;
-  if (repos && !repos.ok) return bad(repos.message);
+  if (repos && !repos.ok) return badText(repos.message);
 
   // Seam (007 step 6): a project's identity is still `repo_path`, which for a
   // repository added here is `owner/name`.
-  // Which project, not whether: naming it makes an 已添加 row a route rather than
+  // Which project, not whether: naming it makes an `Added` row a route rather than
   // a dead end.
   const registered = await ctx.db
     .select({ id: project.id, name: project.name, repo_path: project.repo_path })

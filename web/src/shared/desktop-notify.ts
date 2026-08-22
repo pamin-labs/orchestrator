@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * Whether desktop notifications are wanted, which is not whether they are allowed.
  *
- * The panel had only a 允许通知 button and no way back, because a page cannot
+ * The panel had only a `Allow notifications` button and no way back, because a page cannot
  * revoke its own permission — that lives in browser settings, under a hostname
  * rather than a product name. Two facts, kept apart: the permission is the
  * browser's, this is the boss's, and it is the one a settings pane can offer.

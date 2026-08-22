@@ -45,3 +45,11 @@ vulnerabilities:
       ip-address, bundled by npm. 10.3.1 fixes it; npm bundles 10.2.0 through its agent stack. See the note at the top of this file for why
       it is accepted rather than fixed.
     expired_at: 2026-10-01
+  - id: CVE-2026-73566
+    paths:
+      - usr/local/lib/node_modules/npm/**
+    statement: >-
+      node-tar, bundled by npm. 7.5.21 fixes it; npm 12.0.2 bundles 7.5.19. A denial of service reached by extracting a
+      crafted archive — npm extracts tarballs it fetched from a registry, and nothing in this image runs `npm install`.
+      See the note at the top of this file for why it is accepted rather than fixed.
+    expired_at: 2026-10-01

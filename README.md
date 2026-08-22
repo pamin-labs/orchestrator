@@ -86,7 +86,7 @@ The sandbox server is Linux-only — its egress mode is `nft` — so on Windows 
 runs under WSL, next to the Docker Desktop daemon: `uvx opensandbox-server` in
 there. Mount paths are translated for it, because a path this process writes as
 `C:\orch\skills` is `/mnt/c/orch/skills` on its side, and the translated form is
-what belongs in its `allowed_host_paths`. The 环境 pane prints the exact line.
+what belongs in its `allowed_host_paths`. The `Sandbox server` pane prints the exact line.
 </details>
 
 It prints its own address on the way up. Loopback on purpose: there is no login
@@ -199,6 +199,26 @@ container arrived joined into one line, so everything reading it line by line
 found nothing. None was caught by a test. All were found by measuring.
 
 MIT licensed.
+
+### Languages
+
+<!-- i18n:table -->
+**Panel** · 1099 messages
+
+| Language | Progress | Messages |
+| --- | --- | ---: |
+| English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | source |
+| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1099 / 1099 |
+| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1099 / 1099 |
+| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1099 / 1099 |
+| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1099 / 1099 |
+| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1099 / 1099 |
+| français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1099 / 1099 |
+| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1099 / 1099 |
+| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1099 / 1099 |
+| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1099 / 1099 |
+
+<!-- /i18n:table -->
 
 ## More
 

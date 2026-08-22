@@ -68,7 +68,7 @@ test("an empty composer offers attach, paste and a send that refuses to send not
   getByRole("button", { name: "附件" });
   getByRole("button", { name: "粘贴" });
   // The disabled one is the send, named: `disabled=""` anywhere in the markup
-  // was equally satisfied by a disabled 附件.
+  // was equally satisfied by a disabled `Attach`.
   expect(isDisabled(getByRole("button", { name: "发送" }))).toBe(true);
 });
 
@@ -79,7 +79,7 @@ test("seed text arrives in the box and enables the primary action", () => {
 });
 
 test("a composer with no submit label and no handler renders no primary action", async () => {
-  // Skills present and loaded, so the missing 插技能 is about this composer having
+  // Skills present and loaded, so the missing `Insert skill` is about this composer having
   // no project rather than about the read not having landed.
   serveSkills(skills);
   const { getByRole, queryAllByRole } = render(<Composer placeholder="说点什么" projectId={8801} />);

@@ -1,8 +1,10 @@
+import { msg, plural } from "@lingui/core/macro";
 import { and, count, eq, gte, inArray, isNotNull, max, notInArray } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { maxMs, escalation, event, grp, lease } from "../../platform/persistence/schema.ts";
 import { overlaps, parseOwns } from "./ownership.ts";
 import { ESCALATION_TERMINAL_STATES } from "../../contracts/states.ts";
+import type { Said } from "../../contracts/said.ts";
 
 /**
  * What a standup is actually for.
@@ -15,7 +17,15 @@ import { ESCALATION_TERMINAL_STATES } from "../../contracts/states.ts";
 
 export interface StandupItem {
   kind: "duplicate_effort" | "stalled" | "repeat_failure";
-  body: string;
+  /**
+   * Named, not written — the same field and the same reason as `Finding.say` in
+   * `mech/ops/watchdog.ts`, and this struct was the one without it. Three
+   * sentences were composed here in English and handed to `bus.emit` as
+   * `body: item.body`, which is an identifier at the emit site, so
+   * `an-event-names-its-sentence` saw data passing through and the panel drew
+   * English in all ten locales.
+   */
+  say: Said;
   grpIds: number[];
 }
 
@@ -56,7 +66,7 @@ async function stalled(db: DB, now: number): Promise<StandupItem[]> {
       {
         kind: "stalled" as const,
         grpIds: [g.id],
-        body: `${g.name} has been running with nothing happening for ${mins ?? "?"} min and nobody is waiting on an answer`,
+        say: msg`${{ name: g.name }} has been running with nothing happening for ${plural({ n: mins ?? 0 }, { one: "# minute", other: "# minutes" })} and nobody is waiting on an answer`,
       },
     ];
   });
@@ -81,7 +91,7 @@ export async function runStandup(db: DB, now = Date.now()): Promise<StandupItem[
         items.push({
           kind: "duplicate_effort",
           grpIds: [a.id, b.id],
-          body: `${a.name} and ${b.name} both hold paths matching ${hit} — one of them widened its boundary after starting`,
+          say: msg`${{ a: a.name }} and ${{ b: b.name }} both hold paths matching ${{ hit }} — one of them widened its boundary after starting`,
         });
       }
     }
@@ -111,7 +121,7 @@ export async function runStandup(db: DB, now = Date.now()): Promise<StandupItem[
     items.push({
       kind: "repeat_failure",
       grpIds: [],
-      body: `${r.resource} is failing in ${r.n} different groups — likely the project, not the groups`,
+      say: msg`${{ resource: r.resource }} is failing in ${plural({ n: r.n }, { one: "# group", other: "# different groups" })} — likely the project, not the groups`,
     });
   }
 

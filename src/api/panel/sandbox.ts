@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { count, eq, isNotNull } from "drizzle-orm";
 import {
   allowedImage,
@@ -23,7 +24,7 @@ import { resetServerRestarts } from "../../mech/ops/watchdog.ts";
 import { preflight } from "../../mech/ops/preflight.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { bad, badText, json, message } from "../../http/respond.ts";
 import { grp as grps, job } from "../../platform/persistence/schema.ts";
 
 /**
@@ -77,14 +78,28 @@ export const getSandbox = (async (ctx, _req, _params, { grp: grpId }) => {
   });
 }) satisfies Handler<z.infer<typeof SandboxQuery>>;
 
+/**
+ * Run the checks now, and publish what they found.
+ *
+ * Through `ctx.recheck` rather than calling `preflight` here: this runs when the
+ * boss has just fixed something, and a private copy left the pane green while
+ * the shell's banner still quoted the answer the readiness timer last found.
+ * The direct call stays as the fallback for a context with no server behind it.
+ */
 export const getPreflight = (async (ctx) =>
   json({
-    checks: await preflight({
-      db: ctx.db,
-      sandbox: ctx.config.sandbox,
-      skillsDir: ctx.config.skillsDir,
-      cfg: ctx.config,
-    }),
+    // Copied out of the readonly view the owner hands back: the wire type is the
+    // panel's, and making it readonly would push `ReadonlyArray` through every
+    // pane that renders a check.
+    checks: [
+      ...(await (ctx.recheck?.() ??
+        preflight({
+          db: ctx.db,
+          sandbox: ctx.config.sandbox,
+          skillsDir: ctx.config.skillsDir,
+          cfg: ctx.config,
+        }))),
+    ],
   })) satisfies Handler;
 
 /**
@@ -110,9 +125,10 @@ export const postImage = (async (ctx, _req, _p, b) => {
   const image = b.image.trim();
   // The same rule the container build applies, applied where the boss can read
   // it. Without this the refusal arrives as a container that will not create.
-  if (image && !allowedImage(image)) return bad(`${image} 不是我们发布的镜像，也不是本机构建的`);
+  if (image && !allowedImage(image))
+    return bad(msg`${{ image }} is neither an image we publish nor one built on this machine`);
   const why = await setDefaultImage(ctx.db, ctx.config, image);
-  if (why) return bad(why);
+  if (why) return badText(why);
   return message("ok");
 }) satisfies Handler<z.infer<typeof ImageBody>>;
 
@@ -171,7 +187,7 @@ export const postSandboxServerRestart = (async (ctx) => {
   const argv = await ourArgv(ctx.db);
   if (!argv) {
     return bad(
-      "这个沙盒服务器不是我们起的，不会去动它 —— 它可能是你自己起的，配的是别的东西。要重启就自己重启，之后这里会认得它。",
+      msg`We did not start this sandbox server, so we will not touch it — it may be your own, configured for something else. Restart it yourself and this page will recognise it afterwards.`,
     );
   }
   const err = await restartServer(argv, serverLogPath(ctx));
@@ -180,7 +196,11 @@ export const postSandboxServerRestart = (async (ctx) => {
   // on the same problem.
   resetServerRestarts();
   if (err) return bad(err);
-  await ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "沙盒服务器重启了，容器都没了" });
+  await ctx.bus.emit({
+    author: "orchestrator",
+    kind: "state_change",
+    say: msg`the sandbox server was restarted, so every container it held is gone`,
+  });
   return json({ ok: true });
 }) satisfies Handler;
 
@@ -194,7 +214,7 @@ export const postSandboxServerAddr = (async (ctx, _req, _p, b) => {
   // A hostname and an optional scheme, because the server does not have to be on
   // this machine: a Tailscale peer or a cloud box works the same way.
   if (addr && !/^(https?:\/\/)?[\w.-]+(:\d{2,5})?$/.test(addr)) {
-    return bad("填 host:port，或者 https://host:port。比如 127.0.0.1:8081、sandbox.tail1234.ts.net:8080");
+    return bad(msg`Use host:port, or https://host:port — for example 127.0.0.1:8081 or sandbox.tail1234.ts.net:8080.`);
   }
   await setServerAddr(ctx, addr);
   return json({ ok: true, addr: serverAddr(ctx) });
@@ -207,7 +227,10 @@ export const postSandboxServerStart = (async (ctx) => {
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body: st.kind === "started" ? `沙盒服务器起好了（pid ${st.pid}）` : "沙盒服务器本来就在跑，直接用了",
+    say:
+      st.kind === "started"
+        ? msg`the sandbox server is up (pid ${{ pid: st.pid }})`
+        : msg`the sandbox server was already running, so this used the one that was there`,
   });
   return json({ ok: true, state: st.kind });
 }) satisfies Handler;

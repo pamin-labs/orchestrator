@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, test } from "bun:test";
 import { createElement } from "react";
-import { cleanup, render as mount } from "../support/render.tsx";
+import { cleanup, gone, render as mount, shown } from "../support/render.tsx";
 import { inFlight, mockHttp } from "../support/http.ts";
 import { emptyState } from "../../web/src/shared/api.ts";
 import type { PanelFrame } from "../../web/src/shared/stream.ts";
@@ -27,19 +27,14 @@ const render = (node: ReturnType<typeof createElement>) => {
   return mount(createElement(WithQueries, null, node));
 };
 
-const shown = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
-const gone = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);
-
-const frame = (id: string, text: string, grpId: number | null, projectId = 1): PanelFrame => ({
+const frame = (id: string, body: string, grpId: number | null, projectId = 1): PanelFrame => ({
   id,
   cls: "say",
   grpId,
   projectId,
   at: Number(id.slice(1)) || 1,
   author: "agent",
-  text,
+  body,
 });
 
 test("timeline renders an empty state and filters to the selected requirement", () => {
@@ -75,7 +70,7 @@ test("timeline renders an empty state and filters to the selected requirement", 
 test("workspace renders its empty state plus live path and diff output", () => {
   shown(render(createElement(Workspace, { frames: [], grpId: 1 })), "容器还没说话");
   const lines = ["$ pwd", "/workspace", "$ git diff", "+changed"].map(
-    (text, index): PanelFrame => ({
+    (body, index): PanelFrame => ({
       id: `e${index}`,
       cls: "tool",
       grpId: 1,
@@ -83,7 +78,7 @@ test("workspace renders its empty state plus live path and diff output", () => {
       at: index,
       author: "orchestrator",
       agentId: null,
-      text,
+      body,
     }),
   );
   const live = render(createElement(Workspace, { frames: lines, grpId: 1 }));

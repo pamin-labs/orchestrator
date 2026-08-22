@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
-import { AgentTurnPayloadSchema, Scheduler } from "../../src/platform/scheduling/scheduler.ts";
+import { AgentTurnPayloadSchema } from "../../src/platform/scheduling/scheduler.ts";
 import { restoreWorkspace } from "../../src/mech/flow/start.ts";
 import { eq } from "drizzle-orm";
 import { grp, job } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 /**
  * A sandbox is where the work lives and it is replaceable — the TTL reaps an
@@ -16,7 +17,7 @@ import { testContext } from "../support/test-context.ts";
  */
 async function harness(opts: { install?: string | null; installFails?: boolean } = {}) {
   const db: DB = await openMemory();
-  const sched = new Scheduler(db, async () => {});
+  const sched = newScheduler(db, async () => {});
   const queued = async () =>
     (await db.select({ payload_json: job.payload_json }).from(job).where(eq(job.kind, "agent_turn"))).map(
       ({ payload_json }) => AgentTurnPayloadSchema.parse(payload_json),

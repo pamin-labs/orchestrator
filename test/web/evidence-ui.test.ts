@@ -1,7 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, test } from "bun:test";
 import { createElement } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render as mount } from "../support/render.tsx";
+import { cleanup, render as mount, shown } from "../support/render.tsx";
 import { inFlight, mockHttp } from "../support/http.ts";
 import type { Evidence } from "../../web/src/shared/api.ts";
 import { EvidencePanel } from "../../web/src/features/evidence/view.tsx";
@@ -38,9 +38,6 @@ const render = (seed?: Evidence) => {
   if (seed) queries.setQueryData(["evidence", 1], seed);
   return mount(createElement(QueryClientProvider, { client: queries }, createElement(EvidencePanel, { sliceId: 1 })));
 };
-
-const shown = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
 
 /**
  * testing-library's own `afterEach(cleanup)` is registered when its module is

@@ -1,4 +1,9 @@
+import { expect } from "bun:test";
 import { nativeFetch } from "./dom.ts";
+import { render as rawRender, type RenderOptions, type RenderResult } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { I18nProvider } from "@lingui/react";
+import { i18n } from "../../web/src/i18n.ts";
 
 /**
  * testing-library, over the document `dom.ts` installs at preload.
@@ -14,7 +19,16 @@ import { nativeFetch } from "./dom.ts";
  * failures once produced a 267,533-line log and turned a thirty-second directory
  * into a two-minute one. Assert a count, an accessible name, or a property.
  */
-export { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+export { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
+
+/**
+ * `<Trans>` reads its catalog from context, so every pane mounts inside the
+ * provider rather than each test remembering one. Nothing in `test/web` passes
+ * a `wrapper` of its own — the eleven files using `WithQueries` pass it as a
+ * child — so this cannot collide with one.
+ */
+export const render = (ui: ReactNode, options?: Omit<RenderOptions, "wrapper">) =>
+  rawRender(ui, { wrapper: ({ children }) => <I18nProvider i18n={i18n}>{children}</I18nProvider>, ...options });
 
 /**
  * The network these panes see while a test looks at them: `test/support/http.ts`.
@@ -51,3 +65,17 @@ export const valueOf = (el: HTMLElement): string =>
   "value" in el && typeof el.value === "string" ? el.value : `<${el.tagName.toLowerCase()} holds no value>`;
 
 export const isDisabled = (el: HTMLElement): boolean => "disabled" in el && el.disabled === true;
+
+/**
+ * Is this on the page, or off it — substring, because a row usually wraps its
+ * value in punctuation the assertion should not have to know about.
+ *
+ * Six files had written this pair out, byte for byte. Typed on
+ * `@testing-library`'s own `RenderResult` rather than `ReturnType<typeof render>`,
+ * which is the same thing and also covers the files that alias their own mount.
+ */
+export const shown = (r: RenderResult, text: string): void =>
+  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
+
+export const gone = (r: RenderResult, text: string): void =>
+  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);

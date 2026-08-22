@@ -1,4 +1,5 @@
 import { ComposerDialog } from "../composer/view";
+import { useLingui } from "@lingui/react/macro";
 import { api, mutate } from "../../shared/api";
 
 /**
@@ -20,14 +21,16 @@ export function NewRequirement({
   projectId: number;
   onDone: () => void;
 }) {
+  const { t } = useLingui();
   return (
     <ComposerDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="新需求"
-      hint="说清要什么就够。产出计划卡待批，批准前不写代码。"
-      placeholder={"例：登录页加「记住我」，勾了之后 30 天不用重新登录。\n截图、设计稿拖进来或粘贴。⌘Enter 提交"}
-      submit="提交"
+      title={t`New requirement`}
+      hint={t`Just describe what you need. A plan card will be generated for approval before any code is written.`}
+      placeholder={t`Example: Add a "Remember me" checkbox to the login page; once checked, stay logged in for 30 days.
+Drag in screenshots or designs, or paste. Cmd+Enter to submit`}
+      submit={t`Submit`}
       rows={6}
       onSubmit={async ({ text, attachments }) => {
         const r = await mutate(api.ideas.$post({ json: { project_id: projectId, text, attachments } }));

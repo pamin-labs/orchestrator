@@ -42,8 +42,10 @@ file. Record an architectural exception or changed decision in a new ADR.
 
 ## Technology and commands
 
-- Bun + strict TypeScript, Hono, Zod, `bun:sqlite`, React, Tailwind v4, and
-  shadcn/Radix behavior primitives.
+- Bun + strict TypeScript, Hono, Zod, PostgreSQL through Drizzle
+  (`drizzle-orm/bun-sql`), React, Tailwind v4, and shadcn/Radix behavior
+  primitives. Tests talk to a real Postgres in a container, one schema per
+  worker — which is why a suite run costs what it does.
 - Agent processes run in per-group OpenSandbox containers. The file mailbox and
   `orch` CLI are their only orchestration interface; real credentials remain in
   the egress vault.
@@ -77,11 +79,16 @@ findings across thirty files, once as a single finding against a function with
 twelve passing unit tests. The structural findings in plain `audit` — boundaries,
 cycles, dead code, duplication — are unaffected and can be trusted.
 
-**Audit a branch with `--base main`.** The default base is the merge-base with
-the branch's own remote, so once a branch is pushed that base *is* `HEAD` and
-the scan reports `✓ No issues in 0 changed files` — a green tick over nothing
-examined, which is worse than a red one. Both traps have the same shape: a
-command that answers about a scope you did not choose, and answers cheerfully.
+**The audit base is pinned, and you no longer have to remember it.** All three
+`audit` scripts carry `FALLOW_AUDIT_BASE=origin/main`. Left to itself the base
+is the merge-base with the branch's *upstream*, so on a pushed branch it is
+`HEAD` and the scan reports `✓ No issues in 0 changed files` — a green tick over
+nothing examined, which is worse than a red one. Measured on this branch before
+the pin: 15 files and 45 functions against 287 and 5140. It was preflight-only —
+a CI `pull_request` checkout has no upstream and already fell through to main —
+but a rule written down and followed by neither call site is a rule. Both traps
+on this page have the same shape: a command that answers about a scope you did
+not choose, and answers cheerfully.
 
 Do not run overlapping enforcement owners. Replacing TypeScript, Oxlint,
 Fallow, Bun test, CodeQL, or another owner requires an ADR and migration
@@ -165,12 +172,41 @@ or run the full suite unless they own integration.
   swallowed errors, or retries of non-idempotent work.
 - A bug fix must block the same bug class at its shared entrypoint, type,
   invariant, or source guard.
+- **A sentence a person reads is named, not written.** Four places to write one,
+  and the place decides which:
+
+  | where | how |
+  |---|---|
+  | JSX | `<Trans>` / `<Plural>`, from `@lingui/react/macro` |
+  | inside a component | `` t`` `` from `const { t } = useLingui()` — it re-renders when the locale moves |
+  | outside one (module tables, helpers) | `` msg`` `` → a descriptor; the caller renders it with `t(…)` or `i18n._(…)` |
+  | the server | `` say: msg`merged into main` `` on `bus.emit`, never `body:` |
+
+  One object under three names, and which one you write says where it is:
+  `` msg`` `` is the macro, `MessageDescriptor` is what it produces, and `Said`
+  is that descriptor after it has crossed the wire — same fields, validated,
+  because `event.meta_json` is JSON somebody else stored. `src/contracts/said.ts`
+  states the equivalence to the compiler rather than in a comment.
+
+  `bus.emit` renders `say` into `body` and stores the descriptor beside it, so
+  the panel draws the row from `meta.say` in whichever of ten languages its
+  reader chose. Values carry values, never a rendered fragment: a descriptor
+  inside another's values is one sentence in two languages. English is the
+  source, so an unrecognised locale falls back to it rather than to nothing.
+  Three exceptions, and only three: what a model reads, what a log or `/readyz`
+  carries, and a protocol key — and a comment that names a label spells it the
+  way the source does. Which text follows which language is the table in
+  [`035`](docs/adr/035-language-follows-who-wrote-it.md); how it is wired is
+  [`044`](docs/adr/044-what-the-panel-and-the-server-actually-say.md).
+  Guards: `panel-speaks-english`, `server-speaks-one-language`,
+  `values-carry-no-rendered-text`, `an-event-names-its-sentence`,
+  `a-component-takes-t-from-the-hook`.
 - Anything that costs wall-clock time carries a span. New work that waits on a
   container, a network call, a subprocess, or the filesystem opens one through
   `activeTracer().startActiveSpan`, names it after what it does rather than a
   number, and sets `SpanStatusCode.ERROR` before rethrowing. Put the span at the
   one place every case passes through, not at each caller: the twenty-fifth
-  caller is the one that will not have it. Untimed work is invisible in 系统耗时,
+  caller is the one that will not have it. Untimed work is invisible in `System timing`,
   and the panel is where "which one is slow" gets asked — a watchdog tick
   reported 50s against a 30s interval for as long as it was a single span.
   Details in [`observability`](docs/standards/observability.md).
@@ -187,10 +223,19 @@ repository does not vendor (`actionlint`, `shellcheck`, `docker`) says so and
 names what CI will do instead, because a preflight that silently skips the
 container scan promises a green run it never tested.
 
-Two checks have no local form and are named at the end of every run:
-`security-codeql` runs on GitHub's infrastructure, and `pr-plan` reads a pull
-request body that does not exist yet — fill in `.github/pull_request_template.md`
-and it passes.
+Four checks have no local form and are named at the end of every run:
+`security-codeql` runs on GitHub's infrastructure; `dependency-review` asks
+GitHub's API about the pull request's own range, which is where the licence
+allow-list is enforced; `codecov/patch` is posted by a second workflow *after*
+CI has already reported green, and it is the one status that can fail;
+and `pr / verify engineering plan sections` reads a pull request body that does
+not exist yet — fill in `.github/pull_request_template.md` and it passes.
+
+There were two until a parity sweep walked both sides. Preflight also ran
+`bun audit --audit-level=high` where CI runs it bare, so a moderate advisory
+was red there and green here, and `fallow security --changed-since main` where
+CI diffs `origin/main` — a local ref that can sit behind the remote is a scope
+nobody chose.
 
 CI minutes cost money and a red check costs a round trip. Push knowing the
 answer.

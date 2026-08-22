@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, test } from "bun:test";
 import type { ReactNode } from "react";
-import { cleanup, render as mount } from "../support/render.tsx";
+import { cleanup, gone, render as mount, shown } from "../support/render.tsx";
 import { emptyState } from "../../web/src/shared/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { CostView, Desk, Owns } from "../../web/src/features/tables/view.tsx";
@@ -20,10 +20,6 @@ const render = (node: ReactNode) => {
 };
 
 /** These sentences sit inside longer lines, so the match is a substring of the text. */
-const shown = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
-const gone = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);
 
 test("Desk, ownership and cost surfaces render observable empty and populated states", () => {
   const empty = emptyState();
@@ -67,7 +63,7 @@ test("Desk, ownership and cost surfaces render observable empty and populated st
     byRole: [{ label: "engineer", tokens: 500 }],
     byDifficulty: [{ label: "hard", tokens: 500 }],
     byRuntime: [{ label: "claude", tokens: 500 }],
-    byHour: [{ hour: "12:00", claude: 500, codex: 0 }],
+    byHour: [{ hour: "08-13 12", at: Date.UTC(2026, 7, 13, 12), claude: 500, codex: 0 }],
     total: { label: "total", tokens: 500 },
     cacheRatio: 0.75,
     rotations: { turns: 4, byReason: { hash: 1 } },
@@ -75,7 +71,7 @@ test("Desk, ownership and cost surfaces render observable empty and populated st
   const rendered = render(<CostView cost={cost} />);
   shown(rendered, "500");
   shown(rendered, "按需求");
-  shown(rendered, "cache 命中");
+  shown(rendered, "缓存命中率");
 });
 
 const owning = (id: number, name: string, owns: string[]) => ({
@@ -110,7 +106,6 @@ test("requirements with disjoint boundaries are cleared to run at once, and the 
   st.groups.push(owning(1, "改闸门", ["src/mech/**"]), owning(2, "改面板", ["web/src/**"]), owning(3, "没划", []));
   const pane = render(<Owns st={st} projectId={1} />);
 
-  shown(pane, "2 个需求各改各的，可以一起跑");
-  shown(pane, "还有 1 个没分");
+  shown(pane, "2 个需求各改各的，可以一起跑（还有 1 个没分）");
   gone(pane, "压着");
 });

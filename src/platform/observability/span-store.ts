@@ -42,7 +42,7 @@ export interface StoredSpan extends SpanRow {
  * Retention, stated rather than left to grow, and sized to what is read.
  *
  * **A day, because a day is what the panel asks for** — `DEFAULT_WINDOW_MS` is 24
- * hours and the page says 「最近一天」. The row bound is not the history length: it is
+ * hours and the page says it is showing the last day. The row bound is not the history length: it is
  * the disaster bound, sized so it never decides how far back a reader can see, and
  * what it stops is a retry storm or a hot loop. Age plus count, as idempotency does.
  */

@@ -1,8 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { cleanup, render as mount, valueOf } from "../support/render.tsx";
+import { cleanup, gone, render as mount, shown, valueOf } from "../support/render.tsx";
 import { inFlight, mockHttp } from "../support/http.ts";
 import { emptyState, type Group, type Slice, type State } from "../../web/src/shared/api.ts";
 import type { PanelFrame } from "../../web/src/shared/stream.ts";
+import { BOOTSTRAP_FAILED, BOOTSTRAP_OK, BOOTSTRAP_START } from "../../src/contracts/events.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { WithQueries } from "./queries.tsx";
 import { Requirement } from "../../web/src/features/requirement/view.tsx";
@@ -41,7 +42,7 @@ const frame = (over: Partial<PanelFrame> & { id: string }): PanelFrame => ({
   projectId: 1,
   at: 1_000,
   author: "orchestrator",
-  text: "",
+  body: "",
   agentId: null,
   ...over,
 });
@@ -78,10 +79,6 @@ afterEach(cleanup);
 
 /** Most of these sentences sit inside a longer line, so the match is a substring —
  *  of rendered text, which is what a reader has, rather than of the markup. */
-const shown = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
-const gone = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);
 
 /** A group with one running slice, which is what most of these states hang off. */
 function running(over: Partial<Group> = {}) {
@@ -134,7 +131,7 @@ test("the header shows the control that fits the group's state", () => {
   shown(head, "ship it");
   shown(head, "feature/ship");
   shown(head, "在跑");
-  // The controls are buttons, named — 暂停 as text could have been a caption.
+  // The controls are buttons, named — `Pause` as text could have been a caption.
   head.getByRole("button", { name: "暂停" });
   head.getByRole("button", { name: "更多" });
 
@@ -177,7 +174,7 @@ test("a group that has spent its budget gets the wall instead of a working 继�
   shown(wall, "预算用尽，全组挂起");
   wall.getByRole("button", { name: /翻倍到/ });
   wall.getByRole("button", { name: "取消上限" });
-  // 继续 would be a button that changes nothing: the scheduler refuses to admit it.
+  // `Resume` would be a button that changes nothing: the scheduler refuses to admit it.
   expect(wall.queryAllByRole("button", { name: "继续" })).toHaveLength(0);
 
   const capped = running({ budget_tokens: null });
@@ -187,9 +184,9 @@ test("a group that has spent its budget gets the wall instead of a working 继�
 test("the rebuild pane reports both steps while it runs and stays up when it fails", () => {
   const { st, g } = running();
   const started = [
-    frame({ id: "e1", cls: "state", text: "沙盒是新的", at: 1_000 }),
-    frame({ id: "e2", text: "$ bun install --frozen-lockfile", at: 2_000 }),
-    frame({ id: "e3", text: "resolved 400 packages", at: 3_000 }),
+    frame({ id: "e1", cls: "state", step: BOOTSTRAP_START, body: "沙箱是新的", at: 1_000 }),
+    frame({ id: "e2", body: "$ bun install --frozen-lockfile", at: 2_000 }),
+    frame({ id: "e3", body: "resolved 400 packages", at: 3_000 }),
   ];
   const live = render(st, g, "slice", started);
   shown(live, "克隆");
@@ -198,11 +195,17 @@ test("the rebuild pane reports both steps while it runs and stays up when it fai
   shown(live, "resolved 400 packages");
   live.getByRole("button", { name: "收起" });
 
-  const broken = render(st, g, "slice", [...started, frame({ id: "e4", cls: "state", text: "装失败了", at: 4_000 })]);
+  const broken = render(st, g, "slice", [
+    ...started,
+    frame({ id: "e4", cls: "state", step: BOOTSTRAP_FAILED, body: "装失败了", at: 4_000 }),
+  ]);
   shown(broken, "装失败了");
   shown(broken, "交给 bootstrap 重试");
 
-  const done = render(st, g, "slice", [...started, frame({ id: "e5", cls: "state", text: "装好了", at: 4_000 })]);
+  const done = render(st, g, "slice", [
+    ...started,
+    frame({ id: "e5", cls: "state", step: BOOTSTRAP_OK, body: "装好了", at: 4_000 }),
+  ]);
   gone(done, "装依赖");
   // Nothing at all before a rebuild has been asked for.
   gone(render(st, g, "slice"), "克隆");
@@ -232,7 +235,7 @@ test("each slice row says where it is in its own words", () => {
   shown(rows, "等前序切片");
   shown(rows, "已退回，等它修");
   shown(rows, "engineer ▸ 跑测试");
-  // Gate names come from the shared stop list, and 查收 is the boss's own column.
+  // Gate names come from the shared stop list, and `Accept` is the boss's own column.
   shown(rows, "自评");
   shown(rows, "对账");
   shown(rows, "测试");
@@ -378,8 +381,8 @@ test("the dock and the tab counts follow what the requirement holds", () => {
   const { st, g } = running();
   st.slices.push(slice({ id: 1, seq: 1 }), slice({ id: 2, seq: 2, status: "running", awaiting_at: null }));
   const tabs = render(st, g, "slice");
-  // Five tabs, in order, with 切片 the one that is open — none of which a
-  // substring of the markup could distinguish from a heading. 耗时 carries no
+  // Five tabs, in order, with `Slice` the one that is open — none of which a
+  // substring of the markup could distinguish from a heading. `Time` carries no
   // count on purpose: a span total is not a quantity anybody is waiting on.
   expect(tabs.getAllByRole("tab").map((t) => t.textContent)).toEqual(["切片2", "问题0", "记录", "工作区", "耗时"]);
   expect(tabs.getByRole("tab", { selected: true }).textContent).toBe("切片2");

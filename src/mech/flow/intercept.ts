@@ -1,14 +1,18 @@
+import { msg, plural } from "@lingui/core/macro";
+import type { Said } from "../../contracts/said.ts";
 import { and, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { agent, grp, job } from "../../platform/persistence/schema.ts";
 import { addNote } from "../util/rows.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
 import { rebaseOntoBase, rollbackTo } from "../git/gitops.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
-import { say } from "../../platform/text/lang.ts";
+
 import { GRP_TERMINAL_STATES, type GrpState } from "../../contracts/states.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /**
  * Three levels of getting in the way, all of them operations on the job queue.
@@ -160,7 +164,9 @@ export async function pause(ctx: Ctx, grpId: number, reason: PauseReason = "boss
     grpId,
     author: "boss",
     kind: "state_change",
-    body: inFlight ? `pausing — waiting for ${inFlight} turn(s) to land` : "paused",
+    say: inFlight
+      ? msg`pausing — waiting for ${plural({ n: inFlight }, { one: "# turn", other: "# turns" })} to land`
+      : msg`paused`,
   });
   if (inFlight === 0) await settle(ctx, grpId);
   return inFlight;
@@ -202,14 +208,26 @@ async function settle(ctx: Ctx, grpId: number): Promise<void> {
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "group.paused"),
+    say: msg`PAUSED`,
   });
 }
 
 export async function resume(ctx: Ctx, grpId: number): Promise<void> {
   await release(ctx, grpId);
-  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config.language, "group.resumed") });
+  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", say: msg`resumed` });
   await ctx.sched.tick();
+}
+
+/**
+ * Whether the rollback happened is part of the sentence, not a fragment glued to
+ * the end of it — a clause appended to a rendered string is a sentence assembled
+ * in two languages. Out here so that naming the two does not push `interrupt`
+ * over the complexity gate.
+ */
+function interrupted(mode: string, killed: number, sha: string | undefined): Said {
+  return sha
+    ? msg`interrupted (${{ mode }}), killed ${{ killed }}, rolled back to ${{ sha: sha.slice(0, 8) }}`
+    : msg`interrupted (${{ mode }}), killed ${{ killed }}`;
 }
 
 /**
@@ -270,7 +288,7 @@ export async function interrupt(
           kind: "escalation",
           intent: "inform",
           severity: "blocker",
-          body: `interrupted, but the rollback to ${sha.slice(0, 8)} failed: ${back.error}. The checkout is dirty.`,
+          say: msg`interrupted, but the rollback to ${{ sha: sha.slice(0, 8) }} failed: ${{ why: back.error ?? "" }}. The checkout is dirty.`,
         });
       }
     }
@@ -279,8 +297,11 @@ export async function interrupt(
     await addNote(ctx.db, {
       grpId,
       kind: "fact",
-      lang: "zh",
-      body: "上一个 turn 被强制打断，worktree 里可能有未完成的改动。先 `git diff` 看一眼再继续，不要假设它是完整的。",
+      lang: outputLanguage(ctx.config),
+      body: renderSaid(
+        outputLanguage(ctx.config),
+        msg`the last turn was cut off, so the worktree may hold unfinished changes. Run \`git diff\` before carrying on rather than assuming it is complete.`,
+      ),
     });
   }
 
@@ -288,7 +309,7 @@ export async function interrupt(
     grpId,
     author: "boss",
     kind: "state_change",
-    body: `interrupted (${mode}), killed ${killed}${rolledBackTo ? `, rolled back to ${rolledBackTo.slice(0, 8)}` : ""}`,
+    say: interrupted(mode, killed, rolledBackTo),
     meta: { mode, killed, ...(rolledBackTo ? { rolledBackTo } : {}) },
   });
   return { killed, ...(rolledBackTo ? { rolledBackTo } : {}) };
@@ -324,7 +345,7 @@ export async function park(ctx: Ctx, grpId: number, reason: string): Promise<voi
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: `parked (${reason}); ${cancelled} queued turn(s) dropped, worktree untouched`,
+    say: msg`parked (${{ reason }}); ${plural({ n: cancelled }, { one: "# queued turn", other: "# queued turns" })} dropped, worktree untouched`,
     meta: { cancelled },
   });
 }
@@ -340,7 +361,7 @@ export async function unpark(ctx: Ctx, grpId: number): Promise<void> {
       kind: "escalation",
       intent: "ask",
       severity: "blocker",
-      body: `rebase onto the base branch failed while waking up:\n${r.out.slice(0, 500)}`,
+      say: msg`rebase onto the base branch failed while waking up:\n${{ out: r.out.slice(0, 500) }}`,
     });
     return;
   }
@@ -348,6 +369,6 @@ export async function unpark(ctx: Ctx, grpId: number): Promise<void> {
   // above is the reason. Anything that wakes a parked group without it starts a
   // turn on a base that moved while the group was asleep.
   await release(ctx, grpId, { from: ["PARKED"] });
-  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "woken up" });
+  await ctx.bus.emit({ grpId, author: "boss", kind: "state_change", say: msg`woken up` });
   await ctx.sched.tick();
 }

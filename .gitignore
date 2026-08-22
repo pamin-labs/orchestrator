@@ -23,6 +23,7 @@ web/dist/
 coverage/
 .fallow/
 .cache/tsc/
+.cache/lingui/
 
 # Agent runtime journals. `orch` writes one directory per requirement here while
 # it works, and the `note` table already holds the same text — so a checkout was

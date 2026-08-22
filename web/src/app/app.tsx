@@ -2,11 +2,12 @@ import { PanelRight, SlidersHorizontal } from "lucide-react";
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
-import { countWaiting, STATUS_ZH } from "../shared/select";
+import { countWaiting, STATUS_LABEL } from "../shared/select";
 import { useOrch } from "../shared/api";
 import { cn } from "../ui/cn";
 import { Pane } from "../ui/bits";
 import { Boundary } from "./boundary";
+import { HostAlert } from "./alerts";
 import { Button } from "../ui/button";
 import { Card, CardBody, CardTitle } from "../ui/card";
 import { AskHost } from "../ui/confirm";
@@ -37,6 +38,7 @@ import {
   isHome,
   navigationShortcut,
   orEmpty,
+  nextSelection,
   parseSelection,
   projectForGroup,
   projectItem,
@@ -61,6 +63,7 @@ import {
   viewClass,
   waitingProject,
 } from "../features/navigation/model";
+import { Trans, useLingui } from "@lingui/react/macro";
 
 type UiKey = "adding" | "pickProject" | "pickReq" | "picking" | "side";
 
@@ -113,11 +116,18 @@ function Crumb({
 }
 
 export function App() {
+  const { t } = useLingui();
   const { state: st, cost, frames, live, refresh } = useOrch();
   const [sel, setSel] = useState<Selection>(() => parseSelection(location.hash));
   const { ui, setAdding, setPickProject, setPickReq, setPicking, setSide } = useUi();
   const [behind, setBehind] = useState<Selection["view"]>("progress");
-  const go = (patch: Partial<Selection>) => setSel((current) => ({ ...current, ...patch }));
+  const go = (patch: Partial<Selection>) => setSel((current) => nextSelection(current, patch));
+  // A broken host check interrupts here, once per fault, rather than in a
+  // terminal log nobody has open. Reads the snapshot that is already polled, and
+  // hands the boss the pane that lists every check with its own controls.
+  // `s` and not a `view`: the section is already part of a `Selection`, so this
+  // lands on the pane that lists every check rather than on the dialog's first
+  // tab with the boss one click from what they were told about.
 
   useEffect(() => {
     try {
@@ -221,22 +231,34 @@ export function App() {
     empty: () => (
       <Card className="max-w-[40rem]">
         <CardBody>
-          <CardTitle>还没有需求</CardTitle>
-          <div className="mt-1 text-secondary text-ink-3">写一句话，拆成计划卡再回来给你批。</div>
+          <CardTitle>
+            <Trans>No requirements yet</Trans>
+          </CardTitle>
+          <div className="mt-1 text-secondary text-ink-3">
+            <Trans>Write a description, break into plan cards, then come back for review.</Trans>
+          </div>
           <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-rule-soft pt-3 text-secondary">
-            <dt className="text-ink-3">仓库</dt>
+            <dt className="text-ink-3">
+              <Trans>Repository</Trans>
+            </dt>
             <dd className="truncate font-mono text-meta">{project?.repo_path}</dd>
-            <dt className="text-ink-3">从这个分支开</dt>
-            <dd className="font-mono text-meta">{project?.base_branch || "问 GitHub 要"}</dd>
-            <dt className="text-ink-3">闸门 / 安装命令</dt>
-            <dd className="text-ink-2">第一个组克隆完才猜得出来，到时候填进设置</dd>
+            <dt className="text-ink-3">
+              <Trans>Start from this branch</Trans>
+            </dt>
+            <dd className="font-mono text-meta">{project?.base_branch || t`Ask GitHub`}</dd>
+            <dt className="text-ink-3">
+              <Trans>Gates / Install commands</Trans>
+            </dt>
+            <dd className="text-ink-2">
+              <Trans>Can't determine until first group clones; fill in settings later</Trans>
+            </dd>
           </dl>
           <div className="mt-3 flex items-center gap-2">
             <Button variant="go" onClick={() => setAdding(true)}>
-              ＋ 新需求
+              <Trans>+ New requirement</Trans>
             </Button>
             <Button variant="quiet" onClick={() => go({ view: "sandbox" })}>
-              改基线分支
+              <Trans>Change base branch</Trans>
             </Button>
           </div>
         </CardBody>
@@ -256,20 +278,28 @@ export function App() {
         />
       );
     },
-    missing: () => <div className="text-body text-ink-3">这个需求已经归档或不存在了。</div>,
+    missing: () => (
+      <div className="text-body text-ink-3">
+        <Trans>This requirement has been archived or no longer exists.</Trans>
+      </div>
+    ),
     desk: () => <Desk st={st} frames={frames} projectId={idOrZero(sel.p)} />,
     notes: () => <Notes projectId={idOrZero(sel.p)} tab={sel.t} onTab={(tab) => go({ t: tab })} />,
     owns: () => <Owns st={st} projectId={idOrZero(sel.p)} />,
     // No `windowMs`. It asked for a week, on a comment claiming retention kept
     // seven days — retention is one, and the endpoint caps the parameter at
     // exactly that, so every project read came back
-    // `Too big: expected number to be <=86400000` and the page said 「这个项目还
-    // 没跑过任何活」 over a table full of rows. Letting the endpoint choose its
+    // `Too big: expected number to be <=86400000` and the page said this project had
+    // never run anything, over a table full of rows. Letting the endpoint choose its
     // own default is also the only version that stays correct when retention
     // moves, which is the reason the number should not have been here at all.
     time: () => (
       <Pane>
-        <Telemetry scope={{ kind: "project", id: idOrZero(sel.p) }} trend empty="这个项目还没跑过任何活。" />
+        <Telemetry
+          scope={{ kind: "project", id: idOrZero(sel.p) }}
+          trend
+          empty={t`This project hasn't run any activity yet.`}
+        />
       </Pane>
     ),
     cost: () => <CostView cost={cost} />,
@@ -283,19 +313,19 @@ export function App() {
       <Switcher
         open={ui.pickProject}
         onOpenChange={setPickProject}
-        label="切换项目"
-        placeholder="项目名…"
-        empty="没有匹配的项目"
+        label={t`Switch project`}
+        placeholder={t`Project name…`}
+        empty={t`No matching projects`}
         items={st.projects.map((item) => projectItem(item, countWaiting(st, item.id)))}
         onPick={(id) => go({ p: id, g: null, view: "board" })}
       />
       <Switcher
         open={ui.pickReq}
         onOpenChange={setPickReq}
-        label="切换需求"
-        placeholder="需求名…"
-        empty="这个项目没有别的需求"
-        items={groups.map((group) => requirementItem(group, STATUS_ZH[group.status] ?? group.status))}
+        label={t`Switch requirement`}
+        placeholder={t`Requirement name…`}
+        empty={t`No other requirements for this project`}
+        items={groups.map((group) => requirementItem(group, t(STATUS_LABEL[group.status])))}
         onPick={(id) => go({ view: "req", g: id })}
       />
       {choose(
@@ -318,7 +348,10 @@ export function App() {
           refresh(null);
         }}
       />
-      <div className="grid h-dvh grid-rows-[auto_minmax(0,1fr)]">
+      {/* Three rows, not two: the host banner is a row of the shell rather than
+          an overlay, so a broken check never covers the board it is reporting
+          about, and `minmax(0,1fr)` keeps the body scrolling on its own. */}
+      <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)]">
         <header className="z-10 flex h-14 items-center gap-5 border-b border-rule bg-rail px-6">
           <button
             type="button"
@@ -361,7 +394,7 @@ export function App() {
                     viewClass(viewActive(view, key)),
                   )}
                 >
-                  {label}
+                  {t(label)}
                 </button>
               ))}
             </span>,
@@ -384,14 +417,16 @@ export function App() {
               size="sm"
               onClick={() => go(choose(!!sel.p, { view: "board", g: null }, { view: "home", p: null, g: null }))}
             >
-              待办 {waiting}
+              <Trans>to do {waiting}</Trans>
             </Button>,
-            <span className="font-mono text-meta text-ink-3">无待办</span>,
+            <span className="font-mono text-meta text-ink-3">
+              <Trans>No pending items</Trans>
+            </span>,
           )}
           {choose(
             showNewRequirement(sel.p, st.projects.length),
             <Button size="sm" className="ml-1" onClick={() => setAdding(true)}>
-              ＋ 新需求
+              <Trans>+ New requirement</Trans>
             </Button>,
             null,
           )}
@@ -402,7 +437,7 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => setSide((value) => !value)}
-                  aria-label="事件流"
+                  aria-label={t`Event stream`}
                   className={cn(
                     "grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
                     sideClass(ui.side),
@@ -413,11 +448,11 @@ export function App() {
               </Tip>,
               null,
             )}
-            <Tip label="设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S">
+            <Tip label={t`Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S`}>
               <button
                 type="button"
                 onClick={() => go({ view: "github" })}
-                aria-label="设置"
+                aria-label={t`Settings`}
                 className={cn(
                   "relative grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
                   settingsClass(!!section),
@@ -433,6 +468,7 @@ export function App() {
             </Tip>
           </span>
         </header>
+        <HostAlert failing={st.failing} onFix={() => go({ view: "settings", s: "server" })} />
         <Group orientation="horizontal" className={cn("h-full min-h-0", bodyClass(timeline))}>
           <Panel className="min-w-0 overflow-hidden" defaultSize="100%">
             <div className={cn("flex h-full max-w-[76rem] flex-col px-6 pt-5", scrollClass(view))}>

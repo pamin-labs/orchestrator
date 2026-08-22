@@ -47,7 +47,7 @@ export const Attachment = z.object({
   name: z.string().min(1).max(300),
   path: z.string().min(1).max(4000),
   type: z.string().max(120),
-  /** 图1 / 附件2 — the marker the boss's own text refers to. */
+  /** `Image1` / `Attach2` — the marker the boss's own text refers to. */
   label: z.string().max(40).optional(),
 });
 

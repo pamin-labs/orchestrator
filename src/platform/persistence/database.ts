@@ -276,9 +276,19 @@ export async function openMemory(logger?: Logger, isolate = ""): Promise<DB> {
     mineReady = (async () => {
       const admin = new SQL({ url: testServer(), max: 1 });
       try {
-        // No advisory lock: nothing is copied any more, and the name belongs to
-        // one file, which `--parallel` gives one process. Two workers cannot be
-        // here for the same namespace at all.
+        // No advisory lock *within* a run: the name belongs to one worker, which
+        // `--parallel` gives one process, so two workers of the same run cannot
+        // be here for the same namespace.
+        //
+        // Two *runs* are a different matter and this held no answer for them.
+        // `BUN_TEST_WORKER_ID` restarts at 0 every run, so a second concurrent
+        // `bun run test` gets the same names and empties the first one's tables
+        // mid-test. It reads as duplicate keys, absent foreign parents and
+        // `relation "agent" does not exist` scattered across unrelated files —
+        // two agents each burned a full suite on that before it was diagnosed,
+        // because a corrupt run and a broken branch look identical. `scripts/test.ts`
+        // now refuses the second run by name rather than letting it produce a
+        // number nobody can act on.
         const found = await admin<{ present: number }[]>`SELECT 1 AS present FROM pg_namespace WHERE nspname = ${mine}`;
         const client = new SQL({ url: urlFor(mine), max: 24 });
         if (found.length === 0) {

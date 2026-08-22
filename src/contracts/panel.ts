@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { JsonValue } from "./json.ts";
+import { SaidSchema } from "./said.ts";
 import { ESCALATION_STATES, GRP_STATES, SLICE_STATES, TASK_STATES } from "./states.ts";
 
 /**
@@ -24,7 +25,7 @@ export const Project = z.object({
   name: z.string(),
   repo_path: z.string(),
   remote: z.string().nullable(),
-  /** Empty means "ask the remote". Taken from GitHub at add time, correctable in 设置. */
+  /** Empty means "ask the remote". Taken from GitHub at add time, correctable in `Settings`. */
   base_branch: z.string().nullable(),
 });
 
@@ -52,7 +53,7 @@ export const Slice = z.object({
   status: z.enum(SLICE_STATES),
   gates_json: JsonValue,
   spent_tokens: z.number(),
-  /** When it started waiting on the boss. The clock on 白干的单位. */
+  /** When it started waiting on the boss. The clock on wasted-work-per-hour. */
   awaiting_at: z.number().nullable(),
 });
 
@@ -101,6 +102,14 @@ export const Escalation = z.object({
   grp_id: z.number().nullable(),
   severity: z.string(),
   question: z.string(),
+  /**
+   * The descriptors `question` and `brief` were rendered from, where the server
+   * wrote them. Absent where an agent did — its own words are never rewritten —
+   * and absent on every row stored before the column existed, which is why the
+   * text beside them stays and the panel falls back to it.
+   */
+  said: SaidSchema.optional(),
+  briefSaid: SaidSchema.optional(),
   chain_state: z.enum(ESCALATION_STATES),
   /** One line of what it is about, for the queue. Written by whoever filed it. */
   brief: z.string().nullable(),
@@ -141,6 +150,8 @@ export const Answered = z.object({
   id: z.number(),
   grp_id: z.number().nullable(),
   question: z.string(),
+  /** As on `Escalation`: the descriptor if the server wrote the question. */
+  said: SaidSchema.optional(),
   answer: z.string().nullable(),
   answered_by: z.string(),
   ref_note_id: z.number().nullable(),
@@ -148,7 +159,9 @@ export const Answered = z.object({
 
 const GroupNote = z.object({ grpId: z.number(), body: z.string() });
 const GroupSaid = z.object({ grpId: z.number(), author: z.string(), body: z.string() });
-const Blocked = z.object({ grpId: z.number(), reason: z.string() });
+/** Why an approved group is still held. `reason`/`said` are the `HostFailure`
+ *  pair: English for anything that is not a browser, the key for one that is. */
+const Blocked = z.object({ grpId: z.number(), reason: z.string(), said: SaidSchema.optional() });
 const QueueEntry = z.object({
   projectId: z.number(),
   grpId: z.number(),
@@ -180,8 +193,28 @@ export const UsageWindow = z.object({
   error: z.string().optional(),
 });
 
+/**
+ * A preflight check that is currently failing, on its way to the panel.
+ *
+ * No `ok`: only failures are sent. The whole set — passing included — is the
+ * settings page's answer, and it costs a host round trip to produce; this is the
+ * one the boss has to be told about without opening anything.
+ */
+export const HostFailure = z.object({
+  name: z.string(),
+  /** English, and the panel's fallback: a key its own table does not know yet still reads. */
+  detail: z.string(),
+  /** How the boss fixes it. */
+  fix: z.string().optional(),
+  /** The same two sentences as keys, rendered in whatever language this browser reads. */
+  said: SaidSchema,
+  fixSaid: SaidSchema.optional(),
+});
+
 export const SnapshotSchema = z.object({
   ready: z.boolean(),
+  /** What preflight last found wrong. Empty on a healthy host. */
+  failing: z.array(HostFailure),
   projects: z.array(Project),
   groups: z.array(Group),
   slices: z.array(Slice),
@@ -218,4 +251,5 @@ export type Archived = z.infer<typeof Archived>;
 export type Escalation = z.infer<typeof Escalation>;
 export type DraftCard = z.infer<typeof DraftCard>;
 export type Answered = z.infer<typeof Answered>;
+export type HostFailure = z.infer<typeof HostFailure>;
 export type Snapshot = z.infer<typeof SnapshotSchema>;

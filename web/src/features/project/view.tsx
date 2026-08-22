@@ -24,6 +24,8 @@ import {
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 import { StoredProjectConfigSchema } from "../../../../src/contracts/config.ts";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { ph } from "@lingui/core/macro";
 
 const projectConfigPost = api.project[":id"].config.$post;
 export type ProjectPatch = NonNullable<Parameters<typeof projectConfigPost>[0]>["json"];
@@ -60,7 +62,7 @@ const GATE_ROW = "grid grid-cols-[1.25rem_1.5rem_7rem_minmax(0,1fr)] items-basel
  * in the run order, so the screen read 4, 1, 3, 2. The order is the whole point of
  * the section, so it is the order of the rows: the ones that run on top, numbered,
  * draggable; the ones that do not under a rule, unnumbered. Position, number and
- * the 关掉的 heading say the same thing three ways.
+ * the closed heading say the same thing three ways.
  */
 /**
  * Reordering is the platform's own drag and drop. Radix has no drag primitive, and
@@ -68,6 +70,7 @@ const GATE_ROW = "grid grid-cols-[1.25rem_1.5rem_7rem_minmax(0,1fr)] items-basel
  * `Alt` plus an arrow key covers the keyboard, which native drag does not.
  */
 export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch) => void }) {
+  const { t } = useLingui();
   const [drag, setDrag] = useState<string | null>(null);
   const gates = d.config.gates ?? [];
   const { on, off } = gateRows(gates, d.resources);
@@ -79,9 +82,11 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
 
   return (
     <>
-      <Head title="闸门" note="从上往下跑，拖着改顺序" />
+      <Head title={t`Gates`} note={t`Run top-to-bottom; drag to reorder`} />
       {!d.resources.length ? (
-        <Meta className="block py-2">没探到可跑的命令。</Meta>
+        <Meta className="block py-2">
+          <Trans>No runnable commands found.</Trans>
+        </Meta>
       ) : (
         <>
           <div
@@ -93,9 +98,15 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
             )}
           >
             <span />
-            <span>顺序</span>
-            <span>名字</span>
-            <span>命令</span>
+            <span>
+              <Trans>Order</Trans>
+            </span>
+            <span>
+              <Trans>Name</Trans>
+            </span>
+            <span>
+              <Trans>Command</Trans>
+            </span>
           </div>
           <Toggles value={gates} onValueChange={(next) => patch({ gates: next })}>
             {on.map((name, i) => (
@@ -127,7 +138,7 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
                 >
                   <GripVertical size={12} strokeWidth={2} className="translate-y-0.5 text-ink-3" />
                 </span>
-                {/* The digit alone. 「第 N 道」 wrapped to two lines in a column this
+                {/* The digit alone. Spelling it out as an ordinal wrapped to two lines in a column this
                     narrow, and the header already says what the column is. */}
                 <Meta>{i + 1}</Meta>
                 <span className="truncate text-body">{name}</span>
@@ -136,11 +147,15 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
             ))}
             {off.length > 0 && (
               // Space, not a rule: the rows below draw their own, and a heavier
-              // line here made the break between 开着的 and 关掉的 look like one
+              // line here made the break between the open and closed groups look like one
               // more row boundary.
               <div className="flex items-baseline gap-3 px-2 pt-6 pb-1.5">
-                <Meta>关掉的</Meta>
-                <Meta className="text-ink-3">点一下加到最后一道</Meta>
+                <Meta>
+                  <Trans>Disabled</Trans>
+                </Meta>
+                <Meta className="text-ink-3">
+                  <Trans>Click to add to the end</Trans>
+                </Meta>
               </div>
             )}
             {off.map((res) => (
@@ -152,7 +167,11 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
               </Toggle>
             ))}
           </Toggles>
-          {!on.length && <Meta className="mt-2 block text-accent">一道都没开，LLM 审阅底下就没有地板。</Meta>}
+          {!on.length && (
+            <Meta className="mt-2 block text-accent">
+              <Trans>No gates enabled; LLM review has no floor.</Trans>
+            </Meta>
+          )}
         </>
       )}
     </>
@@ -166,13 +185,14 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
  * is a wall of frames that says nothing about what goes in them.
  */
 export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; patch: (b: ProjectPatch) => void }) {
+  const { t } = useLingui();
   const now = sandboxRows(d.baseBranch, d.branches, d.config.install, d.config.sandbox);
   const set = <K extends keyof SandboxPatch>(k: K, v: SandboxPatch[K]) =>
     patch({ sandbox: sandboxSet(now.sandbox, k, v) });
 
   return (
     <>
-      <Head title="沙盒" note="灰字是默认值" />
+      <Head title={t`Sandbox`} note={t`Gray text shows defaults`} />
       {/* The label column is the dialog's, not this pane's: settings.tsx sets it
           once so a switch between panes does not move every value sideways. */}
       <FieldGroup>
@@ -180,9 +200,9 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
             every diff the boss reads is measured against it. Empty means whatever
             the remote's HEAD says, which is re-checked when the remote renames it. */}
         <Row
-          label="基线分支"
+          label={t`Base branch`}
           value={now.baseBranch}
-          placeholder={`${d.baseBranchNow}（远端说的）`}
+          placeholder={t`${ph({ branch: d.baseBranchNow })} (per the remote)`}
           width="max-w-[14rem]"
           busy={busy}
           onSave={(v) => patch({ baseBranch: v || null })}
@@ -193,9 +213,9 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
           options={now.branches}
         />
         <Row
-          label="装依赖"
+          label={t`Install dependencies`}
           value={now.install}
-          placeholder="留空由 bootstrap 读仓库判断"
+          placeholder={t`Empty: bootstrap detects from repo`}
           busy={busy}
           onSave={(v) => patch({ install: v || null })}
         />
@@ -203,13 +223,13 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
         <Row
           label="CPU"
           value={now.cpu}
-          placeholder="宿主核数的 1/4"
+          placeholder={t`1/4 of host cores`}
           width="max-w-[9rem]"
           busy={busy}
           onSave={(v) => set("cpu", v || undefined)}
         />
         <Row
-          label="内存"
+          label={t`Memory`}
           value={now.memory}
           placeholder="8Gi"
           width="max-w-[9rem]"
@@ -218,7 +238,7 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
         />
         <DomainsRow value={now.denyDomains} busy={busy} onSave={(v) => set("denyDomains", v.length ? v : undefined)} />
         <Row
-          label="共享缓存"
+          label={t`Shared cache`}
           value={now.cacheDirs}
           placeholder="/root/.bun/install/cache:/var/tmp/orch-cache"
           busy={busy}
@@ -245,6 +265,7 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
  * list, and two keys.
  */
 function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; onSave: (v: string[]) => void }) {
+  const { t } = useLingui();
   const [draft, setDraft] = useState("");
 
   const add = () => {
@@ -255,7 +276,9 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
 
   return (
     <Field aria-labelledby="cfg-deny">
-      <FieldTitle id="cfg-deny">禁止访问</FieldTitle>
+      <FieldTitle id="cfg-deny">
+        <Trans>Blocked domains</Trans>
+      </FieldTitle>
       <FieldContent className="flex-col items-start gap-1.5">
         {value.length > 0 && (
           <div className="flex flex-wrap gap-1">
@@ -267,7 +290,7 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
                 {d}
                 <button
                   type="button"
-                  aria-label={`不再禁止 ${d}`}
+                  aria-label={t`Stop denying ${d}`}
                   disabled={busy}
                   // Same trick as the combobox list: without it the box blurs
                   // first, `add` commits the half-typed draft against the old
@@ -286,7 +309,7 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
         )}
         <Input
           className="min-w-0 max-w-[22rem] font-mono"
-          placeholder={value.length ? "再加一个" : "留空 = 出站不拦（README 那节）"}
+          placeholder={value.length ? t`Add another` : t`Empty = allow all outbound (see README)`}
           value={draft}
           disabled={busy}
           onChange={(e) => setDraft(e.target.value)}
@@ -332,26 +355,18 @@ export const ImageChoicesSchema = z
  * both lists are simply shown.
  */
 /**
- * 远程 first, because the published image is the answer for everybody not
+ * `Remote` first, because the published image is the answer for everybody not
  * developing this project: pulled on first use, needing nothing on this machine.
- * 本地 is the other half of that rule, and is exactly what a bare tag means.
+ * `Local` is the other half of that rule, and is exactly what a bare tag means.
  *
  * Empty lists say which kind of empty they are: "nothing published yet" and "could
  * not reach ghcr.io" send a reader to different places.
  */
-/**
- * What an empty box means, once we know what "empty" is allowed to fall back to.
- *
- * Before the lists land there is no default to name, and a box promising one is
- * a box that has not asked yet.
- */
-const imageHint = (loaded: boolean, own: string | undefined) => (loaded ? (own ?? "跟这台机器的默认") : "读取中…");
-
 export function ImageRow({
   value,
   busy,
   onSave,
-  label = "镜像",
+  label,
   placeholder,
 }: {
   value: string;
@@ -362,6 +377,7 @@ export function ImageRow({
    *  default row falls back to the yaml a fresh install ships with. */
   placeholder?: string;
 }) {
+  const { t } = useLingui();
   const [src, setSrc] = useState(imageSource(value));
   // The same key the settings shell reads this under. Two `ImageRow`s can be on
   // screen at once — the machine default and the project's own — and each held
@@ -376,7 +392,7 @@ export function ImageRow({
   const { options, note } = imageOptions(src, c);
   return (
     <Field aria-labelledby="cfg-image">
-      <FieldTitle id="cfg-image">{label}</FieldTitle>
+      <FieldTitle id="cfg-image">{label ?? t`Image`}</FieldTitle>
       <FieldContent className="flex-col items-start gap-1.5">
         <div className="flex w-full items-center gap-2">
           <Segments
@@ -385,17 +401,24 @@ export function ImageRow({
               if (value === "remote" || value === "local") setSrc(value);
             }}
           >
-            <Segment value="remote">远程</Segment>
-            <Segment value="local">本地</Segment>
+            <Segment value="remote">
+              <Trans>Remote</Trans>
+            </Segment>
+            <Segment value="local">
+              <Trans>Local</Trans>
+            </Segment>
           </Segments>
           <Combobox
             value={value}
             options={options}
-            // The default says 分支: this is the branch picker's control, and a
+            // The default says `Branch`: this is the branch picker's control, and a
             // filtered image list telling you there is no matching branch is one
             // word away from reading as a broken page.
-            empty="没有匹配的镜像"
-            placeholder={imageHint(c !== null, placeholder)}
+            empty={t`No matching images`}
+            // What an empty box means, once we know what "empty" falls back to:
+            // before the lists land there is no default to name, and a box
+            // promising one is a box that has not asked yet.
+            placeholder={c !== null ? (placeholder ?? t`Follow this machine's default`) : t`Loading…`}
             disabled={busy}
             width="max-w-[22rem]"
             onCommit={onSave}
@@ -454,7 +477,7 @@ function Row(props: {
               ignore it. */}
           {dirty && (
             <Button size="sm" variant="go" disabled={props.busy} onClick={() => props.onSave(v.trim())}>
-              存下
+              <Trans>Save</Trans>
             </Button>
           )}
         </InputGroup>

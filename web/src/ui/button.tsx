@@ -4,7 +4,7 @@ import { cn } from "./cn";
 /**
  * One button shape for the whole panel. `go` is the primary action on a row,
  * `danger` is for anything that discards work, `quiet` is destructive-adjacent
- * but routine (打断, 封存).
+ * but routine (interrupt, `Archive`).
  */
 export const buttonStyles = cva(
   "inline-flex items-center gap-1.5 rounded-md border text-body leading-tight whitespace-nowrap " +

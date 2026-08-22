@@ -5,12 +5,13 @@ import { z } from "zod";
 import { valueOr } from "../../src/contracts/json.ts";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/bun-sql/migrator";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ROOT } from "../../src/platform/config/load.ts";
 import { applyMigrations, open, openMemory } from "../../src/platform/persistence/database.ts";
-import { event, project } from "../../src/platform/persistence/schema.ts";
+import { escalation, event, project } from "../../src/platform/persistence/schema.ts";
+import { escalationKey } from "../../src/mech/flow/escalate.ts";
 import * as fx from "../support/factories.ts";
 
 /**
@@ -193,4 +194,38 @@ test("a failing migration leaves neither a version nor a changed row behind", as
     rows: (await db.select({ name: project.name }).from(project)).map((r) => r.name),
   }).toEqual({ stampedBroken: false, rows: ["before"] });
   rmSync(dir, { recursive: true, force: true });
+});
+
+test("the escalation backfill gives every stored question the key its prose used to be", async () => {
+  // Rows already stored have no key and cannot get one from the code that files
+  // them — they were filed before it existed. The migration is the only place the
+  // mapping from the four literal prefixes to the four keys is still known, so
+  // this runs the shipped statements rather than a copy of them.
+  const db = await openMemory();
+  const f = fx.on(db);
+  const legacy = [
+    ["budget: g1 用完了 100 tokens，全组已挂起。", escalationKey.budget],
+    ["PR #12 被关掉了（没有合入）。这一组已经停下并让出了合入队列。", escalationKey.prClosed(12)],
+    ["claude 的凭据不好使了：401", escalationKey.auth("claude")],
+    // A runtime or slug holding `_` is why the old matchers could not use LIKE.
+    ["a_b 的凭据不好使了：401", escalationKey.auth("a_b")],
+    ["GitHub me/x_y: Bad credentials\n\nGitHub 认不了这个登录了", escalationKey.githubRepo("me/x_y")],
+    // An agent's own words are nobody's subject, and nothing ever matched them.
+    ["我不知道该用哪个库", null],
+  ] as const;
+  for (const [question] of legacy) await f.escalation.create({ question, chain_state: "boss" });
+  await db.update(escalation).set({ dedupe_key: null });
+
+  const file = join(ROOT, "drizzle", "20260822013502_escalation_matches_a_key_not_prose", "migration.sql");
+  const updates = readFileSync(file, "utf8")
+    .split("--> statement-breakpoint")
+    .map((one) => one.trim())
+    // Comments and all, which is how `buildNamespace` feeds them to the driver.
+    .filter((one) => one.includes('UPDATE "escalation"'));
+  expect(updates).toHaveLength(4);
+  for (const one of updates) await db.execute(sql.raw(one));
+
+  expect(
+    (await db.select({ k: escalation.dedupe_key }).from(escalation).orderBy(escalation.id)).map((r) => r.k),
+  ).toEqual(legacy.map(([, key]) => key));
 });

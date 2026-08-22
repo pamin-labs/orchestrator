@@ -1,3 +1,4 @@
+import { msg } from "@lingui/core/macro";
 import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { jsonOr } from "../../contracts/json.ts";
 import { saveSingletonNote, singletonNote } from "../util/rows.ts";
@@ -461,7 +462,7 @@ export async function chargeIndex(
   await ctx.bus.emit({
     author: "indexer",
     kind: "tool_summary",
-    body: `index call (${total} tokens)`,
+    say: msg`index call (${{ total }} tokens)`,
     meta: { usage: u, model: spec.model, runtime },
   });
 }

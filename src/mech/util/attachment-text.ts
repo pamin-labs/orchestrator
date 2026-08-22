@@ -5,11 +5,23 @@ export type Attachment = z.infer<typeof AttachmentSchema>;
 
 const IMAGE_TAG = " (image)";
 
+/**
+ * English, and it has exactly one reader: the agent, in a prompt. The panel
+ * strips this line before drawing, so no person ever sees it — translating it
+ * into ten languages would have been ten rows nobody reads, and ADR 035 §2
+ * keeps what a model reads in English anyway.
+ *
+ * It was matched back by an identical literal in `web/src/ui/attach.ts`, which
+ * is what made it a protocol key. Nothing matches it now — the panel finds the
+ * block by its shape — so it is free to be reworded.
+ */
+const HEADER = "Attachments (paths follow):";
+
 export function withAttachments(text: string, attachments?: Attachment[]): string {
   const files = (attachments ?? []).filter((f) => f?.path);
   if (!files.length) return text;
   return (
-    `${text}\n\n附件（路径如下）：\n` +
+    `${text}\n\n${HEADER}\n` +
     files
       .map((f) => `- ${f.label ? `[${f.label}] ` : ""}${f.path}${f.type?.startsWith("image/") ? IMAGE_TAG : ""}`)
       .join("\n")

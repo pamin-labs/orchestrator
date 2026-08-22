@@ -72,7 +72,7 @@ test("inside one requirement the kinds are badges on a single list, not tabs", (
   const { getByText, queryAllByRole } = render(
     <NotesBoard compact notes={[note({ kind: "journal" }), note({ id: 2, kind: "retro", body: "这组的复盘" })]} />,
   );
-  getByText("日志");
+  getByText("工作日志");
   getByText("复盘");
   getByText("这组的复盘");
   // A compact list has no tab strip: four tabs with one row each is worse than none.
@@ -92,8 +92,8 @@ test("the board tabs only the kinds that exist, and counts each one", () => {
   getByRole("tablist");
   // Two tabs, each carrying its own count — and the one that is open says so,
   // which no string of markup could.
-  expect(getAllByRole("tab").map((t) => t.textContent)).toEqual(["日志2", "教训1"]);
-  expect(getByRole("tab", { selected: true }).textContent).toBe("日志2");
+  expect(getAllByRole("tab").map((t) => t.textContent)).toEqual(["工作日志2", "教训1"]);
+  expect(getByRole("tab", { selected: true }).textContent).toBe("工作日志2");
   // Kinds nobody wrote get no tab at all.
   expect(queryAllByRole("tab", { name: /入职包/ })).toHaveLength(0);
   expect(queryAllByRole("tab", { name: /老板说的/ })).toHaveLength(0);
@@ -141,8 +141,29 @@ test("a note with nothing to check against renders no anchor row at all", () => 
   expect(queryAllByText("md")).toHaveLength(0);
 });
 
-test("a long note is clamped until the reader opens it; a short one is never clamped", () => {
+/**
+ * happy-dom lays nothing out, so `scrollHeight` and `clientHeight` are both 0
+ * and a component that *measures* its clamp can never see one.
+ *
+ * The disclosure used to guess from `text.length`, which a test could satisfy by
+ * passing a long string — and which was wrong for the reader this product mostly
+ * has: at `line-clamp-4` a CJK glyph is about two columns, so a note between
+ * ~145 and 320 characters was clamped with no way to open it. It asks the
+ * browser now, so the test has to supply the answer a browser would.
+ */
+const overflowing = (yes: boolean) => {
+  const of = (h: number) => ({ configurable: true, get: () => h });
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", of(100));
+  Object.defineProperty(HTMLElement.prototype, "scrollHeight", of(yes ? 400 : 100));
+};
+
+afterEach(() => {
+  for (const p of ["clientHeight", "scrollHeight"]) Reflect.deleteProperty(HTMLElement.prototype, p);
+});
+
+test("a note that overflows its clamp offers the way in; one that fits does not", () => {
   const body = "一".repeat(400);
+  overflowing(true);
   const long = render(<NotesBoard compact notes={[note({ body })]} />);
   const clamped = () => long.container.querySelectorAll(".line-clamp-4").length;
   long.getByText(body);
@@ -154,6 +175,7 @@ test("a long note is clamped until the reader opens it; a short one is never cla
   long.getByRole("button", { name: "收起" });
   long.unmount();
 
+  overflowing(false);
   const short = render(<NotesBoard compact notes={[note({ body: "两行\n就两行" })]} />);
   expect(short.queryAllByRole("button", { name: "展开" })).toHaveLength(0);
 });
@@ -190,7 +212,7 @@ test("the sandbox server pane comes up reading rather than claiming a state", ()
       </TipRoot>
     </QueryClientProvider>,
   );
-  getByText("沙盒服务器");
+  getByText("沙箱服务器");
   getByText(/开容器的那个服务/);
   expect(getAllByText("读取中…").length).toBeGreaterThan(0);
 });
@@ -200,7 +222,7 @@ test("an account with nothing stored says so and offers both ways to fill it", (
     <CredPane rows={[]} onSaved={() => {}} onWaitForLogin={() => {}} />,
   );
   getByText("模型账号");
-  getByText(/真令牌不进沙盒/);
+  getByText(/真令牌不进沙箱/);
   // Both runtimes, both unconfigured, each with its own way in.
   getByText("Claude");
   getByText("Codex");
@@ -244,8 +266,8 @@ test("the skills pane says nothing about counts until the read lands", () => {
   getByText("读取中…");
   getByRole("button", { name: "重新扫描" });
   getByPlaceholderText("搜技能");
-  // No "0/0 个进沙盒" before anything is known.
-  expect(queryAllByText(/进沙盒/)).toHaveLength(0);
+  // No "0/0 个进沙箱" before anything is known.
+  expect(queryAllByText(/进沙箱/)).toHaveLength(0);
 });
 
 const skill = (name: string, over: Partial<Skill> = {}): Skill => ({
@@ -332,7 +354,7 @@ test("with nothing to check against, or a free field, what was typed is kept", (
 test("the theme control says all three states, including the one a toggle cannot", () => {
   const { getAllByRole } = render(<ThemeChoice />);
   // Three segments, and exactly one of them lit: a two-state toggle cannot hold
-  // 跟随系统 at all, and which one is chosen is `aria-checked`, not a class.
+  // `Follow the system` at all, and which one is chosen is `aria-checked`, not a class.
   expect(getAllByRole("radio").map((r) => r.textContent)).toEqual(["跟随系统", "浅色", "深色"]);
   expect(getAllByRole("radio", { checked: true })).toHaveLength(1);
 });

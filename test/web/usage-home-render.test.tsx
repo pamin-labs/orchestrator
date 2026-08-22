@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cleanup, render as mount } from "../support/render.tsx";
+import { cleanup, gone, render as mount, shown } from "../support/render.tsx";
 import { projectRow } from "../../web/src/features/home/model.ts";
 import { ringArc, ringTip, ringView, staleMark, until } from "../../web/src/features/usage/model.ts";
 import { emptyState, type State } from "../../web/src/shared/api.ts";
@@ -56,10 +56,6 @@ const home = (st: State) => {
 };
 
 /** These sit inside longer lines, so the match is a substring of the rendered text. */
-const shown = (r: ReturnType<typeof home>, text: string) =>
-  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
-const gone = (r: ReturnType<typeof home>, text: string) =>
-  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);
 
 test("a project row prints only the counts that are facts", () => {
   const st = emptyState();
@@ -67,9 +63,11 @@ test("a project row prints only the counts that are facts", () => {
   st.groups.push(group(1, 1, { spent_tokens: 1200 }), group(2, 1, { status: "RUNNING", name: "在跑的" }));
   const page = home(st);
 
-  // 2 需求 and 1.2k tokens are the row's right edge, and both exist here.
+  // 2 `Requirement` and the spend are the row's right edge, and both exist here. The
+  // count is written the way this catalog's language writes it: Chinese groups
+  // by `万`, so 1200 is below its first tier and prints in full.
   shown(page, "2 个需求");
-  shown(page, "1.2k tokens");
+  shown(page, "1200 tokens");
   // A running requirement names itself, so the boss knows what is spending.
   shown(page, "在跑：在跑的");
   shown(page, "1 个在跑");
@@ -80,7 +78,7 @@ test("a project with nothing spent prints neither a zero count nor a zero spend"
   st.projects.push(project(1, "alpha"));
   const page = home(st);
 
-  // 0 个需求 next to 空着 is the same absence twice.
+  // 0 `requirements` next to `Empty` is the same absence twice.
   gone(page, "0 个需求");
   gone(page, "0 tokens");
   // A project nothing was ever asked of carries its own action instead of a state.
@@ -92,7 +90,11 @@ test("waiting work replaces the project's state line and lists what is waiting",
   const st = emptyState();
   st.projects.push(project(1, "alpha"));
   st.groups.push(group(1, 1, { status: "DRAFT" }));
-  st.draftCards.push({ grpId: 1, body: "目标: 做完它", at: 1000, unknownPaths: null });
+  // A real Markdown card, not the pre-Markdown `目标: …` form the other fixtures
+  // use. Both readers matched the goal with `startsWith("目标")`, which a heading
+  // never satisfies — so every queued card read `Plan card not submitted` with
+  // the card sitting right there, and four fixtures on the old grammar hid it.
+  st.draftCards.push({ grpId: 1, body: "## goal\n做完它\n\n## risk\n无", at: 1000, unknownPaths: null });
   st.escalations.push({
     id: 7,
     grp_id: 1,
@@ -114,6 +116,11 @@ test("waiting work replaces the project's state line and lists what is waiting",
   // The counts that are zero stay off the line entirely.
   gone(page, "片待查收");
   gone(page, "个待合入");
+  // The goal itself, which is the whole reason the row shows a card rather than
+  // a count. Asserted because it was silently absent: with the goal unmatched the
+  // queue printed `计划卡还没交` beside a card that had been filed.
+  shown(page, "做完它");
+  gone(page, "计划卡还没交");
 });
 
 test("the project wanting the boss most is read first", () => {
@@ -176,9 +183,9 @@ test("the tooltip carries the digits the ring cannot, and the reason when there 
   expect(ringTip({ v: 12.4, at: Math.round(now / 1000) + 3 * 3600 + 12 * 60 + 30, read: now, stale: false })).toBe(
     "12% · 3h12m后重置",
   );
-  expect(ringTip({ v: 66, read: now - 20 * 60_000, stale: false })).toBe("66% · 20m 前");
+  expect(ringTip({ v: 66, read: now - 20 * 60_000, stale: false })).toBe("66% · 20 分钟前");
   // A reset three days out is not worth a minute count.
-  expect(until(Math.round(now / 1000) + 2 * 86_400 + 4 * 3600 + 30)).toBe("2天4h");
+  expect(until(Math.round(now / 1000) + 2 * 86_400 + 4 * 3600 + 30)).toBe("2天4小时");
   expect(until(Math.round(now / 1000) - 60)).toBe("即将重置");
   expect(until()).toBe("");
 
@@ -226,7 +233,7 @@ test("a project's row data is decided before anything is drawn", () => {
   const row = projectRow(st, 1);
   // PLANNING counts as running on this line; PAUSED does not.
   expect(row.live).toEqual(["在想"]);
-  expect(row.meta).toEqual(["2 个需求", "1.2k tokens"]);
+  expect(row.meta).toEqual(["2 个需求", "1200 tokens"]);
   expect(row.bits).toEqual([]);
   expect(row.n).toBe(0);
 

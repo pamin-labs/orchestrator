@@ -1,4 +1,5 @@
-import type { PanelFrame } from "../../shared/stream";
+import { frameText, type PanelFrame } from "../../shared/stream";
+import { BOOTSTRAP_FAILED, BOOTSTRAP_OK, BOOTSTRAP_START } from "../../../../src/contracts/events.ts";
 
 /**
  * What a sandbox rebuild looks like from the frame buffer.
@@ -25,21 +26,38 @@ export interface Bootstrap {
   until: number | null;
 }
 
-const STARTED = "沙盒是新的";
-const ENDED = /^装好了|^装失败了/;
+/**
+ * Matched on `meta.step`, never on the text.
+ *
+ * These three rows used to be found by their Chinese bodies, which recognised a
+ * rebuild for exactly one reader; `start.ts` writes `msg` templates now, so the
+ * text arrives in whichever of ten languages this browser reads, and no prefix
+ * match can hold.
+ */
+/**
+ * `failed` had already rotted the same way. It tested the body against the
+ * panel's own translation of "Bootstrap failed", which matched only because
+ * zh.po renders that as `Bootstrap failed` — the characters `start.ts` happened to
+ * hardcode. In every other language a failed run reported itself as finished.
+ */
+const ended = (step: string | undefined): boolean => step === BOOTSTRAP_OK || step === BOOTSTRAP_FAILED;
 
 export function bootstrapOf(frames: PanelFrame[], grpId: number): Bootstrap {
   const mine = frames.filter((f) => f.grpId === grpId && f.author === "orchestrator");
   // One run, not every run in this session: a second rebuild starts its own, and
   // concatenating them made the header quote the previous run's command.
-  const began = mine.findLast((f) => f.cls === "state" && f.text.startsWith(STARTED));
+  const began = mine.findLast((f) => f.cls === "state" && f.step === BOOTSTRAP_START);
   const since = began?.at ?? 0;
   const lines = mine.filter((f) => f.cls === "tool" && f.agentId == null && f.at >= since);
-  const done = mine.findLast((f) => f.cls === "state" && f.at >= since && ENDED.test(f.text));
-  const cmd = lines.find((f) => f.text.startsWith("$ "))?.text.slice(2) ?? null;
+  const done = mine.findLast((f) => f.cls === "state" && f.at >= since && ended(f.step));
+  const cmd =
+    lines
+      .map(frameText)
+      .find((line: string) => line.startsWith("$ "))
+      ?.slice(2) ?? null;
   return {
     running: (!!began || !!lines.length) && !done,
-    failed: !!done?.text.startsWith("装失败了"),
+    failed: done?.step === BOOTSTRAP_FAILED,
     cmd,
     lines,
     since: since || lines[0]?.at || 0,

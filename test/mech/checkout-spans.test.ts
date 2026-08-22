@@ -14,7 +14,7 @@ import { testContext } from "../support/test-context.ts";
  * The corpus read is a container round trip whose cost scales with the
  * repository, and the watchdog makes it once per project per tick.
  *
- * Without a span it is invisible in 系统耗时, and invisible reads as free: the
+ * Without a span it is invisible in `System timing`, and invisible reads as free: the
  * index rule showed one number and nothing said whether it was waiting on the
  * container or on the GitHub call above it. `AGENTS.md` requires a span on
  * anything that waits, and this is the check that the requirement was met rather

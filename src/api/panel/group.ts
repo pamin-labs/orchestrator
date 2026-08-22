@@ -1,9 +1,11 @@
-import { and, asc, desc, eq, inArray, isNull, like, ne, or, sql } from "drizzle-orm";
+import { msg } from "@lingui/core/macro";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { dropSlices } from "../../platform/persistence/database.ts";
 import { addNote, baseBranchOf } from "../../mech/util/rows.ts";
 import { interrupt, park, pause, resume, unpark } from "../../mech/flow/intercept.ts";
 import { dropGroup, startGroup, sweepApproved } from "../../mech/flow/start.ts";
+import { escalationKey } from "../../mech/flow/escalate.ts";
 import { openPr, prBody, prTitle } from "../../mech/git/prwatch.ts";
 import { joinQueue, landed } from "../../mech/flow/mergequeue.ts";
 import { validateDraftCard } from "../../mech/util/validate.ts";
@@ -14,13 +16,16 @@ import { z } from "zod";
 import { Attachment as AttachmentSchema, IdParams } from "../../contracts/fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import type { Handler } from "../../http/handler.ts";
-import { bad, json, message } from "../../http/respond.ts";
+import { bad, badText, json, message } from "../../http/respond.ts";
+import { noGithubClient } from "./authflow.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { slug } from "../slug.ts";
-import { say } from "../../platform/text/lang.ts";
+import { renderSaid } from "../../platform/text/lang.ts";
+import type { Said } from "../../contracts/said.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 import { escalation, event, grp as grps, note, project, slice, task } from "../../platform/persistence/schema.ts";
+import { outputLanguage } from "../../contracts/config.ts";
 
 /** What the boss first asked for, for this group. */
 async function firstIdea(db: DB, groupId: number): Promise<string> {
@@ -80,10 +85,15 @@ export const postIdea = (async (ctx, _req, _p, b) => {
         undeclared.map(async (o) => ({ id: o.id, name: o.name, idea: await firstIdea(ctx.db, o.id) })),
       )),
     ];
+    // `boundary` and nothing else. `applyPayloadCards` keeps the *last* builder
+    // that fired and `idea` is after `boundary` in that list, so sending both
+    // replaced the whole boundary card — the `orch owns <id> --path …` commands
+    // this turn exists to issue — with "The boss wants: …". The requirement is
+    // already the first row of `needBoundary`, so nothing is lost by dropping it.
     await ctx.sched.enqueue("agent_turn", {
       grp_id: grp.id,
       priority: 6,
-      payload: { role: roleFor(ctx, "cut_boundary"), boundary: needBoundary, idea: b.text },
+      payload: { role: roleFor(ctx, "cut_boundary"), boundary: needBoundary },
     });
   }
 
@@ -112,7 +122,7 @@ export const DraftDecisionBody = z.object({
  * The boss sent the card back.
  *
  * PLANNING, not DRAFT: left in DRAFT it still counted as a decision waiting on
- * the boss, still showed the rejected card, and 批准开工 still worked on it — one
+ * the boss, still showed the rejected card, and `Approve and start` still worked on it — one
  * stray click approves the very plan that was just sent back. `approved_at` goes
  * with it, or the next card to reach DRAFT starts itself on the strength of a yes
  * the boss said to a plan that no longer exists.
@@ -123,7 +133,7 @@ async function sendBack(ctx: Ctx, grpId: number, b: z.infer<typeof DraftDecision
   const projectId = owner?.project_id ?? null;
   // Back to PLANNING, which is what the group actually is now. Left in DRAFT it
   // still counted as a decision waiting on the boss, still showed the rejected
-  // card, and 批准开工 still worked on it — one stray click approves the very
+  // card, and `Approve and start` still worked on it — one stray click approves the very
   // plan that was just sent back.
   //
   // Clearing approved_at as well: sending a plan back withdraws the approval, or
@@ -131,7 +141,7 @@ async function sendBack(ctx: Ctx, grpId: number, b: z.infer<typeof DraftDecision
   // boss said to a plan that no longer exists.
   const why = withAttachments(b.reason ?? "respec", b.attachments);
   await ctx.bus.transaction(async (tx) => {
-    await addNote(tx, { projectId, grpId, kind: "fact", lang: ctx.config.language, body: fact });
+    await addNote(tx, { projectId, grpId, kind: "fact", lang: outputLanguage(ctx.config), body: fact });
     await tx
       .update(grps)
       .set({ status: "PLANNING", approved_at: null })
@@ -154,7 +164,7 @@ async function sendBack(ctx: Ctx, grpId: number, b: z.infer<typeof DraftDecision
  * paths merged. One click has to be final, so the approval is written and the
  * Architect is put back on the boundary it forgot to cut.
  */
-async function heldForBoundary(ctx: Ctx, grpId: number, why: string): Promise<void> {
+async function heldForBoundary(ctx: Ctx, grpId: number, why: Said): Promise<void> {
   // A refusal used to end here, and the click was gone: the group sat in DRAFT
   // with nothing recording that the boss had said yes, and nobody re-ran it when
   // the group holding the paths merged. One click has to be final.
@@ -193,7 +203,11 @@ async function heldForBoundary(ctx: Ctx, grpId: number, why: string): Promise<vo
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config.language, "group.approve_held", { why }),
+    // `why` verbatim — a descriptor cannot nest in another. "approval recorded,
+    // starts by itself" is not lost: `approved_at` is set two lines up and the
+    // card reads "Approved · Awaiting boundary" from `heldApproved` in
+    // `shared/select.ts`. What the event has to add is *which* boundary.
+    say: why,
   });
 }
 
@@ -207,7 +221,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
   }
 
   // The boss usually approves what the Dispatcher filed; an edited card in the
-  // request body is the "改完批准" path.
+  // request body is the edit-then-approve path.
   const [filed] = await ctx.db
     .select({ body: note.body })
     .from(note)
@@ -221,7 +235,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
 
   if (card) {
     const v = validateDraftCard(card);
-    if (!v.ok) return bad(v.error);
+    if (!v.ok) return badText(v.error);
     // Four tables point at a slice, not one. Clearing only `task` left `job`,
     // `note` and `slice.depends_on` holding references, so re-approving a group
     // that had already run died on `FOREIGN KEY constraint failed` — see
@@ -264,13 +278,21 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
   // lost between the two clicks.
   const start = await canStart(ctx.db, grpId);
   if (!start.ok) {
-    await heldForBoundary(ctx, grpId, start.reason ?? "");
+    const why = start.reason ?? msg`the boundary still overlaps`;
+    await heldForBoundary(ctx, grpId, why);
     // 200, not 422: the boss did decide, and a red error toast says the opposite.
-    return message(say(ctx.config.language, "group.approve_held", { why: start.reason ?? "" }));
+    // Both halves rendered into one language and joined as strings — not one key
+    // with the other rendered into its values. Joining two rendered sentences is
+    // safe because nothing renders the result again; a descriptor carrying one is
+    // not, because the panel renders the outer in the language *it* reads.
+    const lang = outputLanguage(ctx.config);
+    return message(
+      `${renderSaid(lang, msg`Approval recorded — it starts by itself once the boundary clears.`)} ${renderSaid(lang, why)}`,
+    );
   }
 
   const err = await startGroup(ctx, grpId);
-  return err ? bad(err) : message("ok");
+  return err ? badText(err) : message("ok");
 }) satisfies Handler<z.infer<typeof DraftDecisionBody>, z.infer<typeof DraftDecision>>;
 
 /**
@@ -281,7 +303,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
  */
 export async function landGroup(ctx: Ctx, grpId: number, by: string): Promise<number[]> {
   const stale = await landed(ctx.db, grpId);
-  await ctx.bus.emit({ grpId, author: by, kind: "state_change", body: say(ctx.config.language, "group.merged") });
+  await ctx.bus.emit({ grpId, author: by, kind: "state_change", say: msg`merged into main` });
 
   // Turn this group's retro into lessons while the branch is fresh. This is
   // the only mechanism by which the twentieth group is smarter than the
@@ -346,7 +368,7 @@ export const GroupControlBody = z.object({
 
 async function changeBudget(ctx: Ctx, grpId: number, tokens: number | null | undefined): Promise<Response> {
   // Budget exhaustion suspends the group, and until this existed there was no
-  // route out of it: 继续 un-paused a group the scheduler refused to admit,
+  // route out of it: `Resume` un-paused a group the scheduler refused to admit,
   // so the next tick suspended it again. A limit needs a way to be raised.
   const t = normalizeBudget(tokens);
   const [spent] = await ctx.db
@@ -369,8 +391,9 @@ function normalizeBudget(tokens: number | null | undefined): number | null {
 
 function budgetError(tokens: number | null, spent: number): Response | null {
   if (tokens === null) return null;
-  if (!(tokens > 0)) return bad("tokens must be a positive number, or null to lift the cap");
-  if (tokens <= spent) return bad(`already spent ${spent} tokens — a cap at ${tokens} would stop it again immediately`);
+  if (!(tokens > 0)) return bad(msg`tokens must be a positive number, or null to lift the cap`);
+  if (tokens <= spent)
+    return bad(msg`already spent ${{ spent }} tokens — a cap at ${{ tokens }} would stop it again immediately`);
   return null;
 }
 
@@ -384,7 +407,7 @@ async function recordBudget(ctx: Ctx, grpId: number, tokens: number | null): Pro
     body: description,
   });
   // Raising the cap is the answer to the question the watchdog asked, so it
-  // also closes it: a stale "out of budget" row in 等你 is worse than none.
+  // also closes it: a stale "out of budget" row in `To do` is worse than none.
   await ctx.db
     .update(escalation)
     .set({
@@ -394,12 +417,15 @@ async function recordBudget(ctx: Ctx, grpId: number, tokens: number | null): Pro
       answered_at: Date.now(),
     })
     // `isNull`: an unanswered row is what this closes, and `= NULL` matches none.
+    // `dedupe_key`, not `question LIKE 'budget:%'` — the watchdog had to glue a
+    // `budget: ` prefix onto the front of a translated sentence to keep that
+    // pattern working, which is the seam this column removes.
     .where(
       and(
         eq(escalation.grp_id, grpId),
         eq(escalation.chain_state, "boss"),
         isNull(escalation.answer),
-        like(escalation.question, "budget:%"),
+        eq(escalation.dedupe_key, escalationKey.budget),
       ),
     );
 }
@@ -413,8 +439,7 @@ async function resumeGroup(ctx: Ctx, grpId: number): Promise<Response> {
     .where(eq(grps.id, grpId));
   if (g?.budget_tokens != null && g.spent_tokens >= g.budget_tokens) {
     return bad(
-      `out of budget (${g.spent_tokens}/${g.budget_tokens} tokens). Raise the cap first, ` +
-        `or it stops again on the next tick.`,
+      msg`out of budget (${{ spent: g.spent_tokens }}/${{ budget: g.budget_tokens }} tokens). Raise the cap first, or it stops again on the next tick.`,
     );
   }
   await resume(ctx, grpId);
@@ -433,7 +458,7 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
     .innerJoin(project, eq(project.id, grps.project_id))
     .where(eq(grps.id, grpId));
   if (!g) return message("no such group", 404);
-  if (!ctx.gh) return bad("no GitHub client on this server");
+  if (!ctx.gh) return noGithubClient();
   await ctx.db.update(grps).set({ pr_number: null }).where(eq(grps.id, grpId));
   const r = await openPr({
     ctx,
@@ -446,27 +471,39 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
     // Put the old number back: a group with no PR and no way to open one is
     // worse off than one whose PR is closed.
     await ctx.db.update(grps).set({ pr_number: g.pr_number }).where(eq(grps.id, grpId));
-    return bad(r.error);
+    return badText(r.error);
   }
   await ctx.db.update(grps).set({ status: "PR_OPEN", paused_at: null, pause_reason: null }).where(eq(grps.id, grpId));
   await joinQueue(ctx.db, grpId);
-  await ctx.db
-    .update(escalation)
-    .set({ chain_state: "answered", answered_by: "boss", answer: `opened #${r.number} instead` })
-    .where(and(eq(escalation.grp_id, grpId), isNull(escalation.answer), like(escalation.question, "PR #%被关掉了%")));
+  // The question `prClosed` filed about *this* PR, by the key it filed under.
+  // The `LIKE` over a Chinese sentence fragment this replaces matched any closed-PR question in
+  // the group, and a group with no PR number at all still ran it — closing a
+  // question about some other PR is worse than leaving this one open.
+  if (g.pr_number !== null) {
+    await ctx.db
+      .update(escalation)
+      .set({ chain_state: "answered", answered_by: "boss", answer: `opened #${r.number} instead` })
+      .where(
+        and(
+          eq(escalation.grp_id, grpId),
+          isNull(escalation.answer),
+          eq(escalation.dedupe_key, escalationKey.prClosed(g.pr_number)),
+        ),
+      );
+  }
   await ctx.bus.emit({
     grpId,
     author: "boss",
     kind: "state_change",
-    body: `opened PR #${r.number} to replace the closed one`,
+    say: msg`opened PR #${{ pr: r.number }} to replace the closed one`,
     meta: { pr: r.number },
   });
   return json({ number: r.number });
 }
 
 async function dropRequirement(ctx: Ctx, grpId: number, why: string | undefined): Promise<Response> {
-  // 不做了. A requirement that turned out to be a duplicate, or that someone
-  // else already fixed, had no way off the board: 退回重拆 sends it back to the
+  // `Don't proceed`. A requirement that turned out to be a duplicate, or that someone
+  // else already fixed, had no way off the board: `Return for re-decomposition` sends it back to the
   // Dispatcher, which writes another card for work nobody wants. The paths it
   // held stayed held, so a group waiting on them waited forever.
   const [g] = await ctx.db.select({ status: grps.status, name: grps.name }).from(grps).where(eq(grps.id, grpId));
@@ -491,7 +528,7 @@ async function rebuildSandbox(ctx: Ctx, grpId: number): Promise<Response> {
     grpId,
     author: "boss",
     kind: "state_change",
-    body: say(ctx.config.language, "sandbox.rebuild"),
+    say: msg`container discarded; the next turn rebuilds it — clone and install. The branch lives in the host repo`,
   });
   await ctx.sched.tick();
   return message("ok");

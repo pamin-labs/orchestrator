@@ -1,14 +1,17 @@
 import { beforeEach, expect, test } from "bun:test";
 import { z } from "zod";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
-import { Scheduler, type Job } from "../../src/platform/scheduling/scheduler.ts";
+import type { Job } from "../../src/platform/scheduling/scheduler.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { makeGithub, type GithubFetcher } from "../../src/mech/git/github.ts";
+import { escalationKey } from "../../src/mech/flow/escalate.ts";
 import { repoHeld, resetRepoHolds, REPO_HOLD_MS } from "../../src/mech/git/repository.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { and, eq, isNull, notInArray } from "drizzle-orm";
 import { escalation, job, project } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
+import { newScheduler } from "../support/scheduler.ts";
+import type { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 
 /**
  * The fifth admission gate: GitHub stopped accepting us.
@@ -33,7 +36,7 @@ async function seed(): Promise<{ db: DB; sched: Scheduler; ran: Job[] }> {
     await f.agent.create({ project_id: g, grp_id: g, runtime: "claude", token: `tok-${g}` });
   }
   const ran: Job[] = [];
-  const sched = new Scheduler(db, async (j) => void ran.push(j), {
+  const sched = newScheduler(db, async (j) => void ran.push(j), {
     maxGroups: 5,
     repoHeld: (projectId) => repoHeld(db, projectId),
   });
@@ -47,7 +50,7 @@ const answer =
 
 const openEscalations = (db: DB) =>
   db
-    .select({ question: escalation.question })
+    .select({ dedupe_key: escalation.dedupe_key, question: escalation.question })
     .from(escalation)
     .where(and(isNull(escalation.answer), notInArray(escalation.chain_state, ["answered", "revoked"])));
 
@@ -103,7 +106,7 @@ test("the next success clears the hold, with nobody clicking anything", async ()
   await makeGithub(h.db, answer(200, { number: 7 })).request("GET", "/repos/me/x/pulls/7", z.json());
   expect(await repoHeld(h.db, 1)).toBe(false);
   // And the question goes with it: a boss who reconnects GitHub and watches the
-  // fleet resume should not also have to dismiss a 待办 item about it.
+  // fleet resume should not also have to dismiss a `To do` item about it.
   expect(await openEscalations(h.db)).toHaveLength(0);
 });
 
@@ -151,7 +154,7 @@ test("a project that recovers and breaks again can warn a second time", async ()
   expect(await repoHeld(h.db, 1)).toBe(true);
 });
 
-test("recovery clears only the literal repository prefix", async () => {
+test("recovery clears one repository's question and not a lookalike's", async () => {
   const h = await seed();
   const bad = makeGithub(h.db, answer(401, { message: "Bad credentials" }));
   await bad.request("GET", "/repos/me/a_b/pulls/7", z.json());
@@ -161,7 +164,10 @@ test("recovery clears only the literal repository prefix", async () => {
   await makeGithub(h.db, answer(200, { number: 7 })).request("GET", "/repos/me/a_b/pulls/7", z.json());
   const remaining = await openEscalations(h.db);
   expect(remaining).toHaveLength(1);
-  expect(remaining[0]?.question).toContain("GitHub me/axb:");
+  // `a_b` against `axb`: a slug may contain `_`, and the `starts_with` this
+  // replaces existed only because `LIKE` would have read it as a wildcard. The
+  // key is compared with `=`, which has no pattern in it to go wrong.
+  expect(remaining[0]?.dedupe_key).toBe(escalationKey.githubRepo("me/axb"));
 });
 
 test("the escalation reaches the boss without waiting for an agent to pass it up", async () => {

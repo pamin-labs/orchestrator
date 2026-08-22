@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useClamped } from "../../ui/clamped";
 import { api, type Evidence, EvidenceSchema, GateLogResponseSchema, readApi } from "../../shared/api";
 import { nl } from "../../shared/prose";
 import { cn } from "../../ui/cn";
@@ -8,6 +9,8 @@ import { Button } from "../../ui/button";
 import { DiffView } from "../diff/view";
 import { Segment, Segments } from "../../ui/segment";
 import { Tip } from "../../ui/tooltip";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 
 const PAD = "px-4";
 const failed = (verdict: { body: string }) => /\bfail\b/i.test(verdict.body);
@@ -32,7 +35,12 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
     queryKey: ["evidence", sliceId],
     queryFn: () => readApi(api.slices[":id"].evidence.$get({ param: { id: String(sliceId) } }), EvidenceSchema),
   });
-  if (!evidence) return <Message>读改动…</Message>;
+  if (!evidence)
+    return (
+      <Message>
+        <Trans>Loading changes…</Trans>
+      </Message>
+    );
   // Keyed by the slice: which tab opens is decided from that slice's verdicts,
   // so a different slice starts from its own default rather than inheriting the
   // tab the reader happened to leave the last one on.
@@ -81,7 +89,12 @@ function EvidenceContent({
   sliceId: number;
   actions?: React.ReactNode;
 }) {
-  if (!actions && !hasEvidence(evidence)) return <Message>这一片还没跑出改动，也还没有判词。</Message>;
+  if (!actions && !hasEvidence(evidence))
+    return (
+      <Message>
+        <Trans>This slice hasn't produced changes yet and has no verdict.</Trans>
+      </Message>
+    );
   const summary = statSummary(evidence.stat);
   const stats = {
     files: statCount(summary, /(\d+) files? changed/),
@@ -109,15 +122,23 @@ function EvidenceHeader({
   setView: (view: string) => void;
   actions?: React.ReactNode;
 }) {
+  const { t } = useLingui();
+  // Destructured so the macro names the placeholder off the binding: `${files}`
+  // extracts as `{files}`, where `${stats.files}` would be `{0}`.
+  const { files } = stats;
   return (
     <div className={cn(PAD, "sticky top-0 z-10 border-b border-rule bg-rail py-2.5")}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
         <span className="min-w-0 text-body text-ink">{evidence.accept_spec}</span>
         <Meta className="shrink-0">
-          {stats.files ? `${stats.files} 个文件` : "无改动"}
+          {files ? t`${files} files` : t`No changes`}
           {evidence.diff && ` · +${stats.plus} −${stats.minus}`}
         </Meta>
-        {evidence.retries > 0 && <Meta className="shrink-0 text-warn">被打回过 {evidence.retries} 次</Meta>}
+        {evidence.retries > 0 && (
+          <Meta className="shrink-0 text-warn">
+            <Trans>sent back {{ times: evidence.retries }} times</Trans>
+          </Meta>
+        )}
         <span className="grow" />
         {actions}
       </div>
@@ -135,6 +156,7 @@ function EvidenceTabs({
   view: string;
   setView: (view: string) => void;
 }) {
+  const { t } = useLingui();
   const bad = evidence.verdicts.some(failed);
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -152,8 +174,10 @@ function EvidenceTabs({
         ))}
       </Segments>
       {evidence.scope === "branch" && (
-        <Tip label="切片基线被 rebase 冲掉了，这里是整条分支相对 origin/main 的改动">
-          <Meta className="cursor-help underline decoration-dotted">整条分支</Meta>
+        <Tip label={t`Slice baseline was lost in rebase; showing the entire branch relative to origin/main`}>
+          <Meta className="cursor-help underline decoration-dotted">
+            <Trans>Entire branch</Trans>
+          </Meta>
         </Tip>
       )}
     </div>
@@ -163,7 +187,12 @@ function EvidenceTabs({
 function EvidenceBody({ evidence, view, sliceId }: { evidence: Evidence; view: string; sliceId: number }) {
   if (view === "verdicts") return <Verdicts rows={evidence.verdicts} />;
   if (view !== "diff") return <GateLog key={view} sliceId={sliceId} name={view} />;
-  if (!evidence.diff) return <Message>没有 diff 可读。这一片没有记下基线 commit，或者沙盒已经回收了。</Message>;
+  if (!evidence.diff)
+    return (
+      <Message>
+        <Trans>No diff available. The slice didn't record a baseline commit, or the sandbox has been reclaimed.</Trans>
+      </Message>
+    );
   return (
     <div className="h-[34rem] bg-sunk">
       <DiffView diff={evidence.diff} truncated={evidence.truncated} />
@@ -182,11 +211,12 @@ function Verdicts({ rows }: { rows: Evidence["verdicts"] }) {
 }
 
 const verdictTone = (no: boolean) => (no ? "text-bad" : "text-ok");
-const verdictLabel = (no: boolean) => (no ? "没过" : "过");
-const toggleLabel = (open: boolean) => (open ? "收起" : "展开");
+const verdictLabel = (no: boolean) => (no ? t`Fail` : t`Pass`);
+const toggleLabel = (open: boolean) => (open ? t`Collapse` : t`Expand`);
 
 function VerdictRow({ author, body }: { author: string; body: string }) {
   const [open, setOpen] = useState(false);
+  const [ref, clamped] = useClamped<HTMLDivElement>(`${body}:${open}`);
   const no = failed({ body });
   return (
     <div className="border-t border-rule-soft py-2.5 first:border-t-0">
@@ -194,13 +224,14 @@ function VerdictRow({ author, body }: { author: string; body: string }) {
         <span className="font-mono text-meta text-ink-3">{author}</span>
         <span className={cn("text-meta font-semibold", verdictTone(no))}>{verdictLabel(no)}</span>
         <span className="grow" />
-        {body.length > 200 && (
+        {(clamped || open) && (
           <Button variant="quiet" size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>
             {toggleLabel(open)}
           </Button>
         )}
       </div>
       <div
+        ref={ref}
         className={cn(
           "mt-1 max-w-[72ch] whitespace-pre-wrap break-words text-body",
           no ? "text-bad" : "text-ink-2",
@@ -223,6 +254,7 @@ function filterLines(lines: string[], query: string): string[] {
 
 /** The same race one level down: two gate tabs in a row, answered out of order. */
 function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
+  const { t } = useLingui();
   const [query, setQuery] = useState("");
   const { data: text } = useQuery({
     queryKey: ["gate", sliceId, name],
@@ -232,11 +264,16 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
           api.slices[":id"].gate[":name"].$get({ param: { id: String(sliceId), name }, query: {} }),
           GateLogResponseSchema,
         )
-      )?.text ?? "读不到日志",
+      )?.text ?? t`Can't read log`,
   });
-  if (text === undefined) return <Message>读日志…</Message>;
+  if (text === undefined)
+    return (
+      <Message>
+        <Trans>Loading log…</Trans>
+      </Message>
+    );
   const lines = logLines(text);
-  if (!lines.some((line) => line.trim())) return <Message>{name} 没有输出。</Message>;
+  if (!lines.some((line) => line.trim())) return <Message>{t`${name} produced no output.`}</Message>;
   const fails = lines.filter((line) => /^\s*\(fail\)/.test(line));
   return (
     <div>
@@ -257,17 +294,18 @@ function GateToolbar({
   query: string;
   setQuery: (query: string) => void;
 }) {
+  const { t } = useLingui();
   return (
     <div className={cn(PAD, "flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-rule py-1.5")}>
       <span className={cn("text-secondary font-semibold", fails ? "text-bad" : "text-ok")}>
-        {fails ? `${fails} 条没过` : "全过"}
+        {fails ? t`${fails} failed` : t`All pass`}
       </span>
-      <Meta>{lines} 行</Meta>
+      <Meta>{t`${lines} lines`}</Meta>
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        aria-label="过滤这份日志"
-        placeholder="过滤这份日志…"
+        aria-label={t`Filter this log`}
+        placeholder={t`Filter this log…`}
         className="ml-auto w-44 rounded-md border border-rule bg-paper px-2 py-0.5 text-meta outline-none focus-visible:border-accent"
       />
     </div>
@@ -284,7 +322,8 @@ function keyed(values: string[]): Array<{ key: string; value: string }> {
 }
 
 function GateTranscript({ lines, query }: { lines: string[]; query: string }) {
-  if (!lines.length) return <LogPane>{query ? "没有匹配的行" : "这份日志是空的"}</LogPane>;
+  const { t } = useLingui();
+  if (!lines.length) return <LogPane>{query ? t`No matching lines` : t`This log is empty`}</LogPane>;
   return (
     <LogPane>
       {keyed(lines).map(({ key, value }) => (

@@ -5,7 +5,7 @@ import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig, loadRoles } from "../../src/platform/config/load.ts";
 import { agent } from "../../src/platform/persistence/schema.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
-import { Scheduler, type Executor } from "../../src/platform/scheduling/scheduler.ts";
+import type { Executor } from "../../src/platform/scheduling/scheduler.ts";
 import { makeExecutor, sessionFor, type ExecDeps } from "../../src/application/executor.ts";
 import type { TurnResult } from "../../src/runtime/claude.ts";
 import type { TurnSpec } from "../../src/runtime/claude.ts";
@@ -13,6 +13,7 @@ import { fakeSandbox } from "../support/fake-sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { tempDir } from "../support/temp.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 // A big cacheRead per turn, small input/cacheCreate — the pattern that made
 // overTokenBudget trip every turn when session_tokens counted all four fields.
@@ -37,7 +38,7 @@ async function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
   const cfg = { ...loadConfig(), dataDir: tempDir("orch-data-") };
   const specs: TurnSpec[] = [];
   let exec: Executor;
-  const sched = new Scheduler(db, (j) => exec(j));
+  const sched = newScheduler(db, (j) => exec(j));
   const ctx: Ctx = {
     db,
     bus,

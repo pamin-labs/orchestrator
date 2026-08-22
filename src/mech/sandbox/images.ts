@@ -45,7 +45,7 @@ async function published(): Promise<{ tags: string[]; note?: string }> {
       signal: AbortSignal.timeout(6000),
     });
     const token = z.object({ token: z.string().min(1) }).safeParse(await auth.json()).data?.token;
-    if (!token) return { tags: [], note: "拿不到 registry 的读取令牌" };
+    if (!token) return { tags: [], note: "could not get a read token from the registry" };
 
     // fallow-ignore-next-line security-sink -- fixed `https://ghcr.io` origin, and `repo` is `PUBLISHED_REPO`, the module constant in `sandbox.ts`; the bearer token was minted for that same repository one call above.
     const res = await fetch(`https://ghcr.io/v2/${repo}/tags/list?n=100`, {
@@ -54,7 +54,7 @@ async function published(): Promise<{ tags: string[]; note?: string }> {
     });
     return tagsFrom(res.status, await res.json().catch(() => null));
   } catch (e) {
-    return { tags: [], note: `连不上 ghcr.io：${errText(e, 80)}` };
+    return { tags: [], note: `cannot reach ghcr.io: ${errText(e, 80)}` };
   }
 }
 
@@ -70,10 +70,11 @@ export function tagsFrom(status: number, body: unknown): { tags: string[]; note?
   if (status === 401 || status === 403 || status === 404) {
     // The package has never been published, or is private. Both look the same
     // from here, and both mean "nothing to choose yet" rather than "broken".
-    return { tags: [], note: "还没发布过镜像 —— 先跑一次 release，或者用本地构建的" };
+    return { tags: [], note: "no image published yet — run a release, or use a locally built one" };
   }
   const parsed = z.object({ tags: z.array(z.string()).default([]) }).safeParse(body);
-  if (status < 200 || status >= 300 || !parsed.success) return { tags: [], note: `registry 答 HTTP ${status}` };
+  if (status < 200 || status >= 300 || !parsed.success)
+    return { tags: [], note: `the registry answered HTTP ${status}` };
   // `latest` first, then the rest newest-looking first. Not a semver sort:
   // whatever a release tags is the release's business, and inventing an order
   // it did not ask for is how a "newest" ends up pointing at the wrong one.
@@ -97,16 +98,19 @@ function local(): { tags: string[]; note?: string } {
       stdout: "pipe",
       stderr: "pipe",
     });
-    if (p.exitCode !== 0) return { tags: [], note: "docker 没应答 —— 它没起来的话这里就是空的" };
+    if (p.exitCode !== 0) return { tags: [], note: "docker did not answer — with it down this list is empty" };
     const all = p.stdout
       .toString()
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l && !l.includes("<none>"));
     const mine = all.filter((r) => !hasRegistry(r));
-    return { tags: mine, ...(mine.length ? {} : { note: "本机没有可用的镜像 —— docker build 一个再回来" }) };
+    return {
+      tags: mine,
+      ...(mine.length ? {} : { note: "no usable image on this machine — docker build one and come back" }),
+    };
   } catch {
-    return { tags: [], note: "这台机器上没有 docker" };
+    return { tags: [], note: "there is no docker on this machine" };
   }
 }
 

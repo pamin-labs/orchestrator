@@ -11,6 +11,7 @@ import {
 } from "@opentelemetry/semantic-conventions";
 import { count } from "drizzle-orm";
 import { JOB_STATES } from "../../contracts/states.ts";
+import type { Said } from "../../contracts/said.ts";
 import type { DB } from "../persistence/database.ts";
 import { job } from "../persistence/schema.ts";
 import { endSpan, shutdownTracing, type Trace } from "./traces.ts";
@@ -151,7 +152,8 @@ meter
 export interface RuntimeStatus {
   accepting: boolean;
   ready: boolean;
-  checks: ReadonlyArray<{ name: string; ok: boolean; detail: string }>;
+  /** `fix` rides along: `/readyz` has always serialised it, and the panel reads it. */
+  checks: ReadonlyArray<{ name: string; ok: boolean; detail: string; fix?: string; said: Said; fixSaid?: Said }>;
   startedAt: number;
 }
 

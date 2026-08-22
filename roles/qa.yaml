@@ -51,8 +51,8 @@ prompt: |
       cat > qa-steps.json <<'EOF'
       [{"api": "/api/v1/ideas", "body": {"project_id": 1, "text": "seed"}},
        {"goto": "#p=1&v=req&g=1"},
-       {"click": "text=更多"},
-       {"expect": "不做了"},
+       {"click": "text=More"},
+       {"expect": "Abandon this requirement"},
        {"shot": "menu.png"}]
       EOF
       orch lease browser --arg steps=qa-steps.json

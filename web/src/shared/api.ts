@@ -5,7 +5,12 @@ import { z } from "zod";
 import type { Json } from "../../../src/contracts/json.ts";
 import { hc, type InferResponseType } from "hono/client";
 import type { ApiType, TelemetryReport } from "../../../src/http/routes/panel.ts";
-import { displayJson, readJsonResponse, TextResponseSchema } from "../../../src/contracts/protocol.ts";
+import {
+  displayJson,
+  ErrorResponseSchema,
+  readJsonResponse,
+  TextResponseSchema,
+} from "../../../src/contracts/protocol.ts";
 
 /**
  * The payload types, from the server that produces them.
@@ -28,12 +33,15 @@ import {
   type Archived,
   type Escalation,
   type Group,
+  type HostFailure,
   type Slice,
   type Snapshot,
 } from "../../../src/contracts/panel.ts";
 import { appendFrame, notifyFrom, raise, readWire, type PanelFrame } from "./stream.ts";
+import { saidText } from "./said.ts";
+import type { Said } from "../../../src/contracts/said.ts";
 
-export type { Agent, Archived, Escalation, Group, Slice };
+export type { Agent, Archived, Escalation, Group, HostFailure, Slice };
 export type State = Snapshot;
 export type Usage = State["usage"][number];
 export type Cost = CostReport;
@@ -61,7 +69,14 @@ const browserFetch: typeof fetch = Object.assign(
   { preconnect: fetch.preconnect },
 );
 
-export const api = hc<ApiType>("/api/v1", { fetch: browserFetch });
+/**
+ * Annotated rather than inferred: every route's error type now carries the
+ * refusal descriptor, and the client's inferred type crossed what `tsc` will
+ * serialise into a declaration file ("exceeds the maximum length"). Naming it
+ * through the instantiation expression is the annotation without writing the
+ * type out.
+ */
+export const api: ReturnType<typeof hc<ApiType>> = hc<ApiType>("/api/v1", { fetch: browserFetch });
 
 export const EvidenceSchema: z.ZodType<InferResponseType<(typeof api.slices)[":id"]["evidence"]["$get"], 200>> =
   z.object({
@@ -203,6 +218,7 @@ const EMPTY: State = {
   // Assume wired until told otherwise: a mark on the header before the first
   // poll lands would flash on every reload.
   ready: true,
+  failing: [],
   projects: [],
   groups: [],
   slices: [],
@@ -226,28 +242,68 @@ const EMPTY: State = {
 /** Fresh panel state for behavior tests and isolated consumers. */
 export const emptyState = (): State => structuredClone(EMPTY);
 
-/** GET that surfaces its own failure. Used for the on-demand panels (evidence, logs). */
-export async function readApi<S extends z.ZodType>(request: Promise<Response>, schema: S): Promise<z.output<S> | null> {
+/**
+ * A read that surfaces its own failure. Used for the on-demand panels (evidence,
+ * logs) and for the two attach paths, which had written this out again —
+ * `fallow audit` found their halves as a clone group.
+ *
+ * `Response | Promise<Response>` because a caller that already awaited its own
+ * `fetch` (to catch a browser refusing to read a folder) has the response in
+ * hand; `await` takes either.
+ */
+export async function readApi<S extends z.ZodType>(
+  request: Response | Promise<Response>,
+  schema: S,
+): Promise<z.output<S> | null> {
   const r = await request;
   const result = await readJson(r, schema);
   if (!result.ok) {
-    toast.error(result.text, { duration: 8000 });
+    toast.error(saidText(result.said, result.text), { duration: 8000 });
     return null;
   }
   return result.data;
 }
 
-export type ApiResult<T> = { ok: true; data: T; text: string } | { ok: false; data: null; text: string };
+/** The sentence a refusal named, if it named one — read through the contract
+ *  the server writes it with rather than a second model of the same body. */
+const saidIn = (body: Json): Said | null => ErrorResponseSchema.safeParse(body).data?.said ?? null;
+
+/**
+ * A refusal, carried rather than rendered.
+ *
+ * `text` is what the server wrote — English from `bad()`, or whatever a
+ * validator or GitHub handed back; `said` is the descriptor beside it when there
+ * was one. `readJson` used to call `saidText` here and hand back a string, so a
+ * caller that kept the refusal on a field kept it in the language of the moment
+ * the request went out: switching the panel to Chinese left one line Portuguese,
+ * under a Chinese heading and above a Chinese button.
+ */
+/**
+ * Fixed at the entry point rather than at the four call sites that store one: as
+ * long as this returned a rendered string, storing it was the obvious thing to
+ * do and the fifth caller would do it again.
+ */
+export type ApiResult<T> =
+  | { ok: true; data: T; text: string; said: null }
+  | { ok: false; data: null; text: string; said: Said | null };
 
 export async function readJson<S extends z.ZodType>(r: Response, schema: S): Promise<ApiResult<z.output<S>>> {
   const body = await readJsonResponse(r);
-  if (!body.ok) return { ok: false, data: null, text: "Server returned a non-JSON response" };
-  if (!r.ok) return { ok: false, data: null, text: displayJson(body.data) };
+  if (!body.ok) return { ok: false, data: null, text: "Server returned a non-JSON response", said: null };
+  // The descriptor the server named, unrendered. `said` is where `bad()` puts
+  // it; `text` is the English it sent alongside, which is what a refusal with no
+  // descriptor — a validator, a subprocess, GitHub — has to be shown as.
+  if (!r.ok) return { ok: false, data: null, text: displayJson(body.data), said: saidIn(body.data) };
   const parsed = schema.safeParse(body.data);
   if (!parsed.success) {
-    return { ok: false, data: null, text: `Server returned invalid JSON: ${z.prettifyError(parsed.error)}` };
+    return {
+      ok: false,
+      data: null,
+      text: `Server returned invalid JSON: ${z.prettifyError(parsed.error)}`,
+      said: null,
+    };
   }
-  return { ok: true, data: parsed.data, text: displayJson(body.data) };
+  return { ok: true, data: parsed.data, text: displayJson(body.data), said: null };
 }
 
 const JsonBody = z.record(z.string(), z.json());
@@ -274,7 +330,7 @@ export async function mutate<S extends z.ZodType>(
 export async function mutate(request: Promise<Response>, quiet = false, schema: z.ZodType = JsonBody) {
   const r = await request;
   const result = await readJson(r, schema);
-  if (!result.ok && !quiet) toast.error(result.text, { duration: 12_000 });
+  if (!result.ok && !quiet) toast.error(saidText(result.said, result.text), { duration: 12_000 });
   return result;
 }
 
@@ -292,6 +348,14 @@ export const sliceDecision = (
   json: SliceDecisionRequest["json"] = {},
 ) => mutate(api.slices[":id"][":decision"].$post({ param: { id: String(id), decision }, json }));
 
+/**
+ * `throw`, and the message stays English on purpose.
+ *
+ * This is an `Error.message` — ADR 035's second exemption — and the two queries
+ * that use it (`state`, `cost`) surface nothing to a reader: `useOrch` returns
+ * `data` only, and the error boundary shows its own sentence. A `said` here
+ * would be a descriptor nothing renders.
+ */
 const get = async <S extends z.ZodType>(request: Promise<Response>, schema: S): Promise<z.output<S>> => {
   const result = await readJson(await request, schema);
   if (!result.ok) throw new Error(result.text);
@@ -312,8 +376,8 @@ const ORCH = ["orch"];
  * The two reads the whole panel is built on, plus the stream that invalidates them.
  *
  * The project scope used to be a ref, because every SSE event called `refresh()`
- * with no argument and swapped 成本 from this project to every project while the
- * page still said 这个项目累计. It is a query key now: the scope is *in* the identity
+ * with no argument and swapped `Cost` from this project to every project while the
+ * page still said it was this project's total. It is a query key now: the scope is *in* the identity
  * of the cached answer, so there is no version of this where a reply for one
  * project lands under another's heading.
  */
@@ -340,7 +404,7 @@ export function useOrch() {
     refetchInterval: 60_000,
   });
   const cost = useQuery({
-    // The nav says 成本 is this project's, so ask for this project's.
+    // The nav says `Cost` is this project's, so ask for this project's.
     queryKey: ORCH.concat("cost", String(project)),
     queryFn: () => get(api.cost.$get({ query: project ? { project: String(project) } : {} }), CostReportSchema),
     refetchInterval: 60_000,

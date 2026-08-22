@@ -2,7 +2,7 @@
  * The one thing no role could do: open the page and click it.
  *
  * Every front-end slice carries an acceptance line like "the menu opens and shows
- * 不做了", and there is no browser in any sandbox — so QA passed on a code
+ * `Don't proceed`", and there is no browser in any sandbox — so QA passed on a code
  * reading, the Auditor refused the branch for missing evidence, and the boss was
  * asked to click by hand. Three groups sat on that at once.
  */
@@ -82,7 +82,11 @@ if (built.exitCode !== 0) {
 }
 
 const dataDir = mkdtempSync(join(tmpdir(), "orch-browse-"));
-const srv = await start({ dataDir, port: 0, maxGroups: 0 });
+// 1, not 0. `ConfigSchema` requires a positive cap, so a zero here made every
+// endpoint that parses the config answer 500 — the settings dialog could not be
+// opened by this tool at all, which is the one surface it is most needed for.
+// Nothing starts anyway: a fresh temp dataDir has no project to run.
+const srv = await start({ dataDir, port: 0, maxGroups: 1 });
 const browser = await chromium.launch();
 const page = await browser.newPage();
 

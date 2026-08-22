@@ -3,6 +3,7 @@ import { logLine } from "../../src/platform/observability/logging.ts";
 import { maskValue } from "../../src/platform/observability/redaction.ts";
 import { requestContext } from "../../src/platform/observability/request-context.ts";
 import { publishStandupItem } from "../../src/application/executor.ts";
+import type { StandupItem } from "../../src/mech/flow/standup.ts";
 
 import { count, eq } from "drizzle-orm";
 import { event } from "../../src/platform/persistence/schema.ts";
@@ -67,12 +68,27 @@ test("a line outside any request is still valid JSON with a level and a timestam
   expect(line).toEqual({ timestamp: at.toISOString(), level: "warn", message: "starting" });
 });
 
+/**
+ * One item, named the way `runStandup` names them.
+ *
+ * These fixtures used to be `{ kind: "budget", body: "预算快用完了" }` — a kind
+ * that is not in `StandupItem` and a sentence in a language the panel stopped
+ * using. They compiled because `publishStandupItem` declared its parameter as a
+ * structural copy with `kind: string`; taking the real type is what surfaced
+ * them.
+ */
+const stalled = (message: string): StandupItem => ({
+  kind: "stalled",
+  say: { id: message, message },
+  grpIds: [1],
+});
+
 test("the same standup line is not re-emitted within the re-emit window", async () => {
   const ctx = await testContext();
   const f = fx.on(ctx.db);
   const p = await f.project.create({ name: "p" });
   await f.grp.create({ project_id: p.id, name: "g" });
-  const item = { kind: "stalled", body: "两个需求卡在同一个文件上", grpIds: [1] };
+  const item = stalled("two requirements are stuck on the same file");
 
   await publishStandupItem(ctx, item);
   await publishStandupItem(ctx, item);
@@ -88,7 +104,7 @@ test("a standup line returns once the window has passed", async () => {
   const f = fx.on(ctx.db);
   const p = await f.project.create({ name: "p" });
   await f.grp.create({ project_id: p.id, name: "g" });
-  const item = { kind: "stalled", body: "还是那两个需求", grpIds: [1] };
+  const item = stalled("still those two requirements");
 
   await publishStandupItem(ctx, item);
   await ctx.db
@@ -109,17 +125,48 @@ test("a standup finding reaches the watchdog channel with the group it is about"
   const seen: Array<{ rule: string; severity: string; grpId: number | null }> = [];
   ctx.onFinding = (rule, severity, _body, grpId) => seen.push({ rule, severity, grpId });
 
-  await publishStandupItem(ctx, { kind: "budget", body: "预算快用完了", grpIds: [1, 2] });
+  await publishStandupItem(ctx, { ...stalled("the budget is nearly gone"), grpIds: [1, 2] });
 
   // Advisory, not blocker: the standup observes, it does not stop anyone.
-  expect(seen).toEqual([{ rule: "budget", severity: "advisory", grpId: 1 }]);
+  expect(seen).toEqual([{ rule: "stalled", severity: "advisory", grpId: 1 }]);
 });
 
 test("a standup line about no group at all still lands", async () => {
   const ctx = await testContext();
 
-  await publishStandupItem(ctx, { kind: "fleet", body: "今天没有人在跑", grpIds: [] });
+  await publishStandupItem(ctx, { ...stalled("nobody is running today"), grpIds: [] });
 
   const [row] = await ctx.db.select({ grp_id: event.grp_id }).from(event).where(eq(event.author, "standup"));
   expect(row?.grp_id).toBeNull();
+});
+
+/**
+ * The de-duplication compares a descriptor against the column it was stored in,
+ * and two things could make that silently never match.
+ *
+ * `EventBus.prepare` scrubs `meta` as serialised text, so a credential-shaped
+ * value is `[credential redacted]` in the row and the needle goes through the
+ * same `scrub`. And bun-sql sends a JS string as a JSON *value*, so a bare
+ * `::jsonb` yields a jsonb string where `::text::jsonb` yields the object.
+ * Either mistake reads as the standup re-emitting every pass, quietly.
+ */
+test("a finding carrying a credential-shaped value still de-duplicates", async () => {
+  const ctx = await testContext();
+  const f = fx.on(ctx.db);
+  const p = await f.project.create({ name: "p" });
+  await f.grp.create({ project_id: p.id, name: "g" });
+  const item: StandupItem = {
+    kind: "repeat_failure",
+    say: {
+      id: "k1",
+      message: "{resource} keeps failing",
+      values: { resource: "ghp_0123456789abcdefghijklmnopqrstuv" },
+    },
+    grpIds: [1],
+  };
+
+  await publishStandupItem(ctx, item);
+  await publishStandupItem(ctx, item);
+
+  expect(await standupLines(ctx.db)).toBe(1);
 });

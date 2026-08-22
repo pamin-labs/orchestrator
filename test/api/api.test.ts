@@ -1,11 +1,14 @@
 import { expect, test } from "bun:test";
+import { renderSaid } from "../../src/platform/text/lang.ts";
+import { outputLanguage } from "../../src/contracts/config.ts";
+import { said } from "../support/said.ts";
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { and, asc, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
-import { AgentTurnPayloadSchema, Scheduler, type Job } from "../../src/platform/scheduling/scheduler.ts";
+import { AgentTurnPayloadSchema, type Job } from "../../src/platform/scheduling/scheduler.ts";
 import { makeApp } from "../../src/composition/api.ts";
-import { askKind, brief } from "../../src/api/orch/escalation.ts";
+import { brief } from "../../src/api/orch/escalation.ts";
 import { landGroup } from "../../src/api/panel/group.ts";
 import { cacheProjectSkills, listSkills, projectSkills } from "../../src/mech/skills.ts";
 import { landed } from "../../src/mech/flow/mergequeue.ts";
@@ -18,6 +21,7 @@ import { testContext } from "../support/test-context.ts";
 const json = (body: unknown): Response =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 import { sweepApproved } from "../../src/mech/flow/start.ts";
+import { escalationKey } from "../../src/mech/flow/escalate.ts";
 import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { routeCalls } from "../support/route-source.ts";
@@ -42,6 +46,7 @@ import { JsonValue, type Json } from "../../src/contracts/json.ts";
 import { ErrorResponseSchema } from "../../src/contracts/protocol.ts";
 import type { Github } from "../../src/mech/git/github.ts";
 import { tempDir } from "../support/temp.ts";
+import { newScheduler } from "../support/scheduler.ts";
 
 const BoundaryPayload = z.object({ boundary: z.array(z.object({ id: z.number() })) });
 const BoundaryIdeasPayload = z.object({ boundary: z.array(z.object({ id: z.number(), idea: z.string() })) });
@@ -60,7 +65,7 @@ async function harness(handle?: (cmd: string, cwd: string) => { code?: number; o
   const ran: Job[] = [];
   const sandbox = fakeSandbox(handle);
   const db = await openMemory();
-  const ctx = await testContext({ db, sandbox, sched: new Scheduler(db, async (j) => void ran.push(j)) });
+  const ctx = await testContext({ db, sandbox, sched: newScheduler(db, async (j) => void ran.push(j)) });
   await seedAuth(db);
   const app = makeApp(ctx);
 
@@ -301,7 +306,7 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
 
 test("reserved ask-boss questions start at the boss after filing", async () => {
   const { app, db } = await harness();
-  const pending = post(app, "/orch/v1/ask-boss", { question: "what is the API token?" }, "tok-eng");
+  const pending = post(app, "/orch/v1/ask-boss", { question: "what is the API token?", kind: "credential" }, "tok-eng");
   const filed = await until(
     () => first(db.select({ severity: escalation.severity, chain_state: escalation.chain_state }).from(escalation)),
     (row) => row !== undefined,
@@ -451,7 +456,16 @@ test("sending a DRAFT back records the reason and re-runs the dispatcher", async
 
   const notes = await db.select({ body: note.body }).from(note).where(eq(note.grp_id, grp_id)).orderBy(asc(note.id));
   expect(notes.at(-1)!.body).toContain("wrong layer");
-  const jobs = await db.select({ payload_json: job.payload_json }).from(job).where(eq(job.grp_id, grp_id));
+  // Ordered, like the notes query above it. A `SELECT` with no `ORDER BY` returns
+  // rows in whatever order the plan produces, so `at(-1)` was reading a position
+  // nothing had assigned — insertion order on a fresh heap and something else
+  // once pages have been reused. The stress pass is what found it: 6 of 10
+  // reruns, and green every time the file ran alone.
+  const jobs = await db
+    .select({ payload_json: job.payload_json })
+    .from(job)
+    .where(eq(job.grp_id, grp_id))
+    .orderBy(asc(job.id));
   expect(AgentTurnPayloadSchema.parse(jobs.at(-1)!.payload_json).respec).toBe("wrong layer");
 });
 
@@ -658,7 +672,7 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   expect(filed?.body).toContain("支持 zh");
 
   // An objection that lands after the card must reach the boss too: the card
-  // says 反对 : 无 because the Dispatcher does not wait for the Architect.
+  // says `Objection: none` because the Dispatcher does not wait for the Architect.
   await f.agent.create({ project_id: 1, role: "architect", token: "tok-arch" });
   await post(
     app,
@@ -733,7 +747,7 @@ test("the snapshot carries the boss's original words alongside the card", async 
 });
 
 test("an approval a boundary blocks is recorded, not thrown away", async () => {
-  const { app, db, f } = await harness();
+  const { app, db, f, ctx } = await harness();
   await db
     .update(grp)
     .set({ owns_json: ["src/**"] })
@@ -760,7 +774,14 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
   // 200: the boss did decide. A 422 shows a red error and asks for the same click
   // again — and the click it asked for used to be a 500 (see the next test).
   expect(held.status).toBe(200);
-  expect(await held.text()).toContain("自动开工");
+  // The framing sentence, not a word out of one translation of it: the toast has
+  // to say the click landed, or a 200 reads like the 422 it deliberately is not.
+  expect(await held.text()).toContain(
+    // The server's own effective language, not a locale pinned here: the point is
+    // that the toast carries the framing sentence, and pinning one was how this
+    // read as green while the default said something else.
+    renderSaid(outputLanguage(ctx.config), said("Approval recorded — it starts by itself once the boundary clears.")),
+  );
 
   const g = (await first(
     db.select({ status: grp.status, approved_at: grp.approved_at }).from(grp).where(eq(grp.id, grp_id)),
@@ -887,7 +908,7 @@ test("a token is only good for the scope it was hired into", async () => {
 });
 
 test("dropping a requirement frees its paths and starts whoever was waiting", async () => {
-  // 退回重拆 was the only way off the approval screen, and it sends the plan back
+  // `Return for re-decomposition` was the only way off the approval screen, and it sends the plan back
   // to be written again. A duplicate needs to leave, and the group behind it needs
   // to stop waiting on paths nobody will ever use.
   const h = await harness();
@@ -908,7 +929,7 @@ test("dropping a requirement frees its paths and starts whoever was waiting", as
       .orderBy(desc(job.id)),
   );
   expect(lastTurn?.state).toBe("cancelled");
-  // A question that outlives its requirement sits in 待办 forever.
+  // A question that outlives its requirement sits in `To do` forever.
   const orphan = await first(
     h.db.select({ s: escalation.chain_state }).from(escalation).where(eq(escalation.grp_id, 1)),
   );
@@ -1125,9 +1146,17 @@ test("nobody confirms a merge by hand: GitHub is the only source, and it winds t
 test("raising a budget resumes the group and closes the question that asked", async () => {
   const { app, db, f } = await harness();
   await db.update(grp).set({ status: "PAUSED", budget_tokens: 100, spent_tokens: 120 }).where(eq(grp.id, 1));
-  await f.escalation.create({ grp_id: 1, severity: "blocker", question: "budget: g1 用完了", chain_state: "boss" });
+  await f.escalation.create({
+    grp_id: 1,
+    severity: "blocker",
+    // Not the shipped sentence, and not in the shipped language: `dedupe_key` is
+    // what `raiseBudget` closes on, so the wording is free to be anything.
+    question: "rewritten by a translator",
+    dedupe_key: escalationKey.budget,
+    chain_state: "boss",
+  });
 
-  // 继续 alone is a lie: the scheduler will not admit an over-budget group.
+  // `Resume` alone is a lie: the scheduler will not admit an over-budget group.
   const resumed = await post(app, "/api/v1/groups/1/resume");
   expect(resumed.status).toBe(422);
   expect(await resumed.text()).toContain("120/100");
@@ -1307,7 +1336,7 @@ test("one box holding several unrelated asks becomes several requirements", asyn
   // Nothing the boss typed is lost: each child points back at the original paragraph.
   const child = (await first(db.select({ body: note.body }).from(note).where(eq(note.grp_id, 2))))!;
   expect(child.body).toContain("记住我");
-  expect(child.body).toContain("原始整段见 note #1");
+  expect(child.body).toContain("The whole of what was originally asked for is note #1.");
 
   // g1's own dispatcher cannot reach into a child: each child gets its own turn
   // and its own agent, and a token is only good for the group it was hired into.
@@ -1409,7 +1438,7 @@ test("a live group that owns the path gets it as an addition, not a rival group"
 test("a question no answer can resolve becomes a requirement, and the group waits for it", async () => {
   // The commonest blocker on the queue is one no answer resolves: a config file is
   // wrong, four groups are red on one line. Answering means typing the fix into a
-  // chat box for an agent that is not allowed to apply it, so these sat in 待办
+  // chat box for an agent that is not allowed to apply it, so these sat in `To do`
   // until the boss did the work by hand.
   const h = await harness();
   await h.db.update(grp).set({ status: "PAUSED", paused_at: 1 }).where(eq(grp.id, 1));
@@ -1480,10 +1509,17 @@ test("a worktree that cannot be created withdraws the approval instead of retryi
   expect(g.approved_at).toBeNull();
   expect(g.status).toBe("DRAFT");
   const esc = (await first(
-    h.db.select({ chain_state: escalation.chain_state, question: escalation.question }).from(escalation),
+    h.db
+      .select({ chain_state: escalation.chain_state, brief: escalation.brief, question: escalation.question })
+      .from(escalation),
   ))!;
   expect(esc.chain_state).toBe("boss");
-  expect(esc.question).toContain("批准没能落地");
+  // The message by its identity, not a copy of its text: `said()` hashes the
+  // English source, so a reworded sentence reddens this and a retranslated one
+  // does not. The locale is the one `Bus.prepare` reads, never a literal.
+  expect(esc.brief).toBe(renderSaid(outputLanguage(h.ctx.config), said("the approval did not take")));
+  // And the reason itself reaches the boss, which is the part no catalogue owns.
+  expect(esc.question).toContain("disk full");
 });
 
 test("a question carries one line for the queue, given or derived", () => {
@@ -1494,17 +1530,27 @@ test("a question carries one line for the queue, given or derived", () => {
   expect(brief(undefined, "S2 的验收跑不了。原因是 worktree 里没装 playwright")).toBe("S2 的验收跑不了");
   // Long: cut, with the cut marked.
   expect(brief("x".repeat(60), "q")).toBe(`${"x".repeat(39)}…`);
+  // A version and an abbreviation, which is what the hand-written
+  // `[\n。.!?！？]` got wrong: it cut on every `.`, so these filed as
+  // `playwright 1` and `e` — a queue row naming nothing.
+  expect(brief(undefined, "playwright 1.62.1 is missing")).toBe("playwright 1.62.1 is missing");
+  expect(brief(undefined, "e.g. the gate needs a browser")).toBe("e.g. the gate needs a browser");
+  // And the breaks it did get right still break.
+  expect(brief(undefined, "予算を上げますか。残りは後で")).toBe("予算を上げますか");
+  expect(brief(undefined, "budget?\nthe rest can wait")).toBe("budget");
 });
 
-test("what a question is about comes from a closed set", () => {
-  // Closed because the queue groups by it: free text gives twelve spellings of
-  // "environment" and groups nothing.
-  expect(askKind("env")).toBe("env");
-  expect(askKind(" spec ")).toBe("spec");
-  // Unknown or missing falls to `other` rather than being rejected. An agent
-  // must never be stuck on a taxonomy — same rule as the brief.
-  expect(askKind("环境")).toBe("other");
-  expect(askKind(undefined)).toBe("other");
+test("what a question is about is required, and refused when it is not one of the nine", async () => {
+  // It used to fall back to `other`, on the rule that an agent must never be
+  // stuck on a taxonomy. That was right while the word only chose a queue
+  // heading; it now chooses whether a stand-in may answer, so an unknown word
+  // has to come back as a 400 rather than quietly file a budget question under
+  // nothing. There is no `other` left to fall back to.
+  const { app } = await harness();
+  for (const body of [{}, { kind: "" }, { kind: "环境" }, { kind: "other" }]) {
+    const r = await post(app, "/orch/v1/ask-boss", { question: "which library?", ...body }, "tok-eng");
+    expect(r.status).toBe(400);
+  }
 });
 
 test("reads are scoped by the token too, not only writes", async () => {
@@ -1816,4 +1862,24 @@ test("the connection is read once and served from the snapshot after that", asyn
   // And a caller who says so gets a real read.
   await open({ fresh: true });
   expect(asked).toBeGreaterThan(afterFirst);
+});
+
+/**
+ * `--why` is measured in words, not in UTF-16 units.
+ *
+ * The floor was `why.length < 10`, calibrated on English and enforced as a 422:
+ * it refused `需求二已完全覆盖`, eight units and a complete sentence. It is a floor
+ * against emptiness and nothing more — three terms was tried and refused
+ * `grp2 covers it`, which is an answer.
+ */
+test("--why is measured in words, so a short sentence in a dense script is still a sentence", async () => {
+  const h = await harness();
+  await h.f.agent.create({ project_id: 1, grp_id: 1, role: "dispatcher", token: "tok-d" });
+  await h.f.runningGrp.create({ project_id: 1, name: "other" });
+  const drop = (why: string) => post(h.app, "/orch/v1/drop", { group_id: 1, why, duplicate: 2 }, "tok-d");
+
+  expect((await drop("短")).status).toBe(422);
+  expect((await drop("需求二已完全覆盖")).status).toBe(200);
+  // Short and Latin is still an answer: three terms refused this one.
+  expect((await drop("grp2 covers it")).status).toBe(200);
 });
