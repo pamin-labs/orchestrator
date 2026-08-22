@@ -55,8 +55,10 @@ export function stressArgs(env: Readonly<Record<string, string | undefined>>): s
 }
 
 if (import.meta.main) {
-  const release = claim();
-  process.on("exit", release);
+  // `process.on("exit")` and not also an explicit call at the end: the handler is
+  // the one that runs when the spawn throws, and it already runs on the ordinary
+  // path.
+  process.on("exit", claim());
   const child = Bun.spawn(["bun", "test", ...stressFiles(), ...stressArgs(process.env)], {
     env: { ...process.env, FC_NUM_RUNS: process.env.FC_NUM_RUNS ?? "1000" },
     stdin: "inherit",
@@ -64,5 +66,4 @@ if (import.meta.main) {
     stderr: "inherit",
   });
   process.exitCode = await child.exited;
-  release();
 }

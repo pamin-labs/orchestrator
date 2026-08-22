@@ -56,9 +56,27 @@ const oxcInstrument: typeof oxcInstrumentFn =
  * and `fallow audit` reads that map to decide which function it is looking at.
  */
 export function instrumented(source: string, path: string, inputSourceMap?: string | null): string {
-  if (!isSubject(path)) return source;
+  return instrumentedWithMap(source, path, inputSourceMap).code;
+}
+
+/**
+ * The same call, with the map `instrumented` throws away.
+ *
+ * `oxc` returns the Istanbul map beside the code, so a caller that needs to know
+ * *what* it instrumented does not have to go back and find it in the emitted
+ * source. `loader-transforms-compose.test.ts` did, by counting braces from
+ * `coverageData = {` and `JSON.parse`-ing the slice — a second hand-written
+ * bracket matcher in a repo that had just deleted one.
+ */
+export function instrumentedWithMap(
+  source: string,
+  path: string,
+  inputSourceMap?: string | null,
+): { code: string; coverageMap: string | null } {
+  if (!isSubject(path)) return { code: source, coverageMap: null };
   const options = inputSourceMap ? { inputSourceMap, composeInputSourceMap: true } : undefined;
-  return oxcInstrument(source, path, options).code;
+  const out = oxcInstrument(source, path, options);
+  return { code: out.code, coverageMap: out.coverageMap };
 }
 
 declare global {

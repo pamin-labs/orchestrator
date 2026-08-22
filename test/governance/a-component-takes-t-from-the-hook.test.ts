@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { traverse, type NodePath } from "@babel/core";
-import { parse } from "../support/ast.ts";
+import { parse, scan } from "../support/ast.ts";
 
 /**
  * Inside a component, `t` is the hook's.
@@ -64,11 +63,7 @@ function offenders(file: string, source: string): string[] {
 }
 
 test("no component renders through the global t", () => {
-  const all: string[] = [];
-  for (const file of new Bun.Glob("web/src/**/*.tsx").scanSync(".")) {
-    all.push(...offenders(file, readFileSync(file, "utf8")));
-  }
-  expect(all).toEqual([]);
+  expect(scan("web/src/**/*.tsx", offenders)).toEqual([]);
 });
 
 /** Shown firing, and shown quiet on the two shapes it must not fire on. */

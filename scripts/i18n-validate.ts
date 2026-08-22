@@ -73,9 +73,23 @@ const source = (await translations("en")).messages;
  * "no locale regressed". Today the same person writes both, so "finish it"
  * is the honest rule.
  */
+/**
+ * Rows whose translation *is* the English, collected on the way past.
+ *
+ * Reported at the end, not failed: `Name` is German, `p50` is a statistic and
+ * `HTTP {status}` is two placeholders and a protocol word. But `ms` sat here in
+ * Japanese and Korean under a unit menu whose other four rows were translated,
+ * and nothing counted it — which is what "100%" was hiding.
+ */
+const asSource = new Map<string, string[]>();
+
 for (const locale of LOCALES) {
   if (locale === "en") continue;
   const { messages, missing: untranslated } = await translations(locale);
+  const same = Object.entries(messages)
+    .filter(([id, text]) => text && source[id] === text)
+    .map(([id]) => source[id] ?? id);
+  if (same.length) asSource.set(locale, same);
   if (untranslated.length > 0) {
     const names = untranslated.map((m) => source[m.id] ?? m.id);
     console.error(
@@ -112,24 +126,6 @@ if (bad > 0) {
 }
 console.log(`${LOCALES.length - 1} catalogs complete, placeholders intact`);
 
-/**
- * Rows whose translation *is* the English, which the README's table counts as
- * done because the `msgstr` is not empty.
- *
- * Reported, not failed: `Name` is German, `p50` is a statistic and `HTTP
- * {status}` is two placeholders and a protocol word. But `ms` sat here in
- * Japanese and Korean under a unit menu whose other four rows were translated,
- * and nothing counted it — which is what "100%" was hiding.
- */
-const asSource = new Map<string, string[]>();
-for (const locale of LOCALES) {
-  if (locale === "en") continue;
-  const { messages } = await translations(locale);
-  const same = Object.entries(messages)
-    .filter(([id, text]) => text && source[id] === text)
-    .map(([id]) => source[id] ?? id);
-  if (same.length) asSource.set(locale, same);
-}
 if (asSource.size) {
   const total = [...asSource.values()].reduce((n, list) => n + list.length, 0);
   console.log(`\n${total} row(s) left as the English source, which the table counts as translated:`);

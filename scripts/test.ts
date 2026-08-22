@@ -136,10 +136,13 @@ const LIMITS = [TIMEOUT, `--max-concurrency=${Math.max(2, Math.round(cpus().leng
 async function run(): Promise<{ code: number; crashed: boolean }> {
   const args = ["test", "--parallel", ...LIMITS, ...Bun.argv.slice(2)];
   const child = Bun.spawn([process.execPath, ...args], { stdout: "pipe", stderr: "pipe" });
+  // A window, not the whole run: the three markers `CRASHED` looks for are one
+  // line each, and this used to hold every byte the suite printed — 223 files of
+  // output in memory to answer a question about the last few.
   let saw = "";
   const tee = async (from: ReadableStream<Uint8Array>, to: typeof Bun.stdout) => {
     for await (const chunk of from) {
-      saw += new TextDecoder().decode(chunk);
+      saw = (saw + new TextDecoder().decode(chunk)).slice(-8192);
       await Bun.write(to, chunk);
     }
   };

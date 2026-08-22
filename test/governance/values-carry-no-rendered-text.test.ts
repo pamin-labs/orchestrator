@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { traverse } from "@babel/core";
-import { parse } from "../support/ast.ts";
+import { parse, scan } from "../support/ast.ts";
 
 /**
  * Nothing renders a sentence inside a template that is itself going to be
@@ -35,6 +35,11 @@ const RENDERER = "renderSaid";
 const MACROS = new Set(["msg", "t"]);
 
 function offenders(file: string, source: string): string[] {
+  // The cheap gate its sibling `an-event-names-its-sentence.test.ts` already
+  // uses. A rename still contains the word — `renderSaid as render` names it in
+  // the import — so this costs one `includes` per file and saves two full AST
+  // walks on the ninety-odd that never mention it.
+  if (!source.includes(RENDERER)) return [];
   const ast = parse(file, source);
   if (!ast) return [];
 
@@ -64,10 +69,6 @@ function offenders(file: string, source: string): string[] {
   return found;
 }
 
-test("no sentence is rendered into a value of a template that is rendered again", async () => {
-  const all: string[] = [];
-  for (const file of new Bun.Glob("src/**/*.ts").scanSync(".")) {
-    all.push(...offenders(file, await Bun.file(file).text()));
-  }
-  expect(all).toEqual([]);
+test("no sentence is rendered into a value of a template that is rendered again", () => {
+  expect(scan("src/**/*.ts", offenders)).toEqual([]);
 });

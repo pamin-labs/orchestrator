@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { traverse } from "@babel/core";
-import { parse } from "../support/ast.ts";
+import { parse, scan } from "../support/ast.ts";
 
 /**
  * An event the panel draws names its sentence; it does not write one.
@@ -19,10 +19,11 @@ import { parse } from "../support/ast.ts";
  * So the judgement is the shape of the expression, not the property name —
  * `body: b.feedback` is data, `body: \`task ${id} done\`` is a sentence.
  */
-/** Three letters in a row inside a literal part. `` `S${seq} ${verdict}` `` is a
+/** Two letters in a row inside a literal part. `` `S${seq} ${verdict}` `` is a
  *  join of two values and carries none; `"paused"` carries one word and is a
- *  sentence all the same. */
-const PROSE = /[A-Za-z]{3,}/;
+ *  sentence all the same, and so is `"ok"` — which three letters let through,
+ *  and which is exactly the kind of short status a panel has to translate. */
+const PROSE = /[A-Za-z]{2,}/;
 
 function offenders(file: string, source: string): string[] {
   if (!source.includes(".emit(")) return [];
@@ -64,12 +65,8 @@ function offenders(file: string, source: string): string[] {
   return found;
 }
 
-test("no emitter writes an English sentence the panel cannot translate", async () => {
-  const all: string[] = [];
-  for (const file of new Bun.Glob("src/**/*.ts").scanSync(".")) {
-    all.push(...offenders(file, await Bun.file(file).text()));
-  }
-  expect(all).toEqual([]);
+test("no emitter writes an English sentence the panel cannot translate", () => {
+  expect(scan("src/**/*.ts", offenders)).toEqual([]);
 });
 
 /**
@@ -82,6 +79,9 @@ test("it fires on a written sentence and not on a body that is data", () => {
 
   expect(offenders("probe.ts", emit("body: `task ${id} done`"))).toHaveLength(1);
   expect(offenders("probe.ts", emit('body: "paused"'))).toHaveLength(1);
+  // Two letters, not three: `ok` is a status a panel has to translate, and the
+  // three this asked for let it through.
+  expect(offenders("probe.ts", emit('body: "ok"'))).toHaveLength(1);
 
   // The four legitimate shapes, all of which are somebody else's words.
   expect(offenders("probe.ts", emit("body: b.feedback"))).toEqual([]);

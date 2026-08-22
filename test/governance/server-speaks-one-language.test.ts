@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { traverse } from "@babel/core";
-import { CJK, parse } from "../support/ast.ts";
+import { cjkHits } from "../support/ast.ts";
 import { readFileSync } from "node:fs";
 import BASELINE from "./server-chinese-baseline.json";
 
@@ -32,25 +31,22 @@ const ROOT = `${process.cwd()}/src`;
  * being one language of source with nothing to carve out.
  */
 
-/** Parsed, not grepped, so a comment in Chinese is not a finding. */
-function countIn(path: string): number {
-  const ast = parse(path, readFileSync(path, "utf8"));
-  if (!ast) return 0;
-  let n = 0;
-  traverse(ast, {
-    StringLiteral: (p) => void (CJK.test(p.node.value) && n++),
-    TemplateElement: (p) => void (CJK.test(p.node.value.raw) && n++),
-    RegExpLiteral: (p) => void (CJK.test(p.node.pattern) && n++),
-  });
-  // Comments count too, and they were 172 of the 265 this file found when that
-  // was added. `AGENTS.md`'s first coding rule is English for comments — and by
-  // the time the panel's source language was English, a comment naming `To do` or
-  // `Cost` pointed at a label no longer in the source, so a reader searching for
-  // one found nothing. Counted per comment rather than per line: a block that
-  // wraps is one decision.
-  for (const c of ast.comments ?? []) if (CJK.test(c.value)) n++;
-  return n;
-}
+/**
+ * Parsed, not grepped, so a comment in Chinese is not a finding — and the walk
+ * itself is `cjkHits`, shared with `panel-speaks-english.test.ts`. The two had a
+ * copy each and drifted: `RegExpLiteral` is not a `StringLiteral`, a
+ * `TemplateElement` or a `JSXText`, so the panel's copy could not see
+ * `/(花钱|付费|采购|订阅|预算|密钥)/` until this one pointed it out.
+ */
+/**
+ * Comments count, and they were 172 of the 265 this file found when that was
+ * added. `AGENTS.md`'s first coding rule is English for comments — and by the
+ * time the panel's source language was English, a comment naming `To do` or
+ * `Cost` pointed at a label no longer in the source, so a reader searching for
+ * one found nothing. Counted per comment rather than per line: a block that
+ * wraps is one decision.
+ */
+const countIn = (path: string): number => cjkHits(path, readFileSync(path, "utf8")).length;
 
 const baseline = BASELINE as Record<string, number>;
 

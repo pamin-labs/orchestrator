@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { expandMacros } from "../../scripts/lingui-macros.ts";
-import { instrumented } from "../support/coverage.ts";
+import { instrumentedWithMap } from "../support/coverage.ts";
 
 /**
  * The two transforms in `test/support/loader.ts`, run in the order it runs them.
@@ -15,23 +16,19 @@ import { instrumented } from "../support/coverage.ts";
  */
 const PANEL = `${process.cwd()}/web/src/ui/bits.tsx`;
 
-/** `oxc` returns the map beside the code; the shape it uses is not the plugin's business. */
-const mapOf = (
-  code: string,
-  path: string,
-): { path: string; fnMap: Record<string, { decl: { start: { line: number } } }> } => {
-  const marker = "coverageData = {";
-  const at = code.indexOf(marker);
-  expect(at).toBeGreaterThan(-1);
-  const open = code.indexOf("{", at + marker.length - 1);
-  let depth = 0;
-  for (let i = open; i < code.length; i++) {
-    if (code[i] === "{") depth++;
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- oxc's own emitted literal; a shape change here should fail loudly on the next line, not be re-validated
-    else if (code[i] === "}" && --depth === 0) return JSON.parse(code.slice(open, i + 1)) as ReturnType<typeof mapOf>;
-  }
-  throw new Error(`no coverage data in ${path}`);
-};
+/**
+ * `oxc` returns the Istanbul map beside the code, so nothing here has to go
+ * looking for it in the emitted source. This used to count braces from
+ * `coverageData = {` and `JSON.parse` the slice, with an oxlint suppression for
+ * the cast that followed — a second hand-written bracket matcher in a tree that
+ * had just deleted one.
+ */
+/** The two fields this test reads, parsed rather than asserted: `JSON.parse`
+ *  hands back `any`, and a shape change should say so here. */
+const CoverageMapSchema = z.object({
+  path: z.string(),
+  fnMap: z.record(z.string(), z.object({ decl: z.object({ start: z.object({ line: z.number() }) }) })),
+});
 
 test("expanding macros before instrumenting leaves both transforms working", () => {
   const source = readFileSync(PANEL, "utf8");
@@ -43,8 +40,9 @@ test("expanding macros before instrumenting leaves both transforms working", () 
   expect(code).not.toContain("@lingui/react/macro");
   expect(map).toBeTruthy();
 
-  const out = instrumented(code, PANEL, map);
-  const data = mapOf(out, PANEL);
+  const { coverageMap } = instrumentedWithMap(code, PANEL, map);
+  expect(coverageMap).not.toBeNull();
+  const data = CoverageMapSchema.parse(JSON.parse(coverageMap ?? ""));
 
   // Keyed by the file on disk, not by babel's basename: the report merges shards
   // on this string, and `bits.tsx` is not a path anything can resolve.

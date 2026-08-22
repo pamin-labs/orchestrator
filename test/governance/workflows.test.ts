@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { TARGETS } from "../../scripts/build-server.ts";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 
@@ -508,9 +509,12 @@ describe("workflow governance", () => {
   test("release checksums and attests every published artifact", async () => {
     const workflow = await load("release");
     const release = await source("release");
-    for (const target of ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "windows-x64"]) {
-      expect(release).toContain(target);
-    }
+    // From the builder's own list rather than a second copy of it: the workflow
+    // spells the short name and derives `bun-$target`, and `build-server.ts`
+    // refuses a target it does not hold. Two lists that must agree, asserted to.
+    const shortNames = TARGETS.map((t) => t.replace(/^bun-/, "").replace(/-baseline$/, ""));
+    expect(shortNames).toEqual(["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "windows-x64"]);
+    for (const target of shortNames) expect(release).toContain(target);
     expect(release).toContain("release-manifest.json");
     expect(release).toContain("bun-linux-x64-baseline");
     expect(release).toContain("bun-windows-x64-baseline");

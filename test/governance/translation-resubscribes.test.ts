@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { traverse } from "@babel/core";
+import { parse, scan } from "../support/ast.ts";
+import { readFileSync } from "node:fs";
 
 /**
  * A translated string only updates on a locale change if something in its tree
@@ -20,34 +23,59 @@ import { expect, test } from "bun:test";
 const SUBSCRIBES = /useLingui\(|<Trans\b|<Plural\b|<Select\b|<SelectOrdinal\b/;
 const TRANSLATES = /\bt`|\bt\(\{|i18n\._\(/;
 
-/** The body of each `memo(...)` call, by matching its parentheses. */
-function memoBodies(source: string): string[] {
+/**
+ * The source of each `memo(...)` call.
+ *
+ * Parsed rather than scanned for parentheses. The hand-matched version had to
+ * exclude `useMemo` by looking at the character before the `m`, and both
+ * patterns above were tested against a slice that still held the file's comments
+ * and string literals — a comment mentioning `useLingui()` above a memoised
+ * component satisfied `SUBSCRIBES`. `p.get("arguments.0")` is the argument and
+ * nothing else.
+ */
+function memoBodies(file: string, source: string): string[] {
+  const ast = parse(file, source);
+  if (!ast) return [];
   const out: string[] = [];
-  for (let at = source.indexOf("memo("); at !== -1; at = source.indexOf("memo(", at + 1)) {
-    if (/[\w$]/.test(source[at - 1] ?? "")) continue; // useMemo, and anything else ending in "memo"
-    let depth = 0;
-    let i = at + 4;
-    for (; i < source.length; i++) {
-      if (source[i] === "(") depth++;
-      else if (source[i] === ")" && --depth === 0) break;
-    }
-    out.push(source.slice(at, i));
-  }
+  traverse(ast, {
+    CallExpression(p) {
+      const callee = p.node.callee;
+      const named =
+        (callee.type === "Identifier" && callee.name === "memo") ||
+        (callee.type === "MemberExpression" &&
+          callee.property.type === "Identifier" &&
+          callee.property.name === "memo");
+      if (!named) return;
+      const arg = p.node.arguments[0];
+      const { start, end } = arg ?? {};
+      if (typeof start === "number" && typeof end === "number") out.push(source.slice(start, end));
+    },
+  });
   return out;
 }
 
-test("App subscribes, so one activate re-renders the panel", async () => {
-  const app = await Bun.file("web/src/app/app.tsx").text();
-  expect(SUBSCRIBES.test(app)).toBe(true);
+test("App subscribes, so one activate re-renders the panel", () => {
+  expect(SUBSCRIBES.test(readFileSync("web/src/app/app.tsx", "utf8"))).toBe(true);
 });
 
-test("a memoised component that translates subscribes on its own", async () => {
-  const offenders: string[] = [];
-  for (const file of new Bun.Glob("web/src/**/*.tsx").scanSync(".")) {
-    const source = await Bun.file(file).text();
-    for (const body of memoBodies(source)) {
-      if (TRANSLATES.test(body) && !SUBSCRIBES.test(body)) offenders.push(file);
-    }
-  }
-  expect(offenders).toEqual([]);
+const offenders = (file: string, source: string): string[] =>
+  memoBodies(file, source)
+    .filter((body) => TRANSLATES.test(body) && !SUBSCRIBES.test(body))
+    .map((_body, n) => `${file} memo #${n + 1}`);
+
+test("a memoised component that translates subscribes on its own", () => {
+  expect(scan("web/src/**/*.tsx", offenders)).toEqual([]);
+});
+
+/** Shown firing, and shown quiet on the shape it must not fire on. */
+test("it reads the argument and not the file around it", () => {
+  const memoised = (inner: string) => `import { memo } from "react";\nexport const P = memo(${inner});`;
+  expect(offenders("p.tsx", memoised("() => <p>{t`Skills`}</p>"))).toHaveLength(1);
+  expect(offenders("p.tsx", memoised("() => { const { t } = useLingui(); return <p>{t`Skills`}</p>; }"))).toEqual([]);
+  // `useMemo` is not `memo`, and a comment is not a subscription — the version
+  // that matched parentheses got the first wrong by looking at one character and
+  // the second by slicing the source instead of reading the argument.
+  expect(offenders("p.tsx", "const v = useMemo(() => t`Skills`, []);")).toEqual([]);
+  const commented = `// useLingui() lives in the parent\n${memoised("() => <p>{t`Skills`}</p>")}`;
+  expect(offenders("p.tsx", commented)).toHaveLength(1);
 });

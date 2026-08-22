@@ -12,7 +12,7 @@ import {
   modelFor,
   withAbsoluteDataDir,
 } from "../../src/platform/config/load.ts";
-import { EmbeddingRef, ConfigSchema } from "../../src/contracts/config.ts";
+import { EmbeddingRef, ConfigSchema, outputLanguage } from "../../src/contracts/config.ts";
 import { routeSource } from "../support/route-source.ts";
 import { tempDir } from "../support/temp.ts";
 
@@ -301,4 +301,18 @@ test("every key in the yaml is one a startup cannot ask the database for", () =>
     (key) => !env.includes(`ORCH_${key.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase()}`),
   );
   expect(missing).toEqual([]);
+});
+
+/**
+ * What "nobody has said" resolves to, which is the whole point of ADR 043: a
+ * fresh installation has no language written down and still speaks the reader's.
+ *
+ * Here rather than beside its governance guard — that one is a scan over `src`,
+ * and a function's return values are a unit test whatever file the rule about
+ * calling it lives in.
+ */
+test("output follows the boss, then the panel, then English", () => {
+  expect(outputLanguage({ language: "Deutsch", panelLanguage: "zh" })).toBe("Deutsch");
+  expect(outputLanguage({ language: "", panelLanguage: "zh" })).toBe("zh");
+  expect(outputLanguage({ language: "", panelLanguage: "" })).toBe("en");
 });

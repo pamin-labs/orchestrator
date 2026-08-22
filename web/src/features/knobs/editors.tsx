@@ -211,12 +211,11 @@ export function Amount<U extends string>({
       ) : (
         <Segments
           value={unit}
-          // i18n-exempt: the unit names a person types, from `units.ts`.
           // Nothing selected *is* the answer when a bare number is legal, so the
           // empty member is never drawn: pressing the lit one turns it off,
           // which is what a toggle group already means. A unit set with no empty
-          // member (毫秒/秒/分钟/小时) keeps what it had, because there is no
-          // such thing as a duration without one.
+          // member — the durations — keeps what it had, because there is no such
+          // thing as a duration without one.
           onValueChange={(u) => {
             const wanted = u || (BARE_OK.has(unit) ? "" : unit);
             const selected = units.find((candidate) => candidate === wanted);

@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { traverse } from "@babel/core";
-import { CJK, parse } from "../support/ast.ts";
+import { cjkHits, scan } from "../support/ast.ts";
 import { LANGUAGE_SUGGESTIONS } from "../../web/src/features/knobs/editors.tsx";
 
 /**
@@ -25,72 +24,20 @@ import { LANGUAGE_SUGGESTIONS } from "../../web/src/features/knobs/editors.tsx";
  * rather than reading oddly, and there are two live ones — both matching text
  * the server hardcodes, so both are protocol and both say so where they sit.
  */
-const EXEMPT = /i18n-exempt/;
-
 /** Data, not copy: `LANGUAGE_SUGGESTIONS` is what `output.language` is set to —
  *  an instruction to a model — exempted by membership rather than by file, so a
  *  new literal in that same file still fails. */
 const allowed = new Set<string>(LANGUAGE_SUGGESTIONS);
 
-/** Lines an `i18n-exempt` comment covers: from the comment to the first blank
- *  line or the first line that closes a block at column zero. The bracket rule
- *  is for the sixteen-row alias table it was written for; without the blank-line
- *  rule a one-line exemption in `ui/attach.ts` reached the next `}` and took a
- *  whole function's literals with it. */
-function exemptLines(source: string): Set<number> {
-  const lines = source.split("\n");
-  const out = new Set<number>();
-  for (const [i, line] of lines.entries()) {
-    if (!EXEMPT.test(line)) continue;
-    let end = i + 1;
-    while (end < lines.length && (lines[end] ?? "").trim() !== "" && !/^[)\]}]/.test(lines[end] ?? "")) end++;
-    for (let n = i; n <= end; n++) out.add(n + 1);
-  }
-  return out;
-}
+/** `cjkHits` resolves `i18n-exempt` against the declaration the marker is
+ *  written on. What is left here is the one exemption that is not a marker:
+ *  membership of `LANGUAGE_SUGGESTIONS`, so a new literal in that same file
+ *  still fails. */
+const offenders = (file: string, source: string): string[] =>
+  cjkHits(file, source)
+    .filter((h) => !h.exempt && !allowed.has(h.text.trim()))
+    .map((h) => `${file}:${h.line} ${JSON.stringify(h.text.trim().slice(0, 40))}`);
 
-function offenders(file: string, source: string): string[] {
-  const ast = parse(file, source);
-  if (!ast) return [];
-  const exempt = exemptLines(source);
-  const found: string[] = [];
-  const report = (line: number, text: string) => {
-    if (exempt.has(line) || allowed.has(text.trim())) return;
-    found.push(`${file}:${line} ${JSON.stringify(text.trim().slice(0, 40))}`);
-  };
-  traverse(ast, {
-    StringLiteral(p) {
-      if (CJK.test(p.node.value)) report(p.node.loc?.start.line ?? 0, p.node.value);
-    },
-    JSXText(p) {
-      if (CJK.test(p.node.value)) report(p.node.loc?.start.line ?? 0, p.node.value);
-    },
-    TemplateElement(p) {
-      const raw = p.node.value.cooked ?? "";
-      if (CJK.test(raw)) report(p.node.loc?.start.line ?? 0, raw);
-    },
-    RegExpLiteral(p) {
-      if (CJK.test(p.node.pattern)) report(p.node.loc?.start.line ?? 0, p.node.pattern);
-    },
-  });
-  // Comments too, and they outnumbered the literals: the panel's source language
-  // became English and its comments went on naming `To do` and `Cost`, labels a reader
-  // can no longer find in the source. `AGENTS.md`'s first coding rule already
-  // said English; nothing enforced it.
-  //
-  // A comment carries its own exemption rather than borrowing the line-range
-  // rule above: the range starts at the marker, and a marker inside a block
-  // starts below the line this reports.
-  for (const c of ast.comments ?? []) {
-    if (CJK.test(c.value) && !EXEMPT.test(c.value)) report(c.loc?.start.line ?? 0, c.value);
-  }
-  return found;
-}
-
-test("no Chinese literal is left in web/src", async () => {
-  const all: string[] = [];
-  for (const file of new Bun.Glob("web/src/**/*.{ts,tsx}").scanSync(".")) {
-    all.push(...offenders(file, await Bun.file(file).text()));
-  }
-  expect(all).toEqual([]);
+test("no Chinese literal is left in web/src", () => {
+  expect(scan("web/src/**/*.{ts,tsx}", offenders)).toEqual([]);
 });

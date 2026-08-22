@@ -52,6 +52,7 @@ export const brief = (s: string, max = 44): string => firstSentence(s, max);
 // together with it in 0.2.0. Invisible to this guard until it learned to read
 // regexes.
 const GOAL_KEY = /^\s*(?:#{1,6}\s*)?(goal|目标)\s*[:：]?\s*$/i;
+// i18n-exempt: the same key, in the pre-Markdown inline form ADR 016 replaced.
 const GOAL_INLINE = /^\s*(goal|目标)\s*[:：]\s*/i;
 
 export function cardGoal(body: string): string {
