@@ -27,15 +27,16 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Baseline
 
-- Branch: `refactor/api-split-and-settings` merged to `main` as #7; work continues
-  on branches cut from it
+- Branch: `feature/web-i18n`, open as #9; the numbers below were re-measured on
+  it, having been carried unchanged from the branch merged as #7 while the suite
+  grew by 200 tests
 - TypeScript, Oxlint, Biome, and Fallow audit: pass
-- Tests: 1620 pass, 6 environment skips, 0 fail
-- Coverage: 81.96% of statements, 72.40% of branches, 77.21% of functions
-- Untested exports: 1 of 6,966 analysed (`missingBinaries`, which returns nothing
-  and is pinned as the deployment claim it expresses). Untested files: 3, all
-  entry points — the two declared in `.fallowrc.json` and `web/src/app/main.tsx`,
-  which `bundle-boots` builds and boots rather than imports
+- Tests: 1823 pass, 6 environment skips, 0 fail, 1829 across 225 files
+- Coverage: 82.91% of statements, 73.12% of branches, 78.24% of functions
+- Untested exports: 1 of 7,784 analysed (`EGRESS_IMAGE`, a constant naming the
+  image the egress sidecar runs). Untested files: 3, all entry points — the two
+  declared in `.fallowrc.json` and `web/src/app/main.tsx`, which `bundle-boots`
+  builds and boots rather than imports
 - Fallow complexity: zero functions over threshold, against real coverage rather
   than the export-reference estimate
 - Block comments over eight lines: zero, enforced by

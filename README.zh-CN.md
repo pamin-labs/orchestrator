@@ -83,7 +83,7 @@ cd orch-server-*-windows-x64
 沙盒服务器是 Linux only 的（出站过滤用 `nft`），所以在 Windows 上它跑在 WSL 里、
 挨着 Docker Desktop 的 daemon：在 WSL 里 `uvx opensandbox-server`。挂载路径会替它
 翻译 —— 这个进程写成 `C:\orch\skills` 的路径，在它那边是 `/mnt/c/orch/skills`，
-而要写进 `allowed_host_paths` 的正是翻译后的那个。设置 → 环境 会把那一行原样打出来。
+而要写进 `allowed_host_paths` 的正是翻译后的那个。设置 → 沙箱服务器 会把那一行原样打出来。
 </details>
 
 起来的时候它自己会把地址打出来。只绑 loopback 是故意的：面板前面没有登录，

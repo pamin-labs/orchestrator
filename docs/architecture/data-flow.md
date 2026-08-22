@@ -52,7 +52,7 @@ nothing runs on an idle process.
 
 ## Agent transport and credentials
 
-The host owns HTTP/SSE, SQLite, scheduling, and mailbox polling. Each group has
+The host owns HTTP/SSE, PostgreSQL, scheduling, and mailbox polling. Each group has
 one OpenSandbox container and a clone. Agents write requests into the file
 mailbox; the host validates and dispatches them through the `orch` protocol.
 The utility container performs privileged publication without running repository
@@ -61,7 +61,7 @@ format-valid decoys.
 
 ## State and persistence
 
-- A state transition and the event describing it commit in the same SQLite
+- A state transition and the event describing it commit in the same PostgreSQL
   transaction when partial visibility would be invalid.
 - Jobs are claimed with bounded capacity and an explicit lease. Queue fullness
   is backpressure, not an invitation to spawn unbounded work.

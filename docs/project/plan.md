@@ -76,7 +76,7 @@ src/http/routes
    -> src/api/panel | src/api/orch
    -> src/mech
    -> src/runtime and external adapters
-   -> SQLite | OpenSandbox | GitHub | provider CLI
+   -> PostgreSQL | OpenSandbox | GitHub | provider CLI
 ```
 
 The detailed dependency, data-flow, API, error, async, state, security,

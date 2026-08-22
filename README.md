@@ -86,7 +86,7 @@ The sandbox server is Linux-only — its egress mode is `nft` — so on Windows 
 runs under WSL, next to the Docker Desktop daemon: `uvx opensandbox-server` in
 there. Mount paths are translated for it, because a path this process writes as
 `C:\orch\skills` is `/mnt/c/orch/skills` on its side, and the translated form is
-what belongs in its `allowed_host_paths`. The 环境 pane prints the exact line.
+what belongs in its `allowed_host_paths`. The `Sandbox server` pane prints the exact line.
 </details>
 
 It prints its own address on the way up. Loopback on purpose: there is no login

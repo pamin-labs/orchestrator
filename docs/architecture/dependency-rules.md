@@ -7,7 +7,8 @@ Fallow cycle or zone rules in Oxlint.
 ## Enforced rules
 
 1. `web/src` can import shared contracts and the panel route type only. It cannot
-   import API handlers, generic HTTP modules, Bun modules, SQLite, or runtime adapters.
+   import API handlers, generic HTTP modules, Bun modules, the database, or runtime
+   adapters.
 2. `src/orch` can import shared runtime schemas and the Orch route type only. It
    cannot import API handlers or mechanisms.
 3. `src/http/routes` composes Hono, schemas, middleware, and handlers but owns no

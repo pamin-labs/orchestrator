@@ -66,3 +66,29 @@ test("the CLI bundle runs where there is no package.json to read", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 }, 30_000);
+
+/**
+ * Three comments promise a deletion at 0.2.0 and nothing enforces it.
+ *
+ * `ALIAS` in `src/mech/util/validate.ts` accepts the six Chinese DRAFT headings
+ * a card filed before the keys became ASCII still carries; `draftLegacy` parses
+ * the pre-Markdown form; `GOAL_KEY`/`GOAL_INLINE` in `web/src/shared/prose.ts`
+ * match both spellings for the panel. All three are correct today — a stored
+ * card has to keep parsing — and all three say "retire in 0.2.0" in prose that
+ * no command reads. A date written only in a comment is a date nobody meets.
+ */
+test("the 0.2.0 compatibility shims are still inside their window", () => {
+  const [major = "0", minor = "0"] = VERSION.split(".");
+  const due = Number(major) > 0 || Number(minor) >= 2;
+  const alive = [
+    ["src/mech/util/validate.ts", "const ALIAS"],
+    ["src/mech/util/validate.ts", "function draftLegacy"],
+    ["web/src/shared/prose.ts", "const GOAL_KEY"],
+  ].filter(([file, marker]) => readFileSync(file!, "utf8").includes(marker!));
+
+  // Before 0.2.0 they must all still be here: dropping one early is what makes a
+  // card in the queue unapprovable.
+  if (!due) expect(alive).toHaveLength(3);
+  // At 0.2.0 they go, and this is the line that says so out loud.
+  else expect(alive).toEqual([]);
+});

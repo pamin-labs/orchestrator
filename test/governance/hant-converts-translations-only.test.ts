@@ -41,3 +41,24 @@ test("the header names the generated locale, from the catalogue being replaced",
   // `import.meta.main` takes.
   expect(await Bun.file("locales/zh-Hant.po").text()).toContain('"Language: zh-Hant\\n"');
 });
+
+/**
+ * The one rule in `MAINLAND` that is right about a sense rather than a word.
+ *
+ * `周` → `週` is the week. In `周圍`, `周到` and their friends the character
+ * stays, and OpenCC leaves them alone — this project's own rule is what breaks
+ * them. The table said "both of this catalog's 周 are the time sense", counted
+ * by hand once and never again: `zh.po` holds none at all today, so the next
+ * `周围` would ship as `週圍` with every check green, the generator being
+ * deterministic and the diff clean.
+ */
+const NOT_A_WEEK = ["周围", "周边", "周到", "周全", "四周", "周密", "周折", "周旋", "周年"];
+
+test("nothing in the Simplified catalogue asks 周 to stay 周", async () => {
+  const zh = await Bun.file("locales/zh.po").text();
+  expect(NOT_A_WEEK.filter((word) => zh.includes(word))).toEqual([]);
+});
+
+test("and the rule still converts the week it is there for", async () => {
+  expect(await hant(po('msgid "x"\nmsgstr "每周一次"'))).toContain("每週一次");
+});
