@@ -63,7 +63,7 @@ msgid "{count} repositories, most recently touched first"
 msgstr "{count} repositorios, los más recientes primero"
 
 msgid "{count} requirements have no boundary right now: {bareNames}."
-msgstr "Ahora mismo {count} requisitos no tienen límite: {bareNames}."
+msgstr "Ahora mismo {count} requisitos no tienen frontera: {bareNames}."
 
 msgid "{count} selected"
 msgstr "{count} seleccionados"
@@ -203,10 +203,10 @@ msgid "{n} unread — the Librarian is compressing them"
 msgstr "{n} sin leer — el Librarian los está resumiendo"
 
 msgid "{name} ({repo} · {branch}) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
-msgstr "Se añadió {name} ({repo} · {branch}). Las puertas y el comando de instalación se deducen cuando el primer grupo haya clonado; si prefieres, rellénalos ya en Ajustes → Puertas."
+msgstr "Se añadió {name} ({repo} · {branch}). Los gates y el comando de instalación se deducen cuando el primer grupo haya clonado; si prefieres, rellénalos ya en Ajustes → Gates."
 
 msgid "{name} ({repo}, on whatever the remote calls its default branch) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
-msgstr "Se añadió {name} ({repo}, en la rama que el remoto tenga por defecto). Las puertas y el comando de instalación se deducen cuando el primer grupo haya clonado; si prefieres, rellénalos ya en Ajustes → Puertas."
+msgstr "Se añadió {name} ({repo}, en la rama que el remoto tenga por defecto). Los gates y el comando de instalación se deducen cuando el primer grupo haya clonado; si prefieres, rellénalos ya en Ajustes → Gates."
 
 msgid "{name} dissolved; its sandbox is reclaimed"
 msgstr "{name} se disolvió; su sandbox queda liberado"
@@ -224,7 +224,7 @@ msgid "{name} is at {pct}% of its budget"
 msgstr "{name} va por el {pct}% de su presupuesto"
 
 msgid "{name} is blocked by {path}, which is inside your boundary: {why}"
-msgstr "{name} está bloqueado por {path}, que está dentro de vuestro límite: {why}"
+msgstr "{name} está bloqueado por {path}, que está dentro de tu frontera: {why}"
 
 msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name} ya no espera nada — despertada"
@@ -293,7 +293,7 @@ msgid "{path}: cannot be read"
 msgstr "{path}: no se puede leer"
 
 msgid "{repo} has been added, but this login cannot push to it: {why}. Deal with it now, rather than after the first slice is finished."
-msgstr "Se añadió {repo}, pero esta sesión no puede hacer push: {why}. Resuélvelo ahora, no cuando termine la primera rebanada."
+msgstr "Se añadió {repo}, pero esta sesión no puede hacer push: {why}. Resuélvelo ahora, no cuando termine el primer fragmento."
 
 msgid "{repo}'s own skills are not listed yet: the code only exists inside a container, so nothing can count them until the first group has cloned it (we look in {dirs}). After that they appear here by themselves, and you can name one in the composer with /name. Skills kept outside those directories are invisible to both."
 msgstr "las habilidades propias de {repo} todavía no están listadas: el código sólo existe dentro de un contenedor, así que nada puede contarlas hasta que el primer grupo lo haya clonado (miramos en {dirs}). Después aparecen aquí solas, y puedes nombrar una en el compositor con /nombre. Las habilidades que estén fuera de esos directorios son invisibles para ambos."
@@ -360,7 +360,7 @@ msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of pre
 msgstr "{staged}/{ticked} marcados llegan al sandbox, unos {tokens}k tokens de prefijo por turno"
 
 msgid "{tier} auto-accepted, all three gates passed"
-msgstr "{tier} aceptada automáticamente, las tres puertas pasaron"
+msgstr "{tier} aceptada automáticamente, los tres gates pasaron"
 
 msgid "{total} waiting on you"
 msgstr "{total} te esperan"
@@ -533,22 +533,22 @@ msgid "Appearance"
 msgstr "Apariencia"
 
 msgid "Approval recorded — it starts by itself once the boundary clears."
-msgstr "Aprobación registrada: empieza por sí mismo en cuanto se libere el límite."
+msgstr "Aprobación registrada: empieza por sí mismo en cuanto se libere la frontera."
 
 msgid "Approve and start"
 msgstr "Aprobar y empezar"
 
 msgid "Approved · Awaiting boundary"
-msgstr "Aprobado · Esperando límites"
+msgstr "Aprobado · Esperando frontera"
 
 msgid "Approved, blocked by boundaries"
-msgstr "Aprobado, bloqueado por límites"
+msgstr "Aprobado, bloqueado por fronteras"
 
 msgid "Approved; starts automatically when boundaries clear"
-msgstr "Aprobado; arranca solo cuando se liberen los límites"
+msgstr "Aprobado; arranca solo cuando se liberen las fronteras"
 
 msgid "Architect decides on tech choices and architectural boundaries; if they can't answer, they'll come back."
-msgstr "El Arquitecto decide las opciones técnicas y los límites de arquitectura; si no puede responder, lo devuelve."
+msgstr "El Arquitecto decide las opciones técnicas y las fronteras de arquitectura; si no puede responder, lo devuelve."
 
 msgid "Architect working"
 msgstr "Arquitecto trabajando"
@@ -602,10 +602,10 @@ msgid "Auto-advance when approved"
 msgstr "Avanzar solo al aprobar"
 
 msgid "autoAdvance: started the next slice without waiting for you"
-msgstr "autoAdvance: empezó la siguiente porción sin esperarte"
+msgstr "autoAdvance: empezó el siguiente fragmento sin esperarte"
 
 msgid "Awaiting Architect to split boundaries"
-msgstr "Esperando a que el Arquitecto reparta los límites"
+msgstr "Esperando a que el Arquitecto reparta las fronteras"
 
 msgid "Awaiting merge"
 msgstr "Esperando fusión"
@@ -635,7 +635,7 @@ msgid "Batch window"
 msgstr "Ventana de agrupación"
 
 msgid "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates."
-msgstr "Los proyectos grandes compilan durante horas; sin techo, una compilación colgada ocupa una plaza de recurso para siempre. Las plazas son globales y escasas: un comando muerto detiene las puertas de toda la flota."
+msgstr "Los proyectos grandes compilan durante horas; sin techo, una compilación colgada ocupa una plaza de recurso para siempre. Las plazas son globales y escasas: un comando muerto detiene los gates de toda la flota."
 
 msgid "blocked by {path}; handed to grp {target} and waiting for it to land"
 msgstr "bloqueada por {path}; entregada a grp {target} y esperando a que aterrice"
@@ -650,17 +650,17 @@ msgid "Both go to Dispatcher; it will revise the card and bring it back for your
 msgstr "Ambos van al Despachador; revisará la tarjeta y te la traerá de nuevo para aprobar."
 
 msgid "Boundary"
-msgstr "Límite"
+msgstr "Frontera"
 
 msgid "boundary still overlaps"
-msgstr "el límite sigue solapado"
+msgstr "la frontera sigue solapada"
 
 msgid "Branch"
 msgstr "Rama"
 
 msgid "branch gate failed:\n"
 "{gates}"
-msgstr "la puerta de la rama falló:\n"
+msgstr "el gate de la rama falló:\n"
 "{gates}"
 
 msgid "branch sent back by {from} {n, plural, one {# time} other {# times}} — stopping rather than paying for another round"
@@ -882,7 +882,7 @@ msgid "Connect GitHub"
 msgstr "Conectar GitHub"
 
 msgid "Connect GitHub once in Settings. Branches are pushed with it — without one, every slice is refused at its last step."
-msgstr "Conecta GitHub una vez en Ajustes. Con eso se suben las ramas: sin ello, cada slice se rechaza en su último paso."
+msgstr "Conecta GitHub una vez en Ajustes. Con eso se suben las ramas: sin ello, cada fragmento se rechaza en su último paso."
 
 msgid "Connected"
 msgstr "Conectado"
@@ -1229,7 +1229,7 @@ msgid "Fix this"
 msgstr "Arreglar esto"
 
 msgid "Flame distribution"
-msgstr "Distribución de llamas"
+msgstr "Distribución del flame graph"
 
 msgid "Folder"
 msgstr "Carpeta"
@@ -1265,34 +1265,34 @@ msgid "Full contents of ~/.codex/auth.json"
 msgstr "Contenido completo de ~/.codex/auth.json"
 
 msgid "Gate"
-msgstr "Puerta"
+msgstr "Gate"
 
 msgid "gate {verdict}"
-msgstr "puerta {verdict}"
+msgstr "gate {verdict}"
 
 msgid "Gate check"
-msgstr "Comprobación de puertas"
+msgstr "Comprobación de gates"
 
 msgid "Gate concurrency"
-msgstr "Concurrencia de puertas"
+msgstr "Concurrencia de gates"
 
 msgid "gate fail on S{seq}"
-msgstr "puerta fallida en S{seq}"
+msgstr "gate fallido en S{seq}"
 
 msgid "gate name"
-msgstr "nombre de la puerta"
+msgstr "nombre del gate"
 
 msgid "gate pass on S{seq}"
-msgstr "puerta superada en S{seq}"
+msgstr "gate superado en S{seq}"
 
 msgid "Gate retries"
-msgstr "Reintentos de puerta"
+msgstr "Reintentos de gate"
 
 msgid "Gates"
-msgstr "Puertas"
+msgstr "Gates"
 
 msgid "Gates / Install commands"
-msgstr "Puertas / Comandos de instalación"
+msgstr "Gates / Comandos de instalación"
 
 msgid "gates found: {gates}"
 msgstr "gates detectados: {gates}"
@@ -1446,7 +1446,7 @@ msgid "How long the usage endpoint is left alone once it has refused. Shorter th
 msgstr "Cuánto se deja en paz el endpoint de uso tras un rechazo. Si es menos de lo que dura el rechazo, el sondeo solo se gana rechazos nuevos."
 
 msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
-msgstr "Cuántas puertas pueden correr a la vez. Un arriendo es una compilación o una tanda de tests real, así que diez en paralelo revientan la máquina. El navegador se limita a 1 por su cuenta: cada uno es un Chromium de verdad."
+msgstr "Cuántos gates pueden correr a la vez. Un arriendo es una compilación o una tanda de tests real, así que diez en paralelo revientan la máquina. El navegador se limita a 1 por su cuenta: cada uno es un Chromium de verdad."
 
 msgid "How many live frames wait for one slow tab before they are dropped. A tab that stopped reading is the only thing here that grows without bound. Dropping is safe: the panel re-reads its state on the next event."
 msgstr "Cuántos fotogramas en vivo esperan por una pestaña lenta antes de tirarlos. Una pestaña que dejó de leer es lo único aquí que crece sin límite. Tirarlos es seguro: el panel relee su estado en el siguiente evento."
@@ -1748,7 +1748,7 @@ msgid "No activity yet."
 msgstr "Aún no hay actividad."
 
 msgid "No boundaries drawn yet. The Architect decides which paths each group may write before work starts; groups without one run into the same files."
-msgstr "Aún no hay límites trazados. El Arquitecto decide en qué rutas puede escribir cada grupo antes de empezar; los grupos sin límite chocan en los mismos archivos."
+msgstr "Aún no hay fronteras trazadas. El Arquitecto decide en qué rutas puede escribir cada grupo antes de empezar; los grupos sin frontera chocan en los mismos archivos."
 
 msgid "No budget limit"
 msgstr "Sin límite de presupuesto"
@@ -1778,10 +1778,10 @@ msgid "no file"
 msgstr "ningún archivo"
 
 msgid "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
-msgstr "no se detectó ninguna puerta en este repositorio. Cada rebanada fallará la revisión hasta que este proyecto tenga al menos una: añade una plantilla de recurso y pon su nombre en las gates del proyecto."
+msgstr "no se detectó ningún gate en este repositorio. Cada fragmento fallará la revisión hasta que este proyecto tenga al menos uno: añade una plantilla de recurso y pon su nombre en las gates del proyecto."
 
 msgid "No gates enabled; LLM review has no floor."
-msgstr "No hay ninguna puerta activada; la revisión del LLM no tiene suelo."
+msgstr "No hay ningún gate activado; la revisión del LLM no tiene suelo."
 
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "no hay grupo {grp} en la tabla grp, así que /work sigue vacío — no hay código que ejecutar este turno"
@@ -1829,7 +1829,7 @@ msgid "No other requirements for this project"
 msgstr "No hay otros requisitos en este proyecto"
 
 msgid "no owned paths declared, and {holders} already hold theirs — the Architect has to cut the boundary before work starts"
-msgstr "no se declararon rutas propias y {holders} ya tienen las suyas: el Arquitecto tiene que cortar el límite antes de empezar"
+msgstr "no se declararon rutas propias y {holders} ya tienen las suyas: el Arquitecto tiene que cortar la frontera antes de empezar"
 
 msgid "no path"
 msgstr "ninguna ruta"
@@ -1961,10 +1961,10 @@ msgid "On, a question walks the index tree before it is answered — one model c
 msgstr "Activado, una pregunta recorre el árbol de índice antes de responderse: una llamada al modelo. Desactivado se salta el recorrido y cae en la búsqueda por palabras, que es justo la comparación para la que existe este interruptor."
 
 msgid "Onboarding"
-msgstr "Puesta en marcha"
+msgstr "Incorporación"
 
 msgid "Once boundaries are cleared, work starts automatically; no need to click again."
-msgstr "En cuanto se liberen los límites, el trabajo arranca solo; no hace falta volver a hacer clic."
+msgstr "En cuanto se liberen las fronteras, el trabajo arranca solo; no hace falta volver a hacer clic."
 
 msgid "One branch name per line, most likely first"
 msgstr "Un nombre de rama por línea, la más probable primero"
@@ -2051,7 +2051,7 @@ msgid "Ownership"
 msgstr "Reparto"
 
 msgid "owns {paths}"
-msgstr "límites fijados en {paths}"
+msgstr "fronteras fijadas en {paths}"
 
 msgid "p50"
 msgstr "p50"
@@ -2153,7 +2153,7 @@ msgid "Planning"
 msgstr "Planificando"
 
 msgid "Plumbing"
-msgstr "Fontanería"
+msgstr "Entrañas"
 
 msgid "PM working"
 msgstr "PM trabajando"
@@ -2390,7 +2390,7 @@ msgid "Repo-wide"
 msgstr "Todo el repositorio"
 
 msgid "Reported by {from}: {path} is outside its boundary, so it cannot change it itself."
-msgstr "Lo reporta {from}: {path} queda fuera de su límite, así que no puede cambiarlo por sí mismo."
+msgstr "Lo reporta {from}: {path} queda fuera de su frontera, así que no puede cambiarlo por sí mismo."
 
 msgid "Repos with DCO enabled won't accept commits without this line"
 msgstr "Los repositorios con DCO activado no aceptan commits sin esta línea"
@@ -2689,7 +2689,7 @@ msgid "Settings → codex → sign in, which runs the official device-code flow;
 msgstr "Ajustes → codex → iniciar sesión, que ejecuta el flujo oficial de device-code; codex no está instalado aquí. También sirve pegar una API key."
 
 msgid "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S"
-msgstr "Ajustes: cuenta, entorno, habilidades, tema, y las puertas y el sandbox de este proyecto ⌘S"
+msgstr "Ajustes: cuenta, entorno, habilidades, tema, y los gates y el sandbox de este proyecto ⌘S"
 
 msgid "Shared across all projects"
 msgstr "Compartido entre todos los proyectos"
@@ -2881,7 +2881,7 @@ msgid "the base branch moved from {was} to {now}, because the default branch on 
 msgstr "la rama base pasó de {was} a {now}, porque cambió la rama por defecto del remoto. A partir de ahora, cada clon, rebase y diff va contra ella."
 
 msgid "the boundary still overlaps"
-msgstr "el límite sigue solapado"
+msgstr "la frontera sigue solapada"
 
 msgid "The branch is finished but the PR will not open: {why}\n"
 "\n"
@@ -2891,7 +2891,7 @@ msgstr "La rama está terminada pero el PR no se abre: {why}\n"
 "Responde a esto cuando esté arreglado y el grupo lo reintenta solo."
 
 msgid "the branch was not pushed to the remote, and the next slice's acceptance will try again: {reason}"
-msgstr "la rama no se subió al remoto; la aceptación de la siguiente rebanada lo reintentará: {reason}"
+msgstr "la rama no se subió al remoto; la aceptación del siguiente fragmento lo reintentará: {reason}"
 
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "El navegador no puede leerlo. Arrastra las carpetas aquí."
@@ -3139,7 +3139,7 @@ msgid "Turns without progress"
 msgstr "Turnos sin avance"
 
 msgid "Two sources only: our releases (ghcr.io/pamin-labs/…) and local builds with no registry prefix. Agents run your code inside this image, so an untrusted one hands away the boundary — and the panel cannot tell."
-msgstr "Solo dos orígenes: nuestras publicaciones (ghcr.io/pamin-labs/…) y compilaciones locales sin prefijo de registro. Los agentes ejecutan tu código dentro de esta imagen, así que una imagen no confiable entrega el límite entero — y el panel no puede distinguirlo."
+msgstr "Solo dos orígenes: nuestras publicaciones (ghcr.io/pamin-labs/…) y compilaciones locales sin prefijo de registro. Los agentes ejecutan tu código dentro de esta imagen, así que una imagen no confiable entrega la frontera entera — y el panel no puede distinguirlo."
 
 msgid "Type a model ID to add a row"
 msgstr "Escribe un ID de modelo para añadir una fila"
@@ -3307,7 +3307,7 @@ msgid "which repository? (owner/name)"
 msgstr "¿qué repositorio? (owner/name)"
 
 msgid "Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you."
-msgstr "Qué niveles se saltan tu revisión final tras pasar las cuatro puertas. Por defecto, trivial y normal; los difíciles siguen esperándote."
+msgstr "Qué niveles se saltan tu revisión final tras pasar los cuatro gates. Por defecto, trivial y normal; los difíciles siguen esperándote."
 
 msgid "Which window"
 msgstr "Qué ventana"
@@ -3346,7 +3346,7 @@ msgid "You can edit the card and re-approve."
 msgstr "Puedes editar la tarjeta y volver a aprobarla."
 
 msgid "you sent S{seq} back, but autoAdvance had already started {n, plural, one {# slice} other {# slices}} after it, and they were built on this one. The whole group has stopped: either let it fix this slice first, or send the later ones back with it."
-msgstr "has devuelto S{seq}, pero autoAdvance ya había arrancado {n, plural, one {# porción} other {# porciones}} posteriores, y están construidas sobre esta. El grupo entero se ha parado: o le dejas arreglar esta porción primero, o devuelves también las siguientes."
+msgstr "has devuelto S{seq}, pero autoAdvance ya había arrancado {n, plural, one {# fragmento} other {# fragmentos}} posteriores, y están construidas sobre esta. El grupo entero se ha parado: o le dejas arreglar esta porción primero, o devuelves también las siguientes."
 
 msgid "zoomed to {zoomLevel}×"
 msgstr "ampliado {zoomLevel}×"

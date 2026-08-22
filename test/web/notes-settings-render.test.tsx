@@ -72,7 +72,7 @@ test("inside one requirement the kinds are badges on a single list, not tabs", (
   const { getByText, queryAllByRole } = render(
     <NotesBoard compact notes={[note({ kind: "journal" }), note({ id: 2, kind: "retro", body: "这组的复盘" })]} />,
   );
-  getByText("日志");
+  getByText("工作日志");
   getByText("复盘");
   getByText("这组的复盘");
   // A compact list has no tab strip: four tabs with one row each is worse than none.
@@ -92,8 +92,8 @@ test("the board tabs only the kinds that exist, and counts each one", () => {
   getByRole("tablist");
   // Two tabs, each carrying its own count — and the one that is open says so,
   // which no string of markup could.
-  expect(getAllByRole("tab").map((t) => t.textContent)).toEqual(["日志2", "教训1"]);
-  expect(getByRole("tab", { selected: true }).textContent).toBe("日志2");
+  expect(getAllByRole("tab").map((t) => t.textContent)).toEqual(["工作日志2", "教训1"]);
+  expect(getByRole("tab", { selected: true }).textContent).toBe("工作日志2");
   // Kinds nobody wrote get no tab at all.
   expect(queryAllByRole("tab", { name: /入职包/ })).toHaveLength(0);
   expect(queryAllByRole("tab", { name: /老板说的/ })).toHaveLength(0);

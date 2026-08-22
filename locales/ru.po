@@ -254,7 +254,7 @@ msgid "{name} spent its whole budget ({tokens} tokens) and is suspended"
 msgstr "{name} израсходовала весь бюджет ({tokens} токенов) и приостановлена"
 
 msgid "{name}: {n, plural, one {# running turn was} other {# running turns were}} killed before the data goes"
-msgstr "{name}: {n, plural, one {# идущий turn остановлен} few {# идущих turn остановлены} many {# идущих turn остановлено} other {# идущих turn остановлено}} перед удалением данных"
+msgstr "{name}: {n, plural, one {# идущий ход остановлен} few {# идущих хода остановлены} many {# идущих ходов остановлено} other {# идущих хода остановлено}} перед удалением данных"
 
 msgid "{name}: PR #{pr} was closed — reopen it or drop the requirement"
 msgstr "{name}: PR #{pr} закрыт — откройте его снова или откажитесь от требования"
@@ -360,7 +360,7 @@ msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of pre
 msgstr "{staged}/{ticked} отмеченных попадают в песочницу, около {tokens}k токенов префикса за ход"
 
 msgid "{tier} auto-accepted, all three gates passed"
-msgstr "{tier} принята автоматически, все три ворот пройдены"
+msgstr "{tier} принята автоматически, все три гейта пройдены"
 
 msgid "{total} waiting on you"
 msgstr "{total} ждут вас"
@@ -635,7 +635,7 @@ msgid "Batch window"
 msgstr "Окно группировки"
 
 msgid "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates."
-msgstr "Большие проекты собираются часами; без потолка один зависший билд занимает слот ресурса навсегда. Слотов мало и они общие — одна мёртвая команда останавливает воротa всего флота."
+msgstr "Большие проекты собираются часами; без потолка один зависший билд занимает слот ресурса навсегда. Слотов мало и они общие — одна мёртвая команда останавливает гейты всего флота."
 
 msgid "blocked by {path}; handed to grp {target} and waiting for it to land"
 msgstr "заблокировано из-за {path}; передано в grp {target} и ждёт, пока оно приземлится"
@@ -660,7 +660,7 @@ msgstr "Ветка"
 
 msgid "branch gate failed:\n"
 "{gates}"
-msgstr "ворота ветки не пройдены:\n"
+msgstr "гейт ветки не пройден:\n"
 "{gates}"
 
 msgid "branch sent back by {from} {n, plural, one {# time} other {# times}} — stopping rather than paying for another round"
@@ -730,7 +730,7 @@ msgid "Cancel all queued turns; return the occupied slot to another group. Code,
 msgstr "Отменяет все ходы в очереди и возвращает занятый слот другой группе. Код, ветка и записи сохраняются."
 
 msgid "cancelled {n, plural, one {# job} other {# jobs}} queued for a dissolved group"
-msgstr "отменено {n, plural, one {# задание} few {# задания} many {# заданий} other {# задания}} в очереди распущенного требования"
+msgstr "отменено {n, plural, one {# задание} few {# задания} many {# заданий} other {# задания}} в очереди распущенной группы"
 
 msgid "Cannot open a container, so every turn is held: {why}\n"
 "Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back."
@@ -1265,34 +1265,34 @@ msgid "Full contents of ~/.codex/auth.json"
 msgstr "Полное содержимое ~/.codex/auth.json"
 
 msgid "Gate"
-msgstr "Ворота"
+msgstr "Гейт"
 
 msgid "gate {verdict}"
-msgstr "ворота {verdict}"
+msgstr "гейт {verdict}"
 
 msgid "Gate check"
-msgstr "Проверка ворот"
+msgstr "Проверка гейтов"
 
 msgid "Gate concurrency"
-msgstr "Параллелизм ворот"
+msgstr "Параллелизм гейтов"
 
 msgid "gate fail on S{seq}"
-msgstr "ворота не пройдены на S{seq}"
+msgstr "гейт не пройден на S{seq}"
 
 msgid "gate name"
-msgstr "имя ворот"
+msgstr "имя гейта"
 
 msgid "gate pass on S{seq}"
-msgstr "ворота пройдены на S{seq}"
+msgstr "гейт пройден на S{seq}"
 
 msgid "Gate retries"
-msgstr "Повторы ворот"
+msgstr "Повторы гейтов"
 
 msgid "Gates"
-msgstr "Ворота"
+msgstr "Гейты"
 
 msgid "Gates / Install commands"
-msgstr "Ворота / Команды установки"
+msgstr "Гейты / Команды установки"
 
 msgid "gates found: {gates}"
 msgstr "гейты найдены: {gates}"
@@ -1446,7 +1446,7 @@ msgid "How long the usage endpoint is left alone once it has refused. Shorter th
 msgstr "Сколько эндпоинт расхода оставляют в покое после отказа. Короче срока действия отказа — и опрос просто зарабатывает новые."
 
 msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
-msgstr "Сколько ворот может идти одновременно. Аренда — это настоящая сборка или прогон тестов, десяток параллельно убьёт машину. Браузер отдельно ограничен единицей: каждый — настоящий Chromium."
+msgstr "Сколько гейтов может идти одновременно. Аренда — это настоящая сборка или прогон тестов, десяток параллельно убьёт машину. Браузер отдельно ограничен единицей: каждый — настоящий Chromium."
 
 msgid "How many live frames wait for one slow tab before they are dropped. A tab that stopped reading is the only thing here that grows without bound. Dropping is safe: the panel re-reads its state on the next event."
 msgstr "Сколько живых кадров ждут одну медленную вкладку, прежде чем их выбросят. Вкладка, переставшая читать, — единственное здесь, что растёт без предела. Выбрасывать безопасно: панель перечитает состояние на следующем событии."
@@ -1545,7 +1545,7 @@ msgid "interrupted, but the rollback to {sha} failed: {why}. The checkout is dir
 msgstr "прервано, но откат к {sha} не удался: {why}. Рабочая копия грязная."
 
 msgid "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
-msgstr "Поднят ли сервер песочниц и принимает ли он наш ключ. Обычно это loopback, и его ответ лишь заполняет отчёт — тогда как сетевой пинг ниже открывает или закрывает ворота всему флоту."
+msgstr "Поднят ли сервер песочниц и принимает ли он наш ключ. Обычно это loopback, и его ответ лишь заполняет отчёт — тогда как сетевой пинг ниже открывает или закрывает гейты всему флоту."
 
 msgid "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open."
 msgstr "Есть ли сеть вообще: HEAD к origin каждого провайдера, внутри такта сторожевого таймера. Самое короткое ожидание здесь — намеренно: медленный ответ не должен держать такт открытым."
@@ -1778,10 +1778,10 @@ msgid "no file"
 msgstr "нет файла"
 
 msgid "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
-msgstr "в этом репозитории не найдено ни одних ворот. Каждый срез будет проваливать ревью, пока у проекта не появится хотя бы одни: добавьте шаблон ресурса и впишите его имя в gates проекта."
+msgstr "в этом репозитории не найдено ни одного гейта. Каждый срез будет проваливать ревью, пока у проекта не появится хотя бы один: добавьте шаблон ресурса и впишите его имя в gates проекта."
 
 msgid "No gates enabled; LLM review has no floor."
-msgstr "Не включены ворота; у проверки LLM нет опоры."
+msgstr "Не включён ни один гейт; у проверки LLM нет опоры."
 
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "группы {grp} нет в таблице grp, поэтому /work всё ещё пуст — на этом ходу нечего запускать"
@@ -1895,7 +1895,7 @@ msgid "None; this connection sees no repositories. Install with all repos, or se
 msgstr "Ни одного; это подключение не видит репозиториев. Установите со всеми репозиториями или выберите конкретные."
 
 msgid "Not checked out"
-msgstr "Не выгружено"
+msgstr "Checkout не сделан"
 
 msgid "not configured"
 msgstr "не настроено"
@@ -1961,7 +1961,7 @@ msgid "On, a question walks the index tree before it is answered — one model c
 msgstr "Включено — вопрос обходит дерево индекса, прежде чем на него ответят: один вызов модели. Выключено — обход пропускается и всё падает в поиск по ключевым словам; ради этого сравнения переключатель и существует."
 
 msgid "Onboarding"
-msgstr "Первый запуск"
+msgstr "Онбординг"
 
 msgid "Once boundaries are cleared, work starts automatically; no need to click again."
 msgstr "Как только границы освободятся, работа начнётся сама; повторно нажимать не нужно."
@@ -2354,7 +2354,7 @@ msgid "Remove this project"
 msgstr "Убрать этот проект"
 
 msgid "Removed the project {name} ({repo}): {n, plural, one {# requirement} other {# requirements}}, the containers and the records are gone. Nothing on GitHub was touched."
-msgstr "Проект {name} ({repo}) удалён: {n, plural, one {# требование} few {# требования} many {# требований} other {# требований}}, их контейнеры и записи стёрты. На GitHub ничего не тронуто."
+msgstr "Проект {name} ({repo}) удалён: {n, plural, one {# требование} few {# требования} many {# требований} other {# требования}}, их контейнеры и записи стёрты. На GitHub ничего не тронуто."
 
 msgid "Removing…"
 msgstr "Убираем…"
@@ -2629,7 +2629,7 @@ msgid "Selected"
 msgstr "Выбрано"
 
 msgid "Self"
-msgstr "Сам"
+msgstr "Собственное"
 
 msgid "Self-review"
 msgstr "Самопроверка"
@@ -2689,7 +2689,7 @@ msgid "Settings → codex → sign in, which runs the official device-code flow;
 msgstr "Настройки → codex → войти: запускается официальный device-code flow; codex здесь не установлен. Можно также вставить API-ключ."
 
 msgid "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S"
-msgstr "Настройки: аккаунт, окружение, навыки, тема, а также ворота и песочница этого проекта ⌘S"
+msgstr "Настройки: аккаунт, окружение, навыки, тема, а также гейты и песочница этого проекта ⌘S"
 
 msgid "Shared across all projects"
 msgstr "Общее для всех проектов"
@@ -2855,7 +2855,7 @@ msgid "System"
 msgstr "Система"
 
 msgid "System timing"
-msgstr "Системное время"
+msgstr "Системные тайминги"
 
 msgid "Take note"
 msgstr "Записать"
@@ -3223,7 +3223,7 @@ msgid "Waiting for you to approve on GitHub…"
 msgstr "Ждём вашего одобрения на GitHub…"
 
 msgid "Wake"
-msgstr "Пробуждение"
+msgstr "Разбудить"
 
 msgid "Walk depth"
 msgstr "Глубина обхода"
@@ -3307,7 +3307,7 @@ msgid "which repository? (owner/name)"
 msgstr "какой репозиторий? (owner/name)"
 
 msgid "Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you."
-msgstr "Какие уровни пропускают ваш последний взгляд после всех четырёх ворот. По умолчанию — тривиальные и обычные; сложные по-прежнему ждут вас."
+msgstr "Какие уровни пропускают ваш последний взгляд после всех четырёх гейтов. По умолчанию — тривиальные и обычные; сложные по-прежнему ждут вас."
 
 msgid "Which window"
 msgstr "Какое окно"

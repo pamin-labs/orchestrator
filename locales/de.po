@@ -254,7 +254,7 @@ msgid "{name} spent its whole budget ({tokens} tokens) and is suspended"
 msgstr "{name} hat das ganze Budget ({tokens} Tokens) verbraucht und ist ausgesetzt"
 
 msgid "{name}: {n, plural, one {# running turn was} other {# running turns were}} killed before the data goes"
-msgstr "{name}: {n, plural, one {# laufender Turn wurde} other {# laufende Turns wurden}} beendet, bevor die Daten gehen"
+msgstr "{name}: {n, plural, one {# laufender Zug wurde} other {# laufende Züge wurden}} beendet, bevor die Daten gehen"
 
 msgid "{name}: PR #{pr} was closed — reopen it or drop the requirement"
 msgstr "{name}: PR #{pr} wurde geschlossen — wieder öffnen oder die Anforderung fallen lassen"
@@ -293,7 +293,7 @@ msgid "{path}: cannot be read"
 msgstr "{path}: nicht lesbar"
 
 msgid "{repo} has been added, but this login cannot push to it: {why}. Deal with it now, rather than after the first slice is finished."
-msgstr "{repo} wurde hinzugefügt, aber dieser Login kann nicht pushen: {why}. Kümmere dich jetzt darum, nicht erst nach dem ersten Slice."
+msgstr "{repo} wurde hinzugefügt, aber dieser Login kann nicht pushen: {why}. Kümmere dich jetzt darum, nicht erst nach dem ersten Abschnitt."
 
 msgid "{repo}'s own skills are not listed yet: the code only exists inside a container, so nothing can count them until the first group has cloned it (we look in {dirs}). After that they appear here by themselves, and you can name one in the composer with /name. Skills kept outside those directories are invisible to both."
 msgstr "die eigenen Skills von {repo} sind noch nicht gelistet: der Code existiert nur in einem Container, also kann sie niemand zählen, bevor die erste Gruppe ihn geklont hat (wir schauen in {dirs}). Danach erscheinen sie hier von selbst, und im Eingabefeld rufst du einen mit /name auf. Skills außerhalb dieser Verzeichnisse sind für beide unsichtbar."
@@ -318,10 +318,10 @@ msgid "{rest} more requirements"
 msgstr "{rest} weitere Anforderungen"
 
 msgid "{role} finished {n, plural, one {# turn} other {# turns}} without changing a file, a task or a note"
-msgstr "{role} hat {n, plural, one {# Turn} other {# Turns}} beendet, ohne eine Datei, eine Aufgabe oder eine Notiz anzufassen"
+msgstr "{role} hat {n, plural, one {# Zug} other {# Züge}} beendet, ohne eine Datei, eine Aufgabe oder eine Notiz anzufassen"
 
 msgid "{role} has rewritten {file} {n, plural, one {# turn} other {# turns}} running — probably a design problem, sending it to the Architect"
-msgstr "{role} schreibt {file} seit {n, plural, one {# Turn} other {# Turns}} immer wieder um — vermutlich ein Entwurfsproblem, geht an den Architect"
+msgstr "{role} schreibt {file} seit {n, plural, one {# Zug} other {# Züge}} immer wieder um — vermutlich ein Entwurfsproblem, geht an den Architect"
 
 msgid "{role} wrote {n, plural, one {# file} other {# files}} this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it"
 msgstr "{role} hat {n, plural, one {# Datei} other {# Dateien}} geschrieben, die dieser Gruppe nicht gehören ({files}) — zurückgenommen; die Sandbox dieser CLI kann das Schreiben nicht verhindern, deshalb prüft der Abgleich danach"
@@ -360,7 +360,7 @@ msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of pre
 msgstr "{staged}/{ticked} angehakt erreichen die Sandbox, etwa {tokens}k Tokens Präfix pro Zug"
 
 msgid "{tier} auto-accepted, all three gates passed"
-msgstr "{tier} automatisch abgenommen, alle drei Tore bestanden"
+msgstr "{tier} automatisch abgenommen, alle drei Gates bestanden"
 
 msgid "{total} waiting on you"
 msgstr "{total} warten auf dich"
@@ -602,7 +602,7 @@ msgid "Auto-advance when approved"
 msgstr "Nach Freigabe automatisch weiter"
 
 msgid "autoAdvance: started the next slice without waiting for you"
-msgstr "autoAdvance: die nächste Scheibe wurde gestartet, ohne auf dich zu warten"
+msgstr "autoAdvance: der nächste Abschnitt wurde gestartet, ohne auf dich zu warten"
 
 msgid "Awaiting Architect to split boundaries"
 msgstr "Wartet auf die Grenzaufteilung des Architekten"
@@ -876,13 +876,13 @@ msgid "Configuration doesn't allow the path we need to mount"
 msgstr "Die Konfiguration erlaubt den benötigten Mount-Pfad nicht"
 
 msgid "Confirm abandonment"
-msgstr "Aufgabe bestätigen"
+msgstr "Aufgeben bestätigen"
 
 msgid "Connect GitHub"
 msgstr "GitHub verbinden"
 
 msgid "Connect GitHub once in Settings. Branches are pushed with it — without one, every slice is refused at its last step."
-msgstr "Verbinde GitHub einmal in den Einstellungen. Damit werden Branches gepusht — ohne wird jede Slice im letzten Schritt abgelehnt."
+msgstr "Verbinde GitHub einmal in den Einstellungen. Damit werden Branches gepusht — ohne wird jeder Abschnitt im letzten Schritt abgelehnt."
 
 msgid "Connected"
 msgstr "Verbunden"
@@ -1229,7 +1229,7 @@ msgid "Fix this"
 msgstr "Das beheben"
 
 msgid "Flame distribution"
-msgstr "Flammenverteilung"
+msgstr "Flamegraph-Verteilung"
 
 msgid "Folder"
 msgstr "Ordner"
@@ -1277,13 +1277,13 @@ msgid "Gate concurrency"
 msgstr "Gate-Parallelität"
 
 msgid "gate fail on S{seq}"
-msgstr "Tor nicht bestanden bei S{seq}"
+msgstr "Gate nicht bestanden bei S{seq}"
 
 msgid "gate name"
 msgstr "Gate-Name"
 
 msgid "gate pass on S{seq}"
-msgstr "Tor bestanden bei S{seq}"
+msgstr "Gate bestanden bei S{seq}"
 
 msgid "Gate retries"
 msgstr "Gate-Wiederholungen"
@@ -1545,7 +1545,7 @@ msgid "interrupted, but the rollback to {sha} failed: {why}. The checkout is dir
 msgstr "unterbrochen, aber das Zurückrollen auf {sha} ist fehlgeschlagen: {why}. Der Checkout ist schmutzig."
 
 msgid "Is the sandbox server up, and does it take our key. Usually loopback, and its answer only fills in a report—where the network ping below gates the whole fleet."
-msgstr "Ob der Sandbox-Server läuft und unseren Schlüssel annimmt. Meist Loopback, und die Antwort füllt nur einen Bericht — während der Netzwerk-Ping darunter die ganze Flotte gattert."
+msgstr "Ob der Sandbox-Server läuft und unseren Schlüssel annimmt. Meist Loopback, und die Antwort füllt nur einen Bericht — während der Netzwerk-Ping darunter über die ganze Flotte entscheidet."
 
 msgid "Is there a network at all: a HEAD to every provider origin, run inside the watchdog tick. Deliberately the shortest wait here—a slow answer must not hold a tick open."
 msgstr "Ob überhaupt ein Netz da ist: ein HEAD an jede Anbieter-Origin, ausgeführt im Watchdog-Tick. Bewusst die kürzeste Wartezeit hier — eine langsame Antwort darf keinen Tick offen halten."
@@ -1778,7 +1778,7 @@ msgid "no file"
 msgstr "keine Datei"
 
 msgid "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
-msgstr "In diesem Repository wurden keine Gates gefunden. Jede Scheibe fällt in der Review durch, bis dieses Projekt mindestens eines hat: eine Ressourcenvorlage anlegen und ihren Namen in die gates des Projekts eintragen."
+msgstr "In diesem Repository wurden keine Gates gefunden. Jeder Abschnitt fällt in der Review durch, bis dieses Projekt mindestens eines hat: eine Ressourcenvorlage anlegen und ihren Namen in die gates des Projekts eintragen."
 
 msgid "No gates enabled; LLM review has no floor."
 msgstr "Kein Gate aktiviert; die LLM-Durchsicht hat keinen Boden."
@@ -1961,7 +1961,7 @@ msgid "On, a question walks the index tree before it is answered — one model c
 msgstr "An läuft eine Frage vor der Antwort durch den Index-Baum — ein Modellaufruf. Aus entfällt der Lauf und es geht direkt zur Stichwortsuche; genau dieser Vergleich ist der Zweck des Schalters."
 
 msgid "Onboarding"
-msgstr "Einrichtung"
+msgstr "Einarbeitung"
 
 msgid "Once boundaries are cleared, work starts automatically; no need to click again."
 msgstr "Sobald die Grenzen frei sind, startet die Arbeit von selbst; kein zweiter Klick nötig."
@@ -2891,7 +2891,7 @@ msgstr "Der Branch ist fertig, aber der PR lässt sich nicht öffnen: {why}\n"
 "Antworte hier, sobald das behoben ist, dann versucht es die Gruppe von selbst noch einmal."
 
 msgid "the branch was not pushed to the remote, and the next slice's acceptance will try again: {reason}"
-msgstr "der Branch wurde nicht zum Remote gepusht; die Abnahme des nächsten Slice versucht es erneut: {reason}"
+msgstr "der Branch wurde nicht zum Remote gepusht; die Abnahme des nächsten Abschnitts versucht es erneut: {reason}"
 
 msgid "The browser can't read this. Drag folders in instead."
 msgstr "Der Browser kann das nicht lesen. Zieh stattdessen Ordner hinein."
@@ -2909,7 +2909,7 @@ msgid "The entire requirement returns to Dispatcher for a deeper dive; this comm
 msgstr "Die ganze Anforderung geht zum Dispatcher zurück, um tiefer zu graben; dieser Kommentar hat oberste Priorität."
 
 msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, requirements left running"
-msgstr "der Host hat sein Netz verloren; {n, plural, one {# Turn wurde angehalten und neu eingereiht} other {# Turns wurden angehalten und neu eingereiht}}, die Anforderungen laufen weiter"
+msgstr "der Host hat sein Netz verloren; {n, plural, one {# Zug wurde angehalten und neu eingereiht} other {# Züge wurden angehalten und neu eingereiht}}, die Anforderungen laufen weiter"
 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "der Index lässt sich nicht auffrischen: der Container dieses Projekts startet nicht ({why})"
@@ -3223,7 +3223,7 @@ msgid "Waiting for you to approve on GitHub…"
 msgstr "Warte auf deine Freigabe bei GitHub…"
 
 msgid "Wake"
-msgstr "Aufwachen"
+msgstr "Wecken"
 
 msgid "Walk depth"
 msgstr "Suchtiefe"
@@ -3346,7 +3346,7 @@ msgid "You can edit the card and re-approve."
 msgstr "Du kannst die Karte bearbeiten und erneut freigeben."
 
 msgid "you sent S{seq} back, but autoAdvance had already started {n, plural, one {# slice} other {# slices}} after it, and they were built on this one. The whole group has stopped: either let it fix this slice first, or send the later ones back with it."
-msgstr "du hast S{seq} zurückgeschickt, aber autoAdvance hatte danach schon {n, plural, one {# Scheibe} other {# Scheiben}} begonnen, und die bauen auf dieser auf. Die ganze Gruppe steht: entweder lässt du diese Scheibe zuerst reparieren, oder du schickst die späteren mit zurück."
+msgstr "du hast S{seq} zurückgeschickt, aber autoAdvance hatte danach schon {n, plural, one {# Abschnitt} other {# Abschnitte}} begonnen, und die bauen auf dieser auf. Die ganze Gruppe steht: entweder lässt du diesen Abschnitt zuerst reparieren, oder du schickst die späteren mit zurück."
 
 msgid "zoomed to {zoomLevel}×"
 msgstr "{zoomLevel}× vergrößert"

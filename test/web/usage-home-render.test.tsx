@@ -187,9 +187,9 @@ test("the tooltip carries the digits the ring cannot, and the reason when there 
   expect(ringTip({ v: 12.4, at: Math.round(now / 1000) + 3 * 3600 + 12 * 60 + 30, read: now, stale: false })).toBe(
     "12% · 3h12m后重置",
   );
-  expect(ringTip({ v: 66, read: now - 20 * 60_000, stale: false })).toBe("66% · 20m 前");
+  expect(ringTip({ v: 66, read: now - 20 * 60_000, stale: false })).toBe("66% · 20 分钟前");
   // A reset three days out is not worth a minute count.
-  expect(until(Math.round(now / 1000) + 2 * 86_400 + 4 * 3600 + 30)).toBe("2天4h");
+  expect(until(Math.round(now / 1000) + 2 * 86_400 + 4 * 3600 + 30)).toBe("2天4小时");
   expect(until(Math.round(now / 1000) - 60)).toBe("即将重置");
   expect(until()).toBe("");
 

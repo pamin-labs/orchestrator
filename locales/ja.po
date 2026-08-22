@@ -1476,7 +1476,7 @@ msgid "HTTP request"
 msgstr "HTTP リクエスト"
 
 msgid "Idle"
-msgstr "待機中"
+msgstr "手空き"
 
 msgid "Image"
 msgstr "イメージ"
@@ -1613,7 +1613,7 @@ msgid "Line-level review threads read per pull request. Set it below what the re
 msgstr "1 つの PR で読む行単位レビュースレッドの数。リポジトリが実際に出す数より小さくすると、最も古いスレッドは永遠に読まれません。"
 
 msgid "Live stream backlog"
-msgstr "ライブ配信のバックログ"
+msgstr "ライブストリームのバックログ"
 
 msgid "Loading changes…"
 msgstr "変更を読み込み中…"
@@ -1961,7 +1961,7 @@ msgid "On, a question walks the index tree before it is answered — one model c
 msgstr "オンなら、質問は答えられる前にインデックスツリーを歩きます。モデル呼び出し 1 回です。オフなら歩かずにキーワード検索へ落ちます。このスイッチはその比較のためにあります。"
 
 msgid "Onboarding"
-msgstr "立ち上げ"
+msgstr "オンボーディング"
 
 msgid "Once boundaries are cleared, work starts automatically; no need to click again."
 msgstr "境界が空けば自動で作業が始まります。もう一度クリックする必要はありません。"
@@ -2099,7 +2099,7 @@ msgid "PAUSED"
 msgstr "一時停止中"
 
 msgid "Pausing"
-msgstr "停止中…"
+msgstr "一時停止しています…"
 
 msgid "pausing — waiting for {n, plural, one {# turn} other {# turns}} to land"
 msgstr "一時停止しています — {n, plural, other {# 件}}のターンが着地するのを待っています"
@@ -2153,7 +2153,7 @@ msgid "Planning"
 msgstr "計画中"
 
 msgid "Plumbing"
-msgstr "配管"
+msgstr "内部の仕組み"
 
 msgid "PM working"
 msgstr "PM 作業中"
@@ -2629,7 +2629,7 @@ msgid "Selected"
 msgstr "選択済み"
 
 msgid "Self"
-msgstr "自分"
+msgstr "自身のみ"
 
 msgid "Self-review"
 msgstr "セルフレビュー"
@@ -2727,7 +2727,7 @@ msgid "Skills are not mounted into the sandbox: opensandbox-server's allowed_hos
 msgstr "スキルがサンドボックスにマウントされていません: opensandbox-server の allowed_host_paths に {path} がありません。追加してこの要件のコンテナを開き直してください。それまでエージェントは入力欄で名指しされたスキルしか使えません。"
 
 msgid "Skills staging directory"
-msgstr "スキルの中継ディレクトリ"
+msgstr "スキルの一時保管ディレクトリ"
 
 msgid "Slice"
 msgstr "スライス"
@@ -2855,7 +2855,7 @@ msgid "System"
 msgstr "システム"
 
 msgid "System timing"
-msgstr "システム耗時"
+msgstr "システムの所要時間"
 
 msgid "Take note"
 msgstr "書き留める"
@@ -2960,7 +2960,7 @@ msgid "the same feedback for the {n, selectordinal, one {#st} two {#nd} few {#rd
 msgstr "同じ指摘が {n} 回目です。CoS にプロジェクト規約としてまとめてもらいます"
 
 msgid "the same ground as {others}"
-msgstr "{others} と同じ土地"
+msgstr "{others} と同じ範囲"
 
 msgid "the sandbox is new — putting {branch} and the dependencies back"
 msgstr "サンドボックスが新しいので、{branch} と依存関係を入れ直します"
@@ -3223,13 +3223,13 @@ msgid "Waiting for you to approve on GitHub…"
 msgstr "GitHub での承認を待っています…"
 
 msgid "Wake"
-msgstr "起床"
+msgstr "起こす"
 
 msgid "Walk depth"
 msgstr "探索の深さ"
 
 msgid "Walk the index tree"
-msgstr "インデックスツリーを歩く"
+msgstr "インデックスツリーをたどる"
 
 msgid "Walk width"
 msgstr "探索の幅"
@@ -3346,7 +3346,7 @@ msgid "You can edit the card and re-approve."
 msgstr "カードを直してから、もう一度承認できます。"
 
 msgid "you sent S{seq} back, but autoAdvance had already started {n, plural, one {# slice} other {# slices}} after it, and they were built on this one. The whole group has stopped: either let it fix this slice first, or send the later ones back with it."
-msgstr "S{seq} を差し戻しましたが、autoAdvance が後続の {n, plural, other {# 枚}}をすでに始めていました。どれもこの一枚の上に積まれています。組はいったん止めました：先にこの一枚を直させるか、後続もまとめて差し戻してください。"
+msgstr "S{seq} を差し戻しましたが、autoAdvance が後続の {n, plural, other {# 件のスライス}}をすでに始めていました。どれもこのスライスの上に積まれています。組はいったん止めました：先にこのスライスを直させるか、後続もまとめて差し戻してください。"
 
 msgid "zoomed to {zoomLevel}×"
 msgstr "{zoomLevel}× に拡大"

@@ -75,7 +75,7 @@ msgid "{d} days ago"
 msgstr "{d} 天前"
 
 msgid "{d}d{hoursLeft}h"
-msgstr "{d}天{hoursLeft}h"
+msgstr "{d}天{hoursLeft}小时"
 
 msgid "{failed} failed"
 msgstr "{failed} 失败"
@@ -152,7 +152,7 @@ msgid "{minutes} min"
 msgstr "{minutes} 分钟"
 
 msgid "{minutes}m ago"
-msgstr "{minutes}m 前"
+msgstr "{minutes} 分钟前"
 
 msgid "{mode} · {days} days left"
 msgstr "{mode} · 还剩 {days} 天"
@@ -318,7 +318,7 @@ msgid "{rest} more requirements"
 msgstr "还有 {rest} 条需求"
 
 msgid "{role} finished {n, plural, one {# turn} other {# turns}} without changing a file, a task or a note"
-msgstr "{role} 连续 {n} 个 turn 没动过文件、task 或 note"
+msgstr "{role} 连续 {n} 个 turn 没动过文件、任务或记录"
 
 msgid "{role} has rewritten {file} {n, plural, one {# turn} other {# turns}} running — probably a design problem, sending it to the Architect"
 msgstr "{role} 连着 {n} 个 turn 在改同一个文件 {file} —— 大概是设计问题，转给 Architect"
@@ -596,7 +596,7 @@ msgid "Authorized"
 msgstr "授权了"
 
 msgid "Auto-accept tiers"
-msgstr "自动查收"
+msgstr "自动查收难度"
 
 msgid "Auto-advance when approved"
 msgstr "批了就往下做"
@@ -703,7 +703,7 @@ msgid "By tier"
 msgstr "按难度"
 
 msgid "Cache hit rate"
-msgstr "cache 命中"
+msgstr "缓存命中率"
 
 msgid "Can modify which files"
 msgstr "能改哪些文件"
@@ -918,7 +918,7 @@ msgid "context full"
 msgstr "上下文满了"
 
 msgid "Context response limit"
-msgstr "ctx 答案上限"
+msgstr "上下文答案上限"
 
 msgid "Context window"
 msgstr "上下文窗口"
@@ -1265,7 +1265,7 @@ msgid "Full contents of ~/.codex/auth.json"
 msgstr "~/.codex/auth.json 的完整内容"
 
 msgid "Gate"
-msgstr "测试"
+msgstr "闸门"
 
 msgid "gate {verdict}"
 msgstr "闸门 {verdict}"
@@ -1562,7 +1562,7 @@ msgid "It's not a duplicate, and it's not done yet — keep decomposing."
 msgstr "不是重复，也不算已经做完了 —— 接着拆。"
 
 msgid "Journal"
-msgstr "日志"
+msgstr "工作日志"
 
 msgid "Just describe what you need. A plan card will be generated for approval before any code is written."
 msgstr "说清要什么就够。产出计划卡待批，批准前不写代码。"
@@ -1685,7 +1685,7 @@ msgid "Model account"
 msgstr "模型账号"
 
 msgid "Model ID"
-msgstr "模型 id"
+msgstr "模型 ID"
 
 msgid "Model processing"
 msgstr "模型在想"
@@ -1985,7 +1985,7 @@ msgid "One REST call whose answer is work somebody asked for—opening a pull re
 msgstr "一次 REST 调用，它的答案就是某人要的活——开 PR、读审阅。比下面的凭据检查长，因为有东西被它卡着。"
 
 msgid "One turn"
-msgstr "单个 turn"
+msgstr "单轮"
 
 msgid "only {stale}, which is too old"
 msgstr "只有 {stale}，太旧了"
@@ -2333,7 +2333,7 @@ msgid "Remote credential name"
 msgstr "远程凭据名"
 
 msgid "Remote endpoint"
-msgstr "远程 endpoint"
+msgstr "远程接口地址"
 
 msgid "Remove"
 msgstr "移除"
@@ -2790,7 +2790,7 @@ msgid "Started"
 msgstr "起来了"
 
 msgid "Started at"
-msgstr "开出来"
+msgstr "开始时间"
 
 msgid "Starting…"
 msgstr "起中…"
@@ -3100,7 +3100,7 @@ msgid "Token limit per slice"
 msgstr "每片 token 上限"
 
 msgid "Token refresh"
-msgstr "Token 刷新"
+msgstr "令牌刷新"
 
 msgid "tokens · project total"
 msgstr "tokens · 这个项目累计"
@@ -3136,13 +3136,13 @@ msgid "Turns in a row that changed nothing before the watchdog calls it stuck. B
 msgstr "连续多少个 turn 没有任何改动，看门狗就算它卡住。低于三次会误伤还在读代码的 agent；高太多，一个死循环能跑一下午没人知道。"
 
 msgid "Turns without progress"
-msgstr "连续无进展的 turn"
+msgstr "连续无进展的轮次"
 
 msgid "Two sources only: our releases (ghcr.io/pamin-labs/…) and local builds with no registry prefix. Agents run your code inside this image, so an untrusted one hands away the boundary — and the panel cannot tell."
 msgstr "只有两个来源：我们的发布（ghcr.io/pamin-labs/…）和不带 registry 前缀的本地构建。agent 是在这个镜像里跑你的代码的，换成不可信的镜像等于把边界交出去——而且面板看不出来。"
 
 msgid "Type a model ID to add a row"
-msgstr "填个模型 id 就多一行"
+msgstr "填个模型 ID 就多一行"
 
 msgid "Undefined"
 msgstr "未划定"
@@ -3253,7 +3253,7 @@ msgid "Watchdog"
 msgstr "巡检"
 
 msgid "Watchdog interval"
-msgstr "看门狗周期"
+msgstr "巡检周期"
 
 msgid "Watchdog rule"
 msgstr "巡检规则"

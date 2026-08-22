@@ -75,7 +75,7 @@ test("Desk, ownership and cost surfaces render observable empty and populated st
   const rendered = render(<CostView cost={cost} />);
   shown(rendered, "500");
   shown(rendered, "按需求");
-  shown(rendered, "cache 命中");
+  shown(rendered, "缓存命中率");
 });
 
 const owning = (id: number, name: string, owns: string[]) => ({

@@ -203,10 +203,10 @@ msgid "{n} unread — the Librarian is compressing them"
 msgstr "{n} por ler — o Librarian está a resumi-los"
 
 msgid "{name} ({repo} · {branch}) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
-msgstr "{name} ({repo} · {branch}) foi adicionado. Os portões e o comando de instalação são adivinhados assim que o primeiro grupo clonar; se preferir, preencha agora em Configurações → Portões."
+msgstr "{name} ({repo} · {branch}) foi adicionado. Os gates e o comando de instalação são adivinhados assim que o primeiro grupo clonar; se preferir, preencha agora em Configurações → Gates."
 
 msgid "{name} ({repo}, on whatever the remote calls its default branch) has been added. The gates and the install command are guessed once the first group has cloned; fill them in now instead under Settings → Gates."
-msgstr "{name} ({repo}, no branch que o remoto tem como padrão) foi adicionado. Os portões e o comando de instalação são adivinhados assim que o primeiro grupo clonar; se preferir, preencha agora em Configurações → Portões."
+msgstr "{name} ({repo}, no branch que o remoto tem como padrão) foi adicionado. Os gates e o comando de instalação são adivinhados assim que o primeiro grupo clonar; se preferir, preencha agora em Configurações → Gates."
 
 msgid "{name} dissolved; its sandbox is reclaimed"
 msgstr "{name} foi dissolvida; a sua sandbox foi recuperada"
@@ -224,7 +224,7 @@ msgid "{name} is at {pct}% of its budget"
 msgstr "{name} vai em {pct}% do seu orçamento"
 
 msgid "{name} is blocked by {path}, which is inside your boundary: {why}"
-msgstr "{name} está bloqueado por {path}, que fica dentro do vosso limite: {why}"
+msgstr "{name} está bloqueado por {path}, que fica dentro da sua fronteira: {why}"
 
 msgid "{name} is no longer waiting on anything — woken up"
 msgstr "{name} já não espera por nada — acordada"
@@ -360,7 +360,7 @@ msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of pre
 msgstr "{staged}/{ticked} marcados chegam ao sandbox, cerca de {tokens}k tokens de prefixo por turno"
 
 msgid "{tier} auto-accepted, all three gates passed"
-msgstr "{tier} aceite automaticamente, os três portões passaram"
+msgstr "{tier} aceita automaticamente, os três gates passaram"
 
 msgid "{total} waiting on you"
 msgstr "{total} esperando por você"
@@ -635,7 +635,7 @@ msgid "Batch window"
 msgstr "Janela de agrupamento"
 
 msgid "Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates."
-msgstr "Projetos grandes compilam por horas; sem teto, um build travado ocupa uma vaga de recurso para sempre. As vagas são globais e escassas: um comando morto para os portões da frota inteira."
+msgstr "Projetos grandes compilam por horas; sem teto, um build travado ocupa uma vaga de recurso para sempre. As vagas são globais e escassas: um comando morto para os gates da frota inteira."
 
 msgid "blocked by {path}; handed to grp {target} and waiting for it to land"
 msgstr "bloqueada por {path}; entregue a grp {target} e à espera que aterre"
@@ -660,7 +660,7 @@ msgstr "Branch"
 
 msgid "branch gate failed:\n"
 "{gates}"
-msgstr "o portão do ramo falhou:\n"
+msgstr "o gate do branch falhou:\n"
 "{gates}"
 
 msgid "branch sent back by {from} {n, plural, one {# time} other {# times}} — stopping rather than paying for another round"
@@ -882,7 +882,7 @@ msgid "Connect GitHub"
 msgstr "Conectar GitHub"
 
 msgid "Connect GitHub once in Settings. Branches are pushed with it — without one, every slice is refused at its last step."
-msgstr "Conecte o GitHub uma vez em Configurações. É com ele que os branches são enviados — sem isso, cada slice é recusada no último passo."
+msgstr "Conecte o GitHub uma vez em Configurações. É com ele que os branches são enviados — sem isso, cada fatia é recusada no último passo."
 
 msgid "Connected"
 msgstr "Conectado"
@@ -1223,13 +1223,13 @@ msgid "Filter this log…"
 msgstr "Filtrar este log…"
 
 msgid "Fix in settings"
-msgstr "Corrigir nas definições"
+msgstr "Corrigir nas configurações"
 
 msgid "Fix this"
 msgstr "Corrigir isto"
 
 msgid "Flame distribution"
-msgstr "Distribuição em chama"
+msgstr "Distribuição do flame graph"
 
 msgid "Folder"
 msgstr "Pasta"
@@ -1265,34 +1265,34 @@ msgid "Full contents of ~/.codex/auth.json"
 msgstr "Conteúdo completo de ~/.codex/auth.json"
 
 msgid "Gate"
-msgstr "Portão"
+msgstr "Gate"
 
 msgid "gate {verdict}"
-msgstr "portão {verdict}"
+msgstr "gate {verdict}"
 
 msgid "Gate check"
-msgstr "Verificação de portões"
+msgstr "Verificação de gates"
 
 msgid "Gate concurrency"
-msgstr "Concorrência de portões"
+msgstr "Concorrência de gates"
 
 msgid "gate fail on S{seq}"
-msgstr "portão falhado em S{seq}"
+msgstr "gate falhou em S{seq}"
 
 msgid "gate name"
-msgstr "nome do portão"
+msgstr "nome do gate"
 
 msgid "gate pass on S{seq}"
-msgstr "portão passado em S{seq}"
+msgstr "gate passou em S{seq}"
 
 msgid "Gate retries"
-msgstr "Novas tentativas do portão"
+msgstr "Novas tentativas do gate"
 
 msgid "Gates"
-msgstr "Portões"
+msgstr "Gates"
 
 msgid "Gates / Install commands"
-msgstr "Portões / Comandos de instalação"
+msgstr "Gates / Comandos de instalação"
 
 msgid "gates found: {gates}"
 msgstr "gates detectados: {gates}"
@@ -1446,7 +1446,7 @@ msgid "How long the usage endpoint is left alone once it has refused. Shorter th
 msgstr "Por quanto tempo o endpoint de uso fica em paz depois de recusar. Mais curto que a recusa dura, e a consulta só colhe recusas novas."
 
 msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
-msgstr "Quantos portões podem rodar ao mesmo tempo. Um lease é uma compilação ou bateria de testes de verdade, então dez em paralelo acabam com a máquina. O navegador é limitado a 1 por conta própria: cada um é um Chromium real."
+msgstr "Quantos gates podem rodar ao mesmo tempo. Um lease é uma compilação ou bateria de testes de verdade, então dez em paralelo acabam com a máquina. O navegador é limitado a 1 por conta própria: cada um é um Chromium real."
 
 msgid "How many live frames wait for one slow tab before they are dropped. A tab that stopped reading is the only thing here that grows without bound. Dropping is safe: the panel re-reads its state on the next event."
 msgstr "Quantos quadros ao vivo esperam por uma aba lenta antes de serem descartados. Uma aba que parou de ler é a única coisa aqui que cresce sem limite. Descartar é seguro: o painel relê seu estado no próximo evento."
@@ -1775,13 +1775,13 @@ msgid "No events"
 msgstr "Sem eventos"
 
 msgid "no file"
-msgstr "nenhum ficheiro"
+msgstr "nenhum arquivo"
 
 msgid "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates."
-msgstr "não foi detetado nenhum portão neste repositório. Cada fatia vai chumbar na revisão até este projeto ter pelo menos um: acrescenta um modelo de recurso e escreve o nome dele nas gates do projeto."
+msgstr "nenhum gate detectado neste repositório. Cada fatia vai falhar na revisão até este projeto ter pelo menos um: adicione um modelo de recurso e escreva o nome dele nas gates do projeto."
 
 msgid "No gates enabled; LLM review has no floor."
-msgstr "Nenhum portão ativado; a revisão do LLM não tem piso."
+msgstr "Nenhum gate ativado; a revisão do LLM não tem piso."
 
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "não existe grupo {grp} na tabela grp, por isso /work continua vazio — não há código para correr neste turno"
@@ -2153,7 +2153,7 @@ msgid "Planning"
 msgstr "Planejando"
 
 msgid "Plumbing"
-msgstr "Encanamento"
+msgstr "Entranhas"
 
 msgid "PM working"
 msgstr "PM trabalhando"
@@ -2390,7 +2390,7 @@ msgid "Repo-wide"
 msgstr "Todo o repositório"
 
 msgid "Reported by {from}: {path} is outside its boundary, so it cannot change it itself."
-msgstr "Reportado por {from}: {path} fica fora do seu limite, por isso não o pode alterar sozinho."
+msgstr "Reportado por {from}: {path} fica fora da sua fronteira, por isso não o pode alterar sozinho."
 
 msgid "Repos with DCO enabled won't accept commits without this line"
 msgstr "Repositórios com DCO ligado não aceitam commits sem esta linha"
@@ -2689,7 +2689,7 @@ msgid "Settings → codex → sign in, which runs the official device-code flow;
 msgstr "Configurações → codex → entrar, o que executa o fluxo oficial de device-code; o codex não está instalado aqui. Colar uma API key também funciona."
 
 msgid "Settings: account, environment, skills, theme, and this project's gates and sandbox ⌘S"
-msgstr "Configurações: conta, ambiente, skills, tema e os portões e o sandbox deste projeto ⌘S"
+msgstr "Configurações: conta, ambiente, skills, tema e os gates e o sandbox deste projeto ⌘S"
 
 msgid "Shared across all projects"
 msgstr "Compartilhado por todos os projetos"
@@ -3106,7 +3106,7 @@ msgid "tokens · project total"
 msgstr "tokens · total do projeto"
 
 msgid "tokens · share"
-msgstr "tokens · fatia"
+msgstr "tokens · proporção"
 
 msgid "tokens must be a positive number, or null to lift the cap"
 msgstr "os tokens têm de ser um número positivo, ou null para levantar o limite"
@@ -3307,7 +3307,7 @@ msgid "which repository? (owner/name)"
 msgstr "que repositório? (owner/name)"
 
 msgid "Which tiers skip your final look after passing all four gates. Trivial and normal by default; hard still waits for you."
-msgstr "Quais níveis pulam sua conferência final depois de passar pelos quatro portões. Por padrão, trivial e normal; o difícil ainda espera por você."
+msgstr "Quais níveis pulam sua conferência final depois de passar pelos quatro gates. Por padrão, trivial e normal; o difícil ainda espera por você."
 
 msgid "Which window"
 msgstr "Qual janela"
