@@ -177,6 +177,12 @@ or run the full suite unless they own integration.
   | outside one (module tables, helpers) | `` msg`` `` → a descriptor; the caller renders it with `t(…)` or `i18n._(…)` |
   | the server | `` say: msg`merged into main` `` on `bus.emit`, never `body:` |
 
+  One object under three names, and which one you write says where it is:
+  `` msg`` `` is the macro, `MessageDescriptor` is what it produces, and `Said`
+  is that descriptor after it has crossed the wire — same fields, validated,
+  because `event.meta_json` is JSON somebody else stored. `src/contracts/said.ts`
+  states the equivalence to the compiler rather than in a comment.
+
   `bus.emit` renders `say` into `body` and stores the descriptor beside it, so
   the panel draws the row from `meta.say` in whichever of ten languages its
   reader chose. Values carry values, never a rendered fragment: a descriptor

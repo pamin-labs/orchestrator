@@ -1,4 +1,4 @@
-import type { I18n } from "@lingui/core";
+import type { I18n, MessageDescriptor } from "@lingui/core";
 import { z } from "zod";
 
 /**
@@ -33,6 +33,18 @@ export const SaidSchema = z.object({
 });
 
 export type Said = z.infer<typeof SaidSchema>;
+
+/**
+ * A `MessageDescriptor` that has an id *is* a `Said`, and the compiler is what
+ * says so — a Lingui release that moves the shape fails here rather than at a
+ * render three layers away.
+ *
+ * Not the other direction: `exactOptionalPropertyTypes` makes Zod's `.optional()`
+ * `string | undefined` where Lingui's is `string`, which is the same difference
+ * `renderWith` spells out below.
+ */
+const _fromMacro = (descriptor: MessageDescriptor & { id: string }): Said => descriptor;
+void _fromMacro;
 
 /**
  * `message` required here and only here. This is the one input that is untrusted
