@@ -203,20 +203,20 @@ MIT licensed.
 ### Languages
 
 <!-- i18n:table -->
-**Panel** · 974 messages
+**Panel** · 1037 messages
 
 | Language | Progress | Messages |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | source |
-| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
-| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
-| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
-| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
-| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
-| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
-| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
-| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
-| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 974 / 974 |
+| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1037 / 1037 |
+| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1037 / 1037 |
+| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1037 / 1037 |
+| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1037 / 1037 |
+| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1037 / 1037 |
+| Français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1037 / 1037 |
+| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1037 / 1037 |
+| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1037 / 1037 |
+| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1037 / 1037 |
 
 <!-- /i18n:table -->
 
