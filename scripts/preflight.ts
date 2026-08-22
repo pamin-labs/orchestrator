@@ -81,16 +81,10 @@ const steps: Step[] = [
   { name: "format", job: "quality", run: () => cmd("bun run format:check") },
   { name: "types", job: "quality", run: () => cmd("bun run typecheck") },
   { name: "lint", job: "quality", run: () => cmd("bun run lint") },
-  // Checks rather than writes, so it cannot be the thing that dirties the tree
-  // the CI step below it exists to catch.
-  { name: "translation table", job: "quality", run: () => cmd("bun run i18n:progress --check") },
-  // `zh-Hant.po` is generated from `zh.po`, so editing one Chinese string leaves
-  // the other catalog a sentence behind and nothing else notices: it is complete,
-  // it parses, and `i18n:validate` is satisfied by it.
-  { name: "traditional Chinese catalog", job: "quality", run: () => cmd("bun run i18n:hant --check") },
   // Editing an English `<Trans>` retires its id, so eight catalogs lose that
-  // string at once — and `i18n:progress --check` only asks whether the README
-  // matches, which regenerating it satisfies. This is the gate that says no.
+  // string at once. The step below regenerates and diffs, which a *complete*
+  // catalogue satisfies — the rows are gone from it too. This is the gate that
+  // says no.
   {
     name: "every message is translated and keeps its placeholders",
     job: "quality",
@@ -105,14 +99,18 @@ const steps: Step[] = [
    * were gone from it too — and `i18n:progress --check` only reads a README.
    */
   /**
-   * Writes, where the steps above only read, which is why it is followed by the
-   * diff rather than being a `--check`: `lingui extract` has no such mode, and
-   * running it is the only thing that answers the question.
+   * Writes rather than checks, and the diff is what asks: `lingui extract` has
+   * no `--check`, and running it is the only thing that answers the question.
+   *
+   * `i18n:extract` derives all three — the catalogues, `zh-Hant` from `zh`, and
+   * the README's table — because all three are a function of the same source.
+   * They were three steps until it was clear that two of them only ever failed
+   * when somebody forgot to run a second command.
    */
   {
     name: "catalogues match the source",
     job: "quality",
-    run: () => cmd("bun run i18n:extract && git diff --exit-code -- locales/"),
+    run: () => cmd("bun run i18n:extract && git diff --exit-code -- locales/ README.md README.zh-CN.md"),
   },
   { name: "web bundle", job: "quality", run: () => cmd("bun run build:web") },
   // Through `bun run test`, not `bun test` directly: that wrapper retries an arm64

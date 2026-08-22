@@ -29,7 +29,7 @@
     "lint": "oxlint src web/src test scripts",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "i18n:extract": "lingui extract --config scripts/lingui.config.js --clean",
+    "i18n:extract": "lingui extract --config scripts/lingui.config.js --clean && bun run i18n:hant && bun run i18n:progress",
     "i18n:hant": "bun run scripts/i18n-hant.ts",
     "i18n:progress": "bun run scripts/i18n-progress.ts",
     "i18n:validate": "bun run scripts/i18n-validate.ts",

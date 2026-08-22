@@ -63,8 +63,6 @@ jobs:
         run: bun run typecheck
       - name: lint
         run: bun run lint
-      - name: translation table
-        run: bun run i18n:progress --check
       # Two failures this catches, both silent otherwise. Editing an English
       # `<Trans>` retires its id — the id is a hash of the source — so eight
       # catalogs lose that string at once and the panel renders English inside a
