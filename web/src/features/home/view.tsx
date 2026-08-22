@@ -6,11 +6,12 @@ import { Button } from "../../ui/button";
 import { cardStyles } from "../../ui/card";
 import { Queue } from "../queue/view";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { list } from "../../shared/format";
 
 /** Which requirements are running, on one line. */
 const RunningNames = ({ names }: { names: string[] }) => {
   const { t } = useLingui();
-  const running = names.join(t`, `);
+  const running = list(names);
   return <div className="mt-1.5 truncate text-secondary text-ink-2">{t`Running: ${running}`}</div>;
 };
 

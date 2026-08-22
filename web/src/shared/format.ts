@@ -60,6 +60,27 @@ const mmdd = per((locale) => new Intl.DateTimeFormat(locale, { month: "numeric",
 export const day = (at: Date | number) => mmdd().format(at);
 
 /**
+ * Names in a row, from CLDR rather than from a separator of ours.
+ *
+ * `a, b, and c` in English, `a、b和c` in Chinese, `a, b и c` in Russian. This
+ * was `names.join(t`, `)` at five call sites, which made `", "` a catalogue row
+ * translated nine times — and a joined string can never produce the conjunction,
+ * so every one of those sentences was missing the word its language puts before
+ * the last name.
+ * i18n-exempt: how each language writes a list is the subject.
+ */
+/**
+ * Conjunction and nothing else. `type: "unit"` looks like the mode for a plain
+ * enumeration and is not — it is for measurement (`3 ft 7 in`), so `zh` and `ja`
+ * render it with **no separator at all**: `abc`. Measured across the ten. A run
+ * of identifiers is data rather than prose and joins itself; this is for
+ * sentences.
+ */
+const conjunction = per((locale) => new Intl.ListFormat(locale, { type: "conjunction" }));
+
+export const list = (items: readonly string[]): string => conjunction().format(items);
+
+/**
  * How long something took, in the coarsest unit that does not lose the point.
  *
  * Six orders of magnitude on one page, so no single unit serves: below a second

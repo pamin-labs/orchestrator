@@ -13,9 +13,6 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-msgid ", "
-msgstr ", "
-
 msgid "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
 msgstr "'이 자격 증명이 아직 유효한가': GitHub의 /user, 공급자의 /v1/models. 응답이 느려도 실패가 아니라 '미검증'으로 보고되고 기다리는 것이 없으므로 짧게 잡는다."
 

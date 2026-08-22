@@ -1100,7 +1100,11 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           <b className="font-semibold text-warn">
             <Trans>These paths from the card don't exist in the repo</Trans>
           </b>{" "}
-          <span className="font-mono">{unknown.join(t`, `)}</span>
+          {/* A plain join, and not `list()`: these are repository paths in a
+              monospace span — data, like the SI symbols in `duration()` — not a
+              sentence wanting the reader's conjunction.
+              i18n-exempt: a separator between identifiers. */}
+          <span className="font-mono">{unknown.join(", ")}</span>
           <div className="mt-1 text-ink-3">
             <Trans>
               New files are expected; if it thinks these already exist, the card was written from speculation.

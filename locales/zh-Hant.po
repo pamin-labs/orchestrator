@@ -13,9 +13,6 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-msgid ", "
-msgstr "、"
-
 msgid "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
 msgstr "「你還認這個憑證嗎」：GitHub 的 /user、供應商的 /v1/models。比上面的 API 呼叫短，因為答案慢只會報「未驗證」而不是失敗，沒有東西在等它。"
 

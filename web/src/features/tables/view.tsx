@@ -11,7 +11,7 @@ import { BurnChart, SplitDonut } from "./chart";
 import type { Agent, AgentCost, Cost, Slice, State } from "../../shared/api";
 import { frameText, type PanelFrame } from "../../shared/stream";
 import { labelOf, owns } from "../../shared/select";
-import { K } from "../../shared/format";
+import { K, list } from "../../shared/format";
 import { cn } from "../../ui/cn";
 import { activityOf } from "../../shared/activity";
 import { Trans, useLingui } from "@lingui/react/macro";
@@ -279,11 +279,12 @@ function ownershipModel(all: Group[]) {
 
 /** One agent's cost so far, said in the tooltip rather than in a column: the
  *  table was nine wide and this is the question people hover for. */
-/** Which other requirements claim this path. `、` is the separator a Chinese
- *  reader expects and a comma is not, so it is a message of its own.
- *  i18n-exempt: the separator is the subject. */
+/** Which other requirements claim this path. The separator *and* the word
+ *  before the last name are CLDR's — `a、b和c` is what a Chinese reader expects
+ *  and no joined string can produce the `和`.
+ *  i18n-exempt: how each language writes a list is the subject. */
 const sameGround = (names: string[]): string => {
-  const others = names.join(t`, `);
+  const others = list(names);
   return t`the same ground as ${others}`;
 };
 
@@ -297,7 +298,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
   const all = st.groups.filter((g) => g.project_id === projectId);
   const { groups: gs, bare, bumps, hit, rows } = ownershipModel(all);
   // Named, for the same reason as the desk header above.
-  const bareNames = bare.map((g) => g.name).join(t`, `);
+  const bareNames = list(bare.map((g) => g.name));
   const count = bare.length;
   const hitCount = hit.length;
   const groupCount = gs.length;
@@ -358,7 +359,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
         {rows.map((g) => {
           const mine = bumps.get(g.id) ?? new Map<string, string[]>();
           const others = [...new Set([...mine.values()].flat())];
-          const overlapping = others.join(t`, `);
+          const overlapping = list(others);
           return (
             <div
               key={g.id}
@@ -370,7 +371,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                   <div className="truncate font-display text-base font-semibold">{g.name}</div>
                 </Tip>
                 {others.length > 0 && (
-                  <Tip label={others.join(t`, `)}>
+                  <Tip label={overlapping}>
                     <Meta className="truncate text-bad">
                       <Trans>overlaps {overlapping}</Trans>
                     </Meta>
