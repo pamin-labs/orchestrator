@@ -643,7 +643,11 @@ M7 — executable engineering governance and versioned protocol.
    reported seed and path. CI, security and CodeQL are green on `main` after #7.
 
 ## Done since this list was written
-- **The panel reads in nine languages, and the compiler owns the ids.** 811
+- **The panel reads in nine languages, and the compiler owns the ids.**
+  *(Superseded on 2026-08-23: ten languages, 1092 messages, and the catalogues
+  moved to `locales/` — the entry 250 lines below records the move, and ADR 044
+  the final shape. The numbers in this paragraph are what was true the day it
+  was written.)* 811
   messages under `web/src/locales`, extracted by Lingui from `<Trans>` and
   `` t`…` `` macros — no hand-written keys, and no Chinese copy left in
   `web/src` (`test/governance/panel-speaks-english.test.ts` holds that).
@@ -714,7 +718,9 @@ M7 — executable engineering governance and versioned protocol.
   `authflow.ts` correctly reads `GitHub 没连上：the authorization was denied on
   GitHub` — a category 3 wrapper around a category 2 error. The baseline the
   governance guard ratchets against went 407 → 252, of which 44 are `say()`'s own
-  table.
+  table. *(Superseded: 42 across 11 files at the end of the branch —
+  `test/governance/server-chinese-baseline.json` is the number that is current
+  by construction.)*
 
 - **A guard that could not fail, for the third time in one branch.**
   `test/platform/lang.test.ts` asserted `!say(...).includes("{")` — against a
@@ -811,7 +817,11 @@ M7 — executable engineering governance and versioned protocol.
   of two fields, because that much has to cross HTTP.
 
 - **A boss whose outward language is Korean gets English prompts, and the code
-  says so in an `if`.** `src/api/orch/escalation.ts:310` and `:339` branch on
+  says so in an `if`.** *(Closed later in the same branch, and not the way this
+  entry expected: `answerDraftPrompt` is scaffolding for a model, which ADR 035
+  exempts, so both halves became one English one rather than following
+  `output.language`. `grep -rn "isChinese" src/` returns two comments.
+  `answerDraftContext` returns `"standing"` unconditionally.)* `src/api/orch/escalation.ts:310` and `:339` branch on
   `isChinese(ctx.config.language)` to pick between a Chinese prompt and an
   English one — the same two-language pair `say()` had, in the one place the
   panel's ten catalogues cannot reach, because this text goes into a model
@@ -831,7 +841,8 @@ M7 — executable engineering governance and versioned protocol.
   `isChinese(lang) ? ZH_SAY : EN` — a language *pair* — so a boss whose
   `output.language` was `한국어` had read an English feed since that function was
   written. `src/`'s Chinese literal count fell 236 → 167, and what is left is
-  protocol, regexes and one prompt branch.
+  protocol, regexes and one prompt branch. *(Superseded: 42, and the prompt
+  branch is gone.)*
 
 - **`lingui extract` will not update a `msgstr` it has already written.** Under
   an explicit id the source locale is a translation like any other: a new id
@@ -891,7 +902,7 @@ Under `@lingui/format-po` a hashed message is written `msgid "<the English>"`;
 only an explicit id gets `#. js-lingui-explicit-id` above it. So the migration
 was to replace each explicit id with the English from `en.po` and re-extract —
 and `lingui extract` then reports **934 messages, 0 missing in all nine
-locales**. A template that had drifted by one character would have shown up as
+locales** *(mid-branch; 1092 across ten at the end)*. A template that had drifted by one character would have shown up as
 that locale's missing row. `zh-Hant.po` came back byte-identical from
 `i18n:hant`.
 
@@ -1282,3 +1293,93 @@ spread this branch has been quoting.
   `secret_scanning_non_provider_patterns` and `secret_scanning_validity_checks`
   remain off: they are paid features, not oversights.
 - The first merged CI, security and CodeQL runs on `main` all passed.
+
+## A review pass over PR #9, and what it found
+
+The branch changed design three times — react-i18next to Lingui, hand-written
+ids to macros, `bun build` the CLI to `Bun.build` the API — and each pivot left
+the previous one's shape somewhere. A read of the whole diff, plus
+`fallow audit`, turned up five defects, one merge, and about forty places where
+a hand-written table had a platform API underneath it.
+
+### Five things that were wrong
+
+- **A browser that refuses `localStorage` rendered nothing at all.**
+  `startLocale()` is awaited before `createRoot().render()`, and it read storage
+  outside its own `try` — on the strength of a comment saying
+  `@lingui/detect-locale` owned that. `detectFromStorage` is a bare
+  `globalThis.localStorage.getItem(key)`. Chrome's "block all cookies" and
+  Firefox's `dom.storage.enabled=false` make the *getter* throw, so the entry
+  point rejected: a blank page, which is the failure the `catch` above it was
+  added to fix for a 404'd chunk. `setPreference` had the mirror bug — it wrote,
+  swallowed the refusal, then *re-read the store*, so under the same policies
+  picking a language silently did nothing.
+- **`scanners-scan` could not see any of the nine guards this branch added.**
+  Its pattern was `new Glob(`; every new guard writes `new Bun.Glob(`. Five of
+  ten literal patterns invisible, and `toBeGreaterThan(3)` green on the other
+  five. The one test whose entire job is "no guard scans nothing".
+- **`i18n-progress` reports 100% for a catalog with no messages.** This file
+  exists because `"100%"` once counted a row whose translation was the English;
+  `total === 0 ? 100` is the same reasoning one step up.
+- **`URL.pathname` is percent-encoded**, in the three places that build an
+  absolute path into the checkout. Under `~/My Projects` the `OURS` pattern
+  matches nothing, which by its own note is not a build error but every macro
+  left unexpanded.
+- **`hourOnly` blanked the minutes of an already-whole hour** — a no-op except
+  on a half-hour offset, where it labelled `Asia/Kolkata`'s 14:30 bucket 14:00.
+  Its formatter was byte-identical to `clock`'s.
+
+### Intl already knew
+
+The largest single finding, and the one worth carrying forward. `localeOf` was
+ten ordered regexes; `endonymOf` ten literals; the settings page had five `msg`
+descriptors for `min`/`hr`/`day` and two for `Just now`/`waiting {span}`.
+`Intl.Locale.maximize`, `Intl.DisplayNames`, `Intl.NumberFormat({style:"unit"})`
+and `Intl.RelativeTimeFormat` answer all four, in ten languages, from the CLDR
+the runtime already ships — and get three things right the hand-written versions
+got wrong: `ドイツ語` in the language knob (no Japanese word for German existed
+in the table), the missing space in `20分钟`, and `il y a 20 min` where an
+interpolated suffix cannot put the phrase in front. Sixty translated rows left
+the catalogues. Recorded as a rule in ADR 044.
+
+### The knobs' free-text parser had no caller
+
+`parseDuration`, `parseCount`, `parsePercent`, a 21-entry alias table and three
+of the four `WANTS` rows. Every shape returns its own editor — a digits box and
+a unit menu — before the text box is reached, so the comment on `Amount` saying
+*"the parser stays — `20 分钟`, `3h`, `8M` all still work"* was the last thing
+left of it. `units.ts` 276 → 194 lines.
+
+### Nine guards had a copy of one loop
+
+`test/support/ast.ts` had taken the parse options and the `CJK` class and
+stopped there. It now owns the CJK walk (the two guards using it had already
+drifted — one could not see `RegExpLiteral`), the glob loop, and the exemption
+rule, which was "from the marker to the first blank line or the first line
+starting with `)`, `]` or `}`" and is now babel's `leadingComments`. Two more
+hand-written bracket matchers went with them; a third guard was a regular
+expression over raw source, so a *comment* saying `cfg.language` failed the
+build.
+
+### Two enums for one fact
+
+`ask-boss` took a `kind` that chose a queue heading and fell back to `other`,
+and a `reserved` topic that chose the routing and fell back to sixty lines of
+per-language keyword regex. One required word does both now, and the property
+the merge cost — the old flag could only ever raise — is bought back at the
+answering end, where a second reader that is not the asker is shown the
+question. ADR 045.
+
+### Also
+
+- `bun run audit` on a push to `main` scanned `origin/main..HEAD`, which is
+  nothing. Verbatim the reason it was taken out of `nightly.yml`.
+- The suite's PostgreSQL was three copies of one step under three copies of the
+  same six-line comment; it is an input on the composite action all three jobs
+  already use.
+- `fallow audit --gate all` is at zero findings for the first time on this
+  branch: the last unused export and the last clone group are gone.
+- ADR 041 is superseded by 044. Six of its passages described a design replaced
+  while the branch was still open, including the bundle table — which said
+  +4.7% where the artefact measures −13.4%, because the two findings that moved
+  it (React's development runtime, and the ICU parser) are not i18n.

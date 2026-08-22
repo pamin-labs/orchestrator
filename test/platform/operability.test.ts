@@ -57,7 +57,7 @@ test("readiness refreshes through failure and recovery without a real server", a
     throw new Error("probe crashed");
   });
   expect(status.ready).toBe(false);
-  // The crash is a key too: the pane that shows it holds nine catalogues, and
+  // The crash is a key too: the pane that shows it holds ten catalogues, and
   // the error text is the value inside the sentence rather than the sentence.
   expect(status.checks).toEqual([
     makeCheck("preflight", false, { ...said("the checks could not run: {error}"), values: { error: "probe crashed" } }),

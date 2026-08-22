@@ -197,7 +197,7 @@ or run the full suite unless they own integration.
   carries, and a protocol key — and a comment that names a label spells it the
   way the source does. Which text follows which language is the table in
   [`035`](docs/adr/035-language-follows-who-wrote-it.md); how it is wired is
-  [`041`](docs/adr/041-the-panel-speaks-english-and-a-compiler-hashes-it.md).
+  [`044`](docs/adr/044-what-the-panel-and-the-server-actually-say.md).
   Guards: `panel-speaks-english`, `server-speaks-one-language`,
   `values-carry-no-rendered-text`, `an-event-names-its-sentence`,
   `a-component-takes-t-from-the-hook`.

@@ -38,7 +38,7 @@ export interface Check {
   detail: string;
   /** How the boss fixes it. */
   fix?: string;
-  /** The same sentence as a key and its values, for a panel that holds nine catalogues. */
+  /** The same sentence as a key and its values, for a panel that holds ten catalogues. */
   said: Said;
   fixSaid?: Said;
 }

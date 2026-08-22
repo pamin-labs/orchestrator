@@ -1,7 +1,14 @@
 # 041 The panel's copy is English in the source, and its ids are the compiler's
 
-**Status**: accepted
+**Status**: superseded by [`044`](044-what-the-panel-and-the-server-actually-say.md)
 **Date**: 2026-08-20
+
+> Kept for the argument, not as a description. Its central claim — `bun build`
+> has no `--plugin`, so the server cannot use a macro — is true of the CLI and
+> false of the API, and the correction landed in the middle of this file rather
+> than at the top of it. Six passages below describe the design that claim
+> produced; 044 lists them and says what is built. The reasoning about hand-written
+> keys, and the measurement that removed 2654 lines of them, is still this file's.
 
 The panel was written in Chinese and there was no way to read it in anything
 else. The first attempt at fixing that (PR #9, react-i18next) worked and cost

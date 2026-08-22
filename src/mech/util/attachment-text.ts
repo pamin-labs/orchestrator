@@ -8,7 +8,7 @@ const IMAGE_TAG = " (image)";
 /**
  * English, and it has exactly one reader: the agent, in a prompt. The panel
  * strips this line before drawing, so no person ever sees it — translating it
- * into nine languages would have been nine rows nobody reads, and ADR 035 §2
+ * into ten languages would have been ten rows nobody reads, and ADR 035 §2
  * keeps what a model reads in English anyway.
  *
  * It was matched back by an identical literal in `web/src/ui/attach.ts`, which

@@ -66,9 +66,9 @@ behind `isChinese()`, so a boss whose `output.language` was `한국어` read the
 in English however that knob was set. The server writes the same `msg` templates
 the panel does now — `say: msg\`merged into main\`` — and `lingui extract` puts
 every one of them in all ten `.po` files, which
-[`041`](041-the-panel-speaks-english-and-a-compiler-hashes-it.md) has the
-measurement for: `bun build --compile` the CLI takes no plugin, `Bun.build` the
-API does, and a standalone binary built through it renders four languages.
+[`044`](044-what-the-panel-and-the-server-actually-say.md) has the measurement
+for: `bun build --compile` the CLI takes no plugin, `Bun.build` the API does,
+and a standalone binary built through it renders all ten.
 
 There is no id to keep in step and so nothing to guard: the macro computes the
 id from the English at build time, and the English travels beside it on the wire
