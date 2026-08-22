@@ -38,10 +38,19 @@ export type Said = z.infer<typeof SaidSchema>;
  * A `MessageDescriptor` that has an id *is* a `Said`, and the compiler is what
  * says so — a Lingui release that moves the shape fails here rather than at a
  * render three layers away.
- *
- * Not the other direction: `exactOptionalPropertyTypes` makes Zod's `.optional()`
- * `string | undefined` where Lingui's is `string`, which is the same difference
- * `renderWith` spells out below.
+ */
+/**
+ * Not the other direction, and that asymmetry is why this type exists rather
+ * than `src` and the panel both using `MessageDescriptor`:
+ * `exactOptionalPropertyTypes` makes Zod's `.optional()` `string | undefined`
+ * where Lingui's is `string`.
+ */
+/**
+ * Tried, and it does not converge: hono infers a response type from what the
+ * handler returns, so the type at a wire boundary is whichever one the process
+ * uses, and the panel declares its schema as `z.ZodType<InferResponseType<…>>`,
+ * which demands the two be *equal*. One type through `src` and a two-line
+ * `renderWith` paying the difference is the shorter of the two roads.
  */
 const _fromMacro = (descriptor: MessageDescriptor & { id: string }): Said => descriptor;
 void _fromMacro;

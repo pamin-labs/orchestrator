@@ -1114,6 +1114,19 @@ both name `locales/po.d.ts`.
   checkable — the outermost enclosing function is the component, and a `t` or
   `i18n._` inside one that is not a hook binding is the finding.
 
+- **`Said` cannot be deleted in favour of `MessageDescriptor`, and the attempt
+  is worth recording.** They are the same three fields, so the obvious move is
+  to use Lingui's type through `src` and keep the Zod schema only for the wire.
+  Done — 20 files, `renderWith` deleted, `renderSaid` down to `i18n._(sentence)`
+  — and it does not converge at the boundary. `exactOptionalPropertyTypes` makes
+  Zod's `.optional()` `string | undefined` where Lingui's is `string`, hono
+  infers a response type from *what the handler returns*, and the panel declares
+  its schema as `z.ZodType<InferResponseType<…>>`, which demands equality rather
+  than assignability. So every wire boundary would need a hand-written
+  conversion, and there are about twenty. Reverted: one type through `src` plus
+  a two-line `renderWith` is the shorter road, and now the comment above it says
+  which two roads were compared.
+
 ## Found and not fixed
 - **`review-pipeline`'s retro test is still flaky on CI.** `writing the retro
   resumes PR-level review instead of dead-ending` failed once on #9's x64 run
