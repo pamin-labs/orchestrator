@@ -1001,9 +1001,6 @@ msgstr "Database connections"
 msgid "Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections."
 msgstr "Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections."
 
-msgid "day"
-msgstr "day"
-
 msgid "Decision"
 msgstr "Decision"
 
@@ -1466,9 +1463,6 @@ msgstr "How often the shared repository map is re-checked. Deliberately far long
 msgid "How to alert you"
 msgstr "How to alert you"
 
-msgid "hr"
-msgstr "hr"
-
 msgid "HTTP {status}"
 msgstr "HTTP {status}"
 
@@ -1566,9 +1560,6 @@ msgstr "Journal"
 
 msgid "Just describe what you need. A plan card will be generated for approval before any code is written."
 msgstr "Just describe what you need. A plan card will be generated for approval before any code is written."
-
-msgid "Just now"
-msgstr "Just now"
 
 msgid "Just started"
 msgstr "Just started"
@@ -1678,9 +1669,6 @@ msgstr "Message this group…"
 msgid "migrated and queryable"
 msgstr "migrated and queryable"
 
-msgid "min"
-msgstr "min"
-
 msgid "Model account"
 msgstr "Model account"
 
@@ -1701,9 +1689,6 @@ msgstr "More"
 
 msgid "mount point"
 msgstr "mount point"
-
-msgid "ms"
-msgstr "ms"
 
 msgid "Name"
 msgstr "Name"
@@ -2626,9 +2611,6 @@ msgstr "Saved {at}"
 msgid "Search skills"
 msgstr "Search skills"
 
-msgid "sec"
-msgstr "sec"
-
 msgid "Selected"
 msgstr "Selected"
 
@@ -3205,9 +3187,6 @@ msgstr "waited {short}"
 msgid "Waiting"
 msgstr "Waiting"
 
-msgid "waiting {span}"
-msgstr "waiting {span}"
-
 msgid "Waiting for prior slice"
 msgstr "Waiting for prior slice"
 
@@ -3231,15 +3210,6 @@ msgstr "Walk the index tree"
 
 msgid "Walk width"
 msgstr "Walk width"
-
-msgid "Wants a count: 8M, 200k, 45 all work"
-msgstr "Wants a count: 8M, 200k, 45 all work"
-
-msgid "Wants a duration: 20 min, 45s, 3 hr all work"
-msgstr "Wants a duration: 20 min, 45s, 3 hr all work"
-
-msgid "Wants a duration: 24 hr, 30 min both work"
-msgstr "Wants a duration: 24 hr, 30 min both work"
 
 msgid "Wants a percentage between 0 and 100, like 60%"
 msgstr "Wants a percentage between 0 and 100, like 60%"

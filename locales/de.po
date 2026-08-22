@@ -1001,9 +1001,6 @@ msgstr "Datenbankverbindungen"
 msgid "Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections."
 msgstr "Offen gehaltene Datenbankverbindungen. Der Schnappschuss des Panels braucht etwa zwanzig auf einmal — weniger heißt Warten in Wellen, mehr bringt nichts. Nur senken, wenn dein Postgres die Verbindungen begrenzt."
 
-msgid "day"
-msgstr "Tag"
-
 msgid "Decision"
 msgstr "Entscheidung"
 
@@ -1466,9 +1463,6 @@ msgstr "Wie oft die gemeinsame Repository-Karte neu geprüft wird. Bewusst weit 
 msgid "How to alert you"
 msgstr "Wie du benachrichtigt wirst"
 
-msgid "hr"
-msgstr "Std"
-
 msgid "HTTP {status}"
 msgstr "HTTP {status}"
 
@@ -1566,9 +1560,6 @@ msgstr "Journal"
 
 msgid "Just describe what you need. A plan card will be generated for approval before any code is written."
 msgstr "Beschreib einfach, was du brauchst. Vor dem ersten Code entsteht eine Plankarte zur Freigabe."
-
-msgid "Just now"
-msgstr "Gerade eben"
 
 msgid "Just started"
 msgstr "Gerade gestartet"
@@ -1678,9 +1669,6 @@ msgstr "Dieser Gruppe schreiben…"
 msgid "migrated and queryable"
 msgstr "migriert und abfragbar"
 
-msgid "min"
-msgstr "Min"
-
 msgid "Model account"
 msgstr "Modellkonto"
 
@@ -1701,9 +1689,6 @@ msgstr "Mehr"
 
 msgid "mount point"
 msgstr "Einhängepunkt"
-
-msgid "ms"
-msgstr "ms"
 
 msgid "Name"
 msgstr "Name"
@@ -2626,9 +2611,6 @@ msgstr "Gespeichert {at}"
 msgid "Search skills"
 msgstr "Skills suchen"
 
-msgid "sec"
-msgstr "Sek"
-
 msgid "Selected"
 msgstr "Ausgewählt"
 
@@ -3205,9 +3187,6 @@ msgstr "wartete {short}"
 msgid "Waiting"
 msgstr "Wartet"
 
-msgid "waiting {span}"
-msgstr "wartet {span}"
-
 msgid "Waiting for prior slice"
 msgstr "Wartet auf den vorherigen Abschnitt"
 
@@ -3231,15 +3210,6 @@ msgstr "Den Index-Baum durchlaufen"
 
 msgid "Walk width"
 msgstr "Suchbreite"
-
-msgid "Wants a count: 8M, 200k, 45 all work"
-msgstr "Erwartet eine Zahl: 8M, 200k, 45 gehen alle"
-
-msgid "Wants a duration: 20 min, 45s, 3 hr all work"
-msgstr "Erwartet eine Dauer: 20 min, 45s, 3 hr gehen alle"
-
-msgid "Wants a duration: 24 hr, 30 min both work"
-msgstr "Erwartet eine Dauer: 24 hr und 30 min gehen beide"
 
 msgid "Wants a percentage between 0 and 100, like 60%"
 msgstr "Erwartet einen Prozentwert zwischen 0 und 100, etwa 60 %"

@@ -1001,9 +1001,6 @@ msgstr "Соединений с базой"
 msgid "Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections."
 msgstr "Сколько соединений с базой держать открытыми. Снимку панели нужно около двадцати разом: меньше — и он ждёт волнами, больше — без пользы. Снижайте, только если ваш Postgres ограничивает число соединений."
 
-msgid "day"
-msgstr "день"
-
 msgid "Decision"
 msgstr "Решение"
 
@@ -1466,9 +1463,6 @@ msgstr "Как часто перепроверяется общая карта �
 msgid "How to alert you"
 msgstr "Как вас уведомлять"
 
-msgid "hr"
-msgstr "ч"
-
 msgid "HTTP {status}"
 msgstr "HTTP {status}"
 
@@ -1566,9 +1560,6 @@ msgstr "Журнал"
 
 msgid "Just describe what you need. A plan card will be generated for approval before any code is written."
 msgstr "Просто опишите, что нужно. Перед тем как писать код, появится карточка плана на одобрение."
-
-msgid "Just now"
-msgstr "Только что"
 
 msgid "Just started"
 msgstr "Только начали"
@@ -1678,9 +1669,6 @@ msgstr "Написать этой группе…"
 msgid "migrated and queryable"
 msgstr "миграции применены, база отвечает"
 
-msgid "min"
-msgstr "мин"
-
 msgid "Model account"
 msgstr "Аккаунт модели"
 
@@ -1701,9 +1689,6 @@ msgstr "Ещё"
 
 msgid "mount point"
 msgstr "точка монтирования"
-
-msgid "ms"
-msgstr "мс"
 
 msgid "Name"
 msgstr "Имя"
@@ -2626,9 +2611,6 @@ msgstr "Сохранено {at}"
 msgid "Search skills"
 msgstr "Искать навыки"
 
-msgid "sec"
-msgstr "с"
-
 msgid "Selected"
 msgstr "Выбрано"
 
@@ -3205,9 +3187,6 @@ msgstr "ждал {short}"
 msgid "Waiting"
 msgstr "Ожидание"
 
-msgid "waiting {span}"
-msgstr "ждёт {span}"
-
 msgid "Waiting for prior slice"
 msgstr "Ждём предыдущий срез"
 
@@ -3231,15 +3210,6 @@ msgstr "Обходить дерево индекса"
 
 msgid "Walk width"
 msgstr "Ширина обхода"
-
-msgid "Wants a count: 8M, 200k, 45 all work"
-msgstr "Нужно количество: 8M, 200k, 45 — всё подойдёт"
-
-msgid "Wants a duration: 20 min, 45s, 3 hr all work"
-msgstr "Нужна длительность: 20 min, 45s, 3 hr — всё подойдёт"
-
-msgid "Wants a duration: 24 hr, 30 min both work"
-msgstr "Нужна длительность: подойдут и 24 hr, и 30 min"
 
 msgid "Wants a percentage between 0 and 100, like 60%"
 msgstr "Нужен процент от 0 до 100, например 60%"

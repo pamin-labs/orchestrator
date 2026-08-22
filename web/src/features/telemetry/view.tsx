@@ -594,7 +594,7 @@ function Trend({
             // sparse series are not the edges of the window, so an axis fitted to
             // the points would silently re-scale itself as buckets came and went.
             domain={[window.from, window.to]}
-            tickFormatter={(at: number) => trendLabel(at, windowMs, bucketMs)}
+            tickFormatter={(at: number) => trendLabel(at, windowMs)}
             {...AXIS}
             tickLine={false}
             axisLine={false}
@@ -611,7 +611,7 @@ function Trend({
           />
           {/* The head line is the axis key, which is now an instant rather than a
               printed label — so it is spelled the same way the ticks are. */}
-          <ChartTooltip format={duration} label={(at) => trendLabel(Number(at), windowMs, bucketMs)} />
+          <ChartTooltip format={duration} label={(at) => trendLabel(Number(at), windowMs)} />
           {/* `connectNulls`, because the x axis is a number line.
               The objection to joining across a gap — that a quiet ten minutes and
               ten with no data would draw identically — is an objection to a

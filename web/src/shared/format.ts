@@ -1,5 +1,4 @@
 import { i18n } from "@lingui/core";
-import { t } from "@lingui/core/macro";
 
 /**
  * One `Intl` formatter per locale, built the first time that locale is read in.
@@ -8,7 +7,7 @@ import { t } from "@lingui/core/macro";
  * formats hundreds of numbers a frame. Not at module scope: the locale moves
  * while the page is open, and `i18n.locale` is empty until the first `activate`.
  */
-function per<T>(make: (locale: string) => T): () => T {
+export function per<T>(make: (locale: string) => T): () => T {
   const made = new Map<string, T>();
   return () => {
     const locale = i18n.locale || "en";
@@ -26,8 +25,8 @@ function per<T>(make: (locale: string) => T): () => T {
  * The tiers were hand-written once and picked before the rounding, so 999500
  * printed as "1000k" and 1200 as "1k". The suffix belongs to the language:
  * `183.4万`, `1,8 Mio.`, and English's `K`. This used to lowercase that K to
- * match the settings rows, which is editing what CLDR said; `fmtCount` there is
- * lowercase because it is a value typed back into a box.
+ * match the settings rows, which is editing what CLDR said; those rows spell it
+ * the way they store it, and they no longer take free text at all.
  * i18n-exempt: how each language writes a number is the subject.
  */
 const compact = per((locale) => new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }));
@@ -50,23 +49,15 @@ const hhmm = per((locale) => new Intl.DateTimeFormat(locale, { hour: "2-digit", 
 export const clock = (ms: number) => hhmm().format(ms);
 
 /**
- * The two coarser trend-axis labels, from the same `Intl` the clock uses.
+ * The coarsest trend-axis label, from the same `Intl` the clock uses.
  *
- * The axis built these as `${month + 1}/${date}` and `${hour}:00`, so `8/20` was
- * 20 August here and 8 August to a German, French or Korean reader — half the
- * shipped locales read month-first as a date they did not get. `h23` on the hour
- * for the same reason `clock` has it: the tick is a fixed-width column.
+ * The axis built this as `${month + 1}/${date}`, so `8/20` was 20 August here
+ * and 8 August to a German, French or Korean reader — half the shipped locales
+ * read month-first as a date they did not get.
  */
 const mmdd = per((locale) => new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" }));
-const hh = per((locale) => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }));
 
 export const day = (at: Date | number) => mmdd().format(at);
-/** The top of the hour, spelled the way this locale spells a time. */
-export const hourOnly = (at: Date | number) =>
-  hh()
-    .formatToParts(at)
-    .map((p) => (p.type === "minute" ? "00" : p.value))
-    .join("");
 
 /**
  * How long something took, in the coarsest unit that does not lose the point.
@@ -84,10 +75,20 @@ export const duration = (ms: number) => {
   return `${minutes}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}s`;
 };
 
-/** How long something has been waiting, in the coarsest unit that still says it. */
+/**
+ * How long something has been waiting, in the coarsest unit that still says it.
+ *
+ * `Intl.RelativeTimeFormat` and not two messages of ours: this was
+ * `` t`Just now` `` and `` t`waiting ${span}` `` with the span built as `20m`,
+ * so twenty translated rows said what CLDR says in every language and got the
+ * word order wrong in three of them — French and Spanish put the phrase in front
+ * (`il y a 20 min`, `hace 20 min`) and nothing in an interpolated suffix can.
+ * `numeric: "auto"` is what turns zero into `now` rather than `in 0 seconds`.
+ */
+const ago = per((locale) => new Intl.RelativeTimeFormat(locale, { numeric: "auto", style: "short" }));
+
 export const waited = (ms: number) => {
   const m = Math.round((Date.now() - ms) / 60000);
-  if (m < 1) return t`Just now`;
-  const span = m < 60 ? `${m}m` : `${Math.round(m / 60)}h`;
-  return t`waiting ${span}`;
+  if (m < 1) return ago().format(0, "second");
+  return m < 60 ? ago().format(-m, "minute") : ago().format(-Math.round(m / 60), "hour");
 };

@@ -121,80 +121,139 @@ export const StoredProjectConfigSchema = z
 export type StoredProjectConfig = z.infer<typeof StoredProjectConfigSchema>;
 
 /**
- * Every language the panel can be read in, in one place: the code its catalog is
- * filed under, the name it calls itself, and how a person writes it into
- * `output.language`.
- */
-/**
- * One table because this list was five — here, the catalog imports, the picker's
- * labels, the progress rows, and `lingui.config.js`. Missing one failed
- * differently each time: no catalog extracted, a locale nobody could pick, a row
- * labelled `ko`, a setting that matched nothing.
- */
-/**
- * The spellings are the three forms people actually write: the endonym the knob
- * suggests, the English name, and the ISO code. Matched anywhere in the string
- * rather than anchored — `繁體中文` is the second entry in the panel's own
- * suggestion list and an anchored `中` read it as English, so picking the option
- * the panel offers gave an English feed and an English pane. The ISO codes are
- * anchored and delimited, because a bare `es` inside "Estonian" is not Spanish.
- */
-/**
- * Order is load-bearing for the two Chinese rows, and only for them: `localeOf`
- * takes the first row that matches, and `zh`'s `[中汉漢華华]` matches `繁體中文`
- * too. Traditional first, or every Traditional reader silently gets Simplified.
- */
-/**
- * `zh` is Simplified and keeps its bare tag rather than becoming `zh-Hans`,
- * because CLDR's `likelySubtags` already reads it that way — `zh` → `zh_Hans_CN`,
- * `zh_TW` and `zh_Hant` → `zh_Hant_TW`. `zh-Hant` is the script subtag rather
- * than `zh-TW` for the same reason: Taiwan, Hong Kong and Macau all maximise to
- * it, so one row covers all three.
+ * Every language the panel can be read in. One line, because it is one fact:
+ * which `.po` files are in `locales/`.
  *
- * `台` is not in the Traditional pattern on its own — `平台` would match it.
+ * `en` first, because it is the source and the fallback. This was a table with
+ * three columns — the code, the name the language calls itself, and a regular
+ * expression for every spelling a person might type it as. The other two columns
+ * are CLDR's, and the runtime already ships CLDR.
  */
-const LANGUAGES = [
-  { locale: "en", endonym: "English", spelled: /english|^en([-_]|$)/i },
-  {
-    locale: "zh-Hant",
-    endonym: "繁體中文",
-    spelled: /繁體|繁体|臺灣|台灣|台湾|traditional|^(zh|cmn)[-_](hant|tw|hk|mo)([-_]|$)/i,
-  },
-  { locale: "zh", endonym: "简体中文", spelled: /[中汉漢華华]|chinese|mandarin|^zh([-_]|$)/i },
-  { locale: "ja", endonym: "日本語", spelled: /日本語|にほんご|japanese|^ja([-_]|$)/i },
-  { locale: "ko", endonym: "한국어", spelled: /한국어|조선말|korean|^ko([-_]|$)/i },
-  { locale: "es", endonym: "Español", spelled: /espa[ñn]ol|spanish|castellano|^es([-_]|$)/i },
-  { locale: "fr", endonym: "Français", spelled: /fran[çc]ais|french|^fr([-_]|$)/i },
-  { locale: "de", endonym: "Deutsch", spelled: /deutsch|german|^de([-_]|$)/i },
-  { locale: "pt", endonym: "Português", spelled: /portugu[êe]s|portuguese|^pt([-_]|$)/i },
-  { locale: "ru", endonym: "Русский", spelled: /русск|russian|^ru([-_]|$)/i },
-] as const;
+export const LOCALES = ["en", "zh", "zh-Hant", "ja", "ko", "es", "fr", "de", "pt", "ru"] as const;
 
-export type Locale = (typeof LANGUAGES)[number]["locale"];
+export type Locale = (typeof LOCALES)[number];
 
-/** `en` first, because it is the source and the fallback. */
-export const LOCALES: readonly Locale[] = LANGUAGES.map((l) => l.locale);
-
-/** What a language calls itself — the only spelling every reader of that row can
- *  read. A menu that says "Chinese" is no help to somebody who cannot read the
- *  pane it is on. */
-export const endonymOf = (locale: Locale): string => LANGUAGES.find((l) => l.locale === locale)?.endonym ?? locale;
+/** A predicate rather than a cast, so nothing here narrows a `string` by assertion. */
+export const isLocale = (value: string): value is Locale => (LOCALES as readonly string[]).includes(value);
 
 /**
- * Which catalog a free-text `language` asks for. Here rather than in
- * `platform/text` because the panel needs the same answer and may only import
- * contracts — two copies of this question already got two answers once:
- * `escalation.ts` asked `language === "en"` against a `"中文"` default, so its
- * English branch was unreachable for every spelling including `"English"`.
+ * The tag to *name* a locale by, which is not always the tag its catalog is
+ * filed under. `zh` is "Chinese", and in a menu that also offers 繁體中文 that
+ * is not an answer; `zh-Hans` is the same catalog said unambiguously — 简体中文,
+ * `Chinese, Simplified`, `chinois simplifié`.
+ */
+const named = (locale: Locale): string => (locale === "zh" ? "zh-Hans" : locale);
+
+/**
+ * What a language calls itself — the only spelling every reader of that row can
+ * read. A menu that says "Chinese" is no help to somebody who cannot read the
+ * pane it is on.
+ *
+ * `français` is lower case and stays lower case: that is how French writes a
+ * language name, and title-casing it is editing CLDR — the same edit
+ * `shared/format.ts` records deleting when it stopped lowercasing English's `K`.
+ */
+export const endonymOf = (locale: Locale): string =>
+  new Intl.DisplayNames([named(locale)], { type: "language" }).of(named(locale)) ?? locale;
+
+/**
+ * A language tag, if this text is one. `_` for `-` first, because `zh_CN` is
+ * what a person types and what the knob's own suggestions used to show.
+ *
+ * `Intl.Locale` throws on anything that is not well-formed, which is the test:
+ * `繁體中文` and `Русский` throw and fall through to the names below. What it
+ * does *not* reject is a long word — `new Intl.Locale("Spanish").language` is
+ * `"spanish"` — so the result still has to be a language we have a catalog for.
+ */
+const tagged = (text: string): Locale | null => {
+  let locale: Intl.Locale;
+  try {
+    locale = new Intl.Locale(text.replace(/_/g, "-"));
+  } catch {
+    return null;
+  }
+  // CLDR's `likelySubtags`, in the runtime rather than in a column: `zh`, `zh-CN`
+  // and `zh-SG` maximise to `Hans`; `zh-TW`/`HK`/`MO`, `zh-Hant` and `yue` to
+  // `Hant`. This used to be an ordered regex table whose order was load-bearing —
+  // `zh`'s `[中汉漢華华]` matched `繁體中文` — and which knew only the seven tags
+  // somebody had written down. `zh-Hans-MO` and `cmn-Hant` are right for free now.
+  if (["zh", "cmn", "yue"].includes(locale.language))
+    return locale.maximize().script === "Hant" ? "zh-Hant" : "zh";
+  return isLocale(locale.language) ? locale.language : null;
+};
+
+/**
+ * Every name each of these ten languages has, in each of these ten languages —
+ * a hundred strings, all of them CLDR's.
+ *
+ * This replaced ten hand-written regular expressions that between them knew
+ * English and the endonym: they had no Japanese word for German and no Russian
+ * word for Spanish, so a boss who wrote `ドイツ語` into the knob got English.
+ * Bare `zh` is in the list beside `zh-Hans`, because `中文` and `Chinese` are
+ * what people write for Simplified as often as `简体中文`.
+ */
+const NAMES: { locale: Locale; words: string[] }[] = LOCALES.flatMap((locale) =>
+  [...new Set([named(locale), locale])].map((tag) => ({
+    locale,
+    // Split on everything that is not a letter, so `Chinese, Traditional`
+    // becomes two words and matches somebody who wrote them the other way round.
+    // De-duplicated, because ten readers repeat each other — `中文` is what both
+    // Chinese rows call `zh`, and counting it twice tied Simplified with
+    // Traditional on the word `繁體中文`, which only Traditional has.
+    words: [
+      ...new Set(
+        LOCALES.map((reader) => new Intl.DisplayNames([reader], { type: "language" }).of(tag) ?? "")
+          .join(" ")
+          .toLowerCase()
+          .split(/[^\p{L}]+/u)
+          .filter(Boolean),
+      ),
+    ],
+  })),
+);
+
+/**
+ * How much of a name the text spells. Zero is no match.
+ *
+ * Characters and not rows, so the most specific name wins wherever two overlap
+ * and no ordering has to be maintained: `繁體中文` scores 4 for Traditional and
+ * 2 for the `中文` inside it, and `Traditional Chinese` scores 18 for
+ * `Chinese, Traditional` against 7 for `Chinese` — written either way round,
+ * because the words are matched one at a time.
+ */
+/**
+ * A prefix counts too, from two characters up: people abbreviate from the front,
+ * and CLDR spells Traditional Chinese `繁體中文` where somebody typing it often
+ * stops at `繁體`. A prefix and not a substring, or `an` — two letters nobody
+ * means as a language — would match the middle of `japanese` and `alemán`.
+ */
+const spelled = (text: string, words: string[]): number =>
+  words
+    .filter((w) => text.includes(w) || (text.length > 1 && w.startsWith(text)))
+    .reduce((n, w) => n + w.length, 0);
+
+/**
+ * Which catalog a `language` asks for — a tag from a browser, or the free text a
+ * person typed into the knob. Here rather than in `platform/text` because the
+ * panel needs the same answer and may only import contracts — two copies of this
+ * question already got two answers once: `escalation.ts` asked `language === "en"`
+ * against a `"中文"` default, so its English branch was unreachable for every
+ * spelling including `"English"`.
  */
 /** Anything with no catalog is English, which is the source: an unrecognised
  *  language reads in the language the panel was written in, not in nothing. */
-/** Ten rows tried in order, English among them rather than skipped and then
- *  used as the default — the `?? "en"` is what makes it the fallback, and a
- *  row excluded from the loop it is a row of is a special case with nothing
- *  left to do. */
-export const localeOf = (lang: string | undefined): Locale =>
-  LANGUAGES.find((l) => l.spelled.test(lang ?? ""))?.locale ?? "en";
+export function localeOf(lang: string | undefined): Locale {
+  const tag = tagged(lang ?? "");
+  if (tag) return tag;
+  const text = (lang ?? "").toLowerCase();
+  let best: Locale = "en";
+  let score = 0;
+  for (const row of NAMES) {
+    const hit = spelled(text, row.words);
+    if (hit > score) [best, score] = [row.locale, hit];
+  }
+  return best;
+}
 
 /**
  * The language that leaves this machine for a person, resolved.

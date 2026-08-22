@@ -1,5 +1,5 @@
 {
-  "contracts/config.ts": 12,
+  "contracts/config.ts": 9,
   "contracts/said.ts": 1,
   "mech/flow/chain.ts": 9,
   "mech/flow/review.ts": 1,

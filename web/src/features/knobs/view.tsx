@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { api, mutate, readApi } from "../../shared/api";
-import { KNOB_SHAPE, WANTS, readNumber, showNumber } from "./units";
+import { KNOB_SHAPE, WANTS_PERCENT, readNumber } from "./units";
 import type { ModelSources } from "./models";
 import {
   Amount,
@@ -1146,7 +1146,7 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
         label={copyFor(knob).label}
         invalid={bad === ""}
         onCommit={(pct) => {
-          if (pct <= 0 || pct > 100) return onRefuse(i18n._(WANTS.percent), "");
+          if (pct <= 0 || pct > 100) return onRefuse(i18n._(WANTS_PERCENT), "");
           // Divided, not multiplied: 600 / 1000 is the same double as 0.6.
           onWrite(Math.round(pct * 10) / 1000);
         }}
@@ -1156,13 +1156,13 @@ function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
   return (
     <Box
       id={id}
-      value={showNumber(now, shape)}
+      value={String(now)}
       invalid={bad === ""}
       className="w-[9rem] flex-none"
       onUnchanged={onClear}
       onCommit={(raw) => {
-        const n = readNumber(raw, now, shape);
-        if (n === null) return onRefuse(i18n._(shape ? WANTS[shape] : msg`A number`), "");
+        const n = readNumber(raw);
+        if (n === null) return onRefuse(i18n._(msg`A number`), "");
         onWrite(n);
       }}
     />

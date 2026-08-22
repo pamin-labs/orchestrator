@@ -1001,9 +1001,6 @@ msgstr "데이터베이스 연결 수"
 msgid "Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections."
 msgstr "열어두는 데이터베이스 연결 수. 패널 스냅샷이 한 번에 스무 개쯤 필요해서, 그보다 적으면 파도치듯 기다립니다. 더 늘려도 이득은 없습니다. Postgres가 연결 수를 제한할 때만 낮추세요."
 
-msgid "day"
-msgstr "일"
-
 msgid "Decision"
 msgstr "결정"
 
@@ -1466,9 +1463,6 @@ msgstr "공유 저장소 맵을 다시 확인하는 주기. watchdog 틱보다 �
 msgid "How to alert you"
 msgstr "어떻게 알릴지"
 
-msgid "hr"
-msgstr "시간"
-
 msgid "HTTP {status}"
 msgstr "HTTP {status}"
 
@@ -1566,9 +1560,6 @@ msgstr "기록"
 
 msgid "Just describe what you need. A plan card will be generated for approval before any code is written."
 msgstr "필요한 것을 그냥 적으세요. 코드를 쓰기 전에 승인용 계획 카드를 만듭니다."
-
-msgid "Just now"
-msgstr "방금"
 
 msgid "Just started"
 msgstr "막 시작함"
@@ -1678,9 +1669,6 @@ msgstr "이 그룹에 메시지…"
 msgid "migrated and queryable"
 msgstr "마이그레이션 완료, 조회 가능"
 
-msgid "min"
-msgstr "분"
-
 msgid "Model account"
 msgstr "모델 계정"
 
@@ -1701,9 +1689,6 @@ msgstr "더 보기"
 
 msgid "mount point"
 msgstr "마운트 지점"
-
-msgid "ms"
-msgstr "밀리초"
 
 msgid "Name"
 msgstr "이름"
@@ -2626,9 +2611,6 @@ msgstr "{at}에 저장됨"
 msgid "Search skills"
 msgstr "스킬 검색"
 
-msgid "sec"
-msgstr "초"
-
 msgid "Selected"
 msgstr "선택됨"
 
@@ -3205,9 +3187,6 @@ msgstr "{short} 기다림"
 msgid "Waiting"
 msgstr "대기 중"
 
-msgid "waiting {span}"
-msgstr "{span} 대기 중"
-
 msgid "Waiting for prior slice"
 msgstr "앞 슬라이스 대기"
 
@@ -3231,15 +3210,6 @@ msgstr "인덱스 트리 탐색"
 
 msgid "Walk width"
 msgstr "탐색 너비"
-
-msgid "Wants a count: 8M, 200k, 45 all work"
-msgstr "개수를 넣으세요: 8M, 200k, 45 모두 됩니다"
-
-msgid "Wants a duration: 20 min, 45s, 3 hr all work"
-msgstr "시간을 넣으세요: 20 min, 45s, 3 hr 모두 됩니다"
-
-msgid "Wants a duration: 24 hr, 30 min both work"
-msgstr "시간을 넣으세요: 24 hr, 30 min 둘 다 됩니다"
 
 msgid "Wants a percentage between 0 and 100, like 60%"
 msgstr "0에서 100 사이의 퍼센트를 넣으세요, 예: 60%"

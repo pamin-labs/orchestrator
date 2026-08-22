@@ -11,7 +11,7 @@ import type { Folded, Stage, TraceRow, Trend } from "../../shared/api";
 import { msg, t } from "@lingui/core/macro";
 import type { MessageDescriptor } from "@lingui/core";
 import { i18n } from "../../i18n";
-import { clock, day, hourOnly } from "../../shared/format";
+import { clock, day } from "../../shared/format";
 import { labelOf } from "../../shared/select";
 
 /**
@@ -533,12 +533,18 @@ export const hasSpans = (stages: readonly Stage[], traces: readonly TraceRow[]):
 /**
  * Both halves come from `Intl` at the reader's locale, not from string building.
  * `8/20` is 20 August here and 8 August to a German, French or Korean reader —
- * the day branch printed month-first for every one of the ten. The clock is
- * `clock()`, which is already `hourCycle: "h23"` so the column keeps its width.
+ * the day branch printed month-first for every one of the ten. Both finer
+ * branches are `clock()`, which is already `hourCycle: "h23"` so the column
+ * keeps its width.
  */
-export const trendLabel = (at: number, windowMs: number, bucketMs: number): string => {
+export const trendLabel = (at: number, windowMs: number): string => {
   if (windowMs > 48 * 60 * 60 * 1_000) return day(new Date(at));
-  return bucketMs >= 3_600_000 ? hourOnly(new Date(at)) : clock(at);
+  // One `clock()` for every bucket size, so `bucketMs` is no longer an input.
+  // The hour branch used to blank the minutes through `formatToParts` — at an
+  // hourly bucket `at` is already the top of an hour, so that was a no-op
+  // everywhere except a half-hour offset (`Asia/Kolkata`, `+05:30`), where it
+  // labelled the 14:30 bucket 14:00.
+  return clock(at);
 };
 
 /**

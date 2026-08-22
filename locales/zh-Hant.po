@@ -1001,9 +1001,6 @@ msgstr "資料庫連線數"
 msgid "Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections."
 msgstr "常開的資料庫連線數。面板拉一次快照要同時用掉約二十個，少於這個數就得分批等；多了也沒用。只有你的 Postgres 限制連線數時才需要調低。"
 
-msgid "day"
-msgstr "天"
-
 msgid "Decision"
 msgstr "決策"
 
@@ -1466,9 +1463,6 @@ msgstr "共享的儲存庫地圖多久重新檢查一次。刻意比看門狗的
 msgid "How to alert you"
 msgstr "有事叫你的方式"
 
-msgid "hr"
-msgstr "小時"
-
 msgid "HTTP {status}"
 msgstr "HTTP {status}"
 
@@ -1566,9 +1560,6 @@ msgstr "工作日誌"
 
 msgid "Just describe what you need. A plan card will be generated for approval before any code is written."
 msgstr "說清要什麼就夠。產出計劃卡待批，批准前不寫程式碼。"
-
-msgid "Just now"
-msgstr "剛剛"
 
 msgid "Just started"
 msgstr "剛起好"
@@ -1678,9 +1669,6 @@ msgstr "跟這個組說話…"
 msgid "migrated and queryable"
 msgstr "已遷移，可查詢"
 
-msgid "min"
-msgstr "分鐘"
-
 msgid "Model account"
 msgstr "模型帳號"
 
@@ -1701,9 +1689,6 @@ msgstr "更多"
 
 msgid "mount point"
 msgstr "掛載點"
-
-msgid "ms"
-msgstr "毫秒"
 
 msgid "Name"
 msgstr "名字"
@@ -2626,9 +2611,6 @@ msgstr "已儲存 {at}"
 msgid "Search skills"
 msgstr "搜技能"
 
-msgid "sec"
-msgstr "秒"
-
 msgid "Selected"
 msgstr "已選"
 
@@ -3205,9 +3187,6 @@ msgstr "等了 {short}"
 msgid "Waiting"
 msgstr "等"
 
-msgid "waiting {span}"
-msgstr "等待 {span}"
-
 msgid "Waiting for prior slice"
 msgstr "等前序切片"
 
@@ -3231,15 +3210,6 @@ msgstr "走索引樹"
 
 msgid "Walk width"
 msgstr "走樹寬度"
-
-msgid "Wants a count: 8M, 200k, 45 all work"
-msgstr "要一個數量：8M、200k、45 都行"
-
-msgid "Wants a duration: 20 min, 45s, 3 hr all work"
-msgstr "要一個時長：20 分鐘、45s、3 小時都行"
-
-msgid "Wants a duration: 24 hr, 30 min both work"
-msgstr "要一個時長：24 小時、30 分鐘都行"
 
 msgid "Wants a percentage between 0 and 100, like 60%"
 msgstr "要 0 到 100 之間的百分比，比如 60%"

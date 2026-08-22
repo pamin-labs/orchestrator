@@ -1001,9 +1001,6 @@ msgstr "Conexiones a la base de datos"
 msgid "Database connections held open. The panel's snapshot needs about twenty at once, so less than that makes it wait in waves; more buys nothing. Lower it only if your Postgres caps connections."
 msgstr "Conexiones a la base que se mantienen abiertas. La instantánea del panel necesita unas veinte a la vez, así que con menos espera por tandas; con más no gana nada. Bájalo solo si tu Postgres limita las conexiones."
 
-msgid "day"
-msgstr "día"
-
 msgid "Decision"
 msgstr "Decisión"
 
@@ -1466,9 +1463,6 @@ msgstr "Cada cuánto se vuelve a comprobar el mapa compartido del repositorio. A
 msgid "How to alert you"
 msgstr "Cómo avisarte"
 
-msgid "hr"
-msgstr "h"
-
 msgid "HTTP {status}"
 msgstr "HTTP {status}"
 
@@ -1566,9 +1560,6 @@ msgstr "Diario"
 
 msgid "Just describe what you need. A plan card will be generated for approval before any code is written."
 msgstr "Describe lo que necesitas, sin más. Antes de escribir código se generará una tarjeta de plan para que la apruebes."
-
-msgid "Just now"
-msgstr "Ahora mismo"
 
 msgid "Just started"
 msgstr "Recién empezado"
@@ -1678,9 +1669,6 @@ msgstr "Escribir a este grupo…"
 msgid "migrated and queryable"
 msgstr "migrada y consultable"
 
-msgid "min"
-msgstr "min"
-
 msgid "Model account"
 msgstr "Cuenta del modelo"
 
@@ -1701,9 +1689,6 @@ msgstr "Más"
 
 msgid "mount point"
 msgstr "punto de montaje"
-
-msgid "ms"
-msgstr "ms"
 
 msgid "Name"
 msgstr "Nombre"
@@ -2626,9 +2611,6 @@ msgstr "Guardado {at}"
 msgid "Search skills"
 msgstr "Buscar habilidades"
 
-msgid "sec"
-msgstr "s"
-
 msgid "Selected"
 msgstr "Seleccionado"
 
@@ -3205,9 +3187,6 @@ msgstr "esperó {short}"
 msgid "Waiting"
 msgstr "Esperando"
 
-msgid "waiting {span}"
-msgstr "esperando {span}"
-
 msgid "Waiting for prior slice"
 msgstr "Esperando al fragmento anterior"
 
@@ -3231,15 +3210,6 @@ msgstr "Recorrer el árbol de índice"
 
 msgid "Walk width"
 msgstr "Anchura del recorrido"
-
-msgid "Wants a count: 8M, 200k, 45 all work"
-msgstr "Espera una cantidad: 8M, 200k, 45 valen"
-
-msgid "Wants a duration: 20 min, 45s, 3 hr all work"
-msgstr "Espera una duración: 20 min, 45s, 3 hr valen"
-
-msgid "Wants a duration: 24 hr, 30 min both work"
-msgstr "Espera una duración: 24 hr y 30 min valen"
 
 msgid "Wants a percentage between 0 and 100, like 60%"
 msgstr "Espera un porcentaje entre 0 y 100, como 60%"
