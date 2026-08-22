@@ -45,3 +45,21 @@ export const SaidSchema = z.object({
 });
 
 export type Said = z.infer<typeof SaidSchema>;
+
+/**
+ * `message` required here and only here. This is the one input that is untrusted
+ * JSON — a row read back out of `event.meta_json` — so a descriptor stored
+ * before the macro named these is refused at the parse rather than checked for
+ * later: `sayIn` returns null and the body stored beside it is drawn.
+ */
+const MetaSchema = z.object({ say: SaidSchema.extend({ message: z.string() }).optional() });
+
+/**
+ * The sentence an event's `meta` names, if it names one.
+ *
+ * In the contract rather than beside the panel's renderer, because both sides
+ * read the same column: the panel to draw the row, and the server's own tests to
+ * assert which sentence was chosen without asserting the language it came out
+ * in.
+ */
+export const sayIn = (meta: unknown): Said | null => MetaSchema.safeParse(meta).data?.say ?? null;

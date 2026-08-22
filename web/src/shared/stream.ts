@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { notifyWanted } from "./desktop-notify";
-import { sayIn, saidText } from "./said";
+import { sayIn } from "../../../src/contracts/said.ts";
+import { saidText } from "./said";
 import { z } from "zod";
 import { FrameSchema } from "../../../src/contracts/events.ts";
 
