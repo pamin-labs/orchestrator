@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { createElement } from "react";
-import { cleanup, render as mount } from "../support/render.tsx";
+import { cleanup, render as mount, shown } from "../support/render.tsx";
 import { emptyState } from "../../web/src/shared/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { Progress } from "../../web/src/features/progress/view.tsx";
@@ -32,9 +32,6 @@ const render = (state = emptyState(), tab: string | null = null) => {
     ),
   );
 };
-
-const shown = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
 
 test("an empty project still teaches the interface", () => {
   // This used to return one sentence in place of the whole view. The sentence

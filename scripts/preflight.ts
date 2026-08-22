@@ -48,8 +48,13 @@ async function cmd(line: string): Promise<Outcome> {
 const ACTIONLINT_VERSION = "1.7.12";
 /** Pinned beside `security.yml`'s copy, for the same reason. */
 const ZIZMOR_VERSION = "1.29.0";
+/** Pinned here and in `security.yml`'s `TRIVY_VERSION`, held equal by
+ *  `agent-toolchain.test.ts` — which guarded the other two and not this one. */
+const TRIVY_VERSION = "0.74.0";
 
-const has = async (bin: string): Promise<boolean> => (await $`command -v ${bin}`.quiet().nothrow()).exitCode === 0;
+/** `Bun.which`, which is what the runtime docs point at for exactly this — the
+ *  shell-out spawned a process five times a run to answer a lookup. */
+const has = (bin: string): boolean => Bun.which(bin) !== null;
 
 /**
  * Commits on this branch whose sign-off does not match their author.
@@ -124,15 +129,29 @@ const steps: Step[] = [
   // CI runs this straight after the bundle and preflight did not, so a size
   // regression was red there and green here. The bundle above is its input.
   { name: "size budgets", job: "test", run: () => cmd("bun run perf:budget") },
-  // Through `bun run test`, not `bun test` directly: that wrapper retries an arm64
-  // worker panic once and nothing else, and this is the command a developer runs
-  // before every commit on the machine where that panic happens. CI keeps calling
-  // `bun test` — it is x64, cannot hit it, and a retry there would only hide.
-  { name: "tests", job: "test", run: () => cmd("bun run test") },
+  // One suite run, instrumented. There were two — `bun run test` and then
+  // `audit:crap`, which runs it again under `ORCH_COVERAGE=1` — on the grounds
+  // that the wrapper retries an arm64 worker panic. Both go through
+  // `scripts/test.ts`, so both have that; and the instrumented one is the
+  // stricter of the two (`test/support/loader.ts` records 21 panel files that
+  // fail only under coverage, "so a green `bun run test` says nothing about
+  // it"). CI runs `test:coverage:ci` and nothing else, so the plain pass was
+  // forty seconds of a hundred-and-seventeen answering about a gate that does
+  // not exist.
+  //
   // The audit reads CRAP from the coverage map, so the coverage run has to
   // happen first — `audit:crap` is the pair, and running plain `audit` here
   // would repeat the mistake CI made for weeks.
   { name: "coverage + audit", job: "test", run: () => cmd("bun run audit:crap") },
+  // CI fails if a step rewrote the tree (`ci.yml`'s `git diff --exit-code`), and
+  // preflight did not — so a formatter or a generator writing outside
+  // `locales/` and the READMEs was red there and green here. `i18n:check` covers
+  // only those three paths.
+  {
+    name: "nothing was rewritten",
+    job: "quality",
+    run: () => cmd("git diff --exit-code --stat"),
+  },
   {
     name: "security candidates",
     job: "security-fallow",
@@ -158,7 +177,7 @@ const steps: Step[] = [
       // Asking a contributor to `brew install` is a check that silently does not
       // run for whoever skipped it — which is the same failure as not having the
       // check, except it looks green.
-      if ((await has("actionlint")) && (await has("shellcheck"))) return cmd("actionlint");
+      if (has("actionlint") && has("shellcheck")) return cmd("actionlint");
       // Otherwise the pinned image, which this project can assume: a container
       // runtime is already a hard requirement — the agents run in one. It also
       // carries shellcheck and pyflakes, so the shell rules actually run; a bare
@@ -167,7 +186,7 @@ const steps: Step[] = [
       // Same version as `security.yml` pins, and that is the point of the
       // constant: two places asserting different versions is worse than one
       // place asserting none.
-      if (await has("docker")) {
+      if (has("docker")) {
         return cmd(
           `docker run --rm -v "${process.cwd()}":/repo -w /repo rhysd/actionlint:${ACTIONLINT_VERSION} -color`,
         );
@@ -184,16 +203,31 @@ const steps: Step[] = [
       // claims to stand in for. Measured at 0.04s against this repository, and
       // a workflow edit is both the likeliest thing to trip `--pedantic` and
       // the one edit preflight could not see.
-      if (await has("uvx")) return cmd(`uvx --from zizmor==${ZIZMOR_VERSION} zizmor --pedantic .github/workflows`);
+      if (has("uvx")) return cmd(`uvx --from zizmor==${ZIZMOR_VERSION} zizmor --pedantic .github/workflows`);
       return { outcome: "skip", note: "no uvx — CI runs zizmor" };
+    },
+  },
+  {
+    // CI's `scan repository` — `scan-type: fs` against `trivy.yaml`, whose
+    // `scanners` are vuln, secret and misconfig. Preflight scanned the built
+    // image only, so a hardcoded secret or a Dockerfile misconfiguration was
+    // caught there and not here, which is the failure this file's header says it
+    // exists to prevent.
+    name: "repository scan",
+    job: "security-container",
+    run: async () => {
+      if (!has("docker")) return { outcome: "skip" as const, note: "docker not on PATH — CI scans the tree" };
+      return cmd(
+        `docker run --rm -v "$HOME/.cache/trivy:/root/.cache" -v "$PWD:/work" -w /work ` +
+          `aquasec/trivy:${TRIVY_VERSION} fs --quiet --exit-code 1 --config trivy.yaml .`,
+      );
     },
   },
   {
     name: "container scan",
     job: "security-container",
     run: async () => {
-      if (!(await has("docker")))
-        return { outcome: "skip", note: "docker not on PATH — CI builds and scans the image" };
+      if (!has("docker")) return { outcome: "skip", note: "docker not on PATH — CI builds and scans the image" };
       const built = await cmd(
         // `--platform linux/amd64`, because that is what CI builds. A preflight
         // that scans a different image than the gate answers confidently about
@@ -211,7 +245,7 @@ const steps: Step[] = [
         // than the gate does.
         'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache" ' +
           '-v "$PWD:/work" -w /work ' +
-          "aquasec/trivy:0.74.0 image --quiet --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed " +
+          `aquasec/trivy:${TRIVY_VERSION} image --quiet --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed ` +
           "--ignorefile .trivyignore.yaml orchestrator-agent:preflight",
       );
     },

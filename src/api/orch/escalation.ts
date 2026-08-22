@@ -15,7 +15,7 @@ import { bossFact } from "../panel/attach.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
 import { badText, json, message } from "../../http/respond.ts";
 import { renderSaid } from "../../platform/text/lang.ts";
-import { cut, firstSentence } from "../../contracts/sentence.ts";
+import { BRIEF, cut, firstSentence } from "../../contracts/sentence.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
 import {
@@ -42,10 +42,6 @@ export function brief(given: string | undefined, question: string): string {
   // sentence *this* derives is trimmed and cut.
   return given?.trim() ? cut(given.trim(), BRIEF) : firstSentence(question, BRIEF);
 }
-
-/** One width, and `sentence.ts` counts it in graphemes on both paths — a written
- *  brief and a derived one are the same size in the queue. */
-const BRIEF = 40;
 
 /**
  * `severity` falls back rather than refuses: anything that is not the word

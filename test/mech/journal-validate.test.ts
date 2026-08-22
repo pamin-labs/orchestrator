@@ -76,7 +76,7 @@ describe("self-review must not be vacuous", () => {
   test("an empty review is its own message, because there is nothing to count", () => {
     const r = validateSelfReview("", 2);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("carries no information");
+    if (!r.ok) expect(r.error).toContain("says nothing at all");
   });
 
   test.each(["looks good", "LGTM", "no issues", "all good", "sieht gut aus", "看起来没问题", "looks ok"])(

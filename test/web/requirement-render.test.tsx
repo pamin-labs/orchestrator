@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { cleanup, render as mount, valueOf } from "../support/render.tsx";
+import { cleanup, gone, render as mount, shown, valueOf } from "../support/render.tsx";
 import { inFlight, mockHttp } from "../support/http.ts";
 import { emptyState, type Group, type Slice, type State } from "../../web/src/shared/api.ts";
 import type { PanelFrame } from "../../web/src/shared/stream.ts";
@@ -79,10 +79,6 @@ afterEach(cleanup);
 
 /** Most of these sentences sit inside a longer line, so the match is a substring —
  *  of rendered text, which is what a reader has, rather than of the markup. */
-const shown = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
-const gone = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);
 
 /** A group with one running slice, which is what most of these states hang off. */
 function running(over: Partial<Group> = {}) {

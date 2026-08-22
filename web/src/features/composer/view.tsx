@@ -10,8 +10,7 @@ import { ask } from "../../ui/confirm";
 import { cn } from "../../ui/cn";
 import { FilePicker } from "../picker/view";
 import { z } from "zod";
-import { api, readApi, readJson } from "../../shared/api";
-import { saidText } from "../../shared/said";
+import { api, readApi } from "../../shared/api";
 import type { InferResponseType } from "hono/client";
 import {
   appendLine,
@@ -88,20 +87,6 @@ async function walk(items: DataTransferItemList): Promise<Picked[]> {
 const AttachmentsSchema: z.ZodType<
   InferResponseType<typeof api.attach.$post, 200> & InferResponseType<typeof api.attach.local.$post, 200>
 > = z.object({ files: z.array(SavedAttachmentSchema) });
-
-/**
- * The files an attach reply names, or null once the refusal has been shown.
- *
- * Both attach paths read the same body and show the same refusal the same way;
- * only what they do with the files differs. `fallow audit` found the two halves
- * as one clone group the moment the toast learned to render a descriptor.
- */
-const attached = async (r: Response): Promise<SavedAttachment[] | null> => {
-  const result = await readJson(r, AttachmentsSchema);
-  if (result.ok) return result.data.files;
-  toast.error(saidText(result.said, result.text), { duration: 8000 });
-  return null;
-};
 
 const SkillsResponseSchema: z.ZodType<InferResponseType<typeof api.skills.$get, 200>> = z.object({
   skills: z.array(SkillSchema),
@@ -451,7 +436,7 @@ export function Composer({
     startTransition(async () => {
       const r = await api.attach.local.$post({ json: { paths } }).catch(() => null);
       if (!r) return void toast.error(t`Failed to add`, { duration: 8000 });
-      const files = await attached(r);
+      const files = (await readApi(r, AttachmentsSchema))?.files;
       if (files) addFiles(files);
     });
 
@@ -474,7 +459,7 @@ export function Composer({
       }
       // A file that silently fails to attach is worse than one never added: the text
       // goes out referencing a path, and the agent is told to Read something missing.
-      const files = await attached(r);
+      const files = (await readApi(r, AttachmentsSchema))?.files;
       if (!files) return;
       // Preview from the local File, not a server round trip.
       addFiles(

@@ -84,6 +84,9 @@ test("the prompts do not send an agent to a search that ignores .gitignore", () 
 test.each([
   ["actionlint", /ACTIONLINT_VERSION:\s*([\d.]+)/, /ACTIONLINT_VERSION = "([\d.]+)"/],
   ["zizmor", /zizmor==([\d.]+)/, /ZIZMOR_VERSION = "([\d.]+)"/],
+  // Trivy was pinned in both files and held equal by nothing, which is how the
+  // other two got out of step before this table existed.
+  ["trivy", /TRIVY_VERSION:\s*v?([\d.]+)/, /TRIVY_VERSION = "([\d.]+)"/],
 ])("the %s version preflight runs is the one CI runs", (_name, inCi, inPreflight) => {
   const pinned = (text: string, re: RegExp): string | null => re.exec(text)?.[1] ?? null;
   const ci = pinned(readFileSync(join(ROOT, ".github/workflows/security.yml"), "utf8"), inCi);

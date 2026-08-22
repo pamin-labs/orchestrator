@@ -45,3 +45,12 @@ test("the English README names panes the way the panel spells them", () => {
   const readme = readFileSync("README.md", "utf8").replace(GENERATED, "").replace(SWITCHER, "");
   expect(cjkLines(readme)).toEqual([]);
 });
+
+/**
+ * The file a contributor opens before writing an ADR, which the commit that
+ * translated `config/default.yaml` walked past — it was named by hand there, and
+ * a guard that lists two files finds two files.
+ */
+test("the ADR index is in the language the ADRs are written in", () => {
+  expect(cjkLines(readFileSync("docs/adr/README.md", "utf8"))).toEqual([]);
+});

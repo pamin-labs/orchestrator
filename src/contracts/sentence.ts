@@ -47,6 +47,15 @@ export const cut = (s: string, max: number): string => {
     : s;
 };
 
+/**
+ * How wide a queue brief is, in graphemes.
+ *
+ * Here because both sides derive one and they disagreed once — the server wrote
+ * 40 and the panel's re-export defaulted to 44, on the same column. Fixing that
+ * left the number in three places, which is the same bug with a longer fuse.
+ */
+export const BRIEF = 40;
+
 /** The first sentence of `text`, trimmed of its terminator and cut to `max`. */
 export const firstSentence = (text: string, max: number): string =>
   cut(([...SENTENCES.segment(text)][0]?.segment ?? "").replace(ENDING, "").trim(), max);

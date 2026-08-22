@@ -1,10 +1,8 @@
 import { expect, test } from "bun:test";
 
-import { firstSentence } from "../../src/contracts/sentence.ts";
+import { BRIEF, firstSentence } from "../../src/contracts/sentence.ts";
 
-/** The width the queue derives at, and there is one now: the panel's re-export
- *  had defaulted to 44 while `src/api/orch/escalation.ts` wrote 40. */
-const BRIEF = 40;
+/** The width the queue derives at, from the one place that says it. */
 const first = (s: string) => firstSentence(s, BRIEF);
 
 /**

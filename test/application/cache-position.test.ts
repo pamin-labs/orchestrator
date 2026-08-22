@@ -169,7 +169,7 @@ test("a skill the boss pointed at lands in the delta, never in the cached prefix
   const { prompt } = assemble(stable, { card: "S1", skills: body });
   expect(stable.systemAppend).not.toContain("guard clause");
   expect(prompt).toContain("guard clause first");
-  // And after the card, before the boss's own words, which stay last.
+  // And after the card, before the quoted material, which stays last.
   const both = assemble(stable, {
     card: "S1",
     skills: body,

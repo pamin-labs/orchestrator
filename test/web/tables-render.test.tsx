@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, test } from "bun:test";
 import type { ReactNode } from "react";
-import { cleanup, render as mount } from "../support/render.tsx";
+import { cleanup, gone, render as mount, shown } from "../support/render.tsx";
 import { emptyState } from "../../web/src/shared/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { CostView, Desk, Owns } from "../../web/src/features/tables/view.tsx";
@@ -20,10 +20,6 @@ const render = (node: ReactNode) => {
 };
 
 /** These sentences sit inside longer lines, so the match is a substring of the text. */
-const shown = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
-const gone = (r: ReturnType<typeof render>, text: string) =>
-  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);
 
 test("Desk, ownership and cost surfaces render observable empty and populated states", () => {
   const empty = emptyState();

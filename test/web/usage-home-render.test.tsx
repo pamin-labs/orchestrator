@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cleanup, render as mount } from "../support/render.tsx";
+import { cleanup, gone, render as mount, shown } from "../support/render.tsx";
 import { projectRow } from "../../web/src/features/home/model.ts";
 import { ringArc, ringTip, ringView, staleMark, until } from "../../web/src/features/usage/model.ts";
 import { emptyState, type State } from "../../web/src/shared/api.ts";
@@ -56,10 +56,6 @@ const home = (st: State) => {
 };
 
 /** These sit inside longer lines, so the match is a substring of the rendered text. */
-const shown = (r: ReturnType<typeof home>, text: string) =>
-  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
-const gone = (r: ReturnType<typeof home>, text: string) =>
-  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);
 
 test("a project row prints only the counts that are facts", () => {
   const st = emptyState();

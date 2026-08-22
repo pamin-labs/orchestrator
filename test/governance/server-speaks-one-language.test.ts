@@ -55,6 +55,12 @@ const moved = (path: string, source: string): string[] => {
   return now === was ? [] : [`${now > was ? "grew" : "shrank"} ${file}: ${was} → ${now}`];
 };
 
+/**
+ * One walk, not two. A second test asked "may a file with no baseline entry
+ * introduce one" — which `moved` already answers: `baseline[file] ?? 0` makes an
+ * absent file `0 → N`, which is a `grew` row. It cost a second glob and a second
+ * babel parse of every `.ts` under `src/` to assert nothing the first did not.
+ */
 test("no file under src grows its count of Chinese literals", () => {
   const changed = scan("src/**/*.ts", moved);
   const grew = changed.filter((line) => line.startsWith("grew "));
@@ -65,12 +71,4 @@ test("no file under src grows its count of Chinese literals", () => {
   // Shrinking is the work, and the baseline has to follow it down — or the file
   // it was fixed in silently reopens the same room it was closed out of.
   expect(shrank).toEqual([]);
-});
-
-test("a file with no baseline entry may not introduce one", () => {
-  const fresh = scan("src/**/*.ts", (path, source) => {
-    const file = path.slice("src/".length);
-    return !(file in baseline) && cjkHits(path, source).length > 0 ? [file] : [];
-  });
-  expect(fresh).toEqual([]);
 });

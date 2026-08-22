@@ -360,7 +360,7 @@ export function validateDraftCard(text: string): Result<DraftOk> {
   if (!parsedSlices.ok) return parsedSlices;
   const slices = parsedSlices.slices;
 
-  const split = checkSplit(slices, accept.map(norm));
+  const split = splitOverlap(slices, accept.map(norm));
   if (split) return { ok: false, error: split };
 
   const risk = many(RISK);
@@ -390,7 +390,8 @@ export function validateDraftCard(text: string): Result<DraftOk> {
  * Slicing is otherwise the only step in the whole pipeline with no automatic
  * guard, and the abstract rule ("each slice must be independently acceptable") was
  * already in the Dispatcher's prompt when a real run produced three steps of one
- * change. These three cases are the ones that can be caught without judgement.
+ * change. These two cases are the ones that can be caught without judgement; the
+ * third, a slice of tests alone, could not be and ADR 046 says why.
  */
 function overlapError(a: string, b: string, left: DraftSlice, i: number, j: number, generic: string[]): string | null {
   if (!a || !b) return null;
@@ -417,6 +418,14 @@ function overlapError(a: string, b: string, left: DraftSlice, i: number, j: numb
  *  typed compare equal. Used by the overlap check and by the generic-gate list. */
 const norm = (value: string) => value.toLowerCase().replace(/[\s\p{P}]+/gu, "");
 
+/**
+ * The whole of the split check, since "tests on their own" left it — ADR 046.
+ *
+ * That rule matched the slice *title*, prose in `output.language`, so it existed
+ * for two of the ten locales. Three owners that do read ten keep it:
+ * `roles/dispatcher.yaml` with a worked example, the boss reading the card, and
+ * `reconcile`'s "nothing was claimed and nothing changed".
+ */
 function splitOverlap(slices: DraftSlice[], generic: string[]): string | null {
   for (let i = 0; i < slices.length; i++) {
     for (let j = i + 1; j < slices.length; j++) {
@@ -426,20 +435,6 @@ function splitOverlap(slices: DraftSlice[], generic: string[]): string | null {
   }
   return null;
 }
-
-/**
- * "Tests on their own" is not checked here any more, and ADR 046 says why.
- *
- * It matched the slice *title*, which is prose in `output.language`, so the rule
- * existed for two of the ten locales and never for the other eight. All three
- * ways out fail, and 046 argues each.
- */
-/**
- * It keeps three owners that do read ten languages: `roles/dispatcher.yaml`
- * states it with a worked example, the boss reads the card, and `reconcile`
- * catches the consequence as "nothing was claimed and nothing changed".
- */
-const checkSplit = (slices: DraftSlice[], generic: string[]): string | null => splitOverlap(slices, generic);
 
 /**
  * Self-review that says nothing is not self-review. It must reference the
@@ -466,7 +461,7 @@ export function validateSelfReview(text: string, criteriaCount: number): Result<
       ok: false,
       error:
         "self-review must state a verdict per acceptance criterion and cite the diff lines it " +
-        "checked. 'looks good' carries no information.",
+        "checked. An empty one says nothing at all.",
     };
   }
   // One verdict per criterion, at minimum. Fewer means something went unchecked —

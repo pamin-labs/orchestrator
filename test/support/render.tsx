@@ -1,5 +1,6 @@
+import { expect } from "bun:test";
 import { nativeFetch } from "./dom.ts";
-import { render as rawRender, type RenderOptions } from "@testing-library/react";
+import { render as rawRender, type RenderOptions, type RenderResult } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { I18nProvider } from "@lingui/react";
 import { i18n } from "../../web/src/i18n.ts";
@@ -64,3 +65,17 @@ export const valueOf = (el: HTMLElement): string =>
   "value" in el && typeof el.value === "string" ? el.value : `<${el.tagName.toLowerCase()} holds no value>`;
 
 export const isDisabled = (el: HTMLElement): boolean => "disabled" in el && el.disabled === true;
+
+/**
+ * Is this on the page, or off it — substring, because a row usually wraps its
+ * value in punctuation the assertion should not have to know about.
+ *
+ * Six files had written this pair out, byte for byte. Typed on
+ * `@testing-library`'s own `RenderResult` rather than `ReturnType<typeof render>`,
+ * which is the same thing and also covers the files that alias their own mount.
+ */
+export const shown = (r: RenderResult, text: string): void =>
+  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
+
+export const gone = (r: RenderResult, text: string): void =>
+  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);

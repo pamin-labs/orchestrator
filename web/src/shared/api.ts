@@ -242,8 +242,19 @@ const EMPTY: State = {
 /** Fresh panel state for behavior tests and isolated consumers. */
 export const emptyState = (): State => structuredClone(EMPTY);
 
-/** GET that surfaces its own failure. Used for the on-demand panels (evidence, logs). */
-export async function readApi<S extends z.ZodType>(request: Promise<Response>, schema: S): Promise<z.output<S> | null> {
+/**
+ * A read that surfaces its own failure. Used for the on-demand panels (evidence,
+ * logs) and for the two attach paths, which had written this out again —
+ * `fallow audit` found their halves as a clone group.
+ *
+ * `Response | Promise<Response>` because a caller that already awaited its own
+ * `fetch` (to catch a browser refusing to read a folder) has the response in
+ * hand; `await` takes either.
+ */
+export async function readApi<S extends z.ZodType>(
+  request: Response | Promise<Response>,
+  schema: S,
+): Promise<z.output<S> | null> {
   const r = await request;
   const result = await readJson(r, schema);
   if (!result.ok) {
