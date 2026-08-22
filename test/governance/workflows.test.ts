@@ -34,6 +34,7 @@ const WorkflowSchema = z.object({
   ),
 });
 type Workflow = z.infer<typeof WorkflowSchema>;
+type Job = Workflow["jobs"][string];
 
 const CompositeActionSchema = z.object({
   runs: z.object({
@@ -168,7 +169,17 @@ describe("workflow governance", () => {
     // 24 each got. Two descriptions of one server is one description too many.
     const ci = await load("ci");
     expect(ci.jobs["test"]?.services).toBeUndefined();
-    expect(ci.jobs["test"]!.steps.some((step) => step.run?.includes("db:test:up"))).toBe(true);
+    // Through the composite action's `postgres` input, not a step of its own.
+    // Three jobs start this server — `ci`'s test job and both nightly jobs that
+    // reach a database — and each carried the same step under the same six-line
+    // comment about why.
+    const startsPostgres = (job: Job) =>
+      job.steps.some((step) => step.uses?.includes("setup-bun") && step.with?.["postgres"] === "true");
+    expect(startsPostgres(ci.jobs["test"]!)).toBe(true);
+    const nightly = await load("nightly");
+    expect(startsPostgres(nightly.jobs["test-stress"]!)).toBe(true);
+    expect(startsPostgres(nightly.jobs["sandbox-live"]!)).toBe(true);
+    expect(readFileSync(".github/actions/setup-bun/action.yml", "utf8")).toContain("bun run db:test:up");
 
     // And the setting that failure was about is stated where the server is
     // configured — the value moves as the pool and worker count do, so what is

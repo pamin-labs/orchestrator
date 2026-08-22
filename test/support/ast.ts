@@ -25,7 +25,7 @@ export const parse = (file: string, source: string) =>
  * endonyms, so both scripts have to be visible; what makes those legal is an
  * exemption, not a blind spot.
  */
-export const CJK = /[一-鿿ぁ-ヿ가-힯　-〿＀-￯]/;
+const CJK = /[一-鿿ぁ-ヿ가-힯　-〿＀-￯]/;
 
 /**
  * Every file a pattern matches, run through one `offenders`.

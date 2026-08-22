@@ -83,7 +83,7 @@ jobs:
       # not a dirty tree. Measured on a commit whose table read 42% against
       # complete catalogues — `i18n:validate` passed it and so did the diff.
       - name: catalogues and the README tables match the source
-        run: bun run i18n:extract && git diff --exit-code -- locales/ README.md README.zh-CN.md
+        run: bun run i18n:check
       # Nothing above may leave the tree dirty — a formatter or a build that
       # writes into the repository is a diff the author never saw.
       - name: nothing was rewritten
@@ -117,15 +117,7 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      # The compose file, not a `services:` block restating half of it. A service
-      # container takes no `command`, so it silently ran on PostgreSQL's default
-      # connection limit while the compose file raises it and says why: each
-      # worker holds a pool wide enough for the panel snapshot's nineteen
-      # concurrent statements, and four workers took the default over —
-      # `sorry, too many clients already`, on the run that opened this branch's
-      # pull request. Every setting for this server lives in that one file.
-      - name: the suite's postgres, from the file that configures it
-        run: bun run db:test:up
+          postgres: "true"
       # Before anything that can fail. `upload-artifact` runs on `always()` so a
       # red job still hands its evidence over — but it cannot upload a directory
       # that a failing step never got to create, and it then reports "no files
@@ -158,10 +150,17 @@ jobs:
           bun run test:coverage:ci
           # `lcov.info` is what Codecov reads; the Istanbul map is what Fallow reads.
           cp coverage/lcov.info coverage/coverage-final.json "$RUNNER_TEMP/report/"
+      # `--base`, which beats the `FALLOW_AUDIT_BASE=origin/main` the script
+      # carries. On a push *to* main that pin is `HEAD`, so this step would
+      # report `✓ No issues in 0 changed files` — a green tick over nothing
+      # examined, which is verbatim why `bun run audit` was taken out of
+      # `nightly.yml`. The commit that just landed is the scope a push has.
       - name: audit repository structure
+        env:
+          AUDIT_BASE: ${{ github.event_name == 'push' && 'HEAD~1' || 'origin/main' }}
         run: |
           set +e
-          bun run audit -- --coverage coverage/coverage-final.json --format json --quiet --output-file "$RUNNER_TEMP/report/fallow-audit.json"
+          bun run audit -- --base "$AUDIT_BASE" --coverage coverage/coverage-final.json --format json --quiet --output-file "$RUNNER_TEMP/report/fallow-audit.json"
           audit_status=$?
           set -e
           ./node_modules/.bin/fallow report --from "$RUNNER_TEMP/report/fallow-audit.json" --format github-annotations

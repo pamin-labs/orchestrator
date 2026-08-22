@@ -18,7 +18,6 @@ import { CONFIG, ROOT } from "./lingui-catalogs.ts";
 
 const load = createRequire(import.meta.url) as <T>(id: string) => T;
 
-
 /**
  * Babel is resolved on first use, not at import. This module is imported by the
  * test preload in every one of the 204 test processes, and all but the browser

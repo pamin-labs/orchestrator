@@ -32,8 +32,12 @@ const covering = process.env.ORCH_COVERAGE === "1";
  * Re-measured after removing it: inside the noise, because expansion is cached.
  */
 const load = createRequire(import.meta.url) as <T>(id: string) => T;
-const instrument = covering
-  ? load<typeof import("./coverage.ts")>("./coverage.ts").instrumented
+// Required once, still on the synchronous path. `.code` here rather than a
+// second export over there: the map beside it is what
+// `loader-transforms-compose.test.ts` reads, and this loader has no use for it.
+const coverage = covering ? load<typeof import("./coverage.ts")>("./coverage.ts") : null;
+const instrument = coverage
+  ? (source: string, path: string, map?: string | null) => coverage.instrumented(source, path, map).code
   : (source: string, _path: string, _map?: string | null) => source;
 
 /**

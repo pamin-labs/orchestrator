@@ -55,20 +55,15 @@ const oxcInstrument: typeof oxcInstrumentFn =
  * its map here — without it the panel's coverage would describe generated code,
  * and `fallow audit` reads that map to decide which function it is looking at.
  */
-export function instrumented(source: string, path: string, inputSourceMap?: string | null): string {
-  return instrumentedWithMap(source, path, inputSourceMap).code;
-}
-
 /**
- * The same call, with the map `instrumented` throws away.
- *
- * `oxc` returns the Istanbul map beside the code, so a caller that needs to know
- * *what* it instrumented does not have to go back and find it in the emitted
+ * The Istanbul map comes back beside the code, so a caller that needs to know
+ * *what* was instrumented does not have to go looking for it in the emitted
  * source. `loader-transforms-compose.test.ts` did, by counting braces from
  * `coverageData = {` and `JSON.parse`-ing the slice — a second hand-written
- * bracket matcher in a repo that had just deleted one.
+ * bracket matcher in a tree that had just deleted one. The loader takes `.code`
+ * and ignores the rest, which is one export rather than two.
  */
-export function instrumentedWithMap(
+export function instrumented(
   source: string,
   path: string,
   inputSourceMap?: string | null,

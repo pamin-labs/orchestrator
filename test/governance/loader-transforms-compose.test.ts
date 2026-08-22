@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { expandMacros } from "../../scripts/lingui-macros.ts";
-import { instrumentedWithMap } from "../support/coverage.ts";
+import { instrumented } from "../support/coverage.ts";
 
 /**
  * The two transforms in `test/support/loader.ts`, run in the order it runs them.
@@ -40,7 +40,7 @@ test("expanding macros before instrumenting leaves both transforms working", () 
   expect(code).not.toContain("@lingui/react/macro");
   expect(map).toBeTruthy();
 
-  const { coverageMap } = instrumentedWithMap(code, PANEL, map);
+  const { coverageMap } = instrumented(code, PANEL, map);
   expect(coverageMap).not.toBeNull();
   const data = CoverageMapSchema.parse(JSON.parse(coverageMap ?? ""));
 

@@ -13,9 +13,10 @@
  * exit code is non-zero only if something failed. Steps needing a binary this
  * repository does not vendor say so and name what CI will do instead.
  *
- * Not a replacement for CI: `security-codeql` runs on GitHub's infrastructure, and
- * `pr-plan` reads a pull request body that does not exist yet. Both are named at
- * the end of every run.
+ * Not a replacement for CI: four checks have no local form at all, and the end
+ * of every run names them. That list lives at the bottom of this file; a copy
+ * here would be the second owner, which is the class of defect this whole file
+ * was written to close.
  */
 import { $ } from "bun";
 
@@ -28,16 +29,18 @@ interface Step {
   run: () => Promise<Outcome | { outcome: Outcome; note: string }>;
 }
 
-/** A command's exit status, with its output shown only when it matters. */
+/**
+ * A command's exit status, with its output shown only when it matters.
+ *
+ * Through bun's `$`, which the rest of this file already uses: the hand-built
+ * `Bun.spawn(["sh", "-c", …])` plus two `new Response(...).text()` was a second
+ * way to run a command in a file that had one.
+ */
 async function cmd(line: string): Promise<Outcome> {
-  const proc = Bun.spawn(["sh", "-c", line], { stdout: "pipe", stderr: "pipe" });
-  const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-  const code = await proc.exited;
-  if (code !== 0) {
-    process.stdout.write(`${out}${err}`);
-    return "fail";
-  }
-  return "pass";
+  const r = await $`sh -c ${line}`.quiet().nothrow();
+  if (r.exitCode === 0) return "pass";
+  process.stdout.write(`${r.stdout.toString()}${r.stderr.toString()}`);
+  return "fail";
 }
 
 /** Whether a binary is on PATH, for the steps that need one we do not ship. */
@@ -112,7 +115,7 @@ const steps: Step[] = [
   {
     name: "catalogues match the source",
     job: "quality",
-    run: () => cmd("bun run i18n:extract && git diff --exit-code -- locales/ README.md README.zh-CN.md"),
+    run: () => cmd("bun run i18n:check"),
   },
   // `test`, not `quality`: the bundle moved to that job so a PR compiles it once
   // (`ci.yml` says so where it moved it). This line's whole job is to name the
