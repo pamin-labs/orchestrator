@@ -1225,6 +1225,16 @@ Four scheduled runs, four failures, and nobody had read the log.
   positional read of a table in the suite: `chain.ts`'s `jobsFor` orders, and
   every other `at(-1)` is over an in-memory array.
 
+- **Then it earned its keep again, on CI, with a seed this machine had not
+  drawn.** 120 failures across six unrelated files, all asserting Chinese and all
+  getting English: `say-falls-back-to-body` ends on `i18n.activate("en")` and has
+  no `afterEach` putting it back, so every file after it in the process read the
+  wrong catalogue. Invisible under `--parallel`, where each file has its own.
+  The active locale is a process-global like the five `setup.ts` already resets
+  in `beforeEach` — whose own comment says a rule every caller has to remember is
+  one the twentieth forgets — so it is reset there now, and `token-units`'s
+  private `afterEach` is gone with it. Replayed at CI's seed: 15,600 pass, 0 fail.
+
 - **The rule that should have caught it had a back door.** `preload-scope` held
   every `package.json` script containing `bun test` to `--parallel` or
   `--isolate`; a script that spawns `bun test` from TypeScript has no such

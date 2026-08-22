@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { i18n } from "../../web/src/i18n.ts";
 import { K } from "../../web/src/shared/format.ts";
 
@@ -12,7 +12,8 @@ import { K } from "../../web/src/shared/format.ts";
  * way of writing the same quantity.
  */
 
-afterEach(() => i18n.activate("zh"));
+// The restore is `setup.ts`'s `beforeEach` now, with the other process-globals:
+// this file remembered and the file that leaked did not.
 
 test("a token count never prints in a unit that does not exist", () => {
   i18n.activate("en");

@@ -38,6 +38,13 @@ i18n.activate("zh");
  * it, including the test above it in its own file.
  */
 beforeEach(async () => {
+  // The active locale is a process-global like the five below it. `test/web`
+  // asserts Chinese because this file activates `zh`, and a test that moves the
+  // locale and does not move it back leaves every later file in the process
+  // reading English — `say-falls-back-to-body` ended on `activate("en")`, and
+  // 120 failures in six unrelated files followed it through the stress pass.
+  // Invisible under `--parallel`, where each file has its own process.
+  i18n.activate("zh");
   resetSandboxHold();
   resetRepoHolds();
   resetNet();
