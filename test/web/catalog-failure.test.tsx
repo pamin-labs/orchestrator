@@ -43,8 +43,11 @@ test("a catalog that will not load leaves the panel readable in English", async 
   i18n.activate("");
   localStorage.setItem("orch.locale", "ja");
 
-  // Installed after the setup above, which is a legitimate `load`.
-  spyOn(i18n, "load").mockImplementation(() => {
+  // Installed after the setup above, which is a legitimate `load`. The real
+  // failure is the dynamic `import()` of a chunk that is not there, and it lands
+  // in the same `try` as this one — `CATALOGS` is module-private, so the half
+  // that can be reached from here is Lingui refusing the catalogue.
+  spyOn(i18n, "loadAndActivate").mockImplementation(() => {
     throw new Error("404");
   });
 

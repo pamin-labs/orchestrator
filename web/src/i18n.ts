@@ -8,8 +8,8 @@ import { type Locale, LOCALES, localeOf } from "../../src/contracts/config.ts";
  *
  * `scripts/lingui-catalogs.ts` turns each `.po` into an ES module exporting
  * `messages`, which is what `@lingui/vite-plugin` does for Vite. So this is the
- * documented shape — `const { messages } = await import(…)`, then `load`, then
- * `activate` — and no ICU parser reaches the browser.
+ * documented shape — `const { messages } = await import(…)`, then
+ * `loadAndActivate` — and no ICU parser reaches the browser.
  */
 /**
  * A leaf module on purpose: `@lingui/core`, the catalogs, and one contract.
@@ -66,13 +66,6 @@ const CATALOGS: Record<Locale, () => Promise<{ messages: Messages }>> = {
 export const preference = (): Locale =>
   PrefSchema.catch(localeOf(detect(fromNavigator()) ?? "en")).parse(detect(fromStorage(KEY)) ?? "");
 
-/** Fetched once per locale per page, English included. The entry point holds
- *  no catalog at all. */
-async function load(locale: Locale): Promise<void> {
-  const { messages } = await CATALOGS[locale]();
-  i18n.load(locale, messages);
-}
-
 /** Activate, fetching the catalog the first time it is asked for. A no-op when
  *  the locale has not moved. */
 /**
@@ -87,15 +80,18 @@ async function applyLocale(): Promise<void> {
   const next = preference();
   if (i18n.locale === next) return;
   try {
-    await load(next);
+    // `loadAndActivate`, not `load` then `activate`: those are two `change`
+    // events and therefore two renders of every consumer, with the middle one
+    // showing the new catalog under the old locale. Fetched once per locale per
+    // page, English included — the entry point holds no catalog at all.
+    const { messages } = await CATALOGS[next]();
+    i18n.loadAndActivate({ locale: next, messages });
   } catch (cause) {
     // Said out loud rather than swallowed: reading in the wrong language is a
     // thing somebody has to be able to find out about.
     console.error(`orch: the ${next} catalog did not load; reading in ${i18n.locale || "en"}`, cause);
     if (!i18n.locale) i18n.activate("en");
-    return;
   }
-  i18n.activate(next);
 }
 
 /** Before the first paint, with no server answer yet. */
