@@ -9,6 +9,7 @@ import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
 import { execIn, execLines, WORK } from "../sandbox/sandbox.ts";
 import {
+  detectDevcontainer,
   detectGates,
   detectInstall,
   detectShared,
@@ -281,7 +282,11 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
     .filter(Boolean);
   const files: Record<string, string> = {};
   for (const f of READS) {
-    if (!names.includes(f)) continue;
+    // By first segment: `.devcontainer/devcontainer.json` is asked for when the
+    // listing holds `.devcontainer`, since `ls -A` sees the directory, not what
+    // is in it. A `cat` of a path that is not there costs one round trip and
+    // answers non-zero, which is the same answer as not asking.
+    if (!names.includes(f.split("/")[0]!)) continue;
     const r = await execIn(ctx, { grp: grpId }, `cat ${shq(`${WORK}/${f}`)}`);
     if (r.code === 0) files[f] = r.out;
   }
@@ -375,6 +380,21 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   // value — validating with them still in wipes the column to `{}`.
   const stored = valueOr(Object.fromEntries(Object.entries(next).filter(([, v]) => v !== undefined)), JsonObject, {});
   await ctx.db.update(project).set({ config_json: stored }).where(eq(project.id, projectId));
+
+  // The image a devcontainer names is said, not applied. Changing which image a
+  // group runs in is the boss's call — it decides what every future turn has —
+  // and `config_json.sandbox.image` is the field that makes it, in a pane that
+  // already exists. What this owes them is knowing the project stated one.
+  const declared = detectDevcontainer(root)?.image;
+  if (declared && declared !== ctx.config.sandbox.image) {
+    await ctx.bus.emit({
+      grpId,
+      author: "orchestrator",
+      kind: "state_change",
+      say: msg`this project's devcontainer develops in ${{ image: declared }} — Settings → Sandbox can point the group at it`,
+      meta: { image: declared },
+    });
+  }
 
   if (!gates.length) {
     // Said plainly rather than letting the first slice fail with a puzzle. This

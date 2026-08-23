@@ -16,6 +16,7 @@
 
 /** A repository root: what is in it, and the contents of the few files that matter. */
 import { jsonOr } from "../../contracts/json.ts";
+import { parseJsonc } from "./jsonc.ts";
 import { z } from "zod";
 
 export interface Root {
@@ -35,7 +36,16 @@ export interface Root {
  * The only files any rule opens. Everything else is decided by a name existing,
  * so the caller fetches these and nothing else.
  */
-export const READS = ["package.json", "Makefile", "makefile", "GNUmakefile"];
+export const READS = [
+  "package.json",
+  "Makefile",
+  "makefile",
+  "GNUmakefile",
+  // Both locations the spec allows. A path with a slash is fetched by its first
+  // segment being in the listing, which is what `start.ts` checks.
+  ".devcontainer/devcontainer.json",
+  ".devcontainer.json",
+];
 
 export interface DetectedGate {
   name: string;
@@ -265,6 +275,77 @@ function detectFromCi(repo: Root): DetectedGate[] {
 }
 
 /**
+ * What a `devcontainer.json` already says about this project's environment.
+ *
+ * It is the one file that states all three answers at once — which image, which
+ * toolchains, what to run after a clone — in a spec somebody else maintains and
+ * a growing number of repositories already ship. Read, never run: the CLI that
+ * consumes this file creates containers, and we have one.
+ */
+/** The official feature namespace only. A feature id is `<registry>/<owner>/<name>:<featureVersion>`,
+ *  and the *tool* version is in its options — `features/go:1` with `{version: "1.22"}`
+ *  is Go 1.22 installed by version 1 of the feature. Third-party features do
+ *  arbitrary things and are left alone. */
+const FEATURE = /^ghcr\.io\/devcontainers\/features\/([a-z-]+):/;
+
+/** Feature names that are a tool mise knows by the same name. The rest — docker-in-docker,
+ *  git-lfs, a shell — are not toolchains and mise is not what installs them. */
+const FEATURE_TOOLS = new Set(["go", "node", "python", "ruby", "rust", "java", "php", "dotnet", "deno", "bun"]);
+
+export interface Devcontainer {
+  /** The image the project develops in, for the boss to point the sandbox at. */
+  image?: string;
+  /** `TOOL@VERSION` pairs, as `mise install` takes them. */
+  tools: string[];
+  /** What the file says to run once the clone exists. */
+  setup?: string;
+}
+
+export function detectDevcontainer(repo: Root): Devcontainer | null {
+  const body = repo.read(".devcontainer/devcontainer.json") ?? repo.read(".devcontainer.json");
+  if (body === null) return null;
+  const doc = parseJsonc(body);
+  if (doc === null || typeof doc !== "object") return null;
+  const parsed = DevcontainerSchema.safeParse(doc);
+  if (!parsed.success) return null;
+  const { image, features, postCreateCommand, updateContentCommand } = parsed.data;
+
+  const tools: string[] = [];
+  for (const [id, options] of Object.entries(features ?? {})) {
+    const name = FEATURE.exec(id)?.[1];
+    if (!name || !FEATURE_TOOLS.has(name)) continue;
+    // `{version}` is the shape the spec gives, but a feature may be configured
+    // with `true` or with options of its own — narrowed here rather than asserted.
+    const version = FeatureVersion.safeParse(options).data?.version;
+    tools.push(`${name}@${version ?? "latest"}`);
+  }
+
+  return {
+    ...(image ? { image } : {}),
+    tools,
+    // A string is a shell command; an array is argv, which reads the same once
+    // joined. An object is several named commands run in parallel, which is not
+    // one setup step and is left for the bootstrap role to read.
+    ...setupOf(updateContentCommand ?? postCreateCommand),
+  };
+}
+
+const FeatureVersion = z.object({ version: z.string().optional() }).loose();
+const Command = z.union([z.string(), z.array(z.string()), z.record(z.string(), z.json())]).optional();
+const DevcontainerSchema = z.object({
+  image: z.string().optional(),
+  features: z.record(z.string(), z.union([z.object({ version: z.string().optional() }).loose(), z.json()])).optional(),
+  postCreateCommand: Command,
+  updateContentCommand: Command,
+});
+
+function setupOf(command: z.infer<typeof Command>): { setup?: string } {
+  if (typeof command === "string" && command.trim()) return { setup: command.trim() };
+  if (Array.isArray(command) && command.length) return { setup: command.join(" ") };
+  return {};
+}
+
+/**
  * The files a repository uses to pin its toolchain — every one of them a file
  * mise already reads, which is why this is a list of names and not a parser.
  *
@@ -294,13 +375,22 @@ const TOOL_VERSIONS = [
  * would be the same table with longer rows.
  */
 export function detectToolchain(repo: Root): string | null {
+  // A devcontainer's features name the tools outright, and `mise install` takes
+  // `TOOL@VERSION` arguments — so a repository that pins its Go in a feature and
+  // nowhere else still gets a Go, without a table of languages appearing here.
+  const named = detectDevcontainer(repo)?.tools ?? [];
+  if (named.length) return `mise install --yes ${named.join(" ")}`;
   return TOOL_VERSIONS.some((f) => hasFile(repo, f)) ? "mise install --yes" : null;
 }
 
 /** The install command for whichever stack this repo is, or null. */
 export function detectInstall(repo: Root): string | null {
   for (const r of RULES) if (r.marker(repo)) return r.install?.(repo) ?? null;
-  return null;
+  // What the repository itself says to run after a clone. Below the rules rather
+  // than above them: a rule fires on a lockfile, which is the stronger statement
+  // of the two — `postCreateCommand` is often a whole developer setup where the
+  // lockfile names the one command a build needs.
+  return detectDevcontainer(repo)?.setup ?? null;
 }
 
 export function detectGates(repo: Root): DetectedGate[] {

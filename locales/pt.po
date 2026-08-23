@@ -3089,6 +3089,9 @@ msgstr "Este processo não fomos nós que subimos — pode ser algo que você us
 msgid "This project hasn't run any activity yet."
 msgstr "Este projeto ainda não teve nenhuma atividade."
 
+msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
+msgstr "o devcontainer deste projeto desenvolve em {image} — Definições → Sandbox pode apontar o grupo para lá"
+
 msgid "this question became requirement {name} (grp {grp})"
 msgstr "esta pergunta virou o requisito {name} (grp {grp})"
 

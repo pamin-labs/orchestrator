@@ -2420,3 +2420,56 @@ function this change does not touch — because it reads whatever
 references". `audit:crap`, which regenerates coverage first and is what preflight
 runs, reports nothing. The page says exactly this; it is recorded again because
 it cost a minute to re-derive.
+
+## The one file that answers all three questions, read rather than run
+
+A repository shipping `.devcontainer/devcontainer.json` has already written down
+what this branch spent three commits working out: which image it develops in,
+which toolchains it needs, and what to run once the clone exists. It is a spec
+somebody else maintains, and reading it costs one file.
+
+**Read, never run.** `@devcontainers/cli` consumes this file by *creating a
+container*, and we have one — OpenSandbox is the boundary (ADR 005). Running it
+would nest a container runtime inside the runtime, to learn three fields.
+
+| field | becomes |
+|---|---|
+| `features` | `mise install --yes go@1.22 node@latest` — the tool version is in the feature's **options**, never its tag: `features/go:1` is version 1 *of the feature* |
+| `postCreateCommand` / `updateContentCommand` | the install step, but **below** the rule table: a lockfile is the stronger statement, and `postCreateCommand` is often a whole developer setup |
+| `image` | said to the boss and nothing more — which image a group runs in decides what every future turn has, and `Settings → Sandbox` is where that is decided |
+
+Only the official `ghcr.io/devcontainers/features/*` namespace, and only the
+names mise knows as tools. `docker-in-docker` is not a language and a third-party
+feature does arbitrary things.
+
+### The JSONC reader is written here, and the registry is why
+
+`devcontainer.json` permits comments and trailing commas, and the templates that
+ship it use them — so `JSON.parse` reads nothing from the one file that states a
+whole environment. The correct library is `jsonc-parser` (Microsoft, no
+dependencies) and its last release is **2024-06**, which
+`docs/standards/dependencies.md` says to ignore. `json5` is 2022-12.
+`comment-json` is current and pulls `esprima` — a whole JavaScript parser — to
+strip comments. Reopen if any of them ships again.
+
+So: a pass over the text, not a regex, because a regex cannot see that the `//`
+in `"ghcr.io/devcontainers/..."` is inside a string. That is the defect the
+ten-line version has on the first real file it meets, and it is a test.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1890 pass, 6 skip, 0 fail, 1896 across 231 files |
+| new tests | 3 for the reader (strings holding `//`, escaped quotes, commas), 3 for the fields |
+
+### Not taken
+
+- **`@devcontainers/cli`.** Above: it creates containers.
+- **Applying the image.** A detected image that silently replaced the group's
+  would change every turn's environment on the strength of a file nobody was
+  asked about.
+- **A table of features to tools.** The map is the *namespace* — a published
+  registry where the feature is named for the tool — plus a set of which names
+  mise knows. A feature outside it is left alone rather than guessed at.

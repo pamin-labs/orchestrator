@@ -3089,6 +3089,9 @@ msgstr "這個行程不是我們起的，可能是你自己在用的那個。要
 msgid "This project hasn't run any activity yet."
 msgstr "這個專案還沒跑過任何活。"
 
+msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
+msgstr "這個專案的 devcontainer 在 {image} 裡開發——「設定 → Sandbox」可以把這個組指過去"
+
 msgid "this question became requirement {name} (grp {grp})"
 msgstr "這個問題開成了需求 {name}（grp {grp}）"
 

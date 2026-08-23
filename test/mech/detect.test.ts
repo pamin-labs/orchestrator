@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  detectDevcontainer,
   detectGates,
   detectInstall,
   detectShared,
@@ -266,4 +267,53 @@ test("a repository that pins its own toolchain gets one command to install it", 
 
 test("a repository that pins nothing is left with the image's own toolchain", () => {
   expect(detectToolchain(repo({ "package.json": "{}", "Cargo.toml": "" }))).toBeNull();
+});
+
+/**
+ * `devcontainer.json` is the one file that answers all three questions at once —
+ * which image, which toolchains, what to run after a clone — in a spec somebody
+ * else maintains and a growing number of repositories already ship.
+ */
+test("a devcontainer's features are toolchains, and mise takes them by name", () => {
+  const dir = repo({
+    ".devcontainer": "",
+    ".devcontainer/devcontainer.json": `{
+  // the image this project develops in
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": { "version": "1.22" },
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/someone-else/features/thing:1": {}
+  },
+  "postCreateCommand": "go mod download",
+}`,
+  });
+  // The tool version comes from the feature's options, never from the tag: the
+  // tag is the feature's own version, so `features/go:1` with `{version: 1.22}`
+  // is Go 1.22 installed by version 1 of the feature.
+  expect(detectToolchain(dir)).toBe("mise install --yes go@1.22 node@latest");
+  // Not toolchains, and not ours: docker-in-docker is not a language, and a
+  // third-party feature does arbitrary things.
+  expect(detectInstall(dir)).toBe("go mod download");
+  expect(detectDevcontainer(dir)?.image).toBe("mcr.microsoft.com/devcontainers/base:ubuntu");
+});
+
+test("a lockfile outranks a devcontainer's setup command", () => {
+  const dir = repo({
+    "package.json": JSON.stringify({ scripts: { test: "bun test" } }),
+    "bun.lock": "",
+    ".devcontainer": "",
+    ".devcontainer/devcontainer.json": '{"postCreateCommand": "npm i && ./scripts/dev-setup.sh"}',
+  });
+  // `postCreateCommand` is often a whole developer setup; the lockfile names the
+  // one command a build needs.
+  expect(detectInstall(dir)).toBe("bun install --frozen-lockfile");
+});
+
+test("an array command is argv, and an object of them is not one step", () => {
+  const argv = repo({ ".devcontainer.json": '{"postCreateCommand": ["uv", "sync", "--frozen"]}' });
+  expect(detectInstall(argv)).toBe("uv sync --frozen");
+  const parallel = repo({ ".devcontainer.json": '{"postCreateCommand": {"deps": "npm i", "db": "make db"}}' });
+  expect(detectInstall(parallel)).toBeNull();
 });

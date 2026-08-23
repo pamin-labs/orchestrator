@@ -3089,6 +3089,9 @@ msgstr "이 프로세스는 우리가 띄운 게 아닙니다 — 당신이 쓰�
 msgid "This project hasn't run any activity yet."
 msgstr "이 프로젝트에서는 아직 아무 활동도 없었습니다."
 
+msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
+msgstr "이 프로젝트의 devcontainer는 {image}에서 개발합니다 — 설정 → Sandbox에서 그룹을 그쪽으로 향하게 할 수 있습니다"
+
 msgid "this question became requirement {name} (grp {grp})"
 msgstr "이 질문은 요구사항 {name} (grp {grp}) 이 되었습니다"
 

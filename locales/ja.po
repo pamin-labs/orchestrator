@@ -3089,6 +3089,9 @@ msgstr "このプロセスはこちらが起動したものではありません
 msgid "This project hasn't run any activity yet."
 msgstr "このプロジェクトではまだ何も動いていません。"
 
+msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
+msgstr "このプロジェクトの devcontainer は {image} で開発します —「設定 → Sandbox」でグループをそこに向けられます"
+
 msgid "this question became requirement {name} (grp {grp})"
 msgstr "この質問は要件 {name}（grp {grp}）になりました"
 
