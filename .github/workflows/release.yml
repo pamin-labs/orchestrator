@@ -240,29 +240,15 @@ jobs:
           provenance: mode=max
           cache-from: type=gha,scope=orch-agent-${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=orch-agent-${{ matrix.platform }}
-      # Nothing ever ran a command in this image. It was built, digest-verified,
-      # scanned and SBOM'd without once being asked whether it works — so
-      # `mise install` writing shims, which its own `--help` denies, was measured
-      # on a laptop instead. A laptop is not where this ships.
-      #
-      # Both legs run on a native runner, so no qemu and no `if:` on the platform.
+      # Both legs run on a native runner, so no qemu and no `if:` on the platform,
+      # and this is the only caller that covers arm64.
       - name: the image can do what the roles promise
         env:
           # Through the environment, never expanded into the script: the
           # neighbouring step does the same, and zizmor calls the other spelling
           # template injection whatever the value happens to be today.
           PLATFORM: ${{ matrix.platform }}
-        run: |
-          set -euo pipefail
-          image="orch-agent:verify-$PLATFORM"
-          docker run --rm "$image" sh -c 'set -eux; bun --version; node --version; npm --version; git --version; mise --version; rg --version | head -1'
-          # The toolchain path end to end, which is the whole point of mise being
-          # here: a repository that pins a version gets that tool on PATH, through
-          # the shims directory rather than through `mise activate`.
-          probe=$(mktemp -d)
-          echo 'jq 1.7.1' > "$probe/.tool-versions"
-          docker run --rm -v "$probe:/probe" -w /probe "$image" \
-            sh -c 'set -eux; mise install --yes; jq --version | grep -q 1.7.1'
+        run: ./scripts/image-smoke.sh "orch-agent:verify-$PLATFORM"
       - name: verify image digest and provenance material
         env:
           BUILD_METADATA: ${{ steps.image.outputs.metadata }}

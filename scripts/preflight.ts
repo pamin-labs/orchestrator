@@ -238,6 +238,11 @@ const steps: Step[] = [
           "--file docker/agent.Dockerfile .",
       );
       if (built !== "pass") return "fail";
+      // Ask whether it runs before asking whether it is safe. This image is
+      // built here already, so the question costs two `docker run`s — and it is
+      // the one a laptop can answer that a Trivy report cannot.
+      const runs = await cmd("./scripts/image-smoke.sh orchestrator-agent:preflight");
+      if (runs !== "pass") return "fail";
       return cmd(
         // The repository is mounted because `trivy.yaml` and `.trivyignore.yaml`
         // live in it: CI runs Trivy on the runner where those are simply there,

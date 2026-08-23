@@ -2350,6 +2350,28 @@ version, `mise install` runs, and the tool is on PATH through the shims director
 It runs on both legs of the matrix without qemu, because each platform builds on
 its own native runner.
 
-Also verified while there: the Dockerfile change had never been built. `tar
---strip-components=2 mise/bin/mise` lands the binary on PATH, `/opt/mise` is 1777
-as intended, and the shims directory is first in `PATH`.
+Also verified while there: `tar --strip-components=2 mise/bin/mise` lands the
+binary on PATH, `/opt/mise` is 1777 as intended, and the shims directory is first
+in `PATH`.
+
+**Correction to the commit that added this:** it said the Dockerfile change had
+never been built. Preflight builds it on every run — `orchestrator-agent:preflight`,
+`--platform linux/amd64` — so it had been built each time and never *run*. The
+distinction is the whole point of the step, so getting it wrong in the message is
+worth fixing rather than leaving.
+
+**And a stale note beside it:** `scripts/preflight.ts` records that "the arm64
+build of this image currently fails, so a developer on Apple silicon is testing
+the CI image rather than one they could run". It does not fail any more — this
+image was built natively on arm64 here and its `mise --version` answers
+`linux-arm64`. The comment stays where it is until the next change to that step
+proves it in CI, but it is recorded here as known-stale rather than trusted.
+
+### One script, three callers
+
+The check now lives in `scripts/image-smoke.sh` and is called by preflight (which
+already builds the image), by `security.yml` on **every pull request**, and by
+`release.yml` on both architectures. A check that lives in one workflow answers
+about one moment: at release is the wrong time to learn that the image does not
+run, and arm64 is only covered by the release matrix, since that is the only
+caller with a native runner for it.
