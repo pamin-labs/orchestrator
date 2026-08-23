@@ -2597,3 +2597,53 @@ download per container is the cheaper side of that trade.
 If it is ever worth revisiting, the shape is per-project rather than fleet-wide:
 groups of one project already share a repository and a branch, so they share a
 blast radius already.
+
+## The prompt-slimming premise does not hold at our sizes
+
+The plan carried one more item from the interview: "把初始提示词精简到绝对最小值……
+然后再在此之后使用确定性工具", because a long prompt puts its own rules in the
+middle where a model stops attending to them. The work was to cut the role files.
+
+Measured before cutting, which is what the item did not survive:
+
+| in the stable prefix | chars |
+|---|---|
+| `ORCH_CONTRACT` | 5,360 |
+| the largest role prompt (`dispatcher`) | 4,604 |
+| the smallest (`pm`) | 1,045 |
+| `FENCE_NOTICE` | 351 |
+
+The whole fixed prefix is about **7k characters — under 2k tokens**. The
+interview's "10 pages" is 20k characters of rules; we are an order of magnitude
+below the case the advice is about. And the biggest fixed section is not a role
+file at all: it is the protocol contract, which every role pays on every turn.
+
+What actually fills a window here was measured long ago and is written in
+`load.ts`: **tool results are 90% of a transcript**. Which is why `qa.yaml` and
+`engineer.yaml` already spend paragraphs on that and not on brevity — "reading a
+large file you did not need is the most expensive mistake available to you".
+
+So the size argument buys nothing, and cutting on it would be trading a real risk
+(removing something load-bearing from the only manual a sandboxed agent has) for
+an imagined one.
+
+### What did survive is a correctness argument
+
+Three passages in `dispatcher.yaml` restated what `validateDraftCard` says when it
+refuses a card — the twelve-line count and what counts toward it, the 1–5 slice
+range, that every column is required. Two owners for one rule, and the validator's
+copy is the one that arrives at the moment it is needed, with the actual numbers
+in it. The prompt now says the refusal will name what to fix and tells the writer
+not to carry the numbers from there.
+
+The judgement a validator cannot make stays: what `trivial` versus `hard` costs
+the boss, and that over-tagging burns quota.
+
+### Not taken
+
+- **A character budget guard on role prompts.** A ceiling nobody derived, over a
+  number that is not the constraint. `docs/project/progress.md` records the same
+  reasoning for the web bundle in ADR 019.
+- **Cutting `ORCH_CONTRACT`.** It is the largest fixed section, and it is the
+  protocol: the CLI verbs, what a lease is, how a turn ends. Every line of it is
+  the manual for something an agent cannot discover by trying.

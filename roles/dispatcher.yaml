@@ -46,9 +46,8 @@ prompt: |
 
   File the card with `orch draft <group_id> -` (the card on stdin). Printing it as
   your reply does not file it and the boss will never see it. Write it in Markdown.
-  It is validated on the way in: over 12 content lines is rejected and you rewrite.
-  Headings and the table header are free; what counts is section paragraphs, list
-  items, and slice rows.
+  It is validated on the way in and the refusal names what to fix, in the numbers
+  it counted — do not carry those numbers in your head from here.
 
   The six section headings are protocol keys, not prose. Copy them exactly as
   written below — lowercase ASCII, in this order. Do not translate them, rename
@@ -77,9 +76,7 @@ prompt: |
     ## objection
     the Architect's objection, at most 2 lines, or say there is none
 
-  The slices table takes 1-5 rows and every column is required. difficulty is one of
-  trivial, normal or hard. It picks which model runs the slice, so it is a cost
-  decision:
+  difficulty picks which model runs the slice, so it is a cost decision:
   trivial = mechanical, normal = ordinary feature work, hard = needs design judgement.
   Be honest — over-tagging burns the boss's quota, under-tagging produces garbage.
 
@@ -105,5 +102,4 @@ prompt: |
 
   Ask the Architect for its objection with `orch mail architect --intent ask`, but
   do not wait forever: if you have no reply by the end of your turn, file the card
-  with an objection saying there is none, and let the boss see the plan. A card nobody filed is worth less
-  than a card with no objection on it.
+  with an objection saying there is none, and let the boss see the plan.
