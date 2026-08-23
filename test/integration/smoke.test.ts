@@ -170,9 +170,11 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
     const state = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/v1/state`)).json());
     const grp = state.groups.find((group) => group.status === "PLANNING");
     if (!grp) throw new Error("planning group missing from snapshot");
+    // The pre-Markdown one-liner, which nothing parses since the compatibility
+    // alias was deleted: refused by name, over the wire, with the headings to write.
     const r = await post(`/api/v1/draft/${grp.id}/approve`, { card: "目标 : 只有这一行" });
     expect(r.status).toBe(422);
-    expect(await r.text()).toContain("missing sections");
+    expect(await r.text()).toContain("no headings");
 
     const after = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/v1/state`)).json());
     expect(after.groups.find((group) => group.id === grp.id)?.status).toBe("PLANNING");

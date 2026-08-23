@@ -25,6 +25,10 @@ token 校验挪到 middleware
 无`;
 
 /** The shape agents emitted before Markdown, still sitting in `note.body`. */
+/**
+ * The pre-Markdown shape ADR 016 replaced, kept as the witness for how it fails.
+ * Nothing parses it any more; a card filed in this form is refused by name.
+ */
 const legacy = `goal : token 校验挪到 middleware
 non-goals : 不动 legacy client 的鉴权协议
 accept : bun test 全绿
@@ -60,27 +64,6 @@ test("a well-formed card parses", () => {
   });
   expect(r.objection).toBe("无");
   expect(r.lines).toBeLessThanOrEqual(12);
-});
-
-test("a card stored in the pre-Markdown format still parses", () => {
-  // Cards live in `note.body` as text and are re-validated when the boss
-  // approves, so a group filed before this format existed must not become
-  // unapprovable. Legacy path, removed in 0.2.0.
-  const r = validateDraftCard(legacy);
-  expect(r.ok).toBe(true);
-  if (!r.ok) return;
-  expect(r.slices.length).toBe(3);
-  expect(r.slices[1]).toEqual({
-    title: "legacy header 兼容",
-    difficulty: "trivial",
-    accept: "老 client 的 e2e 用例绿",
-  });
-});
-
-test("the same card in either format gives the same result", () => {
-  // The parser was swapped; the card was not. If these two ever disagree, an
-  // approved group would get different slices depending on when it was filed.
-  expect(validateDraftCard(good)).toEqual(validateDraftCard(legacy));
 });
 
 test("12 content lines is the limit; 13 are rejected — the card blocks the boss", () => {
@@ -333,12 +316,15 @@ test("an acceptance line listing several things asks for several verdicts", () =
 });
 
 /**
- * Cards live in `note.body` and are re-validated when the boss approves, so one
- * filed before the keys became ASCII must still parse — otherwise the boss meets
- * `missing sections` on a card that is plainly complete and cannot approve it.
- * Retire with `draftLegacy` in 0.2.0.
+ * The two shapes that used to parse, and *how* they now fail.
+ *
+ * Both were compatibility aliases, which `docs/project/plan.md` puts out of scope
+ * before the first stable release. A card in either shape has to be refused by a
+ * sentence naming the headings to write: the Dispatcher rewrites from the
+ * rejection, so one it cannot act on is the same defect as a card that silently
+ * reads empty.
  */
-test("a card whose headings are the old Chinese keys still parses", () => {
+test("the two retired card shapes are refused by name", () => {
   const zh = good
     .replace("## goal", "## 目标")
     .replace("## non-goals", "## 不做")
@@ -346,9 +332,18 @@ test("a card whose headings are the old Chinese keys still parses", () => {
     .replace("## slices", "## 切片")
     .replace("## risk", "## 风险")
     .replace("## objection", "## 反对");
-  const r = validateDraftCard(zh);
-  expect(r.ok).toBe(true);
-  if (r.ok) expect(r.goal).toBe("token 校验挪到 middleware");
+  const headings = validateDraftCard(zh);
+  expect(headings.ok).toBe(false);
+  if (!headings.ok) expect(headings.error).toContain("missing sections");
+
+  // No headings at all: the pre-Markdown card, which `draftMarkdown` returns
+  // null for. It used to fall through to a second parser; now it is named.
+  const inline = validateDraftCard(legacy);
+  expect(inline.ok).toBe(false);
+  if (!inline.ok) {
+    expect(inline.error).toContain("no headings");
+    expect(inline.error).toContain("## goal");
+  }
 });
 
 /**

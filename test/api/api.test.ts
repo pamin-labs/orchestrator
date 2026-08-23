@@ -387,16 +387,28 @@ test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approv
   // Both planning turns DO run: without them the boss has nothing to approve.
   expect(ran.map((j) => AgentTurnPayloadSchema.parse(j.payload_json).role)).toEqual(["architect", "dispatcher"]);
 
-  const card = `目标 : x
-不做 : y
-验收 : bun test 绿
-验收 : 无回归
-切片 : a [normal] — a.test.ts 绿
-切片 : b [trivial] — b 的回归用例绿
-切片 : c [hard] — 端到端场景通过
-风险 : none
-反对 : 无
-名字 : group-approval-planning`;
+  const card = `## goal
+x
+
+## non-goals
+y
+
+## accept
+- bun test 绿
+- 无回归
+
+## slices
+| slice | difficulty | accept |
+| --- | --- | --- |
+| a | normal | a.test.ts 绿 |
+| b | trivial | b 的回归用例绿 |
+| c | hard | 端到端场景通过 |
+
+## risk
+- none
+
+## objection
+无`;
   // Filing the card is what moves the group to DRAFT, and DRAFT blocks.
   await f.agent.create({ project_id: 1, grp_id, role: "dispatcher", token: "tok-disp" });
   const filed = await post(app, "/orch/v1/draft", { group_id: grp_id, card }, "tok-disp");
@@ -590,16 +602,28 @@ test("filing the card drops the group's other queued planning turns", async () =
   await f.agent.create({ project_id: 1, grp_id, role: "dispatcher", token: "tok-disp" });
   await sched.enqueue("agent_turn", { grp_id, payload: { role: "architect" } });
 
-  const card = `目标 : x
-不做 : y
-验收 : a
-验收 : b
-切片 : a [normal] — a.test.ts 绿
-切片 : b [trivial] — b 的回归用例绿
-切片 : c [hard] — 端到端场景通过
-风险 : none
-反对 : 无
-名字 : draft-cancels-queue`;
+  const card = `## goal
+x
+
+## non-goals
+y
+
+## accept
+- a
+- b
+
+## slices
+| slice | difficulty | accept |
+| --- | --- | --- |
+| a | normal | a.test.ts 绿 |
+| b | trivial | b 的回归用例绿 |
+| c | hard | 端到端场景通过 |
+
+## risk
+- none
+
+## objection
+无`;
   await post(app, "/orch/v1/draft", { group_id: grp_id, card }, "tok-disp");
 
   // DRAFT is not dispatchable, so a leftover planning turn would sit pending
@@ -631,16 +655,28 @@ test("a group can be named instead of numbered, everywhere it is referenced", as
   const name = (await first(db.select({ n: grp.name }).from(grp).where(eq(grp.id, grp_id))))!.n;
   await f.agent.create({ project_id: 1, grp_id, role: "dispatcher", token: "tok-disp" });
 
-  const card = `目标 : x
-不做 : y
-验收 : a
-验收 : b
-切片 : a [normal] — a.test.ts 绿
-切片 : b [trivial] — b 的回归用例绿
-切片 : c [hard] — 端到端场景通过
-风险 : none
-反对 : 无
-名字 : group-by-name`;
+  const card = `## goal
+x
+
+## non-goals
+y
+
+## accept
+- a
+- b
+
+## slices
+| slice | difficulty | accept |
+| --- | --- | --- |
+| a | normal | a.test.ts 绿 |
+| b | trivial | b 的回归用例绿 |
+| c | hard | 端到端场景通过 |
+
+## risk
+- none
+
+## objection
+无`;
   // An agent reaches for the name it can see — one was observed running
   // `orch draft greet -` — and refusing that teaches it nothing.
   const filed = await post(app, "/orch/v1/draft", { group_id: name, card }, "tok-disp");
@@ -653,16 +689,28 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "greet lang" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   await f.agent.create({ project_id: 1, grp_id, role: "dispatcher", token: "tok-disp" });
-  const card = `目标 : 支持 zh
-不做 : 不引依赖
-验收 : bun test 全绿
-验收 : greet("x","zh") 返回「你好 x」
-切片 : lang 参数 [trivial] — 默认行为不变
-切片 : zh 词条 [trivial] — 断言通过
-切片 : 类型导出 [normal] — 类型检查过
-风险 : 无
-反对 : 无
-名字 : state-carries-card`;
+  const card = `## goal
+支持 zh
+
+## non-goals
+不引依赖
+
+## accept
+- bun test 全绿
+- greet("x","zh") 返回「你好 x」
+
+## slices
+| slice | difficulty | accept |
+| --- | --- | --- |
+| lang 参数 | trivial | 默认行为不变 |
+| zh 词条 | trivial | 断言通过 |
+| 类型导出 | normal | 类型检查过 |
+
+## risk
+- 无
+
+## objection
+无`;
   await post(app, "/orch/v1/draft", { group_id: grp_id, card }, "tok-disp");
 
   const s = await state(app);
@@ -755,18 +803,27 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
   const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "second idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   await f.agent.create({ project_id: 1, grp_id, role: "dispatcher", token: "tok-d" });
-  const card = `目标 : x
-不做 : y
-验收 : a.test.ts 绿
-验收 : 无回归
-切片 : a [normal] — a.test.ts 绿
-切片 : b [trivial] — b 的回归用例绿
-切片 : c [hard] — 端到端场景通过`;
+  const card = `## goal
+x
+
+## non-goals
+y
+
+## accept
+- a.test.ts 绿
+- 无回归
+
+## slices
+| slice | difficulty | accept |
+| --- | --- | --- |
+| a | normal | a.test.ts 绿 |
+| b | trivial | b 的回归用例绿 |
+| c | hard | 端到端场景通过 |`;
   await db.update(grp).set({ status: "DRAFT" }).where(eq(grp.id, grp_id));
   await f.note.create({
     project_id: 1,
     grp_id,
-    body: card + "\n风险 : 无\n反对 : 无\n名字 : boundary-block-approval",
+    body: card + "\n\n## risk\n- 无\n\n## objection\n无",
     frontmatter_json: { draft_card: true },
   });
 
@@ -810,16 +867,28 @@ async function blocked(h: Awaited<ReturnType<typeof harness>>) {
   await f.note.create({
     project_id: 1,
     grp_id,
-    body: `目标 : x
-不做 : y
-验收 : a.test.ts 绿
-验收 : 无回归
-切片 : a [normal] — a.test.ts 绿
-切片 : b [trivial] — b 的回归用例绿
-切片 : c [hard] — 端到端场景通过
-风险 : 无
-反对 : 无
-名字 : held-group-reapprove`,
+    body: `## goal
+x
+
+## non-goals
+y
+
+## accept
+- a.test.ts 绿
+- 无回归
+
+## slices
+| slice | difficulty | accept |
+| --- | --- | --- |
+| a | normal | a.test.ts 绿 |
+| b | trivial | b 的回归用例绿 |
+| c | hard | 端到端场景通过 |
+
+## risk
+- 无
+
+## objection
+无`,
     frontmatter_json: { draft_card: true },
   });
   expect((await post(app, `/api/v1/draft/${grp_id}/approve`)).status).toBe(200);

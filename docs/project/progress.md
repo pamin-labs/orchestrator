@@ -27,9 +27,8 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Baseline
 
-- Branch: `feature/web-i18n`, open as #9; the numbers below were re-measured on
-  it, having been carried unchanged from the branch merged as #7 while the suite
-  grew by 200 tests
+- Branch: `feature/project-discovery`, cut from `main` after #9 merged; the
+  numbers below were carried from that branch and are re-measured per entry
 - TypeScript, Oxlint, Biome, and Fallow audit: pass
 - Tests: 1823 pass, 6 environment skips, 0 fail, 1829 across 225 files
 - Coverage: 82.91% of statements, 73.12% of branches, 78.24% of functions
@@ -1810,3 +1809,80 @@ otherwise silence, which reads exactly like success.
   `api/orch/escalation.ts` builds from a validated body, where the CLI already
   refuses a missing one — requiring it in the type would push a redundant
   assertion into the API path to satisfy the compiler.
+
+## The two compatibility shims are gone
+
+`docs/project/plan.md` puts "compatibility aliases before the first public stable
+release" out of scope, and two of them had been standing since ADR 016 made cards
+Markdown: `ALIAS` in `src/contracts/card.ts` mapped the six Chinese headings a
+card carried before the keys became ASCII, and `draftLegacy` + `legacySlices` in
+`src/mech/util/validate.ts` parsed the one-line `key : value` form.
+
+The reason they survived is worth writing down, because it was a good reason that
+had stopped being one: `test/governance/version.test.ts` held a guard scheduling
+their deletion for 0.2.0 and *requiring them to be present* until then. That is a
+release schedule enforcing what the scope rule forbids, and the schedule won for
+two releases because it was executable and the rule was prose.
+
+The precondition the code itself named — `validate.ts` said "once no `note` row
+with `draft_card` predates the Markdown format" — is a query, so it was run rather
+than guessed: this machine's database holds **zero** `draft_card` rows, which
+cannot speak for a live deployment but is the answer here. A stored card in the
+old shape would now be refused, and the repair is one `UPDATE` of that row's
+`body`, not a parser kept forever.
+
+### What replaced them is how they fail
+
+`draftMarkdown` already returned `null` for a card with no headings; the fallback
+swallowed that. Now it is a rejection that names the six headings to write —
+the Dispatcher rewrites from the rejection, so a refusal it cannot act on is the
+same defect as a card that silently reads empty. The Chinese-heading card fails
+as `missing sections`, which already named them.
+
+Two readers, not one: `cardGoal` in `web/src/shared/prose.ts` drew a goal off the
+inline form too. Left alone it would have shown the boss a goal for a card the
+parser refuses — the exact split `no reader maps a Chinese heading to a card
+section` exists to prevent, so it left with the parser's copy.
+
+### Shown failing
+
+The new guard was proved red before it was kept: with `fieldOf` teaching itself
+the six Chinese headings again, `the two retired card shapes are refused by name`
+fails; with the deletion in place it passes.
+
+### The fixtures were the interesting part
+
+Sixteen tests failed on the deletion and **none** of them was a parser test. They
+were flow tests — group approval, DRAFT filing, the state snapshot, the HTTP
+smoke — every one of which filed its card in the pre-Markdown grammar. Four web
+fixtures did the same. The old shape had outlived its own code path inside the
+suite, which is how it stayed invisible: the tests that exercised the pipeline
+were all speaking a dialect the product had stopped emitting.
+
+Two governance guards then priced the change correctly. The Chinese-literal
+ratchet demanded its baseline follow the file *down* — `contracts/card.ts` 4 → 2 —
+so the room cannot silently reopen; the eight-line comment cap refused an
+eleven-line explanation. Both were doing their job on the first try.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1860 pass, 6 skip, 0 fail, 1866 across 229 files |
+| `fallow audit --gate all` | no issues in 14 changed files |
+| deleted | `ALIAS`, `INLINE_FIELD`, `draftLegacy`, `legacySlices`, two scheduling guards |
+
+### Not taken
+
+- **The `navigator.language` and GitHub noreply readers.** `web/src/i18n.ts` and
+  `git/ghlogin.ts` also accept older forms, and they stay: those validate input
+  from a browser and from GitHub, which still send them. A compatibility alias is
+  ours to retire; an external format is not.
+- **Deleting `no reader maps a Chinese heading to a card section`.** Half its
+  assertion — that the contract still holds all six words — went with `ALIAS`.
+  The other half matters more now, not less: a reader that grows its own `目标`
+  regex would accept a heading `validateDraftCard` refuses outright.
+- **A migration for stored cards.** Nothing to migrate here, and writing one for
+  a database this repository cannot see is speculation. The query that decides is
+  recorded above instead.

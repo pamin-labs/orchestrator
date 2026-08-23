@@ -280,7 +280,7 @@ test("the draft card carries every objection raised against it", () => {
   const g = group("DRAFT");
   st.groups.push(g);
   st.ideas.push({ grpId: 7, body: "Split the settings view" });
-  st.draftCards.push({ grpId: 7, body: "目标: ship it", at: 1, unknownPaths: '["web/src/gone.tsx"]' });
+  st.draftCards.push({ grpId: 7, body: "## goal\nship it", at: 1, unknownPaths: '["web/src/gone.tsx"]' });
   st.lateObjections.push({ grpId: 7, author: "architect", body: "The boundary is wrong" });
   const card = render(st, g);
   shown(card, "Split the settings view");
@@ -303,7 +303,7 @@ test("an approved draft says what is holding it instead of asking to approve aga
   const st = emptyState();
   const g = group("DRAFT", { approved_at: 5 });
   st.groups.push(g);
-  st.draftCards.push({ grpId: 7, body: "目标: ship it", at: 1 });
+  st.draftCards.push({ grpId: 7, body: "## goal\nship it", at: 1 });
   const held = render(st, g);
   shown(held, "已批·等边界");
   shown(held, "已批准，边界挡着");
