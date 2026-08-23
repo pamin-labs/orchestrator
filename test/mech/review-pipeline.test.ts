@@ -19,7 +19,7 @@ import type { TurnResult, TurnSpec } from "../../src/runtime/claude.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { WORK } from "../../src/mech/sandbox/sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
-import type { Json } from "../../src/contracts/json.ts";
+import { type Json, valueOr } from "../../src/contracts/json.ts";
 import { count, desc, eq } from "drizzle-orm";
 import {
   agent as agentTable,
@@ -862,6 +862,43 @@ test(
     const qa = h.specs.find((spec) => spec.stable.systemAppend.includes("You are QA"))!;
     expect(qa.prompt).not.toContain("still pass with its source changes reverted");
     expect((await h.git(["status", "--porcelain"], h.wt.worktree)).out).toBe("");
+  },
+  REAL_GIT_MS,
+);
+
+/**
+ * A verdict's prose is in whichever of ten languages QA writes; the names it
+ * drops are the only part a machine can check. One that is nowhere in the
+ * worktree is the shape a fabricated citation has.
+ *
+ * Recorded on the event, never refused — whether a reviewer ever cites something
+ * that is not there is a question with no data behind it yet, and this is the
+ * measurement that decides whether a gate is worth building. The verdict lands
+ * either way.
+ */
+test(
+  "a verdict citing a file that is nowhere is filed, with the citation recorded",
+  async () => {
+    const h = await harness({ realGit: true });
+    await h.gate(0);
+    writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
+    await h.git(["commit", "-qam", "edit"], h.wt.worktree);
+    await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
+    await h.sched.drain();
+
+    const filed = await h.post(
+      "/orch/v1/review",
+      { slice_id: 1, verdict: "pass", note: "pass: a.txt says two — a.txt:1, and mw.ts:31 guards it" },
+      "tok-qa",
+    );
+    expect(filed.status).toBe(200);
+
+    const verdict = (await h.db.select().from(eventTable).orderBy(desc(eventTable.seq)).limit(20)).find(
+      (e) => valueOr(e.meta_json, z.looseObject({ verdict: z.string() }), null)?.verdict === "pass",
+    )!;
+    const meta = valueOr(verdict.meta_json, z.looseObject({ unresolved: z.array(z.string()).optional() }), {});
+    // `a.txt` is in the worktree and resolves; `mw.ts` is in no tree at all.
+    expect(meta.unresolved).toEqual(["mw.ts"]);
   },
   REAL_GIT_MS,
 );

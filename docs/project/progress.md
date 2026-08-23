@@ -2231,3 +2231,51 @@ Two consequences worth recording before the work is done:
   edge that did not exist before?" — the same shape as the Chinese-literal
   ratchet this repository already trusts, and it needs no configuration at all.
   What it needs is a baseline, which is the part to measure before committing to.
+
+## The reviewer's citations are measured before they are policed
+
+The plan for this round had a layer requiring QA's verdict to cite something that
+ran — `gate:<name>`, `lease:<id>`, a changed path — with each reference checked
+against the slice's own rows. Writing it out is what killed it: **a citation that
+resolves proves nothing about diligence.** The `test` gate runs on every slice, so
+`gate:test` is a reference any reviewer can write without having looked at
+anything, and the check would have felt like a floor while measuring only that a
+name exists.
+
+`--claim` works because git can *contradict* it — claimed files against changed
+files. The reviewer's equivalent has exactly one contradictable form: a name that
+is **nowhere in the worktree**. That is the shape a fabricated citation has, and
+nothing else in a note is decidable.
+
+So the layer that shipped is the measurement, not the gate. `citedPaths` pulls the
+names out of the note — `mw.ts:31`, `src/a.ts`, `menu.png`, and not `0.1.2`,
+`e.g.` or `github.com` — and each is looked up by basename with `git ls-files -co`,
+which covers tracked files and the artefacts a browser lease wrote beside them.
+Whatever is nowhere lands in the verdict event's `meta.unresolved`, where the boss
+reads it on the slice's timeline. The verdict is filed either way.
+
+This is deliberate, and the rule is the repository's own: **prove the hole before
+writing the guard.** Nobody here has data saying a reviewer ever cited a file that
+does not exist. If this never fires, that is a gate nobody has to build; if it
+fires, the refusal writes itself and the message can name what was missing.
+
+`qa.yaml` is told the names are looked up, because a measurement nobody knows
+about measures the wrong population.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1881 pass, 6 skip, 0 fail, 1887 across 230 files |
+| new tests | 5 extractor cases, 1 end-to-end: `a.txt` resolves, `mw.ts` does not, verdict still 200 |
+
+### Not taken
+
+- **Refusing an unresolved citation.** See above: the hole is unproven, and the
+  first version of this guard would have been sensitive to its own case.
+- **`--evidence` as a structured flag.** It is the right shape when the data can
+  be contradicted — `--claim` earns it — and the wrong ceremony when it cannot.
+- **A pattern built from the note's own text.** `git ls-files -- '*name'` does the
+  globbing with the name as an argument, so no regex is ever constructed from
+  agent prose. Preflight flagged that exact class one commit ago.

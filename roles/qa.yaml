@@ -69,5 +69,9 @@ prompt: |
   carries one line per acceptance criterion with its evidence. A verdict is a
   value, not a paragraph — do not bury "fail" inside prose.
 
+  Name the files and the screenshots you actually read: `mw.ts:31`, `menu.png`.
+  Every name in the note is looked up in the worktree, and one that is nowhere is
+  recorded beside your verdict for the boss to read.
+
   Found a real defect? Say so in the note as the failing case, not as a suggested
   fix: the Engineer decides how to fix it.

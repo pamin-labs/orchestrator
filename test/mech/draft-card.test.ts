@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { criteriaIn, validateDraftCard, validateSelfReview } from "../../src/mech/util/validate.ts";
+import { citedPaths, criteriaIn, validateDraftCard, validateSelfReview } from "../../src/mech/util/validate.ts";
 
 const good = `## goal
 token 校验挪到 middleware
@@ -434,4 +434,27 @@ test.each(SAYS_THE_SUITE_PASSES)("a %s slice nested inside another is still caug
 test("the eight-character floor is lenient for dense scripts, and stays that way", () => {
   expect(validateDraftCard(shipped("테스트 통과", "테스트 통과하고 env 에서 zh 를 읽음")).ok).toBe(true);
   expect(validateDraftCard(shipped("テスト通過", "テスト通過し env から zh を読む")).ok).toBe(true);
+});
+
+/**
+ * What a reviewer's note actually offers a machine.
+ *
+ * The prose is in whichever of ten languages the reviewer writes; the names it
+ * drops are the one part that is checkable. This is measurement, not a gate — so
+ * the cut is deliberately lenient on what counts as a name and strict about the
+ * three things that look like one and are not.
+ */
+test("a note's citations are the names in it, not its version numbers", () => {
+  expect(citedPaths("pass: 401 on expired token — mw.ts:31 returns before the handler")).toEqual(["mw.ts"]);
+  expect(citedPaths("pass: 见 src/mech/gate.ts 与 test/a.test.ts；fail: 无")).toEqual([
+    "src/mech/gate.ts",
+    "test/a.test.ts",
+  ]);
+  // The browser lease writes these, and they are the evidence for a criterion no
+  // gate can answer.
+  expect(citedPaths("pass: the menu opens — menu.png")).toEqual(["menu.png"]);
+  // Not names: a version, an abbreviation, a domain, a bare sentence.
+  expect(citedPaths("orch 0.1.2 passes, e.g. see github.com — bun test 绿")).toEqual([]);
+  // Cited twice is cited once.
+  expect(citedPaths("pass: a.ts:1 — and a.ts:9")).toEqual(["a.ts"]);
 });

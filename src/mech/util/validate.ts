@@ -429,6 +429,37 @@ export function criteriaIn(acceptSpec: string): number {
   return Math.max(1, parts.length);
 }
 
+/**
+ * The files a review claims to have looked at.
+ *
+ * A reviewer's note is prose, in whichever of ten languages it writes — the one
+ * part of it that is checkable is the names it drops. `mw.ts:31`, `src/a.ts`,
+ * `menu.png`: a name that exists somewhere is a name it could have read, and one
+ * that exists nowhere is the shape a fabricated citation has.
+ */
+/** Recorded, not refused. Whether a reviewer ever cites something that is not
+ *  there is a question nobody here has data for, and a guard for an unproven
+ *  hole is how you get one that is sensitive to its own case and blind to the
+ *  rest of the class. This is the measurement that decides whether to build it. */
+// The basename may hold dots of its own — `a.test.ts`, `main.min.js` — so the
+// extension is the last of them, not the first.
+const CITED = /(?<![\w@/.-])((?:[\w.-]+\/)*[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{1,8})(?::\d+)?(?![\w-])/g;
+
+/** Extensions that are a version number, a sentence's end, or a domain. */
+const NOT_A_FILE = /^(?:\d+\.\d+|e\.g|i\.e|etc|vs)$|\.(?:com|org|net|io|dev|md5)$/i;
+
+export function citedPaths(note: string): string[] {
+  const out = new Set<string>();
+  for (const m of (note ?? "").matchAll(CITED)) {
+    const path = m[1]!;
+    if (NOT_A_FILE.test(path)) continue;
+    // A bare number after the dot is a version, not an extension: `orch 0.1.2`.
+    if (/^\d+$/.test(path.split(".").at(-1) ?? "")) continue;
+    out.add(path);
+  }
+  return [...out];
+}
+
 function nonEmptyLines(s: string): string[] {
   return (s ?? "")
     .split("\n")
