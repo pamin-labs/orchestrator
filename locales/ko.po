@@ -488,6 +488,9 @@ msgstr "추가 중…"
 msgid "Address"
 msgstr "주소"
 
+msgid "After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests."
+msgstr "게이트를 통과한 뒤 슬라이스의 소스 변경을 되돌리고 테스트를 다시 실행합니다. 그래도 통과한다면 그 테스트는 아무것도 증명하지 못합니다. 코드와 테스트를 함께 바꾼 슬라이스에서 테스트 실행이 한 번 늘어납니다."
+
 msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
 msgstr "슬라이스가 연속으로 몇 번 실패하면 같은 길을 재시도하지 않고 사람에게 넘깁니다."
 
@@ -791,6 +794,9 @@ msgstr "멈춘 턴 점검 주기"
 
 msgid "Check runs"
 msgstr "체크 실행"
+
+msgid "Check that tests discriminate"
+msgstr "테스트에 판별력이 있는지 검사"
 
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "체크한 스킬이 여기에 복제되어 각 샌드박스에 읽기 전용으로 마운트됩니다. 여기를 바꾸면 샌드박스 서버의 allowed_host_paths도 맞춰야 하며, 안 맞으면 컨테이너가 뜨지 않습니다. 조용히 빈 마운트가 되는 것보다 요란하게 실패하는 편이 낫습니다."
@@ -2601,6 +2607,18 @@ msgstr "S{seq}이(가) {from}을(를) {n}번 연속으로 통과하지 못했습
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq}이(가) {from}에 의해 반려되었습니다 ({n}번째)"
+
+msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
+msgstr "S{seq}: 판별력 검사가 워크트리를 복원했는데도 git이 여전히 변경을 보고합니다. 확인하기 전에는 이 브랜치에서 아무것도 커밋하지 마세요."
+
+msgid "S{seq}: the new tests fail without the change, as they should"
+msgstr "S{seq}: 새 테스트는 이 변경이 없으면 실패합니다. 당연한 결과입니다"
+
+msgid "S{seq}: the new tests still pass with the change reverted"
+msgstr "S{seq}: 변경을 되돌려도 새 테스트가 그대로 통과합니다"
+
+msgid "S{seq}: worktree dirty after a check"
+msgstr "S{seq}: 검사 후 워크트리가 깨끗하지 않음"
 
 #. placeholder {0}: endonymOf(localeOf(i18n.locale))
 msgid "Same as the panel ({0})"

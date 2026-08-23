@@ -488,6 +488,9 @@ msgstr "新增中…"
 msgid "Address"
 msgstr "地址"
 
+msgid "After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests."
+msgstr "門禁通過之後，把這個切片的原始碼改動還原再跑一次測試：還是綠的，就說明它什麼都沒證明。代價是在同時改了程式碼和測試的切片上多跑一次測試。"
+
 msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
 msgstr "同一片連著幾次沒過就升級給人，而不是一直重試同一條路。"
 
@@ -791,6 +794,9 @@ msgstr "查有沒有卡住的輪次"
 
 msgid "Check runs"
 msgstr "檢查任務數"
+
+msgid "Check that tests discriminate"
+msgstr "檢查測試是否有區分力"
 
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "勾中的技能複製到這裡，每個沙箱只讀掛上去。改這裡要同步改沙箱服務端的 allowed_host_paths，否則開容器直接失敗——而那是響的失敗，比一個靜默的空目錄好得多。"
@@ -2601,6 +2607,18 @@ msgstr "S{seq} 連著 {n} 次沒過 {from}"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} 被 {from} 打回（第 {n} 次）"
+
+msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
+msgstr "S{seq}：區分力檢查還原工作區之後，git 仍然報告有改動。在你看過之前，不要從這個分支提交任何東西。"
+
+msgid "S{seq}: the new tests fail without the change, as they should"
+msgstr "S{seq}：新測試在沒有這次改動時會失敗，正該如此"
+
+msgid "S{seq}: the new tests still pass with the change reverted"
+msgstr "S{seq}：把改動還原之後，新測試仍然通過"
+
+msgid "S{seq}: worktree dirty after a check"
+msgstr "S{seq}：一次檢查之後工作區不乾淨"
 
 #. placeholder {0}: endonymOf(localeOf(i18n.locale))
 msgid "Same as the panel ({0})"

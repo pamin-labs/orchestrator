@@ -2040,3 +2040,84 @@ second door into detection with the rule table not in front of it, and both
 `ciCommands` and `detectProject` breached the cognitive threshold once the
 workflow read was inlined. The first is now internal — `detectGates` is the one
 door — and the other two are split into `commandsIn` and `readWorkflows`.
+
+## The gate believed any suite that exits 0
+
+Three review layers ran on a slice and not one of them could tell a test from a
+test-shaped file. `runGates` reads an exit code. `reconcile` compares claimed
+paths against `git`. QA reads the diff — the same diff the same model wrote, with
+its own prompt telling it not to re-read the module. So the cheapest way to turn a
+slice green was to weaken a test, and the system had no layer that would notice.
+
+This is the one thing Uncle Bob's pipeline has that ours did not: the Hardener,
+the agent whose whole job is proving the tests would have caught the bug. His tool
+is mutation testing. Ours cannot be — a mutation tool is a per-language dependency
+and we run inside somebody else's repository — but the *question* generalises with
+nothing but git: **put the slice's source back and run the project's own tests. If
+they still pass, they distinguish nothing about this change.**
+
+That is CLAUDE.md's own rule — "a new guard is shown failing before it is kept" —
+which had been a human discipline enforced by whoever remembered it. The interview
+this came from is blunt about that: "把人类的纪律强加给智能 Agent 可能是一个错误。
+我们不需要强加纪律，但需要坚持人类的价值观." Keep the value, change the mechanism.
+
+### Evidence, never a verdict
+
+`recordDiscrimination` always returns without touching the slice's fate. A
+refactor that legitimately edits its tests would go red on every slice, and a gate
+with false reds is a gate somebody switches off. What it produces is a third word
+in `gates_json` — `blind` — which the panel does not colour (`STOPS` is a
+whitelist, `failed` tests for `"fail"`), and a question on QA's card: name the
+criterion these tests discriminate, or fail the slice. The judgement stays where
+judgement belongs.
+
+### The parts that had to be right
+
+- **Nothing runs on an unclean worktree.** Every step restores from a git object,
+  so work that is not in one is work this would destroy. `git status --porcelain`
+  is checked before the first write, and the check is skipped, not forced.
+- **A new file is removed, not left standing.** `git checkout <base> -- path`
+  cannot undo a file that base never had. Leave it and the tests written for that
+  new module still pass — the check would report "distinguishes nothing" about a
+  slice that distinguishes fine. Shown failing: comment out the `git rm` and the
+  fixture goes red.
+- **The restore is verified, not assumed.** `git checkout HEAD -- …` writes index
+  and worktree, so a removed file returns with it; `stillClean` then asks git
+  again, and a dirty answer raises to the boss rather than letting an agent commit
+  from it. Shown failing: comment out the restore and two fixtures go red.
+- **Non-zero is the healthy answer, compile errors included.** A test naming a
+  symbol this slice introduced cannot build without it, and failing to build *is*
+  the test discriminating.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1876 pass, 6 skip, 0 fail, 1882 across 230 files |
+| `fallow audit --gate all` | no issues in 43 changed files |
+| new tests | 7 unit (no container), 2 end-to-end on real git |
+| cost | one extra run of the `test` gate, on a slice that changed both code and tests |
+
+The two end-to-end cases are the same slice shape twice, differing only in whether
+the test would fail without the change — which a static gate template cannot
+express, so the fixture's gate is a real command reading the worktree. Both were
+shown failing with `discriminate: false` in config.
+
+### Two guards caught the change on the way past
+
+`knob-units` refused a settable knob with no section on the settings page — "a
+control the boss cannot find" — so `discriminate` has a home beside `gateRetries`.
+Then `version.test.ts` refused it again over six untranslated strings: the CLI
+asserts an empty stderr, and lingui writes its missing-translation warning there.
+Nine catalogues, filled by hand, `zh-Hant` generated.
+
+### Not taken
+
+- **Mutation testing.** Per-language dependency, installed into a repository we do
+  not own. This measures a suite that distinguishes *nothing*, not one that
+  distinguishes weakly, and that is the honest ceiling.
+- **Failing the slice on `blind`.** Above: false reds are how a gate gets disabled.
+- **Running it without a `test` gate.** A project verified by a build or a lint has
+  no question to ask here, and asking it with the wrong resource would answer
+  about something else.

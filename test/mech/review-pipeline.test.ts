@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { said } from "../support/said.ts";
 import { gitFixture, testGit } from "../support/git-runner.ts";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
@@ -154,6 +154,12 @@ async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
   const base = realGit ? await checkpoint(git, wt.worktree, "start") : null;
   await db.update(sliceTable).set({ base_sha: base }).where(eq(sliceTable.id, 1));
 
+  /** A gate that actually reads the worktree, for the checks that revert it. */
+  const readingGate = (template: string) => {
+    const row = { name: "test", template, arg_schema_json: {}, error_regex: "^(FAIL|error)" };
+    return db.insert(resourceTable).values(row).onConflictDoUpdate({ target: resourceTable.name, set: row });
+  };
+
   const gate = (code: number, out = "") => {
     // A template is tokenised, not shell-parsed: one argv, no spaces inside a
     // single token, no nesting. That constraint is the point of templates.
@@ -162,7 +168,7 @@ async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
     return db.insert(resourceTable).values(row).onConflictDoUpdate({ target: resourceTable.name, set: row });
   };
 
-  return { db, ctx, sched, deps, app, post, repo, wt, specs, gate, git };
+  return { db, ctx, sched, deps, app, post, repo, wt, specs, gate, readingGate, git };
 }
 
 const REVIEW = "pass: a.txt contains two — the diff line adds it";
@@ -791,3 +797,71 @@ test("a slice that gave up asks the boss directly, because the group is about to
     .limit(1);
   expect(esc).toEqual({ chain_state: "boss", severity: "blocker", kind: "spec" });
 });
+
+/**
+ * The gate believes any suite that exits 0, `reconcile` compares paths rather
+ * than assertions, and QA reads the diff the same model wrote. So the cheapest
+ * way to turn a slice green is to weaken a test, and nothing here could see it.
+ *
+ * These two cases are the same slice shape — one source file, one test file —
+ * with the only difference being whether the test would fail without the change.
+ * The gate itself is a real command reading the worktree, because a static
+ * template cannot tell the two apart and would prove nothing.
+ */
+test(
+  "a test that still passes with the change reverted is put to QA as a question",
+  async () => {
+    const h = await harness({ realGit: true });
+    // Passes whatever the source says: the shape of a test that asserts nothing.
+    await h.readingGate("true");
+    mkdirSync(join(h.wt.worktree, "src"), { recursive: true });
+    mkdirSync(join(h.wt.worktree, "test"), { recursive: true });
+    writeFileSync(join(h.wt.worktree, "src/a.ts"), "export const a = 2;\n");
+    writeFileSync(join(h.wt.worktree, "test/a.test.ts"), "// asserts nothing\n");
+    await h.git(["add", "-A"], h.wt.worktree);
+    await h.git(["commit", "-qm", "edit"], h.wt.worktree);
+
+    await doneClaim(h.post, { files: ["src/a.ts", "test/a.test.ts"], summary: "a is 2, with a test" });
+    await h.sched.drain();
+
+    const gates = await gateState(h.db, 1);
+    expect(gates).toEqual({ self: "pass", reconcile: "pass", gate: "pass", discriminate: "blind" });
+    // Evidence, not a verdict: the slice still reaches QA.
+    const [slice] = await h.db.select({ status: sliceTable.status }).from(sliceTable).where(eq(sliceTable.id, 1));
+    expect(slice!.status).toBe("qa");
+    const qa = h.specs.find((spec) => spec.stable.systemAppend.includes("You are QA"))!;
+    expect(qa.prompt).toContain("still pass with its source changes reverted");
+    // And the worktree it left behind is the one the branch commits from.
+    expect((await h.git(["status", "--porcelain"], h.wt.worktree)).out).toBe("");
+  },
+  REAL_GIT_MS,
+);
+
+test(
+  "a test that fails without the change is recorded as passing that question",
+  async () => {
+    const h = await harness({ realGit: true });
+    // A real assertion about the source: green only while the change is there.
+    await h.readingGate("grep -q export=2 src/a.ts");
+    mkdirSync(join(h.wt.worktree, "src"), { recursive: true });
+    mkdirSync(join(h.wt.worktree, "test"), { recursive: true });
+    writeFileSync(join(h.wt.worktree, "src/a.ts"), "export=2\n");
+    writeFileSync(join(h.wt.worktree, "test/a.test.ts"), "// checks it\n");
+    await h.git(["add", "-A"], h.wt.worktree);
+    await h.git(["commit", "-qm", "edit"], h.wt.worktree);
+
+    await doneClaim(h.post, { files: ["src/a.ts", "test/a.test.ts"], summary: "a is 2, with a test" });
+    await h.sched.drain();
+
+    expect(await gateState(h.db, 1)).toEqual({
+      self: "pass",
+      reconcile: "pass",
+      gate: "pass",
+      discriminate: "pass",
+    });
+    const qa = h.specs.find((spec) => spec.stable.systemAppend.includes("You are QA"))!;
+    expect(qa.prompt).not.toContain("still pass with its source changes reverted");
+    expect((await h.git(["status", "--porcelain"], h.wt.worktree)).out).toBe("");
+  },
+  REAL_GIT_MS,
+);

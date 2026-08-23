@@ -163,7 +163,17 @@ function formatFeedback(results: GateResult[]): string {
 }
 
 /** Merge a gate verdict into `slice.gates_json` without losing the other layers. */
-export async function recordGate(db: DB, sliceId: number, layer: string, verdict: "pass" | "fail"): Promise<void> {
+/**
+ * `blind` is a third word on purpose: it is not a verdict on the slice, it is
+ * what the discriminator found. The panel draws only the layers in `STOPS` and
+ * colours red on `"fail"` alone, so a new word is evidence without a colour.
+ */
+export async function recordGate(
+  db: DB,
+  sliceId: number,
+  layer: string,
+  verdict: "pass" | "fail" | "blind",
+): Promise<void> {
   const gates = await gateState(db, sliceId);
   gates[layer] = verdict;
   await db.update(slice).set({ gates_json: gates }).where(eq(slice.id, sliceId));

@@ -14,6 +14,7 @@ import {
   slice as slices,
 } from "../../platform/persistence/schema.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
+import { gateState } from "../../mech/gate.ts";
 
 import type { Config } from "../../platform/config/load.ts";
 import { getFile, type Scope } from "../../mech/sandbox/sandbox.ts";
@@ -247,6 +248,16 @@ async function applySliceCard(ctx: Ctx, agent: TurnAgent, sliceId: number, delta
   if (!slice) return;
   delta.card = `Slice S${slice.seq} (slice_id ${sliceId}) [${slice.difficulty}]: ${slice.title}\nAccepted when: ${slice.accept_spec}`;
   if (agent.role === roleFor(ctx, "review_slice")) {
+    // What the deterministic layer found and could not judge. The gate passed —
+    // with the slice's source reverted, the suite passed too, so those tests
+    // distinguish nothing about this change. Which criterion they do check is a
+    // question about intent, which is QA's half of the review and not a gate's.
+    // English, as everything a model reads is (ADR 035).
+    if ((await gateState(ctx.db, sliceId)).discriminate === "blind") {
+      delta.card +=
+        `\n\nThis slice's tests still pass with its source changes reverted. Name the acceptance ` +
+        `criterion they discriminate and the case that would fail without this change, or fail the slice.`;
+    }
     delta.card += `\n\nFile your verdict with exactly:\n  orch review ${sliceId} --verdict pass|fail --note "one line per criterion"`;
   }
 }

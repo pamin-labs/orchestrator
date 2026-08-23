@@ -488,6 +488,9 @@ msgstr "Adicionando…"
 msgid "Address"
 msgstr "Endereço"
 
+msgid "After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests."
+msgstr "Depois de um gate verde, reverte as alterações de código da fatia e corre os testes outra vez: continuar verde significa que não provam nada. Custa uma execução extra de testes numa fatia que mexeu em código e testes."
+
 msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
 msgstr "Se uma fatia falha várias vezes seguidas, escala para uma pessoa em vez de repetir o mesmo caminho."
 
@@ -791,6 +794,9 @@ msgstr "Procurar turnos travados"
 
 msgid "Check runs"
 msgstr "Verificações"
+
+msgid "Check that tests discriminate"
+msgstr "Verificar se os testes discriminam"
 
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "As skills marcadas são copiadas aqui e montadas somente leitura em cada sandbox. Mudar isto exige sincronizar allowed_host_paths do servidor de sandbox, senão o contêiner não sobe — falhar alto é melhor que um mount vazio em silêncio."
@@ -2601,6 +2607,18 @@ msgstr "S{seq} falhou {from} {n} vezes seguidas"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} devolvida por {from} (tentativa {n})"
+
+msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
+msgstr "S{seq}: a verificação restaurou a árvore de trabalho e o git continua a reportar alterações. Não faças commit a partir deste ramo antes de a analisares."
+
+msgid "S{seq}: the new tests fail without the change, as they should"
+msgstr "S{seq}: os novos testes falham sem a alteração, como devem"
+
+msgid "S{seq}: the new tests still pass with the change reverted"
+msgstr "S{seq}: os novos testes continuam a passar com a alteração revertida"
+
+msgid "S{seq}: worktree dirty after a check"
+msgstr "S{seq}: árvore de trabalho suja depois de uma verificação"
 
 #. placeholder {0}: endonymOf(localeOf(i18n.locale))
 msgid "Same as the panel ({0})"

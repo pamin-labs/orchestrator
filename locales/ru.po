@@ -488,6 +488,9 @@ msgstr "Добавление…"
 msgid "Address"
 msgstr "Адрес"
 
+msgid "After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests."
+msgstr "После зелёного гейта вернуть исходники слайса в прежнее состояние и снова прогнать тесты: если всё ещё зелено — они ничего не доказывают. Стоит одного лишнего прогона тестов на слайсе, где менялись и код, и тесты."
+
 msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
 msgstr "Если срез падает несколько раз подряд, вопрос уходит человеку, а не тем же путём заново."
 
@@ -791,6 +794,9 @@ msgstr "Проверка зависших ходов"
 
 msgid "Check runs"
 msgstr "Проверки"
+
+msgid "Check that tests discriminate"
+msgstr "Проверять, что тесты различают"
 
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "Отмеченные навыки копируются сюда и монтируются в каждую песочницу только для чтения. Изменения здесь нужно согласовать с allowed_host_paths сервера песочниц, иначе контейнер не запустится — громкий отказ лучше тихого пустого монтирования."
@@ -2601,6 +2607,18 @@ msgstr "S{seq} не прошёл {from} {n} раз подряд"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} возвращена {from} (попытка {n})"
+
+msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
+msgstr "S{seq}: проверка восстановила рабочее дерево, а git всё ещё сообщает об изменениях. Не коммить ничего из этой ветки, пока не разберёшься."
+
+msgid "S{seq}: the new tests fail without the change, as they should"
+msgstr "S{seq}: новые тесты падают без этого изменения, как и должны"
+
+msgid "S{seq}: the new tests still pass with the change reverted"
+msgstr "S{seq}: новые тесты проходят даже после отката изменения"
+
+msgid "S{seq}: worktree dirty after a check"
+msgstr "S{seq}: рабочее дерево не чистое после проверки"
 
 #. placeholder {0}: endonymOf(localeOf(i18n.locale))
 msgid "Same as the panel ({0})"

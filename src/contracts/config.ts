@@ -369,6 +369,15 @@ export const ConfigSchema = z.object({
   watchdogIntervalMs: count,
   // Zero is meaningful here: it means "do not retry", which is a choice.
   gateRetries: z.number().int().min(0),
+  /**
+   * Whether a passing gate is asked the second question: do these tests fail
+   * without the change they were written for?
+   *
+   * On, because the answer is the difference between a suite and a suite that
+   * proves something. Off is for a project whose tests cost more than the answer
+   * is worth — it is one extra run of the `test` gate on a qualifying slice.
+   */
+  discriminate: z.boolean(),
   /** Wall clock for one leased command. A big compile is hours, not minutes. */
   leaseTimeoutMs: count,
   /**

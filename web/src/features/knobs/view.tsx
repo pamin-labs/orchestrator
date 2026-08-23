@@ -169,6 +169,7 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
             "leaseTimeoutMs",
             "installTimeoutMs",
             "gateRetries",
+            "discriminate",
             "autoAdvance",
             "autoAcceptTiers",
             "parkAfterPausedMs",
@@ -470,6 +471,10 @@ export const COPY: Record<
   gateRetries: {
     label: msg`Gate retries`,
     why: msg`After a slice fails several times straight, escalate to a person instead of retrying the same path.`,
+  },
+  discriminate: {
+    label: msg`Check that tests discriminate`,
+    why: msg`After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests.`,
   },
   leaseTimeoutMs: {
     label: msg`Lease timeout`,

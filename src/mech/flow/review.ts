@@ -16,7 +16,9 @@ import type { Config } from "../../platform/config/load.ts";
 import { renderSaid } from "../../platform/text/lang.ts";
 import { valueOr } from "../../contracts/json.ts";
 import type { SliceState } from "../../contracts/states.ts";
-import { runGates, recordGate, gateState } from "../gate.ts";
+import { gatesFor, runGates, recordGate, gateState } from "../gate.ts";
+import { discriminate, stillClean } from "./discriminate.ts";
+import { loadResource, runResource } from "../lease.ts";
 import { extractClaimedFiles, reconcile, TaskClaimSchema } from "./reconcile.ts";
 import { changedSince, filesAt } from "../git/gitops.ts";
 import { resourceExec, WORK } from "../sandbox/sandbox.ts";
@@ -173,6 +175,12 @@ export async function runDeterministicReview(
   });
   if (!out.pass) return { pass: false, feedback: out.feedback };
 
+  // The gate said the suite is green. This asks the second question — would it
+  // have been green without the change? — and never changes the verdict: a
+  // refactor that legitimately touches tests would go red on every slice, and a
+  // gate with false reds is a gate somebody switches off.
+  await recordDiscrimination(deps, slice, projectId!, changed);
+
   if (rec.unclaimed.length) {
     // Not a defect, but the reviewer should know what else moved.
     await ctx.bus.emit({
@@ -184,6 +192,66 @@ export async function runDeterministicReview(
     });
   }
   return { pass: true, feedback: out.feedback };
+}
+
+/**
+ * Ask whether this slice's tests would have failed without its source change.
+ *
+ * Evidence, not a verdict. `delta.ts` puts the answer on QA's card as a question
+ * it has to answer, and `gates_json` carries it to the panel and the pull request.
+ */
+async function recordDiscrimination(
+  deps: ReviewDeps,
+  slice: SliceRow,
+  projectId: number,
+  changed: string[],
+): Promise<void> {
+  const { ctx, cfg } = deps;
+  if (!cfg.discriminate || !slice.base_sha) return;
+  // The project's own `test` gate, by the name every rule in `detect.ts` gives it.
+  // A project whose verification is a build or a lint has nothing to ask here.
+  const names = await gatesFor(ctx.db, projectId);
+  const def = names.includes("test") ? await loadResource(ctx.db, "test") : null;
+  if (!def) return;
+
+  const git = sandboxGit(ctx, { grp: slice.grp_id });
+  const exec = resourceExec(ctx, { grp: slice.grp_id });
+  const found = await discriminate({
+    git,
+    worktree: WORK,
+    baseSha: slice.base_sha,
+    changed,
+    runTest: async () => {
+      const r = await runResource(def, {}, { exec, cwd: WORK, timeoutMs: cfg.leaseTimeoutMs });
+      // A command that could not run at all is not the suite passing.
+      return "digest" in r ? r.exitCode : 1;
+    },
+  });
+
+  // Whatever happened above, the worktree is what an agent commits to next.
+  if (!(await stillClean(git, WORK))) {
+    await raise(ctx.db, {
+      grpId: slice.grp_id,
+      lang: outputLanguage(ctx.config),
+      question: msg`S${{ seq: slice.seq }}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it.`,
+      brief: msg`S${{ seq: slice.seq }}: worktree dirty after a check`,
+      kind: "env",
+      chain: "boss",
+    });
+    return;
+  }
+  if (!found.ran) return;
+
+  await recordGate(ctx.db, slice.id, "discriminate", found.discriminates ? "pass" : "blind");
+  await ctx.bus.emit({
+    grpId: slice.grp_id,
+    author: "orchestrator",
+    kind: "gate_result",
+    say: found.discriminates
+      ? msg`S${{ seq: slice.seq }}: the new tests fail without the change, as they should`
+      : msg`S${{ seq: slice.seq }}: the new tests still pass with the change reverted`,
+    meta: { slice_id: slice.id, discriminates: found.discriminates },
+  });
 }
 
 /**

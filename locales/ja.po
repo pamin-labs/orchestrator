@@ -488,6 +488,9 @@ msgstr "追加中…"
 msgid "Address"
 msgstr "アドレス"
 
+msgid "After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests."
+msgstr "ゲートが通ったあと、スライスのソース変更を元に戻してテストを再実行します。それでも緑なら、そのテストは何も証明していません。コードとテストの両方を変更したスライスで、テスト実行が 1 回増えます。"
+
 msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
 msgstr "スライスが連続で数回失敗したら、同じ道を再試行せず人にエスカレーションします。"
 
@@ -791,6 +794,9 @@ msgstr "止まったターンの点検間隔"
 
 msgid "Check runs"
 msgstr "チェック実行"
+
+msgid "Check that tests discriminate"
+msgstr "テストに識別力があるか検査する"
 
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "チェックしたスキルをここに複製し、各サンドボックスに読み取り専用でマウントします。ここを変えたらサンドボックスサーバーの allowed_host_paths も揃える必要があります。揃っていないとコンテナが起動に失敗します。静かに空マウントされるより、はっきり失敗するほうがましです。"
@@ -2601,6 +2607,18 @@ msgstr "S{seq} が {from} を {n} 回連続で通りませんでした"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} は {from} に差し戻されました（{n} 回目）"
+
+msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
+msgstr "S{seq}: 識別力の検査がワークツリーを復元しましたが、git はまだ変更を報告しています。確認するまで、このブランチから何もコミットしないでください。"
+
+msgid "S{seq}: the new tests fail without the change, as they should"
+msgstr "S{seq}: 新しいテストは変更がなければ失敗します。あるべき姿です"
+
+msgid "S{seq}: the new tests still pass with the change reverted"
+msgstr "S{seq}: 変更を元に戻しても新しいテストは通ってしまいます"
+
+msgid "S{seq}: worktree dirty after a check"
+msgstr "S{seq}: 検査のあとワークツリーが汚れています"
 
 #. placeholder {0}: endonymOf(localeOf(i18n.locale))
 msgid "Same as the panel ({0})"
