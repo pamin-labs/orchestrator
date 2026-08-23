@@ -8,7 +8,7 @@ import { createCheckout, remoteFor } from "../git/checkout.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
 import { execIn, execLines, WORK } from "../sandbox/sandbox.ts";
-import { detectGates, detectInstall, detectShared, READS, type Root } from "../util/detect.ts";
+import { detectGates, detectInstall, detectShared, READS, type Root, WORKFLOWS } from "../util/detect.ts";
 import { shq } from "../../platform/process/shell.ts";
 import { baseRefFor } from "../git/checkout.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
@@ -18,6 +18,32 @@ import { raise } from "./escalate.ts";
 import { BOOTSTRAP_FAILED, BOOTSTRAP_OK, BOOTSTRAP_START } from "../../contracts/events.ts";
 import { JsonObject, valueOr } from "../../contracts/json.ts";
 import { outputLanguage } from "../../contracts/config.ts";
+
+/**
+ * The workflow files, into `files`, and their names back.
+ *
+ * Always, rather than only when the rule table finds nothing: one path through
+ * detection is worth more than the round trips it saves on a recognised project,
+ * and this runs once per project, at its first clone.
+ */
+/** Bounded, because a large repository's workflow directory is not — eight files
+ *  is more CI than any project needs to say how it tests itself. Filtered by
+ *  extension before anything is opened: a directory that is not there answers
+ *  with an exit code, and one holding a README is not worth a round trip. */
+async function readWorkflows(ctx: Ctx, grpId: number, files: Record<string, string>): Promise<string[]> {
+  const listed = await execIn(ctx, { grp: grpId }, `ls -A ${shq(`${WORK}/${WORKFLOWS}`)}`);
+  const names = (listed.code === 0 ? listed.out : "")
+    .split("\n")
+    .map((n) => n.trim())
+    .filter((n) => /\.ya?ml$/.test(n))
+    .sort()
+    .slice(0, 8);
+  for (const f of names) {
+    const r = await execIn(ctx, { grp: grpId }, `cat ${shq(`${WORK}/${WORKFLOWS}/${f}`)}`);
+    if (r.code === 0) files[`${WORKFLOWS}/${f}`] = r.out;
+  }
+  return names;
+}
 
 /** `project.config_json.install`, or null. */
 async function installFor(db: DB, projectId: number): Promise<string | null> {
@@ -233,7 +259,13 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
     const r = await execIn(ctx, { grp: grpId }, `cat ${shq(`${WORK}/${f}`)}`);
     if (r.code === 0) files[f] = r.out;
   }
-  const root: Root = { names, read: (n) => files[n] ?? null };
+  const workflows = await readWorkflows(ctx, grpId, files);
+
+  const root: Root = {
+    names,
+    read: (n) => files[n] ?? null,
+    list: (dir) => (dir === WORKFLOWS ? workflows : []),
+  };
   const gates = detectGates(root);
 
   /**

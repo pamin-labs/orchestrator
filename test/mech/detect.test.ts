@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { detectGates, detectInstall, detectShared, type Root } from "../../src/mech/util/detect.ts";
+import { detectGates, detectInstall, detectShared, type Root, WORKFLOWS } from "../../src/mech/util/detect.ts";
 
 /**
  * A repository root, as detection sees one.
@@ -114,4 +114,121 @@ test("every stack says how to install, or says it needs nothing", () => {
 
   // An unknown stack must not guess.
   expect(detectInstall(repo({ "README.md": "hi" }))).toBeNull();
+});
+
+/**
+ * A repository with a workflow, as detection sees one: the root listing, plus one
+ * directory it may list and read from.
+ */
+const withCi = (files: Record<string, string>, workflows: Record<string, string>): Root => ({
+  names: Object.keys(files),
+  read: (n) => files[n] ?? workflows[n.replace(`${WORKFLOWS}/`, "")] ?? null,
+  list: (dir) => (dir === WORKFLOWS ? Object.keys(workflows) : []),
+});
+
+/**
+ * The stacks no rule knows are the ones that used to get nothing at all — and
+ * "no gates" is not "no opinion", it fails every slice (`gate.ts`). A workflow is
+ * the one place any language writes down what a clean machine runs.
+ */
+test("a stack no rule knows takes its gates from what CI runs", () => {
+  const g = detectGates(
+    withCi(
+      { "mix.exs": "defmodule X", "README.md": "" },
+      {
+        "ci.yml": `name: ci
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: mix deps.get
+      - name: 跑测试
+        run: mix test
+      - run: mix format --check-formatted`,
+      },
+    ),
+  );
+  expect(g.map((x) => x.name)).toEqual(["lint", "test"]);
+  expect(g.find((x) => x.name === "test")!.template).toBe("mix test");
+  // Classified by the command, not the step's `name:` — that is prose, in
+  // whatever language the author wrote it in.
+  expect(g.find((x) => x.name === "lint")!.template).toBe("mix format --check-formatted");
+});
+
+/**
+ * `lease.ts` tokenises a template on whitespace and never runs a shell, so `a &&
+ * b` would hand `&&` to `a` as an argument: a gate that looks like it ran and did
+ * half of nothing. A `${{ … }}` only the CI runner can expand is the same class.
+ */
+test("a CI step that could not be a template is not taken as one", () => {
+  const g = detectGates(
+    withCi(
+      { "dune-project": "(lang dune 3.0)" },
+      {
+        "ci.yml": `jobs:
+  t:
+    steps:
+      - run: make deps && make test
+      - run: dune test --profile \${{ matrix.profile }}
+      - run: dune runtest`,
+      },
+    ),
+  );
+  expect(g.map((x) => x.template)).toEqual(["dune runtest"]);
+});
+
+/**
+ * A recognised stack keeps its convention. A CI step is written for a machine
+ * that has the services CI starts — this repository's own `bun run test` needs a
+ * PostgreSQL container — so preferring it would trade "no gate" for "a gate that
+ * cannot pass", which is worse: the first is visible, the second reads as the
+ * agent's fault.
+ */
+test("a recognised stack is not overridden by its workflow", () => {
+  const g = detectGates(
+    withCi(
+      { "package.json": JSON.stringify({ scripts: { test: "bun test" } }), "bun.lock": "" },
+      { "ci.yml": `jobs:\n  t:\n    steps:\n      - run: bun run test:ci` },
+    ),
+  );
+  expect(g.find((x) => x.name === "test")!.template).toBe("bun test");
+});
+
+/** No workflows, an unparseable one, and a caller that cannot list: all silent. */
+test("nothing to read from CI leaves the project as it was", () => {
+  expect(detectGates(withCi({ "mix.exs": "x" }, {}))).toEqual([]);
+  expect(detectGates(withCi({ "mix.exs": "x" }, { "ci.yml": "jobs: [oops\n  - :" }))).toEqual([]);
+  expect(detectGates(repo({ "mix.exs": "x" }))).toEqual([]);
+});
+
+/**
+ * The two things a name-shaped guess gets wrong, both measured against this
+ * repository's own workflows before they were fixed.
+ *
+ * `check` in the test vocabulary took `i18n:check` as the test gate. And "first
+ * match in file order" took `format:check` as lint, with `bun run lint` further
+ * down the same file — so a command that *ends* in the gate's own name wins over
+ * one that merely mentions it.
+ */
+test("the command named for the gate beats the one that only mentions it", () => {
+  const g = detectGates(
+    withCi(
+      { "shard.yml": "name: x" },
+      {
+        "ci.yml": `jobs:
+  t:
+    steps:
+      - run: bun run format:check
+      - run: bun run i18n:check
+      - run: bun run lint
+      - run: bun run test`,
+      },
+    ),
+  );
+  expect(Object.fromEntries(g.map((x) => [x.name, x.template]))).toEqual({
+    lint: "bun run lint",
+    test: "bun run test",
+  });
 });

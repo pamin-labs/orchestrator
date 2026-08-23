@@ -21,7 +21,14 @@ import { z } from "zod";
 export interface Root {
   /** Names directly in the root, `ls -A`. */
   names: string[];
+  /** Any path under the root, root-relative. */
   read: (name: string) => string | null;
+  /**
+   * Names directly in one subdirectory. Optional: a caller that cannot list
+   * `.github/workflows` — every test fixture here, and any older caller — gets
+   * the rules below and no CI fallback, rather than an error.
+   */
+  list?: (dir: string) => string[];
 }
 
 /**
@@ -159,6 +166,100 @@ function hasMakeTestTarget(repo: Root): boolean {
   return false;
 }
 
+/**
+ * What a repository's CI actually runs, for the stacks no rule above knows.
+ *
+ * A workflow is the one machine-readable statement of "what a clean machine does
+ * with this repository" that exists in every language. `Bun.YAML` already parses
+ * this project's own config and roles, so reading one costs no dependency.
+ */
+/** Deliberately literal: a step is taken only if it could be typed as a template.
+ *  `lease.ts` tokenises on whitespace and never invokes a shell, so `a && b` would
+ *  pass `&&` to `a` as an argument — a command that looks like it ran and did half
+ *  of nothing. Shell grammar, a redirect, a substitution or an expression only the
+ *  runner can expand: left for the boss to write instead. */
+export const WORKFLOWS = ".github/workflows";
+
+/** Shell grammar, and the expressions only the CI runner can expand. */
+const NOT_A_TEMPLATE = /[|&;<>`$()]|\$\{\{/;
+
+/**
+ * Which gate a command is, by what it runs — not by the step's `name:`, which is
+ * prose, in whichever of ten languages the author wrote it.
+ */
+const GATE_OF: [name: string, matches: RegExp][] = [
+  ["typecheck", /\b(typecheck|type-check|tsc|mypy|pyright)\b/],
+  ["lint", /\b(lint|clippy|eslint|oxlint|ruff|vet|fmt|format)\b/],
+  // `runtest` is one word to dune, and `\btest\b` does not see it — the reason
+  // this list is spellings rather than a stem. No `check`: measured against this
+  // repository's own workflows it took `bun run i18n:check` as the test gate,
+  // with `bun run test` four steps further down the same file.
+  ["test", /\b(test|tests|runtest|pytest|jest|vitest|rspec)\b/],
+  ["build", /\bbuild\b/],
+];
+
+/** One pattern per gate, since a CI-derived command carries no stack with it. */
+const GATE_ERROR: Record<string, string> = {
+  typecheck: "(error|Error)",
+  lint: "(error|warning|Error)",
+  test: "(FAIL|failed|error|Error)",
+  build: "(error|ERROR|failed)",
+};
+
+/** One workflow's runnable lines, or none: a file this cannot parse is GitHub's
+ *  problem to report, not a reason to leave the project with no gates at all. */
+function commandsIn(body: string): string[] {
+  let doc: unknown;
+  try {
+    doc = Bun.YAML.parse(body);
+  } catch {
+    return [];
+  }
+  return runsIn(doc)
+    .flatMap((run) => run.split("\n"))
+    .map((line) => line.trim())
+    .filter((cmd) => cmd && !cmd.startsWith("#") && !NOT_A_TEMPLATE.test(cmd));
+}
+
+/** Every `run:` line of every workflow, in file order, as candidate commands. */
+function ciCommands(repo: Root): string[] {
+  return [...(repo.list?.(WORKFLOWS) ?? [])]
+    .filter((file) => /\.ya?ml$/.test(file))
+    .sort()
+    .flatMap((file) => commandsIn(repo.read(`${WORKFLOWS}/${file}`) ?? ""));
+}
+
+/**
+ * `jobs.*.steps[].run`, walked structurally rather than by key name at depth: a
+ * reusable workflow nests its jobs, and a matrix step is still a step.
+ */
+function runsIn(node: unknown): string[] {
+  if (Array.isArray(node)) return node.flatMap(runsIn);
+  if (node === null || typeof node !== "object") return [];
+  const out: string[] = [];
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "run" && typeof value === "string") out.push(value);
+    else out.push(...runsIn(value));
+  }
+  return out;
+}
+
+function detectFromCi(repo: Root): DetectedGate[] {
+  const commands = ciCommands(repo);
+  const gates: DetectedGate[] = [];
+  for (const [name, matches] of GATE_OF) {
+    const candidates = commands.filter((cmd) => matches.test(cmd) && !gates.some((g) => g.template === cmd));
+    // A command that *ends* in the gate's own name is that gate; anything else
+    // merely mentions it. Measured: `bun run format:check` and `bun run lint` are
+    // both lint-shaped, and the second is the one the project calls lint. Failing
+    // that, the first in file order — CI runs the cheap check before the slow one.
+    const named = new RegExp(`(^|[\\s:/])${name}$`);
+    const found = candidates.find((cmd) => named.test(cmd)) ?? candidates[0];
+    if (found) gates.push({ name, template: found, errorRegex: GATE_ERROR[name] ?? "(error|Error)" });
+  }
+  return gates;
+}
+
 /** The install command for whichever stack this repo is, or null. */
 export function detectInstall(repo: Root): string | null {
   for (const r of RULES) if (r.marker(repo)) return r.install?.(repo) ?? null;
@@ -171,7 +272,13 @@ export function detectGates(repo: Root): DetectedGate[] {
     const gates = rule.gates(repo);
     if (gates.length) return gates;
   }
-  return [];
+  // Only when the table above knows nothing. A recognised stack keeps its
+  // convention: a CI step is written for a machine that has the services CI
+  // starts, and this repository is its own example — `bun run test` there needs a
+  // PostgreSQL container. The fallback is for the stacks no table has a row for,
+  // where the alternative is not a worse gate but no gate at all, and `runGates`
+  // fails every slice of a project it has nothing to run.
+  return detectFromCi(repo);
 }
 
 /**

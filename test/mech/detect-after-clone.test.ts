@@ -95,6 +95,10 @@ test("the first clone is what works out the gates, the install command and the s
   expect(h.asked).toContain("cat '/work/package.json'");
   // Only the files a rule actually opens: existence answers everything else.
   expect(h.asked.filter((c) => c.startsWith("cat "))).toEqual(["cat '/work/package.json'"]);
+  // The workflow directory is listed on every clone — it is the gate source for
+  // every stack the rule table has no row for — but nothing in it is opened here:
+  // this fixture's `ls` answers with the root listing, which holds no `.yml`.
+  expect(h.asked).toContain("ls -A '/work/.github/workflows'");
 });
 
 test("the second group does not detect again, and does not duplicate a resource row", async () => {

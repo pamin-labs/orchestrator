@@ -1964,3 +1964,79 @@ next unit of work needs it to do.
 - **A length budget on role prompts.** The lost-in-the-middle argument says to cut
   them, and this change *added* four lines to one. The audit is its own unit —
   doing it here would mean touching every role file twice.
+
+## A project whose stack has no row now takes its gates from what CI runs
+
+`detect.ts` is a table of six stacks. Miss it — Elixir, Zig, Swift, OCaml, a
+Makefile whose target is not called `test` — and `detectGates` returns `[]`, which
+`gate.ts` treats as **fail every slice**, with a message telling the boss to write
+the gates by hand. That is the whole product refusing to work on a project it does
+not recognise, and no table will ever have every row.
+
+There is exactly one machine-readable statement of "what a clean machine does with
+this repository" that exists in every language: the CI workflow. `Bun.YAML` is
+already a dependency-free parser here (`load.ts:334` uses it for config and
+roles), so reading one costs nothing new. `runsIn` walks the document
+structurally rather than by key path, because a reusable workflow nests its jobs
+and a matrix step is still a step.
+
+### It is a fallback, not an override
+
+A recognised stack keeps its convention. A CI step is written for a machine that
+has the services CI starts — this repository's own test job needs a PostgreSQL
+container — so preferring CI would trade "no gate" for "a gate that cannot pass",
+and the second is worse: the first is visible as a missing gate, the second reads
+as the agent's fault, once per slice.
+
+### Only what could be a template
+
+`lease.ts` tokenises on whitespace and never invokes a shell, so `make deps &&
+make test` would hand `&&` and `make test` to `make` as arguments — a gate that
+looks like it ran and did half of nothing. Anything with shell grammar, a
+redirect, a substitution, or a `${{ … }}` only the runner can expand is skipped
+rather than mangled.
+
+### Measured, on this repository's own workflows
+
+Running the extractor against `.github/workflows` — a repository the fallback
+would never be used for, since `package.json` matches a rule — found two defects
+that no fixture had:
+
+| | first attempt | after |
+|---|---|---|
+| test | `bun run i18n:check` | `bun run test:coverage:ci` |
+| lint | `bun run format:check` | `bun run lint` |
+
+`check` in the test vocabulary matched `i18n:check`, and "first match in file
+order" matched `format:check` before the `bun run lint` four steps below it. So
+`check` left the vocabulary, and a command that *ends* in the gate's own name now
+beats one that merely mentions it. Both cases are kept as a test.
+
+The remaining answer is honest rather than good: `test:coverage:ci` is the slow
+variant, and this repository's `ci.yml` never runs a plain `bun run test` at all.
+That is the argument for the fallback being a fallback.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1866 pass, 6 skip, 0 fail, 1872 across 229 files |
+| `fallow audit --gate all` | no issues in 22 changed files |
+| new tests | 5, covering an unknown stack, a rejected template, a recognised stack, silence, and the two measured defects |
+
+### Not taken
+
+- **CI overriding a recognised stack.** Above: a CI command assumes CI's services.
+- **An unbounded read of the workflow directory.** Eight files, filtered by
+  extension before anything is opened, once per project at its first clone.
+- **Guessing at a step's `name:`.** It is prose in whichever of ten languages the
+  author wrote it in; the command is the only part that is not.
+
+### Two findings the audit made, both kept
+
+`fallow audit` refused the change twice, correctly: `detectFromCi` was an exported
+second door into detection with the rule table not in front of it, and both
+`ciCommands` and `detectProject` breached the cognitive threshold once the
+workflow read was inlined. The first is now internal — `detectGates` is the one
+door — and the other two are split into `commandsIn` and `readWorkflows`.
