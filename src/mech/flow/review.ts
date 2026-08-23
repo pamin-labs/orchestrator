@@ -2,7 +2,7 @@ import { msg, plural } from "@lingui/core/macro";
 import { transaction } from "../../platform/persistence/database.ts";
 import { and, asc, count, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
-import { addNote, projectOfGrp } from "../util/rows.ts";
+import { addNote, projectConfig, projectOfGrp } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import {
   agent,
@@ -26,7 +26,7 @@ import { pushBranch, sandboxGit } from "../git/checkout.ts";
 import { gitTrailers } from "../git/ghlogin.ts";
 import { joinQueue, position } from "./mergequeue.ts";
 import { hold } from "./intercept.ts";
-import { raise } from "./escalate.ts";
+import { escalationKey, raise } from "./escalate.ts";
 import { z } from "zod";
 import { outputLanguage } from "../../contracts/config.ts";
 
@@ -93,7 +93,7 @@ async function loadSlice(db: DB, sliceId: number): Promise<SliceRow | null> {
 export async function runDeterministicReview(
   deps: ReviewDeps,
   sliceId: number,
-): Promise<{ pass: boolean; feedback: string }> {
+): Promise<{ pass: boolean; feedback: string; halt?: boolean }> {
   const { ctx, cfg } = deps;
   const slice = await loadSlice(ctx.db, sliceId);
   if (!slice) return { pass: false, feedback: "slice disappeared" };
@@ -154,6 +154,43 @@ export async function runDeterministicReview(
         `git shows these changed: ${changed.length ? changed.join(", ") : "(nothing)"}.\n` +
         `Either make the change or correct the claim — both are cheaper than a reviewer's time.`,
     };
+  }
+
+  // --- no gates: a question, not a verdict
+  //
+  // This used to fail the slice, and then the next one, and then every one after
+  // it, each burning a retry against a message the writer cannot act on. Nothing
+  // an Engineer does adds a gate.
+  //
+  // Absent and empty are different answers. Absent is "nobody has looked": the
+  // boss is asked once per project and the group waits, rather than grinding.
+  // Empty is the boss having looked and said this project has no deterministic
+  // floor — recorded as a layer that did not run, so the pull request says so.
+  const configured = (await projectConfig(ctx.db, projectId)).gates;
+  if (configured === undefined) {
+    await raise(ctx.db, {
+      grpId: slice.grp_id,
+      lang: outputLanguage(ctx.config),
+      question: msg`Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one.`,
+      brief: msg`no gates for this project`,
+      kind: "env",
+      chain: "boss",
+      key: escalationKey.noGates(projectId!),
+      dedupe: { scope: "global" },
+    });
+    await hold(ctx.db, slice.grp_id, { reason: "escalation", from: "RUNNING" });
+    return { pass: false, halt: true, feedback: "no gates are configured for this project" };
+  }
+  if (configured.length === 0) {
+    await recordGate(ctx.db, sliceId, "gate", "none");
+    await ctx.bus.emit({
+      grpId: slice.grp_id,
+      author: "orchestrator",
+      kind: "gate_result",
+      say: msg`S${{ seq: slice.seq }} has no gate to run — this project is set to none`,
+      meta: { slice_id: sliceId },
+    });
+    return { pass: true, feedback: "no gate is configured for this project" };
   }
 
   // --- gate: exit codes, no opinions

@@ -18,7 +18,12 @@ type FilingState = EscalationOpenState;
  * rather than `string`, because filing and matching are in different modules and
  * a typo in either is that same silent failure again.
  */
-export type EscalationKey = "budget" | `auth:${string}` | `github:${string}` | `pr-closed:${number}`;
+export type EscalationKey =
+  | "budget"
+  | `auth:${string}`
+  | `github:${string}`
+  | `pr-closed:${number}`
+  | `no-gates:${number}`;
 
 export const escalationKey = {
   /** Over the token cap. Deduped per group, so the group is not in the key. */
@@ -27,6 +32,8 @@ export const escalationKey = {
   auth: (runtime: string) => `auth:${runtime}` as const,
   /** GitHub will not accept this project's login. One per repository. */
   githubRepo: (slug: string) => `github:${slug}` as const,
+  /** Nothing deterministic to run. One question per project, not per slice. */
+  noGates: (projectId: number) => `no-gates:${projectId}` as const,
   /** The boss closed a PR without merging. One per PR, so reopening closes its own. */
   prClosed: (pr: number) => `pr-closed:${pr}` as const,
 } as const;

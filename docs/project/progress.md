@@ -2375,3 +2375,48 @@ already builds the image), by `security.yml` on **every pull request**, and by
 about one moment: at release is the wrong time to learn that the image does not
 run, and arm64 is only covered by the release matrix, since that is the only
 caller with a native runner for it.
+
+## A project with nothing to run is a question, not a verdict
+
+`gatesFor` returning `[]` meant "fail this slice", so a project whose stack no
+rule recognises failed its first slice, then the next, then every one after —
+each burning a retry against feedback no Engineer can act on. **Nothing an
+Engineer does adds a gate.** The message even said so, and said it to the wrong
+reader, once per slice, forever.
+
+Absent and empty were the same value and are not the same answer:
+
+| `config_json.gates` | means | what happens |
+|---|---|---|
+| absent | nobody has looked | one question to the boss per project, group held |
+| `[]` | the boss looked and there is no floor | `gate: none` recorded, slice goes to review |
+| names | the floor | unchanged |
+
+Detection was writing `[]` when it recognised nothing, which is detection
+answering a question that belongs to the boss. It leaves the key absent now.
+
+The question is deduped on `no-gates:<projectId>` and filed at `chain: "boss"` —
+this is one of the few things a stand-in genuinely cannot decide, since it is a
+choice to accept work with no deterministic floor. The group is held rather than
+sent back, so the slice keeps its retries for something a retry can fix.
+
+`none` is the fourth word `recordGate` accepts, and like `blind` it is evidence
+rather than a colour: `STOPS` draws the layer, `failed` tests for `"fail"` alone,
+and a pull request that says `gate: none` has said something true that
+`gate: pass` would not have.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1884 pass, 6 skip, 0 fail, 1890 across 230 files |
+| new tests | 2, one per answer — the boss is asked once and the slice keeps `retries: 0`; an empty list reaches QA with `gate: none` |
+
+### The audit's finding here was the phantom CLAUDE.md warns about
+
+Plain `bun run audit` reported `carryOver` over the complexity threshold — a
+function this change does not touch — because it reads whatever
+`coverage/coverage-final.json` holds and estimates the rest "from export
+references". `audit:crap`, which regenerates coverage first and is what preflight
+runs, reports nothing. The page says exactly this; it is recorded again because
+it cost a minute to re-derive.

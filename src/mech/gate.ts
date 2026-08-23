@@ -90,19 +90,11 @@ async function runGatesInner(opts: RunGatesOptions): Promise<GateOutcome> {
   const results: GateResult[] = [];
 
   if (names.length === 0) {
-    // No gates configured is not a pass. A project with nothing deterministic to
-    // check has no floor under its LLM reviewers, and the boss should know.
-    return {
-      pass: false,
-      results,
-      feedback:
-        // Says which of the two it is. Gates are worked out from the first
-        // group's clone (007 §2), so before that has happened "none configured"
-        // means "not detected yet" and telling the boss to go and write them by
-        // hand is sending them to do the system's job.
-        "no gates are configured for this project. They are detected from the first group's clone; " +
-        'if that has happened and found nothing, add resource names to project config_json, e.g. {"gates":["test"]}.',
-    };
+    // `runDeterministicReview` decides what an empty list means — a question for
+    // the boss when nobody has looked, a recorded `none` when they have — and
+    // never calls this with one. Anything else that does is asking the wrong
+    // layer, so it gets the same answer it always did: not a pass.
+    return { pass: false, results, feedback: "no gates are configured for this project" };
   }
 
   const logDir = join(opts.dataDir, "gates");
@@ -164,15 +156,19 @@ function formatFeedback(results: GateResult[]): string {
 
 /** Merge a gate verdict into `slice.gates_json` without losing the other layers. */
 /**
- * `blind` is a third word on purpose: it is not a verdict on the slice, it is
- * what the discriminator found. The panel draws only the layers in `STOPS` and
- * colours red on `"fail"` alone, so a new word is evidence without a colour.
+ * Four words, and only one of them is a verdict on the slice.
+ *
+ * `blind` is what the discriminator found; `none` is a layer that had nothing to
+ * run, which a project with no gate chose. The panel draws only the layers in
+ * `STOPS` and reddens on `"fail"` alone, so the other two are evidence without a
+ * colour — and a pull request that says `gate: none` has said something true that
+ * `gate: pass` would not have.
  */
 export async function recordGate(
   db: DB,
   sliceId: number,
   layer: string,
-  verdict: "pass" | "fail" | "blind",
+  verdict: "pass" | "fail" | "blind" | "none",
 ): Promise<void> {
   const gates = await gateState(db, sliceId);
   gates[layer] = verdict;

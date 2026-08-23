@@ -27,6 +27,7 @@ import {
   event as eventTable,
   grp as grpTable,
   job as jobTable,
+  project as projectTable,
   resource as resourceTable,
   slice as sliceTable,
   task as taskTable,
@@ -939,6 +940,61 @@ test(
     expect((await h.git(["status", "--porcelain"], h.wt.worktree)).out).toBe("");
     const log = await h.git(["log", "--oneline", "-1"], h.wt.worktree);
     expect(log.out).toContain("S1: under review");
+  },
+  REAL_GIT_MS,
+);
+
+/**
+ * A project with nothing to run used to fail its slice, and then the next one,
+ * and every one after that — each burning a retry against a message no Engineer
+ * can act on, because nothing an Engineer does adds a gate.
+ */
+/** Absent and empty are different answers now. Absent is "nobody has looked": one
+ *  question to the boss per project, and the group waits. Empty is the boss
+ *  having looked and said this project has no deterministic floor. */
+test(
+  "a project nobody has configured asks the boss once, instead of failing every slice",
+  async () => {
+    const h = await harness({ realGit: true });
+    // The state detection leaves when it recognised nothing: no key at all.
+    await h.db.update(projectTable).set({ config_json: {} }).where(eq(projectTable.id, 1));
+    writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
+    await h.git(["commit", "-qam", "edit"], h.wt.worktree);
+
+    await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
+    await h.sched.drain();
+
+    const [slice] = await h.db
+      .select({ status: sliceTable.status, retries: sliceTable.retries })
+      .from(sliceTable)
+      .where(eq(sliceTable.id, 1));
+    // Not sent back: a retry would teach nobody anything.
+    expect(slice!.retries).toBe(0);
+    const asked = await h.db.select().from(escalationTable);
+    expect(asked).toHaveLength(1);
+    expect({ kind: asked[0]!.kind, chain: asked[0]!.chain_state, key: asked[0]!.dedupe_key }).toEqual({
+      kind: "env",
+      chain: "boss",
+      // Per project, so the second slice does not ask again.
+      key: "no-gates:1",
+    });
+  },
+  REAL_GIT_MS,
+);
+
+test(
+  "a project the boss set to no gates goes to review with the layer marked none",
+  async () => {
+    const h = await harness({ realGit: true, gates: [] });
+    writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
+    await h.git(["commit", "-qam", "edit"], h.wt.worktree);
+
+    await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
+    await h.sched.drain();
+
+    expect(await gateState(h.db, 1)).toEqual({ self: "pass", reconcile: "pass", gate: "none" });
+    const [slice] = await h.db.select({ status: sliceTable.status }).from(sliceTable).where(eq(sliceTable.id, 1));
+    expect(slice!.status).toBe("qa");
   },
   REAL_GIT_MS,
 );

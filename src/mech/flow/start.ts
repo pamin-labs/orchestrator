@@ -360,7 +360,11 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   const next = {
     ...cfg,
     detected: true,
-    gates: cfg.gates?.length ? cfg.gates : gates.map((g) => g.name),
+    // Absent, not `[]`, when detection finds nothing. The two mean different
+    // things and every reader downstream depends on the difference: an absent key
+    // is "nobody has looked", and an empty array is the boss saying this project
+    // has no deterministic floor. Writing `[]` here made detection speak for them.
+    ...(cfg.gates?.length ? { gates: cfg.gates } : gates.length ? { gates: gates.map((g) => g.name) } : {}),
     toolchain: detectToolchain(root),
     install: detectInstall(root),
     shared: detectShared(root),

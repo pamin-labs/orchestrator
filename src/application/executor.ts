@@ -1083,7 +1083,10 @@ async function runGateJob(deps: ExecDeps, job: Job<"gate">): Promise<void> {
   const rd = { ctx: deps.ctx, cfg: deps.cfg };
   const out = await runDeterministicReview(rd, job.slice_id);
   if (out.pass) await handToQa(rd, job.slice_id);
-  else await sendBack(rd, job.slice_id, out.feedback, "gate");
+  // `halt` is not a verdict on the work: the group is paused on a question only
+  // the boss can answer, and sending the slice back would spend a retry teaching
+  // the writer nothing.
+  else if (!out.halt) await sendBack(rd, job.slice_id, out.feedback, "gate");
 }
 
 /**
