@@ -45,6 +45,13 @@ export const READS = [
   // segment being in the listing, which is what `start.ts` checks.
   ".devcontainer/devcontainer.json",
   ".devcontainer.json",
+  // Task runners, opened rather than counted: a `Taskfile.yml` with no `test`
+  // task is not a project that runs `task test`, and the file existing says
+  // nothing about which tasks are in it.
+  "Taskfile.yml",
+  "Taskfile.yaml",
+  "mise.toml",
+  ".mise.toml",
 ];
 
 export interface DetectedGate {
@@ -157,6 +164,18 @@ const RULES: Rule[] = [
   {
     marker: (repo) => hasFile(repo, "justfile") || hasFile(repo, "Justfile"),
     gates: () => [{ name: "test", template: "just test", errorRegex: "(error|FAIL)" }],
+  },
+  // A declared task ranks with the conventions rather than below them: a project
+  // that wrote `test` down in its own task runner has said which command that is
+  // at least as clearly as a lockfile says which package manager.
+  {
+    marker: (repo) => taskIn(repo, "Taskfile.yml") || taskIn(repo, "Taskfile.yaml"),
+    gates: () => [{ name: "test", template: "task test", errorRegex: "(error|FAIL|failed)" }],
+  },
+  {
+    marker: (repo) => miseTask(repo, "mise.toml") || miseTask(repo, ".mise.toml"),
+    // Its own runner, since mise is already in the image for the toolchain.
+    gates: () => [{ name: "test", template: "mise run test", errorRegex: "(error|FAIL|failed)" }],
   },
   {
     marker: (repo) => hasMakeTestTarget(repo),
@@ -382,6 +401,31 @@ export function detectToolchain(repo: Root): string | null {
   if (named.length) return `mise install --yes ${named.join(" ")}`;
   return TOOL_VERSIONS.some((f) => hasFile(repo, f)) ? "mise install --yes" : null;
 }
+
+/** A `tasks:` map with a `test` in it, which is what `task test` needs to exist. */
+function taskIn(repo: Root, file: string): boolean {
+  const body = repo.read(file);
+  if (body === null) return false;
+  try {
+    return TaskfileSchema.safeParse(Bun.YAML.parse(body)).data?.tasks?.test !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/** `[tasks.test]` in a mise config, which `mise run test` needs. */
+function miseTask(repo: Root, file: string): boolean {
+  const body = repo.read(file);
+  if (body === null) return false;
+  try {
+    return MiseSchema.safeParse(Bun.TOML.parse(body)).data?.tasks?.test !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+const TaskfileSchema = z.object({ tasks: z.record(z.string(), z.json()).optional() });
+const MiseSchema = z.object({ tasks: z.record(z.string(), z.json()).optional() });
 
 /** The install command for whichever stack this repo is, or null. */
 export function detectInstall(repo: Root): string | null {

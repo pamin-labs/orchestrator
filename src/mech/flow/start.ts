@@ -55,6 +55,26 @@ async function readWorkflows(ctx: Ctx, grpId: number, files: Record<string, stri
 }
 
 /**
+ * The image a devcontainer names is said, not applied.
+ *
+ * Which image a group runs in decides what every future turn has, so it is the
+ * boss's call and `config_json.sandbox.image` is the field that makes it, in a
+ * pane that already exists. What detection owes them is knowing the project
+ * stated one.
+ */
+async function sayDeclaredImage(ctx: Ctx, grpId: number, root: Root): Promise<void> {
+  const declared = detectDevcontainer(root)?.image;
+  if (!declared || declared === ctx.config.sandbox.image) return;
+  await ctx.bus.emit({
+    grpId,
+    author: "orchestrator",
+    kind: "state_change",
+    say: msg`this project's devcontainer develops in ${{ image: declared }} — Settings → Sandbox can point the group at it`,
+    meta: { image: declared },
+  });
+}
+
+/**
  * What a fresh container needs before it can build anything, in order.
  *
  * Two steps, not one string with an `&&` in it: the toolchain is the repository's
@@ -381,20 +401,7 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   const stored = valueOr(Object.fromEntries(Object.entries(next).filter(([, v]) => v !== undefined)), JsonObject, {});
   await ctx.db.update(project).set({ config_json: stored }).where(eq(project.id, projectId));
 
-  // The image a devcontainer names is said, not applied. Changing which image a
-  // group runs in is the boss's call — it decides what every future turn has —
-  // and `config_json.sandbox.image` is the field that makes it, in a pane that
-  // already exists. What this owes them is knowing the project stated one.
-  const declared = detectDevcontainer(root)?.image;
-  if (declared && declared !== ctx.config.sandbox.image) {
-    await ctx.bus.emit({
-      grpId,
-      author: "orchestrator",
-      kind: "state_change",
-      say: msg`this project's devcontainer develops in ${{ image: declared }} — Settings → Sandbox can point the group at it`,
-      meta: { image: declared },
-    });
-  }
+  await sayDeclaredImage(ctx, grpId, root);
 
   if (!gates.length) {
     // Said plainly rather than letting the first slice fail with a puzzle. This

@@ -2473,3 +2473,40 @@ ten-line version has on the first real file it meets, and it is a test.
 - **A table of features to tools.** The map is the *namespace* — a published
   registry where the feature is named for the tool — plus a set of which names
   mise knows. A feature outside it is left alone rather than guessed at.
+
+## A declared task ranks with the conventions, not below them
+
+`detectGates` had three layers: the rule table, then the CI fallback, then
+nothing. Two sources were missing from the first layer, and both are a project
+*stating* its test command rather than following a convention:
+
+- `Taskfile.yml` with a `test:` task → `task test`
+- `mise.toml` with `[tasks.test]` → `mise run test`, and mise is already in the
+  image for the toolchain
+
+Both are opened, not counted. A `Taskfile.yml` whose tasks are `build` and
+`deploy` is not a project that runs `task test`, and the file existing says
+nothing about what is in it — which is the difference between this and a marker
+like `Cargo.toml`. `Bun.TOML` parses the second one, the way `Bun.YAML` already
+parses the first, so neither costs a dependency.
+
+**devfile is not here, deliberately.** Its `commandGroup: test` answers exactly
+this question, and it is a Red Hat/Eclipse Che format that few repositories
+outside that ecosystem ship — a rule that fires for almost nobody, over a nested
+shape (`commands[].exec.group.kind`), is a row that will be wrong before it is
+right. Reopen when a project that uses one turns up.
+
+### Two real complexity findings, both taken
+
+Not the CRAP phantom this time: `stripJsonc` was 21 cyclomatic and 34 cognitive
+as one loop with four inline branches, and `detectProject` had grown to 151
+lines. The scanner is now a loop over four named steps — `endOfString`,
+`endOfLine`, `endOfBlock`, `closesNext` — which also makes the escape rule
+readable, and the image announcement left `detectProject` as its own function.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1892 pass, 6 skip, 0 fail, 1898 across 231 files |
+| `fallow audit --gate all` | no issues in 55 changed files |

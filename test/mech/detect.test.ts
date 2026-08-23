@@ -317,3 +317,30 @@ test("an array command is argv, and an object of them is not one step", () => {
   const parallel = repo({ ".devcontainer.json": '{"postCreateCommand": {"deps": "npm i", "db": "make db"}}' });
   expect(detectInstall(parallel)).toBeNull();
 });
+
+/**
+ * A project that wrote `test` down in its own task runner has said which command
+ * that is at least as clearly as a lockfile says which package manager — so a
+ * declared task ranks with the conventions, not below them with the CI fallback.
+ */
+test("a declared test task is the gate, and only when it is declared", () => {
+  expect(detectGates(repo({ "Taskfile.yml": "version: '3'\ntasks:\n  test:\n    cmds: [go test ./...]" }))).toEqual([
+    { name: "test", template: "task test", errorRegex: "(error|FAIL|failed)" },
+  ]);
+  expect(detectGates(repo({ "mise.toml": '[tasks.test]\nrun = "cargo nextest run"' }))).toEqual([
+    { name: "test", template: "mise run test", errorRegex: "(error|FAIL|failed)" },
+  ]);
+  // The file existing says nothing about what is in it: a Taskfile whose tasks
+  // are `build` and `deploy` does not answer `task test`.
+  expect(detectGates(repo({ "Taskfile.yml": "tasks:\n  build:\n    cmds: [make]" }))).toEqual([]);
+  expect(detectGates(repo({ "mise.toml": '[tools]\nnode = "22"' }))).toEqual([]);
+  // And a file neither parser can read is not a marker either.
+  expect(detectGates(repo({ "Taskfile.yml": "tasks: [oops\n  - :" }))).toEqual([]);
+});
+
+/** `mise.toml` names tools as well as tasks, and that half is the toolchain's. */
+test("a mise config with tools but no test task still installs the toolchain", () => {
+  const dir = repo({ "mise.toml": '[tools]\nnode = "22"' });
+  expect(detectToolchain(dir)).toBe("mise install --yes");
+  expect(detectGates(dir)).toEqual([]);
+});

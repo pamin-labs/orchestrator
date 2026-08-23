@@ -22,46 +22,53 @@ export function parseJsonc(text: string): unknown {
 
 export function stripJsonc(text: string): string {
   let out = "";
-  let i = 0;
-  let inString = false;
-  while (i < text.length) {
+  for (let i = 0; i < text.length; ) {
     const c = text[i]!;
-    if (inString) {
-      out += c;
-      // A backslash escapes whatever follows, including a quote and itself, so
-      // both characters move together or `"a\\"` ends the string one short.
-      if (c === "\\" && i + 1 < text.length) out += text[++i]!;
-      else if (c === '"') inString = false;
-      i++;
-      continue;
-    }
     if (c === '"') {
-      inString = true;
+      const end = endOfString(text, i);
+      out += text.slice(i, end);
+      i = end;
+    } else if (c === "/" && text[i + 1] === "/") {
+      i = endOfLine(text, i);
+    } else if (c === "/" && text[i + 1] === "*") {
+      i = endOfBlock(text, i);
+    } else if (c === "," && closesNext(text, i)) {
+      i++;
+    } else {
       out += c;
       i++;
-      continue;
     }
-    if (c === "/" && text[i + 1] === "/") {
-      while (i < text.length && text[i] !== "\n") i++;
-      continue;
-    }
-    if (c === "/" && text[i + 1] === "*") {
-      i += 2;
-      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
-      i += 2;
-      continue;
-    }
-    // A comma with nothing but whitespace between it and the close is trailing.
-    if (c === ",") {
-      let j = i + 1;
-      while (j < text.length && /\s/.test(text[j]!)) j++;
-      if (text[j] === "}" || text[j] === "]") {
-        i++;
-        continue;
-      }
-    }
-    out += c;
-    i++;
   }
   return out;
+}
+
+/** Past the closing quote. A backslash escapes what follows — including a quote
+ *  and itself — so both characters move together or `"a\\"` ends one short. */
+function endOfString(text: string, at: number): number {
+  let i = at + 1;
+  while (i < text.length) {
+    if (text[i] === "\\") i += 2;
+    else if (text[i] === '"') return i + 1;
+    else i++;
+  }
+  return i;
+}
+
+/** Past the newline, or to the end. */
+function endOfLine(text: string, at: number): number {
+  const nl = text.indexOf("\n", at);
+  return nl === -1 ? text.length : nl;
+}
+
+/** Past `*​/`, or to the end — an unterminated block eats the rest, as a reader does. */
+function endOfBlock(text: string, at: number): number {
+  const close = text.indexOf("*/", at + 2);
+  return close === -1 ? text.length : close + 2;
+}
+
+/** Nothing but whitespace between this comma and a close: it is trailing. */
+function closesNext(text: string, at: number): boolean {
+  let i = at + 1;
+  while (i < text.length && /\s/.test(text[i]!)) i++;
+  return text[i] === "}" || text[i] === "]";
 }
