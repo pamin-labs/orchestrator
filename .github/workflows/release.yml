@@ -247,9 +247,14 @@ jobs:
       #
       # Both legs run on a native runner, so no qemu and no `if:` on the platform.
       - name: the image can do what the roles promise
+        env:
+          # Through the environment, never expanded into the script: the
+          # neighbouring step does the same, and zizmor calls the other spelling
+          # template injection whatever the value happens to be today.
+          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
-          image=orch-agent:verify-${{ matrix.platform }}
+          image="orch-agent:verify-$PLATFORM"
           docker run --rm "$image" sh -c 'set -eux; bun --version; node --version; npm --version; git --version; mise --version; rg --version | head -1'
           # The toolchain path end to end, which is the whole point of mise being
           # here: a repository that pins a version gets that tool on PATH, through
