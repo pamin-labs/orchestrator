@@ -2196,3 +2196,38 @@ already on its PATH.
   `SandboxSpecSchema` warns that concurrent groups sharing a directory is how
   `node_modules` produced EEXIST, and nothing here has measured whether mise's
   install directory is safe to share. Left until it is.
+
+## The next layer already has its parser, and it is being thrown away
+
+The plan for this round had one more deterministic layer in it: **project-level
+dependency boundaries**, the thing Uncle Bob describes as "一份 Agent 无法违反的
+规范文件". `StoredProjectConfigSchema` carries gates, install, toolchain, shared
+and sandbox — nothing about architecture — so a project driven by orchestrator
+gets no boundary enforcement at all, while this repository enforces its own with
+CLAUDE.md invariants 1–6 and fallow.
+
+The plan's mechanism was a substring scan over import-shaped lines in the changed
+files, with the ceiling written into a comment: dynamic requires missed, comments
+mentioning a path falsely hit. That mechanism is now the wrong one, and the reason
+is in this repository already:
+
+`src/mech/knowledge/symbols.ts` parses six languages with real tree-sitter
+grammars — go, javascript, python, rust, typescript, tsx — and its
+`NOT_A_DECLARATION` filter **discards exactly the nodes a boundary check needs**:
+`import`, `package`, `use_declaration`, `extern_crate`. The edges are already
+being parsed and thrown away. ADR 034 is the decision that put them there
+("symbols are parsed not matched"), and a substring scan beside a working parser
+would be the same defect that ADR closed, one directory over.
+
+Two consequences worth recording before the work is done:
+
+- **No new dependency, and no regex.** Reuse `symbols.ts`'s parser and grammar
+  table; a language with no grammar in the binary yields no edges, which fails
+  open — the direction a boundary check has to fail, since a gate that blocks
+  legitimate work is a gate somebody switches off.
+- **A ratchet is probably better than an authored rule.** Authored rules need
+  somebody to write them, a proposal path, and an approval tier. The edges are
+  derivable, so the cheaper question is "does this slice introduce a cross-module
+  edge that did not exist before?" — the same shape as the Chinese-literal
+  ratchet this repository already trusts, and it needs no configuration at all.
+  What it needs is a baseline, which is the part to measure before committing to.
