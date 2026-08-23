@@ -45,9 +45,10 @@ test("the paths that hold tests, in the languages this has to work in", () => {
 
 test("a slice that changed no test, or no source, is not a question this can answer", async () => {
   const only = fake({});
-  expect(
-    await discriminate({ ...only, worktree: "/work", baseSha: base, changed: ["src/a.ts", "src/b.ts"] }),
-  ).toEqual({ ran: false, why: "no test file changed" });
+  expect(await discriminate({ ...only, worktree: "/work", baseSha: base, changed: ["src/a.ts", "src/b.ts"] })).toEqual({
+    ran: false,
+    why: "no test file changed",
+  });
   expect(await discriminate({ ...only, worktree: "/work", baseSha: base, changed: ["test/a.test.ts"] })).toEqual({
     ran: false,
     why: "no source file changed",

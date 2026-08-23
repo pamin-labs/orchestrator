@@ -249,12 +249,16 @@ function detectFromCi(repo: Root): DetectedGate[] {
   const gates: DetectedGate[] = [];
   for (const [name, matches] of GATE_OF) {
     const candidates = commands.filter((cmd) => matches.test(cmd) && !gates.some((g) => g.template === cmd));
-    // A command that *ends* in the gate's own name is that gate; anything else
-    // merely mentions it. Measured: `bun run format:check` and `bun run lint` are
-    // both lint-shaped, and the second is the one the project calls lint. Failing
-    // that, the first in file order — CI runs the cheap check before the slow one.
-    const named = new RegExp(`(^|[\\s:/])${name}$`);
-    const found = candidates.find((cmd) => named.test(cmd)) ?? candidates[0];
+    // A command whose last word *is* the gate's own name is that gate; anything
+    // else merely mentions it. Measured: `bun run format:check` and `bun run lint`
+    // are both lint-shaped, and the second is the one the project calls lint.
+    // Failing that, the first in file order — CI runs the cheap check first.
+    // Split rather than a constructed pattern: `new RegExp` over a value is a
+    // sink `fallow security` flags on sight, and it would be right to — the
+    // difference between this table and one built from project config is one
+    // refactor, and the check reads better as the question it is asking.
+    const lastWord = (cmd: string) => cmd.split(/[\s:/]+/).at(-1);
+    const found = candidates.find((cmd) => lastWord(cmd) === name) ?? candidates[0];
     if (found) gates.push({ name, template: found, errorRegex: GATE_ERROR[name] ?? "(error|Error)" });
   }
   return gates;
