@@ -23,7 +23,10 @@ import type { DB } from "../../platform/persistence/database.ts";
 export function areaOf(path: string): string {
   // The file's directory, capped at two segments. Always a file path in, which
   // is why the callers that hold a directory append a name to it.
-  const dir = path.split("/").filter((p) => p && p !== ".").slice(0, -1);
+  const dir = path
+    .split("/")
+    .filter((p) => p && p !== ".")
+    .slice(0, -1);
   // A file at the root belongs to no area: `README.md` is not a module.
   return dir.length === 0 ? "." : dir.slice(0, 2).join("/");
 }

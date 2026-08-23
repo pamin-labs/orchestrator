@@ -203,7 +203,8 @@ export async function importsIn(rel: string, src: string): Promise<string[]> {
 const IMPORT_DEPTH = 4;
 
 /** The node types that carry a module reference, across the six grammars here. */
-const AN_IMPORT = /^(import_statement|import_from_statement|import_declaration|import_spec|use_declaration|extern_crate_declaration|call_expression)$/;
+const AN_IMPORT =
+  /^(import_statement|import_from_statement|import_declaration|import_spec|use_declaration|extern_crate_declaration|call_expression)$/;
 
 function walkImports(node: Node, out: string[], depth: number): void {
   if (AN_IMPORT.test(node.type)) {
@@ -238,7 +239,12 @@ function targetOf(node: Node): string | null {
     // Rust.
     case "use_declaration":
     case "extern_crate_declaration":
-      return node.text.replace(/^(use|extern crate)\s+/, "").replace(/[;{].*$/s, "").trim() || null;
+      return (
+        node.text
+          .replace(/^(use|extern crate)\s+/, "")
+          .replace(/[;{].*$/s, "")
+          .trim() || null
+      );
     case "call_expression":
       return requireTarget(node);
     default:

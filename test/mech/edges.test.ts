@@ -1,7 +1,16 @@
 import { expect, test } from "bun:test";
 import { areaOf, areaOfImport, edge, edgesIn } from "../../src/mech/knowledge/edges.ts";
 
-const dirs = new Set(["src", "src/mech", "src/mech/flow", "src/api", "web/src", "web/src/features", "mypkg", "mypkg/sub"]);
+const dirs = new Set([
+  "src",
+  "src/mech",
+  "src/mech/flow",
+  "src/api",
+  "web/src",
+  "web/src/features",
+  "mypkg",
+  "mypkg/sub",
+]);
 
 /**
  * The altitude an architecture rule is written at. Per file would flag every
@@ -43,5 +52,5 @@ test("a file's edges are what it imports, deduplicated", async () => {
 /** A language with no grammar in this binary yields nothing, and nothing must
  *  read as "no opinion" rather than "no imports". */
 test("a language this binary cannot parse contributes no edges", async () => {
-  expect(await edgesIn("app/Main.kt", 'import mypkg.sub.Thing', dirs)).toEqual([]);
+  expect(await edgesIn("app/Main.kt", "import mypkg.sub.Thing", dirs)).toEqual([]);
 });
