@@ -2614,6 +2614,9 @@ msgstr "S{seq} 連著 {n} 次沒過 {from}"
 msgid "S{seq} has no gate to run — this project is set to none"
 msgstr "S{seq} 沒有 gate 可跑——這個專案設成了「無」"
 
+msgid "S{seq} introduces a dependency this repository has not had: {edges}"
+msgstr "S{seq} 引入了這個儲存庫從未有過的依賴：{edges}"
+
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} 被 {from} 打回（第 {n} 次）"
 

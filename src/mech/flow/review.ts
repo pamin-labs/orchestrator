@@ -18,6 +18,9 @@ import { valueOr } from "../../contracts/json.ts";
 import type { SliceState } from "../../contracts/states.ts";
 import { gatesFor, runGates, recordGate, gateState } from "../gate.ts";
 import { discriminate, stillClean } from "./discriminate.ts";
+import { newEdges } from "./boundaries.ts";
+import { loadEdges } from "../knowledge/edges.ts";
+import { loadMap } from "../knowledge/repomap.ts";
 import { loadResource, runResource } from "../lease.ts";
 import { extractClaimedFiles, reconcile, TaskClaimSchema } from "./reconcile.ts";
 import { changedSince, checkpoint, filesAt } from "../git/gitops.ts";
@@ -218,6 +221,7 @@ export async function runDeterministicReview(
   // refactor that legitimately touches tests would go red on every slice, and a
   // gate with false reds is a gate somebody switches off.
   await recordDiscrimination(deps, slice, projectId!, changed);
+  await recordNewEdges(deps, slice, projectId!, changed);
 
   if (rec.unclaimed.length) {
     // Not a defect, but the reviewer should know what else moved.
@@ -300,6 +304,47 @@ async function recordDiscrimination(
       ? msg`S${{ seq: slice.seq }}: the new tests fail without the change, as they should`
       : msg`S${{ seq: slice.seq }}: the new tests still pass with the change reverted`,
     meta: { slice_id: slice.id, discriminates: found.discriminates },
+  });
+}
+
+/**
+ * Say which dependencies this slice introduced that the repository never had.
+ *
+ * Evidence, like the discrimination check beside it: nobody wrote down what this
+ * project's architecture is, so the answerable question is whether an edge is
+ * new, and a new edge is often simply correct. What it must not do is pass
+ * silently — an agent wiring `web/src` into `src/mech` is exactly the change a
+ * reviewer wants pointed at.
+ */
+/** Capped, and the cap is announced rather than silent: a slice touching more
+ *  than forty files is not the case this reads, and reading all of them is a
+ *  container round trip each. */
+const EDGE_FILES = 40;
+
+async function recordNewEdges(deps: ReviewDeps, slice: SliceRow, projectId: number, changed: string[]): Promise<void> {
+  const { ctx } = deps;
+  const baseline = await loadEdges(ctx.db, projectId);
+  if (!baseline.edges.length) return; // No map has been built yet; nothing to compare against.
+  const dirs = new Set((await loadMap(ctx.db, projectId)).map((n) => n.dir));
+  const git = sandboxGit(ctx, { grp: slice.grp_id });
+
+  const files: { rel: string; src: string }[] = [];
+  for (const rel of changed.slice(0, EDGE_FILES)) {
+    // From the commit, not the worktree: `recordDiscrimination` has just put the
+    // work on the branch, and `git show` costs no second copy on disk.
+    const shown = await git(["show", `HEAD:${rel}`], WORK);
+    if (shown.code === 0) files.push({ rel, src: shown.out });
+  }
+
+  const found = await newEdges({ baseline, dirs, files });
+  if (!found.edges.length) return;
+  await recordGate(ctx.db, slice.id, "boundaries", "new");
+  await ctx.bus.emit({
+    grpId: slice.grp_id,
+    author: "orchestrator",
+    kind: "gate_result",
+    say: msg`S${{ seq: slice.seq }} introduces a dependency this repository has not had: ${{ edges: found.edges.join(", ") }}`,
+    meta: { slice_id: slice.id, edges: found.edges },
   });
 }
 

@@ -2614,6 +2614,9 @@ msgstr "S{seq} failed {from} {n}x in a row"
 msgid "S{seq} has no gate to run — this project is set to none"
 msgstr "S{seq} has no gate to run — this project is set to none"
 
+msgid "S{seq} introduces a dependency this repository has not had: {edges}"
+msgstr "S{seq} introduces a dependency this repository has not had: {edges}"
+
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} sent back by {from} (attempt {n})"
 

@@ -156,10 +156,11 @@ function formatFeedback(results: GateResult[]): string {
 
 /** Merge a gate verdict into `slice.gates_json` without losing the other layers. */
 /**
- * Four words, and only one of them is a verdict on the slice.
+ * Five words, and only one of them is a verdict on the slice.
  *
- * `blind` is what the discriminator found; `none` is a layer that had nothing to
- * run, which a project with no gate chose. The panel draws only the layers in
+ * `blind` is what the discriminator found, `new` what the boundary scan found,
+ * and `none` is a layer that had nothing to run, which a project with no gate
+ * chose. The panel draws only the layers in
  * `STOPS` and reddens on `"fail"` alone, so the other two are evidence without a
  * colour — and a pull request that says `gate: none` has said something true that
  * `gate: pass` would not have.
@@ -168,7 +169,7 @@ export async function recordGate(
   db: DB,
   sliceId: number,
   layer: string,
-  verdict: "pass" | "fail" | "blind" | "none",
+  verdict: "pass" | "fail" | "blind" | "none" | "new",
 ): Promise<void> {
   const gates = await gateState(db, sliceId);
   gates[layer] = verdict;

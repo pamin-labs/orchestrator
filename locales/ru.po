@@ -2614,6 +2614,9 @@ msgstr "S{seq} не прошёл {from} {n} раз подряд"
 msgid "S{seq} has no gate to run — this project is set to none"
 msgstr "Для S{seq} нет гейта — у этого проекта он выставлен как «нет»"
 
+msgid "S{seq} introduces a dependency this repository has not had: {edges}"
+msgstr "S{seq} вводит зависимость, которой у этого репозитория никогда не было: {edges}"
+
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} возвращена {from} (попытка {n})"
 

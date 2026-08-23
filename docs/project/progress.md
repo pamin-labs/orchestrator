@@ -2510,3 +2510,90 @@ readable, and the image announcement left `detectProject` as its own function.
 |---|---|
 | `bun run test` | 1892 pass, 6 skip, 0 fail, 1898 across 231 files |
 | `fallow audit --gate all` | no issues in 55 changed files |
+
+## The boundary layer, built the way ADR 034 already decided
+
+`StoredProjectConfigSchema` carries gates, install, toolchain, shared and
+sandbox — nothing about architecture. This repository enforces its own with
+invariants 1–6 and `fallow`; a project driven by orchestrator got nothing.
+
+The plan for this round proposed authored rules (`boundaries: [{from, deny}]`)
+checked by a substring scan over import-shaped lines, with the ceiling written
+into a comment: dynamic requires missed, a comment mentioning a path falsely hit.
+Both halves turned out to be wrong, and the repository said so:
+
+- **The parser is already here.** `symbols.ts` parses six languages with real
+  tree-sitter grammars, and its `NOT_A_DECLARATION` filter discards exactly the
+  nodes this needs — `import`, `package`, `use_declaration`, `extern_crate`. A
+  regex beside a working parser is the defect ADR 034 closed, one directory over.
+- **Authored rules would have shipped inert.** They need somebody to write them,
+  a channel to propose them and a tier to approve them — and a feature nobody
+  configures is a feature that never fires, which this branch has already learned
+  once today. The edges are derivable, so the answerable question is not "is this
+  edge right" but **"is this edge new"**: the repository's own history is the
+  statement, the same shape as the Chinese-literal ratchet already trusted here.
+
+### Measured into shape, three times
+
+`importsIn` was written against the grammars and then run against six languages,
+which is the only way the shapes come out:
+
+| | first attempt | after |
+|---|---|---|
+| Go | the whole `import (…)` block, plus each path with its quotes | `fmt`, `example.com/x/y` |
+| Python | `from mypkg.sub import thing` → `"mypkg.sub import thing"` | `mypkg.sub` |
+| Rust | correct from the start | `crate::mech::gate` |
+
+One generic fallback became one branch per node type, using the field each grammar
+gives — `import_spec.path`, `import_from_statement.module_name` — because Go
+spells its string node `interpreted_string_literal` and a generic `string` lookup
+never matched it.
+
+Then the resolver, the same way: `areaOf("src/gate.ts")` answered `src/gate.ts`
+until it dropped the filename first, and a prefix walk answered `src` for `zod`
+on the strength of `src` existing — which would have made **every third-party
+package an edge**. A module name has to match a directory outright now; only a
+relative path, whose last segment really is a file, may walk.
+
+### Evidence, and the third reason is the honest one
+
+`gates_json.boundaries: "new"` and the pairs on the event. Not a verdict, for
+three reasons, and the third is not a hedge: the baseline is built from the files
+an indexing budget read, so an unread area has no edges *recorded* rather than
+none (checked, and an unread area is skipped); a language with no grammar here
+contributes nothing; and **a new edge is often simply correct**. What it must not
+do is pass silently — an agent wiring `web/src` into `src/mech` is exactly the
+change a reviewer wants pointed at.
+
+The baseline rides on the watchdog pass that already reads every tracked file to
+build the repo map, so the graph costs one `Set` and no new I/O.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1899 pass, 6 skip, 0 fail, 1905 across 233 files |
+| `fallow audit --gate all` | no issues in 61 changed files |
+| new tests | 4 for the edge model, 3 for the check, 6 languages through the extractor |
+
+`fallow` also caught the two functions sharing a nine-line parse preamble; they
+share `parsed(rel, src, read)` now, which is also where the "free the tree either
+way" comment belongs.
+
+## What the mise cache measurement answered
+
+`/opt/mise` is **not** a `cacheDirs` entry, and the reason is not the one the plan
+expected. Concurrency was the open question: four `mise install` runs racing on
+one empty shared directory all exit 0, with correct version symlinks — mise locks
+its installs, and the `node_modules` EEXIST that `cacheDirs` warns about does not
+happen here.
+
+The blocker is trust, not races. A package cache holds archives; `/opt/mise/installs`
+holds **executables that every gate then runs**. Sharing it between group
+containers means a compromised toolchain in one group is code execution in every
+other — and the group boundary is the product's main security claim. Paying the
+download per container is the cheaper side of that trade.
+
+If it is ever worth revisiting, the shape is per-project rather than fleet-wide:
+groups of one project already share a repository and a branch, so they share a
+blast radius already.

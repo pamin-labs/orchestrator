@@ -2614,6 +2614,9 @@ msgstr "S{seq} が {from} を {n} 回連続で通りませんでした"
 msgid "S{seq} has no gate to run — this project is set to none"
 msgstr "S{seq} に実行するゲートはありません — このプロジェクトは「なし」に設定されています"
 
+msgid "S{seq} introduces a dependency this repository has not had: {edges}"
+msgstr "S{seq} はこのリポジトリにこれまでなかった依存を持ち込みます: {edges}"
+
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} は {from} に差し戻されました（{n} 回目）"
 

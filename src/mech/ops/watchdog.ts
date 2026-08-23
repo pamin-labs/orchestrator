@@ -64,6 +64,7 @@ import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { buildMap, indexExcludes, loadMap, saveMap } from "../knowledge/repomap.ts";
+import { areaOf, edgesIn, saveEdges } from "../knowledge/edges.ts";
 import { resumeReclaimed } from "../../platform/scheduling/scheduler.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
 import { probe } from "../sandbox/net.ts";
@@ -570,6 +571,18 @@ async function refreshMap(ctx: Ctx, p: MapProject, findings: Finding[]): Promise
     await indexExcludes(ctx.db, p.id),
     (rel) => heads.get(rel),
   );
+  // The same contents, read once. An import graph is the other thing a parse of
+  // every file can answer, and `edges.ts` needs exactly what is already in hand:
+  // the directories this repository has, and the files that were read.
+  const dirs = new Set(named.map((n) => n.dir));
+  const edges: string[] = [];
+  const areas = new Set<string>();
+  for (const [rel, src] of heads) {
+    areas.add(areaOf(rel));
+    edges.push(...(await edgesIn(rel, src, dirs)));
+  }
+  await saveEdges(ctx.db, p.id, edges, [...areas]);
+
   if (await saveMap(ctx.db, p.id, named)) {
     await ctx.bus.emit({
       author: roleFor(ctx, "compress_context"),

@@ -141,6 +141,26 @@ function collect(node: Node, out: string[], depth: number, max: number): void {
  * it is what every language got before this module existed.
  */
 export async function symbolsIn(rel: string, src: string, max: number): Promise<string[]> {
+  return parsed(rel, src, (root, wasm) => {
+    const out: string[] = [];
+    const exportsOnly = EXPORTS_ONLY.has(wasm);
+    for (const top of root.namedChildren) {
+      if (exportsOnly && top.type !== "export_statement") continue;
+      collect(top, out, DEPTH, max);
+    }
+    return out;
+  });
+}
+
+/**
+ * One parse, handed to whoever asked, and freed either way.
+ *
+ * The tree is wasm memory the GC cannot see, and the repo map is rebuilt every
+ * watchdog tick over every tracked file — so a leak here is measured in
+ * repositories rather than in files. A language with no grammar in this binary
+ * yields `[]`, which every caller must read as "no opinion".
+ */
+async function parsed(rel: string, src: string, read: (root: Node, wasm: string) => string[]): Promise<string[]> {
   const dot = rel.lastIndexOf(".");
   const wasm = dot < 0 ? undefined : GRAMMAR[rel.slice(dot + 1).toLowerCase()];
   if (!wasm) return [];
@@ -148,17 +168,92 @@ export async function symbolsIn(rel: string, src: string, max: number): Promise<
   const tree = parser.parse(src);
   if (!tree) return [];
   try {
-    const out: string[] = [];
-    const exportsOnly = EXPORTS_ONLY.has(wasm);
-    for (const top of tree.rootNode.namedChildren) {
-      if (exportsOnly && top.type !== "export_statement") continue;
-      collect(top, out, DEPTH, max);
-    }
-    return out;
+    return read(tree.rootNode, wasm);
   } finally {
-    // The tree is wasm memory the GC cannot see. The repo map is rebuilt every
-    // watchdog tick over every tracked file, so a leak here is measured in
-    // repositories rather than in files.
     tree.delete();
   }
 }
+
+/**
+ * Where a file imports from, as the strings it names them by.
+ *
+ * The same parse `symbolsIn` does, keeping what it throws away: its
+ * `NOT_A_DECLARATION` filter drops `import`, `package`, `use_declaration` and
+ * `extern_crate` — exactly the nodes an architecture rule is about.
+ */
+/** A string, not a resolved path: `"../gate.ts"`, `"crate::mech"`, `"os.path"`.
+ *  Resolution is per-language and belongs to whoever compares these, which can
+ *  do it with the importing file's own path. */
+/** A language with no grammar in this binary yields nothing, and a caller must
+ *  read that as "no opinion" rather than "no imports". Failing open is the only
+ *  safe direction for a check that blocks work. */
+export async function importsIn(rel: string, src: string): Promise<string[]> {
+  return parsed(rel, src, (root) => {
+    const out: string[] = [];
+    walkImports(root, out, IMPORT_DEPTH);
+    return [...new Set(out)];
+  });
+}
+
+/**
+ * Import nodes are not always top-level — Python puts them inside functions,
+ * Go groups them in a block, Rust nests `use` in modules — so this descends,
+ * bounded rather than unbounded.
+ */
+const IMPORT_DEPTH = 4;
+
+/** The node types that carry a module reference, across the six grammars here. */
+const AN_IMPORT = /^(import_statement|import_from_statement|import_declaration|import_spec|use_declaration|extern_crate_declaration|call_expression)$/;
+
+function walkImports(node: Node, out: string[], depth: number): void {
+  if (AN_IMPORT.test(node.type)) {
+    const target = targetOf(node);
+    if (target) out.push(target);
+    // Not `return`: Go's `import_declaration` holds an `import_spec` per line.
+  }
+  if (depth > 0) for (const child of node.namedChildren) walkImports(child, out, depth - 1);
+}
+
+/**
+ * The module a node names, by the field the grammar gives it.
+ *
+ * One branch per shape rather than one fallback for all of them, because the
+ * fallback was measured wrong three ways: Go returned its whole `import (…)`
+ * block *and* each path with the quotes still on, and Python turned
+ * `from mypkg.sub import thing` into `"mypkg.sub import thing"`.
+ */
+function targetOf(node: Node): string | null {
+  switch (node.type) {
+    // Go: the block holds one spec per line, and the spec has the path.
+    case "import_declaration":
+      return null;
+    case "import_spec":
+      return literal(node.childForFieldName("path"));
+    // Python.
+    case "import_from_statement":
+      return node.childForFieldName("module_name")?.text ?? null;
+    case "import_statement":
+      // JS and TS carry a source; Python's has none and names dotted paths.
+      return literal(node.childForFieldName("source")) ?? node.descendantsOfType("dotted_name")[0]?.text ?? null;
+    // Rust.
+    case "use_declaration":
+    case "extern_crate_declaration":
+      return node.text.replace(/^(use|extern crate)\s+/, "").replace(/[;{].*$/s, "").trim() || null;
+    case "call_expression":
+      return requireTarget(node);
+    default:
+      return null;
+  }
+}
+
+/** `require("x")`, and nothing else that happens to be a call. */
+function requireTarget(node: Node): string | null {
+  if (node.child(0)?.text !== "require") return null;
+  return literal(node.descendantsOfType("string")[0]);
+}
+
+/** A string literal's value. Go spells the node `interpreted_string_literal`,
+ *  which is why this takes the node and not a type name. */
+const literal = (node: Node | null | undefined): string | null => (node ? unquote(node.text) : null);
+
+const unquote = (s: string) => s.replace(/^["'`]|["'`]$/g, "");

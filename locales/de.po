@@ -2614,6 +2614,9 @@ msgstr "S{seq} ist {n}-mal in Folge an {from} gescheitert"
 msgid "S{seq} has no gate to run — this project is set to none"
 msgstr "S{seq} hat kein Gate auszuführen — dieses Projekt steht auf keines"
 
+msgid "S{seq} introduces a dependency this repository has not had: {edges}"
+msgstr "S{seq} führt eine Abhängigkeit ein, die dieses Repository nie hatte: {edges}"
+
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} von {from} zurückgegeben (Versuch {n})"
 
