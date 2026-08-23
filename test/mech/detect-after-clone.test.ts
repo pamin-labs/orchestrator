@@ -88,6 +88,8 @@ test("the first clone is what works out the gates, the install command and the s
   expect(cfg.gates?.sort()).toEqual(["lint", "test", "typecheck"]);
   expect((await gatesFor(h.db, 1)).sort()).toEqual(["lint", "test", "typecheck"]);
   expect(cfg.install).toBe("bun install --frozen-lockfile");
+  // Nothing pins a toolchain here, so the image's own is what runs.
+  expect(cfg.toolchain).toBeNull();
   expect(cfg.shared).toContain("packages/*/package.json");
 
   // Read from the container, never from a host path.
@@ -157,4 +159,23 @@ test("a repository with nothing detectable says so instead of failing silently l
       "no gates detected in this repository. Every slice will fail review until this project has at least one: add a resource template and list its name in the project's gates.",
     ).id,
   );
+});
+
+/**
+ * A stack the image has no compiler for, which is every stack but this one.
+ *
+ * The repository already says which version it wants; `mise install` is the one
+ * command that reads all nine ways of saying it, and it is recorded like the
+ * install so a container rebuilt after its TTL replays both, in order.
+ */
+test("a repository that pins its toolchain gets it installed before its dependencies", async () => {
+  const h = await harness({ ".tool-versions": "erlang 27.0\nelixir 1.17", "mix.exs": "defmodule X" });
+
+  await detectProject(h.ctx, 1, 1);
+
+  const cfg = await config(h.db);
+  expect(cfg.toolchain).toBe("mise install --yes");
+  // No install command: `mix.exs` alone does not say which manager, which is the
+  // bootstrap role's question — the toolchain is not.
+  expect(cfg.install).toBeNull();
 });

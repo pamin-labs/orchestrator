@@ -26,6 +26,7 @@ import { valueOr, type Json } from "../../contracts/json.ts";
 const ReadProjectConfigSchema = StoredProjectConfigSchema.extend({
   detected: StoredProjectConfigSchema.shape.detected.catch(undefined),
   gates: StoredProjectConfigSchema.shape.gates.catch(undefined),
+  toolchain: StoredProjectConfigSchema.shape.toolchain.catch(undefined),
   install: StoredProjectConfigSchema.shape.install.catch(undefined),
   shared: StoredProjectConfigSchema.shape.shared.catch(undefined),
   sandbox: StoredProjectConfigSchema.shape.sandbox.catch(undefined),

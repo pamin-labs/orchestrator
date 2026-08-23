@@ -30,6 +30,13 @@ prompt: |
   one. A repo that pins its package manager in `packageManager` or `.tool-versions`
   is telling you which one to use.
 
+  The **toolchain** is already handled and is not your job. If this repository
+  pins one — `mise.toml`, `.tool-versions`, `.nvmrc`, `.python-version`,
+  `.go-version`, `go.mod` — `mise install` has already run and its compilers are
+  on your PATH. Check with `mise ls` before concluding a language is missing. What
+  is left for you is the *dependencies*: the step a developer runs after the
+  compiler is there.
+
   Then run it, once:
 
       orch setup --cmd "<the command>"

@@ -2121,3 +2121,78 @@ Nine catalogues, filled by hand, `zh-Hant` generated.
 - **Running it without a `test` gate.** A project verified by a build or a lint has
   no question to ask here, and asking it with the wrong resource would answer
   about something else.
+
+## Every stack but this one arrived to find no compiler
+
+`docker/agent.Dockerfile` holds bun, node, git and ripgrep — what *this* project
+needs. A Rust crate, a Go module, a Python service, an Elixir app: the clone
+succeeded, the install failed, and the group reported a broken repository. The
+gate table was only the visible half of "orchestrator works on TypeScript
+projects"; this was the other half, one layer down.
+
+A longer image is not the fix. That same Dockerfile records why — 340.9s per group
+for an agent to install a toolchain itself, against 3.8s for a prepared image —
+but five toolchains preinstalled is a slow pull for the four nobody uses, and it
+still has no row for the sixth.
+
+### Rented, not written
+
+[mise](https://mise.jdx.dev/dev-tools/) reads what the repository already declares
+— `mise.toml`, `.tool-versions`, `.nvmrc`, `.python-version`, `.go-version`,
+`.ruby-version`, `.java-version`, the `toolchain` line in `go.mod` — and installs
+exactly that. One binary in the image, and the per-language install logic that
+would otherwise have grown in `detect.ts` never gets written. `detectToolchain` is
+a list of **filenames**, deliberately: a table of languages is the shape
+`detectGates` is being moved away from, and a toolchain table would be that table
+with longer rows.
+
+Two details are what make it work non-interactively, and both are mise's own
+documented answers rather than something invented here:
+
+- **Shims on PATH**, not `mise activate`. Activation is for an interactive shell
+  and nothing here has one; a shims directory means a gate command sees the
+  toolchain without knowing mise exists.
+- **`MISE_IDIOMATIC_VERSION_FILE_ENABLE_TOOLS`.** Idiomatic version files are off
+  by default (`idiomatic_version_file_enable_tools` is `[]`) because outside a
+  container they are somebody else's files. In here they are the whole point: a
+  repository pinning its Go in `.go-version` and nothing else is exactly the one
+  that arrives to find no compiler.
+
+Pinned and checksummed like the Node tarball above it, and checked against the
+release's own `SHASUMS256.txt` rather than against a second download of the same
+bytes.
+
+### Two ordered steps, not one string with an `&&` in it
+
+`config_json.install` became `toolchain` then `install`, run by `runSetup` in that
+order and both recorded — so a container rebuilt after its TTL replays both,
+rather than waking with a checkout it cannot compile. The alternative was joining
+them with `&&`, which is how you hide an ordering inside a string; the plan for
+this round said `setup: string[]`, and two fields with names turned out to be
+smaller and say more. Nobody has a third step.
+
+`bootstrap.yaml` is told the toolchain is already handled and to check `mise ls`
+before concluding a language is missing — otherwise the role whose job is "leave
+this worktree able to build" would install a second copy of a compiler that is
+already on its PATH.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1879 pass, 6 skip, 0 fail, 1885 across 230 files |
+| `fallow audit --gate all` | no issues in 45 changed files |
+| image | one binary, pinned to 2026.8.10, both architectures checksummed |
+
+### Not taken
+
+- **`setup: string[]`.** Speculative generality: two named steps are the two steps
+  that exist, and a list would have to be validated, ordered and explained.
+- **Preinstalling toolchains in the image.** The measurement above cuts both ways:
+  paying once beats paying per group, but only for a toolchain that gets used.
+- **A `cacheDirs` entry for `/opt/mise`.** It would make the download per host
+  rather than per container, and the field exists for exactly that — but
+  `SandboxSpecSchema` warns that concurrent groups sharing a directory is how
+  `node_modules` produced EEXIST, and nothing here has measured whether mise's
+  install directory is safe to share. Left until it is.

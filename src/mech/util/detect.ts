@@ -260,6 +260,39 @@ function detectFromCi(repo: Root): DetectedGate[] {
   return gates;
 }
 
+/**
+ * The files a repository uses to pin its toolchain — every one of them a file
+ * mise already reads, which is why this is a list of names and not a parser.
+ *
+ * `go.mod` is not here: it pins a Go version in a line rather than a file, and
+ * mise reads it as one of the idiomatic sources the image enables.
+ */
+const TOOL_VERSIONS = [
+  "mise.toml",
+  ".mise.toml",
+  ".tool-versions",
+  ".nvmrc",
+  ".node-version",
+  ".python-version",
+  ".go-version",
+  ".ruby-version",
+  ".java-version",
+  "go.mod",
+];
+
+/**
+ * How to put this repository's own toolchain in the container, or null.
+ *
+ * One command, because the answer to "which compiler, at which version" is
+ * already written in the repository and mise is the thing that reads all nine
+ * ways of writing it. What this must never become is a table of languages: that
+ * is the shape `detectGates` is being moved *away* from, and a toolchain table
+ * would be the same table with longer rows.
+ */
+export function detectToolchain(repo: Root): string | null {
+  return TOOL_VERSIONS.some((f) => hasFile(repo, f)) ? "mise install --yes" : null;
+}
+
 /** The install command for whichever stack this repo is, or null. */
 export function detectInstall(repo: Root): string | null {
   for (const r of RULES) if (r.marker(repo)) return r.install?.(repo) ?? null;

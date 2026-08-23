@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { detectGates, detectInstall, detectShared, type Root, WORKFLOWS } from "../../src/mech/util/detect.ts";
+import {
+  detectGates,
+  detectInstall,
+  detectShared,
+  detectToolchain,
+  type Root,
+  WORKFLOWS,
+} from "../../src/mech/util/detect.ts";
 
 /**
  * A repository root, as detection sees one.
@@ -231,4 +238,32 @@ test("the command named for the gate beats the one that only mentions it", () =>
     lint: "bun run lint",
     test: "bun run test",
   });
+});
+
+/**
+ * The image holds bun, node and git — what *this* project needs. Every other
+ * stack arrived to find no compiler, and a longer image is not the fix: five
+ * toolchains preinstalled is a slow pull for the four nobody uses.
+ *
+ * Nine ways to write down a version and one thing that reads all of them, so this
+ * is a list of filenames rather than a second table of languages.
+ */
+test("a repository that pins its own toolchain gets one command to install it", () => {
+  for (const f of [
+    "mise.toml",
+    ".mise.toml",
+    ".tool-versions",
+    ".nvmrc",
+    ".node-version",
+    ".python-version",
+    ".go-version",
+    ".ruby-version",
+    ".java-version",
+    "go.mod",
+  ])
+    expect({ pinned: f, cmd: detectToolchain(repo({ [f]: "" })) }).toEqual({ pinned: f, cmd: "mise install --yes" });
+});
+
+test("a repository that pins nothing is left with the image's own toolchain", () => {
+  expect(detectToolchain(repo({ "package.json": "{}", "Cargo.toml": "" }))).toBeNull();
 });

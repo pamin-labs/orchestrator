@@ -107,6 +107,8 @@ export const StoredProjectConfigSchema = z
   .object({
     detected: z.boolean().optional(),
     gates: z.array(z.string()).optional(),
+    /** What puts this repository's own compiler in the container, before install. */
+    toolchain: z.string().nullable().optional(),
     install: z.string().nullable().optional(),
     shared: z.array(z.string()).optional(),
     sandbox: SandboxOverrideSchema.optional(),

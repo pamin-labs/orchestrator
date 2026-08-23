@@ -8,7 +8,15 @@ import { createCheckout, remoteFor } from "../git/checkout.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
 import { execIn, execLines, WORK } from "../sandbox/sandbox.ts";
-import { detectGates, detectInstall, detectShared, READS, type Root, WORKFLOWS } from "../util/detect.ts";
+import {
+  detectGates,
+  detectInstall,
+  detectShared,
+  detectToolchain,
+  READS,
+  type Root,
+  WORKFLOWS,
+} from "../util/detect.ts";
 import { shq } from "../../platform/process/shell.ts";
 import { baseRefFor } from "../git/checkout.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
@@ -45,10 +53,26 @@ async function readWorkflows(ctx: Ctx, grpId: number, files: Record<string, stri
   return names;
 }
 
-/** `project.config_json.install`, or null. */
-async function installFor(db: DB, projectId: number): Promise<string | null> {
-  const v = (await projectConfig(db, projectId)).install;
-  return v?.trim() ? v : null;
+/**
+ * What a fresh container needs before it can build anything, in order.
+ *
+ * Two steps, not one string with an `&&` in it: the toolchain is the repository's
+ * own compiler, the install is its dependencies, and the second cannot run before
+ * the first. Both are recorded, so a container rebuilt after its TTL replays them
+ * in the same order rather than waking up with a checkout it cannot compile.
+ */
+async function setupSteps(db: DB, projectId: number): Promise<string[]> {
+  const cfg = await projectConfig(db, projectId);
+  return [cfg.toolchain, cfg.install].filter((v): v is string => Boolean(v?.trim()));
+}
+
+/** Every step, in order, stopping at the first that fails. */
+async function runSetup(ctx: Ctx, grpId: number, steps: string[]): Promise<{ ok: boolean; tail: string; cmd: string }> {
+  for (const cmd of steps) {
+    const r = await runInstall(ctx, grpId, cmd);
+    if (!r.ok) return { ...r, cmd };
+  }
+  return { ok: true, tail: "", cmd: "" };
 }
 
 /**
@@ -207,9 +231,9 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     },
   );
 
-  const known = await installFor(ctx.db, grp.project_id);
-  if (known) {
-    const dep = await runInstall(ctx, grpId, known);
+  const known = await setupSteps(ctx.db, grp.project_id);
+  if (known.length) {
+    const dep = await runSetup(ctx, grpId, known);
     if (dep.ok) return;
   }
   // No recorded command, or the recorded one stopped working: the same role that
@@ -219,8 +243,10 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     priority: 9,
     payload: {
       role: roleFor(ctx, "bootstrap_env"),
-      ...(known
-        ? { rejection: `The sandbox was rebuilt and the install command on record does not work any more: ${known}` }
+      ...(known.length
+        ? {
+            rejection: `The sandbox was rebuilt and the setup on record does not work any more: ${known.join(" then ")}`,
+          }
         : {}),
     },
   });
@@ -335,6 +361,7 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
     ...cfg,
     detected: true,
     gates: cfg.gates?.length ? cfg.gates : gates.map((g) => g.name),
+    toolchain: detectToolchain(root),
     install: detectInstall(root),
     shared: detectShared(root),
   };
@@ -401,16 +428,16 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         // nobody enumerates those, and the repo says which one it is. What
         // changed is where it runs: the agent installs inside its own sandbox,
         // so there is nothing left for the orchestrator to do on its behalf.
-        const known = await installFor(ctx.db, grp.project_id);
-        if (known) {
-          const dep = await runInstall(ctx, grpId, known);
+        const known = await setupSteps(ctx.db, grp.project_id);
+        if (known.length) {
+          const dep = await runSetup(ctx, grpId, known);
           if (!dep.ok)
             await ctx.sched.enqueue("agent_turn", {
               grp_id: grpId,
               priority: 9,
               payload: {
                 role: roleFor(ctx, "bootstrap_env"),
-                rejection: `The install command on record does not work any more: ${known}\n${dep.tail}`,
+                rejection: `The setup command on record does not work any more: ${dep.cmd}\n${dep.tail}`,
               },
             });
         } else {

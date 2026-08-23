@@ -117,6 +117,52 @@ RUN set -eux; \
 ARG NPM_VERSION=12.0.2
 RUN npm install -g --no-fund --no-audit "npm@${NPM_VERSION}"
 
+# mise, so "which toolchain does this project need" is a command rather than a
+# table in this repository.
+#
+# The image holds bun, node and git because those are what *this* project needs.
+# Every other one — a Rust crate, a Go module, a Python service, an Elixir app —
+# arrived to find no compiler, and the fix cannot be a longer image: five
+# toolchains preinstalled is a slow pull for four of them nobody uses.
+#
+# mise reads what the repository already declares — `mise.toml`, `.tool-versions`,
+# `.nvmrc`, `.python-version`, `.go-version`, the `toolchain` line in `go.mod` —
+# and installs exactly that. One binary, and the per-language install logic that
+# would otherwise live in `detect.ts` does not get written.
+#
+# Shims rather than `mise activate`: activation is for an interactive shell, and
+# nothing here has one. A shims directory on PATH is how mise documents this for
+# CI and non-interactive use, and it means a gate command sees the toolchain
+# without knowing mise exists.
+#
+# `/opt/mise`, not `$HOME`: whether this container runs as root is the base
+# image's business and it has changed before. Mode 1777 for the same reason `/tmp`
+# has it — one throwaway container per group, and everything in it is already the
+# agent's.
+ARG MISE_VERSION=2026.8.10
+RUN set -eux; \
+    case "${TARGETARCH:-amd64}" in \
+      amd64) arch=x64; sha=e013fe11a0a9055fe78d2546baa85eba90a56e6445c431021b4fe328e6910fe2 ;; \
+      arm64) arch=arm64; sha=5fd8a9ffb312b47e29f642d377ad4fa9093962b47061ef5c15665086904e1046 ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    archive="mise-v${MISE_VERSION}-linux-${arch}.tar.gz"; \
+    curl -fsSLO "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/${archive}"; \
+    echo "${sha}  ${archive}" | sha256sum --check -; \
+    tar -xzf "${archive}" -C /usr/local/bin --strip-components=2 mise/bin/mise; \
+    rm "${archive}"; \
+    mkdir -p /opt/mise; \
+    chmod 1777 /opt/mise; \
+    mise --version
+ENV MISE_DATA_DIR=/opt/mise
+ENV PATH=/opt/mise/shims:$PATH
+# `.nvmrc`, `.python-version`, `.go-version` and friends are off by default —
+# `idiomatic_version_file_enable_tools` is `[]`, because outside a container they
+# are somebody else's files and mise will not read them uninvited. In here they
+# are the whole point: a repository that pins its Go in `.go-version` and nothing
+# else is exactly the one that arrives to find no compiler.
+ENV MISE_IDIOMATIC_VERSION_FILE_ENABLE_TOOLS=node,python,go,ruby,java
+
 ARG CLAUDE_CODE_VERSION=2.1.233
 ARG CODEX_VERSION=0.147.0
 RUN npm install -g --no-fund --no-audit \
