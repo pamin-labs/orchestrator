@@ -1808,6 +1808,9 @@ msgstr "このリポジトリではゲートが見つかりません。少なく
 msgid "No gates enabled; LLM review has no floor."
 msgstr "ゲートが 1 つも有効になっていません。LLM のレビューに下限がない状態です。"
 
+msgid "no gates for this project"
+msgstr "このプロジェクトにゲートがない"
+
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "grp テーブルに {grp} がないため /work は空のままです — このターンで動かすコードがありません"
 
@@ -1960,6 +1963,9 @@ msgstr "まだ始まっていません。前のスライスが受け入れられ
 
 msgid "Notes"
 msgstr "ノート"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "このプロジェクトに対して決定的に実行できるものが何もないため、どのスライスも検証できません。「設定 → Gates」でコマンドを追加してください。あるいは空のリストを保存すれば、このプロジェクトにはゲートがないという意味になり、スライスはゲートなしでレビューに進みます。"
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "GitHub 側は何も変わりません。ブランチも PR もそのまま、コードは 1 行も触りません。消えるのは、このマシンにある作業のコピーです。"
@@ -2604,6 +2610,9 @@ msgstr "S{seq} が {from} で {n} 回連続して不合格 — コードでは�
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq} が {from} を {n} 回連続で通りませんでした"
+
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "S{seq} に実行するゲートはありません — このプロジェクトは「なし」に設定されています"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} は {from} に差し戻されました（{n} 回目）"

@@ -1808,6 +1808,9 @@ msgstr "이 저장소에서 게이트를 하나도 찾지 못했습니다. 최�
 msgid "No gates enabled; LLM review has no floor."
 msgstr "게이트가 하나도 켜져 있지 않습니다. LLM 리뷰에 바닥이 없습니다."
 
+msgid "no gates for this project"
+msgstr "이 프로젝트에 게이트가 없음"
+
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "grp 테이블에 {grp}이(가) 없어 /work가 비어 있습니다 — 이번 턴에 돌릴 코드가 없습니다"
 
@@ -1960,6 +1963,9 @@ msgstr "아직 시작하지 않았습니다. 앞의 슬라이스가 수락되기
 
 msgid "Notes"
 msgstr "노트"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "이 프로젝트에 대해 결정적으로 실행할 수 있는 것이 없어 어떤 슬라이스도 검증할 수 없습니다. 설정 → Gates에서 명령을 추가하세요. 또는 빈 목록을 저장하면 이 프로젝트에는 게이트가 없다는 뜻이 되고, 슬라이스는 게이트 없이 리뷰로 넘어갑니다."
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "GitHub 쪽은 아무것도 바뀌지 않습니다. 브랜치도 PR도 그대로이고 코드는 한 줄도 건드리지 않습니다. 지워지는 건 이 기기에 있는 작업 사본입니다."
@@ -2604,6 +2610,9 @@ msgstr "S{seq}이(가) {from}에서 {n}회 연속 실패 — 코드가 아니라
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq}이(가) {from}을(를) {n}번 연속으로 통과하지 못했습니다"
+
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "S{seq}에 실행할 게이트가 없습니다 — 이 프로젝트는 '없음'으로 설정되어 있습니다"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq}이(가) {from}에 의해 반려되었습니다 ({n}번째)"

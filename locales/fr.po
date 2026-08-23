@@ -1808,6 +1808,9 @@ msgstr "aucun gate détecté dans ce dépôt. Chaque tranche échouera à la rev
 msgid "No gates enabled; LLM review has no floor."
 msgstr "Aucun gate activé ; la relecture du LLM n'a aucun plancher."
 
+msgid "no gates for this project"
+msgstr "ce projet n'a aucune porte"
+
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "aucun groupe {grp} dans la table grp, donc /work est toujours vide — il n'y a pas de code à exécuter ce tour-ci"
 
@@ -1960,6 +1963,9 @@ msgstr "Pas encore démarré ; en attente de l'acceptation des tranches précéd
 
 msgid "Notes"
 msgstr "Notes"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "Rien de déterministe ne peut être exécuté sur ce projet, donc aucune tranche ne peut être vérifiée. Ajoute les commandes dans Réglages → Gates — ou enregistre une liste vide pour dire que ce projet n'a pas de porte, et les tranches iront en revue sans."
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "Rien ne change sur GitHub : les branches sont là, les PR sont là, pas une ligne de code n'est touchée. Ce qui disparaît, c'est la copie du travail sur cette machine."
@@ -2604,6 +2610,9 @@ msgstr "S{seq} a échoué chez {from} {n} fois — ce sont probablement les crit
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq} a échoué {n} fois d'affilée à {from}"
+
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "S{seq} n'a aucune porte à exécuter — ce projet est réglé sur aucune"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} renvoyée par {from} (tentative {n})"

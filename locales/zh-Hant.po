@@ -1808,6 +1808,9 @@ msgstr "這個儲存庫裡沒檢測到任何閘門。在專案至少有一個之
 msgid "No gates enabled; LLM review has no floor."
 msgstr "一道都沒開，LLM 審閱底下就沒有地板。"
 
+msgid "no gates for this project"
+msgstr "這個專案沒有 gate"
+
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "grp 表裡沒有 {grp} 這個需求，所以 /work 還是空的 —— 這一回合沒有程式碼可跑"
 
@@ -1960,6 +1963,9 @@ msgstr "還沒開工，等前面的切片查收。"
 
 msgid "Notes"
 msgstr "記錄"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "這個專案沒有任何可以確定性執行的檢查，所以沒有切片能被驗證。在「設定 → Gates」裡補上命令——或者儲存一個空列表，表示這個專案就是沒有 gate，切片將不帶 gate 進入審查。"
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "GitHub 上什麼都不動：分支還在，PR 還在，程式碼一行不少。移除的只是這臺機器上的這份工作。"
@@ -2604,6 +2610,9 @@ msgstr "S{seq} 連續 {n} 次沒過 {from} —— 大概是驗收標準的問題
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq} 連著 {n} 次沒過 {from}"
+
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "S{seq} 沒有 gate 可跑——這個專案設成了「無」"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} 被 {from} 打回（第 {n} 次）"

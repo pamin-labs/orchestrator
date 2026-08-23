@@ -1808,6 +1808,9 @@ msgstr "в этом репозитории не найдено ни одного
 msgid "No gates enabled; LLM review has no floor."
 msgstr "Не включён ни один гейт; у проверки LLM нет опоры."
 
+msgid "no gates for this project"
+msgstr "у этого проекта нет гейтов"
+
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "группы {grp} нет в таблице grp, поэтому /work всё ещё пуст — на этом ходу нечего запускать"
 
@@ -1960,6 +1963,9 @@ msgstr "Ещё не начато; ждём приёмки предыдущих �
 
 msgid "Notes"
 msgstr "Заметки"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "Против этого проекта нечего запустить детерминированно, поэтому ни один слайс нельзя проверить. Добавьте команды в «Настройки → Gates» — или сохраните пустой список, что будет означать: у проекта нет гейта, и слайсы пойдут на ревью без него."
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "На GitHub ничего не меняется: ветки на месте, PR на месте, ни строки кода не тронуто. Удаляется копия работы на этой машине."
@@ -2604,6 +2610,9 @@ msgstr "S{seq} не прошла у {from} {n} раз подряд — дело,
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq} не прошёл {from} {n} раз подряд"
+
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "Для S{seq} нет гейта — у этого проекта он выставлен как «нет»"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} возвращена {from} (попытка {n})"

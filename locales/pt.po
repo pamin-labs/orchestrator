@@ -1808,6 +1808,9 @@ msgstr "nenhum gate detectado neste repositório. Cada fatia vai falhar na revis
 msgid "No gates enabled; LLM review has no floor."
 msgstr "Nenhum gate ativado; a revisão do LLM não tem piso."
 
+msgid "no gates for this project"
+msgstr "este projeto não tem gates"
+
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "não existe grupo {grp} na tabela grp, por isso /work continua vazio — não há código para correr neste turno"
 
@@ -1960,6 +1963,9 @@ msgstr "Ainda não começou; aguardando o aceite das fatias anteriores."
 
 msgid "Notes"
 msgstr "Notas"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "Não há nada determinístico para executar neste projeto, por isso nenhuma fatia pode ser verificada. Adiciona os comandos em Definições → Gates — ou guarda uma lista vazia para dizer que este projeto não tem gate, e as fatias vão para revisão sem um."
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "Nada muda no GitHub: as branches estão lá, os PRs estão lá, nenhuma linha de código é tocada. O que some é a cópia do trabalho nesta máquina."
@@ -2604,6 +2610,9 @@ msgstr "S{seq} falhou em {from} {n} vezes — provavelmente são os critérios d
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq} falhou {from} {n} vezes seguidas"
+
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "S{seq} não tem gate para correr — este projeto está definido como nenhum"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} devolvida por {from} (tentativa {n})"

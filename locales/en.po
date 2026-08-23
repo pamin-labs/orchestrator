@@ -1808,6 +1808,9 @@ msgstr "no gates detected in this repository. Every slice will fail review until
 msgid "No gates enabled; LLM review has no floor."
 msgstr "No gates enabled; LLM review has no floor."
 
+msgid "no gates for this project"
+msgstr "no gates for this project"
+
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 
@@ -1960,6 +1963,9 @@ msgstr "Not started yet; waiting for prior slices to be accepted."
 
 msgid "Notes"
 msgstr "Notes"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
@@ -2604,6 +2610,9 @@ msgstr "S{seq} failed {from} {n}x — probably the acceptance criteria, not the 
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq} failed {from} {n}x in a row"
+
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "S{seq} has no gate to run — this project is set to none"
 
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} sent back by {from} (attempt {n})"
