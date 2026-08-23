@@ -2329,3 +2329,27 @@ The image itself is still never exercised — `release.yml` builds it, verifies 
 digest and provenance, scans it with Trivy and writes an SBOM, but runs no command
 inside it. A `docker run … mise --version` after the `load: true` build would have
 answered the question above without a laptop, and is worth adding.
+
+### The image is exercised now, on the runner that builds it
+
+The two commands added to `image-build` are the two that were just run against a
+locally built image, not a guess at them:
+
+```
+docker run --rm $image sh -c 'bun --version; node --version; npm --version; git --version; mise --version; rg --version'
+    2026.8.10 linux-arm64
+
+echo 'jq 1.7.1' > $probe/.tool-versions
+docker run --rm -v $probe:/probe -w /probe $image sh -c 'mise install --yes; jq --version'
+    mise jq@1.7.1 ✓ installed
+    jq-1.7.1
+```
+
+That second one is the whole toolchain feature end to end: a repository pins a
+version, `mise install` runs, and the tool is on PATH through the shims directory.
+It runs on both legs of the matrix without qemu, because each platform builds on
+its own native runner.
+
+Also verified while there: the Dockerfile change had never been built. `tar
+--strip-components=2 mise/bin/mise` lands the binary on PATH, `/opt/mise` is 1777
+as intended, and the shims directory is first in `PATH`.
