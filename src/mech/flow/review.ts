@@ -20,9 +20,10 @@ import { gatesFor, runGates, recordGate, gateState } from "../gate.ts";
 import { discriminate, stillClean } from "./discriminate.ts";
 import { loadResource, runResource } from "../lease.ts";
 import { extractClaimedFiles, reconcile, TaskClaimSchema } from "./reconcile.ts";
-import { changedSince, filesAt } from "../git/gitops.ts";
+import { changedSince, checkpoint, filesAt } from "../git/gitops.ts";
 import { resourceExec, WORK } from "../sandbox/sandbox.ts";
 import { pushBranch, sandboxGit } from "../git/checkout.ts";
+import { gitTrailers } from "../git/ghlogin.ts";
 import { joinQueue, position } from "./mergequeue.ts";
 import { hold } from "./intercept.ts";
 import { raise } from "./escalate.ts";
@@ -216,6 +217,17 @@ async function recordDiscrimination(
 
   const git = sandboxGit(ctx, { grp: slice.grp_id });
   const exec = resourceExec(ctx, { grp: slice.grp_id });
+
+  // Commit the work under review, because nothing has yet. A turn leaves its
+  // output in the worktree and the *next* turn's `takeCheckpoint` is what commits
+  // it — so at gate time the branch does not contain the change being gated.
+  // Measured, and it is why this layer shipped inert: with the worktree as a turn
+  // leaves it, `discriminate` refused to touch it and recorded nothing at all.
+  //
+  // The same helper the executor uses, so the commit carries the same trailers
+  // and sign-off, and `squashWip` collapses it like any other. Earlier, not
+  // different: this commit was going to exist at the next turn regardless.
+  await checkpoint(git, WORK, `S${slice.seq}: under review`, await gitTrailers(ctx.db));
   const found = await discriminate({
     git,
     worktree: WORK,

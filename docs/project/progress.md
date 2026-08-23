@@ -2279,3 +2279,53 @@ about measures the wrong population.
 - **A pattern built from the note's own text.** `git ls-files -- '*name'` does the
   globbing with the name as an argument, so no regex is ever constructed from
   agent prose. Preflight flagged that exact class one commit ago.
+
+## The Hardener shipped inert, and only a probe said so
+
+The discriminator refuses to run on an unclean worktree — every step restores from
+a git object, so work that is not in one is work it would destroy. That is the
+right rule. What it was not measured against is **when the work is committed**.
+
+`takeCheckpoint` commits the worktree at the *start* of a turn, so a turn's output
+sits uncommitted until the next turn begins. The gate job is enqueued by
+`task done`, inside the writer's own turn. So at review time the branch does not
+contain the change being reviewed, `discriminate` found an unclean worktree, and
+recorded nothing at all — on every slice.
+
+Both end-to-end fixtures had committed their work explicitly, which is how a layer
+with two passing tests can be dead in production. The probe was three lines: file
+the same slice without the commit, print `gates_json`.
+
+```
+before   {"gate":"pass","self":"pass","reconcile":"pass"}
+after    {"gate":"pass","self":"pass","reconcile":"pass","discriminate":"blind"}
+```
+
+The fix is one `checkpoint(git, WORK, …)` before the check, with the same helper
+`takeCheckpoint` uses, so the commit carries the same trailers and sign-off and
+`squashWip` collapses it like any other. Earlier than that commit would have
+happened, not different in kind. The probe is now the test, and it is shown
+failing by removing the checkpoint.
+
+This is the rule the repository already writes down, met from the other side: a
+guard that has only ever been green is evidence of nothing, and two green fixtures
+proved only that the fixtures committed.
+
+### And the two mise claims were reasoned, not measured
+
+Shipped one commit earlier: `mise install --yes` as the toolchain step, and a
+shims directory on PATH. Both were read off the documentation rather than run.
+Measured now, against the pinned binary:
+
+- `-y, --yes` is a global flag — `mise install --yes` parses.
+- `mise install` **does** create shims (`shims/jq -> mise`), which the command's
+  own help does not say: it says "installing alone will not activate the tools".
+  Activation is `mise activate` for a shell; shims are the other mechanism and
+  they are written at install time.
+- A shim resolves per directory: in the configured worktree it runs mise's
+  version, outside it falls through to whatever the image has.
+
+The image itself is still never exercised — `release.yml` builds it, verifies its
+digest and provenance, scans it with Trivy and writes an SBOM, but runs no command
+inside it. A `docker run … mise --version` after the `load: true` build would have
+answered the question above without a laptop, and is worth adding.

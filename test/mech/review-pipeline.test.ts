@@ -902,3 +902,43 @@ test(
   },
   REAL_GIT_MS,
 );
+
+/**
+ * The shape production actually has, and the reason this layer nearly shipped
+ * inert.
+ *
+ * A turn leaves its output in the worktree and the *next* turn's checkpoint is
+ * what commits it, so at gate time the branch does not contain the change being
+ * gated. A check that restores from git objects then finds an unclean worktree
+ * and correctly refuses to touch it: measured, `gates_json` came back with no
+ * `discriminate` key at all, on every slice.
+ */
+/** The fix is one `checkpoint` before the check, with the helper the executor
+ *  already uses — earlier than that commit would have happened, not different. */
+test(
+  "work as a turn leaves it — uncommitted — is committed and then checked",
+  async () => {
+    const h = await harness({ realGit: true });
+    await h.readingGate("true");
+    mkdirSync(join(h.wt.worktree, "src"), { recursive: true });
+    mkdirSync(join(h.wt.worktree, "test"), { recursive: true });
+    writeFileSync(join(h.wt.worktree, "src/a.ts"), "export const a = 2;\n");
+    writeFileSync(join(h.wt.worktree, "test/a.test.ts"), "// asserts nothing\n");
+
+    await doneClaim(h.post, { files: ["src/a.ts", "test/a.test.ts"], summary: "a is 2, with a test" });
+    await h.sched.drain();
+
+    expect(await gateState(h.db, 1)).toEqual({
+      self: "pass",
+      reconcile: "pass",
+      gate: "pass",
+      discriminate: "blind",
+    });
+    // The work is on the branch now, and the worktree is clean for whoever
+    // commits next.
+    expect((await h.git(["status", "--porcelain"], h.wt.worktree)).out).toBe("");
+    const log = await h.git(["log", "--oneline", "-1"], h.wt.worktree);
+    expect(log.out).toContain("S1: under review");
+  },
+  REAL_GIT_MS,
+);
