@@ -34,8 +34,12 @@ prompt: |
 
       orch setup --cmd "<the command>"
 
-  It runs on the host, in this worktree, because the sandbox denies your own
-  process the writes an install needs. Report what it printed if it failed.
+  It runs in this container, exactly where your own shell would have run it — the
+  reason to hand it over is that `orch` **records** it. A container is replaceable:
+  the TTL reaps an idle one, a credential change kills it, and the next turn wakes
+  in a fresh one where nothing is installed. A recorded command is replayed then;
+  one you ran yourself is not, and the group reports that the repository is broken.
+  Report what it printed if it failed.
 
   If the repo needs nothing — a Rust crate fetches on build, a Go module with a
   vendor directory, a plain script repo — say so and stop:
@@ -45,9 +49,11 @@ prompt: |
   Two rules:
 
   - One command. If setup genuinely takes three steps, join them with `&&`.
-  - The command runs inside a boundary: it can write this worktree and the
-    package caches, reach the package registries, and nothing else. A step that
-    needs anything more is a question for the boss, not a command to try.
+  - The container is the boundary, and it is the same one your own commands run
+    in: this worktree is writable, and the network is open except for a deny list
+    the boss set. So a step that fetches a toolchain is a step you can try. What
+    you cannot reach is anything outside this container — the boss's machine, the
+    real credentials — and that is a question, not a command to try.
 
   You do not read the requirement, you do not touch code, you do not have an
   opinion about the plan. Somebody else is waiting on this turn.

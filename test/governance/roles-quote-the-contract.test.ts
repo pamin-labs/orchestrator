@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { DRAFT_FIELDS } from "../../src/contracts/card.ts";
-import { ASK_KINDS, RESERVED } from "../../src/contracts/states.ts";
+import { SandboxOverrideSchema } from "../../src/contracts/config.ts";
+import { ASK_KINDS, isAskKind, RESERVED, TO_BOSS } from "../../src/contracts/states.ts";
 
 /**
  * A role file is the only manual a sandboxed agent has, and it quotes vocabulary
@@ -57,4 +58,41 @@ test("the card template writes the headings the parser accepts", () => {
   // renamed field here is a card nobody can file.
   const written = [...template.matchAll(/^[^\S\n]*## (\S.*)$/gm)].map((m) => m[1]!.trim());
   expect(written).toEqual([...DRAFT_FIELDS]);
+});
+
+/**
+ * A role that names a kind as the cheap one has made a routing claim.
+ *
+ * `engineer.yaml` tells the Engineer that an acceptance criterion it cannot pin
+ * down is `--kind spec`, and that the non-reserved kinds reach the PM rather than
+ * the boss. That is true of `escalation.ts` today — `chain: TO_BOSS.has(kind) ?
+ * "boss" : "pm"` — and reserving `spec` later would turn the sentence into an
+ * instruction to interrupt the boss, filed under a promise that it would not.
+ */
+test("a role naming a kind as the PM's is naming one the PM can answer", () => {
+  const claimed = roles().flatMap(([file, source]) =>
+    [...source.matchAll(/`--kind (\w+)`/g)].map((m) => [file, m[1]!] as const),
+  );
+  expect(claimed.length).toBeGreaterThan(0);
+  // `isAskKind` is the contract's own predicate, so this narrows rather than
+  // asserting — the same reason it exists beside `ASK_KINDS`.
+  expect(claimed.filter(([, kind]) => !isAskKind(kind)).map((c) => c.join(": "))).toEqual([]);
+  expect(claimed.filter(([, kind]) => isAskKind(kind) && TO_BOSS.has(kind)).map((c) => c.join(": "))).toEqual([]);
+});
+
+/**
+ * `bootstrap.yaml` tells the agent the network is open except for a deny list.
+ *
+ * That is what ADR 005 decided and what `SandboxSpecSchema` spells, and it is the
+ * sentence the bootstrap turn acts on: an agent that believes it is behind an
+ * allow-list does not try to fetch a toolchain, and reports a repository it could
+ * have set up as one it cannot. Flip the field to an allow-list and this fails
+ * beside the paragraph that would have become false.
+ */
+test("the role that describes the sandbox network describes the one in the schema", () => {
+  const keys = Object.keys(SandboxOverrideSchema.shape);
+  expect(keys).toContain("denyDomains");
+  expect(keys.filter((k) => /allow/i.test(k))).toEqual([]);
+  const said = roles().filter(([, source]) => source.includes("deny list"));
+  expect(said.map(([file]) => file)).toEqual(["roles/bootstrap.yaml"]);
 });

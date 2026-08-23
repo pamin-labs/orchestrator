@@ -1886,3 +1886,81 @@ eleven-line explanation. Both were doing their job on the first try.
 - **A migration for stored cards.** Nothing to migrate here, and writing one for
   a database this repository cannot see is speculation. The query that decides is
   recorded above instead.
+
+## The Engineer had no cheap way to ask, and bootstrap's manual was wrong twice
+
+Two prompt defects of the same class: **a role file stating something the
+deterministic layer does not do.** A role file is the only manual a sandboxed
+agent has, so a false sentence there is not a documentation bug — it is a move the
+agent will not make, or one it will make wrongly.
+
+### "Blocked on something only the boss can decide?"
+
+That was the entry condition on the Engineer's only ask paragraph. The paragraph
+below it is accurate — it lists all nine kinds and says the first five are the
+boss's alone — but the *opening* tells the reader when the paragraph applies, and
+an acceptance criterion it cannot pin down is not something only the boss can
+decide. So the Engineer reads the whole block as not applying to it and guesses.
+
+`src/api/orch/escalation.ts:80` is `chain: TO_BOSS.has(b.kind) ? "boss" : "pm"`,
+and `RESERVED` is five kinds — `spec` reaches the **PM**, which can answer it
+itself (`chain.ts` lets a stand-in answer any non-reserved kind, checked twice:
+by the stored kind, and by a second reader shown the question). `qa.yaml` has had
+"ask the PM for a better criterion" for as long as the file has existed. The
+Engineer had the same road and no sign pointing at it.
+
+The cost of not having it was already written down, in `sendBack`: "two failed
+attempts usually means the acceptance criteria are wrong, not the code". Guessing
+is not the cheap path — it is two rejected slices and then the boss anyway.
+
+### Two false sentences in `bootstrap.yaml`
+
+"It runs on the host, in this worktree, because the sandbox denies your own
+process the writes an install needs." Both halves are wrong. `runInstall`
+(`start.ts:99`) is `execLines(ctx, { grp: grpId }, cmd, { cwd: WORK })` — the
+group's own container — and the agent's turn runs through the *same function*
+with no confinement at all: `claude.ts` passes `--dangerously-skip-permissions`,
+`codex.ts` passes `--dangerously-bypass-approvals-and-sandbox`, both with the
+comment "the container is the boundary". There is no write the orchestrator can
+make that the agent cannot.
+
+Worse than inaccurate: `docs/project/plan.md` puts "silent fallback from
+containers to host execution" out of scope, so the manual claimed we do the thing
+the scope rule forbids. The real reason for the indirection is recording —
+`orch setup` stores the command, and `ensureSandbox` replays it when a reaped or
+killed container is rebuilt (`test/mech/restore-workspace.test.ts`). Run it
+yourself and the next turn wakes in an empty container.
+
+"…reach the package registries, and nothing else" describes an allow-list. The
+sandbox has `denyDomains` and ADR 005 measured why: an allow-list cannot enumerate
+every registry a project needs. An agent that believes it is behind an allow-list
+does not try to fetch a toolchain — and fetching toolchains is exactly what the
+next unit of work needs it to do.
+
+### Both claims are now guarded, and both guards were shown failing
+
+- `a role naming a kind as the PM's is naming one the PM can answer` — reserve
+  `spec` in `RESERVED` and it goes red. Narrowed with the contract's own
+  `isAskKind` predicate rather than an assertion; oxlint refused `as never`, which
+  is the rule working.
+- `the role that describes the sandbox network describes the one in the schema` —
+  rename `denyDomains` to an allow-list key and it goes red beside the paragraph
+  that would have become false.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1862 pass, 6 skip, 0 fail, 1868 across 229 files |
+| new guards | 2, each shown failing before it was kept |
+
+### Not taken
+
+- **A new CLI verb for asking the PM.** There is nothing to add: `orch ask-boss`
+  already routes by kind, and the name is the only misleading part. Renaming a
+  verb every role file and the CLI help quote, to fix a sentence, is the expensive
+  half of the fix.
+- **A length budget on role prompts.** The lost-in-the-middle argument says to cut
+  them, and this change *added* four lines to one. The audit is its own unit —
+  doing it here would mean touching every role file twice.
