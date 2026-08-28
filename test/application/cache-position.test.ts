@@ -16,7 +16,6 @@ import { tempDir } from "../support/temp.ts";
 const parts = (over: Partial<StableParts> = {}): StableParts => ({
   rolePrompt: "You are the Engineer. One writer per group.",
   onboarding: "bun test to run checks. Do not touch package.json.",
-  lessons: ["Prefer stdlib over new deps", "Always run gate before task done"],
   language: "中文",
   model: "sonnet",
   allowedTools: ["Bash(orch *)", "Read", "Edit"],
@@ -83,7 +82,6 @@ test("changing the stable half forces session rotation, not a silent edit", () =
   // Keyed by the part that moved, so a failure names it rather than reporting
   // `expected true, received false` against whichever of the six it was.
   const changed = {
-    lessons: buildStable(parts({ lessons: ["a brand new lesson"] })),
     onboarding: buildStable(parts({ onboarding: "different onboarding" })),
     model: buildStable(parts({ model: "opus" })),
     allowedTools: buildStable(parts({ allowedTools: ["Bash(orch *)"] })),
@@ -177,4 +175,24 @@ test("a skill the boss pointed at lands in the delta, never in the cached prefix
   }).prompt;
   expect(both.indexOf("guard clause")).toBeGreaterThan(both.indexOf("S1"));
   expect(both.indexOf("别忘了 zh")).toBeGreaterThan(both.indexOf("guard clause"));
+});
+
+/**
+ * A lesson is written by this system, about this project, whenever a retro
+ * distils one — and it used to sit in the stable half, read fresh on every turn.
+ * So the day one landed, every agent's prefix hash changed and every live
+ * session was thrown away: the PM's and the Dispatcher's too, whose context was
+ * still true, which is exactly the cost `handToBoss` measured and stopped paying.
+ */
+test("a new lesson does not throw away every session", () => {
+  const before = buildStable(parts());
+  const after = buildStable(parts());
+  expect(needsRotation(before.hash, after)).toBe(false);
+
+  // It reaches the turn, in the half that is paid for per turn and rotates
+  // nothing — and after the work, since a rule is read in the light of the task.
+  const t = assemble(before, { card: "S1 do the thing", lessons: "- prefer stdlib over new deps" });
+  expect(t.prompt).toContain("prefer stdlib over new deps");
+  expect(t.stable.systemAppend).not.toContain("prefer stdlib");
+  expect(t.prompt.indexOf("S1 do the thing")).toBeLessThan(t.prompt.indexOf("prefer stdlib"));
 });

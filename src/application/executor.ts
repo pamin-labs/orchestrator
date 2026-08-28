@@ -44,7 +44,6 @@ import { scrub } from "../platform/observability/redaction.ts";
 import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { gitTrailers } from "../mech/git/ghlogin.ts";
 import { changedSince, checkpoint, porcelainEntries, porcelainPaths, STATUS_Z } from "../mech/git/gitops.ts";
-import { lessonsFor } from "../mech/knowledge/lessons.ts";
 import { gzipTurnLog, recordTurnOutcome, runWatchdog, type Finding } from "../mech/ops/watchdog.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { scopeAttributes, type SpanScope } from "../platform/observability/metrics.ts";
@@ -707,14 +706,11 @@ async function buildStableFor(
   const projectId = await projectOfAgent(ctx.db, agent.id);
 
   const onboarding = await noteBody(ctx.db, projectId, "onboarding");
-  // Owned by `report.ts`, next to the eviction that decides which survive.
-  const lessons = await lessonsFor(ctx.db, projectId);
   const effort = clampEffort(agent.runtime ?? role.runtime, role.effort);
 
   return buildStable({
     rolePrompt: role.prompt,
     ...(onboarding ? { onboarding } : {}),
-    lessons,
     language: outputLanguage(cfg),
     model: agent.model,
     // Clamped to what this role's provider accepts before it is hashed, so the

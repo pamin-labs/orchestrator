@@ -2738,3 +2738,56 @@ and not fixed by anything here. A budget that flips on 4% of a 600 ms measuremen
 taken on hardware nobody controls is a gate that will keep doing this; recorded
 rather than tuned, because tuning it from one sample is how a threshold becomes
 meaningless.
+
+## An ordinary event was throwing away every session in the fleet
+
+`handToBoss` rotates the writer's and the reviewer's sessions at a slice boundary
+and deliberately leaves the PM, the Dispatcher and the Auditor alone, with the
+measurement written beside it: rotating everyone cost a full prefix rebuild per
+role per slice, 45.5M tokens of cache creation across 259 turns, 95% of them
+starting cold.
+
+**A single new lesson undid that.** `buildStableFor` read `lessonsFor` fresh on
+every turn and folded the result into the cached prefix, so the moment a retro
+distilled a rule, every agent's `stable_hash` changed, `needsRotation` fired, and
+every live session in the fleet was replaced — including the three whose context
+was still true. Not the prefix alone: a rotation is a new session, so the whole
+conversation goes with it.
+
+Nothing was wrong with the code. Lessons are simply the one thing in the stable
+half that **changes while the session is running**: the role prompt changes on a
+deploy, onboarding about never, the model and the tool set when the boss says so.
+A lesson lands because the system learned something, which is supposed to be a
+good day.
+
+### They live in the delta now
+
+Paid for per turn, rotating nothing, and rendered after the work — a rule is read
+in the light of the task, and the task is what the turn exists to do. Five of
+them, not the twenty `lessonsFor` keeps: in a prefix nobody re-reads twenty cost
+nothing and said nothing; in the delta they are paid for every turn, so what goes
+in is what a turn can act on.
+
+That is also the lost-in-the-middle argument applied where it is actually true.
+The role prompts were never the problem — 7k characters of fixed prefix is not
+"10 pages" — but a rule buried in a system prompt the model has stopped attending
+to *is* the failure that discussion is about, and the newest user message is where
+attention is.
+
+### The guard that should have caught it, and the one that will
+
+`cache-position.test.ts` asserted that changing the lessons rotates the session —
+which was true, and was the bug: the test encoded the cost as if it were the
+intent. It now asserts the opposite for lessons and keeps the property for the
+things that genuinely belong in the prefix, and `executor.test.ts` proves the
+whole path: a lesson lands, the hash is unchanged, the session resumes, and the
+text is in the prompt and not in `systemAppend`.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1907 pass, 6 skip, 0 fail, 1913 across 234 files |
+| `fallow audit --gate all` | no issues in 69 changed files |
+| what a lesson used to cost | every live session in the fleet, plus its prefix |
+| what it costs now | five bullets in one turn's delta |

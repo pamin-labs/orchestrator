@@ -53,6 +53,16 @@ export interface Delta {
    */
   skills?: string;
   /**
+   * Rules distilled from earlier groups' retros.
+   *
+   * In the delta and not the prefix: they are read fresh on every turn, so the
+   * day a retro adds one, every agent's prefix hash changes and `needsRotation`
+   * throws away every live session — the PM's and the Dispatcher's included,
+   * whose context was still true. Here they cost their own tokens every turn and
+   * rotate nothing.
+   */
+  lessons?: string;
+  /**
    * Text somebody else wrote, which this turn reads *about* rather than acts on:
    * channel messages, a mailed body, a question another agent filed. Fenced, and
    * `FENCED` below is where that is decided.
@@ -99,7 +109,9 @@ type Unfenced =
   /** is the previous session of this same agent */
   | "handoff"
   /** is an instruction the boss pointed at, and hardening would mangle its code blocks */
-  | "skills";
+  | "skills"
+  /** is this system's own text, distilled from retros it wrote itself */
+  | "lessons";
 
 type Holds<T extends true> = T;
 type _NothingUnclassified = Holds<keyof Delta extends Fenced | Unfenced ? true : false>;
@@ -116,8 +128,6 @@ export interface StableParts {
   rolePrompt: string;
   /** Project onboarding pack — note(kind=onboarding). */
   onboarding?: string;
-  /** Lessons distilled from retros — note(kind=lesson), capped at 20. */
-  lessons?: string[];
   /** Language for human-facing output. Code/commits stay English. */
   language?: string;
   model: string;
@@ -243,11 +253,6 @@ export function buildStable(parts: StableParts): StablePrompt {
   if (parts.onboarding?.trim()) {
     sections.push(`## Project onboarding\n\n${parts.onboarding.trim()}`);
   }
-  if (parts.lessons?.length) {
-    const items = parts.lessons.map((l) => `- ${l.trim()}`).join("\n");
-    sections.push(`## Lessons from previous groups\n\n${items}`);
-  }
-
   const systemAppend = sections.join("\n\n");
   const stable: Omit<StablePrompt, "hash"> = {
     systemAppend,
@@ -306,6 +311,9 @@ const DELTA_ORDER = [
   ["card", "Your current work"],
   ["rejection", "This was sent back — fix these"],
   ["skills", "Follow this skill for this work"],
+  // After the work, before the quoted material: a rule is read in the light of
+  // the task, and the task is what the turn exists to do.
+  ["lessons", "What earlier groups learned here"],
 ] as const satisfies ReadonlyArray<readonly [Unfenced, string]>;
 
 /** And every one of them is actually rendered: classifying a field as unfenced

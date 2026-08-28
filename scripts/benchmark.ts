@@ -311,15 +311,13 @@ async function pass(): Promise<Map<string, string>> {
  * Twice before it is a regression, and the reason is the runner.
  *
  * These budgets are means of sixteen samples on hardware nobody controls, so one
- * pass is a coin flip near the line: the nightly failed on `telemetry report`
- * at 624ms against 600 — four percent — and the next night was green with no
- * change in between. A threshold that reports a regression on 4% of noise
- * teaches the reader to ignore it, and raising the number only moves the flip.
- *
- * A real regression is in both passes. A flake is in one, and says so out loud
- * rather than passing in silence, because a budget that is quietly always near
- * the line is a budget somebody should look at.
+ * pass is a coin flip near the line: the nightly failed on `telemetry report` at
+ * 624ms against 600 — four percent — and the next night was green with nothing
+ * changed. Raising the number only moves the flip.
  */
+/** A real regression is in both passes. A flake is in one, and says so out loud
+ *  rather than passing in silence, because a budget quietly sitting near its line
+ *  is a budget somebody should look at. */
 let exceeded = await pass();
 if (exceeded.size > 0) {
   console.warn(`over budget on the first pass: ${[...exceeded.keys()].join(", ")} — repeating before calling it`);
