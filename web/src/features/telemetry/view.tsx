@@ -831,23 +831,14 @@ function useSelection() {
   };
 }
 
-export function Telemetry({
-  scope,
-  windowMs,
-  trend: showTrend = false,
-  empty,
-}: {
-  scope: TelemetryScope;
-  windowMs?: number;
-  /** The project view wants the shape over time; a single requirement has too few points for one. */
-  trend?: boolean;
-  empty?: string;
-}) {
-  const { t } = useLingui();
-  // Not a parameter default: that runs before the hook, so it would have needed
-  // the global `t` and this pane would keep its old wording after a locale change.
-  const nothingYet = empty ?? t`No activity yet.`;
-  const { picked, excluded, pick, exclude, restore, restoreAll } = useSelection();
+/**
+ * The stretch on screen, the stretch that may be reached, and the read for both.
+ *
+ * Lifted out of `Telemetry` whole. Four `??` chains and three pieces of state
+ * carried most of that component's cognitive load while answering one question —
+ * *what window is this* — and none of it is about what gets drawn.
+ */
+function useWindow(scope: TelemetryScope, windowMs: number | undefined) {
   /**
    * The stretch of time the page is showing, when the reader has chosen one.
    *
@@ -899,6 +890,30 @@ export function Telemetry({
    * that is the window the last request *asked for*, so it follows the view.
    */
   const limit = report?.dataWindow ?? extent ?? report?.window ?? shownWindow;
+  return { report, loading, chosen, setChosen, pinnedBucket, setPinnedBucket, bucketMs, shownWindow, limit };
+}
+
+export function Telemetry({
+  scope,
+  windowMs,
+  trend: showTrend = false,
+  empty,
+}: {
+  scope: TelemetryScope;
+  windowMs?: number;
+  /** The project view wants the shape over time; a single requirement has too few points for one. */
+  trend?: boolean;
+  empty?: string;
+}) {
+  const { t } = useLingui();
+  // Not a parameter default: that runs before the hook, so it would have needed
+  // the global `t` and this pane would keep its old wording after a locale change.
+  const nothingYet = empty ?? t`No activity yet.`;
+  const { picked, excluded, pick, exclude, restore, restoreAll } = useSelection();
+  const { report, loading, chosen, setChosen, pinnedBucket, setPinnedBucket, bucketMs, shownWindow, limit } = useWindow(
+    scope,
+    windowMs,
+  );
 
   if (!report) {
     return <div className="py-4 text-secondary text-ink-3">{loading ? t`Loading…` : nothingYet}</div>;

@@ -11,6 +11,7 @@ import { cn } from "../../ui/cn";
 import { FilePicker } from "../picker/view";
 import { z } from "zod";
 import { api, readApi } from "../../shared/api";
+import type { JsonReply } from "../../../../src/contracts/protocol.ts";
 import type { InferResponseType } from "hono/client";
 import {
   appendLine,
@@ -447,11 +448,28 @@ export function Composer({
    * and everything it does pick it reads into memory to post straight back to the
    * same disk. Our own picker walks the real filesystem, so a folder is one click.
    */
+  /**
+   * One post, one refusal, one list of names back.
+   *
+   * The two attach paths had this written out twice, and `.catch(() => null)`
+   * around each `$post` made the second copy close enough for `fallow audit` to
+   * see it. A folder copied in Finder arrives as an unreadable zero-byte entry
+   * and the fetch dies with ERR_ACCESS_DENIED — an unhandled rejection in the
+   * console and nothing on screen — so the rejection is an outcome both callers
+   * have, and only the sentence differs.
+   */
+  const attached = async (post: Promise<JsonReply>, whenUnreadable: string) => {
+    const r = await post.catch(() => null);
+    if (!r) {
+      toast.error(whenUnreadable, { duration: 8000 });
+      return null;
+    }
+    return (await readApi(r, AttachmentsSchema))?.files ?? null;
+  };
+
   const fromDisk = (paths: string[]) =>
     startTransition(async () => {
-      const r = await api.attach.local.$post({ json: { paths } }).catch(() => null);
-      if (!r) return void toast.error(t`Failed to add`, { duration: 8000 });
-      const files = (await readApi(r, AttachmentsSchema))?.files;
+      const files = await attached(api.attach.local.$post({ json: { paths } }), t`Failed to add`);
       if (files) addFiles(files);
     });
 
@@ -459,21 +477,14 @@ export function Composer({
     startTransition(async () => {
       const picked = asPicked(list);
       if (!picked.length) return;
-      // A folder copied in Finder arrives as an unreadable zero-byte entry and the
-      // fetch dies with ERR_ACCESS_DENIED — as an unhandled rejection in the console
-      // and nothing at all on screen.
       // Relative paths travel beside files so the server can rebuild a folder as
       // one attachment. Hono RPC owns the multipart encoding and route contract.
-      // `.catch`, as `fromDisk` above already does: the hoisted `let` this
-      // replaces needed a type annotation, and the only name for what hono
-      // returns was `Response`, which it is not.
-      const r = await api.attach
-        .$post({ form: { file: picked.map(({ file }) => file), rel: picked.map(({ rel }) => rel) } })
-        .catch(() => null);
-      if (!r) return void toast.error(t`The browser can't read this. Drag folders in instead.`, { duration: 8000 });
+      const files = await attached(
+        api.attach.$post({ form: { file: picked.map(({ file }) => file), rel: picked.map(({ rel }) => rel) } }),
+        t`The browser can't read this. Drag folders in instead.`,
+      );
       // A file that silently fails to attach is worse than one never added: the text
       // goes out referencing a path, and the agent is told to Read something missing.
-      const files = (await readApi(r, AttachmentsSchema))?.files;
       if (!files) return;
       // Preview from the local File, not a server round trip.
       addFiles(

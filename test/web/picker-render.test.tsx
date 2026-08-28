@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { cleanup, render, waitFor } from "../support/render.tsx";
+import { cleanup, fireEvent, render, waitFor } from "../support/render.tsx";
 import { inFlight, mockHttp, server } from "../support/http.ts";
 import { WithQueries } from "./queries.tsx";
 import { HttpResponse, http } from "msw";
-import { FirstProject, Picker } from "../../web/src/features/picker/view.tsx";
+import { FilePicker, FirstProject, Picker } from "../../web/src/features/picker/view.tsx";
 
 /**
  * The two ways a project gets added: the card the panel shows when there are no
@@ -111,4 +111,47 @@ test("the picker dialog is present through its portal only while it is open", as
   expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
   getByRole("heading", { name: "选择仓库" });
   getByRole("button", { name: "取消" });
+});
+
+/**
+ * The directory on screen is a query key, so walking into a folder is a request
+ * for that folder.
+ *
+ * `Browse` used to hold the listing in `useState` and fetch it from a mount
+ * effect, with navigation calling the same loader again by hand. It is a
+ * `useQuery` keyed on the path now, and this is what that conversion has to keep.
+ */
+/**
+ * Asserted on the requests the component makes: the first read asks for no path
+ * at all, and clicking a folder asks for that one. The rows it draws would look
+ * identical either way.
+ */
+test("browsing into a folder asks the server for that folder", async () => {
+  const asked: (string | null)[] = [];
+  const listing = (path: string, dirs: string[]) => ({
+    path,
+    parent: path === "/" ? null : "/",
+    repo: false,
+    dirs: dirs.map((name) => ({ name, path: `${path === "/" ? "" : path}/${name}`, repo: false, taken: false })),
+    files: [],
+  });
+  server.use(
+    http.get("/api/v1/dirs", ({ request }) => {
+      const path = new URL(request.url).searchParams.get("path");
+      asked.push(path);
+      return HttpResponse.json(path ? listing(path, ["inner"]) : listing("/", ["work"]));
+    }),
+  );
+
+  const { findByRole } = render(
+    <WithQueries>{<FilePicker open onOpenChange={() => {}} onPick={() => {}} />}</WithQueries>,
+  );
+
+  // The mount read carries no path: the server decides where browsing starts.
+  await waitFor(() => expect(asked).toEqual([null]));
+  // The chevron, not the name: pressing the name is what picks a file, and this
+  // dialog's `onRow` returns true for both — entering a folder is the arrow's job.
+  fireEvent.click(await findByRole("button", { name: "进入 work" }));
+  await waitFor(() => expect(asked).toEqual([null, "/work"]));
+  await findByRole("button", { name: "进入 inner" });
 });
