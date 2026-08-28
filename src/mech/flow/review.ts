@@ -299,7 +299,12 @@ async function recordDiscrimination(
   if (!found.ran) return;
 
   const untested = found.untested ?? [];
-  await recordGate(ctx.db, slice.id, "discriminate", found.discriminates ? (untested.length ? "partial" : "pass") : "blind");
+  await recordGate(
+    ctx.db,
+    slice.id,
+    "discriminate",
+    found.discriminates ? (untested.length ? "partial" : "pass") : "blind",
+  );
   await ctx.bus.emit({
     grpId: slice.grp_id,
     author: "orchestrator",
