@@ -608,8 +608,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
                 label={t`Median across ${shape.counted} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source`}
               >
                 <div className="mt-0.5 w-fit text-secondary text-ink-2 underline decoration-dotted">
-                  <Trans>Turn shape</Trans>{" "}
-                  <b className="font-mono font-semibold text-ink">{shape.summary}</b>
+                  <Trans>Turn shape</Trans> <b className="font-mono font-semibold text-ink">{shape.summary}</b>
                 </div>
               </Tip>
             )}
