@@ -19,7 +19,15 @@ import { STATUS_Z, type GitRunner } from "../git/gitops.ts";
  * per-language dependency we cannot take into somebody else's repository.
  */
 
-export type Discrimination = { ran: false; why: string } | { ran: true; discriminates: boolean };
+export type Discrimination =
+  | { ran: false; why: string }
+  | {
+      ran: true;
+      discriminates: boolean;
+      /** Source files whose own revert left the suite green: nothing tests them.
+       *  Empty unless the caller asked for the per-file pass. */
+      untested?: string[];
+    };
 
 /**
  * Paths that hold tests, in the languages this runs in — which is all of them.
@@ -42,6 +50,15 @@ export interface DiscriminateOpts {
   changed: string[];
   /** The project's own `test` gate. Returns its exit code. */
   runTest: () => Promise<number>;
+  /**
+   * Also ask the question of each source file alone.
+   *
+   * Only meaningful when the whole-slice revert *failed* the suite: reverting one
+   * file is a subset of reverting all of them, so on the other path every
+   * single-file revert leaves the suite as green as the whole one did. Costs one
+   * test run per file, which is why the caller decides.
+   */
+  perFile?: boolean;
 }
 
 export const isTestPath = (path: string): boolean => TEST_PATH.test(path);
@@ -95,7 +112,12 @@ async function run(opts: DiscriminateOpts): Promise<Discrimination> {
     // Non-zero is the healthy answer, compile errors included: a test that names
     // a symbol this slice introduced cannot build without it, and failing to
     // build is the test distinguishing the change.
-    return { ran: true, discriminates: (await opts.runTest()) !== 0 };
+    const discriminates = (await opts.runTest()) !== 0;
+    if (!discriminates || !opts.perFile || source.length < 2) return { ran: true, discriminates };
+    // Put everything back before asking about one file at a time, or the second
+    // question is asked of a worktree still missing the other files.
+    await git(["checkout", "HEAD", "--", ...source], worktree);
+    return { ran: true, discriminates, untested: await untestedAmong(opts, source, known) };
   } finally {
     // `checkout HEAD --` writes the index and the worktree, so a file removed
     // above comes back with it. Verified rather than assumed: what this leaves
@@ -113,4 +135,29 @@ export async function stillClean(git: GitRunner, worktree: string): Promise<bool
 async function filesAt(git: GitRunner, worktree: string, sha: string): Promise<string[]> {
   const r = await git(["ls-tree", "-r", "--name-only", "-z", sha], worktree);
   return r.code === 0 ? r.out.split("\0").filter(Boolean) : [];
+}
+
+/**
+ * Which of these files nothing tests, one revert at a time.
+ *
+ * The whole-slice revert already failed the suite, so *something* here is
+ * covered. This says which: a file that can be put back to its base revision on
+ * its own without the suite noticing has no test behind it, and a slice that
+ * changed four files with one of them tested reads as a passing slice today.
+ */
+async function untestedAmong(opts: DiscriminateOpts, source: string[], known: Set<string>): Promise<string[]> {
+  const { git, worktree, baseSha } = opts;
+  const untested: string[] = [];
+  for (const path of source) {
+    const revert = known.has(path)
+      ? await git(["checkout", baseSha, "--", path], worktree)
+      : await git(["rm", "-f", "-q", "--", path], worktree);
+    if (revert.code !== 0) continue;
+    try {
+      if ((await opts.runTest()) === 0) untested.push(path);
+    } finally {
+      await git(["checkout", "HEAD", "--", path], worktree);
+    }
+  }
+  return untested;
 }

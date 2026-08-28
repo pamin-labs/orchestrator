@@ -276,6 +276,7 @@ async function recordDiscrimination(
     worktree: WORK,
     baseSha: slice.base_sha,
     changed,
+    perFile: cfg.discriminatePerFile,
     runTest: async () => {
       const r = await runResource(def, {}, { exec, cwd: WORK, timeoutMs: cfg.leaseTimeoutMs });
       // A command that could not run at all is not the suite passing.
@@ -297,15 +298,18 @@ async function recordDiscrimination(
   }
   if (!found.ran) return;
 
-  await recordGate(ctx.db, slice.id, "discriminate", found.discriminates ? "pass" : "blind");
+  const untested = found.untested ?? [];
+  await recordGate(ctx.db, slice.id, "discriminate", found.discriminates ? (untested.length ? "partial" : "pass") : "blind");
   await ctx.bus.emit({
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "gate_result",
-    say: found.discriminates
-      ? msg`S${{ seq: slice.seq }}: the new tests fail without the change, as they should`
-      : msg`S${{ seq: slice.seq }}: the new tests still pass with the change reverted`,
-    meta: { slice_id: slice.id, discriminates: found.discriminates },
+    say: !found.discriminates
+      ? msg`S${{ seq: slice.seq }}: the new tests still pass with the change reverted`
+      : untested.length
+        ? msg`S${{ seq: slice.seq }}: the tests hold, but nothing covers ${{ files: untested.join(", ") }}`
+        : msg`S${{ seq: slice.seq }}: the new tests fail without the change, as they should`,
+    meta: { slice_id: slice.id, discriminates: found.discriminates, ...(untested.length ? { untested } : {}) },
   });
 }
 

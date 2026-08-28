@@ -115,3 +115,58 @@ test("the worktree is restored even when the gate throws", async () => {
   ).toEqual({ ran: false, why: "the sandbox died" });
   expect(f.issued.at(-1)).toEqual(["checkout", "HEAD", "--", "src/a.ts"]);
 });
+
+/**
+ * The per-file pass, and the half of it that is not obvious: it only means
+ * something when the whole-slice revert *failed* the suite.
+ *
+ * Reverting one file is a subset of reverting all of them, so on the blind path
+ * every single-file revert leaves the suite exactly as green — the run would cost
+ * one test per file and answer nothing. It is skipped there, and the assertion is
+ * that no second run happened at all.
+ */
+test("asking per file is skipped where its answer is already known", async () => {
+  let runs = 0;
+  const f = fake({ atBase: ["src/a.ts", "src/b.ts"], testExit: 0, onTest: () => runs++ });
+  const out = await discriminate({
+    ...f,
+    worktree: "/work",
+    baseSha: base,
+    changed: ["src/a.ts", "src/b.ts", "test/a.test.ts"],
+    perFile: true,
+  });
+  expect(out).toEqual({ ran: true, discriminates: false });
+  expect(runs).toBe(1);
+});
+
+/**
+ * A slice that changed four files with one of them tested reads as a passing
+ * slice today: the whole-slice revert fails, which is the healthy answer, and
+ * nothing says the other three have no test behind them.
+ */
+test("a file that can be reverted alone without the suite noticing has no test behind it", async () => {
+  // The suite fails only while `src/a.ts` is at its base revision.
+  let reverted: string | null = null;
+  const issued: string[][] = [];
+  const git: GitRunner = async (argv) => {
+    issued.push(argv);
+    if (argv[0] === "status") return { code: 0, out: "" };
+    if (argv[0] === "ls-tree") return { code: 0, out: ["src/a.ts", "src/b.ts"].join("\0") };
+    if (argv[0] === "checkout" && argv[1] === base) reverted = argv.slice(3).join(",");
+    if (argv[0] === "checkout" && argv[1] === "HEAD") reverted = null;
+    return { code: 0, out: "" };
+  };
+  const runTest = async () => (reverted?.includes("src/a.ts") ? 1 : 0);
+
+  const out = await discriminate({
+    git,
+    runTest,
+    worktree: "/work",
+    baseSha: base,
+    changed: ["src/a.ts", "src/b.ts", "test/a.test.ts"],
+    perFile: true,
+  });
+  expect(out).toEqual({ ran: true, discriminates: true, untested: ["src/b.ts"] });
+  // And it put every file back, including the one it asked about last.
+  expect(issued.at(-1)).toEqual(["checkout", "HEAD", "--", "src/a.ts", "src/b.ts"]);
+});

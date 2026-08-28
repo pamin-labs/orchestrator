@@ -170,6 +170,7 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
             "installTimeoutMs",
             "gateRetries",
             "discriminate",
+            "discriminatePerFile",
             "autoAdvance",
             "autoAcceptTiers",
             "parkAfterPausedMs",
@@ -471,6 +472,10 @@ export const COPY: Record<
   gateRetries: {
     label: msg`Gate retries`,
     why: msg`After a slice fails several times straight, escalate to a person instead of retrying the same path.`,
+  },
+  discriminatePerFile: {
+    label: msg`…and say which file is untested`,
+    why: msg`When the slice's tests do depend on its code, ask the same question of each source file on its own: one that can be reverted alone without failing anything has no test behind it. Costs one extra test run per file, on the path where the slice is fine.`,
   },
   discriminate: {
     label: msg`Check that tests discriminate`,

@@ -13,6 +13,9 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+msgid "…and say which file is untested"
+msgstr "……并指出哪个文件没被测到"
+
 msgid "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
 msgstr "「你还认这个凭据吗」：GitHub 的 /user、供应商的 /v1/models。比上面的 API 调用短，因为答案慢只会报「未验证」而不是失败，没有东西在等它。"
 
@@ -2632,6 +2635,9 @@ msgstr "S{seq}：新测试在没有这次改动时会失败，正该如此"
 msgid "S{seq}: the new tests still pass with the change reverted"
 msgstr "S{seq}：把改动还原之后，新测试仍然通过"
 
+msgid "S{seq}: the tests hold, but nothing covers {files}"
+msgstr "S{seq}：测试立得住，但没有任何东西覆盖 {files}"
+
 msgid "S{seq}: worktree dirty after a check"
 msgstr "S{seq}：一次检查之后工作区不干净"
 
@@ -3337,6 +3343,9 @@ msgstr "用满就挂起，等你决定加不加。"
 
 msgid "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint."
 msgstr "同一件事说到第 N 次，它就该是项目的一条规则，而不是第 N+1 次抱怨。"
+
+msgid "When the slice's tests do depend on its code, ask the same question of each source file on its own: one that can be reverted alone without failing anything has no test behind it. Costs one extra test run per file, on the path where the slice is fine."
+msgstr "当切片的测试确实依赖它的代码时，再对每个源文件单独问同一个问题：能被单独还原而什么都不失败的文件，背后没有任何测试。代价是每个文件多跑一次测试，而且发生在切片本来没问题的那条路上。"
 
 msgid "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP."
 msgstr "opensandbox-server 在哪。必须是 dns+nft 模式，否则凭据注入静默失效。它不一定在这台机器上——Tailscale 上的一台或者一台云机器都行，SDK 只跟它说 HTTP。"

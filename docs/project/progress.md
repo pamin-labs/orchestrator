@@ -2791,3 +2791,31 @@ text is in the prompt and not in `systemAppend`.
 | `fallow audit --gate all` | no issues in 69 changed files |
 | what a lesson used to cost | every live session in the fleet, plus its prefix |
 | what it costs now | five bullets in one turn's delta |
+
+## The per-file question, and the half of my own proposal that was wrong
+
+The idea was: when the whole-slice revert comes back `blind`, revert one file at
+a time to find which file's tests are the weak ones. **That is backwards, and it
+would have run the suite once per file to learn nothing.**
+
+`blind` means the suite passed with *every* source change reverted. Reverting one
+file is a subset of that, so it passes too — necessarily, for every file, every
+time. There is no information on that path.
+
+The information is on the other one. A whole-slice revert that *fails* proves
+something is covered; it does not say what. A slice that changed four files with
+one of them tested reads exactly like a slice with four tested files. Reverting
+each file alone answers it: one that can go back to its base revision without the
+suite noticing has no test behind it.
+
+`gates_json.discriminate` gains `partial` for that, beside `pass` and `blind`.
+
+### Off by default, and the reason is where the cost falls
+
+One extra test run per source file, on the path where the slice is **fine** —
+which is most of them. That is a different bargain from the whole-slice check,
+which costs one run and only on a slice that touched both code and tests. So it
+is `discriminatePerFile`, off, beside `discriminate` on the settings page.
+
+Both halves are tested, including the skip: with `perFile` on and the whole-slice
+revert green, the fixture asserts the gate ran **once** — not once per file.

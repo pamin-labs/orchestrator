@@ -13,6 +13,9 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+msgid "…and say which file is untested"
+msgstr "…そしてどのファイルが未テストかを示す"
+
 msgid "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
 msgstr "「この資格情報はまだ有効か」：GitHub の /user、プロバイダの /v1/models。応答が遅くても失敗ではなく「未検証」と報告するだけで、待つものは何もないため短め。"
 
@@ -2632,6 +2635,9 @@ msgstr "S{seq}: 新しいテストは変更がなければ失敗します。あ�
 msgid "S{seq}: the new tests still pass with the change reverted"
 msgstr "S{seq}: 変更を元に戻しても新しいテストは通ってしまいます"
 
+msgid "S{seq}: the tests hold, but nothing covers {files}"
+msgstr "S{seq}: テストは成立していますが、{files} を覆うものが何もありません"
+
 msgid "S{seq}: worktree dirty after a check"
 msgstr "S{seq}: 検査のあとワークツリーが汚れています"
 
@@ -3337,6 +3343,9 @@ msgstr "上限に達するとグループは止まり、上げるかどうかを
 
 msgid "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint."
 msgstr "同じことが N 回出てきたなら、それは N+1 回目の苦情ではなく、プロジェクトのルールにすべきものです。"
+
+msgid "When the slice's tests do depend on its code, ask the same question of each source file on its own: one that can be reverted alone without failing anything has no test behind it. Costs one extra test run per file, on the path where the slice is fine."
+msgstr "スライスのテストが実際にそのコードに依存している場合に、各ソースファイルへ同じ問いを個別に投げます。単独で元に戻しても何も失敗しないファイルには、背後にテストがありません。ファイルごとにテスト実行が 1 回増え、しかもスライスに問題がない側の経路で発生します。"
 
 msgid "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP."
 msgstr "opensandbox-server の所在です。dns+nft モードでないと資格情報の注入が黙って失敗します。このマシンである必要はありません。Tailscale のピアでもクラウドのマシンでも構いません。SDK は HTTP でしか話しません。"

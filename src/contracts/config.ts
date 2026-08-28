@@ -380,6 +380,16 @@ export const ConfigSchema = z.object({
    * is worth — it is one extra run of the `test` gate on a qualifying slice.
    */
   discriminate: z.boolean(),
+  /**
+   * Whether the same question is then asked of each source file on its own.
+   *
+   * Off, because it costs one test run per file on the path where the slice is
+   * *fine*: the whole-slice check having failed means some test depends on the
+   * change, and this asks which files that is true of. Reverting one file at a
+   * time on the other path answers nothing — a subset of a revert that already
+   * left the suite green leaves it green too.
+   */
+  discriminatePerFile: z.boolean(),
   /** Wall clock for one leased command. A big compile is hours, not minutes. */
   leaseTimeoutMs: count,
   /**
