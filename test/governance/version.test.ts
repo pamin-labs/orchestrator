@@ -54,12 +54,12 @@ const versionIn = (file: string, pin: RegExp) => readFileSync(file, "utf8").matc
  * whatever npm had published that morning.
  */
 /**
- * `@types/bun` was `"latest"`, while Bun is 1.3.14 in four `BUN_VERSION` pins and
- * by digest in the agent image. So the types were the only thing free to move,
- * and they moved to 1.4.0, whose `Response` grew `textStream()`. Hono's
- * `ClientResponse` has no such method, so a lockfile refresh that touched no
- * source produced 81 type errors across nineteen panel files, every one about a
- * method nothing here calls.
+ * `@types/bun` was `"latest"`, while Bun is pinned by four `BUN_VERSION` lines
+ * and by digest in the agent image. So the types were the only thing free to
+ * move, and they moved a minor ahead of the runtime, to a `Response` carrying
+ * `textStream()`. Hono's `ClientResponse` has no such method, so a lockfile
+ * refresh that touched no source produced 81 type errors across nineteen files,
+ * every one about a method nothing here calls.
  */
 /**
  * `workflows.test.ts` refuses `bun-version: latest` in a workflow for the same

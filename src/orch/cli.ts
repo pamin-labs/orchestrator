@@ -3,7 +3,7 @@
 
 import { hc } from "hono/client";
 import { type Json, JsonValue, jsonOr } from "../contracts/json.ts";
-import { displayJson, ProtocolResponse, readJsonResponse } from "../contracts/protocol.ts";
+import { displayJson, type JsonReply, ProtocolResponse, readJsonResponse } from "../contracts/protocol.ts";
 import type { OrchType } from "../http/routes/orch.ts";
 import { VERSION } from "../platform/process/version.ts";
 import { dispatchCommand } from "./commands/dispatch.ts";
@@ -113,14 +113,14 @@ const orch = hc<OrchType>(`${URL_BASE}/orch/v1`, {
   headers: { "x-orch-token": TOKEN },
 });
 
-async function result(response: Response): Promise<ProtocolResponse> {
+async function result(response: JsonReply): Promise<ProtocolResponse> {
   const body = await readJsonResponse(response);
   return body.ok
     ? { status: response.status, body: body.data }
     : { status: 502, body: { error: "orchestrator returned a non-JSON response" } };
 }
 
-async function send(request: Promise<Response>): Promise<ProtocolResponse> {
+async function send(request: Promise<JsonReply>): Promise<ProtocolResponse> {
   try {
     return await result(await request);
   } catch (error) {

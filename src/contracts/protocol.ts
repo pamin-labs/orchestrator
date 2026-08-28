@@ -27,7 +27,28 @@ export const ErrorResponseSchema = z.object({
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 
 /** Keep malformed response bytes distinct from the valid JSON value `null`. */
-export async function readJsonResponse(response: Response): Promise<{ ok: true; data: Json } | { ok: false }> {
+/**
+ * What a reader of a JSON reply actually needs.
+ *
+ * The annotation here was `Response`, which was the nearest name rather than the
+ * true one — nothing that reads a reply streams it, clones it or follows a
+ * redirect. hono's client hands back a `ClientResponse`, Response-shaped but not
+ * a `Response`, and six call sites relied on the two being structurally
+ * identical.
+ */
+/**
+ * Bun 1.4.0 ended that by giving `Response` a `textStream()`: 81 errors across
+ * nineteen files, every one about a method none of them calls. Naming the three
+ * members that are read keeps both kinds assignable and states the contract
+ * instead of borrowing one.
+ */
+export interface JsonReply {
+  ok: boolean;
+  status: number;
+  json: () => Promise<unknown>;
+}
+
+export async function readJsonResponse(response: JsonReply): Promise<{ ok: true; data: Json } | { ok: false }> {
   try {
     const parsed = JsonValue.safeParse(await response.json());
     return parsed.success ? { ok: true, data: parsed.data } : { ok: false };

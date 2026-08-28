@@ -447,16 +447,15 @@ export function Composer({
       // A folder copied in Finder arrives as an unreadable zero-byte entry and the
       // fetch dies with ERR_ACCESS_DENIED — as an unhandled rejection in the console
       // and nothing at all on screen.
-      let r: Response;
-      try {
-        // Relative paths travel beside files so the server can rebuild a folder as
-        // one attachment. Hono RPC owns the multipart encoding and route contract.
-        r = await api.attach.$post({
-          form: { file: picked.map(({ file }) => file), rel: picked.map(({ rel }) => rel) },
-        });
-      } catch {
-        return void toast.error(t`The browser can't read this. Drag folders in instead.`, { duration: 8000 });
-      }
+      // Relative paths travel beside files so the server can rebuild a folder as
+      // one attachment. Hono RPC owns the multipart encoding and route contract.
+      // `.catch`, as `fromDisk` above already does: the hoisted `let` this
+      // replaces needed a type annotation, and the only name for what hono
+      // returns was `Response`, which it is not.
+      const r = await api.attach
+        .$post({ form: { file: picked.map(({ file }) => file), rel: picked.map(({ rel }) => rel) } })
+        .catch(() => null);
+      if (!r) return void toast.error(t`The browser can't read this. Drag folders in instead.`, { duration: 8000 });
       // A file that silently fails to attach is worse than one never added: the text
       // goes out referencing a path, and the agent is told to Read something missing.
       const files = (await readApi(r, AttachmentsSchema))?.files;

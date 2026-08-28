@@ -23,10 +23,10 @@ updates:
     # version range would not help — rc.6 reproduces it exactly. Both move by
     # hand, together, when `rc` moves.
     #
-    # @types/bun describes a runtime pinned at 1.3.14 by four workflows and by
-    # digest in the agent image. Left floating it reached 1.4.0, whose `Response`
-    # grew `textStream()`, and 81 panel files stopped typechecking over a method
-    # nothing here calls. It moves when the `BUN_VERSION` pins move.
+    # @types/bun describes a runtime pinned by four workflows and by digest in the
+    # agent image. Left floating it reached 1.4.0 while the runtime was still
+    # 1.3.14, and 81 files stopped typechecking over a `Response.textStream()`
+    # nothing here calls. It moves when the `BUN_VERSION` pins move, together.
     #
     # `test/governance/version.test.ts` is the half of each rule that still holds
     # when the bump arrives by hand instead.
