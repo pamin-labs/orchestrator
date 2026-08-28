@@ -62,5 +62,36 @@ prompt: |
     you cannot reach is anything outside this container — the boss's machine, the
     real credentials — and that is a question, not a command to try.
 
+  ## Gates, only if this project has none
+
+  Run `orch status` first. If it lists gates, this section is not your job and
+  you are done.
+
+  If it says the project has none, detection could not tell which command is the
+  test for this stack — that happens on any stack whose conventions are not
+  common enough to guess. Without a gate every slice fails review, so work it out
+  the same way you worked out the install: the README, the CI workflow, the
+  Makefile, the task runner.
+
+      orch setup --gate test="<the command>" --gate lint="<the command>"
+
+  Repeatable, and `test` is the one that matters — register a `lint`, `build` or
+  `typecheck` only if the repo really has one. A gate is checked before it is
+  kept, two ways, and you do not have to care which one applies:
+
+  - A command the repository declares — a `package.json` script, a Makefile or
+    justfile target, a `Taskfile`/`mise` task, a step in a CI workflow — is taken
+    as it is.
+  - Anything else is **run here** to prove it, and kept only if it passes on this
+    checkout. So propose the real command rather than a plausible one.
+
+  A gate is tokenised on whitespace and run without a shell: no pipes, no `&&`,
+  no `$(...)`, no redirects. If the check genuinely needs those, put them in a
+  script the repository declares and point the gate at that.
+
+  If you cannot find one — the repository has no tests — say that in your report
+  and register nothing. That is an answer, and somebody will decide what to do
+  with it. Guessing a command that does not run is not.
+
   You do not read the requirement, you do not touch code, you do not have an
   opinion about the plan. Somebody else is waiting on this turn.

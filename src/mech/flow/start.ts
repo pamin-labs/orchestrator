@@ -9,6 +9,7 @@ import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
 import { execIn, execLines, WORK } from "../sandbox/sandbox.ts";
 import {
+  type DetectedGate,
   detectDevcontainer,
   detectGates,
   detectInstall,
@@ -281,20 +282,59 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
  * container is the first moment the repository exists anywhere we can read it.
  */
 /**
- * Once per project, marked by `config.detected` rather than by "are there gates
- * yet" — a project where detection genuinely finds nothing must not re-run forever
- * or grow duplicate resource rows.
- *
- * Everything it writes is a guess in a place the boss can correct: gate names, the
- * install command and the shared paths all land in project config, which is
- * `detect.ts`'s own stated rule.
+ * The upsert's conflict arm. `excluded` is the row the insert tried to add; it is
+ * a pseudo-table with no Drizzle column of its own, so the four assignments stay
+ * `sql`.
  */
-export async function detectProject(ctx: Ctx, grpId: number, projectId: number): Promise<void> {
-  const cfg = await projectConfig(ctx.db, projectId);
-  // Detection always writes both fields. A hand-edited/legacy `detected: true`
-  // cannot suppress it when its companion gate list did not pass the boundary.
-  if (cfg.detected === true && cfg.gates !== undefined) return;
+const ON_NAME_CONFLICT = {
+  target: resource.name,
+  set: {
+    template: sql`excluded.template`,
+    error_regex: sql`excluded.error_regex`,
+    arg_schema_json: sql`excluded.arg_schema_json`,
+    tags_json: sql`excluded.tags_json`,
+  },
+};
 
+/**
+ * Write gate resources, whoever worked them out.
+ *
+ * Two callers: detection below, and `postSetup` when the bootstrap agent found
+ * gates detection could not classify. One writer either way — `resource` is the
+ * table `lease.ts` reads, and sharing the registration path is what makes "an
+ * agent proposed this" and "a rule detected this" the same row.
+ */
+/** `repo`: one gate at a time per repository, whatever the gate is. Concurrency
+ *  is per resource, so build and typecheck ran side by side — and both shell out
+ *  to the project's own scripts, which install things. We can fix our templates
+ *  and not the scripts a project ships, so the guarantee has to be structural.
+ *  Different repos still run in parallel: the pool is keyed by project. */
+/** One statement per gate rather than a single multi-row insert: `ON CONFLICT DO
+ *  UPDATE` refuses to touch the same row twice within one statement, so two gates
+ *  sharing a name would become an error instead of an upsert applied twice. */
+export async function registerGates(db: DB, gates: DetectedGate[]): Promise<void> {
+  for (const g of gates) {
+    await db
+      .insert(resource)
+      .values({
+        name: g.name,
+        template: g.template,
+        arg_schema_json: {},
+        error_regex: g.errorRegex,
+        concurrency: 1,
+        tags_json: ["repo"],
+      })
+      .onConflictDoUpdate(ON_NAME_CONFLICT);
+  }
+}
+
+/** The repository as `detect.ts` wants it: a listing, a few files, one directory.
+ *  Read from the group's container, never from a host path — there is no host
+ *  checkout any more. */
+/** Two callers: detection, and `postSetup` when it has to check a gate an agent
+ *  proposed against what the repository actually declares. The same read for
+ *  both, so the two answers cannot disagree about what is in the repository. */
+export async function readRoot(ctx: Ctx, grpId: number): Promise<Root> {
   const ls = await execIn(ctx, { grp: grpId }, `ls -A ${shq(WORK)}`);
   const names = ls.out
     .split("\n")
@@ -311,52 +351,32 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
     if (r.code === 0) files[f] = r.out;
   }
   const workflows = await readWorkflows(ctx, grpId, files);
-
-  const root: Root = {
+  return {
     names,
     read: (n) => files[n] ?? null,
     list: (dir) => (dir === WORKFLOWS ? workflows : []),
   };
+}
+
+/**
+ * Once per project, marked by `config.detected` rather than by "are there gates
+ * yet" — a project where detection genuinely finds nothing must not re-run forever
+ * or grow duplicate resource rows.
+ *
+ * Everything it writes is a guess in a place the boss can correct: gate names, the
+ * install command and the shared paths all land in project config, which is
+ * `detect.ts`'s own stated rule.
+ */
+export async function detectProject(ctx: Ctx, grpId: number, projectId: number): Promise<void> {
+  const cfg = await projectConfig(ctx.db, projectId);
+  // Detection always writes both fields. A hand-edited/legacy `detected: true`
+  // cannot suppress it when its companion gate list did not pass the boundary.
+  if (cfg.detected === true && cfg.gates !== undefined) return;
+
+  const root = await readRoot(ctx, grpId);
   const gates = detectGates(root);
 
-  /**
-   * The upsert's conflict arm, named once and shared by both writers below.
-   * `excluded` is the row the insert tried to add; it is a pseudo-table with no
-   * Drizzle column of its own, so the four assignments stay `sql`.
-   */
-  const onNameConflict = {
-    target: resource.name,
-    set: {
-      template: sql`excluded.template`,
-      error_regex: sql`excluded.error_regex`,
-      arg_schema_json: sql`excluded.arg_schema_json`,
-      tags_json: sql`excluded.tags_json`,
-    },
-  };
-  // `repo`: one gate at a time per repository, whatever the gate is.
-  //
-  // Concurrency is per resource, so build and typecheck ran side by side — and
-  // both shell out to the project's own scripts, which install things. We can fix
-  // our own templates and not the scripts a project ships, so the guarantee has
-  // to be structural: gates of one repo do not overlap. Different repos still run
-  // in parallel — the pool is keyed by project.
-  // One statement per gate, as before, rather than a single multi-row insert:
-  // `ON CONFLICT DO UPDATE` refuses to touch the same row twice within one
-  // statement, so two gates sharing a name would become an error instead of an
-  // upsert applied twice.
-  for (const g of gates) {
-    await ctx.db
-      .insert(resource)
-      .values({
-        name: g.name,
-        template: g.template,
-        arg_schema_json: {},
-        error_regex: g.errorRegex,
-        concurrency: 1,
-        tags_json: ["repo"],
-      })
-      .onConflictDoUpdate(onNameConflict);
-  }
+  await registerGates(ctx.db, gates);
 
   // A project that ships the runner gets the browser resource. Without it every
   // acceptance line of the form "the menu opens" is unverifiable by anyone in the
@@ -379,7 +399,7 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
         concurrency: 1,
         tags_json: ["browser"],
       })
-      .onConflictDoUpdate(onNameConflict);
+      .onConflictDoUpdate(ON_NAME_CONFLICT);
   }
 
   const next = {

@@ -3161,3 +3161,91 @@ and made that a refusal; what shipped **records** citations (`citedPaths`,
 `validate.ts:451`) without refusing on them. That is a narrower change than a
 decision — the criterion text still says what it said — so it stays in the commit
 that made it.
+
+## The layer the plan called "the agent", built as a check rather than a promise
+
+`detectGates` reads a repository two ways and both can come back empty: the rule
+table has no row for this stack, and the CI fallback found no workflow. The
+answer then was `raise(kind:"env", chain:"boss")` — the product's own reason for
+existing is other people's repositories, and the least-known ones went straight
+to the person we are trying not to interrupt.
+
+The fix is a split that was there all along and had never been named:
+
+| | who can do it | does it run out? |
+|---|---|---|
+| **enumerate** what a repository declares | code, in any language | no |
+| **classify** which of those is the test | a table, or an agent | the table does |
+
+`declaredCommands` is the first column: package scripts, Makefile and justfile
+targets, `Taskfile`/`mise` tasks, CI `run:` steps, `postCreateCommand` — all of
+them parsed by readers `detect.ts` already had, none of them needing to know what
+rebar3 is. The bootstrap agent, already in the container reading the README for
+the install command, does the second. And then the answer is **checked**, not
+approved:
+
+- in `declaredCommands` → taken as it is, because the repository's owners merged
+  it;
+- not declared → run here through `proveGate`, which is the same `runOneGate` a
+  real gate goes through, and kept only if it passes;
+- neither → refused with the exit code, the output, and the list of what the
+  repository does declare.
+
+That last one is the tradition `planning.ts` set: a refusal that teaches beats a
+refusal that is correct. `rebar3 eunit` in an Erlang repository with no CI is the
+case the second rung exists for — undeclared, and a passing run is better
+evidence than a declaration would have been.
+
+### What was reused rather than written
+
+- `runOneGate`, extracted from `runGatesInner` so a proof runs a gate the way a
+  gate runs. A proof through a different path is a proof about a different
+  command — the tokenisation, the lease timeout, the error digest and the
+  off-context log are the parts that had to be shared, not just the spawn.
+- `registerGates`, extracted from `detectProject`, so "a rule detected this" and
+  "an agent proposed this" produce the same `resource` row. One writer, unchanged.
+- `readRoot`, extracted from `detectProject`, so the check reads the repository
+  the same way detection did and the two cannot disagree about what is in it.
+- `taskIn` / `miseTask` became `yamlTasks` / `tomlTasks` — the rules ask whether
+  the names include `test`, the enumerator asks for all of them.
+- The timeline sentence is the one detection already emits, so ten catalogues
+  needed nothing: one gate list, one way of saying it, whoever worked it out.
+
+### The trust boundary did not move
+
+`resource` still has one writer. Every template still has to survive
+`isTemplate` — the rule `lease.ts` imposes, since it tokenises on whitespace and
+never invokes a shell, so `make deps && make test` would hand `&&` to `make` as
+an argument. That is refused before anything runs, with the reason, rather than
+mangled into a gate that looks like it ran and did half of nothing.
+
+### Shown failing, all five
+
+Each guard was made red before it was kept, by breaking the thing it watches:
+
+| broken | went red |
+|---|---|
+| the `declared` shortcut | a declared gate is registered without being run |
+| the proof's `!proof.pass` arm | an undeclared failing command is refused |
+| the `isTemplate` check | a shell-shaped gate is refused before it runs |
+| gates registered before the install | the ordering test |
+| `TARGET` allowing a leading `.` | the enumerator picks up `.PHONY` |
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1936 pass, 6 skip, 0 fail across 237 files |
+| new tests | 8: five on the route, three on the enumerator |
+| new catalogue entries | 0 |
+
+### Not taken
+
+- **An approval tier.** [`048`](../adr/048-a-project-states-its-own-gates-so-there-is-nothing-to-approve.md)
+  already argued its top two rungs were unreachable; this closes the gap it left
+  by checking the proposal instead of routing it to somebody.
+- **Proving every gate, declared or not.** A test suite is not something to run
+  twice for a formality, and the declaration is the repository's own statement.
+- **Letting the agent write `config_json.gates` directly.** The names go in
+  through the same registration path detection uses, and only for gates that
+  passed one of the two checks.

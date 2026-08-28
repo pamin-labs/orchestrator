@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  declaredCommands,
   detectDevcontainer,
   detectGates,
   detectInstall,
@@ -343,4 +344,57 @@ test("a mise config with tools but no test task still installs the toolchain", (
   const dir = repo({ "mise.toml": '[tools]\nnode = "22"' });
   expect(detectToolchain(dir)).toBe("mise install --yes");
   expect(detectGates(dir)).toEqual([]);
+});
+
+/**
+ * The half of detection that does not run out of table rows.
+ *
+ * `detectGates` classifies and can fail; this only enumerates, and enumeration
+ * works in a language nobody wrote a rule for. It is what an agent's proposed
+ * gate is checked against, so what it misses is a gate that has to be proven by
+ * running instead — and what it wrongly includes is a command accepted unrun.
+ */
+test("every entrypoint a repository declares, whatever the language", () => {
+  const dir = repo({
+    "package.json": JSON.stringify({ scripts: { test: "vitest", "i18n:check": "lingui" } }),
+    Makefile: "test:\n\tgo test ./...\n\n.PHONY: lint\nlint:\n\tgo vet ./...\n\nCC := gcc\n",
+    justfile: "fmt:\n  gofmt -l .\n",
+    "Taskfile.yml": "tasks:\n  e2e:\n    cmds: [playwright test]",
+    "mise.toml": '[tasks.bench]\nrun = "hyperfine x"',
+  });
+
+  expect(declaredCommands(dir).sort()).toEqual([
+    "just fmt",
+    "make lint",
+    "make test",
+    "mise run bench",
+    "npm run i18n:check",
+    "npm run test",
+    "task e2e",
+  ]);
+});
+
+test("what a repository declares includes its CI steps and excludes what a lease cannot run", () => {
+  const dir: Root = {
+    ...repo({ "package.json": "{}" }),
+    list: (d) => (d === WORKFLOWS ? ["ci.yml"] : []),
+  };
+  const withCi: Root = {
+    ...dir,
+    read: (n) =>
+      n === `${WORKFLOWS}/ci.yml`
+        ? "jobs:\n  a:\n    steps:\n      - run: |\n          cargo test --all\n          cargo clippy | tee out\n          echo ${{ matrix.os }}\n"
+        : dir.read(n),
+  };
+
+  // The plain step is a template; the pipe and the runner expression are not —
+  // `lease.ts` tokenises on whitespace, so `|` would be an argument to `cargo`.
+  expect(declaredCommands(withCi)).toEqual(["cargo test --all"]);
+});
+
+/** A `%` pattern rule and a `:=` assignment are not targets anything can run. */
+test("a Makefile's variables and pattern rules are not entrypoints", () => {
+  expect(declaredCommands(repo({ Makefile: "VERSION := 1\n%.o: %.c\n\tcc $<\nbuild:\n\tcc main.c\n" }))).toEqual([
+    "make build",
+  ]);
 });

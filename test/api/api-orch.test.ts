@@ -6,7 +6,7 @@ import { makeApp } from "../../src/composition/api.ts";
 import { eq, isNotNull } from "drizzle-orm";
 import type { Json } from "../../src/contracts/json.ts";
 import { saveTree, type Tree } from "../../src/mech/knowledge/pageindex.ts";
-import { event, grp, project } from "../../src/platform/persistence/schema.ts";
+import { event, grp, project, resource } from "../../src/platform/persistence/schema.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
@@ -27,8 +27,9 @@ async function harness(
   gh?: Github,
 ) {
   const published: number[] = [];
+  const sandbox = fakeSandbox(handle);
   const ctx = await testContext({
-    sandbox: fakeSandbox(handle),
+    sandbox,
     publishBranch: (grpId) => void published.push(grpId),
     ...(gh ? { gh } : {}),
   });
@@ -59,7 +60,7 @@ async function harness(
         },
       }),
     );
-  return { db, ctx, app, post, published, f };
+  return { db, ctx, app, post, published, f, sandbox };
 }
 
 type Harness = Awaited<ReturnType<typeof harness>>;
@@ -178,6 +179,109 @@ test("an install that worked is remembered on the project", async () => {
   const r = await h.post("/orch/v1/setup", { cmd: "bun install" }, "tok-boot");
   expect(r.status).toBe(200);
   expect(await config(h)).toEqual({ install: "bun install" });
+});
+
+/**
+ * A gate an agent worked out, for a stack no rule could classify.
+ *
+ * Detection enumerates what a repository declares in any language and only
+ * *classification* runs out of rows. These cover the second half of that split:
+ * the agent names the gate, and the route checks the answer two ways — declared
+ * by the repository, or proven by running here — rather than trusting it.
+ */
+const repoOf =
+  (files: Record<string, string>) =>
+  (cmd: string): { code?: number; out?: string } | null => {
+    if (cmd.startsWith("ls -A '/work/.github/workflows'")) return { out: "" };
+    if (cmd.startsWith("ls -A")) return { out: Object.keys(files).join("\n") };
+    const cat = /^cat '\/work\/([^']+)'$/.exec(cmd);
+    if (!cat) return null;
+    const body = files[cat[1]!];
+    return body === undefined ? { code: 1 } : { out: body };
+  };
+
+/** The resource templates registered against this project, by name. */
+const gateRows = (h: Harness) => h.db.select({ name: resource.name, template: resource.template }).from(resource);
+
+test("a gate the repository declares is registered without being run", async () => {
+  const answer = repoOf({ "package.json": JSON.stringify({ scripts: { test: "vitest run" } }) });
+  const h = await harness((cmd) => answer(cmd) ?? { code: 1, out: "should not have run" });
+
+  const r = await h.post("/orch/v1/setup", { gates: [{ name: "test", cmd: "npm run test" }] }, "tok-boot");
+
+  expect(r.status).toBe(200);
+  expect(await gateRows(h)).toEqual([{ name: "test", template: "npm run test" }]);
+  expect(await config(h)).toEqual({ gates: ["test"] });
+  // The repository committed this command, so there is nothing to prove by
+  // running it — and a test suite is not something to run twice for a formality.
+  expect(h.sandbox.commands.some((c) => c.includes("'npm' 'run' 'test'"))).toBe(false);
+});
+
+test("a gate the repository does not declare has to earn its place by running", async () => {
+  // An Erlang repository with no CI: `rebar3 eunit` is the answer and nothing in
+  // the repository says so. This is the case that used to reach the boss.
+  const answer = repoOf({ "rebar.config": "{erl_opts, []}." });
+  const h = await harness(
+    (cmd) => answer(cmd) ?? (cmd.includes("'rebar3' 'eunit'") ? { out: "All 12 tests passed." } : {}),
+  );
+
+  const r = await h.post("/orch/v1/setup", { gates: [{ name: "test", cmd: "rebar3 eunit" }] }, "tok-boot");
+
+  expect(r.status).toBe(200);
+  expect(await gateRows(h)).toEqual([{ name: "test", template: "rebar3 eunit" }]);
+  expect(await config(h)).toEqual({ gates: ["test"] });
+  expect(h.sandbox.commands.some((c) => c.includes("'rebar3' 'eunit'"))).toBe(true);
+});
+
+test("a command that is neither declared nor passes is refused, and the refusal says what is declared", async () => {
+  const answer = repoOf({ Makefile: "test:\n\tgo test ./...\n\nlint:\n\tgo vet ./...\n" });
+  const h = await harness((cmd) => answer(cmd) ?? { code: 127, out: "rebar3: command not found" });
+
+  const r = await h.post("/orch/v1/setup", { gates: [{ name: "test", cmd: "rebar3 eunit" }] }, "tok-boot");
+
+  expect(r.status).toBe(422);
+  const text = await r.text();
+  expect(text).toContain("command not found");
+  // Teachable: the agent is told what it may point at instead of being told no.
+  expect(text).toContain("make test");
+  expect(text).toContain("make lint");
+  expect(await gateRows(h)).toEqual([]);
+  expect(await config(h)).toEqual({});
+});
+
+test("a gate that needs a shell is refused before it is run", async () => {
+  const answer = repoOf({ Makefile: "test:\n\tgo test ./...\n" });
+  const h = await harness((cmd) => answer(cmd) ?? {});
+
+  const r = await h.post("/orch/v1/setup", { gates: [{ name: "test", cmd: "make deps && make test" }] }, "tok-boot");
+
+  expect(r.status).toBe(422);
+  // `lease.ts` tokenises on whitespace, so this would have handed `&&` to `make`
+  // as an argument — a gate that looks like it ran and did half of nothing.
+  expect(await r.text()).toContain("without a shell");
+  expect(h.sandbox.commands.some((c) => c.includes("&&"))).toBe(false);
+  expect(await gateRows(h)).toEqual([]);
+});
+
+test("gates are registered after the install, on the checkout every later gate sees", async () => {
+  const answer = repoOf({ "rebar.config": "" });
+  const order: string[] = [];
+  const h = await harness((cmd) => {
+    if (cmd.includes("rebar3")) order.push(cmd.includes("'rebar3' 'eunit'") ? "gate" : "install");
+    return answer(cmd) ?? {};
+  });
+
+  const r = await h.post(
+    "/orch/v1/setup",
+    { cmd: "rebar3 get-deps", gates: [{ name: "test", cmd: "rebar3 eunit" }] },
+    "tok-boot",
+  );
+
+  expect(r.status).toBe(200);
+  // A gate proven before its dependencies exist is proven against a checkout
+  // nothing else will ever see.
+  expect(order).toEqual(["install", "gate"]);
+  expect(await config(h)).toEqual({ install: "rebar3 get-deps", gates: ["test"] });
 });
 
 // ----------------------------------------------------------- orch/ctx/query

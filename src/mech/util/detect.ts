@@ -187,7 +187,7 @@ const RULES: Rule[] = [
 const MAKE_TEST_TARGET = /^test\s*:/m;
 
 function hasMakeTestTarget(repo: Root): boolean {
-  for (const f of ["Makefile", "makefile", "GNUmakefile"]) {
+  for (const f of MAKEFILES) {
     const body = repo.read(f);
     if (body === null) continue;
     return MAKE_TEST_TARGET.test(body);
@@ -402,30 +402,102 @@ export function detectToolchain(repo: Root): string | null {
   return TOOL_VERSIONS.some((f) => hasFile(repo, f)) ? "mise install --yes" : null;
 }
 
-/** A `tasks:` map with a `test` in it, which is what `task test` needs to exist. */
-function taskIn(repo: Root, file: string): boolean {
+/**
+ * The task names a runner config declares, or none.
+ *
+ * Names rather than "is there a `test`": the rules below ask that question, and
+ * `declaredCommands` asks for all of them. A file this cannot parse is the
+ * project's own problem to report and not a reason to answer wrongly.
+ */
+function taskNames(repo: Root, file: string, parse: (body: string) => unknown): string[] {
   const body = repo.read(file);
-  if (body === null) return false;
+  if (body === null) return [];
   try {
-    return TaskfileSchema.safeParse(Bun.YAML.parse(body)).data?.tasks?.test !== undefined;
+    return Object.keys(TasksSchema.safeParse(parse(body)).data?.tasks ?? {});
   } catch {
-    return false;
+    return [];
   }
 }
+
+const yamlTasks = (repo: Root, file: string) => taskNames(repo, file, (b) => Bun.YAML.parse(b));
+const tomlTasks = (repo: Root, file: string) => taskNames(repo, file, (b) => Bun.TOML.parse(b));
+
+/** A `tasks:` map with a `test` in it, which is what `task test` needs to exist. */
+const taskIn = (repo: Root, file: string) => yamlTasks(repo, file).includes("test");
 
 /** `[tasks.test]` in a mise config, which `mise run test` needs. */
-function miseTask(repo: Root, file: string): boolean {
-  const body = repo.read(file);
-  if (body === null) return false;
-  try {
-    return MiseSchema.safeParse(Bun.TOML.parse(body)).data?.tasks?.test !== undefined;
-  } catch {
-    return false;
-  }
+const miseTask = (repo: Root, file: string) => tomlTasks(repo, file).includes("test");
+
+/** One shape for both: a Taskfile and a mise config each keep their tasks in a
+ *  `tasks` map, and only the names are read here. */
+const TasksSchema = z.object({ tasks: z.record(z.string(), z.json()).optional() });
+
+/**
+ * Every command this repository declares an entrypoint for, in any language.
+ *
+ * This is the half of detection that does not fail. `detectGates` has to
+ * *classify* — which of these is the test gate — and classification is what runs
+ * out of table rows on a stack nobody wrote a row for.
+ */
+/** Enumeration never does: a package script, a Makefile target, a task, a CI step
+ *  and a `postCreateCommand` are commands the repository itself committed, and
+ *  reading them needs to know nothing about rebar3, dune or gleam. */
+/** So the two halves get two different answerers. Code enumerates; the bootstrap
+ *  agent, already in the container reading the README, says which one is the
+ *  test — and `postSetup` checks that answer against this list rather than
+ *  against a person's judgement. An agent may point at a command the repository
+ *  committed; it may not invent one. */
+/** Filtered by the same `NOT_A_TEMPLATE` the CI fallback uses, so everything
+ *  returned is something a lease can actually run: `lease.ts` tokenises on
+ *  whitespace and never invokes a shell. */
+/**
+ * Whether a command could be typed as a resource template.
+ *
+ * The one rule every path into `resource` shares: `lease.ts` tokenises on
+ * whitespace and never invokes a shell, so `a && b` would hand `&&` to `a` as an
+ * argument — a gate that looks like it ran and did half of nothing. Detection
+ * skips such a step; an agent proposing one is told why rather than having it
+ * silently mangled.
+ */
+export const isTemplate = (cmd: string): boolean => cmd.trim().length > 0 && !NOT_A_TEMPLATE.test(cmd);
+
+/** The error pattern for a gate of this name, for gates that arrive without a
+ *  stack attached — a CI step, or one an agent proposed. */
+export const gateErrorRegex = (name: string): string => GATE_ERROR[name] ?? "(error|Error)";
+
+export function declaredCommands(repo: Root): string[] {
+  const scripts: Record<string, unknown> = readJson(repo, "package.json")?.scripts ?? {};
+  const runner = hasFile(repo, "bun.lock") || hasFile(repo, "bun.lockb") ? "bun" : "npm";
+  const found = [
+    // `<runner> run <name>`, not the script body: the entrypoint is what the
+    // repository declared, and the body may itself be a shell pipeline.
+    ...Object.keys(scripts).map((name) => `${runner} run ${name}`),
+    ...MAKEFILES.flatMap((f) => targetsIn(repo.read(f)).map((t) => `make ${t}`)),
+    ...JUSTFILES.flatMap((f) => targetsIn(repo.read(f)).map((t) => `just ${t}`)),
+    ...["Taskfile.yml", "Taskfile.yaml"].flatMap((f) => yamlTasks(repo, f).map((t) => `task ${t}`)),
+    ...["mise.toml", ".mise.toml"].flatMap((f) => tomlTasks(repo, f).map((t) => `mise run ${t}`)),
+    ...ciCommands(repo),
+    ...(detectDevcontainer(repo)?.setup ?? "").split("\n"),
+  ];
+  return [...new Set(found.map((c) => c.trim()).filter((c) => c && !NOT_A_TEMPLATE.test(c)))];
 }
 
-const TaskfileSchema = z.object({ tasks: z.record(z.string(), z.json()).optional() });
-const MiseSchema = z.object({ tasks: z.record(z.string(), z.json()).optional() });
+const MAKEFILES = ["Makefile", "makefile", "GNUmakefile"];
+const JUSTFILES = ["justfile", "Justfile", ".justfile"];
+
+/**
+ * Rule targets in a Makefile or a justfile, which spell them the same way.
+ *
+ * `:=` is a variable and not a target; a leading `.` is `.PHONY` and its
+ * relatives; a `%` is a pattern rule, which is not a name anything can run. A
+ * wrong entry here only widens what an agent may point at, and every entry still
+ * has to survive the gate on the first slice — so this errs towards reading less.
+ */
+const TARGET = /^([A-Za-z0-9_][\w.-]*)\s*:(?!=)/gm;
+
+function targetsIn(body: string | null): string[] {
+  return body === null ? [] : [...body.matchAll(TARGET)].map((m) => m[1]!);
+}
 
 /** The install command for whichever stack this repo is, or null. */
 export function detectInstall(repo: Root): string | null {

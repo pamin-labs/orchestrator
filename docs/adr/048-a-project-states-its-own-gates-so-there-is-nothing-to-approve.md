@@ -26,7 +26,9 @@ to find no compiler.
    version and installs exactly that. The per-language install logic that would
    otherwise live in `detect.ts` was never written.
 3. **The bootstrap agent**, only when the first two find nothing. It already runs
-   at that point, so most projects do not pay an extra turn.
+   at that point — it is the turn that works out the install — so most projects
+   do not pay an extra one. It proposes through `orch setup --gate name=command`,
+   and the route below checks the proposal rather than approving it.
 
 Convention beats CI where both exist: a CI step is written for a machine that has
 the services CI starts, so preferring it would trade "no gate" for "a gate that
@@ -46,6 +48,34 @@ entry the repository declared" — and after discovery became deterministic, tha
 is every command there is. A ladder whose top two rungs are unreachable is
 machinery, a config key, a CLI flag and an escalation path for a case that does
 not occur.
+
+## What replaced approval: two machine checks
+
+The third layer needs *some* answer to "may this command be registered", and the
+ladder's answer was a person. Two deterministic checks cover the same ground, and
+both are things a person could not do as well:
+
+- **Declared.** The command is one the repository itself committed — a package
+  script, a Makefile or justfile target, a `Taskfile`/`mise` task, a CI step, a
+  `postCreateCommand`. `declaredCommands` enumerates those in any language,
+  because enumeration is the half of detection that never runs out of table rows.
+  A command the repository merged is a command its owners approved.
+- **Proven.** It is not declared, but it ran here — through `proveGate`, the same
+  `runOneGate` a real gate goes through, so the tokenisation, the timeout, the
+  error digest and the log are the ones the gate will have — and it passed.
+  `rebar3 eunit` in an Erlang repository with no CI is the case this exists for:
+  undeclared, and a passing run is better evidence than a declaration.
+
+Neither, and it is refused with the exit code, the output, and the list of what
+the repository *does* declare. An agent may point at a command; it may not invent
+one and have it registered unseen. Anything carrying shell grammar is refused
+before it runs, with the reason — `lease.ts` tokenises on whitespace, so `a && b`
+would hand `&&` to `a`.
+
+This is the plan's tier 0 test, kept, with tier 1 and tier 2 replaced by evidence
+rather than by an escalation. The boss is still asked when a repository declares
+no entrypoint at all and no proposed command runs, which is the one case where
+the answer really is a person's.
 
 The trust boundary the ladder was protecting did not move: `resource` is still
 written only by the registration path in `flow/start.ts`, lease templates still
@@ -76,3 +106,9 @@ there was simply no gate.
 more than they save. That is when the plan's proposal tier becomes worth
 building, and it should be built against measured false positives rather than
 against the expectation of them.
+
+**Also revisit** if "proven" turns out to accept commands that pass at bootstrap
+and fail forever after — a suite that needs a service the container does not
+have would fail the proof, but one that is green because it ran nothing would
+pass it. `discriminate` ([`049`](049-the-review-half-gained-two-layers-and-neither-casts-a-vote.md))
+is the layer that catches that, and it is the reason this one does not have to.
