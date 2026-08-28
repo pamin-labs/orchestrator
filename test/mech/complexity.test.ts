@@ -28,9 +28,7 @@ test("what it cannot read is skipped rather than guessed at", () => {
   expect(parseLizard("")).toEqual([]);
   expect(parseLizard("not,csv")).toEqual([]);
   // A header or a summary line lizard may print alongside the rows.
-  expect(parseLizard("1,2,3,4,5,6,7,8,9,10\ntotal nloc  avg.NLOC  ...")).toEqual([
-    { name: "8", line: 10, score: 2 },
-  ]);
+  expect(parseLizard("1,2,3,4,5,6,7,8,9,10\ntotal nloc  avg.NLOC  ...")).toEqual([{ name: "8", line: 10, score: 2 }]);
 });
 
 /**
