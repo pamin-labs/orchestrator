@@ -234,59 +234,52 @@ function walkImports(node: Node, out: string[], depth: number): void {
 }
 
 /**
- * The module a node names, by the field the grammar gives it.
+ * The module a node names, by the field its own grammar gives it.
  *
- * One branch per shape rather than one fallback for all of them, because the
- * fallback was measured wrong three ways: Go returned its whole `import (…)`
- * block *and* each path with the quotes still on, and Python turned
- * `from mypkg.sub import thing` into `"mypkg.sub import thing"`.
+ * A table rather than a switch, for the reason `detect.ts` keeps one: eleven
+ * languages is eleven branches, and a branch per language is a function nobody
+ * can read and `fallow` refuses at thirty-one. Each entry answers for one node
+ * type and knows nothing about the others.
  */
-function targetOf(node: Node): string | null {
-  switch (node.type) {
-    // Two languages, one node name. Java's holds a `scoped_identifier` and *is*
-    // the import; Go's holds one `import_spec` per line and names nothing itself.
-    case "import_declaration":
-      return node.descendantsOfType("scoped_identifier")[0]?.text ?? null;
-    case "import_spec":
-      return literal(node.childForFieldName("path"));
-    // Python.
-    case "import_from_statement":
-      return node.childForFieldName("module_name")?.text ?? null;
-    case "import_statement":
-      // JS and TS carry a source; Python's has none and names dotted paths.
-      return literal(node.childForFieldName("source")) ?? node.descendantsOfType("dotted_name")[0]?.text ?? null;
-    // Rust.
-    case "use_declaration":
-    case "extern_crate_declaration":
-      return (
-        node.text
-          .replace(/^(use|extern crate)\s+/, "")
-          .replace(/[;{].*$/s, "")
-          .trim() || null
-      );
-    // C#: `using System.IO;`, or `using Alias = Some.Thing;` where the qualified
-    // name is the thing and the alias is not.
-    case "using_directive":
-      return node.descendantsOfType("qualified_name")[0]?.text ?? node.descendantsOfType("identifier")[0]?.text ?? null;
-    // C and C++: `"core/gate.h"` is this repository's; `<vector>` is the toolchain's.
-    case "preproc_include":
-      return literal(node.descendantsOfType("string_content")[0]);
-    // PHP: `use App\Core\Gate;` and the four spellings of "load this file",
-    // which are expressions of their own rather than calls the way Ruby's are.
-    case "namespace_use_declaration":
-      return node.descendantsOfType("qualified_name")[0]?.text ?? null;
-    case "require_expression":
-    case "require_once_expression":
-    case "include_expression":
-    case "include_once_expression":
-      return literal(node.descendantsOfType("encapsed_string")[0] ?? node.descendantsOfType("string")[0]);
-    case "call_expression":
-    case "call":
-      return requireTarget(node);
-    default:
-      return null;
-  }
-}
+const TARGET: Record<string, (node: Node) => string | null> = {
+  // Two languages, one node name. Java's holds a `scoped_identifier` and *is* the
+  // import; Go's holds one `import_spec` per line and names nothing itself.
+  import_declaration: (n) => n.descendantsOfType("scoped_identifier")[0]?.text ?? null,
+  import_spec: (n) => literal(n.childForFieldName("path")),
+  import_from_statement: (n) => n.childForFieldName("module_name")?.text ?? null,
+  // JS and TS carry a source; Python's has none and names dotted paths.
+  import_statement: (n) =>
+    literal(n.childForFieldName("source")) ?? n.descendantsOfType("dotted_name")[0]?.text ?? null,
+  use_declaration: (n) => bareText(n),
+  extern_crate_declaration: (n) => bareText(n),
+  // C#: `using System.IO;`, or `using Alias = Some.Thing;` where the qualified
+  // name is the thing and the alias is not.
+  using_directive: (n) =>
+    n.descendantsOfType("qualified_name")[0]?.text ?? n.descendantsOfType("identifier")[0]?.text ?? null,
+  // C and C++: `"core/gate.h"` is this repository's; `<vector>` is the toolchain's.
+  preproc_include: (n) => literal(n.descendantsOfType("string_content")[0]),
+  namespace_use_declaration: (n) => n.descendantsOfType("qualified_name")[0]?.text ?? null,
+  // PHP's four spellings of "load this file" are expressions of their own, where
+  // Ruby's are calls.
+  require_expression: (n) => loaded(n),
+  require_once_expression: (n) => loaded(n),
+  include_expression: (n) => loaded(n),
+  include_once_expression: (n) => loaded(n),
+  call_expression: (n) => requireTarget(n),
+  call: (n) => requireTarget(n),
+};
+
+const targetOf = (node: Node): string | null => TARGET[node.type]?.(node) ?? null;
+
+/** Rust: the text without its keyword, and without whatever follows a `;` or `{`. */
+const bareText = (node: Node): string | null =>
+  node.text
+    .replace(/^(use|extern crate)\s+/, "")
+    .replace(/[;{].*$/s, "")
+    .trim() || null;
+
+const loaded = (node: Node): string | null =>
+  literal(node.descendantsOfType("encapsed_string")[0] ?? node.descendantsOfType("string")[0]);
 
 /**
  * A call that is an import: `require("x")` in JS, `require_relative "../boot"` in

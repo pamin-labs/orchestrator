@@ -52,7 +52,8 @@ export function areaOf(path: string): string {
 function withoutBuildRoot(parts: string[]): string[] {
   for (const root of SOURCE_ROOTS) {
     const segments = root.split("/").filter(Boolean);
-    if (segments.length > 1 && segments.every((segment, i) => parts[i] === segment)) return parts.slice(segments.length);
+    if (segments.length > 1 && segments.every((segment, i) => parts[i] === segment))
+      return parts.slice(segments.length);
   }
   return parts;
 }
