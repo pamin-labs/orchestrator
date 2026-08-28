@@ -3129,3 +3129,35 @@ Two halves were missing, and only the second is a rule anybody could have guesse
 The pull request template gains the half a command cannot check: `preflight`
 verifies the catalogues, and it cannot verify that an English literal was
 *exempt*. That sentence is the author's to write, so the template now asks for it.
+
+## Two decisions this round made and did not write down
+
+`docs/adr/` is where the build records **departing from the plan**, and this
+round departed three times without an ADR for any of it. The reasoning existed —
+every commit above carries it — but a per-commit narrative is read by whoever is
+reading the commits. A decision is read by whoever hits the same fork next year.
+
+- [**048**](../adr/048-a-project-states-its-own-gates-so-there-is-nothing-to-approve.md)
+  — a project's environment and gates come from what it already committed, then
+  mise, then the bootstrap agent. And why the plan's `proposed_gates` ladder was
+  not built: its own tier 0 was "the command's head is an entry the repository
+  declared", and once discovery was deterministic that is *every* command. Two of
+  three rungs were unreachable.
+- [**049**](../adr/049-the-review-half-gained-two-layers-and-neither-casts-a-vote.md)
+  — why `discriminate` and `boundaries` produce evidence rather than verdicts,
+  why the boundary layer is a ratchet against the repository's own history rather
+  than the authored rules the plan specified, and why real mutation testing is
+  one dependency per language in somebody else's repository.
+
+The inert-layer finding is in 049 rather than only here, because it is the
+argument: `discriminate` shipped present, configured, tested and silent, and two
+green e2e tests proved nothing. That is what "authored rules would never fire"
+means, stated in an artefact instead of as a prediction.
+
+### Not written
+
+An ADR for W4. The plan wanted every acceptance verdict to cite a real execution
+and made that a refusal; what shipped **records** citations (`citedPaths`,
+`validate.ts:451`) without refusing on them. That is a narrower change than a
+decision — the criterion text still says what it said — so it stays in the commit
+that made it.
