@@ -2608,6 +2608,9 @@ msgstr "S{seq} {verdict}"
 msgid "S{seq} {verdict}: {note}"
 msgstr "S{seq} {verdict}: {note}"
 
+msgid "S{seq} breaks a QA procedure an earlier slice was accepted on"
+msgstr "S{seq}가 이전 슬라이스가 승인된 근거였던 QA 절차를 깨뜨립니다"
+
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq}이(가) {from}에서 {n}회 연속 실패 — 코드가 아니라 인수 기준의 문제로 보입니다"
 
@@ -2625,6 +2628,9 @@ msgstr "S{seq}이(가) {from}에 의해 반려되었습니다 ({n}번째)"
 
 msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
 msgstr "S{seq}가 {n, plural, other {함수 #개}}를 분기 {threshold}개 초과로 만들었습니다: {where}"
+
+msgid "S{seq}: {n, plural, one {# accepted QA procedure} other {# accepted QA procedures}} still pass"
+msgstr "S{seq}: 승인된 QA 절차 {n, plural, other {#건}}이 여전히 통과합니다"
 
 msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
 msgstr "S{seq}: 판별력 검사가 워크트리를 복원했는데도 git이 여전히 변경을 보고합니다. 확인하기 전에는 이 브랜치에서 아무것도 커밋하지 마세요."

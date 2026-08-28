@@ -23,6 +23,7 @@ import { AGENT_COMPLEXITY, newlyComplex, parseLizard } from "../knowledge/comple
 import { loadEdges } from "../knowledge/edges.ts";
 import { loadMap } from "../knowledge/repomap.ts";
 import { loadResource, runResource } from "../lease.ts";
+import { replayQa } from "./qa-suite.ts";
 import { extractClaimedFiles, reconcile, TaskClaimSchema } from "./reconcile.ts";
 import { changedSince, checkpoint, filesAt } from "../git/gitops.ts";
 import { execIn, resourceExec, WORK } from "../sandbox/sandbox.ts";
@@ -224,6 +225,7 @@ export async function runDeterministicReview(
   // gate with false reds is a gate somebody switches off.
   await recordDiscrimination(deps, slice, projectId!, changed);
   await recordStructure(deps, slice, projectId!, changed);
+  await replayQa(ctx, cfg, slice.grp_id, slice.id, slice.seq);
 
   if (rec.unclaimed.length) {
     // Not a defect, but the reviewer should know what else moved.

@@ -2819,3 +2819,48 @@ is `discriminatePerFile`, off, beside `discriminate` on the settings page.
 
 Both halves are tested, including the skip: with `perFile` on and the whole-slice
 revert green, the fixture asserts the gate ran **once** — not once per file.
+
+## The QA procedure was written, run once, and thrown away
+
+His pipeline's QA agent turns a written procedure into an executable script. Ours
+had the executable half already — `orch lease browser` takes JSON steps, which is
+data rather than a script and is why running it is safe — and no durable half.
+QA wrote `qa-steps.json` into the worktree, leased the browser, and the file was
+gone by the next slice. So a reviewer verified the behaviour in front of it and
+**nobody ever re-verified the behaviour behind it**: slice seven could break what
+slice one was accepted on, and the only thing that would notice is a person.
+
+A browser run that exits 0 is now kept, under `.orch/qa/` in the repository —
+not in a note. It belongs in the pull request the boss reads, it diffs, and it
+travels with the branch. Named by the hash of its own content, so the same
+scenario recorded twice is one file and an edited one is a new scenario.
+
+Every later slice replays the lot: one lease, not one per file, because the steps
+are arrays and concatenate, and each set seeds the state it needs through its own
+`api` steps. `gates_json.regression` carries the verdict.
+
+**The orchestrator writes the merged file, never an agent.** A step file is data
+the runner executes with real permissions, and who wrote it is the whole reason
+that is safe — the same rule `roles/qa.yaml` states about the steps themselves.
+
+`qa.yaml` is told, because a reviewer who does not know its scenario is kept will
+write one that only makes sense while its slice is the newest — which is a false
+alarm somebody else has to read.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1914 pass, 6 skip, 0 fail, 1920 across 235 files |
+| `fallow audit --gate all` | no issues in 71 changed files |
+| new tests | 5: what is kept, what is not, one lease for the whole suite, a project with no browser resource, and a slice that breaks an accepted procedure |
+
+### Not taken
+
+- **A note instead of a file.** It would be invisible in the pull request, and a
+  QA procedure the boss cannot read is not a procedure they accepted.
+- **One lease per procedure.** The suite grows; the leases would grow with it,
+  each one a real Chromium.
+- **Letting QA write into `.orch/qa` itself.** Ownership and `reconcile` are about
+  the writer's claims, and a reviewer writing files into the branch is a second
+  writer nobody declared.

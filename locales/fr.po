@@ -2608,6 +2608,9 @@ msgstr "S{seq} {verdict}"
 msgid "S{seq} {verdict}: {note}"
 msgstr "S{seq} {verdict} : {note}"
 
+msgid "S{seq} breaks a QA procedure an earlier slice was accepted on"
+msgstr "S{seq} casse une procédure QA sur laquelle une tranche antérieure a été acceptée"
+
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} a échoué chez {from} {n} fois — ce sont probablement les critères d'acceptation, pas le code"
 
@@ -2625,6 +2628,9 @@ msgstr "S{seq} renvoyée par {from} (tentative {n})"
 
 msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
 msgstr "S{seq} fait passer {n, plural, one {# fonction} other {# fonctions}} au-delà de {threshold} chemins : {where}"
+
+msgid "S{seq}: {n, plural, one {# accepted QA procedure} other {# accepted QA procedures}} still pass"
+msgstr "S{seq} : {n, plural, one {# procédure QA acceptée passe toujours} other {# procédures QA acceptées passent toujours}}"
 
 msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
 msgstr "S{seq} : la vérification a restauré l'arbre de travail et git signale encore des modifications. Ne commite rien depuis cette branche avant de l'avoir examiné."

@@ -2608,6 +2608,9 @@ msgstr "S{seq} {verdict}"
 msgid "S{seq} {verdict}: {note}"
 msgstr "S{seq} {verdict}: {note}"
 
+msgid "S{seq} breaks a QA procedure an earlier slice was accepted on"
+msgstr "S{seq} ломает QA-процедуру, по которой был принят более ранний слайс"
+
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} не прошла у {from} {n} раз подряд — дело, скорее всего, в критериях приёмки, а не в коде"
 
@@ -2625,6 +2628,9 @@ msgstr "S{seq} возвращена {from} (попытка {n})"
 
 msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
 msgstr "S{seq} выводит {n, plural, one {# функцию} few {# функции} other {# функций}} за {threshold} путей: {where}"
+
+msgid "S{seq}: {n, plural, one {# accepted QA procedure} other {# accepted QA procedures}} still pass"
+msgstr "S{seq}: {n, plural, one {# принятая QA-процедура всё ещё проходит} few {# принятые QA-процедуры всё ещё проходят} other {# принятых QA-процедур всё ещё проходят}}"
 
 msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
 msgstr "S{seq}: проверка восстановила рабочее дерево, а git всё ещё сообщает об изменениях. Не коммить ничего из этой ветки, пока не разберёшься."

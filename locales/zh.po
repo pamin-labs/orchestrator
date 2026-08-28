@@ -2608,6 +2608,9 @@ msgstr "S{seq} {verdict}"
 msgid "S{seq} {verdict}: {note}"
 msgstr "S{seq} {verdict}：{note}"
 
+msgid "S{seq} breaks a QA procedure an earlier slice was accepted on"
+msgstr "S{seq} 打破了一条更早的切片据以验收的 QA 流程"
+
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} 连续 {n} 次没过 {from} —— 大概是验收标准的问题，不是代码"
 
@@ -2625,6 +2628,9 @@ msgstr "S{seq} 被 {from} 打回（第 {n} 次）"
 
 msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
 msgstr "S{seq} 让 {n, plural, other {# 个函数}} 的分支数超过了 {threshold}：{where}"
+
+msgid "S{seq}: {n, plural, one {# accepted QA procedure} other {# accepted QA procedures}} still pass"
+msgstr "S{seq}：{n, plural, other {# 条}}已验收的 QA 流程仍然通过"
 
 msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
 msgstr "S{seq}：区分力检查还原工作区之后，git 仍然报告有改动。在你看过之前，不要从这个分支提交任何东西。"

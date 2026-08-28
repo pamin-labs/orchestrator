@@ -7,6 +7,7 @@ import { requestContext } from "../platform/observability/request-context.ts";
 import { sandboxGit } from "../mech/git/checkout.ts";
 import { LeaseArgsSchema, loadResource, type ResourceDef, resolveLease, runResource } from "../mech/lease.ts";
 import { resourceExec, type Scope, WORK } from "../mech/sandbox/sandbox.ts";
+import { keepQaSteps } from "../mech/flow/qa-suite.ts";
 import { errText } from "../platform/process/text.ts";
 import { and, eq, inArray } from "drizzle-orm";
 import { agent as agents, lease as leases } from "../platform/persistence/schema.ts";
@@ -111,6 +112,7 @@ async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Prom
     exec: resourceExec(ctx, scope),
   });
   if (!("digest" in out)) return await finishLease(deps, leaseId, 126, out.error, logPath);
+  if (out.exitCode === 0) await keepQaSteps(ctx, scope, cwd, lease.resource, args);
   await finishLease(deps, leaseId, out.exitCode, out.digest.text, logPath);
 }
 
