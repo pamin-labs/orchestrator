@@ -342,12 +342,34 @@ async function countStatements(): Promise<string[]> {
   for (const [name, run] of statements) {
     queries = 0;
     await run();
-    const count = queries;
-    const budget = statementBudget.get(name);
-    console.log(`${name}: ${count} statements${budget === undefined ? "" : ` / ${budget} budget`}`);
-    if (budget !== undefined && count > budget) over.push(`${name} (${count} statements > ${budget})`);
+    const verdict = statementVerdict(name, queries);
+    if (verdict) over.push(verdict);
   }
   return over;
+}
+
+/** Prints what it measured either way; returns text only when it is over. */
+function statementVerdict(name: string, count: number): string | null {
+  const budget = statementBudget.get(name);
+  console.log(`${name}: ${count} statements${budget === undefined ? "" : ` / ${budget} budget`}`);
+  return budget !== undefined && count > budget ? `${name} (${count} statements > ${budget})` : null;
+}
+
+/**
+ * One task's mean against its guide. Text when it may fail the job, null when it
+ * is over and the gate for it is elsewhere — which is said out loud, because a
+ * measurement that drifts without failing is still something to look at.
+ */
+function timeVerdict(task: (typeof bench.tasks)[number]): string | null {
+  const result = task.result;
+  if (result.state !== "completed") throw new Error(`${task.name} did not complete: ${result.state}`);
+  const limit = limits.get(task.name)!;
+  const mean = result.latency.mean;
+  console.log(`${task.name}: mean ${mean.toPrecision(3)}ms / ${limit}ms budget`);
+  if (mean <= limit) return null;
+  if (TIMED_GATE.has(task.name)) return `${mean.toPrecision(3)}ms > ${limit}ms`;
+  console.warn(`${task.name} is over its ${limit}ms guide — the gate for it is its statement count`);
+  return null;
 }
 
 /** One pass: run every task, print the means, and name the ones over budget. */
@@ -356,13 +378,8 @@ async function pass(): Promise<Map<string, string>> {
   console.table(bench.table());
   const over = new Map<string, string>();
   for (const task of bench.tasks) {
-    const result = task.result;
-    if (result.state !== "completed") throw new Error(`${task.name} did not complete: ${result.state}`);
-    const limit = limits.get(task.name)!;
-    const mean = result.latency.mean;
-    console.log(`${task.name}: mean ${mean.toPrecision(3)}ms / ${limit}ms budget`);
-    if (mean > limit && TIMED_GATE.has(task.name)) over.set(task.name, `${mean.toPrecision(3)}ms > ${limit}ms`);
-    else if (mean > limit) console.warn(`${task.name} is over its ${limit}ms guide — the gate for it is its statement count`);
+    const verdict = timeVerdict(task);
+    if (verdict) over.set(task.name, verdict);
   }
   return over;
 }
@@ -398,10 +415,7 @@ if (exceeded.size > 0) {
 // its own warm-up: a counter does not care, and a mean does.
 const overStatements = await countStatements();
 
-const failures = [
-  ...overStatements,
-  ...[...exceeded].map(([name, detail]) => `${name} (${detail}, both passes)`),
-];
+const failures = [...overStatements, ...[...exceeded].map(([name, detail]) => `${name} (${detail}, both passes)`)];
 if (failures.length > 0) {
   throw new Error(`over budget: ${failures.join(", ")}`);
 }
