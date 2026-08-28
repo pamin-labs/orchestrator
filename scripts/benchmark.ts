@@ -291,19 +291,52 @@ bench.add(
   { async: true },
 );
 
-await bench.run();
+/** One pass: run every task, print the means, and name the ones over budget. */
+async function pass(): Promise<Map<string, string>> {
+  await bench.run();
+  console.table(bench.table());
+  const over = new Map<string, string>();
+  for (const task of bench.tasks) {
+    const result = task.result;
+    if (result.state !== "completed") throw new Error(`${task.name} did not complete: ${result.state}`);
+    const limit = limits.get(task.name)!;
+    const mean = result.latency.mean;
+    console.log(`${task.name}: mean ${mean.toPrecision(3)}ms / ${limit}ms budget`);
+    if (mean > limit) over.set(task.name, `${mean.toPrecision(3)}ms > ${limit}ms`);
+  }
+  return over;
+}
 
-console.table(bench.table());
+/**
+ * Twice before it is a regression, and the reason is the runner.
+ *
+ * These budgets are means of sixteen samples on hardware nobody controls, so one
+ * pass is a coin flip near the line: the nightly failed on `telemetry report`
+ * at 624ms against 600 — four percent — and the next night was green with no
+ * change in between. A threshold that reports a regression on 4% of noise
+ * teaches the reader to ignore it, and raising the number only moves the flip.
+ *
+ * A real regression is in both passes. A flake is in one, and says so out loud
+ * rather than passing in silence, because a budget that is quietly always near
+ * the line is a budget somebody should look at.
+ */
+let exceeded = await pass();
+if (exceeded.size > 0) {
+  console.warn(`over budget on the first pass: ${[...exceeded.keys()].join(", ")} — repeating before calling it`);
+  const again = await pass();
+  // Rebuilt rather than mutated while iterating: only the names in both passes
+  // survive, and each keeps what it measured on either.
+  exceeded = new Map(
+    [...exceeded].flatMap(([name, first]) => {
+      const second = again.get(name);
+      if (second) return [[name, `${first} then ${second}`] as const];
+      console.warn(`${name} was under budget on the second pass: noise, not a regression`);
+      return [];
+    }),
+  );
+}
 
-const exceeded = bench.tasks.flatMap((task) => {
-  const result = task.result;
-  if (result.state !== "completed") throw new Error(`${task.name} did not complete: ${result.state}`);
-  const limit = limits.get(task.name)!;
-  const mean = result.latency.mean;
-  console.log(`${task.name}: mean ${mean.toPrecision(3)}ms / ${limit}ms budget`);
-  return mean > limit ? [`${task.name} (${mean.toPrecision(3)}ms > ${limit}ms)`] : [];
-});
-
-if (exceeded.length > 0) {
-  throw new Error(`mean exceeded the significant-regression budget: ${exceeded.join(", ")}`);
+if (exceeded.size > 0) {
+  const named = [...exceeded].map(([name, detail]) => `${name} (${detail})`);
+  throw new Error(`mean exceeded the significant-regression budget in two passes: ${named.join(", ")}`);
 }
