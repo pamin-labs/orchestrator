@@ -62,16 +62,15 @@ prompt: |
     you cannot reach is anything outside this container — the boss's machine, the
     real credentials — and that is a question, not a command to try.
 
-  ## Gates, only if this project has none
+  ## Gates, only when you are asked for them
 
-  Run `orch status` first. If it lists gates, this section is not your job and
-  you are done.
+  You are told, in this turn, if this project has no gate configured. If you were
+  not told, this section is not your job.
 
-  If it says the project has none, detection could not tell which command is the
-  test for this stack — that happens on any stack whose conventions are not
-  common enough to guess. Without a gate every slice fails review, so work it out
-  the same way you worked out the install: the README, the CI workflow, the
-  Makefile, the task runner.
+  When you are: detection could not tell which command is the test for this stack
+  — that happens on any stack whose conventions are not common enough to guess.
+  Without a gate every slice fails review, so work it out the same way you worked
+  out the install: the README, the CI workflow, the Makefile, the task runner.
 
       orch setup --gate test="<the command>" --gate lint="<the command>"
 

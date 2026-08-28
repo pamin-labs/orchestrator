@@ -13,6 +13,7 @@ import {
   project,
   slice as slices,
 } from "../../platform/persistence/schema.ts";
+import { projectConfig } from "../../mech/util/rows.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { lessonsFor } from "../../mech/knowledge/lessons.ts";
 import { gateState } from "../../mech/gate.ts";
@@ -234,6 +235,28 @@ async function applyWorkCard(ctx: Ctx, agent: TurnAgent, job: TurnJob, delta: De
   if (rows.length) {
     delta.card = rows.map((slice) => `S${slice.seq} [${slice.difficulty}] ${slice.title} — ${slice.status}`).join("\n");
   }
+}
+
+/**
+ * The gate question, asked of the one turn that can answer it.
+ *
+ * Detection is two layers of reading and both can come back empty — no rule for
+ * this stack, no CI workflow. The bootstrap turn is already in the container
+ * reading the README for the install command, so it is the cheapest place to ask;
+ * and it has no way to find out on its own, which is how a capability ships inert.
+ */
+/** English, as everything a model reads is (ADR 035). Absent and empty are the
+ *  same answer here: the boss saying "no gates" is a decision `review.ts` acts
+ *  on, and nothing is lost by the bootstrap turn offering to find one anyway. */
+async function applyGateQuestion(ctx: Ctx, agent: TurnAgent, delta: Delta): Promise<void> {
+  if (agent.role !== roleFor(ctx, "bootstrap_env") || agent.project_id === null) return;
+  if ((await projectConfig(ctx.db, agent.project_id)).gates?.length) return;
+  delta.card =
+    `${delta.card ? `${delta.card}\n\n` : ""}Nothing deterministic is configured for this project, so every slice ` +
+    `would fail review. Work out its gates the way you work out the install — the README, the CI workflow, the ` +
+    `Makefile, the task runner — and register them:\n` +
+    `  orch setup --gate test="<the command>"\n` +
+    `If this repository genuinely has no tests, say so in your report and register nothing.`;
 }
 
 async function applySliceCard(ctx: Ctx, agent: TurnAgent, sliceId: number, delta: Delta): Promise<void> {
@@ -465,6 +488,7 @@ export async function buildTurnDelta(
   const delta: Delta = {};
   await applyPayloadCards(deps.ctx, job.payload, delta);
   await applyWorkCard(deps.ctx, agent, job, delta);
+  await applyGateQuestion(deps.ctx, agent, delta);
   await applyHandoff(deps.ctx, job.grp_id, rotated, delta);
   const unread = await readUnread(deps.ctx, agent, job.grp_id, deps.cfg);
   await applySkills(deps.ctx, agent, job, scope, delta);

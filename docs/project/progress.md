@@ -3249,3 +3249,22 @@ Each guard was made red before it was kept, by breaking the thing it watches:
 - **Letting the agent write `config_json.gates` directly.** The names go in
   through the same registration path detection uses, and only for gates that
   passed one of the two checks.
+
+### The trigger the agent could not observe
+
+Shipped in the same round and caught before it mattered: `bootstrap.yaml` said
+"run `orch status` first — if it lists gates, this section is not your job."
+`orch status <text...>` **posts** a status line. It takes a required argument, it
+answers nothing, and no other command tells an agent whether its project has a
+gate. The section would have run on every bootstrap turn or none, depending on
+what the model guessed.
+
+That is the third false sentence found in this file on this branch, and the file
+is the only manual a sandboxed agent has. The fix is the same shape as the
+`discriminate` one: the orchestrator already knows, so it says so. `delta.ts`
+appends the question to the bootstrap turn's card when the project has no gates
+— beside `applySliceCard`'s `blind` question, which is the same idea one role
+over — and the role file now says "you are told, in this turn", which is true.
+
+Shown failing twice: without the call, and with the "already configured" guard
+disabled. Both turned the test red.

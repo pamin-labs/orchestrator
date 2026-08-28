@@ -20,10 +20,10 @@ const agent = { id: 1, project_id: 1, role: "engineer" };
 
 type TurnPayload = Job<"agent_turn">["payload"];
 
-async function delta(payload: TurnPayload, opts: { sliceId?: boolean } = {}) {
+async function delta(payload: TurnPayload, opts: { sliceId?: boolean; role?: string; gates?: string[] } = {}) {
   const ctx = await testContext({ sandbox: fakeSandbox() });
   const f = fx.on(ctx.db);
-  const p = await f.project.create({ name: "p" });
+  const p = await f.project.create({ name: "p", ...(opts.gates ? { config_json: { gates: opts.gates } } : {}) });
   const g = await f.grp.create({ project_id: p.id, name: "g" });
   await f.agent.create({ project_id: p.id, grp_id: g.id, token: "t" });
   const slice = await f.slice.create({ grp_id: g.id, seq: 1, title: "add the menu" });
@@ -40,7 +40,13 @@ async function delta(payload: TurnPayload, opts: { sliceId?: boolean } = {}) {
     state: "running",
     payload,
   };
-  return await buildTurnDelta({ ctx, cfg: loadConfig() }, agent, job, false, { grp: g.id });
+  return await buildTurnDelta(
+    { ctx, cfg: loadConfig() },
+    { ...agent, ...(opts.role ? { role: opts.role } : {}) },
+    job,
+    false,
+    { grp: g.id },
+  );
 }
 
 test("a lease result reaches the turn it woke, on a group that has slices", async () => {
@@ -125,4 +131,28 @@ test("a boundary turn keeps the command it exists to issue", async () => {
     idea: "add a cache",
   });
   expect(both.card).not.toContain("orch owns");
+});
+
+/**
+ * The bootstrap turn is told when a project has no gate.
+ *
+ * It is the only turn positioned to answer — it is already in the container
+ * reading the README — and it has no command that could ask. A capability whose
+ * trigger the agent cannot observe is one that never fires, which this branch
+ * has already shipped once.
+ */
+test("a project with no gates asks the bootstrap turn for them, and nobody else", async () => {
+  const asked = await delta({}, { role: "bootstrap" });
+  expect(asked.card).toContain("orch setup --gate test=");
+  expect(asked.card).toContain("no tests");
+
+  // Configured already: nothing to ask, and the slice list it would otherwise
+  // show is left alone.
+  const configured = await delta({}, { role: "bootstrap", gates: ["test"] });
+  expect(configured.card ?? "").not.toContain("--gate");
+
+  // Any other role on the same project is not asked: registering gates is the
+  // bootstrap role's verb and nobody else's.
+  const engineer = await delta({});
+  expect(engineer.card ?? "").not.toContain("--gate");
 });
