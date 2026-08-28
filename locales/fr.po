@@ -1691,6 +1691,10 @@ msgstr "Nombre maximal de messages de canal entassés dans un delta par tour."
 msgid "Max steps per turn"
 msgstr "Étapes maximales par tour"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "Médiane sur {0} tours. La part des outils est ce que chaque tour suivant relit, c'est donc elle qu'il vaut la peine de réduire à la source"
+
 msgid "Memory"
 msgstr "Mémoire"
 
@@ -3193,6 +3197,9 @@ msgstr "tour terminé ({steps, plural, one {# étape} other {# étapes}}, {total
 
 msgid "turn ran past {min} min and was killed"
 msgstr "le tour a dépassé {min} min et a été coupé"
+
+msgid "Turn shape"
+msgstr "Forme d'un tour"
 
 msgid "Turn timeout"
 msgstr "Délai d'un tour"

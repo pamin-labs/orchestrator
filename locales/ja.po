@@ -1691,6 +1691,10 @@ msgstr "1 ターンの差分に詰め込むチャンネルメッセージの上�
 msgid "Max steps per turn"
 msgstr "1 ターンの最大ステップ数"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "{0} 回のターンの中央値。ツールの割合は後続のラウンドが毎回読み直す部分なので、小さくする価値があるのはそこです"
+
 msgid "Memory"
 msgstr "メモリ"
 
@@ -3193,6 +3197,9 @@ msgstr "ターン終了（{steps, plural, other {# ステップ}}、{total} ト�
 
 msgid "turn ran past {min} min and was killed"
 msgstr "ターンが {min} 分を超えたため打ち切りました"
+
+msgid "Turn shape"
+msgstr "ターンの形"
 
 msgid "Turn timeout"
 msgstr "1 ターンの上限時間"

@@ -203,20 +203,20 @@ MIT licensed.
 ### Languages
 
 <!-- i18n:table -->
-**Panel** · 1116 messages
+**Panel** · 1118 messages
 
 | Language | Progress | Messages |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | source |
-| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1116 / 1116 |
-| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1116 / 1116 |
-| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1116 / 1116 |
-| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1116 / 1116 |
-| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1116 / 1116 |
-| français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1116 / 1116 |
-| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1116 / 1116 |
-| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1116 / 1116 |
-| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1116 / 1116 |
+| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1118 / 1118 |
+| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1118 / 1118 |
+| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1118 / 1118 |
+| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1118 / 1118 |
+| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1118 / 1118 |
+| français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1118 / 1118 |
+| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1118 / 1118 |
+| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1118 / 1118 |
+| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1118 / 1118 |
 
 <!-- /i18n:table -->
 

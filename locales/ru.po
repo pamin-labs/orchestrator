@@ -1691,6 +1691,10 @@ msgstr "Сколько сообщений канала максимум влез
 msgid "Max steps per turn"
 msgstr "Максимум шагов за ход"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "Медиана по {0} ходам. Доля инструментов — это то, что каждый следующий раунд перечитывает, поэтому уменьшать стоит именно её, в источнике"
+
 msgid "Memory"
 msgstr "Память"
 
@@ -3193,6 +3197,9 @@ msgstr "ход завершён ({steps, plural, one {# шаг} few {# шага}
 
 msgid "turn ran past {min} min and was killed"
 msgstr "ход перевалил за {min} мин и был прерван"
+
+msgid "Turn shape"
+msgstr "Форма хода"
 
 msgid "Turn timeout"
 msgstr "Таймаут хода"

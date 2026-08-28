@@ -50,6 +50,7 @@ mockHttp(
       total: { label: `project ${project ?? "all"}`, tokens: 1 },
       cacheRatio: null,
       rotations: { turns: 0, byReason: {} },
+      turns: { counted: 0, medianMs: null, medianBytes: null, medianToolShare: null },
     });
   }),
 );

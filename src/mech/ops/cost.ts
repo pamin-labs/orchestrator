@@ -46,6 +46,10 @@ const TurnMetaSchema = z.object({
     })
     .optional(),
   cacheRatio: z.number().optional(),
+  /** Wall clock of the provider call. */
+  ms: z.number().optional(),
+  /** What the provider's own stream weighed, and how much of it was tool output. */
+  transcript: z.object({ bytes: z.number().optional(), toolBytes: z.number().optional() }).optional(),
   model: z.string().optional(),
   runtime: z.string().optional(),
   rotate: z.string().optional(),
@@ -165,6 +169,7 @@ export async function costReport(db: DB, projectId?: number): Promise<CostReport
     total,
     cacheRatio: await recentCacheRatio(db),
     rotations: await recentRotations(db),
+    turns: await recentTurnShape(db),
   };
 }
 
@@ -203,6 +208,40 @@ async function byHour(db: DB): Promise<CostReport["byHour"]> {
 }
 
 /**
+ * What a turn looks like lately: how long, how heavy, and how much of it was a
+ * tool talking back.
+ *
+ * Three numbers that were each recorded somewhere and never in the same row.
+ * Duration lived in a span, tokens in this report, and the size of tool output
+ * nowhere at all — so "tool results are 90% of a transcript", the largest claim
+ * anyone here has made about what a turn costs, could be neither confirmed nor
+ * contradicted after the day it was measured.
+ */
+/** Medians, not means: one turn that read a 4 MB file is exactly the turn a mean
+ *  would let define the picture, and it is also the turn worth finding. */
+async function recentTurnShape(db: DB, limit = 50): Promise<CostReport["turns"]> {
+  const metas = await recentTurns(db, limit);
+  const ms = metas.flatMap((m) => (m.ms === undefined ? [] : [m.ms]));
+  const bytes = metas.flatMap((m) => (m.transcript?.bytes ? [m.transcript.bytes] : []));
+  const toolShare = metas.flatMap((m) =>
+    m.transcript?.bytes ? [(m.transcript.toolBytes ?? 0) / m.transcript.bytes] : [],
+  );
+  return {
+    counted: metas.length,
+    medianMs: median(ms),
+    medianBytes: median(bytes),
+    medianToolShare: median(toolShare),
+  };
+}
+
+function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
+}
+
+/**
  * The recent turns that reported a cache ratio, newest first.
  *
  * `jsonb_exists` rather than the old `LIKE '%cacheRatio%'`: the column is `jsonb`
@@ -214,7 +253,12 @@ async function recentTurns(db: DB, limit: number): Promise<z.infer<typeof TurnMe
   const rows = await db
     .select({ meta_json: event.meta_json })
     .from(event)
-    .where(and(eq(event.kind, "tool_summary"), sql`jsonb_exists(${event.meta_json}, 'cacheRatio')`))
+    // `usage`, which is what `byHour` two functions up already asks: one predicate
+    // for "this row is a turn" rather than two. `cacheRatio` was the older one and
+    // it excluded exactly the rows a turn written before it was recorded — and now
+    // also the rows this samples for duration and weight, which a provider can
+    // report without a cache figure at all.
+    .where(and(eq(event.kind, "tool_summary"), sql`jsonb_exists(${event.meta_json}, 'usage')`))
     .orderBy(desc(event.seq))
     .limit(limit);
   return rows.map((r) => valueOr(r.meta_json, TurnMetaSchema, {}));

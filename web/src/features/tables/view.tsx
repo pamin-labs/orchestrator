@@ -439,6 +439,23 @@ function attributionModel(cost: Cost) {
   };
 }
 
+/**
+ * `40s · 210 kB · 78% tools`, or as much of it as was recorded.
+ *
+ * Medians, because one turn that read a 4 MB file is exactly the turn a mean
+ * would let define the picture — and it is also the turn worth finding, which is
+ * what the burn chart beside this is for.
+ */
+function turnShape(cost: Cost) {
+  const { medianMs, medianBytes, medianToolShare, counted } = cost.turns;
+  const parts = [
+    medianMs === null ? null : `${(medianMs / 1000).toFixed(medianMs < 10_000 ? 1 : 0)}s`,
+    medianBytes === null ? null : `${K(medianBytes)}B`,
+    medianToolShare === null ? null : `${Math.round(medianToolShare * 100)}% tools`,
+  ].filter((part) => part !== null);
+  return { medianMs, counted, summary: parts.join(" · ") };
+}
+
 function costSummary(cost: Cost) {
   const per = cost.delivered.count ? cost.delivered.tokens / cost.delivered.count : null;
   const deliveredCount = cost.delivered.count;
@@ -465,6 +482,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
   const { turns, cold, why, className: rotationClass } = rotationModel(cost);
   const { standing, standingTotal, groups, sum, top } = attributionModel(cost);
   const summary = costSummary(cost);
+  const shape = turnShape(cost);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -576,6 +594,22 @@ export function CostView({ cost }: { cost: Cost | null }) {
                   <b className={cn("font-mono font-semibold", rotationClass)}>
                     {cold}/{turns}
                   </b>
+                </div>
+              </Tip>
+            )}
+            {/* What a turn has weighed lately, beside what it cost. The three
+              numbers were each recorded somewhere and never in the same row —
+              duration in a span, tokens above, the size of tool output nowhere —
+              so "a turn got slower" and "a turn got heavier" could not be told
+              apart. The tool share is the one to act on: it is the half of a
+              transcript every later round re-reads. */}
+            {shape.medianMs !== null && (
+              <Tip
+                label={t`Median across ${shape.counted} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source`}
+              >
+                <div className="mt-0.5 w-fit text-secondary text-ink-2 underline decoration-dotted">
+                  <Trans>Turn shape</Trans>{" "}
+                  <b className="font-mono font-semibold text-ink">{shape.summary}</b>
                 </div>
               </Tip>
             )}

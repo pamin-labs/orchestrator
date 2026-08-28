@@ -1691,6 +1691,10 @@ msgstr "Max channel messages to cram into one delta per turn."
 msgid "Max steps per turn"
 msgstr "Max steps per turn"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+
 msgid "Memory"
 msgstr "Memory"
 
@@ -3193,6 +3197,9 @@ msgstr "turn done ({steps, plural, one {# step} other {# steps}}, {total} tokens
 
 msgid "turn ran past {min} min and was killed"
 msgstr "turn ran past {min} min and was killed"
+
+msgid "Turn shape"
+msgstr "Turn shape"
 
 msgid "Turn timeout"
 msgstr "Turn timeout"

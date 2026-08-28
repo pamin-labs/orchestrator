@@ -32,6 +32,22 @@ export interface ToolSummary {
   ok?: boolean;
 }
 
+/**
+ * What the turn's own stream weighed, in bytes of raw provider output.
+ *
+ * `load.ts` records that tool results are 90% of a transcript and that every
+ * round re-reads all of them, which is the largest single claim about what a turn
+ * costs — and it was measured once, by hand, and never again. Nothing in the cost
+ * report could confirm or contradict it, so the lever it points at ("make tool
+ * output smaller at the source") had no before and no after.
+ */
+export interface Transcript {
+  /** Every line the provider emitted, as it arrived. */
+  bytes: number;
+  /** The part of it that is a tool's output coming back. */
+  toolBytes: number;
+}
+
 export interface TurnResult {
   sessionId: string;
   ok: boolean;
@@ -43,6 +59,7 @@ export interface TurnResult {
   contextWindow?: number;
   toolSummaries: ToolSummary[];
   filesTouched: string[];
+  transcript?: Transcript;
   logPath?: string;
 }
 

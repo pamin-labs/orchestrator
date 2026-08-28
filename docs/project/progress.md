@@ -2864,3 +2864,51 @@ alarm somebody else has to read.
 - **Letting QA write into `.orch/qa` itself.** Ownership and `reconcile` are about
   the writer's claims, and a reviewer writing files into the branch is a second
   writer nobody declared.
+
+## Three numbers that were each recorded somewhere and never in the same row
+
+Duration lived in a span. Tokens lived in the cost report. The size of tool output
+lived nowhere at all — so the largest claim anyone here has made about what a turn
+costs, **"tool results are 90% of a transcript and every round re-reads them"**,
+was measured once by hand in `load.ts` and could not be confirmed or contradicted
+afterwards. The lever it points at — make tool output smaller at the source — had
+no before and no after.
+
+A turn now records all three on the event it already emitted:
+
+- **`ms`** — the provider call's wall clock, timed around `invokeTurn` rather than
+  read off a span, because a span answers *which step* is slow and this answers
+  *whether this turn* was.
+- **`transcript.bytes` / `transcript.toolBytes`** — weighed in both adapters where
+  the bytes arrive, before anything trims them: a line carrying `tool_use_result`
+  for claude, an `item.completed` that is neither the model talking nor an error
+  for codex. What a turn cost is what the provider sent, not what the log kept.
+
+`costReport` medians them over the same fifty turns the cache ratio and the
+rotation reasons already sample, and the panel prints one line: `41s · 212kB ·
+78% tools`. Medians rather than means, because one turn that read a 4 MB file is
+exactly the turn a mean would let define the picture — and is also the turn worth
+finding, which the burn chart beside it is for.
+
+### Why this is one line and not three
+
+The question nobody could answer was never "how many tokens" — that was there. It
+was **which of the three moved**. A turn that got slower, heavier and more
+expensive is one story; a turn that got slower alone is a different one with a
+different fix. Three numbers on separate screens cannot be compared; one row can.
+
+### One predicate for "this row is a turn"
+
+`recentTurns` filtered on `jsonb_exists(meta_json, 'cacheRatio')` while `byHour`,
+two functions above it, filtered on `usage`. Two spellings of the same question,
+and the older key is `usage` — `cacheRatio` was added later, so the narrower
+filter silently skipped every turn recorded before it. They ask the same thing
+now.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1917 pass, 6 skip, 0 fail, 1923 across 236 files |
+| `fallow audit --gate all` | no issues in 82 changed files |
+| new tests | 3 for the aggregate — the three arriving together, one enormous turn not becoming the picture, and a turn from before this existed contributing nothing |

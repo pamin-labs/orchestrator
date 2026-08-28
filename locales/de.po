@@ -1691,6 +1691,10 @@ msgstr "Wie viele Kanalnachrichten höchstens in ein Delta pro Zug passen."
 msgid "Max steps per turn"
 msgstr "Maximale Schritte pro Zug"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "Median über {0} Turns. Der Werkzeuganteil ist das, was jede spätere Runde erneut liest — also der Teil, den es sich lohnt an der Quelle zu verkleinern"
+
 msgid "Memory"
 msgstr "Speicher"
 
@@ -3193,6 +3197,9 @@ msgstr "Zug fertig ({steps, plural, one {# Schritt} other {# Schritte}}, {total}
 
 msgid "turn ran past {min} min and was killed"
 msgstr "der Turn lief über {min} Min. und wurde abgebrochen"
+
+msgid "Turn shape"
+msgstr "Gestalt eines Turns"
 
 msgid "Turn timeout"
 msgstr "Zug-Zeitlimit"

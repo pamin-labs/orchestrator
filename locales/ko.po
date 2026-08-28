@@ -1691,6 +1691,10 @@ msgstr "한 턴의 델타에 밀어넣을 채널 메시지 상한."
 msgid "Max steps per turn"
 msgstr "턴당 최대 단계 수"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "{0}번의 턴에 대한 중앙값. 도구 비중은 이후 모든 라운드가 다시 읽는 부분이므로, 발생 지점에서 줄일 가치가 있는 것은 그쪽입니다"
+
 msgid "Memory"
 msgstr "메모리"
 
@@ -3193,6 +3197,9 @@ msgstr "턴 종료({steps, plural, other {#단계}}, {total} 토큰)"
 
 msgid "turn ran past {min} min and was killed"
 msgstr "턴이 {min}분을 넘겨 중단했습니다"
+
+msgid "Turn shape"
+msgstr "턴의 형태"
 
 msgid "Turn timeout"
 msgstr "턴 제한 시간"

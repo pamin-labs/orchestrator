@@ -1691,6 +1691,10 @@ msgstr "一輪最多把多少條頻道訊息塞進 delta。"
 msgid "Max steps per turn"
 msgstr "單輪最多幾步"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "{0} 次 turn 的中位數。工具佔比是後面每一輪都要重讀的那部分，所以它才是值得在源頭壓小的"
+
 msgid "Memory"
 msgstr "記憶體"
 
@@ -3193,6 +3197,9 @@ msgstr "回合結束（{steps, plural, other {# 步}}，{total} tokens）"
 
 msgid "turn ran past {min} min and was killed"
 msgstr "一個 turn 超過 {min} 分鐘，已掐斷"
+
+msgid "Turn shape"
+msgstr "一次 turn 的形狀"
 
 msgid "Turn timeout"
 msgstr "單輪牆鐘上限"

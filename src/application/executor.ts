@@ -278,8 +278,13 @@ async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<voi
         const turn = await prepareTurn(deps, job, scope);
         span.setAttributes({ "agent.role": turn.agent.role, "agent.runtime": turn.agent.runtime ?? turn.role.runtime });
         const before = await checkpointTurn(deps, job, turn, scope);
+        // The provider call itself, timed here rather than read off the span: a
+        // span answers "which step is slow" and the cost report answers "what did
+        // it spend", and nothing could put the two in one row — so nobody could
+        // say whether a turn was slow because it thought or because it read.
+        const started = Date.now();
         const result = await invokeTurn(deps, job, turn, scope);
-        await finishTurn(deps, job, turn, before, result, scope);
+        await finishTurn(deps, job, turn, before, result, scope, Date.now() - started);
       } catch (error) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
         throw error;
@@ -588,10 +593,11 @@ async function finishTurn(
   before: string | null,
   result: TurnResult,
   scope: SpanScope,
+  ms: number,
 ): Promise<void> {
   return activeTracer().startActiveSpan("turn.settle", { attributes: scopeAttributes(scope) }, async (span) => {
     try {
-      await settleTurn(deps, job, turn, before, result);
+      await settleTurn(deps, job, turn, before, result, ms);
     } catch (error) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
       throw error;
@@ -607,10 +613,11 @@ async function settleTurn(
   turn: PreparedTurn,
   before: string | null,
   result: TurnResult,
+  ms: number,
 ): Promise<void> {
   await recordRuntimeSession(deps.ctx.db, turn, result);
   await preserveTurnBranch(deps.ctx, job, turn.group);
-  await recordCost(deps, turn.agent, job, result, turn.stable.hash, turn.why);
+  await recordCost(deps, turn.agent, job, result, turn.stable.hash, turn.why, ms);
   await recordProgress(deps, turn.agent, job, result);
   await narrate(deps, turn.agent, job, before, result);
   await handleRateLimit(deps, turn.agent, job, result);
@@ -877,6 +884,7 @@ async function recordCost(
   r: TurnResult,
   stableHash: string,
   rotate: RotateReason | null,
+  ms: number,
 ): Promise<void> {
   const { ctx } = deps;
   const total = r.usage.input + r.usage.output + r.usage.cacheRead + r.usage.cacheCreate;
@@ -919,6 +927,12 @@ async function recordCost(
     meta: {
       usage: r.usage,
       cacheRatio: cacheRatio(r),
+      // The wall clock of the provider call, and what its stream weighed. Both
+      // sit beside the tokens because the question nobody could answer is which
+      // of the three moved: a turn that got slower, more expensive and heavier is
+      // one story, and a turn that got slower alone is a different one.
+      ms,
+      ...(r.transcript ? { transcript: r.transcript } : {}),
       model: agent.model,
       runtime: agent.runtime ?? DEFAULT_PROVIDER,
       // Null when this turn resumed. Otherwise which of the four started a new
