@@ -80,7 +80,7 @@
     "msw": "^2.15.0",
     "opencc-js": "^1.4.1",
     "oxc-coverage-instrument": "0.12.0",
-    "oxlint": "^1.78.0",
+    "oxlint": "^1.80.0",
     "oxlint-tsgolint": "^7.0.2001",
     "playwright": "^1.62.1",
     "tailwindcss": "^4.3.3",

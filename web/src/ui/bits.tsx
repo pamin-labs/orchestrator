@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useLingui } from "@lingui/react/macro";
 import { Button } from "./button";
 import { cn } from "./cn";
@@ -104,12 +104,23 @@ export const Pane = ({ children, className }: { children: React.ReactNode; class
 export function Clamp({ lines = 2, children }: { lines?: number; children: React.ReactNode }) {
   const { t } = useLingui();
   const [open, setOpen] = useState(false);
-  const [over, setOver] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  /**
+   * The reading is stored with the three things it is a reading *of*, the same
+   * shape as `useClamped`. As a bare boolean, `children` and `lines` were
+   * dependencies the body never read — extra ones, by
+   * `exhaustive-effect-dependencies` — while being exactly what has to trigger a
+   * re-measure. Writing them into the state is what ties the two together.
+   */
+  /** `useLayoutEffect`, so a stale reading is replaced before paint rather than
+   *  after it: this runs on every render `children` survives, and after paint the
+   *  Expand button would blink out for the frame in between. */
+  const [measured, setMeasured] = useState({ children, lines, open, over: false });
+  useLayoutEffect(() => {
     const el = box.current;
-    if (el && !open) setOver(el.scrollHeight > el.clientHeight + 2);
+    if (el && !open) setMeasured({ children, lines, open, over: el.scrollHeight > el.clientHeight + 2 });
   }, [children, lines, open]);
+  const over = measured.children === children && measured.lines === lines && measured.open === open && measured.over;
   return (
     <>
       <div

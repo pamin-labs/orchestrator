@@ -8,7 +8,7 @@
  * sibling feature file.
 
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import flamegraph, { type FlameFrame, type FlameGraph } from "d3-flame-graph";
 import { select } from "d3-selection";
 import { cn } from "../../ui/cn";
@@ -102,7 +102,12 @@ function useFlameChart({
    * current value without making it a reason to rebuild.
    */
   const latest = useRef(tree);
-  latest.current = tree;
+  // In a layout effect, not in render. A ref write during render is a side effect
+  // React may discard on an interrupted or double-invoked render, and layout
+  // effects all run before the passive effect below that reads this.
+  useLayoutEffect(() => {
+    latest.current = tree;
+  });
   const [width, setWidth] = useState(0);
   // The frame the reader clicked into, so the way back out can name it. Held
   // here rather than in the block above, because the control that uses it sits
@@ -136,7 +141,9 @@ function useFlameChart({
   const ready = width > 0;
   /** The measurement at build time, read without becoming a reason to rebuild. */
   const measured = useRef(width);
-  measured.current = width;
+  useLayoutEffect(() => {
+    measured.current = width;
+  });
 
   useEffect(() => {
     const el = host.current;

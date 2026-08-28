@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "./button";
 import { Textarea } from "./bits";
 import { Trans, useLingui } from "@lingui/react/macro";
@@ -29,12 +29,27 @@ export function AskHost() {
   const [text, setText] = useState("");
   const [resolve, setResolve] = useState<((v: string | true | null) => void) | null>(null);
 
-  open = (s) =>
-    new Promise((res) => {
-      setText("");
-      setSpec(s);
-      setResolve(() => res);
-    });
+  /**
+   * Published from an effect, not from render.
+   *
+   * `ask()` is called from outside React — a menu handler, a mutation — so the
+   * opener has to live in a module slot. Assigning it *during* render made the
+   * render a side effect: under StrictMode's double invoke and any interrupted
+   * concurrent render, a slot pointing at a component instance React then threw
+   * away. Mount publishes it and unmount takes it back, which is also what makes
+   * `ask()` before mount resolve to null rather than to a dead setter.
+   */
+  useEffect(() => {
+    open = (s) =>
+      new Promise((res) => {
+        setText("");
+        setSpec(s);
+        setResolve(() => res);
+      });
+    return () => {
+      open = null;
+    };
+  }, []);
 
   const done = (v: string | true | null) => {
     resolve?.(v);

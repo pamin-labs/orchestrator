@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
@@ -720,9 +720,18 @@ function useTelemetry(
   // other half: while an unnarrowed read is in flight the previous — possibly
   // narrowed — answer is on screen, and taking the extent from it would clamp a
   // zoom back out to the window being zoomed out of.
-  useEffect(() => {
-    if (from === null && report && !isPlaceholderData) setExtent(report.window);
-  }, [from, report, isPlaceholderData]);
+  const whole = from === null && report && !isPlaceholderData ? report.window : null;
+  /**
+   * Latched during render, not in an effect.
+   *
+   * This is not synchronisation with anything outside React — it is "remember the
+   * last unnarrowed answer", which an effect can only do by rendering once with
+   * the stale value and then again with the new one. React documents adjusting
+   * state during render for exactly this, and the guard is the identity check:
+   * `report.window` is a fresh object per query result, so comparing the two
+   * numbers is what stops it setting on every render.
+   */
+  if (whole && (whole.from !== extent?.from || whole.to !== extent.to)) setExtent(whole);
 
   return { report, loading: isFetching, extent };
 }
@@ -870,7 +879,17 @@ export function Telemetry({
    * preferring it would put the charts on this browser's `now` while the limit came
    * from the endpoint — two windows that agree only when the two clocks do.
    */
-  const shownWindow = chosen ?? report?.window ?? { from: Date.now() - (askedWindowMs ?? DAY_MS), to: Date.now() };
+  /**
+   * The clock read once, at mount, rather than on every render.
+   *
+   * Two `Date.now()` calls in a render body are two different instants and an
+   * impure render — `react(purity)`, and right: the placeholder window slid
+   * forward under the reader on every unrelated re-render, and its `from` and
+   * `to` were never taken from the same moment. Frozen, it is a placeholder that
+   * holds still until a real window replaces it.
+   */
+  const [mountedAt] = useState(() => Date.now());
+  const shownWindow = chosen ?? report?.window ?? { from: mountedAt - (askedWindowMs ?? DAY_MS), to: mountedAt };
   /**
    * How far a zoom or a pan may reach.
    *

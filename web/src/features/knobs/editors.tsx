@@ -6,7 +6,8 @@
  * knows about sections, fetching or the settings write path, which is what makes
  * them separable at all.
  */
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
+import { useDraft } from "../../shared/use-draft";
 import { X } from "lucide-react";
 import { cn } from "../../ui/cn";
 import { Combobox } from "../../ui/combobox";
@@ -170,8 +171,7 @@ export function Amount<U extends string>({
   const show = labelOf ?? ((u: U) => String(u));
   // Held locally so that changing the unit keeps the digits already typed, and
   // so a value the server snapped to a different unit re-splits on the way back.
-  const [draft, setDraft] = useState(String(n));
-  useEffect(() => setDraft(String(n)), [n, unit]);
+  const [draft, setDraft] = useDraft(`${n}:${String(unit)}`, String(n));
 
   const send = (raw: string, u: U) => {
     const v = Number(raw);
@@ -749,8 +749,7 @@ export function Embedding({
   onField: (path: string, v: string) => void;
 }) {
   const { t } = useLingui();
-  const [picked, setPicked] = useState(mode);
-  useEffect(() => setPicked(mode), [mode]);
+  const [picked, setPicked] = useDraft(mode, mode);
   const remote = picked === "remote";
   return (
     <div className="flex w-full flex-col gap-1.5">

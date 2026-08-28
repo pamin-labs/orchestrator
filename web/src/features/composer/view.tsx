@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { ClipboardPaste, Paperclip, SquareSlash, X } from "lucide-react";
-import { type RefObject, useEffect, useRef, useState, useTransition } from "react";
+import { type RefObject, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "../../ui/button";
@@ -238,16 +238,32 @@ export function AttachmentTiles({ files, onRemove }: { files: Attached[]; onRemo
  * counted from the text: a wrapped line is a line, and counting `\n` gets that
  * wrong on exactly the long answers this box exists for.
  */
-function useAutoGrow(box: RefObject<HTMLTextAreaElement | null>, text: string, rows: number) {
-  const [h, setH] = useState(0);
-  useEffect(() => {
+/**
+ * The ref is created here and handed back, rather than taken as an argument.
+ *
+ * Measuring means writing `style.height` on the element, and a hook that mutates
+ * something its caller owns is what `react(immutability)` refuses — reasonably,
+ * since nothing tells the owner it happened. Owning the ref makes the mutation
+ * the hook's own; the caller uses the same object it always did, one return value
+ * later.
+ */
+/**
+ * `useLayoutEffect` and a reading stored with its inputs, the same shape as
+ * `useClamped`. `text` was a dependency the body never read — extra, by
+ * `exhaustive-effect-dependencies` — while being the whole reason to re-measure,
+ * and the height is only an answer about the text that was in the box.
+ */
+function useAutoGrow(text: string, rows: number): [RefObject<HTMLTextAreaElement | null>, number] {
+  const box = useRef<HTMLTextAreaElement>(null);
+  const [measured, setMeasured] = useState({ text, rows, h: 0 });
+  useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
     el.style.height = "0px";
-    setH(Math.max(el.scrollHeight, rows * 22));
+    setMeasured({ text, rows, h: Math.max(el.scrollHeight, rows * 22) });
     el.style.height = "";
-  }, [box, text, rows]);
-  return h;
+  }, [text, rows]);
+  return [box, measured.text === text && measured.rows === rows ? measured.h : 0];
 }
 
 /**
@@ -361,9 +377,8 @@ export function Composer({
   const [drag, setDrag] = useState(false);
   const [slash, setSlash] = useState<Slash | null>(null);
   const [picking, setPicking] = useState(false);
-  const box = useRef<HTMLTextAreaElement>(null);
   const skills = useSkills(projectId);
-  const h = useAutoGrow(box, text, rows);
+  const [box, h] = useAutoGrow(text, rows);
 
   const caret = () => box.current?.selectionStart ?? text.length;
   const putCaret = (at: number) =>

@@ -271,7 +271,14 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
       },
       { root, rootMargin: "0px 0px -85% 0px" },
     );
-    for (const h of heads.current) if (h) io.observe(h);
+    // Indexed by `files` rather than walking the ref array: `files` was the
+    // dependency and never appeared in the body, and the array outlives a
+    // shrinking list — a shorter diff left the previous run's trailing heads in
+    // it, and those were observed too.
+    for (const [i] of files.entries()) {
+      const h = heads.current[i];
+      if (h) io.observe(h);
+    }
     return () => io.disconnect();
   }, [files]);
 

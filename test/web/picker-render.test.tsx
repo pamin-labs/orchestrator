@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { cleanup, render, waitFor } from "../support/render.tsx";
 import { inFlight, mockHttp, server } from "../support/http.ts";
+import { WithQueries } from "./queries.tsx";
 import { HttpResponse, http } from "msw";
 import { FirstProject, Picker } from "../../web/src/features/picker/view.tsx";
 
@@ -42,7 +43,7 @@ mockHttp(inFlight());
 test("the first-project card names itself and offers no repository until one has landed", () => {
   stubRepos();
   const { getByRole, getByText, queryAllByRole, queryAllByText } = render(
-    <FirstProject onAdded={() => {}} onSettings={() => {}} />,
+    <WithQueries>{<FirstProject onAdded={() => {}} onSettings={() => {}} />}</WithQueries>,
   );
 
   // The card's own name, as a heading rather than as text that happens to match.
@@ -69,7 +70,9 @@ test("each repository lands as its own pressable row, marked with what pressing 
       repo({ fullName: "pamin-labs/gamma", taken: { id: 7, name: "gamma" } }),
     ],
   });
-  const { findByRole, getByRole, getByText } = render(<FirstProject onAdded={() => {}} onSettings={() => {}} />);
+  const { findByRole, getByRole, getByText } = render(
+    <WithQueries>{<FirstProject onAdded={() => {}} onSettings={() => {}} />}</WithQueries>,
+  );
 
   // The owner is dropped from the row: thirty rows all starting `pamin-labs/`
   // spend their first eleven columns saying the one thing they share.
@@ -89,11 +92,15 @@ test("each repository lands as its own pressable row, marked with what pressing 
 test("the picker dialog is present through its portal only while it is open", async () => {
   stubRepos();
   const { getByRole, queryAllByRole, queryByRole, rerender } = render(
-    <Picker open={false} onOpenChange={() => {}} onAdded={() => {}} onSettings={() => {}} />,
+    <WithQueries>
+      {<Picker open={false} onOpenChange={() => {}} onAdded={() => {}} onSettings={() => {}} />}
+    </WithQueries>,
   );
   expect(queryAllByRole("dialog")).toHaveLength(0);
 
-  rerender(<Picker open onOpenChange={() => {}} onAdded={() => {}} onSettings={() => {}} />);
+  rerender(
+    <WithQueries>{<Picker open onOpenChange={() => {}} onAdded={() => {}} onSettings={() => {}} />}</WithQueries>,
+  );
   const dialog = await waitFor(() => {
     const found = queryByRole("dialog");
     if (!found) throw new Error("the dialog never reached the document");
