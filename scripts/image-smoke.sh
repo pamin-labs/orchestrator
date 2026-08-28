@@ -22,6 +22,7 @@ docker run --rm "$image" sh -c '
   npm --version
   git --version
   mise --version
+  lizard --version
   rg --version | head -1
 '
 

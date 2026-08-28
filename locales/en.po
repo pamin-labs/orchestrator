@@ -2620,6 +2620,9 @@ msgstr "S{seq} introduces a dependency this repository has not had: {edges}"
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} sent back by {from} (attempt {n})"
 
+msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+msgstr "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+
 msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
 msgstr "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
 

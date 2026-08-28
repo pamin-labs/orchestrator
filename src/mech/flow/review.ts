@@ -19,12 +19,14 @@ import type { SliceState } from "../../contracts/states.ts";
 import { gatesFor, runGates, recordGate, gateState } from "../gate.ts";
 import { discriminate, stillClean } from "./discriminate.ts";
 import { newEdges } from "./boundaries.ts";
+import { AGENT_COMPLEXITY, newlyComplex, parseLizard } from "../knowledge/complexity.ts";
 import { loadEdges } from "../knowledge/edges.ts";
 import { loadMap } from "../knowledge/repomap.ts";
 import { loadResource, runResource } from "../lease.ts";
 import { extractClaimedFiles, reconcile, TaskClaimSchema } from "./reconcile.ts";
 import { changedSince, checkpoint, filesAt } from "../git/gitops.ts";
-import { resourceExec, WORK } from "../sandbox/sandbox.ts";
+import { execIn, resourceExec, WORK } from "../sandbox/sandbox.ts";
+import { shq } from "../../platform/process/shell.ts";
 import { pushBranch, sandboxGit } from "../git/checkout.ts";
 import { gitTrailers } from "../git/ghlogin.ts";
 import { joinQueue, position } from "./mergequeue.ts";
@@ -221,7 +223,7 @@ export async function runDeterministicReview(
   // refactor that legitimately touches tests would go red on every slice, and a
   // gate with false reds is a gate somebody switches off.
   await recordDiscrimination(deps, slice, projectId!, changed);
-  await recordNewEdges(deps, slice, projectId!, changed);
+  await recordStructure(deps, slice, projectId!, changed);
 
   if (rec.unclaimed.length) {
     // Not a defect, but the reviewer should know what else moved.
@@ -321,21 +323,38 @@ async function recordDiscrimination(
  *  container round trip each. */
 const EDGE_FILES = 40;
 
-async function recordNewEdges(deps: ReviewDeps, slice: SliceRow, projectId: number, changed: string[]): Promise<void> {
+/** Where the base revision is staged for a tool that reads files, not strings. */
+const BASE_DIR = "/tmp/orch-base";
+
+async function recordStructure(deps: ReviewDeps, slice: SliceRow, projectId: number, changed: string[]): Promise<void> {
+  const { ctx } = deps;
+  const git = sandboxGit(ctx, { grp: slice.grp_id });
+
+  // `recordDiscrimination` has just put the work on the branch, so `git show`
+  // reaches it without a second copy on disk. The complexity half asks git for
+  // the other end itself, inside the container, because `lizard` reads files.
+  const files: { rel: string; src: string }[] = [];
+  for (const rel of changed.slice(0, EDGE_FILES)) {
+    const head = await git(["show", `HEAD:${rel}`], WORK);
+    if (head.code === 0) files.push({ rel, src: head.out });
+  }
+  if (!files.length) return;
+
+  await sayNewEdges(deps, slice, projectId, files);
+  await sayNewComplexity(deps, slice, changed);
+}
+
+/** A dependency between two areas that this repository has never had. */
+async function sayNewEdges(
+  deps: ReviewDeps,
+  slice: SliceRow,
+  projectId: number,
+  files: { rel: string; src: string }[],
+): Promise<void> {
   const { ctx } = deps;
   const baseline = await loadEdges(ctx.db, projectId);
   if (!baseline.edges.length) return; // No map has been built yet; nothing to compare against.
   const dirs = new Set((await loadMap(ctx.db, projectId)).map((n) => n.dir));
-  const git = sandboxGit(ctx, { grp: slice.grp_id });
-
-  const files: { rel: string; src: string }[] = [];
-  for (const rel of changed.slice(0, EDGE_FILES)) {
-    // From the commit, not the worktree: `recordDiscrimination` has just put the
-    // work on the branch, and `git show` costs no second copy on disk.
-    const shown = await git(["show", `HEAD:${rel}`], WORK);
-    if (shown.code === 0) files.push({ rel, src: shown.out });
-  }
-
   const found = await newEdges({ baseline, dirs, files });
   if (!found.edges.length) return;
   await recordGate(ctx.db, slice.id, "boundaries", "new");
@@ -345,6 +364,46 @@ async function recordNewEdges(deps: ReviewDeps, slice: SliceRow, projectId: numb
     kind: "gate_result",
     say: msg`S${{ seq: slice.seq }} introduces a dependency this repository has not had: ${{ edges: found.edges.join(", ") }}`,
     meta: { slice_id: slice.id, edges: found.edges },
+  });
+}
+
+/**
+ * A function this slice put over the threshold that was not over it before.
+ *
+ * The measure Uncle Bob gates on and the one nothing here applied to a driven
+ * project. A ratchet rather than a threshold, because a repository this system
+ * did not write is full of functions over any useful number, and refusing every
+ * slice until somebody fixes them is a system nobody can adopt.
+ */
+async function sayNewComplexity(deps: ReviewDeps, slice: SliceRow, changed: string[]): Promise<void> {
+  const { ctx } = deps;
+  if (!slice.base_sha) return;
+  const paths = changed.slice(0, EDGE_FILES).map(shq).join(" ");
+  const run = (cmd: string) => execIn(ctx, { grp: slice.grp_id }, cmd, { cwd: WORK });
+
+  // The base revision beside the worktree, written by git rather than carried
+  // through this process. One command, not one per file: each is a container
+  // round trip, and forty of them is the whole budget of a review.
+  await run(
+    `rm -rf ${BASE_DIR} && for p in ${paths}; do mkdir -p ${BASE_DIR}/"$(dirname "$p")" && ` +
+      `git show ${shq(slice.base_sha)}:"$p" > ${BASE_DIR}/"$p" 2>/dev/null || true; done`,
+  );
+  // `|| true`: lizard exits non-zero when a function is over *its* own default
+  // threshold, which is not the question being asked here.
+  const after = await run(`lizard --csv ${paths} 2>/dev/null || true`);
+  const before = await run(`cd ${BASE_DIR} && lizard --csv ${paths} 2>/dev/null || true`);
+
+  const worse = newlyComplex(parseLizard(before.out), parseLizard(after.out)).map(
+    (fn) => `${fn.name} (${fn.score}, line ${fn.line})`,
+  );
+  if (!worse.length) return;
+  await recordGate(ctx.db, slice.id, "complexity", "new");
+  await ctx.bus.emit({
+    grpId: slice.grp_id,
+    author: "orchestrator",
+    kind: "gate_result",
+    say: msg`S${{ seq: slice.seq }} takes ${plural({ n: worse.length }, { one: "# function", other: "# functions" })} past ${{ threshold: AGENT_COMPLEXITY }} ways through: ${{ where: worse.join("; ") }}`,
+    meta: { slice_id: slice.id, complexity: worse },
   });
 }
 

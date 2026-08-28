@@ -2620,6 +2620,9 @@ msgstr "S{seq} はこのリポジトリにこれまでなかった依存を持�
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} は {from} に差し戻されました（{n} 回目）"
 
+msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+msgstr "S{seq} は {n, plural, other {# 個の関数}} を分岐数 {threshold} 超えにしました: {where}"
+
 msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
 msgstr "S{seq}: 識別力の検査がワークツリーを復元しましたが、git はまだ変更を報告しています。確認するまで、このブランチから何もコミットしないでください。"
 

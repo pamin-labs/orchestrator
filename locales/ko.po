@@ -2620,6 +2620,9 @@ msgstr "S{seq}가 이 저장소에 없던 의존을 새로 만듭니다: {edges}
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq}이(가) {from}에 의해 반려되었습니다 ({n}번째)"
 
+msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+msgstr "S{seq}가 {n, plural, other {함수 #개}}를 분기 {threshold}개 초과로 만들었습니다: {where}"
+
 msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
 msgstr "S{seq}: 판별력 검사가 워크트리를 복원했는데도 git이 여전히 변경을 보고합니다. 확인하기 전에는 이 브랜치에서 아무것도 커밋하지 마세요."
 

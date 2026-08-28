@@ -2620,6 +2620,9 @@ msgstr "S{seq} вводит зависимость, которой у этого
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} возвращена {from} (попытка {n})"
 
+msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+msgstr "S{seq} выводит {n, plural, one {# функцию} few {# функции} other {# функций}} за {threshold} путей: {where}"
+
 msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
 msgstr "S{seq}: проверка восстановила рабочее дерево, а git всё ещё сообщает об изменениях. Не коммить ничего из этой ветки, пока не разберёшься."
 

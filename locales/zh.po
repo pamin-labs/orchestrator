@@ -2620,6 +2620,9 @@ msgstr "S{seq} 引入了这个仓库从未有过的依赖：{edges}"
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} 被 {from} 打回（第 {n} 次）"
 
+msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+msgstr "S{seq} 让 {n, plural, other {# 个函数}} 的分支数超过了 {threshold}：{where}"
+
 msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
 msgstr "S{seq}：区分力检查还原工作区之后，git 仍然报告有改动。在你看过之前，不要从这个分支提交任何东西。"
 

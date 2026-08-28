@@ -2647,3 +2647,62 @@ the boss, and that over-tagging burns quota.
 - **Cutting `ORCH_CONTRACT`.** It is the largest fixed section, and it is the
   protocol: the CLI verbs, what a lease is, how a turn ends. Every line of it is
   the manual for something an agent cannot discover by trying.
+
+## The measure Uncle Bob gates on, rented rather than written
+
+He measures CRAP, cyclomatic complexity and module size; this repository measures
+them on itself with `fallow` and on the projects it drives not at all. That was
+the one real gap left against his pipeline.
+
+**A tree-sitter scorer was written first, and then thrown away.** It worked — the
+node names were read off the grammars (Rust spells `if` an expression, Go spells a
+switch case `expression_case`, Python has an `elif_clause` where TypeScript nests
+another `if_statement`), it scored four languages correctly by hand-check, and it
+cost no dependency. It covered **six** languages, which is the number of grammars
+in this binary and the ceiling on every answer it could ever give.
+
+[`lizard`](https://github.com/terryyin/lizard) covers twenty-two — Kotlin, Swift,
+Scala, PHP, Ruby, Zig and the rest — with a per-function CCN. Measured before it
+was taken:
+
+| | |
+|---|---|
+| image cost | **+49 MB**, with `pip` purged again, against 1.5 GB already there |
+| released | 1.24.0 on 2026-08-19, nine days before this |
+| checked | Kotlin and Swift both scored in the built image, which no grammar here can parse |
+
+`scc` was the other candidate and is not it: its complexity is a per-*file*
+estimate done "almost for free ... a cheap lookup when counting", which is not a
+number a reviewer can act on.
+
+Installed with `pip install`, which is what its documentation says. A wheel
+unpacked onto `PYTHONPATH` was tried first and lizard cannot find
+`lizard_languages` that way — sixty megabytes is not worth wiring a dependency the
+unofficial way, which is a rule this repository already writes down.
+
+### A ratchet, and the threshold is his number
+
+`newlyComplex` compares the changed files' functions before and after, by name, and
+reports the ones this slice put **over** the line that were not over it before. A
+project this system did not write is full of functions over any useful threshold;
+refusing every slice until somebody fixes them is a system nobody can adopt.
+
+The line is **6**, which is what he gates his own agents at — against 4 for a
+human, because a model holds more of a function at once than a person does — and
+he is considering 8. Six is the published figure and the conservative end.
+
+The base revision is staged by git *inside the container*, in one command rather
+than one per file, because lizard reads files and each container round trip is a
+review's budget.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1905 pass, 6 skip, 0 fail, 1911 across 234 files |
+| `fallow audit --gate all` | no issues in 65 changed files |
+| new tests | 4, against real `lizard --csv` output copied from a run in the image |
+
+The CSV fixture is not invented: it is what the image printed for a JavaScript, a
+Kotlin and a Swift file, which is also the proof that a quoted signature holding a
+comma does not shift the columns.

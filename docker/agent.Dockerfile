@@ -170,5 +170,28 @@ RUN npm install -g --no-fund --no-audit \
       "@openai/codex@${CODEX_VERSION}" \
  && npm cache clean --force
 
+# lizard, so "how many ways through this function" is a question somebody else's
+# table of language quirks answers.
+#
+# Twenty-two languages against the six this repository has tree-sitter grammars
+# for — Kotlin, Swift, Scala, PHP, Ruby, Zig and the rest — and a per-function CCN
+# rather than a per-file estimate, which is what `scc` gives for free and is not
+# the number a reviewer can act on. Measured before it was taken: +49 MB with pip
+# removed again, against 1.5 GB already here.
+#
+# `pip install`, which is what its documentation says, and not a wheel unpacked by
+# hand: that was tried and lizard cannot find `lizard_languages` when its package
+# is on `PYTHONPATH` rather than installed. Sixty megabytes is not worth wiring a
+# dependency the unofficial way.
+ARG LIZARD_VERSION=1.24.0
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends python3 python3-pip; \
+    pip3 install --break-system-packages --no-cache-dir "lizard==${LIZARD_VERSION}"; \
+    apt-get purge -y python3-pip; \
+    apt-get autoremove -y; \
+    rm -rf /var/lib/apt/lists/*; \
+    lizard --version
+
 # execd replaces the entrypoint; this only matters if the image is run by hand.
 CMD ["sleep", "infinity"]

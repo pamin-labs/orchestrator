@@ -2620,6 +2620,9 @@ msgstr "S{seq} introduit une dépendance que ce dépôt n'a jamais eue : {edges}
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} renvoyée par {from} (tentative {n})"
 
+msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+msgstr "S{seq} fait passer {n, plural, one {# fonction} other {# fonctions}} au-delà de {threshold} chemins : {where}"
+
 msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
 msgstr "S{seq} : la vérification a restauré l'arbre de travail et git signale encore des modifications. Ne commite rien depuis cette branche avant de l'avoir examiné."
 
