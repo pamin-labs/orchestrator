@@ -184,8 +184,18 @@ RUN npm install -g --no-fund --no-audit \
 # is on `PYTHONPATH` rather than installed. Sixty megabytes is not worth wiring a
 # dependency the unofficial way.
 ARG LIZARD_VERSION=1.24.0
+# `upgrade` here as well as in the first apt layer, and for the reason that layer
+# gives: a layer is a snapshot. This is the last apt layer, so it is the one whose
+# cache decides how old the image's OpenSSL is — Trivy failed on CVE-2026-14456
+# against a `libssl3t64` that Debian had already fixed, in a layer built before
+# the advisory existed.
+#
+# `pip` is installed and purged inside one `RUN` because a layer is additive: a
+# purge in a later one leaves every byte where it was. That is the difference
+# between the +49 MB this was measured at and what it would otherwise cost.
 RUN set -eux; \
     apt-get update; \
+    apt-get upgrade -y; \
     apt-get install -y --no-install-recommends python3 python3-pip; \
     pip3 install --break-system-packages --no-cache-dir "lizard==${LIZARD_VERSION}"; \
     apt-get purge -y python3-pip; \

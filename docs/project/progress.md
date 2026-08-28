@@ -2706,3 +2706,35 @@ review's budget.
 The CSV fixture is not invented: it is what the image printed for a JavaScript, a
 Kotlin and a Swift file, which is also the proof that a quoted signature holding a
 comma does not shift the columns.
+
+### The layer that decides how old the image's OpenSSL is
+
+Trivy failed the container scan on `CVE-2026-14456` — `libssl3t64` 3.5.6 against a
+Debian fix already published as 3.5.7. Nothing in this branch introduced it: a
+layer is a snapshot, the first apt layer's `apt-get upgrade` had been cached since
+before the advisory existed, and every image built from that cache carries the
+same OpenSSL however many times it is scanned.
+
+What made it visible now is that the lizard layer is the **last** apt layer, so it
+is the one whose cache decides the answer. It upgrades too, for the reason the
+first one gives in its own comment: "installing without upgrading is choosing the
+snapshot's versions on purpose".
+
+`pip` is installed and purged inside one `RUN`, because a layer is additive and a
+purge in a later one leaves every byte where it was — the difference between the
++49 MB this was measured at and what it would otherwise cost. Measured on the
+built images: 1.36 GB before lizard, 1.43 GB after.
+
+Trivy exits 0 on the rebuilt image, checked locally with the pinned 0.74.0 and the
+repository's own `.trivyignore.yaml` mounted, which is the configuration the gate
+uses rather than a different one.
+
+### Nightly, for the record
+
+`nightly.yml` failed on 2026-08-26 with `mean exceeded the significant-regression
+budget: telemetry report (624ms > 600ms)` — four percent over, on `main`, on a
+shared runner, and the 2026-08-27 run was green without a change. Not this branch,
+and not fixed by anything here. A budget that flips on 4% of a 600 ms measurement
+taken on hardware nobody controls is a gate that will keep doing this; recorded
+rather than tuned, because tuning it from one sample is how a threshold becomes
+meaningless.
