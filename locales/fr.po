@@ -2983,6 +2983,9 @@ msgstr "l'hôte a perdu le réseau ; {n, plural, one {# tour retenu et remis en 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "impossible de rafraîchir l'index : le conteneur de ce projet ne démarre pas ({why})"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "le navigateur de l'index ({model}) a échoué {n} fois de suite et n'est plus appelé — la recherche retombe sur l'index lexical, et changer le modèle ou le runtime dans Réglages le relance"
+
 msgid "the index pass threw: {reason}"
 msgstr "la passe d'indexation a levé une erreur : {reason}"
 

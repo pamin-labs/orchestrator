@@ -2983,6 +2983,9 @@ msgstr "호스트의 네트워크가 끊겼습니다. 턴 {n}건을 보류하고
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "인덱스를 갱신할 수 없습니다: 이 프로젝트의 컨테이너가 뜨지 않습니다({why})"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "인덱스 내비게이터({model})가 {n}회 연속 실패해 호출을 멈췄습니다. 검색은 어휘 인덱스로 대체됩니다. 설정에서 모델이나 런타임을 바꾸면 다시 시작합니다"
+
 msgid "the index pass threw: {reason}"
 msgstr "인덱스 작업이 예외로 죽었습니다: {reason}"
 

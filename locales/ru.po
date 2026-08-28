@@ -2983,6 +2983,9 @@ msgstr "хост потерял сеть; {n, plural, one {# ход приост
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "индекс не обновить: контейнер этого проекта не запускается ({why})"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "навигатор индекса ({model}) отказал {n} раза подряд, и его перестали вызывать — поиск падает на лексический индекс, а смена модели или рантайма в настройках запускает его снова"
+
 msgid "the index pass threw: {reason}"
 msgstr "проход индексации завершился ошибкой: {reason}"
 

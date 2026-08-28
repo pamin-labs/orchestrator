@@ -2967,3 +2967,45 @@ raising, so the file was never written and the next measurement disagreed with t
 code. Both times the symptom was the same: a language that extracted nothing. The
 habit that catches it is the one already used everywhere here — measure after
 every edit, not after the batch.
+
+## A call that has never worked here stops being made
+
+ADR 040 measured the index navigator failing **36 times out of 36** in one
+seven-hour window — 20.5 seconds a call, 738.5 seconds of wall clock, 64% of every
+error span in the system — while the lexical half it falls through to answers in
+**0.32ms**. `search()` makes up to three serial calls, so every `orch ctx query`
+in that window paid about a minute for three answers of `""`.
+
+The ADR decided not to cut the layer, and this does not cut it: the default stays
+on and the walk is unchanged. What stops is **repeating** a failure. Three
+consecutive failures and the call is skipped, which is a different decision from
+the one the ADR deferred and the one the wall clock was asking for.
+
+Keyed by project, runtime **and model**, because the recovery must not be blocked
+by the thing that noticed the breakage: the two settings events in that window
+show both runtimes being tried and reverted, so changing either in Settings starts
+a fresh count. One answer clears it — the count is of *consecutive* failures.
+
+Said once, on the way past the threshold. The boss was already told 43 times that
+the index would not build; nobody was told that asking had stopped being worth its
+clock.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1923 pass, 6 skip, 0 fail, 1929 across 237 files |
+| new tests | 4: it stops after three, it says so once, a new model starts again, and an answer clears the count |
+| what a query cost, when the navigator is broken | ~60s of model calls, now ~0 |
+
+### Not taken
+
+- **Cutting the layer.** ADR 040's reasoning holds: the failure is far more likely
+  a credential or CLI problem than a verdict on tree navigation, and cutting on
+  that is the mistake it names.
+- **A retry with backoff.** Backoff answers "the service is briefly down". Thirty-
+  six for thirty-six over seven hours is not briefly down, and a backoff would
+  still pay 20 seconds to learn it again.
+- **An in-process counter.** New mutable singleton state, which the invariants
+  forbid — and it would forget across a restart, which is exactly when a
+  misconfigured deployment restarts.

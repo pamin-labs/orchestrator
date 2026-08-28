@@ -2983,6 +2983,9 @@ msgstr "宿主斷網了，{n} 個 turn 擱置等聯網 —— 需求還在跑的
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "索引刷不了：這個專案的容器起不來（{why}）"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "索引導航（{model}）連續失敗 {n} 次，已暫停呼叫——檢索回落到詞法索引；在設定裡換模型或 runtime 就會重新開始"
+
 msgid "the index pass threw: {reason}"
 msgstr "索引重新整理出錯：{reason}"
 

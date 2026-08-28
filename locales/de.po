@@ -2983,6 +2983,9 @@ msgstr "der Host hat sein Netz verloren; {n, plural, one {# Zug wurde angehalten
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "der Index lässt sich nicht auffrischen: der Container dieses Projekts startet nicht ({why})"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "Der Index-Navigator ({model}) ist {n}-mal hintereinander fehlgeschlagen und wird übersprungen — die Suche fällt auf den lexikalischen Index zurück, und ein anderes Modell oder Runtime in den Einstellungen startet ihn neu"
+
 msgid "the index pass threw: {reason}"
 msgstr "der Indexlauf ist mit einem Fehler abgebrochen: {reason}"
 

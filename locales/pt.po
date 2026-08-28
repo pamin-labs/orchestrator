@@ -2983,6 +2983,9 @@ msgstr "o anfitrião perdeu a rede; {n, plural, one {# turno retido e reenfileir
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "não dá para atualizar o índice: o contêiner deste projeto não sobe ({why})"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "o navegador do índice ({model}) falhou {n} vezes seguidas e deixou de ser chamado — a pesquisa recai no índice léxico, e mudar o modelo ou o runtime nas Definições recomeça"
+
 msgid "the index pass threw: {reason}"
 msgstr "a passagem do índice lançou um erro: {reason}"
 

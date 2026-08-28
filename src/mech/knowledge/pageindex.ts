@@ -2,7 +2,7 @@ import { msg } from "@lingui/core/macro";
 import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { jsonOr } from "../../contracts/json.ts";
 import { saveSingletonNote, singletonNote } from "../util/rows.ts";
-import type { DB } from "../../platform/persistence/database.ts";
+import { type DB, readSetting, writeSetting } from "../../platform/persistence/database.ts";
 import { agent, grp, note, nowMs } from "../../platform/persistence/schema.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
@@ -286,7 +286,16 @@ export function modelAsk(
       // nothing, and this was the reason the index was invisible in every cost
       // total while being the most frequent model call there is.
       ["claude", "-p", "--output-format", "json", "--model", spec.model];
-  return async (prompt) =>
+  const breaker = breakerKey(scope, spec);
+  return async (prompt) => {
+    if (await tripped(ctx, breaker)) return "";
+    const answer = await call(prompt);
+    await record(ctx, breaker, answer !== "", spec);
+    return answer;
+  };
+
+  function call(prompt: string): Promise<string> {
+    return (
     // The same sentence the `onUsage` comment above makes, about the other half
     // of the bill: this is the most frequent model call in the system and it
     // appeared in no report. `onUsage` fixed the money; this fixes the clock.
@@ -325,7 +334,54 @@ export function modelAsk(
       } finally {
         span.end();
       }
-    });
+    }));
+  }
+}
+
+/**
+ * A call that has never worked here stops being made.
+ *
+ * ADR 040 measured this layer failing 36 times out of 36 in one seven-hour
+ * window, 20.5 seconds each, while the lexical half it falls through to answers
+ * in 0.32ms — so every `orch ctx query` in that window paid about a minute for
+ * three calls that returned nothing. The ADR decided not to cut the layer, and
+ * this does not: it stops **repeating** a failure, which is a different decision
+ * and the one the wall clock was asking for.
+ */
+/** Keyed by the model and the runtime, so the boss changing either starts a fresh
+ *  count — the two settings events in that window show both runtimes being tried,
+ *  which is exactly the recovery this must not stand in the way of. Three, because
+ *  one is a blip and two is a coincidence. */
+const BREAKER_TRIPS = 3;
+
+const breakerKey = (scope: Scope, spec: { runtime?: string; model: string }): string =>
+  `index-fail:${scopeKey(scope)}:${spec.runtime ?? "claude"}:${spec.model}`;
+
+/** The three shapes a scope has, as one string. */
+const scopeKey = (scope: Scope): string =>
+  "grp" in scope ? `g${scope.grp}` : "project" in scope ? `p${scope.project}` : "util";
+
+async function tripped(ctx: Ctx, key: string): Promise<boolean> {
+  return Number(await readSetting(ctx.db, key)) >= BREAKER_TRIPS;
+}
+
+async function record(ctx: Ctx, key: string, ok: boolean, spec: { runtime?: string; model: string }): Promise<void> {
+  if (ok) {
+    await writeSetting(ctx.db, key, null);
+    return;
+  }
+  const failures = Number(await readSetting(ctx.db, key)) + 1;
+  await writeSetting(ctx.db, key, String(failures));
+  // Once, on the way past the threshold. The boss was already told 43 times in
+  // that window that the index would not build; what nobody was told is that the
+  // asking had stopped being worth its clock.
+  if (failures !== BREAKER_TRIPS) return;
+  await ctx.bus.emit({
+    author: "orchestrator",
+    kind: "state_change",
+    say: msg`the index navigator (${{ model: spec.model }}) failed ${{ n: BREAKER_TRIPS }} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again`,
+    meta: { model: spec.model, runtime: spec.runtime ?? "claude" },
+  });
 }
 
 /** `claude -p --output-format json`: one object, with the answer and the bill. */

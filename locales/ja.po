@@ -2983,6 +2983,9 @@ msgstr "ホストがネットワークを失いました。{n} 件のターン�
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "インデックスを更新できません：このプロジェクトのコンテナが起動しません（{why}）"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "インデックスのナビゲーター（{model}）が {n} 回連続で失敗したため呼び出しを止めました。検索は字句インデックスにフォールバックします。設定でモデルかランタイムを変えれば再開します"
+
 msgid "the index pass threw: {reason}"
 msgstr "インデックス処理が例外で落ちました：{reason}"
 
