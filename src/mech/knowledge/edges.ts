@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { importsIn } from "./symbols.ts";
+import { parseJsonc } from "../util/jsonc.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
@@ -58,6 +59,73 @@ function withoutBuildRoot(parts: string[]): string[] {
   return parts;
 }
 
+/**
+ * What this repository says its own import strings mean.
+ *
+ * Every heuristic below it is a guess; this is the project's own answer, and
+ * three files carry it. Measured before it was written: a Go import
+ * (`github.com/acme/app/internal/gate`), a TypeScript alias (`@/lib/gate`) and a
+ * PSR-4 namespace (`App\Core\Gate`) all resolved to **nothing** — which is every
+ * real Go repository, most TypeScript ones, and the PHP standard.
+ */
+const ResolutionSchema = z.object({
+  /** `module github.com/acme/app` in `go.mod`, which prefixes every internal import. */
+  modulePrefix: z.string().optional(),
+  /** `[prefix, replacement]`, longest first: tsconfig `paths`, composer `psr-4`. */
+  aliases: z.array(z.tuple([z.string(), z.string()])),
+});
+
+/** One owner for the shape: it is stored beside the edges, so the schema that
+ *  validates it on the way back is the one that describes it. */
+export type Resolution = z.infer<typeof ResolutionSchema>;
+
+const NO_RESOLUTION: Resolution = { aliases: [] };
+
+/** Read from whatever the caller can reach — the watchdog already holds every
+ *  tracked file's contents when it builds the map these edges ride on. */
+export function resolutionFrom(read: (name: string) => string | undefined | null): Resolution {
+  const aliases: [string, string][] = [...tsPaths(read("tsconfig.json")), ...psr4(read("composer.json"))];
+  const modulePrefix = /^module\s+(\S+)/m.exec(read("go.mod") ?? "")?.[1];
+  return {
+    ...(modulePrefix ? { modulePrefix } : {}),
+    // Longest first, so `@/lib/` wins over `@/` when both are declared.
+    aliases: aliases.sort((a, b) => b[0].length - a[0].length),
+  };
+}
+
+/** `{"@/*": ["src/*"]}` under `compilerOptions`, with `baseUrl` in front of it. */
+function tsPaths(body: string | undefined | null): [string, string][] {
+  const parsed = TsConfig.safeParse(parseJsonc(body ?? ""));
+  if (!parsed.success) return [];
+  const base = parsed.data.compilerOptions?.baseUrl?.replace(/^\.\/?|\/$/g, "") ?? "";
+  return Object.entries(parsed.data.compilerOptions?.paths ?? []).flatMap(([from, to]) => {
+    const target = to?.[0];
+    if (!target) return [];
+    const prefix = (p: string) => p.replace(/\*$/, "");
+    return [[prefix(from), (base ? `${base}/` : "") + prefix(target)] as [string, string]];
+  });
+}
+
+/** `{"App\\": "app/"}` under `autoload.psr-4`. Composer's own spelling keeps the
+ *  trailing separator on both sides, which is what makes the prefix swap exact. */
+function psr4(body: string | undefined | null): [string, string][] {
+  const parsed = Composer.safeParse(parseJsonc(body ?? ""));
+  if (!parsed.success) return [];
+  return Object.entries(parsed.data.autoload?.["psr-4"] ?? []).flatMap(([ns, dir]) =>
+    typeof dir === "string" ? [[ns, dir] as [string, string]] : [],
+  );
+}
+
+const TsConfig = z.object({
+  compilerOptions: z
+    .object({ baseUrl: z.string().optional(), paths: z.record(z.string(), z.array(z.string())).optional() })
+    .loose()
+    .optional(),
+});
+const Composer = z.object({
+  autoload: z.object({ "psr-4": z.record(z.string(), z.json()).optional() }).loose().optional(),
+});
+
 /** `from|to`, the pair as it is stored and compared. */
 export const edge = (from: string, to: string) => `${from}|${to}`;
 
@@ -71,7 +139,12 @@ export const edge = (from: string, to: string) => `${from}|${to}`;
  * somebody else's package, and an unresolvable import is **ignored** rather than
  * guessed at — this decides whether work is blocked.
  */
-export function areaOfImport(from: string, target: string, dirs: ReadonlySet<string>): string | null {
+export function areaOfImport(
+  from: string,
+  target: string,
+  dirs: ReadonlySet<string>,
+  resolution: Resolution = NO_RESOLUTION,
+): string | null {
   const here = areaOf(from);
   // A relative import is a path, so its directory is the longest known prefix —
   // the last segment is a file, and a deeper file still lands in an area.
@@ -85,12 +158,26 @@ export function areaOfImport(from: string, target: string, dirs: ReadonlySet<str
   // every third-party package in the repository would have been an edge.
   //
   // `crate::` is Rust for this crate's root, which on disk is `src/`.
-  const path = asPath(target);
+  const path = asPath(declared(target, resolution));
   for (const root of SOURCE_ROOTS) {
     const found = under(root ? `${root}/${path}` : path, path, dirs);
     if (found && areaOf(`${found}/x`) !== here) return areaOf(`${found}/x`);
   }
   return null;
+}
+
+/**
+ * The target with the project's own declarations applied.
+ *
+ * An alias first, because `@/lib/gate` says nothing about directories until
+ * tsconfig does; then the Go module prefix, which every internal import in a Go
+ * repository carries and no directory ever will.
+ */
+function declared(target: string, resolution: Resolution): string {
+  for (const [from, to] of resolution.aliases) if (target.startsWith(from)) return to + target.slice(from.length);
+  const prefix = resolution.modulePrefix;
+  if (prefix && (target === prefix || target.startsWith(`${prefix}/`))) return target.slice(prefix.length + 1);
+  return target;
 }
 
 /**
@@ -142,11 +229,16 @@ function resolve(from: string, target: string): string {
 }
 
 /** Every edge in one file, for the directories this repository has. */
-export async function edgesIn(rel: string, src: string, dirs: ReadonlySet<string>): Promise<string[]> {
+export async function edgesIn(
+  rel: string,
+  src: string,
+  dirs: ReadonlySet<string>,
+  resolution: Resolution = NO_RESOLUTION,
+): Promise<string[]> {
   const from = areaOf(rel);
   const out = new Set<string>();
   for (const target of await importsIn(rel, src)) {
-    const to = areaOfImport(rel, target, dirs);
+    const to = areaOfImport(rel, target, dirs, resolution);
     if (to) out.add(edge(from, to));
   }
   return [...out];
@@ -161,15 +253,30 @@ export async function edgesIn(rel: string, src: string, dirs: ReadonlySet<string
  * check that cannot tell those apart reports every import out of an unread area
  * as new, and evidence that is mostly noise is evidence nobody reads.
  */
-const Baseline = z.object({ edges: z.array(z.string()), areas: z.array(z.string()) });
+const Baseline = z.object({
+  edges: z.array(z.string()),
+  areas: z.array(z.string()),
+  /** Stored with the edges because it is read from the same pass over the same
+   *  files, and because a baseline built under one set of rules cannot be
+   *  compared against a change resolved under another. */
+  resolution: ResolutionSchema.optional(),
+});
 export type Baseline = z.infer<typeof Baseline>;
 
-export async function saveEdges(db: DB, projectId: number, edges: string[], areas: string[]): Promise<boolean> {
-  const value: Baseline = { edges: [...new Set(edges)].sort(), areas: [...new Set(areas)].sort() };
+const EMPTY: Baseline = { edges: [], areas: [] };
+
+export async function saveEdges(
+  db: DB,
+  projectId: number,
+  edges: string[],
+  areas: string[],
+  resolution: Resolution,
+): Promise<boolean> {
+  const value: Baseline = { edges: [...new Set(edges)].sort(), areas: [...new Set(areas)].sort(), resolution };
   return saveSingletonNote(db, projectId, "edges", JSON.stringify(value));
 }
 
 export async function loadEdges(db: DB, projectId: number | null): Promise<Baseline> {
-  if (!projectId) return { edges: [], areas: [] };
-  return jsonOr(await singletonNote(db, projectId, "edges"), Baseline, { edges: [], areas: [] });
+  if (!projectId) return EMPTY;
+  return jsonOr(await singletonNote(db, projectId, "edges"), Baseline, EMPTY);
 }

@@ -37,7 +37,7 @@ export async function newEdges(scan: BoundaryScan): Promise<NewEdges> {
     // An area the baseline never read cannot say what is new in it.
     if (!covered.has(from)) continue;
     for (const target of await importsIn(file.rel, file.src)) {
-      const to = areaOfImport(file.rel, target, scan.dirs);
+      const to = areaOfImport(file.rel, target, scan.dirs, scan.baseline.resolution);
       if (!to || known.has(edge(from, to))) continue;
       found.add(`${from} → ${to}`);
     }

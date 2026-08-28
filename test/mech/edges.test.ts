@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { areaOf, areaOfImport, edge, edgesIn } from "../../src/mech/knowledge/edges.ts";
+import { areaOf, areaOfImport, edge, edgesIn, resolutionFrom } from "../../src/mech/knowledge/edges.ts";
 
 const dirs = new Set([
   "src",
@@ -96,4 +96,38 @@ test("every spelling of a module name resolves to the same kind of answer", () =
   // contain is nobody's edge, however many source roots are tried.
   expect(areaOfImport("src/mech/gate.ts", "zod", wide)).toBeNull();
   expect(areaOfImport("src/App/A.cs", "System.IO", wide)).toBeNull();
+});
+
+/**
+ * Everything above this is a guess about what an import string means; these three
+ * files are the project's own answer. Measured before any of it was written, all
+ * three of the commonest real-world shapes resolved to **null**:
+ * `github.com/acme/app/internal/gate`, `@/lib/gate`, `App\Core\Gate` — which is
+ * every real Go repository, most TypeScript ones, and the PHP standard.
+ */
+test("what the project declares beats what the resolver would guess", () => {
+  const dirs = new Set(["internal", "internal/gate", "cmd", "cmd/app", "src", "src/lib", "app", "app/Core"]);
+  const declared = {
+    "go.mod": "module github.com/acme/app\n\ngo 1.22\n",
+    // Comments and a trailing comma, which is what a real tsconfig has.
+    "tsconfig.json": '{\n  // aliases\n  "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["src/*"] } },\n}',
+    "composer.json": '{"autoload": {"psr-4": {"App\\\\": "app/"}}}',
+  } as Record<string, string>;
+  const resolution = resolutionFrom((name) => declared[name]);
+
+  expect(resolution.modulePrefix).toBe("github.com/acme/app");
+  expect(areaOfImport("cmd/app/main.go", "github.com/acme/app/internal/gate", dirs, resolution)).toBe("internal/gate");
+  expect(areaOfImport("src/app/page.tsx", "@/lib/gate", dirs, resolution)).toBe("src/lib");
+  expect(areaOfImport("app/Http/A.php", "App\\Core\\Gate", dirs, resolution)).toBe("app/Core");
+
+  // And a package that is nobody's is still nobody's: the module prefix only
+  // strips its own, and an alias only fires on the prefix it declares.
+  expect(areaOfImport("cmd/app/main.go", "github.com/other/lib/thing", dirs, resolution)).toBeNull();
+  expect(areaOfImport("src/app/page.tsx", "react", dirs, resolution)).toBeNull();
+});
+
+test("a project that declares nothing is resolved exactly as before", () => {
+  expect(resolutionFrom(() => undefined)).toEqual({ aliases: [] });
+  // And a file that will not parse is not a declaration either.
+  expect(resolutionFrom((n) => (n === "tsconfig.json" ? "{ not json" : undefined))).toEqual({ aliases: [] });
 });

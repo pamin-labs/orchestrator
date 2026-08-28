@@ -3052,3 +3052,54 @@ with it.
 |---|---|
 | `bun run test` | 1926 pass, 6 skip, 0 fail, 1932 across 237 files |
 | new tests | 3: per project, with no project, and a path that has no placeholder |
+
+## The resolver was guessing where the project had already answered
+
+Two defects were fixed while adding five grammars — a path split on its dots, a
+build root eating the area — and both were symptoms. The class was: **every rule
+in `areaOfImport` is a guess about what an import string means, and three files in
+the repository say it outright.**
+
+Measured before anything was written, on the commonest real-world shapes:
+
+```
+go    github.com/acme/app/internal/gate  ->  null
+ts    @/lib/gate                         ->  null
+php   App\Core\Gate                      ->  null
+```
+
+That is **every real Go repository** — an internal import carries the module path
+from `go.mod` and no directory ever will — most TypeScript ones, and the PHP
+standard. The boundary layer was seeing almost nothing in three of eleven
+languages while reporting no edges, which reads exactly like a clean repository.
+
+`resolutionFrom` reads what they declare: `module` from `go.mod`, `baseUrl` and
+`paths` from `tsconfig.json` (through the JSONC reader, because a real tsconfig
+has comments), `autoload.psr-4` from `composer.json`. Aliases are applied longest
+first, so `@/lib/` wins over `@/` where both exist.
+
+It costs no round trip: the watchdog pass that builds the baseline already holds
+every tracked file's contents, and the resolution is stored **beside the edges**
+because a baseline built under one set of rules cannot be compared against a
+change resolved under another.
+
+### What it does not do
+
+`resolutionFrom` is three exact mappings, not a module resolver. A Python
+namespace package, a C++ `-I` path, a Ruby `$LOAD_PATH` and a Go `replace`
+directive all still resolve to nothing — and nothing is the right answer, because
+an unresolvable import is skipped rather than guessed at.
+
+The precise answer exists and is not this: SCIP indexers and stack-graphs do real
+name resolution, per language, against a working build. That is the right tool the
+day a boundary finding becomes a **gate** rather than evidence. While it is
+evidence, a missed edge costs a line nobody reads, and a wrong edge costs a
+reviewer's trust.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1928 pass, 6 skip, 0 fail, 1934 across 237 files |
+| `fallow audit --gate all` | no issues in 85 changed files |
+| new tests | the three shapes resolving, a package that is still nobody's, and a project that declares nothing |
