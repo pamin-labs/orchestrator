@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
+import { newScheduler } from "../support/scheduler.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { keepQaSteps, replayQa } from "../../src/mech/flow/qa-suite.ts";
@@ -20,16 +21,17 @@ async function harness(commands: (cmd: string) => { code: number; out?: string }
   const db = await openMemory();
   await seedAuth(db);
   const ran: string[] = [];
-  const ctx = {
+  const ctx: Ctx = {
     db,
     bus: new Bus(db),
+    sched: newScheduler(db, async () => {}),
     sandbox: fakeSandbox((cmd) => {
       ran.push(cmd);
       return commands(cmd);
     }),
     waiters: new Map(),
     config: loadConfig(),
-  } as unknown as Ctx;
+  };
   const f = fx.on(db);
   const p = await f.project.create({ name: "p", repo_path: "o/r" });
   const g = await f.runningGrp.create({ project_id: p.id, name: "g1" });
