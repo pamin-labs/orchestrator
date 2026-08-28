@@ -27,9 +27,8 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Baseline
 
-- Branch: `feature/web-i18n`, open as #9; the numbers below were re-measured on
-  it, having been carried unchanged from the branch merged as #7 while the suite
-  grew by 200 tests
+- Branch: `feature/project-discovery`, cut from `main` after #9 merged; the
+  numbers below were carried from that branch and are re-measured per entry
 - TypeScript, Oxlint, Biome, and Fallow audit: pass
 - Tests: 1823 pass, 6 environment skips, 0 fail, 1829 across 225 files
 - Coverage: 82.91% of statements, 73.12% of branches, 78.24% of functions
@@ -1810,3 +1809,1462 @@ otherwise silence, which reads exactly like success.
   `api/orch/escalation.ts` builds from a validated body, where the CLI already
   refuses a missing one — requiring it in the type would push a redundant
   assertion into the API path to satisfy the compiler.
+
+## The two compatibility shims are gone
+
+`docs/project/plan.md` puts "compatibility aliases before the first public stable
+release" out of scope, and two of them had been standing since ADR 016 made cards
+Markdown: `ALIAS` in `src/contracts/card.ts` mapped the six Chinese headings a
+card carried before the keys became ASCII, and `draftLegacy` + `legacySlices` in
+`src/mech/util/validate.ts` parsed the one-line `key : value` form.
+
+The reason they survived is worth writing down, because it was a good reason that
+had stopped being one: `test/governance/version.test.ts` held a guard scheduling
+their deletion for 0.2.0 and *requiring them to be present* until then. That is a
+release schedule enforcing what the scope rule forbids, and the schedule won for
+two releases because it was executable and the rule was prose.
+
+The precondition the code itself named — `validate.ts` said "once no `note` row
+with `draft_card` predates the Markdown format" — is a query, so it was run rather
+than guessed: this machine's database holds **zero** `draft_card` rows, which
+cannot speak for a live deployment but is the answer here. A stored card in the
+old shape would now be refused, and the repair is one `UPDATE` of that row's
+`body`, not a parser kept forever.
+
+### What replaced them is how they fail
+
+`draftMarkdown` already returned `null` for a card with no headings; the fallback
+swallowed that. Now it is a rejection that names the six headings to write —
+the Dispatcher rewrites from the rejection, so a refusal it cannot act on is the
+same defect as a card that silently reads empty. The Chinese-heading card fails
+as `missing sections`, which already named them.
+
+Two readers, not one: `cardGoal` in `web/src/shared/prose.ts` drew a goal off the
+inline form too. Left alone it would have shown the boss a goal for a card the
+parser refuses — the exact split `no reader maps a Chinese heading to a card
+section` exists to prevent, so it left with the parser's copy.
+
+### Shown failing
+
+The new guard was proved red before it was kept: with `fieldOf` teaching itself
+the six Chinese headings again, `the two retired card shapes are refused by name`
+fails; with the deletion in place it passes.
+
+### The fixtures were the interesting part
+
+Sixteen tests failed on the deletion and **none** of them was a parser test. They
+were flow tests — group approval, DRAFT filing, the state snapshot, the HTTP
+smoke — every one of which filed its card in the pre-Markdown grammar. Four web
+fixtures did the same. The old shape had outlived its own code path inside the
+suite, which is how it stayed invisible: the tests that exercised the pipeline
+were all speaking a dialect the product had stopped emitting.
+
+Two governance guards then priced the change correctly. The Chinese-literal
+ratchet demanded its baseline follow the file *down* — `contracts/card.ts` 4 → 2 —
+so the room cannot silently reopen; the eight-line comment cap refused an
+eleven-line explanation. Both were doing their job on the first try.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1860 pass, 6 skip, 0 fail, 1866 across 229 files |
+| `fallow audit --gate all` | no issues in 14 changed files |
+| deleted | `ALIAS`, `INLINE_FIELD`, `draftLegacy`, `legacySlices`, two scheduling guards |
+
+### Not taken
+
+- **The `navigator.language` and GitHub noreply readers.** `web/src/i18n.ts` and
+  `git/ghlogin.ts` also accept older forms, and they stay: those validate input
+  from a browser and from GitHub, which still send them. A compatibility alias is
+  ours to retire; an external format is not.
+- **Deleting `no reader maps a Chinese heading to a card section`.** Half its
+  assertion — that the contract still holds all six words — went with `ALIAS`.
+  The other half matters more now, not less: a reader that grows its own `目标`
+  regex would accept a heading `validateDraftCard` refuses outright.
+- **A migration for stored cards.** Nothing to migrate here, and writing one for
+  a database this repository cannot see is speculation. The query that decides is
+  recorded above instead.
+
+## The Engineer had no cheap way to ask, and bootstrap's manual was wrong twice
+
+Two prompt defects of the same class: **a role file stating something the
+deterministic layer does not do.** A role file is the only manual a sandboxed
+agent has, so a false sentence there is not a documentation bug — it is a move the
+agent will not make, or one it will make wrongly.
+
+### "Blocked on something only the boss can decide?"
+
+That was the entry condition on the Engineer's only ask paragraph. The paragraph
+below it is accurate — it lists all nine kinds and says the first five are the
+boss's alone — but the *opening* tells the reader when the paragraph applies, and
+an acceptance criterion it cannot pin down is not something only the boss can
+decide. So the Engineer reads the whole block as not applying to it and guesses.
+
+`src/api/orch/escalation.ts:80` is `chain: TO_BOSS.has(b.kind) ? "boss" : "pm"`,
+and `RESERVED` is five kinds — `spec` reaches the **PM**, which can answer it
+itself (`chain.ts` lets a stand-in answer any non-reserved kind, checked twice:
+by the stored kind, and by a second reader shown the question). `qa.yaml` has had
+"ask the PM for a better criterion" for as long as the file has existed. The
+Engineer had the same road and no sign pointing at it.
+
+The cost of not having it was already written down, in `sendBack`: "two failed
+attempts usually means the acceptance criteria are wrong, not the code". Guessing
+is not the cheap path — it is two rejected slices and then the boss anyway.
+
+### Two false sentences in `bootstrap.yaml`
+
+"It runs on the host, in this worktree, because the sandbox denies your own
+process the writes an install needs." Both halves are wrong. `runInstall`
+(`start.ts:99`) is `execLines(ctx, { grp: grpId }, cmd, { cwd: WORK })` — the
+group's own container — and the agent's turn runs through the *same function*
+with no confinement at all: `claude.ts` passes `--dangerously-skip-permissions`,
+`codex.ts` passes `--dangerously-bypass-approvals-and-sandbox`, both with the
+comment "the container is the boundary". There is no write the orchestrator can
+make that the agent cannot.
+
+Worse than inaccurate: `docs/project/plan.md` puts "silent fallback from
+containers to host execution" out of scope, so the manual claimed we do the thing
+the scope rule forbids. The real reason for the indirection is recording —
+`orch setup` stores the command, and `ensureSandbox` replays it when a reaped or
+killed container is rebuilt (`test/mech/restore-workspace.test.ts`). Run it
+yourself and the next turn wakes in an empty container.
+
+"…reach the package registries, and nothing else" describes an allow-list. The
+sandbox has `denyDomains` and ADR 005 measured why: an allow-list cannot enumerate
+every registry a project needs. An agent that believes it is behind an allow-list
+does not try to fetch a toolchain — and fetching toolchains is exactly what the
+next unit of work needs it to do.
+
+### Both claims are now guarded, and both guards were shown failing
+
+- `a role naming a kind as the PM's is naming one the PM can answer` — reserve
+  `spec` in `RESERVED` and it goes red. Narrowed with the contract's own
+  `isAskKind` predicate rather than an assertion; oxlint refused `as never`, which
+  is the rule working.
+- `the role that describes the sandbox network describes the one in the schema` —
+  rename `denyDomains` to an allow-list key and it goes red beside the paragraph
+  that would have become false.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1862 pass, 6 skip, 0 fail, 1868 across 229 files |
+| new guards | 2, each shown failing before it was kept |
+
+### Not taken
+
+- **A new CLI verb for asking the PM.** There is nothing to add: `orch ask-boss`
+  already routes by kind, and the name is the only misleading part. Renaming a
+  verb every role file and the CLI help quote, to fix a sentence, is the expensive
+  half of the fix.
+- **A length budget on role prompts.** The lost-in-the-middle argument says to cut
+  them, and this change *added* four lines to one. The audit is its own unit —
+  doing it here would mean touching every role file twice.
+
+## A project whose stack has no row now takes its gates from what CI runs
+
+`detect.ts` is a table of six stacks. Miss it — Elixir, Zig, Swift, OCaml, a
+Makefile whose target is not called `test` — and `detectGates` returns `[]`, which
+`gate.ts` treats as **fail every slice**, with a message telling the boss to write
+the gates by hand. That is the whole product refusing to work on a project it does
+not recognise, and no table will ever have every row.
+
+There is exactly one machine-readable statement of "what a clean machine does with
+this repository" that exists in every language: the CI workflow. `Bun.YAML` is
+already a dependency-free parser here (`load.ts:334` uses it for config and
+roles), so reading one costs nothing new. `runsIn` walks the document
+structurally rather than by key path, because a reusable workflow nests its jobs
+and a matrix step is still a step.
+
+### It is a fallback, not an override
+
+A recognised stack keeps its convention. A CI step is written for a machine that
+has the services CI starts — this repository's own test job needs a PostgreSQL
+container — so preferring CI would trade "no gate" for "a gate that cannot pass",
+and the second is worse: the first is visible as a missing gate, the second reads
+as the agent's fault, once per slice.
+
+### Only what could be a template
+
+`lease.ts` tokenises on whitespace and never invokes a shell, so `make deps &&
+make test` would hand `&&` and `make test` to `make` as arguments — a gate that
+looks like it ran and did half of nothing. Anything with shell grammar, a
+redirect, a substitution, or a `${{ … }}` only the runner can expand is skipped
+rather than mangled.
+
+### Measured, on this repository's own workflows
+
+Running the extractor against `.github/workflows` — a repository the fallback
+would never be used for, since `package.json` matches a rule — found two defects
+that no fixture had:
+
+| | first attempt | after |
+|---|---|---|
+| test | `bun run i18n:check` | `bun run test:coverage:ci` |
+| lint | `bun run format:check` | `bun run lint` |
+
+`check` in the test vocabulary matched `i18n:check`, and "first match in file
+order" matched `format:check` before the `bun run lint` four steps below it. So
+`check` left the vocabulary, and a command that *ends* in the gate's own name now
+beats one that merely mentions it. Both cases are kept as a test.
+
+The remaining answer is honest rather than good: `test:coverage:ci` is the slow
+variant, and this repository's `ci.yml` never runs a plain `bun run test` at all.
+That is the argument for the fallback being a fallback.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1866 pass, 6 skip, 0 fail, 1872 across 229 files |
+| `fallow audit --gate all` | no issues in 22 changed files |
+| new tests | 5, covering an unknown stack, a rejected template, a recognised stack, silence, and the two measured defects |
+
+### Not taken
+
+- **CI overriding a recognised stack.** Above: a CI command assumes CI's services.
+- **An unbounded read of the workflow directory.** Eight files, filtered by
+  extension before anything is opened, once per project at its first clone.
+- **Guessing at a step's `name:`.** It is prose in whichever of ten languages the
+  author wrote it in; the command is the only part that is not.
+
+### Two findings the audit made, both kept
+
+`fallow audit` refused the change twice, correctly: `detectFromCi` was an exported
+second door into detection with the rule table not in front of it, and both
+`ciCommands` and `detectProject` breached the cognitive threshold once the
+workflow read was inlined. The first is now internal — `detectGates` is the one
+door — and the other two are split into `commandsIn` and `readWorkflows`.
+
+## The gate believed any suite that exits 0
+
+Three review layers ran on a slice and not one of them could tell a test from a
+test-shaped file. `runGates` reads an exit code. `reconcile` compares claimed
+paths against `git`. QA reads the diff — the same diff the same model wrote, with
+its own prompt telling it not to re-read the module. So the cheapest way to turn a
+slice green was to weaken a test, and the system had no layer that would notice.
+
+This is the one thing Uncle Bob's pipeline has that ours did not: the Hardener,
+the agent whose whole job is proving the tests would have caught the bug. His tool
+is mutation testing. Ours cannot be — a mutation tool is a per-language dependency
+and we run inside somebody else's repository — but the *question* generalises with
+nothing but git: **put the slice's source back and run the project's own tests. If
+they still pass, they distinguish nothing about this change.**
+
+That is CLAUDE.md's own rule — "a new guard is shown failing before it is kept" —
+which had been a human discipline enforced by whoever remembered it. The interview
+this came from is blunt about that: "把人类的纪律强加给智能 Agent 可能是一个错误。
+我们不需要强加纪律，但需要坚持人类的价值观." Keep the value, change the mechanism.
+
+### Evidence, never a verdict
+
+`recordDiscrimination` always returns without touching the slice's fate. A
+refactor that legitimately edits its tests would go red on every slice, and a gate
+with false reds is a gate somebody switches off. What it produces is a third word
+in `gates_json` — `blind` — which the panel does not colour (`STOPS` is a
+whitelist, `failed` tests for `"fail"`), and a question on QA's card: name the
+criterion these tests discriminate, or fail the slice. The judgement stays where
+judgement belongs.
+
+### The parts that had to be right
+
+- **Nothing runs on an unclean worktree.** Every step restores from a git object,
+  so work that is not in one is work this would destroy. `git status --porcelain`
+  is checked before the first write, and the check is skipped, not forced.
+- **A new file is removed, not left standing.** `git checkout <base> -- path`
+  cannot undo a file that base never had. Leave it and the tests written for that
+  new module still pass — the check would report "distinguishes nothing" about a
+  slice that distinguishes fine. Shown failing: comment out the `git rm` and the
+  fixture goes red.
+- **The restore is verified, not assumed.** `git checkout HEAD -- …` writes index
+  and worktree, so a removed file returns with it; `stillClean` then asks git
+  again, and a dirty answer raises to the boss rather than letting an agent commit
+  from it. Shown failing: comment out the restore and two fixtures go red.
+- **Non-zero is the healthy answer, compile errors included.** A test naming a
+  symbol this slice introduced cannot build without it, and failing to build *is*
+  the test discriminating.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1876 pass, 6 skip, 0 fail, 1882 across 230 files |
+| `fallow audit --gate all` | no issues in 43 changed files |
+| new tests | 7 unit (no container), 2 end-to-end on real git |
+| cost | one extra run of the `test` gate, on a slice that changed both code and tests |
+
+The two end-to-end cases are the same slice shape twice, differing only in whether
+the test would fail without the change — which a static gate template cannot
+express, so the fixture's gate is a real command reading the worktree. Both were
+shown failing with `discriminate: false` in config.
+
+### Two guards caught the change on the way past
+
+`knob-units` refused a settable knob with no section on the settings page — "a
+control the boss cannot find" — so `discriminate` has a home beside `gateRetries`.
+Then `version.test.ts` refused it again over six untranslated strings: the CLI
+asserts an empty stderr, and lingui writes its missing-translation warning there.
+Nine catalogues, filled by hand, `zh-Hant` generated.
+
+### Not taken
+
+- **Mutation testing.** Per-language dependency, installed into a repository we do
+  not own. This measures a suite that distinguishes *nothing*, not one that
+  distinguishes weakly, and that is the honest ceiling.
+- **Failing the slice on `blind`.** Above: false reds are how a gate gets disabled.
+- **Running it without a `test` gate.** A project verified by a build or a lint has
+  no question to ask here, and asking it with the wrong resource would answer
+  about something else.
+
+## Every stack but this one arrived to find no compiler
+
+`docker/agent.Dockerfile` holds bun, node, git and ripgrep — what *this* project
+needs. A Rust crate, a Go module, a Python service, an Elixir app: the clone
+succeeded, the install failed, and the group reported a broken repository. The
+gate table was only the visible half of "orchestrator works on TypeScript
+projects"; this was the other half, one layer down.
+
+A longer image is not the fix. That same Dockerfile records why — 340.9s per group
+for an agent to install a toolchain itself, against 3.8s for a prepared image —
+but five toolchains preinstalled is a slow pull for the four nobody uses, and it
+still has no row for the sixth.
+
+### Rented, not written
+
+[mise](https://mise.jdx.dev/dev-tools/) reads what the repository already declares
+— `mise.toml`, `.tool-versions`, `.nvmrc`, `.python-version`, `.go-version`,
+`.ruby-version`, `.java-version`, the `toolchain` line in `go.mod` — and installs
+exactly that. One binary in the image, and the per-language install logic that
+would otherwise have grown in `detect.ts` never gets written. `detectToolchain` is
+a list of **filenames**, deliberately: a table of languages is the shape
+`detectGates` is being moved away from, and a toolchain table would be that table
+with longer rows.
+
+Two details are what make it work non-interactively, and both are mise's own
+documented answers rather than something invented here:
+
+- **Shims on PATH**, not `mise activate`. Activation is for an interactive shell
+  and nothing here has one; a shims directory means a gate command sees the
+  toolchain without knowing mise exists.
+- **`MISE_IDIOMATIC_VERSION_FILE_ENABLE_TOOLS`.** Idiomatic version files are off
+  by default (`idiomatic_version_file_enable_tools` is `[]`) because outside a
+  container they are somebody else's files. In here they are the whole point: a
+  repository pinning its Go in `.go-version` and nothing else is exactly the one
+  that arrives to find no compiler.
+
+Pinned and checksummed like the Node tarball above it, and checked against the
+release's own `SHASUMS256.txt` rather than against a second download of the same
+bytes.
+
+### Two ordered steps, not one string with an `&&` in it
+
+`config_json.install` became `toolchain` then `install`, run by `runSetup` in that
+order and both recorded — so a container rebuilt after its TTL replays both,
+rather than waking with a checkout it cannot compile. The alternative was joining
+them with `&&`, which is how you hide an ordering inside a string; the plan for
+this round said `setup: string[]`, and two fields with names turned out to be
+smaller and say more. Nobody has a third step.
+
+`bootstrap.yaml` is told the toolchain is already handled and to check `mise ls`
+before concluding a language is missing — otherwise the role whose job is "leave
+this worktree able to build" would install a second copy of a compiler that is
+already on its PATH.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1879 pass, 6 skip, 0 fail, 1885 across 230 files |
+| `fallow audit --gate all` | no issues in 45 changed files |
+| image | one binary, pinned to 2026.8.10, both architectures checksummed |
+
+### Not taken
+
+- **`setup: string[]`.** Speculative generality: two named steps are the two steps
+  that exist, and a list would have to be validated, ordered and explained.
+- **Preinstalling toolchains in the image.** The measurement above cuts both ways:
+  paying once beats paying per group, but only for a toolchain that gets used.
+- **A `cacheDirs` entry for `/opt/mise`.** It would make the download per host
+  rather than per container, and the field exists for exactly that — but
+  `SandboxSpecSchema` warns that concurrent groups sharing a directory is how
+  `node_modules` produced EEXIST, and nothing here has measured whether mise's
+  install directory is safe to share. Left until it is.
+
+## The next layer already has its parser, and it is being thrown away
+
+The plan for this round had one more deterministic layer in it: **project-level
+dependency boundaries**, the thing Uncle Bob describes as "一份 Agent 无法违反的
+规范文件". `StoredProjectConfigSchema` carries gates, install, toolchain, shared
+and sandbox — nothing about architecture — so a project driven by orchestrator
+gets no boundary enforcement at all, while this repository enforces its own with
+CLAUDE.md invariants 1–6 and fallow.
+
+The plan's mechanism was a substring scan over import-shaped lines in the changed
+files, with the ceiling written into a comment: dynamic requires missed, comments
+mentioning a path falsely hit. That mechanism is now the wrong one, and the reason
+is in this repository already:
+
+`src/mech/knowledge/symbols.ts` parses six languages with real tree-sitter
+grammars — go, javascript, python, rust, typescript, tsx — and its
+`NOT_A_DECLARATION` filter **discards exactly the nodes a boundary check needs**:
+`import`, `package`, `use_declaration`, `extern_crate`. The edges are already
+being parsed and thrown away. ADR 034 is the decision that put them there
+("symbols are parsed not matched"), and a substring scan beside a working parser
+would be the same defect that ADR closed, one directory over.
+
+Two consequences worth recording before the work is done:
+
+- **No new dependency, and no regex.** Reuse `symbols.ts`'s parser and grammar
+  table; a language with no grammar in the binary yields no edges, which fails
+  open — the direction a boundary check has to fail, since a gate that blocks
+  legitimate work is a gate somebody switches off.
+- **A ratchet is probably better than an authored rule.** Authored rules need
+  somebody to write them, a proposal path, and an approval tier. The edges are
+  derivable, so the cheaper question is "does this slice introduce a cross-module
+  edge that did not exist before?" — the same shape as the Chinese-literal
+  ratchet this repository already trusts, and it needs no configuration at all.
+  What it needs is a baseline, which is the part to measure before committing to.
+
+## The reviewer's citations are measured before they are policed
+
+The plan for this round had a layer requiring QA's verdict to cite something that
+ran — `gate:<name>`, `lease:<id>`, a changed path — with each reference checked
+against the slice's own rows. Writing it out is what killed it: **a citation that
+resolves proves nothing about diligence.** The `test` gate runs on every slice, so
+`gate:test` is a reference any reviewer can write without having looked at
+anything, and the check would have felt like a floor while measuring only that a
+name exists.
+
+`--claim` works because git can *contradict* it — claimed files against changed
+files. The reviewer's equivalent has exactly one contradictable form: a name that
+is **nowhere in the worktree**. That is the shape a fabricated citation has, and
+nothing else in a note is decidable.
+
+So the layer that shipped is the measurement, not the gate. `citedPaths` pulls the
+names out of the note — `mw.ts:31`, `src/a.ts`, `menu.png`, and not `0.1.2`,
+`e.g.` or `github.com` — and each is looked up by basename with `git ls-files -co`,
+which covers tracked files and the artefacts a browser lease wrote beside them.
+Whatever is nowhere lands in the verdict event's `meta.unresolved`, where the boss
+reads it on the slice's timeline. The verdict is filed either way.
+
+This is deliberate, and the rule is the repository's own: **prove the hole before
+writing the guard.** Nobody here has data saying a reviewer ever cited a file that
+does not exist. If this never fires, that is a gate nobody has to build; if it
+fires, the refusal writes itself and the message can name what was missing.
+
+`qa.yaml` is told the names are looked up, because a measurement nobody knows
+about measures the wrong population.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1881 pass, 6 skip, 0 fail, 1887 across 230 files |
+| new tests | 5 extractor cases, 1 end-to-end: `a.txt` resolves, `mw.ts` does not, verdict still 200 |
+
+### Not taken
+
+- **Refusing an unresolved citation.** See above: the hole is unproven, and the
+  first version of this guard would have been sensitive to its own case.
+- **`--evidence` as a structured flag.** It is the right shape when the data can
+  be contradicted — `--claim` earns it — and the wrong ceremony when it cannot.
+- **A pattern built from the note's own text.** `git ls-files -- '*name'` does the
+  globbing with the name as an argument, so no regex is ever constructed from
+  agent prose. Preflight flagged that exact class one commit ago.
+
+## The Hardener shipped inert, and only a probe said so
+
+The discriminator refuses to run on an unclean worktree — every step restores from
+a git object, so work that is not in one is work it would destroy. That is the
+right rule. What it was not measured against is **when the work is committed**.
+
+`takeCheckpoint` commits the worktree at the *start* of a turn, so a turn's output
+sits uncommitted until the next turn begins. The gate job is enqueued by
+`task done`, inside the writer's own turn. So at review time the branch does not
+contain the change being reviewed, `discriminate` found an unclean worktree, and
+recorded nothing at all — on every slice.
+
+Both end-to-end fixtures had committed their work explicitly, which is how a layer
+with two passing tests can be dead in production. The probe was three lines: file
+the same slice without the commit, print `gates_json`.
+
+```
+before   {"gate":"pass","self":"pass","reconcile":"pass"}
+after    {"gate":"pass","self":"pass","reconcile":"pass","discriminate":"blind"}
+```
+
+The fix is one `checkpoint(git, WORK, …)` before the check, with the same helper
+`takeCheckpoint` uses, so the commit carries the same trailers and sign-off and
+`squashWip` collapses it like any other. Earlier than that commit would have
+happened, not different in kind. The probe is now the test, and it is shown
+failing by removing the checkpoint.
+
+This is the rule the repository already writes down, met from the other side: a
+guard that has only ever been green is evidence of nothing, and two green fixtures
+proved only that the fixtures committed.
+
+### And the two mise claims were reasoned, not measured
+
+Shipped one commit earlier: `mise install --yes` as the toolchain step, and a
+shims directory on PATH. Both were read off the documentation rather than run.
+Measured now, against the pinned binary:
+
+- `-y, --yes` is a global flag — `mise install --yes` parses.
+- `mise install` **does** create shims (`shims/jq -> mise`), which the command's
+  own help does not say: it says "installing alone will not activate the tools".
+  Activation is `mise activate` for a shell; shims are the other mechanism and
+  they are written at install time.
+- A shim resolves per directory: in the configured worktree it runs mise's
+  version, outside it falls through to whatever the image has.
+
+The image itself is still never exercised — `release.yml` builds it, verifies its
+digest and provenance, scans it with Trivy and writes an SBOM, but runs no command
+inside it. A `docker run … mise --version` after the `load: true` build would have
+answered the question above without a laptop, and is worth adding.
+
+### The image is exercised now, on the runner that builds it
+
+The two commands added to `image-build` are the two that were just run against a
+locally built image, not a guess at them:
+
+```
+docker run --rm $image sh -c 'bun --version; node --version; npm --version; git --version; mise --version; rg --version'
+    2026.8.10 linux-arm64
+
+echo 'jq 1.7.1' > $probe/.tool-versions
+docker run --rm -v $probe:/probe -w /probe $image sh -c 'mise install --yes; jq --version'
+    mise jq@1.7.1 ✓ installed
+    jq-1.7.1
+```
+
+That second one is the whole toolchain feature end to end: a repository pins a
+version, `mise install` runs, and the tool is on PATH through the shims directory.
+It runs on both legs of the matrix without qemu, because each platform builds on
+its own native runner.
+
+Also verified while there: `tar --strip-components=2 mise/bin/mise` lands the
+binary on PATH, `/opt/mise` is 1777 as intended, and the shims directory is first
+in `PATH`.
+
+**Correction to the commit that added this:** it said the Dockerfile change had
+never been built. Preflight builds it on every run — `orchestrator-agent:preflight`,
+`--platform linux/amd64` — so it had been built each time and never *run*. The
+distinction is the whole point of the step, so getting it wrong in the message is
+worth fixing rather than leaving.
+
+**And a stale note beside it:** `scripts/preflight.ts` records that "the arm64
+build of this image currently fails, so a developer on Apple silicon is testing
+the CI image rather than one they could run". It does not fail any more — this
+image was built natively on arm64 here and its `mise --version` answers
+`linux-arm64`. The comment stays where it is until the next change to that step
+proves it in CI, but it is recorded here as known-stale rather than trusted.
+
+### One script, three callers
+
+The check now lives in `scripts/image-smoke.sh` and is called by preflight (which
+already builds the image), by `security.yml` on **every pull request**, and by
+`release.yml` on both architectures. A check that lives in one workflow answers
+about one moment: at release is the wrong time to learn that the image does not
+run, and arm64 is only covered by the release matrix, since that is the only
+caller with a native runner for it.
+
+## A project with nothing to run is a question, not a verdict
+
+`gatesFor` returning `[]` meant "fail this slice", so a project whose stack no
+rule recognises failed its first slice, then the next, then every one after —
+each burning a retry against feedback no Engineer can act on. **Nothing an
+Engineer does adds a gate.** The message even said so, and said it to the wrong
+reader, once per slice, forever.
+
+Absent and empty were the same value and are not the same answer:
+
+| `config_json.gates` | means | what happens |
+|---|---|---|
+| absent | nobody has looked | one question to the boss per project, group held |
+| `[]` | the boss looked and there is no floor | `gate: none` recorded, slice goes to review |
+| names | the floor | unchanged |
+
+Detection was writing `[]` when it recognised nothing, which is detection
+answering a question that belongs to the boss. It leaves the key absent now.
+
+The question is deduped on `no-gates:<projectId>` and filed at `chain: "boss"` —
+this is one of the few things a stand-in genuinely cannot decide, since it is a
+choice to accept work with no deterministic floor. The group is held rather than
+sent back, so the slice keeps its retries for something a retry can fix.
+
+`none` is the fourth word `recordGate` accepts, and like `blind` it is evidence
+rather than a colour: `STOPS` draws the layer, `failed` tests for `"fail"` alone,
+and a pull request that says `gate: none` has said something true that
+`gate: pass` would not have.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1884 pass, 6 skip, 0 fail, 1890 across 230 files |
+| new tests | 2, one per answer — the boss is asked once and the slice keeps `retries: 0`; an empty list reaches QA with `gate: none` |
+
+### The audit's finding here was the phantom CLAUDE.md warns about
+
+Plain `bun run audit` reported `carryOver` over the complexity threshold — a
+function this change does not touch — because it reads whatever
+`coverage/coverage-final.json` holds and estimates the rest "from export
+references". `audit:crap`, which regenerates coverage first and is what preflight
+runs, reports nothing. The page says exactly this; it is recorded again because
+it cost a minute to re-derive.
+
+## The one file that answers all three questions, read rather than run
+
+A repository shipping `.devcontainer/devcontainer.json` has already written down
+what this branch spent three commits working out: which image it develops in,
+which toolchains it needs, and what to run once the clone exists. It is a spec
+somebody else maintains, and reading it costs one file.
+
+**Read, never run.** `@devcontainers/cli` consumes this file by *creating a
+container*, and we have one — OpenSandbox is the boundary (ADR 005). Running it
+would nest a container runtime inside the runtime, to learn three fields.
+
+| field | becomes |
+|---|---|
+| `features` | `mise install --yes go@1.22 node@latest` — the tool version is in the feature's **options**, never its tag: `features/go:1` is version 1 *of the feature* |
+| `postCreateCommand` / `updateContentCommand` | the install step, but **below** the rule table: a lockfile is the stronger statement, and `postCreateCommand` is often a whole developer setup |
+| `image` | said to the boss and nothing more — which image a group runs in decides what every future turn has, and `Settings → Sandbox` is where that is decided |
+
+Only the official `ghcr.io/devcontainers/features/*` namespace, and only the
+names mise knows as tools. `docker-in-docker` is not a language and a third-party
+feature does arbitrary things.
+
+### The JSONC reader is written here, and the registry is why
+
+`devcontainer.json` permits comments and trailing commas, and the templates that
+ship it use them — so `JSON.parse` reads nothing from the one file that states a
+whole environment. The correct library is `jsonc-parser` (Microsoft, no
+dependencies) and its last release is **2024-06**, which
+`docs/standards/dependencies.md` says to ignore. `json5` is 2022-12.
+`comment-json` is current and pulls `esprima` — a whole JavaScript parser — to
+strip comments. Reopen if any of them ships again.
+
+So: a pass over the text, not a regex, because a regex cannot see that the `//`
+in `"ghcr.io/devcontainers/..."` is inside a string. That is the defect the
+ten-line version has on the first real file it meets, and it is a test.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run typecheck`, `bun run lint` | pass |
+| `bun run test` | 1890 pass, 6 skip, 0 fail, 1896 across 231 files |
+| new tests | 3 for the reader (strings holding `//`, escaped quotes, commas), 3 for the fields |
+
+### Not taken
+
+- **`@devcontainers/cli`.** Above: it creates containers.
+- **Applying the image.** A detected image that silently replaced the group's
+  would change every turn's environment on the strength of a file nobody was
+  asked about.
+- **A table of features to tools.** The map is the *namespace* — a published
+  registry where the feature is named for the tool — plus a set of which names
+  mise knows. A feature outside it is left alone rather than guessed at.
+
+## A declared task ranks with the conventions, not below them
+
+`detectGates` had three layers: the rule table, then the CI fallback, then
+nothing. Two sources were missing from the first layer, and both are a project
+*stating* its test command rather than following a convention:
+
+- `Taskfile.yml` with a `test:` task → `task test`
+- `mise.toml` with `[tasks.test]` → `mise run test`, and mise is already in the
+  image for the toolchain
+
+Both are opened, not counted. A `Taskfile.yml` whose tasks are `build` and
+`deploy` is not a project that runs `task test`, and the file existing says
+nothing about what is in it — which is the difference between this and a marker
+like `Cargo.toml`. `Bun.TOML` parses the second one, the way `Bun.YAML` already
+parses the first, so neither costs a dependency.
+
+**devfile is not here, deliberately.** Its `commandGroup: test` answers exactly
+this question, and it is a Red Hat/Eclipse Che format that few repositories
+outside that ecosystem ship — a rule that fires for almost nobody, over a nested
+shape (`commands[].exec.group.kind`), is a row that will be wrong before it is
+right. Reopen when a project that uses one turns up.
+
+### Two real complexity findings, both taken
+
+Not the CRAP phantom this time: `stripJsonc` was 21 cyclomatic and 34 cognitive
+as one loop with four inline branches, and `detectProject` had grown to 151
+lines. The scanner is now a loop over four named steps — `endOfString`,
+`endOfLine`, `endOfBlock`, `closesNext` — which also makes the escape rule
+readable, and the image announcement left `detectProject` as its own function.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1892 pass, 6 skip, 0 fail, 1898 across 231 files |
+| `fallow audit --gate all` | no issues in 55 changed files |
+
+## The boundary layer, built the way ADR 034 already decided
+
+`StoredProjectConfigSchema` carries gates, install, toolchain, shared and
+sandbox — nothing about architecture. This repository enforces its own with
+invariants 1–6 and `fallow`; a project driven by orchestrator got nothing.
+
+The plan for this round proposed authored rules (`boundaries: [{from, deny}]`)
+checked by a substring scan over import-shaped lines, with the ceiling written
+into a comment: dynamic requires missed, a comment mentioning a path falsely hit.
+Both halves turned out to be wrong, and the repository said so:
+
+- **The parser is already here.** `symbols.ts` parses six languages with real
+  tree-sitter grammars, and its `NOT_A_DECLARATION` filter discards exactly the
+  nodes this needs — `import`, `package`, `use_declaration`, `extern_crate`. A
+  regex beside a working parser is the defect ADR 034 closed, one directory over.
+- **Authored rules would have shipped inert.** They need somebody to write them,
+  a channel to propose them and a tier to approve them — and a feature nobody
+  configures is a feature that never fires, which this branch has already learned
+  once today. The edges are derivable, so the answerable question is not "is this
+  edge right" but **"is this edge new"**: the repository's own history is the
+  statement, the same shape as the Chinese-literal ratchet already trusted here.
+
+### Measured into shape, three times
+
+`importsIn` was written against the grammars and then run against six languages,
+which is the only way the shapes come out:
+
+| | first attempt | after |
+|---|---|---|
+| Go | the whole `import (…)` block, plus each path with its quotes | `fmt`, `example.com/x/y` |
+| Python | `from mypkg.sub import thing` → `"mypkg.sub import thing"` | `mypkg.sub` |
+| Rust | correct from the start | `crate::mech::gate` |
+
+One generic fallback became one branch per node type, using the field each grammar
+gives — `import_spec.path`, `import_from_statement.module_name` — because Go
+spells its string node `interpreted_string_literal` and a generic `string` lookup
+never matched it.
+
+Then the resolver, the same way: `areaOf("src/gate.ts")` answered `src/gate.ts`
+until it dropped the filename first, and a prefix walk answered `src` for `zod`
+on the strength of `src` existing — which would have made **every third-party
+package an edge**. A module name has to match a directory outright now; only a
+relative path, whose last segment really is a file, may walk.
+
+### Evidence, and the third reason is the honest one
+
+`gates_json.boundaries: "new"` and the pairs on the event. Not a verdict, for
+three reasons, and the third is not a hedge: the baseline is built from the files
+an indexing budget read, so an unread area has no edges *recorded* rather than
+none (checked, and an unread area is skipped); a language with no grammar here
+contributes nothing; and **a new edge is often simply correct**. What it must not
+do is pass silently — an agent wiring `web/src` into `src/mech` is exactly the
+change a reviewer wants pointed at.
+
+The baseline rides on the watchdog pass that already reads every tracked file to
+build the repo map, so the graph costs one `Set` and no new I/O.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1899 pass, 6 skip, 0 fail, 1905 across 233 files |
+| `fallow audit --gate all` | no issues in 61 changed files |
+| new tests | 4 for the edge model, 3 for the check, 6 languages through the extractor |
+
+`fallow` also caught the two functions sharing a nine-line parse preamble; they
+share `parsed(rel, src, read)` now, which is also where the "free the tree either
+way" comment belongs.
+
+## What the mise cache measurement answered
+
+`/opt/mise` is **not** a `cacheDirs` entry, and the reason is not the one the plan
+expected. Concurrency was the open question: four `mise install` runs racing on
+one empty shared directory all exit 0, with correct version symlinks — mise locks
+its installs, and the `node_modules` EEXIST that `cacheDirs` warns about does not
+happen here.
+
+The blocker is trust, not races. A package cache holds archives; `/opt/mise/installs`
+holds **executables that every gate then runs**. Sharing it between group
+containers means a compromised toolchain in one group is code execution in every
+other — and the group boundary is the product's main security claim. Paying the
+download per container is the cheaper side of that trade.
+
+If it is ever worth revisiting, the shape is per-project rather than fleet-wide:
+groups of one project already share a repository and a branch, so they share a
+blast radius already.
+
+## The prompt-slimming premise does not hold at our sizes
+
+The plan carried one more item from the interview: "把初始提示词精简到绝对最小值……
+然后再在此之后使用确定性工具", because a long prompt puts its own rules in the
+middle where a model stops attending to them. The work was to cut the role files.
+
+Measured before cutting, which is what the item did not survive:
+
+| in the stable prefix | chars |
+|---|---|
+| `ORCH_CONTRACT` | 5,360 |
+| the largest role prompt (`dispatcher`) | 4,604 |
+| the smallest (`pm`) | 1,045 |
+| `FENCE_NOTICE` | 351 |
+
+The whole fixed prefix is about **7k characters — under 2k tokens**. The
+interview's "10 pages" is 20k characters of rules; we are an order of magnitude
+below the case the advice is about. And the biggest fixed section is not a role
+file at all: it is the protocol contract, which every role pays on every turn.
+
+What actually fills a window here was measured long ago and is written in
+`load.ts`: **tool results are 90% of a transcript**. Which is why `qa.yaml` and
+`engineer.yaml` already spend paragraphs on that and not on brevity — "reading a
+large file you did not need is the most expensive mistake available to you".
+
+So the size argument buys nothing, and cutting on it would be trading a real risk
+(removing something load-bearing from the only manual a sandboxed agent has) for
+an imagined one.
+
+### What did survive is a correctness argument
+
+Three passages in `dispatcher.yaml` restated what `validateDraftCard` says when it
+refuses a card — the twelve-line count and what counts toward it, the 1–5 slice
+range, that every column is required. Two owners for one rule, and the validator's
+copy is the one that arrives at the moment it is needed, with the actual numbers
+in it. The prompt now says the refusal will name what to fix and tells the writer
+not to carry the numbers from there.
+
+The judgement a validator cannot make stays: what `trivial` versus `hard` costs
+the boss, and that over-tagging burns quota.
+
+### Not taken
+
+- **A character budget guard on role prompts.** A ceiling nobody derived, over a
+  number that is not the constraint. `docs/project/progress.md` records the same
+  reasoning for the web bundle in ADR 019.
+- **Cutting `ORCH_CONTRACT`.** It is the largest fixed section, and it is the
+  protocol: the CLI verbs, what a lease is, how a turn ends. Every line of it is
+  the manual for something an agent cannot discover by trying.
+
+## The measure Uncle Bob gates on, rented rather than written
+
+He measures CRAP, cyclomatic complexity and module size; this repository measures
+them on itself with `fallow` and on the projects it drives not at all. That was
+the one real gap left against his pipeline.
+
+**A tree-sitter scorer was written first, and then thrown away.** It worked — the
+node names were read off the grammars (Rust spells `if` an expression, Go spells a
+switch case `expression_case`, Python has an `elif_clause` where TypeScript nests
+another `if_statement`), it scored four languages correctly by hand-check, and it
+cost no dependency. It covered **six** languages, which is the number of grammars
+in this binary and the ceiling on every answer it could ever give.
+
+[`lizard`](https://github.com/terryyin/lizard) covers twenty-two — Kotlin, Swift,
+Scala, PHP, Ruby, Zig and the rest — with a per-function CCN. Measured before it
+was taken:
+
+| | |
+|---|---|
+| image cost | **+49 MB**, with `pip` purged again, against 1.5 GB already there |
+| released | 1.24.0 on 2026-08-19, nine days before this |
+| checked | Kotlin and Swift both scored in the built image, which no grammar here can parse |
+
+`scc` was the other candidate and is not it: its complexity is a per-*file*
+estimate done "almost for free ... a cheap lookup when counting", which is not a
+number a reviewer can act on.
+
+Installed with `pip install`, which is what its documentation says. A wheel
+unpacked onto `PYTHONPATH` was tried first and lizard cannot find
+`lizard_languages` that way — sixty megabytes is not worth wiring a dependency the
+unofficial way, which is a rule this repository already writes down.
+
+### A ratchet, and the threshold is his number
+
+`newlyComplex` compares the changed files' functions before and after, by name, and
+reports the ones this slice put **over** the line that were not over it before. A
+project this system did not write is full of functions over any useful threshold;
+refusing every slice until somebody fixes them is a system nobody can adopt.
+
+The line is **6**, which is what he gates his own agents at — against 4 for a
+human, because a model holds more of a function at once than a person does — and
+he is considering 8. Six is the published figure and the conservative end.
+
+The base revision is staged by git *inside the container*, in one command rather
+than one per file, because lizard reads files and each container round trip is a
+review's budget.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1905 pass, 6 skip, 0 fail, 1911 across 234 files |
+| `fallow audit --gate all` | no issues in 65 changed files |
+| new tests | 4, against real `lizard --csv` output copied from a run in the image |
+
+The CSV fixture is not invented: it is what the image printed for a JavaScript, a
+Kotlin and a Swift file, which is also the proof that a quoted signature holding a
+comma does not shift the columns.
+
+### The layer that decides how old the image's OpenSSL is
+
+Trivy failed the container scan on `CVE-2026-14456` — `libssl3t64` 3.5.6 against a
+Debian fix already published as 3.5.7. Nothing in this branch introduced it: a
+layer is a snapshot, the first apt layer's `apt-get upgrade` had been cached since
+before the advisory existed, and every image built from that cache carries the
+same OpenSSL however many times it is scanned.
+
+What made it visible now is that the lizard layer is the **last** apt layer, so it
+is the one whose cache decides the answer. It upgrades too, for the reason the
+first one gives in its own comment: "installing without upgrading is choosing the
+snapshot's versions on purpose".
+
+`pip` is installed and purged inside one `RUN`, because a layer is additive and a
+purge in a later one leaves every byte where it was — the difference between the
++49 MB this was measured at and what it would otherwise cost. Measured on the
+built images: 1.36 GB before lizard, 1.43 GB after.
+
+Trivy exits 0 on the rebuilt image, checked locally with the pinned 0.74.0 and the
+repository's own `.trivyignore.yaml` mounted, which is the configuration the gate
+uses rather than a different one.
+
+### Nightly, for the record
+
+`nightly.yml` failed on 2026-08-26 with `mean exceeded the significant-regression
+budget: telemetry report (624ms > 600ms)` — four percent over, on `main`, on a
+shared runner, and the 2026-08-27 run was green without a change. Not this branch,
+and not fixed by anything here. A budget that flips on 4% of a 600 ms measurement
+taken on hardware nobody controls is a gate that will keep doing this; recorded
+rather than tuned, because tuning it from one sample is how a threshold becomes
+meaningless.
+
+## An ordinary event was throwing away every session in the fleet
+
+`handToBoss` rotates the writer's and the reviewer's sessions at a slice boundary
+and deliberately leaves the PM, the Dispatcher and the Auditor alone, with the
+measurement written beside it: rotating everyone cost a full prefix rebuild per
+role per slice, 45.5M tokens of cache creation across 259 turns, 95% of them
+starting cold.
+
+**A single new lesson undid that.** `buildStableFor` read `lessonsFor` fresh on
+every turn and folded the result into the cached prefix, so the moment a retro
+distilled a rule, every agent's `stable_hash` changed, `needsRotation` fired, and
+every live session in the fleet was replaced — including the three whose context
+was still true. Not the prefix alone: a rotation is a new session, so the whole
+conversation goes with it.
+
+Nothing was wrong with the code. Lessons are simply the one thing in the stable
+half that **changes while the session is running**: the role prompt changes on a
+deploy, onboarding about never, the model and the tool set when the boss says so.
+A lesson lands because the system learned something, which is supposed to be a
+good day.
+
+### They live in the delta now
+
+Paid for per turn, rotating nothing, and rendered after the work — a rule is read
+in the light of the task, and the task is what the turn exists to do. Five of
+them, not the twenty `lessonsFor` keeps: in a prefix nobody re-reads twenty cost
+nothing and said nothing; in the delta they are paid for every turn, so what goes
+in is what a turn can act on.
+
+That is also the lost-in-the-middle argument applied where it is actually true.
+The role prompts were never the problem — 7k characters of fixed prefix is not
+"10 pages" — but a rule buried in a system prompt the model has stopped attending
+to *is* the failure that discussion is about, and the newest user message is where
+attention is.
+
+### The guard that should have caught it, and the one that will
+
+`cache-position.test.ts` asserted that changing the lessons rotates the session —
+which was true, and was the bug: the test encoded the cost as if it were the
+intent. It now asserts the opposite for lessons and keeps the property for the
+things that genuinely belong in the prefix, and `executor.test.ts` proves the
+whole path: a lesson lands, the hash is unchanged, the session resumes, and the
+text is in the prompt and not in `systemAppend`.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1907 pass, 6 skip, 0 fail, 1913 across 234 files |
+| `fallow audit --gate all` | no issues in 69 changed files |
+| what a lesson used to cost | every live session in the fleet, plus its prefix |
+| what it costs now | five bullets in one turn's delta |
+
+## The per-file question, and the half of my own proposal that was wrong
+
+The idea was: when the whole-slice revert comes back `blind`, revert one file at
+a time to find which file's tests are the weak ones. **That is backwards, and it
+would have run the suite once per file to learn nothing.**
+
+`blind` means the suite passed with *every* source change reverted. Reverting one
+file is a subset of that, so it passes too — necessarily, for every file, every
+time. There is no information on that path.
+
+The information is on the other one. A whole-slice revert that *fails* proves
+something is covered; it does not say what. A slice that changed four files with
+one of them tested reads exactly like a slice with four tested files. Reverting
+each file alone answers it: one that can go back to its base revision without the
+suite noticing has no test behind it.
+
+`gates_json.discriminate` gains `partial` for that, beside `pass` and `blind`.
+
+### Off by default, and the reason is where the cost falls
+
+One extra test run per source file, on the path where the slice is **fine** —
+which is most of them. That is a different bargain from the whole-slice check,
+which costs one run and only on a slice that touched both code and tests. So it
+is `discriminatePerFile`, off, beside `discriminate` on the settings page.
+
+Both halves are tested, including the skip: with `perFile` on and the whole-slice
+revert green, the fixture asserts the gate ran **once** — not once per file.
+
+## The QA procedure was written, run once, and thrown away
+
+His pipeline's QA agent turns a written procedure into an executable script. Ours
+had the executable half already — `orch lease browser` takes JSON steps, which is
+data rather than a script and is why running it is safe — and no durable half.
+QA wrote `qa-steps.json` into the worktree, leased the browser, and the file was
+gone by the next slice. So a reviewer verified the behaviour in front of it and
+**nobody ever re-verified the behaviour behind it**: slice seven could break what
+slice one was accepted on, and the only thing that would notice is a person.
+
+A browser run that exits 0 is now kept, under `.orch/qa/` in the repository —
+not in a note. It belongs in the pull request the boss reads, it diffs, and it
+travels with the branch. Named by the hash of its own content, so the same
+scenario recorded twice is one file and an edited one is a new scenario.
+
+Every later slice replays the lot: one lease, not one per file, because the steps
+are arrays and concatenate, and each set seeds the state it needs through its own
+`api` steps. `gates_json.regression` carries the verdict.
+
+**The orchestrator writes the merged file, never an agent.** A step file is data
+the runner executes with real permissions, and who wrote it is the whole reason
+that is safe — the same rule `roles/qa.yaml` states about the steps themselves.
+
+`qa.yaml` is told, because a reviewer who does not know its scenario is kept will
+write one that only makes sense while its slice is the newest — which is a false
+alarm somebody else has to read.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1914 pass, 6 skip, 0 fail, 1920 across 235 files |
+| `fallow audit --gate all` | no issues in 71 changed files |
+| new tests | 5: what is kept, what is not, one lease for the whole suite, a project with no browser resource, and a slice that breaks an accepted procedure |
+
+### Not taken
+
+- **A note instead of a file.** It would be invisible in the pull request, and a
+  QA procedure the boss cannot read is not a procedure they accepted.
+- **One lease per procedure.** The suite grows; the leases would grow with it,
+  each one a real Chromium.
+- **Letting QA write into `.orch/qa` itself.** Ownership and `reconcile` are about
+  the writer's claims, and a reviewer writing files into the branch is a second
+  writer nobody declared.
+
+## Three numbers that were each recorded somewhere and never in the same row
+
+Duration lived in a span. Tokens lived in the cost report. The size of tool output
+lived nowhere at all — so the largest claim anyone here has made about what a turn
+costs, **"tool results are 90% of a transcript and every round re-reads them"**,
+was measured once by hand in `load.ts` and could not be confirmed or contradicted
+afterwards. The lever it points at — make tool output smaller at the source — had
+no before and no after.
+
+A turn now records all three on the event it already emitted:
+
+- **`ms`** — the provider call's wall clock, timed around `invokeTurn` rather than
+  read off a span, because a span answers *which step* is slow and this answers
+  *whether this turn* was.
+- **`transcript.bytes` / `transcript.toolBytes`** — weighed in both adapters where
+  the bytes arrive, before anything trims them: a line carrying `tool_use_result`
+  for claude, an `item.completed` that is neither the model talking nor an error
+  for codex. What a turn cost is what the provider sent, not what the log kept.
+
+`costReport` medians them over the same fifty turns the cache ratio and the
+rotation reasons already sample, and the panel prints one line: `41s · 212kB ·
+78% tools`. Medians rather than means, because one turn that read a 4 MB file is
+exactly the turn a mean would let define the picture — and is also the turn worth
+finding, which the burn chart beside it is for.
+
+### Why this is one line and not three
+
+The question nobody could answer was never "how many tokens" — that was there. It
+was **which of the three moved**. A turn that got slower, heavier and more
+expensive is one story; a turn that got slower alone is a different one with a
+different fix. Three numbers on separate screens cannot be compared; one row can.
+
+### One predicate for "this row is a turn"
+
+`recentTurns` filtered on `jsonb_exists(meta_json, 'cacheRatio')` while `byHour`,
+two functions above it, filtered on `usage`. Two spellings of the same question,
+and the older key is `usage` — `cacheRatio` was added later, so the narrower
+filter silently skipped every turn recorded before it. They ask the same thing
+now.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1917 pass, 6 skip, 0 fail, 1923 across 236 files |
+| `fallow audit --gate all` | no issues in 82 changed files |
+| new tests | 3 for the aggregate — the three arriving together, one enormous turn not becoming the picture, and a turn from before this existed contributing nothing |
+
+## Eleven grammars, because the ceiling was the number of `.wasm` imports
+
+The boundary scan read six languages; `lizard` scores twenty-two. The gap was not
+a design limit — `@vscode/tree-sitter-wasm` ships sixteen grammars and only the
+imported ones reach the binary. Java, C#, C++, PHP and Ruby are now imported too:
+408K, 4.9M, 5.1M, 1.0M and 2.0M, **13.4 MB against a 160 MB release budget**.
+
+The remaining four the package ships — css, ini, regex, powershell — are not
+languages a project's architecture is written in.
+
+### Each one names its imports differently, and that was measured
+
+| | shape |
+|---|---|
+| Java | `import_declaration` holding a `scoped_identifier` |
+| C# | `using_directive`; an aliased `using X = A.B.C` imports `A.B.C`, not `X` |
+| C++ | `preproc_include`; `"core/gate.h"` is the repository's, `<vector>` is the toolchain's |
+| PHP | `namespace_use_declaration`, plus four `require`/`include` **expressions** — not calls, the way Ruby's are |
+| Ruby | a `call` named `require` or `require_relative`, which is also how it spells everything else it does |
+
+**Java and Go both call their node `import_declaration` and mean opposite
+things**: Java's *is* the import, Go's is a block that names nothing itself and
+holds one `import_spec` per line. `targetOf` tells them apart by what is inside.
+
+### Two resolver defects the new spellings exposed
+
+- **A target that is already a path must not be split on its dots.** `core/gate.h`
+  became `core/gate/h`. A module name is split on `.`, `::` or `\`; anything
+  containing `/` is a path, and its extension is dropped instead.
+- **`src/main/java` is Maven's ceremony, not structure.** With two-segment areas
+  every Java package in a repository shared the area `src/main`, so nothing could
+  ever be an edge. An area is measured from where the code starts: a source root
+  of more than one segment is stripped first. A bare `src` is not — it is already
+  the top of a tree, and stripping it would rename every area this repository has.
+
+### What still resolves to nothing, on purpose
+
+A PHP project whose PSR-4 map sends `App\Core` to `src/Core` gets no edge from
+that import. Composer's autoload is a config nobody here reads, and no edge is the
+right answer to a question this cannot see — the same direction every other
+unresolvable import fails in.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1919 pass, 6 skip, 0 fail, 1925 across 236 files |
+| new tests | the five languages through the extractor, and every spelling through the resolver |
+
+Twice in this change a `python` edit asserted its way to a clean exit **after**
+raising, so the file was never written and the next measurement disagreed with the
+code. Both times the symptom was the same: a language that extracted nothing. The
+habit that catches it is the one already used everywhere here — measure after
+every edit, not after the batch.
+
+## A call that has never worked here stops being made
+
+ADR 040 measured the index navigator failing **36 times out of 36** in one
+seven-hour window — 20.5 seconds a call, 738.5 seconds of wall clock, 64% of every
+error span in the system — while the lexical half it falls through to answers in
+**0.32ms**. `search()` makes up to three serial calls, so every `orch ctx query`
+in that window paid about a minute for three answers of `""`.
+
+The ADR decided not to cut the layer, and this does not cut it: the default stays
+on and the walk is unchanged. What stops is **repeating** a failure. Three
+consecutive failures and the call is skipped, which is a different decision from
+the one the ADR deferred and the one the wall clock was asking for.
+
+Keyed by project, runtime **and model**, because the recovery must not be blocked
+by the thing that noticed the breakage: the two settings events in that window
+show both runtimes being tried and reverted, so changing either in Settings starts
+a fresh count. One answer clears it — the count is of *consecutive* failures.
+
+Said once, on the way past the threshold. The boss was already told 43 times that
+the index would not build; nobody was told that asking had stopped being worth its
+clock.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1923 pass, 6 skip, 0 fail, 1929 across 237 files |
+| new tests | 4: it stops after three, it says so once, a new model starts again, and an answer clears the count |
+| what a query cost, when the navigator is broken | ~60s of model calls, now ~0 |
+
+### Not taken
+
+- **Cutting the layer.** ADR 040's reasoning holds: the failure is far more likely
+  a credential or CLI problem than a verdict on tree navigation, and cutting on
+  that is the mistake it names.
+- **A retry with backoff.** Backoff answers "the service is briefly down". Thirty-
+  six for thirty-six over seven hours is not briefly down, and a backoff would
+  still pay 20 seconds to learn it again.
+- **An in-process counter.** New mutable singleton state, which the invariants
+  forbid — and it would forget across a restart, which is exactly when a
+  misconfigured deployment restarts.
+
+## A toolchain cache is not a package cache, so it is not shared the same way
+
+`cacheDirs` mounts a host directory into every sandbox, and `/opt/mise` was the
+obvious candidate: without it the toolchain is downloaded again every time a
+container is rebuilt. The measurement said it was safe — four `mise install` runs
+racing on one empty directory all exit 0, with correct version symlinks, because
+mise locks its installs.
+
+Concurrency was never what stood in the way. **A package cache holds archives;
+`/opt/mise/installs` holds the executables every gate then runs.** Fleet-wide,
+one poisoned toolchain is code execution in every other project's container, and
+the group boundary is this product's main security claim.
+
+Per project is the blast radius those groups already share — they share a
+repository and a branch — so a host path may now hold `{project}`, expanded in
+`specFor`, which is the one place that knows which project a sandbox is for. One
+line of configuration gives every project its own cache instead of one entry per
+project written by hand, which is the difference between a safe default and a safe
+default nobody adopts.
+
+Two smaller things came with it:
+
+- **The directory is created before it is mounted.** A bind mount of a host path
+  that is not there does not fail — it succeeds and delivers an empty directory,
+  which is the silent failure `checkSkillsMount` exists for and exactly what a
+  per-project path nobody made by hand would hit.
+- **`driftingPaths` asks for the spec with no project**, so the placeholder
+  becomes `shared` rather than being left literal. What that check does is ask
+  whether the sandbox server allows a *prefix*, and any child answers it.
+
+Still not on by default: the host path has to be in the server's
+`allowed_host_paths`, and a default that silently mounts nothing is worse than no
+default. The knob's own copy now says what the placeholder is for, because
+Settings → Sandbox is where a boss meets this and the reasoning has to travel
+with it.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1926 pass, 6 skip, 0 fail, 1932 across 237 files |
+| new tests | 3: per project, with no project, and a path that has no placeholder |
+
+## The resolver was guessing where the project had already answered
+
+Two defects were fixed while adding five grammars — a path split on its dots, a
+build root eating the area — and both were symptoms. The class was: **every rule
+in `areaOfImport` is a guess about what an import string means, and three files in
+the repository say it outright.**
+
+Measured before anything was written, on the commonest real-world shapes:
+
+```
+go    github.com/acme/app/internal/gate  ->  null
+ts    @/lib/gate                         ->  null
+php   App\Core\Gate                      ->  null
+```
+
+That is **every real Go repository** — an internal import carries the module path
+from `go.mod` and no directory ever will — most TypeScript ones, and the PHP
+standard. The boundary layer was seeing almost nothing in three of eleven
+languages while reporting no edges, which reads exactly like a clean repository.
+
+`resolutionFrom` reads what they declare: `module` from `go.mod`, `baseUrl` and
+`paths` from `tsconfig.json` (through the JSONC reader, because a real tsconfig
+has comments), `autoload.psr-4` from `composer.json`. Aliases are applied longest
+first, so `@/lib/` wins over `@/` where both exist.
+
+It costs no round trip: the watchdog pass that builds the baseline already holds
+every tracked file's contents, and the resolution is stored **beside the edges**
+because a baseline built under one set of rules cannot be compared against a
+change resolved under another.
+
+### What it does not do
+
+`resolutionFrom` is three exact mappings, not a module resolver. A Python
+namespace package, a C++ `-I` path, a Ruby `$LOAD_PATH` and a Go `replace`
+directive all still resolve to nothing — and nothing is the right answer, because
+an unresolvable import is skipped rather than guessed at.
+
+The precise answer exists and is not this: SCIP indexers and stack-graphs do real
+name resolution, per language, against a working build. That is the right tool the
+day a boundary finding becomes a **gate** rather than evidence. While it is
+evidence, a missed edge costs a line nobody reads, and a wrong edge costs a
+reviewer's trust.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1928 pass, 6 skip, 0 fail, 1934 across 237 files |
+| `fallow audit --gate all` | no issues in 85 changed files |
+| new tests | the three shapes resolving, a package that is still nobody's, and a project that declares nothing |
+
+## The i18n audit was done by hand, which is how you find out it is not written down
+
+Asked whether two new constants needed translating, the answer was easy — they are
+protocol keys, the third exception — but arriving at it meant walking the whole
+diff by hand: every `bus.emit` for a `say`, every value for a rendered fragment,
+`src/` for new Chinese literals, `web/` for an unwrapped string. Nothing in
+CLAUDE.md said to do that, and nothing said what "protocol key" covers.
+
+Two halves were missing, and only the second is a rule anybody could have guessed:
+
+- **A change that adds a sentence is not finished until ten catalogues carry it.**
+  `i18n:extract`, fill the eight written by hand, `zh-Hant` generated from `zh`.
+  It is enforced already and in a way worth knowing about: the CLI test asserts an
+  **empty stderr**, and lingui writes its missing-translation warning there — so
+  an untranslated string is a red suite, not a quiet gap. That cost a debugging
+  round the first time it happened this branch, and six repeats after it.
+- **What a protocol key actually is.** Narrower than it sounds: a key written into
+  a table and read back, a stored verdict compared by value, a resource name.
+  Nobody reads one as a sentence. A settings-page label, a question filed for the
+  boss and a timeline row are none of those — and each of those was a place this
+  branch nearly left in English.
+
+The pull request template gains the half a command cannot check: `preflight`
+verifies the catalogues, and it cannot verify that an English literal was
+*exempt*. That sentence is the author's to write, so the template now asks for it.
+
+## Two decisions this round made and did not write down
+
+`docs/adr/` is where the build records **departing from the plan**, and this
+round departed three times without an ADR for any of it. The reasoning existed —
+every commit above carries it — but a per-commit narrative is read by whoever is
+reading the commits. A decision is read by whoever hits the same fork next year.
+
+- [**048**](../adr/048-a-project-states-its-own-gates-so-there-is-nothing-to-approve.md)
+  — a project's environment and gates come from what it already committed, then
+  mise, then the bootstrap agent. And why the plan's `proposed_gates` ladder was
+  not built: its own tier 0 was "the command's head is an entry the repository
+  declared", and once discovery was deterministic that is *every* command. Two of
+  three rungs were unreachable.
+- [**049**](../adr/049-the-review-half-gained-two-layers-and-neither-casts-a-vote.md)
+  — why `discriminate` and `boundaries` produce evidence rather than verdicts,
+  why the boundary layer is a ratchet against the repository's own history rather
+  than the authored rules the plan specified, and why real mutation testing is
+  one dependency per language in somebody else's repository.
+
+The inert-layer finding is in 049 rather than only here, because it is the
+argument: `discriminate` shipped present, configured, tested and silent, and two
+green e2e tests proved nothing. That is what "authored rules would never fire"
+means, stated in an artefact instead of as a prediction.
+
+### Not written
+
+An ADR for W4. The plan wanted every acceptance verdict to cite a real execution
+and made that a refusal; what shipped **records** citations (`citedPaths`,
+`validate.ts:451`) without refusing on them. That is a narrower change than a
+decision — the criterion text still says what it said — so it stays in the commit
+that made it.
+
+## The layer the plan called "the agent", built as a check rather than a promise
+
+`detectGates` reads a repository two ways and both can come back empty: the rule
+table has no row for this stack, and the CI fallback found no workflow. The
+answer then was `raise(kind:"env", chain:"boss")` — the product's own reason for
+existing is other people's repositories, and the least-known ones went straight
+to the person we are trying not to interrupt.
+
+The fix is a split that was there all along and had never been named:
+
+| | who can do it | does it run out? |
+|---|---|---|
+| **enumerate** what a repository declares | code, in any language | no |
+| **classify** which of those is the test | a table, or an agent | the table does |
+
+`declaredCommands` is the first column: package scripts, Makefile and justfile
+targets, `Taskfile`/`mise` tasks, CI `run:` steps, `postCreateCommand` — all of
+them parsed by readers `detect.ts` already had, none of them needing to know what
+rebar3 is. The bootstrap agent, already in the container reading the README for
+the install command, does the second. And then the answer is **checked**, not
+approved:
+
+- in `declaredCommands` → taken as it is, because the repository's owners merged
+  it;
+- not declared → run here through `proveGate`, which is the same `runOneGate` a
+  real gate goes through, and kept only if it passes;
+- neither → refused with the exit code, the output, and the list of what the
+  repository does declare.
+
+That last one is the tradition `planning.ts` set: a refusal that teaches beats a
+refusal that is correct. `rebar3 eunit` in an Erlang repository with no CI is the
+case the second rung exists for — undeclared, and a passing run is better
+evidence than a declaration would have been.
+
+### What was reused rather than written
+
+- `runOneGate`, extracted from `runGatesInner` so a proof runs a gate the way a
+  gate runs. A proof through a different path is a proof about a different
+  command — the tokenisation, the lease timeout, the error digest and the
+  off-context log are the parts that had to be shared, not just the spawn.
+- `registerGates`, extracted from `detectProject`, so "a rule detected this" and
+  "an agent proposed this" produce the same `resource` row. One writer, unchanged.
+- `readRoot`, extracted from `detectProject`, so the check reads the repository
+  the same way detection did and the two cannot disagree about what is in it.
+- `taskIn` / `miseTask` became `yamlTasks` / `tomlTasks` — the rules ask whether
+  the names include `test`, the enumerator asks for all of them.
+- The timeline sentence is the one detection already emits, so ten catalogues
+  needed nothing: one gate list, one way of saying it, whoever worked it out.
+
+### The trust boundary did not move
+
+`resource` still has one writer. Every template still has to survive
+`isTemplate` — the rule `lease.ts` imposes, since it tokenises on whitespace and
+never invokes a shell, so `make deps && make test` would hand `&&` to `make` as
+an argument. That is refused before anything runs, with the reason, rather than
+mangled into a gate that looks like it ran and did half of nothing.
+
+### Shown failing, all five
+
+Each guard was made red before it was kept, by breaking the thing it watches:
+
+| broken | went red |
+|---|---|
+| the `declared` shortcut | a declared gate is registered without being run |
+| the proof's `!proof.pass` arm | an undeclared failing command is refused |
+| the `isTemplate` check | a shell-shaped gate is refused before it runs |
+| gates registered before the install | the ordering test |
+| `TARGET` allowing a leading `.` | the enumerator picks up `.PHONY` |
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1936 pass, 6 skip, 0 fail across 237 files |
+| new tests | 8: five on the route, three on the enumerator |
+| new catalogue entries | 0 |
+
+### Not taken
+
+- **An approval tier.** [`048`](../adr/048-a-project-states-its-own-gates-so-there-is-nothing-to-approve.md)
+  already argued its top two rungs were unreachable; this closes the gap it left
+  by checking the proposal instead of routing it to somebody.
+- **Proving every gate, declared or not.** A test suite is not something to run
+  twice for a formality, and the declaration is the repository's own statement.
+- **Letting the agent write `config_json.gates` directly.** The names go in
+  through the same registration path detection uses, and only for gates that
+  passed one of the two checks.
+
+### The trigger the agent could not observe
+
+Shipped in the same round and caught before it mattered: `bootstrap.yaml` said
+"run `orch status` first — if it lists gates, this section is not your job."
+`orch status <text...>` **posts** a status line. It takes a required argument, it
+answers nothing, and no other command tells an agent whether its project has a
+gate. The section would have run on every bootstrap turn or none, depending on
+what the model guessed.
+
+That is the third false sentence found in this file on this branch, and the file
+is the only manual a sandboxed agent has. The fix is the same shape as the
+`discriminate` one: the orchestrator already knows, so it says so. `delta.ts`
+appends the question to the bootstrap turn's card when the project has no gates
+— beside `applySliceCard`'s `blind` question, which is the same idea one role
+over — and the role file now says "you are told, in this turn", which is true.
+
+Shown failing twice: without the call, and with the "already configured" guard
+disabled. Both turned the test red.

@@ -13,7 +13,10 @@ import {
   project,
   slice as slices,
 } from "../../platform/persistence/schema.ts";
+import { projectConfig } from "../../mech/util/rows.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
+import { lessonsFor } from "../../mech/knowledge/lessons.ts";
+import { gateState } from "../../mech/gate.ts";
 
 import type { Config } from "../../platform/config/load.ts";
 import { getFile, type Scope } from "../../mech/sandbox/sandbox.ts";
@@ -234,6 +237,28 @@ async function applyWorkCard(ctx: Ctx, agent: TurnAgent, job: TurnJob, delta: De
   }
 }
 
+/**
+ * The gate question, asked of the one turn that can answer it.
+ *
+ * Detection is two layers of reading and both can come back empty — no rule for
+ * this stack, no CI workflow. The bootstrap turn is already in the container
+ * reading the README for the install command, so it is the cheapest place to ask;
+ * and it has no way to find out on its own, which is how a capability ships inert.
+ */
+/** English, as everything a model reads is (ADR 035). Absent and empty are the
+ *  same answer here: the boss saying "no gates" is a decision `review.ts` acts
+ *  on, and nothing is lost by the bootstrap turn offering to find one anyway. */
+async function applyGateQuestion(ctx: Ctx, agent: TurnAgent, delta: Delta): Promise<void> {
+  if (agent.role !== roleFor(ctx, "bootstrap_env") || agent.project_id === null) return;
+  if ((await projectConfig(ctx.db, agent.project_id)).gates?.length) return;
+  delta.card =
+    `${delta.card ? `${delta.card}\n\n` : ""}Nothing deterministic is configured for this project, so every slice ` +
+    `would fail review. Work out its gates the way you work out the install — the README, the CI workflow, the ` +
+    `Makefile, the task runner — and register them:\n` +
+    `  orch setup --gate test="<the command>"\n` +
+    `If this repository genuinely has no tests, say so in your report and register nothing.`;
+}
+
 async function applySliceCard(ctx: Ctx, agent: TurnAgent, sliceId: number, delta: Delta): Promise<void> {
   const [slice] = await ctx.db
     .select({
@@ -247,6 +272,16 @@ async function applySliceCard(ctx: Ctx, agent: TurnAgent, sliceId: number, delta
   if (!slice) return;
   delta.card = `Slice S${slice.seq} (slice_id ${sliceId}) [${slice.difficulty}]: ${slice.title}\nAccepted when: ${slice.accept_spec}`;
   if (agent.role === roleFor(ctx, "review_slice")) {
+    // What the deterministic layer found and could not judge. The gate passed —
+    // with the slice's source reverted, the suite passed too, so those tests
+    // distinguish nothing about this change. Which criterion they do check is a
+    // question about intent, which is QA's half of the review and not a gate's.
+    // English, as everything a model reads is (ADR 035).
+    if ((await gateState(ctx.db, sliceId)).discriminate === "blind") {
+      delta.card +=
+        `\n\nThis slice's tests still pass with its source changes reverted. Name the acceptance ` +
+        `criterion they discriminate and the case that would fail without this change, or fail the slice.`;
+    }
     delta.card += `\n\nFile your verdict with exactly:\n  orch review ${sliceId} --verdict pass|fail --note "one line per criterion"`;
   }
 }
@@ -422,6 +457,27 @@ const quote = (delta: Delta, label: string, content: string): void => {
 type Card = string | { card: string; quote: Quoted } | undefined;
 
 /** Build only the per-turn delta; stable prompt material is owned elsewhere. */
+/**
+ * The rules earlier groups wrote, in the delta rather than the cached prefix.
+ *
+ * They used to sit in the stable half, read fresh from the database on every
+ * turn — so the moment a retro added one, every agent's prefix hash changed and
+ * `needsRotation` threw away every live session, the PM's and the Dispatcher's
+ * included. That is the optimisation `handToBoss` measured and kept, undone by an
+ * ordinary event.
+ */
+/** Five, not the twenty `lessonsFor` stores. In a prefix nobody re-reads, twenty
+ *  cost nothing and said nothing; in the delta they are paid for every turn, so
+ *  what goes in is what a turn can act on — the newest, which is also the ones
+ *  written about the work in hand. */
+const LESSONS_IN_DELTA = 5;
+
+async function applyLessons(ctx: Ctx, projectId: number | null, delta: Delta): Promise<void> {
+  const lessons = (await lessonsFor(ctx.db, projectId)).slice(0, LESSONS_IN_DELTA);
+  if (!lessons.length) return;
+  delta.lessons = lessons.map((lesson) => `- ${lesson.trim()}`).join("\n");
+}
+
 export async function buildTurnDelta(
   deps: { ctx: Ctx; cfg: Config },
   agent: { id: number; project_id: number | null; role: string },
@@ -432,9 +488,11 @@ export async function buildTurnDelta(
   const delta: Delta = {};
   await applyPayloadCards(deps.ctx, job.payload, delta);
   await applyWorkCard(deps.ctx, agent, job, delta);
+  await applyGateQuestion(deps.ctx, agent, delta);
   await applyHandoff(deps.ctx, job.grp_id, rotated, delta);
   const unread = await readUnread(deps.ctx, agent, job.grp_id, deps.cfg);
   await applySkills(deps.ctx, agent, job, scope, delta);
+  await applyLessons(deps.ctx, agent.project_id, delta);
   // Every byte of this is written by other agents and by the boss, in a channel
   // anything with `orch mail` can reach. It is the injection path this fence
   // exists for.

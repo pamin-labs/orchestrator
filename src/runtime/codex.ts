@@ -183,13 +183,21 @@ async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult
   };
   const files = new Set<string>();
 
+  // Weighed as it arrives, before anything trims it: what a turn costs is what the
+  // provider sent. A completed item that is neither the model's own message nor an
+  // error is a tool's output coming back, which is the half `load.ts` calls 90% of
+  // a transcript — a claim measured once by hand and never since.
+  const transcript = { bytes: 0, toolBytes: 0 };
   const tail = await runLineStream(spec, cmd, h.onAbort, (raw) => {
     if (!raw.startsWith("{")) return undefined; // banners and friends
     const l = jsonOr(raw, LineSchema.nullable(), null);
     if (!l) return undefined;
+    transcript.bytes += raw.length;
+    if (isToolItem(l)) transcript.toolBytes += raw.length;
     consume(l, result, files, h);
     return trimItem(l);
   });
+  result.transcript = transcript;
 
   result.filesTouched = [...files];
   if (!result.terminalReason) {
@@ -200,6 +208,11 @@ async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult
 }
 
 export { buildArgv as buildCodexArgv, runTurn as runCodexTurn };
+
+/** The same cut `consumeItem` makes, asked of the raw line: everything that is
+ *  not the model talking and not an error is a tool reporting back. */
+const isToolItem = (l: Line): boolean =>
+  l.type === "item.completed" && !!l.item?.type && l.item.type !== "agent_message" && l.item.type !== "error";
 
 function consume(l: Line, result: TurnResult, files: Set<string>, h: TurnHandlers): void {
   if (l.type === "item.completed") {

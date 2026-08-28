@@ -51,11 +51,42 @@ async function ctxQuery(api: DispatchContext, question: string[]): Promise<Comma
   return api.send(api.orch.ctx.query.$post({ json: { question: question.join(" ") } }));
 }
 
-async function setup(api: DispatchContext, opts: { cmd?: string; none?: boolean }): Promise<CommandResponse> {
-  if (opts.none) return api.send(api.orch.setup.$post({ json: { none: true } }));
-  return opts.cmd
-    ? api.send(api.orch.setup.$post({ json: { cmd: opts.cmd } }))
-    : usageError('setup needs --cmd "<command>" or --none');
+/**
+ * `--gate test="cargo test"`, repeatable. `=` and not `:` because a command
+ * carries colons of its own — `bun run i18n:check` — and the first `=` is the
+ * only separator that splits `name` from a command containing either.
+ */
+function parsedGates(raw: string[]): { name: string; cmd: string }[] | null {
+  const out: { name: string; cmd: string }[] = [];
+  for (const entry of raw) {
+    const at = entry.indexOf("=");
+    const name = entry.slice(0, at).trim();
+    const cmd = entry.slice(at + 1).trim();
+    if (at < 1 || !cmd) return null;
+    out.push({ name, cmd });
+  }
+  return out;
+}
+
+/** "One of these is required" is the route's rule and it says so in a sentence
+ *  worth reading; a second copy here would be a second owner of it. */
+async function setup(
+  api: DispatchContext,
+  opts: { cmd?: string; none?: boolean; gate?: string[] },
+): Promise<CommandResponse> {
+  const gates = parsedGates(opts.gate ?? []);
+  if (gates === null) return usageError('each --gate is <name>="<command>", e.g. --gate test="cargo test"');
+  return api.send(api.orch.setup.$post({ json: setupBody(opts, gates) }));
+}
+
+/** Only the flags that were given: `exactOptionalPropertyTypes` means an absent
+ *  option is an absent key, not a key holding `undefined`. */
+function setupBody(opts: { cmd?: string; none?: boolean }, gates: { name: string; cmd: string }[]) {
+  return {
+    ...(opts.none ? { none: true } : {}),
+    ...(opts.cmd ? { cmd: opts.cmd } : {}),
+    ...(gates.length ? { gates } : {}),
+  };
 }
 
 async function askBoss(
@@ -386,6 +417,11 @@ function buildProgram(api: DispatchContext, act: Act, out: string[], err: string
     .description("bootstrap only, on the first turn")
     .option("--cmd <command>", "the install command to run in this container")
     .option("--none", "nothing to install")
+    .option(
+      "--gate <name=command>",
+      "a gate this project runs, repeatable; the command must be one the repository declares, or it is run here to prove it",
+      (value: string, prior?: string[]) => [...(prior ?? []), value],
+    )
     .action(bind(setup));
 
   program

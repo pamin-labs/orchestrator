@@ -59,12 +59,25 @@ bench.addEventListener("warning", (event) => {
  * Budgets are checked against the mean, not a tail percentile.
  *
  * These catch a significant regression in work the nightly job repeats, not a
- * user-facing latency tail: an added query or an added pass moves the whole
- * distribution. A tail percentile over a sixteen-sample task is close to its
- * maximum, so a budget there would be a budget on whichever GC pause it caught.
- *
- * Each limit is the old whole-batch budget divided by the batch it covered.
+ * user-facing latency tail. A tail percentile over a sixteen-sample task is close
+ * to its maximum, so a budget there would be a budget on whichever GC pause it
+ * caught. Each limit is the old whole-batch budget divided by the batch it
+ * covered.
  */
+/**
+ * Which of these may fail the job, and it is not the ones that touch a database.
+ *
+ * A millisecond on a shared runner measures somebody else's machine: this job
+ * failed at 624ms against 600 and was green the next night unchanged, and while
+ * this was being written the same commit measured 250ms on a quiet laptop and
+ * 922ms on a busy one. The statement counts underneath were 19, 37 and 6 in all
+ * three.
+ */
+/** So work that talks to the database is gated by `statementBudget` and its time
+ *  is printed for a person to read. What still gates on time is the pure-CPU pair,
+ *  where the budget sits 25x to 65x above the measurement and no load this side of
+ *  a swap storm reaches it — and where a statement count would see nothing. */
+const TIMED_GATE = new Set(["prompt assemble", "reconcile"]);
 const limits = new Map<string, number>();
 
 /**
@@ -234,7 +247,8 @@ const seededJobs = highest?.id ?? 0;
 // statements — the cost is nineteen round trips, not slower code. The number to
 // watch is the query count above, which is pinned flat; this catches a twentieth.
 limits.set("snapshot", 90);
-bench.add("snapshot", async () => void (await snapshot(ctx)), { async: true });
+const runSnapshot = async () => void (await snapshot(ctx));
+bench.add("snapshot", runSnapshot, { async: true });
 
 limits.set("prompt assemble", 0.004);
 bench.add("prompt assemble", () => assemble(stable, delta), { async: false });
@@ -249,18 +263,17 @@ bench.add("reconcile", () => reconcile(claim), { async: false });
 // 400ms in-process. 500 enqueues are 500 round trips now, which is where the
 // 1.8s goes — batching them is the fix if this ever matters, not a faster query.
 limits.set("scheduler cycle x500", 2_600);
-bench.add(
-  "scheduler cycle x500",
-  async () => {
-    for (let i = 0; i < 500; i++) await scheduler.enqueue("agent_turn", { grp_id: (i % 50) + 1 });
-    await scheduler.tick();
-    await scheduler.drain();
-  },
-  { async: true, afterEach: async () => void (await db.delete(job).where(gt(job.id, seededJobs))) },
-);
+const runSchedulerCycle = async () => {
+  for (let i = 0; i < 500; i++) await scheduler.enqueue("agent_turn", { grp_id: (i % 50) + 1 });
+  await scheduler.tick();
+  await scheduler.drain();
+};
+const clearJobs = async () => void (await db.delete(job).where(gt(job.id, seededJobs)));
+bench.add("scheduler cycle x500", runSchedulerCycle, { async: true, afterEach: clearJobs });
 
 limits.set("watchdog tick", 60);
-bench.add("watchdog tick", async () => void (await runWatchdog(watchdogDeps)), { async: true });
+const runWatchdogTick = async () => void (await runWatchdog(watchdogDeps));
+bench.add("watchdog tick", runWatchdogTick, { async: true });
 
 /**
  * The `System timing` report, at the volume one idle day produces.
@@ -276,34 +289,133 @@ await seedSpans(SPAN_ROWS);
 const telemetryWindow = recentWindow(undefined, SPAN_CLOCK);
 const telemetryScope = { kind: "system" } as const;
 limits.set("telemetry report", 600);
-bench.add(
-  "telemetry report",
-  // Awaited, every one. Unawaited these returned in 67µs against a 600ms budget —
-  // the cost of building five promises — so the guard could not have gone red for
-  // any regression at all. The panel awaits them in sequence; so does this.
-  async () => {
-    await spanExtent(db, telemetryScope);
-    await stageStats(db, telemetryScope, telemetryWindow);
-    await traceList(db, telemetryScope, 20, telemetryWindow);
-    await trend(db, telemetryScope, 3_600_000, telemetryWindow);
-    await foldedStacks(db, telemetryScope, telemetryWindow);
-  },
-  { async: true },
-);
+// Awaited, every one. Unawaited these returned in 67µs against a 600ms budget —
+// the cost of building five promises — so the guard could not have gone red for
+// any regression at all. The panel awaits them in sequence; so does this.
+const runTelemetryReport = async () => {
+  await spanExtent(db, telemetryScope);
+  await stageStats(db, telemetryScope, telemetryWindow);
+  await traceList(db, telemetryScope, 20, telemetryWindow);
+  await trend(db, telemetryScope, 3_600_000, telemetryWindow);
+  await foldedStacks(db, telemetryScope, telemetryWindow);
+};
+bench.add("telemetry report", runTelemetryReport, { async: true });
 
-await bench.run();
+/**
+ * What each unit of work costs in **statements**, which is the number this job
+ * can actually gate on.
+ *
+ * A millisecond budget on a GitHub runner is a budget on somebody else's
+ * machine: this job failed on `telemetry report` at 624ms against 600 and was
+ * green the next night with nothing changed, while the same commit measures
+ * 250ms on a laptop. The budgets above are still useful as a *shape* — an added
+ * pass moves the whole distribution — but they cannot be the gate.
+ */
+/** The query count can be, and the file already had one instance of the idea: the
+ *  snapshot N+1 check above, which compares one group against fifty and is right
+ *  on any hardware. These are the same thing for the rest of the work. An added
+ *  query is exactly the regression these budgets were written to catch. */
+const statements = new Map<string, () => Promise<void>>([
+  ["snapshot", runSnapshot],
+  ["watchdog tick", runWatchdogTick],
+  ["telemetry report", runTelemetryReport],
+  ["scheduler cycle x500", async () => (await runSchedulerCycle(), await clearJobs())],
+]);
 
-console.table(bench.table());
+/**
+ * Measured twice, then pinned. A change here is a decision, not a coin flip.
+ *
+ * Three of them are exact — 19, 37 and 6 statements, identical across runs — and
+ * the batch is not: 500 enqueues and a drain measured 3427 and 3426, so it gets a
+ * ceiling instead. The ceiling is what catches the regression this is for, one
+ * more query per job, which would land at 3927.
+ */
+const statementBudget = new Map<string, number>([
+  ["snapshot", 19],
+  ["watchdog tick", 37],
+  ["telemetry report", 6],
+  ["scheduler cycle x500", 3_500],
+]);
 
-const exceeded = bench.tasks.flatMap((task) => {
+async function countStatements(): Promise<string[]> {
+  const over: string[] = [];
+  for (const [name, run] of statements) {
+    queries = 0;
+    await run();
+    const verdict = statementVerdict(name, queries);
+    if (verdict) over.push(verdict);
+  }
+  return over;
+}
+
+/** Prints what it measured either way; returns text only when it is over. */
+function statementVerdict(name: string, count: number): string | null {
+  const budget = statementBudget.get(name);
+  console.log(`${name}: ${count} statements${budget === undefined ? "" : ` / ${budget} budget`}`);
+  return budget !== undefined && count > budget ? `${name} (${count} statements > ${budget})` : null;
+}
+
+/**
+ * One task's mean against its guide. Text when it may fail the job, null when it
+ * is over and the gate for it is elsewhere — which is said out loud, because a
+ * measurement that drifts without failing is still something to look at.
+ */
+function timeVerdict(task: (typeof bench.tasks)[number]): string | null {
   const result = task.result;
   if (result.state !== "completed") throw new Error(`${task.name} did not complete: ${result.state}`);
   const limit = limits.get(task.name)!;
   const mean = result.latency.mean;
   console.log(`${task.name}: mean ${mean.toPrecision(3)}ms / ${limit}ms budget`);
-  return mean > limit ? [`${task.name} (${mean.toPrecision(3)}ms > ${limit}ms)`] : [];
-});
+  if (mean <= limit) return null;
+  if (TIMED_GATE.has(task.name)) return `${mean.toPrecision(3)}ms > ${limit}ms`;
+  console.warn(`${task.name} is over its ${limit}ms guide — the gate for it is its statement count`);
+  return null;
+}
 
-if (exceeded.length > 0) {
-  throw new Error(`mean exceeded the significant-regression budget: ${exceeded.join(", ")}`);
+/** One pass: run every task, print the means, and name the ones over budget. */
+async function pass(): Promise<Map<string, string>> {
+  await bench.run();
+  console.table(bench.table());
+  const over = new Map<string, string>();
+  for (const task of bench.tasks) {
+    const verdict = timeVerdict(task);
+    if (verdict) over.set(task.name, verdict);
+  }
+  return over;
+}
+
+/**
+ * Twice before it is a regression, and the reason is the runner.
+ *
+ * These budgets are means of sixteen samples on hardware nobody controls, so one
+ * pass is a coin flip near the line: the nightly failed on `telemetry report` at
+ * 624ms against 600 — four percent — and the next night was green with nothing
+ * changed. Raising the number only moves the flip.
+ */
+/** A real regression is in both passes. A flake is in one, and says so out loud
+ *  rather than passing in silence, because a budget quietly sitting near its line
+ *  is a budget somebody should look at. */
+let exceeded = await pass();
+if (exceeded.size > 0) {
+  console.warn(`over budget on the first pass: ${[...exceeded.keys()].join(", ")} — repeating before calling it`);
+  const again = await pass();
+  // Rebuilt rather than mutated while iterating: only the names in both passes
+  // survive, and each keeps what it measured on either.
+  exceeded = new Map(
+    [...exceeded].flatMap(([name, first]) => {
+      const second = again.get(name);
+      if (second) return [[name, `${first} then ${second}`] as const];
+      console.warn(`${name} was under budget on the second pass: noise, not a regression`);
+      return [];
+    }),
+  );
+}
+
+// After the timings, because it runs the same work once more and the bench has
+// its own warm-up: a counter does not care, and a mean does.
+const overStatements = await countStatements();
+
+const failures = [...overStatements, ...[...exceeded].map(([name, detail]) => `${name} (${detail}, both passes)`)];
+if (failures.length > 0) {
+  throw new Error(`over budget: ${failures.join(", ")}`);
 }

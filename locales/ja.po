@@ -13,6 +13,9 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+msgid "…and say which file is untested"
+msgstr "…そしてどのファイルが未テストかを示す"
+
 msgid "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
 msgstr "「この資格情報はまだ有効か」：GitHub の /user、プロバイダの /v1/models。応答が遅くても失敗ではなく「未検証」と報告するだけで、待つものは何もないため短め。"
 
@@ -488,6 +491,9 @@ msgstr "追加中…"
 msgid "Address"
 msgstr "アドレス"
 
+msgid "After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests."
+msgstr "ゲートが通ったあと、スライスのソース変更を元に戻してテストを再実行します。それでも緑なら、そのテストは何も証明していません。コードとテストの両方を変更したスライスで、テスト実行が 1 回増えます。"
+
 msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
 msgstr "スライスが連続で数回失敗したら、同じ道を再試行せず人にエスカレーションします。"
 
@@ -791,6 +797,9 @@ msgstr "止まったターンの点検間隔"
 
 msgid "Check runs"
 msgstr "チェック実行"
+
+msgid "Check that tests discriminate"
+msgstr "テストに識別力があるか検査する"
 
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "チェックしたスキルをここに複製し、各サンドボックスに読み取り専用でマウントします。ここを変えたらサンドボックスサーバーの allowed_host_paths も揃える必要があります。揃っていないとコンテナが起動に失敗します。静かに空マウントされるより、はっきり失敗するほうがましです。"
@@ -1431,8 +1440,8 @@ msgstr "非表示："
 msgid "hired {role}"
 msgstr "{role} を採用しました"
 
-msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
-msgstr "すべてのサンドボックスがマウントするホストのディレクトリ。「コンテナ内のパス: ホスト上のパス」の形です。パッケージマネージャのキャッシュ専用にしてください。ビルドが書き込む場所を共有すると 2 つのグループが衝突します。パスはサンドボックスサーバーの allowed_host_paths にも入れる必要があります。"
+msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. Put {project} in the host path to give each project its own, which is what a toolchain cache wants: /opt/mise holds executables every gate then runs, so one poisoned copy shared fleet-wide reaches every other project. The path must also be in the sandbox server's allowed_host_paths."
+msgstr "すべてのサンドボックスがマウントするホストディレクトリを「コンテナ内パス: ホストパス」で指定します。パッケージマネージャーのキャッシュ専用です——ビルドが書き込むものを共有すると 2 つのグループが衝突します。ホストパスに {project} を入れるとプロジェクトごとに分かれ、ツールチェーンのキャッシュにはそれが必要です。/opt/mise には各ゲートが実行する実行ファイルが入るため、全体で 1 つを共有すると汚染が他のすべてのプロジェクトに及びます。このパスはサンドボックスサーバーの allowed_host_paths にも入っている必要があります。"
 
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "GitHub に聞けないとき、チェックアウトをどう読むか"
@@ -1682,6 +1691,10 @@ msgstr "1 ターンの差分に詰め込むチャンネルメッセージの上�
 msgid "Max steps per turn"
 msgstr "1 ターンの最大ステップ数"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "{0} 回のターンの中央値。ツールの割合は後続のラウンドが毎回読み直す部分なので、小さくする価値があるのはそこです"
+
 msgid "Memory"
 msgstr "メモリ"
 
@@ -1801,6 +1814,9 @@ msgstr "このリポジトリではゲートが見つかりません。少なく
 
 msgid "No gates enabled; LLM review has no floor."
 msgstr "ゲートが 1 つも有効になっていません。LLM のレビューに下限がない状態です。"
+
+msgid "no gates for this project"
+msgstr "このプロジェクトにゲートがない"
 
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "grp テーブルに {grp} がないため /work は空のままです — このターンで動かすコードがありません"
@@ -1954,6 +1970,9 @@ msgstr "まだ始まっていません。前のスライスが受け入れられ
 
 msgid "Notes"
 msgstr "ノート"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "このプロジェクトに対して決定的に実行できるものが何もないため、どのスライスも検証できません。「設定 → Gates」でコマンドを追加してください。あるいは空のリストを保存すれば、このプロジェクトにはゲートがないという意味になり、スライスはゲートなしでレビューに進みます。"
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "GitHub 側は何も変わりません。ブランチも PR もそのまま、コードは 1 行も触りません。消えるのは、このマシンにある作業のコピーです。"
@@ -2593,14 +2612,44 @@ msgstr "S{seq} {verdict}"
 msgid "S{seq} {verdict}: {note}"
 msgstr "S{seq} {verdict}: {note}"
 
+msgid "S{seq} breaks a QA procedure an earlier slice was accepted on"
+msgstr "S{seq} は、以前のスライスが受け入れられた根拠の QA 手順を壊しています"
+
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} が {from} で {n} 回連続して不合格 — コードではなく受け入れ基準の問題と思われます"
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq} が {from} を {n} 回連続で通りませんでした"
 
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "S{seq} に実行するゲートはありません — このプロジェクトは「なし」に設定されています"
+
+msgid "S{seq} introduces a dependency this repository has not had: {edges}"
+msgstr "S{seq} はこのリポジトリにこれまでなかった依存を持ち込みます: {edges}"
+
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} は {from} に差し戻されました（{n} 回目）"
+
+msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+msgstr "S{seq} は {n, plural, other {# 個の関数}} を分岐数 {threshold} 超えにしました: {where}"
+
+msgid "S{seq}: {n, plural, one {# accepted QA procedure} other {# accepted QA procedures}} still pass"
+msgstr "S{seq}: 受け入れ済みの QA 手順 {n, plural, other {# 件}} は今も通ります"
+
+msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
+msgstr "S{seq}: 識別力の検査がワークツリーを復元しましたが、git はまだ変更を報告しています。確認するまで、このブランチから何もコミットしないでください。"
+
+msgid "S{seq}: the new tests fail without the change, as they should"
+msgstr "S{seq}: 新しいテストは変更がなければ失敗します。あるべき姿です"
+
+msgid "S{seq}: the new tests still pass with the change reverted"
+msgstr "S{seq}: 変更を元に戻しても新しいテストは通ってしまいます"
+
+msgid "S{seq}: the tests hold, but nothing covers {files}"
+msgstr "S{seq}: テストは成立していますが、{files} を覆うものが何もありません"
+
+msgid "S{seq}: worktree dirty after a check"
+msgstr "S{seq}: 検査のあとワークツリーが汚れています"
 
 #. placeholder {0}: endonymOf(localeOf(i18n.locale))
 msgid "Same as the panel ({0})"
@@ -2934,6 +2983,9 @@ msgstr "ホストがネットワークを失いました。{n} 件のターン�
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "インデックスを更新できません：このプロジェクトのコンテナが起動しません（{why}）"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "インデックスのナビゲーター（{model}）が {n} 回連続で失敗したため呼び出しを止めました。検索は字句インデックスにフォールバックします。設定でモデルかランタイムを変えれば再開します"
+
 msgid "the index pass threw: {reason}"
 msgstr "インデックス処理が例外で落ちました：{reason}"
 
@@ -3062,6 +3114,9 @@ msgstr "このプロセスはこちらが起動したものではありません
 msgid "This project hasn't run any activity yet."
 msgstr "このプロジェクトではまだ何も動いていません。"
 
+msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
+msgstr "このプロジェクトの devcontainer は {image} で開発します —「設定 → Sandbox」でグループをそこに向けられます"
+
 msgid "this question became requirement {name} (grp {grp})"
 msgstr "この質問は要件 {name}（grp {grp}）になりました"
 
@@ -3145,6 +3200,9 @@ msgstr "ターン終了（{steps, plural, other {# ステップ}}、{total} ト�
 
 msgid "turn ran past {min} min and was killed"
 msgstr "ターンが {min} 分を超えたため打ち切りました"
+
+msgid "Turn shape"
+msgstr "ターンの形"
 
 msgid "Turn timeout"
 msgstr "1 ターンの上限時間"
@@ -3301,6 +3359,9 @@ msgstr "上限に達するとグループは止まり、上げるかどうかを
 
 msgid "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint."
 msgstr "同じことが N 回出てきたなら、それは N+1 回目の苦情ではなく、プロジェクトのルールにすべきものです。"
+
+msgid "When the slice's tests do depend on its code, ask the same question of each source file on its own: one that can be reverted alone without failing anything has no test behind it. Costs one extra test run per file, on the path where the slice is fine."
+msgstr "スライスのテストが実際にそのコードに依存している場合に、各ソースファイルへ同じ問いを個別に投げます。単独で元に戻しても何も失敗しないファイルには、背後にテストがありません。ファイルごとにテスト実行が 1 回増え、しかもスライスに問題がない側の経路で発生します。"
 
 msgid "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP."
 msgstr "opensandbox-server の所在です。dns+nft モードでないと資格情報の注入が黙って失敗します。このマシンである必要はありません。Tailscale のピアでもクラウドのマシンでも構いません。SDK は HTTP でしか話しません。"

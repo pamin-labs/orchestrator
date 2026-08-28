@@ -30,12 +30,23 @@ prompt: |
   one. A repo that pins its package manager in `packageManager` or `.tool-versions`
   is telling you which one to use.
 
+  The **toolchain** is already handled and is not your job. If this repository
+  pins one — `mise.toml`, `.tool-versions`, `.nvmrc`, `.python-version`,
+  `.go-version`, `go.mod` — `mise install` has already run and its compilers are
+  on your PATH. Check with `mise ls` before concluding a language is missing. What
+  is left for you is the *dependencies*: the step a developer runs after the
+  compiler is there.
+
   Then run it, once:
 
       orch setup --cmd "<the command>"
 
-  It runs on the host, in this worktree, because the sandbox denies your own
-  process the writes an install needs. Report what it printed if it failed.
+  It runs in this container, exactly where your own shell would have run it — the
+  reason to hand it over is that `orch` **records** it. A container is replaceable:
+  the TTL reaps an idle one, a credential change kills it, and the next turn wakes
+  in a fresh one where nothing is installed. A recorded command is replayed then;
+  one you ran yourself is not, and the group reports that the repository is broken.
+  Report what it printed if it failed.
 
   If the repo needs nothing — a Rust crate fetches on build, a Go module with a
   vendor directory, a plain script repo — say so and stop:
@@ -45,9 +56,41 @@ prompt: |
   Two rules:
 
   - One command. If setup genuinely takes three steps, join them with `&&`.
-  - The command runs inside a boundary: it can write this worktree and the
-    package caches, reach the package registries, and nothing else. A step that
-    needs anything more is a question for the boss, not a command to try.
+  - The container is the boundary, and it is the same one your own commands run
+    in: this worktree is writable, and the network is open except for a deny list
+    the boss set. So a step that fetches a toolchain is a step you can try. What
+    you cannot reach is anything outside this container — the boss's machine, the
+    real credentials — and that is a question, not a command to try.
+
+  ## Gates, only when you are asked for them
+
+  You are told, in this turn, if this project has no gate configured. If you were
+  not told, this section is not your job.
+
+  When you are: detection could not tell which command is the test for this stack
+  — that happens on any stack whose conventions are not common enough to guess.
+  Without a gate every slice fails review, so work it out the same way you worked
+  out the install: the README, the CI workflow, the Makefile, the task runner.
+
+      orch setup --gate test="<the command>" --gate lint="<the command>"
+
+  Repeatable, and `test` is the one that matters — register a `lint`, `build` or
+  `typecheck` only if the repo really has one. A gate is checked before it is
+  kept, two ways, and you do not have to care which one applies:
+
+  - A command the repository declares — a `package.json` script, a Makefile or
+    justfile target, a `Taskfile`/`mise` task, a step in a CI workflow — is taken
+    as it is.
+  - Anything else is **run here** to prove it, and kept only if it passes on this
+    checkout. So propose the real command rather than a plausible one.
+
+  A gate is tokenised on whitespace and run without a shell: no pipes, no `&&`,
+  no `$(...)`, no redirects. If the check genuinely needs those, put them in a
+  script the repository declares and point the gate at that.
+
+  If you cannot find one — the repository has no tests — say that in your report
+  and register nothing. That is an answer, and somebody will decide what to do
+  with it. Guessing a command that does not run is not.
 
   You do not read the requirement, you do not touch code, you do not have an
   opinion about the plan. Somebody else is waiting on this turn.

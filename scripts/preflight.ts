@@ -229,15 +229,24 @@ const steps: Step[] = [
     run: async () => {
       if (!has("docker")) return { outcome: "skip", note: "docker not on PATH — CI builds and scans the image" };
       const built = await cmd(
-        // `--platform linux/amd64`, because that is what CI builds. A preflight
-        // that scans a different image than the gate answers confidently about
-        // the wrong thing. Known gap recorded in `docs/project/progress.md`:
-        // the arm64 build of this image currently fails, so a developer on
-        // Apple silicon is testing the CI image rather than one they could run.
+        // `--platform linux/amd64`, because that is what `security.yml` scans. A
+        // preflight that scans a different image than the gate answers
+        // confidently about the wrong thing.
+        //
+        // The note that used to sit here said the arm64 build fails, so Apple
+        // silicon was testing an image it could not run. It builds: measured on
+        // arm64, natively, and its `mise --version` answers `linux-arm64`.
+        // `release.yml` builds and smokes both architectures on native runners,
+        // which is where that claim belongs anyway.
         "docker build --quiet --platform linux/amd64 --tag orchestrator-agent:preflight " +
           "--file docker/agent.Dockerfile .",
       );
       if (built !== "pass") return "fail";
+      // Ask whether it runs before asking whether it is safe. This image is
+      // built here already, so the question costs two `docker run`s — and it is
+      // the one a laptop can answer that a Trivy report cannot.
+      const runs = await cmd("./scripts/image-smoke.sh orchestrator-agent:preflight");
+      if (runs !== "pass") return "fail";
       return cmd(
         // The repository is mounted because `trivy.yaml` and `.trivyignore.yaml`
         // live in it: CI runs Trivy on the runner where those are simply there,

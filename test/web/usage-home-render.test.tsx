@@ -90,10 +90,11 @@ test("waiting work replaces the project's state line and lists what is waiting",
   const st = emptyState();
   st.projects.push(project(1, "alpha"));
   st.groups.push(group(1, 1, { status: "DRAFT" }));
-  // A real Markdown card, not the pre-Markdown `目标: …` form the other fixtures
-  // use. Both readers matched the goal with `startsWith("目标")`, which a heading
+  // Both readers once matched the goal with `startsWith("目标")`, which a heading
   // never satisfies — so every queued card read `Plan card not submitted` with
   // the card sitting right there, and four fixtures on the old grammar hid it.
+  // Those fixtures are Markdown now: the old grammar no longer validates, so a
+  // fixture in it stands for a card that cannot exist.
   st.draftCards.push({ grpId: 1, body: "## goal\n做完它\n\n## risk\n无", at: 1000, unknownPaths: null });
   st.escalations.push({
     id: 7,
@@ -127,7 +128,7 @@ test("the project wanting the boss most is read first", () => {
   const st = emptyState();
   st.projects.push(project(1, "quiet"), project(2, "loud"));
   st.groups.push(group(1, 2, { status: "DRAFT" }));
-  st.draftCards.push({ grpId: 1, body: "目标: 做完它", at: 1000, unknownPaths: null });
+  st.draftCards.push({ grpId: 1, body: "## goal\n做完它", at: 1000, unknownPaths: null });
   const page = home(st);
 
   // Document order, not string offsets: the row that wants something comes first.

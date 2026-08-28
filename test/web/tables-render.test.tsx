@@ -67,11 +67,15 @@ test("Desk, ownership and cost surfaces render observable empty and populated st
     total: { label: "total", tokens: 500 },
     cacheRatio: 0.75,
     rotations: { turns: 4, byReason: { hash: 1 } },
+    turns: { counted: 4, medianMs: 41_200, medianBytes: 212_000, medianToolShare: 0.78 },
   };
   const rendered = render(<CostView cost={cost} />);
   shown(rendered, "500");
   shown(rendered, "按需求");
   shown(rendered, "缓存命中率");
+  // The three numbers that were each recorded somewhere and never in one row.
+  shown(rendered, "41s");
+  shown(rendered, "78% tools");
 });
 
 const owning = (id: number, name: string, owns: string[]) => ({

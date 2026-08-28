@@ -13,6 +13,9 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+msgid "…and say which file is untested"
+msgstr "…and say which file is untested"
+
 msgid "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
 msgstr "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
 
@@ -488,6 +491,9 @@ msgstr "Adding…"
 msgid "Address"
 msgstr "Address"
 
+msgid "After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests."
+msgstr "After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests."
+
 msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
 msgstr "After a slice fails several times straight, escalate to a person instead of retrying the same path."
 
@@ -791,6 +797,9 @@ msgstr "Check for stuck turns"
 
 msgid "Check runs"
 msgstr "Check runs"
+
+msgid "Check that tests discriminate"
+msgstr "Check that tests discriminate"
 
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
@@ -1431,8 +1440,8 @@ msgstr "Hiding:"
 msgid "hired {role}"
 msgstr "hired {role}"
 
-msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
-msgstr "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
+msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. Put {project} in the host path to give each project its own, which is what a toolchain cache wants: /opt/mise holds executables every gate then runs, so one poisoned copy shared fleet-wide reaches every other project. The path must also be in the sandbox server's allowed_host_paths."
+msgstr "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. Put {project} in the host path to give each project its own, which is what a toolchain cache wants: /opt/mise holds executables every gate then runs, so one poisoned copy shared fleet-wide reaches every other project. The path must also be in the sandbox server's allowed_host_paths."
 
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "How a checkout is read when GitHub cannot be asked"
@@ -1682,6 +1691,10 @@ msgstr "Max channel messages to cram into one delta per turn."
 msgid "Max steps per turn"
 msgstr "Max steps per turn"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+
 msgid "Memory"
 msgstr "Memory"
 
@@ -1801,6 +1814,9 @@ msgstr "no gates detected in this repository. Every slice will fail review until
 
 msgid "No gates enabled; LLM review has no floor."
 msgstr "No gates enabled; LLM review has no floor."
+
+msgid "no gates for this project"
+msgstr "no gates for this project"
 
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
@@ -1954,6 +1970,9 @@ msgstr "Not started yet; waiting for prior slices to be accepted."
 
 msgid "Notes"
 msgstr "Notes"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
@@ -2593,14 +2612,44 @@ msgstr "S{seq} {verdict}"
 msgid "S{seq} {verdict}: {note}"
 msgstr "S{seq} {verdict}: {note}"
 
+msgid "S{seq} breaks a QA procedure an earlier slice was accepted on"
+msgstr "S{seq} breaks a QA procedure an earlier slice was accepted on"
+
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq} failed {from} {n}x in a row"
 
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "S{seq} has no gate to run — this project is set to none"
+
+msgid "S{seq} introduces a dependency this repository has not had: {edges}"
+msgstr "S{seq} introduces a dependency this repository has not had: {edges}"
+
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} sent back by {from} (attempt {n})"
+
+msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+msgstr "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+
+msgid "S{seq}: {n, plural, one {# accepted QA procedure} other {# accepted QA procedures}} still pass"
+msgstr "S{seq}: {n, plural, one {# accepted QA procedure} other {# accepted QA procedures}} still pass"
+
+msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
+msgstr "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
+
+msgid "S{seq}: the new tests fail without the change, as they should"
+msgstr "S{seq}: the new tests fail without the change, as they should"
+
+msgid "S{seq}: the new tests still pass with the change reverted"
+msgstr "S{seq}: the new tests still pass with the change reverted"
+
+msgid "S{seq}: the tests hold, but nothing covers {files}"
+msgstr "S{seq}: the tests hold, but nothing covers {files}"
+
+msgid "S{seq}: worktree dirty after a check"
+msgstr "S{seq}: worktree dirty after a check"
 
 #. placeholder {0}: endonymOf(localeOf(i18n.locale))
 msgid "Same as the panel ({0})"
@@ -2934,6 +2983,9 @@ msgstr "the host lost its network; {n, plural, one {# turn} other {# turns}} hel
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "the index cannot be refreshed: this project's container will not start ({why})"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+
 msgid "the index pass threw: {reason}"
 msgstr "the index pass threw: {reason}"
 
@@ -3062,6 +3114,9 @@ msgstr "This process wasn't started by us—it might be something you're using. 
 msgid "This project hasn't run any activity yet."
 msgstr "This project hasn't run any activity yet."
 
+msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
+msgstr "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
+
 msgid "this question became requirement {name} (grp {grp})"
 msgstr "this question became requirement {name} (grp {grp})"
 
@@ -3145,6 +3200,9 @@ msgstr "turn done ({steps, plural, one {# step} other {# steps}}, {total} tokens
 
 msgid "turn ran past {min} min and was killed"
 msgstr "turn ran past {min} min and was killed"
+
+msgid "Turn shape"
+msgstr "Turn shape"
 
 msgid "Turn timeout"
 msgstr "Turn timeout"
@@ -3301,6 +3359,9 @@ msgstr "When the limit is reached, the group pauses until you decide whether to 
 
 msgid "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint."
 msgstr "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint."
+
+msgid "When the slice's tests do depend on its code, ask the same question of each source file on its own: one that can be reverted alone without failing anything has no test behind it. Costs one extra test run per file, on the path where the slice is fine."
+msgstr "When the slice's tests do depend on its code, ask the same question of each source file on its own: one that can be reverted alone without failing anything has no test behind it. Costs one extra test run per file, on the path where the slice is fine."
 
 msgid "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP."
 msgstr "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP."

@@ -34,6 +34,22 @@ export const CostReportSchema = z.object({
   total: CostRowSchema,
   cacheRatio: z.number().nullable(),
   rotations: z.object({ turns: z.number(), byReason: z.record(z.string(), z.number()) }),
+  /**
+   * What a turn has looked like lately — its wall clock, the weight of the
+   * provider's own stream, and how much of that weight was a tool answering.
+   *
+   * The three were each recorded somewhere and never in the same row: duration in
+   * a span, tokens here, and the size of tool output nowhere at all. So the
+   * largest claim anyone has made about what a turn costs — that tool results are
+   * 90% of a transcript — had no way to be confirmed after the day it was
+   * measured, and the lever it points at had no before and no after.
+   */
+  turns: z.object({
+    counted: z.number(),
+    medianMs: z.number().nullable(),
+    medianBytes: z.number().nullable(),
+    medianToolShare: z.number().nullable(),
+  }),
 });
 
 export type CostReport = z.infer<typeof CostReportSchema>;

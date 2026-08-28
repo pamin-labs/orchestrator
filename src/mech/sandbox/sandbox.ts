@@ -5,7 +5,7 @@ import { desc, eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { grp, project } from "../../platform/persistence/schema.ts";
 import { errText } from "../../platform/process/text.ts";
-import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -113,8 +113,23 @@ export async function specFor(ctx: Ctx, projectId: number | null): Promise<Sandb
     memory: over.memory || base.memory,
     ttlSeconds: over.ttlSeconds || base.ttlSeconds,
     denyDomains: over.denyDomains ?? base.denyDomains ?? [],
-    cacheDirs: over.cacheDirs ?? base.cacheDirs ?? {},
+    cacheDirs: perProject(over.cacheDirs ?? base.cacheDirs ?? {}, projectId),
   };
+}
+
+/**
+ * `{project}` in a host path becomes this project's own directory.
+ *
+ * Expanded here because this is the one place that knows which project a sandbox
+ * is for, and because the safe configuration should be the easy one: one line
+ * gives every project its own cache rather than one entry per project by hand.
+ */
+/** `shared` when there is no project — `driftingPaths` asks for the spec with
+ *  none, and what it checks is whether the server allows a *prefix*, which any
+ *  child answers. */
+function perProject(dirs: Record<string, string>, projectId: number | null): Record<string, string> {
+  const who = projectId === null ? "shared" : `p${projectId}`;
+  return Object.fromEntries(Object.entries(dirs).map(([mount, host]) => [mount, host.replaceAll("{project}", who)]));
 }
 
 /**
@@ -553,11 +568,14 @@ async function reconnect(ctx: Ctx, scope: Scope, sandboxId: string | null): Prom
 }
 
 function cacheVolumes(spec: SandboxSpec): Volume[] {
-  return Object.entries(spec.cacheDirs).map(([mountPath, hostPath], index) => ({
-    name: `cache-${index}`,
-    host: { path: hostPathForDaemon(hostPath) },
-    mountPath,
-  }));
+  return Object.entries(spec.cacheDirs).map(([mountPath, hostPath], index) => {
+    // Made before it is mounted. A bind mount of a host path that is not there
+    // does not fail — it succeeds and delivers an empty directory, which is the
+    // silent failure `checkSkillsMount` exists for, and a per-project cache path
+    // is one nobody has created by hand.
+    mkdirSync(hostPath, { recursive: true });
+    return { name: `cache-${index}`, host: { path: hostPathForDaemon(hostPath) }, mountPath };
+  });
 }
 
 async function createSandbox(ctx: Ctx, scope: Scope, spec: SandboxSpec, volumes: Volume[]) {

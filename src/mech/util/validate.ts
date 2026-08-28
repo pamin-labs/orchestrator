@@ -10,7 +10,7 @@ import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { z } from "zod";
-import { DRAFT_FIELDS, type Field, fieldOf, INLINE_FIELD } from "../../contracts/card.ts";
+import { DRAFT_FIELDS, type Field, fieldOf } from "../../contracts/card.ts";
 import { JOURNAL_KINDS } from "../../contracts/states.ts";
 
 export interface Invalid {
@@ -231,52 +231,6 @@ function tableSlices(rows: string[][]): Result<{ slices: DraftSlice[] }> {
 }
 
 /**
- * LEGACY — cards written before Markdown, still in `note.body`.
- *
- * Reached only when a card has no headings at all. Nothing emits this shape any
- * more; it exists so stored cards approved months ago still parse. Remove in
- * 0.2.0, once no `note` row with `draft_card` predates the Markdown format.
- */
-function draftLegacy(text: string): CardParts {
-  const lines = nonEmptyLines(text);
-  const sections = new Map<string, string[]>();
-  let current: string | null = null;
-  for (const line of lines) {
-    const match = INLINE_FIELD.exec(line);
-    // Through `fieldOf`, so a card in either grammar keys `sections` by the
-    // canonical name — which is what lets every read below name one spelling.
-    const head = match?.[1] ? fieldOf(match[1]) : null;
-    if (match && head) {
-      current = head;
-      if (!sections.has(head)) sections.set(head, []);
-      const rest = (match[2] ?? "").trim().replace(/^[-•]\s*/, "");
-      if (rest) sections.get(head)!.push(rest);
-    } else if (current) {
-      sections.get(current)!.push(line.replace(/^\s*[-•]\s*/, "").trim());
-    }
-  }
-  return { sections, count: lines.length, slices: () => legacySlices(sections.get(SLICES) ?? []) };
-}
-
-/** LEGACY, with `draftLegacy`: "title [difficulty] — how it is accepted". */
-function legacySlices(rawSlices: string[]): Result<{ slices: DraftSlice[] }> {
-  const slices: DraftSlice[] = [];
-  for (const raw of rawSlices) {
-    const m = /^(.*?)\[(\w+)\]\s*(?:[—–-]+\s*)?(.*)$/.exec(raw);
-    const title = m?.[1]?.trim();
-    const difficulty = DifficultySchema.safeParse(m?.[2]?.toLowerCase());
-    const accept = m?.[3]?.trim();
-    if (!title || !accept || !difficulty.success)
-      return invalid(
-        `slice ${JSON.stringify(raw)} must read "title [${DIFFICULTIES}] — how it is ` +
-          `accepted". The difficulty tag picks the model, so it is not optional.`,
-      );
-    slices.push({ title, difficulty: difficulty.data, accept });
-  }
-  return { ok: true, slices };
-}
-
-/**
  * The DRAFT card blocks the boss, so it must be readable in 20 seconds. Rejecting a
  * long card and making the Dispatcher rewrite is cheaper than training the boss to
  * skim.
@@ -287,7 +241,18 @@ function legacySlices(rawSlices: string[]): Result<{ slices: DraftSlice[] }> {
  * Architect's objection in at most 2 lines, or a statement that there is none.
  */
 export function validateDraftCard(text: string): Result<DraftOk> {
-  const card = draftMarkdown(text) ?? draftLegacy(text);
+  const card = draftMarkdown(text);
+  // No headings at all is the pre-Markdown card ADR 016 replaced, and nothing has
+  // emitted that shape for releases. It is refused by name rather than parsed by a
+  // second grammar: a compatibility alias is out of scope before the first stable
+  // release (docs/project/plan.md), and a rejection that says which headings are
+  // missing is what teaches the Dispatcher to file the shape this reads.
+  if (!card) {
+    return {
+      ok: false,
+      error: `card has no headings — write each section as a Markdown heading: ${DRAFT_FIELDS.map((f) => `## ${f}`).join(", ")}.`,
+    };
+  }
   if (card.count > DRAFT_MAX_LINES) {
     return {
       ok: false,
@@ -462,6 +427,37 @@ export function criteriaIn(acceptSpec: string): number {
     .map((s) => s.trim())
     .filter(Boolean);
   return Math.max(1, parts.length);
+}
+
+/**
+ * The files a review claims to have looked at.
+ *
+ * A reviewer's note is prose, in whichever of ten languages it writes — the one
+ * part of it that is checkable is the names it drops. `mw.ts:31`, `src/a.ts`,
+ * `menu.png`: a name that exists somewhere is a name it could have read, and one
+ * that exists nowhere is the shape a fabricated citation has.
+ */
+/** Recorded, not refused. Whether a reviewer ever cites something that is not
+ *  there is a question nobody here has data for, and a guard for an unproven
+ *  hole is how you get one that is sensitive to its own case and blind to the
+ *  rest of the class. This is the measurement that decides whether to build it. */
+// The basename may hold dots of its own — `a.test.ts`, `main.min.js` — so the
+// extension is the last of them, not the first.
+const CITED = /(?<![\w@/.-])((?:[\w.-]+\/)*[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{1,8})(?::\d+)?(?![\w-])/g;
+
+/** Extensions that are a version number, a sentence's end, or a domain. */
+const NOT_A_FILE = /^(?:\d+\.\d+|e\.g|i\.e|etc|vs)$|\.(?:com|org|net|io|dev|md5)$/i;
+
+export function citedPaths(note: string): string[] {
+  const out = new Set<string>();
+  for (const m of (note ?? "").matchAll(CITED)) {
+    const path = m[1]!;
+    if (NOT_A_FILE.test(path)) continue;
+    // A bare number after the dot is a version, not an extension: `orch 0.1.2`.
+    if (/^\d+$/.test(path.split(".").at(-1) ?? "")) continue;
+    out.add(path);
+  }
+  return [...out];
 }
 
 function nonEmptyLines(s: string): string[] {

@@ -240,6 +240,15 @@ jobs:
           provenance: mode=max
           cache-from: type=gha,scope=orch-agent-${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=orch-agent-${{ matrix.platform }}
+      # Both legs run on a native runner, so no qemu and no `if:` on the platform,
+      # and this is the only caller that covers arm64.
+      - name: the image can do what the roles promise
+        env:
+          # Through the environment, never expanded into the script: the
+          # neighbouring step does the same, and zizmor calls the other spelling
+          # template injection whatever the value happens to be today.
+          PLATFORM: ${{ matrix.platform }}
+        run: ./scripts/image-smoke.sh "orch-agent:verify-$PLATFORM"
       - name: verify image digest and provenance material
         env:
           BUILD_METADATA: ${{ steps.image.outputs.metadata }}

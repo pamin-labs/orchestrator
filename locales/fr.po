@@ -13,6 +13,9 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+msgid "…and say which file is untested"
+msgstr "…et dire quel fichier n'est pas couvert"
+
 msgid "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
 msgstr "« Cette identification est-elle toujours valable ? » : le /user de GitHub, le /v1/models d'un fournisseur. Court, car une réponse lente signale « non vérifié » au lieu d'échouer, et rien ne l'attend."
 
@@ -488,6 +491,9 @@ msgstr "Ajout…"
 msgid "Address"
 msgstr "Adresse"
 
+msgid "After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests."
+msgstr "Après une porte verte, remets le code de la tranche dans son état d'origine et relance les tests : toujours vert signifie qu'ils ne prouvent rien. Coût : une exécution de tests supplémentaire sur une tranche qui a touché au code et aux tests."
+
 msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
 msgstr "Après plusieurs échecs consécutifs d'une tranche, on escalade vers une personne au lieu de réessayer la même voie."
 
@@ -791,6 +797,9 @@ msgstr "Vérifier les tours bloqués"
 
 msgid "Check runs"
 msgstr "Vérifications"
+
+msgid "Check that tests discriminate"
+msgstr "Vérifier que les tests discriminent"
 
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "Les compétences cochées sont copiées ici et montées en lecture seule dans chaque bac à sable. Toute modification ici doit être répercutée dans allowed_host_paths du serveur de bac à sable, sinon le conteneur ne démarre pas — un échec bruyant vaut mieux qu'un montage vide silencieux."
@@ -1431,8 +1440,8 @@ msgstr "Masqué :"
 msgid "hired {role}"
 msgstr "{role} recruté"
 
-msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
-msgstr "Répertoires de l'hôte montés par chaque bac à sable, sous la forme « chemin dans le conteneur : chemin sur l'hôte ». Réservé aux caches de gestionnaires de paquets : partager un emplacement où un build écrit fait entrer en collision deux groupes. Le chemin doit aussi figurer dans allowed_host_paths du serveur de bac à sable."
+msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. Put {project} in the host path to give each project its own, which is what a toolchain cache wants: /opt/mise holds executables every gate then runs, so one poisoned copy shared fleet-wide reaches every other project. The path must also be in the sandbox server's allowed_host_paths."
+msgstr "Répertoires de l'hôte que chaque sandbox monte, sous la forme 'chemin dans le conteneur : chemin sur l'hôte'. Uniquement pour les caches de gestionnaires de paquets — partager ce qu'une compilation écrit fait entrer deux groupes en collision. Mets {project} dans le chemin hôte pour en donner un à chaque projet, ce qu'exige un cache de chaîne d'outils : /opt/mise contient les exécutables que chaque porte lance ensuite, donc une copie empoisonnée partagée par toute la flotte atteint tous les autres projets. Le chemin doit aussi figurer dans allowed_host_paths du serveur de sandbox."
 
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "Comment lire un checkout quand GitHub est injoignable"
@@ -1682,6 +1691,10 @@ msgstr "Nombre maximal de messages de canal entassés dans un delta par tour."
 msgid "Max steps per turn"
 msgstr "Étapes maximales par tour"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "Médiane sur {0} tours. La part des outils est ce que chaque tour suivant relit, c'est donc elle qu'il vaut la peine de réduire à la source"
+
 msgid "Memory"
 msgstr "Mémoire"
 
@@ -1801,6 +1814,9 @@ msgstr "aucun gate détecté dans ce dépôt. Chaque tranche échouera à la rev
 
 msgid "No gates enabled; LLM review has no floor."
 msgstr "Aucun gate activé ; la relecture du LLM n'a aucun plancher."
+
+msgid "no gates for this project"
+msgstr "ce projet n'a aucune porte"
 
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "aucun groupe {grp} dans la table grp, donc /work est toujours vide — il n'y a pas de code à exécuter ce tour-ci"
@@ -1954,6 +1970,9 @@ msgstr "Pas encore démarré ; en attente de l'acceptation des tranches précéd
 
 msgid "Notes"
 msgstr "Notes"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "Rien de déterministe ne peut être exécuté sur ce projet, donc aucune tranche ne peut être vérifiée. Ajoute les commandes dans Réglages → Gates — ou enregistre une liste vide pour dire que ce projet n'a pas de porte, et les tranches iront en revue sans."
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "Rien ne change sur GitHub : les branches sont là, les PR sont là, pas une ligne de code n'est touchée. Ce qui disparaît, c'est la copie du travail sur cette machine."
@@ -2593,14 +2612,44 @@ msgstr "S{seq} {verdict}"
 msgid "S{seq} {verdict}: {note}"
 msgstr "S{seq} {verdict} : {note}"
 
+msgid "S{seq} breaks a QA procedure an earlier slice was accepted on"
+msgstr "S{seq} casse une procédure QA sur laquelle une tranche antérieure a été acceptée"
+
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} a échoué chez {from} {n} fois — ce sont probablement les critères d'acceptation, pas le code"
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq} a échoué {n} fois d'affilée à {from}"
 
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "S{seq} n'a aucune porte à exécuter — ce projet est réglé sur aucune"
+
+msgid "S{seq} introduces a dependency this repository has not had: {edges}"
+msgstr "S{seq} introduit une dépendance que ce dépôt n'a jamais eue : {edges}"
+
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} renvoyée par {from} (tentative {n})"
+
+msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+msgstr "S{seq} fait passer {n, plural, one {# fonction} other {# fonctions}} au-delà de {threshold} chemins : {where}"
+
+msgid "S{seq}: {n, plural, one {# accepted QA procedure} other {# accepted QA procedures}} still pass"
+msgstr "S{seq} : {n, plural, one {# procédure QA acceptée passe toujours} other {# procédures QA acceptées passent toujours}}"
+
+msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
+msgstr "S{seq} : la vérification a restauré l'arbre de travail et git signale encore des modifications. Ne commite rien depuis cette branche avant de l'avoir examiné."
+
+msgid "S{seq}: the new tests fail without the change, as they should"
+msgstr "S{seq} : les nouveaux tests échouent sans le changement, comme il se doit"
+
+msgid "S{seq}: the new tests still pass with the change reverted"
+msgstr "S{seq} : les nouveaux tests passent encore, une fois le changement annulé"
+
+msgid "S{seq}: the tests hold, but nothing covers {files}"
+msgstr "S{seq} : les tests tiennent, mais rien ne couvre {files}"
+
+msgid "S{seq}: worktree dirty after a check"
+msgstr "S{seq} : arbre de travail sale après une vérification"
 
 #. placeholder {0}: endonymOf(localeOf(i18n.locale))
 msgid "Same as the panel ({0})"
@@ -2934,6 +2983,9 @@ msgstr "l'hôte a perdu le réseau ; {n, plural, one {# tour retenu et remis en 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "impossible de rafraîchir l'index : le conteneur de ce projet ne démarre pas ({why})"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "le navigateur de l'index ({model}) a échoué {n} fois de suite et n'est plus appelé — la recherche retombe sur l'index lexical, et changer le modèle ou le runtime dans Réglages le relance"
+
 msgid "the index pass threw: {reason}"
 msgstr "la passe d'indexation a levé une erreur : {reason}"
 
@@ -3062,6 +3114,9 @@ msgstr "Ce processus n'a pas été démarré par nous — c'est peut-être quelq
 msgid "This project hasn't run any activity yet."
 msgstr "Ce projet n'a encore enregistré aucune activité."
 
+msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
+msgstr "le devcontainer de ce projet se développe dans {image} — Réglages → Sandbox peut y pointer le groupe"
+
 msgid "this question became requirement {name} (grp {grp})"
 msgstr "cette question est devenue l'exigence {name} (grp {grp})"
 
@@ -3145,6 +3200,9 @@ msgstr "tour terminé ({steps, plural, one {# étape} other {# étapes}}, {total
 
 msgid "turn ran past {min} min and was killed"
 msgstr "le tour a dépassé {min} min et a été coupé"
+
+msgid "Turn shape"
+msgstr "Forme d'un tour"
 
 msgid "Turn timeout"
 msgstr "Délai d'un tour"
@@ -3301,6 +3359,9 @@ msgstr "Une fois la limite atteinte, le groupe se met en pause jusqu'à ce que v
 
 msgid "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint."
 msgstr "Quand la même chose ressort N fois, ça devrait devenir une règle du projet, pas la N+1-ième plainte."
+
+msgid "When the slice's tests do depend on its code, ask the same question of each source file on its own: one that can be reverted alone without failing anything has no test behind it. Costs one extra test run per file, on the path where the slice is fine."
+msgstr "Quand les tests de la tranche dépendent bien de son code, pose la même question à chaque fichier séparément : un fichier qu'on peut annuler seul sans rien faire échouer n'a aucun test derrière lui. Coût : une exécution de tests par fichier, sur le chemin où la tranche va bien."
 
 msgid "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP."
 msgstr "Où réside opensandbox-server. Il doit être en mode dns+nft, sinon l'injection d'identifiants échoue en silence. Pas besoin que ce soit cette machine — un pair Tailscale ou une machine cloud conviennent : le SDK ne parle qu'HTTP."

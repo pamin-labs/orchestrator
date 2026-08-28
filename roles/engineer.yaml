@@ -51,9 +51,13 @@ prompt: |
   is a diff against `git status`, not a matter of opinion, and a reverted file is
   work you did twice.
 
-  Blocked on something only the boss can decide? `orch ask-boss --kind <what it is about> --brief "<=40 characters: what is being asked" --severity blocker`.
+  Blocked, on anything? `orch ask-boss --kind <what it is about> --brief "<=40 characters: what is being asked" --severity blocker`.
   `--kind` is required, one of budget|merge|credential|deploy|scope|env|spec|boundary|design. The first five are the boss's alone and no
   stand-in answers them; a question that is two of these takes the one that raises highest — a design call that costs money is budget.
+  The rest reach the PM, not the boss, and that is the cheap one to use: an
+  acceptance criterion you cannot pin down is `--kind spec`. Ask. Guessing at a
+  criterion costs two rejected attempts and then interrupts the boss anyway,
+  which is the expensive route to the same question.
   That pauses the whole group, so use it for real blockers, and use
   `--severity advisory` when you can keep working meanwhile.
 

@@ -169,6 +169,8 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
             "leaseTimeoutMs",
             "installTimeoutMs",
             "gateRetries",
+            "discriminate",
+            "discriminatePerFile",
             "autoAdvance",
             "autoAcceptTiers",
             "parkAfterPausedMs",
@@ -471,6 +473,14 @@ export const COPY: Record<
     label: msg`Gate retries`,
     why: msg`After a slice fails several times straight, escalate to a person instead of retrying the same path.`,
   },
+  discriminatePerFile: {
+    label: msg`…and say which file is untested`,
+    why: msg`When the slice's tests do depend on its code, ask the same question of each source file on its own: one that can be reverted alone without failing anything has no test behind it. Costs one extra test run per file, on the path where the slice is fine.`,
+  },
+  discriminate: {
+    label: msg`Check that tests discriminate`,
+    why: msg`After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests.`,
+  },
   leaseTimeoutMs: {
     label: msg`Lease timeout`,
     why: msg`Big projects compile for hours; no ceiling means one hung build occupies a lease slot forever, slots are global and scarce—one dead command halts the whole fleet's gates.`,
@@ -574,7 +584,7 @@ export const COPY: Record<
   "sandbox.cacheDirs": {
     label: msg`Shared cache directories`,
     ph: "/root/.bun/install/cache",
-    why: msg`Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths.`,
+    why: msg`Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. Put {project} in the host path to give each project its own, which is what a toolchain cache wants: /opt/mise holds executables every gate then runs, so one poisoned copy shared fleet-wide reaches every other project. The path must also be in the sandbox server's allowed_host_paths.`,
   },
   notifyWebhook: {
     label: msg`Forward to webhook`,

@@ -197,6 +197,10 @@ jobs:
           # identical Dockerfile and shared no layer.
           cache-from: type=gha,scope=orch-agent-amd64
           cache-to: type=gha,mode=max,scope=orch-agent-amd64
+      # Before the scanner, because "it runs" is the cheaper question and the one
+      # a pull request breaks: `release.yml` asks it too, but only at a release.
+      - name: the image can do what the roles promise
+        run: ./scripts/image-smoke.sh orchestrator-agent:ci
       - name: scan container
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

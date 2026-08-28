@@ -55,11 +55,19 @@ async function runTurn(spec: TurnSpec, handlers: TurnHandlers = {}): Promise<Tur
   await spec.runner.put(promptFile, spec.prompt);
   const command = `claude ${buildArgv(spec).map(shq).join(" ")} < ${promptFile}; rc=$?; rm -f ${promptFile}; exit $rc`;
   const accumulator = newClaudeAccumulator(spec);
+  // Weighed where the bytes actually arrive, before anything trims them: what a
+  // turn costs is what the provider sent, not what the log kept. A line carrying
+  // `tool_use_result` is a tool's output coming back, which is the half `load.ts`
+  // says is 90% of a transcript — a claim measured once by hand and never since.
+  const transcript = { bytes: 0, toolBytes: 0 };
   const tail = await runLineStream(spec, command, handlers.onAbort, (raw) => {
     const line = parseClaudeLine(raw);
+    transcript.bytes += raw.length;
+    if (line.tool_use_result) transcript.toolBytes += raw.length;
     consumeClaudeLine(line, accumulator, handlers);
     return trimForLog(line);
   });
+  accumulator.result.transcript = transcript;
 
   if (!accumulator.sawResult) {
     accumulator.result.ok = false;

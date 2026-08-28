@@ -15,5 +15,8 @@ recounted over content, because headings and a table header are lines that carry
 none.
 
 **Consequence**: a breaking change to agent output. Cards already in `note.body`
-parse through a legacy path, marked as such, removable one release after this.
-Role templates in `roles/` emit Markdown only.
+parsed through a legacy path, marked as such. That path is gone: a compatibility
+alias before the first stable release is out of scope (`docs/project/plan.md`),
+and a card in the old shape is now refused by a rejection naming the headings to
+write, rather than parsed by a second grammar. Role templates in `roles/` emit
+Markdown only.

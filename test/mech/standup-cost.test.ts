@@ -187,8 +187,11 @@ test("a delivered requirement is counted for its own project only", async () => 
 test("cache ratio is averaged from recorded turns, and absent before any run", async () => {
   const db = await seed();
   expect(await recentCacheRatio(db)).toBeNull();
+  // With `usage`, because a turn event carries both and the report asks for the
+  // one that has been there longest — `cacheRatio` was added later, so a row from
+  // before it exists and a row without it is not a turn this should skip.
   const summary = (cacheRatio: number) =>
-    fx.on(db).event.create({ author: "e", kind: "tool_summary", meta_json: { cacheRatio } });
+    fx.on(db).event.create({ author: "e", kind: "tool_summary", meta_json: { cacheRatio, usage: { input: 1 } } });
   await summary(0.9);
   await summary(0.7);
   // A sudden drop here is the only visible sign that prompt assembly broke: the

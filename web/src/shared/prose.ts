@@ -1,4 +1,4 @@
-import { fieldOf, INLINE_FIELD } from "../../../src/contracts/card";
+import { fieldOf } from "../../../src/contracts/card";
 
 /**
  * Text an agent wrote, made readable where it is read.
@@ -40,7 +40,9 @@ export const nl = (s: string) => s.replace(/\\n/g, "\n");
  */
 /** Shape only: a Markdown heading, at any level, with an optional trailing
  *  colon. NFKC before the lookup, so a fullwidth colon typed on a CJK keyboard
- *  folds without this file keeping a list of the characters it has met.
+ *  folds without this file keeping a list of the characters it has met. The
+ *  one-line `goal: …` form ADR 016 replaced was read here too; it left with the
+ *  parser's own copy, since a card in that shape no longer validates at all.
  *  i18n-exempt: the fullwidth colon is the subject. */
 const HEADING = /^\s*#{1,6}\s*(.+?)\s*[:：]?\s*$/;
 
@@ -52,15 +54,11 @@ const isGoal = (match: RegExpExecArray | null): boolean => match?.[1] !== undefi
 export function cardGoal(body: string): string {
   const lines = body.split("\n");
   const heading = lines.findIndex((line) => isGoal(named(line, HEADING)));
-  if (heading >= 0)
-    return (
-      lines
-        .slice(heading + 1)
-        .find((line) => line.trim())
-        ?.trim() ?? ""
-    );
-  // The pre-Markdown form ADR 016 replaced: `goal: …` on one line, the same
-  // shape `draftLegacy` walks a whole stored card with.
-  const inline = lines.map((line) => named(line, INLINE_FIELD)).find(isGoal);
-  return (inline?.[2] ?? "").trim();
+  if (heading < 0) return "";
+  return (
+    lines
+      .slice(heading + 1)
+      .find((line) => line.trim())
+      ?.trim() ?? ""
+  );
 }

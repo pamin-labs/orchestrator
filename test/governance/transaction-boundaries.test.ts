@@ -194,16 +194,28 @@ test("filing a draft rolls back its note, state, and queue cancellation when its
   caller.role = "dispatcher";
   await ctx.sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "dispatcher" } });
   await failWrite(ctx, "event");
-  const card = `目标 : x
-不做 : y
-验收 : bun test 绿
-验收 : 无回归
-切片 : a [normal] — a.test.ts 绿
-切片 : b [trivial] — b 的回归用例绿
-切片 : c [hard] — 端到端场景通过
-风险 : none
-反对 : 无
-名字 : atomic-draft`;
+  const card = `## goal
+x
+
+## non-goals
+y
+
+## accept
+- bun test 绿
+- 无回归
+
+## slices
+| slice | difficulty | accept |
+| --- | --- | --- |
+| a | normal | a.test.ts 绿 |
+| b | trivial | b 的回归用例绿 |
+| c | hard | 端到端场景通过 |
+
+## risk
+- none
+
+## objection
+无`;
 
   expect(await failureOf(postDraft(ctx, request, caller, {}, { group_id: 1, card }))).toContain("event failure");
   expect((await ctx.db.select({ status: grp.status }).from(grp).where(eq(grp.id, 1)))[0]?.status).toBe("PLANNING");

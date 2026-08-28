@@ -13,6 +13,9 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+msgid "…and say which file is untested"
+msgstr "…그리고 어떤 파일이 테스트되지 않았는지 알려주기"
+
 msgid "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
 msgstr "'이 자격 증명이 아직 유효한가': GitHub의 /user, 공급자의 /v1/models. 응답이 느려도 실패가 아니라 '미검증'으로 보고되고 기다리는 것이 없으므로 짧게 잡는다."
 
@@ -488,6 +491,9 @@ msgstr "추가 중…"
 msgid "Address"
 msgstr "주소"
 
+msgid "After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests."
+msgstr "게이트를 통과한 뒤 슬라이스의 소스 변경을 되돌리고 테스트를 다시 실행합니다. 그래도 통과한다면 그 테스트는 아무것도 증명하지 못합니다. 코드와 테스트를 함께 바꾼 슬라이스에서 테스트 실행이 한 번 늘어납니다."
+
 msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
 msgstr "슬라이스가 연속으로 몇 번 실패하면 같은 길을 재시도하지 않고 사람에게 넘깁니다."
 
@@ -791,6 +797,9 @@ msgstr "멈춘 턴 점검 주기"
 
 msgid "Check runs"
 msgstr "체크 실행"
+
+msgid "Check that tests discriminate"
+msgstr "테스트에 판별력이 있는지 검사"
 
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "체크한 스킬이 여기에 복제되어 각 샌드박스에 읽기 전용으로 마운트됩니다. 여기를 바꾸면 샌드박스 서버의 allowed_host_paths도 맞춰야 하며, 안 맞으면 컨테이너가 뜨지 않습니다. 조용히 빈 마운트가 되는 것보다 요란하게 실패하는 편이 낫습니다."
@@ -1431,8 +1440,8 @@ msgstr "숨김:"
 msgid "hired {role}"
 msgstr "{role}을(를) 채용했습니다"
 
-msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
-msgstr "모든 샌드박스가 마운트하는 호스트 디렉터리. '컨테이너 안 경로: 호스트 경로' 형식입니다. 패키지 매니저 캐시 전용으로만 쓰세요 — 빌드가 쓰는 곳을 공유하면 두 그룹이 충돌합니다. 경로는 샌드박스 서버의 allowed_host_paths에도 있어야 합니다."
+msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. Put {project} in the host path to give each project its own, which is what a toolchain cache wants: /opt/mise holds executables every gate then runs, so one poisoned copy shared fleet-wide reaches every other project. The path must also be in the sandbox server's allowed_host_paths."
+msgstr "모든 샌드박스가 마운트하는 호스트 디렉터리를 '컨테이너 경로: 호스트 경로'로 지정합니다. 패키지 매니저 캐시 전용입니다 — 빌드가 쓰는 것을 공유하면 두 그룹이 충돌합니다. 호스트 경로에 {project}를 넣으면 프로젝트마다 따로 쓰며, 툴체인 캐시가 바로 그걸 원합니다: /opt/mise에는 각 게이트가 실행할 실행 파일이 들어 있어, 전체가 하나를 공유하면 오염이 다른 모든 프로젝트에 미칩니다. 이 경로는 샌드박스 서버의 allowed_host_paths에도 있어야 합니다."
 
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "GitHub에 물을 수 없을 때 체크아웃을 읽는 방법"
@@ -1682,6 +1691,10 @@ msgstr "한 턴의 델타에 밀어넣을 채널 메시지 상한."
 msgid "Max steps per turn"
 msgstr "턴당 최대 단계 수"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "{0}번의 턴에 대한 중앙값. 도구 비중은 이후 모든 라운드가 다시 읽는 부분이므로, 발생 지점에서 줄일 가치가 있는 것은 그쪽입니다"
+
 msgid "Memory"
 msgstr "메모리"
 
@@ -1801,6 +1814,9 @@ msgstr "이 저장소에서 게이트를 하나도 찾지 못했습니다. 최�
 
 msgid "No gates enabled; LLM review has no floor."
 msgstr "게이트가 하나도 켜져 있지 않습니다. LLM 리뷰에 바닥이 없습니다."
+
+msgid "no gates for this project"
+msgstr "이 프로젝트에 게이트가 없음"
 
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "grp 테이블에 {grp}이(가) 없어 /work가 비어 있습니다 — 이번 턴에 돌릴 코드가 없습니다"
@@ -1954,6 +1970,9 @@ msgstr "아직 시작하지 않았습니다. 앞의 슬라이스가 수락되기
 
 msgid "Notes"
 msgstr "노트"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "이 프로젝트에 대해 결정적으로 실행할 수 있는 것이 없어 어떤 슬라이스도 검증할 수 없습니다. 설정 → Gates에서 명령을 추가하세요. 또는 빈 목록을 저장하면 이 프로젝트에는 게이트가 없다는 뜻이 되고, 슬라이스는 게이트 없이 리뷰로 넘어갑니다."
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "GitHub 쪽은 아무것도 바뀌지 않습니다. 브랜치도 PR도 그대로이고 코드는 한 줄도 건드리지 않습니다. 지워지는 건 이 기기에 있는 작업 사본입니다."
@@ -2593,14 +2612,44 @@ msgstr "S{seq} {verdict}"
 msgid "S{seq} {verdict}: {note}"
 msgstr "S{seq} {verdict}: {note}"
 
+msgid "S{seq} breaks a QA procedure an earlier slice was accepted on"
+msgstr "S{seq}가 이전 슬라이스가 승인된 근거였던 QA 절차를 깨뜨립니다"
+
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq}이(가) {from}에서 {n}회 연속 실패 — 코드가 아니라 인수 기준의 문제로 보입니다"
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq}이(가) {from}을(를) {n}번 연속으로 통과하지 못했습니다"
 
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "S{seq}에 실행할 게이트가 없습니다 — 이 프로젝트는 '없음'으로 설정되어 있습니다"
+
+msgid "S{seq} introduces a dependency this repository has not had: {edges}"
+msgstr "S{seq}가 이 저장소에 없던 의존을 새로 만듭니다: {edges}"
+
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq}이(가) {from}에 의해 반려되었습니다 ({n}번째)"
+
+msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+msgstr "S{seq}가 {n, plural, other {함수 #개}}를 분기 {threshold}개 초과로 만들었습니다: {where}"
+
+msgid "S{seq}: {n, plural, one {# accepted QA procedure} other {# accepted QA procedures}} still pass"
+msgstr "S{seq}: 승인된 QA 절차 {n, plural, other {#건}}이 여전히 통과합니다"
+
+msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
+msgstr "S{seq}: 판별력 검사가 워크트리를 복원했는데도 git이 여전히 변경을 보고합니다. 확인하기 전에는 이 브랜치에서 아무것도 커밋하지 마세요."
+
+msgid "S{seq}: the new tests fail without the change, as they should"
+msgstr "S{seq}: 새 테스트는 이 변경이 없으면 실패합니다. 당연한 결과입니다"
+
+msgid "S{seq}: the new tests still pass with the change reverted"
+msgstr "S{seq}: 변경을 되돌려도 새 테스트가 그대로 통과합니다"
+
+msgid "S{seq}: the tests hold, but nothing covers {files}"
+msgstr "S{seq}: 테스트는 성립하지만 {files}를 덮는 것이 없습니다"
+
+msgid "S{seq}: worktree dirty after a check"
+msgstr "S{seq}: 검사 후 워크트리가 깨끗하지 않음"
 
 #. placeholder {0}: endonymOf(localeOf(i18n.locale))
 msgid "Same as the panel ({0})"
@@ -2934,6 +2983,9 @@ msgstr "호스트의 네트워크가 끊겼습니다. 턴 {n}건을 보류하고
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "인덱스를 갱신할 수 없습니다: 이 프로젝트의 컨테이너가 뜨지 않습니다({why})"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "인덱스 내비게이터({model})가 {n}회 연속 실패해 호출을 멈췄습니다. 검색은 어휘 인덱스로 대체됩니다. 설정에서 모델이나 런타임을 바꾸면 다시 시작합니다"
+
 msgid "the index pass threw: {reason}"
 msgstr "인덱스 작업이 예외로 죽었습니다: {reason}"
 
@@ -3062,6 +3114,9 @@ msgstr "이 프로세스는 우리가 띄운 게 아닙니다 — 당신이 쓰�
 msgid "This project hasn't run any activity yet."
 msgstr "이 프로젝트에서는 아직 아무 활동도 없었습니다."
 
+msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
+msgstr "이 프로젝트의 devcontainer는 {image}에서 개발합니다 — 설정 → Sandbox에서 그룹을 그쪽으로 향하게 할 수 있습니다"
+
 msgid "this question became requirement {name} (grp {grp})"
 msgstr "이 질문은 요구사항 {name} (grp {grp}) 이 되었습니다"
 
@@ -3145,6 +3200,9 @@ msgstr "턴 종료({steps, plural, other {#단계}}, {total} 토큰)"
 
 msgid "turn ran past {min} min and was killed"
 msgstr "턴이 {min}분을 넘겨 중단했습니다"
+
+msgid "Turn shape"
+msgstr "턴의 형태"
 
 msgid "Turn timeout"
 msgstr "턴 제한 시간"
@@ -3301,6 +3359,9 @@ msgstr "상한에 닿으면 그룹은 멈추고, 올릴지 말지 당신이 정�
 
 msgid "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint."
 msgstr "같은 것이 N번 나왔다면, N+1번째 불평이 아니라 프로젝트 규칙이 되어야 합니다."
+
+msgid "When the slice's tests do depend on its code, ask the same question of each source file on its own: one that can be reverted alone without failing anything has no test behind it. Costs one extra test run per file, on the path where the slice is fine."
+msgstr "슬라이스의 테스트가 실제로 그 코드에 의존할 때, 각 소스 파일에 같은 질문을 따로 던집니다. 혼자 되돌려도 아무것도 실패하지 않는 파일은 뒤에 테스트가 없습니다. 파일마다 테스트 실행이 한 번씩 늘고, 그것도 슬라이스가 멀쩡한 쪽 경로에서 발생합니다."
 
 msgid "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP."
 msgstr "opensandbox-server가 있는 곳입니다. dns+nft 모드여야 하며, 아니면 자격 증명 주입이 조용히 실패합니다. 이 기기일 필요는 없습니다 — Tailscale 피어든 클라우드 머신이든, SDK는 HTTP로만 말합니다."

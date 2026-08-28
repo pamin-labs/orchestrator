@@ -2,7 +2,7 @@ import { msg, plural } from "@lingui/core/macro";
 import { transaction } from "../../platform/persistence/database.ts";
 import { and, asc, count, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
-import { addNote, projectOfGrp } from "../util/rows.ts";
+import { addNote, projectConfig, projectOfGrp } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import {
   agent,
@@ -16,14 +16,23 @@ import type { Config } from "../../platform/config/load.ts";
 import { renderSaid } from "../../platform/text/lang.ts";
 import { valueOr } from "../../contracts/json.ts";
 import type { SliceState } from "../../contracts/states.ts";
-import { runGates, recordGate, gateState } from "../gate.ts";
+import { gatesFor, runGates, recordGate, gateState } from "../gate.ts";
+import { discriminate, stillClean } from "./discriminate.ts";
+import { newEdges } from "./boundaries.ts";
+import { AGENT_COMPLEXITY, newlyComplex, parseLizard } from "../knowledge/complexity.ts";
+import { loadEdges } from "../knowledge/edges.ts";
+import { loadMap } from "../knowledge/repomap.ts";
+import { loadResource, runResource } from "../lease.ts";
+import { replayQa } from "./qa-suite.ts";
 import { extractClaimedFiles, reconcile, TaskClaimSchema } from "./reconcile.ts";
-import { changedSince, filesAt } from "../git/gitops.ts";
-import { resourceExec, WORK } from "../sandbox/sandbox.ts";
+import { changedSince, checkpoint, filesAt } from "../git/gitops.ts";
+import { execIn, resourceExec, WORK } from "../sandbox/sandbox.ts";
+import { shq } from "../../platform/process/shell.ts";
 import { pushBranch, sandboxGit } from "../git/checkout.ts";
+import { gitTrailers } from "../git/ghlogin.ts";
 import { joinQueue, position } from "./mergequeue.ts";
 import { hold } from "./intercept.ts";
-import { raise } from "./escalate.ts";
+import { escalationKey, raise } from "./escalate.ts";
 import { z } from "zod";
 import { outputLanguage } from "../../contracts/config.ts";
 
@@ -90,7 +99,7 @@ async function loadSlice(db: DB, sliceId: number): Promise<SliceRow | null> {
 export async function runDeterministicReview(
   deps: ReviewDeps,
   sliceId: number,
-): Promise<{ pass: boolean; feedback: string }> {
+): Promise<{ pass: boolean; feedback: string; halt?: boolean }> {
   const { ctx, cfg } = deps;
   const slice = await loadSlice(ctx.db, sliceId);
   if (!slice) return { pass: false, feedback: "slice disappeared" };
@@ -153,6 +162,43 @@ export async function runDeterministicReview(
     };
   }
 
+  // --- no gates: a question, not a verdict
+  //
+  // This used to fail the slice, and then the next one, and then every one after
+  // it, each burning a retry against a message the writer cannot act on. Nothing
+  // an Engineer does adds a gate.
+  //
+  // Absent and empty are different answers. Absent is "nobody has looked": the
+  // boss is asked once per project and the group waits, rather than grinding.
+  // Empty is the boss having looked and said this project has no deterministic
+  // floor — recorded as a layer that did not run, so the pull request says so.
+  const configured = (await projectConfig(ctx.db, projectId)).gates;
+  if (configured === undefined) {
+    await raise(ctx.db, {
+      grpId: slice.grp_id,
+      lang: outputLanguage(ctx.config),
+      question: msg`Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one.`,
+      brief: msg`no gates for this project`,
+      kind: "env",
+      chain: "boss",
+      key: escalationKey.noGates(projectId!),
+      dedupe: { scope: "global" },
+    });
+    await hold(ctx.db, slice.grp_id, { reason: "escalation", from: "RUNNING" });
+    return { pass: false, halt: true, feedback: "no gates are configured for this project" };
+  }
+  if (configured.length === 0) {
+    await recordGate(ctx.db, sliceId, "gate", "none");
+    await ctx.bus.emit({
+      grpId: slice.grp_id,
+      author: "orchestrator",
+      kind: "gate_result",
+      say: msg`S${{ seq: slice.seq }} has no gate to run — this project is set to none`,
+      meta: { slice_id: sliceId },
+    });
+    return { pass: true, feedback: "no gate is configured for this project" };
+  }
+
   // --- gate: exit codes, no opinions
   const out = await runGates({
     db: ctx.db,
@@ -173,6 +219,14 @@ export async function runDeterministicReview(
   });
   if (!out.pass) return { pass: false, feedback: out.feedback };
 
+  // The gate said the suite is green. This asks the second question — would it
+  // have been green without the change? — and never changes the verdict: a
+  // refactor that legitimately touches tests would go red on every slice, and a
+  // gate with false reds is a gate somebody switches off.
+  await recordDiscrimination(deps, slice, projectId!, changed);
+  await recordStructure(deps, slice, projectId!, changed);
+  await replayQa(ctx, cfg, slice.grp_id, slice.id, slice.seq);
+
   if (rec.unclaimed.length) {
     // Not a defect, but the reviewer should know what else moved.
     await ctx.bus.emit({
@@ -184,6 +238,184 @@ export async function runDeterministicReview(
     });
   }
   return { pass: true, feedback: out.feedback };
+}
+
+/**
+ * Ask whether this slice's tests would have failed without its source change.
+ *
+ * Evidence, not a verdict. `delta.ts` puts the answer on QA's card as a question
+ * it has to answer, and `gates_json` carries it to the panel and the pull request.
+ */
+async function recordDiscrimination(
+  deps: ReviewDeps,
+  slice: SliceRow,
+  projectId: number,
+  changed: string[],
+): Promise<void> {
+  const { ctx, cfg } = deps;
+  if (!cfg.discriminate || !slice.base_sha) return;
+  // The project's own `test` gate, by the name every rule in `detect.ts` gives it.
+  // A project whose verification is a build or a lint has nothing to ask here.
+  const names = await gatesFor(ctx.db, projectId);
+  const def = names.includes("test") ? await loadResource(ctx.db, "test") : null;
+  if (!def) return;
+
+  const git = sandboxGit(ctx, { grp: slice.grp_id });
+  const exec = resourceExec(ctx, { grp: slice.grp_id });
+
+  // Commit the work under review, because nothing has yet. A turn leaves its
+  // output in the worktree and the *next* turn's `takeCheckpoint` is what commits
+  // it — so at gate time the branch does not contain the change being gated.
+  // Measured, and it is why this layer shipped inert: with the worktree as a turn
+  // leaves it, `discriminate` refused to touch it and recorded nothing at all.
+  //
+  // The same helper the executor uses, so the commit carries the same trailers
+  // and sign-off, and `squashWip` collapses it like any other. Earlier, not
+  // different: this commit was going to exist at the next turn regardless.
+  await checkpoint(git, WORK, `S${slice.seq}: under review`, await gitTrailers(ctx.db));
+  const found = await discriminate({
+    git,
+    worktree: WORK,
+    baseSha: slice.base_sha,
+    changed,
+    perFile: cfg.discriminatePerFile,
+    runTest: async () => {
+      const r = await runResource(def, {}, { exec, cwd: WORK, timeoutMs: cfg.leaseTimeoutMs });
+      // A command that could not run at all is not the suite passing.
+      return "digest" in r ? r.exitCode : 1;
+    },
+  });
+
+  // Whatever happened above, the worktree is what an agent commits to next.
+  if (!(await stillClean(git, WORK))) {
+    await raise(ctx.db, {
+      grpId: slice.grp_id,
+      lang: outputLanguage(ctx.config),
+      question: msg`S${{ seq: slice.seq }}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it.`,
+      brief: msg`S${{ seq: slice.seq }}: worktree dirty after a check`,
+      kind: "env",
+      chain: "boss",
+    });
+    return;
+  }
+  if (!found.ran) return;
+
+  const untested = found.untested ?? [];
+  await recordGate(
+    ctx.db,
+    slice.id,
+    "discriminate",
+    found.discriminates ? (untested.length ? "partial" : "pass") : "blind",
+  );
+  await ctx.bus.emit({
+    grpId: slice.grp_id,
+    author: "orchestrator",
+    kind: "gate_result",
+    say: !found.discriminates
+      ? msg`S${{ seq: slice.seq }}: the new tests still pass with the change reverted`
+      : untested.length
+        ? msg`S${{ seq: slice.seq }}: the tests hold, but nothing covers ${{ files: untested.join(", ") }}`
+        : msg`S${{ seq: slice.seq }}: the new tests fail without the change, as they should`,
+    meta: { slice_id: slice.id, discriminates: found.discriminates, ...(untested.length ? { untested } : {}) },
+  });
+}
+
+/**
+ * Say which dependencies this slice introduced that the repository never had.
+ *
+ * Evidence, like the discrimination check beside it: nobody wrote down what this
+ * project's architecture is, so the answerable question is whether an edge is
+ * new, and a new edge is often simply correct. What it must not do is pass
+ * silently — an agent wiring `web/src` into `src/mech` is exactly the change a
+ * reviewer wants pointed at.
+ */
+/** Capped, and the cap is announced rather than silent: a slice touching more
+ *  than forty files is not the case this reads, and reading all of them is a
+ *  container round trip each. */
+const EDGE_FILES = 40;
+
+/** Where the base revision is staged for a tool that reads files, not strings. */
+const BASE_DIR = "/tmp/orch-base";
+
+async function recordStructure(deps: ReviewDeps, slice: SliceRow, projectId: number, changed: string[]): Promise<void> {
+  const { ctx } = deps;
+  const git = sandboxGit(ctx, { grp: slice.grp_id });
+
+  // `recordDiscrimination` has just put the work on the branch, so `git show`
+  // reaches it without a second copy on disk. The complexity half asks git for
+  // the other end itself, inside the container, because `lizard` reads files.
+  const files: { rel: string; src: string }[] = [];
+  for (const rel of changed.slice(0, EDGE_FILES)) {
+    const head = await git(["show", `HEAD:${rel}`], WORK);
+    if (head.code === 0) files.push({ rel, src: head.out });
+  }
+  if (!files.length) return;
+
+  await sayNewEdges(deps, slice, projectId, files);
+  await sayNewComplexity(deps, slice, changed);
+}
+
+/** A dependency between two areas that this repository has never had. */
+async function sayNewEdges(
+  deps: ReviewDeps,
+  slice: SliceRow,
+  projectId: number,
+  files: { rel: string; src: string }[],
+): Promise<void> {
+  const { ctx } = deps;
+  const baseline = await loadEdges(ctx.db, projectId);
+  if (!baseline.edges.length) return; // No map has been built yet; nothing to compare against.
+  const dirs = new Set((await loadMap(ctx.db, projectId)).map((n) => n.dir));
+  const found = await newEdges({ baseline, dirs, files });
+  if (!found.edges.length) return;
+  await recordGate(ctx.db, slice.id, "boundaries", "new");
+  await ctx.bus.emit({
+    grpId: slice.grp_id,
+    author: "orchestrator",
+    kind: "gate_result",
+    say: msg`S${{ seq: slice.seq }} introduces a dependency this repository has not had: ${{ edges: found.edges.join(", ") }}`,
+    meta: { slice_id: slice.id, edges: found.edges },
+  });
+}
+
+/**
+ * A function this slice put over the threshold that was not over it before.
+ *
+ * The measure Uncle Bob gates on and the one nothing here applied to a driven
+ * project. A ratchet rather than a threshold, because a repository this system
+ * did not write is full of functions over any useful number, and refusing every
+ * slice until somebody fixes them is a system nobody can adopt.
+ */
+async function sayNewComplexity(deps: ReviewDeps, slice: SliceRow, changed: string[]): Promise<void> {
+  const { ctx } = deps;
+  if (!slice.base_sha) return;
+  const paths = changed.slice(0, EDGE_FILES).map(shq).join(" ");
+  const run = (cmd: string) => execIn(ctx, { grp: slice.grp_id }, cmd, { cwd: WORK });
+
+  // The base revision beside the worktree, written by git rather than carried
+  // through this process. One command, not one per file: each is a container
+  // round trip, and forty of them is the whole budget of a review.
+  await run(
+    `rm -rf ${BASE_DIR} && for p in ${paths}; do mkdir -p ${BASE_DIR}/"$(dirname "$p")" && ` +
+      `git show ${shq(slice.base_sha)}:"$p" > ${BASE_DIR}/"$p" 2>/dev/null || true; done`,
+  );
+  // `|| true`: lizard exits non-zero when a function is over *its* own default
+  // threshold, which is not the question being asked here.
+  const after = await run(`lizard --csv ${paths} 2>/dev/null || true`);
+  const before = await run(`cd ${BASE_DIR} && lizard --csv ${paths} 2>/dev/null || true`);
+
+  const worse = newlyComplex(parseLizard(before.out), parseLizard(after.out)).map(
+    (fn) => `${fn.name} (${fn.score}, line ${fn.line})`,
+  );
+  if (!worse.length) return;
+  await recordGate(ctx.db, slice.id, "complexity", "new");
+  await ctx.bus.emit({
+    grpId: slice.grp_id,
+    author: "orchestrator",
+    kind: "gate_result",
+    say: msg`S${{ seq: slice.seq }} takes ${plural({ n: worse.length }, { one: "# function", other: "# functions" })} past ${{ threshold: AGENT_COMPLEXITY }} ways through: ${{ where: worse.join("; ") }}`,
+    meta: { slice_id: slice.id, complexity: worse },
+  });
 }
 
 /**

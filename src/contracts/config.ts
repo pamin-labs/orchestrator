@@ -94,6 +94,16 @@ const SandboxSpecSchema = z.object({
    * concurrent installs to fail with EEXIST; content-addressed package caches are
    * built for concurrent readers. The sandbox server must allow every host path.
    */
+  /**
+   * A host path may hold `{project}`, which becomes that project's own directory.
+   *
+   * The difference matters most for `/opt/mise`, where the shared thing is not an
+   * archive but the **executables every gate then runs**: fleet-wide, one poisoned
+   * toolchain is code execution in every other project's container. Per project it
+   * is the blast radius those groups already share, since they share a repository
+   * and a branch. Measured separately: four `mise install` runs racing on one
+   * empty directory all exit 0, so concurrency was never what stood in the way.
+   */
   cacheDirs: z.record(z.string(), z.string()),
 });
 
@@ -107,6 +117,8 @@ export const StoredProjectConfigSchema = z
   .object({
     detected: z.boolean().optional(),
     gates: z.array(z.string()).optional(),
+    /** What puts this repository's own compiler in the container, before install. */
+    toolchain: z.string().nullable().optional(),
     install: z.string().nullable().optional(),
     shared: z.array(z.string()).optional(),
     sandbox: SandboxOverrideSchema.optional(),
@@ -369,6 +381,25 @@ export const ConfigSchema = z.object({
   watchdogIntervalMs: count,
   // Zero is meaningful here: it means "do not retry", which is a choice.
   gateRetries: z.number().int().min(0),
+  /**
+   * Whether a passing gate is asked the second question: do these tests fail
+   * without the change they were written for?
+   *
+   * On, because the answer is the difference between a suite and a suite that
+   * proves something. Off is for a project whose tests cost more than the answer
+   * is worth — it is one extra run of the `test` gate on a qualifying slice.
+   */
+  discriminate: z.boolean(),
+  /**
+   * Whether the same question is then asked of each source file on its own.
+   *
+   * Off, because it costs one test run per file on the path where the slice is
+   * *fine*: the whole-slice check having failed means some test depends on the
+   * change, and this asks which files that is true of. Reverting one file at a
+   * time on the other path answers nothing — a subset of a revert that already
+   * left the suite green leaves it green too.
+   */
+  discriminatePerFile: z.boolean(),
   /** Wall clock for one leased command. A big compile is hours, not minutes. */
   leaseTimeoutMs: count,
   /**

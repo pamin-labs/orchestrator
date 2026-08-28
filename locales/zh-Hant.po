@@ -13,6 +13,9 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+msgid "…and say which file is untested"
+msgstr "……並指出哪個檔案沒被測到"
+
 msgid "'Do you still accept this credential': GitHub's /user, a provider's /v1/models. Short because a slow answer reports 'not verified' rather than failing, and nothing waits on it."
 msgstr "「你還認這個憑證嗎」：GitHub 的 /user、供應商的 /v1/models。比上面的 API 呼叫短，因為答案慢只會報「未驗證」而不是失敗，沒有東西在等它。"
 
@@ -488,6 +491,9 @@ msgstr "新增中…"
 msgid "Address"
 msgstr "地址"
 
+msgid "After a green gate, put the slice's source back and run the tests again: still green means they prove nothing. Costs one extra test run on a slice that changed both code and tests."
+msgstr "門禁通過之後，把這個切片的原始碼改動還原再跑一次測試：還是綠的，就說明它什麼都沒證明。代價是在同時改了程式碼和測試的切片上多跑一次測試。"
+
 msgid "After a slice fails several times straight, escalate to a person instead of retrying the same path."
 msgstr "同一片連著幾次沒過就升級給人，而不是一直重試同一條路。"
 
@@ -791,6 +797,9 @@ msgstr "查有沒有卡住的輪次"
 
 msgid "Check runs"
 msgstr "檢查任務數"
+
+msgid "Check that tests discriminate"
+msgstr "檢查測試是否有區分力"
 
 msgid "Checked skills copy here, read-only mounted to each sandbox. Changes here need sync to sandbox server's allowed_host_paths or container launch fails—loud failure beats silent empty mount."
 msgstr "勾中的技能複製到這裡，每個沙箱只讀掛上去。改這裡要同步改沙箱服務端的 allowed_host_paths，否則開容器直接失敗——而那是響的失敗，比一個靜默的空目錄好得多。"
@@ -1431,8 +1440,8 @@ msgstr "不看："
 msgid "hired {role}"
 msgstr "僱了 {role}"
 
-msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
-msgstr "每個沙箱都會掛載的宿主目錄，寫成「容器裡的路徑: 宿主路徑」。只適合包管理器快取——共享任何建置會寫入的目錄都會讓兩個組撞車。這個路徑還得在沙箱伺服器的 allowed_host_paths 裡。"
+msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. Put {project} in the host path to give each project its own, which is what a toolchain cache wants: /opt/mise holds executables every gate then runs, so one poisoned copy shared fleet-wide reaches every other project. The path must also be in the sandbox server's allowed_host_paths."
+msgstr "每個沙箱都會掛載的宿主目錄，寫成「容器內路徑: 宿主路徑」。只用於包管理器快取——共享建置會寫入的任何東西都會讓兩個組撞車。在宿主路徑裡寫 {project} 就能讓每個專案各用各的，工具鏈快取正需要這個：/opt/mise 裡放的是每個 gate 接著要執行的執行檔，全域共享一份被汙染就會波及其他所有專案。這個路徑還必須在沙箱服務端的 allowed_host_paths 裡。"
 
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "問不到 GitHub 時，一個 checkout 按什麼讀"
@@ -1682,6 +1691,10 @@ msgstr "一輪最多把多少條頻道訊息塞進 delta。"
 msgid "Max steps per turn"
 msgstr "單輪最多幾步"
 
+#. placeholder {0}: shape.counted
+msgid "Median across {0} turns. The tool share is what every later round re-reads, so it is the part worth making smaller at the source"
+msgstr "{0} 次 turn 的中位數。工具佔比是後面每一輪都要重讀的那部分，所以它才是值得在源頭壓小的"
+
 msgid "Memory"
 msgstr "記憶體"
 
@@ -1801,6 +1814,9 @@ msgstr "這個儲存庫裡沒檢測到任何閘門。在專案至少有一個之
 
 msgid "No gates enabled; LLM review has no floor."
 msgstr "一道都沒開，LLM 審閱底下就沒有地板。"
+
+msgid "no gates for this project"
+msgstr "這個專案沒有 gate"
 
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
 msgstr "grp 表裡沒有 {grp} 這個需求，所以 /work 還是空的 —— 這一回合沒有程式碼可跑"
@@ -1954,6 +1970,9 @@ msgstr "還沒開工，等前面的切片查收。"
 
 msgid "Notes"
 msgstr "記錄"
+
+msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
+msgstr "這個專案沒有任何可以確定性執行的檢查，所以沒有切片能被驗證。在「設定 → Gates」裡補上命令——或者儲存一個空列表，表示這個專案就是沒有 gate，切片將不帶 gate 進入審查。"
 
 msgid "Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work."
 msgstr "GitHub 上什麼都不動：分支還在，PR 還在，程式碼一行不少。移除的只是這臺機器上的這份工作。"
@@ -2593,14 +2612,44 @@ msgstr "S{seq} {verdict}"
 msgid "S{seq} {verdict}: {note}"
 msgstr "S{seq} {verdict}：{note}"
 
+msgid "S{seq} breaks a QA procedure an earlier slice was accepted on"
+msgstr "S{seq} 打破了一條更早的切片據以驗收的 QA 流程"
+
 msgid "S{seq} failed {from} {n}x — probably the acceptance criteria, not the code"
 msgstr "S{seq} 連續 {n} 次沒過 {from} —— 大概是驗收標準的問題，不是程式碼"
 
 msgid "S{seq} failed {from} {n}x in a row"
 msgstr "S{seq} 連著 {n} 次沒過 {from}"
 
+msgid "S{seq} has no gate to run — this project is set to none"
+msgstr "S{seq} 沒有 gate 可跑——這個專案設成了「無」"
+
+msgid "S{seq} introduces a dependency this repository has not had: {edges}"
+msgstr "S{seq} 引入了這個儲存庫從未有過的依賴：{edges}"
+
 msgid "S{seq} sent back by {from} (attempt {n})"
 msgstr "S{seq} 被 {from} 打回（第 {n} 次）"
+
+msgid "S{seq} takes {n, plural, one {# function} other {# functions}} past {threshold} ways through: {where}"
+msgstr "S{seq} 讓 {n, plural, other {# 個函式}} 的分支數超過了 {threshold}：{where}"
+
+msgid "S{seq}: {n, plural, one {# accepted QA procedure} other {# accepted QA procedures}} still pass"
+msgstr "S{seq}：{n, plural, other {# 條}}已驗收的 QA 流程仍然通過"
+
+msgid "S{seq}: the discrimination check restored the worktree and git still reports changes. Nothing should be committed from this branch until you have looked at it."
+msgstr "S{seq}：區分力檢查還原工作區之後，git 仍然報告有改動。在你看過之前，不要從這個分支提交任何東西。"
+
+msgid "S{seq}: the new tests fail without the change, as they should"
+msgstr "S{seq}：新測試在沒有這次改動時會失敗，正該如此"
+
+msgid "S{seq}: the new tests still pass with the change reverted"
+msgstr "S{seq}：把改動還原之後，新測試仍然通過"
+
+msgid "S{seq}: the tests hold, but nothing covers {files}"
+msgstr "S{seq}：測試立得住，但沒有任何東西覆蓋 {files}"
+
+msgid "S{seq}: worktree dirty after a check"
+msgstr "S{seq}：一次檢查之後工作區不乾淨"
 
 #. placeholder {0}: endonymOf(localeOf(i18n.locale))
 msgid "Same as the panel ({0})"
@@ -2934,6 +2983,9 @@ msgstr "宿主斷網了，{n} 個 turn 擱置等聯網 —— 需求還在跑的
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "索引刷不了：這個專案的容器起不來（{why}）"
 
+msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
+msgstr "索引導航（{model}）連續失敗 {n} 次，已暫停呼叫——檢索回落到詞法索引；在設定裡換模型或 runtime 就會重新開始"
+
 msgid "the index pass threw: {reason}"
 msgstr "索引重新整理出錯：{reason}"
 
@@ -3062,6 +3114,9 @@ msgstr "這個行程不是我們起的，可能是你自己在用的那個。要
 msgid "This project hasn't run any activity yet."
 msgstr "這個專案還沒跑過任何活。"
 
+msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
+msgstr "這個專案的 devcontainer 在 {image} 裡開發——「設定 → Sandbox」可以把這個組指過去"
+
 msgid "this question became requirement {name} (grp {grp})"
 msgstr "這個問題開成了需求 {name}（grp {grp}）"
 
@@ -3145,6 +3200,9 @@ msgstr "回合結束（{steps, plural, other {# 步}}，{total} tokens）"
 
 msgid "turn ran past {min} min and was killed"
 msgstr "一個 turn 超過 {min} 分鐘，已掐斷"
+
+msgid "Turn shape"
+msgstr "一次 turn 的形狀"
 
 msgid "Turn timeout"
 msgstr "單輪牆鐘上限"
@@ -3301,6 +3359,9 @@ msgstr "用滿就擱置，等你決定加不加。"
 
 msgid "When the same thing surfaces N times, it should be a project rule, not the N+1-th complaint."
 msgstr "同一件事說到第 N 次，它就該是專案的一條規則，而不是第 N+1 次抱怨。"
+
+msgid "When the slice's tests do depend on its code, ask the same question of each source file on its own: one that can be reverted alone without failing anything has no test behind it. Costs one extra test run per file, on the path where the slice is fine."
+msgstr "當切片的測試確實依賴它的程式碼時，再對每個原始檔單獨問同一個問題：能被單獨還原而什麼都不失敗的檔案，背後沒有任何測試。代價是每個檔案多跑一次測試，而且發生在切片本來沒問題的那條路上。"
 
 msgid "Where opensandbox-server lives. Must be dns+nft mode or credential injection silently fails. Doesn't have to be this machine—Tailscale peer or cloud machine, SDK only talks HTTP."
 msgstr "opensandbox-server 在哪。必須是 dns+nft 模式，否則憑證注入靜默失效。它不一定在這臺機器上——Tailscale 上的一臺或者一臺雲端機器都行，SDK 只跟它說 HTTP。"

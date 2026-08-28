@@ -1,5 +1,14 @@
 import { expect, test } from "bun:test";
-import { detectGates, detectInstall, detectShared, type Root } from "../../src/mech/util/detect.ts";
+import {
+  declaredCommands,
+  detectDevcontainer,
+  detectGates,
+  detectInstall,
+  detectShared,
+  detectToolchain,
+  type Root,
+  WORKFLOWS,
+} from "../../src/mech/util/detect.ts";
 
 /**
  * A repository root, as detection sees one.
@@ -114,4 +123,278 @@ test("every stack says how to install, or says it needs nothing", () => {
 
   // An unknown stack must not guess.
   expect(detectInstall(repo({ "README.md": "hi" }))).toBeNull();
+});
+
+/**
+ * A repository with a workflow, as detection sees one: the root listing, plus one
+ * directory it may list and read from.
+ */
+const withCi = (files: Record<string, string>, workflows: Record<string, string>): Root => ({
+  names: Object.keys(files),
+  read: (n) => files[n] ?? workflows[n.replace(`${WORKFLOWS}/`, "")] ?? null,
+  list: (dir) => (dir === WORKFLOWS ? Object.keys(workflows) : []),
+});
+
+/**
+ * The stacks no rule knows are the ones that used to get nothing at all — and
+ * "no gates" is not "no opinion", it fails every slice (`gate.ts`). A workflow is
+ * the one place any language writes down what a clean machine runs.
+ */
+test("a stack no rule knows takes its gates from what CI runs", () => {
+  const g = detectGates(
+    withCi(
+      { "mix.exs": "defmodule X", "README.md": "" },
+      {
+        "ci.yml": `name: ci
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: mix deps.get
+      - name: 跑测试
+        run: mix test
+      - run: mix format --check-formatted`,
+      },
+    ),
+  );
+  expect(g.map((x) => x.name)).toEqual(["lint", "test"]);
+  expect(g.find((x) => x.name === "test")!.template).toBe("mix test");
+  // Classified by the command, not the step's `name:` — that is prose, in
+  // whatever language the author wrote it in.
+  expect(g.find((x) => x.name === "lint")!.template).toBe("mix format --check-formatted");
+});
+
+/**
+ * `lease.ts` tokenises a template on whitespace and never runs a shell, so `a &&
+ * b` would hand `&&` to `a` as an argument: a gate that looks like it ran and did
+ * half of nothing. A `${{ … }}` only the CI runner can expand is the same class.
+ */
+test("a CI step that could not be a template is not taken as one", () => {
+  const g = detectGates(
+    withCi(
+      { "dune-project": "(lang dune 3.0)" },
+      {
+        "ci.yml": `jobs:
+  t:
+    steps:
+      - run: make deps && make test
+      - run: dune test --profile \${{ matrix.profile }}
+      - run: dune runtest`,
+      },
+    ),
+  );
+  expect(g.map((x) => x.template)).toEqual(["dune runtest"]);
+});
+
+/**
+ * A recognised stack keeps its convention. A CI step is written for a machine
+ * that has the services CI starts — this repository's own `bun run test` needs a
+ * PostgreSQL container — so preferring it would trade "no gate" for "a gate that
+ * cannot pass", which is worse: the first is visible, the second reads as the
+ * agent's fault.
+ */
+test("a recognised stack is not overridden by its workflow", () => {
+  const g = detectGates(
+    withCi(
+      { "package.json": JSON.stringify({ scripts: { test: "bun test" } }), "bun.lock": "" },
+      { "ci.yml": `jobs:\n  t:\n    steps:\n      - run: bun run test:ci` },
+    ),
+  );
+  expect(g.find((x) => x.name === "test")!.template).toBe("bun test");
+});
+
+/** No workflows, an unparseable one, and a caller that cannot list: all silent. */
+test("nothing to read from CI leaves the project as it was", () => {
+  expect(detectGates(withCi({ "mix.exs": "x" }, {}))).toEqual([]);
+  expect(detectGates(withCi({ "mix.exs": "x" }, { "ci.yml": "jobs: [oops\n  - :" }))).toEqual([]);
+  expect(detectGates(repo({ "mix.exs": "x" }))).toEqual([]);
+});
+
+/**
+ * The two things a name-shaped guess gets wrong, both measured against this
+ * repository's own workflows before they were fixed.
+ *
+ * `check` in the test vocabulary took `i18n:check` as the test gate. And "first
+ * match in file order" took `format:check` as lint, with `bun run lint` further
+ * down the same file — so a command that *ends* in the gate's own name wins over
+ * one that merely mentions it.
+ */
+test("the command named for the gate beats the one that only mentions it", () => {
+  const g = detectGates(
+    withCi(
+      { "shard.yml": "name: x" },
+      {
+        "ci.yml": `jobs:
+  t:
+    steps:
+      - run: bun run format:check
+      - run: bun run i18n:check
+      - run: bun run lint
+      - run: bun run test`,
+      },
+    ),
+  );
+  expect(Object.fromEntries(g.map((x) => [x.name, x.template]))).toEqual({
+    lint: "bun run lint",
+    test: "bun run test",
+  });
+});
+
+/**
+ * The image holds bun, node and git — what *this* project needs. Every other
+ * stack arrived to find no compiler, and a longer image is not the fix: five
+ * toolchains preinstalled is a slow pull for the four nobody uses.
+ *
+ * Nine ways to write down a version and one thing that reads all of them, so this
+ * is a list of filenames rather than a second table of languages.
+ */
+test("a repository that pins its own toolchain gets one command to install it", () => {
+  for (const f of [
+    "mise.toml",
+    ".mise.toml",
+    ".tool-versions",
+    ".nvmrc",
+    ".node-version",
+    ".python-version",
+    ".go-version",
+    ".ruby-version",
+    ".java-version",
+    "go.mod",
+  ])
+    expect({ pinned: f, cmd: detectToolchain(repo({ [f]: "" })) }).toEqual({ pinned: f, cmd: "mise install --yes" });
+});
+
+test("a repository that pins nothing is left with the image's own toolchain", () => {
+  expect(detectToolchain(repo({ "package.json": "{}", "Cargo.toml": "" }))).toBeNull();
+});
+
+/**
+ * `devcontainer.json` is the one file that answers all three questions at once —
+ * which image, which toolchains, what to run after a clone — in a spec somebody
+ * else maintains and a growing number of repositories already ship.
+ */
+test("a devcontainer's features are toolchains, and mise takes them by name", () => {
+  const dir = repo({
+    ".devcontainer": "",
+    ".devcontainer/devcontainer.json": `{
+  // the image this project develops in
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": { "version": "1.22" },
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/someone-else/features/thing:1": {}
+  },
+  "postCreateCommand": "go mod download",
+}`,
+  });
+  // The tool version comes from the feature's options, never from the tag: the
+  // tag is the feature's own version, so `features/go:1` with `{version: 1.22}`
+  // is Go 1.22 installed by version 1 of the feature.
+  expect(detectToolchain(dir)).toBe("mise install --yes go@1.22 node@latest");
+  // Not toolchains, and not ours: docker-in-docker is not a language, and a
+  // third-party feature does arbitrary things.
+  expect(detectInstall(dir)).toBe("go mod download");
+  expect(detectDevcontainer(dir)?.image).toBe("mcr.microsoft.com/devcontainers/base:ubuntu");
+});
+
+test("a lockfile outranks a devcontainer's setup command", () => {
+  const dir = repo({
+    "package.json": JSON.stringify({ scripts: { test: "bun test" } }),
+    "bun.lock": "",
+    ".devcontainer": "",
+    ".devcontainer/devcontainer.json": '{"postCreateCommand": "npm i && ./scripts/dev-setup.sh"}',
+  });
+  // `postCreateCommand` is often a whole developer setup; the lockfile names the
+  // one command a build needs.
+  expect(detectInstall(dir)).toBe("bun install --frozen-lockfile");
+});
+
+test("an array command is argv, and an object of them is not one step", () => {
+  const argv = repo({ ".devcontainer.json": '{"postCreateCommand": ["uv", "sync", "--frozen"]}' });
+  expect(detectInstall(argv)).toBe("uv sync --frozen");
+  const parallel = repo({ ".devcontainer.json": '{"postCreateCommand": {"deps": "npm i", "db": "make db"}}' });
+  expect(detectInstall(parallel)).toBeNull();
+});
+
+/**
+ * A project that wrote `test` down in its own task runner has said which command
+ * that is at least as clearly as a lockfile says which package manager — so a
+ * declared task ranks with the conventions, not below them with the CI fallback.
+ */
+test("a declared test task is the gate, and only when it is declared", () => {
+  expect(detectGates(repo({ "Taskfile.yml": "version: '3'\ntasks:\n  test:\n    cmds: [go test ./...]" }))).toEqual([
+    { name: "test", template: "task test", errorRegex: "(error|FAIL|failed)" },
+  ]);
+  expect(detectGates(repo({ "mise.toml": '[tasks.test]\nrun = "cargo nextest run"' }))).toEqual([
+    { name: "test", template: "mise run test", errorRegex: "(error|FAIL|failed)" },
+  ]);
+  // The file existing says nothing about what is in it: a Taskfile whose tasks
+  // are `build` and `deploy` does not answer `task test`.
+  expect(detectGates(repo({ "Taskfile.yml": "tasks:\n  build:\n    cmds: [make]" }))).toEqual([]);
+  expect(detectGates(repo({ "mise.toml": '[tools]\nnode = "22"' }))).toEqual([]);
+  // And a file neither parser can read is not a marker either.
+  expect(detectGates(repo({ "Taskfile.yml": "tasks: [oops\n  - :" }))).toEqual([]);
+});
+
+/** `mise.toml` names tools as well as tasks, and that half is the toolchain's. */
+test("a mise config with tools but no test task still installs the toolchain", () => {
+  const dir = repo({ "mise.toml": '[tools]\nnode = "22"' });
+  expect(detectToolchain(dir)).toBe("mise install --yes");
+  expect(detectGates(dir)).toEqual([]);
+});
+
+/**
+ * The half of detection that does not run out of table rows.
+ *
+ * `detectGates` classifies and can fail; this only enumerates, and enumeration
+ * works in a language nobody wrote a rule for. It is what an agent's proposed
+ * gate is checked against, so what it misses is a gate that has to be proven by
+ * running instead — and what it wrongly includes is a command accepted unrun.
+ */
+test("every entrypoint a repository declares, whatever the language", () => {
+  const dir = repo({
+    "package.json": JSON.stringify({ scripts: { test: "vitest", "i18n:check": "lingui" } }),
+    Makefile: "test:\n\tgo test ./...\n\n.PHONY: lint\nlint:\n\tgo vet ./...\n\nCC := gcc\n",
+    justfile: "fmt:\n  gofmt -l .\n",
+    "Taskfile.yml": "tasks:\n  e2e:\n    cmds: [playwright test]",
+    "mise.toml": '[tasks.bench]\nrun = "hyperfine x"',
+  });
+
+  expect(declaredCommands(dir).sort()).toEqual([
+    "just fmt",
+    "make lint",
+    "make test",
+    "mise run bench",
+    "npm run i18n:check",
+    "npm run test",
+    "task e2e",
+  ]);
+});
+
+test("what a repository declares includes its CI steps and excludes what a lease cannot run", () => {
+  const dir: Root = {
+    ...repo({ "package.json": "{}" }),
+    list: (d) => (d === WORKFLOWS ? ["ci.yml"] : []),
+  };
+  const withCi: Root = {
+    ...dir,
+    read: (n) =>
+      n === `${WORKFLOWS}/ci.yml`
+        ? "jobs:\n  a:\n    steps:\n      - run: |\n          cargo test --all\n          cargo clippy | tee out\n          echo ${{ matrix.os }}\n"
+        : dir.read(n),
+  };
+
+  // The plain step is a template; the pipe and the runner expression are not —
+  // `lease.ts` tokenises on whitespace, so `|` would be an argument to `cargo`.
+  expect(declaredCommands(withCi)).toEqual(["cargo test --all"]);
+});
+
+/** A `%` pattern rule and a `:=` assignment are not targets anything can run. */
+test("a Makefile's variables and pattern rules are not entrypoints", () => {
+  expect(declaredCommands(repo({ Makefile: "VERSION := 1\n%.o: %.c\n\tcc $<\nbuild:\n\tcc main.c\n" }))).toEqual([
+    "make build",
+  ]);
 });

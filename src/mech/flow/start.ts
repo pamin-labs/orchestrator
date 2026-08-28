@@ -8,7 +8,17 @@ import { createCheckout, remoteFor } from "../git/checkout.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
 import { execIn, execLines, WORK } from "../sandbox/sandbox.ts";
-import { detectGates, detectInstall, detectShared, READS, type Root } from "../util/detect.ts";
+import {
+  type DetectedGate,
+  detectDevcontainer,
+  detectGates,
+  detectInstall,
+  detectShared,
+  detectToolchain,
+  READS,
+  type Root,
+  WORKFLOWS,
+} from "../util/detect.ts";
 import { shq } from "../../platform/process/shell.ts";
 import { baseRefFor } from "../git/checkout.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
@@ -19,10 +29,72 @@ import { BOOTSTRAP_FAILED, BOOTSTRAP_OK, BOOTSTRAP_START } from "../../contracts
 import { JsonObject, valueOr } from "../../contracts/json.ts";
 import { outputLanguage } from "../../contracts/config.ts";
 
-/** `project.config_json.install`, or null. */
-async function installFor(db: DB, projectId: number): Promise<string | null> {
-  const v = (await projectConfig(db, projectId)).install;
-  return v?.trim() ? v : null;
+/**
+ * The workflow files, into `files`, and their names back.
+ *
+ * Always, rather than only when the rule table finds nothing: one path through
+ * detection is worth more than the round trips it saves on a recognised project,
+ * and this runs once per project, at its first clone.
+ */
+/** Bounded, because a large repository's workflow directory is not — eight files
+ *  is more CI than any project needs to say how it tests itself. Filtered by
+ *  extension before anything is opened: a directory that is not there answers
+ *  with an exit code, and one holding a README is not worth a round trip. */
+async function readWorkflows(ctx: Ctx, grpId: number, files: Record<string, string>): Promise<string[]> {
+  const listed = await execIn(ctx, { grp: grpId }, `ls -A ${shq(`${WORK}/${WORKFLOWS}`)}`);
+  const names = (listed.code === 0 ? listed.out : "")
+    .split("\n")
+    .map((n) => n.trim())
+    .filter((n) => /\.ya?ml$/.test(n))
+    .sort()
+    .slice(0, 8);
+  for (const f of names) {
+    const r = await execIn(ctx, { grp: grpId }, `cat ${shq(`${WORK}/${WORKFLOWS}/${f}`)}`);
+    if (r.code === 0) files[`${WORKFLOWS}/${f}`] = r.out;
+  }
+  return names;
+}
+
+/**
+ * The image a devcontainer names is said, not applied.
+ *
+ * Which image a group runs in decides what every future turn has, so it is the
+ * boss's call and `config_json.sandbox.image` is the field that makes it, in a
+ * pane that already exists. What detection owes them is knowing the project
+ * stated one.
+ */
+async function sayDeclaredImage(ctx: Ctx, grpId: number, root: Root): Promise<void> {
+  const declared = detectDevcontainer(root)?.image;
+  if (!declared || declared === ctx.config.sandbox.image) return;
+  await ctx.bus.emit({
+    grpId,
+    author: "orchestrator",
+    kind: "state_change",
+    say: msg`this project's devcontainer develops in ${{ image: declared }} — Settings → Sandbox can point the group at it`,
+    meta: { image: declared },
+  });
+}
+
+/**
+ * What a fresh container needs before it can build anything, in order.
+ *
+ * Two steps, not one string with an `&&` in it: the toolchain is the repository's
+ * own compiler, the install is its dependencies, and the second cannot run before
+ * the first. Both are recorded, so a container rebuilt after its TTL replays them
+ * in the same order rather than waking up with a checkout it cannot compile.
+ */
+async function setupSteps(db: DB, projectId: number): Promise<string[]> {
+  const cfg = await projectConfig(db, projectId);
+  return [cfg.toolchain, cfg.install].filter((v): v is string => Boolean(v?.trim()));
+}
+
+/** Every step, in order, stopping at the first that fails. */
+async function runSetup(ctx: Ctx, grpId: number, steps: string[]): Promise<{ ok: boolean; tail: string; cmd: string }> {
+  for (const cmd of steps) {
+    const r = await runInstall(ctx, grpId, cmd);
+    if (!r.ok) return { ...r, cmd };
+  }
+  return { ok: true, tail: "", cmd: "" };
 }
 
 /**
@@ -181,9 +253,9 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     },
   );
 
-  const known = await installFor(ctx.db, grp.project_id);
-  if (known) {
-    const dep = await runInstall(ctx, grpId, known);
+  const known = await setupSteps(ctx.db, grp.project_id);
+  if (known.length) {
+    const dep = await runSetup(ctx, grpId, known);
     if (dep.ok) return;
   }
   // No recorded command, or the recorded one stopped working: the same role that
@@ -193,8 +265,10 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     priority: 9,
     payload: {
       role: roleFor(ctx, "bootstrap_env"),
-      ...(known
-        ? { rejection: `The sandbox was rebuilt and the install command on record does not work any more: ${known}` }
+      ...(known.length
+        ? {
+            rejection: `The sandbox was rebuilt and the setup on record does not work any more: ${known.join(" then ")}`,
+          }
         : {}),
     },
   });
@@ -207,6 +281,83 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
  * checkout any more (ADR 007) and never will be, so it runs here: the first group's
  * container is the first moment the repository exists anywhere we can read it.
  */
+/**
+ * The upsert's conflict arm. `excluded` is the row the insert tried to add; it is
+ * a pseudo-table with no Drizzle column of its own, so the four assignments stay
+ * `sql`.
+ */
+const ON_NAME_CONFLICT = {
+  target: resource.name,
+  set: {
+    template: sql`excluded.template`,
+    error_regex: sql`excluded.error_regex`,
+    arg_schema_json: sql`excluded.arg_schema_json`,
+    tags_json: sql`excluded.tags_json`,
+  },
+};
+
+/**
+ * Write gate resources, whoever worked them out.
+ *
+ * Two callers: detection below, and `postSetup` when the bootstrap agent found
+ * gates detection could not classify. One writer either way — `resource` is the
+ * table `lease.ts` reads, and sharing the registration path is what makes "an
+ * agent proposed this" and "a rule detected this" the same row.
+ */
+/** `repo`: one gate at a time per repository, whatever the gate is. Concurrency
+ *  is per resource, so build and typecheck ran side by side — and both shell out
+ *  to the project's own scripts, which install things. We can fix our templates
+ *  and not the scripts a project ships, so the guarantee has to be structural.
+ *  Different repos still run in parallel: the pool is keyed by project. */
+/** One statement per gate rather than a single multi-row insert: `ON CONFLICT DO
+ *  UPDATE` refuses to touch the same row twice within one statement, so two gates
+ *  sharing a name would become an error instead of an upsert applied twice. */
+export async function registerGates(db: DB, gates: DetectedGate[]): Promise<void> {
+  for (const g of gates) {
+    await db
+      .insert(resource)
+      .values({
+        name: g.name,
+        template: g.template,
+        arg_schema_json: {},
+        error_regex: g.errorRegex,
+        concurrency: 1,
+        tags_json: ["repo"],
+      })
+      .onConflictDoUpdate(ON_NAME_CONFLICT);
+  }
+}
+
+/** The repository as `detect.ts` wants it: a listing, a few files, one directory.
+ *  Read from the group's container, never from a host path — there is no host
+ *  checkout any more. */
+/** Two callers: detection, and `postSetup` when it has to check a gate an agent
+ *  proposed against what the repository actually declares. The same read for
+ *  both, so the two answers cannot disagree about what is in the repository. */
+export async function readRoot(ctx: Ctx, grpId: number): Promise<Root> {
+  const ls = await execIn(ctx, { grp: grpId }, `ls -A ${shq(WORK)}`);
+  const names = ls.out
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const files: Record<string, string> = {};
+  for (const f of READS) {
+    // By first segment: `.devcontainer/devcontainer.json` is asked for when the
+    // listing holds `.devcontainer`, since `ls -A` sees the directory, not what
+    // is in it. A `cat` of a path that is not there costs one round trip and
+    // answers non-zero, which is the same answer as not asking.
+    if (!names.includes(f.split("/")[0]!)) continue;
+    const r = await execIn(ctx, { grp: grpId }, `cat ${shq(`${WORK}/${f}`)}`);
+    if (r.code === 0) files[f] = r.out;
+  }
+  const workflows = await readWorkflows(ctx, grpId, files);
+  return {
+    names,
+    read: (n) => files[n] ?? null,
+    list: (dir) => (dir === WORKFLOWS ? workflows : []),
+  };
+}
+
 /**
  * Once per project, marked by `config.detected` rather than by "are there gates
  * yet" — a project where detection genuinely finds nothing must not re-run forever
@@ -222,58 +373,10 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   // cannot suppress it when its companion gate list did not pass the boundary.
   if (cfg.detected === true && cfg.gates !== undefined) return;
 
-  const ls = await execIn(ctx, { grp: grpId }, `ls -A ${shq(WORK)}`);
-  const names = ls.out
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const files: Record<string, string> = {};
-  for (const f of READS) {
-    if (!names.includes(f)) continue;
-    const r = await execIn(ctx, { grp: grpId }, `cat ${shq(`${WORK}/${f}`)}`);
-    if (r.code === 0) files[f] = r.out;
-  }
-  const root: Root = { names, read: (n) => files[n] ?? null };
+  const root = await readRoot(ctx, grpId);
   const gates = detectGates(root);
 
-  /**
-   * The upsert's conflict arm, named once and shared by both writers below.
-   * `excluded` is the row the insert tried to add; it is a pseudo-table with no
-   * Drizzle column of its own, so the four assignments stay `sql`.
-   */
-  const onNameConflict = {
-    target: resource.name,
-    set: {
-      template: sql`excluded.template`,
-      error_regex: sql`excluded.error_regex`,
-      arg_schema_json: sql`excluded.arg_schema_json`,
-      tags_json: sql`excluded.tags_json`,
-    },
-  };
-  // `repo`: one gate at a time per repository, whatever the gate is.
-  //
-  // Concurrency is per resource, so build and typecheck ran side by side — and
-  // both shell out to the project's own scripts, which install things. We can fix
-  // our own templates and not the scripts a project ships, so the guarantee has
-  // to be structural: gates of one repo do not overlap. Different repos still run
-  // in parallel — the pool is keyed by project.
-  // One statement per gate, as before, rather than a single multi-row insert:
-  // `ON CONFLICT DO UPDATE` refuses to touch the same row twice within one
-  // statement, so two gates sharing a name would become an error instead of an
-  // upsert applied twice.
-  for (const g of gates) {
-    await ctx.db
-      .insert(resource)
-      .values({
-        name: g.name,
-        template: g.template,
-        arg_schema_json: {},
-        error_regex: g.errorRegex,
-        concurrency: 1,
-        tags_json: ["repo"],
-      })
-      .onConflictDoUpdate(onNameConflict);
-  }
+  await registerGates(ctx.db, gates);
 
   // A project that ships the runner gets the browser resource. Without it every
   // acceptance line of the form "the menu opens" is unverifiable by anyone in the
@@ -296,13 +399,18 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
         concurrency: 1,
         tags_json: ["browser"],
       })
-      .onConflictDoUpdate(onNameConflict);
+      .onConflictDoUpdate(ON_NAME_CONFLICT);
   }
 
   const next = {
     ...cfg,
     detected: true,
-    gates: cfg.gates?.length ? cfg.gates : gates.map((g) => g.name),
+    // Absent, not `[]`, when detection finds nothing. The two mean different
+    // things and every reader downstream depends on the difference: an absent key
+    // is "nobody has looked", and an empty array is the boss saying this project
+    // has no deterministic floor. Writing `[]` here made detection speak for them.
+    ...(cfg.gates?.length ? { gates: cfg.gates } : gates.length ? { gates: gates.map((g) => g.name) } : {}),
+    toolchain: detectToolchain(root),
     install: detectInstall(root),
     shared: detectShared(root),
   };
@@ -312,6 +420,8 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   // value — validating with them still in wipes the column to `{}`.
   const stored = valueOr(Object.fromEntries(Object.entries(next).filter(([, v]) => v !== undefined)), JsonObject, {});
   await ctx.db.update(project).set({ config_json: stored }).where(eq(project.id, projectId));
+
+  await sayDeclaredImage(ctx, grpId, root);
 
   if (!gates.length) {
     // Said plainly rather than letting the first slice fail with a puzzle. This
@@ -369,16 +479,16 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         // nobody enumerates those, and the repo says which one it is. What
         // changed is where it runs: the agent installs inside its own sandbox,
         // so there is nothing left for the orchestrator to do on its behalf.
-        const known = await installFor(ctx.db, grp.project_id);
-        if (known) {
-          const dep = await runInstall(ctx, grpId, known);
+        const known = await setupSteps(ctx.db, grp.project_id);
+        if (known.length) {
+          const dep = await runSetup(ctx, grpId, known);
           if (!dep.ok)
             await ctx.sched.enqueue("agent_turn", {
               grp_id: grpId,
               priority: 9,
               payload: {
                 role: roleFor(ctx, "bootstrap_env"),
-                rejection: `The install command on record does not work any more: ${known}\n${dep.tail}`,
+                rejection: `The setup command on record does not work any more: ${dep.cmd}\n${dep.tail}`,
               },
             });
         } else {

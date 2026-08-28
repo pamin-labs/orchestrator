@@ -147,9 +147,10 @@ test("a changed stable half rotates the session rather than paying full price", 
   await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
 
-  // A new lesson changes the stable half. Mutating it in place would invalidate
-  // the cached prefix on every remaining turn of the session.
-  await f.note.create({ project_id: 1, kind: "lesson", body: "always run gate first" });
+  // The onboarding pack is in the stable half and changes about never, which is
+  // what belongs there. Mutating it in place would invalidate the cached prefix
+  // on every remaining turn of the session.
+  await f.note.create({ project_id: 1, kind: "onboarding", body: "run `make dev` before anything" });
   await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
 
@@ -645,4 +646,25 @@ test("the session id stored is the one the runtime actually used", async () => {
   await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
   expect(specs.at(-1)!.resumeSessionId).toBe("019ffb87-a288-7263-a7df-4b214098ae24");
+});
+
+/**
+ * A lesson lands whenever a retro distils one, and it used to be read fresh into
+ * the stable half on every turn — so that ordinary event changed every agent's
+ * prefix hash and threw away every live session, the PM's and the Dispatcher's
+ * included. It is in the delta now: paid for per turn, rotating nothing.
+ */
+test("a new lesson reaches the turn without throwing the session away", async () => {
+  const { sched, specs, f } = await harness(async () => ok());
+  await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+
+  await f.note.create({ project_id: 1, kind: "lesson", body: "always run gate first" });
+  await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+
+  expect(specs[1]!.stable.hash).toBe(specs[0]!.stable.hash);
+  expect(specs[1]!.resumeSessionId).toBe("s1");
+  expect(specs[1]!.prompt).toContain("always run gate first");
+  expect(specs[1]!.stable.systemAppend).not.toContain("always run gate first");
 });

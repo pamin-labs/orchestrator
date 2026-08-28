@@ -1,19 +1,20 @@
 import { msg, plural } from "@lingui/core/macro";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
-import { roleFor } from "../../mech/ctx.ts";
+import { type Ctx, roleFor } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { SandboxOverrideSchema, StoredProjectConfigSchema } from "../../contracts/config.ts";
 import { JsonObject, JsonValue, valueOr } from "../../contracts/json.ts";
-import { runInstall } from "../../mech/flow/start.ts";
-import { GateName } from "../../mech/gate.ts";
+import { readRoot, registerGates, runInstall } from "../../mech/flow/start.ts";
+import { GateName, proveGate } from "../../mech/gate.ts";
+import { declaredCommands, type DetectedGate, gateErrorRegex, isTemplate } from "../../mech/util/detect.ts";
 import { baseBranch, listBranches, removeMirror } from "../../mech/git/checkout.ts";
 import { pushBlocked } from "../../mech/git/prwatch.ts";
 import { forgetHolds } from "../../mech/git/repository.ts";
-import { allowedImage, killSandbox } from "../../mech/sandbox/sandbox.ts";
+import { allowedImage, killSandbox, resourceExec, WORK } from "../../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { forgetProjectSkills } from "../../mech/skills.ts";
 import { projectConfig } from "../../mech/util/rows.ts";
@@ -71,8 +72,109 @@ const GithubRepo = z.object({
   permissions: z.record(z.string(), z.boolean()).optional(),
 });
 
-/** The install command this project needs, or `none` for "it needs nothing". */
-export const SetupBody = z.object({ cmd: InstallCommand.optional(), none: z.boolean().optional() });
+/**
+ * A gate the bootstrap agent worked out, for a stack detection could not classify.
+ *
+ * Detection can *enumerate* what a repository declares in any language; only
+ * classification runs out of table rows, and that is the half an agent in the
+ * container can do. So the agent names the gate and points at the command — and
+ * `acceptGates` below checks that answer rather than approving it.
+ */
+const ProposedGate = z.object({ name: GateName, cmd: z.string().min(1).max(2000) });
+
+/** The install command this project needs, or `none` for "it needs nothing" —
+ *  and the gates it runs, when nothing deterministic found them. */
+export const SetupBody = z.object({
+  cmd: InstallCommand.optional(),
+  none: z.boolean().optional(),
+  gates: z.array(ProposedGate).max(10).optional(),
+});
+
+/**
+ * Accept a proposed gate on evidence, never on trust.
+ *
+ * Two ways in, both machine-checked, neither of them a person.
+ */
+/** **Declared.** The command is one the repository itself committed — a package
+ *  script, a Makefile target, a task, a CI step. The boss approved it by merging
+ *  it; there is nothing left to ask. */
+/** **Proven.** It is not declared, but it ran here, through the same tokenised
+ *  argv path a lease uses, and passed. `rebar3 eunit` in an Erlang repository
+ *  with no CI is the case: undeclared, and a run is better evidence than a
+ *  declaration would have been. */
+/** Neither, and it is refused with the reason and with what the repository does
+ *  declare — a refusal that teaches, in the tradition `planning.ts` set. An agent
+ *  may point at a command; it may not invent one and have it registered unseen. */
+async function acceptGates(
+  ctx: Ctx,
+  grpId: number,
+  projectId: number,
+  proposed: z.infer<typeof ProposedGate>[],
+): Promise<{ ok: true; names: string[] } | { ok: false; why: string }> {
+  const root = await readRoot(ctx, grpId);
+  const declared = new Set(declaredCommands(root));
+  const accepted: DetectedGate[] = [];
+
+  for (const g of proposed) {
+    const template = g.cmd.trim();
+    if (!isTemplate(template))
+      return {
+        ok: false,
+        why:
+          `gate ${g.name}: "${template}" cannot be a gate. A gate is tokenised on whitespace and run without a shell, ` +
+          "so a pipe, a redirect, a `&&` or a substitution would be passed to the first word as arguments. " +
+          "Put the sequence in a script or a task the repository declares, and point the gate at that.",
+      };
+    const gate: DetectedGate = { name: g.name, template, errorRegex: gateErrorRegex(g.name) };
+    if (declared.has(template)) {
+      accepted.push(gate);
+      continue;
+    }
+    const proof = await proveGate(gate, {
+      exec: resourceExec(ctx, { grp: grpId }),
+      cwd: WORK,
+      dataDir: ctx.config.dataDir,
+      timeoutMs: ctx.config.leaseTimeoutMs,
+    });
+    if (!proof.pass) {
+      const options = [...declared].slice(0, 12);
+      return {
+        ok: false,
+        why:
+          `gate ${g.name}: "${template}" is not declared anywhere in this repository, and running it here exited ` +
+          `${proof.exitCode}:\n${proof.errorLines.slice(-12).join("\n")}\n\n` +
+          (options.length
+            ? `Commands this repository declares:\n${options.map((c) => `  ${c}`).join("\n")}`
+            : "This repository declares no entrypoint at all — no package script, task, Makefile target or CI step.") +
+          "\nEither point the gate at one of those, or fix the command so it passes on this checkout.",
+      };
+    }
+    accepted.push(gate);
+  }
+
+  await registerGates(ctx.db, accepted);
+  const names = accepted.map((g) => g.name);
+  const current = (await projectConfig(ctx.db, projectId)).gates ?? [];
+  const merged = [...new Set([...current, ...names])];
+  await ctx.db
+    .update(project)
+    // `jsonb_set` for the same reason `rememberInstall` uses it: the rest of
+    // `config_json` belongs to other writers and a read-merge-write would carry
+    // whatever this request happened to read back over them.
+    // `jsonb_build_array` over one parameter per name, never `JSON.stringify`:
+    // the driver encodes a parameter for a jsonb target itself, so pre-encoding
+    // stores a jsonb *string* of the array where the array belongs, and a bound
+    // JS array reaches Postgres comma-joined rather than as an array literal.
+    // Both were measured here; a guard covers the first.
+    .set({
+      config_json: sql`jsonb_set(${project.config_json}, '{gates}', jsonb_build_array(${sql.join(
+        merged.map((n) => sql`${n}::text`),
+        sql`, `,
+      )}))`,
+    })
+    .where(eq(project.id, projectId));
+  return { ok: true, names };
+}
 
 /**
  * The answer, remembered on the project so the next group does not pay to read
@@ -103,6 +205,10 @@ export const postSetup = (async (ctx, _req, a, _p, b) => {
   const projectId = owner?.project_id;
   if (!a.grp_id || !projectId) return badText("this agent has no group");
 
+  const cmd = (b.cmd ?? "").trim();
+  if (!b.none && !cmd && !b.gates?.length)
+    return badText('setup needs --cmd "<command>", --none, or --gate <name>=<command>');
+
   if (b.none) {
     await rememberInstall(ctx.db, projectId, null);
     await ctx.bus.emit({
@@ -111,16 +217,30 @@ export const postSetup = (async (ctx, _req, a, _p, b) => {
       kind: "state_change",
       say: msg`this repository needs nothing installed`,
     });
-    return message("ok");
+  } else if (cmd) {
+    // Same streamed install the first turn gets: the boss watches this one too,
+    // and an agent's own attempt is the one most likely to need watching.
+    const r = await runInstall(ctx, a.grp_id, cmd);
+    if (!r.ok) return badText(`install failed:\n${r.tail}`);
+    await rememberInstall(ctx.db, projectId, cmd);
   }
 
-  const cmd = (b.cmd ?? "").trim();
-  if (!cmd) return badText('setup needs --cmd "<command>" or --none');
-  // Same streamed install the first turn gets: the boss watches this one too,
-  // and an agent's own attempt is the one most likely to need watching.
-  const r = await runInstall(ctx, a.grp_id, cmd);
-  if (!r.ok) return badText(`install failed:\n${r.tail}`);
-  await rememberInstall(ctx.db, projectId, cmd);
+  // After the install, never before: a proposed gate that has to be proven by
+  // running it is run on a checkout with its dependencies present, which is the
+  // checkout every later gate will see.
+  if (b.gates?.length) {
+    const got = await acceptGates(ctx, a.grp_id, projectId, b.gates);
+    if (!got.ok) return badText(got.why);
+    await ctx.bus.emit({
+      grpId: a.grp_id,
+      author: a.role,
+      kind: "state_change",
+      // The sentence detection already emits for the same fact. One gate list,
+      // one way of saying it, whoever worked it out.
+      say: msg`gates found: ${{ gates: got.names.join(", ") }}`,
+      meta: { gates: got.names },
+    });
+  }
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof SetupBody>>;
 

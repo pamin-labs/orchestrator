@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
 import { acceptSlice } from "../../mech/flow/review.ts";
-import { criteriaIn, validateSelfReview } from "../../mech/util/validate.ts";
+import { citedPaths, criteriaIn, validateSelfReview } from "../../mech/util/validate.ts";
 import { sliceDiffBase } from "../../mech/git/gitops.ts";
 import { baseRefFor, sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
@@ -100,6 +100,8 @@ export const postReview = (async (ctx, _req, a, _p, b) => {
     );
   }
 
+  const unresolved = await unresolvedCitations(ctx, slice.grp_id, b.note ?? "");
+
   await ctx.bus.emit({
     grpId: slice.grp_id,
     author: a.role,
@@ -108,11 +110,43 @@ export const postReview = (async (ctx, _req, a, _p, b) => {
     say: b.note
       ? msg`S${{ seq: slice.seq }} ${{ verdict: b.verdict }}: ${{ note: b.note }}`
       : msg`S${{ seq: slice.seq }} ${{ verdict: b.verdict }}`,
-    meta: { slice_id: slice.id, verdict: b.verdict },
+    // `unresolved` only when there is one, so a row without the key is a review
+    // whose citations all resolved rather than one filed before this existed.
+    meta: { slice_id: slice.id, verdict: b.verdict, ...(unresolved.length ? { unresolved } : {}) },
   });
   await ctx.reviewVerdict?.(slice.id, b.verdict === "pass", b.note ?? "");
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof ReviewBody>>;
+
+/**
+ * The names a review cited that are nowhere in the worktree.
+ *
+ * Recorded on the event, never refused. A verdict whose evidence is a file that
+ * does not exist is the shape a fabricated citation has — but whether that ever
+ * happens is a question this repository has no data for, and a guard written for
+ * an unproven hole is one that is sensitive to its own case and blind to the rest
+ * of the class. So this measures first; the boss sees it on the slice's timeline,
+ * and if it never fires there is a gate nobody has to build.
+ */
+/** By basename, and lenient on purpose: a note writes `mw.ts:31`, and any
+ *  `mw.ts` in the tree is a file the reviewer could have been reading. `git
+ *  ls-files -co` covers tracked files and the artefacts a lease wrote beside
+ *  them, which is where a screenshot lives. Eight, because a note citing more
+ *  than that is not the case this is looking for. */
+async function unresolvedCitations(ctx: Ctx, grpId: number, note: string): Promise<string[]> {
+  const cited = citedPaths(note).slice(0, 8);
+  if (!cited.length) return [];
+  const git = sandboxGit(ctx, { grp: grpId });
+  const missing: string[] = [];
+  for (const path of cited) {
+    const name = path.split("/").at(-1)!;
+    // Pathspec, passed as an argument: git does the globbing, so no pattern is
+    // ever built from the note's own text.
+    const found = await git(["ls-files", "-co", "--exclude-standard", "--", `*${name}`], WORK);
+    if (found.code !== 0 || !found.out.trim()) missing.push(path);
+  }
+  return missing;
+}
 
 /** Roughly a screenful of diff. Beyond this the boss wants the editor, not a panel. */
 // 400k. The old 80k was sized for a page that pasted the whole diff into one

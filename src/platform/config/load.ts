@@ -160,6 +160,8 @@ const DEFAULTS: Config = {
   parkAfterPausedMs: 7_200_000,
   watchdogIntervalMs: 30_000,
   gateRetries: 2,
+  discriminate: true,
+  discriminatePerFile: false,
   leaseTimeoutMs: 10_800_000,
   installTimeoutMs: 10_800_000,
   // Today's literals, unchanged: this is about making them settable, not about

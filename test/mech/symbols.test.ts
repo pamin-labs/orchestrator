@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { symbolsIn } from "../../src/mech/knowledge/symbols.ts";
+import { importsIn, symbolsIn } from "../../src/mech/knowledge/symbols.ts";
 import { tempDir } from "../support/temp.ts";
 
 const GO = `package main
@@ -173,3 +173,82 @@ test("a grammar loads from inside a compiled binary, which is not the same claim
   // `--parallel` it has been measured at 6.7s, which is a flake rather than a
   // finding. The budget is a ceiling on the disk write, not on the parse.
 }, 30_000);
+
+/**
+ * Where a file imports from, in each of the six grammars this binary carries.
+ *
+ * Every one of these was measured before it was written down, and three came back
+ * wrong: Go returned its whole `import (…)` block *and* each path with the quotes
+ * still on, because it spells its string node `interpreted_string_literal` and a
+ * generic `string` lookup never matched; Python turned `from mypkg.sub import
+ * thing` into one string. One branch per node type, using the field each grammar
+ * gives, is what those two cost.
+ */
+test("an import is the module it names, in every grammar here", async () => {
+  expect(
+    await importsIn(
+      "a.ts",
+      `import { x } from "../gate.ts";\nimport type { Y } from "./y";\nconst z = require("node:fs");`,
+    ),
+  ).toEqual(["../gate.ts", "./y", "node:fs"]);
+  expect(await importsIn("a.tsx", `import React from "react";`)).toEqual(["react"]);
+  expect(await importsIn("a.js", `const a = require("./a");\nimport b from "b";`)).toEqual(["./a", "b"]);
+  // Go: the block holds one spec per line, and the block itself names nothing.
+  expect(await importsIn("a.go", `package main\n\nimport (\n\t"fmt"\n\t"example.com/x/y"\n)\n`)).toEqual([
+    "fmt",
+    "example.com/x/y",
+  ]);
+  // Python: `import` inside a function is still an import, which is why the walk
+  // descends instead of reading top-level nodes.
+  expect(await importsIn("a.py", `import os.path\nfrom mypkg.sub import thing\n\ndef f():\n    import json\n`)).toEqual(
+    ["os.path", "mypkg.sub", "json"],
+  );
+  expect(await importsIn("a.rs", `use crate::mech::gate;\nuse std::fs::File;\nextern crate serde;`)).toEqual([
+    "crate::mech::gate",
+    "std::fs::File",
+    "serde",
+  ]);
+});
+
+/**
+ * A call that is not `require`, and a language with no grammar in this binary.
+ * Both must answer nothing — a caller reads that as "no opinion", and failing
+ * open is the only safe direction for a check that can block work.
+ */
+test("what is not an import contributes nothing", async () => {
+  expect(await importsIn("a.js", `fetch("https://example.com");\nconsole.log("./not-an-import");`)).toEqual([]);
+  expect(await importsIn("Main.kt", `import kotlin.io.println`)).toEqual([]);
+  expect(await importsIn("README.md", `import x from "y"`)).toEqual([]);
+});
+
+/**
+ * The five grammars added after the first six, each with the shape it actually
+ * has — measured before it was written down, the same way the first six were.
+ *
+ * Java and Go both call their node `import_declaration` and mean opposite things:
+ * Java's *is* the import and holds a `scoped_identifier`, Go's is a block that
+ * names nothing itself and holds one `import_spec` per line.
+ */
+test("java, c#, c++, php and ruby each name their imports differently", async () => {
+  expect(await importsIn("A.java", `package com.example.app;\nimport com.example.core.Gate;`)).toEqual([
+    "com.example.core.Gate",
+  ]);
+  // The alias is not the module: `using Core = Example.Core.Gate` imports the
+  // qualified name and calls it something else here.
+  expect(await importsIn("A.cs", `using System.IO;\nusing Core = Example.Core.Gate;`)).toEqual([
+    "System.IO",
+    "Example.Core.Gate",
+  ]);
+  // `"core/gate.h"` is this repository's; `<vector>` is the toolchain's.
+  expect(await importsIn("a.cpp", `#include "core/gate.h"\n#include <vector>`)).toEqual(["core/gate.h"]);
+  expect(await importsIn("a.php", `<?php\nuse App\\Core\\Gate;\nrequire_once "lib/boot.php";`)).toEqual([
+    "App\\Core\\Gate",
+    "lib/boot.php",
+  ]);
+  // Ruby's imports are calls, and so is everything else it does — only the four
+  // names that mean "load this" count.
+  expect(await importsIn("a.rb", `require "app/core/gate"\nrequire_relative "../boot"\nputs "not an import"`)).toEqual([
+    "app/core/gate",
+    "../boot",
+  ]);
+});
