@@ -70,7 +70,7 @@
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "drizzle-kit": "1.0.0-rc.4",
-    "fallow": "3.17.0",
+    "fallow": "3.20.0",
     "fast-check": "^4.9.0",
     "fishery": "^2.4.0",
     "happy-dom": "^20.11.2",
@@ -147,7 +147,7 @@
     "stopword": "^3.1.5",
     "tailwind-merge": "^3.6.0",
     "unified": "^11.0.5",
-    "web-tree-sitter": "0.26.12",
+    "web-tree-sitter": "0.26.13",
     "zod": "^4.4.3"
   }
 }
