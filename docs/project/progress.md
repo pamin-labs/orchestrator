@@ -3103,3 +3103,29 @@ reviewer's trust.
 | `bun run test` | 1928 pass, 6 skip, 0 fail, 1934 across 237 files |
 | `fallow audit --gate all` | no issues in 85 changed files |
 | new tests | the three shapes resolving, a package that is still nobody's, and a project that declares nothing |
+
+## The i18n audit was done by hand, which is how you find out it is not written down
+
+Asked whether two new constants needed translating, the answer was easy — they are
+protocol keys, the third exception — but arriving at it meant walking the whole
+diff by hand: every `bus.emit` for a `say`, every value for a rendered fragment,
+`src/` for new Chinese literals, `web/` for an unwrapped string. Nothing in
+CLAUDE.md said to do that, and nothing said what "protocol key" covers.
+
+Two halves were missing, and only the second is a rule anybody could have guessed:
+
+- **A change that adds a sentence is not finished until ten catalogues carry it.**
+  `i18n:extract`, fill the eight written by hand, `zh-Hant` generated from `zh`.
+  It is enforced already and in a way worth knowing about: the CLI test asserts an
+  **empty stderr**, and lingui writes its missing-translation warning there — so
+  an untranslated string is a red suite, not a quiet gap. That cost a debugging
+  round the first time it happened this branch, and six repeats after it.
+- **What a protocol key actually is.** Narrower than it sounds: a key written into
+  a table and read back, a stored verdict compared by value, a resource name.
+  Nobody reads one as a sentence. A settings-page label, a question filed for the
+  boss and a timeline row are none of those — and each of those was a place this
+  branch nearly left in English.
+
+The pull request template gains the half a command cannot check: `preflight`
+verifies the catalogues, and it cannot verify that an English literal was
+*exempt*. That sentence is the author's to write, so the template now asks for it.
