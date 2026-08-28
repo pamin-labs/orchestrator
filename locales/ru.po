@@ -1440,8 +1440,8 @@ msgstr "Скрыто:"
 msgid "hired {role}"
 msgstr "нанят {role}"
 
-msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
-msgstr "Каталоги хоста, которые монтирует каждая песочница, в виде «путь в контейнере: путь на хосте». Только для кэшей пакетных менеджеров — если поделиться тем, куда пишет сборка, две группы столкнутся. Путь также должен быть в allowed_host_paths сервера песочниц."
+msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. Put {project} in the host path to give each project its own, which is what a toolchain cache wants: /opt/mise holds executables every gate then runs, so one poisoned copy shared fleet-wide reaches every other project. The path must also be in the sandbox server's allowed_host_paths."
+msgstr "Каталоги хоста, которые монтирует каждая песочница, в виде «путь в контейнере: путь на хосте». Только для кэшей пакетных менеджеров — общий доступ к тому, куда пишет сборка, приводит к столкновению двух групп. Впишите {project} в путь на хосте, чтобы у каждого проекта был свой: именно этого требует кэш тулчейна — в /opt/mise лежат исполняемые файлы, которые затем запускает каждый гейт, и одна отравленная копия, общая на весь парк, достанет все остальные проекты. Путь также должен быть в allowed_host_paths сервера песочниц."
 
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "Как читать чекаут, когда спросить GitHub нельзя"

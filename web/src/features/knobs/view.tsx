@@ -584,7 +584,7 @@ export const COPY: Record<
   "sandbox.cacheDirs": {
     label: msg`Shared cache directories`,
     ph: "/root/.bun/install/cache",
-    why: msg`Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths.`,
+    why: msg`Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. Put {project} in the host path to give each project its own, which is what a toolchain cache wants: /opt/mise holds executables every gate then runs, so one poisoned copy shared fleet-wide reaches every other project. The path must also be in the sandbox server's allowed_host_paths.`,
   },
   notifyWebhook: {
     label: msg`Forward to webhook`,

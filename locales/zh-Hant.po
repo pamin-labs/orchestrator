@@ -1440,8 +1440,8 @@ msgstr "不看："
 msgid "hired {role}"
 msgstr "僱了 {role}"
 
-msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
-msgstr "每個沙箱都會掛載的宿主目錄，寫成「容器裡的路徑: 宿主路徑」。只適合包管理器快取——共享任何建置會寫入的目錄都會讓兩個組撞車。這個路徑還得在沙箱伺服器的 allowed_host_paths 裡。"
+msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. Put {project} in the host path to give each project its own, which is what a toolchain cache wants: /opt/mise holds executables every gate then runs, so one poisoned copy shared fleet-wide reaches every other project. The path must also be in the sandbox server's allowed_host_paths."
+msgstr "每個沙箱都會掛載的宿主目錄，寫成「容器內路徑: 宿主路徑」。只用於包管理器快取——共享建置會寫入的任何東西都會讓兩個組撞車。在宿主路徑裡寫 {project} 就能讓每個專案各用各的，工具鏈快取正需要這個：/opt/mise 裡放的是每個 gate 接著要執行的執行檔，全域共享一份被汙染就會波及其他所有專案。這個路徑還必須在沙箱服務端的 allowed_host_paths 裡。"
 
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "問不到 GitHub 時，一個 checkout 按什麼讀"

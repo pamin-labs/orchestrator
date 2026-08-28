@@ -94,6 +94,16 @@ const SandboxSpecSchema = z.object({
    * concurrent installs to fail with EEXIST; content-addressed package caches are
    * built for concurrent readers. The sandbox server must allow every host path.
    */
+  /**
+   * A host path may hold `{project}`, which becomes that project's own directory.
+   *
+   * The difference matters most for `/opt/mise`, where the shared thing is not an
+   * archive but the **executables every gate then runs**: fleet-wide, one poisoned
+   * toolchain is code execution in every other project's container. Per project it
+   * is the blast radius those groups already share, since they share a repository
+   * and a branch. Measured separately: four `mise install` runs racing on one
+   * empty directory all exit 0, so concurrency was never what stood in the way.
+   */
   cacheDirs: z.record(z.string(), z.string()),
 });
 

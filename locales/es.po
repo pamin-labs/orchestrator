@@ -1440,8 +1440,8 @@ msgstr "Ocultando:"
 msgid "hired {role}"
 msgstr "{role} contratado"
 
-msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. The path must also be in the sandbox server's allowed_host_paths."
-msgstr "Directorios del host que monta cada sandbox, como «ruta en el contenedor: ruta en el host». Solo para cachés de gestores de paquetes: compartir algo donde escribe una compilación hace chocar a dos grupos. La ruta debe estar también en allowed_host_paths del servidor de sandbox."
+msgid "Host directories every sandbox mounts, as 'path in container: path on host'. For package-manager caches only — sharing anything a build writes to makes two groups collide. Put {project} in the host path to give each project its own, which is what a toolchain cache wants: /opt/mise holds executables every gate then runs, so one poisoned copy shared fleet-wide reaches every other project. The path must also be in the sandbox server's allowed_host_paths."
+msgstr "Directorios del host que cada sandbox monta, como 'ruta en el contenedor: ruta en el host'. Solo para cachés de gestores de paquetes — compartir algo en lo que una compilación escribe hace que dos grupos choquen. Pon {project} en la ruta del host para dar a cada proyecto la suya, que es lo que quiere una caché de toolchain: /opt/mise contiene ejecutables que luego corre cada puerta, así que una copia envenenada compartida por toda la flota alcanza a todos los demás proyectos. La ruta también debe estar en allowed_host_paths del servidor de sandbox."
 
 msgid "How a checkout is read when GitHub cannot be asked"
 msgstr "Cómo se lee un checkout cuando no se puede preguntar a GitHub"

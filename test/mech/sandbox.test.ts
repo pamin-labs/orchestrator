@@ -396,3 +396,33 @@ test("the provisioned CLI runs where nothing else is installed", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/**
+ * A shared toolchain cache is not a shared package cache.
+ *
+ * `/opt/mise/installs` holds the **executables every gate then runs**, so
+ * fleet-wide sharing means one poisoned toolchain is code execution in every
+ * other project's container. Per project it is the blast radius those groups
+ * already share, since they share a repository and a branch. Concurrency was
+ * never what stood in the way: four `mise install` runs racing on one empty
+ * directory all exit 0.
+ */
+test("a cache path can be a project's own, in one line of config", async () => {
+  const c = await ctx({ sandbox: { ...BASE, cacheDirs: { "/opt/mise": "/var/cache/orch/mise/{project}" } } });
+  expect((await specFor(c, 1)).cacheDirs).toEqual({ "/opt/mise": "/var/cache/orch/mise/p1" });
+  expect((await specFor(c, 2)).cacheDirs).toEqual({ "/opt/mise": "/var/cache/orch/mise/p2" });
+});
+
+/**
+ * `driftingPaths` asks for the spec with no project, and what it checks is
+ * whether the server allows a *prefix* — which any child answers.
+ */
+test("with no project the path is still a real one to check", async () => {
+  const c = await ctx({ sandbox: { ...BASE, cacheDirs: { "/opt/mise": "/var/cache/orch/mise/{project}" } } });
+  expect((await specFor(c, null)).cacheDirs).toEqual({ "/opt/mise": "/var/cache/orch/mise/shared" });
+});
+
+test("a path with no placeholder is left exactly as it was written", async () => {
+  const c = await ctx({ sandbox: { ...BASE, cacheDirs: { "/root/.bun/install/cache": "/var/cache/orch/bun" } } });
+  expect((await specFor(c, 1)).cacheDirs).toEqual({ "/root/.bun/install/cache": "/var/cache/orch/bun" });
+});

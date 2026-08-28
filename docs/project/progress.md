@@ -3009,3 +3009,46 @@ clock.
 - **An in-process counter.** New mutable singleton state, which the invariants
   forbid — and it would forget across a restart, which is exactly when a
   misconfigured deployment restarts.
+
+## A toolchain cache is not a package cache, so it is not shared the same way
+
+`cacheDirs` mounts a host directory into every sandbox, and `/opt/mise` was the
+obvious candidate: without it the toolchain is downloaded again every time a
+container is rebuilt. The measurement said it was safe — four `mise install` runs
+racing on one empty directory all exit 0, with correct version symlinks, because
+mise locks its installs.
+
+Concurrency was never what stood in the way. **A package cache holds archives;
+`/opt/mise/installs` holds the executables every gate then runs.** Fleet-wide,
+one poisoned toolchain is code execution in every other project's container, and
+the group boundary is this product's main security claim.
+
+Per project is the blast radius those groups already share — they share a
+repository and a branch — so a host path may now hold `{project}`, expanded in
+`specFor`, which is the one place that knows which project a sandbox is for. One
+line of configuration gives every project its own cache instead of one entry per
+project written by hand, which is the difference between a safe default and a safe
+default nobody adopts.
+
+Two smaller things came with it:
+
+- **The directory is created before it is mounted.** A bind mount of a host path
+  that is not there does not fail — it succeeds and delivers an empty directory,
+  which is the silent failure `checkSkillsMount` exists for and exactly what a
+  per-project path nobody made by hand would hit.
+- **`driftingPaths` asks for the spec with no project**, so the placeholder
+  becomes `shared` rather than being left literal. What that check does is ask
+  whether the sandbox server allows a *prefix*, and any child answers it.
+
+Still not on by default: the host path has to be in the server's
+`allowed_host_paths`, and a default that silently mounts nothing is worse than no
+default. The knob's own copy now says what the placeholder is for, because
+Settings → Sandbox is where a boss meets this and the reasoning has to travel
+with it.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1926 pass, 6 skip, 0 fail, 1932 across 237 files |
+| new tests | 3: per project, with no project, and a path that has no placeholder |
