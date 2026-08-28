@@ -220,3 +220,35 @@ test("what is not an import contributes nothing", async () => {
   expect(await importsIn("Main.kt", `import kotlin.io.println`)).toEqual([]);
   expect(await importsIn("README.md", `import x from "y"`)).toEqual([]);
 });
+
+/**
+ * The five grammars added after the first six, each with the shape it actually
+ * has — measured before it was written down, the same way the first six were.
+ *
+ * Java and Go both call their node `import_declaration` and mean opposite things:
+ * Java's *is* the import and holds a `scoped_identifier`, Go's is a block that
+ * names nothing itself and holds one `import_spec` per line.
+ */
+test("java, c#, c++, php and ruby each name their imports differently", async () => {
+  expect(await importsIn("A.java", `package com.example.app;\nimport com.example.core.Gate;`)).toEqual([
+    "com.example.core.Gate",
+  ]);
+  // The alias is not the module: `using Core = Example.Core.Gate` imports the
+  // qualified name and calls it something else here.
+  expect(await importsIn("A.cs", `using System.IO;\nusing Core = Example.Core.Gate;`)).toEqual([
+    "System.IO",
+    "Example.Core.Gate",
+  ]);
+  // `"core/gate.h"` is this repository's; `<vector>` is the toolchain's.
+  expect(await importsIn("a.cpp", `#include "core/gate.h"\n#include <vector>`)).toEqual(["core/gate.h"]);
+  expect(await importsIn("a.php", `<?php\nuse App\\Core\\Gate;\nrequire_once "lib/boot.php";`)).toEqual([
+    "App\\Core\\Gate",
+    "lib/boot.php",
+  ]);
+  // Ruby's imports are calls, and so is everything else it does — only the four
+  // names that mean "load this" count.
+  expect(await importsIn("a.rb", `require "app/core/gate"\nrequire_relative "../boot"\nputs "not an import"`)).toEqual([
+    "app/core/gate",
+    "../boot",
+  ]);
+});

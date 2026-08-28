@@ -2912,3 +2912,58 @@ now.
 | `bun run test` | 1917 pass, 6 skip, 0 fail, 1923 across 236 files |
 | `fallow audit --gate all` | no issues in 82 changed files |
 | new tests | 3 for the aggregate — the three arriving together, one enormous turn not becoming the picture, and a turn from before this existed contributing nothing |
+
+## Eleven grammars, because the ceiling was the number of `.wasm` imports
+
+The boundary scan read six languages; `lizard` scores twenty-two. The gap was not
+a design limit — `@vscode/tree-sitter-wasm` ships sixteen grammars and only the
+imported ones reach the binary. Java, C#, C++, PHP and Ruby are now imported too:
+408K, 4.9M, 5.1M, 1.0M and 2.0M, **13.4 MB against a 160 MB release budget**.
+
+The remaining four the package ships — css, ini, regex, powershell — are not
+languages a project's architecture is written in.
+
+### Each one names its imports differently, and that was measured
+
+| | shape |
+|---|---|
+| Java | `import_declaration` holding a `scoped_identifier` |
+| C# | `using_directive`; an aliased `using X = A.B.C` imports `A.B.C`, not `X` |
+| C++ | `preproc_include`; `"core/gate.h"` is the repository's, `<vector>` is the toolchain's |
+| PHP | `namespace_use_declaration`, plus four `require`/`include` **expressions** — not calls, the way Ruby's are |
+| Ruby | a `call` named `require` or `require_relative`, which is also how it spells everything else it does |
+
+**Java and Go both call their node `import_declaration` and mean opposite
+things**: Java's *is* the import, Go's is a block that names nothing itself and
+holds one `import_spec` per line. `targetOf` tells them apart by what is inside.
+
+### Two resolver defects the new spellings exposed
+
+- **A target that is already a path must not be split on its dots.** `core/gate.h`
+  became `core/gate/h`. A module name is split on `.`, `::` or `\`; anything
+  containing `/` is a path, and its extension is dropped instead.
+- **`src/main/java` is Maven's ceremony, not structure.** With two-segment areas
+  every Java package in a repository shared the area `src/main`, so nothing could
+  ever be an edge. An area is measured from where the code starts: a source root
+  of more than one segment is stripped first. A bare `src` is not — it is already
+  the top of a tree, and stripping it would rename every area this repository has.
+
+### What still resolves to nothing, on purpose
+
+A PHP project whose PSR-4 map sends `App\Core` to `src/Core` gets no edge from
+that import. Composer's autoload is a config nobody here reads, and no edge is the
+right answer to a question this cannot see — the same direction every other
+unresolvable import fails in.
+
+### Measured
+
+| | |
+|---|---|
+| `bun run test` | 1919 pass, 6 skip, 0 fail, 1925 across 236 files |
+| new tests | the five languages through the extractor, and every spelling through the resolver |
+
+Twice in this change a `python` edit asserted its way to a clean exit **after**
+raising, so the file was never written and the next measurement disagreed with the
+code. Both times the symptom was the same: a language that extracted nothing. The
+habit that catches it is the one already used everywhere here — measure after
+every edit, not after the batch.

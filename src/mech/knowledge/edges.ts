@@ -20,15 +20,41 @@ import type { DB } from "../../platform/persistence/database.ts";
  *  architecture rule is written at — `src/mech` may not import `web/src`. Per
  *  file would flag every ordinary refactor; per top-level directory would miss
  *  everything inside `src/`. */
+/**
+ * Where a language keeps its code. Not a language table — the same four cover
+ * Java's `src/main/java`, Ruby's `app` and `lib`, and everything that puts its
+ * modules at the root.
+ */
+const SOURCE_ROOTS = ["", "src", "src/main/java", "app", "lib"];
+
 export function areaOf(path: string): string {
   // The file's directory, capped at two segments. Always a file path in, which
   // is why the callers that hold a directory append a name to it.
-  const dir = path
-    .split("/")
-    .filter((p) => p && p !== ".")
-    .slice(0, -1);
+  const dir = withoutBuildRoot(
+    path
+      .split("/")
+      .filter((p) => p && p !== ".")
+      .slice(0, -1),
+  );
   // A file at the root belongs to no area: `README.md` is not a module.
   return dir.length === 0 ? "." : dir.slice(0, 2).join("/");
+}
+
+/**
+ * An area is measured from where the code starts, not from where the build tool
+ * puts it.
+ *
+ * Only roots of more than one segment: `src/main/java` is Maven's ceremony and
+ * without stripping it every Java package in a repository shares one area, while
+ * a bare `src` is already the top of a tree and stripping that would rename every
+ * area this repository has.
+ */
+function withoutBuildRoot(parts: string[]): string[] {
+  for (const root of SOURCE_ROOTS) {
+    const segments = root.split("/").filter(Boolean);
+    if (segments.length > 1 && segments.every((segment, i) => parts[i] === segment)) return parts.slice(segments.length);
+  }
+  return parts;
 }
 
 /** `from|to`, the pair as it is stored and compared. */
@@ -58,22 +84,45 @@ export function areaOfImport(from: string, target: string, dirs: ReadonlySet<str
   // every third-party package in the repository would have been an edge.
   //
   // `crate::` is Rust for this crate's root, which on disk is `src/`.
-  const path = target.replace(/^crate::/, "").replace(/::|\./g, "/");
-  // The bare spelling must match a directory outright. A prefix walk here
-  // answered `src` for `zod`, on the strength of `src` existing, which would have
-  // made every third-party package an edge.
-  //
-  // Under `src/` it may walk, but never down to `src` itself — `crate::mech::gate`
-  // is a module inside `src/mech` and names a file, not a directory, at its end.
-  const found = dirs.has(path) ? path : longestKnown(`src/${path}`, dirs, 2);
-  if (!found) return null;
-  const dir = areaOf(`${found}/x`);
-  return dir === here ? null : dir;
+  const path = asPath(target);
+  for (const root of SOURCE_ROOTS) {
+    const found = under(root ? `${root}/${path}` : path, path, dirs);
+    if (found && areaOf(`${found}/x`) !== here) return areaOf(`${found}/x`);
+  }
+  return null;
 }
 
-function longestKnown(candidate: string, dirs: ReadonlySet<string>, floor = 1): string | null {
+/**
+ * A module name as a path. Eleven grammars spell the separator four ways —
+ * `a.b.c` (Java, C#, Python), `a::b::c` (Rust), `A\B\C` (PHP), `a/b/c` (Ruby,
+ * C++, Go) — and the last of those is already a path, so splitting its dots would
+ * turn `core/gate.h` into `core/gate/h`.
+ */
+function asPath(target: string): string {
+  const cleaned = target.replace(/^crate::/, "").replace(/\\/g, "/");
+  if (cleaned.includes("/")) return cleaned.replace(/\.[A-Za-z0-9]+$/, "");
+  return cleaned.replace(/::|\./g, "/");
+}
+
+/**
+ * The candidate as a directory, or the directory holding it.
+ *
+ * The second half is what makes `com.example.core.Gate` resolve: the last segment
+ * is a class, not a folder. It is allowed only when the path is at least two
+ * segments deep, which is the guarantee that kept `zod` from matching `src` on
+ * the strength of `src` existing — every third-party package would have been an
+ * edge.
+ */
+function under(candidate: string, path: string, dirs: ReadonlySet<string>): string | null {
+  if (dirs.has(candidate)) return candidate;
+  if (path.split("/").filter(Boolean).length < 2) return null;
+  const parent = candidate.split("/").slice(0, -1).join("/");
+  return parent && dirs.has(parent) ? parent : null;
+}
+
+function longestKnown(candidate: string, dirs: ReadonlySet<string>): string | null {
   const parts = candidate.split("/").filter((p) => p && p !== ".");
-  for (let take = Math.min(parts.length, 3); take >= floor; take--) {
+  for (let take = Math.min(parts.length, 3); take > 0; take--) {
     const dir = parts.slice(0, take).join("/");
     if (dirs.has(dir)) return dir;
   }

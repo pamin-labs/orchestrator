@@ -1,7 +1,12 @@
 import { Language, Parser, type Node } from "web-tree-sitter";
+import cppWasm from "@vscode/tree-sitter-wasm/wasm/tree-sitter-cpp.wasm" with { type: "file" };
+import csWasm from "@vscode/tree-sitter-wasm/wasm/tree-sitter-c-sharp.wasm" with { type: "file" };
 import goWasm from "@vscode/tree-sitter-wasm/wasm/tree-sitter-go.wasm" with { type: "file" };
+import javaWasm from "@vscode/tree-sitter-wasm/wasm/tree-sitter-java.wasm" with { type: "file" };
 import jsWasm from "@vscode/tree-sitter-wasm/wasm/tree-sitter-javascript.wasm" with { type: "file" };
+import phpWasm from "@vscode/tree-sitter-wasm/wasm/tree-sitter-php.wasm" with { type: "file" };
 import pyWasm from "@vscode/tree-sitter-wasm/wasm/tree-sitter-python.wasm" with { type: "file" };
+import rbWasm from "@vscode/tree-sitter-wasm/wasm/tree-sitter-ruby.wasm" with { type: "file" };
 import rsWasm from "@vscode/tree-sitter-wasm/wasm/tree-sitter-rust.wasm" with { type: "file" };
 import tsxWasm from "@vscode/tree-sitter-wasm/wasm/tree-sitter-tsx.wasm" with { type: "file" };
 import tsWasm from "@vscode/tree-sitter-wasm/wasm/tree-sitter-typescript.wasm" with { type: "file" };
@@ -33,15 +38,26 @@ import { activeTracer } from "../../platform/observability/traces.ts";
  * current by the same tooling as every other dependency.
  */
 const GRAMMAR: Record<string, string> = {
+  c: cppWasm,
+  cc: cppWasm,
   cjs: jsWasm,
+  cpp: cppWasm,
+  cs: csWasm,
   cts: tsWasm,
+  cxx: cppWasm,
   go: goWasm,
+  h: cppWasm,
+  hh: cppWasm,
+  hpp: cppWasm,
+  java: javaWasm,
   js: jsWasm,
   jsx: jsWasm,
   mjs: jsWasm,
   mts: tsWasm,
+  php: phpWasm,
   py: pyWasm,
   pyi: pyWasm,
+  rb: rbWasm,
   rs: rsWasm,
   ts: tsWasm,
   tsx: tsxWasm,
@@ -202,9 +218,11 @@ export async function importsIn(rel: string, src: string): Promise<string[]> {
  */
 const IMPORT_DEPTH = 4;
 
-/** The node types that carry a module reference, across the six grammars here. */
+/** The node types that carry a module reference, across the eleven grammars here.
+ *  `import_declaration` is two different shapes — Java's *is* the import, Go's is
+ *  a block of `import_spec` — which `targetOf` tells apart rather than this. */
 const AN_IMPORT =
-  /^(import_statement|import_from_statement|import_declaration|import_spec|use_declaration|extern_crate_declaration|call_expression)$/;
+  /^(import_statement|import_from_statement|import_declaration|import_spec|use_declaration|extern_crate_declaration|using_directive|preproc_include|namespace_use_declaration|require_expression|require_once_expression|include_expression|include_once_expression|call_expression|call)$/;
 
 function walkImports(node: Node, out: string[], depth: number): void {
   if (AN_IMPORT.test(node.type)) {
@@ -225,9 +243,10 @@ function walkImports(node: Node, out: string[], depth: number): void {
  */
 function targetOf(node: Node): string | null {
   switch (node.type) {
-    // Go: the block holds one spec per line, and the spec has the path.
+    // Two languages, one node name. Java's holds a `scoped_identifier` and *is*
+    // the import; Go's holds one `import_spec` per line and names nothing itself.
     case "import_declaration":
-      return null;
+      return node.descendantsOfType("scoped_identifier")[0]?.text ?? null;
     case "import_spec":
       return literal(node.childForFieldName("path"));
     // Python.
@@ -245,21 +264,45 @@ function targetOf(node: Node): string | null {
           .replace(/[;{].*$/s, "")
           .trim() || null
       );
+    // C#: `using System.IO;`, or `using Alias = Some.Thing;` where the qualified
+    // name is the thing and the alias is not.
+    case "using_directive":
+      return node.descendantsOfType("qualified_name")[0]?.text ?? node.descendantsOfType("identifier")[0]?.text ?? null;
+    // C and C++: `"core/gate.h"` is this repository's; `<vector>` is the toolchain's.
+    case "preproc_include":
+      return literal(node.descendantsOfType("string_content")[0]);
+    // PHP: `use App\Core\Gate;` and the four spellings of "load this file",
+    // which are expressions of their own rather than calls the way Ruby's are.
+    case "namespace_use_declaration":
+      return node.descendantsOfType("qualified_name")[0]?.text ?? null;
+    case "require_expression":
+    case "require_once_expression":
+    case "include_expression":
+    case "include_once_expression":
+      return literal(node.descendantsOfType("encapsed_string")[0] ?? node.descendantsOfType("string")[0]);
     case "call_expression":
+    case "call":
       return requireTarget(node);
     default:
       return null;
   }
 }
 
-/** `require("x")`, and nothing else that happens to be a call. */
+/**
+ * A call that is an import: `require("x")` in JS, `require_relative "../boot"` in
+ * Ruby, `require_once "lib/boot.php"` in PHP. Nothing else that happens to be a
+ * call — which is most calls.
+ */
+const A_REQUIRE = new Set(["require", "require_relative", "require_once", "load"]);
+
 function requireTarget(node: Node): string | null {
-  if (node.child(0)?.text !== "require") return null;
-  return literal(node.descendantsOfType("string")[0]);
+  if (!A_REQUIRE.has(node.child(0)?.text ?? "")) return null;
+  const arg = node.descendantsOfType("string")[0] ?? node.descendantsOfType("encapsed_string")[0];
+  return literal(arg);
 }
 
 /** A string literal's value. Go spells the node `interpreted_string_literal`,
  *  which is why this takes the node and not a type name. */
 const literal = (node: Node | null | undefined): string | null => (node ? unquote(node.text) : null);
 
-const unquote = (s: string) => s.replace(/^["'`]|["'`]$/g, "");
+const unquote = (s: string) => s.replace(/^["'`]+|["'`]+$/g, "");
