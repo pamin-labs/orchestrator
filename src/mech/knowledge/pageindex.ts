@@ -296,45 +296,46 @@ export function modelAsk(
 
   function call(prompt: string): Promise<string> {
     return (
-    // The same sentence the `onUsage` comment above makes, about the other half
-    // of the bill: this is the most frequent model call in the system and it
-    // appeared in no report. `onUsage` fixed the money; this fixes the clock.
-    // Up to twelve of these per project on every heartbeat, each a full model
-    // round trip inside a container, and the panel had no row for any of them.
-    activeTracer().startActiveSpan("index.ask", { attributes: { "model.name": spec.model } }, async (span) => {
-      try {
-        const file = promptPath();
-        await putFile(ctx, scope, file, prompt);
-        const cmd = `${argv.map(shq).join(" ")} < ${file}; rc=$?; rm -f ${file}; exit $rc`;
-        const r = await execIn(ctx, scope, cmd, { cwd: WORK, timeoutMs }).catch(() => null);
-        if (!r || r.code !== 0) {
-          // The empty string is both a legitimate answer and the failure value,
-          // and `summarise` counts it as `failed` without being able to tell
-          // which. The span can tell, so it says — **and says what the CLI said**.
-          // Measured over one 7-hour window: 36 of 36 calls failed, 738.5s of wall
-          // clock, and the only record of any of it was the two words `exit 1`. A
-          // number with no sentence beside it cannot be acted on, so the most
-          // expensive model call here failed all day and looked like a quiet one.
-          // Scrubbed, because the CLI echoes its own arguments on a bad flag.
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: r
-              ? `exit ${r.code}: ${
-                  scrub(r.err || r.out)
-                    .trim()
-                    .slice(-400) || "said nothing"
-                }`
-              : "exec threw",
-          });
-          return "";
+      // The same sentence the `onUsage` comment above makes, about the other half
+      // of the bill: this is the most frequent model call in the system and it
+      // appeared in no report. `onUsage` fixed the money; this fixes the clock.
+      // Up to twelve of these per project on every heartbeat, each a full model
+      // round trip inside a container, and the panel had no row for any of them.
+      activeTracer().startActiveSpan("index.ask", { attributes: { "model.name": spec.model } }, async (span) => {
+        try {
+          const file = promptPath();
+          await putFile(ctx, scope, file, prompt);
+          const cmd = `${argv.map(shq).join(" ")} < ${file}; rc=$?; rm -f ${file}; exit $rc`;
+          const r = await execIn(ctx, scope, cmd, { cwd: WORK, timeoutMs }).catch(() => null);
+          if (!r || r.code !== 0) {
+            // The empty string is both a legitimate answer and the failure value,
+            // and `summarise` counts it as `failed` without being able to tell
+            // which. The span can tell, so it says — **and says what the CLI said**.
+            // Measured over one 7-hour window: 36 of 36 calls failed, 738.5s of wall
+            // clock, and the only record of any of it was the two words `exit 1`. A
+            // number with no sentence beside it cannot be acted on, so the most
+            // expensive model call here failed all day and looked like a quiet one.
+            // Scrubbed, because the CLI echoes its own arguments on a bad flag.
+            span.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: r
+                ? `exit ${r.code}: ${
+                    scrub(r.err || r.out)
+                      .trim()
+                      .slice(-400) || "said nothing"
+                  }`
+                : "exec threw",
+            });
+            return "";
+          }
+          const { text, usage } = codex ? readCodex(r.out) : readClaude(r.out);
+          if (usage) onUsage?.(usage);
+          return text;
+        } finally {
+          span.end();
         }
-        const { text, usage } = codex ? readCodex(r.out) : readClaude(r.out);
-        if (usage) onUsage?.(usage);
-        return text;
-      } finally {
-        span.end();
-      }
-    }));
+      })
+    );
   }
 }
 
