@@ -201,6 +201,20 @@ or run the full suite unless they own integration.
   Guards: `panel-speaks-english`, `server-speaks-one-language`,
   `values-carry-no-rendered-text`, `an-event-names-its-sentence`,
   `a-component-takes-t-from-the-hook`.
+
+  **A change that adds one is not finished until ten catalogues carry it.**
+  `bun run i18n:extract`, fill the eight you write by hand, and `zh-Hant` is
+  generated from `zh` by `i18n:hant`. This is not a courtesy step: the CLI test
+  asserts an *empty stderr*, and lingui writes its missing-translation warning
+  there, so an untranslated string is a red suite rather than a quiet gap.
+  `bun run preflight` runs both halves — every message translated with its
+  placeholders intact, and the catalogues matching the source.
+
+  A **protocol key** is the third exception and it is narrower than it sounds: a
+  key written into a table and read back (`index-fail:p1:claude:haiku`), a stored
+  verdict compared by value (`gates_json` holding `pass`/`blind`/`none`), a
+  resource name. Nobody reads one as a sentence. A label on a settings page, a
+  question filed for the boss, and a row in the timeline are none of those.
 - Anything that costs wall-clock time carries a span. New work that waits on a
   container, a network call, a subprocess, or the filesystem opens one through
   `activeTracer().startActiveSpan`, names it after what it does rather than a
