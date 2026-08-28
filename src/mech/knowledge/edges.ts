@@ -123,7 +123,10 @@ const TsConfig = z.object({
     .optional(),
 });
 const Composer = z.object({
-  autoload: z.object({ "psr-4": z.record(z.string(), z.json()).optional() }).loose().optional(),
+  autoload: z
+    .object({ "psr-4": z.record(z.string(), z.json()).optional() })
+    .loose()
+    .optional(),
 });
 
 /** `from|to`, the pair as it is stored and compared. */
