@@ -1,4 +1,4 @@
-import { parseSync, traverse } from "@babel/core";
+import { parseSync, traverse, type Visitor } from "@babel/core";
 import { readFileSync } from "node:fs";
 
 /**
@@ -79,7 +79,17 @@ export function cjkHits(file: string, source: string): CjkHit[] {
   const hit = (node: { loc?: { start: { line: number } } | null }, text: string, comment = false) => {
     if (CJK.test(text)) raw.push({ line: node.loc?.start.line ?? 0, text, comment });
   };
-  traverse(ast, {
+  /**
+   * Annotated `Visitor`, which is what makes `enter` mean "every node".
+   *
+   * Babel 8 added a mapped-type overload to `traverse` that reads each key as a
+   * node type: `ToNode<"enter">` is `Extract<Node, {type: "enter"}>`, which is
+   * `never`, so an inferred visitor gives `enter` a `NodePath<never>` and
+   * `p.node` stops existing. The annotation sends the call to the overload that
+   * takes a `Visitor`, where `enter` is the one on `VisitNodeObject` and the four
+   * node keys below stay checked against their own node types.
+   */
+  const visitor: Visitor = {
     enter(p) {
       const loc = p.node.loc;
       if (loc && p.node.leadingComments?.some((c) => EXEMPT.test(c.value))) marked.push([loc.start.line, loc.end.line]);
@@ -88,7 +98,8 @@ export function cjkHits(file: string, source: string): CjkHit[] {
     JSXText: (p) => hit(p.node, p.node.value),
     TemplateElement: (p) => hit(p.node, p.node.value.cooked ?? p.node.value.raw),
     RegExpLiteral: (p) => hit(p.node, p.node.pattern),
-  });
+  };
+  traverse(ast, visitor);
   for (const c of ast.comments ?? []) hit(c, c.value, true);
   return raw.map((h) => ({
     ...h,
