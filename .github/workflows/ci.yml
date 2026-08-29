@@ -40,7 +40,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BUN_VERSION: 1.3.14
+  BUN_VERSION: 1.4.0
 
 jobs:
   # Static checks: no test run, no coverage, nothing that needs a database.
@@ -222,8 +222,15 @@ jobs:
             fi
           done < <(git rev-list --no-merges "$BASE_SHA..$HEAD_SHA")
           test "$bad" = 0
+      # `pull_request.user.login`, not `github.actor`. A bot does not fill in an
+      # engineering plan, so its pull requests are exempt — but `github.actor` is
+      # whoever *triggered the run*, and on a re-run that is the person who
+      # pressed the button. Dependabot's #12 was checked out with
+      # `actor: JasonXuDeveloper`, so the exemption lapsed and the gate reported
+      # twelve missing sections against a dependency changelog. The author is the
+      # thing being asked about, and the author does not change on a re-run.
       - name: verify engineering plan sections
-        if: github.event_name == 'pull_request' && !endsWith(github.actor, '[bot]')
+        if: github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]')
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |

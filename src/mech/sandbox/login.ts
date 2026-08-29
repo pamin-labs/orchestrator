@@ -73,6 +73,24 @@ export const DEVICE_CODE_TTL_MS = 15 * 60_000;
 /** One at a time: a second click would print a second code and invalidate the first. */
 let deviceLogin: LoginRun | null = null;
 
+/**
+ * The run in flight, or null. Never starts one.
+ *
+ * `startCodexDeviceLogin` and `startClaudeLogin` are get-or-create, and the cancel
+ * and code routes spelled them as "the current run". So a cancel with nothing to
+ * cancel *launched* a login in the utility container, and an image holding a
+ * session mints and stores a token for it — a cancel route that creates the thing
+ * it cancels.
+ */
+/**
+ * The suite is where it surfaced: `POST /login/cancel` after a finished login
+ * started a second `claude setup-token`, whose `saveAuth` landed in the next
+ * test's freshly emptied schema — a credential row seen by a test whose own login
+ * had returned 422. Green on main for twenty runs, red the first time the runner
+ * was slow enough to reorder the two.
+ */
+export const currentCodexDeviceLogin = () => deviceLogin;
+
 async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
   const stream = execLines(ctx, UTIL, "codex login --device-auth", {
     env: { CODEX_HOME: REFRESH_HOME },
@@ -211,6 +229,9 @@ const PASTE_RE = /paste code/i;
  * what the CLI is sitting at a prompt waiting for.
  */
 let claudeLogin: (LoginRun & { submit: (code: string) => Promise<void> }) | null = null;
+
+/** The claude half of `currentCodexDeviceLogin`, and there for the same reason. */
+export const currentClaudeLogin = () => claudeLogin;
 
 async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
   await putFile(ctx, UTIL, PTY_PATH, PTY_RUNNER);

@@ -1,12 +1,80 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { VERSION } from "../../src/platform/process/version.ts";
 import { tempDir } from "../support/temp.ts";
 
 test("package.json is the development version source", async () => {
   const metadata: unknown = await Bun.file("package.json").json();
   expect(metadata).toEqual(expect.objectContaining({ version: VERSION }));
+});
+
+/**
+ * The two version fields below are read from a parsed manifest rather than
+ * grepped, because a range and a pin are different answers to "what version" and
+ * a regex over the file cannot tell them apart.
+ */
+const Manifest = z.object({
+  dependencies: z.record(z.string(), z.string()),
+  devDependencies: z.record(z.string(), z.string()),
+});
+const manifest = () => {
+  const raw: unknown = JSON.parse(readFileSync("package.json", "utf8"));
+  return Manifest.parse(raw);
+};
+
+/**
+ * drizzle-orm and drizzle-kit are one release named twice: the kit writes the
+ * migration format the ORM reads, so a mismatched pair is a schema the running
+ * server does not understand.
+ */
+/**
+ * Dependabot resolves each package alone, and drizzle publishes branch snapshots
+ * to npm under dist-tags of their own: `rc5` was `1.0.0-rc.5-169397b` for the ORM
+ * and `1.0.0-rc.5-ab785fc` for the kit, two commits, both ahead of the `rc` tag
+ * still pointing at `1.0.0-rc.4`. PR #12 proposed exactly that pair, and nothing
+ * here would have caught it. `.github/dependabot.yml` ignores both; this is the
+ * half that holds when somebody bumps one by hand instead.
+ */
+test("drizzle-orm and drizzle-kit name one release", () => {
+  const { dependencies, devDependencies } = manifest();
+  // Exact, not a range: a caret over a prerelease channel is how the snapshot
+  // arrives without anyone choosing it.
+  expect(dependencies["drizzle-orm"]).toMatch(/^\d+\.\d+\.\d+/);
+  expect(devDependencies["drizzle-kit"]).toBe(dependencies["drizzle-orm"]);
+});
+
+const WORKFLOW_PIN = /^\s*BUN_VERSION:\s*(\S+)$/m;
+const IMAGE_PIN = /oven\/bun:(\S+?)@sha256:/;
+const versionIn = (file: string, pin: RegExp) => readFileSync(file, "utf8").match(pin)?.slice(1) ?? [];
+
+/**
+ * Five files name the Bun this project runs, and one of them used to name
+ * whatever npm had published that morning.
+ */
+/**
+ * `@types/bun` was `"latest"`, while Bun is pinned by four `BUN_VERSION` lines
+ * and by digest in the agent image. So the types were the only thing free to
+ * move, and they moved a minor ahead of the runtime, to a `Response` carrying
+ * `textStream()`. Hono's `ClientResponse` has no such method, so a lockfile
+ * refresh that touched no source produced 81 type errors across nineteen files,
+ * every one about a method nothing here calls.
+ */
+/**
+ * `workflows.test.ts` refuses `bun-version: latest` in a workflow for the same
+ * reason. This is that rule reaching the file it could not see.
+ */
+test("@types/bun names the bun the workflows and the agent image run", () => {
+  const declared = manifest().devDependencies["@types/bun"];
+  const pinned = [
+    ...readdirSync(".github/workflows").flatMap((file) => versionIn(join(".github/workflows", file), WORKFLOW_PIN)),
+    ...versionIn("docker/agent.Dockerfile", IMAGE_PIN),
+  ];
+  // Four workflows and the image. Asserted, because a scan that matches nothing
+  // agrees with everything.
+  expect(pinned.length).toBeGreaterThanOrEqual(5);
+  expect([...new Set([declared, ...pinned])]).toEqual([declared]);
 });
 
 test.each([

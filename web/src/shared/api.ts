@@ -8,6 +8,7 @@ import type { ApiType, TelemetryReport } from "../../../src/http/routes/panel.ts
 import {
   displayJson,
   ErrorResponseSchema,
+  type JsonReply,
   readJsonResponse,
   TextResponseSchema,
 } from "../../../src/contracts/protocol.ts";
@@ -247,12 +248,12 @@ export const emptyState = (): State => structuredClone(EMPTY);
  * logs) and for the two attach paths, which had written this out again —
  * `fallow audit` found their halves as a clone group.
  *
- * `Response | Promise<Response>` because a caller that already awaited its own
+ * `JsonReply | Promise<JsonReply>` because a caller that already awaited its own
  * `fetch` (to catch a browser refusing to read a folder) has the response in
  * hand; `await` takes either.
  */
 export async function readApi<S extends z.ZodType>(
-  request: Response | Promise<Response>,
+  request: JsonReply | Promise<JsonReply>,
   schema: S,
 ): Promise<z.output<S> | null> {
   const r = await request;
@@ -287,7 +288,7 @@ export type ApiResult<T> =
   | { ok: true; data: T; text: string; said: null }
   | { ok: false; data: null; text: string; said: Said | null };
 
-export async function readJson<S extends z.ZodType>(r: Response, schema: S): Promise<ApiResult<z.output<S>>> {
+export async function readJson<S extends z.ZodType>(r: JsonReply, schema: S): Promise<ApiResult<z.output<S>>> {
   const body = await readJsonResponse(r);
   if (!body.ok) return { ok: false, data: null, text: "Server returned a non-JSON response", said: null };
   // The descriptor the server named, unrendered. `said` is where `bad()` puts
@@ -321,13 +322,13 @@ export const AnswerDraftSchema: z.ZodType<InferResponseType<(typeof api.escalati
  * the settings rows do, and a toast on top of an already-marked row is the same
  * refusal said twice, in the corner, where it outlives the fix.
  */
-export async function mutate(request: Promise<Response>, quiet?: boolean): Promise<ApiResult<Json>>;
+export async function mutate(request: Promise<JsonReply>, quiet?: boolean): Promise<ApiResult<Json>>;
 export async function mutate<S extends z.ZodType>(
-  request: Promise<Response>,
+  request: Promise<JsonReply>,
   quiet: boolean,
   schema: S,
 ): Promise<ApiResult<z.output<S>>>;
-export async function mutate(request: Promise<Response>, quiet = false, schema: z.ZodType = JsonBody) {
+export async function mutate(request: Promise<JsonReply>, quiet = false, schema: z.ZodType = JsonBody) {
   const r = await request;
   const result = await readJson(r, schema);
   if (!result.ok && !quiet) toast.error(saidText(result.said, result.text), { duration: 12_000 });
@@ -356,7 +357,7 @@ export const sliceDecision = (
  * `data` only, and the error boundary shows its own sentence. A `said` here
  * would be a descriptor nothing renders.
  */
-const get = async <S extends z.ZodType>(request: Promise<Response>, schema: S): Promise<z.output<S>> => {
+const get = async <S extends z.ZodType>(request: Promise<JsonReply>, schema: S): Promise<z.output<S>> => {
   const result = await readJson(await request, schema);
   if (!result.ok) throw new Error(result.text);
   return result.data;

@@ -96,9 +96,15 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
   const lines = merged(info?.lines ?? [], mine);
 
   const tail = useRef<HTMLDivElement>(null);
+  const count = lines.length;
+  // `count` is read, not merely depended on: with no lines there is nothing to
+  // scroll to, and a dependency the body never mentions is one
+  // `exhaustive-effect-dependencies` calls extra — correctly, because nothing
+  // there tied the scroll to the render that grew the log.
   useEffect(() => {
-    tail.current?.scrollTo({ top: tail.current.scrollHeight });
-  }, [lines.length]);
+    const el = tail.current;
+    if (el && count) el.scrollTo({ top: el.scrollHeight });
+  }, [count]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

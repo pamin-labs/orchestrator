@@ -1,5 +1,5 @@
 import { PanelRight, SlidersHorizontal } from "lucide-react";
-import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
+import { type Dispatch, type ReactNode, type SetStateAction, useCallback, useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
 import { countWaiting, STATUS_LABEL } from "../shared/select";
@@ -121,7 +121,16 @@ export function App() {
   const [sel, setSel] = useState<Selection>(() => parseSelection(location.hash));
   const { ui, setAdding, setPickProject, setPickReq, setPicking, setSide } = useUi();
   const [behind, setBehind] = useState<Selection["view"]>("progress");
-  const go = (patch: Partial<Selection>) => setSel((current) => nextSelection(current, patch));
+  /**
+   * `useCallback`, so it can be a dependency without being a reason to re-run.
+   *
+   * As a fresh function every render it was omitted from two dependency arrays —
+   * `exhaustive-effect-dependencies` names both — and one of those arrays belongs
+   * to the `keydown` listener, which was therefore added and removed on every
+   * render of the whole app. `setSel` is stable and the updater closes over
+   * nothing, so an empty list is the true one.
+   */
+  const go = useCallback((patch: Partial<Selection>) => setSel((current) => nextSelection(current, patch)), []);
   // A broken host check interrupts here, once per fault, rather than in a
   // terminal log nobody has open. Reads the snapshot that is already polled, and
   // hands the boss the pane that lists every check with its own controls.
@@ -134,10 +143,15 @@ export function App() {
       localStorage.setItem("orch.side", ui.side ? "1" : "0");
     } catch {}
   }, [ui.side]);
-  useEffect(() => {
-    const view = backgroundView({ view: sel.view, g: sel.g });
-    if (view) setBehind(view);
-  }, [sel.view, sel.g]);
+  /**
+   * Both of these adjust state from state, which React documents doing during
+   * render rather than in an effect: an effect renders once with the stale value
+   * and then again with the new one, and `set-state-in-effect` is the rule that
+   * says so. The guards are what stop them setting on every render — `behind` is
+   * a string, and `repairMissingGroup` returns null when nothing is missing.
+   */
+  const background = backgroundView({ view: sel.view, g: sel.g });
+  if (background && background !== behind) setBehind(background);
   useEffect(() => {
     const next = selectionHash(sel);
     if (next === location.hash) return;
@@ -162,14 +176,12 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sel.view, sel.g, setSide, setPickProject, setPickReq]);
-  useEffect(() => {
-    const repair = repairMissingGroup(
-      sel.g,
-      st.groups.map((group) => group.id),
-    );
-    if (repair) go(repair);
-  }, [sel.g, st.groups]);
+  }, [go, sel.view, sel.g, setSide, setPickProject, setPickReq]);
+  const repair = repairMissingGroup(
+    sel.g,
+    st.groups.map((group) => group.id),
+  );
+  if (repair) go(repair);
   useEffect(() => {
     const onNavigation = () => setSel(parseSelection(location.hash));
     window.addEventListener("popstate", onNavigation);

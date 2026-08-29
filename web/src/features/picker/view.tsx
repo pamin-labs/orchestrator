@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Button, LinkButton } from "../../ui/button";
 import { Badge } from "../../ui/badge";
 import { Menu, MenuItem } from "../../ui/menu";
@@ -157,28 +158,35 @@ function Browse({
   onRow: (e: Entry, isDir: boolean) => boolean;
   chosen: (path: string) => boolean;
 }) {
-  const [d, setD] = useState<Dirs | null>(null);
-  // The refusal, not its rendering: this outlives the fetch, and the locale can
-  // move while it is on screen.
-  const [err, setErr] = useState<Refusal | null>(null);
-
-  const load = useCallback(
-    async (path?: string | null) => {
-      const result = await readJson(
-        await api.dirs.$get({
-          query: { ...(files ? { files: "1" } : {}), ...(path ? { path } : {}) },
-        }),
+  /**
+   * The directory on screen is a query key, not a fetch fired from an effect.
+   *
+   * This was `useState` for the listing, `useState` for the refusal, and a
+   * `useEffect` calling `load(null)` on mount — a fetch-in-effect whose
+   * `setD`/`setErr` are what `react(set-state-in-effect)` names. The panel
+   * already has react-query for exactly this, and navigating is now `setPath`:
+   * one place decides what is shown, and going back up a tree it already read is
+   * a cache hit instead of a second request.
+   */
+  /**
+   * `readJson` is returned rather than thrown from, because a refusal here is an
+   * answer — it carries the descriptor the server named, which outlives the fetch
+   * and has to survive the locale moving while it is on screen. Throwing would
+   * hand react-query an `unknown` to cast back.
+   */
+  const [path, setPath] = useState<string | null>(null);
+  const { data: answer } = useQuery({
+    queryKey: ["dirs", !!files, path],
+    queryFn: async () =>
+      readJson(
+        await api.dirs.$get({ query: { ...(files ? { files: "1" } : {}), ...(path ? { path } : {}) } }),
         DirsSchema,
-      );
-      if (!result.ok) return setErr(result);
-      setErr(null);
-      setD(result.data);
-    },
-    [files],
-  );
-  useEffect(() => {
-    void load(null);
-  }, [load]);
+      ),
+    placeholderData: keepPreviousData,
+  });
+  const d = answer?.ok ? answer.data : null;
+  const err: Refusal | null = answer && !answer.ok ? answer : null;
+  const load = setPath;
 
   const { parts, rows } = browseListing(d);
 
@@ -201,15 +209,7 @@ function Browse({
           </span>
         ))}
       </div>
-      <BrowseRows
-        here={d}
-        rows={rows}
-        err={refusalText(err)}
-        pick={!!pick}
-        chosen={chosen}
-        onRow={onRow}
-        load={(path) => void load(path)}
-      />
+      <BrowseRows here={d} rows={rows} err={refusalText(err)} pick={!!pick} chosen={chosen} onRow={onRow} load={load} />
       <div className="flex flex-wrap items-center gap-2 border-t border-rule p-3">{footer(d)}</div>
     </>
   );
@@ -262,7 +262,6 @@ const ProjectCreatedSchema: z.ZodType<InferResponseType<typeof api.projects.$pos
 });
 
 let lastInstallation: number | null = null;
-let cached: RepoList | null = null;
 
 type Repo = RepoList["repos"][number];
 
@@ -478,27 +477,32 @@ function Repos({
   onCancel?: () => void;
 }) {
   const { t } = useLingui();
-  const [d, setD] = useState<RepoList | null>(cached);
-  const [err, setErr] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState("");
   const [q, setQ] = useState("");
-
-  const load = async (installation?: number) => {
-    const want = installation ?? lastInstallation;
-    const result = await readJson(
-      await api.github.repos.$get({ query: want ? { installation: String(want) } : {} }),
-      RepoListSchema,
-    );
-    if (!result.ok) return setErr(result);
-    setErr(null);
-    const next = result.data;
-    lastInstallation = next.selected;
-    cached = next;
-    setD(next);
-  };
-  useEffect(() => {
-    void load();
-  }, []);
+  /**
+   * The chosen installation is the query key, and react-query is the cache.
+   *
+   * `cached` was a module-level `RepoList` and the mount effect was a fetch that
+   * called `setD`. Both are what the query client already does, and better: the
+   * hand-rolled copy was one entry deep, so switching installation and back
+   * re-asked GitHub for a list it had just been given.
+   */
+  /**
+   * `lastInstallation` stays, because it is not a cache — it is which account the
+   * boss was last looking at, and it has to survive this dialog unmounting.
+   */
+  const [installation, setInstallation] = useState<number | null>(lastInstallation);
+  const { data: answer } = useQuery({
+    queryKey: ["github-repos", installation],
+    queryFn: async () =>
+      readJson(
+        await api.github.repos.$get({ query: installation ? { installation: String(installation) } : {} }),
+        RepoListSchema,
+      ),
+    placeholderData: keepPreviousData,
+  });
+  const d = answer?.ok ? answer.data : null;
+  const err: Refusal | null = answer && !answer.ok ? answer : null;
 
   const add = async (repo: string) => {
     setBusy(repo);
@@ -524,7 +528,8 @@ function Repos({
         here={here}
         selectInstallation={(id) => {
           setQ("");
-          void load(id);
+          lastInstallation = id;
+          setInstallation(id);
         }}
       />
       {!empty && (
@@ -615,9 +620,14 @@ export function FilePicker({
   const { t } = useLingui();
   const [sel, setSel] = useState<string[]>([]);
   const count = sel.length;
-  useEffect(() => {
+  // Reset on the edge, during render. As an effect it rendered once with the
+  // previous dialog's selection still counted, which is both a flash of the wrong
+  // number and what `react(set-state-in-effect)` is about.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) setSel([]);
-  }, [open]);
+  }
   return (
     <Shell open={open} onOpenChange={onOpenChange}>
       <Browse

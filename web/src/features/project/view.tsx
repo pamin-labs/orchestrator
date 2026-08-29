@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useDraft } from "../../shared/use-draft";
 import { useQuery } from "@tanstack/react-query";
 import { GripVertical, X } from "lucide-react";
 import { Head, Input, Meta } from "../../ui/bits";
@@ -440,8 +441,7 @@ function Row(props: {
   /** Known values. Present means one combobox; absent means a plain box. */
   options?: string[];
 }) {
-  const [v, setV] = useState(props.value);
-  useEffect(() => setV(props.value), [props.value]);
+  const [v, setV] = useDraft(props.value, props.value);
   const dirty = v.trim() !== props.value.trim();
 
   const id = `cfg-${props.label}`;

@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BUN_VERSION: 1.3.14
+  BUN_VERSION: 1.4.0
   REGISTRY: ghcr.io/${{ github.repository_owner }}
   TRIVY_VERSION: v0.74.0
 

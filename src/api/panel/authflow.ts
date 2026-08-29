@@ -35,6 +35,8 @@ import {
 import {
   DEVICE_CODE_TTL_MS,
   type LoginRun,
+  currentClaudeLogin,
+  currentCodexDeviceLogin,
   PASTE_TTL_MS,
   startClaudeLogin,
   startCodexDeviceLogin,
@@ -221,6 +223,23 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
 let claudeFlow: ClaudeLoginFlow | null = null;
 
 /**
+ * The continuation the login route deliberately does not wait for — kept, so that
+ * something can.
+ *
+ * `postClaudeLogin` answers with the link the moment the CLI prints it, while the
+ * run still owes a `saveAuth`. Written `void run.done.then(…)` that promise was
+ * unreachable: the credential landed whenever it landed, and the one route whose
+ * whole job is "this flow is over" returned ok with the write still in flight.
+ */
+/**
+ * Bounded by `execLines`'s own `timeoutMs` and by the abort `cancel` fires, so
+ * this adds no second timer beside them. Rejections are swallowed here on
+ * purpose: a login that failed is still a login that ended, and the reason
+ * already reached the bus from inside the continuation.
+ */
+let claudeSettled: Promise<unknown> = Promise.resolve();
+
+/**
  * Wait for the CLI to print what the boss has to see, or for the run to end.
  *
  * The run's own exit ends the wait as well: a CLI that printed nothing and quit
@@ -249,7 +268,7 @@ export const postClaudeLogin = (async (ctx) => {
     );
   }
   claudeFlow = { url, expiresAt: startedAt + PASTE_TTL_MS };
-  void run.done.then(async (r) => {
+  claudeSettled = run.done.then(async (r) => {
     claudeFlow = null;
     if (r.ok) await credentialChanged(ctx, "claude");
     await ctx.bus.emit({
@@ -267,14 +286,16 @@ export const CodeBody = z.object({ code: z.string().max(4000).default("") });
 export const postClaudeCode = (async (ctx, _req, _p, b) => {
   const code = b.code.trim();
   if (!code) return bad(msg`no code given`);
-  if (!claudeFlow) return bad(msg`no login is waiting for a code — start one first`);
-  await startClaudeLogin(ctx).submit(code);
+  const run = currentClaudeLogin();
+  if (!claudeFlow || !run) return bad(msg`no login is waiting for a code — start one first`);
+  await run.submit(code);
   return message("ok");
 }) satisfies Handler<z.infer<typeof CodeBody>>;
 
-export const postClaudeCancel = (async (ctx) => {
-  startClaudeLogin(ctx).cancel();
+export const postClaudeCancel = (async (_ctx) => {
+  currentClaudeLogin()?.cancel();
   claudeFlow = null;
+  await claudeSettled.catch(() => {});
   return message("ok");
 }) satisfies Handler;
 
@@ -357,6 +378,9 @@ export const postGithubLogin = (async (ctx) => githubDeviceLogin(ctx)) satisfies
 /** Sign in to a ChatGPT account, from the utility container. */
 let codexFlow: CodexLoginFlow | null = null;
 
+/** The codex half of `claudeSettled`, and there for the same reason. */
+let codexSettled: Promise<unknown> = Promise.resolve();
+
 export const postCodexDevice = (async (ctx) => {
   if (codexFlow && codexFlow.expiresAt > Date.now()) return json(codexFlow);
   const run = startCodexDeviceLogin(ctx);
@@ -371,7 +395,7 @@ export const postCodexDevice = (async (ctx) => {
     );
   }
   codexFlow = { code: both.code, url: both.url, expiresAt: startedAt + DEVICE_CODE_TTL_MS };
-  void run.done.then(async (r) => {
+  codexSettled = run.done.then(async (r) => {
     codexFlow = null;
     await ctx.bus.emit({
       author: "orchestrator",
@@ -382,9 +406,10 @@ export const postCodexDevice = (async (ctx) => {
   return json(codexFlow);
 }) satisfies Handler;
 
-export const postCodexDeviceCancel = (async (ctx) => {
-  startCodexDeviceLogin(ctx).cancel();
+export const postCodexDeviceCancel = (async (_ctx) => {
+  currentCodexDeviceLogin()?.cancel();
   codexFlow = null;
+  await codexSettled.catch(() => {});
   return message("ok");
 }) satisfies Handler;
 

@@ -387,10 +387,14 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
     return () => clearInterval(t);
   }, [running]);
 
+  // Both dependencies are read: a collapsed pane renders no lines to scroll, and
+  // an empty log has no bottom to be at. They were the trigger without being in
+  // the body, which is what `exhaustive-effect-dependencies` calls extra.
+  const count = lines.length;
   useEffect(() => {
     const el = box.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [lines.length, shut]);
+    if (el && count && !shut && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [count, shut]);
 
   // A failure stays on the page. It is the one outcome the boss might act on,
   // and it used to be the one that made the pane disappear.

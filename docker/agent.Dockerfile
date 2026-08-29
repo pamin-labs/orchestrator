@@ -39,10 +39,10 @@
 # is still an immutable pin — the index digest changes if any platform's image
 # changes — and it is the one `TARGETARCH` can be trusted against, which is why
 # Docker's own guidance is to pin the list rather than a member of it.
-FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4
+FROM oven/bun:1.4.0@sha256:5ff609364c049b54eb0ff560ec96319729a972078ef2c755d758f0c6ef89c2d6
 
 # `upgrade` before `install`, and it is not belt-and-braces. A base image is a
-# snapshot: `oven/bun:1.3.14` is pinned by digest, so every Debian package in it
+# snapshot: `oven/bun:1.4.0` is pinned by digest, so every Debian package in it
 # is frozen at whatever was current when that image was built, security updates
 # included. Trivy counted 60 HIGH/CRITICAL after the Node change and the bulk of
 # them were `perl` — pulled in by `git` — and `util-linux`, every one with a

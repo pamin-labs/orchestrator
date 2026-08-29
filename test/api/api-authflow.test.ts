@@ -4,6 +4,7 @@ import { makeApp } from "../../src/composition/api.ts";
 import { asc, eq } from "drizzle-orm";
 import type { Json } from "../../src/contracts/json.ts";
 import { loadAuth } from "../../src/mech/sandbox/auth.ts";
+import { currentClaudeLogin } from "../../src/mech/sandbox/login.ts";
 import type { DeviceFlowFetcher } from "../../src/mech/git/ghlogin.ts";
 import { finishGithubLogin, githubDeviceLogin } from "../../src/api/panel/authflow.ts";
 import { escalation, event } from "../../src/platform/persistence/schema.ts";
@@ -93,6 +94,32 @@ test("a CLI that prints no link is a 422 that says how to check the image", asyn
   // No credential, and no half-started flow left holding the slot.
   expect(await loadAuth(h.db, "claude")).toBeNull();
   expect((await h.post("/api/v1/auth/claude/login/code", { code: "WDJB" })).status).toBe(422);
+  await reset(h);
+});
+
+/**
+ * A cancel with nothing to cancel starts nothing.
+ *
+ * `postClaudeCancel` spelled itself `startClaudeLogin(ctx).cancel()`, and that
+ * getter is get-or-*create*: with no run in flight it built one and launched
+ * `claude setup-token` in the utility container. In an image holding a session
+ * that mints and stores a real token; here it was a second `saveAuth` landing on
+ * whatever schema was current by then — the flake that failed
+ * `a CLI that prints no link is a 422` with a credential its own login never made.
+ */
+/**
+ * Asserted on the module slot rather than on the credential, because the slot is
+ * set synchronously by the getter while the write is several awaits away. The
+ * symptom was timing; the cause is not, and a guard that reproduces the timing is
+ * a guard that goes green on a fast machine.
+ */
+test("cancelling when no login is in flight starts none", async () => {
+  const h = await harness((cmd) =>
+    cmd.includes("setup-token") ? { code: 0, out: `https://claude.ai/oauth?x=1\n${CLAUDE_TOKEN}\n` } : { code: 0 },
+  );
+  await reset(h);
+  expect(currentClaudeLogin()).toBeNull();
+  expect(await loadAuth(h.db, "claude")).toBeNull();
   await reset(h);
 });
 

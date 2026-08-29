@@ -20,14 +20,24 @@ import { useLayoutEffect, useRef, useState } from "react";
  * rather than `[text, open]`, because an array literal is a new identity every
  * render and the effect would never settle. Same rule as a React `key`.
  */
+/**
+ * The reading is stored *with* the content it was taken of. As a bare boolean,
+ * `on` was a dependency the effect never read — an extra one, by
+ * `exhaustive-effect-dependencies`, and correctly so: nothing in the body tied
+ * the measurement to the thing measured. Dropping the array instead trades that
+ * for `react-hooks(exhaustive-deps)`, a setState with no list. Keeping the key in
+ * the state says what the boolean is an answer about.
+ */
 export function useClamped<T extends HTMLElement>(on: string): [React.RefObject<T | null>, boolean] {
   const ref = useRef<T>(null);
-  const [clamped, setClamped] = useState(false);
+  const [measured, setMeasured] = useState({ on, clamped: false });
   useLayoutEffect(() => {
     const el = ref.current;
     // A hair of tolerance: sub-pixel line heights make an unclamped element
     // report a scrollHeight a fraction above its client height.
-    if (el) setClamped(el.scrollHeight > el.clientHeight + 1);
+    if (el) setMeasured({ on, clamped: el.scrollHeight > el.clientHeight + 1 });
   }, [on]);
-  return [ref, clamped];
+  // Not `measured.clamped` alone: between `on` changing and the effect running,
+  // the stored answer is about the previous content.
+  return [ref, measured.on === on && measured.clamped];
 }
