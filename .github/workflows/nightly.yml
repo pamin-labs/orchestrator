@@ -87,7 +87,7 @@ jobs:
       # opensandbox-server is a Python package, and the tests start it with
       # `uvx`. Without uv on PATH they detect that and skip — a green tick on a
       # job named sandbox-live, over nothing.
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       # ubuntu-24.04 ships a running docker daemon, and the agent image is
       # published public (anonymous pull verified), so there is no install and no
       # registry secret. Both tags are read from the modules that name them: this
