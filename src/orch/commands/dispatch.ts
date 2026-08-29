@@ -4,7 +4,7 @@ import { Command, CommanderError } from "commander";
 import type { hc } from "hono/client";
 import { ChangedFilesClaimSchema, MailIntent, SplitRequirements } from "../../contracts/orch.ts";
 import { jsonOr } from "../../contracts/json.ts";
-import type { ProtocolResponse } from "../../contracts/protocol.ts";
+import type { JsonReply, ProtocolResponse } from "../../contracts/protocol.ts";
 import type { OrchType } from "../../http/routes/orch.ts";
 
 type CommandResponse = ProtocolResponse | ExitResult;
@@ -12,7 +12,7 @@ type CommandResponse = ProtocolResponse | ExitResult;
 /** The argv to parse, and everything a handler is allowed to reach for. */
 export interface DispatchContext {
   orch: ReturnType<typeof hc<OrchType>>;
-  send: (request: Promise<Response>) => Promise<ProtocolResponse>;
+  send: (request: Promise<JsonReply>) => Promise<ProtocolResponse>;
   readStdin: () => Promise<string>;
   argv: string[];
   version: string;

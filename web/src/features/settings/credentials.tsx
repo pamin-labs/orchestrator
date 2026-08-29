@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, mutate } from "../../shared/api";
 import { clock } from "../../shared/format";
 import { Head, Input, Meta, Textarea } from "../../ui/bits";
@@ -178,14 +178,29 @@ function useCredential(props: CredentialProps) {
   });
   const [login, setLogin] = useState<LoginFlow>({ link: null, device: null, paste: "" });
   const updatedAt = props.current ? props.current.updatedAt : 0;
-  const changeForm: Change<CredentialForm> = (patch) => setForm((current) => ({ ...current, ...patch }));
-  const changeLogin: Change<LoginFlow> = (patch) => setLogin((current) => ({ ...current, ...patch }));
+  const changeForm: Change<CredentialForm> = useCallback(
+    (patch) => setForm((current) => ({ ...current, ...patch })),
+    [],
+  );
+  /**
+   * `useCallback`, so the timer effect below can depend on it truthfully. As a
+   * fresh function every render it was simply left out of that array, which
+   * `exhaustive-effect-dependencies` names.
+   */
+  const changeLogin: Change<LoginFlow> = useCallback((patch) => setLogin((current) => ({ ...current, ...patch })), []);
 
   // The OAuth address is worth showing until the credential it fetches arrives,
   // and not one render longer.
-  useEffect(() => {
+  //
+  // On the edge, during render: as an effect this rendered the arrived credential
+  // once with the dead link still under it, and `updatedAt` was a dependency the
+  // body never read. Both are the same mistake — nothing tied the clearing to the
+  // arrival it was for.
+  const [clearedAt, setClearedAt] = useState(updatedAt);
+  if (updatedAt !== clearedAt) {
+    setClearedAt(updatedAt);
     changeLogin({ link: null, device: null });
-  }, [updatedAt]);
+  }
   // Stop showing a code that has stopped working. An expired code that still
   // looks live is the same failure as a panel saying the app is not installed
   // after it has been.
@@ -193,7 +208,7 @@ function useCredential(props: CredentialProps) {
     if (!login.device) return;
     const t = setTimeout(() => changeLogin({ device: null }), Math.max(0, login.device.expiresAt - Date.now()));
     return () => clearTimeout(t);
-  }, [login.device]);
+  }, [changeLogin, login.device]);
 
   return { props, form, login, changeForm, changeLogin, savedBaseUrl, updatedAt };
 }

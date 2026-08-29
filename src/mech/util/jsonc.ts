@@ -60,7 +60,7 @@ function endOfLine(text: string, at: number): number {
   return nl === -1 ? text.length : nl;
 }
 
-/** Past `*​/`, or to the end — an unterminated block eats the rest, as a reader does. */
+/** Past the closing delimiter, or to the end — an unterminated block eats the rest, as a reader does. */
 function endOfBlock(text: string, at: number): number {
   const close = text.indexOf("*/", at + 2);
   return close === -1 ? text.length : close + 2;

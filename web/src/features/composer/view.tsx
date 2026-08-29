@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { ClipboardPaste, Paperclip, SquareSlash, X } from "lucide-react";
-import { type RefObject, useEffect, useRef, useState, useTransition } from "react";
+import { type RefObject, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "../../ui/button";
@@ -11,6 +11,7 @@ import { cn } from "../../ui/cn";
 import { FilePicker } from "../picker/view";
 import { z } from "zod";
 import { api, readApi } from "../../shared/api";
+import type { JsonReply } from "../../../../src/contracts/protocol.ts";
 import type { InferResponseType } from "hono/client";
 import {
   appendLine,
@@ -238,16 +239,32 @@ export function AttachmentTiles({ files, onRemove }: { files: Attached[]; onRemo
  * counted from the text: a wrapped line is a line, and counting `\n` gets that
  * wrong on exactly the long answers this box exists for.
  */
-function useAutoGrow(box: RefObject<HTMLTextAreaElement | null>, text: string, rows: number) {
-  const [h, setH] = useState(0);
-  useEffect(() => {
+/**
+ * The ref is created here and handed back, rather than taken as an argument.
+ *
+ * Measuring means writing `style.height` on the element, and a hook that mutates
+ * something its caller owns is what `react(immutability)` refuses — reasonably,
+ * since nothing tells the owner it happened. Owning the ref makes the mutation
+ * the hook's own; the caller uses the same object it always did, one return value
+ * later.
+ */
+/**
+ * `useLayoutEffect` and a reading stored with its inputs, the same shape as
+ * `useClamped`. `text` was a dependency the body never read — extra, by
+ * `exhaustive-effect-dependencies` — while being the whole reason to re-measure,
+ * and the height is only an answer about the text that was in the box.
+ */
+function useAutoGrow(text: string, rows: number): [RefObject<HTMLTextAreaElement | null>, number] {
+  const box = useRef<HTMLTextAreaElement>(null);
+  const [measured, setMeasured] = useState({ text, rows, h: 0 });
+  useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
     el.style.height = "0px";
-    setH(Math.max(el.scrollHeight, rows * 22));
+    setMeasured({ text, rows, h: Math.max(el.scrollHeight, rows * 22) });
     el.style.height = "";
-  }, [box, text, rows]);
-  return h;
+  }, [text, rows]);
+  return [box, measured.text === text && measured.rows === rows ? measured.h : 0];
 }
 
 /**
@@ -361,9 +378,8 @@ export function Composer({
   const [drag, setDrag] = useState(false);
   const [slash, setSlash] = useState<Slash | null>(null);
   const [picking, setPicking] = useState(false);
-  const box = useRef<HTMLTextAreaElement>(null);
   const skills = useSkills(projectId);
-  const h = useAutoGrow(box, text, rows);
+  const [box, h] = useAutoGrow(text, rows);
 
   const caret = () => box.current?.selectionStart ?? text.length;
   const putCaret = (at: number) =>
@@ -432,11 +448,28 @@ export function Composer({
    * and everything it does pick it reads into memory to post straight back to the
    * same disk. Our own picker walks the real filesystem, so a folder is one click.
    */
+  /**
+   * One post, one refusal, one list of names back.
+   *
+   * The two attach paths had this written out twice, and `.catch(() => null)`
+   * around each `$post` made the second copy close enough for `fallow audit` to
+   * see it. A folder copied in Finder arrives as an unreadable zero-byte entry
+   * and the fetch dies with ERR_ACCESS_DENIED — an unhandled rejection in the
+   * console and nothing on screen — so the rejection is an outcome both callers
+   * have, and only the sentence differs.
+   */
+  const attached = async (post: Promise<JsonReply>, whenUnreadable: string) => {
+    const r = await post.catch(() => null);
+    if (!r) {
+      toast.error(whenUnreadable, { duration: 8000 });
+      return null;
+    }
+    return (await readApi(r, AttachmentsSchema))?.files ?? null;
+  };
+
   const fromDisk = (paths: string[]) =>
     startTransition(async () => {
-      const r = await api.attach.local.$post({ json: { paths } }).catch(() => null);
-      if (!r) return void toast.error(t`Failed to add`, { duration: 8000 });
-      const files = (await readApi(r, AttachmentsSchema))?.files;
+      const files = await attached(api.attach.local.$post({ json: { paths } }), t`Failed to add`);
       if (files) addFiles(files);
     });
 
@@ -444,22 +477,14 @@ export function Composer({
     startTransition(async () => {
       const picked = asPicked(list);
       if (!picked.length) return;
-      // A folder copied in Finder arrives as an unreadable zero-byte entry and the
-      // fetch dies with ERR_ACCESS_DENIED — as an unhandled rejection in the console
-      // and nothing at all on screen.
-      let r: Response;
-      try {
-        // Relative paths travel beside files so the server can rebuild a folder as
-        // one attachment. Hono RPC owns the multipart encoding and route contract.
-        r = await api.attach.$post({
-          form: { file: picked.map(({ file }) => file), rel: picked.map(({ rel }) => rel) },
-        });
-      } catch {
-        return void toast.error(t`The browser can't read this. Drag folders in instead.`, { duration: 8000 });
-      }
+      // Relative paths travel beside files so the server can rebuild a folder as
+      // one attachment. Hono RPC owns the multipart encoding and route contract.
+      const files = await attached(
+        api.attach.$post({ form: { file: picked.map(({ file }) => file), rel: picked.map(({ rel }) => rel) } }),
+        t`The browser can't read this. Drag folders in instead.`,
+      );
       // A file that silently fails to attach is worse than one never added: the text
       // goes out referencing a path, and the agent is told to Read something missing.
-      const files = (await readApi(r, AttachmentsSchema))?.files;
       if (!files) return;
       // Preview from the local File, not a server round trip.
       addFiles(

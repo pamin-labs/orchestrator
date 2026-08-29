@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { HttpResponse, http } from "msw";
 import { act, cleanup, render, waitFor } from "../support/render.tsx";
 import { inFlight, mockHttp, server } from "../support/http.ts";
+import { WithQueries } from "./queries.tsx";
 import { FirstProject } from "../../web/src/features/picker/view.tsx";
 import { Timeline } from "../../web/src/features/timeline/view.tsx";
 import { appendFrame } from "../../web/src/shared/stream.ts";
@@ -53,7 +54,7 @@ test("a stored refusal follows the reader, not the request", async () => {
   server.use(http.get("/api/v1/github/repos", refused));
   i18n.load("en", en);
 
-  render(<FirstProject onAdded={() => {}} onSettings={() => {}} />);
+  render(<WithQueries>{<FirstProject onAdded={() => {}} onSettings={() => {}} />}</WithQueries>);
   // Read in Chinese, which is what `setup.ts` activates: the refusal arrives and
   // is drawn from the reader's own catalogue.
   await waitFor(() => expect(document.body.textContent ?? "").toContain(IN_CHINESE));

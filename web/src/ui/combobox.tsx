@@ -2,7 +2,8 @@ import * as P from "@radix-ui/react-popover";
 import { useLingui } from "@lingui/react/macro";
 import { Command } from "cmdk";
 import { ChevronDown } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useDraft } from "../shared/use-draft";
 import { cn } from "./cn";
 
 /**
@@ -78,9 +79,8 @@ export function Combobox({
   const { t } = useLingui();
   const nothingFound = empty ?? t`No matching branches`;
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(value);
   const box = useRef<HTMLInputElement>(null);
-  useEffect(() => setDraft(value), [value]);
+  const [draft, setDraft] = useDraft(value, value);
 
   // Typed text filters; it does not narrow to nothing. Showing the whole list on
   // focus is the point of opening it — filtering by the value already in the box

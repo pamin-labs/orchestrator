@@ -41,7 +41,14 @@ export interface Expanded {
 
 function boot(): (source: string, path: string) => Expanded {
   const { transformSync } = load<typeof import("@babel/core")>("@babel/core");
-  const macro = load<{ default: unknown }>("@lingui/babel-plugin-lingui-macro").default;
+  // `PluginTarget`, not `unknown`. The plugin ships no `.d.ts`, so its shape has
+  // to be stated somewhere; babel 8's own types are generic over the plugin's
+  // options (`PluginItem<Option>`), and `unknown` satisfies no instantiation of
+  // them. Naming what it is beats asserting past what it is not. The type is
+  // written as an inline `import(...)` for the same reason line 43 is: this
+  // module is preloaded by 204 test processes and must not pull in babel's
+  // module graph, and a type-only import never does.
+  const macro = load<{ default: import("@babel/core").PluginTarget }>("@lingui/babel-plugin-lingui-macro").default;
   // Resolved once. The plugin otherwise calls `@lingui/conf`'s `getConfig()`
   // per file, which searches upward from `process.cwd()` — and `browse.ts`
   // runs `build:web` with the cwd set to a worktree.
@@ -93,18 +100,30 @@ function boot(): (source: string, path: string) => Expanded {
  * re-evaluates the module graph it imports, so one panel module is expanded once
  * per test process that reaches it — 58 of them, for the same bytes. Measured
  * without it: +22% CPU across the suite. The key is the path, the source and the
- * installed plugin version, so an edit or an upgrade misses and nothing has to
- * be cleared.
+ * versions below, so an edit or an upgrade misses and nothing has to be cleared.
  */
 const CACHE = `${ROOT}.cache/lingui`;
 /**
- * Read from the package, not written here. A hand-kept literal is a version that
- * cannot go stale in the file and cannot invalidate anything either: every entry
- * written before an upgrade would still be served after it, so the comment below
- * promising "an upgrade misses" was only true of a string somebody remembered to
- * bump.
+ * Read from the packages, not written here. A hand-kept literal is a version
+ * that cannot go stale in the file and cannot invalidate anything either: every
+ * entry written before an upgrade would still be served after it, so the comment
+ * above promising "an upgrade misses" was only true of a string somebody
+ * remembered to bump.
  */
-const VERSION = load<{ version: string }>("@lingui/babel-plugin-lingui-macro/package.json").version;
+/**
+ * Both packages, because both decide what comes out. The plugin expands the
+ * macro; babel parses around it and prints the result, and the `map` is entirely
+ * babel's. The 7 -> 8 upgrade is the case that proved one was not enough: every
+ * entry on disk had been printed by babel 7, the key did not mention babel, and
+ * a cache hit would have served that output out of a tree running babel 8.
+ *
+ * `./package.json` is in @babel/core's `exports` map, so this reads a version
+ * without loading the module graph the comment on `expand` refuses to pay for.
+ */
+const VERSION = [
+  load<{ version: string }>("@lingui/babel-plugin-lingui-macro/package.json").version,
+  load<{ version: string }>("@babel/core/package.json").version,
+].join("+");
 
 /** A cache entry is a file on disk; a truncated write is a miss, not a crash. */
 function isExpanded(value: unknown): value is Expanded {

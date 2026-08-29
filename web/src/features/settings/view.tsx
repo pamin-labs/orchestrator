@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { SystemTiming } from "../telemetry/view";
 import { useEffect, useState, useTransition } from "react";
+import { useDraft } from "../../shared/use-draft";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
@@ -166,8 +167,7 @@ export function SettingsDialog({
   onRemoved?: () => void;
 }) {
   const { t } = useLingui();
-  const [section, setSection] = useState<Section>(initial);
-  useEffect(() => setSection(initial), [initial]);
+  const [section, setSection] = useDraft<Section>(initial, initial);
   const pick = (k: Section) => {
     setSection(k);
     onSection(k);
