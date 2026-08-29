@@ -597,25 +597,30 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Next executable items
 
-1. **Run the release workflow in dry-run mode — blocked on a version bump, not on
-   effort.** `checks` refuses before anything builds: it requires
-   `inputs.version` to equal `main`'s `package.json` version *and* `v<version>` to
-   be unpublished. `main` is `0.1.2` and `v0.1.2` is published, so every dispatch
-   dies on "already published and immutable releases are not re-cut". Bump
-   `package.json` on `main` to the next version first; which version, and whether
-   now is the time to cut one, is the boss's call.
+1. **Cut the first release under [ADR 050](../adr/050-the-bump-merging-is-the-release-request.md).**
+   There is nothing to dispatch: `release.yml` runs after `ci`, `security` or
+   `codeql` completes on `main`, reads the version from `package.json`, and
+   releases it when `v<version>` is not published. Merging the bump is the
+   request.
 
-   Then dispatch with `dry_run` ticked (`release.yml:10`, default true) and confirm
-   `image-push`, `manifest`, `publish` and `promote-latest` are all skipped. What
-   only a hosted run exercises: the image build on x64 **and** arm64, Trivy against
-   the built image, SBOM generation, and provenance attestation.
+   That makes the next merge of a version bump the first run of the publishing
+   half, which nothing has ever exercised — `dry_run` was the default, so every
+   run to date stopped before `image-push`. What only a hosted run reaches: the
+   image build on x64 **and** arm64, Trivy against the built image, SBOM
+   generation, and provenance attestation, the last of those through
+   `attest-build-provenance` and `attest-sbom` freshly on v4.
 
-   The publication half no longer depends on that run to be trustworthy. A test
+   A failure there is recoverable and that is the design: nothing publishes until
+   every evidence gate passes, and `checks` refuses only a version already
+   *published*, so the same version can be attempted again. A tag bound without a
+   release resumes onto the same source.
+
+   The publication half does not depend on a rehearsal to be trustworthy. A test
    walks every step in `release.yml` for a publishing verb — `docker push`,
-   `gh release create`, `imagetools create`, a registry login, either attest action,
-   `push: true` — and fails unless it sits under `!inputs.dry_run`. Naming the four
-   guarded jobs was a list a fifth job walks past, and a passing dry run only ever
-   proves that *today's* steps were guarded.
+   `gh release create`, `imagetools create`, a registry login, either attest
+   action, `push: true` — and fails unless it sits in a job carrying
+   `needs.checks.outputs.release == 'true'`. Naming the guarded jobs was a list a
+   further job walks past.
 
 2. **`codecov/patch` is in the ruleset. Done**, and the blocker was a misreading:
    `commits/<sha>/status` returns an empty array because Codecov posts a **check

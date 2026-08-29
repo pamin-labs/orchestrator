@@ -1,16 +1,29 @@
 name: release
 
-on:
+# The bump PR merging *is* the release request. ADR 013 made the version a
+# decision recorded on `main`; typing it again into a dispatch form was a second
+# place to say it, and `checks` existed to force the two to agree — which is how
+# a dispatch for 0.1.3 against a `main` reading 0.1.2 died at step one.
+#
+# `workflow_run` and not `push`, because the gate below requires every name in
+# `required-checks.txt` to be `completed:success` for the source SHA, and on a
+# push those checks start at the same moment this does. Three workflows produce
+# those names, so this fires three times per merge and the first two find the
+# others still running — a skip, not a failure. `workflow_dispatch` stays as the
+# hand crank for when a run was missed or has to be repeated.
+#
+# `workflow_run` earns its privilege the same way `pr-report.yml` does, and with
+# less to argue: `branches: [main]` never matches a pull request run, whose
+# `head_branch` is the PR's own; the checkout names `main` rather than the
+# triggering run's head; and nothing is read back from that run at all — not an
+# artifact, not a SHA. The source is resolved from the API and compared, so a
+# fork has nothing to reach.
+on: # zizmor: ignore[dangerous-triggers]
+  workflow_run:
+    workflows: [ci, security, codeql]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      version:
-        description: Version already merged in package.json, without the v
-        required: true
-        type: string
-      dry_run:
-        description: Build and verify without publishing
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -34,12 +47,20 @@ jobs:
       checks: read # Read the named CI and security results for the selected source SHA.
     outputs:
       source-sha: ${{ steps.source.outputs.sha }}
+      version: ${{ steps.source.outputs.version }}
+      # `gates` is skipped when `source` already said no, and a skipped step's
+      # output is empty — so the fallback is the earlier answer, not a default.
+      release: ${{ steps.gates.outputs.release || steps.source.outputs.release }}
     steps:
+      # `ref: main` rather than the triggering SHA: a release builds `main` or it
+      # builds nothing, and hardcoding that is what the old
+      # `test "$GITHUB_REF" = refs/heads/main` was reaching for. Under
+      # `workflow_run` that test would have read the default branch anyway.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.sha }}
+          ref: main
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -47,20 +68,31 @@ jobs:
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = refs/heads/main || { echo '::error::Releases only run from main.'; exit 1; }
-          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] || exit 1
-          package_version=$(bun -e 'console.log((await Bun.file("package.json").json()).version)')
-          test "$package_version" = "$RELEASE_VERSION" || { echo "::error::Merge the $RELEASE_VERSION bump PR first."; exit 1; }
-          sha=$(git rev-parse HEAD)
-          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
-          test "$sha" = "$main_sha" || { echo '::error::Selected SHA is not current main.'; exit 1; }
-          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$RELEASE_VERSION" >/dev/null 2>&1; then
-            echo "::error::v$RELEASE_VERSION is already published and immutable releases are not re-cut."
+          RELEASE_VERSION=$(bun -e 'console.log((await Bun.file("package.json").json()).version)')
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] || {
+            echo "::error::package.json version '$RELEASE_VERSION' is not a release version."
             exit 1
+          }
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          # Nothing to do is not a failure. This workflow fires three times per
+          # merge and on every commit that reaches `main`, so the ordinary case is
+          # a `main` whose version is already out — and a red run for that would
+          # train everyone to ignore red runs here.
+          stop() { echo "::notice::$1"; echo "release=false" >> "$GITHUB_OUTPUT"; exit 0; }
+
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          test "$sha" = "$main_sha" || stop "main moved to $main_sha; that commit's own run releases it"
+
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$RELEASE_VERSION" >/dev/null 2>&1; then
+            stop "v$RELEASE_VERSION is published; nothing to release until package.json moves"
           fi
+          # A tag without a release is a run that died after binding it. Resuming
+          # is only safe onto the same source, which is why this compares rather
+          # than deletes: published tags and releases are never replaced.
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$RELEASE_VERSION" >/dev/null 2>&1; then
             tag_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/v$RELEASE_VERSION" --jq .sha)
             test "$tag_sha" = "$sha" || {
@@ -69,13 +101,14 @@ jobs:
             }
             echo "::notice::resuming the unpublished v$RELEASE_VERSION release at $sha"
           fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-      - run: bun run check
-      - run: git diff --exit-code
+          echo "release=true" >> "$GITHUB_OUTPUT"
       - name: require successful source checks
+        id: gates
+        if: steps.source.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           set -euo pipefail
           # Read from `.github/required-checks.txt` rather than repeated here.
@@ -85,7 +118,7 @@ jobs:
           test "${#required[@]}" -gt 0 || { echo '::error::required-checks.txt is empty'; exit 1; }
           runs=$(mktemp)
           gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_SHA/check-runs?per_page=100" > "$runs"
-          failed=0
+          pending=()
           for name in "${required[@]}"; do
             state=$(jq -r --arg name "$name" '
               [.check_runs[] | select(.name == $name)]
@@ -93,16 +126,27 @@ jobs:
               | last
               | if . == null then "missing" else "\(.status):\(.conclusion // "")" end
             ' "$runs")
-            if [ "$state" != "completed:success" ]; then
-              echo "::error::$name is $state for $SOURCE_SHA"
-              failed=1
-            fi
+            [ "$state" = "completed:success" ] || pending+=("$name is $state for $SOURCE_SHA")
           done
-          test "$failed" = 0
+          if [ "${#pending[@]}" -gt 0 ]; then
+            # Automatic: two of the three workflows always finish before the third,
+            # so an early firing finds the others in flight. That is the shape of a
+            # normal merge, not a fault, and the last one to finish releases.
+            # Asked for by hand: the answer is no, and the reason is the failure.
+            if [ "$MANUAL" = true ]; then
+              printf '::error::%s\n' "${pending[@]}"
+              exit 1
+            fi
+            printf '::notice::%s\n' "${pending[@]}"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
 
   binaries:
     name: build five binaries
     needs: checks
+    if: ${{ needs.checks.outputs.release == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -116,7 +160,7 @@ jobs:
       - run: bun run build:web
       - name: compile five platform archives
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ needs.checks.outputs.version }}
           SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
         run: |
           set -euo pipefail
@@ -143,7 +187,7 @@ jobs:
           rm dist/orch-cli.ts
       - name: verify archives, version, source, and target manifests
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ needs.checks.outputs.version }}
           SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
         run: |
           set -euo pipefail
@@ -174,7 +218,7 @@ jobs:
           done
       - name: start the native Linux archive
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ needs.checks.outputs.version }}
         run: |
           set -euo pipefail
           smoke=$(mktemp -d); trap 'test -z "${pid:-}" || kill "$pid" 2>/dev/null || true; rm -rf "$smoke"' EXIT
@@ -202,6 +246,7 @@ jobs:
   source-sbom:
     name: build source SBOMs
     needs: checks
+    if: ${{ needs.checks.outputs.release == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -219,6 +264,7 @@ jobs:
   image-build:
     name: build and verify image (${{ matrix.platform }})
     needs: checks
+    if: ${{ needs.checks.outputs.release == 'true' }}
     runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     strategy:
@@ -295,7 +341,6 @@ jobs:
           output: orchestrator-agent-${{ matrix.platform }}.cdx.json
           exit-code: '0'
       - name: save verified image for publication
-        if: ${{ !inputs.dry_run }}
         env:
           PLATFORM: ${{ matrix.platform }}
         run: docker save "orch-agent:verify-$PLATFORM" | gzip -1 > "orch-agent-$PLATFORM.docker.tar.gz"
@@ -310,7 +355,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: ${{ !inputs.dry_run }}
         with:
           name: image-archive-${{ matrix.platform }}
           path: orch-agent-${{ matrix.platform }}.docker.tar.gz
@@ -321,7 +365,7 @@ jobs:
   image-push:
     name: publish verified image digest (${{ matrix.platform }})
     needs: [checks, image-build]
-    if: ${{ !inputs.dry_run }}
+    if: ${{ needs.checks.outputs.release == 'true' }}
     runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     permissions:
@@ -374,7 +418,7 @@ jobs:
   manifest:
     name: publish image manifest and attestations
     needs: [checks, image-push]
-    if: ${{ !inputs.dry_run }}
+    if: ${{ needs.checks.outputs.release == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
@@ -396,7 +440,7 @@ jobs:
         working-directory: /tmp/digests
         env:
           IMAGE: ${{ env.REGISTRY }}/orch-agent
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ needs.checks.outputs.version }}
           SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
         run: |
           set -euo pipefail
@@ -459,11 +503,11 @@ jobs:
             '{source_sha:$source_sha,image:$image,digest:$digest,platforms:["linux/amd64","linux/arm64"]}' \
             > "$GITHUB_WORKSPACE/registry-image-manifest.json"
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', trivy-config: trivy.yaml, format: table }
+        with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ needs.checks.outputs.version }}', trivy-config: trivy.yaml, format: table }
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', format: spdx-json, output: registry-image.spdx.json, exit-code: '0' }
+        with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ needs.checks.outputs.version }}', format: spdx-json, output: registry-image.spdx.json, exit-code: '0' }
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', format: cyclonedx, output: registry-image.cdx.json, exit-code: '0' }
+        with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ needs.checks.outputs.version }}', format: cyclonedx, output: registry-image.cdx.json, exit-code: '0' }
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-name: '${{ env.REGISTRY }}/orch-agent', subject-digest: '${{ steps.manifest.outputs.digest }}', push-to-registry: true }
       - uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
@@ -481,7 +525,7 @@ jobs:
   release-evidence:
     name: verify complete release evidence
     needs: [checks, binaries, source-sbom, image-build, image-push, manifest]
-    if: ${{ always() && needs.checks.result == 'success' && needs.binaries.result == 'success' && needs.source-sbom.result == 'success' && needs.image-build.result == 'success' && (inputs.dry_run || (needs.image-push.result == 'success' && needs.manifest.result == 'success')) }}
+    if: ${{ needs.checks.outputs.release == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -492,7 +536,6 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { path: dist, pattern: 'image-evidence-*', merge-multiple: true }
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        if: ${{ !inputs.dry_run }}
         with: { name: registry-image-evidence, path: dist }
       - name: checksum every release artifact
         run: |
@@ -516,7 +559,7 @@ jobs:
   publish:
     name: publish immutable GitHub release
     needs: [checks, release-evidence, manifest]
-    if: ${{ !inputs.dry_run }}
+    if: ${{ needs.checks.outputs.release == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -535,7 +578,7 @@ jobs:
       - name: atomically bind release tag to verified source
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ needs.checks.outputs.version }}
           SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
         run: |
           set -euo pipefail
@@ -553,14 +596,14 @@ jobs:
       - name: create release at the verified SHA
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ needs.checks.outputs.version }}
           SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
         run: gh release create "v$RELEASE_VERSION" dist/* --verify-tag --title "v$RELEASE_VERSION" --generate-notes
 
   promote-latest:
     name: promote latest after release publication
-    needs: [manifest, publish]
-    if: ${{ !inputs.dry_run }}
+    needs: [checks, manifest, publish]
+    if: ${{ needs.checks.outputs.release == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
