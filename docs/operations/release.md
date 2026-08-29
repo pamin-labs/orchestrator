@@ -3,16 +3,33 @@
 Releases are immutable products of one already-reviewed `main` commit. A release
 workflow never edits source, bumps a version, commits, rebases, or cherry-picks.
 
-## Before dispatch
+## Cutting one
 
-1. Land the version bump as an ordinary pull request.
-2. Confirm the selected SHA is reachable from `main` and all required checks
-   passed for that SHA.
-3. Confirm the version/tag/release does not exist and package metadata matches
-   the requested version.
-4. Run a dry run. It builds binaries and images, scans them, generates SBOMs,
-   checksums, manifests, and workflow artifacts, but does not push a registry
-   tag, Git tag, GitHub release, or registry/GitHub attestation.
+Land the version bump as an ordinary pull request. That is the whole procedure:
+merging it is the release request.
+
+`release.yml` runs after `ci`, `security` or `codeql` completes on `main`, reads
+the version out of `package.json`, and releases it when `v<version>` is not
+already published. There is nothing to type and nothing to tick. Three workflows
+produce the required check names, so the run fires three times per merge and the
+first two find the others still going — those end as *no release*, with a notice
+saying which name they were waiting on.
+
+`workflow_dispatch` remains, with no inputs, for a run that was missed or has to
+be repeated. It reads the same `package.json` and answers the same way, except
+that checks still in flight are an error rather than a skip: a run asked for by
+hand is a question that deserves a reason.
+
+Nothing is released twice. A `main` whose version is already published is a
+no-op, which is the ordinary state between bumps.
+
+## When a run does not release
+
+Neither of these is a fault, and both say so as a notice rather than a failure:
+
+- `v<version> is published; nothing to release until package.json moves` — every
+  commit that is not a version bump.
+- a required check `is <state>` — an earlier of the three firings.
 
 ## Build once from the selected SHA
 

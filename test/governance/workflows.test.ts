@@ -57,8 +57,17 @@ function expectUnconditionalSteps(workflow: Workflow, jobName: string, names: re
   for (const name of names) expect(steps.find((step) => step.name === name)?.if).toBeUndefined();
 }
 
-function expectDryRunOnlyJobs(workflow: Workflow, names: readonly string[]): void {
-  for (const name of names) expect(workflow.jobs[name]?.if).toBe("${{ !inputs.dry_run }}");
+/**
+ * Every job but `checks` runs only when `checks` said to release.
+ *
+ * Written on each job rather than left to the `needs` cascade. The cascade is
+ * real — a skipped `image-build` skips everything under it — but it makes "is
+ * this step reachable without authorisation" a graph walk, and the one failure
+ * here that cannot be taken back is a publish that should not have happened.
+ */
+const RELEASE_GATE = "${{ needs.checks.outputs.release == 'true' }}";
+function expectGatedJobs(workflow: Workflow, names: readonly string[]): void {
+  for (const name of names) expect({ job: name, if: workflow.jobs[name]?.if }).toEqual({ job: name, if: RELEASE_GATE });
 }
 
 /**
@@ -384,7 +393,10 @@ describe("workflow governance", () => {
     const checkGate = checks.steps.find((step) => step.name === "require successful source checks")?.run ?? "";
 
     expect(checks.permissions).toEqual({ contents: "read", checks: "read" });
-    expect(sourceSelection).toContain('test "$GITHUB_REF" = refs/heads/main');
+    // The branch is structural now: the checkout names `main`, so there is no
+    // ref to compare against. `workflow_run` would have reported the default
+    // branch for that test whatever triggered it.
+    expect(checks.steps[0]?.with?.ref).toBe("main");
     expect(sourceSelection).toContain('git/ref/heads/main" --jq .object.sha');
     expect(sourceSelection).toContain('test "$sha" = "$main_sha"');
     expect(sourceSelection).toContain("git/ref/tags/v$RELEASE_VERSION");
@@ -454,7 +466,11 @@ describe("workflow governance", () => {
     const manifest =
       workflow.jobs.manifest!.steps.find((step) => step.name === "create multi-platform manifest")?.run ?? "";
 
-    expect(select).toContain("is already published and immutable releases are not re-cut");
+    // A published version is nothing to do, not a fault: this fires three times
+    // per merge and on every commit, so refusing loudly would make a red release
+    // run the normal state of the repository.
+    expect(select).toContain("is published; nothing to release until package.json moves");
+    expect(select).toContain('echo "release=false"');
     expect(select).toContain('test "$tag_sha" = "$sha"');
     expect(select).toContain("resuming the unpublished");
     expect(manifest).toContain('if [ -z "$existing" ]');
@@ -463,7 +479,7 @@ describe("workflow governance", () => {
     expect(manifest).toContain("exists with divergent platform digests");
   });
 
-  test("dry run builds, loads, scans, and inventories images without publication", async () => {
+  test("nothing publishes unless checks authorised the release", async () => {
     const workflow = await load("release");
     const release = await source("release");
     const imageBuild = workflow.jobs["image-build"]!;
@@ -478,18 +494,22 @@ describe("workflow governance", () => {
       "create verified image SPDX SBOM",
       "create verified image CycloneDX SBOM",
     ]);
-    expect(imageBuild.steps.find((step) => step.name === "save verified image for publication")?.if).toBe(
-      "${{ !inputs.dry_run }}",
-    );
-    expectDryRunOnlyJobs(workflow, ["image-push", "manifest", "publish", "promote-latest"]);
+    expectGatedJobs(workflow, [
+      "binaries",
+      "source-sbom",
+      "image-build",
+      "image-push",
+      "manifest",
+      "release-evidence",
+      "publish",
+      "promote-latest",
+    ]);
 
-    // And nothing outside those four publishes. Naming the four is a list that a
-    // fifth job walks past; this asks the question the dry run is actually for —
-    // "does a step that writes to a registry, a release or an attestation store
-    // sit anywhere a dry run still reaches it?" A dry run that published once is
-    // the one failure here that cannot be taken back, and the run itself cannot
-    // be used to check this, because a passing dry run proves only that today's
-    // steps are guarded.
+    // And the list above is a list a ninth job walks past, so this asks the
+    // question directly: does a step that writes to a registry, a release or an
+    // attestation store sit anywhere the gate does not reach? A publish that
+    // should not have happened is the one failure here that cannot be taken back,
+    // and a green run proves only that today's steps were authorised.
     const PUBLISHES = [
       "docker push",
       "gh release create",
@@ -501,11 +521,11 @@ describe("workflow governance", () => {
     ];
     for (const [name, job] of Object.entries(workflow.jobs)) {
       const body = job.steps.map((step) => `${step.uses ?? ""} ${step.run ?? ""} ${JSON.stringify(step.with ?? {})}`);
-      const guardedStep = (i: number) => job.steps[i]?.if === "${{ !inputs.dry_run }}";
+      const guardedStep = (i: number) => job.steps[i]?.if === RELEASE_GATE;
       body.forEach((text, i) => {
         const verb = PUBLISHES.find((p) => text.includes(p));
         if (!verb) return;
-        expect({ job: name, verb, guarded: job.if === "${{ !inputs.dry_run }}" || guardedStep(i) }).toEqual({
+        expect({ job: name, verb, guarded: job.if === RELEASE_GATE || guardedStep(i) }).toEqual({
           job: name,
           verb,
           guarded: true,
@@ -624,7 +644,9 @@ describe("workflow governance", () => {
 
     expect(manifestRun).not.toContain('imagetools create -t "$image:latest"');
     expect(publish.steps.at(-1)?.name).toBe("create release at the verified SHA");
-    expect(latest.needs).toEqual(["manifest", "publish"]);
+    // `checks` is in there to read the release gate, not to order anything; what
+    // this test is about is that `publish` is still upstream of it.
+    expect(latest.needs).toEqual(["checks", "manifest", "publish"]);
     expect(latest.permissions).toEqual({ contents: "read", packages: "write" });
     expect(latestRun).toContain('test "$current" = "$PREVIOUS_LATEST"');
     expect(latestRun).toContain('imagetools create -t "$IMAGE:latest" "$IMAGE@$EXPECTED_DIGEST"');
