@@ -157,6 +157,12 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
+          # `start the native Linux archive` runs the compiled server, and the
+          # server opens its database before it listens — so a smoke test without
+          # one dies on `ORCH_DATABASE_URL is unset` having proved nothing. The
+          # first release run to reach this step found that; every run before it
+          # stopped at `checks`.
+          postgres: "true"
       - run: bun run build:web
       - name: compile five platform archives
         env:
@@ -219,6 +225,10 @@ jobs:
       - name: start the native Linux archive
         env:
           RELEASE_VERSION: ${{ needs.checks.outputs.version }}
+          # The suite's throwaway PostgreSQL, from the compose file the composite
+          # action starts. Nothing here is kept: this asks whether the binary boots
+          # and serves, and the answer needs a database to be worth having.
+          ORCH_DATABASE_URL: postgres://orchestrator:orchestrator@127.0.0.1:5433/orchestrator
         run: |
           set -euo pipefail
           smoke=$(mktemp -d); trap 'test -z "${pid:-}" || kill "$pid" 2>/dev/null || true; rm -rf "$smoke"' EXIT
@@ -283,7 +293,27 @@ jobs:
           load: true
           push: false
           tags: orch-agent:verify-${{ matrix.platform }}
-          provenance: mode=max
+          # `false`, and it costs nothing. `--provenance` decides whether an
+          # attestation manifest is attached to the exported image, which turns it
+          # into an OCI index — and `load: true` writes to the classic image store,
+          # which cannot hold one. That is the whole of `docker exporter does not
+          # currently support exporting manifest lists`.
+          #
+          # Measured, because the flag reads like it is the source of the
+          # provenance evidence below and is not: with `false` and with `mode=max`
+          # the builder writes a byte-identical `buildx.build.provenance` into
+          # `--metadata-file` — 451 bytes, same `buildType`, `builder`,
+          # `invocation`, `materials`. The metadata records how the build ran; the
+          # flag only decides what is stapled to the image.
+          #
+          # And nothing downstream wanted the stapled copy. `image-push` moves the
+          # image as `docker save` | `docker load` | `docker push`, which carries
+          # no attestation — also measured: a classic-store `docker load` of an
+          # attested index fails with `invalid archive: does not contain a
+          # manifest.json`. What consumers verify is published by `manifest`,
+          # through `attest-build-provenance` against the manifest digest, and is
+          # untouched by this line.
+          provenance: false
           cache-from: type=gha,scope=orch-agent-${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=orch-agent-${{ matrix.platform }}
       # Both legs run on a native runner, so no qemu and no `if:` on the platform,

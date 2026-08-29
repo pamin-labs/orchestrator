@@ -487,7 +487,11 @@ describe("workflow governance", () => {
 
     expect(imageBuild.permissions).toBeUndefined();
     expect(imageBuild.strategy?.matrix?.platform).toEqual(["amd64", "arm64"]);
-    expect(build.with).toMatchObject({ load: true, push: false, provenance: "mode=max" });
+    // `provenance: false` is required rather than tolerated: an attestation makes
+    // the export an OCI index and `load: true` writes to the classic image store,
+    // which cannot hold one. The evidence below is unaffected — the builder writes
+    // the same `buildx.build.provenance` into its metadata either way.
+    expect(build.with).toMatchObject({ load: true, push: false, provenance: false });
     expectUnconditionalSteps(workflow, "image-build", [
       "verify image digest and provenance material",
       "scan verified image",
