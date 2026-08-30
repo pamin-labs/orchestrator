@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useImperativeHandle, useRef, type ReactNode, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "./cn";
 
@@ -17,7 +17,8 @@ import { cn } from "./cn";
  * rule has one copy rather than the two that had already drifted apart.
  *
  * The caller gives items, a key, and a row. It never sees a virtual item, a
- * measurement, or a scroll offset.
+ * measurement, or a scroll offset — `handle` and `onTop` speak in item indexes,
+ * which is a fact about the list rather than about the library under it.
  */
 
 /**
@@ -34,6 +35,9 @@ const ASSUMED = { width: 640, height: 640 };
 /** Within this of the bottom counts as "the reader is at the bottom". */
 const AT_BOTTOM_PX = 24;
 
+/** What a caller with an index rail beside the list can ask of it. */
+export type ListHandle = { scrollTo: (index: number) => void };
+
 export function VirtualList<T>({
   items,
   estimate,
@@ -43,10 +47,17 @@ export function VirtualList<T>({
   pin = false,
   role,
   label,
+  handle,
+  onTop,
 }: {
   items: T[];
-  /** Row height before anything is measured. Exact for a non-wrapping row. */
-  estimate: number;
+  /**
+   * Row height before anything is measured. A number where rows are alike; a
+   * function where they are not — a diff's files run from three rows to four
+   * hundred, and one number for both makes the scrollbar jump as each is
+   * measured. The row count is known before the row is drawn, so say so.
+   */
+  estimate: number | ((item: T) => number);
   keyOf: (item: T) => string;
   children: (item: T) => ReactNode;
   className?: string;
@@ -54,6 +65,10 @@ export function VirtualList<T>({
   pin?: boolean;
   role?: string;
   label?: string;
+  /** For a caller that has to drive the list — an index rail, a jump target. */
+  handle?: RefObject<ListHandle | null>;
+  /** The topmost item, for a rail that follows the reader rather than leading. */
+  onTop?: (index: number) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
   // Not state: a scroll must not re-render the list, and the effect below reads
@@ -64,11 +79,22 @@ export function VirtualList<T>({
   const rows = useVirtualizer({
     count: items.length,
     getScrollElement: () => box.current,
-    estimateSize: () => estimate,
+    estimateSize: (index) => (typeof estimate === "number" ? estimate : estimate(items[index]!)),
     getItemKey: (index) => keyOf(items[index]!),
     initialRect: ASSUMED,
     overscan: 12,
   });
+
+  useImperativeHandle(handle, () => ({ scrollTo: (index) => rows.scrollToIndex(index, { align: "start" }) }), [rows]);
+
+  const drawn = rows.getVirtualItems();
+  // The virtualizer already knows what is at the top, so a caller that wants it
+  // does not need an IntersectionObserver over every item to find out — which is
+  // what the diff rail was doing, over items that are no longer all mounted.
+  const top = drawn[0]?.index;
+  useEffect(() => {
+    if (onTop && top !== undefined) onTop(top);
+  }, [onTop, top]);
 
   const count = items.length;
   useEffect(() => {
@@ -90,7 +116,7 @@ export function VirtualList<T>({
       }}
     >
       <div className="relative w-full" style={{ height: rows.getTotalSize() }}>
-        {rows.getVirtualItems().map((row) => (
+        {drawn.map((row) => (
           <div
             key={row.key}
             data-index={row.index}
