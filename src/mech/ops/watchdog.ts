@@ -1016,7 +1016,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   });
 
   // 7d2. Turn logs, compressed then dropped. Worth keeping — every measurement in
-  // docs/project/progress.md came out of these files — but not uncompressed.
+  // docs/project/archive/2026-08.md came out of these files — but not uncompressed.
   await step({ id: "7d2", name: "turn_logs_swept", every: EVERY_TICK }, async () => {
     sweepTurnLogs(join(cfg.dataDir, "turns"), now());
     sweepCodexSessions(join(cfg.dataDir, "codex-home"), now());

@@ -29,7 +29,8 @@ package rather than recalled:
 const rows = db.select().from(t).all();   // rows instanceof Promise === false
 ```
 
-This matters more than the ORM choice. `docs/project/progress.md` budgeted this
+This matters more than the ORM choice.
+[`docs/project/archive/2026-08.md`](../project/archive/2026-08.md) budgeted this
 work as 423 call sites becoming `await`, spreading through every caller, plus
 replacing `openMemory()`'s 190× snapshot across 310 call sites. **None of that is
 required while the database is SQLite** — it is the price of Postgres, and it

@@ -49,8 +49,10 @@ it. A function can sit at CRAP 90 estimated and zero findings exact — check
 before refactoring around one.
 
 Then run Fallow Review and independent architecture/API, security, test-quality,
-and performance review for affected dimensions. Review the final diff, update
-`docs/project/progress.md` once for the verified unit, and create a small commit.
+and performance review for affected dimensions. Review the final diff, replace the
+current-state sections of `docs/project/progress.md` for the verified unit —
+it is a snapshot and a governance test caps its length, so the narrative goes
+in the commit body — and create a small commit.
 
 At a milestone run:
 

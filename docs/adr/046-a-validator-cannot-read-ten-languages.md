@@ -82,7 +82,9 @@ already there; and `reconcile` catches the consequence deterministically as
 `nothing was claimed and nothing changed`, which is what the measured failure
 actually looked like.
 
-One coupling disappears with it. `progress.md` records that `dispatcher.yaml`'s
+One coupling disappears with it.
+[`docs/project/archive/2026-08.md`](../project/archive/2026-08.md) records that
+`dispatcher.yaml`'s
 example slice had to be worded `add tests` rather than `add test cases`, because
 the compiled pattern carried neither `more` nor `cases`. A prompt whose prose has
 to be checked against a regex is a coupling nobody should have to remember.

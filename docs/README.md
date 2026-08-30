@@ -6,7 +6,8 @@ point; it links here instead of repeating rules.
 ## Read by purpose
 
 - Current delivery: [`project/plan.md`](project/plan.md) and
-  [`project/progress.md`](project/progress.md)
+  [`project/progress.md`](project/progress.md); the narrative that file used
+  to carry is in [`project/archive/`](project/archive/)
 - Architecture: [`principles`](architecture/principles.md),
   [`module boundaries`](architecture/module-boundaries.md),
   [`dependency rules`](architecture/dependency-rules.md), and
