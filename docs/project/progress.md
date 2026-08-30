@@ -13,20 +13,21 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `docs/progress-had-become-the-archive-again`, 2026-08-30.
+Measured on `refactor/the-thing-the-boss-files-is-a-ticket`, 2026-08-30, with the
+four branches under it merged.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 1959 pass, 6 environment skips, 0 fail, 1965 across 240 files
-- Coverage: 83.64% of statements, 73.95% of branches, 79.28% of functions,
-  86.13% of lines
+- Tests: 1986 pass, 6 environment skips, 0 fail, 1992 across 246 files
+- Coverage: 83.90% of statements, 74.19% of branches, 79.84% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
 - Fallow security, full inventory: **1** candidate —
   `scripts/embedding-check.ts:126`, a non-literal URL passed to `fetch()` in a
-  development script, not reached from any runtime entry point. It was 40 when
-  this line last had a number
+  development script, not reached from any runtime entry point
+- `bun run preflight`: every runnable step passed
 - Block comments over eight lines: zero, enforced by
   `test/governance/comment-blocks.test.ts`
+- All ten catalogues at 1130/1130
 - Released: `v0.1.4`, 2026-08-30, under
   [ADR 050](../adr/050-the-bump-merging-is-the-release-request.md)
 - Test time is not recorded as a target. The same suite measures differently per
@@ -63,10 +64,6 @@ Measured on `docs/progress-had-become-the-archive-again`, 2026-08-30.
 
 ## Next executable items
 
-The three items that stood here are done and their evidence is in
-[`archive/2026-08.md`](archive/2026-08.md): the first release is cut,
-`codecov/patch` is enforced, and schema-level test isolation shipped.
-
 1. **M7 is the active milestone** — executable engineering governance and
    versioned protocol. Its remaining scope is the delivery sequence in
    [`plan.md`](plan.md), which owns that list; this file records only what has
@@ -74,6 +71,10 @@ The three items that stood here are done and their evidence is in
 2. **Watch the nightly stress run** and replay any property failure from its
    reported seed and path. Green on the last three runs; one failure on
    2026-08-26.
-3. **Windowing for the four lists that were capped to hide that nothing
-   windowed them** — the gate transcript is 4000 server-capped rows rendered as
-   4000 DOM nodes, and its filter box re-renders all of them per keystroke.
+3. **The `sha-*` staging tags on `ghcr.io/pamin-labs/orch-agent` cannot be
+   deleted, and the panel filters them instead.** Measured: 21 tags over 9
+   manifests, with `latest`'s index pointing at the manifests
+   `sha-<commit>-<platform>` names and `sha-<commit>` sharing its digest with
+   `latest`, `0.1.3` and `0.1.4`. GHCR deletes versions rather than tags, so
+   removing any of them removes a release. Revisit only if the release flow
+   stops needing a registry reference to assemble an index from.
