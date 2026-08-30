@@ -1,6 +1,7 @@
 # 005 the sandbox is the boundary, not a deny-list
 
-**Status**: accepted and implemented, vault included (docs/project/progress.md 记的落地过程)
+**Status**: accepted and implemented, vault included; the landing narrative is
+in [`docs/project/archive/2026-08.md`](../project/archive/2026-08.md)
 **Date**: 2026-08-14
 **Supersedes**: 001's write-confinement half. 001's transport finding (localhost
 TCP over unix socket) stays true for the host-mode code that still exists.

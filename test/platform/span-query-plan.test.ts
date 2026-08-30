@@ -5,7 +5,7 @@ import { openMemory } from "../../src/platform/persistence/database.ts";
 /**
  * The system scope reaches its rows by index, not by reading the table.
  *
- * `docs/project/progress.md` records indexes being tried and rejected — on
+ * `docs/project/archive/2026-08.md` records indexes being tried and rejected — on
  * SQLite, where `span_scope (grp_id, slice_id, started_at)` trapped the planner
  * behind an unconstrained middle column and the cost turned out to be sorting.
  * PostgreSQL plans it the other way and that finding does not transfer, so this
