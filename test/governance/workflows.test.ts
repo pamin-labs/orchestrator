@@ -548,8 +548,15 @@ describe("workflow governance", () => {
     // digest it was promoted from.
     expect(manifest).toContain('if [ -n "$existing" ]');
     expect(manifest).toContain("which does not carry verified digest $expected");
-    expect(manifest).toContain('promote "$image:$RELEASE_VERSION-$platform"');
     expect(manifest).toContain('promote "$image:$RELEASE_VERSION"');
+    // And exactly one thing is promoted. A `$version-$platform` tag was promoted
+    // here too, and `imagetools create` wraps a bare platform manifest rather
+    // than copying it — so each release minted two manifests that were wrapper
+    // copies of index members the same release already published, which nothing
+    // ever read. The index is also the only image that runs on both
+    // architectures, so a per-platform tag in the picker is a container that
+    // will not create on a group already dispatched.
+    expect(manifest).not.toContain("$RELEASE_VERSION-$platform");
   });
 
   test("a partial release rerun reuses only identical staged artifacts", async () => {
