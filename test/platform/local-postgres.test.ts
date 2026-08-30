@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { beforeEach, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { localPostgres, passwordAt } from "../../src/platform/persistence/local-postgres.ts";
@@ -14,6 +14,19 @@ import { localPostgres, passwordAt } from "../../src/platform/persistence/local-
  */
 
 const dir = () => mkdtempSync(join(tmpdir(), "orch-local-pg-"));
+
+/**
+ * The two variables this reads, stated rather than inherited.
+ *
+ * A developer's own `.env` sets `ORCH_POSTGRES_PASSWORD` beside the URL, and Bun
+ * loads it into every process including this one — so without this, half these
+ * assertions passed or failed according to whether the machine running them had
+ * ever started a database. Each test that cares sets what it needs.
+ */
+beforeEach(() => {
+  delete process.env["ORCH_POSTGRES_PASSWORD"];
+  delete process.env["ORCH_POSTGRES_PORT"];
+});
 
 /** Records what it was asked; answers `up` with success and `port` with an address. */
 const ok = (address = "127.0.0.1:32768") => {
@@ -109,4 +122,34 @@ test("no docker at all is the same error, not an unhandled ENOENT", async () => 
   const e = await localPostgres(dir(), absent).catch((err: unknown) => err);
   expect(String(e)).toContain("ENOENT");
   expect(String(e)).toContain("ORCH_DATABASE_URL");
+});
+
+/**
+ * The password the volume was actually built with.
+ *
+ * `POSTGRES_PASSWORD` is read by initdb on an empty volume and never again, so a
+ * value generated here authenticates against nothing the moment `data/postgres`
+ * already holds a cluster — and on any machine that ever ran `bun run db:up`, it
+ * does.
+ */
+/**
+ * Measured on this repository's own checkout: `data/postgres/18/docker` was a
+ * 106 MB cluster with no `postgres.password` beside it, because the volume came
+ * from the `ORCH_POSTGRES_PASSWORD` in `.env`. So ADR 051's fallback, reached by
+ * unsetting `ORCH_DATABASE_URL`, would have started that container and then
+ * failed to log into it.
+ */
+test("the environment's password wins, because it is the one the volume was built with", async () => {
+  const dataDir = dir();
+  const { seen, compose } = ok();
+  process.env["ORCH_POSTGRES_PASSWORD"] = "from-the-env";
+  try {
+    expect(await localPostgres(dataDir, compose)).toContain("postgres://orchestrator:from-the-env@");
+    expect(seen[0]?.env["ORCH_POSTGRES_PASSWORD"]).toBe("from-the-env");
+    // And it did not write a file that a later run with no variable would then
+    // prefer over the value that actually opens the cluster.
+    expect(existsSync(join(dataDir, "postgres.password"))).toBe(false);
+  } finally {
+    delete process.env["ORCH_POSTGRES_PASSWORD"];
+  }
 });
