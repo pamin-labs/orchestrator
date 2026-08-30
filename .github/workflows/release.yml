@@ -705,9 +705,19 @@ jobs:
           fi
           resolved=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)
           test "$resolved" = "$SOURCE_SHA" || { echo "::error::$tag does not resolve to verified source"; exit 1; }
+      # `GH_REPO`, because this job has no checkout and `gh release` works out
+      # which repository it means from git remotes. The step before it survives
+      # without one only because `gh api` is given `repos/$GITHUB_REPOSITORY/…`
+      # explicitly. This is the last step of the last job, so it took five
+      # attempts at 0.1.3 to reach — and it failed on
+      # `fatal: not a git repository`, having already bound the tag.
+      #
+      # The fix is the variable and not a checkout: this job publishes verified
+      # artifacts and must not have source it could build from.
       - name: create release at the verified SHA
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_VERSION: ${{ needs.checks.outputs.version }}
           SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
         run: gh release create "v$RELEASE_VERSION" dist/* --verify-tag --title "v$RELEASE_VERSION" --generate-notes
