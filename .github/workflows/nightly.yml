@@ -61,12 +61,17 @@ jobs:
         run: |
           bunx fallow security --surface --format json --quiet --output-file "$RUNNER_TEMP/fallow-security.json"
           bunx fallow report --from "$RUNNER_TEMP/fallow-security.json" --format github-summary >> "$GITHUB_STEP_SUMMARY"
+      # The third call site, and the last one still scanning at the action's
+      # policy rather than this repository's. See `scan verified image` in
+      # `release.yml` for what that costs.
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
           scan-ref: .
           trivy-config: trivy.yaml
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
           format: table
 
   sandbox-live:
