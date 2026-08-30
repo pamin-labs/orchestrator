@@ -873,7 +873,12 @@ test("no job asks for a larger runner, which is charged even on a public reposit
 test("the release archive carries every directory the server resolves from ROOT", () => {
   const release = readFileSync(".github/workflows/release.yml", "utf8");
   const copied = /cp -R ([^"]+) "dist\/\$root\/"/.exec(release)?.[1]?.trim().split(/\s+/) ?? [];
-  const fromRoot = [...readFileSync("src/platform/persistence/database.ts", "utf8").matchAll(/join\(ROOT, "([^/"]+)/g)]
+  // Both files under `persistence`: the schema comes from `ROOT/drizzle` and the
+  // fallback database's compose file from `ROOT/docker`, and the second was added
+  // to a guard that named only the first.
+  const sources = ["src/platform/persistence/database.ts", "src/platform/persistence/local-postgres.ts"];
+  const fromRoot = sources
+    .flatMap((file) => [...readFileSync(file, "utf8").matchAll(/join\(ROOT, "([^/"]+)/g)])
     .map((m) => m[1])
     .filter((d): d is string => d !== undefined);
   expect(fromRoot.length).toBeGreaterThan(0);

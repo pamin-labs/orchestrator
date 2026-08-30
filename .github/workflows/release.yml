@@ -214,7 +214,7 @@ jobs:
             esac
             mkdir -p "dist/$root/web" "dist/$root/src/orch"
             bun run build:server src/composition/server.ts "dist/$root/$exe" "$bun_target"
-            cp -R roles config drizzle "dist/$root/"
+            cp -R roles config drizzle docker "dist/$root/"
             cp -R web/dist "dist/$root/web/dist"
             cp web/index.html web/icon.png web/favicon-32.png web/apple-touch-icon.png "dist/$root/web/"
             cp dist/orch-cli.ts "dist/$root/src/orch/cli.ts"
@@ -243,7 +243,7 @@ jobs:
             esac
             required=(
               "$exe" package.json README.md LICENSE release-manifest.json
-              src/orch/cli.ts config/default.yaml web/index.html web/icon.png
+              src/orch/cli.ts config/default.yaml docker/postgres-compose.yml web/index.html web/icon.png
               web/favicon-32.png web/apple-touch-icon.png web/dist/main.js web/dist/app.css
             )
             for path in "${required[@]}"; do test -e "$root/$path" || { echo "::error::$target archive is missing $path"; exit 1; }; done

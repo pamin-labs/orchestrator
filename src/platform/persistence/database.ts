@@ -62,7 +62,7 @@ export async function transaction<T>(db: DB, body: (tx: DB) => Promise<T>): Prom
  * cannot live in the thing it opens. It carries a password, which is the same
  * reason ORCH_SANDBOX_API_KEY is an environment variable and not a committed key.
  */
-const DATABASE_URL = "ORCH_DATABASE_URL";
+export const DATABASE_URL = "ORCH_DATABASE_URL";
 
 /**
  * Where `drizzle-kit generate` writes, and where the migrator reads.

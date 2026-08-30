@@ -21,7 +21,14 @@ services:
     ports:
       # Loopback-published, for the same reason the panel is: whoever reaches
       # this reads every requirement, every decision and every token count.
-      - "127.0.0.1:5432:5432"
+      #
+      # `-`, not `:-`, and the difference is the feature. Unset gives 5432, so
+      # `bun run db:up` and the `.env` beside it are unchanged. **Empty** leaves
+      # the host side blank — `127.0.0.1::5432` — and Docker draws a free port
+      # itself, which is what the server passes when nobody pinned one (ADR 051).
+      # It then asks `docker compose port` which one that was, because the answer
+      # is knowable no other way and changes across a stop and start.
+      - "127.0.0.1:${ORCH_POSTGRES_PORT-5432}:5432"
     volumes:
       # Under `dataDir`, beside the turn logs, gate logs and attachments: one
       # directory holds everything this installation owns, so a backup is one
