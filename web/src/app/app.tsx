@@ -492,10 +492,11 @@ export function App() {
             <>
               <Separator className="w-px shrink-0 cursor-col-resize bg-rule transition-colors hover:bg-accent data-[state=dragging]:bg-accent max-[64rem]:hidden" />
               <Panel defaultSize="20rem" minSize="14rem" maxSize="40rem" className="min-w-0">
-                <aside className="h-full overflow-auto">
-                  <div className="px-4 pb-24 pt-4">
-                    <Timeline st={st} frames={frames} grpId={sel.g} projectId={sel.p} />
-                  </div>
+                {/* The scroller moved inside `Timeline`: a windowed list has to own
+                    the element it measures, and an ancestor two levels up with a
+                    padding wrapper between is not that element. */}
+                <aside className="h-full px-4 pt-4">
+                  <Timeline st={st} frames={frames} grpId={sel.g} projectId={sel.p} />
                 </aside>
               </Panel>
             </>,

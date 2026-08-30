@@ -1,5 +1,5 @@
 import type { InferResponseType } from "hono/client";
-import { useEffect, useMemo, useRef, useTransition } from "react";
+import { useMemo, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { GRP_STATES } from "../../../../src/contracts/states.ts";
@@ -10,6 +10,7 @@ import { cn } from "../../ui/cn";
 import { Empty, Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
+import { VirtualList } from "../../ui/virtual-list";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ph } from "@lingui/core/macro";
 
@@ -53,8 +54,8 @@ type SandboxInfo = z.infer<typeof SandboxInfoSchema>;
  * `useMemo` on purpose: `frameText` reads the active catalogue, so a memo over
  * frames alone would keep the language it was first computed in — the defect one
  * layer up, which is why the frame carries a descriptor at all. The locale
- * cannot be a dependency (a module singleton re-renders nothing), and this is a
- * map over rows that are sliced to 300 before they are drawn.
+ * cannot be a dependency (a module singleton re-renders nothing), and the list is
+ * windowed, so the work is one row per visible line rather than per stored one.
  */
 const merged = (stored: Line[], live: PanelFrame[]): Line[] => {
   const seen = new Set(stored.map((l) => `${l.at}:${l.text}`));
@@ -64,6 +65,9 @@ const merged = (stored: Line[], live: PanelFrame[]): Line[] => {
   });
   return [...stored, ...fresh.filter((l) => !seen.has(`${l.at}:${l.text}`))];
 };
+
+/** One unwrapped row: `--text-meta` at `leading-relaxed`. Wrapped rows measure. */
+const LINE_PX = 18;
 
 /** A live frame from this group's container, rather than from an agent in it. */
 const fromSandbox = (f: PanelFrame, grpId: number): boolean =>
@@ -90,21 +94,9 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
   // catalogue, so a memo over frames alone would keep the language it was first
   // computed in — the defect one layer up, which is why the frame carries a
   // descriptor at all. The locale cannot be a dependency (a module singleton
-  // does not re-render anything), and the work is a filter over at most a few
-  // hundred rows that are then sliced to 300.
+  // does not re-render anything), and only the visible rows are drawn.
   const mine = useMemo(() => frames.filter((f) => fromSandbox(f, grpId)), [frames, grpId]);
   const lines = merged(info?.lines ?? [], mine);
-
-  const tail = useRef<HTMLDivElement>(null);
-  const count = lines.length;
-  // `count` is read, not merely depended on: with no lines there is nothing to
-  // scroll to, and a dependency the body never mentions is one
-  // `exhaustive-effect-dependencies` calls extra — correctly, because nothing
-  // there tied the scroll to the render that grew the log.
-  useEffect(() => {
-    const el = tail.current;
-    if (el && count) el.scrollTo({ top: el.scrollHeight });
-  }, [count]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -156,19 +148,29 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
         </div>
       ) : null}
 
-      {/* Not `Pane`: this one needs its own ref to stay pinned to the newest
-          line, and the scroll rules are the same ones Pane applies. */}
-      <div ref={tail} className="min-h-0 flex-1 overflow-y-auto rounded-md border border-rule bg-sunk px-3 py-2">
-        {!lines.length ? (
+      {/* Not `Pane`: `Pane` is a styled div and applies no scroll rule at all,
+          which this comment claimed for a while. The pin — follow the newest
+          line, but only while the reader is already there — lives in
+          `VirtualList` now, beside the copy of it `Bootstrap` had and this one
+          was missing. */}
+      {!lines.length ? (
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-rule bg-sunk px-3 py-2">
           <Empty>
             <Trans>
               Container hasn't started yet. Clone and dependency installation output will appear here line by line.
             </Trans>
           </Empty>
-        ) : (
-          lines.map((l) => (
+        </div>
+      ) : (
+        <VirtualList
+          items={lines}
+          estimate={LINE_PX}
+          keyOf={(l) => `${l.at}:${l.kind}:${l.text}`}
+          pin
+          className="min-h-0 flex-1 rounded-md border border-rule bg-sunk px-3 py-2"
+        >
+          {(l) => (
             <div
-              key={`${l.at}:${l.kind}:${l.text}`}
               className={cn(
                 "whitespace-pre-wrap font-mono text-meta leading-relaxed",
                 l.kind === "cmd" ? "text-ink" : l.kind === "end" ? "text-ink-2" : "text-ink-3",
@@ -176,9 +178,9 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
             >
               {l.text}
             </div>
-          ))
-        )}
-      </div>
+          )}
+        </VirtualList>
+      )}
       <Meta className="mt-1.5 block">
         <Trans>
           Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in "Notes".

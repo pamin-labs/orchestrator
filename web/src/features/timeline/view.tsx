@@ -3,7 +3,11 @@ import type { State } from "../../shared/api";
 import { frameText, groupedRows, type PanelFrame } from "../../shared/stream";
 import { clock } from "../../shared/format";
 import { cn } from "../../ui/cn";
+import { VirtualList } from "../../ui/virtual-list";
 import { Trans, useLingui } from "@lingui/react/macro";
+
+/** A one-line row: `--text-secondary` plus `py-1`. Wrapped rows measure. */
+const ROW_PX = 28;
 
 const FRAME_TONE: Record<PanelFrame["cls"], string> = {
   say: "text-ink",
@@ -94,6 +98,10 @@ export function Timeline({
   // everything. A standing Architect or CoS has no group — that exchange is exactly
   // what this feed is for — so it is kept when it belongs to this project, and only
   // an unattributable orchestrator line is shown everywhere.
+  //
+  // No `.slice()`. It read the newest 160 and dropped the rest, which is not a
+  // scrollback — the ceiling is now `appendFrame`'s buffer, and the list is
+  // windowed rather than truncated.
   const shown = frames
     .filter((f) => {
       if (!ids) return true;
@@ -101,24 +109,32 @@ export function Timeline({
       if (projectId != null && f.projectId != null) return f.projectId === projectId;
       return true;
     })
-    .slice(-160)
     .reverse();
+  const rows = groupedRows(shown);
 
   return (
-    <div>
-      <h2 className="mb-2.5 flex items-baseline gap-1.5 text-secondary font-semibold text-ink-2">
+    <div className="flex h-full min-h-0 flex-col">
+      <h2 className="mb-2.5 flex shrink-0 items-baseline gap-1.5 text-secondary font-semibold text-ink-2">
         <Trans>Event stream</Trans> <span className="truncate font-normal text-ink-3">{label}</span>
       </h2>
-      {!shown.length && (
+      {!rows.length ? (
         <div className="text-secondary text-ink-3">
           <Trans>No events</Trans>
         </div>
+      ) : (
+        <VirtualList
+          items={rows}
+          estimate={ROW_PX}
+          keyOf={(row) => row.f.id}
+          // `data-index`, not `:first-child`: the first element in a window is
+          // whatever the reader scrolled to, and only row zero has no row above it.
+          className="min-h-0 flex-1 pb-24 [&_[data-index='0']>div]:border-t-0"
+        >
+          {({ f, showHeader, showDivider }) => (
+            <TimelineRow f={f} text={frameText(f)} showHeader={showHeader} showDivider={showDivider} />
+          )}
+        </VirtualList>
       )}
-      <div className="[&>*:first-child]:border-t-0">
-        {groupedRows(shown).map(({ f, showHeader, showDivider }) => (
-          <TimelineRow key={f.id} f={f} text={frameText(f)} showHeader={showHeader} showDivider={showDivider} />
-        ))}
-      </div>
     </div>
   );
 }

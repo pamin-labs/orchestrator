@@ -74,4 +74,30 @@ if (needsDom(Bun.main)) {
    */
   const { cleanup } = load<typeof import("@testing-library/react")>("@testing-library/react");
   afterEach(cleanup);
+  giveElementsABox();
+}
+
+/**
+ * A box, for the one thing here that asks how big something is.
+ *
+ * happy-dom has no layout engine, so every element measures zero. Anything that
+ * windows a list reads that as a viewport with no room and draws no rows:
+ * `VirtualList` renders its first pass from `initialRect`, the scroll element is
+ * then observed, the observation says zero, and every row disappears. Six tests
+ * that mount `Timeline` and assert on its text would go red for a reason none of
+ * them is about.
+ */
+/**
+ * `offsetWidth`/`offsetHeight` specifically, because that is what the virtualizer
+ * reads — `getBoundingClientRect` was the obvious guess and measuring said
+ * otherwise. Only on the prototype: a test that pins a size on an element of its
+ * own sets an own property, which still wins.
+ */
+function giveElementsABox(): void {
+  for (const [name, size] of [
+    ["offsetWidth", 1024],
+    ["offsetHeight", 768],
+  ] as const) {
+    Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => size });
+  }
 }
