@@ -94,6 +94,9 @@ msgid "{from} has sent the whole branch back {n} times. That is usually the acce
 msgstr "ブランチ全体が {from} に {n} 回差し戻されました。コードではなく受け入れ基準の側に問題があることが多いです：\n"
 "{why}"
 
+msgid "{gates} pass"
+msgstr "{gates} 通過"
+
 msgid "{good}"
 msgstr "{good}"
 
@@ -211,6 +214,9 @@ msgstr "{n} 件の対応待ちがあります:"
 
 msgid "{n} more queued behind it"
 msgstr "後ろに {n} 件待機中"
+
+msgid "{n} slice(s) · {tokens} tokens · journals in {path}"
+msgstr "スライス {n} 件 · {tokens} トークン · 記録は {path}"
 
 msgid "{n} to do"
 msgstr "{n} 件対応待ち"
@@ -443,6 +449,9 @@ msgstr "破棄済み"
 msgid "Accept"
 msgstr "受け入れる"
 
+msgid "acceptance"
+msgstr "受け入れ条件"
+
 msgid "Acceptance criteria"
 msgstr "受け入れ基準"
 
@@ -592,6 +601,9 @@ msgstr "アーカイブ済み"
 
 msgid "Ask GitHub"
 msgstr "GitHub に問い合わせる"
+
+msgid "Asked for"
+msgstr "依頼された内容"
 
 msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
 msgstr "モデルごとの想定コンテキスト長。セッション最初のターンで使い、以降は CLI が実測値を返します。小さすぎると大コンテキストのモデルが毎回再起動し、そのたびにキャッシュを捨てます。"
@@ -1038,6 +1050,9 @@ msgstr "開いたままにするデータベース接続の数。パネルのス
 msgid "Decision"
 msgstr "判断"
 
+msgid "Decisions"
+msgstr "判断"
+
 msgid "Decomposing"
 msgstr "分解中"
 
@@ -1321,6 +1336,9 @@ msgstr "S{seq} のゲート通過"
 
 msgid "Gate retries"
 msgstr "ゲートの再試行回数"
+
+msgid "gates"
+msgstr "ゲート"
 
 msgid "Gates"
 msgstr "ゲート"
@@ -1923,6 +1941,9 @@ msgstr "PATH に uvx がない"
 msgid "No, keep going"
 msgstr "いいえ、続ける"
 
+msgid "none recorded"
+msgstr "記録なし"
+
 msgid "None selected"
 msgstr "未選択"
 
@@ -2051,6 +2072,12 @@ msgstr "PR を開く ↗"
 
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "要件 {name}（grp {grp}）として起票しました"
+
+msgid "Opened by [orchestrator]({url}) v{v}."
+msgstr "[orchestrator]({url}) v{v} が作成しました。"
+
+msgid "Opened by [orchestrator]({url})."
+msgstr "[orchestrator]({url}) が作成しました。"
 
 msgid "opened PR #{pr} to replace the closed one"
 msgstr "閉じられた PR の代わりに PR #{pr} を開きました"
@@ -2505,6 +2532,9 @@ msgstr "再開しました"
 msgid "Retrieval"
 msgstr "検索"
 
+msgid "Retro"
+msgstr "振り返り"
+
 msgid "Retrospective"
 msgstr "振り返り"
 
@@ -2803,6 +2833,9 @@ msgstr "リベースでスライスの基準が失われました。origin/main 
 
 msgid "Slice durations"
 msgstr "スライスの所要時間"
+
+msgid "Slices ({n}, all accepted)"
+msgstr "スライス（{n} 件、すべて受け入れ済み）"
 
 msgid "slices pending"
 msgstr "件のスライスが待機中"

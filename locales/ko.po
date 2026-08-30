@@ -94,6 +94,9 @@ msgid "{from} has sent the whole branch back {n} times. That is usually the acce
 msgstr "브랜치 전체가 {from}에게 {n}번 반려됐습니다. 대개 코드가 아니라 수용 기준 쪽이 문제입니다:\n"
 "{why}"
 
+msgid "{gates} pass"
+msgstr "{gates} 통과"
+
 msgid "{good}"
 msgstr "{good}"
 
@@ -211,6 +214,9 @@ msgstr "처리를 기다리는 일이 {n}건 있습니다:"
 
 msgid "{n} more queued behind it"
 msgstr "뒤에 {n}개 대기 중"
+
+msgid "{n} slice(s) · {tokens} tokens · journals in {path}"
+msgstr "슬라이스 {n}개 · 토큰 {tokens}개 · 기록은 {path}"
 
 msgid "{n} to do"
 msgstr "{n}건 처리 대기"
@@ -443,6 +449,9 @@ msgstr "포기됨"
 msgid "Accept"
 msgstr "수락"
 
+msgid "acceptance"
+msgstr "인수 조건"
+
 msgid "Acceptance criteria"
 msgstr "수락 기준"
 
@@ -592,6 +601,9 @@ msgstr "보관됨"
 
 msgid "Ask GitHub"
 msgstr "GitHub에 문의"
+
+msgid "Asked for"
+msgstr "요청받은 내용"
 
 msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
 msgstr "모델별 가정 컨텍스트 길이. 세션 첫 턴에만 쓰고 이후에는 CLI가 실제 값을 알려줍니다. 너무 작게 잡으면 큰 컨텍스트 모델이 계속 재시작하며 매번 캐시를 버립니다."
@@ -1038,6 +1050,9 @@ msgstr "열어두는 데이터베이스 연결 수. 패널 스냅샷이 한 번�
 msgid "Decision"
 msgstr "결정"
 
+msgid "Decisions"
+msgstr "결정"
+
 msgid "Decomposing"
 msgstr "분해 중"
 
@@ -1321,6 +1336,9 @@ msgstr "S{seq} 게이트 통과"
 
 msgid "Gate retries"
 msgstr "게이트 재시도"
+
+msgid "gates"
+msgstr "게이트"
 
 msgid "Gates"
 msgstr "게이트"
@@ -1923,6 +1941,9 @@ msgstr "PATH에 uvx가 없습니다"
 msgid "No, keep going"
 msgstr "아니요, 계속"
 
+msgid "none recorded"
+msgstr "기록 없음"
+
 msgid "None selected"
 msgstr "선택 없음"
 
@@ -2051,6 +2072,12 @@ msgstr "PR 열기 ↗"
 
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "요구사항 {name} (grp {grp}) 로 만들었습니다"
+
+msgid "Opened by [orchestrator]({url}) v{v}."
+msgstr "[orchestrator]({url}) v{v}이 열었습니다."
+
+msgid "Opened by [orchestrator]({url})."
+msgstr "[orchestrator]({url})이 열었습니다."
 
 msgid "opened PR #{pr} to replace the closed one"
 msgstr "닫힌 PR을 대신할 PR #{pr}을(를) 열었습니다"
@@ -2505,6 +2532,9 @@ msgstr "재개했습니다"
 msgid "Retrieval"
 msgstr "검색"
 
+msgid "Retro"
+msgstr "회고"
+
 msgid "Retrospective"
 msgstr "회고"
 
@@ -2803,6 +2833,9 @@ msgstr "리베이스에서 슬라이스 기준이 사라졌습니다. origin/mai
 
 msgid "Slice durations"
 msgstr "슬라이스 소요 시간"
+
+msgid "Slices ({n}, all accepted)"
+msgstr "슬라이스 ({n}개, 모두 인수됨)"
 
 msgid "slices pending"
 msgstr "개 슬라이스 대기"

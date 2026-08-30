@@ -6,6 +6,7 @@ import { parseRepo } from "../../contracts/repository.ts";
 import { roleFor } from "../../mech/ctx.ts";
 import { z } from "zod";
 import { GroupRef } from "../../contracts/fields.ts";
+import { localeOf, outputLanguage } from "../../contracts/config.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { badText, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
@@ -48,7 +49,7 @@ export const postPr = (async (ctx, _req, a, _p, b) => {
 
   const title = b.title.trim();
   const summary = b.body.trim();
-  const wrong = checkPrMessage(title, summary);
+  const wrong = checkPrMessage(title, summary, localeOf(outputLanguage(ctx.config)));
   if (wrong) return badText(wrong);
 
   const [g] = await ctx.db

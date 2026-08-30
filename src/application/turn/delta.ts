@@ -145,9 +145,10 @@ async function scribeCard(ctx: Ctx, payload: TurnPayload): Promise<string | unde
     `File it with exactly this, the body on stdin:\n` +
     `  orch pr ${groupId} --title "<type(scope): subject>" -\n\n` +
     `Nothing is published until that lands, and it is refused with a reason if the ` +
-    `subject has no type prefix, runs past 72 characters, ends in a full stop, either ` +
-    `half is not English, or the body is under 20 characters. A refusal is not the end ` +
-    `of your turn — fix it and send it again.`
+    `subject has no type prefix, runs past 72 characters, ends in a full stop, the body ` +
+    `is under 20 characters, or the message reads as a language other than the one ` +
+    `\`## Output language\` names. A refusal is not the end of your turn — fix it and ` +
+    `send it again.`
   );
 }
 

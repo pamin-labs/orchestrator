@@ -94,6 +94,9 @@ msgid "{from} has sent the whole branch back {n} times. That is usually the acce
 msgstr "整个分支被 {from} 打回 {n} 次了。多半是验收口径本身有问题，不是代码：\n"
 "{why}"
 
+msgid "{gates} pass"
+msgstr "{gates} 通过"
+
 msgid "{good}"
 msgstr "{good}"
 
@@ -211,6 +214,9 @@ msgstr "有 {n} 件事等你："
 
 msgid "{n} more queued behind it"
 msgstr "后面还排着 {n} 个"
+
+msgid "{n} slice(s) · {tokens} tokens · journals in {path}"
+msgstr "{n} 个切片 · {tokens} tokens · 工作日志在 {path}"
 
 msgid "{n} to do"
 msgstr "{n} 件待办"
@@ -443,6 +449,9 @@ msgstr "作废"
 msgid "Accept"
 msgstr "查收"
 
+msgid "acceptance"
+msgstr "验收"
+
 msgid "Acceptance criteria"
 msgstr "验收口径"
 
@@ -592,6 +601,9 @@ msgstr "已封存"
 
 msgid "Ask GitHub"
 msgstr "问 GitHub 要"
+
+msgid "Asked for"
+msgstr "要的是什么"
 
 msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
 msgstr "每个模型假定的上下文窗口，只用于一次 session 的第一个 turn——之后以 CLI 报的真实值为准。设小了，大窗口模型会不停重启，每次都丢掉已经建好的缓存。"
@@ -1038,6 +1050,9 @@ msgstr "常开的数据库连接数。面板拉一次快照要同时用掉约二
 msgid "Decision"
 msgstr "决策"
 
+msgid "Decisions"
+msgstr "决策"
+
 msgid "Decomposing"
 msgstr "正在拆解"
 
@@ -1321,6 +1336,9 @@ msgstr "S{seq} 闸门通过"
 
 msgid "Gate retries"
 msgstr "闸门重试次数"
+
+msgid "gates"
+msgstr "闸门"
 
 msgid "Gates"
 msgstr "闸门"
@@ -1923,6 +1941,9 @@ msgstr "PATH 里没有 uvx"
 msgid "No, keep going"
 msgstr "不，接着做"
 
+msgid "none recorded"
+msgstr "没有记录"
+
 msgid "None selected"
 msgstr "还没选"
 
@@ -2051,6 +2072,12 @@ msgstr "打开 PR ↗"
 
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "开成需求 {name}（grp {grp}）"
+
+msgid "Opened by [orchestrator]({url}) v{v}."
+msgstr "由 [orchestrator]({url}) v{v} 开启。"
+
+msgid "Opened by [orchestrator]({url})."
+msgstr "由 [orchestrator]({url}) 开启。"
 
 msgid "opened PR #{pr} to replace the closed one"
 msgstr "开了 PR #{pr}，顶替被关掉的那个"
@@ -2505,6 +2532,9 @@ msgstr "继续"
 msgid "Retrieval"
 msgstr "检索"
 
+msgid "Retro"
+msgstr "复盘"
+
 msgid "Retrospective"
 msgstr "复盘"
 
@@ -2803,6 +2833,9 @@ msgstr "切片基线被 rebase 冲掉了，这里是整条分支相对 origin/ma
 
 msgid "Slice durations"
 msgstr "各切片耗时"
+
+msgid "Slices ({n}, all accepted)"
+msgstr "切片（{n} 个，全部已验收）"
 
 msgid "slices pending"
 msgstr "片待查收"

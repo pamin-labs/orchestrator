@@ -465,7 +465,7 @@ async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
     gh: ctx.gh,
     grpId,
     title: await prTitle(ctx.db, grpId),
-    body: await prBody(ctx.db, grpId),
+    body: await prBody(ctx.db, grpId, outputLanguage(ctx.config)),
   });
   if ("error" in r) {
     // Put the old number back: a group with no PR and no way to open one is

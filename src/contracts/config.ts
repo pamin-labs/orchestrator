@@ -149,6 +149,15 @@ export type Locale = (typeof LOCALES)[number];
 const isLocale = (value: string): value is Locale => (LOCALES as readonly string[]).includes(value);
 
 /**
+ * The ISO 639-1 code for one of the ten, for a reader that only speaks that.
+ *
+ * Nine are already it. `zh-Hant` is the exception and collapsing it to `zh` is
+ * correct rather than lossy: 639-1 has one Chinese, and a caller asking this is
+ * asking which language, not which script.
+ */
+export const iso = (locale: Locale): string => (locale === "zh-Hant" ? "zh" : locale);
+
+/**
  * The tag to *name* a locale by, which is not always the tag its catalog is
  * filed under. `zh` is "Chinese", and in a menu that also offers 繁體中文 that
  * is not an answer; `zh-Hans` is the same catalog said unambiguously — 简体中文,

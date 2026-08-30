@@ -1,4 +1,8 @@
 import { expect, test } from "bun:test";
+import { LOCALES, type Locale } from "../../src/contracts/config.ts";
+
+/** The table's keys are locales; this says so to the compiler without an assertion. */
+const isLocale = (v: string): Locale => LOCALES.find((l) => l === v) ?? "en";
 import { z } from "zod";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
@@ -160,7 +164,7 @@ test("the PR body is built from the record, not from a sentence", async () => {
   });
   await f.note.create({ grp_id: 1, kind: "retro", body: "memo alone was not enough" });
 
-  const body = await prBody(h.ctx.db, 1);
+  const body = await prBody(h.ctx.db, 1, "en");
   expect(body).toContain("the timeline flickers");
   expect(body).toContain("**S1 stable keys**");
   expect(body).toContain("no row remounts");
@@ -605,42 +609,147 @@ test("every pull request says what opened it", async () => {
   // One line, at the bottom, no badge — the body above it is already the
   // evidence, and docs/design/ui.md's rule holds here too: say it once.
   const h = await harness();
-  const body = await prBody(h.ctx.db, 1);
+  const body = await prBody(h.ctx.db, 1, "en");
   expect(body).toContain("https://github.com/pamin-labs/orchestrator");
   expect(body.split("\n").filter((l) => l.includes("orchestrator]("))).toHaveLength(1);
 });
 
-test("the message the Scribe files is the convention, enforced", async () => {
-  // Every rule here is one `roles/scribe.yaml` states, and it lists these four
-  // refusals by name. A prompt that permits what the validator rejects teaches
-  // the model to write something that gets thrown away — at the end of the only
-  // turn it gets.
-  const body = "The mount was empty inside the container and nothing said so.";
-  expect(checkPrMessage("fix(sandbox): the skills mount was empty on macOS", body)).toBeNull();
+/**
+ * One commit written nine ways, and the verdict has to follow the setting.
+ *
+ * The shape is a real one: a subject and a three-to-five line body, because that
+ * is what `checkPrMessage` is handed and detecting on the subject alone is not
+ * safe. Measured on this data — `der skills-Mount war unter macOS leer` is
+ * called English by every database size when it arrives on its own, and correct
+ * by all three when its body comes with it.
+ */
+const COMMITS: Partial<Record<Locale, { title: string; body: string }>> = {
+  en: {
+    title: "fix(sandbox): the skills mount was empty on macOS",
+    body:
+      "The container saw 0 skill files where the host had 179. The mount pointed at a\n" +
+      "path the image never created, so every read returned an empty directory and no\n" +
+      "layer above it could tell that apart from a project with no skills.\n\n" +
+      "Fixed at the mount, not at the reader: the reader has four callers.",
+  },
+  de: {
+    title: "fix(sandbox): der skills-Mount war unter macOS leer",
+    body:
+      "Der Container sah 0 Skill-Dateien, wo der Host 179 hatte. Der Mount zeigte auf\n" +
+      "einen Pfad, den das Image nie angelegt hat, also lieferte jeder Lesevorgang ein\n" +
+      "leeres Verzeichnis zurueck.\n\nBehoben am Mount, nicht am Leser.",
+  },
+  zh: {
+    title: "fix(sandbox): macOS 上 skills 挂载是空的，而且没有任何地方说得出来",
+    body:
+      "容器里看到 0 个 skill 文件，宿主机上有 179 个。挂载指向了一个镜像从未创建过的路径，\n" +
+      "所以每次读取都返回空目录，上面任何一层都无法把它和「这个项目没有 skills」区分开。\n\n" +
+      "修在挂载点而不是读取方：读取方有四个调用者，每个都要写一遍同样的守卫。",
+  },
+  ja: {
+    title: "fix(sandbox): macOS で skills のマウントが空になっていた",
+    body:
+      "コンテナ側では 0 個、ホスト側には 179 個のスキルファイルがあった。マウント先が\n" +
+      "イメージの作成しないパスを指していたため、読み取りは常に空のディレクトリを返す。\n\n" +
+      "読み取り側ではなくマウント側で修正した。呼び出し元が四つある。",
+  },
+  ko: {
+    title: "fix(sandbox): macOS에서 skills 마운트가 비어 있었다",
+    body:
+      "컨테이너는 0개, 호스트는 179개의 스킬 파일을 가지고 있었다. 마운트가 이미지가\n" +
+      "만들지 않는 경로를 가리키고 있어서 읽기는 항상 빈 디렉터리를 반환했다.\n\n" +
+      "읽는 쪽이 아니라 마운트에서 고쳤다. 읽는 쪽에는 호출자가 넷이다.",
+  },
+  ru: {
+    title: "fix(sandbox): монтирование skills было пустым на macOS",
+    body:
+      "Контейнер видел 0 файлов навыков там, где на хосте их было 179. Монтирование\n" +
+      "указывало на путь, который образ никогда не создавал, поэтому любое чтение\n" +
+      "возвращало пустой каталог.\n\nИсправлено в точке монтирования, а не у читателя.",
+  },
+  fr: {
+    title: "fix(sandbox): le montage des skills etait vide sur macOS",
+    body:
+      "Le conteneur voyait 0 fichier de competences la ou l hote en avait 179. Le\n" +
+      "montage pointait vers un chemin que l image ne cree jamais, donc chaque lecture\n" +
+      "renvoyait un repertoire vide.\n\nCorrige au montage et non chez le lecteur.",
+  },
+  es: {
+    title: "fix(sandbox): el montaje de skills estaba vacio en macOS",
+    body:
+      "El contenedor veia 0 archivos de habilidades donde el anfitrion tenia 179. El\n" +
+      "montaje apuntaba a una ruta que la imagen nunca crea, asi que cada lectura\n" +
+      "devolvia un directorio vacio.\n\nCorregido en el montaje y no en el lector.",
+  },
+  pt: {
+    title: "fix(sandbox): a montagem de skills estava vazia no macOS",
+    body:
+      "O contentor via 0 ficheiros de competencias onde o anfitriao tinha 179. A\n" +
+      "montagem apontava para um caminho que a imagem nunca cria, por isso cada leitura\n" +
+      "devolvia um diretorio vazio.\n\nCorrigido na montagem e nao no leitor.",
+  },
+};
 
-  expect(checkPrMessage("update the mount path", body)).toContain("type prefix");
-  expect(checkPrMessage(`fix(sandbox): ${"x".repeat(70)}`, body)).toContain("72");
-  expect(checkPrMessage("fix(sandbox): the mount was empty.", body)).toContain("full stop");
-  // The one place the reader's language has to stop mattering: this is read in
-  // somebody else's repository. The check used to be three hand-picked script
-  // ranges chosen when the only other language was Chinese, so Russian, Greek and
-  // Arabic titles walked past it — in a product that ships all three.
-  for (const title of [
-    "挂载是空的",
-    "마운트가 비었다",
-    "монтирование пусто",
-    "η προσάρτηση είναι κενή",
-    "التركيب فارغ",
-  ]) {
-    expect(checkPrMessage(`fix(sandbox): ${title}`, body)).toContain("English");
+test("the format rules are the same in every language", () => {
+  const { body } = COMMITS["en"]!;
+  expect(checkPrMessage("update the mount path", body, "en")).toContain("type prefix");
+  expect(checkPrMessage(`fix(sandbox): ${"x".repeat(70)}`, body, "en")).toContain("72");
+  expect(checkPrMessage("fix(sandbox): the mount was empty.", body, "en")).toContain("full stop");
+  expect(checkPrMessage("fix(sandbox): the mount was empty", "fixed it", "en")).toContain("one line is not that");
+  // Chinese says more per character, so the same four refusals have to fire on a
+  // message that never reaches an English message's length.
+  expect(checkPrMessage("挂载是空的", COMMITS["zh"]!.body, "zh")).toContain("type prefix");
+  expect(checkPrMessage("fix(sandbox): 挂载是空的。", COMMITS["zh"]!.body, "zh")).toContain("full stop");
+});
+
+/**
+ * The language rule, in both directions, for every locale that ships.
+ *
+ * It used to be `NOT_ENGLISH`, a Unicode script test, and it was right about one
+ * thing only: commits were English always. Now they follow `output.language`, and
+ * a script test cannot express that — it would pass an English commit on a
+ * Chinese installation, which is the drift that actually happens, because the
+ * Scribe's own prefix says to write Chinese.
+ */
+test("a commit is written in the language the installation is set to", () => {
+  const written = Object.entries(COMMITS).map(([locale, commit]) => ({ locale, ...commit }));
+  // Typed as the tuple the assertion prints, so a failure names which pair broke
+  // rather than `expected null, got a string`.
+  const verdicts: [string, string, string | null][] = [];
+  for (const mine of written) {
+    for (const theirs of written) {
+      verdicts.push([mine.locale, theirs.locale, checkPrMessage(theirs.title, theirs.body, isLocale(mine.locale))]);
+    }
   }
-  expect(
-    checkPrMessage("fix(sandbox): the mount was empty", "монтирование пусто и ничего об этом не сказало"),
-  ).toContain("English");
-  // Latin with diacritics is not another script: a name in a body is legal.
-  expect(checkPrMessage("fix(sandbox): the mount was empty — 100% of macOS runs", body)).toBeNull();
-  expect(checkPrMessage("fix(sandbox): déplacer le contrôle du jeton", body)).toBeNull();
-  expect(checkPrMessage("fix(sandbox): the mount was empty", "fixed it")).toContain("one line is not that");
+
+  expect(verdicts.filter(([a, b, v]) => a === b && v !== null)).toEqual([]);
+  expect(verdicts.filter(([a, b, v]) => a !== b && (v === null || !v.includes(a)))).toEqual([]);
+});
+
+/**
+ * Traditional and Simplified are one language to a detector, and that is right
+ * here: ISO 639-1 has one `zh`, and what this asks is "did the Scribe write in
+ * the language the boss reads", not "which script did they choose".
+ */
+test("zh-Hant accepts the Chinese commit that zh accepts", () => {
+  const zh = COMMITS["zh"]!;
+  expect(checkPrMessage(zh.title, zh.body, "zh-Hant")).toBeNull();
+});
+
+/**
+ * The lenient direction, and it is the one that matters.
+ *
+ * `GENERIC_GATE` in ADR 046 failed the other way — it refused correct cards —
+ * and this refuses a turn the Scribe only gets once. So a message the detector
+ * is not confident about is published, never refused: a body that is mostly
+ * paths and identifiers reads as English whatever it is written in.
+ */
+test("a message the detector is unsure of is published rather than refused", () => {
+  const title = "fix(db): 迁移跑在了错误的 schema 上";
+  const body =
+    "open() 在 src/platform/persistence/database.ts:114 把 process.env.ORCH_DATABASE_URL\n" +
+    "直接交给了 bunSqlMigrate()。另见 drizzle/20260819125334_initial/migration.sql:214。";
+  expect(checkPrMessage(title, body, "zh")).toBeNull();
 });
 
 test("the commit gets the Scribe's message and the pull request gets the record", async () => {
@@ -665,7 +774,7 @@ test("the commit gets the Scribe's message and the pull request gets the record"
 
   // The pull request keeps both, the Scribe's part first: it is the only section
   // written by something that read the diff.
-  const body = await prBody(h.ctx.db, 1);
+  const body = await prBody(h.ctx.db, 1, "en");
   expect(body).toStartWith("One `if` guards");
   expect(body).toContain("Opened by");
 });

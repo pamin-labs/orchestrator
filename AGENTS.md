@@ -141,7 +141,14 @@ or run the full suite unless they own integration.
 
 ## Coding and testing rules
 
-- English for code, comments, errors, branches, commits, and pull requests.
+- English for code, comments, errors and branch names. **Commits and pull
+  requests follow the output language** — the boss reads `git log` too, and an
+  installation set to Chinese used to get one artefact in English and everything
+  else in Chinese. `## Output language` in `src/prompt/assemble.ts` is the only
+  place that says so; a role file naming a language is a second owner that goes
+  wrong the moment the knob moves, which `one-owner-for-the-language` guards.
+  The `type(scope):` prefix stays ASCII: `scope` is a module identifier.
+  [`052`](docs/adr/052-commits-follow-the-language-the-boss-reads.md).
 - Own product logic; rent everything else. A capability a popular, maintained
   library already provides is not written here. Adopt when it deletes
   project-owned code, tests or does the more correct thing, or supplies a
