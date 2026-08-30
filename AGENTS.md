@@ -14,8 +14,12 @@ Read in this order before changing code:
 4. affected files in `docs/standards/`
 5. relevant ADRs in `docs/adr/`
 
-Update `docs/project/progress.md` after each verifiable unit, not after each
-file. Record an architectural exception or changed decision in a new ADR.
+Replace the current-state sections of `docs/project/progress.md` for the
+verified unit. Do not append and do not prepend: it is a snapshot, the
+narrative belongs in the commit body and in ADRs, and
+`test/governance/progress-stays-current-state.test.ts` caps its length.
+Older narrative is in `docs/project/archive/`. Record an architectural
+exception or changed decision in a new ADR.
 
 ## Architecture invariants
 
