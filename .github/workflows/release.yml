@@ -347,12 +347,26 @@ jobs:
             --arg image_id "$image_id" \
             '{source_sha:$source_sha,platform:$platform,image_digest:$image_digest,image_id:$image_id}' \
             > "image-manifest-$PLATFORM.json"
+      # `ignore-unfixed` and `severity` repeated as inputs even though `trivy.yaml`
+      # says both, for the reason `security.yml` records at its own scan: the
+      # action writes its defaults into `TRIVY_*` before reading the config file,
+      # and an environment variable wins over the file. That fix landed on one of
+      # the three call sites, and the other two had never run — this one gates a
+      # release and only a real release reaches it.
+      #
+      # Measured, on the first run that did: `severity:
+      # UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL` in the action's own log, and
+      # `Total: 66 (HIGH: 54, CRITICAL: 12)` — every row `affected` or
+      # `fix_deferred` with an empty Fixed Version, which is nothing anyone could
+      # act on. `security.yml` counted 53 the day it was fixed.
       - name: scan verified image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orch-agent:verify-${{ matrix.platform }}
           trivy-config: trivy.yaml
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
           format: table
       - name: create verified image SPDX SBOM
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -533,7 +547,14 @@ jobs:
             '{source_sha:$source_sha,image:$image,digest:$digest,platforms:["linux/amd64","linux/arm64"]}' \
             > "$GITHUB_WORKSPACE/registry-image-manifest.json"
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ needs.checks.outputs.version }}', trivy-config: trivy.yaml, format: table }
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.REGISTRY }}/orch-agent:${{ needs.checks.outputs.version }}
+          trivy-config: trivy.yaml
+          # The same repetition, and the same reason, as `scan verified image`.
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          format: table
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ needs.checks.outputs.version }}', format: spdx-json, output: registry-image.spdx.json, exit-code: '0' }
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

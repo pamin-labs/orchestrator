@@ -427,6 +427,57 @@ describe("workflow governance", () => {
     expect(release).not.toContain('--target "$SOURCE_SHA"');
   });
 
+  /**
+   * Every Trivy scan that can fail a job states the policy it fails on.
+   *
+   * `trivy.yaml` holds `severity` and `ignore-unfixed`, and the action does not
+   * read it first: it writes its own defaults into `TRIVY_*` before the config
+   * file is consulted, and an environment variable wins. So a step that passes
+   * only `trivy-config` scans at `UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL` including
+   * findings with no fix — the action's policy, not this repository's.
+   */
+  /**
+   * `security.yml` learned that and repeated the two inputs. The other two call
+   * sites did not, and neither had ever run: the release scans are reached only by
+   * a real release, and the first one to get there stopped on
+   * `Total: 66 (HIGH: 54, CRITICAL: 12)`, every row `affected` or `fix_deferred`
+   * with an empty Fixed Version. This is the rule that makes the three agree.
+   */
+  /**
+   * `exit-code: '0'` is the exemption and it is not a loophole: those steps
+   * generate an SBOM and are documented as unable to fail a job, so the policy
+   * they scan under changes nothing.
+   */
+  test("a Trivy scan that gates names its own severity and fix policy", async () => {
+    const offenders: string[] = [];
+    for (const name of workflowNames) {
+      const workflow = await load(name);
+      for (const [job, spec] of Object.entries(workflow.jobs)) {
+        spec.steps.forEach((step, i) => {
+          if (!step.uses?.startsWith("aquasecurity/trivy-action@")) return;
+          const inputs = step.with ?? {};
+          // Both spellings: YAML gives `'0'` quoted and `0` bare, and this asks
+          // which steps cannot fail rather than how they were written.
+          if (inputs["exit-code"] === "0" || inputs["exit-code"] === 0) return;
+          const missing = ["severity", "ignore-unfixed"].filter((key) => !(key in inputs));
+          if (missing.length) offenders.push(`${name}.yml ${job} step ${i}: missing ${missing.join(", ")}`);
+        });
+      }
+    }
+    expect(offenders).toEqual([]);
+    // Non-empty, or the loop above passes by finding no scans at all.
+    const scans = (
+      await Promise.all(
+        workflowNames.map(async (name) =>
+          Object.values((await load(name)).jobs).flatMap((job) =>
+            job.steps.filter((step) => step.uses?.startsWith("aquasecurity/trivy-action@")),
+          ),
+        ),
+      )
+    ).flat();
+    expect(scans.length).toBeGreaterThan(5);
+  });
+
   test("release tag creation is atomic and rejects a raced source", async () => {
     const workflow = await load("release");
     const publish = workflow.jobs.publish!;
