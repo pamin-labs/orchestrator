@@ -20,16 +20,24 @@ be repeated. It reads the same `package.json` and answers the same way, except
 that checks still in flight are an error rather than a skip: a run asked for by
 hand is a question that deserves a reason.
 
-Nothing is released twice. A `main` whose version is already published is a
-no-op, which is the ordinary state between bumps.
+Nothing is released twice, and nothing else is released by accident. A merge
+releases only when it is the commit that set the version, or when an earlier run
+at that same version failed — which is the retry, and needs the fix to be on
+`main` to be worth anything. Between a successful release and the next bump,
+every merge is a no-op.
 
 ## When a run does not release
 
 Neither of these is a fault, and both say so as a notice rather than a failure:
 
 - `v<version> is published; nothing to release until package.json moves` — every
-  commit that is not a version bump.
+  merge between one release and the next bump.
+- `<version> was not set here and no attempt at it has failed; nothing to
+  release` — a merge while a version is pending that is neither the bump nor a
+  retry.
 - a required check `is <state>` — an earlier of the three firings.
+
+A run that *is* a retry says so: `retrying v<version>, which failed at <sha>`.
 
 ## Build once from the selected SHA
 

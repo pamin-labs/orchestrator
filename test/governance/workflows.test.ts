@@ -522,6 +522,12 @@ describe("workflow governance", () => {
     // run the normal state of the repository.
     expect(select).toContain("is published; nothing to release until package.json moves");
     expect(select).toContain('echo "release=false"');
+    // And that a merge which is neither the bump nor a retry releases nothing.
+    // "The version is unpublished" would authorise whatever landed next, which
+    // is how an unrelated feature ships inside somebody else's version.
+    expect(select).toContain('git show "HEAD^1:package.json"');
+    expect(select).toContain("was not set here and no attempt at it has failed");
+    expect(select).toContain("workflows/release.yml/runs?status=failure");
     expect(select).toContain('test "$tag_sha" = "$sha"');
     expect(select).toContain("resuming the unpublished");
     expect(manifest).toContain('if [ -z "$existing" ]');

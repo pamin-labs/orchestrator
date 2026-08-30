@@ -90,6 +90,41 @@ jobs:
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$RELEASE_VERSION" >/dev/null 2>&1; then
             stop "v$RELEASE_VERSION is published; nothing to release until package.json moves"
           fi
+          # Which merge is the release request, out of every merge that reaches
+          # `main`. "The version is unpublished" is not the answer: while one is
+          # pending, that authorises whatever lands next, so an unrelated feature
+          # ships inside a version whose bump commit predates it. ADR 050 is named
+          # for the tighter rule and the first implementation was looser than its
+          # own name.
+          #
+          # Two ways in, and the second is why this is not simply "the bump
+          # commit". A release that failed has to be retried from a `main` that
+          # carries the fix, so the source necessarily moves past the bump — the
+          # 0.1.3 release needed three of those. So: this commit set the version,
+          # or an earlier run at this same version failed. Between a successful
+          # release and the next bump, neither holds and every merge is a no-op.
+          #
+          # `HEAD^1` is the previous `main`: the ruleset allows merge commits
+          # only, so the first parent is always what `main` was.
+          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
+            before=$(git show "HEAD^1:package.json" 2>/dev/null | jq -r .version 2>/dev/null || echo "")
+            if [ "$before" = "$RELEASE_VERSION" ]; then
+              # Runs are only ever on `main`, and the version moves only at a
+              # bump, so "a failed run whose commit carried this version" is
+              # exactly "an earlier attempt at this release failed". Read from the
+              # commit rather than from the run, because a run holds no version.
+              retry=""
+              for failed in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?status=failure&per_page=30" --jq '.workflow_runs[].head_sha'); do
+                git cat-file -e "$failed^{commit}" 2>/dev/null || continue
+                was=$(git show "$failed:package.json" 2>/dev/null | jq -r .version 2>/dev/null || echo "")
+                test "$was" = "$RELEASE_VERSION" || continue
+                retry="$failed"
+                break
+              done
+              test -n "$retry" || stop "$RELEASE_VERSION was not set here and no attempt at it has failed; nothing to release"
+              echo "::notice::retrying v$RELEASE_VERSION, which failed at $retry"
+            fi
+          fi
           # A tag without a release is a run that died after binding it. Resuming
           # is only safe onto the same source, which is why this compares rather
           # than deletes: published tags and releases are never replaced.

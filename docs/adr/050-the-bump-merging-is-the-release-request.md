@@ -35,6 +35,22 @@ commit that is not a version bump does the same. A run refusing is therefore the
 ordinary state, and the gate had to stop saying it in red — `checks` now reports
 three outcomes rather than two, and `release=false` is one of them.
 
+That last sentence was true of this document before it was true of the workflow.
+The first implementation authorised on "the version is unpublished", which while
+one is pending is every merge — so an unrelated feature would ship inside a
+version whose bump commit predates it. The rule is now the one written above:
+this commit set the version, or an earlier run at the same version failed.
+
+The second half is not a loophole, it is the retry. A release that failed has to
+be attempted again from a `main` carrying the fix, so its source necessarily
+moves past the bump; 0.1.3 took three of those. The window is bounded by the
+thing it exists for — it opens on a failure and closes when the release
+succeeds — and between a successful release and the next bump neither clause
+holds, so every merge is a no-op. Reading it needs no state of its own: runs are
+only ever on `main`, the version moves only at a bump, so "a failed run whose
+commit carried this version" is exactly "an earlier attempt at this release
+failed".
+
 **Consequence**: every job carries
 `if: needs.checks.outputs.release == 'true'` rather than inheriting a skip
 through `needs`. The cascade is real, but it makes "can this step be reached
