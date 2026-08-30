@@ -30,6 +30,19 @@
 # in docker/postgres-compose.yml that `bun run db:up` starts. Nothing in the
 # product knows which it got, and the schema is applied at boot either way.
 #
+# Leave it unset and the server starts that container itself, from the copy of
+# docker/postgres-compose.yml beside this file: data under dataDir/postgres, a
+# password generated once into dataDir/postgres.password and read back on every
+# boot after. Docker draws the published port and the server asks which one it
+# drew; ORCH_POSTGRES_PORT pins it instead. ADR 051 says why the fallback exists
+# — briefly, that docker is already required, so this file's own instruction was
+# the only missing piece of a download that otherwise could not start.
+#
+# Both secrets are read from a `.env` beside the binary too, which is the file to
+# put them in. It is not this one, and the reason is one line above: this file is
+# committed. A key here would be a password in the next commit, and in every
+# release archive built from it.
+#
 # Anything you do add here still works — it is the default under whatever the
 # panel has set — but `test/config.test.ts` will fail if it disagrees with
 # `src/config.ts`, because two files quietly answering the same question

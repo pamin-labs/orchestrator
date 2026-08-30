@@ -24,7 +24,8 @@ import {
 } from "../platform/config/load.ts";
 import { applyOverrides } from "../platform/config/settings.ts";
 import { changed, checkConfig, checkRoles } from "../mech/ops/checkconfig.ts";
-import { open } from "../platform/persistence/database.ts";
+import { DATABASE_URL, open } from "../platform/persistence/database.ts";
+import { localPostgres } from "../platform/persistence/local-postgres.ts";
 import { REAL, sandboxHeld, type Scope } from "../mech/sandbox/sandbox.ts";
 import type { DB } from "../platform/persistence/database.ts";
 import { startMailbox } from "../mech/sandbox/mailbox.ts";
@@ -738,7 +739,13 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   // connection string and a running PostgreSQL, and that suite's whole point is
   // that the process comes up — skipping it when a database is missing is a
   // green tick over the one test that starts the thing.
-  const db = handle ?? (await open(cfg.dbPoolSize));
+  // Unset is not fatal any more: Docker is already required for the sandboxes,
+  // so a deployment that named no database gets the one `docker/postgres-compose.yml`
+  // defines. The variable still wins, which is what keeps managed and remote
+  // PostgreSQL the same single line they were (ADR 051).
+  // `||`, not `??`: `ORCH_DATABASE_URL=` in a `.env` is an empty string, and
+  // handing that to `open()` throws the same "unset" it always did.
+  const db = handle ?? (await open(cfg.dbPoolSize, process.env[DATABASE_URL] || (await localPostgres(cfg.dataDir))));
   try {
     chmodSync(cfg.dataDir, 0o700);
   } catch {}

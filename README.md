@@ -94,6 +94,17 @@ in front of the panel, so whoever reaches it is you — put a reverse proxy with
 auth in front before publishing it anywhere else. `ORCH_HOST` and `ORCH_PORT`
 move it; `config/default.yaml` is the same two settings for good.
 
+Its database comes up with it. With `ORCH_DATABASE_URL` unset it starts one
+PostgreSQL container — the same `docker/postgres-compose.yml` beside the binary,
+data under `dataDir`, password generated once and kept there. Docker picks the
+published port and the server asks which one; `ORCH_POSTGRES_PORT` pins it if you
+want a fixed address to reach with `psql`.
+
+Set `ORCH_DATABASE_URL` and it uses yours instead — managed, remote, or one you
+already run. A `.env` beside the binary is read, so that and the sandbox key are
+a file rather than a shell export. Not `config/default.yaml`: that file is
+committed here, and a password in it is a password in somebody's next commit.
+
 The agent image is pulled by the sandbox server the first time it builds a
 container — nothing to pull by hand.
 

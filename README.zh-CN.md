@@ -90,6 +90,15 @@ cd orch-server-*-windows-x64
 能访问到它的人就是你 —— 要放到别处，前面加一层带鉴权的反向代理。`ORCH_HOST`
 和 `ORCH_PORT` 能改，`config/default.yaml` 里是同样两项、改了长期有效。
 
+数据库跟着它一起起来。`ORCH_DATABASE_URL` 没设的时候，它自己拉起一个 PostgreSQL
+容器 —— 就是二进制旁边那份 `docker/postgres-compose.yml`，数据放在 `dataDir` 下，
+密码只生成一次、也存在那里。对外发布哪个端口由 Docker 自己挑、服务器再问它挑了哪个；
+想要一个固定地址好用 `psql` 连，就拿 `ORCH_POSTGRES_PORT` 钉住。
+
+设了 `ORCH_DATABASE_URL` 就用你自己的那一个：托管的、远端的、或者本机已经在跑的。
+二进制旁边放个 `.env` 也认，所以它和沙箱密钥都可以是一个文件、不必 export。不要写进
+`config/default.yaml`：那份文件是提交进仓库的，密码写进去就等着进下一个 commit。
+
 agent 镜像由沙盒服务器在第一次建容器时自己拉，不用手动 pull。
 
 <details><summary>或者从源码跑</summary>

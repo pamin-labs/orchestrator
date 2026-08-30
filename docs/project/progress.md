@@ -1,3 +1,37 @@
+- **`./orch-server` brings up its own database.** The README's quickstart —
+  `curl | tar`, then `./orch-server`, on a machine with Docker — could not work
+  on any machine: the server opens PostgreSQL before it listens, and neither
+  README nor any file a new user reads mentions `ORCH_DATABASE_URL`. The
+  fallback the docs *did* name was not in the archive either; `release.yml`
+  copied `roles config drizzle` and left `docker/` behind, so the one turnkey
+  database this project owns was unreachable to everyone who installed the
+  documented way.
+
+  Unset now means `docker compose … up -d --wait` on the compose file shipped
+  beside the binary, the variable still winning when it is set
+  ([`051`](../adr/051-the-download-brings-its-own-database.md)). The password is
+  a 600 file under `dataDir` because `POSTGRES_PASSWORD` is read once, on an
+  empty volume, and a per-boot password would authenticate against nothing from
+  the second start onwards. The published port is Docker's to choose — the
+  compose file's `${ORCH_POSTGRES_PORT-5432}` publishes `127.0.0.1::5432` on an
+  empty value — and the server asks `docker compose port` which one it drew,
+  rather than assuming the one it asked for. Picking it ourselves would race the
+  sandbox server's own ephemeral ports, which is a race this repository has
+  already lost once.
+
+  Measured on the compiled `darwin-arm64` binary, run out of a staged archive:
+  no variable set and a fresh `dataDir` → `local PostgreSQL on 127.0.0.1:32770`,
+  `/readyz` reporting `database: migrated and queryable`, panel 200. A second
+  boot green against the volume the first made; a stop and start moved the port
+  32768 → 32769, which is why it is asked for every time. `ORCH_DATABASE_URL` in
+  a `.env` beside the binary is read and skips the container entirely — that
+  path was undocumented and is now in both READMEs, as the place to put a secret
+  that `config/default.yaml` cannot hold because it is committed.
+
+  Five new guards, each shown red first: a regenerated password, a dropped
+  `ORCH_DATA_DIR`, an error that stops naming its two ways out, a container that
+  published nothing, and `docker` removed from the archive's copy list.
+
 - **The live-sandbox `126` is diagnosed and fixed.** It reproduced once the probe
   stopped discarding its output, and named itself immediately:
   `code=126 out= err=container unavailable: Egress sidecar container failed to
