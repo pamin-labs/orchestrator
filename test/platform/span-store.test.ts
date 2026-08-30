@@ -187,6 +187,26 @@ test("retention drops the oldest rows past the count bound even when all are rec
   expect(await remaining(db)).toEqual(["0000000000000003", "0000000000000004", "0000000000000005"]);
 });
 
+test("under the row bound, retention does not ask which rows are surplus", async () => {
+  // The count is the subject. The delete that finds the surplus sorts the table —
+  // it has two sort keys and selects a column no index carries — and it ran on
+  // every heartbeat whether or not there was anything over the cap. Two
+  // statements is the age delete and the probe; three means the sort came back.
+  let statements = 0;
+  const db = await openMemory({ logQuery: () => void (statements += 1) });
+  const now = 1_800_000_000_000;
+  for (let i = 1; i <= 5; i++) await insert(db, i.toString(16).padStart(16, "0"), now - (6 - i));
+
+  statements = 0;
+  await trimSpans(db, now, 100);
+  expect(statements).toBe(2);
+
+  // And it still runs when there is a surplus, which is the case it exists for.
+  statements = 0;
+  await trimSpans(db, now, 3);
+  expect(statements).toBe(3);
+});
+
 test("re-ingesting the same span is a no-op rather than a duplicate", async () => {
   const db = await openMemory();
   const row: SpanRow = {

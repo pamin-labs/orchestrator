@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, sql, sum } from "drizzle-orm";
+import { and, desc, eq, gt, sql, sum } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
 import { agent, event, grp, slice } from "../../platform/persistence/schema.ts";
 import type { CostReport } from "../../contracts/cost.ts";
@@ -28,6 +28,9 @@ import { z } from "zod";
  * aggregate and `Number` is exact far past any token count.
  */
 const tokens = (value: string | null): number => Number(value ?? 0);
+
+/** One turn's `meta`, validated. Read once per report and handed to three readers. */
+type Turn = z.infer<typeof TurnMetaSchema>;
 
 /**
  * What one turn reported, as the event carries it.
@@ -86,90 +89,116 @@ const hourLabel = (at: number): string => {
 /** How many requirements the ranking offers. Was a literal inside the query. */
 const GROUP_LIMIT = 50;
 
+/**
+ * What the fleet has spent, and how much of that is behind a delivered branch.
+ *
+ * Two statements over one table with one filter, until `FILTER (WHERE …)` — the
+ * shape `span-store.ts` already uses for its error counts — answered both in a
+ * pass. A `sum` over no rows is NULL, which is what `tokens()` reads as zero.
+ */
+const grpTotals = (db: DB, where: ReturnType<typeof eq> | undefined) =>
+  db
+    .select({
+      total: sum(grp.spent_tokens),
+      deliveredCount: sql<number>`count(*) FILTER (WHERE ${grp.status} = 'DISSOLVED')`.mapWith(Number),
+      deliveredTokens: sql<string | null>`sum(${grp.spent_tokens}) FILTER (WHERE ${grp.status} = 'DISSOLVED')`,
+    })
+    .from(grp)
+    .where(where);
+
+/**
+ * A dimension of the agent table, summed in this process rather than in a second
+ * statement.
+ *
+ * `agents` below already selects every row this would group over, with the same
+ * project filter and the same column — so `GROUP BY role` and `GROUP BY runtime`
+ * were two more round trips to re-read rows already in hand. Arithmetic over a
+ * list the panel is about to be sent is not a query.
+ */
+const groupTokens = <T extends { tokens: number }>(
+  rows: readonly T[],
+  key: (row: T) => string,
+): CostReport["byRole"] => {
+  const summed = new Map<string, number>();
+  for (const row of rows) summed.set(key(row), (summed.get(key(row)) ?? 0) + row.tokens);
+  return [...summed].map(([label, tokens]) => ({ label, tokens })).sort((a, b) => b.tokens - a.tokens);
+};
+
 export async function costReport(db: DB, projectId?: number): Promise<CostReport> {
   // The filter is a condition rather than `(?1 IS NULL OR project_id = ?1)`, which
   // is how SQL says "optional" when it has no way to leave a clause out.
   const inProject = <T extends typeof grp.project_id | typeof agent.project_id>(column: T) =>
     projectId === undefined ? undefined : eq(column, projectId);
 
-  const byGroup = await db
-    .select({ grpId: grp.id, label: grp.name, tokens: grp.spent_tokens })
-    .from(grp)
-    .where(inProject(grp.project_id))
-    .orderBy(desc(grp.spent_tokens))
-    .limit(GROUP_LIMIT);
+  /**
+   * One wave, not eleven serial round trips.
+   *
+   * The panel invalidates this alongside `snapshot` on every `state_change`
+   * frame, so it is asked up to four times a second — and every `await` waited on
+   * the one before it with nothing between them that needed the answer. Three of
+   * the eleven were the *same* statement: `recentTurns(50)`, once each for the
+   * cache ratio, the rotations and the turn shape. Two more re-grouped rows
+   * `agents` had already selected. Six now, and they leave together.
+   */
+  const [byGroup, agents, byDifficultyRows, totals, byHourRows, turns] = await Promise.all([
+    db
+      .select({ grpId: grp.id, label: grp.name, tokens: grp.spent_tokens })
+      .from(grp)
+      .where(inProject(grp.project_id))
+      .orderBy(desc(grp.spent_tokens))
+      .limit(GROUP_LIMIT),
 
-  const agents = await db
-    .select({
-      id: agent.id,
-      grpId: agent.grp_id,
-      role: agent.role,
-      label: agent.role,
-      model: agent.model,
-      runtime: agent.runtime,
-      tokens: agent.total_tokens,
-    })
-    .from(agent)
-    .where(inProject(agent.project_id))
-    .orderBy(desc(agent.total_tokens));
-
-  const byRole = (
-    await db
-      .select({ label: agent.role, tokens: sum(agent.total_tokens) })
+    db
+      .select({
+        id: agent.id,
+        grpId: agent.grp_id,
+        role: agent.role,
+        label: agent.role,
+        model: agent.model,
+        runtime: agent.runtime,
+        tokens: agent.total_tokens,
+      })
       .from(agent)
       .where(inProject(agent.project_id))
-      .groupBy(agent.role)
-      .orderBy(desc(sum(agent.total_tokens)))
-  ).map((r) => ({ label: r.label, tokens: tokens(r.tokens) }));
+      .orderBy(desc(agent.total_tokens)),
 
-  // The project filter was missing here, so one project's cost panel showed every
-  // project's difficulty mix — and the difficulty tag is the cost knob the whole
-  // panel exists to inform.
-  const byDifficulty = (
-    await db
+    // The project filter was missing here, so one project's cost panel showed every
+    // project's difficulty mix — and the difficulty tag is the cost knob the whole
+    // panel exists to inform. Still its own statement: `slice` is not `agent`, and
+    // nothing else here has read it.
+    db
       .select({ label: slice.difficulty, tokens: sum(slice.spent_tokens) })
       .from(slice)
       .innerJoin(grp, eq(grp.id, slice.grp_id))
       .where(inProject(grp.project_id))
       .groupBy(slice.difficulty)
-      .orderBy(desc(sum(slice.spent_tokens)))
-  ).map((r) => ({ label: r.label, tokens: tokens(r.tokens) }));
+      .orderBy(desc(sum(slice.spent_tokens))),
 
-  const byRuntime = (
-    await db
-      .select({ label: agent.runtime, tokens: sum(agent.total_tokens) })
-      .from(agent)
-      .where(inProject(agent.project_id))
-      .groupBy(agent.runtime)
-      .orderBy(desc(sum(agent.total_tokens)))
-  ).map((r) => ({ label: r.label, tokens: tokens(r.tokens) }));
+    grpTotals(db, inProject(grp.project_id)),
 
-  const [totalRow] = await db
-    .select({ tokens: sum(grp.spent_tokens) })
-    .from(grp)
-    .where(inProject(grp.project_id));
-  const total = { label: "total", tokens: tokens(totalRow?.tokens ?? null) };
+    byHour(db),
 
-  // What a finished requirement costs is the number to compare against doing it by
-  // hand — docs/project/plan.md §13 risk ② turns on exactly this ratio.
-  const [deliveredRow] = await db
-    .select({ count: count(), tokens: sum(grp.spent_tokens) })
-    .from(grp)
-    .where(and(eq(grp.status, "DISSOLVED"), inProject(grp.project_id)));
-  const delivered = { count: deliveredRow?.count ?? 0, tokens: tokens(deliveredRow?.tokens ?? null) };
+    // Read once and handed to all three readers below. What a turn costs is one
+    // question asked three ways, not three questions.
+    recentTurns(db, 50),
+  ]);
+
+  const [totalRow] = totals;
 
   return {
-    delivered,
+    // What a finished requirement costs is the number to compare against doing it by
+    // hand — docs/project/plan.md §13 risk ② turns on exactly this ratio.
+    delivered: { count: totalRow?.deliveredCount ?? 0, tokens: tokens(totalRow?.deliveredTokens ?? null) },
     byGroup,
     agents,
-    byRole,
-    byDifficulty,
-    byRuntime,
-    byHour: await byHour(db),
-    total,
-    cacheRatio: await recentCacheRatio(db),
-    rotations: await recentRotations(db),
-    turns: await recentTurnShape(db),
+    byRole: groupTokens(agents, (a) => a.role),
+    byDifficulty: byDifficultyRows.map((r) => ({ label: r.label, tokens: tokens(r.tokens) })),
+    byRuntime: groupTokens(agents, (a) => a.runtime),
+    byHour: byHourRows,
+    total: { label: "total", tokens: tokens(totalRow?.total ?? null) },
+    cacheRatio: cacheRatioOf(turns),
+    rotations: rotationsOf(turns),
+    turns: turnShapeOf(turns),
   };
 }
 
@@ -219,8 +248,9 @@ async function byHour(db: DB): Promise<CostReport["byHour"]> {
  */
 /** Medians, not means: one turn that read a 4 MB file is exactly the turn a mean
  *  would let define the picture, and it is also the turn worth finding. */
-async function recentTurnShape(db: DB, limit = 50): Promise<CostReport["turns"]> {
-  const metas = await recentTurns(db, limit);
+/** Takes the sample rather than fetching one: `costReport` reads it once and this
+ *  is the third reader of it. */
+function turnShapeOf(metas: readonly Turn[]): CostReport["turns"] {
   const ms = metas.flatMap((m) => (m.ms === undefined ? [] : [m.ms]));
   const bytes = metas.flatMap((m) => (m.transcript?.bytes ? [m.transcript.bytes] : []));
   const toolShare = metas.flatMap((m) =>
@@ -249,7 +279,7 @@ function median(values: number[]): number | null {
  * always approximating. Drizzle has no helper for the `?` operator, and spelling it
  * as the function avoids the placeholder ambiguity the operator would carry.
  */
-async function recentTurns(db: DB, limit: number): Promise<z.infer<typeof TurnMetaSchema>[]> {
+async function recentTurns(db: DB, limit: number): Promise<Turn[]> {
   const rows = await db
     .select({ meta_json: event.meta_json })
     .from(event)
@@ -259,7 +289,14 @@ async function recentTurns(db: DB, limit: number): Promise<z.infer<typeof TurnMe
     // also the rows this samples for duration and weight, which a provider can
     // report without a cache figure at all.
     .where(and(eq(event.kind, "tool_summary"), sql`jsonb_exists(${event.meta_json}, 'usage')`))
-    .orderBy(desc(event.seq))
+    // `at`, not `seq`, and it is the ordering that makes `event_kind (kind, at)`
+    // serve this: by `seq` the kind prefix narrows the rows but the sort is still
+    // over every `tool_summary` the retention window holds. Both columns are
+    // written by the same append — `at` is stamped immediately before the insert
+    // that assigns `seq` — so "the newest fifty turns" is the same fifty either
+    // way, off only by the microseconds in which two emits can interleave, which
+    // is not something a sample of fifty can express.
+    .orderBy(desc(event.at))
     .limit(limit);
   return rows.map((r) => valueOr(r.meta_json, TurnMetaSchema, {}));
 }
@@ -270,8 +307,11 @@ async function recentTurns(db: DB, limit: number): Promise<z.infer<typeof TurnMe
  * tests still pass, and each turn quietly costs several times more.
  */
 export async function recentCacheRatio(db: DB, limit = 50): Promise<number | null> {
-  const vals: number[] = [];
-  for (const meta of await recentTurns(db, limit)) if (meta.cacheRatio !== undefined) vals.push(meta.cacheRatio);
+  return cacheRatioOf(await recentTurns(db, limit));
+}
+
+function cacheRatioOf(metas: readonly Turn[]): number | null {
+  const vals = metas.flatMap((m) => (m.cacheRatio === undefined ? [] : [m.cacheRatio]));
   if (vals.length === 0) return null;
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
@@ -286,8 +326,7 @@ export async function recentCacheRatio(db: DB, limit = 50): Promise<number | nul
  * opened cold, roughly 17k of prefix rebuilt each time, with no way to tell whether
  * the cause was a moving prefix, the rotation ceiling, or send-backs.
  */
-async function recentRotations(db: DB, limit = 50): Promise<{ turns: number; byReason: Record<string, number> }> {
-  const metas = await recentTurns(db, limit);
+function rotationsOf(metas: readonly Turn[]): CostReport["rotations"] {
   const byReason: Record<string, number> = {};
   for (const meta of metas) if (meta.rotate) byReason[meta.rotate] = (byReason[meta.rotate] ?? 0) + 1;
   return { turns: metas.length, byReason };

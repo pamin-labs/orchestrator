@@ -4,7 +4,7 @@ import { valueOr } from "../../contracts/json.ts";
 import { costReport } from "../../mech/ops/cost.ts";
 import { canStart } from "../../mech/flow/ownership.ts";
 import { poolSizes } from "../../platform/scheduling/scheduler.ts";
-import { head, position } from "../../mech/flow/mergequeue.ts";
+import { queue } from "../../mech/flow/mergequeue.ts";
 import type { Handler } from "../../http/handler.ts";
 import { json } from "../../http/respond.ts";
 import { renderSaid } from "../../platform/text/lang.ts";
@@ -333,10 +333,17 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
     ),
     // Only the queue head is offered for merging; the rest carry their place in
     // line so the boss can see why they are waiting.
+    //
+    // One statement per project, not three. `head` is `queue()[0]` and `position`
+    // ran `queue()` a second time for the same project after a lookup to find the
+    // project it had just been given — to compute a place that is, for the head,
+    // always first. The queue itself is what both answers come out of, so it is
+    // read once and both are read off it.
     Promise.all(
       registered.map(async (p) => {
-        const h = await head(db, p.id);
-        return h ? [{ projectId: p.id, ...h, place: await position(db, h.grpId) }] : [];
+        const line = await queue(db, p.id);
+        const h = line[0];
+        return h ? [{ projectId: p.id, ...h, place: { position: 1, total: line.length } }] : [];
       }),
     ),
   ]);

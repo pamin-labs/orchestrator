@@ -1,3 +1,56 @@
+- **The panel's two hot reads had no index, and the queue asked four questions a
+  job.** `web/src/shared/api.ts` invalidates `snapshot` *and* `cost` on every
+  `state_change` frame, debounced to 250ms — so both run up to four times a
+  second while a fleet moves, and `state_change` is the kind by volume, seventy-
+  nine emitters against four for `tool_summary`. `costReport` answered that with
+  eleven serial round trips, three of them the same statement: `recentTurns(50)`
+  once for the cache ratio, once for the rotations, once for the turn shape. Two
+  more re-grouped rows `agents` had already selected, and two more asked one
+  table one filter twice. Six now, leaving together — **11 → 6 statements**,
+  1.46ms → 0.41ms on a fifty-row `event`, which is not the table this is for.
+
+  Under them, `event` had no index a kind or a clock could use. The cost
+  histogram, the recent-turn sample, the watchdog's per-finding re-emit clock and
+  the snapshot's two draft-group reads were all scans. `event_kind (kind, at)`
+  and `event_age (at)`, plus `note_grp (grp_id, at DESC, id DESC)` for the cards
+  the snapshot reads per group and `job_agent (agent_id, id)` for the two
+  correlated subqueries the desk wall draws from — `job` is pruned by nothing, so
+  both grew with the age of the installation. Five EXPLAIN guards in
+  `test/platform/hot-query-plan.test.ts`, each shown red with only its own index
+  dropped in an isolated namespace.
+
+  `event_age` is not a partial index on the trim's own `kind NOT IN (…)`, which
+  is the tempting shape: Drizzle renders `notInArray` as bind parameters and
+  matching a partial predicate needs constants at plan time, so under a generic
+  plan the index is never chosen. It earns its place anyway — without it the
+  planner falls back to a *full* scan of `event_kind` with `at` as a non-boundary
+  condition, measured at 179.83 against 56.77 on 20,000 rows, and that gap is the
+  whole index against the matching rows.
+
+  The scheduler's admission check was the other half. `loadAdmission` batched
+  groups and slices; the rest never followed, so each pending `agent_turn` asked
+  which provider its agent runs on, whether that provider is held, whether a
+  credential exists, and which project its group is in — four statements a job,
+  and a lease asked a fifth twice. Five hundred queued turns were two thousand
+  statements before one started. Now one wave of five, whatever the depth:
+  **3427 → 2250 statements** for `scheduler cycle x500`. `repoHeld` stays a call
+  because it is injected and reads a table this module does not own; it is
+  memoised per project for the tick.
+
+  Two things this did *not* buy. `trimSpans`' row-cap delete has two sort keys
+  and selects a column no index carries, so widening `span_age` to
+  `(started_at, span_id)` did not reliably change the plan — measured, the
+  planner still chose a sequential scan and a sort at 3137. The waste was never
+  the sorting, it was that the statement ran on every heartbeat to delete
+  nothing; a one-column index-only probe now guards it, and the sort runs only
+  when there is a surplus. And the snapshot's merge queue read `queue()` three
+  times per project to compute a place that is always first: 21 statements with a
+  group in the queue, 19 without one, so the benchmark that pinned 19 had never
+  measured the path. It seeds a queued group now, and reads the queue once.
+
+  `cost report` is in `scripts/benchmark.ts` with a pinned statement count for
+  the first time — it is a four-times-a-second path that had no budget at all.
+
 - **`./orch-server` brings up its own database.** The README's quickstart —
   `curl | tar`, then `./orch-server`, on a machine with Docker — could not work
   on any machine: the server opens PostgreSQL before it listens, and neither

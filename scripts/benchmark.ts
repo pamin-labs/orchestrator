@@ -3,6 +3,7 @@ import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
 import { snapshot } from "../src/api/panel/snapshot.ts";
+import { costReport } from "../src/mech/ops/cost.ts";
 import { reconcile } from "../src/mech/flow/reconcile.ts";
 import { runWatchdog } from "../src/mech/ops/watchdog.ts";
 import { assemble, type StablePrompt } from "../src/prompt/assemble.ts";
@@ -15,7 +16,7 @@ import {
   traceList,
   trend,
 } from "../src/platform/observability/span-store.ts";
-import { gt, max } from "drizzle-orm";
+import { eq, gt, max } from "drizzle-orm";
 import type { Ctx } from "../src/mech/ctx.ts";
 import {
   agent,
@@ -152,6 +153,10 @@ async function snapshotQueries(): Promise<number> {
 }
 
 await seedGroup(1);
+// One group in the merge queue. With an empty queue the panel's queue read stops
+// at "nobody is waiting" and the place lookup never runs — so the statements this
+// budget exists to hold flat were the ones it was not measuring.
+await db.update(grp).set({ status: "PR_OPEN", merge_seq: 1, merge_seq_at: 0, pr_number: 1 }).where(eq(grp.id, 1));
 const oneGroupQueries = await snapshotQueries();
 for (let i = 2; i <= 50; i++) await seedGroup(i);
 const fiftyGroupQueries = await snapshotQueries();
@@ -250,6 +255,19 @@ limits.set("snapshot", 90);
 const runSnapshot = async () => void (await snapshot(ctx));
 bench.add("snapshot", runSnapshot, { async: true });
 
+/**
+ * The other half of a panel refresh, and it had no budget at all.
+ *
+ * `web/src/shared/api.ts` invalidates `ORCH` on every `state_change` frame, so
+ * this runs beside `snapshot` at up to four times a second — the same rate, the
+ * same reason to pin its query count. `event` holds fifty rows here, so the
+ * milliseconds say nothing about a loaded installation; the statement count is
+ * the number this can gate on, exactly as it is for `snapshot`.
+ */
+limits.set("cost report", 90);
+const runCostReport = async () => void (await costReport(db));
+bench.add("cost report", runCostReport, { async: true });
+
 limits.set("prompt assemble", 0.004);
 bench.add("prompt assemble", () => assemble(stable, delta), { async: false });
 
@@ -317,6 +335,7 @@ bench.add("telemetry report", runTelemetryReport, { async: true });
  *  query is exactly the regression these budgets were written to catch. */
 const statements = new Map<string, () => Promise<void>>([
   ["snapshot", runSnapshot],
+  ["cost report", runCostReport],
   ["watchdog tick", runWatchdogTick],
   ["telemetry report", runTelemetryReport],
   ["scheduler cycle x500", async () => (await runSchedulerCycle(), await clearJobs())],
@@ -325,16 +344,24 @@ const statements = new Map<string, () => Promise<void>>([
 /**
  * Measured twice, then pinned. A change here is a decision, not a coin flip.
  *
- * Three of them are exact — 19, 37 and 6 statements, identical across runs — and
- * the batch is not: 500 enqueues and a drain measured 3427 and 3426, so it gets a
- * ceiling instead. The ceiling is what catches the regression this is for, one
- * more query per job, which would land at 3927.
+ * Four are exact — 19, 6, 37 and 6, identical across runs — and the batch is not:
+ * 500 enqueues and a drain measured 2250 and 2249, so it gets a ceiling. The
+ * ceiling is what catches the regression this is for, one more query per job,
+ * which would land at 2750.
+ */
+/**
+ * The batch was 3427 until the admission check stopped asking four questions per
+ * pending turn, and `cost report` was 11 until its statements stopped waiting on
+ * each other. `snapshot` measures 19 with a group in the merge queue and measured
+ * 21 there before the queue was read once instead of three times — the budget
+ * that was already written down is what would have caught it.
  */
 const statementBudget = new Map<string, number>([
   ["snapshot", 19],
+  ["cost report", 6],
   ["watchdog tick", 37],
   ["telemetry report", 6],
-  ["scheduler cycle x500", 3_500],
+  ["scheduler cycle x500", 2_300],
 ]);
 
 async function countStatements(): Promise<string[]> {
