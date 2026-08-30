@@ -9,6 +9,7 @@ import { Button } from "../../ui/button";
 import { DiffView } from "../diff/view";
 import { Segment, Segments } from "../../ui/segment";
 import { Tip } from "../../ui/tooltip";
+import { VirtualList } from "../../ui/virtual-list";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { t } from "@lingui/core/macro";
 
@@ -321,24 +322,43 @@ function keyed(values: string[]): Array<{ key: string; value: string }> {
   });
 }
 
+/**
+ * The longest list in the panel, and the one that pays for windowing.
+ *
+ * `src/api/orch/review.ts` caps a gate log at 4000 lines and a `bun test` run
+ * reaches it, so this drew four thousand nodes — and `filterLines` runs on every
+ * keystroke of the box above, which redrew all of them per character.
+ */
+/**
+ * The rows do not wrap (`whitespace-pre`, as the `<pre>` gave them), so
+ * `leading-[1.5]` over `--text-meta: 0.6875rem` is the row height rather than an
+ * estimate to be corrected.
+ */
 function GateTranscript({ lines, query }: { lines: string[]; query: string }) {
   const { t } = useLingui();
   if (!lines.length) return <LogPane>{query ? t`No matching lines` : t`This log is empty`}</LogPane>;
   return (
-    <LogPane>
-      {keyed(lines).map(({ key, value }) => (
-        <LogLine key={key} value={value} />
-      ))}
-    </LogPane>
+    <VirtualList items={keyed(lines)} estimate={LOG_LINE_PX} keyOf={(line) => line.key} className={cn(PAD, LOG_CLASS)}>
+      {({ value }) => <LogLine value={value} />}
+    </VirtualList>
   );
 }
 
-const LOG_CLASS = "max-h-[34rem] overflow-auto bg-sunk py-2 font-mono text-meta leading-[1.5] text-ink-2";
-const LogPane = ({ children }: { children: React.ReactNode }) => <pre className={cn(PAD, LOG_CLASS)}>{children}</pre>;
+const LOG_LINE_PX = 17;
+const LOG_CLASS = "max-h-[34rem] bg-sunk py-2 font-mono text-meta leading-[1.5] text-ink-2";
+const LogPane = ({ children }: { children: React.ReactNode }) => (
+  <pre className={cn(PAD, LOG_CLASS, "overflow-auto")}>{children}</pre>
+);
 
 function LogLine({ value }: { value: string }) {
   return (
-    <div className={cn(/^\s*\(fail\)/.test(value) && "bg-bad-soft", /error|Error/.test(value) && "text-bad")}>
+    <div
+      className={cn(
+        "whitespace-pre",
+        /^\s*\(fail\)/.test(value) && "bg-bad-soft",
+        /error|Error/.test(value) && "text-bad",
+      )}
+    >
       {value || " "}
     </div>
   );

@@ -8,6 +8,7 @@ import { Badge } from "../../ui/badge";
 import { Card, CardBody, CardTitle } from "../../ui/card";
 import { Bar } from "../../ui/table";
 import { Tip } from "../../ui/tooltip";
+import { VirtualList } from "../../ui/virtual-list";
 import { ask, type AskSpec } from "../../ui/confirm";
 import { Composer, ComposerDialog, type Draft } from "../composer/view";
 import { Telemetry } from "../telemetry/view";
@@ -29,7 +30,7 @@ import { K, waited } from "../../shared/format";
 import { nl } from "../../shared/prose";
 import { cn } from "../../ui/cn";
 import { WithAttachments } from "../../ui/attachments";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../../ui/accordion";
 import { Segment, Segments } from "../../ui/segment";
 import { Workspace } from "../workspace/view";
@@ -371,11 +372,16 @@ function AskLanes({
  * Live frames only, so it is gone on reload and the outcome line in the record
  * is what remains. Nothing here is stored twice.
  */
+/**
+ * The `pinned` ref and the `onScroll` that fed it moved into `VirtualList` — stay
+ * at the newest line, but only while the reader is already there. It was written
+ * correctly here and incorrectly in `Workspace`, which is what a rule written
+ * twice does. The `.slice(-300)` went with it: the list is windowed now.
+ */
+const BOOT_LINE_PX = 18;
+
 function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
   const { t } = useLingui();
-  const box = useRef<HTMLDivElement>(null);
-  /** Stay pinned to the newest line only while the reader is already there. */
-  const pinned = useRef(true);
   const [shut, setShut] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
@@ -386,15 +392,6 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [running]);
-
-  // Both dependencies are read: a collapsed pane renders no lines to scroll, and
-  // an empty log has no bottom to be at. They were the trigger without being in
-  // the body, which is what `exhaustive-effect-dependencies` calls extra.
-  const count = lines.length;
-  useEffect(() => {
-    const el = box.current;
-    if (el && count && !shut && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [count, shut]);
 
   // A failure stays on the page. It is the one outcome the boss might act on,
   // and it used to be the one that made the pane disappear.
@@ -414,25 +411,20 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
         </Button>
       </div>
       {!shut && lines.length > 0 && (
-        <div
-          ref={box}
+        <VirtualList
+          items={lines}
+          estimate={BOOT_LINE_PX}
+          keyOf={(f) => f.id}
+          pin
           role="log"
-          aria-label={t`Environment setup output`}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-          }}
+          label={t`Environment setup output`}
           className={cn(
-            "mt-2 max-h-40 overflow-y-auto rounded-md bg-sunk px-2.5 py-2 font-mono text-meta",
+            "mt-2 max-h-40 rounded-md bg-sunk px-2.5 py-2 font-mono text-meta",
             "leading-relaxed text-ink-2",
           )}
         >
-          {lines.slice(-300).map((f) => (
-            <div key={f.id} className="break-all whitespace-pre-wrap">
-              {frameText(f)}
-            </div>
-          ))}
-        </div>
+          {(f) => <div className="break-all whitespace-pre-wrap">{frameText(f)}</div>}
+        </VirtualList>
       )}
       {failed && (
         <Meta className="mt-1.5 block">

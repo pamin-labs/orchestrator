@@ -160,6 +160,9 @@ function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[]
   ];
 }
 
+/** How far the timeline scrolls back before the oldest frame is dropped. */
+const BUFFER = 5000;
+
 /** Appends one raw SSE payload to the frame buffer, assigning it a stable id.
  *  A partial frame that continues the last live entry (same agent, still
  *  streaming) reuses that entry's id and mutates it in place — otherwise the
@@ -167,7 +170,10 @@ function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[]
  *  external counter so it survives across calls without living in React state. */
 export function appendFrame(prev: PanelFrame[], f: Wire, liveSeq: { current: number }): PanelFrame[] {
   const at = f.at ?? Date.now();
-  const next = prev.slice(-600);
+  // 600 was a render budget: every frame in here was a DOM node. The timeline
+  // windows now, so this is scrollback depth, and the only cost of raising it is
+  // memory in a panel that stays open — which an unbounded array would be too.
+  const next = prev.slice(-BUFFER);
   return f.type === "live" ? appendLive(next, f, liveSeq, at) : appendEvent(next, f, at);
 }
 
