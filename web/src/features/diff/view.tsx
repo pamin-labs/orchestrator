@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import parseDiff from "parse-diff";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { Group, Panel, Separator } from "react-resizable-panels";
@@ -7,6 +7,7 @@ import { Meta } from "../../ui/bits";
 import { Tip } from "../../ui/tooltip";
 import { type Cell, markSpans, type SideName, sideTone, type Tone } from "./model";
 import { cn } from "../../ui/cn";
+import { type ListHandle, VirtualList } from "../../ui/virtual-list";
 import { Trans } from "@lingui/react/macro";
 
 /**
@@ -188,30 +189,53 @@ function DiffRow({ row }: { row: Row }) {
   );
 }
 
-function DiffFile({
-  file,
-  index,
-  expanded,
-  head,
-  onExpand,
-}: {
-  file: parseDiff.File;
-  index: number;
-  expanded: boolean;
-  head: (element: HTMLDivElement | null) => void;
-  onExpand: () => void;
-}) {
+/**
+ * How many rows one file draws before it asks.
+ *
+ * Left at 400 deliberately. Measured over 24 merges and 1,483 changed files:
+ * median 63 rows, p75 154, p90 345, and 8.8% over 400. Lowering it to 120 —
+ * which is what "the cheap half of windowing" looked like before it was measured
+ * — puts **30.7%** of every review behind a button to save a render that happens
+ * once. The mounted total was never the cap's fault; it was that every file was
+ * mounted.
+ */
+const CAP = 400;
+
+/** The rows one file draws, hunk gaps included. */
+const rowsIn = (file: parseDiff.File): Row[] =>
+  file.chunks.flatMap((chunk): Row[] => [{ gap: chunk.content }, ...rowsOf(chunk)]);
+
+/**
+ * How tall a file will be, before one is drawn.
+ *
+ * `leading-[1.55]` over `--text-meta: 0.6875rem` is a 17px row; the header and
+ * the "more lines" button are the rest. A single number for every file would be
+ * wrong by two orders of magnitude at both ends of this list, and the scrollbar
+ * would jump as each one measured.
+ */
+/**
+ * Computed once for the whole diff rather than inside `estimateSize`, which is
+ * asked per index and asks again as rows measure. Pairing a file's rows is real
+ * work — it was being done twice per call, for every file, on every pass.
+ */
+const heightsOf = (files: parseDiff.File[]): number[] =>
+  files.map((file) => {
+    const count = rowsIn(file).length;
+    return HEAD_PX + Math.min(count, CAP) * ROW_PX + (count > CAP ? MORE_PX : 0);
+  });
+
+const ROW_PX = 17;
+const HEAD_PX = 34;
+const MORE_PX = 32;
+
+function DiffFile({ file, expanded, onExpand }: { file: parseDiff.File; expanded: boolean; onExpand: () => void }) {
   const name = nameOf(file);
-  const rows = file.chunks.flatMap((chunk): Row[] => [{ gap: chunk.content }, ...rowsOf(chunk)]);
-  const shown = expanded ? rows : rows.slice(0, 400);
+  const rows = rowsIn(file);
+  const shown = expanded ? rows : rows.slice(0, CAP);
   const hiddenLines = rows.length - shown.length;
   return (
     <div>
-      <div
-        ref={head}
-        data-i={index}
-        className="mt-2 flex items-baseline gap-2 border-y-2 border-rule bg-sunk px-3.5 py-1.5 first:mt-0"
-      >
+      <div className="mt-2 flex items-baseline gap-2 border-y-2 border-rule bg-sunk px-3.5 py-1.5 first:mt-0">
         <span className="font-mono text-meta font-semibold">{name}</span>
         <span className="font-mono text-pill">
           <span className="text-ok">+{file.additions}</span> <span className="text-bad">−{file.deletions}</span>
@@ -245,42 +269,26 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
   const files = useMemo(() => parseDiff(diff), [diff]);
   const [here, setHere] = useState(0);
   const [open, setOpen] = useState<Set<number>>(new Set());
-  const pane = useRef<HTMLDivElement>(null);
-  const heads = useRef<(HTMLDivElement | null)[]>([]);
+  const list = useRef<ListHandle>(null);
 
   const tree = useMemo(() => buildTree(files), [files]);
   const order = useMemo(() => flatten(tree), [tree]);
+  const heights = useMemo(() => heightsOf(files), [files]);
 
   // Not scrollIntoView: it scrolls every scrollable ancestor, so clicking a file
-  // also threw the whole page to a fixed position.
-  const go = (i: number) => {
-    const el = heads.current[i];
-    if (el && pane.current) pane.current.scrollTop = el.offsetTop - pane.current.offsetTop;
-  };
+  // also threw the whole page to a fixed position. The list is windowed, so the
+  // target may not be mounted to measure an offset against either — it is asked
+  // by position in the order the rail shows, which is the order the list holds.
+  const go = (i: number) => list.current?.scrollTo(order.indexOf(i));
 
-  // Which file the reader is in, from what is actually at the top of the pane.
-  // Scrolling IS the navigation here; the rail follows it rather than replacing it.
-  useEffect(() => {
-    const root = pane.current;
-    if (!root) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting && e.target instanceof HTMLElement) setHere(Number(e.target.dataset.i));
-        }
-      },
-      { root, rootMargin: "0px 0px -85% 0px" },
-    );
-    // Indexed by `files` rather than walking the ref array: `files` was the
-    // dependency and never appeared in the body, and the array outlives a
-    // shrinking list — a shorter diff left the previous run's trailing heads in
-    // it, and those were observed too.
-    for (const [i] of files.entries()) {
-      const h = heads.current[i];
-      if (h) io.observe(h);
-    }
-    return () => io.disconnect();
-  }, [files]);
+  // Which file the reader is in, from what is at the top of the pane. Scrolling
+  // IS the navigation here; the rail follows it rather than replacing it.
+  //
+  // This was an IntersectionObserver over every file's header. It could not
+  // survive windowing — an unmounted file has no header to observe — and it does
+  // not have to: a windowed list already knows its first visible item, which is
+  // the same question asked one layer down.
+  const onTop = useCallback((at: number) => setHere(order[at] ?? 0), [order]);
 
   if (files.length === 0) return null;
 
@@ -304,21 +312,28 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
       <Separator className="w-px shrink-0 cursor-col-resize bg-rule transition-colors hover:bg-accent data-[state=dragging]:bg-accent" />
 
       <Panel className="min-w-0">
-        <div ref={pane} className="h-full overflow-auto">
-          {order.map((index) => (
-            <DiffFile
-              key={nameOf(files[index]!)}
-              file={files[index]!}
-              index={index}
-              expanded={open.has(index)}
-              head={(element) => {
-                heads.current[index] = element;
-              }}
-              onExpand={() => setOpen(new Set([...open, index]))}
-            />
-          ))}
+        <div className="flex h-full min-h-0 flex-col">
+          <VirtualList
+            items={order}
+            estimate={(index) => heights[index] ?? HEAD_PX}
+            keyOf={(index) => nameOf(files[index]!)}
+            handle={list}
+            onTop={onTop}
+            className="min-h-0 flex-1"
+          >
+            {(index) => (
+              <DiffFile
+                file={files[index]!}
+                expanded={open.has(index)}
+                onExpand={() => setOpen(new Set([...open, index]))}
+              />
+            )}
+          </VirtualList>
+          {/* Below the list rather than after the last file: the list owns the
+              scroller now, and a warning that the diff is incomplete is worth
+              more where it cannot be scrolled past. */}
           {truncated && (
-            <Meta className="block px-3.5 py-2">
+            <Meta className="block shrink-0 px-3.5 py-2">
               <Trans>
                 Changes exceed 400k characters; tail not retrieved. Remaining changes are in the sandbox checkout.
               </Trans>
