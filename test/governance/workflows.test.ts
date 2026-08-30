@@ -19,6 +19,7 @@ const WorkflowSchema = z.object({
       services: JsonMap.optional(),
       "runs-on": z.union([z.string(), z.array(z.string())]).optional(),
       permissions: StringMap.optional(),
+      env: JsonMap.optional(),
       strategy: z.looseObject({ matrix: JsonMap.optional() }).optional(),
       steps: z.array(
         z.object({
@@ -28,6 +29,9 @@ const WorkflowSchema = z.object({
           uses: z.string().optional(),
           run: z.string().optional(),
           with: JsonMap.optional(),
+          // Declared, or zod strips it and a test asking what a step's
+          // environment holds silently sees nothing.
+          env: JsonMap.optional(),
         }),
       ),
     }),
@@ -476,6 +480,40 @@ describe("workflow governance", () => {
       )
     ).flat();
     expect(scans.length).toBeGreaterThan(5);
+  });
+
+  /**
+   * A `gh` command that works out its own repository needs a git repository.
+   *
+   * `gh api repos/$GITHUB_REPOSITORY/…` names one and needs nothing; `gh release`,
+   * `gh pr`, `gh run` and friends read it from git remotes. A job with no checkout
+   * has no remotes, and the failure is `fatal: not a git repository` — from a tool
+   * whose token was fine.
+   */
+  /**
+   * `release.yml`'s `publish` is the job that has to hit this: it deliberately has
+   * no checkout, because it publishes verified artifacts and must not hold source
+   * it could build from. Its last step is the last step of the release, so five
+   * attempts at 0.1.3 were spent reaching it, and it failed there having already
+   * bound the tag. `GH_REPO` is the fix, and this is the rule so the next
+   * checkout-free job does not rediscover it.
+   */
+  const INFERS_REPO = /gh\s+(release|pr|issue|repo|run|workflow|attestation)\s/;
+  test("a gh command that infers its repository is given one", async () => {
+    const offenders: string[] = [];
+    for (const name of workflowNames) {
+      const workflow = await load(name);
+      for (const [job, spec] of Object.entries(workflow.jobs)) {
+        const checkout = spec.steps.some((step) => step.uses?.includes("actions/checkout"));
+        if (checkout) continue;
+        spec.steps.forEach((step, i) => {
+          if (!INFERS_REPO.test(step.run ?? "")) return;
+          if ("GH_REPO" in { ...spec.env, ...step.env }) return;
+          offenders.push(`${name}.yml ${job} step ${i}`);
+        });
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 
   test("release tag creation is atomic and rejects a raced source", async () => {
