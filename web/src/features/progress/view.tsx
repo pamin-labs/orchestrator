@@ -106,7 +106,7 @@ export function Progress({
             stuck. Without it that difference is invisible. */}
           {maxGroups != null && (
             <Tip
-              label={t`At most ${maxGroups} groups at once. When it is full, approved requirements queue for a slot rather than being stuck.`}
+              label={t`At most ${maxGroups} groups at once. When it is full, approved tickets queue for a slot rather than being stuck.`}
             >
               <Meta className={cn("self-center underline decoration-dotted", live >= maxGroups && "text-warn")}>
                 <Trans>
@@ -136,8 +136,8 @@ export function Progress({
 function emptyOf(key: string): string {
   // No `mine` case: that bucket renders the queue, which carries its own empty
   // line. The copy that lived here was a second, drifting version of it.
-  if (key === "live") return t`No requirements in progress. Click + for a new one in the top right.`;
-  return t`No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept.`;
+  if (key === "live") return t`No tickets in progress. Click + for a new one in the top right.`;
+  return t`No paused tickets. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept.`;
 }
 
 function List({
@@ -360,7 +360,7 @@ function Done({ rows }: { rows: Archived[] }) {
   if (!rows.length) {
     return (
       <div className="text-body text-ink-3">
-        <Trans>No deliveries yet. Requirements are archived here after merging to main.</Trans>
+        <Trans>No deliveries yet. Tickets are archived here after merging to main.</Trans>
       </div>
     );
   }

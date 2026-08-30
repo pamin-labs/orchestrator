@@ -36,7 +36,7 @@ test("Home renders a fresh project as an actionable row", () => {
   getByText("orchestrator");
   getByText("pamin-labs/orchestrator");
   // Actionable means a control, not a line of text that reads like one.
-  getByRole("button", { name: "＋ 新需求" });
+  getByRole("button", { name: "＋ 新工单" });
 });
 
 test("Usage renders known, hot and stale subscription windows", () => {

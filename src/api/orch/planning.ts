@@ -220,8 +220,8 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
         note: `${item.idea.trim()}\n\n${renderSaid(
           outputLanguage(ctx.config),
           original
-            ? msg`Split out of the requirement ${{ from: grp.name }}. The whole of what was originally asked for is note #${{ note: original.id }}.`
-            : msg`Split out of the requirement ${{ from: grp.name }}.`,
+            ? msg`Split out of the ticket ${{ from: grp.name }}. The whole of what was originally asked for is note #${{ note: original.id }}.`
+            : msg`Split out of the ticket ${{ from: grp.name }}.`,
         )}`,
       });
       await ctx.sched.enqueue("agent_turn", {
@@ -246,8 +246,8 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
       author: a.role,
       kind: "state_change",
       say: b.why
-        ? msg`split into ${{ n: created.length }} separate requirements: ${{ names }} — ${{ why: b.why }}`
-        : msg`split into ${{ n: created.length }} separate requirements: ${{ names }}`,
+        ? msg`split into ${{ n: created.length }} separate tickets: ${{ names }} — ${{ why: b.why }}`
+        : msg`split into ${{ n: created.length }} separate tickets: ${{ names }}`,
       meta: { split: created.map((m) => m.id) },
     });
     return created;

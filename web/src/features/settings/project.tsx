@@ -78,8 +78,8 @@ function Remove({
       // is the evidence this confirm exists to show, and a boss removing their
       // only requirement is the case where the sentence is read most carefully.
       body: `${plural(groups, {
-        one: `The one requirement in ${repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.`,
-        other: `All # requirements in ${repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.`,
+        one: `The one ticket in ${repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.`,
+        other: `All # tickets in ${repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.`,
       })}\n\n${t`Nothing on GitHub changes: the branches are there, the PRs are there, not a line of code is touched. What is removed is this machine's copy of the work.`}`,
       yes: t`Remove`,
       danger: true,
@@ -122,7 +122,7 @@ function Remove({
               transpiler's output and so never sees. It is also the only counted
               thing in the dialog, and it said `1 requirement` either way. */}
           <Trans>
-            <Plural value={groups} one="# requirement" other="# requirements" /> in{" "}
+            <Plural value={groups} one="# ticket" other="# tickets" /> in{" "}
             <span className="font-mono text-secondary">{repoPath}</span>
           </Trans>
           <div className="mt-0.5 text-secondary text-ink-3">

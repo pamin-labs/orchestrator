@@ -65,14 +65,14 @@ msgstr "저장소 {count}개"
 msgid "{count} repositories, most recently touched first"
 msgstr "저장소 {count}개, 최근 변경순"
 
-msgid "{count} requirements have no boundary right now: {bareNames}."
-msgstr "지금 요건 {count}개에 경계가 없습니다: {bareNames}."
-
 msgid "{count} selected"
 msgstr "{count}개 선택됨"
 
 msgid "{count} staged at {path}"
 msgstr "{path}에 {count}개 준비됨"
+
+msgid "{count} tickets have no boundary right now: {bareNames}."
+msgstr "지금 티켓 {count}개에 경계가 없습니다: {bareNames}."
 
 msgid "{d} days ago"
 msgstr "{d}일 전"
@@ -106,17 +106,17 @@ msgstr "{good} ({stale}도 있습니다 — [egress] image를 확인하세요)"
 msgid "{group}: {question}"
 msgstr "{group}: {question}"
 
-msgid "{groupCount} requirements touch different files and can run together"
-msgstr "요건 {groupCount}개는 서로 다른 파일을 건드려 함께 실행할 수 있습니다"
+msgid "{groupCount} tickets touch different files and can run together"
+msgstr "티켓 {groupCount}개는 서로 다른 파일을 건드려 함께 실행할 수 있습니다"
 
-msgid "{groupCount} requirements touch different files and can run together ({more} more not yet assigned)"
-msgstr "요건 {groupCount}개는 서로 다른 파일을 건드려 함께 실행할 수 있습니다 (아직 배정되지 않은 {more}개)"
+msgid "{groupCount} tickets touch different files and can run together ({more} more not yet assigned)"
+msgstr "티켓 {groupCount}개는 서로 다른 파일을 건드려 함께 실행할 수 있습니다 (아직 배정되지 않은 {more}개)"
 
-msgid "{groups, plural, one {# requirement} other {# requirements}} in <0>{repoPath}</0>"
-msgstr "<0>{repoPath}</0>에 {groups, plural, other {요건 #개}}"
+msgid "{groups, plural, one {# ticket} other {# tickets}} in <0>{repoPath}</0>"
+msgstr "<0>{repoPath}</0>에 {groups, plural, other {티켓 #개}}"
 
-msgid "{groups, plural, one {The one requirement in {repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.} other {All # requirements in {repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.}}"
-msgstr "{groups, plural, other {{repoPath}의 요건 #개 — 컨테이너, 카드, 기록, 첨부 — 가 삭제되며 복구할 수 없습니다.}}"
+msgid "{groups, plural, one {The one ticket in {repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.} other {All # tickets in {repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.}}"
+msgstr "{groups, plural, other {{repoPath}의 티켓 #개 — 컨테이너, 카드, 기록, 첨부 — 가 삭제되며 복구할 수 없습니다.}}"
 
 msgid "{hard} blocking the whole group"
 msgstr "{hard}개가 그룹 전체를 막고 있음"
@@ -133,8 +133,8 @@ msgstr "{hiddenLines}줄 더"
 msgid "{hint} stored; paste a new one to replace it"
 msgstr "{hint} 저장됨. 바꾸려면 새 값을 붙여넣으세요"
 
-msgid "{hitCount} requirements want the same files and cannot run together"
-msgstr "요건 {hitCount}개가 같은 파일을 원해 함께 실행할 수 없습니다"
+msgid "{hitCount} tickets want the same files and cannot run together"
+msgstr "티켓 {hitCount}개가 같은 파일을 원해 함께 실행할 수 없습니다"
 
 msgid "{hours} hr"
 msgstr "{hours}시간"
@@ -281,8 +281,8 @@ msgstr "{name}이(가) 예산({tokens} 토큰)을 모두 쓰고 중단되었습�
 msgid "{name}: {n, plural, one {# running turn was} other {# running turns were}} killed before the data goes"
 msgstr "{name}: 실행 중인 turn {n, plural, other {#개}}를 먼저 죽인 뒤 데이터를 지웁니다"
 
-msgid "{name}: PR #{pr} was closed — reopen it or drop the requirement"
-msgstr "{name}: PR #{pr}이(가) 닫혔습니다 —— 다시 열거나 이 요구사항을 접으세요"
+msgid "{name}: PR #{pr} was closed — reopen it or drop the ticket"
+msgstr "{name}: PR #{pr}이(가) 닫혔습니다 —— 다시 열거나 이 티켓을 접으세요"
 
 msgid "{name}: the PR will not open — {why}"
 msgstr "{name}: PR을 열 수 없습니다 —— {why}"
@@ -342,8 +342,8 @@ msgctxt "notes"
 msgid "{rest} more of {total}"
 msgstr "{total}개 중 {rest}개 더"
 
-msgid "{rest} more requirements"
-msgstr "요건 {rest}개 더"
+msgid "{rest} more tickets"
+msgstr "티켓 {rest}개 더"
 
 msgid "{role} finished {n, plural, one {# turn} other {# turns}} without changing a file, a task or a note"
 msgstr "{role}이(가) {n}턴 동안 파일도 태스크도 노트도 건드리지 않았습니다"
@@ -417,8 +417,8 @@ msgstr "← 전체 타임라인으로"
 msgid "+ Add project"
 msgstr "+ 프로젝트 추가"
 
-msgid "+ New requirement"
-msgstr "+ 새 요건"
+msgid "+ New ticket"
+msgstr "+ 새 티켓"
 
 msgid "1/4 of host cores"
 msgstr "호스트 코어의 1/4"
@@ -440,8 +440,8 @@ msgstr "일시정지된 그룹은 당신을 기다리며 그동안 동시 실행
 msgid "A project's config has to be a JSON object. One partial edit will not be allowed to replace the whole of it."
 msgstr "프로젝트 설정은 JSON 객체여야 합니다. 한 번의 부분 수정으로 설정 전체를 덮어쓰게 두지 않습니다."
 
-msgid "Abandon this requirement"
-msgstr "이 요건 포기"
+msgid "Abandon this ticket"
+msgstr "이 티켓 포기"
 
 msgid "Abandoned"
 msgstr "포기됨"
@@ -485,8 +485,8 @@ msgstr "단계 추가"
 msgid "Add another"
 msgstr "하나 더 추가"
 
-msgid "Add requirements or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes"
-msgstr "요건을 추가하거나 반려 이유를 적으세요. 스크린샷·디자인 붙여넣기 가능, /로 스킬 삽입. Cmd+Enter로 수정 요청"
+msgid "Add tickets or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes"
+msgstr "티켓을 추가하거나 반려 이유를 적으세요. 스크린샷·디자인 붙여넣기 가능, /로 스킬 삽입. Cmd+Enter로 수정 요청"
 
 msgid "Add your first project"
 msgstr "첫 프로젝트 추가"
@@ -608,8 +608,8 @@ msgstr "요청받은 내용"
 msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
 msgstr "모델별 가정 컨텍스트 길이. 세션 첫 턴에만 쓰고 이후에는 CLI가 실제 값을 알려줍니다. 너무 작게 잡으면 큰 컨텍스트 모델이 계속 재시작하며 매번 캐시를 버립니다."
 
-msgid "At most {maxGroups} groups at once. When it is full, approved requirements queue for a slot rather than being stuck."
-msgstr "동시에 최대 {maxGroups}개 그룹. 꽉 차면 승인된 요건은 막히는 게 아니라 슬롯을 기다립니다."
+msgid "At most {maxGroups} groups at once. When it is full, approved tickets queue for a slot rather than being stuck."
+msgstr "동시에 최대 {maxGroups}개 그룹. 꽉 차면 승인된 티켓은 막히는 게 아니라 슬롯을 기다립니다."
 
 msgid "Attach"
 msgstr "첨부"
@@ -736,8 +736,8 @@ msgstr "소모 속도"
 msgid "By account"
 msgstr "계정별"
 
-msgid "By requirement"
-msgstr "요건별"
+msgid "By ticket"
+msgstr "티켓별"
 
 msgid "By tier"
 msgstr "등급별"
@@ -969,8 +969,8 @@ msgstr "컨텍스트 길이"
 msgid "Conversation comments"
 msgstr "대화 댓글"
 
-msgid "Convert to a requirement; this group will automatically continue after it's implemented."
-msgstr "요건으로 바꿉니다. 구현이 끝나면 이 그룹은 자동으로 이어집니다."
+msgid "Convert to a ticket; this group will automatically continue after it's implemented."
+msgstr "티켓으로 바꿉니다. 구현이 끝나면 이 그룹은 자동으로 이어집니다."
 
 msgid "Copy"
 msgstr "복사"
@@ -1020,8 +1020,8 @@ msgstr "CPU"
 msgid "Create new sandbox"
 msgstr "새 샌드박스 만들기"
 
-msgid "Create requirement"
-msgstr "요건 만들기"
+msgid "Create ticket"
+msgstr "티켓 만들기"
 
 msgid "Credential"
 msgstr "자격 증명"
@@ -1679,8 +1679,8 @@ msgstr "불러오는 중…"
 msgid "Local"
 msgstr "로컬"
 
-msgid "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision."
-msgstr "로컬은 이 기기에서 돌고, 원격은 당신이 고른 엔드포인트로 텍스트를 보냅니다. 아직 둘 다 검색에는 쓰지 않습니다 — 실측 결과, 언어를 넘나드는 검색이 대체하려던 키워드 검색보다 나빴습니다. 원격은 요건과 수락 기준이 이 기기를 떠난다는 뜻이라, 기본은 로컬이고 원격은 결정입니다."
+msgid "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your tickets and acceptance criteria leave this machine, so local is the default and remote is a decision."
+msgstr "로컬은 이 기기에서 돌고, 원격은 당신이 고른 엔드포인트로 텍스트를 보냅니다. 아직 둘 다 검색에는 쓰지 않습니다 — 실측 결과, 언어를 넘나드는 검색이 대체하려던 키워드 검색보다 나빴습니다. 원격은 티켓과 수락 기준이 이 기기를 떠난다는 뜻이라, 기본은 로컬이고 원격은 결정입니다."
 
 msgid "Local to this machine only, not tied to the project"
 msgstr "이 기기에만 적용되며 프로젝트와는 무관합니다"
@@ -1785,8 +1785,8 @@ msgstr "새 프로젝트가 이걸 씁니다. 비우면 설정을 따릅니다"
 msgid "New projects will use {image}"
 msgstr "새 프로젝트는 {image}를 씁니다"
 
-msgid "New requirement"
-msgstr "새 요건"
+msgid "New ticket"
+msgstr "새 티켓"
 
 msgid "newly hired"
 msgstr "갓 합류"
@@ -1815,8 +1815,8 @@ msgstr "아직 컨테이너 없음"
 msgid "No data yet"
 msgstr "아직 데이터 없음"
 
-msgid "No deliveries yet. Requirements are archived here after merging to main."
-msgstr "아직 납품이 없습니다. 요건은 main에 병합된 뒤 여기에 보관됩니다."
+msgid "No deliveries yet. Tickets are archived here after merging to main."
+msgstr "아직 납품이 없습니다. 티켓은 main에 병합된 뒤 여기에 보관됩니다."
 
 msgid "No diff available. The slice didn't record a baseline commit, or the sandbox has been reclaimed."
 msgstr "diff가 없습니다. 슬라이스가 기준 커밋을 기록하지 않았거나 샌드박스가 회수되었습니다."
@@ -1878,8 +1878,8 @@ msgstr "opensandbox/egress 이미지를 받은 적이 없습니다"
 msgid "No other models yet; just type"
 msgstr "다른 모델은 아직 없습니다. 그냥 입력하세요"
 
-msgid "No other requirements for this project"
-msgstr "이 프로젝트에 다른 요건 없음"
+msgid "No other tickets for this project"
+msgstr "이 프로젝트에 다른 티켓 없음"
 
 msgid "no owned paths declared, and {holders} already hold theirs — the Architect has to cut the boundary before work starts"
 msgstr "선언된 소유 경로가 없고 {holders}는 이미 각자 가지고 있습니다 — 시작 전에 아키텍트가 경계를 나눠야 합니다"
@@ -1887,20 +1887,14 @@ msgstr "선언된 소유 경로가 없고 {holders}는 이미 각자 가지고 �
 msgid "no path"
 msgstr "경로가 없습니다"
 
-msgid "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
-msgstr "일시정지된 요건이 없습니다. 예산이 바닥나거나 당신의 답을 2시간 넘게 기다리면 그룹이 여기서 멈추며, 작업은 남습니다."
+msgid "No paused tickets. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
+msgstr "일시정지된 티켓이 없습니다. 예산이 바닥나거나 당신의 답을 2시간 넘게 기다리면 그룹이 여기서 멈추며, 작업은 남습니다."
 
 msgid "No pending items"
 msgstr "대기 중인 항목 없음"
 
 msgid "No reason recorded"
 msgstr "기록된 이유 없음"
-
-msgid "No requirements in progress. Click + for a new one in the top right."
-msgstr "진행 중인 요건이 없습니다. 오른쪽 위 +로 새로 만드세요."
-
-msgid "No requirements yet"
-msgstr "아직 요건 없음"
 
 msgid "no retro yet — the group cannot wind up without one"
 msgstr "회고가 아직 없습니다 — 회고 없이는 이 요구사항을 마무리할 수 없습니다"
@@ -1929,8 +1923,14 @@ msgstr "그런 그룹이 없습니다"
 msgid "No system activity recorded."
 msgstr "기록된 시스템 활동이 없습니다."
 
-msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
-msgstr "아직 토큰을 쓰지 않았습니다. 계획 카드를 승인하면 비용이 요건별·에이전트별로 나뉩니다. 어떤 모델을 쓸지는 난이도 태그가 정합니다."
+msgid "No tickets in progress. Click + for a new one in the top right."
+msgstr "진행 중인 티켓이 없습니다. 오른쪽 위 +로 새로 만드세요."
+
+msgid "No tickets yet"
+msgstr "아직 티켓 없음"
+
+msgid "No tokens spent yet. After approving plan cards, costs break down by ticket per agent. Tier tag determines which model."
+msgstr "아직 토큰을 쓰지 않았습니다. 계획 카드를 승인하면 비용이 티켓별·에이전트별로 나뉩니다. 어떤 모델을 쓸지는 난이도 태그가 정합니다."
 
 msgid "no uvx — opensandbox-server is a Python package, so install uv before one can start"
 msgstr "uvx가 없습니다 — opensandbox-server는 Python 패키지라 uv를 먼저 설치해야 시작됩니다"
@@ -2070,8 +2070,8 @@ msgstr "새 PR 열기"
 msgid "Open PR ↗"
 msgstr "PR 열기 ↗"
 
-msgid "opened as requirement {name} (grp {grp})"
-msgstr "요구사항 {name} (grp {grp}) 로 만들었습니다"
+msgid "opened as ticket {name} (grp {grp})"
+msgstr "티켓 {name} (grp {grp}) 로 만들었습니다"
 
 msgid "Opened by [orchestrator]({url}) v{v}."
 msgstr "[orchestrator]({url}) v{v}이 열었습니다."
@@ -2172,8 +2172,8 @@ msgstr "병합 대기"
 msgid "Pending review"
 msgstr "검토 대기"
 
-msgid "Per delivered requirement"
-msgstr "납품한 요건당"
+msgid "Per delivered ticket"
+msgstr "납품한 티켓당"
 
 msgid "Per-run duration"
 msgstr "1회 실행 시간"
@@ -2235,9 +2235,9 @@ msgid "PR #{pr} was closed without merging"
 msgstr "PR #{pr}이(가) 머지되지 않고 닫혔습니다"
 
 msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
-"To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
+"To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the ticket."
 msgstr "PR #{pr}이(가) 머지되지 않고 닫혔습니다. 이 그룹은 멈췄고 머지 큐에서 빠졌습니다.\n"
-"계속하려면: GitHub에서 이 PR을 다시 열면 알아서 큐로 돌아옵니다. 그만두려면: 이 요구사항을 접으세요."
+"계속하려면: GitHub에서 이 PR을 다시 열면 알아서 큐로 돌아옵니다. 그만두려면: 이 티켓을 접으세요."
 
 msgid "PR #{pr} was reopened; back in the merge queue"
 msgstr "PR #{pr}이(가) 다시 열려 머지 대기열로 돌아왔습니다"
@@ -2412,8 +2412,8 @@ msgstr "프로젝트 제거"
 msgid "Remove this project"
 msgstr "이 프로젝트 제거"
 
-msgid "Removed the project {name} ({repo}): {n, plural, one {# requirement} other {# requirements}}, the containers and the records are gone. Nothing on GitHub was touched."
-msgstr "프로젝트 {name}({repo})을(를) 제거했습니다: {n, plural, other {요구사항 #개}}와 그 컨테이너, 기록을 모두 지웠습니다. GitHub 쪽은 아무것도 건드리지 않았습니다."
+msgid "Removed the project {name} ({repo}): {n, plural, one {# ticket} other {# tickets}}, the containers and the records are gone. Nothing on GitHub was touched."
+msgstr "프로젝트 {name}({repo})을(를) 제거했습니다: {n, plural, other {티켓 #개}}와 그 컨테이너, 기록을 모두 지웠습니다. GitHub 쪽은 아무것도 건드리지 않았습니다."
 
 msgid "Removing…"
 msgstr "제거 중…"
@@ -2462,21 +2462,6 @@ msgstr "저장소"
 
 msgid "Request changes"
 msgstr "수정 요청"
-
-msgid "Requirement"
-msgstr "요건"
-
-msgid "Requirement created"
-msgstr "요구사항을 만들었습니다"
-
-msgid "Requirement name…"
-msgstr "요건 이름…"
-
-msgid "requirements"
-msgstr "개 요건"
-
-msgid "Requirements running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page."
-msgstr "동시에 도는 요건 수. 보통은 다른 천장에 먼저 부딪힙니다 — 두 그룹은 겹치는 경로를 가질 수 없고, 계정 하나에는 자체 레이트 리밋이 있습니다. 올릴 때는 비용 페이지의 캐시 적중률을 보세요."
 
 msgid "Rescan"
 msgstr "다시 스캔"
@@ -2769,8 +2754,8 @@ msgstr "설정됨"
 msgid "Set [server] api_key = \"…\" in the server's TOML, restart it, then Settings → Sandbox server → Read from server. The containers hold the checkout, the mailbox token and the CLI logins."
 msgstr "서버의 TOML에 [server] api_key = \"…\"를 설정하고 재시작한 다음, 설정 → 샌드박스 서버 → 서버에서 읽기를 누르세요. 컨테이너에는 체크아웃, 메일박스 토큰, CLI 로그인이 들어 있습니다."
 
-msgid "Set a token limit for this requirement"
-msgstr "이 요건에 토큰 상한 설정"
+msgid "Set a token limit for this ticket"
+msgstr "이 티켓에 토큰 상한 설정"
 
 msgid "Settings"
 msgstr "설정"
@@ -2787,8 +2772,8 @@ msgstr "설정: 계정, 환경, 스킬, 테마, 이 프로젝트의 게이트와
 msgid "Shared across all projects"
 msgstr "모든 프로젝트가 공유"
 
-msgid "Shared across requirements"
-msgstr "요건 간 공유"
+msgid "Shared across tickets"
+msgstr "티켓 간 공유"
 
 msgid "Shared cache"
 msgstr "공유 캐시"
@@ -2855,17 +2840,17 @@ msgstr "명세"
 msgid "Spent {spent} tokens against a {cap} limit. Only raising the limit moves it — \"resume\" does nothing."
 msgstr "상한 {cap}에 {spent} 토큰을 썼습니다. 상한을 올리는 것 말고는 움직이지 않으며, \"재개\"는 아무것도 하지 않습니다."
 
-msgid "split into {n} separate requirements: {names}"
-msgstr "{n}개의 독립 요구사항으로 나눴습니다: {names}"
+msgid "split into {n} separate tickets: {names}"
+msgstr "{n}개의 독립 티켓으로 나눴습니다: {names}"
 
-msgid "split into {n} separate requirements: {names} — {why}"
-msgstr "{n}개의 독립 요구사항으로 나눴습니다: {names} —— {why}"
+msgid "split into {n} separate tickets: {names} — {why}"
+msgstr "{n}개의 독립 티켓으로 나눴습니다: {names} —— {why}"
 
-msgid "Split out of the requirement {from}."
-msgstr "요구사항 「{from}」에서 갈라져 나온 건입니다."
+msgid "Split out of the ticket {from}."
+msgstr "티켓 「{from}」에서 갈라져 나온 건입니다."
 
-msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
-msgstr "요구사항 「{from}」에서 갈라져 나온 건입니다. 원래 요청 전문은 note #{note}에 있습니다."
+msgid "Split out of the ticket {from}. The whole of what was originally asked for is note #{note}."
+msgstr "티켓 「{from}」에서 갈라져 나온 건입니다. 원래 요청 전문은 note #{note}에 있습니다."
 
 msgid "squashed {why}"
 msgstr "스쿼시했습니다({why})"
@@ -2947,8 +2932,8 @@ msgstr "컨텍스트가 창의 이 비율에 닿으면 세션을 교대합니다
 msgid "Switch project"
 msgstr "프로젝트 전환"
 
-msgid "Switch requirement"
-msgstr "요건 전환"
+msgid "Switch ticket"
+msgstr "티켓 전환"
 
 msgid "System"
 msgstr "시스템"
@@ -3004,14 +2989,14 @@ msgstr "고른 스킬은 이번 턴에만 실려 가고, 비용도 이 한 턴 �
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "유틸리티 컨테이너에서 도는 codex 리프레시 토큰 교환. 사용량 조회보다 긴 이유는 프로세스를 띄우고 OAuth 왕복을 하기 때문입니다."
 
-msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
-msgstr "요구사항 전체를 Dispatcher로 되돌려 다시 나눕니다. 이 의견이 최우선 사실이 되고, 이미 작성된 코드는 브랜치에 남습니다."
+msgid "The entire ticket returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
+msgstr "티켓 전체를 Dispatcher로 되돌려 다시 나눕니다. 이 의견이 최우선 사실이 되고, 이미 작성된 코드는 브랜치에 남습니다."
 
-msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
-msgstr "요건 전체가 디스패처로 돌아가 다시 파헤쳐집니다. 이 댓글이 최우선 사실이 됩니다."
+msgid "The entire ticket returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
+msgstr "티켓 전체가 디스패처로 돌아가 다시 파헤쳐집니다. 이 댓글이 최우선 사실이 됩니다."
 
-msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, requirements left running"
-msgstr "호스트의 네트워크가 끊겼습니다. 턴 {n}건을 보류하고 다시 넣었으며, 요구사항은 실행 중인 상태로 둡니다"
+msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, tickets left running"
+msgstr "호스트의 네트워크가 끊겼습니다. 턴 {n}건을 보류하고 다시 넣었으며, 티켓은 실행 중인 상태로 둡니다"
 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "인덱스를 갱신할 수 없습니다: 이 프로젝트의 컨테이너가 뜨지 않습니다({why})"
@@ -3150,17 +3135,11 @@ msgstr "이 프로젝트에서는 아직 아무 활동도 없었습니다."
 msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
 msgstr "이 프로젝트의 devcontainer는 {image}에서 개발합니다 — 설정 → Sandbox에서 그룹을 그쪽으로 향하게 할 수 있습니다"
 
-msgid "this question became requirement {name} (grp {grp})"
-msgstr "이 질문은 요구사항 {name} (grp {grp}) 이 되었습니다"
+msgid "this question became ticket {name} (grp {grp})"
+msgstr "이 질문은 티켓 {name} (grp {grp}) 이 되었습니다"
 
 msgid "this repository needs nothing installed"
 msgstr "이 저장소는 설치할 게 없습니다"
-
-msgid "This requirement has been archived or no longer exists."
-msgstr "이 요건은 보관되었거나 더 이상 존재하지 않습니다."
-
-msgid "This requirement hasn't run any activity yet."
-msgstr "이 요건에서는 아직 아무 활동도 없었습니다."
 
 msgid "this server has no GitHub client"
 msgstr "이 서버에는 GitHub 클라이언트가 없습니다"
@@ -3168,11 +3147,32 @@ msgstr "이 서버에는 GitHub 클라이언트가 없습니다"
 msgid "This slice hasn't produced changes yet and has no verdict."
 msgstr "이 슬라이스는 아직 변경을 내놓지 않았고 판정도 없습니다."
 
+msgid "This ticket has been archived or no longer exists."
+msgstr "이 티켓은 보관되었거나 더 이상 존재하지 않습니다."
+
+msgid "This ticket hasn't run any activity yet."
+msgstr "이 티켓에서는 아직 아무 활동도 없었습니다."
+
 msgid "This view crashed"
 msgstr "이 화면이 죽었습니다"
 
 msgid "This window needs {count} buckets, more than fits"
 msgstr "이 구간에는 {count}개 버킷이 필요해 담기지 않습니다"
+
+msgid "Ticket"
+msgstr "티켓"
+
+msgid "Ticket created"
+msgstr "티켓을 만들었습니다"
+
+msgid "Ticket name…"
+msgstr "티켓 이름…"
+
+msgid "tickets"
+msgstr "개 티켓"
+
+msgid "Tickets running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page."
+msgstr "동시에 도는 티켓 수. 보통은 다른 천장에 먼저 부딪힙니다 — 두 그룹은 겹치는 경로를 가질 수 없고, 계정 하나에는 자체 레이트 리밋이 있습니다. 올릴 때는 비용 페이지의 캐시 적중률을 보세요."
 
 msgid "Time"
 msgstr "시간"

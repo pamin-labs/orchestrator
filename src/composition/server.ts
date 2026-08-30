@@ -330,7 +330,7 @@ async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, 
     brief: msg`PR closed — reopen it or not`,
     kind: "merge",
     chain: "boss",
-    question: msg`PR #${{ pr: prNumber }} was closed without merging. This group has stopped and left the merge queue.\nTo carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement.`,
+    question: msg`PR #${{ pr: prNumber }} was closed without merging. This group has stopped and left the merge queue.\nTo carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the ticket.`,
   });
   await ctx.bus.emit({
     grpId,
@@ -348,7 +348,7 @@ async function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, 
     // the output language rather than sent as a descriptor: ADR 035 §3 row two.
     body: renderSaid(
       outputLanguage(ctx.config),
-      msg`${{ name: g?.name ?? grpId }}: PR #${{ pr: prNumber }} was closed — reopen it or drop the requirement`,
+      msg`${{ name: g?.name ?? grpId }}: PR #${{ pr: prNumber }} was closed — reopen it or drop the ticket`,
     ),
     url: `${url}/#g=${grpId}&v=progress`,
   });

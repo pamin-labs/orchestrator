@@ -689,7 +689,7 @@ async function networkReady(deps: WatchdogDeps, findings: Finding[], now: () => 
   const held = net.online ? 0 : await holdForOffline(deps.ctx, now());
   const what = net.online
     ? msg`network is back, held work resumes`
-    : msg`the host lost its network; ${plural({ n: held }, { one: "# turn", other: "# turns" })} held and re-queued, requirements left running`;
+    : msg`the host lost its network; ${plural({ n: held }, { one: "# turn", other: "# turns" })} held and re-queued, tickets left running`;
   // The finding is the only announcement. There was a `bus.emit` here as well,
   // with the same sentence and no dedup, so the feed carried the line twice in
   // the same second — once from `orchestrator` as a state change, once from

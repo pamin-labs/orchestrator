@@ -226,7 +226,7 @@ export function Requirement({
               waterfall are what answer "where did the wall clock go". */}
           <TabPanel value="time" className="flex min-h-0 flex-1 flex-col">
             <Pane>
-              <Telemetry scope={{ kind: "group", id: g.id }} empty={t`This requirement hasn't run any activity yet.`} />
+              <Telemetry scope={{ kind: "group", id: g.id }} empty={t`This ticket hasn't run any activity yet.`} />
             </Pane>
           </TabPanel>
         </Tabs>
@@ -518,8 +518,8 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
  */
 const respecBody = (started: boolean): MessageDescriptor =>
   started
-    ? msg`The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch.`
-    : msg`The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact.`;
+    ? msg`The entire ticket returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch.`
+    : msg`The entire ticket returns to Dispatcher for a deeper dive; this comment is the highest-priority fact.`;
 
 /** Said twice, from the two places a requirement can be dropped. */
 const dropBody = (name: string): MessageDescriptor =>
@@ -784,7 +784,7 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
         className="cursor-pointer font-mono text-meta text-ink-3 underline decoration-dotted hover:text-ink"
         onClick={async () => {
           const v = await ask({
-            title: t`Set a token limit for this requirement`,
+            title: t`Set a token limit for this ticket`,
             body: t`When the limit is reached, the group pauses until you decide whether to increase it.`,
             yes: t`Set`,
             field: t`e.g. 2000000`,
@@ -1050,7 +1050,7 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
               label={t`Don't proceed`}
               tip={t`Stop dispatching; branch is kept but not merged. A retrospective is still required.`}
               spec={{
-                title: t`Abandon this requirement`,
+                title: t`Abandon this ticket`,
                 body: t`Stop dispatching; branch is kept but not merged. A retrospective is still required.`,
                 yes: t`Abandoned`,
                 danger: true,
@@ -1182,7 +1182,7 @@ function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: (
           size="sm"
           onClick={confirmThen(
             {
-              title: t`Abandon this requirement`,
+              title: t`Abandon this ticket`,
               body: t(dropBody(g.name)),
               yes: t`Abandoned`,
               danger: true,
@@ -1234,7 +1234,7 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
       <Composer
         rows={2}
         projectId={projectId}
-        placeholder={t`Add requirements or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes`}
+        placeholder={t`Add tickets or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes`}
         submit={t`Request changes`}
         onSubmit={(d) => send(d, "patch")}
         actions={({ text, attachments, busy, clear }) => (
@@ -1413,9 +1413,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
 
                   Not `go`: two filled violet buttons side by side is two primaries,
                   and answering is the primary here. */}
-                <Tip
-                  label={t`Convert to a requirement; this group will automatically continue after it's implemented.`}
-                >
+                <Tip label={t`Convert to a ticket; this group will automatically continue after it's implemented.`}>
                   <Button
                     size="sm"
                     disabled={busy}
@@ -1430,10 +1428,10 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                       // Not `r.text`: on success that is `displayJson(body)`, so
                       // the boss got `{"grp_id":12,"name":"fix-login"}` in a
                       // toast. The panel knows what it just did.
-                      if (r.ok) toast.success(t`Requirement created`);
+                      if (r.ok) toast.success(t`Ticket created`);
                     }}
                   >
-                    <Trans>Create requirement</Trans>
+                    <Trans>Create ticket</Trans>
                   </Button>
                 </Tip>
               </>

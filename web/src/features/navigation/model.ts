@@ -54,7 +54,7 @@ const DIALOG: Partial<Record<View, Section>> = {
 };
 
 export const VIEWS: [View, MessageDescriptor][] = [
-  ["progress", msg`Requirement`],
+  ["progress", msg`Ticket`],
   ["desk", msg`Desk wall`],
   ["notes", msg`Notes`],
   ["owns", msg`Ownership`],

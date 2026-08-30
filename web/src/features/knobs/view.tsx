@@ -326,7 +326,7 @@ export const COPY: Record<
 > = {
   maxGroups: {
     label: msg`Concurrent jobs`,
-    why: msg`Requirements running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page.`,
+    why: msg`Tickets running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page.`,
   },
   leaseSlots: {
     label: msg`Gate concurrency`,
@@ -407,7 +407,7 @@ export const COPY: Record<
   },
   "embedding.mode": {
     label: msg`Embedding mode`,
-    why: msg`Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision.`,
+    why: msg`Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your tickets and acceptance criteria leave this machine, so local is the default and remote is a decision.`,
   },
   "embedding.endpoint": {
     label: msg`Remote endpoint`,

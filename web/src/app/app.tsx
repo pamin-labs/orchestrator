@@ -244,7 +244,7 @@ export function App() {
       <Card className="max-w-[40rem]">
         <CardBody>
           <CardTitle>
-            <Trans>No requirements yet</Trans>
+            <Trans>No tickets yet</Trans>
           </CardTitle>
           <div className="mt-1 text-secondary text-ink-3">
             <Trans>Write a description, break into plan cards, then come back for review.</Trans>
@@ -267,7 +267,7 @@ export function App() {
           </dl>
           <div className="mt-3 flex items-center gap-2">
             <Button variant="go" onClick={() => setAdding(true)}>
-              <Trans>+ New requirement</Trans>
+              <Trans>+ New ticket</Trans>
             </Button>
             <Button variant="quiet" onClick={() => go({ view: "sandbox" })}>
               <Trans>Change base branch</Trans>
@@ -292,7 +292,7 @@ export function App() {
     },
     missing: () => (
       <div className="text-body text-ink-3">
-        <Trans>This requirement has been archived or no longer exists.</Trans>
+        <Trans>This ticket has been archived or no longer exists.</Trans>
       </div>
     ),
     desk: () => <Desk st={st} frames={frames} projectId={idOrZero(sel.p)} />,
@@ -334,9 +334,9 @@ export function App() {
       <Switcher
         open={ui.pickReq}
         onOpenChange={setPickReq}
-        label={t`Switch requirement`}
-        placeholder={t`Requirement name…`}
-        empty={t`No other requirements for this project`}
+        label={t`Switch ticket`}
+        placeholder={t`Ticket name…`}
+        empty={t`No other tickets for this project`}
         items={groups.map((group) => requirementItem(group, t(STATUS_LABEL[group.status])))}
         onPick={(id) => go({ view: "req", g: id })}
       />
@@ -438,7 +438,7 @@ export function App() {
           {choose(
             showNewRequirement(sel.p, st.projects.length),
             <Button size="sm" className="ml-1" onClick={() => setAdding(true)}>
-              <Trans>+ New requirement</Trans>
+              <Trans>+ New ticket</Trans>
             </Button>,
             null,
           )}

@@ -66,7 +66,7 @@ test("a project row prints only the counts that are facts", () => {
   // 2 `Requirement` and the spend are the row's right edge, and both exist here. The
   // count is written the way this catalog's language writes it: Chinese groups
   // by `万`, so 1200 is below its first tier and prints in full.
-  shown(page, "2 个需求");
+  shown(page, "2 个工单");
   shown(page, "1200 tokens");
   // A running requirement names itself, so the boss knows what is spending.
   shown(page, "在跑：在跑的");
@@ -79,10 +79,10 @@ test("a project with nothing spent prints neither a zero count nor a zero spend"
   const page = home(st);
 
   // 0 `requirements` next to `Empty` is the same absence twice.
-  gone(page, "0 个需求");
+  gone(page, "0 个工单");
   gone(page, "0 tokens");
   // A project nothing was ever asked of carries its own action instead of a state.
-  page.getByRole("button", { name: "＋ 新需求" });
+  page.getByRole("button", { name: "＋ 新工单" });
   gone(page, "空着");
 });
 
@@ -234,7 +234,7 @@ test("a project's row data is decided before anything is drawn", () => {
   const row = projectRow(st, 1);
   // PLANNING counts as running on this line; PAUSED does not.
   expect(row.live).toEqual(["在想"]);
-  expect(row.meta).toEqual(["2 个需求", "1200 tokens"]);
+  expect(row.meta).toEqual(["2 个工单", "1200 tokens"]);
   expect(row.bits).toEqual([]);
   expect(row.n).toBe(0);
 

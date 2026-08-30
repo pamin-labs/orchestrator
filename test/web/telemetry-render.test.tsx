@@ -564,7 +564,7 @@ test("scrolling the trend zooms it, and re-reads every block", async () => {
   expect(Number(wide.searchParams.get("to")) - Number(wide.searchParams.get("from"))).toBeGreaterThan(narrowSpan);
 });
 
-test("耗时 is a view of its own, not a tab under 需求", async () => {
+test("耗时 is a view of its own, not a tab under 工单", async () => {
   // A sibling of `Requirement` rather than a tab inside it: as a tab, a project with no
   // requirements could not reach `Time` at all.
   const { contentSlot, VIEWS } = await import("../../web/src/features/navigation/model.ts");

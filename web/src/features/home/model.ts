@@ -28,6 +28,6 @@ export function projectRow(st: State, id: number) {
       count(w.asks.length, t`questions`),
     ].filter(Boolean),
     live: gs.filter((g) => LIVE.has(g.status)).map((g) => g.name),
-    meta: [count(gs.length, t`requirements`), tokens ? `${K(tokens)} tokens` : ""].filter(Boolean),
+    meta: [count(gs.length, t`tickets`), tokens ? `${K(tokens)} tokens` : ""].filter(Boolean),
   };
 }
