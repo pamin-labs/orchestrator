@@ -527,18 +527,44 @@ jobs:
           digest_of() {
             docker buildx imagetools inspect "$1" --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"'
           }
+          # `imagetools create` builds a new index around its sources rather than
+          # copying manifest bytes. Promoting one platform manifest therefore
+          # lands a destination whose digest is that index's — never the source's
+          # — so `digest_of(destination) = expected` cannot hold and this asked it
+          # twice. The first release to reach here pushed `0.1.3-amd64` and then
+          # refused its own work with `changed during promotion`; every attempt
+          # after it stopped one line earlier on `already points to`. Both were
+          # this assumption, and neither had run before because nothing reaches
+          # this job but a real release.
+          #
+          # The multi-platform promotion below never hit it: two sources make an
+          # index whose members are the same manifests, so those bytes come back
+          # identical and it compares members anyway.
+          #
+          # So the question is not "is the destination this digest" but "does it
+          # carry it" — the digest itself where a registry copied the bytes, or a
+          # member where buildx wrapped them. That keeps the property this guard
+          # exists for, a published tag never moving onto different content, and
+          # makes a retry idempotent instead of fatal.
+          carries() {
+            local reference="$1" wanted="$2"
+            if [ "$(digest_of "$reference")" = "$wanted" ]; then return 0; fi
+            docker buildx imagetools inspect "$reference" --raw 2>/dev/null |
+              jq -e --arg d "$wanted" '[(.manifests // [])[].digest] | index($d) != null' >/dev/null
+          }
           promote() {
             local destination="$1" expected="$2" source="$3" existing
             existing=$(digest_of "$destination" || true)
-            if [ -n "$existing" ] && [ "$existing" != "$expected" ]; then
-              echo "::error::$destination already points to $existing, not verified digest $expected"
-              return 1
+            if [ -n "$existing" ]; then
+              carries "$destination" "$expected" || {
+                echo "::error::$destination is $existing, which does not carry verified digest $expected"
+                return 1
+              }
+              return 0
             fi
-            if [ -z "$existing" ]; then
-              docker buildx imagetools create -t "$destination" "$source"
-            fi
-            test "$(digest_of "$destination")" = "$expected" || {
-              echo "::error::$destination changed during promotion"
+            docker buildx imagetools create -t "$destination" "$source"
+            carries "$destination" "$expected" || {
+              echo "::error::$destination does not carry verified digest $expected after promotion"
               return 1
             }
           }

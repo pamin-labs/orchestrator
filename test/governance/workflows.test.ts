@@ -504,8 +504,12 @@ describe("workflow governance", () => {
     expect(stage).toContain('stage="$IMAGE:sha-$SOURCE_SHA-$PLATFORM"');
     expect(stage).toContain("remote_id=$(jq -r '.config.digest // empty'");
     expect(stage).toContain('test "$remote_id" = "$loaded_id"');
-    expect(manifest).toContain('if [ -n "$existing" ] && [ "$existing" != "$expected" ]');
-    expect(manifest).toContain("already points to $existing, not verified digest $expected");
+    // The property is unchanged — a tag that already exists is never rewritten,
+    // and one holding anything but the verified image stops the release. What
+    // changed is how "holding" is asked, because a promoted tag never has the
+    // digest it was promoted from.
+    expect(manifest).toContain('if [ -n "$existing" ]');
+    expect(manifest).toContain("which does not carry verified digest $expected");
     expect(manifest).toContain('promote "$image:$RELEASE_VERSION-$platform"');
     expect(manifest).toContain('promote "$image:$RELEASE_VERSION"');
   });
@@ -530,8 +534,15 @@ describe("workflow governance", () => {
     expect(select).toContain("workflows/release.yml/runs?status=failure");
     expect(select).toContain('test "$tag_sha" = "$sha"');
     expect(select).toContain("resuming the unpublished");
-    expect(manifest).toContain('if [ -z "$existing" ]');
-    expect(manifest).toContain('test "$(digest_of "$destination")" = "$expected"');
+    // "Carries", not "is". `imagetools create` wraps a single manifest in a new
+    // index, so a promoted platform tag never has the digest it was promoted
+    // from — asking for equality made the first real release refuse its own
+    // work. What must hold is that the destination resolves to the verified
+    // digest, and that an existing tag is accepted rather than rewritten.
+    expect(manifest).toContain("carries()");
+    expect(manifest).toContain("does not carry verified digest");
+    expect(manifest).toContain("index($d) != null");
+    expect(manifest).not.toContain('test "$(digest_of "$destination")" = "$expected"');
     expect(manifest).toContain('stage_manifest="$image:sha-$SOURCE_SHA"');
     expect(manifest).toContain("exists with divergent platform digests");
   });
