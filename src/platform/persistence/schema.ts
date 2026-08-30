@@ -315,7 +315,17 @@ export const note = pgTable(
     // skip it, and without it the blackboard only grows.
     supersedes: integer().references((): AnyPgColumn => note.id),
   },
-  (t) => [index("note_lookup").on(t.project_id, t.kind, sql`${t.at} DESC`)],
+  (t) => [
+    index("note_lookup").on(t.project_id, t.kind, sql`${t.at} DESC`),
+    // The other way in, and the panel's: `note_lookup` leads with `project_id`,
+    // which none of the group reads know. Both of the snapshot's `DISTINCT ON
+    // (grp_id) … ORDER BY grp_id, at DESC, id DESC` cards, the correlated
+    // `max(at)` behind the late-objection window, and the approve path's "which
+    // card was filed" all name a group and no project, so every one of them was
+    // reading the table. The column order is that `ORDER BY` spelled out, so the
+    // distinct is a scan rather than a sort.
+    index("note_grp").on(t.grp_id, sql`${t.at} DESC`, sql`${t.id} DESC`),
+  ],
 );
 
 /** Append-only. The timeline, the desk wall and the channel views all read this. */
@@ -343,6 +353,27 @@ export const event = pgTable(
     index("event_channel").on(t.channel_id, t.seq),
     index("event_grp").on(t.grp_id, t.seq),
     index("event_correlation").on(t.correlation_id, t.seq),
+    // Every read that names a kind, which is every read that is not a channel
+    // tail. `state_change` is the kind by volume — seventy-nine emitters against
+    // four for `tool_summary` — and no reader wants it, so the prefix is what
+    // turns "scan the log" into "scan the handful of rows that could match": the
+    // cost panel's 24-hour histogram and its recent-turn sample, the watchdog's
+    // per-finding re-emit clock, and the two draft-group reads in the snapshot.
+    // `at` and not `seq` as the second column, so the histogram's window is an
+    // index range rather than a filter — `recentTurns` orders by `at` for the
+    // same reason.
+    index("event_kind").on(t.kind, t.at),
+    // Retention, which had nothing. `trimEvents` runs on the thirty-second
+    // heartbeat and its predicate is `at < cutoff AND kind NOT IN (…)`; the
+    // negation cannot use `event_kind` at all, so this was a sequential scan of
+    // the largest table twice a minute, for ever, to delete nothing.
+    //
+    // Not a partial index on the same `NOT IN`, which is the tempting shape:
+    // Drizzle renders `notInArray` as bind parameters, and matching a partial
+    // index's predicate needs constants at plan time — under a generic plan the
+    // implication fails and the index is simply never chosen. An index that
+    // looks right and is never used is worse than none.
+    index("event_age").on(t.at),
   ],
 );
 
@@ -381,6 +412,12 @@ export const job = pgTable(
     index("job_dispatch").on(t.state, sql`${t.priority} DESC`, t.id),
     index("job_grp").on(t.grp_id, t.state),
     index("job_correlation").on(t.correlation_id),
+    // The two correlated subqueries the desk wall is drawn from — how many turns
+    // this agent has finished, and which slice its newest job was for. Nothing
+    // prunes this table, so both grew with the age of the installation while the
+    // panel asked them at up to four times a second. `id` second because the
+    // slice lookup is `ORDER BY id DESC LIMIT 1`.
+    index("job_agent").on(t.agent_id, t.id),
     stateCheck(t.state, JOB_STATES),
   ],
 );

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { writeHandle } from "../../platform/persistence/database.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { JsonValue, valueOr } from "../../contracts/json.ts";
@@ -432,8 +432,11 @@ export class Scheduler {
     // Standing agents (Architect, CoS, Librarian) have no group, but their turns
     // cost the same money and CPU as anyone's — so they take a slot too. Letting
     // them bypass the pool was how a "no slots" configuration still spawned agents.
-    const { busyGroups, taken } = await this.capacity();
-    await this.loadAdmission(pending);
+    // Running first, because what a lease draws from is looked up for both sets
+    // and the load below is one wave over the union.
+    const running = await this.runningJobs();
+    await this.load(pending, running);
+    const { busyGroups, taken } = this.capacity(running);
 
     const out: Job[] = [];
     for (const job of pending) {
@@ -464,12 +467,12 @@ export class Scheduler {
     return job.kind !== "agent_turn" || (await this.agentTurnReady(job));
   }
 
-  private async capacity(): Promise<{ busyGroups: Set<number>; taken: Record<string, number> }> {
+  private capacity(running: readonly Job[]): { busyGroups: Set<number>; taken: Record<string, number> } {
     const busyGroups = new Set<number>();
     const taken: Record<string, number> = {};
-    for (const job of await this.runningJobs()) {
+    for (const job of running) {
       if (job.kind === "lease") {
-        for (const pool of await this.poolsOf(job)) taken[pool] = (taken[pool] ?? 0) + 1;
+        for (const pool of this.poolsOf(job)) taken[pool] = (taken[pool] ?? 0) + 1;
       } else if (!FREE_KINDS.has(job.kind)) {
         busyGroups.add(slotOf(job));
       }
@@ -477,10 +480,10 @@ export class Scheduler {
     return { busyGroups, taken };
   }
 
-  private async claimLeaseCapacity(job: Job<"lease">, taken: Record<string, number>): Promise<boolean> {
+  private claimLeaseCapacity(job: Job<"lease">, taken: Record<string, number>): boolean {
     // Every pool the resource is tagged with has to have room: a lease that is
     // both `browser` and `heavy` waits for whichever is tighter.
-    const wanted = await this.poolsOf(job);
+    const wanted = this.poolsOf(job);
     const limits = this.pools();
     // `repo:<project>` must not inherit `default`, which ships as 2. The pool is
     // keyed per project so that it can be one — falling back to `default` is what
@@ -499,7 +502,10 @@ export class Scheduler {
 
   private async agentTurnReady(job: Job<"agent_turn">): Promise<boolean> {
     if (!this.online() || !this.sandboxReady()) return false;
-    return !(await this.providerHeld(job)) && !(await this.credentialMissing(job)) && !(await this.repoLockedOut(job));
+    // Two of the three answer from the tick's own maps now; the third is an
+    // injected callback that reads a table this scheduler does not own, so it
+    // stays a call — memoised per project rather than per job.
+    return !this.providerHeld(job) && !this.credentialMissing(job) && !(await this.repoLockedOut(job));
   }
 
   /**
@@ -509,15 +515,10 @@ export class Scheduler {
    * unknown tag falls back to `default` rather than to "unlimited": a typo in a
    * tag name must not silently uncap the pool it meant to name.
    */
-  private async poolsOf(job: Job<"lease">): Promise<string[]> {
+  private poolsOf(job: Job<"lease">): string[] {
     const leaseId = job.payload.lease_id ?? 0;
     if (!leaseId) return [DEFAULT_POOL];
-    const [row] = await this.db
-      .select({ tags_json: resource.tags_json, project_id: grp.project_id })
-      .from(lease)
-      .innerJoin(resource, eq(resource.name, lease.resource))
-      .leftJoin(grp, eq(grp.id, lease.grp_id))
-      .where(eq(lease.id, leaseId));
+    const row = this.leaseRows.get(leaseId);
     const tags = valueOr(row?.tags_json, z.array(z.string()), []);
     if (!tags.length) return [DEFAULT_POOL];
     // `repo` is one pool per repository, not one pool globally: two projects'
@@ -554,14 +555,11 @@ export class Scheduler {
    * is never picked up, so no process, no retry loop, no quota spent proving the
    * wall. Lifts by the CLI's own reset clock; an unhired job has no provider yet.
    */
-  private async providerHeld(job: Job<"agent_turn">): Promise<boolean> {
-    if (!job.agent_id) return false;
-    const [row] = await this.db
-      .select({ hold_until: usage_snapshot.hold_until })
-      .from(agent)
-      .innerJoin(usage_snapshot, eq(usage_snapshot.runtime, agent.runtime))
-      .where(eq(agent.id, job.agent_id));
-    return !!row?.hold_until && row.hold_until > this.now();
+  private providerHeld(job: Job<"agent_turn">): boolean {
+    const runtime = job.agent_id === null ? undefined : this.agentRuntime.get(job.agent_id);
+    if (runtime === undefined) return false;
+    const until = this.holdUntil.get(runtime);
+    return !!until && until > this.now();
   }
 
   /**
@@ -572,16 +570,9 @@ export class Scheduler {
    * a queue of failures that all say 401. An unhired job has not chosen a
    * provider, so the question becomes whether *any* credential exists.
    */
-  private async credentialMissing(job: Job<"agent_turn">): Promise<boolean> {
-    const [found] = job.agent_id
-      ? await this.db.select({ runtime: agent.runtime }).from(agent).where(eq(agent.id, job.agent_id))
-      : [];
-    const runtime = found?.runtime ?? null;
-    const [row] = await this.db
-      .select({ n: count() })
-      .from(runtime_auth)
-      .where(runtime ? eq(runtime_auth.runtime, runtime) : undefined);
-    return (row?.n ?? 0) === 0;
+  private credentialMissing(job: Job<"agent_turn">): boolean {
+    const runtime = job.agent_id === null ? undefined : this.agentRuntime.get(job.agent_id);
+    return runtime === undefined ? this.credentialled.size === 0 : !this.credentialled.has(runtime);
   }
 
   /**
@@ -594,8 +585,19 @@ export class Scheduler {
    */
   private async repoLockedOut(job: Job<"agent_turn">): Promise<boolean> {
     if (!job.grp_id) return false;
-    const [row] = await this.db.select({ project_id: grp.project_id }).from(grp).where(eq(grp.id, job.grp_id));
-    return !!row && (await this.repoHeld(row.project_id));
+    // The group's project comes off the tick's own map; `load` already read these
+    // rows and now selects the column too.
+    const row = this.grpRows.get(job.grp_id);
+    if (!row) return false;
+    // `repoHeld` reads `project.remote` before it consults its in-memory holds,
+    // so it is a statement per call — and every pending turn of one project asks
+    // it the same question. Memoised for the tick, the same lifetime and for the
+    // same reason as `grpRows`: the hold moves, so nothing here outlives the tick.
+    const known = this.repoHolds.get(row.project_id);
+    if (known !== undefined) return known;
+    const held = await this.repoHeld(row.project_id);
+    this.repoHolds.set(row.project_id, held);
+    return held;
   }
 
   /** Admission check: group status is a barrier, budget is a hard stop. */
@@ -604,19 +606,38 @@ export class Scheduler {
   }
 
   /**
-   * Every group and slice this tick's queue names, in two queries.
+   * Everything this tick's queue names, in one wave.
    *
-   * These were read one row at a time inside the admission check, so the query count
-   * grew with the depth of the queue while the number of *distinct* groups did not.
-   * Idea taken from pg-boss's `ignoreGroups`.
-   *
-   * Held only for one `eligible()` call: a cache outliving the tick would be a
-   * second copy of the group table, and the check exists because those rows move.
+   * Groups and slices were already batched here, from pg-boss's `ignoreGroups`.
+   * The rest of the admission check never followed: a pending `agent_turn` asked,
+   * one at a time, which provider its agent runs on, whether that provider is
+   * held, whether a credential exists for it, and which project its group is in —
+   * four statements a job, so five hundred queued turns were two thousand
+   * statements before one of them started. A lease asked a fifth, twice.
    */
-  private async loadAdmission(pending: readonly Job[]): Promise<void> {
-    const grpIds = [...new Set(pending.map((j) => j.grp_id).filter((id): id is number => id !== null))];
-    const sliceIds = [...new Set(pending.map((j) => j.slice_id).filter((id): id is number => id !== null))];
-    const [grpRows, sliceRows] = await Promise.all([
+  /**
+   * Five now, whatever the depth. `usage_snapshot` and `runtime_auth` hold one
+   * row per provider, so both are read entire rather than filtered.
+   *
+   * Held for one `eligible()` call only: a cache outliving the tick would be a
+   * second copy of these tables, and the check exists because those rows move.
+   */
+  private async load(pending: readonly Job[], running: readonly Job[]): Promise<void> {
+    const ids = <K extends "grp_id" | "slice_id" | "agent_id">(jobs: readonly Job[], key: K): number[] => [
+      ...new Set(jobs.map((j) => j[key]).filter((id): id is number => id !== null)),
+    ];
+    const grpIds = ids(pending, "grp_id");
+    const sliceIds = ids(pending, "slice_id");
+    // Only the turns need an agent's provider, and only if there are any: a queue
+    // of leases must not pay for three statements about credentials.
+    const turns = pending.some((j) => j.kind === "agent_turn");
+    const agentIds = turns ? ids(pending, "agent_id") : [];
+    const leaseIds = [
+      ...new Set(
+        [...pending, ...running].flatMap((j) => (j.kind === "lease" ? [j.payload.lease_id ?? 0] : [])).filter(Boolean),
+      ),
+    ];
+    const [grpRows, sliceRows, agentRows, holds, credentials, leaseRows] = await Promise.all([
       grpIds.length === 0
         ? []
         : this.db
@@ -625,6 +646,8 @@ export class Scheduler {
               status: grp.status,
               budget_tokens: grp.budget_tokens,
               spent_tokens: grp.spent_tokens,
+              // For `repoLockedOut`, which read this one group at a time.
+              project_id: grp.project_id,
             })
             .from(grp)
             .where(inArray(grp.id, grpIds)),
@@ -634,13 +657,43 @@ export class Scheduler {
             .select({ id: slice.id, budget_tokens: slice.budget_tokens, spent_tokens: slice.spent_tokens })
             .from(slice)
             .where(inArray(slice.id, sliceIds)),
+      agentIds.length === 0
+        ? []
+        : this.db.select({ id: agent.id, runtime: agent.runtime }).from(agent).where(inArray(agent.id, agentIds)),
+      turns
+        ? this.db
+            .select({ runtime: usage_snapshot.runtime, hold_until: usage_snapshot.hold_until })
+            .from(usage_snapshot)
+        : [],
+      turns ? this.db.select({ runtime: runtime_auth.runtime }).from(runtime_auth) : [],
+      leaseIds.length === 0
+        ? []
+        : this.db
+            .select({ id: lease.id, tags_json: resource.tags_json, project_id: grp.project_id })
+            .from(lease)
+            .innerJoin(resource, eq(resource.name, lease.resource))
+            .leftJoin(grp, eq(grp.id, lease.grp_id))
+            .where(inArray(lease.id, leaseIds)),
     ]);
     this.grpRows = new Map(grpRows.map((r) => [r.id, r]));
     this.sliceRows = new Map(sliceRows.map((r) => [r.id, r]));
+    this.agentRuntime = new Map(agentRows.map((r) => [r.id, r.runtime]));
+    this.holdUntil = new Map(holds.map((r) => [r.runtime, r.hold_until]));
+    this.credentialled = new Set(credentials.map((r) => r.runtime));
+    this.leaseRows = new Map(leaseRows.map((r) => [r.id, r]));
+    this.repoHolds.clear();
   }
 
-  private grpRows = new Map<number, { status: GrpState; budget_tokens: number | null; spent_tokens: number }>();
+  private grpRows = new Map<
+    number,
+    { status: GrpState; budget_tokens: number | null; spent_tokens: number; project_id: number }
+  >();
   private sliceRows = new Map<number, { budget_tokens: number | null; spent_tokens: number }>();
+  private agentRuntime = new Map<number, string>();
+  private holdUntil = new Map<string, number | null>();
+  private credentialled = new Set<string>();
+  private leaseRows = new Map<number, { tags_json: Json; project_id: number | null }>();
+  private repoHolds = new Map<number, boolean>();
 
   private groupAdmits(job: Job): boolean {
     const grp = this.grpRows.get(job.grp_id!);

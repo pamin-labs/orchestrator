@@ -608,6 +608,24 @@ export async function trend(
  */
 export async function trimSpans(db: DB, now = Date.now(), maxRows = SPAN_MAX_ROWS): Promise<void> {
   await db.delete(span).where(lt(span.started_at, now - SPAN_MAX_AGE_MS));
+  // Whether there is a surplus at all, before paying to find out which rows it is.
+  //
+  // The delete below has two sort keys and reads a column no index carries, so
+  // the planner sorts the table for it — and it ran on every heartbeat, twice a
+  // minute for the life of the process, to delete nothing. This asks the same
+  // question for one column that `span_age` already holds, which is an index-only
+  // scan that stops at the end of the index when the cap is not reached.
+  // any-order: existence, not identity. Whether a row sits at the offset depends
+  // on how many rows there are, never on which of two written in the same
+  // millisecond comes first — and a tiebreak would name a column `span_age` does
+  // not carry, which is the index-only scan this is here for.
+  const [over] = await db
+    .select({ started_at: span.started_at })
+    .from(span)
+    .orderBy(desc(span.started_at))
+    .offset(maxRows)
+    .limit(1);
+  if (!over) return;
   // By the natural key, because Postgres has no `rowid` and `ctid` moves under the
   // vacuum this delete makes likely. A row-value `IN` is the one predicate shape
   // `inArray` cannot build, so it is written out.
