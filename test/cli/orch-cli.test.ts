@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { hc } from "hono/client";
-import { main } from "../../src/orch/cli.ts";
+import { main, readPiped } from "../../src/orch/cli.ts";
 import { dispatchCommand, kvArgs } from "../../src/orch/commands/dispatch.ts";
 import type { OrchType } from "../../src/http/routes/orch.ts";
 import { VERSION } from "../../src/platform/process/version.ts";
@@ -256,4 +256,31 @@ test("pr resolve reaches the route, and the thread id is a flag rather than a po
   // The subcommand does not shadow `orch pr <group_id>`.
   const open = await run(["pr", "9", "--title", "fix(x): y"], "body");
   expect(open.sent[0]).toMatchObject({ path: "/orch/v1/pr", body: { group_id: "9", title: "fix(x): y" } });
+});
+
+test("a piped stdin is read whole, and one nobody writes to is read as empty", async () => {
+  const piped = await readPiped(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("fix(x): "));
+        controller.enqueue(new TextEncoder().encode("the body"));
+        controller.close();
+      },
+    }),
+  );
+  expect(piped).toBe("fix(x): the body");
+
+  // The shape that hung: an inherited pipe with no writer. `isTTY` is false, so
+  // the tty guard lets it through, and the read never ends on its own.
+  const error = console.error;
+  const said: string[] = [];
+  console.error = (...values) => said.push(values.join(" "));
+  try {
+    const started = Date.now();
+    expect(await readPiped(new ReadableStream<Uint8Array>({ start() {} }), 30)).toBe("");
+    expect(Date.now() - started).toBeLessThan(5_000);
+  } finally {
+    console.error = error;
+  }
+  expect(said.join(" ")).toContain("stdin");
 });

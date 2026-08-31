@@ -6,7 +6,7 @@ import { asc, sql } from "drizzle-orm";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { job } from "../../src/platform/persistence/schema.ts";
 import { runtimeStatus } from "../../src/platform/observability/metrics.ts";
-import { refreshRuntimeReadiness, shutdownRuntime } from "../../src/composition/server.ts";
+import { interruptHandler, refreshRuntimeReadiness, shutdownRuntime } from "../../src/composition/server.ts";
 import { makeCheck } from "../../src/mech/ops/preflight.ts";
 import * as fx from "../support/factories.ts";
 import { said } from "../support/said.ts";
@@ -269,4 +269,113 @@ test("the boss's watchdog interval is followed; only the readiness probe is clam
   // is returned as it stands, which is what makes it a bound rather than a fixed
   // period wearing a parameter.
   expect(readinessPeriodMs(15_000)).toBe(15_000);
+});
+
+test("a forced shutdown still exits when the reclaim round trip never comes back", async () => {
+  const calls: string[] = [];
+  let drains = 0;
+  const result = await shutdownRuntime({
+    stopIntake: () => (calls.push("stop-intake"), true),
+    drain: async () => {
+      calls.push(`drain-${++drains}`);
+      if (drains === 1) await new Promise(() => {});
+    },
+    gracefulStop: async () => {
+      calls.push("graceful-stop");
+    },
+    // The shape that wedged a real ctrl-c: `reclaim` is a Postgres round trip
+    // since the sqlite removal, and the force path awaited it bare.
+    reclaim: () => {
+      calls.push("reclaim");
+      return new Promise<void>(() => {});
+    },
+    abort: () => calls.push("abort"),
+    forceStop: async () => {
+      calls.push("force-stop");
+    },
+    close: () => calls.push("close"),
+    sleep: async () => {},
+  });
+
+  expect(result).toBe(1);
+  expect(calls).toEqual([
+    "stop-intake",
+    "drain-1",
+    "graceful-stop",
+    "reclaim",
+    "abort",
+    "force-stop",
+    "drain-2",
+    "close",
+  ]);
+});
+
+test("a forced shutdown still exits when the forced server stop never comes back", async () => {
+  const calls: string[] = [];
+  let drains = 0;
+  const result = await shutdownRuntime({
+    stopIntake: () => (calls.push("stop-intake"), true),
+    drain: async () => {
+      calls.push(`drain-${++drains}`);
+      if (drains === 1) await new Promise(() => {});
+    },
+    gracefulStop: async () => {
+      calls.push("graceful-stop");
+    },
+    reclaim: async () => {
+      calls.push("reclaim");
+    },
+    abort: () => calls.push("abort"),
+    forceStop: () => {
+      calls.push("force-stop");
+      return new Promise<void>(() => {});
+    },
+    close: () => calls.push("close"),
+    sleep: async () => {},
+  });
+
+  expect(result).toBe(1);
+  expect(calls).toEqual([
+    "stop-intake",
+    "drain-1",
+    "graceful-stop",
+    "reclaim",
+    "abort",
+    "force-stop",
+    "drain-2",
+    "close",
+  ]);
+});
+
+test("a shutdown that throws still exits, and a second ctrl-c does not wait for the first", async () => {
+  const exits: number[] = [];
+  const said: string[] = [];
+
+  // A rejecting shutdown used to reach no exit at all: the rejection went to the
+  // `unhandledRejection` backstop, which logs and keeps the process running.
+  const onThrow = interruptHandler({
+    shutdown: () => Promise.reject(new Error("the database went away")),
+    exit: (code) => void exits.push(code),
+    say: (line) => void said.push(line),
+  });
+  onThrow();
+  await Bun.sleep(0);
+  expect(exits).toEqual([1]);
+  expect(said).toHaveLength(1);
+
+  let release!: (code: number) => void;
+  const onHang = interruptHandler({
+    shutdown: () =>
+      new Promise<number>((resolve) => {
+        release = resolve;
+      }),
+    exit: (code) => void exits.push(code),
+    say: () => {},
+  });
+  onHang();
+  await Bun.sleep(0);
+  expect(exits).toEqual([1]);
+  onHang();
+  expect(exits).toEqual([1, 1]);
+  release(0);
 });
