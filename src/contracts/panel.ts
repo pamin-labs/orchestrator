@@ -33,6 +33,9 @@ export const Group = z.object({
   id: z.number(),
   project_id: z.number(),
   name: z.string(),
+  /** The heading. Null on every group written before or without a title-writer,
+   *  which the panel renders as `name` — the ascii slug git and the CLI use. */
+  title: z.string().nullable(),
   branch: z.string().nullable(),
   status: z.enum(GRP_STATES),
   owns_json: JsonValue,
@@ -90,6 +93,7 @@ export const Archived = z.object({
   id: z.number(),
   project_id: z.number(),
   name: z.string(),
+  title: z.string().nullable(),
   branch: z.string().nullable(),
   pr_number: z.number().nullable(),
   spent_tokens: z.number(),
@@ -244,12 +248,8 @@ export type UsageWindow = z.infer<typeof UsageWindow>;
 export type Project = z.infer<typeof Project>;
 export type Group = z.infer<typeof Group>;
 export type Slice = z.infer<typeof Slice>;
-export type Task = z.infer<typeof Task>;
 export type Agent = z.infer<typeof Agent>;
-export type Channel = z.infer<typeof Channel>;
 export type Archived = z.infer<typeof Archived>;
 export type Escalation = z.infer<typeof Escalation>;
-export type DraftCard = z.infer<typeof DraftCard>;
-export type Answered = z.infer<typeof Answered>;
 export type HostFailure = z.infer<typeof HostFailure>;
 export type Snapshot = z.infer<typeof SnapshotSchema>;

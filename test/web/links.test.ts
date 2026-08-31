@@ -30,6 +30,7 @@ const group = (prNumber: number | null): Group => ({
   id: 7,
   project_id: 1,
   name: "g",
+  title: null,
   branch: null,
   status: "PR_OPEN",
   owns_json: [],

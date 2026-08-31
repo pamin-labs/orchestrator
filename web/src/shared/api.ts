@@ -43,6 +43,15 @@ import { saidText } from "./said.ts";
 import type { Said } from "../../../src/contracts/said.ts";
 
 export type { Agent, Archived, Escalation, Group, HostFailure, Slice };
+
+/**
+ * What a person reads for a ticket, one place.
+ *
+ * `name` is an ascii slug because it is also the branch, the worktree path and
+ * the key agents address a group by; `title` is the sentence written for the
+ * boss, and is null on every group filed before there was one.
+ */
+export const heading = (g: { name: string; title: string | null }): string => g.title ?? g.name;
 export type State = Snapshot;
 export type Usage = State["usage"][number];
 export type Cost = CostReport;

@@ -12,6 +12,7 @@ const group = (status: Group["status"], over: Partial<Group> = {}): Group => ({
   id: 7,
   project_id: 1,
   name: "ship it",
+  title: null,
   branch: "feature/ship",
   status,
   owns_json: ["src/**"],
@@ -388,4 +389,13 @@ test("the dock and the tab counts follow what the requirement holds", () => {
   expect(tabs.getByRole("tab", { selected: true }).textContent).toBe("切片2");
   // At rest the dock is one line that says where the words go.
   tabs.getByRole("button", { name: "跟这个组说话… ⌘Enter 发给 PM" });
+});
+
+test("the heading is the written title, and the slug where nothing wrote one", () => {
+  const { st, g } = running({ title: "登录表单加一个「记住我」勾选框" });
+  shown(render(st, g), "登录表单加一个「记住我」勾选框");
+  gone(render(st, g), "ship it");
+
+  const untitled = running();
+  shown(render(untitled.st, untitled.g), "ship it");
 });

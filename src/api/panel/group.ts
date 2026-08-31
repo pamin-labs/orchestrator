@@ -20,6 +20,7 @@ import { bad, badText, json, message } from "../../http/respond.ts";
 import { noGithubClient } from "./authflow.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { slug } from "../slug.ts";
+import { titleFor } from "./title.ts";
 import { renderSaid } from "../../platform/text/lang.ts";
 import type { Said } from "../../contracts/said.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
@@ -55,12 +56,17 @@ export const IdeaBody = z.object({
 });
 
 export const postIdea = (async (ctx, _req, _p, b) => {
-  const name = (b.name ?? slug(b.text)).slice(0, 40);
+  // A caller that named it keeps its name and gets no title: only the panel form
+  // leaves `name` off, and only its prose is worth reading a title out of.
+  const { name, title } = b.name
+    ? { name: slug(b.name).slice(0, 40), title: null }
+    : await titleFor(ctx, b.project_id, b.text);
   // Attachments go on the blackboard as paths next to the words they came with, so
   // whoever plans this reads them in the same breath as the idea.
   const grp = await newGroup(ctx, {
     projectId: b.project_id,
     name,
+    title,
     idea: b.text,
     note: withAttachments(b.text, b.attachments),
   });
