@@ -9,7 +9,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "../config/load.ts";
 import { GRP_TERMINAL_STATES } from "../../contracts/states.ts";
-import { errText } from "../process/text.ts";
+import { isLoopback } from "../../contracts/config.ts";
+import { clip, errText } from "../process/text.ts";
 import { maskValue } from "../observability/redaction.ts";
 import * as schema from "./schema.ts";
 import { runtime_auth, setting } from "./schema.ts";
@@ -105,6 +106,92 @@ async function terminalStateGuard(db: DB): Promise<void> {
 }
 
 /**
+ * `host:port/database`, with the credentials taken out.
+ *
+ * A connection string spliced whole into a message carries its password in the
+ * middle of the authority, which is how one reaches a terminal, a CI log and a
+ * screenshot at once. Falls back to the scheme alone when the string does not
+ * parse, because a message about an unparseable URL must not quote it either.
+ */
+export function addressOf(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.host}${u.pathname}`;
+  } catch {
+    return "the configured address";
+  }
+}
+
+/**
+ * The bare host a connection string names, for the one caller that asks whether
+ * it is this machine.
+ *
+ * Brackets stripped: `new URL("postgres://[::1]:5432/x").hostname` keeps them,
+ * and `::1` is how a loopback address is spelled everywhere else here.
+ */
+export function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^\[|\]$/g, "");
+  } catch {
+    return "";
+  }
+}
+
+/** Whether this failure is "nothing is listening there", as opposed to a bad password or a bad migration. */
+export function isRefused(e: unknown): boolean {
+  for (let c: unknown = e, hops = 0; c instanceof Error && hops < 4; c = c.cause, hops++) {
+    // The code, not the message: Bun spells it `ERR_POSTGRES_CONNECTION_REFUSED`
+    // on a `PostgresError` it wraps in a `DrizzleQueryError`, and the human half
+    // of that is the untranslated "Failed to connect".
+    if ("code" in c && typeof c.code === "string" && c.code.includes("CONNECTION_REFUSED")) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether a failed `open()` should be retried against the local container.
+ *
+ * **Loopback only.** A refused connection to this machine means the local
+ * database is not running, and the container is that database — same
+ * `data/postgres` volume, same credentials, so what comes back is the same data.
+ * A managed PostgreSQL that refuses is an outage, and quietly starting an empty
+ * one beside it and writing to it is a data split nothing would report.
+ */
+/**
+ * **Refused only**, too: a bad password or a timeout is not "the local database
+ * is not running", and retrying either against a fresh container answers a
+ * question nobody asked. Both halves fail in opposite directions, which is why
+ * this is one predicate with its own test rather than two `&&` at a call site.
+ */
+export const shouldStartLocal = (url: string, e: unknown): boolean => isRefused(e) && isLoopback(hostnameOf(url));
+
+/**
+ * What a database that would not open should have said.
+ *
+ * The unset case had a sentence naming the variable; the set-but-wrong case had
+ * nothing, and it is the common one. What came out was `DrizzleQueryError:
+ * Failed query: CREATE SCHEMA IF NOT EXISTS "drizzle"` wrapping `Failed to
+ * connect` — the statement the migrator happened to be on, and not one word
+ * about which address, which variable, or what to run.
+ */
+/** ADR 051 already required this ("a failure names both ways out"); it was delivered for the container half only. */
+function unreachable(url: string, e: unknown): Error {
+  const at = addressOf(url);
+  // `cause`, not the driver's text spliced in: `errText` already walks the chain,
+  // so a copy in the message prints the reason twice — and `server.ts` reads the
+  // *code* off this chain to decide whether to start a container, which a
+  // stringified copy cannot carry.
+  const because = e instanceof Error ? { cause: e } : { cause: new Error(clip(String(e), 400)) };
+  if (!isRefused(e)) return new Error(`opening the database at ${at} failed`, because);
+  return new Error(
+    `nothing is listening for PostgreSQL at ${at}.\n` +
+      `Start the local one with \`bun run db:up\`, point ${DATABASE_URL} at a PostgreSQL of your own, ` +
+      `or unset ${DATABASE_URL} and one will be started for you.`,
+    because,
+  );
+}
+
+/**
  * Open the deployment's database and bring it up to date.
  *
  * Whatever was stored before this process started still has to be masked out of
@@ -118,7 +205,11 @@ export async function open(poolSize?: number, url = process.env[DATABASE_URL]): 
   // waves. Optional because the scripts and the migration path open one before
   // there is a config to ask.
   const db = bunSqlDrizzle({ client: poolSize ? new SQL({ url, max: poolSize }) : new SQL(url) });
-  await bunSqlMigrate(db, { migrationsFolder: MIGRATIONS });
+  try {
+    await bunSqlMigrate(db, { migrationsFolder: MIGRATIONS });
+  } catch (e) {
+    throw unreachable(url, e);
+  }
   await terminalStateGuard(db);
   for (const { secret } of await db.select({ secret: runtime_auth.secret }).from(runtime_auth)) maskValue(secret);
   return db;
