@@ -13,12 +13,11 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `refactor/the-thing-the-boss-files-is-a-ticket`, 2026-08-30, with the
-four branches under it merged.
+Measured on `release/0.1.5`, 2026-08-31.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 1986 pass, 6 environment skips, 0 fail, 1992 across 246 files
-- Coverage: 83.90% of statements, 74.19% of branches, 79.84% of functions
+- Tests: 1988 pass, 6 environment skips, 0 fail, 1994 across 247 files
+- Coverage: 83.97% of statements, 74.20% of branches, 79.86% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
 - Fallow security, full inventory: **1** candidate —
@@ -28,8 +27,9 @@ four branches under it merged.
 - Block comments over eight lines: zero, enforced by
   `test/governance/comment-blocks.test.ts`
 - All ten catalogues at 1130/1130
-- Released: `v0.1.4`, 2026-08-30, under
-  [ADR 050](../adr/050-the-bump-merging-is-the-release-request.md)
+- The released version is not recorded here. `package.json` holds it, the tag
+  proves it, and ADR 050 makes merging the bump the release — so a line here
+  would be a third owner, stale from the next merge until somebody remembered
 - Test time is not recorded as a target. The same suite measures differently per
   machine, and a threshold on it would be a coin flip in CI
 
