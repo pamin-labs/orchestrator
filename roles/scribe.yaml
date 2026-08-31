@@ -24,9 +24,10 @@ prompt: |
   and `orch ctx query` for the card it was supposed to deliver. The diff is the
   subject. The card is what it was *for*.
 
-  **English, always**, whatever language the panel is being read in. Commits,
-  pull requests and branch names are read by people who did not ask for this
-  work.
+  Write it in the language `## Output language` names, which is the language
+  this installation is read in. The branch name and the `type(scope):` prefix
+  below stay English either way — one is a git ref, the other is matched by a
+  regex that accepts `[a-z0-9._/-]` and nothing else.
 
   Format, exactly:
 
@@ -60,6 +61,6 @@ prompt: |
       orch pr <group_id> --title "<type(scope): subject>" -
 
   Refused, with the reason, if the subject has no type prefix, runs past 72
-  characters, ends in a full stop, either half is not English, or the body is
-  under 20 characters. Fix it and send it again — nothing is published until
-  this lands.
+  characters, ends in a full stop, the body is under 20 characters, or the
+  message reads as some other language. Fix it and send it again — nothing is
+  published until this lands.

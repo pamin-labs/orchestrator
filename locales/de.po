@@ -94,6 +94,9 @@ msgid "{from} has sent the whole branch back {n} times. That is usually the acce
 msgstr "{from} hat den ganzen Branch {n}-mal zurückgeschickt. Das liegt meist an den Abnahmekriterien, nicht am Code:\n"
 "{why}"
 
+msgid "{gates} pass"
+msgstr "{gates} bestanden"
+
 msgid "{good}"
 msgstr "{good}"
 
@@ -211,6 +214,9 @@ msgstr "{n, plural, one {# Sache braucht} other {# Dinge brauchen}} dich:"
 
 msgid "{n} more queued behind it"
 msgstr "{n} weitere warten dahinter"
+
+msgid "{n} slice(s) · {tokens} tokens · journals in {path}"
+msgstr "{n} Abschnitt(e) · {tokens} Tokens · Journale in {path}"
 
 msgid "{n} to do"
 msgstr "{n} offen"
@@ -443,6 +449,9 @@ msgstr "Aufgegeben"
 msgid "Accept"
 msgstr "Abnehmen"
 
+msgid "acceptance"
+msgstr "Abnahme"
+
 msgid "Acceptance criteria"
 msgstr "Abnahmekriterien"
 
@@ -592,6 +601,9 @@ msgstr "Archiviert"
 
 msgid "Ask GitHub"
 msgstr "GitHub fragen"
+
+msgid "Asked for"
+msgstr "Was verlangt wurde"
 
 msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
 msgstr "Angenommenes Kontextfenster pro Modell, für den ersten Zug einer Sitzung — danach meldet die CLI den echten Wert. Zu klein gewählt, startet ein Modell mit großem Kontext ständig neu und wirft jedes Mal seinen Cache weg."
@@ -1038,6 +1050,9 @@ msgstr "Offen gehaltene Datenbankverbindungen. Der Schnappschuss des Panels brau
 msgid "Decision"
 msgstr "Entscheidung"
 
+msgid "Decisions"
+msgstr "Entscheidungen"
+
 msgid "Decomposing"
 msgstr "Wird zerlegt"
 
@@ -1321,6 +1336,9 @@ msgstr "Gate bestanden bei S{seq}"
 
 msgid "Gate retries"
 msgstr "Gate-Wiederholungen"
+
+msgid "gates"
+msgstr "Gates"
 
 msgid "Gates"
 msgstr "Gates"
@@ -1923,6 +1941,9 @@ msgstr "kein uvx im PATH"
 msgid "No, keep going"
 msgstr "Nein, weiter"
 
+msgid "none recorded"
+msgstr "keine erfasst"
+
 msgid "None selected"
 msgstr "Nichts ausgewählt"
 
@@ -2051,6 +2072,12 @@ msgstr "PR öffnen ↗"
 
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "als Anforderung {name} (grp {grp}) eröffnet"
+
+msgid "Opened by [orchestrator]({url}) v{v}."
+msgstr "Geöffnet von [orchestrator]({url}) v{v}."
+
+msgid "Opened by [orchestrator]({url})."
+msgstr "Geöffnet von [orchestrator]({url})."
 
 msgid "opened PR #{pr} to replace the closed one"
 msgstr "PR #{pr} als Ersatz für die geschlossene geöffnet"
@@ -2505,6 +2532,9 @@ msgstr "fortgesetzt"
 msgid "Retrieval"
 msgstr "Abruf"
 
+msgid "Retro"
+msgstr "Retro"
+
 msgid "Retrospective"
 msgstr "Rückblick"
 
@@ -2803,6 +2833,9 @@ msgstr "Die Basis des Abschnitts ging beim Rebase verloren; gezeigt wird der gan
 
 msgid "Slice durations"
 msgstr "Dauer der Abschnitte"
+
+msgid "Slices ({n}, all accepted)"
+msgstr "Abschnitte ({n}, alle abgenommen)"
 
 msgid "slices pending"
 msgstr "Abschnitte offen"

@@ -869,7 +869,7 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
       gh,
       grpId,
       title: await prTitle(ctx.db, grpId),
-      body: await prBody(ctx.db, grpId),
+      body: await prBody(ctx.db, grpId, outputLanguage(ctx.config)),
     }).then(async (r) => {
       if ("error" in r) {
         // No remote, no gh auth, a rejected push: the branch has nowhere to go.

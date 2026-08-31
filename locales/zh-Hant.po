@@ -94,6 +94,9 @@ msgid "{from} has sent the whole branch back {n} times. That is usually the acce
 msgstr "整個分支被 {from} 打回 {n} 次了。多半是驗收口徑本身有問題，不是程式碼：\n"
 "{why}"
 
+msgid "{gates} pass"
+msgstr "{gates} 通過"
+
 msgid "{good}"
 msgstr "{good}"
 
@@ -211,6 +214,9 @@ msgstr "有 {n} 件事等你："
 
 msgid "{n} more queued behind it"
 msgstr "後面還排著 {n} 個"
+
+msgid "{n} slice(s) · {tokens} tokens · journals in {path}"
+msgstr "{n} 個切片 · {tokens} tokens · 工作日誌在 {path}"
 
 msgid "{n} to do"
 msgstr "{n} 件待辦"
@@ -443,6 +449,9 @@ msgstr "作廢"
 msgid "Accept"
 msgstr "查收"
 
+msgid "acceptance"
+msgstr "驗收"
+
 msgid "Acceptance criteria"
 msgstr "驗收口徑"
 
@@ -592,6 +601,9 @@ msgstr "已封存"
 
 msgid "Ask GitHub"
 msgstr "問 GitHub 要"
+
+msgid "Asked for"
+msgstr "要的是什麼"
 
 msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
 msgstr "每個模型假定的上下文視窗，只用於一次 session 的第一個 turn——之後以 CLI 報的真實值為準。設小了，大視窗模型會不停重啟，每次都丟掉已經建好的快取。"
@@ -1038,6 +1050,9 @@ msgstr "常開的資料庫連線數。面板拉一次快照要同時用掉約二
 msgid "Decision"
 msgstr "決策"
 
+msgid "Decisions"
+msgstr "決策"
+
 msgid "Decomposing"
 msgstr "正在拆解"
 
@@ -1321,6 +1336,9 @@ msgstr "S{seq} 閘門通過"
 
 msgid "Gate retries"
 msgstr "閘門重試次數"
+
+msgid "gates"
+msgstr "閘門"
 
 msgid "Gates"
 msgstr "閘門"
@@ -1923,6 +1941,9 @@ msgstr "PATH 裡沒有 uvx"
 msgid "No, keep going"
 msgstr "不，接著做"
 
+msgid "none recorded"
+msgstr "沒有記錄"
+
 msgid "None selected"
 msgstr "還沒選"
 
@@ -2051,6 +2072,12 @@ msgstr "開啟 PR ↗"
 
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "開成需求 {name}（grp {grp}）"
+
+msgid "Opened by [orchestrator]({url}) v{v}."
+msgstr "由 [orchestrator]({url}) v{v} 開啟。"
+
+msgid "Opened by [orchestrator]({url})."
+msgstr "由 [orchestrator]({url}) 開啟。"
 
 msgid "opened PR #{pr} to replace the closed one"
 msgstr "開了 PR #{pr}，頂替被關掉的那個"
@@ -2505,6 +2532,9 @@ msgstr "繼續"
 msgid "Retrieval"
 msgstr "檢索"
 
+msgid "Retro"
+msgstr "復盤"
+
 msgid "Retrospective"
 msgstr "復盤"
 
@@ -2803,6 +2833,9 @@ msgstr "切片基線被 rebase 沖掉了，這裡是整條分支相對 origin/ma
 
 msgid "Slice durations"
 msgstr "各切片耗時"
+
+msgid "Slices ({n}, all accepted)"
+msgstr "切片（{n} 個，全部已驗收）"
 
 msgid "slices pending"
 msgstr "片待查收"

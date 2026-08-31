@@ -94,6 +94,9 @@ msgid "{from} has sent the whole branch back {n} times. That is usually the acce
 msgstr "{from} has sent the whole branch back {n} times. That is usually the acceptance criteria rather than the code:\n"
 "{why}"
 
+msgid "{gates} pass"
+msgstr "{gates} pass"
+
 msgid "{good}"
 msgstr "{good}"
 
@@ -211,6 +214,9 @@ msgstr "{n, plural, one {# thing needs} other {# things need}} you:"
 
 msgid "{n} more queued behind it"
 msgstr "{n} more queued behind it"
+
+msgid "{n} slice(s) · {tokens} tokens · journals in {path}"
+msgstr "{n} slice(s) · {tokens} tokens · journals in {path}"
 
 msgid "{n} to do"
 msgstr "{n} to do"
@@ -443,6 +449,9 @@ msgstr "Abandoned"
 msgid "Accept"
 msgstr "Accept"
 
+msgid "acceptance"
+msgstr "acceptance"
+
 msgid "Acceptance criteria"
 msgstr "Acceptance criteria"
 
@@ -592,6 +601,9 @@ msgstr "Archived"
 
 msgid "Ask GitHub"
 msgstr "Ask GitHub"
+
+msgid "Asked for"
+msgstr "Asked for"
 
 msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
 msgstr "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
@@ -1038,6 +1050,9 @@ msgstr "Database connections held open. The panel's snapshot needs about twenty 
 msgid "Decision"
 msgstr "Decision"
 
+msgid "Decisions"
+msgstr "Decisions"
+
 msgid "Decomposing"
 msgstr "Decomposing"
 
@@ -1321,6 +1336,9 @@ msgstr "gate pass on S{seq}"
 
 msgid "Gate retries"
 msgstr "Gate retries"
+
+msgid "gates"
+msgstr "gates"
 
 msgid "Gates"
 msgstr "Gates"
@@ -1923,6 +1941,9 @@ msgstr "no uvx on PATH"
 msgid "No, keep going"
 msgstr "No, keep going"
 
+msgid "none recorded"
+msgstr "none recorded"
+
 msgid "None selected"
 msgstr "None selected"
 
@@ -2051,6 +2072,12 @@ msgstr "Open PR ↗"
 
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "opened as requirement {name} (grp {grp})"
+
+msgid "Opened by [orchestrator]({url}) v{v}."
+msgstr "Opened by [orchestrator]({url}) v{v}."
+
+msgid "Opened by [orchestrator]({url})."
+msgstr "Opened by [orchestrator]({url})."
 
 msgid "opened PR #{pr} to replace the closed one"
 msgstr "opened PR #{pr} to replace the closed one"
@@ -2505,6 +2532,9 @@ msgstr "resumed"
 msgid "Retrieval"
 msgstr "Retrieval"
 
+msgid "Retro"
+msgstr "Retro"
+
 msgid "Retrospective"
 msgstr "Retrospective"
 
@@ -2803,6 +2833,9 @@ msgstr "Slice baseline was lost in rebase; showing the entire branch relative to
 
 msgid "Slice durations"
 msgstr "Slice durations"
+
+msgid "Slices ({n}, all accepted)"
+msgstr "Slices ({n}, all accepted)"
 
 msgid "slices pending"
 msgstr "slices pending"

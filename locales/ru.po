@@ -94,6 +94,9 @@ msgid "{from} has sent the whole branch back {n} times. That is usually the acce
 msgstr "{from} возвращает всю ветку уже {n} раз. Обычно дело в критериях приёмки, а не в коде:\n"
 "{why}"
 
+msgid "{gates} pass"
+msgstr "{gates} пройдены"
+
 msgid "{good}"
 msgstr "{good}"
 
@@ -211,6 +214,9 @@ msgstr "{n, plural, one {# дело ждёт} few {# дела ждут} other {#
 
 msgid "{n} more queued behind it"
 msgstr "ещё {n} в очереди за ним"
+
+msgid "{n} slice(s) · {tokens} tokens · journals in {path}"
+msgstr "срезов: {n} · токенов: {tokens} · журналы в {path}"
 
 msgid "{n} to do"
 msgstr "{n} к разбору"
@@ -443,6 +449,9 @@ msgstr "Брошено"
 msgid "Accept"
 msgstr "Принять"
 
+msgid "acceptance"
+msgstr "приёмка"
+
 msgid "Acceptance criteria"
 msgstr "Критерии приёмки"
 
@@ -592,6 +601,9 @@ msgstr "В архиве"
 
 msgid "Ask GitHub"
 msgstr "Спросить GitHub"
+
+msgid "Asked for"
+msgstr "Что просили"
 
 msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
 msgstr "Предполагаемое окно контекста для каждой модели — на первый ход сессии; дальше реальное значение сообщает CLI. Занизите — модель с большим контекстом будет перезапускаться постоянно, каждый раз выбрасывая кэш."
@@ -1038,6 +1050,9 @@ msgstr "Сколько соединений с базой держать отк�
 msgid "Decision"
 msgstr "Решение"
 
+msgid "Decisions"
+msgstr "Решения"
+
 msgid "Decomposing"
 msgstr "Разбираем"
 
@@ -1321,6 +1336,9 @@ msgstr "гейт пройден на S{seq}"
 
 msgid "Gate retries"
 msgstr "Повторы гейтов"
+
+msgid "gates"
+msgstr "гейты"
 
 msgid "Gates"
 msgstr "Гейты"
@@ -1923,6 +1941,9 @@ msgstr "uvx нет в PATH"
 msgid "No, keep going"
 msgstr "Нет, продолжать"
 
+msgid "none recorded"
+msgstr "не записано"
+
 msgid "None selected"
 msgstr "Ничего не выбрано"
 
@@ -2051,6 +2072,12 @@ msgstr "Открыть PR ↗"
 
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "заведено как требование {name} (grp {grp})"
+
+msgid "Opened by [orchestrator]({url}) v{v}."
+msgstr "Открыт [orchestrator]({url}) v{v}."
+
+msgid "Opened by [orchestrator]({url})."
+msgstr "Открыт [orchestrator]({url})."
 
 msgid "opened PR #{pr} to replace the closed one"
 msgstr "открыт PR #{pr} взамен закрытого"
@@ -2505,6 +2532,9 @@ msgstr "продолжено"
 msgid "Retrieval"
 msgstr "Поиск"
 
+msgid "Retro"
+msgstr "Ретро"
+
 msgid "Retrospective"
 msgstr "Ретроспектива"
 
@@ -2803,6 +2833,9 @@ msgstr "База среза потерялась при ребейзе; пока
 
 msgid "Slice durations"
 msgstr "Длительность срезов"
+
+msgid "Slices ({n}, all accepted)"
+msgstr "Срезы ({n}, все приняты)"
 
 msgid "slices pending"
 msgstr "срезов ждут"

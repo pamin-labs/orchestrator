@@ -128,7 +128,13 @@ export interface StableParts {
   rolePrompt: string;
   /** Project onboarding pack — note(kind=onboarding). */
   onboarding?: string;
-  /** Language for human-facing output. Code/commits stay English. */
+  /**
+   * Language for human-facing output, commits and pull requests included.
+   *
+   * Code, branch names and the conventional `type(scope):` prefix stay English:
+   * the first two are identifiers and the third is matched by a regex that only
+   * accepts `[a-z0-9._/-]`.
+   */
   language?: string;
   model: string;
   effort?: string;
@@ -244,8 +250,8 @@ export function buildStable(parts: StableParts): StablePrompt {
   if (parts.language) {
     sections.push(
       `## Output language\n\nHuman-facing text (journal, channel messages, questions to the boss, ` +
-        `summaries): ${parts.language}.\nCode, commit messages, branch names, PR title and body, ` +
-        `error strings: English.`,
+        `summaries, commit messages, pull request title and body): ${parts.language}.\n` +
+        `Code, branch names, error strings, and a commit's \`type(scope):\` prefix: English.`,
     );
   }
   sections.push(ORCH_CONTRACT);

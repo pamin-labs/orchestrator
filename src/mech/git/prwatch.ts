@@ -1,4 +1,6 @@
 import { msg } from "@lingui/core/macro";
+import { renderSaid } from "../../platform/text/lang.ts";
+import type { Said } from "../../contracts/said.ts";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -12,6 +14,8 @@ import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
 import type { Github } from "./github.ts";
 import { pages } from "./paging.ts";
 import { parseRepo } from "../../contracts/repository.ts";
+import { iso, LOCALES, type Locale } from "../../contracts/config.ts";
+import { eld } from "eld/extrasmall";
 import { WORK } from "../sandbox/sandbox.ts";
 import { valueOr, jsonOr } from "../../contracts/json.ts";
 import { and, asc, desc, eq, isNotNull, ne } from "drizzle-orm";
@@ -155,9 +159,8 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
  * bothered and throws away what the reviewer needs: what was asked for, what each
  * slice promised, which gates ran. All of it is already in the database by the time
  * a PR opens, so asking a model would be paying for a SELECT.
- *
- * Labels are English; quoted material stays in its own language.
  */
+/** Labels follow the output language, like the body the Scribe wrote above them; quoted material was already in its own. */
 /** Ours, for the line every pull request carries. */
 const PROJECT_URL = "https://github.com/pamin-labs/orchestrator";
 
@@ -189,27 +192,76 @@ function version(): string {
 const TYPES = ["feat", "fix", "docs", "test", "refactor", "perf", "build", "chore"] as const;
 // fallow-ignore-next-line security-sink -- the only interpolation is `TYPES`, a module-level `as const` tuple of eight literals; no PR title or body reaches the pattern (they are the `test` arguments below).
 const SUBJECT = new RegExp(`^(${TYPES.join("|")})(\\([a-z0-9._/-]+\\))?: \\S`);
+// fallow-ignore-next-line security-sink -- the only interpolation is `TYPES`, the module-level `as const` tuple above; no PR title or body reaches the pattern.
+const SUBJECT_PREFIX = new RegExp(`^(${TYPES.join("|")})(\\([a-z0-9._/-]+\\))?:\\s*`);
 /**
- * A letter that is not written in the Latin script.
+ * Which language this message is in, according to a detector rather than a table.
  *
- * It was three hand-picked ranges — kana, Han, hangul — chosen when the only
- * other language was Chinese. `output.language` is ten now, and `перенести
- * проверку`, `μετακίνηση ελέγχου` and `نقل الفحص` all walked past, so ADR 035's
- * "commits and pull requests are English, always" held for three scripts and not
- * the rest. Unicode's property is the whole rule: `Common` and `Inherited` keep
- * digits, punctuation and combining marks legal, `Latin` keeps `déplacer` legal.
+ * This was `NOT_ENGLISH`, a Unicode script test, and it encoded the one rule ADR
+ * 035 had: commits are English always. They follow `output.language` now, and a
+ * script test cannot say that — it passes an English commit on a Chinese
+ * installation, which is the drift that actually happens, because the Scribe's
+ * own prefix tells it to write Chinese.
  */
-const NOT_ENGLISH = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u;
+/**
+ * `eld/extrasmall` — 932 kB, the smallest of four databases it ships. Measured
+ * against nine real commits: on subject *and* body every size is exact, on a
+ * subject alone the two smaller ones call `der skills-Mount war unter macOS leer`
+ * English. So the whole message is what gets detected, never the title.
+ */
+/**
+ * `newInstance()` and not the module's shared `eld`: `setLanguageSubset` is
+ * settings on the instance, and the global one is process-wide state anything
+ * else importing this package would share.
+ */
+const DETECTOR = eld.newInstance();
+
+/** The ten this product ships, as the ISO 639-1 codes the detector knows. `zh-Hant` is `zh` to it. */
+DETECTOR.setLanguageSubset([...new Set(LOCALES.map(iso))]);
+
+/**
+ * A full stop, in the three ways the ten locales write one.
+ *
+ * `endsWith(".")` was the whole rule while subjects were English. A Chinese or
+ * Japanese subject ends in an ideographic full stop and a fullwidth one is a
+ * keyboard away, so the rule stopped applying to the languages it had just been
+ * opened to. Found by the test that runs one commit through every locale.
+ */
+/** Escaped rather than written: these are code points being matched, not prose, and a guard counting CJK literals cannot tell. */
+const FULL_STOP = /[.\u3002\uFF0E]$/;
 
 /** Null when the message may be published, otherwise what to fix. */
-export function checkPrMessage(title: string, body: string): string | null {
+export function checkPrMessage(title: string, body: string, locale: Locale): string | null {
   const t = title.trim();
   if (!SUBJECT.test(t)) return `title needs a type prefix: ${TYPES.join("|")}, then an optional (scope), then ": "`;
   if (t.length > 72) return `title is ${t.length} characters and 72 is the cap`;
-  if (t.endsWith(".")) return "title does not end in a full stop";
-  if (NOT_ENGLISH.test(t) || NOT_ENGLISH.test(body)) return "commits and pull requests are English, always";
+  if (FULL_STOP.test(t)) return "title does not end in a full stop";
   if (body.trim().length < 20) return "the body says what the failure looked like, and one line is not that";
-  return null;
+  return wrongLanguage(t, body, locale);
+}
+
+/**
+ * The subject with its conventional prefix taken off, joined to the body.
+ *
+ * `fix(sandbox): ` is ASCII in every language and there is no point offering it
+ * as evidence of one; the body is most of the signal and is why this is not
+ * asked of the title alone.
+ */
+const said = (title: string, body: string): string => `${title.replace(SUBJECT_PREFIX, "")}\n\n${body}`.trim();
+
+/**
+ * Null unless the message is confidently in some other language.
+ *
+ * Confidence is the whole of the lenient direction. ADR 046's `GENERIC_GATE`
+ * refused correct cards, and this refuses a turn the Scribe gets once — so an
+ * unreliable reading publishes. A body that is mostly paths and identifiers
+ * reads as English whatever it was written in, and that is exactly the case
+ * `isReliable()` declines to call.
+ */
+function wrongLanguage(title: string, body: string, locale: Locale): string | null {
+  const found = DETECTOR.detect(said(title, body));
+  if (!found.isReliable() || !found.language || found.language === iso(locale)) return null;
+  return `commits and pull requests are written in ${locale}, and this reads as ${found.language}`;
 }
 
 /**
@@ -239,8 +291,9 @@ export async function prTitle(db: DB, grpId: number): Promise<string> {
   return g?.pr_title?.trim() || `orch: ${g?.name ?? "changes"}`;
 }
 
-export async function prBody(db: DB, grpId: number): Promise<string> {
+export async function prBody(db: DB, grpId: number, lang: string): Promise<string> {
   const out: string[] = [];
+  const say = (sentence: Said): string => renderSaid(lang, sentence);
 
   // The Scribe's, and first, because it is the only part written by something
   // that read the diff. Everything below is the record: true, assembled from the
@@ -258,7 +311,7 @@ export async function prBody(db: DB, grpId: number): Promise<string> {
     .where(and(eq(event.grp_id, grpId), eq(event.kind, "boss_say")))
     .orderBy(asc(event.seq))
     .limit(1);
-  if (idea) out.push(`## Asked for\n\n${idea.body.trim().slice(0, 1000)}`);
+  if (idea) out.push(`## ${say(msg`Asked for`)}\n\n${idea.body.trim().slice(0, 1000)}`);
 
   const slices = await db
     .select({ seq: slice.seq, title: slice.title, accept_spec: slice.accept_spec, gates_json: slice.gates_json })
@@ -272,11 +325,11 @@ export async function prBody(db: DB, grpId: number): Promise<string> {
         .map(([k]) => k);
       return (
         `- **S${s.seq} ${s.title}**\n` +
-        `  - acceptance: ${s.accept_spec.replace(/\s*\n\s*/g, " / ").slice(0, 300)}\n` +
-        `  - gates: ${passed.length ? passed.join(", ") + " pass" : "none recorded"}`
+        `  - ${say(msg`acceptance`)}: ${s.accept_spec.replace(/\s*\n\s*/g, " / ").slice(0, 300)}\n` +
+        `  - ${say(msg`gates`)}: ${passed.length ? say(msg`${{ gates: passed.join(", ") }} pass`) : say(msg`none recorded`)}`
       );
     });
-    out.push(`## Slices (${slices.length}, all accepted)\n\n${lines.join("\n")}`);
+    out.push(`## ${say(msg`Slices (${{ n: slices.length }}, all accepted)`)}\n\n${lines.join("\n")}`);
   }
 
   const decisions = await db
@@ -289,7 +342,7 @@ export async function prBody(db: DB, grpId: number): Promise<string> {
       const first = d.body.trim().split("\n")[0]!.slice(0, 200);
       return d.export_path ? `- [${first}](${d.export_path})` : `- ${first}`;
     });
-    out.push(`## Decisions\n\n${lines.join("\n")}`);
+    out.push(`## ${say(msg`Decisions`)}\n\n${lines.join("\n")}`);
   }
 
   const [retro] = await db
@@ -298,12 +351,14 @@ export async function prBody(db: DB, grpId: number): Promise<string> {
     .where(and(eq(note.grp_id, grpId), eq(note.kind, "retro")))
     .orderBy(desc(note.id))
     .limit(1);
-  if (retro) out.push(`## Retro\n\n${retro.body.trim().slice(0, 2000)}`);
+  if (retro) out.push(`## ${say(msg`Retro`)}\n\n${retro.body.trim().slice(0, 2000)}`);
 
   if (g) {
     out.push(
-      `---\n\`${g.branch ?? "?"}\` · ${slices.length} slice(s) · ${g.spent_tokens} tokens · ` +
-        `journals in \`docs/journal/${g.name}/\``,
+      `---\n\`${g.branch ?? "?"}\` · ` +
+        say(
+          msg`${{ n: slices.length }} slice(s) · ${{ tokens: g.spent_tokens }} tokens · journals in ${{ path: `docs/journal/${g.name}/` }}`,
+        ),
     );
   }
   // Said once, at the bottom, because a reviewer deciding whether to trust this
@@ -311,7 +366,13 @@ export async function prBody(db: DB, grpId: number): Promise<string> {
   // is the kind of thing that gets a project banned from a repository rather
   // than asked about. One line, no badge.
   const v = version();
-  out.push(`Opened by [orchestrator](${PROJECT_URL})${v ? ` v${v}` : ""}.`);
+  out.push(
+    say(
+      v
+        ? msg`Opened by [orchestrator](${{ url: PROJECT_URL }}) v${{ v }}.`
+        : msg`Opened by [orchestrator](${{ url: PROJECT_URL }}).`,
+    ),
+  );
   return out.join("\n\n");
 }
 

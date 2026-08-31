@@ -94,6 +94,9 @@ msgid "{from} has sent the whole branch back {n} times. That is usually the acce
 msgstr "{from} devolveu o branch inteiro {n} vezes. Isso costuma ser o critério de aceitação, não o código:\n"
 "{why}"
 
+msgid "{gates} pass"
+msgstr "{gates} aprovados"
+
 msgid "{good}"
 msgstr "{good}"
 
@@ -211,6 +214,9 @@ msgstr "{n, plural, one {# coisa precisa} other {# coisas precisam}} de ti:"
 
 msgid "{n} more queued behind it"
 msgstr "mais {n} na fila atrás"
+
+msgid "{n} slice(s) · {tokens} tokens · journals in {path}"
+msgstr "{n} fatia(s) · {tokens} tokens · diários em {path}"
 
 msgid "{n} to do"
 msgstr "{n} pendentes"
@@ -443,6 +449,9 @@ msgstr "Abandonado"
 msgid "Accept"
 msgstr "Aceitar"
 
+msgid "acceptance"
+msgstr "aceitação"
+
 msgid "Acceptance criteria"
 msgstr "Critérios de aceite"
 
@@ -592,6 +601,9 @@ msgstr "Arquivado"
 
 msgid "Ask GitHub"
 msgstr "Perguntar ao GitHub"
+
+msgid "Asked for"
+msgstr "O que foi pedido"
 
 msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
 msgstr "Janela de contexto presumida por modelo, usada no primeiro turno da sessão — depois a CLI informa o valor real. Baixa demais, um modelo de contexto grande reinicia sem parar e joga fora o cache toda vez."
@@ -1038,6 +1050,9 @@ msgstr "Conexões do banco mantidas abertas. O snapshot do painel precisa de uma
 msgid "Decision"
 msgstr "Decisão"
 
+msgid "Decisions"
+msgstr "Decisões"
+
 msgid "Decomposing"
 msgstr "Decompondo"
 
@@ -1321,6 +1336,9 @@ msgstr "gate passou em S{seq}"
 
 msgid "Gate retries"
 msgstr "Novas tentativas do gate"
+
+msgid "gates"
+msgstr "gates"
 
 msgid "Gates"
 msgstr "Gates"
@@ -1923,6 +1941,9 @@ msgstr "não há uvx no PATH"
 msgid "No, keep going"
 msgstr "Não, continuar"
 
+msgid "none recorded"
+msgstr "nenhum registado"
+
 msgid "None selected"
 msgstr "Nada selecionado"
 
@@ -2051,6 +2072,12 @@ msgstr "Abrir PR ↗"
 
 msgid "opened as requirement {name} (grp {grp})"
 msgstr "aberto como requisito {name} (grp {grp})"
+
+msgid "Opened by [orchestrator]({url}) v{v}."
+msgstr "Aberto por [orchestrator]({url}) v{v}."
+
+msgid "Opened by [orchestrator]({url})."
+msgstr "Aberto por [orchestrator]({url})."
 
 msgid "opened PR #{pr} to replace the closed one"
 msgstr "aberto o PR #{pr} para substituir o que foi fechado"
@@ -2505,6 +2532,9 @@ msgstr "retomada"
 msgid "Retrieval"
 msgstr "Recuperação"
 
+msgid "Retro"
+msgstr "Retrospetiva"
+
 msgid "Retrospective"
 msgstr "Retrospectiva"
 
@@ -2803,6 +2833,9 @@ msgstr "A base da fatia se perdeu no rebase; mostrando a branch inteira em rela�
 
 msgid "Slice durations"
 msgstr "Duração das fatias"
+
+msgid "Slices ({n}, all accepted)"
+msgstr "Fatias ({n}, todas aceites)"
 
 msgid "slices pending"
 msgstr "fatias pendentes"
