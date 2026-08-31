@@ -13,11 +13,11 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `fix/ctrl-c-and-the-ticket-title`, 2026-08-31.
+Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-08-31.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 1997 pass, 6 environment skips, 0 fail, 2003 across 248 files
-- Coverage: 84.00% of statements, 74.26% of branches, 79.90% of functions
+- Tests: 2001 pass, 6 environment skips, 0 fail, 2007 across 250 files
+- Coverage: 84.02% of statements, 74.26% of branches, 79.91% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
 - Fallow security, full inventory: **1** candidate —
@@ -69,19 +69,19 @@ Measured on `fix/ctrl-c-and-the-ticket-title`, 2026-08-31.
    [`plan.md`](plan.md), which owns that list; this file records only what has
    been measured against it.
 2. **Watch the nightly stress run** and replay any property failure from its
-   reported seed and path. Green on the last three runs; one failure on
-   2026-08-26.
-3. **A group name that collides answers 500.** `(project_id, name)` is unique,
-   `newGroup` has no retry and `src/http/handler.ts` has no 23505 mapping, so two
-   ideas that slug the same fail at the shared insert. Pre-dates the title
-   writer and is unaffected by it; the fix belongs at `newGroup`, which all four
-   creation paths go through.
-4. **The `orch` CLI hang was fixed by mechanism, not by reproduction.**
+   reported seed and path. The 2026-08-31 failure is fixed: a test leaving work
+   in flight committed after the reset's delete took its snapshot, and a blind
+   `setval(seq, 1, false)` then wound the sequence back behind the survivor. The
+   reset is `max(id) + 1` now, measured at 0.675ms more per call — about 1.1s
+   over a suite of ~1694. The 2026-08-26 failure was a different step in the same
+   job — `perf:bench` exiting 1 — and has not recurred in the five nightlies
+   since; it is unexplained, not fixed.
+3. **The `orch` CLI hang was fixed by mechanism, not by reproduction.**
    `readPiped` bounds the first byte on a non-tty stdin. If a command still
    hangs in a non-interactive parent, run it with `< /dev/null` first: the same
    hang there means stdin is not the cause and the search moves to the mailbox
    poll (`src/orch/cli.ts`, up to 20 minutes, silent).
-5. **The `sha-*` staging tags on `ghcr.io/pamin-labs/orch-agent` cannot be
+4. **The `sha-*` staging tags on `ghcr.io/pamin-labs/orch-agent` cannot be
    deleted, and the panel filters them instead.** Measured: 21 tags over 9
    manifests, with `latest`'s index pointing at the manifests
    `sha-<commit>-<platform>` names and `sha-<commit>` sharing its digest with
