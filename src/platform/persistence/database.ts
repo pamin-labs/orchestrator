@@ -433,35 +433,60 @@ const SETTINGS = sql`SELECT set_config('lock_timeout', '250ms', true),
   set_config('session_replication_role', 'replica', true)`;
 
 /**
- * The deletes and the identity resets, as one statement.
- *
- * The CTE's `SELECT` has to project something, so it projects the `setval` calls
- * — which turns two round trips into one, 1,694 times a suite. The sequence names
- * come from `schema.ts` rather than from `pg_sequences`, which was 98 calls and
- * 277ms to answer a question the schema already knows: Drizzle names one
- * `<table>_<column>_seq` per generated identity, which is what PostgreSQL made.
+ * Every table emptied under one snapshot. The CTE has to project something, and
+ * `1` is all it has left to project — the resets used to ride here and cannot.
  */
-const EMPTY = (() => {
-  const deletes = sql.join(
-    TABLES.map((t, i) => sql`${sql.identifier(`d${i}`)} AS (DELETE FROM ${sql.identifier(t)})`),
-    sql`, `,
-  );
-  const names = Object.values<unknown>(schema)
-    .filter((v): v is PgTable => is(v, PgTable))
-    .flatMap((table) => {
-      const config = getTableConfig(table);
-      return config.columns.filter((c) => c.generatedIdentity).map((c) => `${config.name}_${c.name}_seq`);
-    });
-  // `sql.join` over `sql` fragments, so each name is a bound parameter rather than
-  // a quoted literal this file had to escape itself.
-  const resets = names.length
-    ? sql.join(
-        names.map((n) => sql`setval(${n}, 1, false)`),
-        sql`, `,
-      )
-    : sql`1`;
-  return sql`WITH ${deletes} SELECT ${resets}`;
-})();
+const EMPTY = sql`WITH ${sql.join(
+  TABLES.map((t, i) => sql`${sql.identifier(`d${i}`)} AS (DELETE FROM ${sql.identifier(t)})`),
+  sql`, `,
+)} SELECT 1`;
+
+/** The generated identities, from `schema.ts`: Drizzle names one `<table>_<column>_seq` each. */
+const IDENTITIES = Object.values<unknown>(schema)
+  .filter((v): v is PgTable => is(v, PgTable))
+  .flatMap((table) => {
+    const config = getTableConfig(table);
+    return config.columns
+      .filter((c) => c.generatedIdentity)
+      .map((c) => ({ seq: `${config.name}_${c.name}_seq`, table: config.name, column: c.name }));
+  });
+
+/**
+ * Past whatever survived, not back to 1.
+ *
+ * A blind `setval(seq, 1, false)` is only right when the delete above emptied the
+ * table, and it does not always: a test that leaves work in flight commits after
+ * that statement's snapshot, so the row stays and the sequence is wound back
+ * behind it. The next ordinary insert then asks for an id that is already there —
+ * `duplicate key value violates unique constraint "agent_pkey", Key (id)=(3)`,
+ * two of 16490 on the 2026-08-31 nightly and one on 2026-08-26.
+ */
+/**
+ * A second round trip, and it used to be one: the resets were the CTE's
+ * projection, which cannot see its own deletes. This statement can, being after
+ * them in the same transaction. Measured over the suite, the cost of the extra
+ * statement is in the noise beside what it removes.
+ */
+/**
+ * Exported for the guard, which needs rows the reset did not delete.
+ *
+ * No single-threaded test can leave one behind — `emptied` deletes every table —
+ * so the property is pinned here, one layer down, where the survivor can simply
+ * be there.
+ */
+export async function resetIdentities(db: DB): Promise<void> {
+  await db.execute(RESETS);
+}
+
+const RESETS = IDENTITIES.length
+  ? sql`SELECT ${sql.join(
+      IDENTITIES.map(
+        (i) =>
+          sql`setval(${i.seq}, GREATEST(1, (SELECT coalesce(max(${sql.identifier(i.column)}), 0) FROM ${sql.identifier(i.table)}) + 1), false)`,
+      ),
+      sql`, `,
+    )}`
+  : sql`SELECT 1`;
 
 async function emptied(db: DB): Promise<void> {
   for (let attempt = 0; ; attempt++) {
@@ -469,6 +494,7 @@ async function emptied(db: DB): Promise<void> {
       await db.transaction(async (tx) => {
         await tx.execute(SETTINGS);
         await tx.execute(EMPTY);
+        await tx.execute(RESETS);
       });
       return;
     } catch (error) {
