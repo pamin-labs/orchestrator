@@ -316,6 +316,19 @@ export function localeOf(lang: string | undefined): Locale {
 export const outputLanguage = (cfg: { language: string; panelLanguage: string }): string =>
   cfg.language || cfg.panelLanguage || "en";
 
+/**
+ * The addresses that mean "this machine".
+ *
+ * Two readers, and they ask opposite questions of the same three strings: the
+ * `host` knob refuses anything that is *not* one of these, and the database
+ * fallback starts a local container only when the connection string *is* one.
+ * A second copy would let those two disagree about what local means.
+ */
+const LOOPBACK = ["127.0.0.1", "localhost", "::1"] as const;
+
+/** Whether a hostname names this machine. Bare host, no port and no brackets. */
+export const isLoopback = (host: string): boolean => (LOOPBACK as readonly string[]).includes(host);
+
 export const ConfigSchema = z.object({
   /** What the agents write in, and what a webhook carries. `""` follows the panel. */
   language: z.string(),
@@ -341,7 +354,7 @@ export const ConfigSchema = z.object({
    * while this refused it, and what they got was a startup failure with no reason
    * in it. Publish a port with `-p 127.0.0.1:47821:47821` instead.
    */
-  host: z.enum(["127.0.0.1", "localhost", "::1"], {
+  host: z.enum(LOOPBACK, {
     error: "host must be a loopback address: this server has no login, so anything reachable is the boss",
   }),
   port: z.number().int().min(1).max(65535),
