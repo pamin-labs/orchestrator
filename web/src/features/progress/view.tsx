@@ -6,6 +6,7 @@ import { Tip } from "../../ui/tooltip";
 import { STOPS, countWaiting, gates, heldApproved, prUrl, statusLabel } from "../../shared/select";
 import { cardGoal } from "../../shared/prose";
 import type { Archived, Group, Slice, State } from "../../shared/api";
+import { heading } from "../../shared/api";
 import { usePaged } from "../../shared/page";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
@@ -282,7 +283,7 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
     >
       <div className="min-w-0">
         <div className="flex items-baseline gap-2">
-          <span className="truncate font-display text-name font-semibold">{g.name}</span>
+          <span className="truncate font-display text-name font-semibold">{heading(g)}</span>
           {facts.doing && <i className="breathe size-1.5 shrink-0 rounded-full bg-ok" />}
         </div>
         <Meta>
@@ -372,7 +373,7 @@ function Done({ rows }: { rows: Archived[] }) {
           className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 border-t border-rule-soft first:border-t-0 px-2 py-2"
         >
           <span className="min-w-0 truncate text-body text-ink-2">
-            {a.name}
+            {heading(a)}
             {a.pr_number ? <Meta className="ml-2">#{a.pr_number}</Meta> : null}
           </span>
           <Meta>

@@ -17,6 +17,7 @@ const sample = {
     id: 1,
     project_id: 1,
     name: "g",
+    title: null,
     branch: null,
     status: "RUNNING",
     owns_json: ["src/a.ts"],

@@ -26,6 +26,8 @@ import { outputLanguage } from "../../contracts/config.ts";
 export interface NewGroup {
   projectId: number;
   name: string;
+  /** The heading a person reads. `name` stays the ascii slug git and the CLI use. */
+  title?: string | null;
   /** What is being asked for, in the boss's words or an agent's. */
   idea: string;
   /** What goes on the blackboard, if it differs — attachments, provenance. */
@@ -45,6 +47,7 @@ export async function newGroup(ctx: Ctx, g: NewGroup): Promise<{ id: number; cha
       .values({
         project_id: g.projectId,
         name: g.name,
+        title: g.title ?? null,
         // `status` has a schema default of DRAFT, so PLANNING has to be said.
         status: "PLANNING",
         shared_grant: g.sharedGrant?.length ? JSON.stringify(g.sharedGrant) : null,

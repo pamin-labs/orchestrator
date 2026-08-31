@@ -36,6 +36,7 @@ const group = (id: number, projectId: number, over: Partial<State["groups"][numb
   id,
   project_id: projectId,
   name: `需求${id}`,
+  title: null,
   branch: null,
   status: "PARKED" as const,
   owns_json: [],

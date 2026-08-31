@@ -18,6 +18,7 @@ const group = (status: Group["status"], approvedAt: number | null = null): Group
   id: 1,
   project_id: 1,
   name: "g",
+  title: null,
   branch: null,
   status,
   owns_json: [],

@@ -117,14 +117,47 @@ export async function shutdownRuntime(
     Promise.all([ops.drain(), ops.gracefulStop()]).then(() => true),
     ops.sleep(deadlineMs).then(() => false),
   ]);
+  // Every step of the force path is raced, not just the last one. This branch
+  // exists because phase one already failed, so it is the branch least entitled
+  // to assume anything answers: `reclaim` has been a Postgres round trip since
+  // the sqlite removal, and a bare await on it is how ctrl-c stopped working on
+  // a machine whose database was unreachable — the one state that reaches here.
   if (!graceful) {
-    await ops.reclaim();
+    await Promise.race([ops.reclaim(), ops.sleep(deadlineMs)]);
     ops.abort();
-    await ops.forceStop();
+    await Promise.race([ops.forceStop(), ops.sleep(1_000)]);
     await Promise.race([ops.drain(), ops.sleep(1_000)]);
   }
   ops.close();
   return graceful ? 0 : 1;
+}
+
+/**
+ * Ctrl-C, and the second one.
+ *
+ * Registering a handler replaces bun's default terminate, so only `exit` ends
+ * this process now — and a rejecting `shutdown()` used to reach no exit at all,
+ * landing in the `unhandledRejection` backstop that logs and keeps running. Both
+ * arms of `then` exit; the second interrupt does not wait for the first.
+ */
+export function interruptHandler(ops: {
+  shutdown: () => Promise<number>;
+  exit: (code: number) => void;
+  say: (line: string) => void;
+}): () => void {
+  let shuttingDown = false;
+  return () => {
+    if (shuttingDown) {
+      ops.exit(1);
+      return;
+    }
+    shuttingDown = true;
+    // Said before anything is awaited. A tab holding the SSE stream open keeps
+    // `server.stop(false)` from resolving, so the graceful phase burns its whole
+    // deadline in silence — which reads as ctrl-c having done nothing.
+    ops.say("shutting down — press ctrl-c again to stop waiting");
+    ops.shutdown().then(ops.exit, () => ops.exit(1));
+  };
 }
 
 /**
@@ -1214,12 +1247,11 @@ if (import.meta.main) {
   // them as orphans and requeues instead of leaving the group wedged behind a
   // job that nothing will ever finish. Only installed here: `start()` is called
   // many times per test run, and each would add a listener.
-  let shuttingDown = false;
-  const onSignal = () => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    void shutdown().then((code) => process.exit(code));
-  };
+  const onSignal = interruptHandler({
+    shutdown,
+    exit: (code) => process.exit(code),
+    say: (line) => consola.warn(line),
+  });
   for (const sig of ["SIGINT", "SIGTERM"] as const) {
     process.on(sig, onSignal);
   }

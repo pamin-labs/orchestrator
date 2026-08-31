@@ -16,6 +16,7 @@ import {
   AnswerDraftSchema,
   api,
   groupAction,
+  heading,
   mutate,
   readApi,
   sliceDecision,
@@ -460,7 +461,7 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-rule pb-3">
-      <span className="font-display text-title font-semibold">{g.name}</span>
+      <span className="font-display text-title font-semibold">{heading(g)}</span>
       <Badge tone={groupTone(g)}>{statusLabel(g)}</Badge>
       <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {g.branch && <Meta>{g.branch}</Meta>}

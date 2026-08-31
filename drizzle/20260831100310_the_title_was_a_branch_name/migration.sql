@@ -1,0 +1,1 @@
+ALTER TABLE "grp" ADD COLUMN "title" text;

@@ -9,6 +9,7 @@ import { Tab, TabList, TabPanel, Tabs } from "../../ui/tabs";
 import { Tip } from "../../ui/tooltip";
 import { BurnChart, SplitDonut } from "./chart";
 import type { Agent, AgentCost, Cost, Slice, State } from "../../shared/api";
+import { heading } from "../../shared/api";
 import { frameText, type PanelFrame } from "../../shared/stream";
 import { labelOf, owns } from "../../shared/select";
 import { K, list } from "../../shared/format";
@@ -367,8 +368,8 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                          py-2.5 first:border-t-0 max-[52rem]:grid-cols-1 max-[52rem]:gap-y-1"
             >
               <div className="min-w-0">
-                <Tip label={g.name}>
-                  <div className="truncate font-display text-base font-semibold">{g.name}</div>
+                <Tip label={heading(g)}>
+                  <div className="truncate font-display text-base font-semibold">{heading(g)}</div>
                 </Tip>
                 {others.length > 0 && (
                   <Tip label={overlapping}>

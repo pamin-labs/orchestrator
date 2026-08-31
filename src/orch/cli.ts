@@ -136,6 +136,40 @@ async function send(request: Promise<JsonReply>): Promise<ProtocolResponse> {
 }
 
 /**
+ * How long a non-tty stdin gets to produce its first byte before we call it empty.
+ *
+ * Only the first byte is on a clock. Nothing can be truncated by it, because it
+ * fires only when no byte has arrived at all — a slow producer that has already
+ * said something is then read to EOF with no deadline of its own.
+ */
+const STDIN_FIRST_BYTE_MS = 5_000;
+
+/**
+ * Everything on a piped stdin, or "" when nobody is writing one.
+ *
+ * Exported for the test: `isTTY` answers "is a human typing", not "will this ever
+ * end". An inherited pipe with no writer is neither, and `Bun.stdin.text()` waits
+ * on it forever — no output, no usage message, and in a non-interactive parent no
+ * ctrl-c to escape with either.
+ */
+export async function readPiped(
+  stream: ReadableStream<Uint8Array>,
+  firstByteMs = STDIN_FIRST_BYTE_MS,
+): Promise<string> {
+  const reader = stream.getReader();
+  const first = await Promise.race([reader.read(), Bun.sleep(firstByteMs).then(() => null)]);
+  if (first === null) {
+    await reader.cancel().catch(() => {});
+    console.error(`nothing arrived on stdin within ${firstByteMs}ms, so it is being read as empty`);
+    return "";
+  }
+  const decoder = new TextDecoder();
+  let out = "";
+  for (let r = first; !r.done; r = await reader.read()) if (r.value) out += decoder.decode(r.value, { stream: true });
+  return out + decoder.decode();
+}
+
+/**
  * What was piped in, or nothing when there is a terminal on the other end.
  *
  * `Bun.stdin.text()` on a tty waits for a human to type and press ctrl-D. Four
@@ -146,7 +180,7 @@ async function send(request: Promise<JsonReply>): Promise<ProtocolResponse> {
  * A tty means nothing was piped, which is the case the callers already handle.
  */
 async function readStdin(): Promise<string> {
-  return process.stdin.isTTY ? "" : await Bun.stdin.text();
+  return process.stdin.isTTY ? "" : await readPiped(Bun.stdin.stream());
 }
 
 export async function main(argv: string[]): Promise<number> {

@@ -105,6 +105,12 @@ export const grp = pgTable(
       .notNull()
       .references(() => project.id),
     name: text().notNull(),
+    // What the boss reads, where `name` is what git and the CLI read. `name` is
+    // the branch, the worktree path, the journal path and the key agents address
+    // a group by, under a unique constraint — so it stays an ascii slug and the
+    // sentence goes here. Null on every group nothing wrote a title for, and the
+    // panel falls back to `name` for those.
+    title: text(),
     branch: text(),
     status: text({ enum: GRP_STATES }).notNull().default("DRAFT"),
     owns_json: jsonb().$type<Json>().notNull().default([]),
