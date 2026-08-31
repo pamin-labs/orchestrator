@@ -45,7 +45,7 @@ test("an empty project still teaches the interface", () => {
   // project's time go" is a sibling of "which requirements are running" rather
   // than a detail inside it.
   const view = render();
-  shown(view, "右上角 ＋ 新需求");
+  shown(view, "右上角 ＋ 新工单");
   expect(view.getAllByRole("tab").map((tab) => tab.textContent)).not.toContain("耗时");
 });
 

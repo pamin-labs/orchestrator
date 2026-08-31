@@ -309,7 +309,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
           No boundaries drawn yet. The Architect decides which paths each group may write before work starts; groups
           without one run into the same files.
         </Trans>{" "}
-        {count > 0 && t`${count} requirements have no boundary right now: ${bareNames}.`}
+        {count > 0 && t`${count} tickets have no boundary right now: ${bareNames}.`}
       </Empty>
     );
   }
@@ -324,7 +324,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
       <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {hit.length ? (
           <b className="text-body font-semibold text-bad">
-            <Trans>{hitCount} requirements want the same files and cannot run together</Trans>
+            <Trans>{hitCount} tickets want the same files and cannot run together</Trans>
           </b>
         ) : (
           <b className="text-body font-semibold">
@@ -332,11 +332,11 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                 nothing to attach it to. */}
             {bare.length ? (
               <Trans>
-                {groupCount} requirements touch different files and can run together ({{ more: bare.length }} more not
-                yet assigned)
+                {groupCount} tickets touch different files and can run together ({{ more: bare.length }} more not yet
+                assigned)
               </Trans>
             ) : (
-              <Trans>{groupCount} requirements touch different files and can run together</Trans>
+              <Trans>{groupCount} tickets touch different files and can run together</Trans>
             )}
           </b>
         )}
@@ -348,7 +348,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                       text-ink-3 max-[52rem]:grid-cols-1"
       >
         <span>
-          <Trans>Requirement</Trans>
+          <Trans>Ticket</Trans>
         </span>
         <span>
           <Trans>Can modify which files</Trans>
@@ -473,8 +473,8 @@ export function CostView({ cost }: { cost: Cost | null }) {
     return (
       <Empty>
         <Trans>
-          No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag
-          determines which model.
+          No tokens spent yet. After approving plan cards, costs break down by ticket per agent. Tier tag determines
+          which model.
         </Trans>
       </Empty>
     );
@@ -504,7 +504,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
         <Tabs defaultValue="grp" className="flex min-h-0 min-w-0 flex-col">
           <TabList>
             <Tab value="grp">
-              <Trans>By requirement</Trans>
+              <Trans>By ticket</Trans>
             </Tab>
             <Tab value="tier">
               <Trans>By tier</Trans>
@@ -532,7 +532,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
               {standing.length > 0 && (
                 <Node
                   label={t`Standing post`}
-                  note={t`Shared across requirements`}
+                  note={t`Shared across tickets`}
                   tokens={standingTotal}
                   top={top}
                   share={standingTotal / sum}
@@ -568,7 +568,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
               </span>
             </div>
             <div className="mt-1.5 text-secondary text-ink-2">
-              <Trans>Per delivered requirement</Trans> <b className="font-mono font-semibold text-ink">{summary.per}</b>
+              <Trans>Per delivered ticket</Trans> <b className="font-mono font-semibold text-ink">{summary.per}</b>
               <span className="text-ink-3">{summary.perNote}</span>
             </div>
             <Tip label={t`Drop below 50% = prompt assembly broken, 3-5× more expensive per turn`}>

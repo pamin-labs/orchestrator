@@ -494,7 +494,7 @@ export const deleteProject = (async (ctx, _req, params) => {
   await ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    say: msg`Removed the project ${{ name: p.name }} (${{ repo: p.repo_path }}): ${plural({ n: grps.length }, { one: "# requirement", other: "# requirements" })}, the containers and the records are gone. Nothing on GitHub was touched.`,
+    say: msg`Removed the project ${{ name: p.name }} (${{ repo: p.repo_path }}): ${plural({ n: grps.length }, { one: "# ticket", other: "# tickets" })}, the containers and the records are gone. Nothing on GitHub was touched.`,
   });
   await ctx.sched.tick();
   return json({ ok: true, groups: grps.length, failed });

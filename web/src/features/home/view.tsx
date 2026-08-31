@@ -93,7 +93,7 @@ export function Home({
                   // Nothing has ever been asked of this project, so the row is where to
                   // ask. `relative` puts it above the stretched name, not on it.
                   <Button className="relative" onClick={() => onNew(p.id)}>
-                    <Trans>+ New requirement</Trans>
+                    <Trans>+ New ticket</Trans>
                   </Button>
                 ) : (
                   meta.length > 0 && <Meta className="whitespace-nowrap">{meta.join(" · ")}</Meta>

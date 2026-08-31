@@ -79,7 +79,7 @@ function Paged({ blocks }: { blocks: { node: React.ReactNode }[] }) {
       {rest > 0 && (
         <div className="border-t border-rule-soft px-2 py-2">
           <Button variant="quiet" size="sm" onClick={more}>
-            <Trans>{rest} more requirements</Trans>
+            <Trans>{rest} more tickets</Trans>
           </Button>
         </div>
       )}

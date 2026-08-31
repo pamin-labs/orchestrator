@@ -214,10 +214,7 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
         // A stored column the boss reads back in the queue, so it is rendered
         // rather than keyed — ADR 035 §3's exemption for escalation rows. The
         // sentence the *agent* gets is `answered()` below, and stays English.
-        answer: renderSaid(
-          outputLanguage(ctx.config),
-          msg`opened as requirement ${{ name }} (grp ${{ grp: created.id }})`,
-        ),
+        answer: renderSaid(outputLanguage(ctx.config), msg`opened as ticket ${{ name }} (grp ${{ grp: created.id }})`),
         answered_by: "boss",
         chain_state: "answered",
         answered_at: Date.now(),
@@ -237,7 +234,7 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
         grpId: esc.grp_id,
         author: "boss",
         kind: "state_change",
-        say: msg`this question became requirement ${{ name }} (grp ${{ grp: created.id }})`,
+        say: msg`this question became ticket ${{ name }} (grp ${{ grp: created.id }})`,
         meta: { requirement: created.id, escalation_id: id },
       });
     }

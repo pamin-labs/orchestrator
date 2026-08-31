@@ -65,14 +65,14 @@ msgstr "{count} 个仓库"
 msgid "{count} repositories, most recently touched first"
 msgstr "{count} 个仓库，最近动过的在前"
 
-msgid "{count} requirements have no boundary right now: {bareNames}."
-msgstr "目前 {count} 个需求没有边界：{bareNames}。"
-
 msgid "{count} selected"
 msgstr "选了 {count} 个"
 
 msgid "{count} staged at {path}"
 msgstr "{path} 下备好了 {count} 个"
+
+msgid "{count} tickets have no boundary right now: {bareNames}."
+msgstr "目前 {count} 个工单没有边界：{bareNames}。"
 
 msgid "{d} days ago"
 msgstr "{d} 天前"
@@ -106,17 +106,17 @@ msgstr "{good}（另外还有 {stale} —— 检查一下 [egress] image）"
 msgid "{group}: {question}"
 msgstr "{group}：{question}"
 
-msgid "{groupCount} requirements touch different files and can run together"
-msgstr "{groupCount} 个需求各改各的，可以一起跑"
+msgid "{groupCount} tickets touch different files and can run together"
+msgstr "{groupCount} 个工单各改各的，可以一起跑"
 
-msgid "{groupCount} requirements touch different files and can run together ({more} more not yet assigned)"
-msgstr "{groupCount} 个需求各改各的，可以一起跑（还有 {more} 个没分）"
+msgid "{groupCount} tickets touch different files and can run together ({more} more not yet assigned)"
+msgstr "{groupCount} 个工单各改各的，可以一起跑（还有 {more} 个没分）"
 
-msgid "{groups, plural, one {# requirement} other {# requirements}} in <0>{repoPath}</0>"
-msgstr "<0>{repoPath}</0> 的 {groups, plural, other {# 个需求}}"
+msgid "{groups, plural, one {# ticket} other {# tickets}} in <0>{repoPath}</0>"
+msgstr "<0>{repoPath}</0> 的 {groups, plural, other {# 个工单}}"
 
-msgid "{groups, plural, one {The one requirement in {repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.} other {All # requirements in {repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.}}"
-msgstr "{groups, plural, other {{repoPath} 的 # 个需求——连同它们的容器、卡片、记录和附件——都会被删除，且无法恢复。}}"
+msgid "{groups, plural, one {The one ticket in {repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.} other {All # tickets in {repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.}}"
+msgstr "{groups, plural, other {{repoPath} 的 # 个工单——连同它们的容器、卡片、记录和附件——都会被删除，且无法恢复。}}"
 
 msgid "{hard} blocking the whole group"
 msgstr "{hard} 条卡着全组"
@@ -133,8 +133,8 @@ msgstr "还有 {hiddenLines} 行"
 msgid "{hint} stored; paste a new one to replace it"
 msgstr "已存 {hint}，粘新的就换掉"
 
-msgid "{hitCount} requirements want the same files and cannot run together"
-msgstr "{hitCount} 个需求想改同一批文件，不能一起跑"
+msgid "{hitCount} tickets want the same files and cannot run together"
+msgstr "{hitCount} 个工单想改同一批文件，不能一起跑"
 
 msgid "{hours} hr"
 msgstr "{hours} 小时"
@@ -281,8 +281,8 @@ msgstr "{name} 把 {tokens} tokens 花完了，全组挂起"
 msgid "{name}: {n, plural, one {# running turn was} other {# running turns were}} killed before the data goes"
 msgstr "{name}：{n, plural, other {# 个在跑的 turn}} 先掐掉了，再删数据"
 
-msgid "{name}: PR #{pr} was closed — reopen it or drop the requirement"
-msgstr "{name}：PR #{pr} 被关了 —— 重开，或者这个需求不做了"
+msgid "{name}: PR #{pr} was closed — reopen it or drop the ticket"
+msgstr "{name}：PR #{pr} 被关了 —— 重开，或者这个工单不做了"
 
 msgid "{name}: the PR will not open — {why}"
 msgstr "{name}：PR 开不出来 —— {why}"
@@ -333,7 +333,7 @@ msgid "{resource} failed {n}x with no code change in between — treat the envir
 msgstr "{resource} 失败 {n} 次而代码没变 —— 先怀疑环境，别再改代码"
 
 msgid "{resource} is failing in {n, plural, one {# group} other {# different groups}} — likely the project, not the groups"
-msgstr "{resource} 在 {n, plural, other {# 个不同的需求}} 里都在失败 —— 多半是项目的问题，不是这些需求的问题"
+msgstr "{resource} 在 {n, plural, other {# 个不同的工单}} 里都在失败 —— 多半是项目的问题，不是这些工单的问题"
 
 msgid "{rest} more of {total}"
 msgstr "还有 {rest} 个（共 {total}）"
@@ -342,8 +342,8 @@ msgctxt "notes"
 msgid "{rest} more of {total}"
 msgstr "还有 {rest} 条（共 {total}）"
 
-msgid "{rest} more requirements"
-msgstr "还有 {rest} 条需求"
+msgid "{rest} more tickets"
+msgstr "还有 {rest} 条工单"
 
 msgid "{role} finished {n, plural, one {# turn} other {# turns}} without changing a file, a task or a note"
 msgstr "{role} 连续 {n} 个 turn 没动过文件、任务或记录"
@@ -417,8 +417,8 @@ msgstr "← 回到整段时间"
 msgid "+ Add project"
 msgstr "＋ 添加项目"
 
-msgid "+ New requirement"
-msgstr "＋ 新需求"
+msgid "+ New ticket"
+msgstr "＋ 新工单"
 
 msgid "1/4 of host cores"
 msgstr "宿主核数的 1/4"
@@ -440,8 +440,8 @@ msgstr "暂停的组在等你，等的时候还占着一个并发位。这是它
 msgid "A project's config has to be a JSON object. One partial edit will not be allowed to replace the whole of it."
 msgstr "项目配置必须是一个 JSON 对象；拒绝用一次局部修改覆盖整份配置。"
 
-msgid "Abandon this requirement"
-msgstr "作废这个需求"
+msgid "Abandon this ticket"
+msgstr "作废这个工单"
 
 msgid "Abandoned"
 msgstr "作废"
@@ -485,7 +485,7 @@ msgstr "加一级"
 msgid "Add another"
 msgstr "再加一个"
 
-msgid "Add requirements or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes"
+msgid "Add tickets or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes"
 msgstr "补充要求，或者写退回理由。截图、设计稿直接粘，/ 插技能路径。⌘Enter 要求修改"
 
 msgid "Add your first project"
@@ -608,8 +608,8 @@ msgstr "要的是什么"
 msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
 msgstr "每个模型假定的上下文窗口，只用于一次 session 的第一个 turn——之后以 CLI 报的真实值为准。设小了，大窗口模型会不停重启，每次都丢掉已经建好的缓存。"
 
-msgid "At most {maxGroups} groups at once. When it is full, approved requirements queue for a slot rather than being stuck."
-msgstr "并发上限 {maxGroups} 组。满了已批准的需求排队等槽位，不是卡住了。"
+msgid "At most {maxGroups} groups at once. When it is full, approved tickets queue for a slot rather than being stuck."
+msgstr "并发上限 {maxGroups} 组。满了已批准的工单排队等槽位，不是卡住了。"
 
 msgid "Attach"
 msgstr "附件"
@@ -675,7 +675,7 @@ msgid "Big projects compile for hours; no ceiling means one hung build occupies 
 msgstr "大项目的一次编译是小时级；完全没有上限的话，一个挂死的 build 会永远占着 lease 槽位，而槽位是全局的、少的——一条卡死的命令能让整个舰队再也过不了闸门。"
 
 msgid "blocked by {path}; handed to grp {target} and waiting for it to land"
-msgstr "被 {path} 挡住了，交给了另一条需求（grp {target}），它落地后自动继续"
+msgstr "被 {path} 挡住了，交给了另一条工单（grp {target}），它落地后自动继续"
 
 msgid "Blocked domains"
 msgstr "禁止访问"
@@ -736,8 +736,8 @@ msgstr "烧得多快"
 msgid "By account"
 msgstr "按账号"
 
-msgid "By requirement"
-msgstr "按需求"
+msgid "By ticket"
+msgstr "按工单"
 
 msgid "By tier"
 msgstr "按难度"
@@ -770,7 +770,7 @@ msgid "Cancel all queued turns; return the occupied slot to another group. Code,
 msgstr "排队的 turn 全取消，占的路径交还给别的组。代码、分支和记录都留着"
 
 msgid "cancelled {n, plural, one {# job} other {# jobs}} queued for a dissolved group"
-msgstr "取消了 {n, plural, other {# 个}}排在已解散需求下的任务"
+msgstr "取消了 {n, plural, other {# 个}}排在已解散工单下的任务"
 
 msgid "Cannot open a container, so every turn is held: {why}\n"
 "Usually docker is down or opensandbox-server is not running — the self-check pane in Settings says which. Work resumes on its own once it is back."
@@ -913,7 +913,7 @@ msgid "Compile"
 msgstr "编译"
 
 msgid "Concurrent jobs"
-msgstr "同时开工的需求数"
+msgstr "同时开工的工单数"
 
 msgid "Configuration doesn't allow the path we need to mount"
 msgstr "配置里没允许我们要挂的路径"
@@ -969,8 +969,8 @@ msgstr "上下文窗口"
 msgid "Conversation comments"
 msgstr "对话评论数"
 
-msgid "Convert to a requirement; this group will automatically continue after it's implemented."
-msgstr "开成一条需求去做，这一组等它落地后自动继续"
+msgid "Convert to a ticket; this group will automatically continue after it's implemented."
+msgstr "开成一条工单去做，这一组等它落地后自动继续"
 
 msgid "Copy"
 msgstr "复制"
@@ -997,7 +997,7 @@ msgid "could not put {file} into the sandbox: {why}"
 msgstr "没能把 {file} 放进沙箱：{why}"
 
 msgid "could not roll back {n, plural, one {# file} other {# files}} outside this group's paths ({files}): {out}"
-msgstr "没能回滚 {n, plural, other {# 个}}越出这个需求边界的文件（{files}）：{out}"
+msgstr "没能回滚 {n, plural, other {# 个}}越出这个工单边界的文件（{files}）：{out}"
 
 msgid "could not start {bin}: {error}"
 msgstr "起不来 {bin}：{error}"
@@ -1020,8 +1020,8 @@ msgstr "CPU"
 msgid "Create new sandbox"
 msgstr "开一个新环境"
 
-msgid "Create requirement"
-msgstr "开成需求"
+msgid "Create ticket"
+msgstr "开成工单"
 
 msgid "Credential"
 msgstr "凭据"
@@ -1679,8 +1679,8 @@ msgstr "读取中…"
 msgid "Local"
 msgstr "本地"
 
-msgid "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision."
-msgstr "本地在这台机器上算，远程发到你指定的地址。目前两者都还没用于检索——实测跨语言搜索比它要替代的关键词搜索更差。远程意味着你的需求和验收标准会离开这台机器，所以默认本地，用远程是个决定。"
+msgid "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your tickets and acceptance criteria leave this machine, so local is the default and remote is a decision."
+msgstr "本地在这台机器上算，远程发到你指定的地址。目前两者都还没用于检索——实测跨语言搜索比它要替代的关键词搜索更差。远程意味着你的工单和验收标准会离开这台机器，所以默认本地，用远程是个决定。"
 
 msgid "Local to this machine only, not tied to the project"
 msgstr "只在这台机器上，不跟着项目走"
@@ -1785,8 +1785,8 @@ msgstr "新项目默认用它，留空跟配置文件"
 msgid "New projects will use {image}"
 msgstr "以后新项目都用 {image}"
 
-msgid "New requirement"
-msgstr "新需求"
+msgid "New ticket"
+msgstr "新工单"
 
 msgid "newly hired"
 msgstr "新雇的"
@@ -1815,8 +1815,8 @@ msgstr "还没有容器"
 msgid "No data yet"
 msgstr "还没数据"
 
-msgid "No deliveries yet. Requirements are archived here after merging to main."
-msgstr "还没有交付过。合入 main 之后的需求归档到这里。"
+msgid "No deliveries yet. Tickets are archived here after merging to main."
+msgstr "还没有交付过。合入 main 之后的工单归档到这里。"
 
 msgid "No diff available. The slice didn't record a baseline commit, or the sandbox has been reclaimed."
 msgstr "没有 diff 可读。这一片没有记下基线 commit，或者沙箱已经回收了。"
@@ -1837,7 +1837,7 @@ msgid "no gates for this project"
 msgstr "这个项目没有 gate"
 
 msgid "no group {grp} in the grp table, so /work is still empty — there is no code to run this turn"
-msgstr "grp 表里没有 {grp} 这个需求，所以 /work 还是空的 —— 这一回合没有代码可跑"
+msgstr "grp 表里没有 {grp} 这个工单，所以 /work 还是空的 —— 这一回合没有代码可跑"
 
 msgid "no login is waiting for a code — start one first"
 msgstr "没有在等码的登录 —— 先点登录"
@@ -1878,8 +1878,8 @@ msgstr "没拉过 opensandbox/egress 镜像"
 msgid "No other models yet; just type"
 msgstr "还没有别的模型，直接写就行"
 
-msgid "No other requirements for this project"
-msgstr "这个项目没有别的需求"
+msgid "No other tickets for this project"
+msgstr "这个项目没有别的工单"
 
 msgid "no owned paths declared, and {holders} already hold theirs — the Architect has to cut the boundary before work starts"
 msgstr "没有声明自己的路径，而 {holders} 已经各自持有了——开工前得让架构师先切边界"
@@ -1887,8 +1887,8 @@ msgstr "没有声明自己的路径，而 {holders} 已经各自持有了——�
 msgid "no path"
 msgstr "没有路径"
 
-msgid "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
-msgstr "没有停着的需求。预算用尽、或等你答问题超过 2 小时会封存到这里，工作不丢。"
+msgid "No paused tickets. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
+msgstr "没有停着的工单。预算用尽、或等你答问题超过 2 小时会封存到这里，工作不丢。"
 
 msgid "No pending items"
 msgstr "无待办"
@@ -1896,14 +1896,8 @@ msgstr "无待办"
 msgid "No reason recorded"
 msgstr "没有记下原因"
 
-msgid "No requirements in progress. Click + for a new one in the top right."
-msgstr "没有在办的需求。右上角 ＋ 新需求。"
-
-msgid "No requirements yet"
-msgstr "还没有需求"
-
 msgid "no retro yet — the group cannot wind up without one"
-msgstr "还没写复盘 —— 没有复盘，这个需求收不了尾"
+msgstr "还没写复盘 —— 没有复盘，这个工单收不了尾"
 
 msgid "No runnable commands found."
 msgstr "没探到可跑的命令。"
@@ -1929,8 +1923,14 @@ msgstr "没有这个组"
 msgid "No system activity recorded."
 msgstr "还没有记下任何系统活动。"
 
-msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
-msgstr "还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。"
+msgid "No tickets in progress. Click + for a new one in the top right."
+msgstr "没有在办的工单。右上角 ＋ 新工单。"
+
+msgid "No tickets yet"
+msgstr "还没有工单"
+
+msgid "No tokens spent yet. After approving plan cards, costs break down by ticket per agent. Tier tag determines which model."
+msgstr "还没花 token。批准计划卡之后，这里按工单往下拆到每个 agent。难度标签决定跑哪个模型。"
 
 msgid "no uvx — opensandbox-server is a Python package, so install uv before one can start"
 msgstr "没有 uvx——opensandbox-server 是个 Python 包，先装 uv 才能起"
@@ -2070,8 +2070,8 @@ msgstr "开新 PR"
 msgid "Open PR ↗"
 msgstr "打开 PR ↗"
 
-msgid "opened as requirement {name} (grp {grp})"
-msgstr "开成需求 {name}（grp {grp}）"
+msgid "opened as ticket {name} (grp {grp})"
+msgstr "开成工单 {name}（grp {grp}）"
 
 msgid "Opened by [orchestrator]({url}) v{v}."
 msgstr "由 [orchestrator]({url}) v{v} 开启。"
@@ -2172,8 +2172,8 @@ msgstr "个待合入"
 msgid "Pending review"
 msgstr "待批"
 
-msgid "Per delivered requirement"
-msgstr "每个已交付需求"
+msgid "Per delivered ticket"
+msgstr "每个已交付工单"
 
 msgid "Per-run duration"
 msgstr "每次运行的耗时"
@@ -2235,9 +2235,9 @@ msgid "PR #{pr} was closed without merging"
 msgstr "PR #{pr} 没合并就被关了"
 
 msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
-"To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
+"To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the ticket."
 msgstr "PR #{pr} 被关掉了（没有合入）。这一组已经停下并让出了合入队列。\n"
-"要继续：在 GitHub 上重开这个 PR，它会自己回到队列。不想要了：在这个需求上点「不做了」。"
+"要继续：在 GitHub 上重开这个 PR，它会自己回到队列。不想要了：在这个工单上点「不做了」。"
 
 msgid "PR #{pr} was reopened; back in the merge queue"
 msgstr "PR #{pr} 又打开了，重新进合并队列"
@@ -2412,8 +2412,8 @@ msgstr "移除项目"
 msgid "Remove this project"
 msgstr "移除这个项目"
 
-msgid "Removed the project {name} ({repo}): {n, plural, one {# requirement} other {# requirements}}, the containers and the records are gone. Nothing on GitHub was touched."
-msgstr "移除了项目 {name}（{repo}）：{n, plural, other {# 个需求}}、容器和记录都清掉了。GitHub 上什么都没动。"
+msgid "Removed the project {name} ({repo}): {n, plural, one {# ticket} other {# tickets}}, the containers and the records are gone. Nothing on GitHub was touched."
+msgstr "移除了项目 {name}（{repo}）：{n, plural, other {# 个工单}}、容器和记录都清掉了。GitHub 上什么都没动。"
 
 msgid "Removing…"
 msgstr "移除中…"
@@ -2462,21 +2462,6 @@ msgstr "仓库"
 
 msgid "Request changes"
 msgstr "要求修改"
-
-msgid "Requirement"
-msgstr "需求"
-
-msgid "Requirement created"
-msgstr "需求已创建"
-
-msgid "Requirement name…"
-msgstr "需求名…"
-
-msgid "requirements"
-msgstr "个需求"
-
-msgid "Requirements running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page."
-msgstr "同时开工的需求数。你通常会先撞到别的天花板：两个组不能拥有重叠的路径，而且一个账号有自己的限流。调高之后，看一眼成本页的缓存命中率。"
 
 msgid "Rescan"
 msgstr "重新扫描"
@@ -2769,8 +2754,8 @@ msgstr "设定"
 msgid "Set [server] api_key = \"…\" in the server's TOML, restart it, then Settings → Sandbox server → Read from server. The containers hold the checkout, the mailbox token and the CLI logins."
 msgstr "在服务器的 TOML 里设 [server] api_key = \"…\"，重启它，然后 设置 → 沙箱服务器 → 从服务器读取。容器里放着检出的代码、信箱 token 和各个 CLI 的登录。"
 
-msgid "Set a token limit for this requirement"
-msgstr "给这个需求设 token 上限"
+msgid "Set a token limit for this ticket"
+msgstr "给这个工单设 token 上限"
 
 msgid "Settings"
 msgstr "设置"
@@ -2787,8 +2772,8 @@ msgstr "设置：账号、环境、技能、主题，以及这个项目的闸门
 msgid "Shared across all projects"
 msgstr "所有项目共用"
 
-msgid "Shared across requirements"
-msgstr "跨需求共用"
+msgid "Shared across tickets"
+msgstr "跨工单共用"
 
 msgid "Shared cache"
 msgstr "共享缓存"
@@ -2817,7 +2802,7 @@ msgstr "技能目录挂上了，但容器里是空的：宿主机 {hostPath} 有
 "容器运行时读不到那个宿主路径，绑上去只会得到一个空目录 —— macOS 上 docker 跑在虚拟机里，虚拟机外的路径（/var/tmp 之类）从来不会共享进去。把 skillsDir 指到一个能共享的位置（$HOME 就行），加进 opensandbox-server 的 allowed_host_paths，然后重启它。在那之前 agent 一个技能都没有。"
 
 msgid "Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list {path}. Add it and reopen this group's container; until then agents can only use the skills named in the input box."
-msgstr "技能没挂进沙箱：opensandbox-server 的 allowed_host_paths 里没有 {path}。加进去并重开这个需求的容器；在那之前 agent 只能用输入框里点名的技能。"
+msgstr "技能没挂进沙箱：opensandbox-server 的 allowed_host_paths 里没有 {path}。加进去并重开这个工单的容器；在那之前 agent 只能用输入框里点名的技能。"
 
 msgid "Skills staging directory"
 msgstr "技能暂存目录"
@@ -2855,16 +2840,16 @@ msgstr "规格"
 msgid "Spent {spent} tokens against a {cap} limit. Only raising the limit moves it — \"resume\" does nothing."
 msgstr "已花 {spent} tokens，上限 {cap}。加上限才动得了，「继续」不生效。"
 
-msgid "split into {n} separate requirements: {names}"
-msgstr "拆成 {n} 个独立需求：{names}"
+msgid "split into {n} separate tickets: {names}"
+msgstr "拆成 {n} 个独立工单：{names}"
 
-msgid "split into {n} separate requirements: {names} — {why}"
-msgstr "拆成 {n} 个独立需求：{names} —— {why}"
+msgid "split into {n} separate tickets: {names} — {why}"
+msgstr "拆成 {n} 个独立工单：{names} —— {why}"
 
-msgid "Split out of the requirement {from}."
+msgid "Split out of the ticket {from}."
 msgstr "从「{from}」拆出来的一条。"
 
-msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
+msgid "Split out of the ticket {from}. The whole of what was originally asked for is note #{note}."
 msgstr "从「{from}」拆出来的一条。原始整段见 note #{note}。"
 
 msgid "squashed {why}"
@@ -2947,8 +2932,8 @@ msgstr "上下文用到窗口的这么多就换一个会话。兜底触发器，
 msgid "Switch project"
 msgstr "切换项目"
 
-msgid "Switch requirement"
-msgstr "切换需求"
+msgid "Switch ticket"
+msgstr "切换工单"
 
 msgid "System"
 msgstr "系统"
@@ -3004,14 +2989,14 @@ msgstr "选中的技能，正文随这一个 turn 发给 agent，只花这一次
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "codex 换 refresh token 的调用，在工具容器里跑。比读用量慢：它要起一个进程，还要走一次 OAuth 往返。"
 
-msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
-msgstr "整条需求退回给 Dispatcher 重新拆解；这条意见是最高优先级的事实，已经写好的代码留在分支上。"
+msgid "The entire ticket returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
+msgstr "整条工单退回给 Dispatcher 重新拆解；这条意见是最高优先级的事实，已经写好的代码留在分支上。"
 
-msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
-msgstr "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。"
+msgid "The entire ticket returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
+msgstr "整个工单退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。"
 
-msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, requirements left running"
-msgstr "宿主断网了，{n} 个 turn 挂起等联网 —— 需求还在跑的状态，活儿排着，通了自动接上"
+msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, tickets left running"
+msgstr "宿主断网了，{n} 个 turn 挂起等联网 —— 工单还在跑的状态，活儿排着，通了自动接上"
 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "索引刷不了：这个项目的容器起不来（{why}）"
@@ -3150,17 +3135,11 @@ msgstr "这个项目还没跑过任何活。"
 msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
 msgstr "这个项目的 devcontainer 在 {image} 里开发——「设置 → Sandbox」可以把这个组指过去"
 
-msgid "this question became requirement {name} (grp {grp})"
-msgstr "这个问题开成了需求 {name}（grp {grp}）"
+msgid "this question became ticket {name} (grp {grp})"
+msgstr "这个问题开成了工单 {name}（grp {grp}）"
 
 msgid "this repository needs nothing installed"
 msgstr "这个仓库不需要装什么"
-
-msgid "This requirement has been archived or no longer exists."
-msgstr "这个需求已经归档或不存在了。"
-
-msgid "This requirement hasn't run any activity yet."
-msgstr "这个需求还没跑过任何活。"
 
 msgid "this server has no GitHub client"
 msgstr "这台服务器没有 GitHub 客户端"
@@ -3168,11 +3147,32 @@ msgstr "这台服务器没有 GitHub 客户端"
 msgid "This slice hasn't produced changes yet and has no verdict."
 msgstr "这一片还没跑出改动，也还没有判词。"
 
+msgid "This ticket has been archived or no longer exists."
+msgstr "这个工单已经归档或不存在了。"
+
+msgid "This ticket hasn't run any activity yet."
+msgstr "这个工单还没跑过任何活。"
+
 msgid "This view crashed"
 msgstr "这个视图崩了"
 
 msgid "This window needs {count} buckets, more than fits"
 msgstr "这段时间要 {count} 格，画不下"
+
+msgid "Ticket"
+msgstr "工单"
+
+msgid "Ticket created"
+msgstr "工单已创建"
+
+msgid "Ticket name…"
+msgstr "工单名…"
+
+msgid "tickets"
+msgstr "个工单"
+
+msgid "Tickets running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page."
+msgstr "同时开工的工单数。你通常会先撞到别的天花板：两个组不能拥有重叠的路径，而且一个账号有自己的限流。调高之后，看一眼成本页的缓存命中率。"
 
 msgid "Time"
 msgstr "耗时"

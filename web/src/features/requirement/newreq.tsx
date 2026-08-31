@@ -26,7 +26,7 @@ export function NewRequirement({
     <ComposerDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={t`New requirement`}
+      title={t`New ticket`}
       hint={t`Just describe what you need. A plan card will be generated for approval before any code is written.`}
       placeholder={t`Example: Add a "Remember me" checkbox to the login page; once checked, stay logged in for 30 days.
 Drag in screenshots or designs, or paste. Cmd+Enter to submit`}

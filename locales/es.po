@@ -65,14 +65,14 @@ msgstr "{count} repositorios"
 msgid "{count} repositories, most recently touched first"
 msgstr "{count} repositorios, los más recientes primero"
 
-msgid "{count} requirements have no boundary right now: {bareNames}."
-msgstr "Ahora mismo {count} requisitos no tienen frontera: {bareNames}."
-
 msgid "{count} selected"
 msgstr "{count} seleccionados"
 
 msgid "{count} staged at {path}"
 msgstr "{count} preparadas en {path}"
+
+msgid "{count} tickets have no boundary right now: {bareNames}."
+msgstr "Ahora mismo {count} tickets no tienen frontera: {bareNames}."
 
 msgid "{d} days ago"
 msgstr "hace {d} días"
@@ -106,17 +106,17 @@ msgstr "{good} (también hay {stale}: revisa [egress] image)"
 msgid "{group}: {question}"
 msgstr "{group}: {question}"
 
-msgid "{groupCount} requirements touch different files and can run together"
-msgstr "{groupCount} requisitos tocan archivos distintos y pueden ir en paralelo"
+msgid "{groupCount} tickets touch different files and can run together"
+msgstr "{groupCount} tickets tocan archivos distintos y pueden ir en paralelo"
 
-msgid "{groupCount} requirements touch different files and can run together ({more} more not yet assigned)"
-msgstr "{groupCount} requisitos tocan archivos distintos y pueden ir en paralelo ({more} más sin asignar)"
+msgid "{groupCount} tickets touch different files and can run together ({more} more not yet assigned)"
+msgstr "{groupCount} tickets tocan archivos distintos y pueden ir en paralelo ({more} más sin asignar)"
 
-msgid "{groups, plural, one {# requirement} other {# requirements}} in <0>{repoPath}</0>"
-msgstr "{groups, plural, one {# requisito} other {# requisitos}} en <0>{repoPath}</0>"
+msgid "{groups, plural, one {# ticket} other {# tickets}} in <0>{repoPath}</0>"
+msgstr "{groups, plural, one {# ticket} other {# tickets}} en <0>{repoPath}</0>"
 
-msgid "{groups, plural, one {The one requirement in {repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.} other {All # requirements in {repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.}}"
-msgstr "{groups, plural, one {El único requisito de {repoPath} — su contenedor, tarjetas, registros y adjuntos — se elimina y no se puede recuperar.} other {Los # requisitos de {repoPath} — sus contenedores, tarjetas, registros y adjuntos — se eliminan y no se pueden recuperar.}}"
+msgid "{groups, plural, one {The one ticket in {repoPath} — its container, cards, records and attachments — is deleted, and cannot be recovered.} other {All # tickets in {repoPath} — their containers, cards, records and attachments — are deleted, and cannot be recovered.}}"
+msgstr "{groups, plural, one {El único ticket de {repoPath} — su contenedor, tarjetas, registros y adjuntos — se elimina y no se puede recuperar.} other {Los # tickets de {repoPath} — sus contenedores, tarjetas, registros y adjuntos — se eliminan y no se pueden recuperar.}}"
 
 msgid "{hard} blocking the whole group"
 msgstr "{hard} bloquean todo el grupo"
@@ -133,8 +133,8 @@ msgstr "{hiddenLines} líneas más"
 msgid "{hint} stored; paste a new one to replace it"
 msgstr "{hint} guardado; pega uno nuevo para reemplazarlo"
 
-msgid "{hitCount} requirements want the same files and cannot run together"
-msgstr "{hitCount} requisitos quieren los mismos archivos y no pueden ir en paralelo"
+msgid "{hitCount} tickets want the same files and cannot run together"
+msgstr "{hitCount} tickets quieren los mismos archivos y no pueden ir en paralelo"
 
 msgid "{hours} hr"
 msgstr "{hours} h"
@@ -281,8 +281,8 @@ msgstr "{name} gastó todo su presupuesto ({tokens} tokens) y quedó suspendida"
 msgid "{name}: {n, plural, one {# running turn was} other {# running turns were}} killed before the data goes"
 msgstr "{name}: {n, plural, one {se mató # turno en ejecución} other {se mataron # turnos en ejecución}} antes de borrar los datos"
 
-msgid "{name}: PR #{pr} was closed — reopen it or drop the requirement"
-msgstr "{name}: se cerró el PR #{pr} — vuelve a abrirlo o descarta el requisito"
+msgid "{name}: PR #{pr} was closed — reopen it or drop the ticket"
+msgstr "{name}: se cerró el PR #{pr} — vuelve a abrirlo o descarta el ticket"
 
 msgid "{name}: the PR will not open — {why}"
 msgstr "{name}: el PR no se abre — {why}"
@@ -342,8 +342,8 @@ msgctxt "notes"
 msgid "{rest} more of {total}"
 msgstr "{rest} más de {total}"
 
-msgid "{rest} more requirements"
-msgstr "{rest} requisitos más"
+msgid "{rest} more tickets"
+msgstr "{rest} tickets más"
 
 msgid "{role} finished {n, plural, one {# turn} other {# turns}} without changing a file, a task or a note"
 msgstr "{role} terminó {n, plural, one {# turno} other {# turnos}} sin tocar un archivo, una tarea ni una nota"
@@ -417,8 +417,8 @@ msgstr "← Volver a la línea completa"
 msgid "+ Add project"
 msgstr "+ Añadir proyecto"
 
-msgid "+ New requirement"
-msgstr "+ Nuevo requisito"
+msgid "+ New ticket"
+msgstr "+ Nuevo ticket"
 
 msgid "1/4 of host cores"
 msgstr "1/4 de los núcleos del host"
@@ -440,8 +440,8 @@ msgstr "Un grupo en pausa te espera y ocupa una plaza de concurrencia mientras t
 msgid "A project's config has to be a JSON object. One partial edit will not be allowed to replace the whole of it."
 msgstr "La configuración de un proyecto tiene que ser un objeto JSON. Una edición parcial no puede sustituir el conjunto entero."
 
-msgid "Abandon this requirement"
-msgstr "Abandonar este requisito"
+msgid "Abandon this ticket"
+msgstr "Abandonar este ticket"
 
 msgid "Abandoned"
 msgstr "Abandonado"
@@ -485,8 +485,8 @@ msgstr "Añadir paso"
 msgid "Add another"
 msgstr "Añadir otro"
 
-msgid "Add requirements or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes"
-msgstr "Añade requisitos o explica por qué rechazas. Pega capturas o diseños; / para insertar una habilidad. Cmd+Enter para pedir cambios"
+msgid "Add tickets or explain why you're rejecting. Paste screenshots or designs; / to insert a skill. Cmd+Enter to request changes"
+msgstr "Añade tickets o explica por qué rechazas. Pega capturas o diseños; / para insertar una habilidad. Cmd+Enter para pedir cambios"
 
 msgid "Add your first project"
 msgstr "Añade tu primer proyecto"
@@ -608,8 +608,8 @@ msgstr "Lo que se pidió"
 msgid "Assumed context window per model, used for the first turn of a session — after that the CLI reports the real number. Set it too low and a large-context model restarts constantly, throwing away its cache each time."
 msgstr "Ventana de contexto supuesta por modelo, usada en el primer turno de la sesión; después la CLI informa del valor real. Si se queda corta, un modelo de contexto grande se reinicia sin parar y tira su caché cada vez."
 
-msgid "At most {maxGroups} groups at once. When it is full, approved requirements queue for a slot rather than being stuck."
-msgstr "Como mucho {maxGroups} grupos a la vez. Cuando está lleno, los requisitos aprobados esperan plaza en vez de atascarse."
+msgid "At most {maxGroups} groups at once. When it is full, approved tickets queue for a slot rather than being stuck."
+msgstr "Como mucho {maxGroups} grupos a la vez. Cuando está lleno, los tickets aprobados esperan plaza en vez de atascarse."
 
 msgid "Attach"
 msgstr "Adjuntar"
@@ -736,8 +736,8 @@ msgstr "Ritmo de gasto"
 msgid "By account"
 msgstr "Por cuenta"
 
-msgid "By requirement"
-msgstr "Por requisito"
+msgid "By ticket"
+msgstr "Por ticket"
 
 msgid "By tier"
 msgstr "Por nivel"
@@ -969,8 +969,8 @@ msgstr "Ventana de contexto"
 msgid "Conversation comments"
 msgstr "Comentarios de la conversación"
 
-msgid "Convert to a requirement; this group will automatically continue after it's implemented."
-msgstr "Se convierte en requisito; este grupo continuará solo cuando esté implementado."
+msgid "Convert to a ticket; this group will automatically continue after it's implemented."
+msgstr "Se convierte en ticket; este grupo continuará solo cuando esté implementado."
 
 msgid "Copy"
 msgstr "Copiar"
@@ -1020,8 +1020,8 @@ msgstr "CPU"
 msgid "Create new sandbox"
 msgstr "Crear sandbox nuevo"
 
-msgid "Create requirement"
-msgstr "Crear requisito"
+msgid "Create ticket"
+msgstr "Crear ticket"
 
 msgid "Credential"
 msgstr "Credencial"
@@ -1679,8 +1679,8 @@ msgstr "Cargando…"
 msgid "Local"
 msgstr "Local"
 
-msgid "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your requirements and acceptance criteria leave this machine, so local is the default and remote is a decision."
-msgstr "Local corre en esta máquina; remoto envía el texto a un endpoint que elijas. Ninguno se usa aún para la búsqueda: medido, el buscador multilingüe salió peor que la búsqueda por palabras que iba a sustituir. Remoto significa que tus requisitos y criterios de aceptación salen de esta máquina, así que local es lo predeterminado y remoto es una decisión."
+msgid "Local runs on this machine; remote sends text to an endpoint you choose. Neither is used for retrieval yet — measured, cross-language search was worse than the keyword search it would replace. Remote means your tickets and acceptance criteria leave this machine, so local is the default and remote is a decision."
+msgstr "Local corre en esta máquina; remoto envía el texto a un endpoint que elijas. Ninguno se usa aún para la búsqueda: medido, el buscador multilingüe salió peor que la búsqueda por palabras que iba a sustituir. Remoto significa que tus tickets y criterios de aceptación salen de esta máquina, así que local es lo predeterminado y remoto es una decisión."
 
 msgid "Local to this machine only, not tied to the project"
 msgstr "Solo local a esta máquina, no va ligado al proyecto"
@@ -1785,8 +1785,8 @@ msgstr "Los proyectos nuevos usan esto; déjalo vacío para seguir la configurac
 msgid "New projects will use {image}"
 msgstr "Los proyectos nuevos usarán {image}"
 
-msgid "New requirement"
-msgstr "Nuevo requisito"
+msgid "New ticket"
+msgstr "Nuevo ticket"
 
 msgid "newly hired"
 msgstr "recién incorporado"
@@ -1815,8 +1815,8 @@ msgstr "Aún no hay contenedor"
 msgid "No data yet"
 msgstr "Aún no hay datos"
 
-msgid "No deliveries yet. Requirements are archived here after merging to main."
-msgstr "Aún no hay entregas. Los requisitos se archivan aquí tras fusionarse a main."
+msgid "No deliveries yet. Tickets are archived here after merging to main."
+msgstr "Aún no hay entregas. Los tickets se archivan aquí tras fusionarse a main."
 
 msgid "No diff available. The slice didn't record a baseline commit, or the sandbox has been reclaimed."
 msgstr "No hay diff. El fragmento no registró un commit de referencia, o el sandbox ya se recuperó."
@@ -1878,8 +1878,8 @@ msgstr "no se ha descargado ninguna imagen opensandbox/egress"
 msgid "No other models yet; just type"
 msgstr "Aún no hay otros modelos; escríbelo sin más"
 
-msgid "No other requirements for this project"
-msgstr "No hay otros requisitos en este proyecto"
+msgid "No other tickets for this project"
+msgstr "No hay otros tickets en este proyecto"
 
 msgid "no owned paths declared, and {holders} already hold theirs — the Architect has to cut the boundary before work starts"
 msgstr "no se declararon rutas propias y {holders} ya tienen las suyas: el Arquitecto tiene que cortar la frontera antes de empezar"
@@ -1887,20 +1887,14 @@ msgstr "no se declararon rutas propias y {holders} ya tienen las suyas: el Arqui
 msgid "no path"
 msgstr "ninguna ruta"
 
-msgid "No paused requirements. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
-msgstr "No hay requisitos en pausa. Los grupos se paran aquí cuando se agota el presupuesto o cuando llevan más de 2 horas esperando tu respuesta; el trabajo se conserva."
+msgid "No paused tickets. Groups pause here when budget is exhausted or waiting for your answer exceeds 2 hours; work is kept."
+msgstr "No hay tickets en pausa. Los grupos se paran aquí cuando se agota el presupuesto o cuando llevan más de 2 horas esperando tu respuesta; el trabajo se conserva."
 
 msgid "No pending items"
 msgstr "Nada pendiente"
 
 msgid "No reason recorded"
 msgstr "Sin motivo registrado"
-
-msgid "No requirements in progress. Click + for a new one in the top right."
-msgstr "No hay requisitos en curso. Haz clic en + arriba a la derecha para crear uno."
-
-msgid "No requirements yet"
-msgstr "Aún no hay requisitos"
 
 msgid "no retro yet — the group cannot wind up without one"
 msgstr "todavía no hay retrospectiva — el grupo no puede cerrarse sin una"
@@ -1929,8 +1923,14 @@ msgstr "no existe ese grupo"
 msgid "No system activity recorded."
 msgstr "No hay actividad del sistema registrada."
 
-msgid "No tokens spent yet. After approving plan cards, costs break down by requirement per agent. Tier tag determines which model."
-msgstr "Aún no se han gastado tokens. Tras aprobar tarjetas de plan, el coste se desglosa por requisito y por agente. La etiqueta de nivel decide qué modelo se usa."
+msgid "No tickets in progress. Click + for a new one in the top right."
+msgstr "No hay tickets en curso. Haz clic en + arriba a la derecha para crear uno."
+
+msgid "No tickets yet"
+msgstr "Aún no hay tickets"
+
+msgid "No tokens spent yet. After approving plan cards, costs break down by ticket per agent. Tier tag determines which model."
+msgstr "Aún no se han gastado tokens. Tras aprobar tarjetas de plan, el coste se desglosa por ticket y por agente. La etiqueta de nivel decide qué modelo se usa."
 
 msgid "no uvx — opensandbox-server is a Python package, so install uv before one can start"
 msgstr "no hay uvx: opensandbox-server es un paquete de Python, así que instala uv antes de poder iniciarlo"
@@ -2070,8 +2070,8 @@ msgstr "Abrir PR nuevo"
 msgid "Open PR ↗"
 msgstr "Abrir PR ↗"
 
-msgid "opened as requirement {name} (grp {grp})"
-msgstr "abierto como requisito {name} (grp {grp})"
+msgid "opened as ticket {name} (grp {grp})"
+msgstr "abierto como ticket {name} (grp {grp})"
 
 msgid "Opened by [orchestrator]({url}) v{v}."
 msgstr "Abierto por [orchestrator]({url}) v{v}."
@@ -2172,8 +2172,8 @@ msgstr "fusiones pendientes"
 msgid "Pending review"
 msgstr "Pendiente de revisión"
 
-msgid "Per delivered requirement"
-msgstr "Por requisito entregado"
+msgid "Per delivered ticket"
+msgstr "Por ticket entregado"
 
 msgid "Per-run duration"
 msgstr "Duración por ejecución"
@@ -2235,9 +2235,9 @@ msgid "PR #{pr} was closed without merging"
 msgstr "el PR #{pr} se cerró sin fusionar"
 
 msgid "PR #{pr} was closed without merging. This group has stopped and left the merge queue.\n"
-"To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the requirement."
+"To carry on: reopen the PR on GitHub and it rejoins the queue by itself. To give up on it: drop the ticket."
 msgstr "El PR #{pr} se cerró sin fusionar. Este grupo se ha detenido y ha salido de la cola de fusión.\n"
-"Para seguir: reabre el PR en GitHub y vuelve solo a la cola. Para dejarlo: descarta el requisito."
+"Para seguir: reabre el PR en GitHub y vuelve solo a la cola. Para dejarlo: descarta el ticket."
 
 msgid "PR #{pr} was reopened; back in the merge queue"
 msgstr "el PR #{pr} se reabrió; vuelve a la cola de fusión"
@@ -2412,8 +2412,8 @@ msgstr "Quitar proyecto"
 msgid "Remove this project"
 msgstr "Quitar este proyecto"
 
-msgid "Removed the project {name} ({repo}): {n, plural, one {# requirement} other {# requirements}}, the containers and the records are gone. Nothing on GitHub was touched."
-msgstr "Se eliminó el proyecto {name} ({repo}): {n, plural, one {# requisito} other {# requisitos}}, sus contenedores y sus registros ya no están. En GitHub no se tocó nada."
+msgid "Removed the project {name} ({repo}): {n, plural, one {# ticket} other {# tickets}}, the containers and the records are gone. Nothing on GitHub was touched."
+msgstr "Se eliminó el proyecto {name} ({repo}): {n, plural, one {# ticket} other {# tickets}}, sus contenedores y sus registros ya no están. En GitHub no se tocó nada."
 
 msgid "Removing…"
 msgstr "Quitando…"
@@ -2462,21 +2462,6 @@ msgstr "Repositorio"
 
 msgid "Request changes"
 msgstr "Pedir cambios"
-
-msgid "Requirement"
-msgstr "Requisito"
-
-msgid "Requirement created"
-msgstr "Requisito creado"
-
-msgid "Requirement name…"
-msgstr "Nombre del requisito…"
-
-msgid "requirements"
-msgstr "requisitos"
-
-msgid "Requirements running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page."
-msgstr "Requisitos corriendo a la vez. Normalmente chocarás antes con otro techo: dos grupos no pueden poseer rutas solapadas, y una cuenta tiene su propio límite de tasa. Si lo subes, vigila los aciertos de caché en la página de coste."
 
 msgid "Rescan"
 msgstr "Reescanear"
@@ -2769,8 +2754,8 @@ msgstr "Definido"
 msgid "Set [server] api_key = \"…\" in the server's TOML, restart it, then Settings → Sandbox server → Read from server. The containers hold the checkout, the mailbox token and the CLI logins."
 msgstr "Define [server] api_key = \"…\" en el TOML del servidor, reinícialo y luego Ajustes → Servidor de sandbox → Leer del servidor. Los contenedores guardan el checkout, el token del buzón y las sesiones de las CLI."
 
-msgid "Set a token limit for this requirement"
-msgstr "Poner un límite de tokens a este requisito"
+msgid "Set a token limit for this ticket"
+msgstr "Poner un límite de tokens a este ticket"
 
 msgid "Settings"
 msgstr "Ajustes"
@@ -2787,8 +2772,8 @@ msgstr "Ajustes: cuenta, entorno, habilidades, tema, y los gates y el sandbox de
 msgid "Shared across all projects"
 msgstr "Compartido entre todos los proyectos"
 
-msgid "Shared across requirements"
-msgstr "Compartido entre requisitos"
+msgid "Shared across tickets"
+msgstr "Compartido entre tickets"
 
 msgid "Shared cache"
 msgstr "Caché compartida"
@@ -2855,17 +2840,17 @@ msgstr "Especificación"
 msgid "Spent {spent} tokens against a {cap} limit. Only raising the limit moves it — \"resume\" does nothing."
 msgstr "Ha gastado {spent} tokens frente a un límite de {cap}. Solo subir el límite lo mueve; «reanudar» no hace nada."
 
-msgid "split into {n} separate requirements: {names}"
-msgstr "dividido en {n} requisitos independientes: {names}"
+msgid "split into {n} separate tickets: {names}"
+msgstr "dividido en {n} tickets independientes: {names}"
 
-msgid "split into {n} separate requirements: {names} — {why}"
-msgstr "dividido en {n} requisitos independientes: {names} — {why}"
+msgid "split into {n} separate tickets: {names} — {why}"
+msgstr "dividido en {n} tickets independientes: {names} — {why}"
 
-msgid "Split out of the requirement {from}."
-msgstr "Desgajado del requisito {from}."
+msgid "Split out of the ticket {from}."
+msgstr "Desgajado del ticket {from}."
 
-msgid "Split out of the requirement {from}. The whole of what was originally asked for is note #{note}."
-msgstr "Desgajado del requisito {from}. Lo que se pidió originalmente, entero, está en la nota #{note}."
+msgid "Split out of the ticket {from}. The whole of what was originally asked for is note #{note}."
+msgstr "Desgajado del ticket {from}. Lo que se pidió originalmente, entero, está en la nota #{note}."
 
 msgid "squashed {why}"
 msgstr "squash hecho ({why})"
@@ -2947,8 +2932,8 @@ msgstr "Cambia de sesión cuando el contexto llega a esta parte de la ventana. E
 msgid "Switch project"
 msgstr "Cambiar de proyecto"
 
-msgid "Switch requirement"
-msgstr "Cambiar de requisito"
+msgid "Switch ticket"
+msgstr "Cambiar de ticket"
 
 msgid "System"
 msgstr "Sistema"
@@ -3004,14 +2989,14 @@ msgstr "La habilidad elegida se envía con este turno; solo cuesta en este turno
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "El intercambio del refresh-token de codex, ejecutado en el contenedor de utilidades. Más largo que una lectura de uso: arranca un proceso y hace una ida y vuelta de OAuth."
 
-msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
-msgstr "El requisito completo vuelve al Dispatcher para una revisión más a fondo; este comentario pasa a ser el hecho de mayor prioridad, y el código ya escrito se queda en la rama."
+msgid "The entire ticket returns to Dispatcher for a deeper dive; this comment is the highest-priority fact, and code already written stays on the branch."
+msgstr "El ticket completo vuelve al Dispatcher para una revisión más a fondo; este comentario pasa a ser el hecho de mayor prioridad, y el código ya escrito se queda en la rama."
 
-msgid "The entire requirement returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
-msgstr "El requisito entero vuelve al Despachador para profundizar; este comentario es el dato de máxima prioridad."
+msgid "The entire ticket returns to Dispatcher for a deeper dive; this comment is the highest-priority fact."
+msgstr "El ticket entero vuelve al Despachador para profundizar; este comentario es el dato de máxima prioridad."
 
-msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, requirements left running"
-msgstr "el anfitrión perdió la red; {n, plural, one {# turno retenido y reencolado} other {# turnos retenidos y reencolados}}, los requisitos siguen en marcha"
+msgid "the host lost its network; {n, plural, one {# turn} other {# turns}} held and re-queued, tickets left running"
+msgstr "el anfitrión perdió la red; {n, plural, one {# turno retenido y reencolado} other {# turnos retenidos y reencolados}}, los tickets siguen en marcha"
 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "no se puede refrescar el índice: el contenedor de este proyecto no arranca ({why})"
@@ -3150,17 +3135,11 @@ msgstr "Este proyecto aún no ha registrado actividad."
 msgid "this project's devcontainer develops in {image} — Settings → Sandbox can point the group at it"
 msgstr "el devcontainer de este proyecto se desarrolla en {image} — Ajustes → Sandbox puede apuntar el grupo ahí"
 
-msgid "this question became requirement {name} (grp {grp})"
-msgstr "esta pregunta se convirtió en el requisito {name} (grp {grp})"
+msgid "this question became ticket {name} (grp {grp})"
+msgstr "esta pregunta se convirtió en el ticket {name} (grp {grp})"
 
 msgid "this repository needs nothing installed"
 msgstr "este repositorio no necesita instalar nada"
-
-msgid "This requirement has been archived or no longer exists."
-msgstr "Este requisito se ha archivado o ya no existe."
-
-msgid "This requirement hasn't run any activity yet."
-msgstr "Este requisito aún no ha registrado actividad."
 
 msgid "this server has no GitHub client"
 msgstr "este servidor no tiene cliente de GitHub"
@@ -3168,11 +3147,32 @@ msgstr "este servidor no tiene cliente de GitHub"
 msgid "This slice hasn't produced changes yet and has no verdict."
 msgstr "Este fragmento aún no ha producido cambios ni tiene veredicto."
 
+msgid "This ticket has been archived or no longer exists."
+msgstr "Este ticket se ha archivado o ya no existe."
+
+msgid "This ticket hasn't run any activity yet."
+msgstr "Este ticket aún no ha registrado actividad."
+
 msgid "This view crashed"
 msgstr "Esta vista ha fallado"
 
 msgid "This window needs {count} buckets, more than fits"
 msgstr "Esta ventana necesita {count} intervalos, más de los que caben"
+
+msgid "Ticket"
+msgstr "Ticket"
+
+msgid "Ticket created"
+msgstr "Ticket creado"
+
+msgid "Ticket name…"
+msgstr "Nombre del ticket…"
+
+msgid "tickets"
+msgstr "tickets"
+
+msgid "Tickets running at once. You will usually hit a different ceiling first: two groups cannot own overlapping paths, and one account has its own rate limit. Raising it, watch the cache hit rate on the cost page."
+msgstr "Tickets corriendo a la vez. Normalmente chocarás antes con otro techo: dos grupos no pueden poseer rutas solapadas, y una cuenta tiene su propio límite de tasa. Si lo subes, vigila los aciertos de caché en la página de coste."
 
 msgid "Time"
 msgstr "Tiempo"

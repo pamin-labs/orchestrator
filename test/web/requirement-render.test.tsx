@@ -372,7 +372,7 @@ test("the question lanes separate what is yours from what the chain is holding",
   shown(mine, "Accept the smaller scope?");
   mine.getByRole("button", { name: /让 AI 拟一份/ });
   mine.getByRole("button", { name: /转 Architect/ });
-  mine.getByRole("button", { name: /开成需求/ });
+  mine.getByRole("button", { name: /开成工单/ });
   // The pinned dock is gone while a decision carries its own answer box.
   expect(mine.queryAllByRole("button", { name: /跟这个组说话…/ })).toHaveLength(0);
 });

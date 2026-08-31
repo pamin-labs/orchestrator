@@ -71,7 +71,7 @@ test("Desk, ownership and cost surfaces render observable empty and populated st
   };
   const rendered = render(<CostView cost={cost} />);
   shown(rendered, "500");
-  shown(rendered, "按需求");
+  shown(rendered, "按工单");
   shown(rendered, "缓存命中率");
   // The three numbers that were each recorded somewhere and never in one row.
   shown(rendered, "41s");
@@ -98,7 +98,7 @@ test("two requirements reaching the same files are named as the pair that cannot
   st.groups.push(owning(1, "改闸门", ["src/mech/**"]), owning(2, "改记录", ["src/mech/notes.ts"]));
   const pane = render(<Owns st={st} projectId={1} />);
 
-  shown(pane, "2 个需求想改同一批文件，不能一起跑");
+  shown(pane, "2 个工单想改同一批文件，不能一起跑");
   // Each side names the other, on its own row.
   shown(pane, "压着 改记录");
   shown(pane, "压着 改闸门");
@@ -110,6 +110,6 @@ test("requirements with disjoint boundaries are cleared to run at once, and the 
   st.groups.push(owning(1, "改闸门", ["src/mech/**"]), owning(2, "改面板", ["web/src/**"]), owning(3, "没划", []));
   const pane = render(<Owns st={st} projectId={1} />);
 
-  shown(pane, "2 个需求各改各的，可以一起跑（还有 1 个没分）");
+  shown(pane, "2 个工单各改各的，可以一起跑（还有 1 个没分）");
   gone(pane, "压着");
 });
