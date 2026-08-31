@@ -24,6 +24,9 @@ const UP_TIMEOUT_MS = 120_000;
 
 const PORT_VAR = "ORCH_POSTGRES_PORT";
 
+/** The same variable `docker/postgres-compose.yml` requires, and the one `.env` sets beside the URL. */
+const PASSWORD_VAR = "ORCH_POSTGRES_PASSWORD";
+
 /** The container's own port, which is fixed. Only the host side of it moves. */
 const CONTAINER_PORT = "5432";
 
@@ -98,8 +101,15 @@ export async function localPostgres(dataDir: string, compose: Compose = dockerCo
   // not a port it holds, and the sandbox server draws ephemeral ports of its own
   // — it has already lost that race once, to itself.
   const port = process.env[PORT_VAR] ?? "";
-  const password = passwordAt(join(dataDir, "postgres.password"));
-  consola.info("no ORCH_DATABASE_URL — starting the local PostgreSQL container");
+  // The environment's, when it has one. `POSTGRES_PASSWORD` is read by initdb on
+  // an *empty* volume and never again, so a value generated here authenticates
+  // against nothing the moment `data/postgres` already holds a cluster — and on
+  // any machine that ever ran `bun run db:up`, it does. That volume was created
+  // with the `ORCH_POSTGRES_PASSWORD` beside it in `.env`, which is the same
+  // variable compose reads, so honouring it is what makes this fallback and
+  // `db:up` two ways of starting one database rather than two databases.
+  const password = process.env[PASSWORD_VAR] || passwordAt(join(dataDir, "postgres.password"));
+  consola.info("starting the local PostgreSQL container");
   const failed = (detail: string) =>
     new Error(
       `could not start the local PostgreSQL container: ${detail}\n` +

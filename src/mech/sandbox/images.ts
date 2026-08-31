@@ -59,6 +59,30 @@ async function published(): Promise<{ tags: string[]; note?: string }> {
 }
 
 /**
+ * What a release leaves behind that nobody should be offered.
+ *
+ * `release.yml` stages each platform leg under `sha-<commit>-<arch>`, because a
+ * multi-arch index can only be assembled from references already in the
+ * registry, and joins them under `sha-<commit>`; `sha256-<digest>` is the
+ * attestation hanging off the result. Nothing deletes any of them — measured on
+ * `pamin-labs/orch-agent`, 21 tags over 9 manifests — so the picker offered one
+ * real answer beside three build artifacts.
+ */
+/**
+ * A per-platform tag is excluded for a different reason: `0.1.4-amd64` runs on
+ * an amd64 machine and fails to create a container on an arm64 one, found out on
+ * a group already dispatched. The index is the only answer that works anywhere.
+ */
+/**
+ * A deny-list of the four shapes, not an allow-list of version formats. This
+ * file already refuses to predict what a release tags, and hiding `0.2.0-rc.1`
+ * because it matched no pattern is that same mistake pointing the other way.
+ */
+const SCAFFOLDING = /^sha-|^sha256-|-(?:amd64|arm64)$/;
+
+const NOTHING_PUBLISHED = "no image published yet — run a release, or use a locally built one";
+
+/**
  * What one `tags/list` answer means, as the list plus the kind of empty it is.
  *
  * Three empties, and they send a reader to three different places. Collapsing
@@ -70,16 +94,22 @@ export function tagsFrom(status: number, body: unknown): { tags: string[]; note?
   if (status === 401 || status === 403 || status === 404) {
     // The package has never been published, or is private. Both look the same
     // from here, and both mean "nothing to choose yet" rather than "broken".
-    return { tags: [], note: "no image published yet — run a release, or use a locally built one" };
+    return { tags: [], note: NOTHING_PUBLISHED };
   }
   const parsed = z.object({ tags: z.array(z.string()).default([]) }).safeParse(body);
   if (status < 200 || status >= 300 || !parsed.success)
     return { tags: [], note: `the registry answered HTTP ${status}` };
+  const runnable = parsed.data.tags.filter((t) => !SCAFFOLDING.test(t));
+  // Everything the registry held was scaffolding: the same "nothing to choose
+  // yet" as an unpublished package, and it wants the same sentence. A package
+  // that genuinely has no versions keeps its silent empty, which is what the
+  // caller has always distinguished.
+  if (!runnable.length && parsed.data.tags.length) return { tags: [], note: NOTHING_PUBLISHED };
   // `latest` first, then the rest newest-looking first. Not a semver sort:
   // whatever a release tags is the release's business, and inventing an order
   // it did not ask for is how a "newest" ends up pointing at the wrong one.
   return {
-    tags: [...parsed.data.tags].sort((a, b) =>
+    tags: runnable.sort((a, b) =>
       a === "latest" ? -1 : b === "latest" ? 1 : b.localeCompare(a, undefined, { numeric: true }),
     ),
   };

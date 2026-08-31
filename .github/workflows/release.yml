@@ -527,25 +527,21 @@ jobs:
           digest_of() {
             docker buildx imagetools inspect "$1" --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"'
           }
-          # `imagetools create` builds a new index around its sources rather than
-          # copying manifest bytes. Promoting one platform manifest therefore
-          # lands a destination whose digest is that index's — never the source's
-          # — so `digest_of(destination) = expected` cannot hold and this asked it
-          # twice. The first release to reach here pushed `0.1.3-amd64` and then
-          # refused its own work with `changed during promotion`; every attempt
-          # after it stopped one line earlier on `already points to`. Both were
-          # this assumption, and neither had run before because nothing reaches
-          # this job but a real release.
+          # `imagetools create` copies an index but wraps a bare platform manifest
+          # in a new one, so a destination promoted from a single platform gets
+          # its wrapper's digest and never the source's. That is why this asks
+          # "does the destination carry the verified digest" rather than "is it
+          # that digest" — the digest itself where the registry copied bytes, or
+          # a member where buildx wrapped them. The property is unchanged, a
+          # published tag never moves onto different content, and a retry is
+          # idempotent rather than fatal.
           #
-          # The multi-platform promotion below never hit it: two sources make an
-          # index whose members are the same manifests, so those bytes come back
-          # identical and it compares members anyway.
-          #
-          # So the question is not "is the destination this digest" but "does it
-          # carry it" — the digest itself where a registry copied the bytes, or a
-          # member where buildx wrapped them. That keeps the property this guard
-          # exists for, a published tag never moving onto different content, and
-          # makes a retry idempotent instead of fatal.
+          # The wrapping was found by the `$version-$platform` tags, which used to
+          # be promoted here: the first release to reach that line pushed
+          # `0.1.3-amd64` and then refused its own work with `changed during
+          # promotion`. Those tags are gone now — nothing read them, and each
+          # release minted two manifests that existed only to be wrapped copies
+          # of index members the release already publishes.
           carries() {
             local reference="$1" wanted="$2"
             if [ "$(digest_of "$reference")" = "$wanted" ]; then return 0; fi
@@ -583,7 +579,6 @@ jobs:
             }
             refs+=("$image@$platform_digest")
             expected_members+=("$platform_digest")
-            promote "$image:$RELEASE_VERSION-$platform" "$platform_digest" "$image@$platform_digest"
           done
 
           stage_manifest="$image:sha-$SOURCE_SHA"

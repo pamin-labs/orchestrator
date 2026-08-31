@@ -24,7 +24,7 @@ import {
 } from "../platform/config/load.ts";
 import { applyOverrides } from "../platform/config/settings.ts";
 import { changed, checkConfig, checkRoles } from "../mech/ops/checkconfig.ts";
-import { DATABASE_URL, open } from "../platform/persistence/database.ts";
+import { addressOf, DATABASE_URL, open, shouldStartLocal } from "../platform/persistence/database.ts";
 import { localPostgres } from "../platform/persistence/local-postgres.ts";
 import { REAL, sandboxHeld, type Scope } from "../mech/sandbox/sandbox.ts";
 import type { DB } from "../platform/persistence/database.ts";
@@ -719,6 +719,28 @@ function reArming(periodOf: () => number, work: () => void): () => void {
   return () => clearInterval(timer);
 }
 
+/**
+ * The database this run will use, and what to do when it is not there.
+ *
+ * `ORCH_DATABASE_URL` still wins, and unset still gets the container ADR 051
+ * ships. What is new is the middle case, which is the one people hit: the
+ * variable is set — typically by a `.env` written when `bun run db:up` was the
+ * only way — and nothing is listening at it. That surfaced as a migrator stack
+ * trace naming a `CREATE SCHEMA` statement.
+ */
+/** `shouldStartLocal` owns which failures are worth a container; this only obeys it. */
+async function database(cfg: Config): Promise<DB> {
+  const url = process.env[DATABASE_URL];
+  if (!url) return open(cfg.dbPoolSize, await localPostgres(cfg.dataDir));
+  try {
+    return await open(cfg.dbPoolSize, url);
+  } catch (e) {
+    if (!shouldStartLocal(url, e)) throw e;
+    consola.warn(`nothing is listening at ${addressOf(url)} — starting the local PostgreSQL container instead`);
+    return open(cfg.dbPoolSize, await localPostgres(cfg.dataDir));
+  }
+}
+
 export async function start(overrides: Partial<Config> = {}, handle?: DB): Promise<Started> {
   // Overrides can put a relative dataDir back; the subprocesses cannot use one.
   const cfg = withAbsoluteDataDir({ ...loadConfig(), ...overrides });
@@ -730,22 +752,14 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   }
   mkdirSync(cfg.dataDir, { recursive: true });
 
-  // `ORCH_DATABASE_URL`, not a path under `dataDir`. The database is a PostgreSQL
-  // server now and `open()` throws by name when the variable is unset, which is
-  // the whole of the diagnosis. `dataDir` still holds turn logs, gate logs and
-  // attachments, so it is still made, still owned by this account only — those
-  // files are as readable as the credentials once were.
-  // `handle` is how the smoke test boots the real server: `open()` needs a
-  // connection string and a running PostgreSQL, and that suite's whole point is
-  // that the process comes up — skipping it when a database is missing is a
-  // green tick over the one test that starts the thing.
-  // Unset is not fatal any more: Docker is already required for the sandboxes,
-  // so a deployment that named no database gets the one `docker/postgres-compose.yml`
-  // defines. The variable still wins, which is what keeps managed and remote
-  // PostgreSQL the same single line they were (ADR 051).
-  // `||`, not `??`: `ORCH_DATABASE_URL=` in a `.env` is an empty string, and
-  // handing that to `open()` throws the same "unset" it always did.
-  const db = handle ?? (await open(cfg.dbPoolSize, process.env[DATABASE_URL] || (await localPostgres(cfg.dataDir))));
+  // Which database, and what to do when it is not there, is `database()` above.
+  // `dataDir` is still made and still owned by this account only: it holds turn
+  // logs, gate logs and attachments, which are as readable as the credentials
+  // once were.
+  // `handle` is how the smoke test boots the real server: that suite's whole
+  // point is that the process comes up, so skipping it when a database is
+  // missing is a green tick over the one test that starts the thing.
+  const db = handle ?? (await database(cfg));
   try {
     chmodSync(cfg.dataDir, 0o700);
   } catch {}
