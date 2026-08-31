@@ -13,11 +13,11 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `release/0.1.5`, 2026-08-31.
+Measured on `fix/ctrl-c-and-the-ticket-title`, 2026-08-31.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 1988 pass, 6 environment skips, 0 fail, 1994 across 247 files
-- Coverage: 83.97% of statements, 74.20% of branches, 79.86% of functions
+- Tests: 1997 pass, 6 environment skips, 0 fail, 2003 across 248 files
+- Coverage: 84.00% of statements, 74.26% of branches, 79.90% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
 - Fallow security, full inventory: **1** candidate —
@@ -71,7 +71,17 @@ Measured on `release/0.1.5`, 2026-08-31.
 2. **Watch the nightly stress run** and replay any property failure from its
    reported seed and path. Green on the last three runs; one failure on
    2026-08-26.
-3. **The `sha-*` staging tags on `ghcr.io/pamin-labs/orch-agent` cannot be
+3. **A group name that collides answers 500.** `(project_id, name)` is unique,
+   `newGroup` has no retry and `src/http/handler.ts` has no 23505 mapping, so two
+   ideas that slug the same fail at the shared insert. Pre-dates the title
+   writer and is unaffected by it; the fix belongs at `newGroup`, which all four
+   creation paths go through.
+4. **The `orch` CLI hang was fixed by mechanism, not by reproduction.**
+   `readPiped` bounds the first byte on a non-tty stdin. If a command still
+   hangs in a non-interactive parent, run it with `< /dev/null` first: the same
+   hang there means stdin is not the cause and the search moves to the mailbox
+   poll (`src/orch/cli.ts`, up to 20 minutes, silent).
+5. **The `sha-*` staging tags on `ghcr.io/pamin-labs/orch-agent` cannot be
    deleted, and the panel filters them instead.** Measured: 21 tags over 9
    manifests, with `latest`'s index pointing at the manifests
    `sha-<commit>-<platform>` names and `sha-<commit>` sharing its digest with
