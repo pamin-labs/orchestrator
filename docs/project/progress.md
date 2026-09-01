@@ -42,12 +42,14 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
   `adoptServerKey` now takes the key back at boot from the running server's own
   `--config`, which is what the panel's `Read from server` button already did by
   hand. Fixed 2026-09-01; guards in `test/mech/sandbox-boot.test.ts`.
-- **The login pty runner shadowed the module it imports.** Installed at
-  `/opt/orch/pty.py`, its own `import pty` resolved to itself (Python puts the
-  script's directory at `sys.path[0]`), so `claude setup-token` never started and
-  every attempt was reported as "the CLI needs a pty". Renamed to
-  `login-pty.py`; a hyphen is not a Python identifier, so no import can reach it.
-  Fixed 2026-09-01; guard in `test/mech/login-pty-runner.test.ts`.
+- **The login pty runner imported a module from its own directory.** Python puts
+  a script's directory at `sys.path[0]`, so `/opt/orch/pty.py` imported itself
+  and `claude setup-token` never started — reported as "the CLI needs a pty",
+  which the login was supplying. Renaming it alone did not hold: `/opt/orch`
+  outlives the server, so the old file stayed beside the new one and was found
+  instead. Launched with `-P` now, which drops `sys.path[0]` whatever is in the
+  directory. Fixed 2026-09-01; guard in `test/mech/login-pty-runner.test.ts`
+  reproduces the stale file.
 - **Release archives offered scripts they could not run.** The development
   `package.json` shipped unchanged into an archive with no `scripts/`, `web/src`
   or `node_modules` — thirty-nine scripts, seven runnable, and `start` in the

@@ -169,19 +169,35 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
  * supplied.
  */
 /**
- * **The hyphen is load-bearing.** Python puts the script's own directory at
- * `sys.path[0]`, so a runner installed as `pty.py` is what its own first line
- * imports: `import pty` found the file it was running, `pty.fork` did not
- * exist, and the traceback went to a stream the login only reads for a URL.
+ * `-P` is the fix; the name is the belt beside it.
+ *
+ * Python puts the script's own directory at `sys.path[0]`, so this runner's own
+ * first line `import pty` resolves there before the standard library. Installed
+ * as `pty.py` it imported *itself*: `pty.fork` did not exist, and the traceback
+ * went to a stream the login only reads for a URL — so every attempt was
+ * reported as "the CLI needs a pty", which it does, and which this was giving it.
  */
 /**
- * Every `claude setup-token` was therefore reported as "the CLI needs a pty" —
- * which it does, and which this was supplying. A hyphen is not a Python
- * identifier, so no `import` can reach this file whatever lands beside it.
- * Measured in `orch-agent:latest`: renamed and nothing else changed, the link
- * and the paste prompt both arrive, the link after 3.3s.
+ * Renaming was not enough, and the container is why. `/opt/orch` outlives the
+ * server that wrote into it, so the old `pty.py` and its `__pycache__` were
+ * still lying beside the renamed file and `import pty` found them instead.
+ * Measured in the live utility container: `python3 login-pty.py` still died at
+ * `File "/opt/orch/pty.py", line 4`, and `python3 -P login-pty.py` reached the
+ * CLI.
+ */
+/**
+ * `-P` drops `sys.path[0]` entirely, so the answer no longer depends on what is
+ * in the directory — which is the only version of this that a leftover file
+ * cannot undo. The hyphenated name stays because it is free and it closes the
+ * self-import case on its own; `-P` is the one carrying the guarantee.
  */
 export const PTY_PATH = "/opt/orch/login-pty.py";
+
+/**
+ * The interpreter flags the runner is launched with, exported so the guard runs
+ * it the way production does rather than asserting on a string.
+ */
+export const PYTHON_FLAGS = ["-P"] as const;
 export const PTY_RUNNER = `import fcntl, os, pty, select, struct, sys, termios
 cmd = sys.argv[1:]
 inbox = os.environ.get("ORCH_PTY_IN", "")
@@ -251,7 +267,8 @@ export const currentClaudeLogin = () => claudeLogin;
 async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
   await putFile(ctx, UTIL, PTY_PATH, PTY_RUNNER);
   await execIn(ctx, UTIL, `: > ${CODE_FILE}`);
-  const stream = execLines(ctx, UTIL, `ORCH_PTY_IN=${CODE_FILE} python3 ${PTY_PATH} claude setup-token`, {
+  const argv = `python3 ${PYTHON_FLAGS.join(" ")} ${PTY_PATH}`;
+  const stream = execLines(ctx, UTIL, `ORCH_PTY_IN=${CODE_FILE} ${argv} claude setup-token`, {
     timeoutMs: PASTE_TTL_MS + 60_000,
     signal,
   });

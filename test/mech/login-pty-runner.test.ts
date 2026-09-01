@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { PTY_PATH, PTY_RUNNER } from "../../src/mech/sandbox/login.ts";
+import { PTY_PATH, PYTHON_FLAGS, PTY_RUNNER } from "../../src/mech/sandbox/login.ts";
 import { tempDir } from "../support/temp.ts";
 
 /**
@@ -25,13 +25,30 @@ import { tempDir } from "../support/temp.ts";
  */
 const python = Bun.which("python3");
 
-test.skipIf(!python)("the runner does not shadow a module it imports", () => {
-  const at = join(tempDir("orch-pty-"), basename(PTY_PATH));
+/**
+ * The decoy is the test. Renaming the runner closed the self-import and nothing
+ * else: `/opt/orch` outlives the server that writes into it, so the old
+ * `pty.py` and its `__pycache__` stayed beside the renamed file and `import pty`
+ * found them instead. Reproduced in the live utility container — the traceback
+ * still read `File "/opt/orch/pty.py", line 4` under the new name.
+ */
+const decoy = 'raise SystemExit("sys.path[0] won: a file beside the runner was imported as pty")\n';
+
+test.skipIf(!python)("a stale module beside the runner cannot be imported instead", () => {
+  const dir = tempDir("orch-pty-");
+  writeFileSync(join(dir, "pty.py"), decoy);
+  const at = join(dir, basename(PTY_PATH));
   writeFileSync(at, PTY_RUNNER);
-  // A program that writes and exits, so the runner's own loop and teardown are
-  // what is being exercised rather than anything about the CLI.
-  const r = Bun.spawnSync([python!, at, "printf", "orch-pty-works"], { stdout: "pipe", stderr: "pipe" });
+  // Launched the way production launches it, flags and all — asserting on the
+  // command string would pass against a `-P` that is never actually passed.
+  // `printf` writes and exits, so the runner's own loop and teardown are what
+  // runs rather than anything about a CLI.
+  const r = Bun.spawnSync([python!, ...PYTHON_FLAGS, at, "printf", "orch-pty-works"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   expect(r.stderr.toString()).not.toContain("has no attribute");
+  expect(r.stderr.toString()).not.toContain("sys.path[0] won");
   expect(r.stdout.toString()).toContain("orch-pty-works");
 });
 
