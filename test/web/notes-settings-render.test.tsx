@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cleanup, fireEvent, isDisabled, render as mount, valueOf } from "../support/render.tsx";
+import { cleanup, fireEvent, isDisabled, render as mount, valueOf, waitFor } from "../support/render.tsx";
+import { HttpResponse, http } from "msw";
 import { inFlight, mockHttp } from "../support/http.ts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -13,7 +14,7 @@ import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { WithQueries } from "./queries.tsx";
 import { NotesBoard } from "../../web/src/features/notes/view.tsx";
 import { SandboxServerSettings, visibleSection } from "../../web/src/features/settings/view.tsx";
-import { CredPane } from "../../web/src/features/settings/credentials.tsx";
+import { CredPane, httpsOnly } from "../../web/src/features/settings/credentials.tsx";
 import { Skills } from "../../web/src/features/skills/view.tsx";
 
 /**
@@ -44,7 +45,16 @@ afterEach(cleanup);
 
 /** Each of these panes reads on mount and is asserted in the state before that
  *  read lands, so every request stays in flight. */
-mockHttp(inFlight());
+/** The one request this file answers, and only it: the login link, plus a flag
+ *  the popup-ordering test reads to say whether the reply had landed yet. */
+const login = { replied: false, link: "https://claude.com/cai/oauth/authorize?code=true&client_id=x" };
+mockHttp(
+  http.post("*/api/v1/auth/claude/login", () => {
+    login.replied = true;
+    return HttpResponse.json({ url: login.link, expiresAt: Date.now() + 600_000 });
+  }),
+  inFlight(),
+);
 
 const note = (over: Partial<PanelNote> = {}): PanelNote => ({
   id: 1,
@@ -390,4 +400,66 @@ test("a switcher row is filterable by its second line, and fills only the cells 
     dir: undefined,
     badge: "2 个在跑",
   });
+});
+
+/**
+ * The panel opens the login page, because nothing else can.
+ *
+ * The comment here used to say the CLI opens the browser itself and a second tab
+ * would split the flow. That was true while the login ran on the host and false
+ * from the day it moved into the container, which has no browser — the CLI's own
+ * output says `Browser didn't open? Use the url below to sign in`. So the boss
+ * got a link and had to notice it.
+ */
+/**
+ * The window is opened on the click and its location set afterwards. `window.open`
+ * needs a user gesture and the link takes seconds to arrive, so opening it after
+ * the await is a popup the browser blocks. That ordering is the whole test:
+ * asserting only that the URL is reached would pass against the blocked version.
+ */
+test("signing in to claude opens the tab on the click, then points it at the link", async () => {
+  login.replied = false;
+  const opened: { at: "before" | "after" | null } = { at: null };
+  const tab = { location: { href: "" }, close: () => {} };
+  const opener = window.open;
+  (window as { open: unknown }).open = () => {
+    opened.at = login.replied ? "after" : "before";
+    return tab;
+  };
+
+  try {
+    const { getAllByRole } = render(<CredPane rows={[]} onSaved={() => {}} onWaitForLogin={() => {}} />);
+    // Claude and Codex each have one, and Claude's is first — the pane renders
+    // them in `RUNTIMES` order and only Claude takes this path.
+    fireEvent.click(getAllByRole("button", { name: "登录" })[0]!);
+    await waitFor(() => expect(tab.location.href).toBe(login.link));
+    // Opened while the request was still in flight — a gesture that has not been
+    // spent yet. `after` is the version every browser blocks.
+    expect(opened.at).toBe("before");
+  } finally {
+    (window as { open: unknown }).open = opener;
+  }
+});
+
+/**
+ * What the panel is willing to navigate a tab to.
+ *
+ * The link arrives as a string in a JSON body — the schema says it is a string
+ * and cannot say what kind — and assigning `javascript:…` to `location.href`
+ * runs it in this origin. Parsed rather than prefix-matched, because
+ * `javascript:https://x` passes a `startsWith` and is not a URL to claude.
+ */
+test("only a real https link is navigated to", () => {
+  expect(httpsOnly("https://claude.com/cai/oauth/authorize?code=true")).toBe(
+    "https://claude.com/cai/oauth/authorize?code=true",
+  );
+  expect(httpsOnly("javascript:alert(1)")).toBeNull();
+  expect(httpsOnly("javascript:https://claude.com")).toBeNull();
+  expect(httpsOnly("http://claude.com")).toBeNull();
+  expect(httpsOnly("data:text/html,<script>x</script>")).toBeNull();
+  expect(httpsOnly("not a url")).toBeNull();
+  // A host, not a suffix. `endsWith("claude.com")` says yes to this one.
+  expect(httpsOnly("https://evilclaude.com/cai/oauth")).toBeNull();
+  expect(httpsOnly("https://console.anthropic.com/x")).toBe("https://console.anthropic.com/x");
+  expect(httpsOnly("https://example.com/")).toBeNull();
 });
