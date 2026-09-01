@@ -16,7 +16,7 @@ Product goals, scope, milestones and the delivery sequence live in
 Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2023 pass, 6 environment skips, 0 fail, 2029 across 253 files
+- Tests: 2024 pass, 6 environment skips, 0 fail, 2030 across 253 files
 - Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
@@ -74,6 +74,12 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
   that had exited. The cancel route waited on the same promise, unbounded.
   Released on `cancel()` now, and the route's wait is raced with 2s. Fixed
   2026-09-02; guards in `test/mech/codex-device-login.test.ts`.
+- **A finished login waited on a stream that never ended.** `realLines` closes
+  its queue when the SDK's `run()` settles, and measured on a live server it did
+  not — `claude setup-token` had exited with no process left in the container
+  while the stream stayed open, so `run.done` never resolved and no event was
+  emitted either way. The read stops on the printed token now, which is the whole
+  errand. Fixed 2026-09-02; guard in `test/mech/codex-device-login.test.ts`.
 - **Live OpenSandbox tests are environment-gated** and skip without a running
   sandbox server. That is the six skips in the count above.
 - **Repository settings are not repository files.** Branch protection, secret

@@ -46,14 +46,31 @@ export interface LoginRun {
 
 type LineStream = ReturnType<typeof execLines>;
 
-async function consumeLogin(bus: Bus, stream: LineStream, onLine: (line: string) => void) {
+/**
+ * `onLine` returning true ends the read, and that is not a convenience.
+ *
+ * `realLines` closes its queue when the SDK's `run()` promise settles. Measured
+ * on a live server: `claude setup-token` had exited — no process left in the
+ * container — and the stream never ended, so this sat on `stream.next()` forever
+ * and `run.done` never resolved. The panel showed a link, the pasted code went
+ * into a file whose reader was gone, and no event was ever emitted either way.
+ */
+/**
+ * The line handlers see everything the stream has already produced, and stdout
+ * is delivered as it arrives — so by the time a token has been printed, waiting
+ * for the stream to end is waiting for nothing this cares about.
+ */
+async function consumeLogin(bus: Bus, stream: LineStream, onLine: (line: string) => boolean | void) {
   for (;;) {
     const step = await stream.next();
     if (step.done) return step.value;
     const plain = clean(step.value).trim();
     if (!plain) continue;
     bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body: plain });
-    onLine(plain);
+    // Zero rather than the stream's code: the CLI printed what it exists to
+    // print, and the exit status of a process we stopped reading is not a
+    // verdict on it.
+    if (onLine(plain)) return { code: 0, err: "" };
   }
 }
 
@@ -97,9 +114,12 @@ async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
     timeoutMs: DEVICE_CODE_TTL_MS + 60_000,
     signal,
   });
+  // Codex reads to the end on purpose: its credential is a file it writes, not a
+  // line it prints, so there is nothing on stdout that means "done".
   const result = await consumeLogin(ctx.bus, stream, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
     run.code ??= line.match(DEVICE_CODE_RE)?.[0] ?? null;
+    return false;
   });
   if (result.code !== 0)
     return { ok: false, detail: `codex login exited ${result.code}: ${result.err.trim().slice(-300)}` };
@@ -296,7 +316,11 @@ async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
   const result = await consumeLogin(ctx.bus, stream, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
     token ??= line.match(CLAUDE_TOKEN_RE)?.[0] ?? null;
+    // The token is the whole errand. Read no further for a stream that may not
+    // end — see `consumeLogin`.
+    if (token) return true;
     sawPrompt ||= PASTE_RE.test(line);
+    return false;
   });
   if (!token && result.code !== 0)
     return { ok: false, detail: `claude setup-token exited ${result.code}: ${result.err.trim().slice(-300)}` };
@@ -338,6 +362,10 @@ export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) 
   claudeLogin = run;
 
   run.done = finishClaudeLogin(ctx, run, abort.signal).finally(() => {
+    // Aborted on the way out, including the successful way. `consumeLogin` stops
+    // reading the moment the token is printed, so without this the exec behind a
+    // stream that never ends is simply left running.
+    abort.abort();
     claudeLogin = null;
   });
 

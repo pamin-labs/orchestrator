@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { loadAuth } from "../../src/mech/sandbox/auth.ts";
 import { REFRESH_HOME } from "../../src/mech/sandbox/chatgpt.ts";
+
+/** Shape only; `sk-ant-oat01-` is what `CLAUDE_TOKEN_RE` looks for. */
+const CLAUDE_TOKEN = `sk-ant-oat01-${"A".repeat(40)}`;
 import {
   currentClaudeLogin,
   currentCodexDeviceLogin,
@@ -131,7 +134,11 @@ test("cancelling a claude login frees the slot for the next one", async () => {
   first.cancel();
   // Released now, not when `done` settles — which, here, is never.
   expect(currentClaudeLogin()).toBeNull();
-  expect(startClaudeLogin(ctx)).not.toBe(first);
+  const second = startClaudeLogin(ctx);
+  expect(second).not.toBe(first);
+  // Freed again, or this deaf run is left holding a module-level slot that the
+  // next test in this file would be handed instead of starting its own.
+  second.cancel();
 });
 
 test("cancelling a codex login frees the slot for the next one", async () => {
@@ -141,5 +148,50 @@ test("cancelling a codex login frees the slot for the next one", async () => {
 
   first.cancel();
   expect(currentCodexDeviceLogin()).toBeNull();
-  expect(startCodexDeviceLogin(ctx)).not.toBe(first);
+  const second = startCodexDeviceLogin(ctx);
+  expect(second).not.toBe(first);
+  // Freed again, or this deaf run is left holding a module-level slot that the
+  // next test in this file would be handed instead of starting its own.
+  second.cancel();
+});
+
+/**
+ * The login finishes on the token, not on the stream.
+ *
+ * `realLines` ends its queue when the SDK's `run()` promise settles, and
+ * measured on a live server it did not: `claude setup-token` had exited — no
+ * process left in the container — while the stream stayed open. The read sat on
+ * `stream.next()` forever, `run.done` never resolved, and the panel showed a
+ * link whose pasted code went into a file with no reader. No event was emitted
+ * either way, so nothing said so.
+ */
+/**
+ * Every line is delivered as it arrives, so by the time the token has been
+ * printed the rest of the stream holds nothing this needs. The driver here does
+ * exactly what that one did: yields the CLI's output, then never ends.
+ */
+const strandsAfter = (out: string): SandboxDriver => ({
+  ...fakeSandbox(),
+  lines: async function* () {
+    for (const l of out.split("\n").filter(Boolean)) yield l;
+    await new Promise<never>(() => {});
+    return { code: 0, err: "" };
+  },
+});
+
+test("a printed token completes the login even if the stream never ends", async () => {
+  const db = await openMemory();
+  const ctx = await testContext({
+    db,
+    sandbox: strandsAfter(`Open https://claude.ai/oauth/authorize?x=1 to continue\n${CLAUDE_TOKEN}\n`),
+  });
+
+  const run = startClaudeLogin(ctx);
+  const done = await Promise.race([run.done, Bun.sleep(5_000).then(() => null)]);
+  expect(done).not.toBeNull();
+  expect(done?.ok).toBe(true);
+  expect((await loadAuth(db, "claude"))?.secret).toBe(CLAUDE_TOKEN);
+  // And the slot is free again, so the next sign-in is a new run rather than
+  // this one with its url already cached.
+  expect(currentClaudeLogin()).toBeNull();
 });
