@@ -420,11 +420,15 @@ test("a switcher row is filterable by its second line, and fills only the cells 
 test("signing in to claude opens the tab on the click, then points it at the link", async () => {
   login.replied = false;
   const opened: { at: "before" | "after" | null } = { at: null };
-  const tab = { location: { href: "" }, close: () => {} };
+  const tab = { location: { href: "" }, opener: {} as unknown, close: () => {} };
   const opener = window.open;
-  (window as { open: unknown }).open = () => {
+  // Spec behaviour, not a convenience double. `window.open` with `noopener`
+  // returns **null** — withholding the handle is what the feature is for — and a
+  // stub that hands one back regardless is how a tab stranded on about:blank got
+  // shipped past a green test. The probe has to fail the way the browser does.
+  (window as { open: unknown }).open = (_url: string, _target: string, features?: string) => {
     opened.at = login.replied ? "after" : "before";
-    return tab;
+    return features?.includes("noopener") ? null : tab;
   };
 
   try {
@@ -436,6 +440,10 @@ test("signing in to claude opens the tab on the click, then points it at the lin
     // Opened while the request was still in flight — a gesture that has not been
     // spent yet. `after` is the version every browser blocks.
     expect(opened.at).toBe("before");
+    // Cleared while the blank page is still same-origin, so the page that lands
+    // cannot reach back. This is what `noopener` would have bought, without
+    // throwing away the handle needed to navigate.
+    expect(tab.opener).toBeNull();
   } finally {
     (window as { open: unknown }).open = opener;
   }

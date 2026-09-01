@@ -408,7 +408,16 @@ function SecretField({ state }: { state: CredentialState }) {
       // needs a user gesture, and the link takes seconds to arrive — by then the
       // gesture is spent and the popup is blocked. A blocked one is null, which
       // is not an error: the link is rendered below either way.
-      const tab = window.open("", "_blank", "noopener");
+      //
+      // **No `noopener` feature.** It makes `window.open` return null by spec —
+      // withholding the handle is the whole point of it — and the handle is what
+      // this needs to navigate. Passed it, the boss got a tab sitting on
+      // about:blank that nothing could fill in or close. `opener` is cleared on
+      // the handle instead, which is the same protection: the blank page is
+      // still same-origin at this point, so the property is ours to set, and the
+      // page that lands afterwards cannot reach back through it.
+      const tab = window.open("", "_blank");
+      if (tab) tab.opener = null;
       const res = await mutate(api.auth.claude.login.$post(), false, ClaudeLoginSchema);
       changeForm({ busy: false });
       if (!res.ok) {
