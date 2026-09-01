@@ -404,35 +404,27 @@ function SecretField({ state }: { state: CredentialState }) {
       // container, which has no browser. The CLI says so in its own output:
       // `Browser didn't open? Use the url below to sign in`.
       //
-      // The window is opened on the click and filled in afterwards. `window.open`
-      // needs a user gesture, and the link takes seconds to arrive — by then the
-      // gesture is spent and the popup is blocked. A blocked one is null, which
-      // is not an error: the link is rendered below either way.
-      //
-      // **No `noopener` feature.** It makes `window.open` return null by spec —
-      // withholding the handle is the whole point of it — and the handle is what
-      // this needs to navigate. Passed it, the boss got a tab sitting on
-      // about:blank that nothing could fill in or close. `opener` is cleared on
-      // the handle instead, which is the same protection: the blank page is
-      // still same-origin at this point, so the property is ours to set, and the
-      // page that lands afterwards cannot reach back through it.
-      const tab = window.open("", "_blank");
-      if (tab) tab.opener = null;
       const res = await mutate(api.auth.claude.login.$post(), false, ClaudeLoginSchema);
       changeForm({ busy: false });
-      if (!res.ok) {
-        tab?.close();
-        return;
-      }
-      // Navigated to only if it is really an https URL. The value is a string
-      // from a JSON body — the schema checks that it is a string and cannot
-      // check what kind — and assigning `javascript:…` to `location.href` runs
-      // it in this origin. A link that fails this is still rendered below, where
-      // it is text rather than a navigation.
+      if (!res.ok) return;
+      // Opened once there is somewhere to go, rather than blank-then-filled. A
+      // popup needs a user gesture and the reply is awaited, but transient
+      // activation outlives one turn of the event loop — five seconds in Chrome
+      // and Safari — and this reply is measured at 1.6s. The first version
+      // assumed the gesture was already spent and opened a placeholder tab; that
+      // was a guess, and the visible cost of it was a window sitting on
+      // about:blank while the link loaded.
+      //
+      // Blocked, or slower than the activation window, returns null. Not an
+      // error: the link is rendered below and is one click away, which is what
+      // the boss had before any of this.
+      //
+      // Only after `httpsOnly`. The value is a string from a JSON body — the
+      // schema says it is a string and cannot say what kind — and a
+      // `javascript:` URL opened this way runs in this origin.
       const target = httpsOnly(res.data.url);
       // fallow-ignore-next-line security-sink -- `target` is the output of `httpsOnly`, which parses with `URL`, requires the `https:` scheme, and requires the hostname to be one of `LOGIN_HOSTS` or a dot-anchored subdomain of one. A non-literal target is all fallow can see; the three checks above it are the allowlist it asks for, and `httpsOnly` has its own guard covering javascript:, data:, http: and suffix lookalikes.
-      if (tab && target) tab.location.href = target;
-      else tab?.close();
+      if (target) window.open(target, "_blank", "noopener");
       changeLogin({ link: res.data.url });
     }
     props.onWaitForLogin(updatedAt);

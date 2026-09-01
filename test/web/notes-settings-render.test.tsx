@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, isDisabled, render as mount, valueOf, waitFor } from "../support/render.tsx";
 import { HttpResponse, http } from "msw";
+import { getByText as getByTextIn } from "@testing-library/dom";
 import { inFlight, mockHttp } from "../support/http.ts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -408,42 +409,42 @@ test("a switcher row is filterable by its second line, and fills only the cells 
  * The comment here used to say the CLI opens the browser itself and a second tab
  * would split the flow. That was true while the login ran on the host and false
  * from the day it moved into the container, which has no browser — the CLI's own
- * output says `Browser didn't open? Use the url below to sign in`. So the boss
- * got a link and had to notice it.
+ * output says `Browser didn't open? Use the url below to sign in`.
  */
 /**
- * The window is opened on the click and its location set afterwards. `window.open`
- * needs a user gesture and the link takes seconds to arrive, so opening it after
- * the await is a popup the browser blocks. That ordering is the whole test:
- * asserting only that the URL is reached would pass against the blocked version.
+ * Opened with the link, not before it. The first version opened a placeholder on
+ * the click and filled it in afterwards, on the assumption that awaiting the
+ * reply spends the user gesture. It does not: transient activation lasts five
+ * seconds in Chrome and Safari and the reply is measured at 1.6s. The assumption
+ * cost a window sitting on about:blank, and `noopener` on the placeholder made
+ * it unfillable as well — that combination is what shipped.
  */
-test("signing in to claude opens the tab on the click, then points it at the link", async () => {
+test("signing in to claude opens the link itself, not a blank placeholder", async () => {
   login.replied = false;
-  const opened: { at: "before" | "after" | null } = { at: null };
-  const tab = { location: { href: "" }, opener: {} as unknown, close: () => {} };
+  const calls: { url: string; features?: string; hadReply: boolean }[] = [];
   const opener = window.open;
-  // Spec behaviour, not a convenience double. `window.open` with `noopener`
-  // returns **null** — withholding the handle is what the feature is for — and a
-  // stub that hands one back regardless is how a tab stranded on about:blank got
-  // shipped past a green test. The probe has to fail the way the browser does.
-  (window as { open: unknown }).open = (_url: string, _target: string, features?: string) => {
-    opened.at = login.replied ? "after" : "before";
-    return features?.includes("noopener") ? null : tab;
+  (window as { open: unknown }).open = (url: string, _target: string, features?: string) => {
+    calls.push({ url, ...(features === undefined ? {} : { features }), hadReply: login.replied });
+    return null;
   };
 
   try {
     const { getAllByRole } = render(<CredPane rows={[]} onSaved={() => {}} onWaitForLogin={() => {}} />);
     // Claude and Codex each have one, and Claude's is first — the pane renders
-    // them in `RUNTIMES` order and only Claude takes this path.
+    // them in order and only Claude takes this path.
     fireEvent.click(getAllByRole("button", { name: "登录" })[0]!);
-    await waitFor(() => expect(tab.location.href).toBe(login.link));
-    // Opened while the request was still in flight — a gesture that has not been
-    // spent yet. `after` is the version every browser blocks.
-    expect(opened.at).toBe("before");
-    // Cleared while the blank page is still same-origin, so the page that lands
-    // cannot reach back. This is what `noopener` would have bought, without
-    // throwing away the handle needed to navigate.
-    expect(tab.opener).toBeNull();
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    // The real link, on the one call. A placeholder open would be `""` here, and
+    // would have to be followed by a second navigation this asserts does not
+    // happen.
+    expect(calls[0]!.url).toBe(login.link);
+    expect(calls[0]!.hadReply).toBe(true);
+    // Safe on this path because the handle is not needed: nothing has to be
+    // filled in afterwards.
+    expect(calls[0]!.features).toContain("noopener");
+    // A blocked popup is null and must not throw — the link is rendered below.
+    getByTextIn(document.body, /claude\.com\/cai\/oauth/);
   } finally {
     (window as { open: unknown }).open = opener;
   }
