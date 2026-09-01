@@ -303,7 +303,17 @@ let claudeLogin: (LoginRun & { submit: (code: string) => Promise<void> }) | null
 /** The claude half of `currentCodexDeviceLogin`, and there for the same reason. */
 export const currentClaudeLogin = () => claudeLogin;
 
-async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
+/**
+ * How long after the boss submits a code the CLI has to reach a verdict.
+ *
+ * It has one either way within a second or two — a token, or an OAuth error —
+ * so `timeouts.loginVerdictMs` is generous. It exists because the *stream* may
+ * not end when the CLI does: `realLines` closes its queue on the SDK's `run()`
+ * promise, and measured on a live server that promise did not settle after
+ * `claude setup-token` had exited. Without a deadline the read waits forever and
+ * the panel is told nothing at all, which is worse than being told it failed.
+ */
+async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal, submitted: Promise<void>) {
   await putFile(ctx, UTIL, PTY_PATH, PTY_RUNNER);
   await execIn(ctx, UTIL, `: > ${CODE_FILE}`);
   const argv = `python3 ${PYTHON_FLAGS.join(" ")} ${PTY_PATH}`;
@@ -313,7 +323,10 @@ async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
   });
   let token: string | null = null;
   let sawPrompt = false;
-  const result = await consumeLogin(ctx.bus, stream, (line) => {
+  // Raced with the deadline, not just awaited. The early stop above covers the
+  // run that prints a token; this covers the one that prints an OAuth error and
+  // exits, where there is no line to stop on and the stream stays open anyway.
+  const read = consumeLogin(ctx.bus, stream, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
     token ??= line.match(CLAUDE_TOKEN_RE)?.[0] ?? null;
     // The token is the whole errand. Read no further for a stream that may not
@@ -322,6 +335,13 @@ async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
     sawPrompt ||= PASTE_RE.test(line);
     return false;
   });
+  const result = await Promise.race([
+    read,
+    submitted.then(async () => {
+      await Bun.sleep(ctx.config.timeouts.loginVerdictMs);
+      return { code: -1, err: "no verdict from claude setup-token after the code was submitted" };
+    }),
+  ]);
   if (!token && result.code !== 0)
     return { ok: false, detail: `claude setup-token exited ${result.code}: ${result.err.trim().slice(-300)}` };
   if (!token)
@@ -339,6 +359,10 @@ async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
 export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) => Promise<void> } {
   if (claudeLogin) return claudeLogin;
   const abort = new AbortController();
+  let announceSubmit = () => {};
+  const submitted = new Promise<void>((resolve) => {
+    announceSubmit = resolve;
+  });
   const run: LoginRun & { submit: (code: string) => Promise<void> } = {
     url: null,
     code: null,
@@ -356,12 +380,16 @@ export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) 
     // than a rewrite it will never see.
     submit: async (code) => {
       await execIn(ctx, UTIL, `printf '%s\\n' ${shq(code.trim())} >> ${CODE_FILE}`);
+      // Starts the clock on a verdict. Before the code goes in there is nothing
+      // to wait for — the boss is in a browser and the CLI is silent, which is
+      // not a fault and must not be timed.
+      announceSubmit();
     },
     done: Promise.resolve({ ok: false, detail: "" }),
   };
   claudeLogin = run;
 
-  run.done = finishClaudeLogin(ctx, run, abort.signal).finally(() => {
+  run.done = finishClaudeLogin(ctx, run, abort.signal, submitted).finally(() => {
     // Aborted on the way out, including the successful way. `consumeLogin` stops
     // reading the moment the token is printed, so without this the exec behind a
     // stream that never ends is simply left running.

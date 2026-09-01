@@ -178,6 +178,7 @@ const DEFAULTS: Config = {
     tokenRefreshMs: 120_000,
     usageReadMs: 30_000,
     transferMs: 600_000,
+    loginVerdictMs: 45_000,
   },
   intervals: {
     recheckMs: 5 * 60_000,

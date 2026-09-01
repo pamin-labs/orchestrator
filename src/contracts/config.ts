@@ -487,6 +487,15 @@ export const ConfigSchema = z.object({
        * wait as a clone and was already the same number. Minutes, not seconds.
        */
       transferMs: count,
+      /**
+       * How long the CLI has to reach a verdict after a login code is submitted.
+       *
+       * Not the boss's time — the clock starts when the code goes in, and by
+       * then the CLI answers within a second or two either way. It is here
+       * because the exec *stream* may outlive the process: without a deadline a
+       * failed sign-in produced no event at all.
+       */
+      loginVerdictMs: count,
     })
     .strict(),
   /**

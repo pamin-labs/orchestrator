@@ -1494,6 +1494,9 @@ msgstr "Через сколько тот же отчёт о зависании �
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "Сколько переиспользуется один отчёт о системном времени. Считать его дорого настолько, что все прочие запросы ждут позади, а исходные данные всё равно обновляются только по такту."
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "Сколько времени у CLI есть на ответ после отправки кода входа. Это не ваше время — отсчёт начинается, когда код уходит, а ответ приходит за секунду-две в любом случае."
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "Сколько может занять POST выше. Ответ всё равно отбрасывается — это лишь не даёт молчащему вебхуку удерживать уведомление."
 
@@ -1699,6 +1702,9 @@ msgstr "Код входа скопирован"
 
 msgid "Login page"
 msgstr "Страница входа"
+
+msgid "Login verdict"
+msgstr "Результат входа"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "Логи живут в памяти сервера, максимум 500 строк, и стираются при перезапуске. Вывод — в «Заметках»."

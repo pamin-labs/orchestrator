@@ -1494,6 +1494,9 @@ msgstr "同一条「卡住」的报告隔多久才值得再说一遍。太短会
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "一份系统耗时报告能复用多久。算它的代价大到别的请求都得排在后面，而且底层数据本来也只在心跳时更新。"
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "提交登录码之后，CLI 有多长时间给出结果。不是你的时间——码送进去才开始计时，而它一两秒内必有答复，成或不成。"
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "上面那个 POST 最多花多久。答案反正会丢掉——这只是别让一个不回话的 webhook 卡住通知。"
 
@@ -1699,6 +1702,9 @@ msgstr "登录码复制好了"
 
 msgid "Login page"
 msgstr "登录页"
+
+msgid "Login verdict"
+msgstr "登录结果"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "日志在服务端内存里，最多 500 行，重启就没了。结论那条在「记录」里。"

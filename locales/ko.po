@@ -1494,6 +1494,9 @@ msgstr "같은 '멈췄다' 보고를 다시 말할 가치가 생기기까지의 
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "'시스템 소요시간' 리포트 하나를 재사용하는 시간. 계산이 무거워 그동안 다른 요청이 뒤에서 기다립니다. 원본 데이터도 어차피 하트비트에만 갱신됩니다."
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "로그인 코드를 제출한 뒤 CLI 가 결과를 낼 때까지의 시간. 당신의 시간이 아닙니다 — 코드가 들어간 순간부터 재며, 성공이든 실패든 1~2 초 안에 옵니다."
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "위 POST에 허용하는 시간. 응답은 어차피 버립니다 — 답하지 않는 웹훅이 알림을 붙잡지 못하게 할 뿐입니다."
 
@@ -1699,6 +1702,9 @@ msgstr "로그인 코드를 복사했습니다"
 
 msgid "Login page"
 msgstr "로그인 페이지"
+
+msgid "Login verdict"
+msgstr "로그인 결과"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "로그는 서버 메모리에 최대 500줄만 남고 재시작하면 사라집니다. 결론은 \"노트\"에 있습니다."

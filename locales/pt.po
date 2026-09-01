@@ -1494,6 +1494,9 @@ msgstr "Quanto tempo até valer a pena repetir o mesmo relato de travamento. Mai
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "Por quanto tempo um relatório de tempo do sistema é reaproveitado. Calcular custa o bastante para todas as outras requisições esperarem atrás, e os dados de base só mudam a cada batida."
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "Quanto tempo a CLI tem para responder depois de submeteres um código de início de sessão. Não é o teu tempo: o relógio arranca quando o código entra, e a resposta chega num segundo ou dois em qualquer dos casos."
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "Quanto o POST acima pode demorar. A resposta é descartada de qualquer jeito: isto só impede que um webhook mudo segure um aviso."
 
@@ -1699,6 +1702,9 @@ msgstr "Código de login copiado"
 
 msgid "Login page"
 msgstr "Página de login"
+
+msgid "Login verdict"
+msgstr "Veredicto de início de sessão"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "Os logs ficam na memória do servidor, no máximo 500 linhas, e somem ao reiniciar. A conclusão está em \"Notas\"."

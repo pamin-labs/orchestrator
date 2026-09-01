@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import { loadConfig } from "../../src/platform/config/load.ts";
 import { loadAuth } from "../../src/mech/sandbox/auth.ts";
 import { REFRESH_HOME } from "../../src/mech/sandbox/chatgpt.ts";
 
@@ -193,5 +194,40 @@ test("a printed token completes the login even if the stream never ends", async 
   expect((await loadAuth(db, "claude"))?.secret).toBe(CLAUDE_TOKEN);
   // And the slot is free again, so the next sign-in is a new run rather than
   // this one with its url already cached.
+  expect(currentClaudeLogin()).toBeNull();
+});
+
+/**
+ * A submitted code always gets an answer, even when nothing follows it.
+ *
+ * The early stop above covers the run that prints a token. This covers the other
+ * one: the CLI prints an OAuth error and exits, so there is no line to stop on —
+ * and the stream stays open regardless, because `realLines` closes its queue on
+ * a `run()` promise that measured on a live server did not settle. Without a
+ * deadline the read waits forever and the panel is told nothing at all, which is
+ * how three sign-in attempts ended in silence.
+ */
+/**
+ * The clock starts on the submit and not before: while the boss is in a browser
+ * the CLI is silent, and that silence is not a fault.
+ */
+test("a submitted code that draws no answer still ends the login", async () => {
+  const base = loadConfig();
+  const ctx = await testContext({
+    db: await openMemory(),
+    sandbox: strandsAfter("Open https://claude.ai/oauth/authorize?x=1 to continue\nPaste code here if prompted >\n"),
+    // The real 45s is the boss's grace, not a property under test; what is under
+    // test is that the deadline exists and starts on the submit.
+    config: { ...base, timeouts: { ...base.timeouts, loginVerdictMs: 300 } },
+  });
+
+  const run = startClaudeLogin(ctx);
+  // Nothing is pending on the login itself yet — the deadline has not started.
+  expect(await Promise.race([run.done.then(() => "ended"), Bun.sleep(300).then(() => "waiting")])).toBe("waiting");
+
+  await run.submit("WDJB-MJHT");
+  const done = await Promise.race([run.done, Bun.sleep(5_000).then(() => null)]);
+  expect(done?.ok).toBe(false);
+  expect(done?.detail).toContain("no verdict");
   expect(currentClaudeLogin()).toBeNull();
 });

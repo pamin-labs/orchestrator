@@ -1494,6 +1494,9 @@ msgstr "Wie lange, bis derselbe Hängen-Bericht es wert ist, wiederholt zu werde
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "Wie lange ein Systemzeit-Bericht wiederverwendet wird. Die Berechnung ist teuer genug, dass jede andere Anfrage dahinter wartet — und die zugrunde liegenden Daten ändern sich ohnehin nur im Herzschlag."
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "Wie lange die CLI Zeit hat zu antworten, nachdem du einen Anmeldecode abgeschickt hast. Nicht deine Zeit — die Uhr läuft ab dem Moment, in dem der Code eingeht, und die Antwort kommt so oder so in ein bis zwei Sekunden."
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "Wie lange der POST oben dauern darf. Die Antwort wird ohnehin verworfen — das hindert nur einen stummen Webhook daran, eine Benachrichtigung festzuhalten."
 
@@ -1699,6 +1702,9 @@ msgstr "Anmeldecode kopiert"
 
 msgid "Login page"
 msgstr "Anmeldeseite"
+
+msgid "Login verdict"
+msgstr "Anmelde-Ergebnis"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "Logs liegen im Serverspeicher, höchstens 500 Zeilen, beim Neustart weg. Das Fazit steht in „Notizen“."

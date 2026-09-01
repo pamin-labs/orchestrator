@@ -1494,6 +1494,9 @@ msgstr "How long before the same stuck report is worth saying again. Shorter tur
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 
@@ -1699,6 +1702,9 @@ msgstr "Login code copied"
 
 msgid "Login page"
 msgstr "Login page"
+
+msgid "Login verdict"
+msgstr "Login verdict"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."

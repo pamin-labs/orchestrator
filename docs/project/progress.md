@@ -16,7 +16,7 @@ Product goals, scope, milestones and the delivery sequence live in
 Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2024 pass, 6 environment skips, 0 fail, 2030 across 253 files
+- Tests: 2025 pass, 6 environment skips, 0 fail, 2031 across 253 files
 - Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
@@ -80,6 +80,12 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
   while the stream stayed open, so `run.done` never resolved and no event was
   emitted either way. The read stops on the printed token now, which is the whole
   errand. Fixed 2026-09-02; guard in `test/mech/codex-device-login.test.ts`.
+- **A submitted login code could still end in silence.** Stopping the read on a
+  printed token covered the run that succeeds; the one that prints an OAuth error
+  and exits has no line to stop on, and the stream stays open regardless. The
+  wait after a submit is bounded by `timeouts.loginVerdictMs` now — the clock
+  starts on the submit, so the boss's time in the browser is never timed. Fixed
+  2026-09-02; guard in `test/mech/codex-device-login.test.ts`.
 - **Live OpenSandbox tests are environment-gated** and skip without a running
   sandbox server. That is the six skips in the count above.
 - **Repository settings are not repository files.** Branch protection, secret
