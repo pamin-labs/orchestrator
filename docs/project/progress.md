@@ -48,6 +48,13 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
   every attempt was reported as "the CLI needs a pty". Renamed to
   `login-pty.py`; a hyphen is not a Python identifier, so no import can reach it.
   Fixed 2026-09-01; guard in `test/mech/login-pty-runner.test.ts`.
+- **Release archives offered scripts they could not run.** The development
+  `package.json` shipped unchanged into an archive with no `scripts/`, `web/src`
+  or `node_modules` — thirty-nine scripts, seven runnable, and `start` in the
+  other set. `scripts/release-package-json.ts` now rewrites it at package time
+  and the release job checks every script's entrypoint exists in the archive.
+  Fixed 2026-09-01; guards in
+  `test/governance/release-archive-runs-what-it-offers.test.ts`.
 - **Live OpenSandbox tests are environment-gated** and skip without a running
   sandbox server. That is the six skips in the count above.
 - **Repository settings are not repository files.** Branch protection, secret
