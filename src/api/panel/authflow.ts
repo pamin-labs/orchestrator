@@ -321,10 +321,22 @@ export const postClaudeCode = (async (ctx, _req, _p, b) => {
   return message("ok");
 }) satisfies Handler<z.infer<typeof CodeBody>>;
 
+/**
+ * How long a cancel waits for the run it just aborted to finish saying so.
+ *
+ * Bounded, because the wait is a courtesy and the cancel is not. `await` on it
+ * alone hung the route for as long as the exec ignored its abort — which is
+ * exactly the state somebody presses cancel in.
+ */
+const SETTLE_GRACE_MS = 2_000;
+
 export const postClaudeCancel = (async (_ctx) => {
   currentClaudeLogin()?.cancel();
   claudeFlow = null;
-  await claudeSettled.catch(() => {});
+  // Raced, not awaited. `claudeSettled` is here so a test can see the bus event
+  // the continuation emits; it is not a reason to hold an HTTP request open
+  // behind a container exec that has stopped answering.
+  await Promise.race([claudeSettled.catch(() => {}), Bun.sleep(SETTLE_GRACE_MS)]);
   return message("ok");
 }) satisfies Handler;
 
@@ -444,7 +456,8 @@ export const postCodexDevice = (async (ctx) => {
 export const postCodexDeviceCancel = (async (_ctx) => {
   currentCodexDeviceLogin()?.cancel();
   codexFlow = null;
-  await codexSettled.catch(() => {});
+  // Bounded for the reason written on `postClaudeCancel`.
+  await Promise.race([codexSettled.catch(() => {}), Bun.sleep(SETTLE_GRACE_MS)]);
   return message("ok");
 }) satisfies Handler;
 

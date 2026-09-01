@@ -138,7 +138,13 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
   const run: LoginRun = {
     url: null,
     code: null,
-    cancel: () => abort.abort(),
+    // Released on cancel rather than on `done`, for the reason written on
+    // `startClaudeLogin`: this is get-or-create, and a run whose abort went
+    // unanswered would be handed to every login after it.
+    cancel: () => {
+      abort.abort();
+      if (deviceLogin === run) deviceLogin = null;
+    },
     done: Promise.resolve({ ok: false, detail: "" }),
   };
   deviceLogin = run;
@@ -312,7 +318,15 @@ export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) 
   const run: LoginRun & { submit: (code: string) => Promise<void> } = {
     url: null,
     code: null,
-    cancel: () => abort.abort(),
+    // The slot is released here, not in `done`'s `finally`. An exec that does not
+    // answer its abort leaves `done` pending forever, and this is get-or-create:
+    // every later login was handed the dead run, whose `url` is still cached — so
+    // the panel showed a link, and the code pasted against it went into a file
+    // whose reader had already gone.
+    cancel: () => {
+      abort.abort();
+      if (claudeLogin === run) claudeLogin = null;
+    },
     // Appended, not overwritten: the runner holds the file open and reads from
     // where it left off, so a second paste after a typo is a second line rather
     // than a rewrite it will never see.

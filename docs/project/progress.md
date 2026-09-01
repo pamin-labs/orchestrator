@@ -16,7 +16,7 @@ Product goals, scope, milestones and the delivery sequence live in
 Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2021 pass, 6 environment skips, 0 fail, 2027 across 253 files
+- Tests: 2023 pass, 6 environment skips, 0 fail, 2029 across 253 files
 - Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
@@ -68,6 +68,12 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
   returned 1. `ctx.closing` now aborts in `stopIntake` and the stream handler
   ends on it. Measured end to end: exit 1 after 10.1s before, exit 0 in under a
   second after. Fixed 2026-09-01; guards in `test/http/stream.test.ts`.
+- **Cancelling a login wedged every login after it.** The get-or-create slot was
+  released in `done`'s `finally`, so an exec that ignored its abort left the slot
+  held by a dead run — whose cached `url` still rendered a link, against a pty
+  that had exited. The cancel route waited on the same promise, unbounded.
+  Released on `cancel()` now, and the route's wait is raced with 2s. Fixed
+  2026-09-02; guards in `test/mech/codex-device-login.test.ts`.
 - **Live OpenSandbox tests are environment-gated** and skip without a running
   sandbox server. That is the six skips in the count above.
 - **Repository settings are not repository files.** Branch protection, secret

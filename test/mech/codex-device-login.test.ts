@@ -2,7 +2,13 @@ import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { loadAuth } from "../../src/mech/sandbox/auth.ts";
 import { REFRESH_HOME } from "../../src/mech/sandbox/chatgpt.ts";
-import { startClaudeLogin, startCodexDeviceLogin } from "../../src/mech/sandbox/login.ts";
+import {
+  currentClaudeLogin,
+  currentCodexDeviceLogin,
+  startClaudeLogin,
+  startCodexDeviceLogin,
+} from "../../src/mech/sandbox/login.ts";
+import type { SandboxDriver } from "../../src/mech/sandbox/sandbox.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -90,4 +96,50 @@ test("Claude names a rejected or expired pasted code instead of claiming success
   const done = await startClaudeLogin(ctx).done;
   expect(done.ok).toBe(false);
   expect(done.detail).toContain("wrong or expired");
+});
+
+/**
+ * Cancelling has to give the slot back, even when the exec ignores its abort.
+ *
+ * Both logins are get-or-create, and the slot was released in `done`'s `finally`.
+ * An exec that does not answer its abort leaves `done` pending forever, so the
+ * slot stayed occupied by a run whose process was gone — and every later login
+ * was handed it. Its `url` is still cached, so the panel showed a link and the
+ * boss pasted a code against a pty that had already exited, into a file whose
+ * reader was gone.
+ */
+/**
+ * Measured on a live server: `POST /auth/claude/login/cancel` returned nothing
+ * for 20s, and every sign-in after it produced a link that did nothing.
+ */
+const deaf = (): SandboxDriver => ({
+  ...fakeSandbox(),
+  // Never yields, never returns, and never looks at the signal. The `yield` is
+  // unreachable and is there because a generator has to contain one.
+  lines: async function* () {
+    if (Date.now() < 0) yield "";
+    await new Promise<never>(() => {});
+    return { code: 0, err: "" };
+  },
+});
+
+test("cancelling a claude login frees the slot for the next one", async () => {
+  const ctx = await testContext({ sandbox: deaf() });
+  const first = startClaudeLogin(ctx);
+  expect(currentClaudeLogin()).toBe(first);
+
+  first.cancel();
+  // Released now, not when `done` settles — which, here, is never.
+  expect(currentClaudeLogin()).toBeNull();
+  expect(startClaudeLogin(ctx)).not.toBe(first);
+});
+
+test("cancelling a codex login frees the slot for the next one", async () => {
+  const ctx = await testContext({ sandbox: deaf() });
+  const first = startCodexDeviceLogin(ctx);
+  expect(currentCodexDeviceLogin()).toBe(first);
+
+  first.cancel();
+  expect(currentCodexDeviceLogin()).toBeNull();
+  expect(startCodexDeviceLogin(ctx)).not.toBe(first);
 });
