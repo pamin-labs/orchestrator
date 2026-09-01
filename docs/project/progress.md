@@ -16,7 +16,7 @@ Product goals, scope, milestones and the delivery sequence live in
 Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2009 pass, 6 environment skips, 0 fail, 2015 across 251 files
+- Tests: 2016 pass, 6 environment skips, 0 fail, 2022 across 253 files
 - Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
@@ -42,6 +42,12 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
   `adoptServerKey` now takes the key back at boot from the running server's own
   `--config`, which is what the panel's `Read from server` button already did by
   hand. Fixed 2026-09-01; guards in `test/mech/sandbox-boot.test.ts`.
+- **The login pty runner shadowed the module it imports.** Installed at
+  `/opt/orch/pty.py`, its own `import pty` resolved to itself (Python puts the
+  script's directory at `sys.path[0]`), so `claude setup-token` never started and
+  every attempt was reported as "the CLI needs a pty". Renamed to
+  `login-pty.py`; a hyphen is not a Python identifier, so no import can reach it.
+  Fixed 2026-09-01; guard in `test/mech/login-pty-runner.test.ts`.
 - **Live OpenSandbox tests are environment-gated** and skip without a running
   sandbox server. That is the six skips in the count above.
 - **Repository settings are not repository files.** Branch protection, secret

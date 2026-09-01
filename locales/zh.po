@@ -843,8 +843,8 @@ msgstr "claude 登录没成：{detail}"
 msgid "claude is signed in"
 msgstr "claude 登录好了"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "claude 在容器里没打印出登录链接 —— 在镜像里跑 `claude setup-token` 看为什么。它需要 pty，没有 pty 时它什么都不打印然后正常退出。"
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude 在容器里没打印出登录链接 —— 登录本来就给了它一个终端，所以在镜像里跑 `claude setup-token`，看看它到底打印了什么。"
 
 msgid "Clear"
 msgstr "清掉"

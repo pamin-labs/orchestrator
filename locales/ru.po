@@ -843,8 +843,8 @@ msgstr "claude не смог войти: {detail}"
 msgid "claude is signed in"
 msgstr "claude вошёл"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "claude не вывел ссылку для входа внутри контейнера — запустите `claude setup-token` в образе, чтобы понять почему. Ему нужен pty: без него он ничего не печатает и выходит с кодом 0."
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude не напечатал ссылку для входа внутри контейнера — вход и так даёт ему терминал, поэтому запустите `claude setup-token` в образе и посмотрите, что он печатает вместо этого."
 
 msgid "Clear"
 msgstr "Очистить"

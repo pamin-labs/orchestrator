@@ -843,8 +843,8 @@ msgstr "claude n'a pas pu se connecter : {detail}"
 msgid "claude is signed in"
 msgstr "claude est connecté"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "claude n'a affiché aucun lien de connexion dans le conteneur — lancez `claude setup-token` dans l'image pour voir pourquoi. Il lui faut un pty ; sans pty il n'affiche rien et sort avec 0."
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude n'a imprimé aucun lien de connexion dans le conteneur — la connexion lui fournit déjà un terminal, donc lancez `claude setup-token` dans l'image pour voir ce qu'il imprime à la place."
 
 msgid "Clear"
 msgstr "Effacer"

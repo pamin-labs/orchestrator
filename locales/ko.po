@@ -843,8 +843,8 @@ msgstr "claude 로그인에 실패했습니다: {detail}"
 msgid "claude is signed in"
 msgstr "claude에 로그인했습니다"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "claude가 컨테이너 안에서 로그인 링크를 출력하지 않았습니다 — 이미지에서 `claude setup-token`을 실행해 원인을 확인하세요. pty가 필요하며, 없으면 아무것도 출력하지 않고 정상 종료합니다."
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude 가 컨테이너 안에서 로그인 링크를 출력하지 않았습니다 —— 로그인은 이미 터미널을 제공하므로, 이미지에서 `claude setup-token` 을 실행해 대신 무엇이 출력되는지 확인하세요."
 
 msgid "Clear"
 msgstr "지우기"

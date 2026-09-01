@@ -843,8 +843,8 @@ msgstr "claude no pudo iniciar sesión: {detail}"
 msgid "claude is signed in"
 msgstr "claude ha iniciado sesión"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "claude no imprimió ningún enlace de inicio de sesión dentro del contenedor — ejecuta `claude setup-token` en la imagen para ver por qué. Necesita un pty; sin él no imprime nada y sale con 0."
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude no imprimió ningún enlace de inicio de sesión dentro del contenedor: el inicio de sesión ya le da un terminal, así que ejecuta `claude setup-token` en la imagen para ver qué imprime en su lugar."
 
 msgid "Clear"
 msgstr "Vaciar"

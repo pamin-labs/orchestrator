@@ -153,8 +153,10 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
 /**
  * A terminal, so a terminal program will talk.
  *
- * `claude setup-token` is a TUI: without a pty it prints nothing and exits 0, which
- * gave the panel a login button that succeeded instantly and stored nothing.
+ * `claude setup-token` is a TUI. Without one it produces no link at all — it
+ * printed nothing and exited 0 against the version this was written for, and
+ * against 2.1.233 it simply hangs. Either way the panel had a login button that
+ * stored nothing.
  */
 /**
  * Two details are load-bearing. **The window size is set explicitly** — a parentless
@@ -166,8 +168,21 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
  * This runs the real CLI and nothing else. A pty is a terminal; that is all that is
  * supplied.
  */
-const PTY_PATH = "/opt/orch/pty.py";
-const PTY_RUNNER = `import fcntl, os, pty, select, struct, sys, termios
+/**
+ * **The hyphen is load-bearing.** Python puts the script's own directory at
+ * `sys.path[0]`, so a runner installed as `pty.py` is what its own first line
+ * imports: `import pty` found the file it was running, `pty.fork` did not
+ * exist, and the traceback went to a stream the login only reads for a URL.
+ */
+/**
+ * Every `claude setup-token` was therefore reported as "the CLI needs a pty" —
+ * which it does, and which this was supplying. A hyphen is not a Python
+ * identifier, so no `import` can reach this file whatever lands beside it.
+ * Measured in `orch-agent:latest`: renamed and nothing else changed, the link
+ * and the paste prompt both arrive, the link after 3.3s.
+ */
+export const PTY_PATH = "/opt/orch/login-pty.py";
+export const PTY_RUNNER = `import fcntl, os, pty, select, struct, sys, termios
 cmd = sys.argv[1:]
 inbox = os.environ.get("ORCH_PTY_IN", "")
 pid, fd = pty.fork()

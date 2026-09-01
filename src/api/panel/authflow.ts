@@ -293,7 +293,7 @@ export const postClaudeLogin = (async (ctx) => {
     const fault = await sandboxFault(ctx);
     if (fault) return bad(fault);
     return bad(
-      msg`claude printed no login link inside the container — run \`claude setup-token\` in the image to see why. It needs a pty, and without one it prints nothing and exits 0.`,
+      msg`claude printed no login link inside the container — the login already gives it a terminal, so run \`claude setup-token\` in the image to see what it prints instead.`,
     );
   }
   claudeFlow = { url, expiresAt: startedAt + PASTE_TTL_MS };

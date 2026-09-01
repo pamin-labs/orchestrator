@@ -843,8 +843,8 @@ msgstr "claude のログインに失敗しました：{detail}"
 msgid "claude is signed in"
 msgstr "claude にログインしました"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "claude がコンテナ内でログインリンクを出力しませんでした。イメージ内で `claude setup-token` を実行して原因を確認してください。pty が必要で、pty がないと何も出力せずに正常終了します。"
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude がコンテナ内でログインリンクを出しませんでした —— ログインは端末をすでに与えているので、イメージ内で `claude setup-token` を実行し、代わりに何が出るか確認してください。"
 
 msgid "Clear"
 msgstr "クリア"
