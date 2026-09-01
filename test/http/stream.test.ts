@@ -104,3 +104,54 @@ test("one dead socket ends its own frame, not every frame after it", async () =>
 
   expect(sent).toEqual([2, 3]);
 });
+
+/**
+ * A stream the server can end, because `server.stop(false)` cannot.
+ *
+ * Bun's graceful stop waits for every request to finish and an SSE request never
+ * does. Measured against Bun 1.4: 3ms to stop with no stream open, still hanging
+ * at 5s with one. So a single panel tab held the graceful phase to its whole
+ * 10s deadline, `shutdownRuntime` returned 1, and ctrl-c printed
+ * `error: script "server" exited with code 1` over a clean shutdown.
+ */
+/**
+ * `ctx.closing` is the third way a stream ends and the only one the client does
+ * not start. Dropping the subscription is free: the panel reconnects on its own
+ * `retry: 3000`, and there is nothing to reconnect to.
+ */
+test("a closing server ends the stream rather than being held open by it", async () => {
+  const closing = new AbortController();
+  const ctx = await testContext({ closing: closing.signal });
+  const response = await makeApp(ctx)(new Request("http://x/api/v1/stream?since=0"));
+  const reader = response.body!.getReader();
+  // The `: connected` preamble, so the stream is live before anything is asked
+  // of it — a stream that never opened would end for the wrong reason.
+  expect(new TextDecoder().decode((await reader.read()).value)).toContain("connected");
+
+  closing.abort();
+  const ended = await Promise.race([
+    (async () => {
+      for (;;) if ((await reader.read()).done) return "ended";
+    })(),
+    Bun.sleep(2_000).then(() => "still open after 2s"),
+  ]);
+  expect(ended).toBe("ended");
+});
+
+/** An `AbortSignal` that is already aborted does not fire `addEventListener`, so
+ *  a tab that connects during shutdown would hold the stream open forever on the
+ *  listener alone. */
+test("a stream opened after the server started closing does not stay open", async () => {
+  const closing = new AbortController();
+  closing.abort();
+  const ctx = await testContext({ closing: closing.signal });
+  const response = await makeApp(ctx)(new Request("http://x/api/v1/stream?since=0"));
+  const reader = response.body!.getReader();
+  const ended = await Promise.race([
+    (async () => {
+      for (;;) if ((await reader.read()).done) return "ended";
+    })(),
+    Bun.sleep(2_000).then(() => "still open after 2s"),
+  ]);
+  expect(ended).toBe("ended");
+});

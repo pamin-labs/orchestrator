@@ -153,10 +153,17 @@ export async function getStream(
     unsub();
     if (beat) clearInterval(beat);
     req.signal.removeEventListener("abort", stop);
+    ctx.closing?.removeEventListener("abort", stop);
     finish();
   };
   stream.onAbort(stop);
   req.signal.addEventListener("abort", stop, { once: true });
+  // The third way this ends, and the only one the client does not start: the
+  // process is going away. Without it `server.stop(false)` waits on a stream
+  // that never finishes, which is ctrl-c taking the full deadline and then
+  // reporting failure. Removed in `stop` because the signal outlives one
+  // request — a listener per connection left on it would be a leak.
+  ctx.closing?.addEventListener("abort", stop, { once: true });
 
   const send = frameSender(ctx.db, stream);
   const writer = boundedWriter(send, ctx.config.streamBacklog);
@@ -170,7 +177,9 @@ export async function getStream(
     if (replaying) pending.push(frame);
     else void enqueue(frame);
   });
-  if (req.signal.aborted) {
+  // An already-aborted signal does not fire `addEventListener`, so both are read
+  // once here as well as listened to above.
+  if (req.signal.aborted || ctx.closing?.aborted) {
     stop();
     return;
   }

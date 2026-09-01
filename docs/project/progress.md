@@ -16,7 +16,7 @@ Product goals, scope, milestones and the delivery sequence live in
 Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2016 pass, 6 environment skips, 0 fail, 2022 across 253 files
+- Tests: 2018 pass, 6 environment skips, 0 fail, 2024 across 253 files
 - Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
@@ -55,6 +55,12 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
   and the release job checks every script's entrypoint exists in the archive.
   Fixed 2026-09-01; guards in
   `test/governance/release-archive-runs-what-it-offers.test.ts`.
+- **Ctrl-C reported a clean shutdown as a failure.** `server.stop(false)` waits
+  for every request to finish and an SSE request never does, so one open panel
+  tab held the graceful phase to its full 10s deadline and `shutdownRuntime`
+  returned 1. `ctx.closing` now aborts in `stopIntake` and the stream handler
+  ends on it. Measured end to end: exit 1 after 10.1s before, exit 0 in under a
+  second after. Fixed 2026-09-01; guards in `test/http/stream.test.ts`.
 - **Live OpenSandbox tests are environment-gated** and skip without a running
   sandbox server. That is the six skips in the count above.
 - **Repository settings are not repository files.** Branch protection, secret

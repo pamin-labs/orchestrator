@@ -844,10 +844,15 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   });
 
   const gh = makeGithub(db, undefined, outputLanguage(cfg), cfg.timeouts.githubApiMs);
+  // Aborted by `stopIntake`, so the handlers that hold a connection open on
+  // purpose can let go. Declared beside `ctx` rather than inside `stopIntake`
+  // because `ctx` is built here and the signal has to be on it from the start.
+  const closing = new AbortController();
   const ctx: Ctx = {
     db,
     bus,
     sched,
+    closing: closing.signal,
     gh,
     sandbox: REAL,
     // Cheapest tier: navigating a tree of one-line summaries is not a reasoning
@@ -1145,6 +1150,10 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   const stopIntake = () => {
     if (stopped) return false;
     stopped = true;
+    // Before the timers: an SSE stream is a request that never finishes, so
+    // `server.stop(false)` below waits on it forever. Every open panel tab held
+    // the graceful phase to its full deadline and turned ctrl-c into exit 1.
+    closing.abort();
     runtime.accepting = false;
     runtime.ready = false;
     sched.quiesce();
