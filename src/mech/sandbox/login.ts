@@ -159,7 +159,7 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
  * stored nothing.
  */
 /**
- * Two details are load-bearing. **The window size is set explicitly** — a parentless
+ * Three details are load-bearing. **The window size is set explicitly** — a parentless
  * pty defaults to 80 columns and the CLI wraps its URL across five lines mid-token,
  * and the link handed to the boss has to be one string; this is also why `script
  * -qec`, in the image and tried first, does not work. **Stdin is a file this process
@@ -194,6 +194,19 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
 export const PTY_PATH = "/opt/orch/login-pty.py";
 
 /**
+ * **The line goes in ending in CR.** Enter on a terminal is `\r`; `\n` is what a
+ * file ends a line with, and they are not the same key. A TUI sets the pty to
+ * raw and reads the keys itself, so sent as `\n` the CLI took every character —
+ * the code echoed back as asterisks — and never submitted. A paste box that
+ * visibly does nothing.
+ */
+/**
+ * Measured against claude-code 2.1.233: the same run, handed a bare `\r`
+ * afterwards, answered `OAuth error: ... 400`. The code had arrived all along
+ * and was waiting on a key it was never sent. `rstrip` first, so whatever the
+ * file ends with, exactly one CR arrives.
+ */
+/**
  * The interpreter flags the runner is launched with, exported so the guard runs
  * it the way production does rather than asserting on a string.
  */
@@ -223,7 +236,7 @@ while True:
     if src:
         line = src.readline()
         if line:
-            os.write(fd, line if line.endswith(b"\\n") else line + b"\\n")
+            os.write(fd, line.rstrip(b"\\r\\n") + b"\\r")
     if os.waitpid(pid, os.WNOHANG)[0]:
         try:
             while True:

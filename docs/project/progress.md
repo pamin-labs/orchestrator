@@ -16,7 +16,7 @@ Product goals, scope, milestones and the delivery sequence live in
 Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2018 pass, 6 environment skips, 0 fail, 2024 across 253 files
+- Tests: 2019 pass, 6 environment skips, 0 fail, 2025 across 253 files
 - Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
@@ -50,6 +50,11 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
   instead. Launched with `-P` now, which drops `sys.path[0]` whatever is in the
   directory. Fixed 2026-09-01; guard in `test/mech/login-pty-runner.test.ts`
   reproduces the stale file.
+- **A pasted login code was typed but never entered.** The runner ended the line
+  it wrote into the pty with LF; Enter on a terminal is CR, and a TUI in raw
+  mode reads the keys itself — so claude echoed the code as asterisks and never
+  submitted it. Sends CR now. Measured against claude-code 2.1.233: the same run
+  given a bare `\r` answered `OAuth error: … 400`. Fixed 2026-09-01.
 - **Release archives offered scripts they could not run.** The development
   `package.json` shipped unchanged into an archive with no `scripts/`, `web/src`
   or `node_modules` — thirty-nine scripts, seven runnable, and `start` in the
