@@ -260,6 +260,22 @@ export const suffixFor = (isolate: string) =>
  * one catalogue: measured, 94 tests time out. The template a database-per-file
  * copied absorbed that, and a schema has no `CREATE SCHEMA ... TEMPLATE`.
  */
+/**
+ * How long a test connection may sit idle before the pool closes it.
+ *
+ * Bun's default is 0, which means never — so each worker climbed to its pool
+ * maximum and held every connection until the process exited. Measured on a
+ * ten-core machine: eight workers, 104-176 backends live at once against a
+ * `max_connections` somebody had already raised to 300, and a container that had
+ * grown to 2.9 GB across a session's runs.
+ */
+/**
+ * The maximum stays where it is: `24` is above the widest fan-out a single
+ * request makes, and a pool under that deadlocks the snapshot against itself.
+ * What was missing is that a connection nobody is using should go back.
+ */
+const TEST_IDLE_SECONDS = 5;
+
 const nameFor = (isolate: string) => `t_${SCHEMA_TAG}_${suffixFor(isolate)}`;
 
 /** Every connection lands in its own namespace, and the pool cannot drift off it. */
@@ -381,7 +397,7 @@ export async function openMemory(logger?: Logger, isolate = ""): Promise<DB> {
         // now refuses the second run by name rather than letting it produce a
         // number nobody can act on.
         const found = await admin<{ present: number }[]>`SELECT 1 AS present FROM pg_namespace WHERE nspname = ${mine}`;
-        const client = new SQL({ url: urlFor(mine), max: 24 });
+        const client = new SQL({ url: urlFor(mine), max: 24, idleTimeout: TEST_IDLE_SECONDS });
         if (found.length === 0) {
           await bunSqlDrizzle({ client: admin }).execute(sql`CREATE SCHEMA ${sql.identifier(mine)}`);
           await buildNamespace(client);
