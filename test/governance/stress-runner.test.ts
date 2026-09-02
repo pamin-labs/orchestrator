@@ -14,6 +14,16 @@ test("stress repeats replay-safe suites and leaves stateful live integration to 
   // `openMemory` for a namespace does, and the cache that makes it first is
   // module-scope. It failed 9 of 10 reruns.
   expect(files).not.toContain("test/platform/test-db-reclaim.test.ts");
+
+  // Every browser file, and by comparison with the disk rather than a number.
+  //
+  // The document exclusion was removed and the glob was not: `*.test.ts` does not
+  // match `*.test.tsx`, so all 38 of them stayed out of the job that exists to
+  // find cross-file order dependence, under a comment saying they no longer were.
+  // A count would pass again the moment one file was added and the glob was not.
+  const browser = [...new Bun.Glob("test/**/*.test.tsx").scanSync({ cwd: ".", absolute: false })].toSorted();
+  expect(browser.length).toBeGreaterThan(0);
+  expect(files.filter((file) => file.endsWith(".tsx"))).toEqual(browser);
 });
 
 test("stress replay forwards Bun's failing seed, and carries the hang threshold", () => {

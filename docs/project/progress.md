@@ -13,7 +13,7 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `fix/agent-turns-need-a-sandbox-flag`, 2026-09-03.
+Measured on `fix/stress-never-ran-the-browser-tests`, 2026-09-03.
 
 - TypeScript, Oxlint, Biome: pass
 - Tests: 2051 pass, 6 environment skips, 0 fail, 2057 across 253 files
@@ -111,7 +111,17 @@ Measured on `fix/agent-turns-need-a-sandbox-flag`, 2026-09-03.
   listener, a catalog emptied with a merging `load`, and a stubbed `matchMedia`
   deleted rather than put back. Fixed 2026-09-02; guards in
   `test/governance/preload-scope.test.ts`, and `bun run test:stress` — randomised,
-  ten reruns, and no longer skipping the browser files — is what holds it.
+  ten reruns — is what holds it. It did not hold the browser half: see below.
+- **The stress job had never run a browser test.** Its document exclusion was
+  removed and its glob was not — `test/**/*.test.ts` does not match `*.test.tsx`,
+  so all 38 stayed out of the one job that hunts cross-file order dependence,
+  under a comment saying they no longer were. Correcting the glob reproduced CI's
+  `RangeError: Maximum call stack size exceeded` locally on the first run:
+  `bundle-boots` mounts the panel into a shared document and
+  `createRoot(...).render()` discarded the handle, so Radix's `document`-level
+  focus scopes outlived `body.innerHTML = ""`. `main.tsx` names its root and the
+  test unmounts it. Fixed 2026-09-03. **Not** proved: that the unmount is the
+  fix — it reproduced once and eight targeted attempts since have not.
 - **Cancelling a login wedged every login after it, and a finished one waited on
   a stream that never ended.** The get-or-create slot was released in `done`'s
   `finally`, so an exec that ignored its abort left the slot held by a dead run;
@@ -120,18 +130,6 @@ Measured on `fix/agent-turns-need-a-sandbox-flag`, 2026-09-03.
   the stream, and the wait after a submit is bounded by `timeouts.loginVerdictMs`
   — the clock starts on the submit, so the boss's time in the browser is never
   timed. Fixed 2026-09-02; guards in `test/mech/codex-device-login.test.ts`.
-- **Ctrl-C reported a clean shutdown as a failure.** `server.stop(false)` waits
-  for every request to finish and an SSE request never does, so one open panel
-  tab held the graceful phase to its full 10s deadline. `ctx.closing` aborts in
-  `stopIntake` now. Measured end to end: exit 1 after 10.1s before, exit 0 in
-  under a second after. Fixed 2026-09-01; guards in `test/http/stream.test.ts`.
-- **Release archives offered scripts they could not run.** The development
-  `package.json` shipped unchanged into an archive with no `scripts/`, `web/src`
-  or `node_modules` — thirty-nine scripts, seven runnable, and `start` in the
-  other set. `scripts/release-package-json.ts` rewrites it at package time and
-  the release job checks every script's entrypoint exists in the archive. Fixed
-  2026-09-01; guards in
-  `test/governance/release-archive-runs-what-it-offers.test.ts`.
 - **An unconfigured account was reported as twelve calls that said nothing,**
   hourly for a day, on an installation where `indexModel.runtime` was `codex` and
   only Claude had ever been signed in. An index pass asks nothing without a
