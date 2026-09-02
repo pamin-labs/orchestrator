@@ -1,4 +1,5 @@
 import type { Ctx } from "../../mech/ctx.ts";
+import { attempt } from "../../platform/persistence/database.ts";
 import { channel, grp as grpTable } from "../../platform/persistence/schema.ts";
 import { addNote } from "../util/rows.ts";
 import { outputLanguage } from "../../contracts/config.ts";
@@ -96,7 +97,9 @@ export async function newGroup(ctx: Ctx, g: NewGroup): Promise<{ id: number; cha
 }
 
 async function insertGroup(ctx: Ctx, g: NewGroup, name: string): Promise<{ id: number; channelId: number }> {
-  const made = await ctx.bus.transaction(async (tx) => {
+  // A savepoint when the caller already has a transaction open, so a name
+  // collision undoes this attempt and not the caller's whole unit of work.
+  const made = await attempt(ctx.db, async (tx) => {
     const [grp] = await tx
       .insert(grpTable)
       .values({

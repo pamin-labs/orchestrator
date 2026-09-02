@@ -56,3 +56,37 @@ test("a name a caller chose is kept, and only the collision gets a suffix", asyn
   const c = await newGroup(ctx, { projectId: other.id, name: "ship-it", idea: "three" });
   expect((await db.select({ name: grp.name }).from(grp).where(eq(grp.id, c.id)))[0]?.name).toBe("ship-it");
 });
+
+/**
+ * The collision that happens inside somebody else's transaction.
+ *
+ * Postgres aborts the whole transaction on a constraint violation, so the retry
+ * that gives the second group a suffix ran its insert on a connection that was
+ * already refusing statements: `current transaction is aborted, commands ignored
+ * until end of transaction block`, from the insert itself.
+ */
+/**
+ * Both callers that create several groups at once wrap the lot in one
+ * transaction — `orch task split` loops over the items, and the escalation that
+ * opens a requirement does it beside the turn it enqueues. So one collision
+ * failed every group after it, which is a boss filing two tickets about the same
+ * area and getting one.
+ */
+test("a collision inside a transaction costs the attempt, not the transaction", async () => {
+  const db = await openMemory();
+  const ctx = await testContext({ db });
+  const project = await fx.on(db).project.create({ name: "p", remote: "https://github.com/o/p.git" });
+
+  const made = await ctx.bus.transaction(async () => {
+    const first = await newGroup(ctx, { projectId: project.id, name: "ship-it", idea: "one" });
+    const second = await newGroup(ctx, { projectId: project.id, name: "ship-it", idea: "two" });
+    // And the transaction is still usable afterwards, which is the half a
+    // savepoint buys that a caught error does not.
+    const third = await newGroup(ctx, { projectId: project.id, name: "ship-it", idea: "three" });
+    return [first.id, second.id, third.id];
+  });
+
+  const rows = await db.select({ id: grp.id, name: grp.name }).from(grp).orderBy(asc(grp.id));
+  expect(rows.map((r) => r.name)).toEqual(["ship-it", "ship-it-2", "ship-it-3"]);
+  expect(made).toEqual(rows.map((r) => r.id));
+});

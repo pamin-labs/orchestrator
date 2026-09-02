@@ -46,6 +46,31 @@ export const writeHandle = (db: DB): DB => openTransaction.getStore()?.tx ?? db;
  * under the pool and a second transaction on it, and an inner commit could outlive
  * an outer rollback either way.
  */
+/**
+ * One attempt that may fail without taking the caller's transaction with it.
+ *
+ * Postgres aborts the whole transaction on a constraint violation: every
+ * statement after it answers `current transaction is aborted, commands ignored
+ * until end of transaction block`, and that is what a retry-on-conflict is. A
+ * savepoint is the only thing that makes the attempt undoable on its own.
+ */
+/**
+ * `newGroup` retries a unique name, and both callers that create several groups
+ * at once — `orch task split` and the escalation that opens a requirement — wrap
+ * the lot in one transaction. So the first collision failed the insert and every
+ * insert after it, which is a boss filing two tickets about the same area and
+ * getting one. Outside a transaction this is a transaction, which is what the
+ * retry always needed and had by accident.
+ */
+export async function attempt<T>(db: DB, body: (tx: DB) => Promise<T>): Promise<T> {
+  const open = openTransaction.getStore();
+  if (!open) return transaction(db, body);
+  // The savepoint shares the outer `onCommit`: an event emitted inside it still
+  // belongs to the outer commit, and fanning it out here would tell a subscriber
+  // about work the outer transaction can still roll back.
+  return open.tx.transaction((sp) => openTransaction.run({ ...open, tx: sp }, () => body(sp)));
+}
+
 export async function transaction<T>(db: DB, body: (tx: DB) => Promise<T>): Promise<T> {
   const open = openTransaction.getStore();
   if (open) return body(open.tx);
