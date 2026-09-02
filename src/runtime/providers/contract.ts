@@ -127,3 +127,17 @@ export interface AskResult {
 
 /** A unique prompt file prevents concurrent turns in one sandbox from overwriting each other. */
 export const promptPath = (): string => `/tmp/orch-prompt-${crypto.randomUUID()}.txt`;
+
+/**
+ * How much of a call's prompt was read from the cache rather than sent again.
+ *
+ * Lives with `Usage` because two callers compute it from one: a turn, and the
+ * index navigator's one-shot ask. It used to take a `TurnResult`, which is why
+ * the index — the most frequent model call in the system — reported none, and
+ * the panel averaged the ratio over whichever handful of turns had one while
+ * fifty index calls with a real figure sat in the same sample unlisted.
+ */
+export const cacheRatio = (u: Usage): number => {
+  const denom = u.cacheRead + u.cacheCreate + u.input;
+  return denom === 0 ? 0 : u.cacheRead / denom;
+};

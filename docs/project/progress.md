@@ -13,10 +13,10 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `refactor/one-provider-owns-both-ways-to-its-cli`, 2026-09-03.
+Measured on `perf/the-index-call-carried-a-skills-catalogue`, 2026-09-03.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2055 pass, 6 environment skips, 0 fail, 2061 across 254 files
+- Tests: 2055 pass, 7 environment skips, 0 fail, 2062 across 254 files
 - Coverage: 84.06% of statements, 74.34% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0, over 694 files
@@ -37,6 +37,21 @@ Measured on `refactor/one-provider-owns-both-ways-to-its-cli`, 2026-09-03.
 
 ## Blockers and deviations
 
+- **Every index call carried three things it never opened.** Measured against
+  codex 0.147.0 in this image, the same 1,631-byte prompt: **21,513 input tokens
+  as shipped, 9,980 with three documented `-c` keys** — the bundled skills
+  catalogue (−5,169), this repository's 15,122-byte `AGENTS.md` (−3,600) and a
+  web-search tool (−2,456), for a call that reads a file head and writes one line
+  under twenty words. `--ignore-rules` and `--ignore-user-config` are not the
+  lever they look like — execpolicy `.rules` and `config.toml` respectively,
+  21,513 either way — and `agents.enabled=false` measured zero. Turns keep web
+  search; `allowedTools` still decides which roles may look things up. Fixed
+  2026-09-03. And the index event now carries `cacheRatio`, which the shape it
+  claimed to imitate has always had: twelve index rows a tick against a handful
+  of turns is the sample `recentCacheRatio` reads, so the panel's figure was an
+  average over whatever else was in it, drawn beside a row saying the indexer is
+  the whole of the spend. **Not done**: the claude side of the same call measures
+  **76,916** input tokens against codex's 21,513, and its trim is unmeasured.
 - **A command that exits took its own output with it, so PageIndex never built.**
   `wrapForSession` redirects each stream to a file and reads both back, and the
   command sat in a brace group — `exit` inside one ends the *session* every caller
@@ -103,16 +118,6 @@ Measured on `refactor/one-provider-owns-both-ways-to-its-cli`, 2026-09-03.
   pty-over-WebSocket instead, and is the only file that knows the wire format.
   Fixed 2026-09-02; [ADR 053](../adr/053-a-terminal-in-the-container-is-a-websocket.md),
   guards in `test/mech/codex-device-login.test.ts`.
-- **A fresh world per test file was what the suite's memory was.** `--parallel`
-  implies `--isolate`, so all 253 files re-evaluated the module graph they
-  import: 29-55 MB per file, flat across worker counts, ~7.2 GB at peak. The
-  suite runs without it now. Five leaks isolation had been hiding were paid off
-  to get there — happy-dom's network classes replacing Bun's, a catalog restored
-  between tests where only the locale was, `startTheme` wiring a second keydown
-  listener, a catalog emptied with a merging `load`, and a stubbed `matchMedia`
-  deleted rather than put back. Fixed 2026-09-02; guards in
-  `test/governance/preload-scope.test.ts`, and `bun run test:stress` — randomised,
-  ten reruns — is what holds it. It did not hold the browser half: see below.
 - **The stress job had never run a browser test.** Its document exclusion was
   removed and its glob was not — `test/**/*.test.ts` does not match `*.test.tsx`,
   so all 38 stayed out of the one job that hunts cross-file order dependence,
@@ -123,14 +128,6 @@ Measured on `refactor/one-provider-owns-both-ways-to-its-cli`, 2026-09-03.
   focus scopes outlived `body.innerHTML = ""`. `main.tsx` names its root and the
   test unmounts it. Fixed 2026-09-03. **Not** proved: that the unmount is the
   fix — it reproduced once and eight targeted attempts since have not.
-- **Cancelling a login wedged every login after it, and a finished one waited on
-  a stream that never ended.** The get-or-create slot was released in `done`'s
-  `finally`, so an exec that ignored its abort left the slot held by a dead run;
-  and `realLines` closed its queue when the SDK's `run()` settled, which on a
-  live server it did not. The slot is released on `cancel()`, the stream ends on
-  the stream, and the wait after a submit is bounded by `timeouts.loginVerdictMs`
-  — the clock starts on the submit, so the boss's time in the browser is never
-  timed. Fixed 2026-09-02; guards in `test/mech/codex-device-login.test.ts`.
 - **CI's `test` job has been killed three times** — SIGTERM during
   `test:coverage:ci`, no named failure, on #40, #41 and #42, each time green on a
   rerun. Unexplained. It is the memory-heaviest job in the pipeline and this

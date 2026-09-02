@@ -58,6 +58,7 @@ import { assemble, buildStable, type Delta, needsRotation, type StablePrompt } f
 import { AgentTurnPayloadSchema, type Executor, type Job } from "../platform/scheduling/scheduler.ts";
 import { buildTurnDelta } from "../application/turn/delta.ts";
 import type { TurnResult } from "../runtime/claude.ts";
+import { cacheRatio } from "../runtime/providers/contract.ts";
 import { clampEffort, type Provider, providerFor } from "../runtime/providers.ts";
 import { track, untrack } from "../platform/process/running-turns.ts";
 import { outputLanguage } from "../contracts/config.ts";
@@ -950,7 +951,7 @@ async function recordCost(
     // `Cost` used breaks on any rename, and the event row has no agent to join to.
     meta: {
       usage: r.usage,
-      cacheRatio: cacheRatio(r),
+      cacheRatio: cacheRatio(r.usage),
       // The wall clock of the provider call, and what its stream weighed. Both
       // sit beside the tokens because the question nobody could answer is which
       // of the three moved: a turn that got slower, more expensive and heavier is
@@ -986,11 +987,6 @@ async function recordProgress(deps: ExecDeps, agent: AgentRow, job: Job, r: Turn
     .from(tasks)
     .where(and(eq(tasks.owner_agent_id, agent.id), eq(tasks.status, "done")));
   await recordTurnOutcome(ctx, agent.id, r.filesTouched, (notesWritten?.c ?? 0) > 0, (tasksMoved?.c ?? 0) > 0);
-}
-
-export function cacheRatio(r: TurnResult): number {
-  const denom = r.usage.cacheRead + r.usage.cacheCreate + r.usage.input;
-  return denom === 0 ? 0 : r.usage.cacheRead / denom;
 }
 
 /**

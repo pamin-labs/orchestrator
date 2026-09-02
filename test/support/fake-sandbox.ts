@@ -12,24 +12,30 @@ import type { SandboxDriver } from "../../src/mech/sandbox/sandbox.ts";
  */
 export function fakeSandbox(
   handle: (cmd: string, cwd: string) => { code?: number; out?: string; err?: string } = () => ({}),
-): SandboxDriver & { commands: string[]; files: Map<string, string> } {
+): SandboxDriver & { commands: string[]; envs: (Record<string, string> | undefined)[]; files: Map<string, string> } {
   const commands: string[] = [];
+  /** What each command was given to run in, positionally beside `commands`. It
+   *  is not part of the command string, so a caller that must set one — the
+   *  refresher's `CODEX_HOME`, a turn's, the index's — had no way to be asserted. */
+  const envs: (Record<string, string> | undefined)[] = [];
   const files = new Map<string, string>();
   // `cwd` is passed through and has no default. A handler that spawns for real
   // and forgets it runs in whatever this process's cwd happens to be — which,
   // for a test of the orchestrator, is the orchestrator's own checkout. That
   // mistake committed to this repository ten times before it was noticed, and it
   // is precisely the class of accident the sandbox exists to make impossible.
-  const run = (cmd: string, cwd: string) => {
+  const run = (cmd: string, cwd: string, env?: Record<string, string>) => {
     commands.push(cmd);
+    envs.push(env);
     const r = handle(cmd, cwd);
     return { code: r.code ?? 0, out: r.out ?? "", err: r.err ?? "" };
   };
   return {
     commands,
+    envs,
     files,
     exec: async (_ctx, _scope, cmd, opts) => {
-      const r = run(cmd, opts?.cwd ?? "");
+      const r = run(cmd, opts?.cwd ?? "", opts?.env);
       // `git bundle create <path> …` has to leave something behind, or every
       // caller that reads the bundle back reports it as missing.
       const bundle = /git bundle create '([^']+)'/.exec(cmd);
@@ -37,7 +43,7 @@ export function fakeSandbox(
       return r;
     },
     lines: async function* (_ctx, _scope, cmd, opts) {
-      const r = run(cmd, opts?.cwd ?? "");
+      const r = run(cmd, opts?.cwd ?? "", opts?.env);
       for (const l of r.out.split("\n").filter(Boolean)) yield l;
       return { code: r.code, err: r.err };
     },

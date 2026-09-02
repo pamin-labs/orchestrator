@@ -7,7 +7,8 @@ import { and, asc, count, desc, eq, like, sql } from "drizzle-orm";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import * as t from "../../src/platform/persistence/schema.ts";
 import { buildClaudeArgv, type TurnResult, type TurnSpec } from "../../src/runtime/claude.ts";
-import { cacheRatio, type ExecDeps, hire, LOST_SESSION, makeExecutor } from "../../src/application/executor.ts";
+import { type ExecDeps, hire, LOST_SESSION, makeExecutor } from "../../src/application/executor.ts";
+import { cacheRatio } from "../../src/runtime/providers/contract.ts";
 import { AgentTurnPayloadSchema, type Executor } from "../../src/platform/scheduling/scheduler.ts";
 import { abortJob } from "../../src/platform/process/running-turns.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
@@ -425,8 +426,12 @@ test("a lease job without an integer id fails instead of disappearing", async ()
 });
 
 test("cacheRatio reports the only visible signal that caching still works", () => {
-  expect(cacheRatio(ok())).toBeCloseTo(5000 / 5110, 3);
-  expect(cacheRatio(ok({ usage: { input: 100, output: 5, cacheRead: 0, cacheCreate: 0, thinking: 0 } }))).toBe(0);
+  // Over a `Usage` and not a `TurnResult`: the index navigator has one and no
+  // turn, which is why the most frequent model call in the system reported no
+  // ratio at all and the panel averaged over whatever else was in the sample.
+  expect(cacheRatio(ok().usage)).toBeCloseTo(5000 / 5110, 3);
+  expect(cacheRatio({ input: 100, output: 5, cacheRead: 0, cacheCreate: 0, thinking: 0 })).toBe(0);
+  expect(cacheRatio({ input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 })).toBe(0);
 });
 
 test("a turn records whether it opened a cold session, and what caused it", async () => {

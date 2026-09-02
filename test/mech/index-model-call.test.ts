@@ -71,9 +71,14 @@ test("codex is run read-only and its answer is picked out of the stream", async 
   const text = await modelAsk(ctx, { runtime: "codex", model: "gpt-5" }, SCOPE, 60_000, (u) => spent.push(u))("q");
 
   expect(text).toBe("src/mech/notify.ts");
-  expect(sandbox.commands[0]).toContain(
-    "'codex' 'exec' '--json' '--skip-git-repo-check' '-s' 'read-only' '-m' 'gpt-5'",
-  );
+  expect(sandbox.commands[0]).toContain("'codex' 'exec' '--json' '--skip-git-repo-check' '-s' 'read-only'");
+  expect(sandbox.commands[0]).toContain("'-m' 'gpt-5'");
+  // The three measured trims, each worth thousands of tokens a call: the skills
+  // catalogue (-5,169), this repository's 15KB `AGENTS.md` (-3,600) and a web
+  // search a summary of a local file has nothing to do with (-2,456). 21,513
+  // input tokens as shipped against 9,980 with them.
+  for (const key of ["skills.include_instructions=false", "project_doc_max_bytes=0", "web_search="])
+    expect(sandbox.commands[0], key).toContain(key);
   expect(spent.length).toBe(1);
 });
 
