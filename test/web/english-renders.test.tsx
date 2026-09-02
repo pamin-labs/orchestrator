@@ -35,10 +35,15 @@ test("a pane renders its source language when English is active", () => {
  */
 test("an untranslated message falls back to the English the macro hashed", () => {
   // A third locale with nothing in it, which is what the day someone adds one
-  // looks like — `load` merges rather than replaces, so emptying `zh` would not
-  // have tested this.
-  i18n.load("ja", {});
-  i18n.activate("ja");
+  // looks like. Emptying the active catalog would not have tested this.
+  //
+  // `loadAndActivate`, not `load` then `activate`: `load` merges into whatever
+  // that locale already holds, and `catalogs-render` loads the real Japanese one
+  // through `startLocale`. Sharing a module registry, this read
+  // `イベントストリーム` out of a catalog it believed was empty — and asserted the
+  // fallback of a message that had a translation. `loadAndActivate` assigns
+  // (`_messages[locale] = messages`), which is the empty this test means.
+  i18n.loadAndActivate({ locale: "ja", messages: {} });
   const { getByRole } = render(<Timeline st={emptyState()} frames={[]} grpId={null} projectId={null} />);
   expect(getByRole("heading").textContent).toContain("Event stream");
 });
