@@ -63,16 +63,31 @@ export const isThemeHotkey = (e: Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "sh
  * On "system" the OS can change under us — at sunset, on a schedule — and the
  * page has to follow without a reload.
  */
+/**
+ * Named and removed before it is added, so calling this twice wires one listener.
+ *
+ * "Called once, at boot" was a sentence rather than a property: a second call
+ * left two keydown listeners on the same window and one press cycled two steps.
+ * A stable module-level function is all `removeEventListener` needs, so this
+ * costs no state of its own — which a `started` flag would have been.
+ */
+const followSystem = () => {
+  if (read() === "system") apply("system");
+};
+
+const onHotkey = (e: KeyboardEvent) => {
+  if (!isThemeHotkey(e)) return;
+  e.preventDefault();
+  set(NEXT[read()]);
+};
+
 export function startTheme(): void {
   apply(read());
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-    if (read() === "system") apply("system");
-  });
-  window.addEventListener("keydown", (e) => {
-    if (!isThemeHotkey(e)) return;
-    e.preventDefault();
-    set(NEXT[read()]);
-  });
+  const media = matchMedia("(prefers-color-scheme: dark)");
+  media.removeEventListener("change", followSystem);
+  media.addEventListener("change", followSystem);
+  window.removeEventListener("keydown", onHotkey);
+  window.addEventListener("keydown", onHotkey);
 }
 
 /** The three states, said out loud. ⌘⇧L still cycles them from anywhere. */
