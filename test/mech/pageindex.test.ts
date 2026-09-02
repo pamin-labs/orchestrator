@@ -1,3 +1,5 @@
+import { readClaude } from "../../src/runtime/claude.ts";
+import { readCodex } from "../../src/runtime/codex.ts";
 import { expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -7,8 +9,6 @@ import { loadConfig } from "../../src/platform/config/load.ts";
 import {
   chargeIndex,
   loadTree,
-  readClaude,
-  readCodex,
   noteLeaves,
   render,
   saveTree,

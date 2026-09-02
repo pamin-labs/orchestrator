@@ -1,8 +1,10 @@
 import { clip } from "../platform/process/text.ts";
 import { JsonObject, JsonValue, jsonOr } from "../contracts/json.ts";
 import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary, Usage } from "./claude.ts";
-import { promptPath, summarizeTool } from "./claude.ts";
-import { runLineStream } from "./line-stream.ts";
+import { summarizeTool } from "./claude.ts";
+import { promptPath } from "./providers/contract.ts";
+import { askVia, runLineStream } from "./line-stream.ts";
+import type { AskResult, AskSpec } from "./providers/contract.ts";
 import { shq } from "../platform/process/shell.ts";
 import { z } from "zod";
 
@@ -144,7 +146,7 @@ type Line = z.infer<typeof LineSchema>;
  * billed the indexer, the most frequent model call in the system, twice for its
  * cached tokens.
  */
-export function codexUsage(u: z.infer<typeof UsageSchema> = {}): Usage {
+function codexUsage(u: z.infer<typeof UsageSchema> = {}): Usage {
   return {
     input: Math.max(0, (u.input_tokens ?? 0) - (u.cached_input_tokens ?? 0)),
     output: u.output_tokens ?? 0,
@@ -207,7 +209,49 @@ async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult
   return result;
 }
 
-export { buildArgv as buildCodexArgv, runTurn as runCodexTurn };
+const CodexReply = z.looseObject({
+  type: z.string().optional(),
+  item: z.object({ type: z.string().optional(), text: z.string().optional() }).optional(),
+  usage: z.record(z.string(), z.number()).optional(),
+});
+
+function readCodex(out: string): { text: string; usage?: Usage } {
+  let text = "";
+  let usage: Usage | undefined;
+  for (const line of out.split("\n")) {
+    if (!line.startsWith("{")) continue;
+    try {
+      const parsed = CodexReply.safeParse(JSON.parse(line));
+      if (!parsed.success) continue;
+      const l = parsed.data;
+      if (
+        l.type === "item.completed" &&
+        l.item?.type === "agent_message" &&
+        typeof l.item.text === "string" &&
+        l.item.text.trim()
+      ) {
+        text = l.item.text;
+      }
+      if (l.type === "turn.completed" && l.usage && typeof l.usage === "object" && !Array.isArray(l.usage)) {
+        usage = codexUsage(l.usage);
+      }
+    } catch {}
+  }
+  return { text, ...(usage ? { usage } : {}) };
+}
+
+/**
+ * One prompt, one answer. The index navigator's half of this provider.
+ *
+ * `-s read-only` costs nothing here: this prompt never runs a command, and
+ * codex's sandbox governs what the model asks for rather than codex's own API
+ * traffic. No `--ignore-user-config`: inside the container HOME is `/root` and
+ * holds only what we put there.
+ */
+const runAsk = (spec: AskSpec): Promise<AskResult> =>
+  askVia(spec, ["codex", "exec", "--json", "--skip-git-repo-check", "-s", "read-only", "-m", spec.model], readCodex);
+
+export { buildArgv as buildCodexArgv, readCodex, runAsk as runCodexAsk, runTurn as runCodexTurn };
 
 /** The same cut `consumeItem` makes, asked of the raw line: everything that is
  *  not the model talking and not an error is a tool reporting back. */

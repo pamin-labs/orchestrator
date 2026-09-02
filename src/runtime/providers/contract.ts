@@ -93,3 +93,37 @@ export interface TurnSpec {
   signal?: AbortSignal;
   runner: TurnRunner;
 }
+
+/**
+ * One prompt, one answer, from the same CLI a turn uses.
+ *
+ * The index navigator is not a turn — no session, no tools, no cached prefix —
+ * but it is the same binary in the same container, and it had its own argv, its
+ * own command string and its own output parser living three modules away. That
+ * third implementation is where `exit $rc` met a shared bash session and every
+ * call came back empty.
+ */
+/**
+ * `runner` and not a `Ctx`: the provider modules know about CLIs, never about
+ * containers. `code` and `err` come back so the caller can report the failure in
+ * its own words — an empty `text` on exit 0 means something different to the
+ * index than it would to a turn.
+ */
+export interface AskSpec {
+  model: string;
+  prompt: string;
+  cwd: string;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  runner: TurnRunner;
+}
+
+export interface AskResult {
+  text: string;
+  usage?: Usage;
+  code: number;
+  err: string;
+}
+
+/** A unique prompt file prevents concurrent turns in one sandbox from overwriting each other. */
+export const promptPath = (): string => `/tmp/orch-prompt-${crypto.randomUUID()}.txt`;
