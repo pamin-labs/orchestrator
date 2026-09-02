@@ -295,8 +295,10 @@ const NEW_TOKEN = `sk-ant-at01-CJCHm1_dwua-3YSY-OtA1YEsig1AggeB2Axp3eQb5Tqm${"Ks
 const REAL_TAIL = [
   "Paste code here if prompted >",
   "✓ Long-lived authentication token created successfully!",
-  "Your OAuth token (valid for 1 year):",
-  NEW_TOKEN,
+  // Both layouts the CLI has produced, one run apart: the sentence on its own
+  // line, and the sentence with the token appended. A whole-line rule reads the
+  // second as prose and reports that nothing was printed.
+  `Your OAuth token (valid for 1 year): ${NEW_TOKEN}`,
   "Use this token by setting: export CLAUDE_CODE_OAUTH_TOKEN=<token>",
   "Store this token securely. You won't be able to see it again.",
 ].join("\n");

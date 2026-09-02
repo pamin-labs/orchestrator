@@ -219,15 +219,15 @@ MIT licensed.
 | Language | Progress | Messages |
 | --- | --- | ---: |
 | English | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | source |
-| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1133 / 1135 |
-| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1133 / 1135 |
-| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1133 / 1135 |
-| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1133 / 1135 |
-| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1133 / 1135 |
-| français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1133 / 1135 |
-| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1133 / 1135 |
-| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1133 / 1135 |
-| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1133 / 1135 |
+| 简体中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1135 / 1135 |
+| 繁體中文 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1135 / 1135 |
+| 日本語 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1135 / 1135 |
+| 한국어 | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1135 / 1135 |
+| Español | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1135 / 1135 |
+| français | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1135 / 1135 |
+| Deutsch | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1135 / 1135 |
+| Português | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1135 / 1135 |
+| Русский | ![](https://progress-bar.xyz/100?width=140&suffix=%25) | 1135 / 1135 |
 
 <!-- /i18n:table -->
 

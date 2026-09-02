@@ -76,13 +76,23 @@ const dominatedByOneCharacter = (line: string): boolean => {
   return Math.max(...seen.values()) > line.length * DOMINANT_MAX;
 };
 
-const looksLikeCredential = (line: string): boolean =>
-  line.length >= TOKEN_MIN &&
-  !/\s/.test(line) &&
-  !/^[a-z][a-z0-9+.-]*:\/\//i.test(line) &&
-  /[a-z]/.test(line) &&
-  /[A-Z0-9]/.test(line) &&
-  !dominatedByOneCharacter(line);
+const isCredential = (word: string): boolean =>
+  word.length >= TOKEN_MIN &&
+  !/^[a-z][a-z0-9+.-]*:\/\//i.test(word) &&
+  /[a-z]/.test(word) &&
+  /[A-Z0-9]/.test(word) &&
+  !dominatedByOneCharacter(word);
+
+/**
+ * The credential on a line, wherever on it.
+ *
+ * Taken as a word rather than as the whole line, because the CLI puts it both
+ * ways: `Your OAuth token (valid for 1 year):` on its own line one run, and the
+ * same sentence with the token appended the next. A whole-line rule reads the
+ * second as prose — it has spaces in it — and reports that no token was ever
+ * printed, over a run that printed one.
+ */
+const credentialIn = (line: string): string | null => line.split(/\s+/).find((word) => isCredential(word)) ?? null;
 
 export interface LoginRun {
   /** The link to open. Present as soon as the CLI prints it. */
@@ -286,7 +296,7 @@ async function finishClaudeLogin(
   // exits, where there is no line to stop on and the stream stays open anyway.
   const read = consumeLogin(ctx.bus, stream, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
-    if (looksLikeCredential(line)) token ??= line;
+    token ??= credentialIn(line);
     // The token is the whole errand. Read no further for a stream that may not
     // end — see `consumeLogin`.
     if (token) return true;
