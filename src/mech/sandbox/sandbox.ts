@@ -1473,7 +1473,21 @@ export const wrapForSession = (cmd: string, file: string): string =>
   // survive this transport otherwise. `|| cat` rather than a pipe, so an image
   // without `sed` loses the blank lines again instead of losing the output — and
   // a pipe would hand `$?` to `sed` rather than to the command.
-  `{ ${cmd} ; } >${file}.out 2>${file} ; __orch_rc=$? ; ` +
+  // A subshell and not a brace group, for the reason the last line of this
+  // wrapper is already one: `exit` inside `{ }` ends the *session*, so every
+  // line after it — the two `cat`s that read the captured streams back — never
+  // runs. The caller gets exit 0 and two empty strings, which is indistinguishable
+  // from a command that succeeded silently.
+  //
+  // `modelAsk` sends `codex … < prompt; rc=$?; rm -f prompt; exit $rc`, so
+  // PageIndex has never built: every call came back empty, three of those tripped
+  // its breaker, and the panel reported an account that was fine. The turn path
+  // sends the same shape and is unaffected only because `execLines` never uses
+  // the session.
+  //
+  // It also stops a caller's `cd` and variables leaking into the next command on
+  // a session that is shared by every caller in the container.
+  `( ${cmd} ) >${file}.out 2>${file} ; __orch_rc=$? ; ` +
   `{ command -v sed >/dev/null 2>&1 && sed 's/^$/${BLANK_MARK_SED}/' ${file}.out || cat ${file}.out ; } ; ` +
   `printf '${ERR_MARK_PRINTF}' ; cat ${file} ; rm -f ${file} ${file}.out ; ( exit $__orch_rc )`;
 
