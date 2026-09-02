@@ -28,6 +28,7 @@ import {
 import { accessToken, isStale, parseAuth, REFRESH_HOME, renew } from "../../src/mech/sandbox/chatgpt.ts";
 import { DEVICE_CODE_TTL_MS } from "../../src/mech/sandbox/login.ts";
 import * as fx from "../support/factories.ts";
+import { fakePty } from "../support/fake-pty.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -449,11 +450,18 @@ test("the codex device login shows a code with its link, and stores what the con
   // The panel's half is the pair. A link on its own opens a page asking for a
   // code the boss does not have.
   const db = await openMemory();
-  const sandbox = fakeSandbox((cmd) =>
-    cmd.includes("codex login") ? { out: "1. Open https://chatgpt.com/device\n2. Enter code T5M2-76TFM\n" } : {},
-  );
+  const sandbox = fakeSandbox();
   sandbox.files.set(`${REFRESH_HOME}/auth.json`, JSON.stringify({ tokens: { refresh_token: "REAL" } }));
-  const ctx = await testContext({ db, sandbox });
+  // Through a terminal, not the command runner: codex's cancel needs a channel
+  // that can signal the process, and `run()` takes no session id for `interrupt`
+  // to use. ADR 053.
+  // Says its piece and stays open, which is what `codex login --device-auth`
+  // does: it prints the pair and then polls until the boss approves. Ending it
+  // here would clear the pending flow and turn the second request below — the
+  // one asserting a second click does not mint a second code — into a fresh
+  // login against a terminal already read to the end.
+  const pty = fakePty(["1. Open https://chatgpt.com/device", "2. Enter code T5M2-76TFM"]);
+  const ctx = await testContext({ db, sandbox, pty: async () => pty });
   const app = makeApp(ctx);
 
   const r = await app(
@@ -479,16 +487,9 @@ test("the codex device login shows a code with its link, and stores what the con
   // arrived". This one throws where the waiting happened, and it is already a
   // dependency: `@testing-library/dom` is what `@testing-library/react` is
   // built on, and `waitFor` itself touches no DOM.
-  await waitFor(async () => expect(await loadAuth(db, "codex")).not.toBeNull());
-  expect(await loadAuth(db, "codex")).toEqual({
-    runtime: "codex",
-    mode: "chatgpt",
-    secret: JSON.stringify({ tokens: { refresh_token: "REAL" } }),
-    baseUrl: undefined,
-  });
-
   // Single-flight: a second click hands back the same pair rather than printing
-  // a second code, which would invalidate the first.
+  // a second code, which would invalidate the first. Asked while the CLI is
+  // still waiting for the boss, because that is the only moment it can be.
   const again = await app(
     new Request("http://x/api/v1/auth/codex/device", {
       method: "POST",
@@ -496,6 +497,16 @@ test("the codex device login shows a code with its link, and stores what the con
     }),
   );
   expect(z.object({ code: z.string() }).parse(await again.json()).code).toBe("T5M2-76TFM");
+
+  // Now the boss approves in the browser and the CLI writes its file and exits.
+  pty.exit(0);
+  await waitFor(async () => expect(await loadAuth(db, "codex")).not.toBeNull());
+  expect(await loadAuth(db, "codex")).toEqual({
+    runtime: "codex",
+    mode: "chatgpt",
+    secret: JSON.stringify({ tokens: { refresh_token: "REAL" } }),
+    baseUrl: undefined,
+  });
 });
 
 test("in a container, preflight stops answering questions about somebody else's machine", async () => {

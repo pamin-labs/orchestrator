@@ -12,7 +12,6 @@ import {
   startClaudeLogin,
   startCodexDeviceLogin,
 } from "../../src/mech/sandbox/login.ts";
-import type { SandboxDriver } from "../../src/mech/sandbox/sandbox.ts";
 import { fakePty, type FakePty } from "../support/fake-pty.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
@@ -52,7 +51,16 @@ async function harness(
   // same scripted output is offered on both — each test uses the one its
   // runtime reads.
   const pty = sayingThenExit(out);
-  const ctx = await testContext({ db, sandbox, pty: async () => pty });
+  // The command reaches the terminal now, not the command runner — both logins
+  // open a pty (ADR 053), so `cmds` no longer sees them.
+  const ctx = await testContext({
+    db,
+    sandbox,
+    pty: async (_c, _s, command) => {
+      cmds.push(command);
+      return pty;
+    },
+  });
   return { ctx, db, cmds, pty };
 }
 
@@ -119,20 +127,10 @@ test("Claude names a rejected or expired pasted code instead of claiming success
  * reader was gone.
  */
 /**
- * Measured on a live server: `POST /auth/claude/login/cancel` returned nothing
- * for 20s, and every sign-in after it produced a link that did nothing.
+ * Now that both logins open a terminal, the slot is released in `cancel()` and
+ * the daemon is told to stop the process — the two halves the abort could not
+ * do.
  */
-const deaf = (): SandboxDriver => ({
-  ...fakeSandbox(),
-  // Never yields, never returns, and never looks at the signal. The `yield` is
-  // unreachable and is there because a generator has to contain one.
-  lines: async function* () {
-    if (Date.now() < 0) yield "";
-    await new Promise<never>(() => {});
-    return { code: 0, err: "" };
-  },
-});
-
 test("cancelling a claude login frees the slot and signals the process", async () => {
   // A fresh terminal per login, like the real one: a session is opened for each
   // and its generator is consumed once.
@@ -162,17 +160,29 @@ test("cancelling a claude login frees the slot and signals the process", async (
   second.cancel();
 });
 
-test("cancelling a codex login frees the slot for the next one", async () => {
-  const ctx = await testContext({ sandbox: deaf() });
+test("cancelling a codex login frees the slot and signals the process", async () => {
+  // A fresh terminal per login, like the real one.
+  const opened: FakePty[] = [];
+  const ctx = await testContext({
+    sandbox: fakeSandbox(),
+    pty: async () => {
+      const p = saying("waiting for the browser");
+      opened.push(p);
+      return p;
+    },
+  });
   const first = startCodexDeviceLogin(ctx);
   expect(currentCodexDeviceLogin()).toBe(first);
+  await Bun.sleep(20);
 
   first.cancel();
   expect(currentCodexDeviceLogin()).toBeNull();
+  // Codex ran through the command runner before this, whose cancel aborts an
+  // HTTP request and leaves the process polling an OAuth endpoint for the rest
+  // of its sixteen-minute server-side timeout.
+  expect(opened[0]?.signals).toEqual(["SIGINT"]);
   const second = startCodexDeviceLogin(ctx);
   expect(second).not.toBe(first);
-  // Freed again, or this deaf run is left holding a module-level slot that the
-  // next test in this file would be handed instead of starting its own.
   second.cancel();
 });
 

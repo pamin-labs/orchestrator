@@ -136,15 +136,10 @@ let deviceLogin: LoginRun | null = null;
  */
 export const currentCodexDeviceLogin = () => deviceLogin;
 
-async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
-  const stream = execLines(ctx, UTIL, "codex login --device-auth", {
-    env: { CODEX_HOME: REFRESH_HOME },
-    timeoutMs: DEVICE_CODE_TTL_MS + 60_000,
-    signal,
-  });
+async function finishCodexLogin(ctx: Ctx, run: LoginRun, session: PtySession) {
   // Codex reads to the end on purpose: its credential is a file it writes, not a
   // line it prints, so there is nothing on stdout that means "done".
-  const result = await consumeLogin(ctx.bus, stream, (line) => {
+  const result = await consumeLogin(ctx.bus, session.lines, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
     run.code ??= line.match(DEVICE_CODE_RE)?.[0] ?? null;
     return false;
@@ -182,22 +177,38 @@ async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
  */
 export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
   if (deviceLogin) return deviceLogin;
-  const abort = new AbortController();
+  let opened: PtySession | null = null;
   const run: LoginRun = {
     url: null,
     code: null,
-    // Released on cancel rather than on `done`, for the reason written on
-    // `startClaudeLogin`: this is get-or-create, and a run whose abort went
-    // unanswered would be handed to every login after it.
+    /**
+     * The same signal claude's cancel sends, and for the same reason.
+     *
+     * `codex login --device-auth` needs no terminal — it prints and polls — but
+     * it was run through the command runner, whose cancel aborts an HTTP request
+     * and leaves the process running until its server-side timeout: sixteen
+     * minutes of a container polling an OAuth endpoint nobody is waiting on.
+     * `run()` takes no session id, so `interrupt` cannot reach it; a pty session
+     * has a control channel that can.
+     */
     cancel: () => {
-      abort.abort();
+      opened?.signal("SIGINT");
+      opened?.close();
       if (deviceLogin === run) deviceLogin = null;
     },
     done: Promise.resolve({ ok: false, detail: "" }),
   };
   deviceLogin = run;
 
-  run.done = finishCodexLogin(ctx, run, abort.signal).finally(() => {
+  run.done = (async () => {
+    const session = await (ctx.pty ?? openPty)(ctx, UTIL, `env CODEX_HOME=${REFRESH_HOME} codex login --device-auth`);
+    opened = session;
+    try {
+      return await finishCodexLogin(ctx, run, session);
+    } finally {
+      session.close();
+    }
+  })().finally(() => {
     deviceLogin = null;
   });
 
