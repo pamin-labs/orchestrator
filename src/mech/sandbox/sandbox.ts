@@ -1527,6 +1527,15 @@ export function lineQueue(): {
  * kill the live timeline and, for a long turn, the memory too. SSE chunks split
  * anywhere, hence the reassembly here.
  */
+/**
+ * How long the exit code is worth waiting for after the stream has ended.
+ *
+ * The completion event and the promise normally settle together; this covers the
+ * gap, and caps it. Before it, a promise that never settled held every reader of
+ * a finished command open indefinitely.
+ */
+const EXIT_CODE_GRACE_MS = 2_000;
+
 async function* realLines(
   ctx: Ctx,
   scope: Scope,
@@ -1559,6 +1568,15 @@ async function* realLines(
           // line until it ends. The server splits on that too, and eats it.
           if (opts.onStderr) for (const l of errSplit.push(`${oneLine(m)}\n`)) opts.onStderr(l);
         },
+        // The ending, taken from the stream rather than from the promise.
+        // `run()` resolves after consuming the whole SSE stream, and measured on
+        // a live server it did not resolve at all once the process had exited —
+        // no `claude` and no runner left in the container, the stream still open.
+        // Everything downstream waited forever and reported nothing, because
+        // nothing had concluded. These two events say the same thing the promise
+        // was supposed to and say it first.
+        onExecutionComplete: () => q.end(),
+        onError: () => q.end(),
       },
       opts.signal,
     )
@@ -1571,7 +1589,10 @@ async function* realLines(
     .finally(() => q.end());
 
   yield* q.drain();
-  await finished;
+  // Raced, not awaited. The exit code lives only on the promise — no event
+  // carries it — so it is worth a moment, and not worth the wait that was the
+  // whole defect. `-1` is what this already reports for a status it never saw.
+  await Promise.race([finished, Bun.sleep(EXIT_CODE_GRACE_MS)]);
   const tail = split.rest();
   if (tail) yield tail;
   return { code, err: stderr };
