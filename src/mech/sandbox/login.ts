@@ -248,6 +248,7 @@ src = open(inbox, "rb") if inbox else None
 if src:
     src.seek(0, 2)
 out = sys.stdout.buffer
+pending = []
 while True:
     r, _, _ = select.select([fd], [], [], 0.2)
     if fd in r:
@@ -262,7 +263,12 @@ while True:
     if src:
         line = src.readline()
         if line:
-            os.write(fd, line.rstrip(b"\\r\\n") + b"\\r")
+            body = line.rstrip(b"\\r\\n")
+            if body:
+                pending.append(body)
+            pending.append(b"\\r")
+    if pending:
+        os.write(fd, pending.pop(0))
     if os.waitpid(pid, os.WNOHANG)[0]:
         try:
             while True:

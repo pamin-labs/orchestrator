@@ -84,23 +84,45 @@ test("no import statement can reach the runner's own filename", () => {
  * under test. Asserting that the runner's source contains `\r` would pass
  * against a build that writes it somewhere it never reaches the pty.
  */
+/**
+ * The stand-in reads a block at a time and submits only on a block that *is* a
+ * carriage return, which is the behaviour measured against claude-code 2.1.233.
+ *
+ * Raw mode first: a pty left canonical has the line discipline translate CR to
+ * LF and submit on it, so a stand-in without this accepts either byte and proves
+ * nothing. A TUI sets raw and reads the keys itself.
+ */
+/**
+ * Then the block rule. The CLI turns on bracketed paste (`ESC[?2004h`), so a
+ * write carrying text and a `\r` together arrives as one paste and the `\r`
+ * inside it is content, not Enter. Reading byte by byte here — which the first
+ * version did — cannot tell the two apart, and passed against the runner that
+ * sent them in one write.
+ */
 const ON_CR = [
-  "import sys, tty",
-  // Raw mode, because that is the difference. A pty in its default canonical
-  // mode has the line discipline translate CR to LF and submit on it, so a
-  // stand-in without this passes on either byte and proves nothing. A TUI sets
-  // raw and reads the keys itself, which is why `\\n` reached claude as a
-  // character rather than as Enter.
+  "import os, sys, tty",
   "tty.setraw(sys.stdin.fileno())",
   "buf = b''",
   "while True:",
-  "    ch = sys.stdin.buffer.read(1)",
-  "    if not ch: break",
-  "    if ch == b'\\r':",
+  "    chunk = os.read(0, 65536)",
+  "    if not chunk: break",
+  "    if chunk == b'\\r':",
   "        sys.stdout.write('submitted:' + buf.decode()); sys.stdout.flush(); break",
-  "    buf += ch",
+  "    buf += chunk.replace(b'\\r', b'')",
   "",
 ].join("\n");
+
+/**
+ * A real code's length, and that is the point.
+ *
+ * The first version of this guard used `WDJB-MJHT` and passed against a runner
+ * that put the code and its CR in one `os.write`. Measured against claude-code
+ * 2.1.233 in the container: ten characters submitted, ninety-two did not —
+ * every asterisk echoed back and then nothing. The CLI turns on bracketed paste
+ * (`ESC[?2004h`), so a write that carries text and a `\r` together is one paste,
+ * and the `\r` inside it is content. Sent as its own write it is a keypress.
+ */
+const REAL_LENGTH_CODE = `${"a".repeat(43)}#${"b".repeat(48)}`;
 
 test.skipIf(!python)("a submitted code arrives as Enter, not as a newline", async () => {
   const dir = tempDir("orch-pty-");
@@ -119,9 +141,9 @@ test.skipIf(!python)("a submitted code arrives as Enter, not as a newline", asyn
   // Exactly what `submit` appends: the shell writes the file with a trailing
   // newline, and turning that into the key press is the runner's job.
   await Bun.sleep(300);
-  appendFileSync(inbox, "WDJB-MJHT\n");
+  appendFileSync(inbox, `${REAL_LENGTH_CODE}\n`);
 
   const out = await Promise.race([new Response(proc.stdout).text(), Bun.sleep(5_000).then(() => "")]);
   proc.kill();
-  expect(out).toContain("submitted:WDJB-MJHT");
+  expect(out).toContain(`submitted:${REAL_LENGTH_CODE}`);
 });
