@@ -1,64 +1,72 @@
 import { expect, test } from "bun:test";
 import { scan } from "../support/ast.ts";
 import { z } from "zod";
-import { needsDom } from "../../scripts/needs-dom.ts";
 import { stressFiles } from "../../scripts/stress-tests.ts";
 
 /**
- * The gate has no list to drift from any more, so what is left is its one
- * precondition.
+ * What the preload owes every worker, checked from inside one.
  *
- * `dom.ts` used to classify by directory plus a hand-kept set, and this file held
- * the drift test for it. `needsDom` now runs that same scan itself, on the file
- * about to run, so the list and the thing it described are one object and cannot
- * disagree. The drift test went with the list; what no scan can see is the flag.
+ * `dom.ts` used to register happy-dom for the one file `Bun.main` named, which
+ * is a file only when each gets its own process — so the rule this file guarded
+ * was that every `bun test` carried `--isolate`. It registers once per worker
+ * now, and that is what lets the suite drop the flag: 253 files re-evaluating
+ * their module graph was ~7GB of memory and 46s, against ~2GB and 24s without.
  */
+/**
+ * The half that replaces it is the half that is invisible. happy-dom brings its
+ * own `Request`, and a signal from one realm's `AbortController` is not an
+ * `AbortSignal` to the other's — five tests in `test/http` said
+ * `signal is not of type AbortSignal`, and before that a body over the limit was
+ * answered 400 where Bun answers 413. Nothing about a document being present
+ * says the network classes were put back.
+ */
+test("the preload leaves a worker a document and Bun's own network classes", () => {
+  expect(typeof document).toBe("object");
+  expect(typeof localStorage).toBe("object");
+  const aborter = new AbortController();
+  expect(() => new Request("http://x/", { signal: aborter.signal })).not.toThrow();
+  expect(() => new Response(new ReadableStream())).not.toThrow();
+});
 
 /**
- * The gate's precondition, checked on the command that has to carry it.
+ * Which files may run `bun test`, still named rather than counted.
  *
- * `dom.ts` decides from `Bun.main`, which names the file only when each file gets
- * its own process. `--parallel` implies `--isolate` and buys exactly that; without
- * it Bun runs the suite in one process, evaluates the preload once, and classifies
- * every later file by the first file's path.
+ * The check that reads `package.json` is how the old rule got out: `test:stress`
+ * spawns `bun test` from TypeScript, so the string a scripts-field scan looks
+ * for was never there. Both argv shapes are matched — `["bun", "test", …]` and
+ * `= ["test", …]` — rather than the one that happened to be looked at.
  */
-/**
- * Nothing else catches this. The mode is invisible from inside the preload —
- * `process.argv` is rewritten either way, a worker carries no IPC handle to spot,
- * and `[test]` keys in `bunfig.toml` are silently ignored (all measured against Bun
- * 1.3.14). So if the flag left this script the suite would go green while
- * classifying every file from one path, until a later run tripped over
- * `HTMLElement is not defined` somewhere that looks nothing like a DOM test.
- */
-test("every place that runs `bun test` either isolates files or leaves the browser ones out", async () => {
+test("two scripts run the suite, and a third is a decision rather than a habit", async () => {
   const { scripts } = z
     .object({ scripts: z.record(z.string(), z.string()) })
     .parse(await Bun.file(new URL("../../package.json", import.meta.url)).json());
-  const isolating = (script: string) => script.includes("--parallel") || script.includes("--isolate");
-  const offenders = Object.entries(scripts)
+  const direct = Object.entries(scripts)
     .filter(([, script]) => script.includes("bun test"))
-    .filter(([, script]) => !isolating(script))
     .map(([name]) => name);
-  expect(offenders).toEqual([]);
+  expect(direct).toEqual([]);
 
-  // A script is the other way to run one, and it is how the rule got out: the
-  // check above reads `package.json`, and `test:stress` spawns `bun test` from
-  // TypeScript, so the string it looks for was never there. 195 failures, 20 of
-  // 21 distinct ones `HTMLElement is not defined`.
-  // The argv, with `test` as its first word: `["bun", "test", …]` and
-  // `[process.execPath, ...args]` where `args` opens `["test", …]`. Reading only
-  // `package.json` is how this rule got out in the first place, so the shapes
-  // are matched rather than the one that happened to be looked at.
   const runsBunTest = (src: string) => /\[\s*"bun",\s*"test"\s*,|=\s*\[\s*"test"\s*,/.test(src);
   const spawners = scan("scripts/**/*.ts", (file, source) => (runsBunTest(source) ? [file] : [])).toSorted();
-  // Named, so a second one is a decision somebody has to make rather than a
-  // silent third way of running the suite.
   expect(spawners).toEqual(["scripts/stress-tests.ts", "scripts/test.ts"]);
-  // `test.ts` isolates. `stress-tests.ts` deliberately does not — cross-file
-  // order dependence is what it hunts, and `--parallel` implies `--isolate`,
-  // which is the configuration that cannot have the bug. So it owes the other
-  // half of the rule instead.
-  expect(stressFiles().filter(needsDom)).toEqual([]);
-  // And it is not excluding everything: the pass still has something to stress.
+  // The stress pass no longer excludes the browser files — the document is there
+  // for them — and it still has something to stress.
   expect(stressFiles().length).toBeGreaterThan(100);
+});
+
+/**
+ * A run stops the container it started, and only that one.
+ *
+ * `bun run test` brings the suite's Postgres up when nothing answers on its
+ * port, so a machine is not left holding an in-memory data directory nothing is
+ * using. The dangerous half is the other one: tearing down a container the
+ * developer started for their own loop, or the one CI's `setup-bun` step brought
+ * up, in the middle of using it.
+ */
+/** Checked by asking rather than by acting: this test runs with the database
+ *  answering — it has to, it is a test — so `started` must be false, and calling
+ *  `stop` would be a no-op. Asserting on the flag says so without stopping the
+ *  database out from under nine other workers. */
+test("a suite that found its database running does not own it", async () => {
+  const { ownDatabase } = await import("../../scripts/test.ts");
+  expect((await ownDatabase()).started).toBe(false);
 });

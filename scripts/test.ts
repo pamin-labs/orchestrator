@@ -131,7 +131,25 @@ export function claim(): () => void {
  * retry and the run lock come along for free.
  */
 export const TIMEOUT = "--timeout=20000";
-const LIMITS = [TIMEOUT, `--max-concurrency=${Math.max(2, Math.round(cpus().length * 0.8))}`];
+/**
+ * `--no-isolate`, which is the whole reason this line has a comment.
+ *
+ * `--parallel` implies `--isolate`: a fresh global and a cleared module registry
+ * per file, so every file re-evaluates the module graph it imports. Measured on
+ * this tree, that is what the suite's memory was — 253 files at 29-55MB apiece,
+ * peaking around 7GB of system memory, and flat across worker counts because the
+ * total is files x graph rather than processes x anything. Bun's own benchmark
+ * says the same thing (https://bun.com/docs/test/parallel).
+ */
+/**
+ * What it costs is that files see each other's leftovers, which is a property
+ * the suite now has to hold rather than one the runner buys. Four leaks were
+ * paid off to get here: happy-dom's network primitives replacing Bun's, a
+ * catalog restored per test rather than only the locale, `startTheme` wiring a
+ * second keydown listener, and a test that emptied a catalog with a merging
+ * `load`. `bun run test:stress` was already the configuration that finds them.
+ */
+const LIMITS = [TIMEOUT, "--no-isolate", `--max-concurrency=${Math.max(2, Math.round(cpus().length * 0.8))}`];
 
 async function run(): Promise<{ code: number; crashed: boolean }> {
   const args = ["test", "--parallel", ...LIMITS, ...Bun.argv.slice(2)];
@@ -158,16 +176,67 @@ async function run(): Promise<{ code: number; crashed: boolean }> {
 
 // `import.meta.main`, so the test that pins `CRASHED` to a real panic can import
 // this file without running the whole suite to get at one regular expression.
+/**
+ * The suite's Postgres, started only if nobody else has, and stopped only then.
+ *
+ * `bun run db:test:up` leaves a container running for as long as the machine
+ * does — 24 hours in one measurement, holding 185MB of an in-memory data
+ * directory that no test was using. Bringing it down after a run that had to
+ * bring it up is the same rule a probe follows: what you allocate, you free.
+ */
+/**
+ * Free, near enough, because a cold run costs nothing a warm one does not: 14s
+ * either way on this tree, since rebuilding ten namespaces on a tmpfs is not
+ * measurable against the suite. Start-up is 3s and is paid only by the run that
+ * needed it. A developer who ran `db:test:up` themselves, and CI, which runs it
+ * in `setup-bun`, both keep the container they asked for.
+ */
+const DB_COMPOSE = ["docker", "compose", "-f", "docker/postgres-test-compose.yml"];
+
+/** A TCP connect rather than `docker ps`: someone may be running their own
+ *  Postgres on that port, and starting a second one over it is the failure this
+ *  is meant to avoid rather than cause. */
+async function databaseAnswers(): Promise<boolean> {
+  const { hostname, port } = new URL(process.env.ORCH_TEST_DATABASE_URL ?? "postgres://127.0.0.1:5433");
+  try {
+    const socket = await Bun.connect({ hostname, port: Number(port || 5433), socket: { data() {} } });
+    socket.end();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Brings it up if nothing answers. `started` says whether the container is
+ *  this run's to stop, which is the half a guard can check without stopping
+ *  somebody else's. */
+export async function ownDatabase(): Promise<{ started: boolean; stop: () => Promise<void> }> {
+  if (await databaseAnswers()) return { started: false, stop: async () => {} };
+  const up = Bun.spawn([...DB_COMPOSE, "up", "-d", "--wait"], { stdout: "inherit", stderr: "inherit" });
+  if ((await up.exited) !== 0) throw new Error("could not start the test database; `bun run db:test:up` says why");
+  return {
+    started: true,
+    stop: async () => {
+      await Bun.spawn([...DB_COMPOSE, "down"], { stdout: "ignore", stderr: "ignore" }).exited;
+    },
+  };
+}
+
 if (import.meta.main) {
   const release = claim();
   process.on("exit", release);
+  const database = await ownDatabase();
   const first = await run();
-  if (first.code === 0 || !first.crashed) process.exit(first.code);
+  if (first.code === 0 || !first.crashed) {
+    await database.stop();
+    process.exit(first.code);
+  }
 
   console.error(
     "\n[test] a worker crashed — this is bun itself, not a failing test, and it counts every\n" +
       "[test] file it never reached as a failure. Running once more; a second crash is real.\n",
   );
   const second = await run();
+  await database.stop();
   process.exit(second.code);
 }

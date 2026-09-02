@@ -80,11 +80,12 @@ services:
       - -c
       - shared_preload_libraries=pg_stat_statements
       - -c
-      # Ten workers, each holding a pool of 24 — the panel snapshot issues nineteen
-      # concurrent statements — plus the admin connections that create the
-      # databases. 250 is the real peak; 300 is the headroom, and each unused slot
-      # is still memory reserved at startup. CI runs four workers and needs 100.
-      - max_connections=300
+      # Ten workers, each holding a pool of eight, plus the admin connections that
+      # create the schemas. Measured peak: 233 back when every file had its own
+      # pool of 24, 121 with one pool of twelve per worker, 81 at eight. 120 is
+      # that with headroom, and every slot below the old 300 is memory this
+      # container no longer reserves at startup. CI runs four workers.
+      - max_connections=120
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U orchestrator -d orchestrator"]
       interval: 2s

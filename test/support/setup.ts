@@ -44,7 +44,16 @@ beforeEach(async () => {
   // reading English — `say-falls-back-to-body` ended on `activate("en")`, and
   // 120 failures in six unrelated files followed it through the stress pass.
   // Invisible under `--parallel`, where each file has its own process.
+  // The catalog, not only the locale. `activate` alone was enough while every
+  // file had its own module registry; sharing one, a file that replaces the `zh`
+  // catalog leaves every later file rendering the English source under a Chinese
+  // locale, which reads as "the panel stopped being translated" and is really
+  // one line in one earlier file.
+  i18n.load("zh", messages);
   i18n.activate("zh");
+  // The browser's own store is process state too, and the same kind: a theme a
+  // hotkey test wrote is the theme the next file's first press cycles from.
+  localStorage?.clear();
   resetSandboxHold();
   resetRepoHolds();
   resetNet();

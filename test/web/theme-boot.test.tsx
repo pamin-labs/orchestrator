@@ -19,12 +19,15 @@ const theme = () => document.documentElement.dataset.theme;
 let dark = false;
 const listeners: Array<() => void> = [];
 
+const realMatchMedia = (globalThis as { matchMedia?: unknown }).matchMedia;
+
 beforeEach(() => {
   dark = false;
   listeners.length = 0;
   localStorage.clear();
-  // happy-dom has no `matchMedia`, and a real one could not be driven anyway:
-  // the point is what happens when the OS flips underneath a running page.
+  // A driveable one, because the point is what happens when the OS flips under a
+  // running page — not that happy-dom lacks it. It has one, which is why this is
+  // put back rather than deleted below.
   (globalThis as { matchMedia?: unknown }).matchMedia = (query: string) => ({
     matches: query.includes("dark") && dark,
     addEventListener: (_: string, fn: () => void) => void listeners.push(fn),
@@ -33,7 +36,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete (globalThis as { matchMedia?: unknown }).matchMedia;
+  // Restored, not deleted. `delete` took happy-dom's own out of a global these
+  // files share with every other file in the worker, and the next one to boot the
+  // real bundle died on `matchMedia is not defined` — in CI only, since this
+  // file's neighbour has to be a test that builds a bundle.
+  (globalThis as { matchMedia?: unknown }).matchMedia = realMatchMedia;
   delete document.documentElement.dataset.theme;
 });
 
