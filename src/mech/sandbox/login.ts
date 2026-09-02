@@ -54,12 +54,35 @@ const URL_RE = /https?:\/\/[^\s\u0007\u001b"'<>]+/;
  * silently, which is what both of the previous ones did.
  */
 const TOKEN_MIN = 40;
+
+/**
+ * How much of a line one character may be before it is padding, not payload.
+ *
+ * The CLI echoes a pasted code back as asterisks with its last few characters in
+ * clear — `********…CXxA` — which is long, unbroken, not a URL, and mixes case
+ * and digits, so every earlier rule passed it.
+ */
+/**
+ * It was stored as the credential, and the real token four lines later was never
+ * read: the recogniser stops at the first match. What separates them is
+ * distribution — a secret has no character worth more than a few percent of it,
+ * a mask is one character with a tail.
+ */
+const DOMINANT_MAX = 0.4;
+
+const dominatedByOneCharacter = (line: string): boolean => {
+  const seen = new Map<string, number>();
+  for (const ch of line) seen.set(ch, (seen.get(ch) ?? 0) + 1);
+  return Math.max(...seen.values()) > line.length * DOMINANT_MAX;
+};
+
 const looksLikeCredential = (line: string): boolean =>
   line.length >= TOKEN_MIN &&
   !/\s/.test(line) &&
   !/^[a-z][a-z0-9+.-]*:\/\//i.test(line) &&
   /[a-z]/.test(line) &&
-  /[A-Z0-9]/.test(line);
+  /[A-Z0-9]/.test(line) &&
+  !dominatedByOneCharacter(line);
 
 export interface LoginRun {
   /** The link to open. Present as soon as the CLI prints it. */

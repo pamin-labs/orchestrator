@@ -331,7 +331,12 @@ test("neither the link nor the masked echo is mistaken for the token", async () 
       saying(
         [
           "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code",
-          "*".repeat(92),
+          // The mask as the CLI actually prints it: asterisks with the last few
+          // characters of the pasted code in clear. An all-asterisk line was the
+          // first version of this fixture and it passed against the recogniser
+          // that shipped the mask as the credential — the clear tail is what made
+          // it mix case and digits.
+          `${"*".repeat(88)}CXxA`,
           NEW_TOKEN,
         ].join("\n"),
       ),
