@@ -26,7 +26,25 @@ await startLocale();
  */
 const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-createRoot(document.getElementById("root")!).render(
+/**
+ * Kept and named, where it used to be thrown away.
+ *
+ * A mounted React tree is the largest process-global there is. Radix puts its
+ * focus scopes' `focusin`/`focusout` handlers on `document`, and clearing
+ * `body.innerHTML` takes the nodes away and leaves the handlers — so a tree with
+ * no handle cannot be taken down at all.
+ */
+/**
+ * `bundle-boots` loads this file into a document it shares with every other
+ * browser test in its worker. With nothing to unmount, its focus scope stayed
+ * behind and fought the next test's over where focus belongs: `RangeError:
+ * Maximum call stack size exceeded`, in a file that had not gone near the
+ * bundle. The browser pays nothing for the export — the page loads this as
+ * `<script type="module">`.
+ */
+export const root = createRoot(document.getElementById("root")!);
+
+root.render(
   <QueryClientProvider client={queries}>
     <I18nProvider i18n={i18n}>
       <App />

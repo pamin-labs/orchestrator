@@ -26,8 +26,18 @@ const NON_REPLAYABLE = /^test\/(live|integration)\/|^test\/platform\/test-db-rec
  * distinct ones this. The preload registers once per worker now, which is what
  * lets `bun run test` drop `--isolate` too.
  */
+/**
+ * `{ts,tsx}`, and the extension is the whole finding.
+ *
+ * The exclusion above was removed and the glob was not, so `*.test.ts` kept
+ * every one of the 38 `test/web/*.test.tsx` files out — this job hunts
+ * cross-file order dependence and had never once run a browser test. What
+ * reached CI instead was a `RangeError: Maximum call stack size exceeded` across
+ * the web suite, happy-dom's focus/blur bouncing off `@radix-ui/react-focus-scope`,
+ * in the one configuration nothing local reproduces.
+ */
 export function stressFiles(): string[] {
-  return [...new Bun.Glob("test/**/*.test.ts").scanSync({ cwd: ".", absolute: false })]
+  return [...new Bun.Glob("test/**/*.test.{ts,tsx}").scanSync({ cwd: ".", absolute: false })]
     .filter((file) => !NON_REPLAYABLE.test(file))
     .toSorted();
 }

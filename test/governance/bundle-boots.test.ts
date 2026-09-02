@@ -26,6 +26,28 @@ import { WEB_BUILD } from "../../scripts/build-web.ts";
  */
 
 let workdir = "";
+/** The booted bundle's React root, held only so `afterEach` can take it down. */
+let booted: { unmount: () => void } | null = null;
+
+/**
+ * The root the bundle exports, narrowed rather than asserted.
+ *
+ * `await import()` of a built file is `any`, and a cast would hide the one
+ * failure worth catching here: `main.tsx` exports `root` solely so this can
+ * unmount it, nothing in the browser reads it, and a bundler that shook it out
+ * would restore the leak in silence. So the absence throws with a sentence.
+ */
+function rootOf(mod: unknown): { unmount: () => void } {
+  if (typeof mod !== "object" || mod === null || !("root" in mod)) {
+    throw new Error("the built bundle exports no `root`, so the tree it mounted cannot be unmounted");
+  }
+  const root = mod.root;
+  if (typeof root !== "object" || root === null || !("unmount" in root) || typeof root.unmount !== "function") {
+    throw new Error("the built bundle's `root` is not a React root");
+  }
+  const unmount = root.unmount;
+  return { unmount: () => void unmount.call(root) };
+}
 
 /**
  * A viewport, because happy-dom measures every element as 0x0.
@@ -61,6 +83,14 @@ afterEach(() => {
   // Every one of these is process-global and shared with the other files in this
   // worker, so the teardown is not tidiness: leaving the fake viewport installed
   // is what turned one failure here into eighteen elsewhere.
+  //
+  // The tree first, and it was the one this list did not have. Radix's focus
+  // scopes listen on `document`, so the line below takes their nodes away and
+  // leaves them listening — and the next file to open a dialog had two scopes
+  // pulling focus at each other until the stack ran out. Found by `test:stress`
+  // the day its glob started matching `.tsx` at all.
+  booted?.unmount();
+  booted = null;
   document.body.innerHTML = "";
   location.hash = "";
   HTMLElement.prototype.getBoundingClientRect = realRect;
@@ -150,7 +180,8 @@ test("the built bundle mounts 耗时 without throwing", async () => {
   const onError = (event: ErrorEvent) => failures.push(event.error ?? event.message);
   window.addEventListener("error", onError);
   try {
-    await import(pathToFileURL(join(workdir, "main.js")).href);
+    const mod: unknown = await import(pathToFileURL(join(workdir, "main.js")).href);
+    booted = rootOf(mod);
     // Polled, not slept. A fixed delay was long enough when this file ran alone
     // and not when sixteen workers were competing for the machine, so it failed
     // only under `--parallel` — the shape of flake that gets re-run rather than
