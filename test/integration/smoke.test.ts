@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync, rmSync } from "node:fs";
 import { and, count, eq } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
+import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { start, type Started } from "../../src/composition/server.ts";
 import { SnapshotSchema } from "../../src/contracts/panel.ts";
@@ -56,7 +57,25 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
     // The suite's own database, handed in: `start()` would otherwise need a
     // connection string and a server, and skipping when it has neither is a
     // green tick over the only test that boots the real process.
-    srv = await start({ dataDir, port: 0, maxGroups: 0 }, await openMemory());
+    // A sandbox address that answers nothing and is nobody's to start. This boots
+    // the real process, and the real process warms a container for the project it
+    // finds — against `loadConfig()`'s 127.0.0.1:8080, which on a developer's
+    // machine is a real server. It answered, so every full-suite run left an agent
+    // container and an egress container behind, ~310 MB each on a 24-hour TTL,
+    // recorded only in a schema this test then drops. Nine were up before anyone
+    // looked. CI has nothing on 8080, so the leak was invisible there.
+    //
+    // `0.0.0.0`, not `127.0.0.1`: `startPlan` starts a server for an address on
+    // this machine, so the discard port on loopback traded a leaked container for
+    // a spawned `opensandbox-server` that then lost the bind to the real one.
+    // This host is refused immediately and is not one this process may start.
+    const base = loadConfig();
+    // The whole block, not one key: `start` spreads overrides shallowly, so a
+    // `sandbox:` naming one of its eight fields drops the other seven.
+    srv = await start(
+      { dataDir, port: 0, maxGroups: 0, sandbox: { ...base.sandbox, server: "0.0.0.0:9" } },
+      await openMemory(),
+    );
   });
 
   afterAll(async () => {

@@ -6,6 +6,7 @@ import {
   chargedProject,
   heartbeat,
   recordIndexResult,
+  refreshIndex,
   indexPaused,
   indexTargets,
   indexThrew,
@@ -385,4 +386,41 @@ test("the panel's own paths are served, and everything else falls through to a f
   expect(routeRequest("/api/v1/state", () => undefined)).toBe("app");
   expect(routeRequest("/orch/v1/status", () => undefined)).toBe("app");
   expect(routeRequest("/dist/main.js", () => undefined)).toBe("file");
+});
+
+/**
+ * The navigator's account is checked once, not discovered twelve times.
+ *
+ * `modelAsk` runs a CLI inside a container, and a CLI with no credential fails
+ * exactly the way a broken one does — non-zero exit, empty answer, counted as
+ * `failed`. So an installation that had signed in to Claude while
+ * `indexModel.runtime` said `codex` paid twelve container round trips per pass
+ * and got the sentence "12 calls returned nothing", which named neither the
+ * account nor the fact that nobody had configured it. Observed hourly for a day.
+ */
+/**
+ * Two properties: the pass does not run, and it says so once per state of the
+ * credentials rather than once per heartbeat — the tick is every few seconds and
+ * `bus.emit` has no dedup of its own.
+ */
+test("an index pass with no account for its runtime asks nothing and says so once", async () => {
+  const ctx = await testContext();
+  await project(ctx.db);
+  let asked = 0;
+  ctx.askIn = () => async () => {
+    asked++;
+    return "";
+  };
+
+  await refreshIndex(ctx);
+  await refreshIndex(ctx);
+
+  expect(asked).toBe(0);
+  const [blockers] = await ctx.db.select({ c: count() }).from(tbl.event).where(eq(tbl.event.severity, "blocker"));
+  expect(blockers?.c).toBe(1);
+  const [said_] = await ctx.db.select({ meta: tbl.event.meta_json }).from(tbl.event).orderBy(desc(tbl.event.seq));
+  // The account is named. "Check whether the account still works" was the old
+  // sentence and it named nothing, on an installation where the answer was that
+  // the account had never been configured.
+  expect(JSON.stringify(sayIn(said_?.meta))).toContain("codex");
 });

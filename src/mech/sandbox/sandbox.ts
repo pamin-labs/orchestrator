@@ -675,15 +675,72 @@ async function createSandbox(ctx: Ctx, scope: Scope, spec: SandboxSpec, volumes:
   });
 }
 
-async function createMountedSandbox(
+/** What the sweep needs from the lifecycle API, named so a test can supply it
+ *  without a server. */
+export interface SweepApi {
+  listSandboxInfos: () => Promise<{
+    items?: { id: string; createdAt?: Date; metadata?: { owner?: string } }[];
+  }>;
+  killSandbox: (id: string) => Promise<void>;
+}
+
+/**
+ * Delete every container of this scope's except the one we just got.
+ *
+ * A scope holds one container by definition — a group's, a project's, the
+ * utility slot's — so anything else wearing its owner label is something a
+ * previous attempt left behind. Run after a retry, which is the one moment a
+ * second one can exist.
+ */
+/**
+ * Best effort, and quiet. The caller has a working sandbox and is about to
+ * record it; failing here would turn tidying up into an outage. It is also the
+ * only sweep in the system — `strandedCheck` reports and does not delete,
+ * because a health check is not the place to remove a container somebody may
+ * still be using, and here we know nobody is.
+ */
+export async function sweepScope(
+  ctx: Ctx,
+  scope: Scope,
+  keep: string | null,
+  since: number,
+  manage: (ctx: Ctx) => Promise<SweepApi> = async (c) =>
+    SandboxManager.create({ connectionConfig: await connection(c) }),
+): Promise<void> {
+  const label = isUtil(scope) ? "util" : `${holder(scope).table}-${holder(scope).id}`;
+  try {
+    const manager = await manage(ctx);
+    const { items } = await manager.listSandboxInfos();
+    for (const sb of items ?? []) {
+      if (sb.id === keep || sb.metadata?.owner !== label) continue;
+      // Only what this attempt made. Without the window a second tick opening
+      // the same scope would delete the container the first one is about to
+      // record — the sweep would become the leak.
+      if ((sb.createdAt?.getTime() ?? 0) < since) continue;
+      await manager.killSandbox(sb.id).catch(() => {});
+      live.delete(sb.id);
+      sessions.delete(sb.id);
+    }
+  } catch {
+    // The server is the thing that would have to answer, and it just built us a
+    // container, so this is unlikely — and not worth failing a create over.
+  }
+}
+
+export async function createMountedSandbox(
   ctx: Ctx,
   scope: Scope,
   spec: SandboxSpec,
   cached: Volume[],
   skills: Volume[],
+  // Injected so the retry has a test. It is the branch that leaked, and it was
+  // reachable only through a real server drawing a colliding host port.
+  make: (v: Volume[]) => Promise<Sandbox> = (v) => createSandbox(ctx, scope, spec, v),
+  sweep: (keep: string | null, at: number) => Promise<void> = (keep, at) => sweepScope(ctx, scope, keep, at),
 ): Promise<{ sandbox: Sandbox; skillsMounted: boolean }> {
+  const since = Date.now();
   try {
-    return { sandbox: await createSandbox(ctx, scope, spec, [...cached, ...skills]), skillsMounted: skills.length > 0 };
+    return { sandbox: await make([...cached, ...skills]), skillsMounted: skills.length > 0 };
   } catch (error) {
     // Retried once, and only here: nothing has been written down yet — `remember`
     // runs after this returns — so a failed create leaves no group pointing at a
@@ -691,12 +748,26 @@ async function createMountedSandbox(
     // Once, not a loop: a sidecar that cannot start for a standing reason costs
     // one extra create and then reports the same thing.
     if (isSidecarStartFailure(error)) {
-      return {
-        sandbox: await createSandbox(ctx, scope, spec, [...cached, ...skills]),
-        skillsMounted: skills.length > 0,
-      };
+      const sandbox = await make([...cached, ...skills]);
+      // And the first attempt's container is deleted. The comment that used to
+      // stand here said a failed create leaves nothing pointing at a container,
+      // which is true and is not the same as leaving no container: the sidecar
+      // is started *after* the sandbox it belongs to, so a sidecar that fails
+      // leaves a live sandbox we never got a handle for. Measured: seven of
+      // them on one machine in eighteen minutes, 3-25 MB each because nothing
+      // ever ran in them, none of it visible anywhere.
+      await sweep(sandbox.id, since);
+      return { sandbox, skillsMounted: skills.length > 0 };
     }
-    if (!skills.length || !isPathNotAllowed(error)) throw error;
+    if (!skills.length || !isPathNotAllowed(error)) {
+      // A create that fails after the container exists leaves it running, and
+      // this path has no handle to record — nothing will ever reconnect to it,
+      // claim it, or reap it before its TTL. `keep: null` because there is
+      // nothing to keep: whatever this attempt made is stranded by the throw
+      // about to happen.
+      await sweep(null, since);
+      throw error;
+    }
     await ctx.bus?.emit({
       grpId: "grp" in scope ? scope.grp : null,
       author: "orchestrator",
@@ -704,7 +775,7 @@ async function createMountedSandbox(
       severity: "blocker",
       say: msg`Skills are not mounted into the sandbox: opensandbox-server's allowed_host_paths does not list ${{ path: skills[0]!.host?.path ?? "" }}. Add it and reopen this group's container; until then agents can only use the skills named in the input box.`,
     });
-    return { sandbox: await createSandbox(ctx, scope, spec, cached), skillsMounted: false };
+    return { sandbox: await make(cached), skillsMounted: false };
   }
 }
 
@@ -1527,6 +1598,15 @@ export function lineQueue(): {
  * kill the live timeline and, for a long turn, the memory too. SSE chunks split
  * anywhere, hence the reassembly here.
  */
+/**
+ * How long the exit code is worth waiting for after the stream has ended.
+ *
+ * The completion event and the promise normally settle together; this covers the
+ * gap, and caps it. Before it, a promise that never settled held every reader of
+ * a finished command open indefinitely.
+ */
+const EXIT_CODE_GRACE_MS = 2_000;
+
 async function* realLines(
   ctx: Ctx,
   scope: Scope,
@@ -1559,6 +1639,15 @@ async function* realLines(
           // line until it ends. The server splits on that too, and eats it.
           if (opts.onStderr) for (const l of errSplit.push(`${oneLine(m)}\n`)) opts.onStderr(l);
         },
+        // The ending, taken from the stream rather than from the promise.
+        // `run()` resolves after consuming the whole SSE stream, and measured on
+        // a live server it did not resolve at all once the process had exited —
+        // no `claude` and no runner left in the container, the stream still open.
+        // Everything downstream waited forever and reported nothing, because
+        // nothing had concluded. These two events say the same thing the promise
+        // was supposed to and say it first.
+        onExecutionComplete: () => q.end(),
+        onError: () => q.end(),
       },
       opts.signal,
     )
@@ -1571,7 +1660,10 @@ async function* realLines(
     .finally(() => q.end());
 
   yield* q.drain();
-  await finished;
+  // Raced, not awaited. The exit code lives only on the promise — no event
+  // carries it — so it is worth a moment, and not worth the wait that was the
+  // whole defect. `-1` is what this already reports for a status it never saw.
+  await Promise.race([finished, Bun.sleep(EXIT_CODE_GRACE_MS)]);
   const tail = split.rest();
   if (tail) yield tail;
   return { code, err: stderr };

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { loadAuth } from "../../src/mech/sandbox/auth.ts";
@@ -12,10 +12,18 @@ import {
   startClaudeLogin,
   startCodexDeviceLogin,
 } from "../../src/mech/sandbox/login.ts";
-import type { SandboxDriver } from "../../src/mech/sandbox/sandbox.ts";
 import { fakePty, type FakePty } from "../support/fake-pty.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
+import { providerAnswers } from "../support/provider.ts";
+
+let restoreProvider = () => {};
+beforeAll(() => {
+  restoreProvider = providerAnswers();
+});
+afterAll(() => {
+  restoreProvider();
+});
 
 /**
  * Logging in to a ChatGPT account without a browser inside the container.
@@ -52,7 +60,16 @@ async function harness(
   // same scripted output is offered on both — each test uses the one its
   // runtime reads.
   const pty = sayingThenExit(out);
-  const ctx = await testContext({ db, sandbox, pty: async () => pty });
+  // The command reaches the terminal now, not the command runner — both logins
+  // open a pty (ADR 053), so `cmds` no longer sees them.
+  const ctx = await testContext({
+    db,
+    sandbox,
+    pty: async (_c, _s, command) => {
+      cmds.push(command);
+      return pty;
+    },
+  });
   return { ctx, db, cmds, pty };
 }
 
@@ -119,20 +136,10 @@ test("Claude names a rejected or expired pasted code instead of claiming success
  * reader was gone.
  */
 /**
- * Measured on a live server: `POST /auth/claude/login/cancel` returned nothing
- * for 20s, and every sign-in after it produced a link that did nothing.
+ * Now that both logins open a terminal, the slot is released in `cancel()` and
+ * the daemon is told to stop the process — the two halves the abort could not
+ * do.
  */
-const deaf = (): SandboxDriver => ({
-  ...fakeSandbox(),
-  // Never yields, never returns, and never looks at the signal. The `yield` is
-  // unreachable and is there because a generator has to contain one.
-  lines: async function* () {
-    if (Date.now() < 0) yield "";
-    await new Promise<never>(() => {});
-    return { code: 0, err: "" };
-  },
-});
-
 test("cancelling a claude login frees the slot and signals the process", async () => {
   // A fresh terminal per login, like the real one: a session is opened for each
   // and its generator is consumed once.
@@ -162,17 +169,29 @@ test("cancelling a claude login frees the slot and signals the process", async (
   second.cancel();
 });
 
-test("cancelling a codex login frees the slot for the next one", async () => {
-  const ctx = await testContext({ sandbox: deaf() });
+test("cancelling a codex login frees the slot and signals the process", async () => {
+  // A fresh terminal per login, like the real one.
+  const opened: FakePty[] = [];
+  const ctx = await testContext({
+    sandbox: fakeSandbox(),
+    pty: async () => {
+      const p = saying("waiting for the browser");
+      opened.push(p);
+      return p;
+    },
+  });
   const first = startCodexDeviceLogin(ctx);
   expect(currentCodexDeviceLogin()).toBe(first);
+  await Bun.sleep(20);
 
   first.cancel();
   expect(currentCodexDeviceLogin()).toBeNull();
+  // Codex ran through the command runner before this, whose cancel aborts an
+  // HTTP request and leaves the process polling an OAuth endpoint for the rest
+  // of its sixteen-minute server-side timeout.
+  expect(opened[0]?.signals).toEqual(["SIGINT"]);
   const second = startCodexDeviceLogin(ctx);
   expect(second).not.toBe(first);
-  // Freed again, or this deaf run is left holding a module-level slot that the
-  // next test in this file would be handed instead of starting its own.
   second.cancel();
 });
 
@@ -285,8 +304,10 @@ const NEW_TOKEN = `sk-ant-at01-CJCHm1_dwua-3YSY-OtA1YEsig1AggeB2Axp3eQb5Tqm${"Ks
 const REAL_TAIL = [
   "Paste code here if prompted >",
   "✓ Long-lived authentication token created successfully!",
-  "Your OAuth token (valid for 1 year):",
-  NEW_TOKEN,
+  // Both layouts the CLI has produced, one run apart: the sentence on its own
+  // line, and the sentence with the token appended. A whole-line rule reads the
+  // second as prose and reports that nothing was printed.
+  `Your OAuth token (valid for 1 year): ${NEW_TOKEN}`,
   "Use this token by setting: export CLAUDE_CODE_OAUTH_TOKEN=<token>",
   "Store this token securely. You won't be able to see it again.",
 ].join("\n");
@@ -321,7 +342,12 @@ test("neither the link nor the masked echo is mistaken for the token", async () 
       saying(
         [
           "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code",
-          "*".repeat(92),
+          // The mask as the CLI actually prints it: asterisks with the last few
+          // characters of the pasted code in clear. An all-asterisk line was the
+          // first version of this fixture and it passed against the recogniser
+          // that shipped the mask as the credential — the clear tail is what made
+          // it mix case and digits.
+          `${"*".repeat(88)}CXxA`,
           NEW_TOKEN,
         ].join("\n"),
       ),
@@ -364,4 +390,32 @@ test("a submitted code is typed, then Enter, as two separate keystrokes", async 
   expect(pty.typed).toEqual([code, "\r"]);
 
   run.cancel();
+});
+
+/**
+ * The defect this guard exists for, in the shape it had.
+ *
+ * A real login printed `sk-ant-oat01-…` and what was stored began eight
+ * characters in, at `at01-`. Every rule the recogniser has passed it: a hundred
+ * base64url characters, mixed case, no character worth more than five percent of
+ * it — a token's tail looks exactly like a token.
+ */
+/**
+ * No rule written against the text can tell the two apart. The provider can, and
+ * it was never asked — so the panel said signed in while the credential banner
+ * said refused, and both were reporting honestly.
+ */
+test("a token the provider refuses is not stored, and the login says so", async () => {
+  const db = await openMemory();
+  const restore = providerAnswers(401);
+  try {
+    const ctx = await withPty(saying(`Open https://claude.ai/oauth/authorize?x=1 to continue\n${CLAUDE_TOKEN}`), db);
+    const run = startClaudeLogin(ctx);
+    const done = await Promise.race([run.done, Bun.sleep(5_000).then(() => null)]);
+    expect(done?.ok).toBe(false);
+    expect(done?.detail).toContain("not all of it");
+    expect(await loadAuth(db, "claude")).toBeNull();
+  } finally {
+    restore();
+  }
 });

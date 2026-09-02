@@ -3,6 +3,7 @@ import type { Ctx } from "../../mech/ctx.ts";
 import { saveAuth } from "./auth.ts";
 import { REFRESH_HOME } from "./chatgpt.ts";
 import { execLines, getFile, UTIL } from "./sandbox.ts";
+import { modelAccepted } from "../ops/preflight.ts";
 import { openPty, type PtySession } from "./pty.ts";
 
 /**
@@ -54,12 +55,45 @@ const URL_RE = /https?:\/\/[^\s\u0007\u001b"'<>]+/;
  * silently, which is what both of the previous ones did.
  */
 const TOKEN_MIN = 40;
-const looksLikeCredential = (line: string): boolean =>
-  line.length >= TOKEN_MIN &&
-  !/\s/.test(line) &&
-  !/^[a-z][a-z0-9+.-]*:\/\//i.test(line) &&
-  /[a-z]/.test(line) &&
-  /[A-Z0-9]/.test(line);
+
+/**
+ * How much of a line one character may be before it is padding, not payload.
+ *
+ * The CLI echoes a pasted code back as asterisks with its last few characters in
+ * clear — `********…CXxA` — which is long, unbroken, not a URL, and mixes case
+ * and digits, so every earlier rule passed it.
+ */
+/**
+ * It was stored as the credential, and the real token four lines later was never
+ * read: the recogniser stops at the first match. What separates them is
+ * distribution — a secret has no character worth more than a few percent of it,
+ * a mask is one character with a tail.
+ */
+const DOMINANT_MAX = 0.4;
+
+const dominatedByOneCharacter = (line: string): boolean => {
+  const seen = new Map<string, number>();
+  for (const ch of line) seen.set(ch, (seen.get(ch) ?? 0) + 1);
+  return Math.max(...seen.values()) > line.length * DOMINANT_MAX;
+};
+
+const isCredential = (word: string): boolean =>
+  word.length >= TOKEN_MIN &&
+  !/^[a-z][a-z0-9+.-]*:\/\//i.test(word) &&
+  /[a-z]/.test(word) &&
+  /[A-Z0-9]/.test(word) &&
+  !dominatedByOneCharacter(word);
+
+/**
+ * The credential on a line, wherever on it.
+ *
+ * Taken as a word rather than as the whole line, because the CLI puts it both
+ * ways: `Your OAuth token (valid for 1 year):` on its own line one run, and the
+ * same sentence with the token appended the next. A whole-line rule reads the
+ * second as prose — it has spaces in it — and reports that no token was ever
+ * printed, over a run that printed one.
+ */
+const credentialIn = (line: string): string | null => line.split(/\s+/).find((word) => isCredential(word)) ?? null;
 
 export interface LoginRun {
   /** The link to open. Present as soon as the CLI prints it. */
@@ -136,15 +170,10 @@ let deviceLogin: LoginRun | null = null;
  */
 export const currentCodexDeviceLogin = () => deviceLogin;
 
-async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
-  const stream = execLines(ctx, UTIL, "codex login --device-auth", {
-    env: { CODEX_HOME: REFRESH_HOME },
-    timeoutMs: DEVICE_CODE_TTL_MS + 60_000,
-    signal,
-  });
+async function finishCodexLogin(ctx: Ctx, run: LoginRun, session: PtySession) {
   // Codex reads to the end on purpose: its credential is a file it writes, not a
   // line it prints, so there is nothing on stdout that means "done".
-  const result = await consumeLogin(ctx.bus, stream, (line) => {
+  const result = await consumeLogin(ctx.bus, session.lines, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
     run.code ??= line.match(DEVICE_CODE_RE)?.[0] ?? null;
     return false;
@@ -182,22 +211,38 @@ async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
  */
 export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
   if (deviceLogin) return deviceLogin;
-  const abort = new AbortController();
+  let opened: PtySession | null = null;
   const run: LoginRun = {
     url: null,
     code: null,
-    // Released on cancel rather than on `done`, for the reason written on
-    // `startClaudeLogin`: this is get-or-create, and a run whose abort went
-    // unanswered would be handed to every login after it.
+    /**
+     * The same signal claude's cancel sends, and for the same reason.
+     *
+     * `codex login --device-auth` needs no terminal — it prints and polls — but
+     * it was run through the command runner, whose cancel aborts an HTTP request
+     * and leaves the process running until its server-side timeout: sixteen
+     * minutes of a container polling an OAuth endpoint nobody is waiting on.
+     * `run()` takes no session id, so `interrupt` cannot reach it; a pty session
+     * has a control channel that can.
+     */
     cancel: () => {
-      abort.abort();
+      opened?.signal("SIGINT");
+      opened?.close();
       if (deviceLogin === run) deviceLogin = null;
     },
     done: Promise.resolve({ ok: false, detail: "" }),
   };
   deviceLogin = run;
 
-  run.done = finishCodexLogin(ctx, run, abort.signal).finally(() => {
+  run.done = (async () => {
+    const session = await (ctx.pty ?? openPty)(ctx, UTIL, `env CODEX_HOME=${REFRESH_HOME} codex login --device-auth`);
+    opened = session;
+    try {
+      return await finishCodexLogin(ctx, run, session);
+    } finally {
+      session.close();
+    }
+  })().finally(() => {
     deviceLogin = null;
   });
 
@@ -252,7 +297,7 @@ async function finishClaudeLogin(
   // exits, where there is no line to stop on and the stream stays open anyway.
   const read = consumeLogin(ctx.bus, stream, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
-    if (looksLikeCredential(line)) token ??= line;
+    token ??= credentialIn(line);
     // The token is the whole errand. Read no further for a stream that may not
     // end — see `consumeLogin`.
     if (token) return true;
@@ -275,7 +320,18 @@ async function finishClaudeLogin(
         ? "claude setup-token asked for the code and never printed a token — the code may have been wrong or expired"
         : "claude setup-token printed no token — run it under a pty in the image and see what changed",
     };
-  await saveAuth(ctx.db, { runtime: "claude", mode: "oauth_token", secret: token });
+  const auth = { runtime: "claude", mode: "oauth_token", secret: token } as const;
+  // Read off a terminal, so what was read is a guess until the provider answers.
+  // A token that has just been minted and is refused is a capture that took the
+  // wrong characters, not a login that failed — and storing it is what turns that
+  // into a panel saying it is signed in beside a banner saying it is not.
+  const accepted = await modelAccepted("claude", auth, ctx.config.timeouts.credentialCheckMs);
+  if (!accepted.ok)
+    return {
+      ok: false,
+      detail: "the provider refused the token that was printed — what was read off the terminal is not all of it",
+    };
+  await saveAuth(ctx.db, auth);
   void ctx.sched.tick().catch(() => {});
   return { ok: true, detail: "stored" };
 }

@@ -2,7 +2,7 @@ import { msg } from "@lingui/core/macro";
 import { existsSync, readdirSync } from "node:fs";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { resolve } from "node:path";
-import type { DB } from "../../platform/persistence/database.ts";
+import { readSetting, type DB } from "../../platform/persistence/database.ts";
 import { loadAuth, sandboxKeyFor, type RuntimeAuth } from "../sandbox/auth.ts";
 import {
   allowedHostPaths,
@@ -15,9 +15,10 @@ import { isStale, parseAuth } from "../sandbox/chatgpt.ts";
 import { decode } from "hono/jwt";
 import { z } from "zod";
 import { isNotNull } from "drizzle-orm";
+import { plural } from "@lingui/core/macro";
 import type { Said } from "../../contracts/said.ts";
 import { renderSaid } from "../../platform/text/lang.ts";
-import { agent } from "../../platform/persistence/schema.ts";
+import { agent, grp, project } from "../../platform/persistence/schema.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "../../platform/config/load.ts";
 
 /**
@@ -66,14 +67,48 @@ export function makeCheck(name: string, ok: boolean, said: Said, fix?: Said): Ch
  * `/v1/sandboxes` is the cheapest *authenticated* call — a list, no side effect.
  * An unauthenticated endpoint answers for a server that rejects every real call.
  */
-async function reachable(url: string, apiKey: string, timeoutMs: number): Promise<Verdict> {
+/**
+ * What the server says it is holding, when it answers at all.
+ *
+ * Read from the reply this probe already makes, rather than asked for
+ * separately: the reachability check calls `/v1/sandboxes` and threw the body
+ * away, so counting what is out there costs nothing it was not already paying.
+ */
+const SandboxList = z.looseObject({
+  items: z
+    .array(z.looseObject({ id: z.string(), metadata: z.looseObject({ owner: z.string().optional() }).optional() }))
+    .optional(),
+});
+
+/** Above any fleet this is meant for. A page of twenty answered "is it up" and
+ *  would answer "how many are stranded" with a number that is always twenty. */
+const LIST_PAGE = 500;
+
+/**
+ * The containers in a listing that wear an owner label, out of a body nobody here wrote.
+ *
+ * Split out of `reachable` so it can be checked without a server: the listing is
+ * the only part of that function with a decision in it, and it was the part with
+ * no test.
+ */
+export function labelled(body: unknown): { id: string; owner: string }[] {
+  return (SandboxList.safeParse(body).data?.items ?? [])
+    .filter((s) => s.metadata?.owner)
+    .map((s) => ({ id: s.id, owner: s.metadata?.owner ?? "" }));
+}
+
+async function reachable(
+  url: string,
+  apiKey: string,
+  timeoutMs: number,
+): Promise<Verdict & { held?: { id: string; owner: string }[] }> {
   try {
     // fallow-ignore-next-line security-sink -- the one caller builds `url` from `cfg.sandbox.server`, the address the boss set for their own sandbox server, and `sandboxKeyFor` is what makes "the key stored for that same address" true rather than assumed: a stored key carries the address it was accepted by, and is withheld when the two disagree.
-    const res = await fetch(`${url}/v1/sandboxes`, {
+    const res = await fetch(`${url}/v1/sandboxes?page_size=${LIST_PAGE}`, {
       headers: apiKey ? { [SANDBOX_API_KEY_HEADER]: apiKey } : {},
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (res.ok) return { ok: true, said: msg`reachable` };
+    if (res.ok) return { ok: true, said: msg`reachable`, held: labelled(await res.json().catch(() => null)) };
     // The two the boss can act on, said in their own words.
     if (res.status === 401) {
       const why = await res.text().catch(() => "");
@@ -201,7 +236,7 @@ export function credentialVerdict(status: number, mode: string): Verdict {
   return { ok: true, said: msg`${{ mode }} · not verified (HTTP ${{ status }})` };
 }
 
-async function modelAccepted(runtime: string, auth: RuntimeAuth, timeoutMs: number): Promise<Verdict> {
+export async function modelAccepted(runtime: string, auth: RuntimeAuth, timeoutMs: number): Promise<Verdict> {
   const mode = auth.mode;
   const { url, headers } = modelProbe(runtime, auth);
   try {
@@ -364,6 +399,37 @@ function hostEnvironmentCheck(contained: boolean): Check | null {
     true,
     msg`docker, uv and the egress image belong to the machine running the sandbox server, not to this one`,
     msg`On that machine: install docker, run uvx opensandbox-server, and docker pull opensandbox/egress:v1.1.6.`,
+  );
+}
+
+/**
+ * Sandboxes the server is holding that nothing here claims.
+ *
+ * Ours by the `owner` label we set, and unclaimed by every column that can name
+ * one: a group's, a project's, and the utility id in `setting`. Anything else on
+ * that server belongs to somebody else and is not counted.
+ */
+export async function strandedCheck(db: DB, held: { id: string; owner: string }[] | undefined): Promise<Check | null> {
+  // No list means the server did not answer, which is already a row of its own.
+  if (!held?.length) return null;
+  const claimed = new Set<string>();
+  for (const row of await db.select({ id: grp.sandbox_id }).from(grp).where(isNotNull(grp.sandbox_id))) {
+    if (row.id) claimed.add(row.id);
+  }
+  for (const row of await db.select({ id: project.sandbox_id }).from(project).where(isNotNull(project.sandbox_id))) {
+    if (row.id) claimed.add(row.id);
+  }
+  const util = await readSetting(db, "util_sandbox_id");
+  if (util) claimed.add(util);
+
+  const ours = held.filter((s) => /^(grp|project)-\d+$|^util$/.test(s.owner));
+  const stranded = ours.filter((s) => !claimed.has(s.id));
+  if (stranded.length === 0) return null;
+  return makeCheck(
+    "stranded sandboxes",
+    false,
+    msg`${plural({ n: stranded.length }, { one: "# container is", other: "# containers are" })} running that nothing here is using`,
+    msg`They were ours and are no longer claimed by any group, project or the utility slot — each holds memory until its TTL expires. A restart does not reclaim them; delete them on the sandbox server.`,
   );
 }
 
@@ -530,6 +596,13 @@ async function preflightInner(input: PreflightInput): Promise<Check[]> {
   // server that refuses us is already reported above.
   const sandboxAuth = sandboxAuthCheck(server.ok, key);
   if (sandboxAuth) out.push(sandboxAuth);
+
+  // Containers nobody can reach any more. The only reason the last batch was
+  // found is that a machine ran out of memory: 48 of them against a `grp` table
+  // with no rows, each holding ~250 MB with a 24-hour TTL, and not one word
+  // about it anywhere in the panel.
+  const stranded = await strandedCheck(input.db, server.held);
+  if (stranded) out.push(stranded);
 
   // v1.1.4 — the version the example config ships — 403s every scoped package
   // fetch while a credential is bound, and the symptom reads as "this project

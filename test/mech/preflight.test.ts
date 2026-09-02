@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
-import { credentialVerdict, modelProbe, preflight } from "../../src/mech/ops/preflight.ts";
+import { credentialVerdict, labelled, modelProbe, preflight } from "../../src/mech/ops/preflight.ts";
 import { renderSaid } from "../../src/platform/text/lang.ts";
 
 test("a ChatGPT login is called out when it is old, not when the host lacks codex", async () => {
@@ -160,3 +160,28 @@ test("only 401 and 403 are read as the credential being refused", () => {
  * `msg` template now: the ICU and the values come out of the same interpolation,
  * so a placeholder without a value is no longer a thing that can be written.
  */
+
+/**
+ * The listing is written by the sandbox server, not by us, so every field in it
+ * is a claim. Only containers wearing an owner label are ours to count as
+ * stranded — one without a label belongs to whoever else uses this server, and
+ * reporting it would send the boss to delete somebody else's work.
+ */
+test("only the containers carrying an owner label are counted as ours", () => {
+  expect(
+    labelled({
+      items: [
+        { id: "a", metadata: { owner: "orch" } },
+        { id: "b", metadata: {} },
+        { id: "c" },
+        { id: "d", metadata: { owner: "" } },
+      ],
+    }),
+  ).toEqual([{ id: "a", owner: "orch" }]);
+});
+
+test("a listing in a shape nobody promised is no containers, not a throw", () => {
+  expect(labelled(null)).toEqual([]);
+  expect(labelled({ items: "not a list" })).toEqual([]);
+  expect(labelled({})).toEqual([]);
+});

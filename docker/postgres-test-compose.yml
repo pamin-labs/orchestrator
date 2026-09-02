@@ -63,10 +63,16 @@ services:
       # against tables measured in single-figure rows.
       - -c
       - work_mem=512kB
-      # Nothing here lives long enough to bloat, and every test empties its tables
-      # itself; three autovacuum workers are three processes with no work.
+      # On, and it has work. The line above used to read `autovacuum=off`, on the
+      # grounds that nothing here lives long enough to bloat — true of one run and
+      # false of this container, which stays up across dozens of them. `emptied`
+      # uses `DELETE`, which leaves dead tuples behind, and with no vacuum they are
+      # never reclaimed: measured at ~20MB of tmpfs per full-suite run after the
+      # first, and found at 635MB in one database whose largest table held 527,582
+      # dead rows against zero live ones. The data directory is RAM, so that growth
+      # is the machine's memory.
       - -c
-      - autovacuum=off
+      - autovacuum=on
       # Which statements the suite actually sends, and how many times. Reading
       # that is how the `pg_constraint` scan behind `TRUNCATE ... CASCADE` was
       # found; guessing at it is how two earlier attempts optimised the wrong

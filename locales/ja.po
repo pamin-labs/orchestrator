@@ -196,6 +196,9 @@ msgstr "{months} か月前"
 msgid "{mount} read-only"
 msgstr "{mount} 読み取り専用"
 
+msgid "{n, plural, one {# container is} other {# containers are}} running that nothing here is using"
+msgstr "{n, plural, other {# 個のコンテナ}}が動いていますが、こちらでは何も使っていません"
+
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, other {# 件のスライス}}"
 
@@ -2136,6 +2139,9 @@ msgstr "P95"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "PageIndex を作れません：{n} 回の呼び出しがすべて空で返りました。設定で、インデックスが使っているアカウントがまだ生きているか確認してください。"
 
+msgid "PageIndex needs the {runtime} account and it is not configured. Sign in on the settings page, or point the index at a runtime that is — Settings → Plumbing → indexModel.runtime."
+msgstr "PageIndex には {runtime} アカウントが必要ですが、まだ設定されていません。設定ページでサインインするか、設定済みの runtime を指してください——設定 → 内部の仕組み → indexModel.runtime。"
+
 msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
 msgstr "PageIndex: ノードを {n, plural, other {# 件}}要約し、ファイルを {files, plural, other {# 件}}索引しました"
 
@@ -3119,6 +3125,9 @@ msgstr "どのグループにも属していません: {paths}。そこの変更
 
 msgid "These paths from the card don't exist in the repo"
 msgstr "カードに書かれたこれらのパスはリポジトリに存在しません"
+
+msgid "They were ours and are no longer claimed by any group, project or the utility slot — each holds memory until its TTL expires. A restart does not reclaim them; delete them on the sandbox server."
+msgstr "元はこちらのものですが、今はどのグループ・プロジェクト・ユーティリティ枠も所有していません——それぞれ TTL が切れるまでメモリを占有し続けます。再起動しても回収されないので、サンドボックスサーバー側で削除してください。"
 
 msgid "This account has no window"
 msgstr "このアカウントには枠がありません"

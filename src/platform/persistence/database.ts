@@ -198,13 +198,30 @@ function unreachable(url: string, e: unknown): Error {
  * everything it prints, and this is the one function every path into a real
  * database comes through.
  */
+/** How long a pooled connection may sit idle before it is closed. Longer than
+ *  the test path's: a reconnect here costs a request rather than a test file. */
+const IDLE_SECONDS = 60;
+
 export async function open(poolSize?: number, url = process.env[DATABASE_URL]): Promise<DB> {
   if (!url) throw new Error(`${DATABASE_URL} is unset: this needs a PostgreSQL connection string`);
   // The pool is the config's, not Bun's default of ten: the panel's snapshot
   // issues nineteen statements at once, so a pool under that serves them in
   // waves. Optional because the scripts and the migration path open one before
   // there is a config to ask.
-  const db = bunSqlDrizzle({ client: poolSize ? new SQL({ url, max: poolSize }) : new SQL(url) });
+  //
+  // And it gives connections back. Bun's `idleTimeout` defaults to 0 — never —
+  // so the pool climbed to its maximum on the first busy moment and held every
+  // backend for the life of the process: measured on a running server, 24 idle
+  // connections with the oldest untouched for five minutes, against one that was
+  // doing anything. A minute is well past the readiness tick and the watchdog,
+  // so a working fleet keeps its pool warm and an idle one stops holding
+  // twenty-odd Postgres processes to do nothing. The cost, when it is paid, is
+  // one connection handshake on a request that had been idle a full minute.
+  const db = bunSqlDrizzle({
+    client: poolSize
+      ? new SQL({ url, max: poolSize, idleTimeout: IDLE_SECONDS })
+      : new SQL({ url, idleTimeout: IDLE_SECONDS }),
+  });
   try {
     await bunSqlMigrate(db, { migrationsFolder: MIGRATIONS });
   } catch (e) {

@@ -196,6 +196,9 @@ msgstr "hace {months} meses"
 msgid "{mount} read-only"
 msgstr "{mount} solo lectura"
 
+msgid "{n, plural, one {# container is} other {# containers are}} running that nothing here is using"
+msgstr "{n, plural, one {# contenedor está} other {# contenedores están}} en marcha sin que aquí nada los use"
+
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, one {# fragmento} other {# fragmentos}}"
 
@@ -2136,6 +2139,9 @@ msgstr "P95"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "No se puede construir PageIndex: las {n} llamadas volvieron vacías. Comprueba en ajustes si la cuenta que usa el índice sigue funcionando."
 
+msgid "PageIndex needs the {runtime} account and it is not configured. Sign in on the settings page, or point the index at a runtime that is — Settings → Plumbing → indexModel.runtime."
+msgstr "PageIndex necesita la cuenta de {runtime} y no está configurada. Inicia sesión en la página de ajustes, o apunta el índice a un runtime que sí lo esté: Ajustes → Entrañas → indexModel.runtime."
+
 msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
 msgstr "PageIndex: resumidos {n, plural, one {# nodo} other {# nodos}}, indexados {files, plural, one {# archivo} other {# archivos}}"
 
@@ -3119,6 +3125,9 @@ msgstr "estos no pertenecen a ningún grupo: {paths}: los cambios ahí pasan por
 
 msgid "These paths from the card don't exist in the repo"
 msgstr "Estas rutas de la tarjeta no existen en el repositorio"
+
+msgid "They were ours and are no longer claimed by any group, project or the utility slot — each holds memory until its TTL expires. A restart does not reclaim them; delete them on the sandbox server."
+msgstr "Eran nuestros y ya no los reclama ningún grupo, proyecto ni la ranura de utilidad: cada uno retiene memoria hasta que expire su TTL. Reiniciar no los recupera; bórralos en el servidor de sandbox."
 
 msgid "This account has no window"
 msgstr "Esta cuenta no tiene ventana"

@@ -4,7 +4,7 @@ import { renderSaid } from "../../src/platform/text/lang.ts";
 import { said } from "../support/said.ts";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { openMemory } from "../../src/platform/persistence/database.ts";
+import { openMemory, writeSetting } from "../../src/platform/persistence/database.ts";
 import {
   allowedHostPaths,
   coveredBy,
@@ -14,7 +14,7 @@ import {
   unwrap,
   wrapForSession,
 } from "../../src/mech/sandbox/sandbox.ts";
-import { preflight } from "../../src/mech/ops/preflight.ts";
+import { preflight, strandedCheck } from "../../src/mech/ops/preflight.ts";
 import { serverAction, serverBackoffMs, SERVER_RESTART_CAP } from "../../src/mech/ops/watchdog.ts";
 import { patchConfig, startPlan, waitUp } from "../../src/mech/sandbox/server.ts";
 import { testContext } from "../support/test-context.ts";
@@ -542,4 +542,47 @@ test("a session that dies is rebuilt once, then given up on", async () => {
   expect(opened).toBe(2);
   expect(seen.filter((s) => s === "createSession")).toHaveLength(2);
   expect(seen).toContain("run");
+});
+
+/**
+ * Containers the server is holding that nothing here claims.
+ *
+ * The only reason the last batch was found is that a machine ran out of memory:
+ * 48 of them against a `grp` table with no rows, each ~250 MB with a 24-hour
+ * TTL, and not one word about it anywhere in the panel. `reconnect` leaking them
+ * is fixed; this is the other half, because an installation that already has
+ * them still had no way to know.
+ */
+/**
+ * Read from the reply the reachability probe already makes, so the count costs
+ * no extra request — and claimed means every column that can name one: a group's,
+ * a project's, and the utility slot in `setting`.
+ */
+describe("stranded sandboxes are counted, not discovered by running out of memory", () => {
+  const held = (...ids: string[]) => ids.map((id) => ({ id, owner: "project-1" }));
+
+  test("a container no column names is reported", async () => {
+    const db = await openMemory();
+    const c = await strandedCheck(db, held("a", "b"));
+    expect(c?.ok).toBe(false);
+    expect(renderSaid("en", c!.said)).toContain("2 containers");
+  });
+
+  test("one the utility slot claims is not stranded", async () => {
+    const db = await openMemory();
+    await writeSetting(db, "util_sandbox_id", "a");
+    expect(await strandedCheck(db, [{ id: "a", owner: "util" }])).toBeNull();
+  });
+
+  test("somebody else's container on the same server is not ours to count", async () => {
+    const db = await openMemory();
+    // No `owner` we set, so not from this orchestrator. Counting it would tell
+    // the boss to delete a stranger's container.
+    expect(await strandedCheck(db, [{ id: "x", owner: "someone-else" }])).toBeNull();
+  });
+
+  test("a server that did not answer is not evidence of anything", async () => {
+    const db = await openMemory();
+    expect(await strandedCheck(db, undefined)).toBeNull();
+  });
 });

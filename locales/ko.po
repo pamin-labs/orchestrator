@@ -196,6 +196,9 @@ msgstr "{months}개월 전"
 msgid "{mount} read-only"
 msgstr "{mount} 읽기 전용"
 
+msgid "{n, plural, one {# container is} other {# containers are}} running that nothing here is using"
+msgstr "{n, plural, other {컨테이너 # 개}}가 실행 중인데 여기서는 아무것도 쓰지 않습니다"
+
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, other {슬라이스 #개}}"
 
@@ -2136,6 +2139,9 @@ msgstr "P95"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "PageIndex를 만들 수 없습니다: 호출 {n}번이 전부 빈 응답이었습니다. 설정에서 인덱스가 쓰는 계정이 아직 살아 있는지 확인하세요."
 
+msgid "PageIndex needs the {runtime} account and it is not configured. Sign in on the settings page, or point the index at a runtime that is — Settings → Plumbing → indexModel.runtime."
+msgstr "PageIndex 는 {runtime} 계정이 필요한데 아직 설정되지 않았습니다. 설정 페이지에서 로그인하거나, 설정된 runtime 을 가리키게 하세요 — 설정 → 내부 구조 → indexModel.runtime."
+
 msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
 msgstr "PageIndex: 노드 {n, plural, other {#개}}를 요약하고 파일 {files, plural, other {#개}}를 색인했습니다"
 
@@ -3119,6 +3125,9 @@ msgstr "어느 그룹에도 속하지 않습니다: {paths} — 그쪽 변경은
 
 msgid "These paths from the card don't exist in the repo"
 msgstr "카드에 적힌 이 경로들이 저장소에 없습니다"
+
+msgid "They were ours and are no longer claimed by any group, project or the utility slot — each holds memory until its TTL expires. A restart does not reclaim them; delete them on the sandbox server."
+msgstr "원래 우리 것이었지만 지금은 어떤 그룹·프로젝트·유틸리티 슬롯도 소유하지 않습니다 — 각각 TTL 이 만료될 때까지 메모리를 붙들고 있습니다. 재시작으로는 회수되지 않으니 샌드박스 서버에서 삭제하세요."
 
 msgid "This account has no window"
 msgstr "이 계정에는 사용량 구간이 없습니다"
