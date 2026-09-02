@@ -16,7 +16,7 @@ Product goals, scope, milestones and the delivery sequence live in
 Measured on `fix/codex-login-home`, 2026-09-02.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2047 pass, 6 environment skips, 0 fail, 2053 across 253 files
+- Tests: 2048 pass, 6 environment skips, 0 fail, 2054 across 253 files
 - Coverage: 84.06% of statements, 74.34% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0, over 694 files
@@ -46,8 +46,11 @@ Measured on `fix/codex-login-home`, 2026-09-02.
   panel reported a CLI whose output had changed. `prepareHome` is the one owner
   of a prepared home now, through the `CodexHomeIO` seam both paths already had,
   and a login that ends with a reason shows that reason instead of sending the
-  boss into the image. Fixed 2026-09-02; guards in
-  `test/mech/codex-device-login.test.ts`.
+  boss into the image. The panel also opens codex's device page itself, as it
+  already did for claude — neither container has a browser in it, so the
+  difference was only that the tab was opened inside one branch. Fixed
+  2026-09-02; guards in `test/mech/codex-device-login.test.ts` and
+  `test/web/notes-settings-render.test.tsx`.
 - **A sandbox key written to two homes could not converge.** `ourKey` stored it
   in `runtime_auth` and `writeConfig` wrote it into `~/.orch-cache/sandbox.toml`,
   which is never rewritten — so a rebuilt database against a still-running server

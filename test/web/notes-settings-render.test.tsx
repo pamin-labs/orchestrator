@@ -46,14 +46,17 @@ afterEach(cleanup);
 
 /** Each of these panes reads on mount and is asserted in the state before that
  *  read lands, so every request stays in flight. */
-/** The one request this file answers, and only it: the login link, plus a flag
+/** The two requests this file answers: each runtime's login page, plus a flag
  *  the popup-ordering test reads to say whether the reply had landed yet. */
 const login = { replied: false, link: "https://claude.com/cai/oauth/authorize?code=true&client_id=x" };
+/** codex's half of the same errand — a page to open, and the code to type on it. */
+const device = { url: "https://auth.openai.com/codex/device", code: "T5M2-76TFM" };
 mockHttp(
   http.post("*/api/v1/auth/claude/login", () => {
     login.replied = true;
     return HttpResponse.json({ url: login.link, expiresAt: Date.now() + 600_000 });
   }),
+  http.post("*/api/v1/auth/codex/device", () => HttpResponse.json({ ...device, expiresAt: Date.now() + 900_000 })),
   inFlight(),
 );
 
@@ -419,20 +422,38 @@ test("a switcher row is filterable by its second line, and fills only the cells 
  * cost a window sitting on about:blank, and `noopener` on the placeholder made
  * it unfillable as well — that combination is what shipped.
  */
-test("signing in to claude opens the link itself, not a blank placeholder", async () => {
-  login.replied = false;
-  const calls: { url: string; features?: string; hadReply: boolean }[] = [];
+type Opened = { url: string; features?: string; hadReply: boolean };
+
+/**
+ * `window.open`, recorded and neutered, for the length of one body.
+ *
+ * Returning null is the blocked-popup case as well as the harness: the panel has
+ * to survive it, because the link is rendered below either way.
+ */
+async function withOpener(body: (calls: Opened[]) => Promise<void>) {
+  const calls: Opened[] = [];
   const opener = window.open;
   (window as { open: unknown }).open = (url: string, _target: string, features?: string) => {
     calls.push({ url, ...(features === undefined ? {} : { features }), hadReply: login.replied });
     return null;
   };
-
   try {
-    const { getAllByRole } = render(<CredPane rows={[]} onSaved={() => {}} onWaitForLogin={() => {}} />);
-    // Claude and Codex each have one, and Claude's is first — the pane renders
-    // them in order and only Claude takes this path.
-    fireEvent.click(getAllByRole("button", { name: "登录" })[0]!);
+    await body(calls);
+  } finally {
+    (window as { open: unknown }).open = opener;
+  }
+}
+
+/** Claude's is first: the pane renders the two runtimes in order. */
+const signInButtons = () =>
+  render(<CredPane rows={[]} onSaved={() => {}} onWaitForLogin={() => {}} />).getAllByRole("button", {
+    name: "登录",
+  });
+
+test("signing in to claude opens the link itself, not a blank placeholder", async () => {
+  login.replied = false;
+  await withOpener(async (calls) => {
+    fireEvent.click(signInButtons()[0]!);
 
     await waitFor(() => expect(calls).toHaveLength(1));
     // The real link, on the one call. A placeholder open would be `""` here, and
@@ -445,9 +466,27 @@ test("signing in to claude opens the link itself, not a blank placeholder", asyn
     expect(calls[0]!.features).toContain("noopener");
     // A blocked popup is null and must not throw — the link is rendered below.
     getByTextIn(document.body, login.link);
-  } finally {
-    (window as { open: unknown }).open = opener;
-  }
+  });
+});
+
+/**
+ * The same errand, and it used to be one runtime's.
+ *
+ * codex printed a device page and a code and the panel rendered both, leaving the
+ * boss to click a link the claude flow had never made them click. Nothing about
+ * the container differs — neither login has a browser in it — so the difference
+ * was that `signIn` opened the tab inside the claude branch.
+ */
+test("signing in to codex opens its device page too", async () => {
+  await withOpener(async (calls) => {
+    fireEvent.click(signInButtons()[1]!);
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]!.url).toBe(device.url);
+    expect(calls[0]!.features).toContain("noopener");
+    // And the code to type on the page that just opened is still on screen.
+    getByTextIn(document.body, device.code);
+  });
 });
 
 /**
@@ -471,4 +510,7 @@ test("only a real https link is navigated to", () => {
   expect(httpsOnly("https://evilclaude.com/cai/oauth")).toBeNull();
   expect(httpsOnly("https://console.anthropic.com/x")).toBe("https://console.anthropic.com/x");
   expect(httpsOnly("https://example.com/")).toBeNull();
+  // codex's device page, which the panel opens the same way it opens claude's.
+  expect(httpsOnly("https://auth.openai.com/codex/device")).toBe("https://auth.openai.com/codex/device");
+  expect(httpsOnly("https://evilopenai.com/codex/device")).toBeNull();
 });
