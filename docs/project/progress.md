@@ -16,7 +16,7 @@ Product goals, scope, milestones and the delivery sequence live in
 Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2039 pass, 6 environment skips, 0 fail, 2045 across 252 files
+- Tests: 2040 pass, 6 environment skips, 0 fail, 2046 across 252 files
 - Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0

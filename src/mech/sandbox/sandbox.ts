@@ -678,7 +678,9 @@ async function createSandbox(ctx: Ctx, scope: Scope, spec: SandboxSpec, volumes:
 /** What the sweep needs from the lifecycle API, named so a test can supply it
  *  without a server. */
 export interface SweepApi {
-  listSandboxInfos: () => Promise<{ items?: { id: string; metadata?: { owner?: string } }[] }>;
+  listSandboxInfos: () => Promise<{
+    items?: { id: string; createdAt?: Date; metadata?: { owner?: string } }[];
+  }>;
   killSandbox: (id: string) => Promise<void>;
 }
 
@@ -700,7 +702,8 @@ export interface SweepApi {
 export async function sweepScope(
   ctx: Ctx,
   scope: Scope,
-  keep: string,
+  keep: string | null,
+  since: number,
   manage: (ctx: Ctx) => Promise<SweepApi> = async (c) =>
     SandboxManager.create({ connectionConfig: await connection(c) }),
 ): Promise<void> {
@@ -710,6 +713,10 @@ export async function sweepScope(
     const { items } = await manager.listSandboxInfos();
     for (const sb of items ?? []) {
       if (sb.id === keep || sb.metadata?.owner !== label) continue;
+      // Only what this attempt made. Without the window a second tick opening
+      // the same scope would delete the container the first one is about to
+      // record — the sweep would become the leak.
+      if ((sb.createdAt?.getTime() ?? 0) < since) continue;
       await manager.killSandbox(sb.id).catch(() => {});
       live.delete(sb.id);
       sessions.delete(sb.id);
@@ -729,8 +736,9 @@ export async function createMountedSandbox(
   // Injected so the retry has a test. It is the branch that leaked, and it was
   // reachable only through a real server drawing a colliding host port.
   make: (v: Volume[]) => Promise<Sandbox> = (v) => createSandbox(ctx, scope, spec, v),
-  sweep: (keep: string) => Promise<void> = (keep) => sweepScope(ctx, scope, keep),
+  sweep: (keep: string | null, at: number) => Promise<void> = (keep, at) => sweepScope(ctx, scope, keep, at),
 ): Promise<{ sandbox: Sandbox; skillsMounted: boolean }> {
+  const since = Date.now();
   try {
     return { sandbox: await make([...cached, ...skills]), skillsMounted: skills.length > 0 };
   } catch (error) {
@@ -748,10 +756,18 @@ export async function createMountedSandbox(
       // leaves a live sandbox we never got a handle for. Measured: seven of
       // them on one machine in eighteen minutes, 3-25 MB each because nothing
       // ever ran in them, none of it visible anywhere.
-      await sweep(sandbox.id);
+      await sweep(sandbox.id, since);
       return { sandbox, skillsMounted: skills.length > 0 };
     }
-    if (!skills.length || !isPathNotAllowed(error)) throw error;
+    if (!skills.length || !isPathNotAllowed(error)) {
+      // A create that fails after the container exists leaves it running, and
+      // this path has no handle to record — nothing will ever reconnect to it,
+      // claim it, or reap it before its TTL. `keep: null` because there is
+      // nothing to keep: whatever this attempt made is stranded by the throw
+      // about to happen.
+      await sweep(null, since);
+      throw error;
+    }
     await ctx.bus?.emit({
       grpId: "grp" in scope ? scope.grp : null,
       author: "orchestrator",

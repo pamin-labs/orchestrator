@@ -381,15 +381,21 @@ const spec: SandboxSpec = {
 };
 
 describe("a retried create does not leave the first attempt running", () => {
+  // Everything the double reports was made a moment ago, so the window lets it
+  // through and the test is about the owner and the keep. The window has its own
+  // case below.
+  const now = Date.now();
   const api = (ids: [string, string][], killed: string[]): SweepApi => ({
-    listSandboxInfos: async () => ({ items: ids.map(([id, owner]) => ({ id, metadata: { owner } })) }),
+    listSandboxInfos: async () => ({
+      items: ids.map(([id, owner]) => ({ id, createdAt: new Date(now + 1), metadata: { owner } })),
+    }),
     killSandbox: async (id) => void killed.push(id),
   });
 
   test("every other container of this scope goes, and the new one stays", async () => {
     const killed: string[] = [];
     const ctx = await testContext();
-    await sweepScope(ctx, { project: 1 }, "new", async () =>
+    await sweepScope(ctx, { project: 1 }, "new", now, async () =>
       api(
         [
           ["new", "project-1"],
@@ -405,7 +411,7 @@ describe("a retried create does not leave the first attempt running", () => {
   test("another scope's container is not this scope's to delete", async () => {
     const killed: string[] = [];
     const ctx = await testContext();
-    await sweepScope(ctx, { project: 1 }, "new", async () =>
+    await sweepScope(ctx, { project: 1 }, "new", now, async () =>
       api(
         [
           ["new", "project-1"],
@@ -418,9 +424,51 @@ describe("a retried create does not leave the first attempt running", () => {
     expect(killed).toEqual([]);
   });
 
+  test("a container made before this attempt is left alone", async () => {
+    const killed: string[] = [];
+    const ctx = await testContext();
+    await sweepScope(ctx, { project: 1 }, "new", now, async () => ({
+      listSandboxInfos: async () => ({
+        items: [
+          { id: "new", createdAt: new Date(now + 1), metadata: { owner: "project-1" } },
+          // Another tick's, opened a second earlier and about to be recorded by
+          // it. Deleting this is the sweep becoming the leak.
+          { id: "someone-elses-attempt", createdAt: new Date(now - 1_000), metadata: { owner: "project-1" } },
+        ],
+      }),
+      killSandbox: async (id) => void killed.push(id),
+    }));
+    expect(killed).toEqual([]);
+  });
+
+  /**
+   * A create that throws leaves nothing to keep, and may still have left a
+   * container: the failure can happen after the server made one, and this path
+   * never reaches `remember`, so no id is written anywhere. Three appeared on one
+   * machine in two minutes this way, each with its egress sidecar up — so not the
+   * sidecar failure the retry above is for.
+   */
+  test("a create that throws sweeps everything it made", async () => {
+    const ctx = await testContext();
+    const swept: (string | null)[] = [];
+    const attempt = createMountedSandbox(
+      ctx,
+      { project: 1 },
+      spec,
+      [],
+      [],
+      () => Promise.reject(new Error("timed out waiting for the sandbox to be running")),
+      async (keep) => void swept.push(keep),
+    );
+    expect(attempt).rejects.toThrow("timed out");
+    await attempt.catch(() => {});
+    // `null`, not an id: there is no container to keep.
+    expect(swept).toEqual([null]);
+  });
+
   test("a lifecycle API that throws does not fail the create", async () => {
     const ctx = await testContext();
-    await sweepScope(ctx, { util: true }, "new", () => Promise.reject(new Error("server unreachable")));
+    await sweepScope(ctx, { util: true }, "new", Date.now(), () => Promise.reject(new Error("server unreachable")));
   });
 });
 
@@ -447,29 +495,10 @@ test("the sidecar retry sweeps the scope, keeping what it got", async () => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `createMountedSandbox` reads exactly one field off what its creator returns, `id`, and hands the rest straight back; constructing a whole `Sandbox` here would assert nothing this test is about.
       return { id: "second" } as unknown as Sandbox;
     },
-    async (keep) => void swept.push(keep),
+    async (keep) => void swept.push(keep ?? "(none)"),
   );
   expect(attempt).toBe(2);
   expect(made.sandbox.id).toBe("second");
   // The one it kept is the one it is about to hand back, not the one that failed.
   expect(swept).toEqual(["second"]);
-});
-
-/** A create that fails for any other reason is not swept after: nothing was
- *  retried, so there is no second container and the error is the answer. */
-test("a create that fails for another reason throws without sweeping", async () => {
-  const ctx = await testContext();
-  const swept: string[] = [];
-  const attempt = createMountedSandbox(
-    ctx,
-    { project: 1 },
-    spec,
-    [],
-    [],
-    () => Promise.reject(new Error("out of memory")),
-    async (keep) => void swept.push(keep),
-  );
-  expect(attempt).rejects.toThrow("out of memory");
-  await attempt.catch(() => {});
-  expect(swept).toEqual([]);
 });
