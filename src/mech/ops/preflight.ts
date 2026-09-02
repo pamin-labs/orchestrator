@@ -84,6 +84,19 @@ const SandboxList = z.looseObject({
  *  would answer "how many are stranded" with a number that is always twenty. */
 const LIST_PAGE = 500;
 
+/**
+ * The containers in a listing that wear an owner label, out of a body nobody here wrote.
+ *
+ * Split out of `reachable` so it can be checked without a server: the listing is
+ * the only part of that function with a decision in it, and it was the part with
+ * no test.
+ */
+export function labelled(body: unknown): { id: string; owner: string }[] {
+  return (SandboxList.safeParse(body).data?.items ?? [])
+    .filter((s) => s.metadata?.owner)
+    .map((s) => ({ id: s.id, owner: s.metadata?.owner ?? "" }));
+}
+
 async function reachable(
   url: string,
   apiKey: string,
@@ -95,13 +108,7 @@ async function reachable(
       headers: apiKey ? { [SANDBOX_API_KEY_HEADER]: apiKey } : {},
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (res.ok) {
-      const body = SandboxList.safeParse(await res.json().catch(() => null)).data;
-      const held = (body?.items ?? [])
-        .filter((s) => s.metadata?.owner)
-        .map((s) => ({ id: s.id, owner: s.metadata?.owner ?? "" }));
-      return { ok: true, said: msg`reachable`, held };
-    }
+    if (res.ok) return { ok: true, said: msg`reachable`, held: labelled(await res.json().catch(() => null)) };
     // The two the boss can act on, said in their own words.
     if (res.status === 401) {
       const why = await res.text().catch(() => "");
@@ -229,7 +236,7 @@ export function credentialVerdict(status: number, mode: string): Verdict {
   return { ok: true, said: msg`${{ mode }} · not verified (HTTP ${{ status }})` };
 }
 
-async function modelAccepted(runtime: string, auth: RuntimeAuth, timeoutMs: number): Promise<Verdict> {
+export async function modelAccepted(runtime: string, auth: RuntimeAuth, timeoutMs: number): Promise<Verdict> {
   const mode = auth.mode;
   const { url, headers } = modelProbe(runtime, auth);
   try {
