@@ -226,6 +226,53 @@ live(
   240_000,
 );
 
+/**
+ * The env map reaches the process, on the path a turn actually takes.
+ *
+ * Three things ride it and nothing proved any of them arrived: `CODEX_HOME` for
+ * the refresher, `CLAUDE_CODE_OAUTH_TOKEN` out of the egress vault, and
+ * `IS_SANDBOX=1`, without which claude-code refuses `--dangerously-skip-permissions`
+ * as root and every turn ends `no_result` carrying the refusal.
+ */
+/**
+ * The unit guard for that one asserts the `TurnSpec` carries it, which is a
+ * different claim: `spec.env` still has to survive `runLineStream` → `execLines`
+ * → `realLines` → `runOpts` → the SDK's `envs`. Only a real container can say,
+ * and the two paths are checked separately because `execIn` may fall back to a
+ * one-shot `run()` while `execLines` always uses one.
+ */
+live(
+  "an environment given to a command is the environment the command runs in",
+  async () => {
+    const c = await ctx();
+    const scope = { grp: 1 } as const;
+    const say = String.raw`printf 'X=[%s]\n' "$ORCH_LIVE_PROBE"`;
+    try {
+      const one = await execIn(c, scope, say, { env: { ORCH_LIVE_PROBE: "carried" } });
+      expect(one.out.trim(), `code=${one.code} err=${one.err}`).toBe("X=[carried]");
+
+      // The turn path. `execLines` streams, and a turn's env goes through here.
+      const lines: string[] = [];
+      const stream = execLines(c, scope, say, { env: { ORCH_LIVE_PROBE: "carried" } });
+      for (;;) {
+        const step = await stream.next();
+        if (step.done) break;
+        lines.push(step.value);
+      }
+      expect(lines.join("\n").trim()).toBe("X=[carried]");
+
+      // And absence is absence, so the assertion above is not passing on a
+      // variable the image happens to set.
+      const none = await execIn(c, scope, say);
+      expect(none.out.trim()).toBe("X=[]");
+    } finally {
+      await killSandbox(c, scope).catch(() => {});
+      await closeAll();
+    }
+  },
+  240_000,
+);
+
 live(
   "the utility container takes a commit out of a group and into its mirror",
   async () => {
