@@ -13,6 +13,7 @@ import {
   startCodexDeviceLogin,
 } from "../../src/mech/sandbox/login.ts";
 import type { SandboxDriver } from "../../src/mech/sandbox/sandbox.ts";
+import { fakePty, type FakePty } from "../support/fake-pty.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -47,8 +48,12 @@ async function harness(
     return { out };
   });
   if (auth) sandbox.files.set(`${REFRESH_HOME}/auth.json`, auth);
-  const ctx = await testContext({ db, sandbox });
-  return { ctx, db, cmds };
+  // Codex runs through the command runner and Claude through a terminal, so the
+  // same scripted output is offered on both — each test uses the one its
+  // runtime reads.
+  const pty = sayingThenExit(out);
+  const ctx = await testContext({ db, sandbox, pty: async () => pty });
+  return { ctx, db, cmds, pty };
 }
 
 test("the device code and its URL are read, and the login lands in runtime_auth", async () => {
@@ -128,18 +133,32 @@ const deaf = (): SandboxDriver => ({
   },
 });
 
-test("cancelling a claude login frees the slot for the next one", async () => {
-  const ctx = await testContext({ sandbox: deaf() });
+test("cancelling a claude login frees the slot and signals the process", async () => {
+  // A fresh terminal per login, like the real one: a session is opened for each
+  // and its generator is consumed once.
+  const opened: FakePty[] = [];
+  const ctx = await testContext({
+    sandbox: fakeSandbox(),
+    pty: async () => {
+      const p = saying("Paste code here if prompted >");
+      opened.push(p);
+      return p;
+    },
+  });
   const first = startClaudeLogin(ctx);
   expect(currentClaudeLogin()).toBe(first);
+  // The terminal is opened asynchronously; a cancel before it is open must still
+  // release the slot, and one after it must reach the process.
+  await Bun.sleep(20);
 
   first.cancel();
   // Released now, not when `done` settles — which, here, is never.
   expect(currentClaudeLogin()).toBeNull();
+  // A signal the container receives. Aborting an HTTP request did not stop the
+  // command, which is how a dead run kept the slot.
+  expect(opened[0]?.signals).toEqual(["SIGINT"]);
   const second = startClaudeLogin(ctx);
   expect(second).not.toBe(first);
-  // Freed again, or this deaf run is left holding a module-level slot that the
-  // next test in this file would be handed instead of starting its own.
   second.cancel();
 });
 
@@ -172,21 +191,28 @@ test("cancelling a codex login frees the slot for the next one", async () => {
  * printed the rest of the stream holds nothing this needs. The driver here does
  * exactly what that one did: yields the CLI's output, then never ends.
  */
-const strandsAfter = (out: string): SandboxDriver => ({
-  ...fakeSandbox(),
-  lines: async function* () {
-    for (const l of out.split("\n").filter(Boolean)) yield l;
-    await new Promise<never>(() => {});
-    return { code: 0, err: "" };
-  },
-});
+/**
+ * A terminal that says these lines and then holds, which is what the CLI does
+ * while it waits for the boss. `exit` is never called, so a login that only
+ * finishes when the session ends would hang here — that is deliberate.
+ */
+const saying = (out: string): FakePty => fakePty(out.split("\n").filter(Boolean));
+
+/** The same, for a CLI that says its piece and exits — which is what an ending
+ *  looks like now that the transport has one. */
+const sayingThenExit = (out: string, code = 0): FakePty => {
+  const pty = saying(out);
+  queueMicrotask(() => pty.exit(code));
+  return pty;
+};
+
+/** The login, driven through a terminal the test owns. */
+const withPty = async (pty: FakePty, db?: Awaited<ReturnType<typeof openMemory>>) =>
+  testContext({ ...(db ? { db } : {}), sandbox: fakeSandbox(), pty: async () => pty });
 
 test("a printed token completes the login even if the stream never ends", async () => {
   const db = await openMemory();
-  const ctx = await testContext({
-    db,
-    sandbox: strandsAfter(`Open https://claude.ai/oauth/authorize?x=1 to continue\n${CLAUDE_TOKEN}\n`),
-  });
+  const ctx = await withPty(saying(`Open https://claude.ai/oauth/authorize?x=1 to continue\n${CLAUDE_TOKEN}`), db);
 
   const run = startClaudeLogin(ctx);
   const done = await Promise.race([run.done, Bun.sleep(5_000).then(() => null)]);
@@ -214,9 +240,11 @@ test("a printed token completes the login even if the stream never ends", async 
  */
 test("a submitted code that draws no answer still ends the login", async () => {
   const base = loadConfig();
+  const pty = saying("Open https://claude.ai/oauth/authorize?x=1 to continue\nPaste code here if prompted >");
   const ctx = await testContext({
     db: await openMemory(),
-    sandbox: strandsAfter("Open https://claude.ai/oauth/authorize?x=1 to continue\nPaste code here if prompted >\n"),
+    sandbox: fakeSandbox(),
+    pty: async () => pty,
     // The real 45s is the boss's grace, not a property under test; what is under
     // test is that the deadline exists and starts on the submit.
     config: { ...base, timeouts: { ...base.timeouts, loginVerdictMs: 300 } },
@@ -265,7 +293,7 @@ const REAL_TAIL = [
 
 test("a token with no prefix is still recognised and stored", async () => {
   const db = await openMemory();
-  const ctx = await testContext({ db, sandbox: strandsAfter(REAL_TAIL) });
+  const ctx = await withPty(saying(REAL_TAIL), db);
 
   const run = startClaudeLogin(ctx);
   const done = await Promise.race([run.done, Bun.sleep(5_000).then(() => null)]);
@@ -288,13 +316,15 @@ test("neither the link nor the masked echo is mistaken for the token", async () 
   const db = await openMemory();
   const ctx = await testContext({
     db,
-    sandbox: strandsAfter(
-      [
-        "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code",
-        "*".repeat(92),
-        NEW_TOKEN,
-      ].join("\n"),
-    ),
+    sandbox: fakeSandbox(),
+    pty: async () =>
+      saying(
+        [
+          "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code",
+          "*".repeat(92),
+          NEW_TOKEN,
+        ].join("\n"),
+      ),
   });
   const done = await Promise.race([startClaudeLogin(ctx).done, Bun.sleep(5_000).then(() => null)]);
   expect(done?.ok).toBe(true);
@@ -303,8 +333,35 @@ test("neither the link nor the masked echo is mistaken for the token", async () 
 
 test("a sk-ant-oat01 token is still recognised", async () => {
   const db = await openMemory();
-  const ctx = await testContext({ db, sandbox: strandsAfter(`some preamble\n${CLAUDE_TOKEN}\n`) });
+  const ctx = await withPty(saying(`some preamble\n${CLAUDE_TOKEN}`), db);
   const done = await Promise.race([startClaudeLogin(ctx).done, Bun.sleep(5_000).then(() => null)]);
   expect(done?.ok).toBe(true);
   expect((await loadAuth(db, "claude"))?.secret).toBe(CLAUDE_TOKEN);
+});
+
+/**
+ * The code and its Enter arrive as two keystrokes.
+ *
+ * The CLI turns on bracketed paste, so one write carrying text and a `\r`
+ * together is one paste and the `\r` inside it is content rather than a key.
+ * Measured against claude-code 2.1.233: ten characters and a CR in one write
+ * submitted; ninety-two did not — every asterisk echoed back and then nothing.
+ */
+/**
+ * Asserted on what reaches the terminal rather than on the runner's source,
+ * which is what the guard this replaces did — and it read stdin a byte at a time,
+ * so it could not tell a pasted return from a pressed one and passed against the
+ * broken version.
+ */
+test("a submitted code is typed, then Enter, as two separate keystrokes", async () => {
+  const pty = saying("Paste code here if prompted >");
+  const ctx = await withPty(pty);
+  const run = startClaudeLogin(ctx);
+  await Bun.sleep(20);
+
+  const code = `${"a".repeat(43)}#${"b".repeat(48)}`;
+  await run.submit(`  ${code}  `);
+  expect(pty.typed).toEqual([code, "\r"]);
+
+  run.cancel();
 });

@@ -13,6 +13,7 @@ import {
   type ExecutionHandlers,
   type RunCommandOpts,
   Sandbox,
+  SandboxManager,
   type Volume,
 } from "@alibaba-group/opensandbox";
 import type { Ctx } from "../../mech/ctx.ts";
@@ -587,6 +588,32 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   }
 }
 
+/**
+ * Delete a container we can no longer talk to.
+ *
+ * `SandboxManager.killSandbox` rather than `realKill`: that one connects first,
+ * and this is the path taken precisely because connecting failed. The lifecycle
+ * API needs no session.
+ *
+ * Best effort by design — the container may already be gone by TTL or by hand,
+ * and a reconnect must still fall through to creating a new one either way.
+ */
+export async function discard(
+  ctx: Ctx,
+  sandboxId: string,
+  kill: (id: string) => Promise<void> = async (id) =>
+    SandboxManager.create({ connectionConfig: await connection(ctx) }).killSandbox(id),
+): Promise<void> {
+  try {
+    await kill(sandboxId);
+  } catch {
+    // Already gone, or the server cannot be reached. The caller is about to
+    // create a replacement; failing here would turn a leak into an outage.
+  }
+  live.delete(sandboxId);
+  sessions.delete(sandboxId);
+}
+
 async function reconnect(ctx: Ctx, scope: Scope, sandboxId: string | null): Promise<Sandbox | null> {
   if (!sandboxId) return null;
   const cached = live.get(sandboxId);
@@ -605,6 +632,12 @@ async function reconnect(ctx: Ctx, scope: Scope, sandboxId: string | null): Prom
         // A reconnect that burns its timeout and fails falls through to a fresh
         // `sandbox.create`, so without this span its cost was charged there.
         span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+        // Forgotten *and* disposed of. Forgetting alone left a container running
+        // that nothing would ever reconnect to, claim or reap before its
+        // twenty-four hour TTL — and the next call created another. Measured on
+        // one machine: 48 orphans against a `grp` table with no rows, roughly
+        // 11 GB, from a project index that retried and failed all day.
+        await discard(ctx, sandboxId);
         await remember(ctx.db, scope, null);
         return null;
       } finally {

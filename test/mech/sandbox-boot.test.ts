@@ -6,6 +6,7 @@ import { loadAuth, SANDBOX_KEY, saveAuth } from "../../src/mech/sandbox/auth.ts"
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import {
   adoptServerKey,
+  discard,
   isServerLine,
   keyInConfig,
   pidAlive,
@@ -15,6 +16,7 @@ import {
   splitAddr,
   UTIL,
 } from "../../src/mech/sandbox/sandbox.ts";
+import { testContext } from "../support/test-context.ts";
 import { tempDir } from "../support/temp.ts";
 
 /**
@@ -311,5 +313,37 @@ describe("the sandbox key has two homes and only one is rebuilt", () => {
     // an unreadable path is `keyInConfig` returning null, never an exception on
     // the boot path.
     await withConfig(join(tempDir("orch-adopt-"), "absent.toml"), () => adoptServerKey(db));
+  });
+});
+
+/**
+ * A container we cannot reconnect to is deleted, not just forgotten.
+ *
+ * `reconnect` cleared the stored id and fell through to creating a new one, so
+ * the old container kept running with nothing left to claim or reap it before
+ * its twenty-four hour TTL — and the next call leaked another. Measured on one
+ * machine: 48 orphans against a `grp` table with no rows, about 11 GB, from a
+ * project index that retried and failed all day.
+ */
+/**
+ * `SandboxManager.killSandbox` and not `realKill`, because `realKill` connects
+ * first and this path exists precisely because connecting failed. What is
+ * asserted here is the other half: the delete is best effort. A server that
+ * cannot be reached must not stop the caller creating a replacement — that would
+ * turn a leak into an outage.
+ */
+describe("a sandbox that cannot be reached is disposed of", () => {
+  // `discard` reaches for `ctx` only to build a connection, and the injected
+  // killer means it never does — so this file needs no namespace of its own.
+  const ctx = testContext();
+
+  test("the container is deleted by id, with no session needed", async () => {
+    const killed: string[] = [];
+    await discard(await ctx, "abc-123", async (id) => void killed.push(id));
+    expect(killed).toEqual(["abc-123"]);
+  });
+
+  test("a delete that fails does not stop the caller", async () => {
+    await discard(await ctx, "abc-123", () => Promise.reject(new Error("server unreachable")));
   });
 });
