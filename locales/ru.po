@@ -372,6 +372,9 @@ msgstr "{server} отвечает, но это не sandbox server (HTTP {status
 msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 msgstr "{server} не отвечает, и это не адрес на этой машине — здесь нечего запускать. Смотрите на той машине."
 
+msgid "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+msgstr "{server} отклонил наш API-ключ. Настройки → Сервер песочниц → Прочитать с сервера возьмёт его из собственной конфигурации этого сервера, либо укажите другой адрес."
+
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "{sessionTokens} токенов за сессию · {model}"
 
@@ -2830,9 +2833,6 @@ msgstr "Кто-то спрашивает: {question}"
 
 msgid "Someone else is handling it"
 msgstr "Этим занимается кто-то другой"
-
-msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
-msgstr "на {server} слушает что-то, что запускали не мы, и ключ API не совпадает — впишите api_key того сервера в настройки или укажите другой адрес."
 
 msgid "Spec"
 msgstr "Спецификация"

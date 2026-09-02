@@ -23,8 +23,17 @@ test("a server that answers and refuses our key names the two ways out", () => {
   // The address, so the boss knows which server; and both exits, because this
   // is the case where the machine is doing exactly what it was told to.
   expect(text).toContain("127.0.0.1:8080");
-  expect(text).toContain("api_key");
+  // `Read from server`, not "put the api_key in Settings", which is what this
+  // asserted while the sentence also opened with "something is listening that we
+  // did not start". Both halves were wrong in the case that actually happened:
+  // our own server from an earlier run, holding the key we wrote, against a
+  // database that had been rebuilt without the row. Nobody types that key —
+  // `serverKeyOnDisk` reads it out of the running server's own `--config`.
+  expect(text).toContain("Read from server");
   expect(text).toContain("another address");
+  // The claim this branch cannot support: `inspectServer` reaches here on the
+  // port alone and will not let `ps` speak to whose process it is.
+  expect(text).not.toContain("we did not start");
 });
 
 test("something else on the port says what it answered with", () => {

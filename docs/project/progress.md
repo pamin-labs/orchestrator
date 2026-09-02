@@ -13,11 +13,11 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-08-31.
+Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2001 pass, 6 environment skips, 0 fail, 2007 across 250 files
-- Coverage: 84.02% of statements, 74.26% of branches, 79.91% of functions
+- Tests: 2009 pass, 6 environment skips, 0 fail, 2015 across 251 files
+- Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
 - Fallow security, full inventory: **1** candidate —
@@ -35,6 +35,13 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-08-31.
 
 ## Blockers and deviations
 
+- **A sandbox key written to two homes could not converge.** `ourKey` stored it
+  in `runtime_auth` and `writeConfig` wrote it into `~/.orch-cache/sandbox.toml`,
+  which is never rewritten — so a rebuilt database against a still-running server
+  meant 401 on every probe, no containers, and neither CLI able to sign in.
+  `adoptServerKey` now takes the key back at boot from the running server's own
+  `--config`, which is what the panel's `Read from server` button already did by
+  hand. Fixed 2026-09-01; guards in `test/mech/sandbox-boot.test.ts`.
 - **Live OpenSandbox tests are environment-gated** and skip without a running
   sandbox server. That is the six skips in the count above.
 - **Repository settings are not repository files.** Branch protection, secret

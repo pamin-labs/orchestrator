@@ -7,6 +7,8 @@ import {
   navigationShortcut,
   nextSelection,
   repairMissingGroup,
+  repairMissingProject,
+  repairSelection,
   projectForGroup,
   scrollClass,
   type Selection,
@@ -174,6 +176,45 @@ test("an empty requirement list is not yet loaded, not a missing requirement", (
   expect(repairMissingGroup(11, [10, 12])).toEqual({ g: null, view: "progress", t: null });
   expect(repairMissingGroup(11, [11])).toBeNull();
   expect(repairMissingGroup(null, [10])).toBeNull();
+});
+
+/**
+ * The project in the hash, against a database that no longer has it.
+ *
+ * A new server on the same address is a browser still holding `#p=` from the old
+ * one, and nothing checked. The id reached `SettingsDialog`, the only consumer
+ * that takes `sel.p` without the existence check the rest of the shell applies,
+ * which asked for its config on every window focus and got a 404 each time.
+ */
+/**
+ * `loaded` rather than the group rule's `ids.length === 0`: for projects an
+ * empty list is also a real state (a fresh install), so emptiness cannot stand
+ * in for "the snapshot has not arrived".
+ */
+test("a project that is not in the snapshot is dropped, but only once the snapshot is in", () => {
+  expect(repairMissingProject(9, [1, 2], true)).toEqual({ p: null, g: null, view: "home", t: null });
+  // Loaded and genuinely empty — a first boot with a stale link still repairs.
+  expect(repairMissingProject(9, [], true)).toEqual({ p: null, g: null, view: "home", t: null });
+  // Not loaded: identical arguments, opposite answer. This is the cold-load case
+  // that made the group rule read an empty list as "not yet".
+  expect(repairMissingProject(9, [], false)).toBeNull();
+  expect(repairMissingProject(9, [9], true)).toBeNull();
+  expect(repairMissingProject(null, [1], true)).toBeNull();
+});
+
+/**
+ * Both rules, asked once, and the project answers first.
+ *
+ * A hash from a previous database names a project *and* a requirement, and both
+ * are gone. Running the group rule as well would compute a second repair for a
+ * question the first one already settled — the project repair clears `g` itself.
+ */
+test("dropping a project that is gone also settles the requirement under it", () => {
+  const ids = { groups: [7], projects: [1] };
+  expect(repairSelection({ p: 9, g: 8 }, ids, true)).toEqual({ p: null, g: null, view: "home", t: null });
+  // Project fine, requirement gone: the group rule still gets its turn.
+  expect(repairSelection({ p: 1, g: 8 }, ids, true)).toEqual({ g: null, view: "progress", t: null });
+  expect(repairSelection({ p: 1, g: 7 }, ids, true)).toBeNull();
 });
 
 /**

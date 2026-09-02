@@ -463,5 +463,10 @@ export function useOrch() {
     },
     [queries],
   );
-  return { state: state.data, cost: cost.data ?? null, frames, live, refresh };
+  // `isFetched`, not `isSuccess`: `initialData: EMPTY` makes this query succeed
+  // on the first render with nobody having answered yet, and an empty project
+  // list has to be distinguishable from a list that has not arrived. Only the
+  // selection repair asks — everything else is happy to render the empty
+  // snapshot while the real one is in flight.
+  return { state: state.data, cost: cost.data ?? null, frames, live, refresh, loaded: state.isFetched };
 }

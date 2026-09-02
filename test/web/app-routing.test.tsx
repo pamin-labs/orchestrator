@@ -39,9 +39,21 @@ class QuietSource extends EventTarget {
 
 // The catch-all goes last: MSW takes the first handler that matches, so `inFlight()`
 // in front of these would swallow both and the panel would render its empty state.
+// Every project-config read this file makes, so a request for one that is not in
+// `STATE` can be counted. It answers 404 the way the server does — the catch-all
+// `inFlight()` leaves an unhandled request pending forever, which would have made
+// the guard below pass against a panel that still asked.
+const configAsked: string[] = [];
+
 mockHttp(
   http.get("*/api/v1/state", () => HttpResponse.json(STATE)),
   http.get("*/api/v1/cost", () => HttpResponse.json({ rows: [] })),
+  http.get("*/api/v1/project/:id/config", ({ params }) => {
+    const id = String(params.id);
+    configAsked.push(id);
+    if (id !== "1" && id !== "2") return HttpResponse.json({ error: "no such project" }, { status: 404 });
+    return HttpResponse.json({ repoPath: "/tmp/one", config: {}, resources: [], baseBranch: "main" });
+  }),
   inFlight(),
 );
 
@@ -51,6 +63,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  configAsked.length = 0;
   location.hash = "";
   Reflect.deleteProperty(globalThis, "EventSource");
 });
@@ -157,4 +170,42 @@ test("toggling the side panel is remembered", async () => {
 
   act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true })));
   await waitFor(() => expect(localStorage.getItem("orch.side")).toBe("1"));
+});
+
+/**
+ * A hash naming a project that is gone, which is what a new server on the same
+ * address looks like to a browser still holding the old link.
+ *
+ * The shell already looked the project up — `home` is computed from it — but
+ * `SettingsDialog` took `sel.p` raw, so the dialog asked for a config that is
+ * not there.
+ */
+/**
+ * `readApi` records a 404 as a *successful* read of `null`, so TanStack had no
+ * error to de-duplicate: a fresh English toast on mount, on every window focus,
+ * and on every credential save, over a dialog whose project panes sat at
+ * `Loading…` for good. Which is the state the boss was in while trying to sign
+ * Claude and Codex in.
+ */
+test("a project the snapshot does not have is dropped instead of asked about", async () => {
+  location.hash = "#p=99&v=settings";
+  const view = panel();
+  await waitFor(() => expect(view.container.textContent).toBeTruthy());
+
+  // The hash repairs itself rather than keeping a dead id and an empty crumb.
+  await waitFor(() => expect(location.hash).not.toContain("p=99"));
+  expect(configAsked).not.toContain("99");
+});
+
+/**
+ * The other half, and the reason `loaded` exists: a deep link is legitimate
+ * before the snapshot arrives. Repairing on an empty list alone would discard the
+ * project on every cold load — the trap `repairMissingGroup` already documents,
+ * except that for projects an empty list is also a real state.
+ */
+test("a deep link survives the render before the snapshot lands", async () => {
+  location.hash = "#p=2&v=cost";
+  const view = panel();
+  await waitFor(() => expect(view.container.textContent).toContain("two"));
+  expect(location.hash).toContain("p=2");
 });

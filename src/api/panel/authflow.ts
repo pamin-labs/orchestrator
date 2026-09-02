@@ -41,7 +41,9 @@ import {
   startClaudeLogin,
   startCodexDeviceLogin,
 } from "../../mech/sandbox/login.ts";
-import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
+import { killSandbox, serverKeyOnDisk, storeServerKey } from "../../mech/sandbox/sandbox.ts";
+import { inspectServer } from "../../mech/sandbox/server.ts";
+import type { Said } from "../../contracts/said.ts";
 import { errText } from "../../platform/process/text.ts";
 import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/login-flow.ts";
 import type { Handler } from "../../http/handler.ts";
@@ -113,12 +115,9 @@ export const postAuth = (async (ctx, _req, _p, b) => {
       return bad(
         msg`No sandbox server config found. It was started with --config, so put that file's path in OPENSANDBOX_CONFIG, or move the file to ./sandbox.toml or ~/.sandbox.toml.`,
       );
-    await saveAuth(ctx.db, {
-      runtime: SANDBOX_KEY,
-      mode: "api_key",
-      secret: found.key,
-      baseUrl: `http://${found.server}`,
-    });
+    // Overwrites whatever is stored, unlike the boot-time `adoptServerKey`: this
+    // is the button somebody presses *because* the stored key is the wrong one.
+    await storeServerKey(ctx.db, found);
     await credentialChanged(ctx, SANDBOX_KEY);
     return message("ok");
   }
@@ -256,6 +255,30 @@ async function printed<T>(run: LoginRun, read: () => T | null | undefined, tries
   return read() ?? null;
 }
 
+/**
+ * Why a login printed nothing, when the reason is one layer down.
+ *
+ * Both CLIs run through `execLines(ctx, UTIL, …)`, so a sandbox server that
+ * refuses us is a login that prints nothing — indistinguishable, from up here,
+ * from a CLI whose output we no longer recognise. It was reported as the second:
+ * the boss sent into the image to find out why, while the panel's own timeline
+ * already said the sandbox server was refusing us.
+ */
+/**
+ * Only on the failure path, so a successful login pays nothing for it, and
+ * `probe` inside `inspectServer` carries its own 1.5s timeout.
+ */
+async function sandboxFault(ctx: Ctx): Promise<Said | null> {
+  const state = await inspectServer(ctx);
+  // `stuck` only, deliberately. That is the diagnosable one: something answers
+  // the address and refuses us, so no container is ever going to start and the
+  // reason is already known. `down` is not added to it — a server that is merely
+  // not running is what `startPlan` exists to fix and what preflight already
+  // reports, and treating it as this fault would replace the CLI's own advice
+  // everywhere a server has not been started yet, which is most first runs.
+  return state.kind === "stuck" ? state.why : null;
+}
+
 export const postClaudeLogin = (async (ctx) => {
   if (claudeFlow && claudeFlow.expiresAt > Date.now()) return json(claudeFlow);
   const run = startClaudeLogin(ctx);
@@ -263,6 +286,12 @@ export const postClaudeLogin = (async (ctx) => {
   const url = await printed(run, () => run.url, 150);
   if (!url) {
     run.cancel();
+    // The sandbox verdict is returned as it stands rather than wrapped in a
+    // sentence of ours: a descriptor inside another's values is one sentence in
+    // two languages, which `values-carry-no-rendered-text` exists to stop. It
+    // already reads as the reason, and it is shown beside the button that failed.
+    const fault = await sandboxFault(ctx);
+    if (fault) return bad(fault);
     return bad(
       msg`claude printed no login link inside the container — run \`claude setup-token\` in the image to see why. It needs a pty, and without one it prints nothing and exits 0.`,
     );
@@ -390,6 +419,12 @@ export const postCodexDevice = (async (ctx) => {
   const both = await printed(run, () => (run.url && run.code ? { url: run.url, code: run.code } : null), 100);
   if (!both) {
     run.cancel();
+    // The sandbox verdict is returned as it stands rather than wrapped in a
+    // sentence of ours: a descriptor inside another's values is one sentence in
+    // two languages, which `values-carry-no-rendered-text` exists to stop. It
+    // already reads as the reason, and it is shown beside the button that failed.
+    const fault = await sandboxFault(ctx);
+    if (fault) return bad(fault);
     return bad(
       msg`codex printed no device code inside the container — run \`codex login --device-auth\` in the image to see why.`,
     );

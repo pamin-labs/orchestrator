@@ -372,6 +372,9 @@ msgstr "{server} 有应答，但它不是 sandbox server（HTTP {status}）—�
 msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 msgstr "{server} 没有应答，而且它不是这台机器上的地址——这里起不了。去那台机器上看。"
 
+msgid "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+msgstr "{server} 拒绝了我们的 API key。设置 → 沙箱服务器 → 从服务器读，可以把它从那台 server 自己的配置里读回来；或者换个地址。"
+
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "本 session {sessionTokens} tokens · {model}"
 
@@ -2830,9 +2833,6 @@ msgstr "有人在问：{question}"
 
 msgid "Someone else is handling it"
 msgstr "别人在处理"
-
-msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
-msgstr "{server} 上有个不是我们起的进程在监听，而且 API key 对不上——把那台 server 自己的 api_key 填进设置，或者换个地址。"
 
 msgid "Spec"
 msgstr "规格"

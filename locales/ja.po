@@ -372,6 +372,9 @@ msgstr "{server} は応答しますが、sandbox server ではありません（
 msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 msgstr "{server} は応答せず、このマシンのアドレスでもありません。ここでは起動できません。そのマシンを確認してください。"
 
+msgid "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+msgstr "{server} が API キーを拒否しました。設定 → サンドボックスサーバー → サーバーから読む で、そのサーバー自身の設定から読み直せます。別のアドレスを指定しても構いません。"
+
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "このセッション {sessionTokens} トークン · {model}"
 
@@ -2830,9 +2833,6 @@ msgstr "誰かが質問しています：{question}"
 
 msgid "Someone else is handling it"
 msgstr "別の人が対応しています"
-
-msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
-msgstr "{server} で私たちが起動していないものが待ち受けていて、API キーも一致しません。そのサーバー自身の api_key を設定に入れるか、別のアドレスを指定してください。"
 
 msgid "Spec"
 msgstr "仕様"

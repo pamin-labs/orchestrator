@@ -93,8 +93,13 @@ async function probe(server: string, key: string): Promise<Probe> {
  */
 export function say(p: Probe, server: string): Said {
   switch (p.kind) {
+    // Says only what a 401 proves. It used to open with "something is listening
+    // that we did not start", which this cannot know — `inspectServer` reaches
+    // here on the port alone and deliberately does not let `ps` speak. It was
+    // wrong in the case that actually happened: our own server from an earlier
+    // run, holding the key we wrote, while a rebuilt database had lost the row.
     case "auth":
-      return msg`Something is listening on ${{ server }} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address.`;
+      return msg`${{ server }} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address.`;
     case "http":
       return msg`${{ server }} answers, but it is not a sandbox server (HTTP ${{ status: p.status }}) — point at another address.`;
     case "none":

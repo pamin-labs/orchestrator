@@ -372,6 +372,9 @@ msgstr "{server} répond, mais ce n'est pas un sandbox server (HTTP {status}) �
 msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 msgstr "{server} ne répond pas, et ce n'est pas une adresse de cette machine — rien ne peut être démarré ici. Regarde sur cette machine."
 
+msgid "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+msgstr "{server} a refusé notre clé d'API. Réglages → Serveur de bac à sable → Lire depuis le serveur la récupère depuis la configuration de ce serveur, ou pointez vers une autre adresse."
+
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "{sessionTokens} tokens cette session · {model}"
 
@@ -2830,9 +2833,6 @@ msgstr "Quelqu’un demande : {question}"
 
 msgid "Someone else is handling it"
 msgstr "Quelqu'un d'autre s'en occupe"
-
-msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
-msgstr "quelque chose que nous n'avons pas démarré écoute sur {server}, et la clé d'API ne correspond pas — mets l'api_key de ce serveur dans les Réglages, ou pointe vers une autre adresse."
 
 msgid "Spec"
 msgstr "Spécification"

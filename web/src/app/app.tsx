@@ -33,6 +33,7 @@ import {
   contentKey,
   contentSlot,
   findById,
+  idOrNull,
   idOrZero,
   itemName,
   isHome,
@@ -44,7 +45,7 @@ import {
   projectItem,
   projectNameProps,
   readSide,
-  repairMissingGroup,
+  repairSelection,
   requirementItem,
   resolveNavigation,
   scrollClass,
@@ -117,7 +118,7 @@ function Crumb({
 
 export function App() {
   const { t } = useLingui();
-  const { state: st, cost, frames, live, refresh } = useOrch();
+  const { state: st, cost, frames, live, refresh, loaded } = useOrch();
   const [sel, setSel] = useState<Selection>(() => parseSelection(location.hash));
   const { ui, setAdding, setPickProject, setPickReq, setPicking, setSide } = useUi();
   const [behind, setBehind] = useState<Selection["view"]>("progress");
@@ -177,9 +178,14 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [go, sel.view, sel.g, setSide, setPickProject, setPickReq]);
-  const repair = repairMissingGroup(
-    sel.g,
-    st.groups.map((group) => group.id),
+  // Both selection repairs, during render for the reason the block above states.
+  // `loaded` is what stops a cold load of a deep link discarding a project that
+  // simply has not arrived yet, and it cannot be inferred from an empty list:
+  // for projects, empty is also a real state.
+  const repair = repairSelection(
+    sel,
+    { groups: st.groups.map((group) => group.id), projects: st.projects.map((item) => item.id) },
+    loaded,
   );
   if (repair) go(repair);
   useEffect(() => {
@@ -352,7 +358,7 @@ export function App() {
         }}
         initial={settingsInitial(sel.s, section)}
         onSection={(next) => go({ s: next })}
-        projectId={sel.p}
+        projectId={idOrNull(project)}
         {...projectNameProps(project)}
         groupCount={groups.length}
         onRemoved={() => {

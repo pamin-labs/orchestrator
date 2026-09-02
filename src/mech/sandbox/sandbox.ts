@@ -25,7 +25,7 @@ import pMap from "p-map";
 import { scopeAttributes } from "../../platform/observability/metrics.ts";
 import { requestContext } from "../../platform/observability/request-context.ts";
 import { activeTracer } from "../../platform/observability/traces.ts";
-import { CODEX_HOME, filesFor, sandboxKeyFor, vaultBindings } from "./auth.ts";
+import { CODEX_HOME, filesFor, loadAuth, sandboxKeyFor, SANDBOX_KEY, saveAuth, vaultBindings } from "./auth.ts";
 import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
 import { shq } from "../../platform/process/shell.ts";
 import type { TurnRunner } from "../../runtime/claude.ts";
@@ -161,6 +161,53 @@ export function serverKeyOnDisk(home = homedir()): { key: string; path: string; 
     if (key) return { key, path, server: addrInConfig(path) };
   }
   return null;
+}
+
+/**
+ * Take back the key we wrote, when the database no longer has it.
+ *
+ * `ourKey` stores the generated key in `runtime_auth`; `writeConfig` puts it in
+ * `~/.orch-cache/sandbox.toml` and never rewrites that file, because a config is
+ * the boss's to edit. Two homes, one of them rebuilt with the database — so a
+ * fresh schema against a server still running left the key on disk and nothing
+ * in the row, and every probe went out with no header and came back 401.
+ */
+/**
+ * A deadlock rather than a bad first boot: `startPlan` refuses to spawn into a
+ * taken port, so `ourKey` and `writeConfig` are never reached again and
+ * restarting converges on nothing. The way out already existed — the panel's
+ * `Read from server` button — and it needed somebody to know that.
+ */
+/**
+ * Nothing is sent and no key is generated. A key read out of a server's own
+ * config **is** the key that server is running with, stored bound to the address
+ * in that same file, so no later change to `sandbox.server` can send it
+ * elsewhere. A row already there is somebody's choice and is left alone.
+ */
+export async function adoptServerKey(db: DB): Promise<boolean> {
+  if (await loadAuth(db, SANDBOX_KEY)) return false;
+  const found = serverKeyOnDisk();
+  if (!found) return false;
+  await storeServerKey(db, found);
+  return true;
+}
+
+/**
+ * Store a key that was read off a server's own config, bound to that file's
+ * address.
+ *
+ * One function because the binding is the invariant, not a detail of either
+ * caller: the boot path takes the key back when the row is gone, and the panel's
+ * `Read from server` overwrites whatever is there — different policies about
+ * *when*, the same rule about what a disk-read key is allowed to be paired with.
+ */
+export async function storeServerKey(db: DB, found: { key: string; server: string }): Promise<void> {
+  await saveAuth(db, {
+    runtime: SANDBOX_KEY,
+    mode: "api_key",
+    secret: found.key,
+    baseUrl: `http://${found.server}`,
+  });
 }
 
 /**

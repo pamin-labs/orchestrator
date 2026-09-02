@@ -372,6 +372,9 @@ msgstr "{server}는 응답하지만 sandbox server가 아닙니다(HTTP {status}
 msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 msgstr "{server}는 응답하지 않고, 이 머신의 주소도 아닙니다. 여기서는 시작할 수 없습니다. 그 머신을 확인하세요."
 
+msgid "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+msgstr "{server} 가 API 키를 거부했습니다. 설정 → 샌드박스 서버 → 서버에서 읽기 로 그 서버 자체 설정에서 키를 다시 가져오거나, 다른 주소를 지정하세요."
+
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "이번 세션 {sessionTokens} 토큰 · {model}"
 
@@ -2830,9 +2833,6 @@ msgstr "누군가 묻고 있습니다: {question}"
 
 msgid "Someone else is handling it"
 msgstr "다른 사람이 처리 중"
-
-msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
-msgstr "{server}에서 우리가 시작하지 않은 것이 수신 대기 중이고 API 키도 맞지 않습니다. 그 서버의 api_key를 설정에 넣거나 다른 주소를 지정하세요."
 
 msgid "Spec"
 msgstr "명세"
