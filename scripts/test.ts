@@ -176,16 +176,67 @@ async function run(): Promise<{ code: number; crashed: boolean }> {
 
 // `import.meta.main`, so the test that pins `CRASHED` to a real panic can import
 // this file without running the whole suite to get at one regular expression.
+/**
+ * The suite's Postgres, started only if nobody else has, and stopped only then.
+ *
+ * `bun run db:test:up` leaves a container running for as long as the machine
+ * does — 24 hours in one measurement, holding 185MB of an in-memory data
+ * directory that no test was using. Bringing it down after a run that had to
+ * bring it up is the same rule a probe follows: what you allocate, you free.
+ */
+/**
+ * Free, near enough, because a cold run costs nothing a warm one does not: 14s
+ * either way on this tree, since rebuilding ten namespaces on a tmpfs is not
+ * measurable against the suite. Start-up is 3s and is paid only by the run that
+ * needed it. A developer who ran `db:test:up` themselves, and CI, which runs it
+ * in `setup-bun`, both keep the container they asked for.
+ */
+const DB_COMPOSE = ["docker", "compose", "-f", "docker/postgres-test-compose.yml"];
+
+/** A TCP connect rather than `docker ps`: someone may be running their own
+ *  Postgres on that port, and starting a second one over it is the failure this
+ *  is meant to avoid rather than cause. */
+async function databaseAnswers(): Promise<boolean> {
+  const { hostname, port } = new URL(process.env.ORCH_TEST_DATABASE_URL ?? "postgres://127.0.0.1:5433");
+  try {
+    const socket = await Bun.connect({ hostname, port: Number(port || 5433), socket: { data() {} } });
+    socket.end();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Brings it up if nothing answers. `started` says whether the container is
+ *  this run's to stop, which is the half a guard can check without stopping
+ *  somebody else's. */
+export async function ownDatabase(): Promise<{ started: boolean; stop: () => Promise<void> }> {
+  if (await databaseAnswers()) return { started: false, stop: async () => {} };
+  const up = Bun.spawn([...DB_COMPOSE, "up", "-d", "--wait"], { stdout: "inherit", stderr: "inherit" });
+  if ((await up.exited) !== 0) throw new Error("could not start the test database; `bun run db:test:up` says why");
+  return {
+    started: true,
+    stop: async () => {
+      await Bun.spawn([...DB_COMPOSE, "down"], { stdout: "ignore", stderr: "ignore" }).exited;
+    },
+  };
+}
+
 if (import.meta.main) {
   const release = claim();
   process.on("exit", release);
+  const database = await ownDatabase();
   const first = await run();
-  if (first.code === 0 || !first.crashed) process.exit(first.code);
+  if (first.code === 0 || !first.crashed) {
+    await database.stop();
+    process.exit(first.code);
+  }
 
   console.error(
     "\n[test] a worker crashed — this is bun itself, not a failing test, and it counts every\n" +
       "[test] file it never reached as a failure. Running once more; a second crash is real.\n",
   );
   const second = await run();
+  await database.stop();
   process.exit(second.code);
 }

@@ -52,3 +52,21 @@ test("two scripts run the suite, and a third is a decision rather than a habit",
   // for them — and it still has something to stress.
   expect(stressFiles().length).toBeGreaterThan(100);
 });
+
+/**
+ * A run stops the container it started, and only that one.
+ *
+ * `bun run test` brings the suite's Postgres up when nothing answers on its
+ * port, so a machine is not left holding an in-memory data directory nothing is
+ * using. The dangerous half is the other one: tearing down a container the
+ * developer started for their own loop, or the one CI's `setup-bun` step brought
+ * up, in the middle of using it.
+ */
+/** Checked by asking rather than by acting: this test runs with the database
+ *  answering — it has to, it is a test — so `started` must be false, and calling
+ *  `stop` would be a no-op. Asserting on the flag says so without stopping the
+ *  database out from under nine other workers. */
+test("a suite that found its database running does not own it", async () => {
+  const { ownDatabase } = await import("../../scripts/test.ts");
+  expect((await ownDatabase()).started).toBe(false);
+});
