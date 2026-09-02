@@ -372,6 +372,9 @@ msgstr "{server} отвечает, но это не sandbox server (HTTP {status
 msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 msgstr "{server} не отвечает, и это не адрес на этой машине — здесь нечего запускать. Смотрите на той машине."
 
+msgid "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+msgstr "{server} отклонил наш API-ключ. Настройки → Сервер песочниц → Прочитать с сервера возьмёт его из собственной конфигурации этого сервера, либо укажите другой адрес."
+
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "{sessionTokens} токенов за сессию · {model}"
 
@@ -840,8 +843,8 @@ msgstr "claude не смог войти: {detail}"
 msgid "claude is signed in"
 msgstr "claude вошёл"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "claude не вывел ссылку для входа внутри контейнера — запустите `claude setup-token` в образе, чтобы понять почему. Ему нужен pty: без него он ничего не печатает и выходит с кодом 0."
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude не напечатал ссылку для входа внутри контейнера — вход и так даёт ему терминал, поэтому запустите `claude setup-token` в образе и посмотрите, что он печатает вместо этого."
 
 msgid "Clear"
 msgstr "Очистить"
@@ -1491,6 +1494,9 @@ msgstr "Через сколько тот же отчёт о зависании �
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "Сколько переиспользуется один отчёт о системном времени. Считать его дорого настолько, что все прочие запросы ждут позади, а исходные данные всё равно обновляются только по такту."
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "Сколько времени у CLI есть на ответ после отправки кода входа. Это не ваше время — отсчёт начинается, когда код уходит, а ответ приходит за секунду-две в любом случае."
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "Сколько может занять POST выше. Ответ всё равно отбрасывается — это лишь не даёт молчащему вебхуку удерживать уведомление."
 
@@ -1696,6 +1702,9 @@ msgstr "Код входа скопирован"
 
 msgid "Login page"
 msgstr "Страница входа"
+
+msgid "Login verdict"
+msgstr "Результат входа"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "Логи живут в памяти сервера, максимум 500 строк, и стираются при перезапуске. Вывод — в «Заметках»."
@@ -2830,9 +2839,6 @@ msgstr "Кто-то спрашивает: {question}"
 
 msgid "Someone else is handling it"
 msgstr "Этим занимается кто-то другой"
-
-msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
-msgstr "на {server} слушает что-то, что запускали не мы, и ключ API не совпадает — впишите api_key того сервера в настройки или укажите другой адрес."
 
 msgid "Spec"
 msgstr "Спецификация"

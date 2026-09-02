@@ -87,10 +87,25 @@ export function decoy(runtime: string, mode: AuthMode): string {
 }
 
 const CREDENTIAL_PREFIX: Readonly<Record<string, readonly [string, string]>> = {
-  "claude:oauth_token": ["sk-ant-oat01-", "a subscription token starts with sk-ant-oat01-"],
   "claude:api_key": ["sk-ant-", "an Anthropic API key starts with sk-ant-"],
   "codex:api_key": ["sk-", "an OpenAI API key starts with sk-"],
 };
+
+/**
+ * A subscription token has no prefix to check any more.
+ *
+ * It was `sk-ant-oat01-`, and this rejected anything else. claude-code 2.1.233
+ * mints one with no prefix at all — measured on a real sign-in — so the check
+ * that existed to catch a pasted mistake was rejecting the real thing.
+ */
+/**
+ * Length and the absence of whitespace are what is left, and they still catch
+ * what this was written for: an empty box, a sentence, a login URL (rejected
+ * above), a code from the approval page, half a token. The old prefix is neither
+ * required nor forbidden — tokens minted before the change are this shape too.
+ */
+const OPAQUE_TOKEN_MIN = 40;
+const looksLikeToken = (v: string): boolean => v.length >= OPAQUE_TOKEN_MIN && !/\s/.test(v);
 
 /** Reject provider-impossible shapes early; prefixes are stable while lengths drift. */
 export function wrongShape({ runtime, mode, secret }: RuntimeAuth): string | null {
@@ -101,6 +116,9 @@ export function wrongShape({ runtime, mode, secret }: RuntimeAuth): string | nul
     const parsed = parseAuth(v);
     if (!parsed) return "paste the whole contents of ~/.codex/auth.json, which is JSON";
     return parsed.tokens?.refresh_token ? null : "this auth.json has no tokens.refresh_token, so it cannot be renewed";
+  }
+  if (runtime === "claude" && mode === "oauth_token") {
+    return looksLikeToken(v) ? null : "that is not a subscription token — paste the whole value the login printed";
   }
   const expected = CREDENTIAL_PREFIX[`${runtime}:${mode}`];
   return expected && !v.startsWith(expected[0]) ? expected[1] : null;

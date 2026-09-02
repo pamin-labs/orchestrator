@@ -372,6 +372,9 @@ msgstr "{server} は応答しますが、sandbox server ではありません（
 msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 msgstr "{server} は応答せず、このマシンのアドレスでもありません。ここでは起動できません。そのマシンを確認してください。"
 
+msgid "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+msgstr "{server} が API キーを拒否しました。設定 → サンドボックスサーバー → サーバーから読む で、そのサーバー自身の設定から読み直せます。別のアドレスを指定しても構いません。"
+
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "このセッション {sessionTokens} トークン · {model}"
 
@@ -840,8 +843,8 @@ msgstr "claude のログインに失敗しました：{detail}"
 msgid "claude is signed in"
 msgstr "claude にログインしました"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "claude がコンテナ内でログインリンクを出力しませんでした。イメージ内で `claude setup-token` を実行して原因を確認してください。pty が必要で、pty がないと何も出力せずに正常終了します。"
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude がコンテナ内でログインリンクを出しませんでした —— ログインは端末をすでに与えているので、イメージ内で `claude setup-token` を実行し、代わりに何が出るか確認してください。"
 
 msgid "Clear"
 msgstr "クリア"
@@ -1491,6 +1494,9 @@ msgstr "同じ「詰まっている」報告を再び言う価値が出るまで
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "1 回の「システム耗時」レポートを使い回す時間。計算が重く、その間ほかのリクエストが後ろで待ちます。元データはどのみちハートビートでしか更新されません。"
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "サインインコードを送信してから CLI が結果を返すまでの猶予。あなたの時間ではありません——コードが入った時点で計測が始まり、成否いずれも 1〜2 秒で返ります。"
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "上の POST に許す時間。応答はどちらにせよ捨てます。返事をしない webhook が通知を抱え込むのを防ぐだけです。"
 
@@ -1696,6 +1702,9 @@ msgstr "ログインコードをコピーしました"
 
 msgid "Login page"
 msgstr "ログインページ"
+
+msgid "Login verdict"
+msgstr "ログイン結果"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "ログはサーバーのメモリに最大 500 行だけ保持し、再起動で消えます。結論は「ノート」にあります。"
@@ -2830,9 +2839,6 @@ msgstr "誰かが質問しています：{question}"
 
 msgid "Someone else is handling it"
 msgstr "別の人が対応しています"
-
-msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
-msgstr "{server} で私たちが起動していないものが待ち受けていて、API キーも一致しません。そのサーバー自身の api_key を設定に入れるか、別のアドレスを指定してください。"
 
 msgid "Spec"
 msgstr "仕様"

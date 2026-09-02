@@ -372,6 +372,9 @@ msgstr "{server} 有應答，但它不是 sandbox server（HTTP {status}）—�
 msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 msgstr "{server} 沒有應答，而且它不是這臺機器上的地址——這裡起不了。去那臺機器上看。"
 
+msgid "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+msgstr "{server} 拒絕了我們的 API key。設定 → 沙箱伺服器 → 從伺服器讀，可以把它從那臺 server 自己的配置裡讀回來；或者換個地址。"
+
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "本 session {sessionTokens} tokens · {model}"
 
@@ -840,8 +843,8 @@ msgstr "claude 登入沒成：{detail}"
 msgid "claude is signed in"
 msgstr "claude 登入好了"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "claude 在容器裡沒列印出登入連結 —— 在映像裡跑 `claude setup-token` 看為什麼。它需要 pty，沒有 pty 時它什麼都不列印然後正常退出。"
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude 在容器裡沒列印出登入連結 —— 登入本來就給了它一個終端，所以在映像裡跑 `claude setup-token`，看看它到底列印了什麼。"
 
 msgid "Clear"
 msgstr "清掉"
@@ -1491,6 +1494,9 @@ msgstr "同一條「卡住」的報告隔多久才值得再說一遍。太短會
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "一份系統耗時報告能複用多久。算它的代價大到別的請求都得排在後面，而且底層資料本來也只在心跳時更新。"
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "提交登入碼之後，CLI 有多長時間給出結果。不是你的時間——碼送進去才開始計時，而它一兩秒內必有答覆，成或不成。"
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "上面那個 POST 最多花多久。答案反正會丟掉——這只是別讓一個不回話的 webhook 卡住通知。"
 
@@ -1696,6 +1702,9 @@ msgstr "登入碼複製好了"
 
 msgid "Login page"
 msgstr "登入頁"
+
+msgid "Login verdict"
+msgstr "登入結果"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "日誌在服務端記憶體裡，最多 500 行，重啟就沒了。結論那條在「記錄」裡。"
@@ -2830,9 +2839,6 @@ msgstr "有人在問：{question}"
 
 msgid "Someone else is handling it"
 msgstr "別人在處理"
-
-msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
-msgstr "{server} 上有個不是我們起的行程在監聽，而且 API key 對不上——把那臺 server 自己的 api_key 填進設定，或者換個地址。"
 
 msgid "Spec"
 msgstr "規格"

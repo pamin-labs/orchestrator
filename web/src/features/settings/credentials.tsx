@@ -334,6 +334,33 @@ function CredentialStatus({ state }: { state: CredentialState }) {
   );
 }
 
+/** Where a sign-in page may live. The CLI prints the address; this says which
+ *  addresses we are willing to put in front of the boss without them reading it
+ *  first. A host that drops off this list stops being opened automatically and
+ *  goes back to being a link they click, which is what it was before. */
+const LOGIN_HOSTS = ["claude.ai", "claude.com", "anthropic.com"];
+
+/**
+ * The URL, if it is one we may navigate a tab to; null otherwise.
+ *
+ * Parsed rather than prefix-matched, twice over. `javascript:https://x` passes a
+ * `startsWith("https")` and runs in this origin when assigned to
+ * `location.href`; `https://evilclaude.com` passes an `endsWith("claude.com")`.
+ * `URL` is the parser the browser would use anyway, and the subdomain test is
+ * anchored on a dot for the same reason. The schema says the field is a string —
+ * what kind of string is this question.
+ */
+export const httpsOnly = (raw: string): string | null => {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") return null;
+  return LOGIN_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`)) ? raw : null;
+};
+
 /** Which mode is stored, when it differs from the one being looked at — the
  *  whole point of the row when they disagree. */
 function StoredAs({ label }: { label: string }) {
@@ -371,12 +398,33 @@ function SecretField({ state }: { state: CredentialState }) {
       if (!res.ok) return;
       changeLogin({ device: res.data });
     } else {
+      // Opened here, because nothing else can. This comment used to say the CLI
+      // opens the browser itself and a second tab would split the flow — true
+      // while the login ran on the host, and false since it moved into the
+      // container, which has no browser. The CLI says so in its own output:
+      // `Browser didn't open? Use the url below to sign in`.
+      //
       const res = await mutate(api.auth.claude.login.$post(), false, ClaudeLoginSchema);
       changeForm({ busy: false });
       if (!res.ok) return;
-      // Not opened from here. The CLI opens the browser itself, so doing it too
-      // gives the boss two tabs of the same OAuth flow — and finishing the wrong
-      // one leaves the other waiting forever.
+      // Opened once there is somewhere to go, rather than blank-then-filled. A
+      // popup needs a user gesture and the reply is awaited, but transient
+      // activation outlives one turn of the event loop — five seconds in Chrome
+      // and Safari — and this reply is measured at 1.6s. The first version
+      // assumed the gesture was already spent and opened a placeholder tab; that
+      // was a guess, and the visible cost of it was a window sitting on
+      // about:blank while the link loaded.
+      //
+      // Blocked, or slower than the activation window, returns null. Not an
+      // error: the link is rendered below and is one click away, which is what
+      // the boss had before any of this.
+      //
+      // Only after `httpsOnly`. The value is a string from a JSON body — the
+      // schema says it is a string and cannot say what kind — and a
+      // `javascript:` URL opened this way runs in this origin.
+      const target = httpsOnly(res.data.url);
+      // fallow-ignore-next-line security-sink -- `target` is the output of `httpsOnly`, which parses with `URL`, requires the `https:` scheme, and requires the hostname to be one of `LOGIN_HOSTS` or a dot-anchored subdomain of one. A non-literal target is all fallow can see; the three checks above it are the allowlist it asks for, and `httpsOnly` has its own guard covering javascript:, data:, http: and suffix lookalikes.
+      if (target) window.open(target, "_blank", "noopener");
       changeLogin({ link: res.data.url });
     }
     props.onWaitForLogin(updatedAt);

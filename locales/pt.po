@@ -372,6 +372,9 @@ msgstr "{server} responde, mas não é um sandbox server (HTTP {status}) — apo
 msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 msgstr "{server} não responde e não é um endereço desta máquina — aqui nada pode ser iniciado. Veja naquela máquina."
 
+msgid "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+msgstr "{server} recusou a nossa chave de API. Configurações → Servidor de sandbox → Ler do servidor recupera-a da própria configuração desse servidor, ou aponte para outro endereço."
+
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "{sessionTokens} tokens nesta sessão · {model}"
 
@@ -840,8 +843,8 @@ msgstr "o claude não conseguiu entrar: {detail}"
 msgid "claude is signed in"
 msgstr "o claude entrou"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "o claude não imprimiu qualquer ligação de início de sessão dentro do contentor — execute `claude setup-token` na imagem para ver porquê. Precisa de um pty; sem ele não imprime nada e sai com 0."
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude não imprimiu nenhum link de início de sessão dentro do contentor — o início de sessão já lhe dá um terminal, por isso execute `claude setup-token` na imagem para ver o que imprime em vez disso."
 
 msgid "Clear"
 msgstr "Limpar"
@@ -1491,6 +1494,9 @@ msgstr "Quanto tempo até valer a pena repetir o mesmo relato de travamento. Mai
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "Por quanto tempo um relatório de tempo do sistema é reaproveitado. Calcular custa o bastante para todas as outras requisições esperarem atrás, e os dados de base só mudam a cada batida."
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "Quanto tempo a CLI tem para responder depois de submeteres um código de início de sessão. Não é o teu tempo: o relógio arranca quando o código entra, e a resposta chega num segundo ou dois em qualquer dos casos."
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "Quanto o POST acima pode demorar. A resposta é descartada de qualquer jeito: isto só impede que um webhook mudo segure um aviso."
 
@@ -1696,6 +1702,9 @@ msgstr "Código de login copiado"
 
 msgid "Login page"
 msgstr "Página de login"
+
+msgid "Login verdict"
+msgstr "Veredicto de início de sessão"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "Os logs ficam na memória do servidor, no máximo 500 linhas, e somem ao reiniciar. A conclusão está em \"Notas\"."
@@ -2830,9 +2839,6 @@ msgstr "Alguém pergunta: {question}"
 
 msgid "Someone else is handling it"
 msgstr "Outra pessoa está cuidando"
-
-msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
-msgstr "algo que não iniciamos está escutando em {server}, e a chave de API não confere — coloque o api_key daquele servidor nas Configurações, ou aponte para outro endereço."
 
 msgid "Spec"
 msgstr "Especificação"

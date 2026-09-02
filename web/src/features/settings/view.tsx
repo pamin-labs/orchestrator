@@ -251,11 +251,17 @@ function SettingsContent({
   const { authData, rows, prefs, checks, proj } = useSettingsData(open, projectId, signin);
   useSigninEnd(authData, signin, setSignin);
 
-  const patch = (body: ProjectPatch) =>
+  // The read next door is guarded by `enabled: projectId !== null`; the write was
+  // not, and `String(null)` is a request to `/project/null/config`. Nothing in
+  // the dialog can reach it today — the project panes are filtered out — but the
+  // guard belongs on the call, not on who happens to render the button.
+  const patch = (body: ProjectPatch) => {
+    if (projectId === null) return;
     startTransition(async () => {
       await mutate(api.project[":id"].config.$post({ param: { id: String(projectId) }, json: body }));
       await queries.invalidateQueries({ queryKey: ["project", projectId] });
     });
+  };
 
   const items = NAV.filter((n) => !n.project || projectId !== null);
 

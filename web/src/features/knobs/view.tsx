@@ -243,6 +243,7 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
             "timeouts.tokenRefreshMs",
             "timeouts.usageReadMs",
             "timeouts.transferMs",
+            "timeouts.loginVerdictMs",
           ],
         },
         {
@@ -516,6 +517,10 @@ export const COPY: Record<
   "timeouts.transferMs": {
     label: msg`Clone, fetch or image pull`,
     why: msg`One network operation that moves a repository or an image — clone, fetch, submodule init, image pull. Minutes rather than seconds.`,
+  },
+  "timeouts.loginVerdictMs": {
+    label: msg`Login verdict`,
+    why: msg`How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way.`,
   },
   "intervals.recheckMs": {
     label: msg`Recheck reachability`,

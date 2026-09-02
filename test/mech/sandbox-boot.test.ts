@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setIn } from "../../src/mech/sandbox/server.ts";
+import { loadAuth, SANDBOX_KEY, saveAuth } from "../../src/mech/sandbox/auth.ts";
+import { openMemory } from "../../src/platform/persistence/database.ts";
 import {
+  adoptServerKey,
   isServerLine,
   keyInConfig,
   pidAlive,
@@ -231,4 +234,82 @@ describe("a pid is alive when it exists, whoever owns it", () => {
   for (const junk of ["nope", "-1", "0", "", "1.5", "1e9"]) {
     expect({ junk, alive: pidAlive(junk) }).toEqual({ junk, alive: false });
   }
+});
+
+/**
+ * The key we wrote, taken back when the database no longer has it.
+ *
+ * `ourKey` stores it in `runtime_auth`; `writeConfig` puts it in
+ * `~/.orch-cache/sandbox.toml` and never rewrites that file. Only one of the two
+ * homes is rebuilt with the database, so a fresh schema against a server still
+ * running left the key on disk, nothing in the row, and no header on any probe.
+ */
+/**
+ * Measured on a real machine: `opensandbox-server --config
+ * ~/.orch-cache/sandbox.toml` alive since a previous boot, no `sandbox` row, and
+ * the panel reporting "something is listening that we did not start". It was our
+ * own server, holding our own key.
+ */
+/**
+ * And it could not recover on its own: `startPlan` refuses to spawn into a taken
+ * port, so `ourKey` and `writeConfig` are never reached again. Every container
+ * operation goes through this server, so what the boss sees is that Claude and
+ * Codex cannot be signed in.
+ */
+describe("the sandbox key has two homes and only one is rebuilt", () => {
+  const onDisk = (key: string): string => {
+    const f = join(tempDir("orch-adopt-"), "sandbox.toml");
+    writeFileSync(f, `[server]\nhost = "127.0.0.1"\nport = 8080\napi_key = "${key}"\n`);
+    return f;
+  };
+  // `serverKeyOnDisk` reads `$OPENSANDBOX_CONFIG` first, which is what lets this
+  // name a file instead of needing a server running on the machine.
+  const withConfig = async <T>(path: string | null, run: () => Promise<T>): Promise<T> => {
+    const had = process.env.OPENSANDBOX_CONFIG;
+    if (path) process.env.OPENSANDBOX_CONFIG = path;
+    else delete process.env.OPENSANDBOX_CONFIG;
+    try {
+      return await run();
+    } finally {
+      if (had === undefined) delete process.env.OPENSANDBOX_CONFIG;
+      else process.env.OPENSANDBOX_CONFIG = had;
+    }
+  };
+
+  test("an empty database takes the key back from the server's own config", async () => {
+    const db = await openMemory();
+    const took = await withConfig(onDisk("orch-fromdisk"), () => adoptServerKey(db));
+    expect(took).toBe(true);
+    const stored = await loadAuth(db, SANDBOX_KEY);
+    expect(stored?.secret).toBe("orch-fromdisk");
+    // Bound to the address in the same file, never to `sandbox.server`: that is
+    // the whole reason a key read off disk is safe to store without asking.
+    expect(stored?.baseUrl).toBe("http://127.0.0.1:8080");
+  });
+
+  test("a key already stored is somebody's choice and is left alone", async () => {
+    const db = await openMemory();
+    await saveAuth(db, {
+      runtime: SANDBOX_KEY,
+      mode: "api_key",
+      secret: "typed-by-hand",
+      baseUrl: "http://127.0.0.1:8080",
+    });
+    const took = await withConfig(onDisk("orch-fromdisk"), () => adoptServerKey(db));
+    expect(took).toBe(false);
+    expect((await loadAuth(db, SANDBOX_KEY))?.secret).toBe("typed-by-hand");
+  });
+
+  test("a config path that does not exist is a no-op, not a throw", async () => {
+    const db = await openMemory();
+    // No assertion on the return value, and that is the finding rather than a
+    // gap: `configPaths` ends at `runningServer()?.config`, so on a machine with
+    // a sandbox server actually running there is no way to stage "nothing on
+    // disk" — this test wrote `$OPENSANDBOX_CONFIG` at a file that does not
+    // exist and still adopted a key, out of the live server's own `--config`.
+    // Which is the mechanism working. What is asserted here is the other half:
+    // an unreadable path is `keyInConfig` returning null, never an exception on
+    // the boot path.
+    await withConfig(join(tempDir("orch-adopt-"), "absent.toml"), () => adoptServerKey(db));
+  });
 });

@@ -86,6 +86,16 @@ export interface Ctx {
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
   /**
+   * Wired by the server: aborts when the process has stopped taking work.
+   *
+   * For the handlers that hold a connection open on purpose. `server.stop(false)`
+   * waits for every request to finish, and an SSE stream never finishes — so one
+   * panel tab open made the graceful phase burn its whole deadline and exit 1,
+   * which is ctrl-c reported as a failure. Measured against Bun 1.4: 3ms to stop
+   * with no stream, still hanging at 5s with one.
+   */
+  closing?: AbortSignal;
+  /**
    * Wired by the server: what the readiness timer last found, already computed.
    *
    * A getter and not a value because the timer replaces the array every tick.

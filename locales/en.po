@@ -372,6 +372,9 @@ msgstr "{server} answers, but it is not a sandbox server (HTTP {status}) — poi
 msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 msgstr "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 
+msgid "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+msgstr "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "{sessionTokens} tokens this session · {model}"
 
@@ -840,8 +843,8 @@ msgstr "claude could not sign in: {detail}"
 msgid "claude is signed in"
 msgstr "claude is signed in"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
 
 msgid "Clear"
 msgstr "Clear"
@@ -1491,6 +1494,9 @@ msgstr "How long before the same stuck report is worth saying again. Shorter tur
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 
@@ -1696,6 +1702,9 @@ msgstr "Login code copied"
 
 msgid "Login page"
 msgstr "Login page"
+
+msgid "Login verdict"
+msgstr "Login verdict"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
@@ -2830,9 +2839,6 @@ msgstr "Someone asked: {question}"
 
 msgid "Someone else is handling it"
 msgstr "Someone else is handling it"
-
-msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
-msgstr "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
 
 msgid "Spec"
 msgstr "Spec"

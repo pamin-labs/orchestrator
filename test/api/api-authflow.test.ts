@@ -1,6 +1,7 @@
 import { waitFor } from "@testing-library/dom";
 import { expect, test } from "bun:test";
 import { makeApp } from "../../src/composition/api.ts";
+import { loadConfig } from "../../src/platform/config/load.ts";
 import { asc, eq } from "drizzle-orm";
 import type { Json } from "../../src/contracts/json.ts";
 import { loadAuth } from "../../src/mech/sandbox/auth.ts";
@@ -24,10 +25,27 @@ import { testContext } from "../support/test-context.ts";
  * the exchange that failed.
  */
 
-const CLAUDE_TOKEN = "sk-ant-oat01-abcdefghijklmnop";
+/**
+ * Long, mixed-case, unbroken — the shape a credential has, because that is all
+ * the login recognises now. It knew `sk-ant-oat01-` once and that prefix changed
+ * under it, so a short lowercase stand-in would pass a test the product fails.
+ */
+const CLAUDE_TOKEN = `sk-ant-oat01-${"aB3-_x9Z".repeat(6)}`;
 
-async function harness(handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({})) {
-  const ctx = await testContext({ sandbox: fakeSandbox((cmd) => handle(cmd)) });
+async function harness(
+  handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({}),
+  // Where the sandbox server is. Stated rather than defaulted, because
+  // `loadConfig` says 127.0.0.1:8080 and a developer machine often has a real
+  // one there — which decides whether the login blames the sandbox or the image.
+  // Port 9 (discard) is never listening, so the verdict is `down` and these
+  // tests keep testing the CLI's own advice.
+  server?: string,
+) {
+  const base = loadConfig();
+  const ctx = await testContext({
+    sandbox: fakeSandbox((cmd) => handle(cmd)),
+    ...(server ? { config: { ...base, sandbox: { ...base.sandbox, server } } } : {}),
+  });
   const db = ctx.db;
   const app = makeApp(ctx);
   const post = (path: string, body?: Json) =>
@@ -84,7 +102,11 @@ test("the claude login hands back the link and nothing else", async () => {
 });
 
 test("a CLI that prints no link is a 422 that says how to check the image", async () => {
-  const h = await harness(() => ({ code: 1, err: "no pty" }));
+  // Port 9 (discard) is never listening, so the sandbox verdict is `down` rather
+  // than `stuck` and this keeps testing the CLI's own advice. Left at the
+  // default it read `loadConfig()`'s 127.0.0.1:8080 — a real server on the
+  // developer's machine, and the answer changed with the machine.
+  const h = await harness(() => ({ code: 1, err: "no pty" }), "127.0.0.1:9");
   await reset(h);
 
   const r = await h.post("/api/v1/auth/claude/login");

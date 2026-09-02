@@ -372,6 +372,9 @@ msgstr "{server}는 응답하지만 sandbox server가 아닙니다(HTTP {status}
 msgid "{server} does not answer, and it is not an address on this machine — nothing can be started here. Look on that machine."
 msgstr "{server}는 응답하지 않고, 이 머신의 주소도 아닙니다. 여기서는 시작할 수 없습니다. 그 머신을 확인하세요."
 
+msgid "{server} refused our API key. Settings → Sandbox server → Read from server takes it back out of that server's own config, or point at another address."
+msgstr "{server} 가 API 키를 거부했습니다. 설정 → 샌드박스 서버 → 서버에서 읽기 로 그 서버 자체 설정에서 키를 다시 가져오거나, 다른 주소를 지정하세요."
+
 msgid "{sessionTokens} tokens this session · {model}"
 msgstr "이번 세션 {sessionTokens} 토큰 · {model}"
 
@@ -840,8 +843,8 @@ msgstr "claude 로그인에 실패했습니다: {detail}"
 msgid "claude is signed in"
 msgstr "claude에 로그인했습니다"
 
-msgid "claude printed no login link inside the container — run `claude setup-token` in the image to see why. It needs a pty, and without one it prints nothing and exits 0."
-msgstr "claude가 컨테이너 안에서 로그인 링크를 출력하지 않았습니다 — 이미지에서 `claude setup-token`을 실행해 원인을 확인하세요. pty가 필요하며, 없으면 아무것도 출력하지 않고 정상 종료합니다."
+msgid "claude printed no login link inside the container — the login already gives it a terminal, so run `claude setup-token` in the image to see what it prints instead."
+msgstr "claude 가 컨테이너 안에서 로그인 링크를 출력하지 않았습니다 —— 로그인은 이미 터미널을 제공하므로, 이미지에서 `claude setup-token` 을 실행해 대신 무엇이 출력되는지 확인하세요."
 
 msgid "Clear"
 msgstr "지우기"
@@ -1491,6 +1494,9 @@ msgstr "같은 '멈췄다' 보고를 다시 말할 가치가 생기기까지의 
 msgid "How long one System timing report is reused. Computing it is expensive enough that every other request waits behind it, and the underlying data only updates on a heartbeat anyway."
 msgstr "'시스템 소요시간' 리포트 하나를 재사용하는 시간. 계산이 무거워 그동안 다른 요청이 뒤에서 기다립니다. 원본 데이터도 어차피 하트비트에만 갱신됩니다."
 
+msgid "How long the CLI has to answer after you submit a sign-in code. Not your time — the clock starts when the code goes in, and the answer comes in a second or two either way."
+msgstr "로그인 코드를 제출한 뒤 CLI 가 결과를 낼 때까지의 시간. 당신의 시간이 아닙니다 — 코드가 들어간 순간부터 재며, 성공이든 실패든 1~2 초 안에 옵니다."
+
 msgid "How long the POST above may take. The answer is discarded either way—this only stops a webhook that never replies from holding a notification."
 msgstr "위 POST에 허용하는 시간. 응답은 어차피 버립니다 — 답하지 않는 웹훅이 알림을 붙잡지 못하게 할 뿐입니다."
 
@@ -1696,6 +1702,9 @@ msgstr "로그인 코드를 복사했습니다"
 
 msgid "Login page"
 msgstr "로그인 페이지"
+
+msgid "Login verdict"
+msgstr "로그인 결과"
 
 msgid "Logs are stored in server memory, max 500 lines, cleared on restart. The conclusion is in \"Notes\"."
 msgstr "로그는 서버 메모리에 최대 500줄만 남고 재시작하면 사라집니다. 결론은 \"노트\"에 있습니다."
@@ -2830,9 +2839,6 @@ msgstr "누군가 묻고 있습니다: {question}"
 
 msgid "Someone else is handling it"
 msgstr "다른 사람이 처리 중"
-
-msgid "Something is listening on {server} that we did not start, and the API key does not match — put that server's api_key in Settings, or point at another address."
-msgstr "{server}에서 우리가 시작하지 않은 것이 수신 대기 중이고 API 키도 맞지 않습니다. 그 서버의 api_key를 설정에 넣거나 다른 주소를 지정하세요."
 
 msgid "Spec"
 msgstr "명세"

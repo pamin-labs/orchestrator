@@ -13,11 +13,11 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-08-31.
+Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2001 pass, 6 environment skips, 0 fail, 2007 across 250 files
-- Coverage: 84.02% of statements, 74.26% of branches, 79.91% of functions
+- Tests: 2029 pass, 6 environment skips, 0 fail, 2035 across 253 files
+- Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
 - Fallow security, full inventory: **1** candidate —
@@ -35,6 +35,70 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-08-31.
 
 ## Blockers and deviations
 
+- **A sandbox key written to two homes could not converge.** `ourKey` stored it
+  in `runtime_auth` and `writeConfig` wrote it into `~/.orch-cache/sandbox.toml`,
+  which is never rewritten — so a rebuilt database against a still-running server
+  meant 401 on every probe, no containers, and neither CLI able to sign in.
+  `adoptServerKey` now takes the key back at boot from the running server's own
+  `--config`, which is what the panel's `Read from server` button already did by
+  hand. Fixed 2026-09-01; guards in `test/mech/sandbox-boot.test.ts`.
+- **The login pty runner imported a module from its own directory.** Python puts
+  a script's directory at `sys.path[0]`, so `/opt/orch/pty.py` imported itself
+  and `claude setup-token` never started — reported as "the CLI needs a pty",
+  which the login was supplying. Renaming it alone did not hold: `/opt/orch`
+  outlives the server, so the old file stayed beside the new one and was found
+  instead. Launched with `-P` now, which drops `sys.path[0]` whatever is in the
+  directory. Fixed 2026-09-01; guard in `test/mech/login-pty-runner.test.ts`
+  reproduces the stale file.
+- **A pasted login code was typed but never entered.** The runner ended the line
+  it wrote into the pty with LF; Enter on a terminal is CR, and a TUI in raw
+  mode reads the keys itself — so claude echoed the code as asterisks and never
+  submitted it. Sends CR now. Measured against claude-code 2.1.233: the same run
+  given a bare `\r` answered `OAuth error: … 400`. Fixed 2026-09-01.
+- **Release archives offered scripts they could not run.** The development
+  `package.json` shipped unchanged into an archive with no `scripts/`, `web/src`
+  or `node_modules` — thirty-nine scripts, seven runnable, and `start` in the
+  other set. `scripts/release-package-json.ts` now rewrites it at package time
+  and the release job checks every script's entrypoint exists in the archive.
+  Fixed 2026-09-01; guards in
+  `test/governance/release-archive-runs-what-it-offers.test.ts`.
+- **Ctrl-C reported a clean shutdown as a failure.** `server.stop(false)` waits
+  for every request to finish and an SSE request never does, so one open panel
+  tab held the graceful phase to its full 10s deadline and `shutdownRuntime`
+  returned 1. `ctx.closing` now aborts in `stopIntake` and the stream handler
+  ends on it. Measured end to end: exit 1 after 10.1s before, exit 0 in under a
+  second after. Fixed 2026-09-01; guards in `test/http/stream.test.ts`.
+- **Cancelling a login wedged every login after it.** The get-or-create slot was
+  released in `done`'s `finally`, so an exec that ignored its abort left the slot
+  held by a dead run — whose cached `url` still rendered a link, against a pty
+  that had exited. The cancel route waited on the same promise, unbounded.
+  Released on `cancel()` now, and the route's wait is raced with 2s. Fixed
+  2026-09-02; guards in `test/mech/codex-device-login.test.ts`.
+- **A finished login waited on a stream that never ended.** `realLines` closes
+  its queue when the SDK's `run()` settles, and measured on a live server it did
+  not — `claude setup-token` had exited with no process left in the container
+  while the stream stayed open, so `run.done` never resolved and no event was
+  emitted either way. The read stops on the printed token now, which is the whole
+  errand. Fixed 2026-09-02; guard in `test/mech/codex-device-login.test.ts`.
+- **A submitted login code could still end in silence.** Stopping the read on a
+  printed token covered the run that succeeds; the one that prints an OAuth error
+  and exits has no line to stop on, and the stream stays open regardless. The
+  wait after a submit is bounded by `timeouts.loginVerdictMs` now — the clock
+  starts on the submit, so the boss's time in the browser is never timed. Fixed
+  2026-09-02; guard in `test/mech/codex-device-login.test.ts`.
+- **The whole sign-in worked and the token was thrown away.** `sk-ant-oat01-`
+  became `sk-ant-at01-`, and both the recogniser and the shape check treated the
+  old prefix as the only possible form. Nothing is matched by string now — a
+  credential line is recognised as long, unbroken, not a URL, and mixing
+  character classes, which is what separates it from the link and from the
+  masked echo. Fixed 2026-09-02; guards in
+  `test/mech/codex-device-login.test.ts` and `test/mech/auth.test.ts`.
+- **A stored credential did not refresh the host checks.** The banner reporting
+  `credential:claude` unconfigured stayed up over a settings row that already
+  said the token was stored, until the readiness ticker got round to it.
+  `credentialChanged` awaits `ctx.recheck` now, so every way a credential lands
+  republishes the verdict. Fixed 2026-09-02; guard in
+  `test/api/paused-at.test.ts`.
 - **Live OpenSandbox tests are environment-gated** and skip without a running
   sandbox server. That is the six skips in the count above.
 - **Repository settings are not repository files.** Branch protection, secret

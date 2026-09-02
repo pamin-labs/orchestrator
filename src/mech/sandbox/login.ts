@@ -31,7 +31,35 @@ const ANSI = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b\[[0-9;?]*[a-zA-
 const clean = (s: string) => s.replace(ANSI, " ");
 
 const URL_RE = /https?:\/\/[^\s\u0007\u001b"'<>]+/;
-const CLAUDE_TOKEN_RE = /sk-ant-oat01-[A-Za-z0-9_-]+/;
+/**
+ * The token, recognised by what a credential is rather than by what this CLI
+ * currently prints.
+ *
+ * Two hard-coded recognisers have already expired. `sk-ant-oat01-` became
+ * `sk-ant-at01-` — one letter — and the login reported that no token was printed
+ * while the event stream carried `✓ Long-lived authentication token created
+ * successfully!` and the value itself. Anchoring on that sentence instead only
+ * moves the guess: the wording is the CLI's to change, and it is not a contract.
+ */
+/**
+ * What is left is a shape nobody owns. A credential line is long, has no
+ * whitespace, is not a URL, and mixes character classes — which separates it
+ * from the two other long unbroken lines in this output: the link, and the row
+ * of asterisks a pasted code is echoed back as.
+ */
+/**
+ * Not a prefix, not a sentence, not a length the provider chose. If it ever
+ * matches the wrong line the deadline reports a failed sign-in and the boss can
+ * see what was on it; a recogniser that matches nothing loses a credential
+ * silently, which is what both of the previous ones did.
+ */
+const TOKEN_MIN = 40;
+const looksLikeCredential = (line: string): boolean =>
+  line.length >= TOKEN_MIN &&
+  !/\s/.test(line) &&
+  !/^[a-z][a-z0-9+.-]*:\/\//i.test(line) &&
+  /[a-z]/.test(line) &&
+  /[A-Z0-9]/.test(line);
 
 export interface LoginRun {
   /** The link to open. Present as soon as the CLI prints it. */
@@ -46,14 +74,31 @@ export interface LoginRun {
 
 type LineStream = ReturnType<typeof execLines>;
 
-async function consumeLogin(bus: Bus, stream: LineStream, onLine: (line: string) => void) {
+/**
+ * `onLine` returning true ends the read, and that is not a convenience.
+ *
+ * `realLines` closes its queue when the SDK's `run()` promise settles. Measured
+ * on a live server: `claude setup-token` had exited — no process left in the
+ * container — and the stream never ended, so this sat on `stream.next()` forever
+ * and `run.done` never resolved. The panel showed a link, the pasted code went
+ * into a file whose reader was gone, and no event was ever emitted either way.
+ */
+/**
+ * The line handlers see everything the stream has already produced, and stdout
+ * is delivered as it arrives — so by the time a token has been printed, waiting
+ * for the stream to end is waiting for nothing this cares about.
+ */
+async function consumeLogin(bus: Bus, stream: LineStream, onLine: (line: string) => boolean | void) {
   for (;;) {
     const step = await stream.next();
     if (step.done) return step.value;
     const plain = clean(step.value).trim();
     if (!plain) continue;
     bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body: plain });
-    onLine(plain);
+    // Zero rather than the stream's code: the CLI printed what it exists to
+    // print, and the exit status of a process we stopped reading is not a
+    // verdict on it.
+    if (onLine(plain)) return { code: 0, err: "" };
   }
 }
 
@@ -97,9 +142,12 @@ async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
     timeoutMs: DEVICE_CODE_TTL_MS + 60_000,
     signal,
   });
+  // Codex reads to the end on purpose: its credential is a file it writes, not a
+  // line it prints, so there is nothing on stdout that means "done".
   const result = await consumeLogin(ctx.bus, stream, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
     run.code ??= line.match(DEVICE_CODE_RE)?.[0] ?? null;
+    return false;
   });
   if (result.code !== 0)
     return { ok: false, detail: `codex login exited ${result.code}: ${result.err.trim().slice(-300)}` };
@@ -138,7 +186,13 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
   const run: LoginRun = {
     url: null,
     code: null,
-    cancel: () => abort.abort(),
+    // Released on cancel rather than on `done`, for the reason written on
+    // `startClaudeLogin`: this is get-or-create, and a run whose abort went
+    // unanswered would be handed to every login after it.
+    cancel: () => {
+      abort.abort();
+      if (deviceLogin === run) deviceLogin = null;
+    },
     done: Promise.resolve({ ok: false, detail: "" }),
   };
   deviceLogin = run;
@@ -153,11 +207,13 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
 /**
  * A terminal, so a terminal program will talk.
  *
- * `claude setup-token` is a TUI: without a pty it prints nothing and exits 0, which
- * gave the panel a login button that succeeded instantly and stored nothing.
+ * `claude setup-token` is a TUI. Without one it produces no link at all — it
+ * printed nothing and exited 0 against the version this was written for, and
+ * against 2.1.233 it simply hangs. Either way the panel had a login button that
+ * stored nothing.
  */
 /**
- * Two details are load-bearing. **The window size is set explicitly** — a parentless
+ * Three details are load-bearing. **The window size is set explicitly** — a parentless
  * pty defaults to 80 columns and the CLI wraps its URL across five lines mid-token,
  * and the link handed to the boss has to be one string; this is also why `script
  * -qec`, in the image and tried first, does not work. **Stdin is a file this process
@@ -166,8 +222,50 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
  * This runs the real CLI and nothing else. A pty is a terminal; that is all that is
  * supplied.
  */
-const PTY_PATH = "/opt/orch/pty.py";
-const PTY_RUNNER = `import fcntl, os, pty, select, struct, sys, termios
+/**
+ * `-P` is the fix; the name is the belt beside it.
+ *
+ * Python puts the script's own directory at `sys.path[0]`, so this runner's own
+ * first line `import pty` resolves there before the standard library. Installed
+ * as `pty.py` it imported *itself*: `pty.fork` did not exist, and the traceback
+ * went to a stream the login only reads for a URL — so every attempt was
+ * reported as "the CLI needs a pty", which it does, and which this was giving it.
+ */
+/**
+ * Renaming was not enough, and the container is why. `/opt/orch` outlives the
+ * server that wrote into it, so the old `pty.py` and its `__pycache__` were
+ * still lying beside the renamed file and `import pty` found them instead.
+ * Measured in the live utility container: `python3 login-pty.py` still died at
+ * `File "/opt/orch/pty.py", line 4`, and `python3 -P login-pty.py` reached the
+ * CLI.
+ */
+/**
+ * `-P` drops `sys.path[0]` entirely, so the answer no longer depends on what is
+ * in the directory — which is the only version of this that a leftover file
+ * cannot undo. The hyphenated name stays because it is free and it closes the
+ * self-import case on its own; `-P` is the one carrying the guarantee.
+ */
+export const PTY_PATH = "/opt/orch/login-pty.py";
+
+/**
+ * **The line goes in ending in CR.** Enter on a terminal is `\r`; `\n` is what a
+ * file ends a line with, and they are not the same key. A TUI sets the pty to
+ * raw and reads the keys itself, so sent as `\n` the CLI took every character —
+ * the code echoed back as asterisks — and never submitted. A paste box that
+ * visibly does nothing.
+ */
+/**
+ * Measured against claude-code 2.1.233: the same run, handed a bare `\r`
+ * afterwards, answered `OAuth error: ... 400`. The code had arrived all along
+ * and was waiting on a key it was never sent. `rstrip` first, so whatever the
+ * file ends with, exactly one CR arrives.
+ */
+/**
+ * The interpreter flags the runner is launched with, exported so the guard runs
+ * it the way production does rather than asserting on a string.
+ */
+export const PYTHON_FLAGS = ["-P"] as const;
+export const PTY_RUNNER = `import fcntl, os, pty, select, struct, sys, termios
 cmd = sys.argv[1:]
 inbox = os.environ.get("ORCH_PTY_IN", "")
 pid, fd = pty.fork()
@@ -178,6 +276,7 @@ src = open(inbox, "rb") if inbox else None
 if src:
     src.seek(0, 2)
 out = sys.stdout.buffer
+pending = []
 while True:
     r, _, _ = select.select([fd], [], [], 0.2)
     if fd in r:
@@ -192,7 +291,12 @@ while True:
     if src:
         line = src.readline()
         if line:
-            os.write(fd, line if line.endswith(b"\\n") else line + b"\\n")
+            body = line.rstrip(b"\\r\\n")
+            if body:
+                pending.append(body)
+            pending.append(b"\\r")
+    if pending:
+        os.write(fd, pending.pop(0))
     if os.waitpid(pid, os.WNOHANG)[0]:
         try:
             while True:
@@ -233,20 +337,45 @@ let claudeLogin: (LoginRun & { submit: (code: string) => Promise<void> }) | null
 /** The claude half of `currentCodexDeviceLogin`, and there for the same reason. */
 export const currentClaudeLogin = () => claudeLogin;
 
-async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
+/**
+ * How long after the boss submits a code the CLI has to reach a verdict.
+ *
+ * It has one either way within a second or two — a token, or an OAuth error —
+ * so `timeouts.loginVerdictMs` is generous. It exists because the *stream* may
+ * not end when the CLI does: `realLines` closes its queue on the SDK's `run()`
+ * promise, and measured on a live server that promise did not settle after
+ * `claude setup-token` had exited. Without a deadline the read waits forever and
+ * the panel is told nothing at all, which is worse than being told it failed.
+ */
+async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal, submitted: Promise<void>) {
   await putFile(ctx, UTIL, PTY_PATH, PTY_RUNNER);
   await execIn(ctx, UTIL, `: > ${CODE_FILE}`);
-  const stream = execLines(ctx, UTIL, `ORCH_PTY_IN=${CODE_FILE} python3 ${PTY_PATH} claude setup-token`, {
+  const argv = `python3 ${PYTHON_FLAGS.join(" ")} ${PTY_PATH}`;
+  const stream = execLines(ctx, UTIL, `ORCH_PTY_IN=${CODE_FILE} ${argv} claude setup-token`, {
     timeoutMs: PASTE_TTL_MS + 60_000,
     signal,
   });
   let token: string | null = null;
   let sawPrompt = false;
-  const result = await consumeLogin(ctx.bus, stream, (line) => {
+  // Raced with the deadline, not just awaited. The early stop above covers the
+  // run that prints a token; this covers the one that prints an OAuth error and
+  // exits, where there is no line to stop on and the stream stays open anyway.
+  const read = consumeLogin(ctx.bus, stream, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
-    token ??= line.match(CLAUDE_TOKEN_RE)?.[0] ?? null;
+    if (looksLikeCredential(line)) token ??= line;
+    // The token is the whole errand. Read no further for a stream that may not
+    // end — see `consumeLogin`.
+    if (token) return true;
     sawPrompt ||= PASTE_RE.test(line);
+    return false;
   });
+  const result = await Promise.race([
+    read,
+    submitted.then(async () => {
+      await Bun.sleep(ctx.config.timeouts.loginVerdictMs);
+      return { code: -1, err: "no verdict from claude setup-token after the code was submitted" };
+    }),
+  ]);
   if (!token && result.code !== 0)
     return { ok: false, detail: `claude setup-token exited ${result.code}: ${result.err.trim().slice(-300)}` };
   if (!token)
@@ -264,21 +393,41 @@ async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
 export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) => Promise<void> } {
   if (claudeLogin) return claudeLogin;
   const abort = new AbortController();
+  let announceSubmit = () => {};
+  const submitted = new Promise<void>((resolve) => {
+    announceSubmit = resolve;
+  });
   const run: LoginRun & { submit: (code: string) => Promise<void> } = {
     url: null,
     code: null,
-    cancel: () => abort.abort(),
+    // The slot is released here, not in `done`'s `finally`. An exec that does not
+    // answer its abort leaves `done` pending forever, and this is get-or-create:
+    // every later login was handed the dead run, whose `url` is still cached — so
+    // the panel showed a link, and the code pasted against it went into a file
+    // whose reader had already gone.
+    cancel: () => {
+      abort.abort();
+      if (claudeLogin === run) claudeLogin = null;
+    },
     // Appended, not overwritten: the runner holds the file open and reads from
     // where it left off, so a second paste after a typo is a second line rather
     // than a rewrite it will never see.
     submit: async (code) => {
       await execIn(ctx, UTIL, `printf '%s\\n' ${shq(code.trim())} >> ${CODE_FILE}`);
+      // Starts the clock on a verdict. Before the code goes in there is nothing
+      // to wait for — the boss is in a browser and the CLI is silent, which is
+      // not a fault and must not be timed.
+      announceSubmit();
     },
     done: Promise.resolve({ ok: false, detail: "" }),
   };
   claudeLogin = run;
 
-  run.done = finishClaudeLogin(ctx, run, abort.signal).finally(() => {
+  run.done = finishClaudeLogin(ctx, run, abort.signal, submitted).finally(() => {
+    // Aborted on the way out, including the successful way. `consumeLogin` stops
+    // reading the moment the token is printed, so without this the exec behind a
+    // stream that never ends is simply left running.
+    abort.abort();
     claudeLogin = null;
   });
 

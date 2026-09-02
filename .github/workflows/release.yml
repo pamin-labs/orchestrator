@@ -219,6 +219,10 @@ jobs:
             cp web/index.html web/icon.png web/favicon-32.png web/apple-touch-icon.png "dist/$root/web/"
             cp dist/orch-cli.ts "dist/$root/src/orch/cli.ts"
             cp package.json README.md LICENSE "dist/$root/"
+            # The archive has no scripts/, no web/src and no node_modules, so the
+            # development manifest offers thirty-nine scripts of which seven can
+            # run — and `start`, the one everybody types, was in the other set.
+            bun run scripts/release-package-json.ts "dist/$root/package.json" "$exe"
             test "$(stat -c %s "dist/$root/$exe")" -le $((150 * 1024 * 1024)) || { echo "::error::$target binary exceeds 150 MiB"; exit 1; }
             # shellcheck disable=SC2016 # `${process.env.ROOT}` is a JavaScript template literal read by `bun -e`, not a shell expansion. The single quotes are what keep the shell out of it, which is the point: the value reaches the script through the environment, so it is never a word the shell has to parse.
             TARGET="$target" BUN_TARGET="$bun_target" ROOT="$root" bun -e 'await Bun.write(`dist/${process.env.ROOT}/release-manifest.json`, JSON.stringify({version:process.env.RELEASE_VERSION,source_sha:process.env.SOURCE_SHA,target:process.env.TARGET,bun_target:process.env.BUN_TARGET},null,2)+"\n")'
@@ -247,6 +251,12 @@ jobs:
               web/favicon-32.png web/apple-touch-icon.png web/dist/main.js web/dist/app.css
             )
             for path in "${required[@]}"; do test -e "$root/$path" || { echo "::error::$target archive is missing $path"; exit 1; }; done
+            # Every script the archive offers, run against the archive itself.
+            # `test -e` on a list is what let a manifest naming `scripts/build-web.ts`
+            # ship beside no scripts/ at all: the file was never required, because
+            # nothing asked what package.json pointed at.
+            # shellcheck disable=SC2016 # A JavaScript template literal inside `bun -e`; the path arrives through ROOT in the environment.
+            ROOT="$root" EXE="$exe" bun -e 'const r=process.env.ROOT;const p=await Bun.file(`${r}/package.json`).json();if(p.dependencies||p.devDependencies)throw new Error("archive manifest still declares dependencies");if(p.scripts.start!==`./${process.env.EXE}`)throw new Error(`start is ${p.scripts.start}`);for(const [n,line] of Object.entries(p.scripts))for(const m of line.matchAll(/(?:^|\s)(?:bun run |-f )([\w./-]+\.(?:ts|yml|yaml))/g))if(!(await Bun.file(`${r}/${m[1]}`).exists()))throw new Error(`script ${n} needs ${m[1]}, which is not in the archive`)'
             test -d "$root/roles" || { echo "::error::$target archive is missing roles"; exit 1; }
             # The schema. `migrate()` reads this folder at boot, so an archive
             # without it starts and then cannot open its own database.

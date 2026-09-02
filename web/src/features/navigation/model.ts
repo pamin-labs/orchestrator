@@ -69,6 +69,10 @@ export const VIEWS: [View, MessageDescriptor][] = [
 
 export const choose = <T>(condition: boolean, yes: T, no: T): T => (condition ? yes : no);
 export const idOrZero = (id: number | null): number => id ?? 0;
+/** The id of a row that was looked up, or null when the lookup found nothing —
+ *  which is the difference between "this project" and "no project", and the one
+ *  `SettingsDialog` needs so it does not ask about an id the snapshot lacks. */
+export const idOrNull = (item: { id: number } | undefined): number | null => item?.id ?? null;
 export const orEmpty = <T>(values: T[] | null | undefined): T[] => values ?? [];
 export const findById = <T extends { id: number }>(id: number | null, values: T[]): T | undefined =>
   values.find((value) => value.id === id);
@@ -160,6 +164,48 @@ export function resolveNavigation(selection: Selection, behind: View) {
 export function repairMissingGroup(group: number | null, ids: number[]): Partial<Selection> | null {
   if (!group || ids.length === 0 || ids.includes(group)) return null;
   return { g: null, view: "progress", t: null };
+}
+
+/**
+ * The same repair for the project in the hash, and it cannot share the group's
+ * guard.
+ *
+ * `repairMissingGroup` reads an empty list as "not loaded yet", which is right
+ * there: a project with no requirements is reached through the picker, not
+ * through a stale link. For projects an empty list is genuinely ambiguous — a
+ * fresh install has none — so the caller says whether the snapshot has arrived.
+ */
+/**
+ * Without this, an `#p=` from a previous database reached `SettingsDialog`, the
+ * one consumer that takes `sel.p` raw rather than the looked-up project, and
+ * every focus of the window asked for a project that is not there. `readApi`
+ * records a 404 as a *successful* read of `null`, so there is no error state to
+ * de-duplicate against: a fresh English toast each time, over a dialog whose
+ * Gates and Sandbox panes sit at `Loading…` for good.
+ */
+export function repairMissingProject(
+  project: number | null,
+  ids: number[],
+  loaded: boolean,
+): Partial<Selection> | null {
+  if (!project || !loaded || ids.includes(project)) return null;
+  return { p: null, g: null, view: "home", t: null };
+}
+
+/**
+ * Both repairs, asked once.
+ *
+ * The project first: dropping it clears the group as well, so running the group
+ * rule against the same render would be a second answer to a question already
+ * settled. One call also keeps `App` from growing a branch per rule — the shell
+ * is the most-read function in the panel and the audit gates its complexity.
+ */
+export function repairSelection(
+  selection: Pick<Selection, "g" | "p">,
+  ids: { groups: number[]; projects: number[] },
+  loaded: boolean,
+): Partial<Selection> | null {
+  return repairMissingProject(selection.p, ids.projects, loaded) ?? repairMissingGroup(selection.g, ids.groups);
 }
 
 export function navigationShortcut(

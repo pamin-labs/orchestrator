@@ -344,7 +344,19 @@ test("a secret that cannot be right is refused before it is stored", () => {
   expect(
     wrongShape({ runtime: "claude", mode: "oauth_token", secret: "https://claude.com/cai/oauth/authorize?code=true" }),
   ).toContain("is a URL, not a credential");
-  expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: "sk-ant-api03-x" })).toContain("sk-ant-oat01-");
+  // Not by prefix any more. claude-code 2.1.233 mints a subscription token with
+  // no prefix at all — measured on a real sign-in — so `sk-ant-oat01-` stopped
+  // being a fact about the credential and became a rejection of the real thing.
+  // What is left is length and the absence of whitespace, which still refuses
+  // every mistake this test was written for.
+  expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: "sk-ant-api03-x" })).toContain(
+    "not a subscription token",
+  );
+  // A sentence, which is what a confused paste looks like and is long enough to
+  // pass a bare length check on its own.
+  expect(
+    wrongShape({ runtime: "claude", mode: "oauth_token", secret: "the code from the page was 1234-5678 I think" }),
+  ).toContain("not a subscription token");
   expect(wrongShape({ runtime: "claude", mode: "api_key", secret: "sk-proj-x" })).toContain("sk-ant-");
   expect(wrongShape({ runtime: "codex", mode: "api_key", secret: "not-a-key" })).toContain("sk-");
   expect(wrongShape({ runtime: "codex", mode: "chatgpt", secret: "{}" })).toContain("refresh_token");
@@ -353,6 +365,9 @@ test("a secret that cannot be right is refused before it is stored", () => {
 
   // And the shapes that are right.
   expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: `sk-ant-oat01-${"A".repeat(40)}` })).toBeNull();
+  // The shape the CLI mints now: opaque, no prefix, and the only reason this
+  // whole login is worth having.
+  expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: `sWmcH1AoQTI${"aB3-_".repeat(14)}` })).toBeNull();
   expect(wrongShape({ runtime: "codex", mode: "api_key", secret: "sk-abc" })).toBeNull();
   expect(
     wrongShape({ runtime: "codex", mode: "chatgpt", secret: JSON.stringify({ tokens: { refresh_token: "r" } }) }),

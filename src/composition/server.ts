@@ -26,7 +26,7 @@ import { applyOverrides } from "../platform/config/settings.ts";
 import { changed, checkConfig, checkRoles } from "../mech/ops/checkconfig.ts";
 import { addressOf, DATABASE_URL, open, shouldStartLocal } from "../platform/persistence/database.ts";
 import { localPostgres } from "../platform/persistence/local-postgres.ts";
-import { REAL, sandboxHeld, type Scope } from "../mech/sandbox/sandbox.ts";
+import { adoptServerKey, REAL, sandboxHeld, type Scope } from "../mech/sandbox/sandbox.ts";
 import type { DB } from "../platform/persistence/database.ts";
 import { startMailbox } from "../mech/sandbox/mailbox.ts";
 import { baseRefFor, createCheckout, treeHeads } from "../mech/git/checkout.ts";
@@ -803,6 +803,13 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   // run will actually use. A key stored before the address travelled with it is
   // given the address in effect now; from then on `sandboxKeyFor` refuses to
   // send it anywhere else.
+  // Before the bind, because this is where the key comes back from when the
+  // database was rebuilt under a server that is still running: the row it writes
+  // already carries the address it was read beside, so `bindSandboxKey` then has
+  // nothing to do for it. Without this the probe goes out with no key at all, and
+  // the panel reports a stuck server it cannot start, cannot reach, and cannot
+  // explain.
+  await adoptServerKey(db);
   await bindSandboxKey(db, cfg.sandbox.server);
 
   // The thunk, not `outputLanguage(cfg)`: `applyOverrides` above and the settings pane
@@ -837,10 +844,15 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   });
 
   const gh = makeGithub(db, undefined, outputLanguage(cfg), cfg.timeouts.githubApiMs);
+  // Aborted by `stopIntake`, so the handlers that hold a connection open on
+  // purpose can let go. Declared beside `ctx` rather than inside `stopIntake`
+  // because `ctx` is built here and the signal has to be on it from the start.
+  const closing = new AbortController();
   const ctx: Ctx = {
     db,
     bus,
     sched,
+    closing: closing.signal,
     gh,
     sandbox: REAL,
     // Cheapest tier: navigating a tree of one-line summaries is not a reasoning
@@ -1138,6 +1150,10 @@ export async function start(overrides: Partial<Config> = {}, handle?: DB): Promi
   const stopIntake = () => {
     if (stopped) return false;
     stopped = true;
+    // Before the timers: an SSE stream is a request that never finishes, so
+    // `server.stop(false)` below waits on it forever. Every open panel tab held
+    // the graceful phase to its full deadline and turned ctrl-c into exit 1.
+    closing.abort();
     runtime.accepting = false;
     runtime.ready = false;
     sched.quiesce();
