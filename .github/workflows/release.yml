@@ -518,6 +518,7 @@ jobs:
       packages: write # Join the two verified platform digests into immutable registry tags.
       id-token: write # Request the OIDC identity used to sign registry attestations.
       attestations: write # Publish provenance and SBOM attestations for the image digest.
+      artifact-metadata: write # Record the pushed image on the organisation's linked artifacts page.
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { path: /tmp/digests, pattern: 'image-digest-*', merge-multiple: true }
@@ -627,7 +628,12 @@ jobs:
         with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ needs.checks.outputs.version }}', format: cyclonedx, output: registry-image.cdx.json, exit-code: '0' }
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-name: '${{ env.REGISTRY }}/orch-agent', subject-digest: '${{ steps.manifest.outputs.digest }}', push-to-registry: true }
-      - uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+      # `actions/attest-sbom` is deprecated: at v4.1.0 it is a composite whose
+      # only added step is the warning telling you so, before it calls
+      # `actions/attest`. Its README states every input carries over, and
+      # `sbom-path` is what selects SBOM mode — it cannot be combined with the
+      # `predicate-*` inputs, so there is nothing else to translate.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with: { subject-name: '${{ env.REGISTRY }}/orch-agent', subject-digest: '${{ steps.manifest.outputs.digest }}', sbom-path: registry-image.spdx.json, push-to-registry: true }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
