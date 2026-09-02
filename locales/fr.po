@@ -196,6 +196,9 @@ msgstr "il y a {months} mois"
 msgid "{mount} read-only"
 msgstr "{mount} lecture seule"
 
+msgid "{n, plural, one {# container is} other {# containers are}} running that nothing here is using"
+msgstr "{n, plural, one {# conteneur tourne} other {# conteneurs tournent}} sans que rien ici ne s'en serve"
+
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, one {# tranche} other {# tranches}}"
 
@@ -2136,6 +2139,9 @@ msgstr "P95"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "PageIndex ne peut pas être construit : les {n} appels sont revenus vides. Vérifiez dans les réglages si le compte utilisé par l'index fonctionne encore."
 
+msgid "PageIndex needs the {runtime} account and it is not configured. Sign in on the settings page, or point the index at a runtime that is — Settings → Plumbing → indexModel.runtime."
+msgstr "PageIndex a besoin du compte {runtime} et il n'est pas configuré. Connectez-vous depuis les réglages, ou pointez l'index vers un runtime qui l'est — Réglages → Entrailles → indexModel.runtime."
+
 msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
 msgstr "PageIndex : {n, plural, one {# nœud résumé} other {# nœuds résumés}}, {files, plural, one {# fichier indexé} other {# fichiers indexés}}"
 
@@ -3119,6 +3125,9 @@ msgstr "ceux-ci n'appartiennent à aucun groupe : {paths} — les changements y 
 
 msgid "These paths from the card don't exist in the repo"
 msgstr "Ces chemins de la carte n'existent pas dans le dépôt"
+
+msgid "They were ours and are no longer claimed by any group, project or the utility slot — each holds memory until its TTL expires. A restart does not reclaim them; delete them on the sandbox server."
+msgstr "Ils étaient à nous et ne sont plus revendiqués par aucun groupe, projet ni par l'emplacement utilitaire — chacun retient de la mémoire jusqu'à l'expiration de son TTL. Un redémarrage ne les récupère pas ; supprimez-les sur le serveur de bac à sable."
 
 msgid "This account has no window"
 msgstr "Ce compte n'a pas de fenêtre"

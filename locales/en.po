@@ -196,6 +196,9 @@ msgstr "{months} months ago"
 msgid "{mount} read-only"
 msgstr "{mount} read-only"
 
+msgid "{n, plural, one {# container is} other {# containers are}} running that nothing here is using"
+msgstr "{n, plural, one {# container is} other {# containers are}} running that nothing here is using"
+
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, one {# slice} other {# slices}}"
 
@@ -2136,6 +2139,9 @@ msgstr "P95"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 
+msgid "PageIndex needs the {runtime} account and it is not configured. Sign in on the settings page, or point the index at a runtime that is — Settings → Plumbing → indexModel.runtime."
+msgstr "PageIndex needs the {runtime} account and it is not configured. Sign in on the settings page, or point the index at a runtime that is — Settings → Plumbing → indexModel.runtime."
+
 msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
 msgstr "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
 
@@ -3119,6 +3125,9 @@ msgstr "these belong to no group: {paths} — changes there go through the boss 
 
 msgid "These paths from the card don't exist in the repo"
 msgstr "These paths from the card don't exist in the repo"
+
+msgid "They were ours and are no longer claimed by any group, project or the utility slot — each holds memory until its TTL expires. A restart does not reclaim them; delete them on the sandbox server."
+msgstr "They were ours and are no longer claimed by any group, project or the utility slot — each holds memory until its TTL expires. A restart does not reclaim them; delete them on the sandbox server."
 
 msgid "This account has no window"
 msgstr "This account has no window"

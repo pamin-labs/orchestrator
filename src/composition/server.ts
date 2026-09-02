@@ -8,7 +8,7 @@ import { makeApp } from "./api.ts";
 import { landGroup } from "../api/panel/group.ts";
 import { roleFor, type Ctx } from "../mech/ctx.ts";
 import { joinQueue } from "../mech/flow/mergequeue.ts";
-import { bindSandboxKey } from "../mech/sandbox/auth.ts";
+import { bindSandboxKey, loadAuth } from "../mech/sandbox/auth.ts";
 import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Bus, trimEvents } from "../platform/persistence/event-bus.ts";
 import { projectOfGrp } from "../mech/util/rows.ts";
@@ -593,9 +593,29 @@ export async function indexTargets(db: DB, now = Date.now()): Promise<IndexProje
   return targets;
 }
 
-async function refreshIndex(ctx: Ctx): Promise<void> {
+/**
+ * The credential the navigator runs on, or the reason it cannot run.
+ *
+ * Asked once per pass rather than discovered twelve times. `modelAsk` runs the
+ * CLI in a container, and a CLI with no credential fails the same way a broken
+ * one does: non-zero exit, empty answer, counted as `failed`.
+ */
+/**
+ * So an unconfigured account produced twelve container round trips and the
+ * sentence "12 calls returned nothing", which named neither the account nor the
+ * fact that nobody had configured it. Observed hourly for a day where
+ * `indexModel.runtime` was `codex` and only Claude had been signed in.
+ */
+async function navigatorCredential(ctx: Ctx): Promise<string | null> {
+  const runtime = ctx.config.indexModel.runtime ?? "claude";
+  return (await loadAuth(ctx.db, runtime)) ? null : runtime;
+}
+
+export async function refreshIndex(ctx: Ctx): Promise<void> {
   const askIn = ctx.askIn;
   if (!askIn) return;
+  const missing = await navigatorCredential(ctx);
+  if (missing) return await warnIndexUnconfigured(ctx, missing);
   for (const project of await indexTargets(ctx.db)) await refreshProjectIndex(ctx, project, askIn);
 }
 
@@ -717,6 +737,30 @@ export async function chargedProject(db: DB, scope: Scope): Promise<number | und
  * Once *per state* rather than once ever: if the boss signs the index runtime in
  * and it still fails, that is news and not a repeat.
  */
+/**
+ * The navigator has no account, said once rather than discovered twelve times.
+ *
+ * Keyed on the credential stamp like `warnModelDown`, so it is one sentence per
+ * distinct state of the credentials rather than one per heartbeat — the pass
+ * runs every tick and `bus.emit` has no dedup of its own.
+ */
+async function warnIndexUnconfigured(ctx: Ctx, runtime: string): Promise<void> {
+  const stamp = await authStamp(ctx.db);
+  const down = memory(ctx.db).down;
+  // Project 0 is not a project: this is about the installation, not about any
+  // one repository, and it must not be cleared by a project whose pass later
+  // succeeds.
+  if (down.get(0) === stamp) return;
+  down.set(0, stamp);
+  await ctx.bus.emit({
+    author: roleFor(ctx, "compress_context"),
+    kind: "escalation",
+    intent: "inform",
+    severity: "blocker",
+    say: msg`PageIndex needs the ${{ runtime }} account and it is not configured. Sign in on the settings page, or point the index at a runtime that is — Settings → Plumbing → indexModel.runtime.`,
+  });
+}
+
 async function warnModelDown(ctx: Ctx, projectId: number, failed: number): Promise<void> {
   const stamp = await authStamp(ctx.db);
   const down = memory(ctx.db).down;

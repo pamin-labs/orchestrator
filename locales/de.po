@@ -196,6 +196,9 @@ msgstr "vor {months} Monaten"
 msgid "{mount} read-only"
 msgstr "{mount} schreibgeschützt"
 
+msgid "{n, plural, one {# container is} other {# containers are}} running that nothing here is using"
+msgstr "{n, plural, one {# Container läuft} other {# Container laufen}}, ohne dass hier irgendetwas ihn nutzt"
+
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n, plural, one {# Abschnitt} other {# Abschnitte}}"
 
@@ -2136,6 +2139,9 @@ msgstr "P95"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "PageIndex lässt sich nicht bauen: alle {n} Aufrufe kamen leer zurück. Prüfe in den Einstellungen, ob das Konto, auf dem der Index läuft, noch funktioniert."
 
+msgid "PageIndex needs the {runtime} account and it is not configured. Sign in on the settings page, or point the index at a runtime that is — Settings → Plumbing → indexModel.runtime."
+msgstr "PageIndex braucht das {runtime}-Konto und es ist nicht eingerichtet. Melde dich auf der Einstellungsseite an, oder richte den Index auf eine Runtime, die es ist — Einstellungen → Innereien → indexModel.runtime."
+
 msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
 msgstr "PageIndex: {n, plural, one {# Knoten} other {# Knoten}} zusammengefasst, {files, plural, one {# Datei} other {# Dateien}} indiziert"
 
@@ -3119,6 +3125,9 @@ msgstr "diese gehören zu keiner Gruppe: {paths} — Änderungen dort laufen üb
 
 msgid "These paths from the card don't exist in the repo"
 msgstr "Diese Pfade aus der Karte gibt es im Repository nicht"
+
+msgid "They were ours and are no longer claimed by any group, project or the utility slot — each holds memory until its TTL expires. A restart does not reclaim them; delete them on the sandbox server."
+msgstr "Sie waren unsere und werden von keiner Gruppe, keinem Projekt und nicht vom Utility-Platz mehr beansprucht — jeder hält Speicher, bis seine TTL abläuft. Ein Neustart holt sie nicht zurück; lösche sie auf dem Sandbox-Server."
 
 msgid "This account has no window"
 msgstr "Dieses Konto hat kein Fenster"

@@ -196,6 +196,9 @@ msgstr "{months} 個月前"
 msgid "{mount} read-only"
 msgstr "{mount} 只讀"
 
+msgid "{n, plural, one {# container is} other {# containers are}} running that nothing here is using"
+msgstr "{n, plural, other {# 個容器}}還在跑，但這邊沒有任何東西在用"
+
 msgid "{n, plural, one {# slice} other {# slices}}"
 msgstr "{n} 片"
 
@@ -2136,6 +2139,9 @@ msgstr "最慢"
 msgid "PageIndex cannot be built: all {n} calls came back with nothing. Check in settings whether the account the index runs on still works."
 msgstr "PageIndex 建不起來：{n} 次呼叫全部沒有返回。去設定頁看看索引用的那個帳號還能不能用。"
 
+msgid "PageIndex needs the {runtime} account and it is not configured. Sign in on the settings page, or point the index at a runtime that is — Settings → Plumbing → indexModel.runtime."
+msgstr "PageIndex 要用 {runtime} 帳號，而它還沒配。去設定頁登入，或者把索引指到一個配好的 runtime——設定 → 底層管道 → indexModel.runtime。"
+
 msgid "PageIndex: summarised {n, plural, one {# node} other {# nodes}}, {files, plural, one {# file} other {# files}} indexed"
 msgstr "PageIndex：總結了 {n, plural, other {# 個}}節點，索引了 {files, plural, other {# 個}}檔案"
 
@@ -3119,6 +3125,9 @@ msgstr "這些不屬於任何組：{paths}——那裡的改動要走老闆或�
 
 msgid "These paths from the card don't exist in the repo"
 msgstr "卡里這些路徑儲存庫裡沒有"
+
+msgid "They were ours and are no longer claimed by any group, project or the utility slot — each holds memory until its TTL expires. A restart does not reclaim them; delete them on the sandbox server."
+msgstr "它們本來是我們的，現在沒有任何組、專案或工具槽認領——每個都會一直佔著記憶體直到 TTL 到期。重啟不會回收，去沙箱伺服器上刪掉。"
 
 msgid "This account has no window"
 msgstr "這個帳號沒有視窗"
