@@ -8,11 +8,11 @@ import { makeApp } from "./api.ts";
 import { landGroup } from "../api/panel/group.ts";
 import { roleFor, type Ctx } from "../mech/ctx.ts";
 import { joinQueue } from "../mech/flow/mergequeue.ts";
-import { bindSandboxKey, loadAuth } from "../mech/sandbox/auth.ts";
+import { authStamp, bindSandboxKey, loadAuth } from "../mech/sandbox/auth.ts";
 import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Bus, trimEvents } from "../platform/persistence/event-bus.ts";
 import { projectOfGrp } from "../mech/util/rows.ts";
-import { maxMs, escalation, grp, job, project, runtime_auth as runtimeAuth } from "../platform/persistence/schema.ts";
+import { escalation, grp, job, project } from "../platform/persistence/schema.ts";
 import { consola } from "consola";
 import {
   checkCapabilities,
@@ -449,12 +449,6 @@ function memory(db: DB): IndexMemory {
   memories.set(db, fresh);
   return fresh;
 }
-
-/** When the runtimes' credentials last changed. Rule 17b reads the same row. */
-const authStamp = async (db: DB): Promise<number> => {
-  const [row] = await db.select({ at: maxMs(runtimeAuth.updated_at) }).from(runtimeAuth);
-  return row?.at ?? 0;
-};
 
 /**
  * Whether a pass would be spending calls that cannot be answered.
