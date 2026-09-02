@@ -86,6 +86,15 @@ export interface Ctx {
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
   /**
+   * How a terminal is opened in a container. Absent outside tests, where the
+   * real one talks to execd's pty WebSocket.
+   *
+   * Separate from `sandbox`, which is the command runner: a turn, a gate and a
+   * lease want output and an exit code, not a terminal. Only the CLI logins want
+   * this, and ADR 053 says why.
+   */
+  pty?: typeof import("./sandbox/pty.ts").openPty;
+  /**
    * Wired by the server: aborts when the process has stopped taking work.
    *
    * For the handlers that hold a connection open on purpose. `server.stop(false)`

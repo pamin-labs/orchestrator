@@ -2,8 +2,8 @@ import type { Bus } from "../../platform/persistence/event-bus.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { saveAuth } from "./auth.ts";
 import { REFRESH_HOME } from "./chatgpt.ts";
-import { execIn, execLines, getFile, putFile, UTIL } from "./sandbox.ts";
-import { shq } from "../../platform/process/shell.ts";
+import { execLines, getFile, UTIL } from "./sandbox.ts";
+import { openPty, type PtySession } from "./pty.ts";
 
 /**
  * Logging in without leaving the panel.
@@ -204,115 +204,6 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
   return run;
 }
 
-/**
- * A terminal, so a terminal program will talk.
- *
- * `claude setup-token` is a TUI. Without one it produces no link at all — it
- * printed nothing and exited 0 against the version this was written for, and
- * against 2.1.233 it simply hangs. Either way the panel had a login button that
- * stored nothing.
- */
-/**
- * Three details are load-bearing. **The window size is set explicitly** — a parentless
- * pty defaults to 80 columns and the CLI wraps its URL across five lines mid-token,
- * and the link handed to the boss has to be one string; this is also why `script
- * -qec`, in the image and tried first, does not work. **Stdin is a file this process
- * appends to**, because the sandbox SDK has no channel into a running command.
- *
- * This runs the real CLI and nothing else. A pty is a terminal; that is all that is
- * supplied.
- */
-/**
- * `-P` is the fix; the name is the belt beside it.
- *
- * Python puts the script's own directory at `sys.path[0]`, so this runner's own
- * first line `import pty` resolves there before the standard library. Installed
- * as `pty.py` it imported *itself*: `pty.fork` did not exist, and the traceback
- * went to a stream the login only reads for a URL — so every attempt was
- * reported as "the CLI needs a pty", which it does, and which this was giving it.
- */
-/**
- * Renaming was not enough, and the container is why. `/opt/orch` outlives the
- * server that wrote into it, so the old `pty.py` and its `__pycache__` were
- * still lying beside the renamed file and `import pty` found them instead.
- * Measured in the live utility container: `python3 login-pty.py` still died at
- * `File "/opt/orch/pty.py", line 4`, and `python3 -P login-pty.py` reached the
- * CLI.
- */
-/**
- * `-P` drops `sys.path[0]` entirely, so the answer no longer depends on what is
- * in the directory — which is the only version of this that a leftover file
- * cannot undo. The hyphenated name stays because it is free and it closes the
- * self-import case on its own; `-P` is the one carrying the guarantee.
- */
-export const PTY_PATH = "/opt/orch/login-pty.py";
-
-/**
- * **The line goes in ending in CR.** Enter on a terminal is `\r`; `\n` is what a
- * file ends a line with, and they are not the same key. A TUI sets the pty to
- * raw and reads the keys itself, so sent as `\n` the CLI took every character —
- * the code echoed back as asterisks — and never submitted. A paste box that
- * visibly does nothing.
- */
-/**
- * Measured against claude-code 2.1.233: the same run, handed a bare `\r`
- * afterwards, answered `OAuth error: ... 400`. The code had arrived all along
- * and was waiting on a key it was never sent. `rstrip` first, so whatever the
- * file ends with, exactly one CR arrives.
- */
-/**
- * The interpreter flags the runner is launched with, exported so the guard runs
- * it the way production does rather than asserting on a string.
- */
-export const PYTHON_FLAGS = ["-P"] as const;
-export const PTY_RUNNER = `import fcntl, os, pty, select, struct, sys, termios
-cmd = sys.argv[1:]
-inbox = os.environ.get("ORCH_PTY_IN", "")
-pid, fd = pty.fork()
-if pid == 0:
-    os.execvp(cmd[0], cmd)
-fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 200, 400, 0, 0))
-src = open(inbox, "rb") if inbox else None
-if src:
-    src.seek(0, 2)
-out = sys.stdout.buffer
-pending = []
-while True:
-    r, _, _ = select.select([fd], [], [], 0.2)
-    if fd in r:
-        try:
-            data = os.read(fd, 65536)
-        except OSError:
-            break
-        if not data:
-            break
-        out.write(data)
-        out.flush()
-    if src:
-        line = src.readline()
-        if line:
-            body = line.rstrip(b"\\r\\n")
-            if body:
-                pending.append(body)
-            pending.append(b"\\r")
-    if pending:
-        os.write(fd, pending.pop(0))
-    if os.waitpid(pid, os.WNOHANG)[0]:
-        try:
-            while True:
-                d = os.read(fd, 65536)
-                if not d:
-                    break
-                out.write(d)
-                out.flush()
-        except OSError:
-            pass
-        break
-`;
-
-/** Where the boss's pasted code is appended for the pty's stdin to pick up. */
-const CODE_FILE = "/tmp/orch-login-code";
-
 /** What the CLI is waiting for once the URL is out. Probed, and matched loosely. */
 const PASTE_RE = /paste code/i;
 
@@ -347,14 +238,13 @@ export const currentClaudeLogin = () => claudeLogin;
  * `claude setup-token` had exited. Without a deadline the read waits forever and
  * the panel is told nothing at all, which is worse than being told it failed.
  */
-async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal, submitted: Promise<void>) {
-  await putFile(ctx, UTIL, PTY_PATH, PTY_RUNNER);
-  await execIn(ctx, UTIL, `: > ${CODE_FILE}`);
-  const argv = `python3 ${PYTHON_FLAGS.join(" ")} ${PTY_PATH}`;
-  const stream = execLines(ctx, UTIL, `ORCH_PTY_IN=${CODE_FILE} ${argv} claude setup-token`, {
-    timeoutMs: PASTE_TTL_MS + 60_000,
-    signal,
-  });
+async function finishClaudeLogin(
+  ctx: Ctx,
+  run: LoginRun,
+  session: PtySession,
+  submitted: Promise<void>,
+): Promise<{ ok: boolean; detail: string }> {
+  const stream = session.lines;
   let token: string | null = null;
   let sawPrompt = false;
   // Raced with the deadline, not just awaited. The early stop above covers the
@@ -392,28 +282,41 @@ async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal, s
 
 export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) => Promise<void> } {
   if (claudeLogin) return claudeLogin;
-  const abort = new AbortController();
   let announceSubmit = () => {};
   const submitted = new Promise<void>((resolve) => {
     announceSubmit = resolve;
   });
+  // Resolved once the terminal is open. `submit` and `cancel` are reachable from
+  // the routes the moment this returns, and the boss cannot have pasted anything
+  // yet — but a cancel arriving during the handshake must still land.
+  let opened: PtySession | null = null;
   const run: LoginRun & { submit: (code: string) => Promise<void> } = {
     url: null,
     code: null,
-    // The slot is released here, not in `done`'s `finally`. An exec that does not
-    // answer its abort leaves `done` pending forever, and this is get-or-create:
-    // every later login was handed the dead run, whose `url` is still cached — so
-    // the panel showed a link, and the code pasted against it went into a file
-    // whose reader had already gone.
+    /**
+     * A signal the container actually receives, and the slot back.
+     *
+     * Aborting an HTTP request left the command running and `done` pending, so
+     * the slot stayed occupied by a dead run and every later login was handed
+     * it. The daemon's control channel stops the process itself.
+     */
     cancel: () => {
-      abort.abort();
+      opened?.signal("SIGINT");
+      opened?.close();
       if (claudeLogin === run) claudeLogin = null;
     },
-    // Appended, not overwritten: the runner holds the file open and reads from
-    // where it left off, so a second paste after a typo is a second line rather
-    // than a rewrite it will never see.
+    /**
+     * The code, then Enter, as two sends.
+     *
+     * The CLI turns on bracketed paste, so one write carrying text and a `\r`
+     * together arrives as one paste and the `\r` inside it is content rather
+     * than a keypress. Measured against claude-code 2.1.233: ninety-two
+     * characters and a CR in one write submitted nothing.
+     */
     submit: async (code) => {
-      await execIn(ctx, UTIL, `printf '%s\\n' ${shq(code.trim())} >> ${CODE_FILE}`);
+      opened?.write(code.trim());
+      await Bun.sleep(SUBMIT_KEY_GAP_MS);
+      opened?.write("\r");
       // Starts the clock on a verdict. Before the code goes in there is nothing
       // to wait for — the boss is in a browser and the CLI is silent, which is
       // not a fault and must not be timed.
@@ -423,16 +326,31 @@ export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) 
   };
   claudeLogin = run;
 
-  run.done = finishClaudeLogin(ctx, run, abort.signal, submitted).finally(() => {
-    // Aborted on the way out, including the successful way. `consumeLogin` stops
-    // reading the moment the token is printed, so without this the exec behind a
-    // stream that never ends is simply left running.
-    abort.abort();
+  run.done = (async () => {
+    const session = await (ctx.pty ?? openPty)(ctx, UTIL, "claude setup-token");
+    opened = session;
+    try {
+      return await finishClaudeLogin(ctx, run, session, submitted);
+    } finally {
+      // Closed on every way out, including the successful one: the read stops at
+      // the token and the CLI is still holding a terminal.
+      session.close();
+    }
+  })().finally(() => {
     claudeLogin = null;
   });
 
   return run;
 }
+
+/**
+ * How long the code sits in the terminal before Enter follows it.
+ *
+ * Two sends, not one, because the CLI turns on bracketed paste and a write
+ * carrying both is a paste whose `\r` is content. The gap is what makes them two
+ * arrivals rather than two writes the socket may coalesce.
+ */
+const SUBMIT_KEY_GAP_MS = 200;
 
 /** The code on that page is short-lived; the panel's pending state should be too. */
 export const PASTE_TTL_MS = 10 * 60_000;

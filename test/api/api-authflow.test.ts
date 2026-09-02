@@ -13,6 +13,7 @@ import { renderSaid } from "../../src/platform/text/lang.ts";
 import { said } from "../support/said.ts";
 import * as fx from "../support/factories.ts";
 import { escalationKey } from "../../src/mech/flow/escalate.ts";
+import { fakePty } from "../support/fake-pty.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -40,10 +41,16 @@ async function harness(
   // Port 9 (discard) is never listening, so the verdict is `down` and these
   // tests keep testing the CLI's own advice.
   server?: string,
+  // What the CLI says in its terminal. Claude's login runs through a pty over
+  // execd's WebSocket (ADR 053), so a command-runner double never sees it.
+  terminal: string[] = [],
 ) {
   const base = loadConfig();
+  const said = fakePty(terminal);
+  queueMicrotask(() => said.exit(0));
   const ctx = await testContext({
     sandbox: fakeSandbox((cmd) => handle(cmd)),
+    pty: async () => said,
     ...(server ? { config: { ...base, sandbox: { ...base.sandbox, server } } } : {}),
   });
   const db = ctx.db;
@@ -76,11 +83,10 @@ const bodies = async (h: Harness) =>
 test("the claude login hands back the link and nothing else", async () => {
   // The real CLI prints its URL and then the token on a later line. Neither the
   // response nor the panel's own state may carry the second one.
-  const h = await harness((cmd) =>
-    cmd.includes("setup-token")
-      ? { code: 0, out: `Open https://claude.ai/oauth/authorize?x=1 to continue\n${CLAUDE_TOKEN}\n` }
-      : { code: 0 },
-  );
+  const h = await harness(() => ({ code: 0 }), undefined, [
+    "Open https://claude.ai/oauth/authorize?x=1 to continue",
+    CLAUDE_TOKEN,
+  ]);
   await reset(h);
 
   const r = await h.post("/api/v1/auth/claude/login");
