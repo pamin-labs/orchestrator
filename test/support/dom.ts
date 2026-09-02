@@ -1,6 +1,5 @@
 import { afterEach } from "bun:test";
 import { createRequire } from "node:module";
-import { needsDom } from "../../scripts/needs-dom.ts";
 
 /**
  * A document, installed before any test module is evaluated.
@@ -46,7 +45,50 @@ const load = createRequire(import.meta.url) as <T>(id: string) => T;
 /** Bun's `fetch`, for a test that has replaced it and wants it back. */
 export const nativeFetch = globalThis.fetch;
 
-if (needsDom(Bun.main)) {
+/**
+ * The globals a server test needs back, captured before happy-dom lands.
+ *
+ * happy-dom brings its own `Request`, and its own is not Bun's: a body over the
+ * limit is answered 400 where Bun answers 413, which is an assertion in
+ * `test/http/stream.test.ts`. Registering for the whole worker means every
+ * server test in it would inherit those, so the network primitives are put back
+ * and only the document half of happy-dom is kept.
+ */
+/**
+ * `fetch` is in the list for the older reason: happy-dom's cannot talk to a real
+ * socket, and `test/integration` boots a real server on a real port.
+ */
+const NETWORK = [
+  "fetch",
+  "Request",
+  "Response",
+  "Headers",
+  "FormData",
+  "Blob",
+  "File",
+  "WebSocket",
+  // `AbortController` too, and for a reason worth stating: a signal made by one
+  // realm's controller is not an `AbortSignal` to the other's `Request`, so a
+  // half-restored set fails as `signal is not of type AbortSignal` rather than as
+  // anything about aborting.
+  "AbortController",
+  "AbortSignal",
+  "ReadableStream",
+  "WritableStream",
+  "TransformStream",
+] as const;
+const native = new Map(NETWORK.map((name) => [name, Reflect.get(globalThis, name) as unknown]));
+
+/**
+ * Registered for every worker, not for the files that ask.
+ *
+ * The gate used to read `Bun.main`, which names one file only when each gets its
+ * own process — and that is what `--isolate` buys, at the price of re-evaluating
+ * every module graph per file. A preload runs once per worker, so registering
+ * here is ~60ms ten times rather than ~60ms for each of the 67 browser files,
+ * and it is what lets the suite run without a fresh world per file at all.
+ */
+{
   // `require`, not a static import: a static import is loaded by all 149 files,
   // and the loading is the cost being removed. Not `await import` either —
   // measured against Bun 1.3.14, a preload's top-level `await` does **not** hold
@@ -56,6 +98,7 @@ if (needsDom(Bun.main)) {
   // the document exists before Bun goes looking for the test file.
   const { GlobalRegistrator } = load<typeof import("@happy-dom/global-registrator")>("@happy-dom/global-registrator");
   GlobalRegistrator.register({ url: "http://localhost/" });
+  for (const [name, value] of native) Reflect.set(globalThis, name, value);
 
   /**
    * Unmount between tests, once, for every file that registered.

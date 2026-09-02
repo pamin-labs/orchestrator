@@ -16,12 +16,14 @@ import { testContext } from "../support/test-context.ts";
  * timeline already said the sandbox server was refusing us.
  */
 /**
- * Its own file, with no `@testing-library/dom` import, and that is load-bearing
- * rather than tidiness: `needsDom` classifies a file by what it imports, and
- * under happy-dom `fetch` cannot reach a real socket — so the probe inside
- * `inspectServer` answers `none` whatever is listening, and this test would pass
- * against a build with the fix removed. `test/support/dom.ts` records the same
- * trap for `test/integration`.
+ * The probe inside `inspectServer` opens a real socket, and happy-dom's `fetch`
+ * cannot: given one, it answers `none` whatever is listening, and this test
+ * passes against a build with the fix removed.
+ *
+ * The preload used to keep that away by not registering a document for a file
+ * that imports no browser module. It registers for every worker now and puts
+ * Bun's `fetch` back after it, which is what makes this safe — see
+ * `test/support/dom.ts`.
  */
 
 /** A listener that answers 401 and nothing else, which is the whole condition:

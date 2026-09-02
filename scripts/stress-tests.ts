@@ -1,4 +1,3 @@
-import { needsDom } from "./needs-dom.ts";
 import { claim, TIMEOUT } from "./test.ts";
 
 /**
@@ -18,21 +17,18 @@ import { claim, TIMEOUT } from "./test.ts";
 const NON_REPLAYABLE = /^test\/(live|integration)\/|^test\/platform\/test-db-reclaim\.test\.ts$/;
 
 /**
- * A file that wants a document cannot be in this run, and that is a property of
- * the run rather than a list.
+ * No document exclusion any more, and the reason it existed is gone.
  *
- * `dom.ts` registers happy-dom for one file, decided from `Bun.main`, which
- * names one file only when each gets its own process. This run is deliberately
- * *not* `--isolate` — cross-file order dependence is what it exists to find — so
- * every browser test after the first got `HTMLElement is not defined`: 195
- * failures on the 2026-08-22 nightly, 20 of 21 distinct ones this.
+ * `dom.ts` used to register happy-dom for one file, decided from `Bun.main`,
+ * which names one file only when each gets its own process. This run is
+ * deliberately *not* `--isolate`, so every browser test after the first got
+ * `HTMLElement is not defined`: 195 failures on the 2026-08-22 nightly, 20 of 21
+ * distinct ones this. The preload registers once per worker now, which is what
+ * lets `bun run test` drop `--isolate` too.
  */
-/** They are covered by `bun run test`, which is `--parallel`. `needsDom` rather
- *  than a `.tsx` glob, so this asks the question the preload asks and cannot
- *  answer it differently. */
 export function stressFiles(): string[] {
   return [...new Bun.Glob("test/**/*.test.ts").scanSync({ cwd: ".", absolute: false })]
-    .filter((file) => !NON_REPLAYABLE.test(file) && !needsDom(file))
+    .filter((file) => !NON_REPLAYABLE.test(file))
     .toSorted();
 }
 

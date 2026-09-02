@@ -131,7 +131,25 @@ export function claim(): () => void {
  * retry and the run lock come along for free.
  */
 export const TIMEOUT = "--timeout=20000";
-const LIMITS = [TIMEOUT, `--max-concurrency=${Math.max(2, Math.round(cpus().length * 0.8))}`];
+/**
+ * `--no-isolate`, which is the whole reason this line has a comment.
+ *
+ * `--parallel` implies `--isolate`: a fresh global and a cleared module registry
+ * per file, so every file re-evaluates the module graph it imports. Measured on
+ * this tree, that is what the suite's memory was — 253 files at 29-55MB apiece,
+ * peaking around 7GB of system memory, and flat across worker counts because the
+ * total is files x graph rather than processes x anything. Bun's own benchmark
+ * says the same thing (https://bun.com/docs/test/parallel).
+ */
+/**
+ * What it costs is that files see each other's leftovers, which is a property
+ * the suite now has to hold rather than one the runner buys. Four leaks were
+ * paid off to get here: happy-dom's network primitives replacing Bun's, a
+ * catalog restored per test rather than only the locale, `startTheme` wiring a
+ * second keydown listener, and a test that emptied a catalog with a merging
+ * `load`. `bun run test:stress` was already the configuration that finds them.
+ */
+const LIMITS = [TIMEOUT, "--no-isolate", `--max-concurrency=${Math.max(2, Math.round(cpus().length * 0.8))}`];
 
 async function run(): Promise<{ code: number; crashed: boolean }> {
   const args = ["test", "--parallel", ...LIMITS, ...Bun.argv.slice(2)];
