@@ -13,25 +13,27 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
+Measured on `release/0.1.8`, 2026-09-02.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2040 pass, 6 environment skips, 0 fail, 2046 across 252 files
-- Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
+- Tests: 2046 pass, 6 environment skips, 0 fail, 2052 across 253 files
+- Coverage: 84.04% of statements, 74.34% of branches, 80.07% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
-  complexity 0, duplication 0
+  complexity 0, duplication 0, over 694 files
 - Fallow security, full inventory: **1** candidate —
   `scripts/embedding-check.ts:126`, a non-literal URL passed to `fetch()` in a
   development script, not reached from any runtime entry point
-- `bun run preflight`: every runnable step passed
+- `bun run preflight`: every runnable step passed, 50s
 - Block comments over eight lines: zero, enforced by
   `test/governance/comment-blocks.test.ts`
-- All ten catalogues at 1130/1130
+- All ten catalogues at 1135/1135
+- Suite cost, measured on a ten-core machine: ~2.1 GB of system memory at peak
+  and 16-24s wall clock, against 7.2 GB and 46s before this release. Recorded
+  because it was a defect, not as a target: the same suite measures differently
+  per machine, and a threshold on it would be a coin flip in CI
 - The released version is not recorded here. `package.json` holds it, the tag
   proves it, and ADR 050 makes merging the bump the release — so a line here
   would be a third owner, stale from the next merge until somebody remembered
-- Test time is not recorded as a target. The same suite measures differently per
-  machine, and a threshold on it would be a coin flip in CI
 
 ## Blockers and deviations
 
@@ -42,63 +44,74 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
   `adoptServerKey` now takes the key back at boot from the running server's own
   `--config`, which is what the panel's `Read from server` button already did by
   hand. Fixed 2026-09-01; guards in `test/mech/sandbox-boot.test.ts`.
-- **The login pty runner imported a module from its own directory.** Python puts
-  a script's directory at `sys.path[0]`, so `/opt/orch/pty.py` imported itself
-  and `claude setup-token` never started — reported as "the CLI needs a pty",
-  which the login was supplying. Renaming it alone did not hold: `/opt/orch`
-  outlives the server, so the old file stayed beside the new one and was found
-  instead. Launched with `-P` now, which drops `sys.path[0]` whatever is in the
-  directory. Fixed 2026-09-01; guard in `test/mech/login-pty-runner.test.ts`
-  reproduces the stale file.
-- **A pasted login code was typed but never entered.** The runner ended the line
-  it wrote into the pty with LF; Enter on a terminal is CR, and a TUI in raw
-  mode reads the keys itself — so claude echoed the code as asterisks and never
-  submitted it. Sends CR now. Measured against claude-code 2.1.233: the same run
-  given a bare `\r` answered `OAuth error: … 400`. Fixed 2026-09-01.
+- **The login drove a terminal it had built out of a Python script.** A file in
+  `/opt/orch` imported itself through `sys.path[0]`, outlived the server that
+  wrote it, and ended each line with LF where Enter is CR — three defects in a
+  terminal the daemon already offers. `src/mech/sandbox/pty.ts` speaks execd's
+  pty-over-WebSocket instead, and is the only file that knows the wire format.
+  Fixed 2026-09-02; [ADR 053](../adr/053-a-terminal-in-the-container-is-a-websocket.md),
+  guards in `test/mech/codex-device-login.test.ts`.
+- **A login stored a token nothing had ever asked the provider about.** A real
+  sign-in printed `sk-ant-oat01-…` and what was stored began eight characters in.
+  Measured: the stored value is refused by `/v1/models` and `/v1/messages`, the
+  same value with `sk-ant-o` in front is accepted by both. No rule written
+  against the text can tell a token from its tail — the provider can, and was
+  never asked, so the panel said signed in beside a banner saying refused and
+  both were honest. `finishClaudeLogin` runs the value through the credential
+  banner's own probe before `saveAuth`. Which layer dropped those eight
+  characters is **not** established: the pty splits on newlines only and the
+  resize is measured to work (`stty size` reports `200 400`). Fixed 2026-09-02;
+  guards in `test/mech/codex-device-login.test.ts`.
+- **Six paths took a resource and none of them gave it back.** A container the
+  reconnect could not reach, a retried create, a create that threw, the
+  production pool (24 idle, the oldest untouched for five minutes), the suite's
+  Postgres keeping every row it had ever deleted (635 MB in one database, its
+  largest table holding 527,582 dead rows against zero live ones), and the
+  integration smoke test booting the real server onto the developer's own sandbox
+  server — one agent container and one egress container per full-suite run, and
+  CI has nothing on 8080 so every one of those runs was green. Nine stranded
+  containers were found by a machine running out of memory. Fixed 2026-09-02;
+  `strandedCheck` reports them, and guards in
+  `test/governance/a-test-boots-onto-nothing-real.test.ts`.
+- **A fresh world per test file was what the suite's memory was.** `--parallel`
+  implies `--isolate`, so all 253 files re-evaluated the module graph they
+  import: 29-55 MB per file, flat across worker counts, ~7.2 GB at peak. The
+  suite runs without it now. Five leaks isolation had been hiding were paid off
+  to get there — happy-dom's network classes replacing Bun's, a catalog restored
+  between tests where only the locale was, `startTheme` wiring a second keydown
+  listener, a catalog emptied with a merging `load`, and a stubbed `matchMedia`
+  deleted rather than put back. Fixed 2026-09-02; guards in
+  `test/governance/preload-scope.test.ts`, and `bun run test:stress` — randomised,
+  ten reruns, and no longer skipping the browser files — is what holds it.
+- **Cancelling a login wedged every login after it, and a finished one waited on
+  a stream that never ended.** The get-or-create slot was released in `done`'s
+  `finally`, so an exec that ignored its abort left the slot held by a dead run;
+  and `realLines` closed its queue when the SDK's `run()` settled, which on a
+  live server it did not. The slot is released on `cancel()`, the stream ends on
+  the stream, and the wait after a submit is bounded by `timeouts.loginVerdictMs`
+  — the clock starts on the submit, so the boss's time in the browser is never
+  timed. Fixed 2026-09-02; guards in `test/mech/codex-device-login.test.ts`.
+- **Ctrl-C reported a clean shutdown as a failure.** `server.stop(false)` waits
+  for every request to finish and an SSE request never does, so one open panel
+  tab held the graceful phase to its full 10s deadline. `ctx.closing` aborts in
+  `stopIntake` now. Measured end to end: exit 1 after 10.1s before, exit 0 in
+  under a second after. Fixed 2026-09-01; guards in `test/http/stream.test.ts`.
 - **Release archives offered scripts they could not run.** The development
   `package.json` shipped unchanged into an archive with no `scripts/`, `web/src`
   or `node_modules` — thirty-nine scripts, seven runnable, and `start` in the
-  other set. `scripts/release-package-json.ts` now rewrites it at package time
-  and the release job checks every script's entrypoint exists in the archive.
-  Fixed 2026-09-01; guards in
+  other set. `scripts/release-package-json.ts` rewrites it at package time and
+  the release job checks every script's entrypoint exists in the archive. Fixed
+  2026-09-01; guards in
   `test/governance/release-archive-runs-what-it-offers.test.ts`.
-- **Ctrl-C reported a clean shutdown as a failure.** `server.stop(false)` waits
-  for every request to finish and an SSE request never does, so one open panel
-  tab held the graceful phase to its full 10s deadline and `shutdownRuntime`
-  returned 1. `ctx.closing` now aborts in `stopIntake` and the stream handler
-  ends on it. Measured end to end: exit 1 after 10.1s before, exit 0 in under a
-  second after. Fixed 2026-09-01; guards in `test/http/stream.test.ts`.
-- **Cancelling a login wedged every login after it.** The get-or-create slot was
-  released in `done`'s `finally`, so an exec that ignored its abort left the slot
-  held by a dead run — whose cached `url` still rendered a link, against a pty
-  that had exited. The cancel route waited on the same promise, unbounded.
-  Released on `cancel()` now, and the route's wait is raced with 2s. Fixed
-  2026-09-02; guards in `test/mech/codex-device-login.test.ts`.
-- **A finished login waited on a stream that never ended.** `realLines` closes
-  its queue when the SDK's `run()` settles, and measured on a live server it did
-  not — `claude setup-token` had exited with no process left in the container
-  while the stream stayed open, so `run.done` never resolved and no event was
-  emitted either way. The read stops on the printed token now, which is the whole
-  errand. Fixed 2026-09-02; guard in `test/mech/codex-device-login.test.ts`.
-- **A submitted login code could still end in silence.** Stopping the read on a
-  printed token covered the run that succeeds; the one that prints an OAuth error
-  and exits has no line to stop on, and the stream stays open regardless. The
-  wait after a submit is bounded by `timeouts.loginVerdictMs` now — the clock
-  starts on the submit, so the boss's time in the browser is never timed. Fixed
-  2026-09-02; guard in `test/mech/codex-device-login.test.ts`.
-- **The whole sign-in worked and the token was thrown away.** `sk-ant-oat01-`
-  became `sk-ant-at01-`, and both the recogniser and the shape check treated the
-  old prefix as the only possible form. Nothing is matched by string now — a
-  credential line is recognised as long, unbroken, not a URL, and mixing
-  character classes, which is what separates it from the link and from the
-  masked echo. Fixed 2026-09-02; guards in
-  `test/mech/codex-device-login.test.ts` and `test/mech/auth.test.ts`.
-- **A stored credential did not refresh the host checks.** The banner reporting
-  `credential:claude` unconfigured stayed up over a settings row that already
-  said the token was stored, until the readiness ticker got round to it.
-  `credentialChanged` awaits `ctx.recheck` now, so every way a credential lands
-  republishes the verdict. Fixed 2026-09-02; guard in
-  `test/api/paused-at.test.ts`.
+- **An unconfigured account was reported as twelve calls that said nothing,**
+  hourly for a day, on an installation where `indexModel.runtime` was `codex` and
+  only Claude had ever been signed in. An index pass asks nothing without a
+  credential for its runtime. Fixed 2026-09-02.
+- **CI's `test` job has been killed three times** — SIGTERM during
+  `test:coverage:ci`, no named failure, on #40, #41 and #42, each time green on a
+  rerun. Unexplained. It is the memory-heaviest job in the pipeline and this
+  release cuts that job's peak by about 5 GB, which is the leading hypothesis
+  rather than a diagnosis.
 - **Live OpenSandbox tests are environment-gated** and skip without a running
   sandbox server. That is the six skips in the count above.
 - **Repository settings are not repository files.** Branch protection, secret
