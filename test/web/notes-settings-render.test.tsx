@@ -425,22 +425,30 @@ test("a switcher row is filterable by its second line, and fills only the cells 
 type Opened = { url: string; features?: string; hadReply: boolean };
 
 /**
- * `window.open`, recorded and neutered, for the length of one body.
+ * What the browser was asked to do, recorded and neutered, for one body.
  *
- * Returning null is the blocked-popup case as well as the harness: the panel has
- * to survive it, because the link is rendered below either way.
+ * `window.open` returning null is the blocked-popup case as well as the harness:
+ * the panel has to survive it, because the link is rendered below either way.
+ * The clipboard is stubbed rather than read back — happy-dom has no permission
+ * model and `readText` would only return what this wrote.
  */
-async function withOpener(body: (calls: Opened[]) => Promise<void>) {
-  const calls: Opened[] = [];
+async function withBrowser(body: (io: { opened: Opened[]; copied: string[] }) => Promise<void>) {
+  const io = { opened: [] as Opened[], copied: [] as string[] };
   const opener = window.open;
+  const clipboard = navigator.clipboard;
   (window as { open: unknown }).open = (url: string, _target: string, features?: string) => {
-    calls.push({ url, ...(features === undefined ? {} : { features }), hadReply: login.replied });
+    io.opened.push({ url, ...(features === undefined ? {} : { features }), hadReply: login.replied });
     return null;
   };
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async (text: string) => void io.copied.push(text) },
+  });
   try {
-    await body(calls);
+    await body(io);
   } finally {
     (window as { open: unknown }).open = opener;
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
   }
 }
 
@@ -452,10 +460,12 @@ const signInButtons = () =>
 
 test("signing in to claude opens the link itself, not a blank placeholder", async () => {
   login.replied = false;
-  await withOpener(async (calls) => {
+  await withBrowser(async ({ opened: calls, copied }) => {
     fireEvent.click(signInButtons()[0]!);
 
     await waitFor(() => expect(calls).toHaveLength(1));
+    // Nothing to copy on this path: claude's code comes back *from* the browser.
+    expect(copied).toEqual([]);
     // The real link, on the one call. A placeholder open would be `""` here, and
     // would have to be followed by a second navigation this asserts does not
     // happen.
@@ -477,11 +487,17 @@ test("signing in to claude opens the link itself, not a blank placeholder", asyn
  * the container differs — neither login has a browser in it — so the difference
  * was that `signIn` opened the tab inside the claude branch.
  */
-test("signing in to codex opens its device page too", async () => {
-  await withOpener(async (calls) => {
+test("signing in to codex copies the code, then opens its device page", async () => {
+  await withBrowser(async ({ opened: calls, copied }) => {
     fireEvent.click(signInButtons()[1]!);
 
-    await waitFor(() => expect(calls).toHaveLength(1));
+    // The code first, so the boss lands on that page able to paste. Once —
+    // a second copy is a second toast saying what the first one said.
+    await waitFor(() => expect(copied).toEqual([device.code]));
+    expect(calls).toEqual([]);
+
+    // Past `TOAST_READ_MS`, which the default 1000ms `waitFor` window ends on.
+    await waitFor(() => expect(calls).toHaveLength(1), { timeout: 4000 });
     expect(calls[0]!.url).toBe(device.url);
     expect(calls[0]!.features).toContain("noopener");
     // And the code to type on the page that just opened is still on screen.

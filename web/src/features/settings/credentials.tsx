@@ -7,7 +7,7 @@ import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } f
 import { Segment, Segments } from "../../ui/segment";
 import { Switch } from "../../ui/switch";
 import { Tip } from "../../ui/tooltip";
-import { type AuthRow, DeviceCode, type Mode, ModeSchema } from "./auth";
+import { type AuthRow, copyLoginCode, DeviceCode, type Mode, ModeSchema } from "./auth";
 import {
   ClaudeLoginFlowSchema as ClaudeLoginSchema,
   CodexLoginFlowSchema as CodexLoginSchema,
@@ -341,6 +341,17 @@ function CredentialStatus({ state }: { state: CredentialState }) {
 const LOGIN_HOSTS = ["claude.ai", "claude.com", "anthropic.com", "openai.com"];
 
 /**
+ * Long enough to read "code copied" before the tab takes the screen.
+ *
+ * It is a pace, not a synchronisation — nothing waits on it and nothing is
+ * correct because of it. It does spend a second of the popup's transient
+ * activation window, which is five seconds in Chrome and Safari; see the note in
+ * `signIn` on what a blocked popup costs, which is the link staying one click
+ * away exactly as it was.
+ */
+const TOAST_READ_MS = 1_000;
+
+/**
  * The URL, if it is one we may navigate a tab to; null otherwise.
  *
  * Parsed rather than prefix-matched, twice over. `javascript:https://x` passes a
@@ -391,24 +402,40 @@ function SecretField({ state }: { state: CredentialState }) {
    * code to bring back, so claude gets the input below. Both return a URL, which
    * is the part `signIn` no longer has to ask which runtime it is holding.
    */
-  const start = async (): Promise<string | null> => {
+  const start = async (): Promise<{ url: string; code?: string } | null> => {
     if (props.runtime.key === "codex") {
       const res = await mutate(api.auth.codex.device.$post(), false, CodexLoginSchema);
       if (!res.ok) return null;
       changeLogin({ device: res.data });
-      return res.data.url;
+      return { url: res.data.url, code: res.data.code };
     }
     const res = await mutate(api.auth.claude.login.$post(), false, ClaudeLoginSchema);
     if (!res.ok) return null;
     changeLogin({ link: res.data.url });
-    return res.data.url;
+    return { url: res.data.url };
   };
 
   const signIn = async () => {
     changeForm({ busy: true });
-    const url = await start();
+    const started = await start();
     changeForm({ busy: false });
-    if (!url) return;
+    if (!started) return;
+    // The code is on the clipboard before the page it is typed into exists, so
+    // the boss arrives on that page able to paste. Only codex has one here —
+    // claude's code comes back *from* the browser, and there is nothing to copy
+    // until it does.
+    //
+    // The same `Login code copied` the Copy button raises, and only once: it
+    // says the code is already in hand, which is the thing that is easy to miss
+    // when a tab takes the screen a moment later. The pause is for reading it,
+    // not for waiting on anything — nothing here is synchronised by it.
+    if (started.code) {
+      copyLoginCode(started.code, t`Login code copied`);
+      await new Promise((resolve) => {
+        setTimeout(resolve, TOAST_READ_MS);
+      });
+    }
+    const url = started.url;
     // Opened here, because nothing else can. This comment used to say the CLI
     // opens the browser itself and a second tab would split the flow — true
     // while the login ran on the host, and false since it moved into the

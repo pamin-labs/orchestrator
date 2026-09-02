@@ -40,6 +40,17 @@ export const HostCheckSchema = HostFailure.extend({ ok: z.boolean() }).transform
 );
 
 /**
+ * The code on the clipboard, and the one sentence that says so.
+ *
+ * The Copy button and the sign-in both put it there. Not a hook: `signIn` copies
+ * before it opens the page, which is not a render.
+ */
+export function copyLoginCode(code: string, copied: string): void {
+  void navigator.clipboard.writeText(code);
+  toast.success(copied);
+}
+
+/**
  * A device code, the way both flows show one.
  *
  * The code is the interaction, not the link: the link alone opens a page asking
@@ -52,14 +63,7 @@ export function DeviceCode({ code, url, go }: { code: string; url: string; go: s
   return (
     <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md bg-sunk px-3 py-2.5">
       <code className="font-mono text-figure leading-none font-semibold tracking-[0.3em] select-all">{code}</code>
-      <Button
-        size="sm"
-        variant="quiet"
-        onClick={() => {
-          void navigator.clipboard.writeText(code);
-          toast.success(t`Login code copied`);
-        }}
-      >
+      <Button size="sm" variant="quiet" onClick={() => copyLoginCode(code, t`Login code copied`)}>
         <Trans>Copy</Trans>
       </Button>
       <span className="grow" />
