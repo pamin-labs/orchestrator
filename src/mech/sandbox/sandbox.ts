@@ -13,6 +13,7 @@ import {
   type ExecutionHandlers,
   type RunCommandOpts,
   Sandbox,
+  SandboxApiException,
   SandboxManager,
   type Volume,
 } from "@alibaba-group/opensandbox";
@@ -614,7 +615,48 @@ export async function discard(
   sessions.delete(sandboxId);
 }
 
-async function reconnect(ctx: Ctx, scope: Scope, sandboxId: string | null): Promise<Sandbox | null> {
+/**
+ * Whether a failed connect said the container is gone, or only that nobody
+ * answered.
+ *
+ * The SDK separates them and this used not to. `SandboxApiException` carries the
+ * server's own status, so a 404 or a 410 is the server stating there is no such
+ * sandbox; `SandboxReadyTimeoutException`, `SandboxUnhealthyException` and a bare
+ * transport error are a container that did not answer in time, or a server that
+ * did not answer at all.
+ */
+/**
+ * `Sandbox.connect` health-checks by default — 30s, polled — so a sandbox server
+ * that is merely slow to come up throws exactly like one that has lost the
+ * container. Treating both as gone meant a restart that won the race against the
+ * sandbox server *killed* the container it had come back to reattach to, which is
+ * the one thing the durable id column exists to prevent.
+ */
+const isGone = (e: unknown): boolean =>
+  e instanceof SandboxApiException && (e.statusCode === 404 || e.statusCode === 410);
+
+/**
+ * The remembered container, or null when there is nothing remembered.
+ *
+ * Throws when the container is still ours and could not be reached. That is not
+ * the same as null: null means the binding is clear and the caller may build a
+ * replacement, and a caller that builds one beside a container we still own is
+ * how one becomes two. `ensureSandbox` turns the throw into the hold every other
+ * unreachable-server path already uses.
+ */
+/**
+ * `connect` and `kill` are injected for the same reason `discard`'s is: this
+ * branch is about what a *failed* connect means, and a test that has to reach a
+ * real sandbox server to produce one cannot run in the suite.
+ */
+export async function reconnect(
+  ctx: Ctx,
+  scope: Scope,
+  sandboxId: string | null,
+  connect: (id: string) => Promise<Sandbox> = async (id) =>
+    Sandbox.connect({ connectionConfig: await connection(ctx), sandboxId: id }),
+  kill?: (id: string) => Promise<void>,
+): Promise<Sandbox | null> {
   if (!sandboxId) return null;
   const cached = live.get(sandboxId);
   // Deliberately above the span: a cached handle is not a round trip, and a span
@@ -625,19 +667,20 @@ async function reconnect(ctx: Ctx, scope: Scope, sandboxId: string | null): Prom
     { attributes: sandboxScope(scope, "project" in scope ? scope.project : null) },
     async (span) => {
       try {
-        const sandbox = await Sandbox.connect({ connectionConfig: await connection(ctx), sandboxId });
+        const sandbox = await connect(sandboxId);
         live.set(sandboxId, sandbox);
         return sandbox;
       } catch (e) {
         // A reconnect that burns its timeout and fails falls through to a fresh
         // `sandbox.create`, so without this span its cost was charged there.
         span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+        if (!isGone(e)) throw e;
         // Forgotten *and* disposed of. Forgetting alone left a container running
         // that nothing would ever reconnect to, claim or reap before its
         // twenty-four hour TTL — and the next call created another. Measured on
         // one machine: 48 orphans against a `grp` table with no rows, roughly
         // 11 GB, from a project index that retried and failed all day.
-        await discard(ctx, sandboxId);
+        await discard(ctx, sandboxId, kill);
         await remember(ctx.db, scope, null);
         return null;
       } finally {
@@ -1214,7 +1257,10 @@ export async function listProjectSkills(ctx: Ctx, projectId: number): Promise<st
   for (const scope of scopes) {
     const { sandboxId } = await owner(ctx.db, scope);
     if (!sandboxId) continue;
-    const sb = await reconnect(ctx, scope, sandboxId);
+    // Null on any failure, which is this function's documented answer for
+    // "nobody answered" — a settings click must not raise a server outage as an
+    // error over a list of skills.
+    const sb = await reconnect(ctx, scope, sandboxId).catch(() => null);
     if (!sb) continue;
     const probe = await sb.commands.run(`${SKILL_SYNC}; test -d ${WORK}/.git && echo yes`).catch(() => null);
     const out = stdoutText(probe);
@@ -1770,10 +1816,23 @@ async function realKill(ctx: Ctx, scope: Scope): Promise<void> {
 }
 
 /** Push the expiry out. A group mid-turn must not be reaped by its own TTL. */
+/**
+ * Through `reconnect`, so a restart does not stop the clock being pushed.
+ *
+ * This read `live` directly, and `live` is a handle cache a restart empties — so
+ * the watchdog selected every scope with a `sandbox_id` from the database and
+ * then renewed none of them until something else happened to open one. Step 18's
+ * own comment calls renewing every tick "the other half of that bargain", and
+ * across a restart that half was not paid.
+ */
+/**
+ * Failure is not a fault here: a renew that could not reach the server is a tick
+ * that did nothing, and the next one is thirty seconds away. What must not
+ * happen is the watchdog aborting the rest of its step over it.
+ */
 async function realRenew(ctx: Ctx, scope: Scope): Promise<void> {
   const { sandboxId, projectId } = await owner(ctx.db, scope);
-  if (!sandboxId) return;
-  const sb = live.get(sandboxId);
+  const sb = await reconnect(ctx, scope, sandboxId).catch(() => null);
   if (!sb) return;
   await sb.renew((await specFor(ctx, projectId)).ttlSeconds).catch(() => {});
 }

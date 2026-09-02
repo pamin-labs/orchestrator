@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setIn } from "../../src/mech/sandbox/server.ts";
 import { loadAuth, SANDBOX_KEY, saveAuth } from "../../src/mech/sandbox/auth.ts";
-import { openMemory } from "../../src/platform/persistence/database.ts";
+import { openMemory, writeSetting } from "../../src/platform/persistence/database.ts";
 import {
   adoptServerKey,
   createMountedSandbox,
@@ -13,14 +13,16 @@ import {
   isServerLine,
   keyInConfig,
   pidAlive,
+  reconnect,
   remoteInClear,
   SANDBOX_API_KEY_HEADER,
   sandboxScope,
   splitAddr,
   UTIL,
+  utilSandbox,
 } from "../../src/mech/sandbox/sandbox.ts";
 import { testContext } from "../support/test-context.ts";
-import type { Sandbox } from "@alibaba-group/opensandbox";
+import { SandboxApiException, SandboxReadyTimeoutException, type Sandbox } from "@alibaba-group/opensandbox";
 import type { SandboxSpec } from "../../src/contracts/config.ts";
 import { tempDir } from "../support/temp.ts";
 
@@ -350,6 +352,53 @@ describe("a sandbox that cannot be reached is disposed of", () => {
 
   test("a delete that fails does not stop the caller", async () => {
     await discard(await ctx, "abc-123", () => Promise.reject(new Error("server unreachable")));
+  });
+});
+
+/**
+ * A container we cannot reach is not a container that is gone.
+ *
+ * `Sandbox.connect` health-checks by default — thirty seconds, polled — so a
+ * sandbox server that is merely slow to come up throws exactly like one that has
+ * lost the container. Both were read as gone and both killed it, which turned a
+ * restart that won the race against the sandbox server into a delete: the
+ * durable id column exists to reattach to that container, and the reattach was
+ * what destroyed it.
+ */
+describe("reconnect tells a slow server from a missing sandbox", () => {
+  const seeded = async () => {
+    const db = await openMemory();
+    await writeSetting(db, "util_sandbox_id", "sbx-1");
+    return { db, ctx: await testContext({ db }) };
+  };
+
+  test("a server that did not answer in time keeps the binding", async () => {
+    const { db, ctx } = await seeded();
+    const slow = () => Promise.reject(new SandboxReadyTimeoutException({ message: "not ready" }));
+
+    // Thrown, not null. Null means the binding is clear and the caller may build
+    // a replacement — beside a container we still own, which is how one becomes
+    // two. `ensureSandbox` turns this into the hold every other unreachable
+    // path already uses.
+    const raised = await reconnect(ctx, UTIL, "sbx-1", slow).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    // The server's own exception, not one of ours: what it says is why the hold
+    // `ensureSandbox` raises will name the right thing.
+    expect(raised).toBeInstanceOf(SandboxReadyTimeoutException);
+    expect((await utilSandbox(db)).id).toBe("sbx-1");
+  });
+
+  test("a server that says there is no such sandbox clears it and deletes it", async () => {
+    const { db, ctx } = await seeded();
+    const gone = () => Promise.reject(new SandboxApiException({ message: "no such sandbox", statusCode: 404 }));
+    const killed: string[] = [];
+
+    expect(await reconnect(ctx, UTIL, "sbx-1", gone, async (id) => void killed.push(id))).toBeNull();
+    // Deleted as well as forgotten: forgetting alone is the 48-orphan incident.
+    expect(killed).toEqual(["sbx-1"]);
+    expect((await utilSandbox(db)).id).toBeNull();
   });
 });
 
