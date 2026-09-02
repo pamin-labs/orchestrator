@@ -5,6 +5,7 @@ import { loadConfig } from "../../src/platform/config/load.ts";
 import { newScheduler } from "../support/scheduler.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { modelAsk } from "../../src/mech/knowledge/pageindex.ts";
+import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { event } from "../../src/platform/persistence/schema.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 
@@ -67,6 +68,32 @@ test("changing the model starts a fresh count", async () => {
 
   const second = modelAsk(h.ctx, { model: "sonnet", runtime: "claude" }, { project: 1 });
   await second("q");
+  expect(h.calls).toHaveLength(4);
+});
+
+/**
+ * Signing the runtime in is the fix, and it was the one thing that did not reopen
+ * the breaker.
+ *
+ * `record` clears the count only on a success and `tripped` returns before the
+ * call that could produce one, so the single way back sat behind the door it
+ * locked.
+ */
+/**
+ * Measured on a live installation: tripped while codex had no credential, codex
+ * signed in at 14:04, still returning an empty string twelve times a tick at
+ * 00:50 — and the panel said "all 12 calls came back with nothing, check the
+ * account" over an account that was fine and had never been asked.
+ */
+test("a credential arriving starts a fresh count, because that is what could fix it", async () => {
+  const h = await harness(() => ({ code: 1, err: "no credential" }));
+  const spec = { model: "haiku", runtime: "claude" } as const;
+  for (let i = 0; i < 4; i++) await modelAsk(h.ctx, spec, { project: 1 })("q");
+  expect(h.calls).toHaveLength(3);
+
+  // The same key, the same model, the same runtime — only the credentials moved.
+  await saveAuth(h.db, { runtime: "claude", mode: "oauth_token", secret: "sk-ant-new" });
+  await modelAsk(h.ctx, spec, { project: 1 })("q");
   expect(h.calls).toHaveLength(4);
 });
 

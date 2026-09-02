@@ -7,6 +7,7 @@ import { agent, grp, note, nowMs } from "../../platform/persistence/schema.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
+import { authStamp } from "../sandbox/auth.ts";
 import { claudeUsage, promptPath, UsageSchema, type Usage } from "../../runtime/claude.ts";
 import { codexUsage } from "../../runtime/codex.ts";
 import { shq } from "../../platform/process/shell.ts";
@@ -288,9 +289,13 @@ export function modelAsk(
       ["claude", "-p", "--output-format", "json", "--model", spec.model];
   const breaker = breakerKey(scope, spec);
   return async (prompt) => {
-    if (await tripped(ctx, breaker)) return "";
+    // Read per call, not once: signing the runtime in is what makes a tripped
+    // breaker worth reopening, and a value resolved when the `Ask` was built
+    // would be the state at boot for the life of the process.
+    const stamp = await authStamp(ctx.db);
+    if (await tripped(ctx, breaker, stamp)) return "";
     const answer = await call(prompt);
-    await record(ctx, breaker, answer !== "", spec);
+    await record(ctx, breaker, stamp, answer !== "", spec);
     return answer;
   };
 
@@ -330,6 +335,22 @@ export function modelAsk(
           }
           const { text, usage } = codex ? readCodex(r.out) : readClaude(r.out);
           if (usage) onUsage?.(usage);
+          // Exit 0 and nothing to show for it: the shape the failure above is
+          // written for, and the one branch it did not cover. Three calls came
+          // back this way on a live installation — 7.3s, 7.8s and 8.7s, a real
+          // round trip every time — and each left a span with `unset` status and
+          // no message, so the only evidence was a count in a sentence blaming
+          // the account.
+          if (!text.trim()) {
+            span.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: `exit 0 with no answer: ${
+                scrub(r.err || r.out)
+                  .trim()
+                  .slice(-400) || "said nothing"
+              }`,
+            });
+          }
           return text;
         } finally {
           span.end();
@@ -362,17 +383,49 @@ const breakerKey = (scope: Scope, spec: { runtime?: string; model: string }): st
 const scopeKey = (scope: Scope): string =>
   "grp" in scope ? `g${scope.grp}` : "project" in scope ? `p${scope.project}` : "util";
 
-async function tripped(ctx: Ctx, key: string): Promise<boolean> {
-  return Number(await readSetting(ctx.db, key)) >= BREAKER_TRIPS;
+/**
+ * The count, and the credential state it was counted under.
+ *
+ * Stored together because a count on its own latches. `record` clears it only on
+ * a success and `tripped` returns before the call that could produce one, so the
+ * single thing that reopens the breaker sits behind the door it locks — the only
+ * accidental way out was changing the model or the runtime, which changes the key.
+ */
+/**
+ * Measured on a live installation: it tripped while codex had no credential,
+ * codex was signed in at 14:04, and at 00:50 it was still returning an empty
+ * string twelve times a tick without opening a span or leaving the process. The
+ * grounds to try again are the ones `warnIndexUnconfigured` has stated in a
+ * comment since it was written — nothing about a repository can make an
+ * unauthenticated CLI authenticate, so a credential change is what counts.
+ */
+async function breakerAt(ctx: Ctx, key: string): Promise<{ stamp: number; failures: number }> {
+  const [stamp, failures] = String((await readSetting(ctx.db, key)) ?? "").split(":");
+  return { stamp: Number(stamp) || 0, failures: Number(failures) || 0 };
 }
 
-async function record(ctx: Ctx, key: string, ok: boolean, spec: { runtime?: string; model: string }): Promise<void> {
+async function tripped(ctx: Ctx, key: string, stamp: number): Promise<boolean> {
+  const at = await breakerAt(ctx, key);
+  return at.stamp === stamp && at.failures >= BREAKER_TRIPS;
+}
+
+async function record(
+  ctx: Ctx,
+  key: string,
+  stamp: number,
+  ok: boolean,
+  spec: { runtime?: string; model: string },
+): Promise<void> {
   if (ok) {
     await writeSetting(ctx.db, key, null);
     return;
   }
-  const failures = Number(await readSetting(ctx.db, key)) + 1;
-  await writeSetting(ctx.db, key, String(failures));
+  const at = await breakerAt(ctx, key);
+  // A count under an older credential is a count for a state that no longer
+  // exists, so it is replaced rather than added to — which also means the row
+  // never accumulates one per rotation.
+  const failures = (at.stamp === stamp ? at.failures : 0) + 1;
+  await writeSetting(ctx.db, key, `${stamp}:${failures}`);
   // Once, on the way past the threshold. The boss was already told 43 times in
   // that window that the index would not build; what nobody was told is that the
   // asking had stopped being worth its clock.

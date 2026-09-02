@@ -13,30 +13,41 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `fix/stress-never-ran-the-browser-tests`, 2026-09-03.
+Measured on `fix/the-index-breaker-had-no-way-back`, 2026-09-03.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2051 pass, 6 environment skips, 0 fail, 2057 across 253 files
+- Tests: 2052 pass, 6 environment skips, 0 fail, 2058 across 253 files
 - Coverage: 84.06% of statements, 74.34% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0, over 694 files
 - Fallow security, full inventory: **1** candidate —
-  `scripts/embedding-check.ts:126`, a non-literal URL passed to `fetch()` in a
-  development script, not reached from any runtime entry point
+  `scripts/embedding-check.ts:126`, a non-literal URL in a development script,
+  not reached from any runtime entry point
 - `bun run preflight`: every runnable step passed, 50s
 - Block comments over eight lines: zero, enforced by
   `test/governance/comment-blocks.test.ts`
 - All ten catalogues at 1135/1135
 - Suite cost, measured on a ten-core machine: ~2.1 GB of system memory at peak
   and 16-24s wall clock, against 7.2 GB and 46s before this release. Recorded
-  because it was a defect, not as a target: the same suite measures differently
-  per machine, and a threshold on it would be a coin flip in CI
+  because it was a defect, not as a target — the same suite measures differently
+  per machine
 - The released version is not recorded here. `package.json` holds it, the tag
   proves it, and ADR 050 makes merging the bump the release — so a line here
   would be a third owner, stale from the next merge until somebody remembered
 
 ## Blockers and deviations
 
+- **The index navigator's circuit breaker had no way back.** `record` clears the
+  count only on a success and `tripped` returns before the call that could produce
+  one, so the one thing that reopens it sat behind the door it locked — the only
+  accidental way out was changing the model or the runtime, which changes the key.
+  Measured live: tripped while codex had no credential, codex signed in at 14:04,
+  still returning an empty string twelve times a tick at 00:50 under a panel
+  sentence blaming an account that was fine. The count now carries the credential
+  stamp the two index warnings already key on, and `index.ask` — which set ERROR
+  only on a non-zero exit — now says what the CLI said when the answer is empty,
+  which is how the cause below was found. Fixed 2026-09-03; guard in
+  `test/mech/index-breaker.test.ts`.
 - **Every claude turn ended `no_result` with the CLI's own refusal as its text.**
   The container runs as root — no `USER` in the image, `HOME` is `/root`, every
   path the orchestrator writes under it — and claude-code will not accept
@@ -54,17 +65,13 @@ Measured on `fix/stress-never-ran-the-browser-tests`, 2026-09-03.
 
 - **The first codex sign-in on a fresh install could not succeed.** The device
   login ran `codex login --device-auth` with `CODEX_HOME=/root/.codex-refresh`
-  and nothing had ever created that directory — `writeLoginFiles` makes the decoy
-  home, and the real one only appeared as a side effect of `seedHome`, which runs
-  *after* a credential exists. codex 0.147.0 refuses to load its configuration on
-  a CODEX_HOME that is not there, so it exited before printing a code and the
+  and nothing had ever created it — the decoy home is the one `writeLoginFiles`
+  makes, and the real one appeared only as a side effect of `seedHome`, which
+  runs after a credential exists. codex 0.147.0 refuses to load its configuration
+  on a CODEX_HOME that is not there, so it exited before printing a code and the
   panel reported a CLI whose output had changed. `prepareHome` is the one owner
-  of a prepared home now, through the `CodexHomeIO` seam both paths already had,
-  and a login that ends with a reason shows that reason instead of sending the
-  boss into the image. The panel also opens codex's device page itself, as it
-  already did for claude — neither container has a browser in it, so the
-  difference was only that the tab was opened inside one branch. Fixed
-  2026-09-02; guards in `test/mech/codex-device-login.test.ts` and
+  now, and the panel opens codex's device page itself as it already did claude's.
+  Fixed 2026-09-02; guards in `test/mech/codex-device-login.test.ts` and
   `test/web/notes-settings-render.test.tsx`.
 - **A sandbox key written to two homes could not converge.** `ourKey` stored it
   in `runtime_auth` and `writeConfig` wrote it into `~/.orch-cache/sandbox.toml`,
@@ -130,10 +137,6 @@ Measured on `fix/stress-never-ran-the-browser-tests`, 2026-09-03.
   the stream, and the wait after a submit is bounded by `timeouts.loginVerdictMs`
   — the clock starts on the submit, so the boss's time in the browser is never
   timed. Fixed 2026-09-02; guards in `test/mech/codex-device-login.test.ts`.
-- **An unconfigured account was reported as twelve calls that said nothing,**
-  hourly for a day, on an installation where `indexModel.runtime` was `codex` and
-  only Claude had ever been signed in. An index pass asks nothing without a
-  credential for its runtime. Fixed 2026-09-02.
 - **CI's `test` job has been killed three times** — SIGTERM during
   `test:coverage:ci`, no named failure, on #40, #41 and #42, each time green on a
   rerun. Unexplained. It is the memory-heaviest job in the pipeline and this

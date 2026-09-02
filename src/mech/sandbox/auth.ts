@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import type { DB } from "../../platform/persistence/database.ts";
-import { runtime_auth } from "../../platform/persistence/schema.ts";
+import { maxMs, runtime_auth } from "../../platform/persistence/schema.ts";
 import { trailers } from "../git/ghlogin.ts";
 import { forgetHolds } from "../git/repository.ts";
 import { maskValue } from "../../platform/observability/redaction.ts";
@@ -271,6 +271,19 @@ export async function bindSandboxKey(db: DB, server: string): Promise<void> {
   if (!stored || stored.baseUrl) return;
   await saveAuth(db, { ...stored, baseUrl: `http://${server.trim()}` });
 }
+
+/**
+ * When any runtime's credentials last changed, as one number.
+ *
+ * Lives with the table rather than beside one of its readers: it is the answer to
+ * "is there any point trying again", and three places ask it — the index pass's
+ * pause, the warning that would otherwise repeat every heartbeat, and the
+ * navigator's circuit breaker, which had no way back at all without it.
+ */
+export const authStamp = async (db: DB): Promise<number> => {
+  const [row] = await db.select({ at: maxMs(runtime_auth.updated_at) }).from(runtime_auth);
+  return row?.at ?? 0;
+};
 
 export async function loadAuth(db: DB, runtime: string): Promise<RuntimeAuth | null> {
   const [r] = await db
