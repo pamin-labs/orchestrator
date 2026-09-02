@@ -431,6 +431,37 @@ test("a missing storage section is added rather than dropping the allowlist on t
  * the other back — verified byte-identical to `run()` on a failure, a success that
  * writes to stderr, a plain success and multi-line output.
  */
+/**
+ * A command that exits takes its own output with it.
+ *
+ * The wrapper's last line has been a subshell since a bare `exit` ended the
+ * session once. The *caller's* command was still a brace group, so an `exit` in
+ * it ended the session too — before the two `cat`s that read the captured
+ * streams back. What the caller got was exit 0 and two empty strings, which is a
+ * command that succeeded silently.
+ */
+/**
+ * `modelAsk` sends `codex … < prompt; rc=$?; rm -f prompt; exit $rc`, so
+ * PageIndex has never built on this installation: every call came back empty,
+ * three of them tripped its breaker, and the panel reported an account that was
+ * fine. Run against the real bash rather than asserted as a shape — the bug was
+ * that the shell did something other than what the string looked like.
+ */
+test("a command that exits still hands back what it printed", async () => {
+  const file = join(tempDir("orch-wrap-"), "e");
+  const run = async (cmd: string) => {
+    const p = Bun.spawn(["bash", "-c", wrapForSession(cmd, file)], { stdout: "pipe", stderr: "pipe" });
+    const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited]);
+    return { ...unwrap(out.replace(/\n$/, "")), code };
+  };
+
+  expect(await run("echo hi")).toEqual({ out: "hi", err: "", code: 0 });
+  // The shape every caller that cleans up after itself writes.
+  expect(await run("echo hi; rc=$?; exit $rc")).toEqual({ out: "hi", err: "", code: 0 });
+  // And a failure keeps both halves: the code, and what was said about it.
+  expect(await run("echo hi; echo bad >&2; exit 3")).toEqual({ out: "hi", err: "bad", code: 3 });
+});
+
 test("the session wrapper separates the streams the way run() does", () => {
   // The marker travels as a `printf` escape, never as a shell argument: the first
   // version used NUL, which a shell argument cannot carry — it would have been

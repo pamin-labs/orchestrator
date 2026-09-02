@@ -13,10 +13,10 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `fix/the-index-breaker-had-no-way-back`, 2026-09-03.
+Measured on `fix/a-command-that-exits-took-its-output-with-it`, 2026-09-03.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2052 pass, 6 environment skips, 0 fail, 2058 across 253 files
+- Tests: 2053 pass, 6 environment skips, 0 fail, 2059 across 253 files
 - Coverage: 84.06% of statements, 74.34% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0, over 694 files
@@ -36,6 +36,22 @@ Measured on `fix/the-index-breaker-had-no-way-back`, 2026-09-03.
   would be a third owner, stale from the next merge until somebody remembered
 
 ## Blockers and deviations
+
+- **A command that exits took its own output with it, so PageIndex never built.**
+  `wrapForSession` redirects each stream to a file and reads both back, and the
+  command sat in a brace group — `exit` inside one ends the *session* every caller
+  in that container shares, before the two `cat`s run. The caller got exit 0 and
+  two empty strings, which is a command that succeeded silently. `modelAsk` sends
+  `codex … < prompt; rc=$?; rm -f prompt; exit $rc`, so every index call came back
+  empty; the turn path sends the same shape and was spared only because
+  `execLines` never uses the session. Measured through `execIn`: `echo hello` gave
+  `hello`, `echo hello; rc=$?; exit $rc` gave `""`, and the same command forced
+  one-shot gave `hello`. A subshell fixes it and stops a caller's `cd` leaking
+  into the next command. The wrapper's own trailing `exit` had been a subshell
+  since it ended the session once — the bug class was fixed in one of its two
+  places. Fixed 2026-09-03; guard runs the wrapper through a real bash, because
+  the defect was that the shell did something other than what the string looked
+  like.
 
 - **The index navigator's circuit breaker had no way back.** `record` clears the
   count only on a success and `tripped` returns before the call that could produce
@@ -87,28 +103,6 @@ Measured on `fix/the-index-breaker-had-no-way-back`, 2026-09-03.
   pty-over-WebSocket instead, and is the only file that knows the wire format.
   Fixed 2026-09-02; [ADR 053](../adr/053-a-terminal-in-the-container-is-a-websocket.md),
   guards in `test/mech/codex-device-login.test.ts`.
-- **A login stored a token nothing had ever asked the provider about.** A real
-  sign-in printed `sk-ant-oat01-…` and what was stored began eight characters in.
-  Measured: the stored value is refused by `/v1/models` and `/v1/messages`, the
-  same value with `sk-ant-o` in front is accepted by both. No rule written
-  against the text can tell a token from its tail — the provider can, and was
-  never asked, so the panel said signed in beside a banner saying refused and
-  both were honest. `finishClaudeLogin` runs the value through the credential
-  banner's own probe before `saveAuth`. Which layer dropped those eight
-  characters is **not** established: the pty splits on newlines only and the
-  resize is measured to work (`stty size` reports `200 400`). Fixed 2026-09-02;
-  guards in `test/mech/codex-device-login.test.ts`.
-- **Six paths took a resource and none of them gave it back.** A container the
-  reconnect could not reach, a retried create, a create that threw, the
-  production pool (24 idle, the oldest untouched for five minutes), the suite's
-  Postgres keeping every row it had ever deleted (635 MB in one database, its
-  largest table holding 527,582 dead rows against zero live ones), and the
-  integration smoke test booting the real server onto the developer's own sandbox
-  server — one agent container and one egress container per full-suite run, and
-  CI has nothing on 8080 so every one of those runs was green. Nine stranded
-  containers were found by a machine running out of memory. Fixed 2026-09-02;
-  `strandedCheck` reports them, and guards in
-  `test/governance/a-test-boots-onto-nothing-real.test.ts`.
 - **A fresh world per test file was what the suite's memory was.** `--parallel`
   implies `--isolate`, so all 253 files re-evaluated the module graph they
   import: 29-55 MB per file, flat across worker counts, ~7.2 GB at peak. The
