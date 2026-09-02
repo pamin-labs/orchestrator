@@ -6,7 +6,10 @@ import { loadAuth, SANDBOX_KEY, saveAuth } from "../../src/mech/sandbox/auth.ts"
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import {
   adoptServerKey,
+  createMountedSandbox,
   discard,
+  sweepScope,
+  type SweepApi,
   isServerLine,
   keyInConfig,
   pidAlive,
@@ -17,6 +20,8 @@ import {
   UTIL,
 } from "../../src/mech/sandbox/sandbox.ts";
 import { testContext } from "../support/test-context.ts";
+import type { Sandbox } from "@alibaba-group/opensandbox";
+import type { SandboxSpec } from "../../src/contracts/config.ts";
 import { tempDir } from "../support/temp.ts";
 
 /**
@@ -346,4 +351,125 @@ describe("a sandbox that cannot be reached is disposed of", () => {
   test("a delete that fails does not stop the caller", async () => {
     await discard(await ctx, "abc-123", () => Promise.reject(new Error("server unreachable")));
   });
+});
+
+/**
+ * A retried create leaves the first attempt's container behind.
+ *
+ * The retry exists because the server draws a random host port for the egress
+ * sidecar and does not check it, so two containers starting together collide.
+ * The comment above it said a failed create leaves nothing pointing at a
+ * container — true, and not the same as leaving no container: the sidecar is
+ * started after the sandbox it belongs to, so a sidecar that fails leaves a live
+ * sandbox nobody ever got a handle for.
+ */
+/**
+ * Measured on one machine: seven of them in eighteen minutes, 3-25 MB each
+ * because nothing ever ran in them, while `project.sandbox_id` still named the
+ * one from an hour earlier. A scope holds one container by definition, so
+ * anything else wearing its owner label is something a previous attempt left.
+ */
+/** Only carried through by the code under test, never read by it — but written
+ *  out rather than cast away, because a cast is how a shape drifts unnoticed. */
+const spec: SandboxSpec = {
+  image: "x",
+  ttlSeconds: 60,
+  cpu: "1",
+  memory: "1Gi",
+  denyDomains: [],
+  cacheDirs: {},
+};
+
+describe("a retried create does not leave the first attempt running", () => {
+  const api = (ids: [string, string][], killed: string[]): SweepApi => ({
+    listSandboxInfos: async () => ({ items: ids.map(([id, owner]) => ({ id, metadata: { owner } })) }),
+    killSandbox: async (id) => void killed.push(id),
+  });
+
+  test("every other container of this scope goes, and the new one stays", async () => {
+    const killed: string[] = [];
+    const ctx = await testContext();
+    await sweepScope(ctx, { project: 1 }, "new", async () =>
+      api(
+        [
+          ["new", "project-1"],
+          ["stale", "project-1"],
+          ["older", "project-1"],
+        ],
+        killed,
+      ),
+    );
+    expect(killed).toEqual(["stale", "older"]);
+  });
+
+  test("another scope's container is not this scope's to delete", async () => {
+    const killed: string[] = [];
+    const ctx = await testContext();
+    await sweepScope(ctx, { project: 1 }, "new", async () =>
+      api(
+        [
+          ["new", "project-1"],
+          ["someone", "grp-7"],
+          ["util", "util"],
+        ],
+        killed,
+      ),
+    );
+    expect(killed).toEqual([]);
+  });
+
+  test("a lifecycle API that throws does not fail the create", async () => {
+    const ctx = await testContext();
+    await sweepScope(ctx, { util: true }, "new", () => Promise.reject(new Error("server unreachable")));
+  });
+});
+
+/**
+ * And the retry actually calls it, with the container it ended up with.
+ *
+ * The sweep on its own is only half the fix: the leak was that the retry ran
+ * without one. Reachable in production only through a real server drawing a
+ * colliding host port, which is why `createMountedSandbox` takes its creator.
+ */
+test("the sidecar retry sweeps the scope, keeping what it got", async () => {
+  const ctx = await testContext();
+  const swept: string[] = [];
+  let attempt = 0;
+  const made = await createMountedSandbox(
+    ctx,
+    { project: 1 },
+    spec,
+    [],
+    [],
+    async () => {
+      attempt++;
+      if (attempt === 1) throw new Error("egress sidecar container failed to start");
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `createMountedSandbox` reads exactly one field off what its creator returns, `id`, and hands the rest straight back; constructing a whole `Sandbox` here would assert nothing this test is about.
+      return { id: "second" } as unknown as Sandbox;
+    },
+    async (keep) => void swept.push(keep),
+  );
+  expect(attempt).toBe(2);
+  expect(made.sandbox.id).toBe("second");
+  // The one it kept is the one it is about to hand back, not the one that failed.
+  expect(swept).toEqual(["second"]);
+});
+
+/** A create that fails for any other reason is not swept after: nothing was
+ *  retried, so there is no second container and the error is the answer. */
+test("a create that fails for another reason throws without sweeping", async () => {
+  const ctx = await testContext();
+  const swept: string[] = [];
+  const attempt = createMountedSandbox(
+    ctx,
+    { project: 1 },
+    spec,
+    [],
+    [],
+    () => Promise.reject(new Error("out of memory")),
+    async (keep) => void swept.push(keep),
+  );
+  expect(attempt).rejects.toThrow("out of memory");
+  await attempt.catch(() => {});
+  expect(swept).toEqual([]);
 });
