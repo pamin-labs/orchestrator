@@ -4,8 +4,8 @@ import { loadConfig } from "../../src/platform/config/load.ts";
 import { loadAuth } from "../../src/mech/sandbox/auth.ts";
 import { REFRESH_HOME } from "../../src/mech/sandbox/chatgpt.ts";
 
-/** Shape only; `sk-ant-oat01-` is what `CLAUDE_TOKEN_RE` looks for. */
-const CLAUDE_TOKEN = `sk-ant-oat01-${"A".repeat(40)}`;
+/** The older shape, still minted by a CLI that has not changed. */
+const CLAUDE_TOKEN = `sk-ant-oat01-${"aB3-_x9Z".repeat(6)}`;
 import {
   currentClaudeLogin,
   currentCodexDeviceLogin,
@@ -87,12 +87,13 @@ test("a second click gets the first login, not a second code", async () => {
 
 test("Claude's own setup flow supplies the URL and stores its printed token", async () => {
   const { ctx, db } = await harness(
-    "Open https://console.anthropic.com/oauth/code\nPaste code here if prompted >\nsk-ant-oat01-token_value",
+    `Open https://console.anthropic.com/oauth/code\nPaste code here if prompted >\n${CLAUDE_TOKEN}`,
   );
   const run = startClaudeLogin(ctx);
   expect(await run.done).toEqual({ ok: true, detail: "stored" });
+  // The link is not mistaken for the credential, though it is long and unbroken.
   expect(run.url).toBe("https://console.anthropic.com/oauth/code");
-  expect(await loadAuth(db, "claude")).toMatchObject({ mode: "oauth_token", secret: "sk-ant-oat01-token_value" });
+  expect(await loadAuth(db, "claude")).toMatchObject({ mode: "oauth_token", secret: CLAUDE_TOKEN });
 });
 
 test("Claude names a rejected or expired pasted code instead of claiming success", async () => {
@@ -230,4 +231,80 @@ test("a submitted code that draws no answer still ends the login", async () => {
   expect(done?.ok).toBe(false);
   expect(done?.detail).toContain("no verdict");
   expect(currentClaudeLogin()).toBeNull();
+});
+
+/**
+ * The token has no prefix any more, so it is found by where it is printed.
+ *
+ * Measured against a real sign-in on claude-code 2.1.233: the whole exchange
+ * succeeded — the approval, the code, the round trip — and an opaque 90-odd
+ * character token went past on its own line under
+ * `Your OAuth token (valid for 1 year):`. The recogniser was
+ * `/sk-ant-oat01-…/`, so the login reported that no token was ever printed and
+ * threw away a credential the boss cannot see again.
+ */
+/**
+ * Transcribed from that run, ANSI stripped. The heading has to be checked after
+ * the line it introduces, or the announcement matches as its own token.
+ */
+/**
+ * Transcribed from a real sign-in, truncated. Its length and character mix are
+ * the point: the recogniser no longer knows any prefix, so a fixture shaped like
+ * `sk-ant-oat01-token_value` would pass a test the product cannot pass.
+ */
+const NEW_TOKEN = `sk-ant-at01-CJCHm1_dwua-3YSY-OtA1YEsig1AggeB2Axp3eQb5Tqm${"KsYY6qId".repeat(3)}`;
+
+const REAL_TAIL = [
+  "Paste code here if prompted >",
+  "✓ Long-lived authentication token created successfully!",
+  "Your OAuth token (valid for 1 year):",
+  NEW_TOKEN,
+  "Use this token by setting: export CLAUDE_CODE_OAUTH_TOKEN=<token>",
+  "Store this token securely. You won't be able to see it again.",
+].join("\n");
+
+test("a token with no prefix is still recognised and stored", async () => {
+  const db = await openMemory();
+  const ctx = await testContext({ db, sandbox: strandsAfter(REAL_TAIL) });
+
+  const run = startClaudeLogin(ctx);
+  const done = await Promise.race([run.done, Bun.sleep(5_000).then(() => null)]);
+  expect(done?.ok).toBe(true);
+  const stored = (await loadAuth(db, "claude"))?.secret;
+  expect(stored).toBe(NEW_TOKEN);
+  // Not the sentence that introduced it, and not the `export …=<token>` line.
+  expect(stored).not.toContain("OAuth");
+});
+
+/** The old shape keeps working: a CLI that has not changed yet mints one, and
+ *  the prefix match runs before the heading is ever seen. */
+/**
+ * The two other long unbroken lines this output contains, neither of which is a
+ * credential: the login link, and the row of asterisks the CLI echoes a pasted
+ * code back as. A recogniser that only knew "long and no spaces" would take the
+ * asterisks — they are exactly as long as the code that was pasted.
+ */
+test("neither the link nor the masked echo is mistaken for the token", async () => {
+  const db = await openMemory();
+  const ctx = await testContext({
+    db,
+    sandbox: strandsAfter(
+      [
+        "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code",
+        "*".repeat(92),
+        NEW_TOKEN,
+      ].join("\n"),
+    ),
+  });
+  const done = await Promise.race([startClaudeLogin(ctx).done, Bun.sleep(5_000).then(() => null)]);
+  expect(done?.ok).toBe(true);
+  expect((await loadAuth(db, "claude"))?.secret).toBe(NEW_TOKEN);
+});
+
+test("a sk-ant-oat01 token is still recognised", async () => {
+  const db = await openMemory();
+  const ctx = await testContext({ db, sandbox: strandsAfter(`some preamble\n${CLAUDE_TOKEN}\n`) });
+  const done = await Promise.race([startClaudeLogin(ctx).done, Bun.sleep(5_000).then(() => null)]);
+  expect(done?.ok).toBe(true);
+  expect((await loadAuth(db, "claude"))?.secret).toBe(CLAUDE_TOKEN);
 });

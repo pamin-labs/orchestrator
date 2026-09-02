@@ -31,7 +31,35 @@ const ANSI = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b\[[0-9;?]*[a-zA-
 const clean = (s: string) => s.replace(ANSI, " ");
 
 const URL_RE = /https?:\/\/[^\s\u0007\u001b"'<>]+/;
-const CLAUDE_TOKEN_RE = /sk-ant-oat01-[A-Za-z0-9_-]+/;
+/**
+ * The token, recognised by what a credential is rather than by what this CLI
+ * currently prints.
+ *
+ * Two hard-coded recognisers have already expired. `sk-ant-oat01-` became
+ * `sk-ant-at01-` — one letter — and the login reported that no token was printed
+ * while the event stream carried `✓ Long-lived authentication token created
+ * successfully!` and the value itself. Anchoring on that sentence instead only
+ * moves the guess: the wording is the CLI's to change, and it is not a contract.
+ */
+/**
+ * What is left is a shape nobody owns. A credential line is long, has no
+ * whitespace, is not a URL, and mixes character classes — which separates it
+ * from the two other long unbroken lines in this output: the link, and the row
+ * of asterisks a pasted code is echoed back as.
+ */
+/**
+ * Not a prefix, not a sentence, not a length the provider chose. If it ever
+ * matches the wrong line the deadline reports a failed sign-in and the boss can
+ * see what was on it; a recogniser that matches nothing loses a credential
+ * silently, which is what both of the previous ones did.
+ */
+const TOKEN_MIN = 40;
+const looksLikeCredential = (line: string): boolean =>
+  line.length >= TOKEN_MIN &&
+  !/\s/.test(line) &&
+  !/^[a-z][a-z0-9+.-]*:\/\//i.test(line) &&
+  /[a-z]/.test(line) &&
+  /[A-Z0-9]/.test(line);
 
 export interface LoginRun {
   /** The link to open. Present as soon as the CLI prints it. */
@@ -334,7 +362,7 @@ async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal, s
   // exits, where there is no line to stop on and the stream stays open anyway.
   const read = consumeLogin(ctx.bus, stream, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
-    token ??= line.match(CLAUDE_TOKEN_RE)?.[0] ?? null;
+    if (looksLikeCredential(line)) token ??= line;
     // The token is the whole errand. Read no further for a stream that may not
     // end — see `consumeLogin`.
     if (token) return true;

@@ -25,7 +25,12 @@ import { testContext } from "../support/test-context.ts";
  * the exchange that failed.
  */
 
-const CLAUDE_TOKEN = "sk-ant-oat01-abcdefghijklmnop";
+/**
+ * Long, mixed-case, unbroken — the shape a credential has, because that is all
+ * the login recognises now. It knew `sk-ant-oat01-` once and that prefix changed
+ * under it, so a short lowercase stand-in would pass a test the product fails.
+ */
+const CLAUDE_TOKEN = `sk-ant-oat01-${"aB3-_x9Z".repeat(6)}`;
 
 async function harness(
   handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({}),

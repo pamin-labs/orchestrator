@@ -16,7 +16,7 @@ Product goals, scope, milestones and the delivery sequence live in
 Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2025 pass, 6 environment skips, 0 fail, 2031 across 253 files
+- Tests: 2028 pass, 6 environment skips, 0 fail, 2034 across 253 files
 - Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
@@ -86,6 +86,13 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
   wait after a submit is bounded by `timeouts.loginVerdictMs` now — the clock
   starts on the submit, so the boss's time in the browser is never timed. Fixed
   2026-09-02; guard in `test/mech/codex-device-login.test.ts`.
+- **The whole sign-in worked and the token was thrown away.** `sk-ant-oat01-`
+  became `sk-ant-at01-`, and both the recogniser and the shape check treated the
+  old prefix as the only possible form. Nothing is matched by string now — a
+  credential line is recognised as long, unbroken, not a URL, and mixing
+  character classes, which is what separates it from the link and from the
+  masked echo. Fixed 2026-09-02; guards in
+  `test/mech/codex-device-login.test.ts` and `test/mech/auth.test.ts`.
 - **Live OpenSandbox tests are environment-gated** and skip without a running
   sandbox server. That is the six skips in the count above.
 - **Repository settings are not repository files.** Branch protection, secret
