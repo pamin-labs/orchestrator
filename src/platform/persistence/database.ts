@@ -367,6 +367,20 @@ async function buildNamespace(client: SQL): Promise<void> {
   await terminalStateGuard(bunSqlDrizzle({ client }));
 }
 
+/**
+ * Connections one worker may hold, against eight tests running in it at once.
+ *
+ * Was 24, sized when every *file* had its own pool and the panel snapshot's
+ * nineteen concurrent statements were the ceiling. One registry per worker means
+ * one pool per worker, and 24 x 10 workers stood 233 backends up.
+ */
+/**
+ * Eight is faster as well as smaller — 20s against 24s for the same suite —
+ * because the contention was costing more than the queueing does. The snapshot
+ * waits its turn; nothing else asks for more than a few at once.
+ */
+const TEST_POOL = 8;
+
 /** Which namespace a handle is pointed at, so cancellation stays inside this file's. */
 const namespaces = new WeakMap<DB, string>();
 const mineNamespace = (db: DB): string => namespaces.get(db) ?? "";
@@ -414,7 +428,7 @@ export async function openMemory(logger?: Logger, isolate = ""): Promise<DB> {
         // now refuses the second run by name rather than letting it produce a
         // number nobody can act on.
         const found = await admin<{ present: number }[]>`SELECT 1 AS present FROM pg_namespace WHERE nspname = ${mine}`;
-        const client = new SQL({ url: urlFor(mine), max: 24, idleTimeout: TEST_IDLE_SECONDS });
+        const client = new SQL({ url: urlFor(mine), max: TEST_POOL, idleTimeout: TEST_IDLE_SECONDS });
         if (found.length === 0) {
           await bunSqlDrizzle({ client: admin }).execute(sql`CREATE SCHEMA ${sql.identifier(mine)}`);
           await buildNamespace(client);
