@@ -6,7 +6,7 @@ import { loadConfig, loadRoles } from "../../src/platform/config/load.ts";
 import { and, asc, count, desc, eq, like, sql } from "drizzle-orm";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import * as t from "../../src/platform/persistence/schema.ts";
-import type { TurnResult, TurnSpec } from "../../src/runtime/claude.ts";
+import { buildClaudeArgv, type TurnResult, type TurnSpec } from "../../src/runtime/claude.ts";
 import { cacheRatio, type ExecDeps, hire, LOST_SESSION, makeExecutor } from "../../src/application/executor.ts";
 import { AgentTurnPayloadSchema, type Executor } from "../../src/platform/scheduling/scheduler.ts";
 import { abortJob } from "../../src/platform/process/running-turns.ts";
@@ -627,6 +627,30 @@ test("a session whose transcript is gone is not resumed forever", () => {
     "turn failed (max_turns): ...": false,
     "rebase failed: conflict in src/api.ts": false,
   });
+});
+
+/**
+ * The bypass and the thing that permits it, asserted together.
+ *
+ * They are two halves of one arrangement and they live in two modules, so either
+ * can be dropped without the other noticing. Nothing pinned the claude flag at
+ * all — codex's twin is pinned at `codex-adapter.test.ts:74` — and the env half
+ * did not exist, which is how every turn came back `no_result` carrying
+ * `--dangerously-skip-permissions cannot be used with root/sudo privileges`.
+ */
+test("the container's turn is allowed to skip permission prompts, and says why it may", async () => {
+  const { sched, specs } = await harness(async () => ok());
+  await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+
+  const spec = specs[0]!;
+  // The flag, which claude-code refuses under uid 0 … asserted as a boolean and
+  // not with `toContain`, because argv carries `--append-system-prompt` and a
+  // failing `toContain` prints the whole prompt to say one word is missing.
+  expect(buildClaudeArgv(spec).includes("--dangerously-skip-permissions")).toBe(true);
+  // … unless this is set, which is the entire condition in the pinned binary:
+  // `getuid()===0 && IS_SANDBOX!=="1" && !CLAUDE_CODE_BUBBLEWRAP`.
+  expect(spec.env?.IS_SANDBOX).toBe("1");
 });
 
 test("the session id stored is the one the runtime actually used", async () => {

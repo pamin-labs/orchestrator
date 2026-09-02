@@ -534,6 +534,30 @@ async function turnSpec(
       ORCH_GRP_ID: String(job.grp_id ?? ""),
       ...vault.env,
       CODEX_HOME,
+      /**
+       * What the claude runtime's bypass flag needs before it is allowed at all.
+       *
+       * The container runs as root — no `USER` in the image, `HOME` is `/root`,
+       * and every path the orchestrator writes sits under it — and claude-code
+       * refuses that combination outright, so every turn ended `no_result` with
+       * the CLI's refusal as its only text. Read out of the pinned 2.1.233
+       * binary rather than from the docs, which do not mention this variable.
+       */
+      /**
+       * `process.getuid()===0 && process.env.IS_SANDBOX!=="1" &&
+       * !CLAUDE_CODE_BUBBLEWRAP` is the whole condition, and the second site —
+       * `isRootOutsideDeliberateSandbox`, on the agents path — spells the same
+       * three terms.
+       */
+      /**
+       * Saying so is true rather than convenient: ADR 005 makes the container
+       * the boundary, with no agent, an egress vault, a decoy credential and one
+       * throwaway container per group. Dropping root instead would move
+       * `/root/.claude`, `/root/.codex`, `/root/.gitconfig`, `/work` and the
+       * mailbox — rewriting the trust boundary to satisfy a check about a
+       * boundary that is already there.
+       */
+      IS_SANDBOX: "1",
     },
   };
 }

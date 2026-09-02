@@ -13,10 +13,10 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `fix/codex-login-home`, 2026-09-02.
+Measured on `fix/agent-turns-need-a-sandbox-flag`, 2026-09-03.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2048 pass, 6 environment skips, 0 fail, 2054 across 253 files
+- Tests: 2051 pass, 6 environment skips, 0 fail, 2057 across 253 files
 - Coverage: 84.06% of statements, 74.34% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0, over 694 files
@@ -36,6 +36,21 @@ Measured on `fix/codex-login-home`, 2026-09-02.
   would be a third owner, stale from the next merge until somebody remembered
 
 ## Blockers and deviations
+
+- **Every claude turn ended `no_result` with the CLI's own refusal as its text.**
+  The container runs as root — no `USER` in the image, `HOME` is `/root`, every
+  path the orchestrator writes under it — and claude-code will not accept
+  `--dangerously-skip-permissions` there. Read out of the pinned 2.1.233 binary
+  rather than the docs, which do not mention the variable:
+  `getuid()===0 && IS_SANDBOX!=="1" && !CLAUDE_CODE_BUBBLEWRAP` is the whole
+  condition. The turn env sets `IS_SANDBOX=1`, which is true — ADR 005 makes the
+  container the boundary — where dropping root would have moved `/root/.claude`,
+  `/root/.codex`, `/root/.gitconfig`, `/work` and the mailbox to satisfy a check
+  about a boundary that already exists. codex has no equivalent refusal: its
+  0.147.0 binary carries no such string. Fixed 2026-09-03; guard in
+  `test/application/executor.test.ts`, which pins the flag and the variable
+  together because either can be dropped without the other noticing — and nothing
+  pinned the claude flag at all, where codex's twin was pinned.
 
 - **The first codex sign-in on a fresh install could not succeed.** The device
   login ran `codex login --device-auth` with `CODEX_HOME=/root/.codex-refresh`
