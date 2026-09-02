@@ -950,11 +950,12 @@ export function isSidecarStartFailure<T>(e: T): boolean {
  * no `orch` in it. Lives here rather than in `chatgpt.ts`: that file must not
  * import this one, or `sandbox.ts` -> `auth.ts` -> `chatgpt.ts` closes a cycle.
  */
-function codexHomeIO(ctx: Ctx): CodexHomeIO {
+export function codexHomeIO(ctx: Ctx): CodexHomeIO {
   return {
     read: (path) => getFile(ctx, UTIL, path),
     write: (path, data) => putFile(ctx, UTIL, path, data),
     remove: async (path) => void (await execIn(ctx, UTIL, `rm -f ${shq(path)}`)),
+    mkdir: async (path) => void (await execIn(ctx, UTIL, `mkdir -p ${shq(path)}`)),
     run: async (argv) => {
       const r = await execIn(ctx, UTIL, `codex ${argv.map(shq).join(" ")}`, {
         timeoutMs: ctx.config.timeouts.tokenRefreshMs,

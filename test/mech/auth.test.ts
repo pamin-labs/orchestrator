@@ -271,6 +271,7 @@ test("the ChatGPT login is renewed here, once, and by codex rather than by us", 
     read: async (p: string) => files.get(p) ?? null,
     write: async (p: string, d: string) => void files.set(p, d),
     remove: async (p: string) => void files.delete(p),
+    mkdir: async () => {},
     run,
   });
   const wrote = (value: Json) => files.set(`${REFRESH_HOME}/auth.json`, JSON.stringify(value));

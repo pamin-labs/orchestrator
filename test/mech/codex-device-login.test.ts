@@ -70,7 +70,7 @@ async function harness(
       return pty;
     },
   });
-  return { ctx, db, cmds, pty };
+  return { ctx, db, cmds, pty, sandbox };
 }
 
 test("the device code and its URL are read, and the login lands in runtime_auth", async () => {
@@ -86,6 +86,24 @@ test("the device code and its URL are read, and the login lands in runtime_auth"
   expect((await loadAuth(db, "codex"))!.mode).toBe("chatgpt");
   // Its own CODEX_HOME, not the one every container's decoy sits in.
   expect(cmds.join("\n")).toContain("codex login --device-auth");
+});
+
+test("the refresher's CODEX_HOME is there before codex is told to use it", async () => {
+  // codex 0.147.0 refuses to load its configuration when CODEX_HOME does not
+  // exist, so it exits before printing anything and the panel reports a CLI
+  // whose output changed. Nothing created this directory: the decoy home is the
+  // one `writeLoginFiles` makes, and this one only ever appeared as a side
+  // effect of `seedHome` — which runs after a credential exists. Every first
+  // sign-in on a fresh install failed.
+  const { ctx, cmds, sandbox } = await harness(OUTPUT);
+  await startCodexDeviceLogin(ctx).done;
+
+  const made = cmds.findIndex((c) => c.includes(`mkdir -p '${REFRESH_HOME}'`));
+  const login = cmds.findIndex((c) => c.includes("codex login --device-auth"));
+  expect(made).toBeGreaterThanOrEqual(0);
+  expect(made).toBeLessThan(login);
+  // And the store codex writes auth.json into, rather than the OS keychain.
+  expect(sandbox.files.get(`${REFRESH_HOME}/config.toml`)).toContain('cli_auth_credentials_store = "file"');
 });
 
 test("output with no code says so instead of waiting out fifteen minutes", async () => {

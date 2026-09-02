@@ -287,23 +287,53 @@ async function sandboxFault(ctx: Ctx): Promise<Said | null> {
   return state.kind === "stuck" ? state.why : null;
 }
 
+/**
+ * The reasons a login printed nothing, in the order they are worth reading, and
+ * the run stopped either way.
+ *
+ * Both logins were blind the same way and answered in the same three lines, so
+ * they ask here instead. `silent` is the last resort: the reasons above it are
+ * the ones somebody has actually stated. Each is returned as it stands rather
+ * than wrapped in a sentence of ours — a descriptor inside another's values is
+ * one sentence in two languages, which `values-carry-no-rendered-text` stops.
+ */
+/**
+ * The middle one is the run's own verdict. `printed` returns early on a run that
+ * ended, and a CLI that exited with a reason on its own stdout has said more
+ * than "run it in the image and see why" can — that reason reached the event
+ * stream and not the message beside the button, which is how a login that could
+ * not have succeeded, codex refusing a CODEX_HOME nothing had created, read as a
+ * CLI whose output had changed. Bounded for the reason written on
+ * `postClaudeCancel`: `cancel` has just sent SIGINT, and a `done` that never
+ * settles must not hold the response open.
+ */
+async function whyNothingPrinted(
+  ctx: Ctx,
+  run: LoginRun,
+  refused: (detail: string) => Said,
+  silent: Said,
+): Promise<Said> {
+  run.cancel();
+  const fault = await sandboxFault(ctx);
+  if (fault) return fault;
+  const done = await Promise.race([run.done.catch(() => null), Bun.sleep(SETTLE_GRACE_MS).then(() => null)]);
+  return done && !done.ok && done.detail ? refused(done.detail) : silent;
+}
+
 export const postClaudeLogin = (async (ctx) => {
   if (claudeFlow && claudeFlow.expiresAt > Date.now()) return json(claudeFlow);
   const run = startClaudeLogin(ctx);
   const startedAt = Date.now();
   const url = await printed(run, () => run.url, 150);
-  if (!url) {
-    run.cancel();
-    // The sandbox verdict is returned as it stands rather than wrapped in a
-    // sentence of ours: a descriptor inside another's values is one sentence in
-    // two languages, which `values-carry-no-rendered-text` exists to stop. It
-    // already reads as the reason, and it is shown beside the button that failed.
-    const fault = await sandboxFault(ctx);
-    if (fault) return bad(fault);
+  if (!url)
     return bad(
-      msg`claude printed no login link inside the container — the login already gives it a terminal, so run \`claude setup-token\` in the image to see what it prints instead.`,
+      await whyNothingPrinted(
+        ctx,
+        run,
+        (detail) => msg`claude could not sign in: ${{ detail }}`,
+        msg`claude printed no login link inside the container — the login already gives it a terminal, so run \`claude setup-token\` in the image to see what it prints instead.`,
+      ),
     );
-  }
   claudeFlow = { url, expiresAt: startedAt + PASTE_TTL_MS };
   claudeSettled = run.done.then(async (r) => {
     claudeFlow = null;
@@ -437,18 +467,15 @@ export const postCodexDevice = (async (ctx) => {
   // Both, or neither: the link alone opens a page asking for a code the boss
   // does not have. codex prints them on two lines, so this waits for the second.
   const both = await printed(run, () => (run.url && run.code ? { url: run.url, code: run.code } : null), 100);
-  if (!both) {
-    run.cancel();
-    // The sandbox verdict is returned as it stands rather than wrapped in a
-    // sentence of ours: a descriptor inside another's values is one sentence in
-    // two languages, which `values-carry-no-rendered-text` exists to stop. It
-    // already reads as the reason, and it is shown beside the button that failed.
-    const fault = await sandboxFault(ctx);
-    if (fault) return bad(fault);
+  if (!both)
     return bad(
-      msg`codex printed no device code inside the container — run \`codex login --device-auth\` in the image to see why.`,
+      await whyNothingPrinted(
+        ctx,
+        run,
+        (detail) => msg`codex could not sign in: ${{ detail }}`,
+        msg`codex printed no device code inside the container — run \`codex login --device-auth\` in the image to see why.`,
+      ),
     );
-  }
   codexFlow = { code: both.code, url: both.url, expiresAt: startedAt + DEVICE_CODE_TTL_MS };
   codexSettled = run.done.then(async (r) => {
     codexFlow = null;

@@ -13,11 +13,11 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `release/0.1.8`, 2026-09-02.
+Measured on `fix/codex-login-home`, 2026-09-02.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2046 pass, 6 environment skips, 0 fail, 2052 across 253 files
-- Coverage: 84.04% of statements, 74.34% of branches, 80.07% of functions
+- Tests: 2047 pass, 6 environment skips, 0 fail, 2053 across 253 files
+- Coverage: 84.06% of statements, 74.34% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0, over 694 files
 - Fallow security, full inventory: **1** candidate —
@@ -37,6 +37,17 @@ Measured on `release/0.1.8`, 2026-09-02.
 
 ## Blockers and deviations
 
+- **The first codex sign-in on a fresh install could not succeed.** The device
+  login ran `codex login --device-auth` with `CODEX_HOME=/root/.codex-refresh`
+  and nothing had ever created that directory — `writeLoginFiles` makes the decoy
+  home, and the real one only appeared as a side effect of `seedHome`, which runs
+  *after* a credential exists. codex 0.147.0 refuses to load its configuration on
+  a CODEX_HOME that is not there, so it exited before printing a code and the
+  panel reported a CLI whose output had changed. `prepareHome` is the one owner
+  of a prepared home now, through the `CodexHomeIO` seam both paths already had,
+  and a login that ends with a reason shows that reason instead of sending the
+  boss into the image. Fixed 2026-09-02; guards in
+  `test/mech/codex-device-login.test.ts`.
 - **A sandbox key written to two homes could not converge.** `ourKey` stored it
   in `runtime_auth` and `writeConfig` wrote it into `~/.orch-cache/sandbox.toml`,
   which is never rewritten — so a rebuilt database against a still-running server

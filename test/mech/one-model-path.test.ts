@@ -151,12 +151,17 @@ test("seeding the refresher's home removes what is there before writing", async 
       calls.push(`remove ${p}`);
       files.delete(p);
     },
+    mkdir: async (p: string) => {
+      calls.push(`mkdir ${p}`);
+    },
     run: async () => true,
   };
 
   await seedHome(io, '{"tokens":{"refresh_token":"ours"}}');
 
-  expect(calls[0]).toBe(`remove ${REFRESH_HOME}/auth.json`);
+  // The home is prepared before anything is written into it — codex will not
+  // start on a CODEX_HOME that is not there.
+  expect(calls[0]).toBe(`mkdir ${REFRESH_HOME}`);
   expect(calls.indexOf(`remove ${REFRESH_HOME}/auth.json`)).toBeLessThan(
     calls.indexOf(`write ${REFRESH_HOME}/auth.json`),
   );
