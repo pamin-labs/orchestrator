@@ -444,7 +444,7 @@ test("signing in to claude opens the link itself, not a blank placeholder", asyn
     // filled in afterwards.
     expect(calls[0]!.features).toContain("noopener");
     // A blocked popup is null and must not throw — the link is rendered below.
-    getByTextIn(document.body, /claude\.com\/cai\/oauth/);
+    getByTextIn(document.body, login.link);
   } finally {
     (window as { open: unknown }).open = opener;
   }
