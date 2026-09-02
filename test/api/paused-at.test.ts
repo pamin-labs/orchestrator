@@ -7,6 +7,7 @@ import { credentialChanged } from "../../src/api/panel/authflow.ts";
 import { release } from "../../src/mech/flow/intercept.ts";
 import { escalation, grp } from "../../src/platform/persistence/schema.ts";
 import * as fx from "../support/factories.ts";
+import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -170,4 +171,35 @@ test("a resume clears what the stop was about, and leaves PARKED alone", async (
   expect(await statusNow()).toBe("PARKED");
   await release(ctx, 1, { from: ["PARKED"] });
   expect(await statusNow()).toBe("RUNNING");
+});
+
+/**
+ * Storing a credential refreshes the host checks, rather than leaving the banner
+ * to be corrected on a timer.
+ *
+ * Signing Claude in left the banner reporting `credential:claude` unconfigured
+ * while the settings row underneath already said the token was stored — up to
+ * thirty seconds of a screen saying the opposite of itself.
+ */
+/**
+ * The refresh belongs in `credentialChanged` because every way a credential
+ * lands goes through it: the login continuation, the pasted token, the sandbox
+ * key, GitHub.
+ */
+test("a stored credential re-runs the host checks before the caller is answered", async () => {
+  const db = await openMemory();
+  let rechecked = 0;
+  const ctx = await testContext({
+    db,
+    sandbox: fakeSandbox(),
+    recheck: async () => {
+      rechecked++;
+      return [];
+    },
+  });
+
+  await credentialChanged(ctx, "claude");
+  // Awaited, not fired off: the panel's next read must be behind the new verdict
+  // rather than racing it.
+  expect(rechecked).toBe(1);
 });

@@ -208,6 +208,14 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
     await forgetGithubConnection(ctx);
   }
   await ctx.sched.tick();
+  // And say so. The host checks are what the shell's banner draws and they are
+  // refreshed on the readiness timer, so signing in left the banner reporting
+  // `credential:claude` unconfigured above a settings row that already said the
+  // token was stored — until the next tick got round to disagreeing with it.
+  // `ctx.recheck` runs them and republishes, which is what the settings page
+  // already does after a save. Awaited, so the panel's next read is behind the
+  // new verdict rather than racing it.
+  await ctx.recheck?.();
 }
 
 /**

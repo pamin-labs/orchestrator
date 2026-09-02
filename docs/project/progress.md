@@ -16,7 +16,7 @@ Product goals, scope, milestones and the delivery sequence live in
 Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2028 pass, 6 environment skips, 0 fail, 2034 across 253 files
+- Tests: 2029 pass, 6 environment skips, 0 fail, 2035 across 253 files
 - Coverage: 84.26% of statements, 74.58% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
@@ -93,6 +93,12 @@ Measured on `fix/name-collisions-and-the-nightly-flake`, 2026-09-01.
   character classes, which is what separates it from the link and from the
   masked echo. Fixed 2026-09-02; guards in
   `test/mech/codex-device-login.test.ts` and `test/mech/auth.test.ts`.
+- **A stored credential did not refresh the host checks.** The banner reporting
+  `credential:claude` unconfigured stayed up over a settings row that already
+  said the token was stored, until the readiness ticker got round to it.
+  `credentialChanged` awaits `ctx.recheck` now, so every way a credential lands
+  republishes the verdict. Fixed 2026-09-02; guard in
+  `test/api/paused-at.test.ts`.
 - **Live OpenSandbox tests are environment-gated** and skip without a running
   sandbox server. That is the six skips in the count above.
 - **Repository settings are not repository files.** Branch protection, secret
