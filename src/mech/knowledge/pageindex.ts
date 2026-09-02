@@ -6,11 +6,10 @@ import { type DB, readSetting, writeSetting } from "../../platform/persistence/d
 import { agent, grp, note, nowMs } from "../../platform/persistence/schema.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
-import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
+import { runnerFor, WORK, type Scope } from "../sandbox/sandbox.ts";
+import { providerFor } from "../../runtime/providers.ts";
 import { authStamp } from "../sandbox/auth.ts";
-import { claudeUsage, promptPath, UsageSchema, type Usage } from "../../runtime/claude.ts";
-import { codexUsage } from "../../runtime/codex.ts";
-import { shq } from "../../platform/process/shell.ts";
+import type { Usage } from "../../runtime/claude.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { scrub } from "../../platform/observability/redaction.ts";
@@ -271,22 +270,7 @@ export function modelAsk(
    */
   onUsage?: (u: AskUsage) => void,
 ): Ask {
-  const codex = spec.runtime === "codex";
-  // Both take the prompt on stdin, redirected from a file: the exec API has no
-  // stdin, and this is the same route a turn's prompt takes. No `--max-turns 1`
-  // on the claude side: measured, it makes `claude -p` exit 0 with the body
-  // "Error: Reached max turns (1)", so every summary in the index became that
-  // sentence and nothing noticed because the exit code said fine.
-  //
-  // No `--ignore-user-config` needed any more either. It was there because this
-  // ran on the host with the boss's own `~/.claude` and `~/.codex` in scope;
-  // inside the container HOME is `/root` and holds only what we put there.
-  const argv = codex
-    ? ["codex", "exec", "--json", "--skip-git-repo-check", "-s", "read-only", "-m", spec.model]
-    : // `--output-format json` so the call reports what it spent. Plain text says
-      // nothing, and this was the reason the index was invisible in every cost
-      // total while being the most frequent model call there is.
-      ["claude", "-p", "--output-format", "json", "--model", spec.model];
+  const provider = providerFor(spec.runtime);
   const breaker = breakerKey(scope, spec);
   return async (prompt) => {
     // Read per call, not once: signing the runtime in is what makes a tripped
@@ -301,57 +285,37 @@ export function modelAsk(
 
   function call(prompt: string): Promise<string> {
     return (
-      // The same sentence the `onUsage` comment above makes, about the other half
-      // of the bill: this is the most frequent model call in the system and it
-      // appeared in no report. `onUsage` fixed the money; this fixes the clock.
       // Up to twelve of these per project on every heartbeat, each a full model
       // round trip inside a container, and the panel had no row for any of them.
+      // `onUsage` above fixed the money; this fixes the clock.
       activeTracer().startActiveSpan("index.ask", { attributes: { "model.name": spec.model } }, async (span) => {
         try {
-          const file = promptPath();
-          await putFile(ctx, scope, file, prompt);
-          const cmd = `${argv.map(shq).join(" ")} < ${file}; rc=$?; rm -f ${file}; exit $rc`;
-          const r = await execIn(ctx, scope, cmd, { cwd: WORK, timeoutMs }).catch(() => null);
+          const r = await provider
+            .ask({ model: spec.model, prompt, cwd: WORK, timeoutMs, runner: runnerFor(ctx, scope) })
+            .catch(() => null);
           if (!r || r.code !== 0) {
             // The empty string is both a legitimate answer and the failure value,
             // and `summarise` counts it as `failed` without being able to tell
-            // which. The span can tell, so it says — **and says what the CLI said**.
-            // Measured over one 7-hour window: 36 of 36 calls failed, 738.5s of wall
-            // clock, and the only record of any of it was the two words `exit 1`. A
-            // number with no sentence beside it cannot be acted on, so the most
-            // expensive model call here failed all day and looked like a quiet one.
-            // Scrubbed, because the CLI echoes its own arguments on a bad flag.
+            // which. The span can tell, so it says — **and says what the CLI
+            // said**. Measured over one 7-hour window: 36 of 36 calls failed,
+            // 738.5s of wall clock, and the only record of any of it was the two
+            // words `exit 1`. Scrubbed, because the CLI echoes its own arguments
+            // on a bad flag.
             span.setStatus({
               code: SpanStatusCode.ERROR,
-              message: r
-                ? `exit ${r.code}: ${
-                    scrub(r.err || r.out)
-                      .trim()
-                      .slice(-400) || "said nothing"
-                  }`
-                : "exec threw",
+              message: r ? `exit ${r.code}: ${scrub(r.err).trim().slice(-400) || "said nothing"}` : "exec threw",
             });
             return "";
           }
-          const { text, usage } = codex ? readCodex(r.out) : readClaude(r.out);
-          if (usage) onUsage?.(usage);
-          // Exit 0 and nothing to show for it: the shape the failure above is
-          // written for, and the one branch it did not cover. Three calls came
-          // back this way on a live installation — 7.3s, 7.8s and 8.7s, a real
-          // round trip every time — and each left a span with `unset` status and
-          // no message, so the only evidence was a count in a sentence blaming
-          // the account.
-          if (!text.trim()) {
-            span.setStatus({
-              code: SpanStatusCode.ERROR,
-              message: `exit 0 with no answer: ${
-                scrub(r.err || r.out)
-                  .trim()
-                  .slice(-400) || "said nothing"
-              }`,
-            });
+          if (r.usage) onUsage?.(r.usage);
+          // Exit 0 and nothing to show for it: the branch above is written for a
+          // non-zero exit and this is the one it did not cover. Three calls came
+          // back this way on a live installation, each leaving a span with
+          // `unset` status and no message at all.
+          if (!r.text.trim()) {
+            span.setStatus({ code: SpanStatusCode.ERROR, message: "exit 0 with no answer" });
           }
-          return text;
+          return r.text;
         } finally {
           span.end();
         }
@@ -439,22 +403,6 @@ async function record(
 }
 
 /** `claude -p --output-format json`: one object, with the answer and the bill. */
-export function readClaude(out: string): { text: string; usage?: AskUsage } {
-  try {
-    const parsed = ClaudeReply.safeParse(JSON.parse(out));
-    if (!parsed.success) return { text: "" };
-    const o = parsed.data;
-    if (o.is_error) return { text: "" };
-    return {
-      text: typeof o.result === "string" ? o.result : "",
-      usage: claudeUsage(o.usage),
-    };
-  } catch {
-    // Not JSON: the CLI reports some of its own failures as plain text on stdout
-    // with exit 0, so the exit code is not the check and neither is the parse.
-    return { text: /^\s*Error:/.test(out) ? "" : out };
-  }
-}
 
 /**
  * `codex exec --json`: one noisy stream, reduced once.
@@ -463,41 +411,6 @@ export function readClaude(out: string): { text: string; usage?: AskUsage } {
  * each independently; an empty final message must not erase an answer already
  * seen, and a banner or malformed line must not take retrieval down.
  */
-export function readCodex(out: string): { text: string; usage?: AskUsage } {
-  let text = "";
-  let usage: AskUsage | undefined;
-  for (const line of out.split("\n")) {
-    if (!line.startsWith("{")) continue;
-    try {
-      const parsed = CodexReply.safeParse(JSON.parse(line));
-      if (!parsed.success) continue;
-      const l = parsed.data;
-      if (
-        l.type === "item.completed" &&
-        l.item?.type === "agent_message" &&
-        typeof l.item.text === "string" &&
-        l.item.text.trim()
-      ) {
-        text = l.item.text;
-      }
-      if (l.type === "turn.completed" && l.usage && typeof l.usage === "object" && !Array.isArray(l.usage)) {
-        usage = codexUsage(l.usage);
-      }
-    } catch {}
-  }
-  return { text, ...(usage ? { usage } : {}) };
-}
-
-const ClaudeReply = z.looseObject({
-  result: z.string().optional(),
-  is_error: z.boolean().optional(),
-  usage: UsageSchema.optional(),
-});
-const CodexReply = z.looseObject({
-  type: z.string().optional(),
-  item: z.object({ type: z.string().optional(), text: z.string().optional() }).optional(),
-  usage: z.record(z.string(), z.number()).optional(),
-});
 
 /**
  * Charge an index call to the project's `indexer`.

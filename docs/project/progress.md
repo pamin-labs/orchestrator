@@ -13,10 +13,10 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `fix/a-command-that-exits-took-its-output-with-it`, 2026-09-03.
+Measured on `refactor/one-provider-owns-both-ways-to-its-cli`, 2026-09-03.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2053 pass, 6 environment skips, 0 fail, 2059 across 253 files
+- Tests: 2055 pass, 6 environment skips, 0 fail, 2061 across 254 files
 - Coverage: 84.06% of statements, 74.34% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0, over 694 files

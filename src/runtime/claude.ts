@@ -1,14 +1,18 @@
 import { shq } from "../platform/process/shell.ts";
-import { runLineStream } from "./line-stream.ts";
-import { consumeClaudeLine, newClaudeAccumulator, parseClaudeLine, trimForLog } from "./providers/claude-events.ts";
-import type { TurnHandlers, TurnResult, TurnSpec } from "./providers/contract.ts";
-
-export {
+import { askVia, runLineStream } from "./line-stream.ts";
+import { z } from "zod";
+import type { AskResult, AskSpec } from "./providers/contract.ts";
+import {
   claudeUsage,
-  summarizeTool,
+  consumeClaudeLine,
+  newClaudeAccumulator,
+  parseClaudeLine,
   trimForLog,
   UsageSchema,
 } from "./providers/claude-events.ts";
+import { promptPath, type TurnHandlers, type TurnResult, type TurnSpec, type Usage } from "./providers/contract.ts";
+
+export { summarizeTool, trimForLog } from "./providers/claude-events.ts";
 export type {
   RateLimitInfo,
   ToolSummary,
@@ -18,9 +22,6 @@ export type {
   TurnSpec,
   Usage,
 } from "./providers/contract.ts";
-
-/** A unique prompt file prevents concurrent turns in one sandbox from overwriting each other. */
-export const promptPath = (): string => `/tmp/orch-prompt-${crypto.randomUUID()}.txt`;
 
 function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
   const stable = spec.stable;
@@ -77,4 +78,39 @@ async function runTurn(spec: TurnSpec, handlers: TurnHandlers = {}): Promise<Tur
   return accumulator.result;
 }
 
-export { buildArgv as buildClaudeArgv, runTurn as runClaudeTurn };
+const ClaudeReply = z.looseObject({
+  result: z.string().optional(),
+  is_error: z.boolean().optional(),
+  usage: UsageSchema.optional(),
+});
+
+function readClaude(out: string): { text: string; usage?: Usage } {
+  try {
+    const parsed = ClaudeReply.safeParse(JSON.parse(out));
+    if (!parsed.success) return { text: "" };
+    const o = parsed.data;
+    if (o.is_error) return { text: "" };
+    return {
+      text: typeof o.result === "string" ? o.result : "",
+      usage: claudeUsage(o.usage),
+    };
+  } catch {
+    // Not JSON: the CLI reports some of its own failures as plain text on stdout
+    // with exit 0, so the exit code is not the check and neither is the parse.
+    return { text: /^\s*Error:/.test(out) ? "" : out };
+  }
+}
+
+/**
+ * One prompt, one answer. The index navigator's half of this provider.
+ *
+ * `--output-format json` so the call reports what it spent: plain text says
+ * nothing, and that is why the most frequent model call in the system was
+ * invisible in every cost total. No `--max-turns 1` — measured, it makes
+ * `claude -p` exit 0 with the body "Error: Reached max turns (1)", so every
+ * summary in the index became that sentence and the exit code said fine.
+ */
+const runAsk = (spec: AskSpec): Promise<AskResult> =>
+  askVia(spec, ["claude", "-p", "--output-format", "json", "--model", spec.model], readClaude);
+
+export { buildArgv as buildClaudeArgv, readClaude, runAsk as runClaudeAsk, runTurn as runClaudeTurn };
