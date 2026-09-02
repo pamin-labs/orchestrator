@@ -48,6 +48,7 @@ function codexHome(renewed: string | null): CodexHomeIO & { runs: string[][]; fi
     remove: async (path) => {
       files.delete(path);
     },
+    mkdir: async () => {},
     run: async (argv) => {
       runs.push(argv);
       if (renewed) files.set(AUTH, renewed);

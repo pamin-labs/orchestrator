@@ -83,6 +83,8 @@ export interface CodexHomeIO {
   write(path: string, data: string): Promise<void>;
   /** `rm -f` first, then write. See `seedHome` for why the removal matters. */
   remove(path: string): Promise<void>;
+  /** `mkdir -p`. codex will not start on a CODEX_HOME that is not there. */
+  mkdir(path: string): Promise<void>;
   /** Run `codex <argv>` with CODEX_HOME set. True on exit 0. */
   run(argv: string[]): Promise<boolean>;
 }
@@ -127,6 +129,7 @@ async function readAuth(io: CodexHomeIO): Promise<CodexAuth | null> {
  */
 export async function seedHome(io: CodexHomeIO, authJson: string): Promise<void> {
   const authPath = `${REFRESH_HOME}/auth.json`;
+  await prepareHome(io);
   // Never through a symlink.
   //
   // This directory holds an *output*: the credential comes from `runtime_auth`
@@ -147,7 +150,26 @@ export async function seedHome(io: CodexHomeIO, authJson: string): Promise<void>
   // it stays rather than being argued away.
   await io.remove(authPath);
   await io.write(authPath, authJson);
-  // Without this codex looks in the OS keychain instead of the file.
+}
+
+/**
+ * The refresher's home, ready for codex to run in.
+ *
+ * codex 0.147.0 exits on a CODEX_HOME that does not exist — `Error loading
+ * configuration: CODEX_HOME points to "…", but that path does not exist` — and a
+ * codex that never started prints no device code.
+ */
+/**
+ * Only the decoy home is created for us (`writeLoginFiles`, and only once a
+ * login file exists); this one existed as a side effect of `seedHome`, which
+ * runs *after* a credential exists. So the one call with no directory under it
+ * was the device login that makes the first credential, and the first codex
+ * sign-in on a fresh install could not succeed.
+ */
+export async function prepareHome(io: CodexHomeIO): Promise<void> {
+  await io.mkdir(REFRESH_HOME);
+  // Without this codex looks in the OS keychain instead of the file — and the
+  // file is what both the login and the refresher read back.
   await io.write(`${REFRESH_HOME}/config.toml`, 'cli_auth_credentials_store = "file"\n');
 }
 

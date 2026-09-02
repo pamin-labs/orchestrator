@@ -1,8 +1,8 @@
 import type { Bus } from "../../platform/persistence/event-bus.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { saveAuth } from "./auth.ts";
-import { REFRESH_HOME } from "./chatgpt.ts";
-import { execLines, getFile, UTIL } from "./sandbox.ts";
+import { type CodexHomeIO, prepareHome, REFRESH_HOME } from "./chatgpt.ts";
+import { codexHomeIO, execLines, UTIL } from "./sandbox.ts";
 import { modelAccepted } from "../ops/preflight.ts";
 import { openPty, type PtySession } from "./pty.ts";
 
@@ -170,7 +170,7 @@ let deviceLogin: LoginRun | null = null;
  */
 export const currentCodexDeviceLogin = () => deviceLogin;
 
-async function finishCodexLogin(ctx: Ctx, run: LoginRun, session: PtySession) {
+async function finishCodexLogin(ctx: Ctx, io: CodexHomeIO, run: LoginRun, session: PtySession) {
   // Codex reads to the end on purpose: its credential is a file it writes, not a
   // line it prints, so there is nothing on stdout that means "done".
   const result = await consumeLogin(ctx.bus, session.lines, (line) => {
@@ -185,7 +185,7 @@ async function finishCodexLogin(ctx: Ctx, run: LoginRun, session: PtySession) {
       ok: false,
       detail: "could not read a device code from codex's output — check `codex login --device-auth` in the image",
     };
-  const secret = (await getFile(ctx, UTIL, `${REFRESH_HOME}/auth.json`)) ?? "";
+  const secret = (await io.read(`${REFRESH_HOME}/auth.json`)) ?? "";
   if (!secret.trim()) return { ok: false, detail: "codex login finished but produced no credential" };
   await saveAuth(ctx.db, { runtime: "codex", mode: "chatgpt", secret: secret.trim() });
   void ctx.sched.tick().catch(() => {});
@@ -235,10 +235,16 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
   deviceLogin = run;
 
   run.done = (async () => {
+    // Before codex is told to use it: 0.147.0 refuses to load its configuration
+    // when CODEX_HOME is not there, exits, and prints no device code — which the
+    // panel then reported as a CLI whose output we no longer recognise. Nothing
+    // else creates this one; see `prepareHome`.
+    const io = codexHomeIO(ctx);
+    await prepareHome(io);
     const session = await (ctx.pty ?? openPty)(ctx, UTIL, `env CODEX_HOME=${REFRESH_HOME} codex login --device-auth`);
     opened = session;
     try {
-      return await finishCodexLogin(ctx, run, session);
+      return await finishCodexLogin(ctx, io, run, session);
     } finally {
       session.close();
     }

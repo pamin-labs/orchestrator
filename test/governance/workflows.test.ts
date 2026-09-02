@@ -632,8 +632,11 @@ describe("workflow governance", () => {
       "gh release create",
       "imagetools create",
       "docker/login-action",
-      "actions/attest-build-provenance",
-      "actions/attest-sbom",
+      // The prefix, not the two full names: `actions/attest-sbom` was migrated to
+      // `actions/attest`, and a list of full names goes green over a publishing
+      // step it has stopped matching — which is the one thing this loop exists
+      // to stop.
+      "actions/attest",
       "push: true",
     ];
     for (const [name, job] of Object.entries(workflow.jobs)) {
@@ -700,7 +703,7 @@ describe("workflow governance", () => {
     expect(release).toContain("sha256sum --check SHA256SUMS");
     expect(release).toContain("subject-path: dist/*");
     expect(release).toContain("actions/attest-build-provenance@");
-    expect(release).toContain("actions/attest-sbom@");
+    expect(release).toContain("actions/attest@");
     expect(workflow.jobs.publish?.needs).toEqual(["checks", "release-evidence", "manifest"]);
   });
 

@@ -7,7 +7,7 @@ import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } f
 import { Segment, Segments } from "../../ui/segment";
 import { Switch } from "../../ui/switch";
 import { Tip } from "../../ui/tooltip";
-import { type AuthRow, DeviceCode, type Mode, ModeSchema } from "./auth";
+import { type AuthRow, copyLoginCode, DeviceCode, type Mode, ModeSchema } from "./auth";
 import {
   ClaudeLoginFlowSchema as ClaudeLoginSchema,
   CodexLoginFlowSchema as CodexLoginSchema,
@@ -338,7 +338,18 @@ function CredentialStatus({ state }: { state: CredentialState }) {
  *  addresses we are willing to put in front of the boss without them reading it
  *  first. A host that drops off this list stops being opened automatically and
  *  goes back to being a link they click, which is what it was before. */
-const LOGIN_HOSTS = ["claude.ai", "claude.com", "anthropic.com"];
+const LOGIN_HOSTS = ["claude.ai", "claude.com", "anthropic.com", "openai.com"];
+
+/**
+ * Long enough to read "code copied" before the tab takes the screen.
+ *
+ * It is a pace, not a synchronisation — nothing waits on it and nothing is
+ * correct because of it. It does spend a second of the popup's transient
+ * activation window, which is five seconds in Chrome and Safari; see the note in
+ * `signIn` on what a blocked popup costs, which is the link staying one click
+ * away exactly as it was.
+ */
+const TOAST_READ_MS = 1_000;
 
 /**
  * The URL, if it is one we may navigate a tab to; null otherwise.
@@ -383,50 +394,79 @@ function SecretField({ state }: { state: CredentialState }) {
   const { t } = useLingui();
   const { props, form, changeForm, changeLogin, updatedAt } = state;
   /**
-   * Sign in, whichever way this runtime does it.
+   * Start the login this runtime does, and hand back the page to open.
    *
    * Both run the official CLI in the utility container — nothing is installed on
    * this machine and nothing forges an OAuth exchange. They differ in what the
    * boss does with the page: codex prints a code to type there, claude prints a
-   * code to bring back, so claude gets the input below.
+   * code to bring back, so claude gets the input below. Both return a URL, which
+   * is the part `signIn` no longer has to ask which runtime it is holding.
    */
-  const signIn = async () => {
-    changeForm({ busy: true });
+  const start = async (): Promise<{ url: string; code?: string } | null> => {
     if (props.runtime.key === "codex") {
       const res = await mutate(api.auth.codex.device.$post(), false, CodexLoginSchema);
-      changeForm({ busy: false });
-      if (!res.ok) return;
+      if (!res.ok) return null;
       changeLogin({ device: res.data });
-    } else {
-      // Opened here, because nothing else can. This comment used to say the CLI
-      // opens the browser itself and a second tab would split the flow — true
-      // while the login ran on the host, and false since it moved into the
-      // container, which has no browser. The CLI says so in its own output:
-      // `Browser didn't open? Use the url below to sign in`.
-      //
-      const res = await mutate(api.auth.claude.login.$post(), false, ClaudeLoginSchema);
-      changeForm({ busy: false });
-      if (!res.ok) return;
-      // Opened once there is somewhere to go, rather than blank-then-filled. A
-      // popup needs a user gesture and the reply is awaited, but transient
-      // activation outlives one turn of the event loop — five seconds in Chrome
-      // and Safari — and this reply is measured at 1.6s. The first version
-      // assumed the gesture was already spent and opened a placeholder tab; that
-      // was a guess, and the visible cost of it was a window sitting on
-      // about:blank while the link loaded.
-      //
-      // Blocked, or slower than the activation window, returns null. Not an
-      // error: the link is rendered below and is one click away, which is what
-      // the boss had before any of this.
-      //
-      // Only after `httpsOnly`. The value is a string from a JSON body — the
-      // schema says it is a string and cannot say what kind — and a
-      // `javascript:` URL opened this way runs in this origin.
-      const target = httpsOnly(res.data.url);
-      // fallow-ignore-next-line security-sink -- `target` is the output of `httpsOnly`, which parses with `URL`, requires the `https:` scheme, and requires the hostname to be one of `LOGIN_HOSTS` or a dot-anchored subdomain of one. A non-literal target is all fallow can see; the three checks above it are the allowlist it asks for, and `httpsOnly` has its own guard covering javascript:, data:, http: and suffix lookalikes.
-      if (target) window.open(target, "_blank", "noopener");
-      changeLogin({ link: res.data.url });
+      return { url: res.data.url, code: res.data.code };
     }
+    const res = await mutate(api.auth.claude.login.$post(), false, ClaudeLoginSchema);
+    if (!res.ok) return null;
+    changeLogin({ link: res.data.url });
+    return { url: res.data.url };
+  };
+
+  const signIn = async () => {
+    changeForm({ busy: true });
+    const started = await start();
+    changeForm({ busy: false });
+    if (!started) return;
+    // The code is on the clipboard before the page it is typed into exists, so
+    // the boss arrives on that page able to paste. Only codex has one here —
+    // claude's code comes back *from* the browser, and there is nothing to copy
+    // until it does.
+    //
+    // The same `Login code copied` the Copy button raises, and only once: it
+    // says the code is already in hand, which is the thing that is easy to miss
+    // when a tab takes the screen a moment later. The pause is for reading it,
+    // not for waiting on anything — nothing here is synchronised by it.
+    if (started.code) {
+      copyLoginCode(started.code, t`Login code copied`);
+      await new Promise((resolve) => {
+        setTimeout(resolve, TOAST_READ_MS);
+      });
+    }
+    const url = started.url;
+    // Opened here, because nothing else can. This comment used to say the CLI
+    // opens the browser itself and a second tab would split the flow — true
+    // while the login ran on the host, and false since it moved into the
+    // container, which has no browser. The CLI says so in its own output:
+    // `Browser didn't open? Use the url below to sign in`.
+    //
+    // For both runtimes, and it used to be for one. codex prints a code to type
+    // on that page and claude prints a code to bring back — a difference in what
+    // the boss does once it is open, not in whether opening it is their job.
+    //
+    // Opened once there is somewhere to go, rather than blank-then-filled. A
+    // popup needs a user gesture and the reply is awaited, but transient
+    // activation outlives one turn of the event loop — five seconds in Chrome
+    // and Safari — and the claude reply is measured at 1.6s. The first version
+    // assumed the gesture was already spent and opened a placeholder tab; that
+    // was a guess, and the visible cost of it was a window sitting on
+    // about:blank while the link loaded.
+    //
+    // Blocked, or slower than the activation window, returns null. Not an error:
+    // the link is rendered below either way and is one click away, which is what
+    // the boss had before any of this. codex is the one that can reach it —
+    // `postCodexDevice` waits up to 10s for a URL *and* a code, past the
+    // activation window on a cold container — and a tab that does not open is
+    // the whole cost of that.
+    //
+    // Only after `httpsOnly`. The value is a string from a JSON body — the
+    // schema says it is a string and cannot say what kind — and a `javascript:`
+    // URL opened this way runs in this origin.
+    const target = httpsOnly(url);
+    // fallow-ignore-next-line security-sink -- `target` is the output of `httpsOnly`, which parses with `URL`, requires the `https:` scheme, and requires the hostname to be one of `LOGIN_HOSTS` or a dot-anchored subdomain of one. A non-literal target is all fallow can see; the three checks above it are the allowlist it asks for, and `httpsOnly` has its own guard covering javascript:, data:, http: and suffix lookalikes.
+    if (target) window.open(target, "_blank", "noopener");
     props.onWaitForLogin(updatedAt);
   };
 
