@@ -3,6 +3,7 @@ import type { Ctx } from "../../mech/ctx.ts";
 import { saveAuth } from "./auth.ts";
 import { REFRESH_HOME } from "./chatgpt.ts";
 import { execLines, getFile, UTIL } from "./sandbox.ts";
+import { modelAccepted } from "../ops/preflight.ts";
 import { openPty, type PtySession } from "./pty.ts";
 
 /**
@@ -319,7 +320,18 @@ async function finishClaudeLogin(
         ? "claude setup-token asked for the code and never printed a token — the code may have been wrong or expired"
         : "claude setup-token printed no token — run it under a pty in the image and see what changed",
     };
-  await saveAuth(ctx.db, { runtime: "claude", mode: "oauth_token", secret: token });
+  const auth = { runtime: "claude", mode: "oauth_token", secret: token } as const;
+  // Read off a terminal, so what was read is a guess until the provider answers.
+  // A token that has just been minted and is refused is a capture that took the
+  // wrong characters, not a login that failed — and storing it is what turns that
+  // into a panel saying it is signed in beside a banner saying it is not.
+  const accepted = await modelAccepted("claude", auth, ctx.config.timeouts.credentialCheckMs);
+  if (!accepted.ok)
+    return {
+      ok: false,
+      detail: "the provider refused the token that was printed — what was read off the terminal is not all of it",
+    };
+  await saveAuth(ctx.db, auth);
   void ctx.sched.tick().catch(() => {});
   return { ok: true, detail: "stored" };
 }

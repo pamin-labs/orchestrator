@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { loadAuth } from "../../src/mech/sandbox/auth.ts";
@@ -15,6 +15,15 @@ import {
 import { fakePty, type FakePty } from "../support/fake-pty.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
+import { providerAnswers } from "../support/provider.ts";
+
+let restoreProvider = () => {};
+beforeAll(() => {
+  restoreProvider = providerAnswers();
+});
+afterAll(() => {
+  restoreProvider();
+});
 
 /**
  * Logging in to a ChatGPT account without a browser inside the container.
@@ -381,4 +390,32 @@ test("a submitted code is typed, then Enter, as two separate keystrokes", async 
   expect(pty.typed).toEqual([code, "\r"]);
 
   run.cancel();
+});
+
+/**
+ * The defect this guard exists for, in the shape it had.
+ *
+ * A real login printed `sk-ant-oat01-…` and what was stored began eight
+ * characters in, at `at01-`. Every rule the recogniser has passed it: a hundred
+ * base64url characters, mixed case, no character worth more than five percent of
+ * it — a token's tail looks exactly like a token.
+ */
+/**
+ * No rule written against the text can tell the two apart. The provider can, and
+ * it was never asked — so the panel said signed in while the credential banner
+ * said refused, and both were reporting honestly.
+ */
+test("a token the provider refuses is not stored, and the login says so", async () => {
+  const db = await openMemory();
+  const restore = providerAnswers(401);
+  try {
+    const ctx = await withPty(saying(`Open https://claude.ai/oauth/authorize?x=1 to continue\n${CLAUDE_TOKEN}`), db);
+    const run = startClaudeLogin(ctx);
+    const done = await Promise.race([run.done, Bun.sleep(5_000).then(() => null)]);
+    expect(done?.ok).toBe(false);
+    expect(done?.detail).toContain("not all of it");
+    expect(await loadAuth(db, "claude")).toBeNull();
+  } finally {
+    restore();
+  }
 });

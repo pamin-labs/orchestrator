@@ -1,5 +1,5 @@
 import { waitFor } from "@testing-library/dom";
-import { expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { makeApp } from "../../src/composition/api.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { asc, eq } from "drizzle-orm";
@@ -16,6 +16,15 @@ import { escalationKey } from "../../src/mech/flow/escalate.ts";
 import { fakePty } from "../support/fake-pty.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
+import { providerAnswers } from "../support/provider.ts";
+
+let restoreProvider = () => {};
+beforeAll(() => {
+  restoreProvider = providerAnswers();
+});
+afterAll(() => {
+  restoreProvider();
+});
 
 /**
  * Two credential flows, and the one property both of them owe the panel.
