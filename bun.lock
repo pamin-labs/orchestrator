@@ -74,6 +74,10 @@
       "devDependencies": {
         "@babel/core": "^8",
         "@biomejs/biome": "^2.5.8",
+        "@embedded-postgres/darwin-arm64": "18.4.0-beta.17",
+        "@embedded-postgres/darwin-x64": "18.4.0-beta.17",
+        "@embedded-postgres/linux-arm64": "18.4.0-beta.17",
+        "@embedded-postgres/linux-x64": "18.4.0-beta.17",
         "@happy-dom/global-registrator": "^20.11.2",
         "@lingui/babel-plugin-lingui-macro": "6.6.0",
         "@lingui/cli": "6.6.0",
@@ -117,6 +121,12 @@
       },
     },
   },
+  "trustedDependencies": [
+    "@embedded-postgres/darwin-x64",
+    "@embedded-postgres/darwin-arm64",
+    "@embedded-postgres/linux-arm64",
+    "@embedded-postgres/linux-x64",
+  ],
   "packages": {
     "@alibaba-group/opensandbox": ["@alibaba-group/opensandbox@0.1.11", "", { "dependencies": { "openapi-fetch": "^0.14.1", "undici": "^7.28.0" } }, "sha512-xDJzs+5yYAPrje+z3GKUmXezpVq3kO/NyP8BM9JwzCbfuSr5vQyHJI3/Pu4FBGdb/xQnxMcWFlsKqC4/80OeiQ=="],
 
@@ -175,6 +185,14 @@
     "@colors/colors": ["@colors/colors@1.5.0", "", {}, "sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ=="],
 
     "@drizzle-team/brocli": ["@drizzle-team/brocli@0.12.0", "", {}, "sha512-mlUE+rZ8CatQekLhnaiN91Iemdd+e2gFKooGlnRB3oPTL3VghLfX24dx7HrzMNeC1JrIB/0kpsfyty3f5HNfxQ=="],
+
+    "@embedded-postgres/darwin-arm64": ["@embedded-postgres/darwin-arm64@18.4.0-beta.17", "", { "os": "darwin", "cpu": "arm64" }, "sha512-Kg1ZMNFzkVIJs3g4V2UYEc5X005km9rGinxFBH8R1sOU2Rblvz4pt2Uf93Pu8Rk273Ue9HIdrbMPpgUqwjUi0Q=="],
+
+    "@embedded-postgres/darwin-x64": ["@embedded-postgres/darwin-x64@18.4.0-beta.17", "", { "os": "darwin", "cpu": "x64" }, "sha512-4tShSYWMxUQTSWoQAdLnHISvRj6L9gTch9/31ASJPg6wgyN64LDRwMcOINEWybM7N0ropJ3nTYhFT3UX1bKY5Q=="],
+
+    "@embedded-postgres/linux-arm64": ["@embedded-postgres/linux-arm64@18.4.0-beta.17", "", { "os": "linux", "cpu": "arm64" }, "sha512-TIzjtGnDGSD/LbdW0OWCEcbI+YVT0WKSfSr20TCkkP4UR8zeKe+QCZbO0/CM4hS9EWyZ4cDebjRvpRc3iMi6wg=="],
+
+    "@embedded-postgres/linux-x64": ["@embedded-postgres/linux-x64@18.4.0-beta.17", "", { "os": "linux", "cpu": "x64" }, "sha512-jVw/MdDtIX/vICH/DKIe6/mHpiCggdx6QVyza4vt/NbcZFsL0KhwglF6F1Koqx3gRBZ9XtN+vi63EsqSyqOSxA=="],
 
     "@emnapi/core": ["@emnapi/core@1.11.3", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.3", "tslib": "^2.4.0" } }, "sha512-zLpS5asjEb7lq8jYLq37N6XKaE41DIexlY1rF/z4/tIl3wo13Sqm28fRyfIsKZD+NZ8mM5RoKkpW/rBcuoSZSg=="],
 

@@ -1,4 +1,4 @@
-import { claim, TIMEOUT } from "./test.ts";
+import { claim, ownDatabase, TIMEOUT } from "./test.ts";
 
 /**
  * Suites that carry state across a run, so repeating them proves nothing.
@@ -65,6 +65,10 @@ if (import.meta.main) {
   // the one that runs when the spawn throws, and it already runs on the ordinary
   // path.
   process.on("exit", claim());
+  // This spawns `bun test` itself rather than going through `run()`, so the
+  // database `bun run test` would have started is this file's to start — the
+  // same rule, and the reason it is exported.
+  const database = await ownDatabase();
   const child = Bun.spawn(["bun", "test", ...stressFiles(), ...stressArgs(process.env)], {
     env: { ...process.env, FC_NUM_RUNS: process.env.FC_NUM_RUNS ?? "1000" },
     stdin: "inherit",
@@ -72,4 +76,5 @@ if (import.meta.main) {
     stderr: "inherit",
   });
   process.exitCode = await child.exited;
+  await database.stop();
 }

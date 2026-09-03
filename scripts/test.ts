@@ -17,9 +17,11 @@
  * the newest stable and still does this. Every workflow runs `ubuntu-24.04`,
  * which is x64 and has no PAC — so this is a local-only tax, not a flaky CI.
  */
-import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { $, fileURLToPath, SQL } from "bun";
+import { z } from "zod";
 import { cpus } from "node:os";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 export const CRASHED = /worker crashed with SIG|Segmentation fault|oh no: Bun has crashed/;
 
@@ -179,27 +181,74 @@ async function run(): Promise<{ code: number; crashed: boolean }> {
 /**
  * The suite's Postgres, started only if nobody else has, and stopped only then.
  *
- * `bun run db:test:up` leaves a container running for as long as the machine
- * does — 24 hours in one measurement, holding 185MB of an in-memory data
- * directory that no test was using. Bringing it down after a run that had to
- * bring it up is the same rule a probe follows: what you allocate, you free.
+ * From the binaries in `node_modules`, not from Docker. `@embedded-postgres/<os>-<cpu>`
+ * is what `bun install` — the one setup step every checkout already runs — puts
+ * there, so the same `bun run test` works on a developer's machine, on CI, and
+ * inside a group's sandbox, which has no `docker` and no route to the host's
+ * loopback.
  */
 /**
- * Free, near enough, because a cold run costs nothing a warm one does not: 14s
- * either way on this tree, since rebuilding ten namespaces on a tmpfs is not
- * measurable against the suite. Start-up is 3s and is paid only by the run that
- * needed it. A developer who ran `db:test:up` themselves, and CI, which runs it
- * in `setup-bun`, both keep the container they asked for.
+ * That is where this was found: the first requirement this project gave itself
+ * stopped the whole group on `docker is absent from PATH`, and the engineer
+ * asked the boss for a database nobody could hand in.
  */
-const DB_COMPOSE = ["docker", "compose", "-f", "docker/postgres-test-compose.yml"];
+/**
+ * `initdb` and `pg_ctl` are driven here rather than through `embedded-postgres`,
+ * the package those binaries belong to. Beyond resolving them, its one job is to
+ * run them as a `postgres` user when the caller is root — which a sandbox is —
+ * and it does that with `child_process.spawn`'s `uid`/`gid`, which Bun ignores:
+ * `spawnSync("id", { uid: 65534 })` prints `uid=0(root)` under bun 1.3.14 and
+ * `nobody` under node 20 in the same image. `runuser` is what works. Reopen
+ * when Bun honours `uid` in `spawn`; the wrapper then deletes to a constructor.
+ */
+/**
+ * A developer who ran `db:test:up` themselves, and the nightly jobs, which run
+ * it in `setup-bun` because `test:stress` spawns `bun test` itself, keep the
+ * container they asked for: nothing answering is the only case this starts
+ * anything, and it stops only what it started.
+ */
+const TEST_DB = new URL(
+  process.env.ORCH_TEST_DATABASE_URL ?? "postgres://orchestrator:orchestrator@127.0.0.1:5433/orchestrator",
+);
+/**
+ * The binaries, one package name at a time.
+ *
+ * Named as literals rather than built from `process.platform` and `process.arch`,
+ * because a path assembled out of two variables is a reference nothing can
+ * follow — not a reader, not `bun install`'s `os`/`cpu` filter, and not the dead
+ * code audit, which reported all four as devDependencies nobody imports.
+ * Thunks, because only this machine's is installed and resolving the other three
+ * throws.
+ */
+const BINARIES: Record<string, () => string> = {
+  "darwin-arm64": () => import.meta.resolve("@embedded-postgres/darwin-arm64/package.json"),
+  "darwin-x64": () => import.meta.resolve("@embedded-postgres/darwin-x64/package.json"),
+  "linux-arm64": () => import.meta.resolve("@embedded-postgres/linux-arm64/package.json"),
+  "linux-x64": () => import.meta.resolve("@embedded-postgres/linux-x64/package.json"),
+};
 
-/** A TCP connect rather than `docker ps`: someone may be running their own
+/** Where this platform's `initdb` and `pg_ctl` are, said in one place so the
+ *  error names the package rather than a path that does not exist. */
+function binDir(): string {
+  const at = BINARIES[`${process.platform}-${process.arch}`];
+  if (!at)
+    throw new Error(
+      `no PostgreSQL binaries for ${process.platform}-${process.arch}; start one and set ORCH_TEST_DATABASE_URL`,
+    );
+  return join(dirname(fileURLToPath(at())), "native/bin");
+}
+const DATA = `${import.meta.dir}/../node_modules/.cache/orch-test-pg`;
+
+/** A TCP connect rather than `pg_ctl status`: someone may be running their own
  *  Postgres on that port, and starting a second one over it is the failure this
  *  is meant to avoid rather than cause. */
 async function databaseAnswers(): Promise<boolean> {
-  const { hostname, port } = new URL(process.env.ORCH_TEST_DATABASE_URL ?? "postgres://127.0.0.1:5433");
   try {
-    const socket = await Bun.connect({ hostname, port: Number(port || 5433), socket: { data() {} } });
+    const socket = await Bun.connect({
+      hostname: TEST_DB.hostname,
+      port: Number(TEST_DB.port || 5433),
+      socket: { data() {} },
+    });
     socket.end();
     return true;
   } catch {
@@ -207,17 +256,50 @@ async function databaseAnswers(): Promise<boolean> {
   }
 }
 
-/** Brings it up if nothing answers. `started` says whether the container is
- *  this run's to stop, which is the half a guard can check without stopping
+/** The server's settings, read from the compose file so it stays their one
+ *  owner: `max_connections`, `fsync=off` and the rest are explained there, and
+ *  the nightly jobs still start that container. */
+const Compose = z.object({ services: z.object({ "postgres-test": z.object({ command: z.array(z.string()) }) }) });
+const serverFlags = (): string[] =>
+  Compose.parse(
+    Bun.YAML.parse(readFileSync(`${import.meta.dir}/../docker/postgres-test-compose.yml`, "utf8")),
+  ).services["postgres-test"].command.slice(1);
+
+/** `runuser -u postgres --` when root, because Postgres refuses to start as
+ *  root. The user is made if the image has none; only a sandbox gets here. */
+async function asPostgres(): Promise<string[]> {
+  if (process.getuid?.() !== 0) return [];
+  await $`id -u postgres || useradd --system postgres`.quiet();
+  return ["runuser", "-u", "postgres", "--"];
+}
+
+/** Brings it up if nothing answers. `started` says whether the server is this
+ *  run's to stop, which is the half a guard can check without stopping
  *  somebody else's. */
 export async function ownDatabase(): Promise<{ started: boolean; stop: () => Promise<void> }> {
   if (await databaseAnswers()) return { started: false, stop: async () => {} };
-  const up = Bun.spawn([...DB_COMPOSE, "up", "-d", "--wait"], { stdout: "inherit", stderr: "inherit" });
-  if ((await up.exited) !== 0) throw new Error("could not start the test database; `bun run db:test:up` says why");
+  const as = await asPostgres();
+  const bin = binDir();
+  // Fresh every run: a cluster left by another Postgres version does not start,
+  // and with `fsync=off` a cold start costs about a second.
+  rmSync(DATA, { recursive: true, force: true });
+  mkdirSync(DATA, { recursive: true });
+  if (as.length) await $`chown postgres ${DATA}`.quiet();
+  // `trust`, like the compose file's committed password: loopback only, and it
+  // holds nothing but throwaway databases. The builtin C.UTF-8 exists on every
+  // platform; `en_US` does not exist in a container that installed no locales.
+  await $`${as} ${bin}/initdb --pgdata=${DATA} --username=${TEST_DB.username} --auth=trust --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8 --no-sync`.quiet();
+  const options = ["-p", TEST_DB.port || "5433", ...serverFlags()].join(" ");
+  await $`${as} ${bin}/pg_ctl --pgdata=${DATA} --log=${DATA}/log --wait --options=${options} start`.quiet();
+  const name = TEST_DB.pathname.slice(1);
+  if (!/^\w+$/.test(name)) throw new Error(`ORCH_TEST_DATABASE_URL names a database this cannot create: ${name}`);
+  const sql = new SQL(new URL("/postgres", TEST_DB).href);
+  await sql.unsafe(`CREATE DATABASE "${name}"`);
+  await sql.end();
   return {
     started: true,
     stop: async () => {
-      await Bun.spawn([...DB_COMPOSE, "down"], { stdout: "ignore", stderr: "ignore" }).exited;
+      await $`${as} ${bin}/pg_ctl --pgdata=${DATA} --mode=fast stop`.quiet().nothrow();
     },
   };
 }

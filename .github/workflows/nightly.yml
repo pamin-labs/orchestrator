@@ -28,7 +28,6 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          postgres: "true"
       - run: bun run build:web
       - run: bun run perf:bench
       - env:
@@ -88,7 +87,6 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          postgres: "true"
       # opensandbox-server is a Python package, and the tests start it with
       # `uvx`. Without uv on PATH they detect that and skip — a green tick on a
       # job named sandbox-live, over nothing.

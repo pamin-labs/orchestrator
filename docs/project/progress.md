@@ -24,6 +24,9 @@ Measured on `chore/release-0.1.9`, 2026-09-03.
   `scripts/embedding-check.ts:126`, a non-literal URL in a development script,
   not reached from any runtime entry point
 - `bun run preflight`: every runnable step passed, 44s
+- The suite starts its own PostgreSQL from `node_modules`, so it runs where an
+  agent runs — no Docker. 1.0s to a usable database on macOS, 1.6s in the agent
+  image as root ([`054`](../adr/054-the-suite-brings-its-own-postgres.md))
 - Block comments over eight lines: zero, enforced by
   `test/governance/comment-blocks.test.ts`
 - All ten catalogues at 1150/1150
