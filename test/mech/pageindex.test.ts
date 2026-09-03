@@ -457,17 +457,29 @@ test("how far and how wide the walk goes is config, not a literal inside it", as
   };
 
   // Three levels between the root and a file, so depth 3 is three serial calls.
-  await search(tree, "where is the notifier", ask, { enabled: true, depth: 3, width: 4 });
+  await search(tree, "where is the notifier", ask, {
+    enabled: true,
+    depth: 3,
+    width: 4,
+    budget: 12,
+    fileChars: 30_000,
+  });
   expect(asks).toHaveLength(3);
 
   asks.length = 0;
-  await search(tree, "where is the notifier", ask, { enabled: true, depth: 1, width: 2 });
+  await search(tree, "where is the notifier", ask, {
+    enabled: true,
+    depth: 1,
+    width: 2,
+    budget: 12,
+    fileChars: 30_000,
+  });
   expect(asks).toHaveLength(1);
   expect(asks[0]).toContain("at most 2 ids");
 
   // Moving the numbers was not the point; being able to is. These are the values
   // that shipped before the move, and this says so out of `config/default.yaml`.
-  expect(WALK).toEqual({ enabled: true, depth: 3, width: 4 });
+  expect(WALK).toEqual({ enabled: true, depth: 3, width: 4, budget: 12, fileChars: 30_000 });
 });
 
 test("a requirement's own retrieval counts against its budget", async () => {

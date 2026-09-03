@@ -1253,6 +1253,9 @@ msgstr "Сколько замечаний становятся правилом"
 msgid "Fetching login code…"
 msgstr "Получаем код входа…"
 
+msgid "File characters read"
+msgstr "Читаемых символов файла"
+
 msgid "Files and folders OK; click a name to enter a folder."
 msgstr "Файлы и папки читаются; кликните по имени, чтобы войти в папку."
 
@@ -1521,6 +1524,9 @@ msgstr "Сколько узлов модель может назвать на о
 msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
 msgstr "Сколько открытых пул-реквестов один опрос запрашивает у GitHub. Стоимость GraphQL-запроса — это число узлов, так что каждая цифра в этой группе — потолок, купленный за квоту."
 
+msgid "How much of a file the indexer is given to describe it. Whether a file is re-read is git's answer about the whole file, so this only decides how much of it the model sees — 30,000 covers 93.5% of this repository's files whole."
+msgstr "Какую часть файла индексатор получает для его описания. Перечитывать ли файл, решает git по файлу целиком, так что здесь задаётся лишь объём, который видит модель, — 30 000 полностью покрывают 93,5 % файлов этого репозитория."
+
 msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
 msgstr "Как часто выполняются детерминированные правила. И заодно — сколько работа в очереди ждёт отправки без явного тика."
 
@@ -1554,6 +1560,9 @@ msgstr "Включая зависящее"
 
 msgid "index call ({total} tokens)"
 msgstr "вызов индексации ({total} токенов)"
+
+msgid "Index calls per pass"
+msgstr "Вызовов индекса за проход"
 
 msgid "Index model"
 msgstr "Модель индекса"
@@ -1952,6 +1961,9 @@ msgstr "uvx нет в PATH"
 
 msgid "No, keep going"
 msgstr "Нет, продолжать"
+
+msgid "Nodes the indexer may summarise every 30 seconds. It is also what a finished pass looks like: one that spends all of it runs again next tick, so the tree is never marked fresh until it is. Higher catches up sooner and costs more."
+msgstr "Узлы, которые индексатор может описать каждые 30 секунд. Это же признак завершённого прохода: израсходовавший всё запускается на следующем такте, и до тех пор дерево не помечается свежим. Больше — быстрее наверстает и дороже."
 
 msgid "none recorded"
 msgstr "не записано"

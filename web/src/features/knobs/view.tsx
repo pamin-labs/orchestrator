@@ -215,7 +215,14 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
           // one block on this pane that is not about spend at all, and because
           // the two halves — the tree walk and the vectors — are read together.
           legend: msg`Retrieval`,
-          paths: ["pageindex.enabled", "pageindex.depth", "pageindex.width", "embedding.mode"],
+          paths: [
+            "pageindex.enabled",
+            "pageindex.depth",
+            "pageindex.width",
+            "pageindex.budget",
+            "pageindex.fileChars",
+            "embedding.mode",
+          ],
         },
       ],
     },
@@ -429,6 +436,14 @@ export const COPY: Record<
   "pageindex.width": {
     label: msg`Walk width`,
     why: msg`How many nodes the model may name at one level. Width costs tokens in a single call, where depth costs another call.`,
+  },
+  "pageindex.budget": {
+    label: msg`Index calls per pass`,
+    why: msg`Nodes the indexer may summarise every 30 seconds. It is also what a finished pass looks like: one that spends all of it runs again next tick, so the tree is never marked fresh until it is. Higher catches up sooner and costs more.`,
+  },
+  "pageindex.fileChars": {
+    label: msg`File characters read`,
+    why: msg`How much of a file the indexer is given to describe it. Whether a file is re-read is git's answer about the whole file, so this only decides how much of it the model sees — 30,000 covers 93.5% of this repository's files whole.`,
   },
   "indexModel.runtime": {
     label: msg`Index model`,

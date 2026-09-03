@@ -44,13 +44,14 @@ Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
   its children's summaries, so one blank leaf changed the parent's signature,
   needed a call the budget had spent on files, and the emptiness climbed a level
   per tick. A pass therefore always spent all twelve, and the tree is stamped
-  fresh only under twelve, so every tick rebuilt from a checkout, forever. What
-  counts as changed now comes from git — `ls-files -s` blob hashes, the whole file
-  — where the first 1800 bytes were a file's identity; the stamp is those hashes
-  plus the note corpus, which changes without a commit. A pass reads only what it
-  is about to summarise: 1,159,899 bytes a tick became ~49,000, and `HEAD_CHARS`
-  rose to 6000 (17% of files covered whole at 1800, 59% now). Directories are
-  summarised per subtree rather than after every file. Fixed 2026-09-03; guards in
+  fresh only under the budget, so every tick rebuilt from a checkout, forever.
+  What counts as changed now comes from git — `ls-files -s` blob hashes, the whole
+  file — where the first 1800 bytes were a file's identity; the stamp is those
+  hashes plus the note corpus, which changes without a commit. A pass reads only
+  what it is about to summarise, so 1,159,899 bytes a tick became ~95,000 while
+  what the model sees went from a 1800-character head (17% of files whole) to the
+  whole file up to 30,000 (93.5%), which is PageIndex's own method. Directories
+  are walked per subtree. Both knobs are settings now. Fixed 2026-09-03; guards in
   `pageindex`, `checkout-spans`, `server-policy`.
 
 - **The panel never rendered the Markdown its agents write.** Cards, journal

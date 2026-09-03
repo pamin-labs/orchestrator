@@ -72,19 +72,18 @@ export type Read = (id: string) => string | null;
 export const NOTE_PREFIX = "notes/";
 
 /**
- * How much of a file the summary is written from. Not its signature any more:
- * that is git's blob hash, so the whole file decides *whether* to re-summarise
- * and this decides only how much of it the model gets to read.
+ * How much of a file the summary is written from, when the caller does not say.
+ * `pageindex.fileChars` is the setting; this is the floor tests run on.
  */
 /**
- * Measured on this repository, 691 indexable files: 1800 characters covered 17%
- * of them whole, against a median file of 4382 — four files in five described
- * from a fragment. Raising it is close to free: a pass fetches only the files it
- * is about to summarise, at most twelve, and a head is a few hundred tokens
- * against the ~10,000 a CLI invocation costs before it reads anything. 6000
- * covers 59% whole, and the median with room.
+ * PageIndex's own method summarises a **whole** node, not a slice of one — it
+ * chunks nothing and truncates nothing, because a description written from the
+ * opening of a section describes the opening of a section. This was 1800
+ * characters, which on this repository covered 17% of files whole against a
+ * median of 4382: four in five were described from a fragment. A ceiling is
+ * still needed for the tail — one vendored file here is 199,074 characters.
  */
-export const HEAD_CHARS = 6000;
+const SUMMARY_CHARS = 30_000;
 
 /** Structure first, summaries second — the same order as the original. */
 export function skeleton(files: string[]): Tree {
@@ -121,7 +120,7 @@ export async function summarise(
   tree: Tree,
   read: Read,
   ask: Ask,
-  opts: { maxCalls?: number; previous?: Tree; sigFor?: (id: string) => string | null } = {},
+  opts: { maxCalls?: number; previous?: Tree; sigFor?: (id: string) => string | null; chars?: number } = {},
 ): Promise<{ tree: Tree; calls: number; failed: number }> {
   const prev = opts.previous ?? {};
   const state = { calls: 0, failed: 0, budget: opts.maxCalls ?? 40 };
@@ -133,7 +132,7 @@ export async function summarise(
       await summariseNode(node, children, prompt, prev, ask, state);
       continue;
     }
-    const head = read(node.id)?.slice(0, HEAD_CHARS);
+    const head = read(node.id)?.slice(0, opts.chars ?? SUMMARY_CHARS);
     // A file the corpus would not hand over — binary, unreadable, gone between the
     // listing and the read, or simply not fetched because this pass has no budget
     // left for it. Keep what the last pass knew rather than dropping it: a blank

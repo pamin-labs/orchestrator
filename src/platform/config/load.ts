@@ -155,7 +155,13 @@ const DEFAULTS: Config = {
   // retuning them. Depth 3 answered every question the walk was measured on in
   // two calls; a fourth level is a third serial call on every query that reaches
   // it, which is what makes this the expensive number of the two.
-  pageindex: { enabled: true, depth: 3, width: 4 },
+  // 12 calls a pass, and the whole of a file up to 30,000 characters. Measured on
+  // this repository, 691 indexable files: 30,000 covers 93.5% of them whole,
+  // where the 1800-character head this replaced covered 17%, against a median
+  // file of 4,382. The content is a fraction of what a call costs either way —
+  // roughly 7.5k tokens at the ceiling against the ~10k a CLI invocation spends
+  // before it reads anything.
+  pageindex: { enabled: true, depth: 3, width: 4, budget: 12, fileChars: 30_000 },
   notifyWebhook: "",
   parkAfterPausedMs: 7_200_000,
   watchdogIntervalMs: 30_000,

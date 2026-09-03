@@ -38,7 +38,6 @@ import { dispatchFeedback, type Feedback, openPr, pollPrs, prBody, prTitle } fro
 import { type Github, makeGithub } from "../mech/git/github.ts";
 import { repoHeld } from "../mech/git/repository.ts";
 import {
-  HEAD_CHARS,
   NOTE_PREFIX,
   chargeIndex,
   loadTree,
@@ -644,8 +643,9 @@ async function refreshProjectIndex(ctx: Ctx, project: IndexProject, askIn: AskIn
   // going to do work. A container that refuses answers with an empty map rather
   // than throwing, and an empty map is a pass where every file keeps the summary
   // it had — the safe answer.
-  const readHeads = (paths: string[]) => fileHeads(ctx, { project: project.id }, paths, HEAD_CHARS);
-  const result = await buildProjectIndex(ctx.db, project.id, blobs, notes, readHeads, askIn);
+  const walk = ctx.config.pageindex;
+  const readHeads = (paths: string[]) => fileHeads(ctx, { project: project.id }, paths, walk.fileChars);
+  const result = await buildProjectIndex(ctx.db, project.id, blobs, notes, readHeads, askIn, walk);
   await recordIndexResult(ctx, project.id, at, result);
 }
 
@@ -690,17 +690,6 @@ export function indexStamp(blobs: Map<string, string>, notes: Notes): string {
  * would be a worse version of the grepping it replaces. Twelve a tick on the
  * cheapest tier catches up over a few minutes and then costs nothing.
  */
-/**
- * How many nodes one pass may summarise, and the number two rules share.
- *
- * `recordIndexResult` stamps the tree fresh only for a pass that came in *under*
- * the budget, so a pass that spends all of it is by definition unfinished. Those
- * two facts are one number, and it was written twice: raise the budget in one
- * place and the stamp would never be recorded again — which is exactly the
- * runaway this branch just fixed, waiting to be reintroduced by a one-line edit.
- */
-export const INDEX_BUDGET = 12;
-
 async function buildProjectIndex(
   db: DB,
   projectId: number,
@@ -708,6 +697,7 @@ async function buildProjectIndex(
   notes: Notes,
   readHeads: (paths: string[]) => Promise<Map<string, string>>,
   askIn: AskIn,
+  walk: Config["pageindex"],
 ) {
   const excludes = await indexExcludes(db, projectId);
   const files = [...blobs.keys()].filter((file) => indexable(file, excludes));
@@ -716,12 +706,12 @@ async function buildProjectIndex(
   // A note's identity is still its body: it is stored here, not in git, and it is
   // short enough that the whole of it is what gets summarised.
   const sigFor = (id: string) => blobs.get(id) ?? null;
-  const heads = await readHeads(pendingFiles(tree, previous, sigFor, INDEX_BUDGET));
+  const heads = await readHeads(pendingFiles(tree, previous, sigFor, walk.budget));
   const result = await summarise(
     tree,
     (id) => (id.startsWith(NOTE_PREFIX) ? notes.read(id) : (heads.get(id) ?? null)),
     askIn({ project: projectId }),
-    { previous, maxCalls: INDEX_BUDGET, sigFor },
+    { previous, maxCalls: walk.budget, chars: walk.fileChars, sigFor },
   );
   await saveTree(db, projectId, result.tree);
   return { calls: result.calls, failed: result.failed, files: files.length };
@@ -741,7 +731,13 @@ export async function recordIndexResult(
   at: string,
   result: { calls: number; failed: number; files: number },
 ): Promise<void> {
-  if (at && result.calls < INDEX_BUDGET && result.failed === 0) memory(ctx.db).at.set(projectId, at);
+  // `< budget`, not `<= `: a pass that spent all of it stopped early and has more
+  // to do, so it must not record the tree as finished. One number, read from one
+  // place — written twice, raising the budget in settings would silently stop the
+  // stamp ever being recorded, which is the runaway this file just had.
+  if (at && result.calls < ctx.config.pageindex.budget && result.failed === 0) {
+    memory(ctx.db).at.set(projectId, at);
+  }
   if (result.failed > 0 && result.failed === result.calls) return await warnModelDown(ctx, projectId, result.failed);
   if (!result.calls) return;
   memory(ctx.db).down.delete(projectId);

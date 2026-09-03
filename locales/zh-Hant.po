@@ -1253,6 +1253,9 @@ msgstr "幾次抱怨變規則"
 msgid "Fetching login code…"
 msgstr "去拿登入碼…"
 
+msgid "File characters read"
+msgstr "讀取的檔案字元數"
+
 msgid "Files and folders OK; click a name to enter a folder."
 msgstr "檔案和目錄都行，點名字進目錄"
 
@@ -1521,6 +1524,9 @@ msgstr "模型在一層裡最多能點名多少個節點。寬度花的是一次
 msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
 msgstr "一次輪詢向 GitHub 問多少個開著的 PR。GraphQL 查詢的開銷就是節點數，所以這一組裡每個數字都是拿配額買來的上限。"
 
+msgid "How much of a file the indexer is given to describe it. Whether a file is re-read is git's answer about the whole file, so this only decides how much of it the model sees — 30,000 covers 93.5% of this repository's files whole."
+msgstr "索引器拿到多少內容來描述一個檔案。是否重新讀取由 git 對整個檔案的判斷決定，這裡只決定模型看到多少 —— 30,000 能完整覆蓋本儲存庫 93.5% 的檔案。"
+
 msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
 msgstr "確定性規則多久跑一遍。也是沒有顯式 tick 的入隊要等多久才被派發。"
 
@@ -1554,6 +1560,9 @@ msgstr "含下游"
 
 msgid "index call ({total} tokens)"
 msgstr "索引呼叫（{total} tokens）"
+
+msgid "Index calls per pass"
+msgstr "每輪索引呼叫數"
 
 msgid "Index model"
 msgstr "索引模型"
@@ -1952,6 +1961,9 @@ msgstr "PATH 裡沒有 uvx"
 
 msgid "No, keep going"
 msgstr "不，接著做"
+
+msgid "Nodes the indexer may summarise every 30 seconds. It is also what a finished pass looks like: one that spends all of it runs again next tick, so the tree is never marked fresh until it is. Higher catches up sooner and costs more."
+msgstr "索引器每 30 秒可以總結的節點數。它同時定義了什麼叫「一輪做完了」：花光預算的一輪下一次還會再跑，在那之前這棵樹不會被記為最新。調高追平更快，也更貴。"
 
 msgid "none recorded"
 msgstr "沒有記錄"
