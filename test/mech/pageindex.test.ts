@@ -15,6 +15,8 @@ import {
   search,
   skeleton,
   summarise,
+  pendingFiles,
+  walkOrder,
   type Ask,
 } from "../../src/mech/knowledge/pageindex.ts";
 import { costReport } from "../../src/mech/ops/cost.ts";
@@ -161,6 +163,51 @@ test("a file the corpus will not hand over keeps its summary", async () => {
   expect(gone.calls).toBe(0);
   expect(gone.tree["src/a.ts"]!.summary).toBe("a summary");
   expect(gone.tree["src/"]!.summary).toBe("a summary");
+});
+
+test("a budget that runs out leaves whole directories described, not a field of leaves", async () => {
+  // Files used to be summarised before any directory anywhere, so with hundreds of
+  // files against a budget of twelve no directory was reached for fifty-eight
+  // ticks — and a directory nobody has described is a level the navigator cannot
+  // walk past. Per subtree instead: a directory is summarised on the tick its own
+  // children finish.
+  const files = ["a/one.ts", "a/two.ts", "b/three.ts", "b/four.ts"];
+  const read = (id: string) => `contents of ${id}`;
+  const ask: Ask = async (p) => (p.includes("what does") ? `a directory` : `a file`);
+
+  const partial = await summarise(skeleton(files), read, ask, { maxCalls: 3 });
+  expect(partial.calls).toBe(3);
+  // Two files and the directory over them: one complete subtree, rather than
+  // three files and nothing that says where they live.
+  expect(partial.tree["a/"]!.summary).toBe("a directory");
+  expect(partial.tree["b/"]!.summary).toBe("");
+
+  // The order itself, stated: everything under a directory, then the directory,
+  // deepest first, with the root's own files last since nothing waits on them.
+  expect(walkOrder(skeleton([...files, "top.md"])).map((n) => n.id)).toEqual([
+    "a/one.ts",
+    "a/two.ts",
+    "a/",
+    "b/three.ts",
+    "b/four.ts",
+    "b/",
+    "top.md",
+  ]);
+});
+
+test("a pass fetches the files it is about to summarise, and no others", () => {
+  // The read used to be every tracked file, once a tick, to discover that twelve
+  // had changed. Git answers "which ones" for nothing, so the read is the twelve.
+  const files = ["a/one.ts", "a/two.ts", "a/three.ts"];
+  const blobs: Record<string, string> = { "a/one.ts": "aaa1", "a/two.ts": "bbb2", "a/three.ts": "ccc3" };
+  const tree = skeleton([...files, "notes/project/decision/1"]);
+  const previous = { "a/two.ts": { id: "a/two.ts", kind: "file" as const, summary: "s", sig: "bbb2", children: [] } };
+
+  const want = pendingFiles(tree, previous, (id) => blobs[id] ?? null, 10);
+  // `a/two.ts` is unchanged, so it is not fetched. The note is not a repository
+  // file — the caller already holds its body — so it is not fetched either.
+  expect(want).toEqual(["a/one.ts", "a/three.ts"]);
+  expect(pendingFiles(tree, {}, (id) => blobs[id] ?? null, 2)).toEqual(["a/one.ts", "a/two.ts"]);
 });
 
 test("a model that answers nothing costs a call, not a summary", async () => {

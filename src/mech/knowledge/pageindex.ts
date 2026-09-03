@@ -71,8 +71,20 @@ export type Read = (id: string) => string | null;
 /** Notes live under this prefix, so a leaf's id says which corpus it came from. */
 export const NOTE_PREFIX = "notes/";
 
-/** How much of a file the signature and the summary are computed from. */
-export const HEAD_CHARS = 1800;
+/**
+ * How much of a file the summary is written from. Not its signature any more:
+ * that is git's blob hash, so the whole file decides *whether* to re-summarise
+ * and this decides only how much of it the model gets to read.
+ */
+/**
+ * Measured on this repository, 691 indexable files: 1800 characters covered 17%
+ * of them whole, against a median file of 4382 — four files in five described
+ * from a fragment. Raising it is close to free: a pass fetches only the files it
+ * is about to summarise, at most twelve, and a head is a few hundred tokens
+ * against the ~10,000 a CLI invocation costs before it reads anything. 6000
+ * covers 59% whole, and the median with room.
+ */
+export const HEAD_CHARS = 6000;
 
 /** Structure first, summaries second — the same order as the original. */
 export function skeleton(files: string[]): Tree {
@@ -114,35 +126,86 @@ export async function summarise(
   const prev = opts.previous ?? {};
   const state = { calls: 0, failed: 0, budget: opts.maxCalls ?? 40 };
 
-  const files = Object.values(tree).filter((n) => n.kind === "file");
-  for (const node of files) {
+  for (const node of walkOrder(tree)) {
+    if (node.kind === "dir") {
+      const children = node.children.map((id) => `${id}: ${tree[id]?.summary ?? ""}`).join("\n");
+      const prompt = `One line in English, under 20 words: what does ${node.id} hold, as a whole?\n\n${children.slice(0, 4000)}`;
+      await summariseNode(node, children, prompt, prev, ask, state);
+      continue;
+    }
     const head = read(node.id)?.slice(0, HEAD_CHARS);
-    // A file the corpus would not hand over — binary, unreadable, or gone between
-    // the listing and the read. Keep what the last pass knew rather than dropping
-    // it: a blank leaf changes its directory's signature, and that is the cascade
-    // above.
+    // A file the corpus would not hand over — binary, unreadable, gone between the
+    // listing and the read, or simply not fetched because this pass has no budget
+    // left for it. Keep what the last pass knew rather than dropping it: a blank
+    // leaf changes its directory's signature, and that is the cascade above.
     if (!head) {
       carry(node, prev[node.id]);
       continue;
     }
     await summariseNode(node, head, filePrompt(node.id, head), prev, ask, state, opts.sigFor?.(node.id) ?? null);
   }
+  return { tree, calls: state.calls, failed: state.failed };
+}
 
+/**
+ * The files the next pass would spend a call on, in the order it will reach them.
+ *
+ * With signatures coming from git, a pass no longer has to read a file to find
+ * out whether it changed — so it no longer has to read the ones that did not.
+ * Reading the head of every tracked file to summarise at most twelve of them was
+ * the largest fixed cost in the tick, and it scaled with the repository.
+ */
+/**
+ * An over-approximation on purpose: directories spend from the same budget, so
+ * the pass may reach fewer files than this names. Fetching a head that goes
+ * unused costs a few kilobytes; missing one costs a node its summary for a tick.
+ */
+export function pendingFiles(
+  tree: Tree,
+  previous: Tree,
+  sigFor: (id: string) => string | null,
+  limit: number,
+): string[] {
+  const out: string[] = [];
+  for (const node of walkOrder(tree)) {
+    if (out.length >= limit) break;
+    if (node.kind !== "file") continue;
+    const sig = sigFor(node.id);
+    // `null` is "the caller did not get this one from git" — a note, whose body it
+    // already holds. Only repository files are fetched.
+    if (sig === null || previous[node.id]?.sig === sig) continue;
+    out.push(node.id);
+  }
+  return out;
+}
+
+/** The order a pass walks the tree in: everything under a directory, then the
+ *  directory, deepest first. */
+/**
+ * A directory is summarised from its children's summaries, so it has to come
+ * after them — but "every file, then every directory" is more than that
+ * requires, and with hundreds of files against a budget of twelve no directory
+ * was reached for fifty-eight ticks. Per directory instead: each is summarised
+ * on the tick its own children finish, and a budget that runs out leaves whole
+ * subtrees described rather than a field of leaves under nothing.
+ */
+/**
+ * The root is walked but never summarised — search never shows it — so its own
+ * files come last, when no directory pass is waiting on them.
+ */
+export function walkOrder(tree: Tree): Node[] {
   const dirs = Object.values(tree)
     .filter((n) => n.kind === "dir" && n.id !== "/")
     .sort((a, b) => b.id.split("/").length - a.id.split("/").length);
-  for (const node of dirs) {
-    const children = node.children.map((id) => `${id}: ${tree[id]?.summary ?? ""}`).join("\n");
-    await summariseNode(
-      node,
-      children,
-      `One line in English, under 20 words: what does ${node.id} hold, as a whole?\n\n${children.slice(0, 4000)}`,
-      prev,
-      ask,
-      state,
-    );
+  const out: Node[] = [];
+  const filesIn = (dir: Node) => dir.children.map((id) => tree[id]).filter((n) => n?.kind === "file");
+  for (const dir of dirs) {
+    for (const file of filesIn(dir)) if (file) out.push(file);
+    out.push(dir);
   }
-  return { tree, calls: state.calls, failed: state.failed };
+  const root = tree["/"];
+  if (root) for (const file of filesIn(root)) if (file) out.push(file);
+  return out;
 }
 
 function filePrompt(id: string, head: string): string {

@@ -29,7 +29,7 @@ import { localPostgres } from "../platform/persistence/local-postgres.ts";
 import { adoptServerKey, REAL, sandboxHeld, type Scope } from "../mech/sandbox/sandbox.ts";
 import type { DB } from "../platform/persistence/database.ts";
 import { startMailbox } from "../mech/sandbox/mailbox.ts";
-import { baseRefFor, createCheckout, treeBlobs, treeHeads } from "../mech/git/checkout.ts";
+import { baseRefFor, createCheckout, fileHeads, treeBlobs } from "../mech/git/checkout.ts";
 import { makeCheck, preflight, type Check } from "../mech/ops/preflight.ts";
 import { restageSkills } from "../mech/skills.ts";
 import { ensureServer, type ServerState } from "../mech/sandbox/server.ts";
@@ -38,15 +38,16 @@ import { dispatchFeedback, type Feedback, openPr, pollPrs, prBody, prTitle } fro
 import { type Github, makeGithub } from "../mech/git/github.ts";
 import { repoHeld } from "../mech/git/repository.ts";
 import {
-  chargeIndex,
   HEAD_CHARS,
+  NOTE_PREFIX,
+  chargeIndex,
+  loadTree,
   modelAsk,
   noteLeaves,
-  NOTE_PREFIX,
+  pendingFiles,
   saveTree,
   skeleton,
   summarise,
-  loadTree,
 } from "../mech/knowledge/pageindex.ts";
 import { indexable, indexExcludes } from "../mech/knowledge/repomap.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "../application/executor.ts";
@@ -639,12 +640,12 @@ async function refreshProjectIndex(ctx: Ctx, project: IndexProject, askIn: AskIn
   const notes = await noteLeaves(ctx.db, project.id);
   const at = indexStamp(blobs, notes);
   if (at && memory(ctx.db).at.get(project.id) === at) return;
-  // Only now, and only for a pass that is going to do work. A container that
-  // refuses answers with an empty map rather than throwing, and an empty map is a
-  // pass where every file keeps the summary it had — the safe answer, and the one
-  // `treeHeads` was already built to give.
-  const heads = await treeHeads(ctx, { project: project.id }, HEAD_CHARS);
-  const result = await buildProjectIndex(ctx.db, project.id, heads, blobs, notes, askIn);
+  // Only the files this pass is about to summarise, and only on a pass that is
+  // going to do work. A container that refuses answers with an empty map rather
+  // than throwing, and an empty map is a pass where every file keeps the summary
+  // it had — the safe answer.
+  const readHeads = (paths: string[]) => fileHeads(ctx, { project: project.id }, paths, HEAD_CHARS);
+  const result = await buildProjectIndex(ctx.db, project.id, blobs, notes, readHeads, askIn);
   await recordIndexResult(ctx, project.id, at, result);
 }
 
@@ -703,21 +704,24 @@ export const INDEX_BUDGET = 12;
 async function buildProjectIndex(
   db: DB,
   projectId: number,
-  heads: Map<string, string>,
   blobs: Map<string, string>,
   notes: Notes,
+  readHeads: (paths: string[]) => Promise<Map<string, string>>,
   askIn: AskIn,
 ) {
   const excludes = await indexExcludes(db, projectId);
   const files = [...blobs.keys()].filter((file) => indexable(file, excludes));
   const previous = (await loadTree(db, projectId)) ?? {};
+  const tree = skeleton([...files, ...notes.ids]);
+  // A note's identity is still its body: it is stored here, not in git, and it is
+  // short enough that the whole of it is what gets summarised.
+  const sigFor = (id: string) => blobs.get(id) ?? null;
+  const heads = await readHeads(pendingFiles(tree, previous, sigFor, INDEX_BUDGET));
   const result = await summarise(
-    skeleton([...files, ...notes.ids]),
+    tree,
     (id) => (id.startsWith(NOTE_PREFIX) ? notes.read(id) : (heads.get(id) ?? null)),
     askIn({ project: projectId }),
-    // A note's identity is still its body: it is stored here, not in git, and it
-    // is short enough that the whole of it is what gets summarised.
-    { previous, maxCalls: INDEX_BUDGET, sigFor: (id) => blobs.get(id) ?? null },
+    { previous, maxCalls: INDEX_BUDGET, sigFor },
   );
   await saveTree(db, projectId, result.tree);
   return { calls: result.calls, failed: result.failed, files: files.length };

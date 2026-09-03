@@ -39,19 +39,19 @@ Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
 
 - **The index was losing ground, not catching up.** Measured live: 822 nodes,
   61 summarised down to 48, while the indexer's bill went 2.9M tokens to 23.3M.
-  Three defects, one class — a node the pass could not answer for was left blank
-  rather than keeping the last answer, on all three exits: budget spent, model
-  returning nothing, file unreadable. A directory's content *is* its children's
-  summaries, so one blank leaf changed the parent's signature, which needed a
-  call the twelve-call budget had already spent on files, and the emptiness
-  climbed a level per tick. A pass therefore always spent all twelve, and
-  `recordIndexResult` stamps the tree fresh only under twelve, so every tick
-  rebuilt from a checkout, forever. What counts as changed now comes from git —
-  `ls-files -s` blob object names, a hash of the whole file — where the first
-  1800 bytes were a file's identity and an edit past them moved nothing. The
-  freshness stamp is those hashes plus the note corpus, which changes without a
-  commit; a quiet repository now ends the pass before reading any file at all.
-  Fixed 2026-09-03; guards in `pageindex`, `checkout-spans`, `server-policy`.
+  A node the pass could not answer for was left blank on all three exits — budget
+  spent, model returning nothing, file unreadable — and a directory's content *is*
+  its children's summaries, so one blank leaf changed the parent's signature,
+  needed a call the budget had spent on files, and the emptiness climbed a level
+  per tick. A pass therefore always spent all twelve, and the tree is stamped
+  fresh only under twelve, so every tick rebuilt from a checkout, forever. What
+  counts as changed now comes from git — `ls-files -s` blob hashes, the whole file
+  — where the first 1800 bytes were a file's identity; the stamp is those hashes
+  plus the note corpus, which changes without a commit. A pass reads only what it
+  is about to summarise: 1,159,899 bytes a tick became ~49,000, and `HEAD_CHARS`
+  rose to 6000 (17% of files covered whole at 1800, 59% now). Directories are
+  summarised per subtree rather than after every file. Fixed 2026-09-03; guards in
+  `pageindex`, `checkout-spans`, `server-policy`.
 
 - **The panel never rendered the Markdown its agents write.** Cards, journal
   entries and escalations are Markdown by ADR 016 and all of it reached the boss

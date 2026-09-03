@@ -6,7 +6,7 @@ import { openMemory, type DB } from "../../src/platform/persistence/database.ts"
 import { span } from "../../src/platform/persistence/schema.ts";
 import { StoredSpanExporter } from "../../src/platform/observability/span-store.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
-import { listTree, treeBlobs, treeHeads } from "../../src/mech/git/checkout.ts";
+import { fileHeads, listTree, treeBlobs, treeHeads } from "../../src/mech/git/checkout.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -114,6 +114,43 @@ test("a container that refuses the blob listing marks the span and answers empty
       { name: "git.tree_blobs", status: "error" },
       { name: "sandbox.exec", status: "unset" },
     ]);
+  } finally {
+    installTracerProvider(new NodeTracerProvider());
+  }
+});
+
+test("a pass reads the files it names and asks the container for nothing else", async () => {
+  // The index used to read every tracked file once a tick to find the twelve that
+  // had changed. Git answers that for nothing now, so the read is the twelve —
+  // the cost stops scaling with the repository.
+  const seen: string[] = [];
+  const t = await traced((cmd) => {
+    seen.push(cmd);
+    return { out: `${MARKER}src/a.ts\nexport const a = 1\n${MARKER}src/b.ts\nexport const b = 2\n` };
+  });
+  try {
+    const heads = await fileHeads(t.ctx, { grp: 1 }, ["src/a.ts", "src/b.ts"], 64);
+    expect([...heads.keys()]).toEqual(["src/a.ts", "src/b.ts"]);
+    // No `ls-files`: the caller already knows which files it wants.
+    expect(seen.join(" ")).not.toContain("ls-files");
+    expect(seen.join(" ")).toContain("head -c 64");
+    await t.provider.forceFlush();
+    expect(await parents(t.db)).toEqual({ "git.file_heads": null, "sandbox.exec": "git.file_heads" });
+  } finally {
+    installTracerProvider(new NodeTracerProvider());
+  }
+});
+
+test("an empty list of files is not a round trip", async () => {
+  // A tick where nothing changed must not pay for an exec to say so.
+  let execs = 0;
+  const t = await traced(() => {
+    execs++;
+    return { out: "" };
+  });
+  try {
+    expect(await fileHeads(t.ctx, { grp: 1 }, [], 64)).toEqual(new Map());
+    expect(execs).toBe(0);
   } finally {
     installTracerProvider(new NodeTracerProvider());
   }

@@ -616,26 +616,65 @@ export async function treeHeads(ctx: Ctx, scope: Scope, bytes: number | null): P
   });
 }
 
+const MARKER = "\u0001==";
+
+/** One `printf`-delimited stream of `path\ncontents`, parsed back into a map. */
+function parseHeads(out: string): Map<string, string> {
+  const heads = new Map<string, string>();
+  for (const chunk of out.split(MARKER)) {
+    const nl = chunk.indexOf("\n");
+    if (nl <= 0) continue;
+    heads.set(chunk.slice(0, nl).trim(), chunk.slice(nl + 1));
+  }
+  return heads;
+}
+
 async function treeHeadsInner(
   ctx: Ctx,
   scope: Scope,
   bytes: number | null,
 ): Promise<{ heads: Map<string, string>; failed: string | null }> {
-  const marker = "\u0001==";
   const r = await execIn(
     ctx,
     scope,
     `cd ${shq(WORK)} && git ls-files -z | while IFS= read -r -d "" f; do ` +
-      `printf '%s%s\n' ${shq(marker)} "$f"; ${bytes === null ? "cat" : `head -c ${bytes}`} -- "$f"; printf '\n'; done`,
+      `printf '%s%s\n' ${shq(MARKER)} "$f"; ${bytes === null ? "cat" : `head -c ${bytes}`} -- "$f"; printf '\n'; done`,
   );
-  const out = new Map<string, string>();
-  if (r.code !== 0) return { heads: out, failed: `git ls-files exited ${r.code}: ${tail(r.out || r.err, 300)}` };
-  for (const chunk of r.out.split(marker)) {
-    const nl = chunk.indexOf("\n");
-    if (nl <= 0) continue;
-    out.set(chunk.slice(0, nl).trim(), chunk.slice(nl + 1));
+  if (r.code !== 0) {
+    return { heads: new Map(), failed: `git ls-files exited ${r.code}: ${tail(r.out || r.err, 300)}` };
   }
-  return { heads: out, failed: null };
+  return { heads: parseHeads(r.out), failed: null };
+}
+
+/**
+ * The head of the files that were asked for, and no others.
+ *
+ * `treeHeads` reads every tracked file, which is what the index used to do once
+ * a tick to discover that twelve of them had changed. Now that git answers
+ * "which ones" for nothing, the read is the twelve — the cost stops scaling with
+ * the repository and starts scaling with the change.
+ */
+export async function fileHeads(ctx: Ctx, scope: Scope, paths: string[], bytes: number): Promise<Map<string, string>> {
+  if (!paths.length) return new Map();
+  return gitSpan(
+    "git.file_heads",
+    { files: paths.length },
+    async () => {
+      const list = paths.map(shq).join(" ");
+      const r = await execIn(
+        ctx,
+        scope,
+        `cd ${shq(WORK)} && for f in ${list}; do printf '%s%s\n' ${shq(MARKER)} "$f"; ` +
+          `head -c ${bytes} -- "$f" 2>/dev/null; printf '\n'; done`,
+      );
+      // A file that vanished between the listing and the read is not a failure of
+      // the batch: `head` says so on stderr, which is discarded, and the entry
+      // comes back empty — which `summarise` reads as "keep what you had".
+      if (r.code !== 0) return { heads: new Map<string, string>(), failed: `head exited ${r.code}` };
+      return { heads: parseHeads(r.out), failed: null };
+    },
+    (v) => v.failed,
+  ).then((v) => v.heads);
 }
 
 /**
