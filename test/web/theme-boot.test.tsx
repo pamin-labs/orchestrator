@@ -15,6 +15,13 @@ import { startTheme } from "../../web/src/ui/theme.tsx";
  * single dark block depends on.
  */
 const theme = () => document.documentElement.dataset.theme;
+/**
+ * The markdown editor reads its own attribute rather than `data-theme`, and left
+ * alone it follows `prefers-color-scheme` — the one answer that is wrong exactly
+ * when the boss has overridden the theme. So it is written here, beside the other
+ * one, and asserted here too: two attributes that must agree have one writer.
+ */
+const colorMode = () => document.documentElement.dataset.colorMode;
 
 let dark = false;
 const listeners: Array<() => void> = [];
@@ -42,6 +49,7 @@ afterEach(() => {
   // file's neighbour has to be a test that builds a bundle.
   (globalThis as { matchMedia?: unknown }).matchMedia = realMatchMedia;
   delete document.documentElement.dataset.theme;
+  delete document.documentElement.dataset.colorMode;
 });
 
 const osChangesTo = (isDark: boolean) => {
@@ -54,6 +62,9 @@ test("a stored preference is applied at boot, and beats what the OS says", () =>
   dark = true;
   startTheme();
   expect(theme()).toBe("light");
+  // The markdown editor's attribute, written by the same line and asserted with
+  // it: on its own it would follow the OS and render a dark card in a light page.
+  expect(colorMode()).toBe("light");
 });
 
 test("with no preference stored the OS decides, and the attribute is never 'system'", () => {
@@ -74,4 +85,14 @@ test("a pinned preference ignores the OS changing under it", () => {
   startTheme();
   osChangesTo(true);
   expect(theme()).toBe("light");
+  expect(colorMode()).toBe("light");
+});
+
+test("the editor's colour mode follows the page rather than the OS", () => {
+  // Both directions, because the failure is one-sided: an attribute that never
+  // moves passes half of this.
+  startTheme();
+  expect([theme(), colorMode()]).toEqual(["light", "light"]);
+  osChangesTo(true);
+  expect([theme(), colorMode()]).toEqual(["dark", "dark"]);
 });

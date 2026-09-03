@@ -195,3 +195,241 @@
     animation-delay: 0.36s;
   }
 }
+
+/*
+ * The markdown editor, wearing this panel's palette.
+ *
+ * Its own README says colours are inherited by overriding the variables
+ * `.wmde-markdown-var` declares, so this maps them onto the tokens above rather
+ * than restyling its elements. The light/dark switch stays the library's, driven
+ * by `data-color-mode`, which `theme.tsx` sets on `<html>` beside `data-theme`.
+ */
+/*
+ * `html[data-color-mode]` because the library's own manual-mode rule is
+ * `[data-color-mode*=dark] .wmde-markdown-var` — specificity 0,2,0, which a
+ * plain `html .wmde-markdown` (0,1,1) loses to no matter what order the
+ * stylesheets load in. That is why the first attempt at this changed nothing.
+ */
+html[data-color-mode] .wmde-markdown,
+html[data-color-mode] .wmde-markdown-var,
+html[data-color-mode] .w-md-editor {
+  /* Surfaces and text. */
+  --color-canvas-default: var(--color-paper);
+  --color-canvas-subtle: var(--color-sunk);
+  --color-fg-default: var(--color-ink);
+  --color-fg-muted: var(--color-ink-2);
+  --color-fg-subtle: var(--color-ink-3);
+  --color-text-primary: var(--color-ink);
+  --color-border-default: var(--color-rule);
+  --color-border-muted: var(--color-rule-soft);
+  --color-neutral-muted: var(--color-sunk);
+  --md-editor-background-color: var(--color-paper);
+  --md-editor-box-shadow-color: var(--color-rule);
+
+  /* The four states, onto the four this panel already has. */
+  --color-accent-fg: var(--color-accent);
+  --color-accent-emphasis: var(--color-accent);
+  --color-danger-fg: var(--color-bad);
+  --color-danger-emphasis: var(--color-bad);
+  --color-success-fg: var(--color-ok);
+  --color-success-emphasis: var(--color-ok);
+  --color-done-fg: var(--color-accent);
+  --color-done-emphasis: var(--color-accent);
+  --color-attention-fg: var(--color-warn);
+  --color-attention-emphasis: var(--color-warn);
+  --color-attention-subtle: var(--color-warn-soft, var(--color-sunk));
+  --color-copied-active-bg: var(--color-accent-soft);
+
+  /*
+   * Code, in the four inks this panel spends on meaning elsewhere. Thirty syntax
+   * variables reduced to the distinctions the palette actually draws — a keyword
+   * is not a string is not a comment — rather than a second colour scheme kept in
+   * step with the first by hand.
+   */
+  --color-prettylights-syntax-comment: var(--color-ink-3);
+  --color-prettylights-syntax-keyword: var(--color-accent);
+  --color-prettylights-syntax-storage-modifier-import: var(--color-accent);
+  --color-prettylights-syntax-entity: var(--color-accent);
+  --color-prettylights-syntax-entity-tag: var(--color-ok);
+  --color-prettylights-syntax-string: var(--color-ok);
+  --color-prettylights-syntax-string-regexp: var(--color-ok);
+  --color-prettylights-syntax-constant: var(--color-warn);
+  --color-prettylights-syntax-constant-other-reference-link: var(--color-accent);
+  --color-prettylights-syntax-variable: var(--color-ink);
+  --color-prettylights-syntax-markup-heading: var(--color-ink);
+  --color-prettylights-syntax-markup-bold: var(--color-ink);
+  --color-prettylights-syntax-invalid-illegal-text: var(--color-bad);
+  --color-prettylights-syntax-brackethighlighter-unmatched: var(--color-bad);
+}
+
+/*
+ * The list marker Tailwind's reset took away.
+ *
+ * Preflight is `ol,ul,menu{list-style:none}` and the library declares the marker
+ * only for *nested* lists, so it never puts the top level back — every `- item`
+ * in a plan card rendered as a bare paragraph, which is what the `## accept`
+ * section of every card is made of.
+ */
+.wmde-markdown ul {
+  list-style: disc;
+}
+.wmde-markdown ol {
+  list-style: decimal;
+}
+
+/*
+ * And its type, which the palette alone did not reach.
+ *
+ * The library renders the preview as a GitHub README: 16px, its own sans stack,
+ * `h1` at `2em`. Dropped into a panel whose body text is `--text-body` (13px)
+ * that is a 16px document inside a 13px interface, with 32px headings — which is
+ * what "doesn't match the rest of the site" was. The scale here is the one
+ * `docs/design/ui.md` already committed to, so the card reads as another pane
+ * rather than as an embedded page.
+ */
+html .wmde-markdown {
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.7;
+}
+html .wmde-markdown h1 {
+  font-size: var(--text-card);
+}
+html .wmde-markdown h2 {
+  font-size: var(--text-name);
+}
+html .wmde-markdown h3,
+html .wmde-markdown h4,
+html .wmde-markdown h5,
+html .wmde-markdown h6 {
+  font-size: var(--text-body);
+}
+/* The rule under a heading is GitHub's, and `ui.md`'s "Less is more" outranks it:
+ * the card's own sections are already separated by space. */
+html .wmde-markdown h1,
+html .wmde-markdown h2 {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+html .wmde-markdown code {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+}
+
+/*
+ * The source half, at the size and face the textarea it replaced used —
+ * `font-mono text-secondary`, which is what every other code surface in the panel
+ * is set in.
+ */
+/*
+ * `--md-editor-font-family` is the knob the library exposes; the sizes underneath
+ * are `!important` only because its own rule for `.w-md-editor-text-pre > code`
+ * is, and a declaration cannot outrank one of those by being more specific.
+ */
+html .w-md-editor {
+  --md-editor-font-family: var(--font-mono);
+}
+html .w-md-editor-text-pre > code,
+html .w-md-editor-text-input,
+html .w-md-editor-text-pre {
+  font-size: var(--text-secondary) !important;
+  line-height: 1.6 !important;
+}
+
+/*
+ * The same rendering, in a bubble instead of on a page.
+ *
+ * `Markdown` reuses `.wmde-markdown` so that a plan card and the timeline entry
+ * quoting it are drawn by one set of rules. What it does not want is the rest of
+ * a GitHub README: its own canvas colour over the bubble it sits in, a fixed
+ * body size where the caller already set one, and a 16px paragraph gap in a
+ * two-line reply. Doubled class, because `html .wmde-markdown` above is 0,1,1.
+ */
+.wmde-markdown.md-flow {
+  background-color: transparent;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+.wmde-markdown.md-flow p,
+.wmde-markdown.md-flow ul,
+.wmde-markdown.md-flow ol,
+.wmde-markdown.md-flow pre,
+.wmde-markdown.md-flow blockquote,
+.wmde-markdown.md-flow table {
+  margin-block: 0 0.6em;
+}
+.wmde-markdown.md-flow > :last-child {
+  margin-bottom: 0;
+}
+/* Headings inside a reply are emphasis, not chapter openings. */
+.wmde-markdown.md-flow h1,
+.wmde-markdown.md-flow h2,
+.wmde-markdown.md-flow h3,
+.wmde-markdown.md-flow h4,
+.wmde-markdown.md-flow h5,
+.wmde-markdown.md-flow h6 {
+  margin-block: 0.8em 0.3em;
+}
+.wmde-markdown.md-flow > :first-child {
+  margin-top: 0;
+}
+
+/*
+ * highlight.js, in the colours the editor's own highlighter already uses.
+ *
+ * The two halves run different highlighters — the editor bundles Prism and emits
+ * `.token`, markdown-it takes highlight.js and emits `.hljs-*` — and the palette
+ * must not fork with them. So these classes read the same
+ * `--color-prettylights-syntax-*` variables the block above maps onto this
+ * panel's tokens: one set of colour decisions, two vocabularies for it.
+ */
+.wmde-markdown .hljs-comment,
+.wmde-markdown .hljs-quote,
+.wmde-markdown .hljs-doctag {
+  color: var(--color-prettylights-syntax-comment);
+}
+.wmde-markdown .hljs-keyword,
+.wmde-markdown .hljs-literal,
+.wmde-markdown .hljs-type,
+.wmde-markdown .hljs-built_in,
+.wmde-markdown .hljs-meta,
+.wmde-markdown .hljs-selector-tag {
+  color: var(--color-prettylights-syntax-keyword);
+}
+.wmde-markdown .hljs-string,
+.wmde-markdown .hljs-regexp,
+.wmde-markdown .hljs-attr,
+.wmde-markdown .hljs-attribute,
+.wmde-markdown .hljs-char\.escape_ {
+  color: var(--color-prettylights-syntax-string);
+}
+.wmde-markdown .hljs-number,
+.wmde-markdown .hljs-symbol,
+.wmde-markdown .hljs-bullet,
+.wmde-markdown .hljs-variable,
+.wmde-markdown .hljs-template-variable {
+  color: var(--color-prettylights-syntax-constant);
+}
+.wmde-markdown .hljs-title,
+.wmde-markdown .hljs-section,
+.wmde-markdown .hljs-name,
+.wmde-markdown .hljs-selector-id,
+.wmde-markdown .hljs-selector-class {
+  color: var(--color-prettylights-syntax-entity);
+}
+.wmde-markdown .hljs-tag {
+  color: var(--color-prettylights-syntax-entity-tag);
+}
+.wmde-markdown .hljs-addition {
+  color: var(--color-prettylights-syntax-string);
+}
+.wmde-markdown .hljs-deletion {
+  color: var(--color-prettylights-syntax-invalid-illegal-text);
+}
+.wmde-markdown .hljs-strong {
+  font-weight: 600;
+}
+.wmde-markdown .hljs-emphasis {
+  font-style: italic;
+}

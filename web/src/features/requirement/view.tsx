@@ -3,7 +3,8 @@ import { toast } from "sonner";
 import { Button, LinkButton } from "../../ui/button";
 import { Menu, MenuItem } from "../../ui/menu";
 import { Tab, TabList, TabPanel, Tabs } from "../../ui/tabs";
-import { Clamp, H2, Meta, Textarea, Typing, Working, Pane } from "../../ui/bits";
+import { Clamp, H2, Meta, Typing, Working, Pane } from "../../ui/bits";
+import MDEditor from "@uiw/react-md-editor";
 import { Badge } from "../../ui/badge";
 import { Card, CardBody, CardTitle } from "../../ui/card";
 import { Bar } from "../../ui/table";
@@ -28,9 +29,9 @@ import {
 import type { PanelFrame } from "../../shared/stream";
 import { asksOf, gates, mineOf, prUrl, statusLabel, whereLabel } from "../../shared/select";
 import { K, waited } from "../../shared/format";
-import { nl } from "../../shared/prose";
 import { cn } from "../../ui/cn";
 import { WithAttachments } from "../../ui/attachments";
+import { Markdown } from "../../ui/markdown";
 import { useEffect, useState } from "react";
 import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../../ui/accordion";
 import { Segment, Segments } from "../../ui/segment";
@@ -904,13 +905,16 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
                 everyone already knows for that is two sides. */}
           <div className="mt-1.5 space-y-1.5">
             <div className="max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2 text-secondary text-ink-3">
-              <Clamp lines={3}>{nl(saidText(a.said, a.question))}</Clamp>
+              <Clamp lines={3}>
+                <Markdown source={saidText(a.said, a.question)} />
+              </Clamp>
             </div>
             <div className="flex justify-end">
               <div className="max-w-[46rem] rounded-2xl rounded-tr-sm border border-rule bg-paper px-3.5 py-2 text-body text-ink-2">
                 {/* `answered` is also where a revoked question and one the chain
-                    ran out on land, and neither wrote a reply. `nl(null)` threw. */}
-                <Clamp lines={3}>{a.answer === null ? t`(no reply was left)` : nl(a.answer)}</Clamp>
+                    ran out on land, and neither wrote a reply. Rendering `null`
+                    as Markdown threw. */}
+                <Clamp lines={3}>{a.answer === null ? t`(no reply was left)` : <Markdown source={a.answer} />}</Clamp>
               </div>
             </div>
           </div>
@@ -1073,18 +1077,19 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
 
   return (
     <>
-      {idea && <div className="my-2 border-l border-rule pl-2.5 text-body text-ink-2">{idea}</div>}
+      {idea && (
+        <div className="my-2 border-l border-rule pl-2.5 text-body text-ink-2">
+          <Markdown source={idea} />
+        </div>
+      )}
       {/* An objection that arrived after the card was filed. Without this the card
           reads `Objection: none` and the boss approves a plan somebody already argued with. */}
       {late.map((o) => (
-        <div
-          key={`${o.author}:${o.body}`}
-          className="my-2 break-words whitespace-pre-wrap rounded-md bg-sunk px-2.5 py-2 text-secondary"
-        >
+        <div key={`${o.author}:${o.body}`} className="my-2 break-words rounded-md bg-sunk px-2.5 py-2 text-secondary">
           <b className="font-semibold text-warn">
             <Trans>{{ who: o.author }} objected after the fact</Trans>
           </b>{" "}
-          {o.body}
+          <Markdown source={o.body} className="mt-1" />
         </div>
       ))}
       {/* A plan that creates a file names it, so this is not an error — but a plan
@@ -1136,11 +1141,19 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
         </>
       ) : (
         <>
-          <Textarea
-            rows={cardRows(filed)}
+          {/* Source on the left, rendered on the right, and the two scroll
+              together — the card is amended as text and read as a document at the
+              same moment: a table of slices checked against an acceptance line
+              while typing into it. `preview="live"` is the library's split view;
+              the right half is a preview and not a second editor, which is the
+              whole reason this one was taken over Milkdown. */}
+          <MDEditor
             value={card}
-            onChange={(e) => setCard(e.target.value)}
-            aria-label={t`Plan card`}
+            onChange={(v) => setCard(v ?? "")}
+            preview="live"
+            height={cardRows(filed) * 22}
+            maxHeight={640}
+            textareaProps={{ "aria-label": t`Plan card` }}
           />
           <div className="mt-3 flex items-baseline gap-3">
             <Button
@@ -1176,7 +1189,7 @@ function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: (
       <div className="text-body font-semibold text-warn">
         <Trans>Planner suggests abandoning</Trans>
       </div>
-      <div className="my-1 break-words whitespace-pre-wrap text-body">{body}</div>
+      <Markdown source={body} className="my-1 text-body" />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button
           variant="go"
@@ -1326,7 +1339,9 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
           )}
         </div>
         {!open && (
-          <div className="mt-1 line-clamp-2 max-w-[72ch] text-body text-ink-2">{nl(saidText(e.said, e.question))}</div>
+          <div className="mt-1 line-clamp-2 max-w-[72ch] text-body text-ink-2">
+            <Markdown source={saidText(e.said, e.question)} />
+          </div>
         )}
       </AccordionTrigger>
 
@@ -1361,7 +1376,9 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
               </Button>
             </div>
             <div className="mt-1 whitespace-pre-wrap break-words text-body text-ink-2">
-              <Clamp lines={3}>{nl(draft.text)}</Clamp>
+              <Clamp lines={3}>
+                <Markdown source={draft.text} />
+              </Clamp>
             </div>
           </div>
         )}

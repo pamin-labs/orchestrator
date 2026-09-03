@@ -99,6 +99,10 @@ test("Requirement renders missing, draft, slice review and blocking-question sta
   // The card is an editable box that names itself, not a heading over one.
   expect(valueOf(filed.getByLabelText("计划卡"))).toContain("Ship the slice");
   filed.getByRole("button", { name: "批准开工" });
+  // And it is rendered beside the source, because a card is a table of slices and
+  // a list of acceptance criteria — read as a document while it is amended as
+  // text. `## Plan` is a heading in the preview and four characters in the box.
+  expect(filed.container.querySelector("h2")?.textContent).toBe("Plan");
 
   const { st: active, g: activeGroup } = running();
   shown(render(active, activeGroup, "slice"), "正在拆解");

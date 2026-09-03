@@ -13,7 +13,7 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `perf/the-claude-index-call-loaded-skills-too`, 2026-09-03.
+Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
 
 - TypeScript, Oxlint, Biome: pass
 - Tests: 2056 pass, 7 environment skips, 0 fail, 2063 across 254 files
@@ -36,6 +36,18 @@ Measured on `perf/the-claude-index-call-loaded-skills-too`, 2026-09-03.
   would be a third owner, stale from the next merge until somebody remembered
 
 ## Blockers and deviations
+
+- **The panel never rendered the Markdown its agents write.** Cards, journal
+  entries and escalations are Markdown by ADR 016 and all of it reached the boss
+  as source: `## Goal` over a column of `-`, `| --- |` where a table was. The
+  plan card is now `@uiw/react-md-editor`, source and preview side by side and
+  scrolling together, the right half read-only; every read-only surface goes
+  through one `Markdown` component over markdown-it, `html: false`, since agent
+  text is rendered through `dangerouslySetInnerHTML`. Both wear `.wmde-markdown`
+  and both highlight code — the editor's Prism, markdown-it's highlight.js — on
+  one palette under two class vocabularies, anchored at `html[data-color-mode]`
+  since the library's own `[data-color-mode*=dark] .wmde-markdown-var` outranks a
+  plain one. `web/dist` 2.33 MB → 3.67 MB. Guards `markdown-render`, `theme-boot`.
 
 - **A name collision failed every group filed after it.** `newGroup` retries under
   a suffixed name, and Postgres aborts the whole transaction on a constraint
@@ -110,13 +122,6 @@ Measured on `perf/the-claude-index-call-loaded-skills-too`, 2026-09-03.
   together because either can be dropped without the other noticing — and nothing
   pinned the claude flag at all, where codex's twin was pinned.
 
-- **A sandbox key written to two homes could not converge.** `ourKey` stored it
-  in `runtime_auth` and `writeConfig` wrote it into `~/.orch-cache/sandbox.toml`,
-  which is never rewritten — so a rebuilt database against a still-running server
-  meant 401 on every probe, no containers, and neither CLI able to sign in.
-  `adoptServerKey` now takes the key back at boot from the running server's own
-  `--config`, which is what the panel's `Read from server` button already did by
-  hand. Fixed 2026-09-01; guards in `test/mech/sandbox-boot.test.ts`.
 - **The login drove a terminal it had built out of a Python script.** A file in
   `/opt/orch` imported itself through `sys.path[0]`, outlived the server that
   wrote it, and ended each line with LF where Enter is CR — three defects in a

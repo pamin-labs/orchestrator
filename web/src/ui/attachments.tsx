@@ -4,7 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { Tip } from "./tooltip";
 import { splitAttachments, type Attached } from "./attach";
-import { nl } from "../shared/prose";
+import { Markdown } from "./markdown";
 import { cn } from "./cn";
 
 /**
@@ -26,7 +26,7 @@ export function WithAttachments({ body, className }: { body: string; className?:
   const { text, files } = splitAttachments(body);
   return (
     <>
-      {text && <div className={cn("whitespace-pre-wrap break-words", className)}>{nl(text)}</div>}
+      {text && <Markdown source={text} className={className} />}
       <Attachments files={files} />
     </>
   );
