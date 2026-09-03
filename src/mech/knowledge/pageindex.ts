@@ -160,6 +160,17 @@ async function summariseNode(
     node.summary = old.summary;
     return;
   }
+  // A node this pass cannot answer for keeps the last answer, under the signature
+  // that produced it. Both ways out below used to leave the node blank, and a
+  // directory's content *is* its children's summaries: one child blanked changed
+  // the parent's signature, which needed a call, which the budget had already
+  // gone on files — so the parent blanked too, and the emptiness climbed a level
+  // per tick. Measured live: 822 nodes, 61 summarised down to 48 while the
+  // indexer spent 2.9M tokens to 23.3M. Stale text still reads; a blank does not.
+  if (old) {
+    node.sig = old.sig;
+    node.summary = old.summary;
+  }
   if (state.calls >= state.budget) return;
   state.calls++;
   const summary = oneLine(await ask(prompt));

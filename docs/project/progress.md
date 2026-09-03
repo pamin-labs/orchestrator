@@ -37,6 +37,18 @@ Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
 
 ## Blockers and deviations
 
+- **The index was losing ground, not catching up.** Measured live: 822 nodes,
+  61 summarised down to 48, while the indexer's bill went 2.9M tokens to 23.3M.
+  A node the pass could not answer for — budget spent, or the model returning
+  nothing — was left blank rather than keeping the last answer, and a directory's
+  content *is* its children's summaries: one child blanked changed the parent's
+  signature, which needed a call the twelve-call budget had already spent on
+  files, so the emptiness climbed a level per tick. A pass therefore always spent
+  all twelve, and `recordIndexResult` stamps the tree fresh only under twelve, so
+  every tick rebuilt from a checkout, forever. Stale text still reads; a blank
+  does not, and the carried signature is the old content's so the node stays
+  queued. Fixed 2026-09-03; guards in `test/mech/pageindex.test.ts`.
+
 - **The panel never rendered the Markdown its agents write.** Cards, journal
   entries and escalations are Markdown by ADR 016 and all of it reached the boss
   as source: `## Goal` over a column of `-`, `| --- |` where a table was. The
@@ -122,23 +134,6 @@ Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
   together because either can be dropped without the other noticing — and nothing
   pinned the claude flag at all, where codex's twin was pinned.
 
-- **The login drove a terminal it had built out of a Python script.** A file in
-  `/opt/orch` imported itself through `sys.path[0]`, outlived the server that
-  wrote it, and ended each line with LF where Enter is CR — three defects in a
-  terminal the daemon already offers. `src/mech/sandbox/pty.ts` speaks execd's
-  pty-over-WebSocket instead, and is the only file that knows the wire format.
-  Fixed 2026-09-02; [ADR 053](../adr/053-a-terminal-in-the-container-is-a-websocket.md),
-  guards in `test/mech/codex-device-login.test.ts`.
-- **The stress job had never run a browser test.** Its document exclusion was
-  removed and its glob was not — `test/**/*.test.ts` does not match `*.test.tsx`,
-  so all 38 stayed out of the one job that hunts cross-file order dependence,
-  under a comment saying they no longer were. Correcting the glob reproduced CI's
-  `RangeError: Maximum call stack size exceeded` locally on the first run:
-  `bundle-boots` mounts the panel into a shared document and
-  `createRoot(...).render()` discarded the handle, so Radix's `document`-level
-  focus scopes outlived `body.innerHTML = ""`. `main.tsx` names its root and the
-  test unmounts it. Fixed 2026-09-03. **Not** proved: that the unmount is the
-  fix — it reproduced once and eight targeted attempts since have not.
 - **CI's `test` job has been killed three times** — SIGTERM during
   `test:coverage:ci`, no named failure, on #40, #41 and #42, each time green on a
   rerun. Unexplained. It is the memory-heaviest job in the pipeline and this

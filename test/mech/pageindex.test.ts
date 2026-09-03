@@ -81,6 +81,57 @@ test("nothing changed, nothing re-summarised", async () => {
   expect(again.tree["src/mech/gate.ts"]!.summary).toBe("a summary");
 });
 
+test("a pass that runs out of budget keeps what the last one knew", async () => {
+  // The index went backwards: 822 nodes, 61 summarised down to 48, while the
+  // indexer's bill went 2.9M tokens to 23.3M. A directory's content *is* its
+  // children's summaries, so one child left blank changed the parent's signature
+  // — which needed a call the budget had already spent on files — and the
+  // emptiness climbed one level per tick instead of the tree converging.
+  const heads: Record<string, string> = { "src/a.ts": "first", "src/b.ts": "second" };
+  const files = Object.keys(heads);
+  const read = (id: string) => heads[id] ?? null;
+  // The file answers differ with the content, because a directory's signature is
+  // built out of them: a fake that answers the same string either way would make
+  // the parent look unchanged and test nothing.
+  const ask: Ask = async (p) =>
+    p.includes("what does")
+      ? "a directory of things"
+      : p.includes("rewritten")
+        ? "the rewritten file"
+        : "a file summary";
+
+  const full = await summarise(skeleton(files), read, ask);
+  expect(full.tree["src/"]!.summary).toBe("a directory of things");
+
+  // One file changes, and the pass can afford exactly one call — which the file
+  // takes, leaving `src/` needing one it cannot have.
+  heads["src/a.ts"] = "rewritten";
+  const starved = await summarise(skeleton(files), read, ask, { previous: full.tree, maxCalls: 1 });
+  expect(starved.calls).toBe(1);
+  expect(starved.tree["src/b.ts"]!.summary).toBe("a file summary");
+  expect(starved.tree["src/"]!.summary).toBe("a directory of things");
+
+  // And it is still queued rather than quietly accepted: the carried signature is
+  // the old content's, so the next pass with room re-summarises it.
+  const caught = await summarise(skeleton(files), read, ask, { previous: starved.tree, maxCalls: 1 });
+  expect(caught.calls).toBe(1);
+  expect(caught.tree["src/"]!.summary).toBe("a directory of things");
+});
+
+test("a model that answers nothing costs a call, not a summary", async () => {
+  // The other way out of the same function. A failed call left the node blank on
+  // a tree that already had an answer for it, which is the same cascade with a
+  // different trigger — and the model being briefly down is ordinary.
+  const heads: Record<string, string> = { "src/a.ts": "first" };
+  const read = (id: string) => heads[id] ?? null;
+  const full = await summarise(skeleton(Object.keys(heads)), read, async () => "a summary");
+
+  heads["src/a.ts"] = "rewritten";
+  const down = await summarise(skeleton(Object.keys(heads)), read, async () => "", { previous: full.tree });
+  expect(down.failed).toBeGreaterThan(0);
+  expect(down.tree["src/a.ts"]!.summary).toBe("a summary");
+});
+
 test("retrieval is the model walking the tree, not a similarity score", async () => {
   const dir = repo();
   const { tree } = await summarise(skeleton(FILES), dirRead(dir), async (p) =>
