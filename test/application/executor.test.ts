@@ -223,6 +223,24 @@ test("a rate limit holds the whole provider, not just the group that hit it", as
   expect(specs.length).toBe(before + 1);
 });
 
+test("overage keeps the account dispatching instead of holding it", async () => {
+  const resetsAt = Math.floor(Date.now() / 1000) + 3600;
+  const { db, sched } = await harness(async () =>
+    ok({ rateLimit: { status: "rejected", rateLimitType: "five_hour", resetsAt, isUsingOverage: true } }),
+  );
+  await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+
+  // The included window is exhausted but the account keeps answering on paid
+  // overage, so nothing here should look like a wall: the group stays running
+  // and the provider carries no hold.
+  expect((await db.select({ status: t.grp.status }).from(t.grp))[0]?.status).toBe("RUNNING");
+  const [snap] = await db
+    .select({ hold_until: t.usage_snapshot.hold_until })
+    .from(t.usage_snapshot);
+  expect(snap?.hold_until).toBeNull();
+});
+
 test("a failed turn is recorded as failed, not silently swallowed", async () => {
   const { db, sched } = await harness(async () => ok({ ok: false, terminalReason: "api_error", text: "boom" }));
   await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });

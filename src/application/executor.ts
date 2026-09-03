@@ -1060,6 +1060,19 @@ async function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: Tur
   if (!rl || rl.status === "allowed") return;
   const { ctx } = deps;
 
+  // Overage-covered accounts keep answering past the included window — the
+  // included quota is what "rejected" means here, not the account's ability to
+  // work. Holding anyway would park every group on the account for a wall that
+  // does not exist. Still record the snapshot: it is the only place usage shows
+  // up, overage or not.
+  if (rl.isUsingOverage) {
+    await ctx.db
+      .insert(usage_snapshot)
+      .values({ runtime: agent.runtime ?? DEFAULT_PROVIDER, json: rl, at: Date.now(), hold_until: null })
+      .onConflictDoUpdate({ target: usage_snapshot.runtime, set: { hold_until: null, at: Date.now() } });
+    return;
+  }
+
   // Hold, and record when to try again so the watchdog can restart it without
   // anyone being awake.
   const resetsMs = rl.resetsAt ? rl.resetsAt * 1000 : Date.now() + 15 * 60_000;
