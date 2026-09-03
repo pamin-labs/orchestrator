@@ -118,6 +118,51 @@ test("a pass that runs out of budget keeps what the last one knew", async () => 
   expect(caught.tree["src/"]!.summary).toBe("a directory of things");
 });
 
+test("a change past the head is still a change", async () => {
+  // A file's identity was `sigOf(the first 1800 characters)`, so an edit in the
+  // middle or at the end of a file moved nothing and its summary stayed as it was
+  // — indefinitely, since nothing else would ever revisit it. Git already has a
+  // hash of the whole file, and `sigFor` is where the caller hands it over.
+  const heads: Record<string, string> = { "src/a.ts": "the same opening lines" };
+  const blobs: Record<string, string> = { "src/a.ts": "aaa1" };
+  const read = (id: string) => heads[id] ?? null;
+  const sigFor = (id: string) => blobs[id] ?? null;
+  const ask: Ask = async () => "a file summary";
+
+  const first = await summarise(skeleton(["src/a.ts"]), read, ask, { sigFor });
+  const quiet = await summarise(skeleton(["src/a.ts"]), read, ask, { previous: first.tree, sigFor });
+  expect(quiet.calls).toBe(0);
+
+  // The head is byte-for-byte what it was. The file is not.
+  blobs["src/a.ts"] = "bbb2";
+  const moved = await summarise(skeleton(["src/a.ts"]), read, ask, { previous: quiet.tree, sigFor });
+  expect(moved.calls).toBe(1);
+  expect(moved.tree["src/a.ts"]!.sig).toBe("bbb2");
+});
+
+test("a file the corpus will not hand over keeps its summary", async () => {
+  // The third way out of the same function, and it was the one that skipped the
+  // node entirely: a binary file, one too large to read, or one deleted between
+  // the listing and the read left a blank leaf — and a blank leaf changes its
+  // directory's signature, which is the cascade.
+  const present: Record<string, string> = { "src/a.ts": "text" };
+  const first = await summarise(
+    skeleton(["src/a.ts"]),
+    (id) => present[id] ?? null,
+    async () => "a summary",
+  );
+
+  const gone = await summarise(
+    skeleton(["src/a.ts"]),
+    () => null,
+    async () => "another",
+    { previous: first.tree },
+  );
+  expect(gone.calls).toBe(0);
+  expect(gone.tree["src/a.ts"]!.summary).toBe("a summary");
+  expect(gone.tree["src/"]!.summary).toBe("a summary");
+});
+
 test("a model that answers nothing costs a call, not a summary", async () => {
   // The other way out of the same function. A failed call left the node blank on
   // a tree that already had an answer for it, which is the same cascade with a

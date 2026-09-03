@@ -39,19 +39,19 @@ Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
 
 - **The index was losing ground, not catching up.** Measured live: 822 nodes,
   61 summarised down to 48, while the indexer's bill went 2.9M tokens to 23.3M.
-  A node the pass could not answer for — budget spent, or the model returning
-  nothing — was left blank rather than keeping the last answer, and a directory's
-  content *is* its children's summaries: one child blanked changed the parent's
-  signature, which needed a call the twelve-call budget had already spent on
-  files, so the emptiness climbed a level per tick. A pass therefore always spent
-  all twelve, and `recordIndexResult` stamps the tree fresh only under twelve, so
-  every tick rebuilt from a checkout, forever. Stale text still reads; a blank
-  does not, and the carried signature is the old content's so the node stays
-  queued. The stamp now covers the note corpus as well as the file heads: notes
-  change without a commit, and a pass that finally comes in under budget would
-  otherwise record itself fresh and skip every tick until somebody pushed — a
-  defect the starvation had been hiding. Fixed 2026-09-03; guards in
-  `test/mech/pageindex.test.ts` and `test/http/server-policy.test.ts`.
+  Three defects, one class — a node the pass could not answer for was left blank
+  rather than keeping the last answer, on all three exits: budget spent, model
+  returning nothing, file unreadable. A directory's content *is* its children's
+  summaries, so one blank leaf changed the parent's signature, which needed a
+  call the twelve-call budget had already spent on files, and the emptiness
+  climbed a level per tick. A pass therefore always spent all twelve, and
+  `recordIndexResult` stamps the tree fresh only under twelve, so every tick
+  rebuilt from a checkout, forever. What counts as changed now comes from git —
+  `ls-files -s` blob object names, a hash of the whole file — where the first
+  1800 bytes were a file's identity and an edit past them moved nothing. The
+  freshness stamp is those hashes plus the note corpus, which changes without a
+  commit; a quiet repository now ends the pass before reading any file at all.
+  Fixed 2026-09-03; guards in `pageindex`, `checkout-spans`, `server-policy`.
 
 - **The panel never rendered the Markdown its agents write.** Cards, journal
   entries and escalations are Markdown by ADR 016 and all of it reached the boss

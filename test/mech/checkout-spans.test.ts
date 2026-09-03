@@ -6,7 +6,7 @@ import { openMemory, type DB } from "../../src/platform/persistence/database.ts"
 import { span } from "../../src/platform/persistence/schema.ts";
 import { StoredSpanExporter } from "../../src/platform/observability/span-store.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
-import { listTree, treeHeads } from "../../src/mech/git/checkout.ts";
+import { listTree, treeBlobs, treeHeads } from "../../src/mech/git/checkout.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -62,6 +62,58 @@ test("reading the corpus out of a container is timed", async () => {
     // The container round trip nests under the read that made it, so "the index
     // rule is slow" resolves one level further than it used to.
     expect(await parents(t.db)).toEqual({ "git.tree_heads": null, "sandbox.exec": "git.tree_heads" });
+  } finally {
+    installTracerProvider(new NodeTracerProvider());
+  }
+});
+
+test("the index asks git what changed, and reads stage zero only", async () => {
+  // A file's identity used to be the first 1800 bytes of it, so an edit in the
+  // middle or at the end moved nothing and its summary stayed stale forever. The
+  // blob object name is a hash of the whole file and git already has it.
+  // `\u0000` spelled out: in a template literal `\0` followed by a digit is a
+  // legacy octal escape, which silently makes the next record part of this one.
+  const line = (blob: string, path: string) => `100644 ${blob} 0\t${path}\u0000`;
+  const t = await traced(() => ({ out: line("aaa1", "src/a.ts") + line("bbb2", "docs/b.md") }));
+  try {
+    expect(await treeBlobs(t.ctx, { grp: 1 })).toEqual(
+      new Map([
+        ["src/a.ts", "aaa1"],
+        ["docs/b.md", "bbb2"],
+      ]),
+    );
+    await t.provider.forceFlush();
+    expect(await parents(t.db)).toEqual({ "git.tree_blobs": null, "sandbox.exec": "git.tree_blobs" });
+  } finally {
+    installTracerProvider(new NodeTracerProvider());
+  }
+});
+
+test("a conflicted file is one entry, not whichever of its three stages came last", async () => {
+  // `ls-files -s` prints stages 1, 2 and 3 for a file in conflict. Taking them all
+  // would set the same path three times, and the last write would decide the
+  // signature at random.
+  const t = await traced(() => ({
+    out:
+      `100644 ba5e1 1\tsrc/a.ts\u0000100644 04725 2\tsrc/a.ts\u0000` +
+      `100644 12ee53 3\tsrc/a.ts\u0000100644 c1ea4 0\tsrc/b.ts\u0000`,
+  }));
+  try {
+    expect(await treeBlobs(t.ctx, { grp: 1 })).toEqual(new Map([["src/b.ts", "c1ea4"]]));
+  } finally {
+    installTracerProvider(new NodeTracerProvider());
+  }
+});
+
+test("a container that refuses the blob listing marks the span and answers empty", async () => {
+  const t = await traced(() => ({ code: 128, err: "not a git repository" }));
+  try {
+    expect(await treeBlobs(t.ctx, { grp: 1 })).toEqual(new Map());
+    await t.provider.forceFlush();
+    expect(await spans(t.db)).toEqual([
+      { name: "git.tree_blobs", status: "error" },
+      { name: "sandbox.exec", status: "unset" },
+    ]);
   } finally {
     installTracerProvider(new NodeTracerProvider());
   }

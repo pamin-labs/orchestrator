@@ -29,7 +29,7 @@ import { localPostgres } from "../platform/persistence/local-postgres.ts";
 import { adoptServerKey, REAL, sandboxHeld, type Scope } from "../mech/sandbox/sandbox.ts";
 import type { DB } from "../platform/persistence/database.ts";
 import { startMailbox } from "../mech/sandbox/mailbox.ts";
-import { baseRefFor, createCheckout, treeHeads } from "../mech/git/checkout.ts";
+import { baseRefFor, createCheckout, treeBlobs, treeHeads } from "../mech/git/checkout.ts";
 import { makeCheck, preflight, type Check } from "../mech/ops/preflight.ts";
 import { restageSkills } from "../mech/skills.ts";
 import { ensureServer, type ServerState } from "../mech/sandbox/server.ts";
@@ -622,8 +622,13 @@ export type Notes = Awaited<ReturnType<typeof noteLeaves>>;
 
 async function refreshProjectIndex(ctx: Ctx, project: IndexProject, askIn: AskIn): Promise<void> {
   const base = await baseRefFor(ctx, project.id);
-  const heads = await indexHeads(ctx, project, base);
-  if (!heads) return;
+  // Git's own answer for "has anything changed", before anything is read. A blob
+  // object name is a hash of the whole file, so an edit anywhere moves it — where
+  // the file heads this used to compare cover the first 1800 bytes and miss the
+  // rest. It is also the cheaper question: on a quiet repository the pass now
+  // ends here without reading a single file's contents.
+  const blobs = await indexBlobs(ctx, project, base);
+  if (!blobs) return;
   memory(ctx.db).warned.delete(project.id);
   // Notes are half the corpus and they change without a commit, so the stamp has
   // to cover them: keyed on file heads alone, a pass that finally came in under
@@ -632,13 +637,18 @@ async function refreshProjectIndex(ctx: Ctx, project: IndexProject, askIn: AskIn
   // It never showed while a pass always spent its whole budget, because the stamp
   // was then never recorded at all.
   const notes = await noteLeaves(ctx.db, project.id);
-  const at = indexStamp(heads, notes);
+  const at = indexStamp(blobs, notes);
   if (at && memory(ctx.db).at.get(project.id) === at) return;
-  const result = await buildProjectIndex(ctx.db, project.id, heads, notes, askIn);
+  // Only now, and only for a pass that is going to do work. A container that
+  // refuses answers with an empty map rather than throwing, and an empty map is a
+  // pass where every file keeps the summary it had — the safe answer, and the one
+  // `treeHeads` was already built to give.
+  const heads = await treeHeads(ctx, { project: project.id }, HEAD_CHARS);
+  const result = await buildProjectIndex(ctx.db, project.id, heads, blobs, notes, askIn);
   await recordIndexResult(ctx, project.id, at, result);
 }
 
-async function indexHeads(ctx: Ctx, project: IndexProject, base: string): Promise<Map<string, string> | null> {
+async function indexBlobs(ctx: Ctx, project: IndexProject, base: string): Promise<Map<string, string> | null> {
   const scope = { project: project.id } as const;
   try {
     await createCheckout(ctx, scope, {
@@ -647,7 +657,7 @@ async function indexHeads(ctx: Ctx, project: IndexProject, base: string): Promis
       base,
       projectId: project.id,
     });
-    return await treeHeads(ctx, scope, HEAD_CHARS);
+    return await treeBlobs(ctx, scope);
   } catch (error) {
     await warnIndexOnce(ctx, project.id, error);
     return null;
@@ -665,9 +675,9 @@ async function warnIndexOnce(ctx: Ctx, projectId: number, error: unknown): Promi
   });
 }
 
-export function indexStamp(heads: Map<string, string>, notes: Notes): string {
-  if (!heads.size) return "";
-  const files = [...heads].map(([file, head]) => `${file}${head}`);
+export function indexStamp(blobs: Map<string, string>, notes: Notes): string {
+  if (!blobs.size) return "";
+  const files = [...blobs].map(([file, blob]) => `${file}${blob}`);
   const written = notes.ids.map((id) => `${id}${notes.read(id) ?? ""}`);
   return Bun.hash([...files, ...written].join("\n")).toString(16);
 }
@@ -679,15 +689,24 @@ export function indexStamp(heads: Map<string, string>, notes: Notes): string {
  * would be a worse version of the grepping it replaces. Twelve a tick on the
  * cheapest tier catches up over a few minutes and then costs nothing.
  */
-async function buildProjectIndex(db: DB, projectId: number, heads: Map<string, string>, notes: Notes, askIn: AskIn) {
+async function buildProjectIndex(
+  db: DB,
+  projectId: number,
+  heads: Map<string, string>,
+  blobs: Map<string, string>,
+  notes: Notes,
+  askIn: AskIn,
+) {
   const excludes = await indexExcludes(db, projectId);
-  const files = [...heads.keys()].filter((file) => indexable(file, excludes));
+  const files = [...blobs.keys()].filter((file) => indexable(file, excludes));
   const previous = (await loadTree(db, projectId)) ?? {};
   const result = await summarise(
     skeleton([...files, ...notes.ids]),
     (id) => (id.startsWith(NOTE_PREFIX) ? notes.read(id) : (heads.get(id) ?? null)),
     askIn({ project: projectId }),
-    { previous, maxCalls: 12 },
+    // A note's identity is still its body: it is stored here, not in git, and it
+    // is short enough that the whole of it is what gets summarised.
+    { previous, maxCalls: 12, sigFor: (id) => blobs.get(id) ?? null },
   );
   await saveTree(db, projectId, result.tree);
   return { calls: result.calls, failed: result.failed, files: files.length };

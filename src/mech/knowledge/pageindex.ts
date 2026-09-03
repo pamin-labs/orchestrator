@@ -109,7 +109,7 @@ export async function summarise(
   tree: Tree,
   read: Read,
   ask: Ask,
-  opts: { maxCalls?: number; previous?: Tree } = {},
+  opts: { maxCalls?: number; previous?: Tree; sigFor?: (id: string) => string | null } = {},
 ): Promise<{ tree: Tree; calls: number; failed: number }> {
   const prev = opts.previous ?? {};
   const state = { calls: 0, failed: 0, budget: opts.maxCalls ?? 40 };
@@ -117,8 +117,15 @@ export async function summarise(
   const files = Object.values(tree).filter((n) => n.kind === "file");
   for (const node of files) {
     const head = read(node.id)?.slice(0, HEAD_CHARS);
-    if (!head) continue;
-    await summariseNode(node, head, filePrompt(node.id, head), prev, ask, state);
+    // A file the corpus would not hand over — binary, unreadable, or gone between
+    // the listing and the read. Keep what the last pass knew rather than dropping
+    // it: a blank leaf changes its directory's signature, and that is the cascade
+    // above.
+    if (!head) {
+      carry(node, prev[node.id]);
+      continue;
+    }
+    await summariseNode(node, head, filePrompt(node.id, head), prev, ask, state, opts.sigFor?.(node.id) ?? null);
   }
 
   const dirs = Object.values(tree)
@@ -145,6 +152,13 @@ function filePrompt(id: string, head: string): string {
   return `${instruction}\n\n----\n${head}\n----`;
 }
 
+/** What the last pass knew, when this one cannot replace it. */
+function carry(node: Node, old: Node | undefined): void {
+  if (!old) return;
+  node.sig = old.sig;
+  node.summary = old.summary;
+}
+
 async function summariseNode(
   node: Node,
   content: string,
@@ -152,8 +166,14 @@ async function summariseNode(
   previous: Tree,
   ask: Ask,
   state: { calls: number; failed: number; budget: number },
+  /**
+   * The file's identity when the caller has a better one than the text being
+   * summarised. Git's blob hash covers the whole file; `sigOf(content)` covers
+   * only the head the prompt carries, so an edit past it moved nothing.
+   */
+  override: string | null = null,
 ): Promise<void> {
-  const sig = sigOf(content);
+  const sig = override ?? sigOf(content);
   const old = previous[node.id];
   if (old?.sig === sig) {
     node.sig = sig;
@@ -167,10 +187,7 @@ async function summariseNode(
   // gone on files — so the parent blanked too, and the emptiness climbed a level
   // per tick. Measured live: 822 nodes, 61 summarised down to 48 while the
   // indexer spent 2.9M tokens to 23.3M. Stale text still reads; a blank does not.
-  if (old) {
-    node.sig = old.sig;
-    node.summary = old.summary;
-  }
+  carry(node, old);
   if (state.calls >= state.budget) return;
   state.calls++;
   const summary = oneLine(await ask(prompt));

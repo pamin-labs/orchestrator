@@ -564,6 +564,36 @@ async function gitSpan<T>(
   });
 }
 
+/**
+ * The content hash git already keeps for every tracked file, in one round trip.
+ *
+ * `treeHeads` reads the first 1800 bytes of each file, and the index used that as
+ * a file's identity — so an edit past byte 1800, which is most edits to most
+ * files, moved nothing and was never re-summarised. Git has the exact answer and
+ * charges nothing for it: `ls-files -s` prints the blob object name, which is a
+ * hash of the whole file. Same command family and therefore the same file set as
+ * `treeHeads`, so the two cannot drift.
+ */
+export async function treeBlobs(ctx: Ctx, scope: Scope): Promise<Map<string, string>> {
+  return gitSpan(
+    "git.tree_blobs",
+    { scope: String(Object.values(scope)[0] ?? "") },
+    async () => {
+      const r = await execIn(ctx, scope, `cd ${shq(WORK)} && git ls-files -s -z`);
+      const out = new Map<string, string>();
+      if (r.code !== 0) return { blobs: out, failed: `git ls-files -s exited ${r.code}: ${tail(r.out || r.err, 300)}` };
+      for (const entry of r.out.split("\u0000")) {
+        // `<mode> <object> <stage>\t<path>`. A conflicted file appears at stages 1-3
+        // and would otherwise land three times, last one winning at random.
+        const m = /^\d+ ([0-9a-f]+) 0\t([\s\S]+)$/.exec(entry);
+        if (m?.[1] && m[2]) out.set(m[2], m[1]);
+      }
+      return { blobs: out, failed: null };
+    },
+    (v) => v.failed,
+  ).then((v) => v.blobs);
+}
+
 export async function treeHeads(ctx: Ctx, scope: Scope, bytes: number | null): Promise<Map<string, string>> {
   // One exec, but it reads the head of every tracked file inside a container, so
   // the cost scales with the repository rather than with the round trip. This
