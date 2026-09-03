@@ -1057,7 +1057,15 @@ async function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: T
 
 async function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): Promise<void> {
   const rl = r.rateLimit;
-  if (!rl || rl.status === "allowed") return;
+  // Only a refusal is a wall. The unified status has three values — `allowed`,
+  // `allowed_warning` once past a threshold, `rejected` at hard exhaustion — and
+  // holding on the warning parked every group on the CLI for a wall that was not
+  // there. `isUsingOverage` is not the discriminator: claude-code documents it as
+  // staying true at hard exhaustion, "combine with status instead of reading this
+  // field alone as still usable", so skipping the hold on it un-holds the one
+  // case where the account really has stopped answering. Read out of the pinned
+  // binary, since neither field is in the published docs.
+  if (rl?.status !== "rejected") return;
   const { ctx } = deps;
 
   // Hold, and record when to try again so the watchdog can restart it without

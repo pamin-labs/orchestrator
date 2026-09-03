@@ -191,8 +191,11 @@ test("cost lands on the agent, the slice and the group", async () => {
 
 test("a rate limit holds the whole provider, not just the group that hit it", async () => {
   const resetsAt = Math.floor(Date.now() / 1000) + 3600;
+  // `isUsingOverage` stays true at hard exhaustion, so it is set here: a refusal
+  // is a refusal, and reading that field as "still usable" is what the CLI's own
+  // field documentation warns against.
   const { db, sched, specs } = await harness(async () =>
-    ok({ rateLimit: { status: "rejected", rateLimitType: "five_hour", resetsAt } }),
+    ok({ rateLimit: { status: "rejected", rateLimitType: "five_hour", resetsAt, isUsingOverage: true } }),
   );
   await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
@@ -219,6 +222,30 @@ test("a rate limit holds the whole provider, not just the group that hit it", as
 
   // And it lifts by clock — nobody has to be awake for the reset.
   await db.update(t.usage_snapshot).set({ hold_until: 1 });
+  await sched.drain();
+  expect(specs.length).toBe(before + 1);
+});
+
+test("a warning is not a wall: the account keeps dispatching", async () => {
+  const resetsAt = Math.floor(Date.now() / 1000) + 3600;
+  const { db, sched, specs } = await harness(async () =>
+    ok({ rateLimit: { status: "allowed_warning", rateLimitType: "five_hour", resetsAt } }),
+  );
+  await sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+
+  // `allowed_warning` is what the CLI reports past a usage threshold, and an
+  // account past a threshold still answers. Holding on it stopped every group on
+  // the CLI until the window reopened, for a wall that was not there. No
+  // `isUsingOverage` here on purpose: a warning is not a wall whether or not the
+  // account pays past its included window, and keying the exemption on that
+  // field instead is what let a real refusal through.
+  expect((await db.select({ status: t.grp.status }).from(t.grp))[0]?.status).toBe("RUNNING");
+  const [snap] = await db.select({ hold_until: t.usage_snapshot.hold_until }).from(t.usage_snapshot);
+  expect(snap?.hold_until ?? null).toBeNull();
+
+  const before = specs.length;
+  await sched.enqueue("agent_turn", { grp_id: 1, agent_id: 1, payload: { role: "engineer" } });
   await sched.drain();
   expect(specs.length).toBe(before + 1);
 });
