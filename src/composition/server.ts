@@ -689,6 +689,17 @@ export function indexStamp(blobs: Map<string, string>, notes: Notes): string {
  * would be a worse version of the grepping it replaces. Twelve a tick on the
  * cheapest tier catches up over a few minutes and then costs nothing.
  */
+/**
+ * How many nodes one pass may summarise, and the number two rules share.
+ *
+ * `recordIndexResult` stamps the tree fresh only for a pass that came in *under*
+ * the budget, so a pass that spends all of it is by definition unfinished. Those
+ * two facts are one number, and it was written twice: raise the budget in one
+ * place and the stamp would never be recorded again — which is exactly the
+ * runaway this branch just fixed, waiting to be reintroduced by a one-line edit.
+ */
+export const INDEX_BUDGET = 12;
+
 async function buildProjectIndex(
   db: DB,
   projectId: number,
@@ -706,7 +717,7 @@ async function buildProjectIndex(
     askIn({ project: projectId }),
     // A note's identity is still its body: it is stored here, not in git, and it
     // is short enough that the whole of it is what gets summarised.
-    { previous, maxCalls: 12, sigFor: (id) => blobs.get(id) ?? null },
+    { previous, maxCalls: INDEX_BUDGET, sigFor: (id) => blobs.get(id) ?? null },
   );
   await saveTree(db, projectId, result.tree);
   return { calls: result.calls, failed: result.failed, files: files.length };
@@ -726,7 +737,7 @@ export async function recordIndexResult(
   at: string,
   result: { calls: number; failed: number; files: number },
 ): Promise<void> {
-  if (at && result.calls < 12 && result.failed === 0) memory(ctx.db).at.set(projectId, at);
+  if (at && result.calls < INDEX_BUDGET && result.failed === 0) memory(ctx.db).at.set(projectId, at);
   if (result.failed > 0 && result.failed === result.calls) return await warnModelDown(ctx, projectId, result.failed);
   if (!result.calls) return;
   memory(ctx.db).down.delete(projectId);
