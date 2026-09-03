@@ -142,9 +142,9 @@ test("an index pass only marks the tree fresh when it did work and none of it fa
  */
 test("a note written since the last pass moves the index stamp", () => {
   const heads = new Map([["src/a.ts", "unchanged"]]);
-  const none = { ids: [] as string[], read: () => null };
-  const one = { ids: ["notes/project/decision/1"], read: () => "we chose Postgres" };
-  const edited = { ids: ["notes/project/decision/1"], read: () => "we chose Postgres, and here is why" };
+  const none = { ids: [] as string[], read: () => null, dropped: 0 };
+  const one = { ids: ["notes/project/decision/1"], read: () => "we chose Postgres", dropped: 0 };
+  const edited = { ids: ["notes/project/decision/1"], read: () => "we chose Postgres, and here is why", dropped: 0 };
 
   expect(indexStamp(heads, one)).toBe(indexStamp(heads, one));
   // A note that did not exist last pass, and one whose body was rewritten: both
@@ -154,6 +154,37 @@ test("a note written since the last pass moves the index stamp", () => {
   // An empty repository still has nothing to stamp: the early return that stops a
   // failed checkout from reading as "nothing changed" is unchanged.
   expect(indexStamp(new Map(), one)).toBe("");
+
+  // And a file the index does not carry moves nothing. The stamp covered every
+  // tracked file, so touching a lockfile or a generated bundle woke a pass that
+  // loaded the tree, filtered the file out and did nothing.
+  const withLock = (blob: string) =>
+    indexStamp(
+      new Map([
+        ["src/a.ts", "unchanged"],
+        ["vendor/big.js", blob],
+      ]),
+      one,
+      ["vendor/**"],
+    );
+  expect(withLock("aaa1")).toBe(withLock("bbb2"));
+});
+
+test("a blackboard that outgrew the index is said once, and again only if it recurs", async () => {
+  const ctx = await testContext();
+  const p = await project(ctx.db);
+  const rows = () => ctx.db.select({ c: count() }).from(tbl.event).where(eq(tbl.event.severity, "advisory"));
+
+  await recordIndexResult(ctx, p, "sha-1", { calls: 3, failed: 0, files: 9, dropped: 40 });
+  await recordIndexResult(ctx, p, "sha-2", { calls: 3, failed: 0, files: 9, dropped: 41 });
+  // Once, not once a tick: this runs every pass and `bus.emit` has no dedup.
+  expect((await rows())[0]?.c).toBe(1);
+
+  // The limit was raised, so it stops biting — and would be worth saying again if
+  // the blackboard outgrew the new one.
+  await recordIndexResult(ctx, p, "sha-3", { calls: 3, failed: 0, files: 9, dropped: 0 });
+  await recordIndexResult(ctx, p, "sha-4", { calls: 3, failed: 0, files: 9, dropped: 7 });
+  expect((await rows())[0]?.c).toBe(2);
 });
 
 test("a pass with no calls says nothing at all", async () => {

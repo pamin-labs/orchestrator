@@ -161,7 +161,7 @@ const DEFAULTS: Config = {
   // file of 4,382. The content is a fraction of what a call costs either way —
   // roughly 7.5k tokens at the ceiling against the ~10k a CLI invocation spends
   // before it reads anything.
-  pageindex: { enabled: true, depth: 3, width: 4, budget: 12, fileChars: 30_000 },
+  pageindex: { enabled: true, depth: 3, width: 4, budget: 12, fileChars: 30_000, notes: 500 },
   notifyWebhook: "",
   parkAfterPausedMs: 7_200_000,
   watchdogIntervalMs: 30_000,

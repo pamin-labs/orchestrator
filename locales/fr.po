@@ -1512,6 +1512,9 @@ msgstr "Combien de temps le reste des événements d'un groupe est conservé. La
 msgid "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones."
 msgstr "Combien de temps on laisse tranquille le point d'accès d'utilisation après un refus. Plus court que la durée du refus, le sondage ne fait qu'en récolter de nouveaux."
 
+msgid "How many blackboard entries the tree carries, newest first. Not a page size: the tree is rebuilt from this list, so a note past it leaves the index and stops being findable. Each one is also a node the indexer pays to summarise."
+msgstr "Combien d'entrées du tableau l'arbre porte, les plus récentes d'abord. Ce n'est pas une taille de page : l'arbre est reconstruit à partir de cette liste, donc une note au-delà quitte l'index et devient introuvable. Chacune est aussi un nœud que l'indexeur paie pour résumer."
+
 msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
 msgstr "Combien de gates peuvent tourner en même temps. Une réservation est une vraie compilation ou une vraie série de tests : dix en parallèle mettent la machine à genoux. Le navigateur est plafonné à 1 tout seul — chacun est un vrai Chromium."
 
@@ -2015,6 +2018,9 @@ msgstr "Pas encore démarré ; en attente de l'acceptation des tranches précéd
 
 msgid "Notes"
 msgstr "Notes"
+
+msgid "Notes in the index"
+msgstr "Notes dans l'index"
 
 msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
 msgstr "Rien de déterministe ne peut être exécuté sur ce projet, donc aucune tranche ne peut être vérifiée. Ajoute les commandes dans Réglages → Gates — ou enregistre une liste vide pour dire que ce projet n'a pas de porte, et les tranches iront en revue sans."
@@ -3024,6 +3030,9 @@ msgstr "l'hôte a perdu le réseau ; {n, plural, one {# tour retenu et remis en 
 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "impossible de rafraîchir l'index : le conteneur de ce projet ne démarre pas ({why})"
+
+msgid "The index carries the newest {kept} notes and {dropped} older ones are outside it, so nothing can find them. Raise \"Notes in the index\" in settings, or leave them out on purpose — every note in the tree is a node the indexer pays to summarise."
+msgstr "L'index porte les {kept} notes les plus récentes ; {dropped} plus anciennes restent dehors et personne ne peut les trouver. Augmentez \"Notes dans l'index\" dans les réglages, ou laissez-les dehors volontairement — chaque note de l'arbre est un nœud que l'indexeur paie."
 
 msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
 msgstr "le navigateur de l'index ({model}) a échoué {n} fois de suite et n'est plus appelé — la recherche retombe sur l'index lexical, et changer le modèle ou le runtime dans Réglages le relance"

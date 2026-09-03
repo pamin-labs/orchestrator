@@ -221,6 +221,7 @@ export const SECTIONS: Record<KnobSection, { title: MessageDescriptor; note: Mes
             "pageindex.width",
             "pageindex.budget",
             "pageindex.fileChars",
+            "pageindex.notes",
             "embedding.mode",
           ],
         },
@@ -444,6 +445,10 @@ export const COPY: Record<
   "pageindex.fileChars": {
     label: msg`File characters read`,
     why: msg`How much of a file the indexer is given to describe it. Whether a file is re-read is git's answer about the whole file, so this only decides how much of it the model sees — 30,000 covers 93.5% of this repository's files whole.`,
+  },
+  "pageindex.notes": {
+    label: msg`Notes in the index`,
+    why: msg`How many blackboard entries the tree carries, newest first. Not a page size: the tree is rebuilt from this list, so a note past it leaves the index and stops being findable. Each one is also a node the indexer pays to summarise.`,
   },
   "indexModel.runtime": {
     label: msg`Index model`,

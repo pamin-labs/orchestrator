@@ -1512,6 +1512,9 @@ msgstr "グループのその他のイベントを保持する期間。会話そ
 msgid "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones."
 msgstr "使用量エンドポイントが拒否したあと、放っておく時間。拒否の有効期間より短いと、ポーリングが新しい拒否を稼ぎ続けるだけです。"
 
+msgid "How many blackboard entries the tree carries, newest first. Not a page size: the tree is rebuilt from this list, so a note past it leaves the index and stops being findable. Each one is also a node the indexer pays to summarise."
+msgstr "ツリーが保持する黒板エントリの数（新しい順）。ページサイズではありません — ツリーは毎回このリストから作り直されるので、これを超えたノートはインデックスから消え、見つけられなくなります。1 件ごとにインデクサーが要約費用を払うノードでもあります。"
+
 msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
 msgstr "同時に走ってよいゲートの数。リースは実際のコンパイルやテストなので、10 並列はマシンを潰します。ブラウザは単体で 1 に制限されます。1 つ 1 つが本物の Chromium です。"
 
@@ -2015,6 +2018,9 @@ msgstr "まだ始まっていません。前のスライスが受け入れられ
 
 msgid "Notes"
 msgstr "ノート"
+
+msgid "Notes in the index"
+msgstr "インデックス内のノート数"
 
 msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
 msgstr "このプロジェクトに対して決定的に実行できるものが何もないため、どのスライスも検証できません。「設定 → Gates」でコマンドを追加してください。あるいは空のリストを保存すれば、このプロジェクトにはゲートがないという意味になり、スライスはゲートなしでレビューに進みます。"
@@ -3024,6 +3030,9 @@ msgstr "ホストがネットワークを失いました。{n} 件のターン�
 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "インデックスを更新できません：このプロジェクトのコンテナが起動しません（{why}）"
+
+msgid "The index carries the newest {kept} notes and {dropped} older ones are outside it, so nothing can find them. Raise \"Notes in the index\" in settings, or leave them out on purpose — every note in the tree is a node the indexer pays to summarise."
+msgstr "インデックスは新しい方から {kept} 件のノートを保持しており、古い {dropped} 件はその外にあるため誰も見つけられません。設定の「インデックス内のノート数」を上げるか、意図して外したままにしてください — ツリー内のノートはどれもインデクサーが要約費用を払うノードです。"
 
 msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
 msgstr "インデックスのナビゲーター（{model}）が {n} 回連続で失敗したため呼び出しを止めました。検索は字句インデックスにフォールバックします。設定でモデルかランタイムを変えれば再開します"

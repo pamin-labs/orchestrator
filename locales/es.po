@@ -1512,6 +1512,9 @@ msgstr "Cuánto se guardan el resto de eventos de un grupo. La conversación en 
 msgid "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones."
 msgstr "Cuánto se deja en paz el endpoint de uso tras un rechazo. Si es menos de lo que dura el rechazo, el sondeo solo se gana rechazos nuevos."
 
+msgid "How many blackboard entries the tree carries, newest first. Not a page size: the tree is rebuilt from this list, so a note past it leaves the index and stops being findable. Each one is also a node the indexer pays to summarise."
+msgstr "Cuántas entradas de la pizarra lleva el árbol, las más nuevas primero. No es un tamaño de página: el árbol se reconstruye desde esta lista, así que una nota más allá sale del índice y deja de poder encontrarse. Cada una es además un nodo que el indexador paga por resumir."
+
 msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
 msgstr "Cuántos gates pueden correr a la vez. Un arriendo es una compilación o una tanda de tests real, así que diez en paralelo revientan la máquina. El navegador se limita a 1 por su cuenta: cada uno es un Chromium de verdad."
 
@@ -2015,6 +2018,9 @@ msgstr "Aún no ha empezado; espera a que se acepten los fragmentos anteriores."
 
 msgid "Notes"
 msgstr "Notas"
+
+msgid "Notes in the index"
+msgstr "Notas en el índice"
 
 msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
 msgstr "No hay nada determinista que ejecutar contra este proyecto, así que ningún corte puede verificarse. Añade los comandos en Ajustes → Gates, o guarda una lista vacía para decir que este proyecto no tiene puerta y los cortes irán a revisión sin una."
@@ -3024,6 +3030,9 @@ msgstr "el anfitrión perdió la red; {n, plural, one {# turno retenido y reenco
 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "no se puede refrescar el índice: el contenedor de este proyecto no arranca ({why})"
+
+msgid "The index carries the newest {kept} notes and {dropped} older ones are outside it, so nothing can find them. Raise \"Notes in the index\" in settings, or leave them out on purpose — every note in the tree is a node the indexer pays to summarise."
+msgstr "El índice lleva las {kept} notas más nuevas y {dropped} más antiguas quedan fuera, así que nada puede encontrarlas. Sube \"Notas en el índice\" en ajustes, o déjalas fuera a propósito: cada nota del árbol es un nodo que el indexador paga por resumir."
 
 msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
 msgstr "el navegador del índice ({model}) falló {n} veces seguidas y se ha dejado de llamar — la búsqueda cae al índice léxico, y cambiar el modelo o el runtime en Ajustes lo reinicia"
