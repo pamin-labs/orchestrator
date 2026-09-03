@@ -47,7 +47,11 @@ Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
   all twelve, and `recordIndexResult` stamps the tree fresh only under twelve, so
   every tick rebuilt from a checkout, forever. Stale text still reads; a blank
   does not, and the carried signature is the old content's so the node stays
-  queued. Fixed 2026-09-03; guards in `test/mech/pageindex.test.ts`.
+  queued. The stamp now covers the note corpus as well as the file heads: notes
+  change without a commit, and a pass that finally comes in under budget would
+  otherwise record itself fresh and skip every tick until somebody pushed — a
+  defect the starvation had been hiding. Fixed 2026-09-03; guards in
+  `test/mech/pageindex.test.ts` and `test/http/server-policy.test.ts`.
 
 - **The panel never rendered the Markdown its agents write.** Cards, journal
   entries and escalations are Markdown by ADR 016 and all of it reached the boss

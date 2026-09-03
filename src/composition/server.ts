@@ -617,14 +617,24 @@ type AskIn = NonNullable<Ctx["askIn"]>;
 /** A project a pass can actually enter: it has somewhere to mirror from. */
 export type IndexProject = { id: number; remote: string };
 
+/** The blackboard half of the corpus, read once per pass and used twice. */
+export type Notes = Awaited<ReturnType<typeof noteLeaves>>;
+
 async function refreshProjectIndex(ctx: Ctx, project: IndexProject, askIn: AskIn): Promise<void> {
   const base = await baseRefFor(ctx, project.id);
   const heads = await indexHeads(ctx, project, base);
   if (!heads) return;
   memory(ctx.db).warned.delete(project.id);
-  const at = indexStamp(heads);
+  // Notes are half the corpus and they change without a commit, so the stamp has
+  // to cover them: keyed on file heads alone, a pass that finally came in under
+  // budget would record itself fresh and then skip every tick until somebody
+  // pushed, leaving journals, retros and decisions out of the tree indefinitely.
+  // It never showed while a pass always spent its whole budget, because the stamp
+  // was then never recorded at all.
+  const notes = await noteLeaves(ctx.db, project.id);
+  const at = indexStamp(heads, notes);
   if (at && memory(ctx.db).at.get(project.id) === at) return;
-  const result = await buildProjectIndex(ctx.db, project.id, heads, askIn);
+  const result = await buildProjectIndex(ctx.db, project.id, heads, notes, askIn);
   await recordIndexResult(ctx, project.id, at, result);
 }
 
@@ -655,8 +665,11 @@ async function warnIndexOnce(ctx: Ctx, projectId: number, error: unknown): Promi
   });
 }
 
-function indexStamp(heads: Map<string, string>): string {
-  return heads.size ? Bun.hash([...heads].map(([file, head]) => `${file}${head}`).join("\n")).toString(16) : "";
+export function indexStamp(heads: Map<string, string>, notes: Notes): string {
+  if (!heads.size) return "";
+  const files = [...heads].map(([file, head]) => `${file}${head}`);
+  const written = notes.ids.map((id) => `${id}${notes.read(id) ?? ""}`);
+  return Bun.hash([...files, ...written].join("\n")).toString(16);
 }
 
 /**
@@ -666,10 +679,9 @@ function indexStamp(heads: Map<string, string>): string {
  * would be a worse version of the grepping it replaces. Twelve a tick on the
  * cheapest tier catches up over a few minutes and then costs nothing.
  */
-async function buildProjectIndex(db: DB, projectId: number, heads: Map<string, string>, askIn: AskIn) {
+async function buildProjectIndex(db: DB, projectId: number, heads: Map<string, string>, notes: Notes, askIn: AskIn) {
   const excludes = await indexExcludes(db, projectId);
   const files = [...heads.keys()].filter((file) => indexable(file, excludes));
-  const notes = await noteLeaves(db, projectId);
   const previous = (await loadTree(db, projectId)) ?? {};
   const result = await summarise(
     skeleton([...files, ...notes.ids]),

@@ -7,6 +7,7 @@ import {
   heartbeat,
   recordIndexResult,
   refreshIndex,
+  indexStamp,
   indexPaused,
   indexTargets,
   indexThrew,
@@ -128,6 +129,31 @@ test("an index pass only marks the tree fresh when it did work and none of it fa
   await recordIndexResult(ctx, p, "sha-3", { calls: 2, failed: 2, files: 4 });
   const [blockers] = await ctx.db.select({ c: count() }).from(tbl.event).where(eq(tbl.event.severity, "blocker"));
   expect(blockers?.c).toBe(1);
+});
+
+/**
+ * The corpus is two halves and the freshness stamp has to cover both.
+ *
+ * Notes change without a commit, so a stamp keyed on file heads alone lets a pass
+ * that came in under budget record itself fresh and then skip every tick until
+ * somebody pushes — journals, retros and decisions never reaching the tree. It
+ * could not show while every pass spent its whole budget, because the stamp was
+ * then never recorded at all; fixing that starvation is what exposed this.
+ */
+test("a note written since the last pass moves the index stamp", () => {
+  const heads = new Map([["src/a.ts", "unchanged"]]);
+  const none = { ids: [] as string[], read: () => null };
+  const one = { ids: ["notes/project/decision/1"], read: () => "we chose Postgres" };
+  const edited = { ids: ["notes/project/decision/1"], read: () => "we chose Postgres, and here is why" };
+
+  expect(indexStamp(heads, one)).toBe(indexStamp(heads, one));
+  // A note that did not exist last pass, and one whose body was rewritten: both
+  // are work the tree has not seen, and neither touches a file head.
+  expect(indexStamp(heads, none)).not.toBe(indexStamp(heads, one));
+  expect(indexStamp(heads, one)).not.toBe(indexStamp(heads, edited));
+  // An empty repository still has nothing to stamp: the early return that stops a
+  // failed checkout from reading as "nothing changed" is unchanged.
+  expect(indexStamp(new Map(), one)).toBe("");
 });
 
 test("a pass with no calls says nothing at all", async () => {
