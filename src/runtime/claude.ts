@@ -110,7 +110,28 @@ function readClaude(out: string): { text: string; usage?: Usage } {
  * `claude -p` exit 0 with the body "Error: Reached max turns (1)", so every
  * summary in the index became that sentence and the exit code said fine.
  */
+/**
+ * One flag, measured, and the three that are not worth one.
+ *
+ * The same prompt in the same container: 30,229 input tokens as shipped, 27,567
+ * with `--disable-slash-commands` — the skills catalogue, which a call that reads
+ * a file head and writes one line under twenty words never opens. Claude's side
+ * has far less to give back than codex's 54%; this is 9% and it is the whole of
+ * what is there.
+ */
+/**
+ * `--exclude-dynamic-system-prompt-sections` measures 151 tokens and
+ * `--strict-mcp-config` measures zero, so neither is sent. `--bare` is the
+ * documented minimal mode and cannot be used here at all: it reads Anthropic auth
+ * "strictly ANTHROPIC_API_KEY or apiKeyHelper", never OAuth, and the egress vault
+ * hands this call a `CLAUDE_CODE_OAUTH_TOKEN` — measured, it answers
+ * `Not logged in · Please run /login`.
+ */
 const runAsk = (spec: AskSpec): Promise<AskResult> =>
-  askVia(spec, ["claude", "-p", "--output-format", "json", "--model", spec.model], readClaude);
+  askVia(
+    spec,
+    ["claude", "-p", "--output-format", "json", "--disable-slash-commands", "--model", spec.model],
+    readClaude,
+  );
 
 export { buildArgv as buildClaudeArgv, readClaude, runAsk as runClaudeAsk, runTurn as runClaudeTurn };

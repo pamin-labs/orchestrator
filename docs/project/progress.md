@@ -13,7 +13,7 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `fix/a-retry-inside-a-transaction-needs-a-savepoint`, 2026-09-03.
+Measured on `perf/the-claude-index-call-loaded-skills-too`, 2026-09-03.
 
 - TypeScript, Oxlint, Biome: pass
 - Tests: 2056 pass, 7 environment skips, 0 fail, 2063 across 254 files
@@ -62,8 +62,12 @@ Measured on `fix/a-retry-inside-a-transaction-needs-a-savepoint`, 2026-09-03.
   claimed to imitate has always had: twelve index rows a tick against a handful
   of turns is the sample `recentCacheRatio` reads, so the panel's figure was an
   average over whatever else was in it, drawn beside a row saying the indexer is
-  the whole of the spend. **Not done**: the claude side of the same call measures
-  **76,916** input tokens against codex's 21,513, and its trim is unmeasured.
+  the whole of the spend. The claude side of the same call gives back far less: 30,229 against 27,567 with
+  `--disable-slash-commands`, and `--exclude-dynamic-system-prompt-sections` (151)
+  and `--strict-mcp-config` (0) are not worth a flag. `--bare`, the documented
+  minimal mode, reads Anthropic auth strictly from `ANTHROPIC_API_KEY` and never
+  OAuth — measured, `Not logged in` — so it cannot be used with the vault's
+  `CLAUDE_CODE_OAUTH_TOKEN`.
 - **A command that exits took its own output with it, so PageIndex never built.**
   `wrapForSession` redirects each stream to a file and reads both back, and the
   command sat in a brace group — `exit` inside one ends the *session* every caller

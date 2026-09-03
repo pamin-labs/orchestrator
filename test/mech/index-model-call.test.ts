@@ -52,7 +52,11 @@ test("claude is asked for JSON so the call reports what it spent", async () => {
 
   expect(text).toBe("src/mech/notify.ts");
   // Quoted token by token: the model name reaches the shell inert.
-  expect(sandbox.commands[0]).toContain("'claude' '-p' '--output-format' 'json' '--model' 'haiku'");
+  expect(sandbox.commands[0]).toContain("'claude' '-p' '--output-format' 'json'");
+  expect(sandbox.commands[0]).toContain("'--model' 'haiku'");
+  // The skills catalogue, measured at 2,662 tokens a call — the one thing
+  // claude's side of this has to give back, against codex's three.
+  expect(sandbox.commands[0]).toContain("'--disable-slash-commands'");
   // No `--max-turns 1`: measured, it makes `claude -p` exit 0 with the body
   // "Error: Reached max turns (1)" and every summary in the index became that.
   expect(sandbox.commands[0]).not.toContain("--max-turns");
