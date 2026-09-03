@@ -13,10 +13,10 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `perf/the-index-call-carried-a-skills-catalogue`, 2026-09-03.
+Measured on `fix/a-retry-inside-a-transaction-needs-a-savepoint`, 2026-09-03.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2055 pass, 7 environment skips, 0 fail, 2062 across 254 files
+- Tests: 2056 pass, 7 environment skips, 0 fail, 2063 across 254 files
 - Coverage: 84.06% of statements, 74.34% of branches, 80.13% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0, over 694 files
@@ -36,6 +36,18 @@ Measured on `perf/the-index-call-carried-a-skills-catalogue`, 2026-09-03.
   would be a third owner, stale from the next merge until somebody remembered
 
 ## Blockers and deviations
+
+- **A name collision failed every group filed after it.** `newGroup` retries under
+  a suffixed name, and Postgres aborts the whole transaction on a constraint
+  violation — so inside a caller's transaction the retry's insert answered
+  `current transaction is aborted, commands ignored until end of transaction
+  block`, from the insert itself. Both callers that create several groups at once
+  wrap the lot in one transaction: `orch task split` loops over the items, and the
+  escalation that opens a requirement does it beside the turn it enqueues. Each
+  attempt now runs in a savepoint (`attempt()`, a transaction when there is none
+  open and a savepoint when there is, sharing the outer `onCommit` so an event
+  still belongs to the outer commit). Fixed 2026-09-03; the guard reproduces the
+  reported sentence verbatim with the savepoint removed.
 
 - **Every index call carried three things it never opened.** Measured against
   codex 0.147.0 in this image, the same 1,631-byte prompt: **21,513 input tokens
@@ -94,16 +106,6 @@ Measured on `perf/the-index-call-carried-a-skills-catalogue`, 2026-09-03.
   together because either can be dropped without the other noticing — and nothing
   pinned the claude flag at all, where codex's twin was pinned.
 
-- **The first codex sign-in on a fresh install could not succeed.** The device
-  login ran `codex login --device-auth` with `CODEX_HOME=/root/.codex-refresh`
-  and nothing had ever created it — the decoy home is the one `writeLoginFiles`
-  makes, and the real one appeared only as a side effect of `seedHome`, which
-  runs after a credential exists. codex 0.147.0 refuses to load its configuration
-  on a CODEX_HOME that is not there, so it exited before printing a code and the
-  panel reported a CLI whose output had changed. `prepareHome` is the one owner
-  now, and the panel opens codex's device page itself as it already did claude's.
-  Fixed 2026-09-02; guards in `test/mech/codex-device-login.test.ts` and
-  `test/web/notes-settings-render.test.tsx`.
 - **A sandbox key written to two homes could not converge.** `ourKey` stored it
   in `runtime_auth` and `writeConfig` wrote it into `~/.orch-cache/sandbox.toml`,
   which is never rewritten — so a rebuilt database against a still-running server
