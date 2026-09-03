@@ -13,22 +13,22 @@ Product goals, scope, milestones and the delivery sequence live in
 
 ## Baseline
 
-Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
+Measured on `chore/release-0.1.9`, 2026-09-03.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2056 pass, 7 environment skips, 0 fail, 2063 across 254 files
-- Coverage: 84.06% of statements, 74.34% of branches, 80.13% of functions
+- Tests: 2080 pass, 7 environment skips, 0 fail, 2087 across 255 files
+- Coverage: 84.36% of statements, 74.66% of branches, 80.45% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
-  complexity 0, duplication 0, over 694 files
+  complexity 0, duplication 0
 - Fallow security, full inventory: **1** candidate —
   `scripts/embedding-check.ts:126`, a non-literal URL in a development script,
   not reached from any runtime entry point
-- `bun run preflight`: every runnable step passed, 50s
+- `bun run preflight`: every runnable step passed, 44s
 - Block comments over eight lines: zero, enforced by
   `test/governance/comment-blocks.test.ts`
-- All ten catalogues at 1135/1135
+- All ten catalogues at 1142/1142
 - Suite cost, measured on a ten-core machine: ~2.1 GB of system memory at peak
-  and 16-24s wall clock, against 7.2 GB and 46s before this release. Recorded
+  and 16-24s wall clock, against 7.2 GB and 46s before 0.1.8. Recorded
   because it was a defect, not as a target — the same suite measures differently
   per machine
 - The released version is not recorded here. `package.json` holds it, the tag
