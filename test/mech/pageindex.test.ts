@@ -148,7 +148,7 @@ test("the specifics ride along on the same call and are shown only where they ar
       asked.push(p);
       return "NONE";
     },
-    { enabled: true, depth: 2, width: 3, budget: 12, fileChars: 30_000 },
+    { enabled: true, depth: 2, width: 3, budget: 12, fileChars: 30_000, notes: 500 },
   );
   expect(asked.join("\n")).toContain("owns the notification fan-out");
   expect(asked.join("\n")).not.toContain("escalationKey.auth");
@@ -208,6 +208,27 @@ test("a file the corpus will not hand over keeps its summary", async () => {
   expect(gone.calls).toBe(0);
   expect(gone.tree["src/a.ts"]!.summary).toBe("a summary");
   expect(gone.tree["src/"]!.summary).toBe("a summary");
+});
+
+test("the note limit reports what it left behind", async () => {
+  // The tree is rebuilt from this list every pass, so a note past the limit is not
+  // paged out — it leaves the index and stops being findable. It did that at a
+  // hard-coded 500 and said nothing, on a blackboard that only grows.
+  const db = await openMemory();
+  await fx.on(db).project.create({ name: "p" });
+  for (let i = 0; i < 4; i++) {
+    await fx.on(db).note.create({ project_id: 1, kind: "decision", body: `decision ${i}` });
+  }
+
+  const all = await noteLeaves(db, 1, 500);
+  expect(all.ids).toHaveLength(4);
+  expect(all.dropped).toBe(0);
+
+  const capped = await noteLeaves(db, 1, 2);
+  expect(capped.ids).toHaveLength(2);
+  expect(capped.dropped).toBe(2);
+  // Newest first, so what is carried is what was written last.
+  expect(capped.read(capped.ids[0]!)).toBe("decision 3");
 });
 
 test("a budget that runs out leaves whole directories described, not a field of leaves", async () => {
@@ -320,7 +341,7 @@ test("journals and retros are leaves in the same tree as the code", async () => 
   const g = await f.runningGrp.create({ project_id: 1, name: "g1" });
   await f.note.create({ grp_id: g.id, kind: "retro", body: "the flicker was the key, not the diffing" });
 
-  const notes = await noteLeaves(db, 1);
+  const notes = await noteLeaves(db, 1, 500);
   expect(notes.ids).toEqual(["notes/grp-1/retro/1"]);
 
   const { tree } = await summarise(skeleton(notes.ids), notes.read, async (p) =>
@@ -510,6 +531,7 @@ test("how far and how wide the walk goes is config, not a literal inside it", as
     width: 4,
     budget: 12,
     fileChars: 30_000,
+    notes: 500,
   });
   expect(asks).toHaveLength(3);
 
@@ -520,13 +542,14 @@ test("how far and how wide the walk goes is config, not a literal inside it", as
     width: 2,
     budget: 12,
     fileChars: 30_000,
+    notes: 500,
   });
   expect(asks).toHaveLength(1);
   expect(asks[0]).toContain("at most 2 ids");
 
   // Moving the numbers was not the point; being able to is. These are the values
   // that shipped before the move, and this says so out of `config/default.yaml`.
-  expect(WALK).toEqual({ enabled: true, depth: 3, width: 4, budget: 12, fileChars: 30_000 });
+  expect(WALK).toEqual({ enabled: true, depth: 3, width: 4, budget: 12, fileChars: 30_000, notes: 500 });
 });
 
 test("a requirement's own retrieval counts against its budget", async () => {

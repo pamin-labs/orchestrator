@@ -1,5 +1,5 @@
 import { msg } from "@lingui/core/macro";
-import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { jsonOr } from "../../contracts/json.ts";
 import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import { type DB, readSetting, writeSetting } from "../../platform/persistence/database.ts";
@@ -653,26 +653,39 @@ export async function chargeIndex(
  * the whole table could only ever return whole notes and rank them by word overlap,
  * which is exactly what fails when the retro that matters calls it something else.
  */
-export async function noteLeaves(db: DB, projectId: number | null): Promise<{ ids: string[]; read: Read }> {
+/**
+ * `dropped` is the count this call refused to carry, and it is the point of the
+ * change: the tree is rebuilt from this list every pass, so a note that falls
+ * past the limit leaves the index and stops being findable. It used to do that
+ * silently, at a hard-coded 500, on a blackboard that only grows.
+ */
+export async function noteLeaves(
+  db: DB,
+  projectId: number | null,
+  limit: number,
+): Promise<{ ids: string[]; read: Read; dropped: number }> {
+  const scope = and(
+    // `project_id IS ?` in the old text, so asking for the global scope has to
+    // match the rows whose `project_id` is NULL. `eq()` is `=` and would match
+    // none of them, which is the whole corpus when no project is in scope.
+    or(projectId === null ? isNull(note.project_id) : eq(note.project_id, projectId), isNotNull(note.grp_id)),
+    inArray(note.kind, ["decision", "retro", "journal", "fact", "lesson"]),
+  );
   const rows = await db
     .select({ id: note.id, grp_id: note.grp_id, kind: note.kind, body: note.body })
     .from(note)
-    .where(
-      and(
-        // `project_id IS ?` in the old text, so asking for the global scope has to
-        // match the rows whose `project_id` is NULL. `eq()` is `=` and would match
-        // none of them, which is the whole corpus when no project is in scope.
-        or(projectId === null ? isNull(note.project_id) : eq(note.project_id, projectId), isNotNull(note.grp_id)),
-        inArray(note.kind, ["decision", "retro", "journal", "fact", "lesson"]),
-      ),
-    )
+    .where(scope)
     .orderBy(desc(note.id))
-    .limit(500);
+    .limit(limit);
   const byId = new Map<string, string>();
   for (const r of rows) {
     byId.set(`${NOTE_PREFIX}${r.grp_id ? `grp-${r.grp_id}` : "project"}/${r.kind}/${r.id}`, r.body);
   }
-  return { ids: [...byId.keys()], read: (id) => byId.get(id) ?? null };
+  // Only when the page came back full: below the limit there is nothing behind it
+  // and the second query is a round trip to be told so.
+  const total =
+    rows.length < limit ? rows.length : ((await db.select({ n: count() }).from(note).where(scope))[0]?.n ?? 0);
+  return { ids: [...byId.keys()], read: (id) => byId.get(id) ?? null, dropped: Math.max(0, total - rows.length) };
 }
 
 /** Both halves, one reader. */

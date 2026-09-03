@@ -433,6 +433,8 @@ interface IndexMemory {
   warned: Set<number>;
   /** Projects whose model answered nothing, against the credential stamp at the time. */
   down: Map<number, number>;
+  /** Projects already told their blackboard has outgrown the index's note limit. */
+  crowded: Set<number>;
   /** When a pass that *threw* stops being backed off. Not per project: a socket
    *  that will not carry a file carries nobody's. */
   blockedUntil: number;
@@ -445,7 +447,14 @@ const memories = new WeakMap<DB, IndexMemory>();
 function memory(db: DB): IndexMemory {
   const found = memories.get(db);
   if (found) return found;
-  const fresh: IndexMemory = { at: new Map(), warned: new Set(), down: new Map(), blockedUntil: 0, lastError: "" };
+  const fresh: IndexMemory = {
+    at: new Map(),
+    warned: new Set(),
+    down: new Map(),
+    crowded: new Set(),
+    blockedUntil: 0,
+    lastError: "",
+  };
   memories.set(db, fresh);
   return fresh;
 }
@@ -636,17 +645,21 @@ async function refreshProjectIndex(ctx: Ctx, project: IndexProject, askIn: AskIn
   // pushed, leaving journals, retros and decisions out of the tree indefinitely.
   // It never showed while a pass always spent its whole budget, because the stamp
   // was then never recorded at all.
-  const notes = await noteLeaves(ctx.db, project.id);
-  const at = indexStamp(blobs, notes);
+  const walk = ctx.config.pageindex;
+  const notes = await noteLeaves(ctx.db, project.id, walk.notes);
+  // The excludes belong in the stamp too: it used to cover every tracked file,
+  // so touching one the index does not carry — a lockfile, a generated bundle —
+  // woke a pass that loaded the tree, filtered the file out and did nothing.
+  const excludes = await indexExcludes(ctx.db, project.id);
+  const at = indexStamp(blobs, notes, excludes);
   if (at && memory(ctx.db).at.get(project.id) === at) return;
   // Only the files this pass is about to summarise, and only on a pass that is
   // going to do work. A container that refuses answers with an empty map rather
   // than throwing, and an empty map is a pass where every file keeps the summary
   // it had — the safe answer.
-  const walk = ctx.config.pageindex;
   const readHeads = (paths: string[]) => fileHeads(ctx, { project: project.id }, paths, walk.fileChars);
-  const result = await buildProjectIndex(ctx.db, project.id, blobs, notes, readHeads, askIn, walk);
-  await recordIndexResult(ctx, project.id, at, result);
+  const result = await buildProjectIndex(ctx.db, project.id, blobs, notes, readHeads, askIn, walk, excludes);
+  await recordIndexResult(ctx, project.id, at, { ...result, dropped: notes.dropped });
 }
 
 async function indexBlobs(ctx: Ctx, project: IndexProject, base: string): Promise<Map<string, string> | null> {
@@ -676,9 +689,9 @@ async function warnIndexOnce(ctx: Ctx, projectId: number, error: unknown): Promi
   });
 }
 
-export function indexStamp(blobs: Map<string, string>, notes: Notes): string {
+export function indexStamp(blobs: Map<string, string>, notes: Notes, excludes: string[] = []): string {
   if (!blobs.size) return "";
-  const files = [...blobs].map(([file, blob]) => `${file}${blob}`);
+  const files = [...blobs].filter(([file]) => indexable(file, excludes)).map(([file, blob]) => `${file}${blob}`);
   const written = notes.ids.map((id) => `${id}${notes.read(id) ?? ""}`);
   return Bun.hash([...files, ...written].join("\n")).toString(16);
 }
@@ -698,8 +711,8 @@ async function buildProjectIndex(
   readHeads: (paths: string[]) => Promise<Map<string, string>>,
   askIn: AskIn,
   walk: Config["pageindex"],
+  excludes: string[],
 ) {
-  const excludes = await indexExcludes(db, projectId);
   const files = [...blobs.keys()].filter((file) => indexable(file, excludes));
   const previous = (await loadTree(db, projectId)) ?? {};
   const tree = skeleton([...files, ...notes.ids]);
@@ -729,7 +742,7 @@ export async function recordIndexResult(
   ctx: Ctx,
   projectId: number,
   at: string,
-  result: { calls: number; failed: number; files: number },
+  result: { calls: number; failed: number; files: number; dropped?: number },
 ): Promise<void> {
   // `< budget`, not `<= `: a pass that spent all of it stopped early and has more
   // to do, so it must not record the tree as finished. One number, read from one
@@ -738,6 +751,7 @@ export async function recordIndexResult(
   if (at && result.calls < ctx.config.pageindex.budget && result.failed === 0) {
     memory(ctx.db).at.set(projectId, at);
   }
+  await warnNotesDropped(ctx, projectId, result.dropped ?? 0);
   if (result.failed > 0 && result.failed === result.calls) return await warnModelDown(ctx, projectId, result.failed);
   if (!result.calls) return;
   memory(ctx.db).down.delete(projectId);
@@ -794,6 +808,29 @@ async function warnIndexUnconfigured(ctx: Ctx, runtime: string): Promise<void> {
     intent: "inform",
     severity: "blocker",
     say: msg`PageIndex needs the ${{ runtime }} account and it is not configured. Sign in on the settings page, or point the index at a runtime that is — Settings → Plumbing → indexModel.runtime.`,
+  });
+}
+
+/**
+ * The blackboard outgrowing the index, said once.
+ *
+ * The tree is rebuilt from the newest `pageindex.notes` entries every pass, so a
+ * note past that limit is not paged out — it leaves the index and stops being
+ * findable, on a corpus that only grows. Said when it starts biting and again
+ * only if it stops and starts, because this runs every pass and `bus.emit` has
+ * no dedup of its own.
+ */
+async function warnNotesDropped(ctx: Ctx, projectId: number, dropped: number): Promise<void> {
+  const crowded = memory(ctx.db).crowded;
+  if (dropped === 0) return void crowded.delete(projectId);
+  if (crowded.has(projectId)) return;
+  crowded.add(projectId);
+  await ctx.bus.emit({
+    author: roleFor(ctx, "compress_context"),
+    kind: "escalation",
+    intent: "inform",
+    severity: "advisory",
+    say: msg`The index carries the newest ${{ kept: ctx.config.pageindex.notes }} notes and ${{ dropped }} older ones are outside it, so nothing can find them. Raise "Notes in the index" in settings, or leave them out on purpose — every note in the tree is a node the indexer pays to summarise.`,
   });
 }
 

@@ -1512,6 +1512,9 @@ msgstr "一个组除对话之外的事件保留多久。对话本身——说过
 msgid "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones."
 msgstr "用量接口被拒之后晾多久。比拒绝持续的时间还短，轮询就只是不停地再挨一次拒绝。"
 
+msgid "How many blackboard entries the tree carries, newest first. Not a page size: the tree is rebuilt from this list, so a note past it leaves the index and stops being findable. Each one is also a node the indexer pays to summarise."
+msgstr "树里携带多少条黑板记录，从最新的算起。这不是分页大小：树每一轮都从这份列表重建，超出的笔记会离开索引、从此搜不到。每一条同时也是索引器要花钱总结的一个节点。"
+
 msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
 msgstr "同时能跑多少个闸门。一个 lease 是一次真的编译或测试，十个并发会把机器拖垮。浏览器单独限 1：每个都是一个真的 Chromium。"
 
@@ -2015,6 +2018,9 @@ msgstr "还没开工，等前面的切片查收。"
 
 msgid "Notes"
 msgstr "记录"
+
+msgid "Notes in the index"
+msgstr "索引里的笔记数"
 
 msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
 msgstr "这个项目没有任何可以确定性运行的检查，所以没有切片能被验证。在「设置 → Gates」里补上命令——或者保存一个空列表，表示这个项目就是没有 gate，切片将不带 gate 进入审查。"
@@ -3024,6 +3030,9 @@ msgstr "宿主断网了，{n} 个 turn 挂起等联网 —— 工单还在跑的
 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "索引刷不了：这个项目的容器起不来（{why}）"
+
+msgid "The index carries the newest {kept} notes and {dropped} older ones are outside it, so nothing can find them. Raise \"Notes in the index\" in settings, or leave them out on purpose — every note in the tree is a node the indexer pays to summarise."
+msgstr "索引携带最新的 {kept} 条笔记，另外 {dropped} 条更旧的在它之外，谁也搜不到。可以在设置里调高「索引里的笔记数」，或者就是有意不收 —— 树里每一条笔记都是索引器要花钱总结的一个节点。"
 
 msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
 msgstr "索引导航（{model}）连续失败 {n} 次，已暂停调用——检索回落到词法索引；在设置里换模型或 runtime 就会重新开始"

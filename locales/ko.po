@@ -1512,6 +1512,9 @@ msgstr "그룹의 나머지 이벤트를 보관하는 기간. 대화 자체 — 
 msgid "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones."
 msgstr "사용량 엔드포인트가 거절한 뒤 그냥 두는 시간. 거절이 유효한 기간보다 짧으면, 폴링이 새 거절만 계속 벌어옵니다."
 
+msgid "How many blackboard entries the tree carries, newest first. Not a page size: the tree is rebuilt from this list, so a note past it leaves the index and stops being findable. Each one is also a node the indexer pays to summarise."
+msgstr "트리가 담는 칠판 항목 수(최신순). 페이지 크기가 아닙니다 — 트리는 매번 이 목록에서 다시 만들어지므로, 이를 넘어간 노트는 인덱스에서 빠지고 더는 찾을 수 없습니다. 각 항목은 인덱서가 요약 비용을 치르는 노드이기도 합니다."
+
 msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
 msgstr "동시에 돌 수 있는 게이트 수. 리스는 실제 컴파일이나 테스트라서 열 개를 함께 돌리면 기계가 갈립니다. 브라우저는 따로 1개로 제한됩니다 — 하나하나가 진짜 Chromium입니다."
 
@@ -2015,6 +2018,9 @@ msgstr "아직 시작하지 않았습니다. 앞의 슬라이스가 수락되기
 
 msgid "Notes"
 msgstr "노트"
+
+msgid "Notes in the index"
+msgstr "인덱스에 담는 노트 수"
 
 msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
 msgstr "이 프로젝트에 대해 결정적으로 실행할 수 있는 것이 없어 어떤 슬라이스도 검증할 수 없습니다. 설정 → Gates에서 명령을 추가하세요. 또는 빈 목록을 저장하면 이 프로젝트에는 게이트가 없다는 뜻이 되고, 슬라이스는 게이트 없이 리뷰로 넘어갑니다."
@@ -3024,6 +3030,9 @@ msgstr "호스트의 네트워크가 끊겼습니다. 턴 {n}건을 보류하고
 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "인덱스를 갱신할 수 없습니다: 이 프로젝트의 컨테이너가 뜨지 않습니다({why})"
+
+msgid "The index carries the newest {kept} notes and {dropped} older ones are outside it, so nothing can find them. Raise \"Notes in the index\" in settings, or leave them out on purpose — every note in the tree is a node the indexer pays to summarise."
+msgstr "인덱스는 최신 {kept}개의 노트를 담고 있고 오래된 {dropped}개는 그 밖에 있어 아무도 찾을 수 없습니다. 설정에서 \"인덱스에 담는 노트 수\"를 올리거나, 의도적으로 제외한 채 두세요 — 트리의 모든 노트는 인덱서가 요약 비용을 치르는 노드입니다."
 
 msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
 msgstr "인덱스 내비게이터({model})가 {n}회 연속 실패해 호출을 멈췄습니다. 검색은 어휘 인덱스로 대체됩니다. 설정에서 모델이나 런타임을 바꾸면 다시 시작합니다"

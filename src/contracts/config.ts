@@ -397,7 +397,15 @@ export const ConfigSchema = z.object({
    * of a file the summariser is given; it is not what decides *whether* to
    * re-summarise, which is git's blob hash for the whole file.
    */
-  pageindex: z.object({ enabled: z.boolean(), depth: count, width: count, budget: count, fileChars: count }).strict(),
+  /**
+   * `notes` is how many of the blackboard's own entries the tree carries, newest
+   * first. The tree is rebuilt from that list every pass, so this is not a page
+   * size: a note past it leaves the index and stops being findable, on a
+   * blackboard that only grows. The pass says so when it starts biting.
+   */
+  pageindex: z
+    .object({ enabled: z.boolean(), depth: count, width: count, budget: count, fileChars: count, notes: count })
+    .strict(),
   /**
    * Forward every notification to a URL, as JSON. Empty means nobody but the panel.
    *

@@ -1512,6 +1512,9 @@ msgstr "Сколько хранятся прочие события группы
 msgid "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones."
 msgstr "Сколько эндпоинт расхода оставляют в покое после отказа. Короче срока действия отказа — и опрос просто зарабатывает новые."
 
+msgid "How many blackboard entries the tree carries, newest first. Not a page size: the tree is rebuilt from this list, so a note past it leaves the index and stops being findable. Each one is also a node the indexer pays to summarise."
+msgstr "Сколько записей доски несёт дерево, начиная с новых. Это не размер страницы: дерево пересобирается из этого списка, поэтому заметка за его пределами покидает индекс и перестаёт находиться. Каждая — ещё и узел, за описание которого платит индексатор."
+
 msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
 msgstr "Сколько гейтов может идти одновременно. Аренда — это настоящая сборка или прогон тестов, десяток параллельно убьёт машину. Браузер отдельно ограничен единицей: каждый — настоящий Chromium."
 
@@ -2015,6 +2018,9 @@ msgstr "Ещё не начато; ждём приёмки предыдущих �
 
 msgid "Notes"
 msgstr "Заметки"
+
+msgid "Notes in the index"
+msgstr "Заметок в индексе"
 
 msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
 msgstr "Против этого проекта нечего запустить детерминированно, поэтому ни один слайс нельзя проверить. Добавьте команды в «Настройки → Gates» — или сохраните пустой список, что будет означать: у проекта нет гейта, и слайсы пойдут на ревью без него."
@@ -3024,6 +3030,9 @@ msgstr "хост потерял сеть; {n, plural, one {# ход приост
 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "индекс не обновить: контейнер этого проекта не запускается ({why})"
+
+msgid "The index carries the newest {kept} notes and {dropped} older ones are outside it, so nothing can find them. Raise \"Notes in the index\" in settings, or leave them out on purpose — every note in the tree is a node the indexer pays to summarise."
+msgstr "Индекс несёт новейшие {kept} заметок, а {dropped} более старых остаются вне его и не находятся ничем. Поднимите \"Заметок в индексе\" в настройках или намеренно оставьте их снаружи — каждая заметка в дереве это узел, за который платит индексатор."
 
 msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
 msgstr "навигатор индекса ({model}) отказал {n} раза подряд, и его перестали вызывать — поиск падает на лексический индекс, а смена модели или рантайма в настройках запускает его снова"

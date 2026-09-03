@@ -1512,6 +1512,9 @@ msgstr "How long the rest of a group's events are kept. The conversation itself 
 msgid "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones."
 msgstr "How long the usage endpoint is left alone once it has refused. Shorter than the refusal lasts and the poll simply keeps earning fresh ones."
 
+msgid "How many blackboard entries the tree carries, newest first. Not a page size: the tree is rebuilt from this list, so a note past it leaves the index and stops being findable. Each one is also a node the indexer pays to summarise."
+msgstr "How many blackboard entries the tree carries, newest first. Not a page size: the tree is rebuilt from this list, so a note past it leaves the index and stops being findable. Each one is also a node the indexer pays to summarise."
+
 msgid "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
 msgstr "How many gates may run at once. A lease is a real compile or test run, so ten concurrent will trash the machine. Browser is capped at 1 on its own: each one is a real Chromium."
 
@@ -2015,6 +2018,9 @@ msgstr "Not started yet; waiting for prior slices to be accepted."
 
 msgid "Notes"
 msgstr "Notes"
+
+msgid "Notes in the index"
+msgstr "Notes in the index"
 
 msgid "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
 msgstr "Nothing deterministic can be run against this project, so no slice can be verified. Add the commands under Settings → Gates — or save an empty list to say this project has no gate, and slices will go to review without one."
@@ -3024,6 +3030,9 @@ msgstr "the host lost its network; {n, plural, one {# turn} other {# turns}} hel
 
 msgid "the index cannot be refreshed: this project's container will not start ({why})"
 msgstr "the index cannot be refreshed: this project's container will not start ({why})"
+
+msgid "The index carries the newest {kept} notes and {dropped} older ones are outside it, so nothing can find them. Raise \"Notes in the index\" in settings, or leave them out on purpose — every note in the tree is a node the indexer pays to summarise."
+msgstr "The index carries the newest {kept} notes and {dropped} older ones are outside it, so nothing can find them. Raise \"Notes in the index\" in settings, or leave them out on purpose — every note in the tree is a node the indexer pays to summarise."
 
 msgid "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"
 msgstr "the index navigator ({model}) failed {n} times in a row and is being skipped — retrieval falls back to the lexical index, and changing the model or runtime in Settings starts it again"

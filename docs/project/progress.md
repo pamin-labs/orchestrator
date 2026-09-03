@@ -37,22 +37,22 @@ Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
 
 ## Blockers and deviations
 
-- **The index was losing ground, not catching up.** Measured live: 822 nodes,
-  61 summarised down to 48, while the indexer's bill went 2.9M to 23.3M tokens.
-  A node the pass could not answer for was left blank on all three exits — budget
-  spent, model returning nothing, file unreadable — and a directory's content *is*
-  its children's summaries, so one blank leaf changed the parent's signature,
-  needed a call the budget had spent on files, and the emptiness climbed a level
-  per tick. A pass therefore always spent all twelve, and the tree is stamped
-  fresh only under the budget, so every tick rebuilt from a checkout, forever.
-  What counts as changed now comes from git — `ls-files -s` blob hashes, the whole
-  file — plus the note corpus, which changes without a commit. A pass reads only
-  what it will summarise, 1,159,899 bytes a tick down to ~95,000, and the model
-  sees the whole file up to 30,000 (93.5% of them) where an 1800-character head
-  covered 17%. A node also carries `points`, shown by `render` and never in the
-  walk's menu: the widest level here is 69 children, so a paragraph a row would be
-  ~14k tokens on every question. Both knobs are settings. Fixed 2026-09-03;
-  guards in `pageindex`, `checkout-spans`, `server-policy`.
+- **The index dropped the oldest notes without saying so.** `noteLeaves` took the
+  newest 500 at a hard-coded literal, and the tree is rebuilt from that list every
+  pass — so a note past it does not page out, it leaves the index and stops being
+  findable, on a blackboard that only grows. It is `pageindex.notes` now, and a
+  pass that leaves anything behind says once how many and where to raise it. The
+  stamp also covered files the index does not carry, so touching a lockfile woke a
+  pass that loaded the tree and did nothing. Guards in `pageindex`, `server-policy`.
+
+- **The index was losing ground, not catching up.** 822 nodes, 61 summarised down
+  to 48, the indexer's bill 2.9M to 23.3M tokens. Seven findings, one subsystem: a
+  node the pass could not answer for was blanked on all three exits and the
+  emptiness climbed a level per tick, and a pass that spent its budget was never
+  stamped fresh, so every tick rebuilt from a checkout. What counts as changed is
+  git's blob hashes now; a pass reads only what it will summarise (1,159,899 bytes
+  a tick to ~95,000) and sees the whole file up to 30,000 where an 1800-character
+  head covered 17%. [#63](https://github.com/pamin-labs/orchestrator/pull/63).
 
 - **The panel never rendered the Markdown its agents write.** Cards, journal
   entries and escalations are Markdown by ADR 016 and all of it reached the boss
