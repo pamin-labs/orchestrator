@@ -248,8 +248,43 @@ function readCodex(out: string): { text: string; usage?: Usage } {
  * traffic. No `--ignore-user-config`: inside the container HOME is `/root` and
  * holds only what we put there.
  */
+/**
+ * Three `-c` keys, each measured, each worth thousands of tokens a call.
+ *
+ * The same 1,631-byte prompt in the same container: 21,513 input tokens as
+ * shipped, 9,980 with these. codex loads a skills catalogue, the repository's
+ * `AGENTS.md` and a web-search tool by default, and a call that reads a file head
+ * and writes one line under twenty words opens none of them.
+ */
+/**
+ * Documented keys rather than a home of our own. `--ignore-rules` and
+ * `--ignore-user-config` do nothing here and are not the lever they look like:
+ * the first is about execpolicy `.rules` and the second about `config.toml`,
+ * measured at 21,513 either way. `agents.enabled=false` is in the schema and
+ * measured zero on 0.147.0, so it is not sent.
+ */
+const ASK_TRIM = [
+  // -5,169. The six bundled skills — imagegen, plugin-creator, skill-creator,
+  // skill-installer, openai-docs, review-agent — catalogued into every prompt.
+  "-c",
+  "skills.include_instructions=false",
+  // -3,600. This repository's own `AGENTS.md` is 15,122 bytes and codex reads it
+  // from the checkout. Default is 32 KiB; zero stops the walk before it starts.
+  "-c",
+  "project_doc_max_bytes=0",
+  // -2,456. Default is `cached`, so the tool ships enabled. Turns keep it — the
+  // roles that may look things up are decided by `allowedTools` — but a summary
+  // of a local file has nothing to search for.
+  "-c",
+  'web_search="disabled"',
+];
+
 const runAsk = (spec: AskSpec): Promise<AskResult> =>
-  askVia(spec, ["codex", "exec", "--json", "--skip-git-repo-check", "-s", "read-only", "-m", spec.model], readCodex);
+  askVia(
+    spec,
+    ["codex", "exec", "--json", "--skip-git-repo-check", "-s", "read-only", ...ASK_TRIM, "-m", spec.model],
+    readCodex,
+  );
 
 export { buildArgv as buildCodexArgv, readCodex, runAsk as runCodexAsk, runTurn as runCodexTurn };
 

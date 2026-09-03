@@ -29,7 +29,7 @@ import { tempDir } from "../support/temp.ts";
  *  product does not use proves nothing about the product's model bill. */
 const WALK = loadConfig().pageindex;
 
-const UsageMeta = z.object({ runtime: z.string() });
+const UsageMeta = z.object({ runtime: z.string(), cacheRatio: z.number() });
 
 function repo(): string {
   const d = tempDir("orch-pi-");
@@ -173,7 +173,13 @@ test("what the index spends shows up in the cost report", async () => {
   // And the hourly burn chart reads the events, which need the same meta shape a
   // turn emits or the provider split guesses from the model name.
   const [ev] = await db.select({ meta_json: event.meta_json }).from(event).where(eq(event.author, "indexer")).limit(1);
-  expect(UsageMeta.parse(ev!.meta_json).runtime).toBe("codex");
+  const meta = UsageMeta.parse(ev!.meta_json);
+  expect(meta.runtime).toBe("codex");
+  // `cacheRatio` too, which "the same meta shape a turn emits" did not include.
+  // `recentCacheRatio` averages the rows that carry one, and the index is fifty
+  // rows to a turn's handful — so the number beside "the indexer is the whole of
+  // the spend" was an average over whatever else happened to be in the sample.
+  expect(meta.cacheRatio).toBeCloseTo(5 / 106, 5);
 });
 
 test("a call that reported no usage is not charged", async () => {

@@ -10,6 +10,7 @@ import { runnerFor, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { providerFor } from "../../runtime/providers.ts";
 import { authStamp } from "../sandbox/auth.ts";
 import type { Usage } from "../../runtime/claude.ts";
+import { cacheRatio } from "../../runtime/providers/contract.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { scrub } from "../../platform/observability/redaction.ts";
@@ -291,7 +292,13 @@ export function modelAsk(
       activeTracer().startActiveSpan("index.ask", { attributes: { "model.name": spec.model } }, async (span) => {
         try {
           const r = await provider
-            .ask({ model: spec.model, prompt, cwd: WORK, timeoutMs, runner: runnerFor(ctx, scope) })
+            .ask({
+              model: spec.model,
+              prompt,
+              cwd: WORK,
+              timeoutMs,
+              runner: runnerFor(ctx, scope),
+            })
             .catch(() => null);
           if (!r || r.code !== 0) {
             // The empty string is both a legitimate answer and the failure value,
@@ -486,7 +493,12 @@ export async function chargeIndex(
     author: "indexer",
     kind: "tool_summary",
     say: msg`index call (${{ total }} tokens)`,
-    meta: { usage: u, model: spec.model, runtime },
+    // `cacheRatio` too, which the shape this imitates has always carried and
+    // this one did not. Fifty index calls to a handful of turns is the ratio of
+    // the sample `recentCacheRatio` reads, so the number the panel drew was an
+    // average over the two rows that happened to be turns — beside a row saying
+    // the indexer is the whole of the spend.
+    meta: { usage: u, cacheRatio: cacheRatio(u), model: spec.model, runtime },
   });
 }
 
