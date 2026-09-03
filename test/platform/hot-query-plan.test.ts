@@ -170,6 +170,11 @@ test("the span row-cap probe is answered by the index, without touching a row", 
   // at 3137 against a sequential scan, and it ran twice a minute to delete
   // nothing. This is the question asked for one column instead, which `span_age`
   // answers without reading a heap page.
+  // Vacuumed, not only analysed: an index-only scan is costed against the
+  // visibility map, which a fresh insert leaves empty and only a vacuum fills.
+  // The 2026-09-03 nightly saw the first two of ten runs answer Seq Scan + Sort
+  // and the rest the index — the table as autovacuum had or had not yet left it.
+  await db.execute(sql.raw(`VACUUM ANALYZE "span"`));
   // A tiebreak would name a column `span_age` does not carry, and carrying none is
   // what makes this index-only.
   // any-order: existence, not identity — whether a row sits at the offset depends

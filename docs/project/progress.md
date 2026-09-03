@@ -16,8 +16,8 @@ Product goals, scope, milestones and the delivery sequence live in
 Measured on `chore/release-0.1.9`, 2026-09-03.
 
 - TypeScript, Oxlint, Biome: pass
-- Tests: 2080 pass, 7 environment skips, 0 fail, 2087 across 255 files
-- Coverage: 84.36% of statements, 74.66% of branches, 80.45% of functions
+- Tests: 2088 pass, 7 environment skips, 0 fail, 2095 across 255 files
+- Coverage: 84.38% of statements, 74.66% of branches, 80.47% of functions
 - Fallow audit against real coverage (`bun run audit:crap`): dead code 0,
   complexity 0, duplication 0
 - Fallow security, full inventory: **1** candidate —
@@ -26,7 +26,7 @@ Measured on `chore/release-0.1.9`, 2026-09-03.
 - `bun run preflight`: every runnable step passed, 44s
 - Block comments over eight lines: zero, enforced by
   `test/governance/comment-blocks.test.ts`
-- All ten catalogues at 1142/1142
+- All ten catalogues at 1150/1150
 - Suite cost, measured on a ten-core machine: ~2.1 GB of system memory at peak
   and 16-24s wall clock, against 7.2 GB and 46s before 0.1.8. Recorded
   because it was a defect, not as a target — the same suite measures differently
@@ -36,6 +36,31 @@ Measured on `chore/release-0.1.9`, 2026-09-03.
   would be a third owner, stale from the next merge until somebody remembered
 
 ## Blockers and deviations
+
+- **A branch told to rebase once was never looked at again.** Watchdog rule 15
+  nudges once per movement of the base (`rebase_seen`) and stopped measuring
+  there, so an Engineer that ignored the nudge or failed the rebase looked the
+  same as one that had done it, and the panel had no distance to show and no
+  button to press. The rule now records `git rev-list --left-right --count` into
+  `grp.base_ahead`/`base_behind` every tick — one 5ms session exec per running
+  group, replacing the `merge-base --is-ancestor` it used to run — and the
+  requirement header draws `↑n ↓m main` with a **Rebase onto main** button
+  (`POST /groups/:id/sync`) that re-sends the same nudge through the same
+  helpers in `src/mech/flow/rebase.ts`; a group still behind `nudgeReemitMs`
+  after it was told is told again. The three hand-written copies of that
+  nudge — watchdog, `landGroup`, PR conflict — are one `queueRebase` now, and
+  `landGroup`'s lacked `conflict: true`, so the watchdog sent a second turn for
+  the same movement. Fixed 2026-09-03; guards in `test/mech/watchdog.test.ts`,
+  `test/mech/prwatch.test.ts` and `test/api/api.test.ts`.
+
+- **The 2026-09-03 nightly failed two stress tests that nothing local repeats.**
+  The theme hotkey walked two steps per press in all ten runs of its file, and
+  the `span` row-cap probe chose Seq Scan + Sort in the first two of ten. The
+  same seed (3515241165) over the same files passes here. Two hardenings, both
+  named as such: the hotkey handler stands down on a chord another listener
+  already claimed (`defaultPrevented`), and the probe vacuums before it asks,
+  since an index-only scan is costed against the visibility map. Not proved:
+  that either is the cause. Watch the next nightly.
 
 - **The index dropped the oldest notes without saying so.** `noteLeaves` took the
   newest 500 at a hard-coded literal, and the tree is rebuilt from that list every
@@ -77,41 +102,6 @@ Measured on `chore/release-0.1.9`, 2026-09-03.
   open and a savepoint when there is, sharing the outer `onCommit` so an event
   still belongs to the outer commit). Fixed 2026-09-03; the guard reproduces the
   reported sentence verbatim with the savepoint removed.
-
-- **Every index call carried three things it never opened.** Measured against
-  codex 0.147.0 in this image, the same 1,631-byte prompt: **21,513 input tokens
-  as shipped, 9,980 with three documented `-c` keys** — the bundled skills
-  catalogue (−5,169), this repository's 15,122-byte `AGENTS.md` (−3,600) and a
-  web-search tool (−2,456), for a call that reads a file head and writes one line
-  under twenty words. `--ignore-rules` and `--ignore-user-config` are not the
-  lever they look like — execpolicy `.rules` and `config.toml` respectively,
-  21,513 either way — and `agents.enabled=false` measured zero. Turns keep web
-  search; `allowedTools` still decides which roles may look things up. Fixed
-  2026-09-03. And the index event now carries `cacheRatio`, which the shape it
-  claimed to imitate has always had: twelve index rows a tick against a handful
-  of turns is the sample `recentCacheRatio` reads, so the panel's figure was an
-  average over whatever else was in it, drawn beside a row saying the indexer is
-  the whole of the spend. The claude side of the same call gives back far less: 30,229 against 27,567 with
-  `--disable-slash-commands`, and `--exclude-dynamic-system-prompt-sections` (151)
-  and `--strict-mcp-config` (0) are not worth a flag. `--bare`, the documented
-  minimal mode, reads Anthropic auth strictly from `ANTHROPIC_API_KEY` and never
-  OAuth — measured, `Not logged in` — so it cannot be used with the vault's
-  `CLAUDE_CODE_OAUTH_TOKEN`.
-- **A command that exits took its own output with it, so PageIndex never built.**
-  `wrapForSession` redirects each stream to a file and reads both back, and the
-  command sat in a brace group — `exit` inside one ends the *session* every caller
-  in that container shares, before the two `cat`s run. The caller got exit 0 and
-  two empty strings, which is a command that succeeded silently. `modelAsk` sends
-  `codex … < prompt; rc=$?; rm -f prompt; exit $rc`, so every index call came back
-  empty; the turn path sends the same shape and was spared only because
-  `execLines` never uses the session. Measured through `execIn`: `echo hello` gave
-  `hello`, `echo hello; rc=$?; exit $rc` gave `""`, and the same command forced
-  one-shot gave `hello`. A subshell fixes it and stops a caller's `cd` leaking
-  into the next command. The wrapper's own trailing `exit` had been a subshell
-  since it ended the session once — the bug class was fixed in one of its two
-  places. Fixed 2026-09-03; guard runs the wrapper through a real bash, because
-  the defect was that the shell did something other than what the string looked
-  like.
 
 - **The index navigator's circuit breaker had no way back.** `record` clears the
   count only on a success and `tripped` returns before the call that could produce

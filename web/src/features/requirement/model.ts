@@ -173,6 +173,9 @@ export const canNewPr = (g: Group): boolean => g.status === "PAUSED" && g.pr_num
 export const showQueued = (inQueue: boolean, g: Group): boolean => !inQueue && g.status === "PR_OPEN";
 export const canResume = (g: Group, broke: boolean): boolean => ["PAUSED", "PAUSING"].includes(g.status) && !broke;
 export const canPark = (g: Group): boolean => ["RUNNING", "PAUSING", "PAUSED"].includes(g.status);
+/** Behind the base and in a state where a queued turn will run: the button the
+ *  distance readout points at. */
+export const canSync = (g: Group): boolean => (g.base_behind ?? 0) > 0 && ["RUNNING", "PR_OPEN"].includes(g.status);
 
 /** Everything filed against this requirement's plan card, in one read of the snapshot. */
 export function draftView(st: State, grpId: number) {

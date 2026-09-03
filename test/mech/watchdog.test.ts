@@ -112,10 +112,10 @@ async function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
     db,
     bus,
     sched,
-    // `merge-base --is-ancestor` runs in the group's checkout, which lives in its
-    // sandbox. Not an ancestor = the group has not rebased yet, which is the
+    // `rev-list --left-right --count` runs in the group's checkout, which lives
+    // in its sandbox. Two behind = the group has not rebased yet, which is the
     // condition every rule below is about.
-    sandbox: fakeSandbox((cmd) => (cmd.includes("merge-base") ? { code: 1 } : { code: 0 })),
+    sandbox: fakeSandbox((cmd) => (cmd.includes("rev-list") ? { out: "2\t3" } : { code: 0 })),
     waiters: new Map(),
     config: cfg,
   };
@@ -738,6 +738,55 @@ test("main moving under a running group sends it to rebase, once per commit", as
   // Told once per base — otherwise the same nudge fires every tick until the
   // rebase finishes, which is how an agent learns to skip the message.
   expect((await runWatchdog(deps)).map((x) => x.rule)).not.toContain("base_moved");
+  // And the distance is written down, which is what the panel draws and what
+  // the boss's own "rebase now" reads.
+  const [g] = await h.db.select({ a: grpTable.base_ahead, b: grpTable.base_behind }).from(grpTable);
+  expect(g).toEqual({ a: 3, b: 2 });
+});
+
+test("a group still behind after being told is measured every tick, and told again after the reemit window", async () => {
+  // The nudge is once per base commit. The measurement is not: an Engineer that
+  // ignored the nudge, or failed at the rebase, used to look exactly like one
+  // that had done it, because the rule stopped looking once `rebase_seen` matched.
+  // And once per commit was also *only* once: a branch could drift behind for a
+  // day under the single feed line that said it had been told.
+  const h = await harness();
+  let clock = 1_000_000_000;
+  await h.db
+    .update(grpTable)
+    .set({ sandbox_id: "sb-1", rebase_seen: "abc1234567", rebase_seen_at: clock })
+    .where(eq(grpTable.id, 1));
+  h.ctx.gh = gh(() => ({ commit: { sha: "abc1234567" } }));
+  h.ctx.sandbox = fakeSandbox((cmd) => (cmd.includes("rev-list") ? { out: "4\t1" } : { code: 0 }));
+  const deps = { ...h.deps, now: () => clock };
+
+  clock += 60_000;
+  expect((await runWatchdog(deps)).map((x) => x.rule)).not.toContain("base_moved");
+  expect(await pending(h.db)).toEqual([]);
+  const [g] = await h.db.select({ a: grpTable.base_ahead, b: grpTable.base_behind }).from(grpTable);
+  expect(g).toEqual({ a: 1, b: 4 });
+
+  // Still behind once the window the other standing findings repeat on has passed.
+  clock += h.deps.cfg.watchdog.nudgeReemitMs;
+  const f = await runWatchdog(deps);
+  expect(f.filter((x) => x.rule === "base_moved").map((x) => renderSaid("en", x.say))[0]).toContain("told again");
+  expect(await pending(h.db)).toHaveLength(1);
+  expect((await h.db.select({ at: grpTable.rebase_seen_at }).from(grpTable))[0]!.at).toBe(clock);
+});
+
+test("a group whose nudge is still queued gets its distance and not a second nudge", async () => {
+  const h = await harness();
+  await h.db.update(grpTable).set({ sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
+  h.ctx.gh = gh(() => ({ commit: { sha: "abc1234567" } }));
+  await h.ctx.sched.enqueue("agent_turn", {
+    grp_id: 1,
+    payload: { role: "engineer", conflict: true, rejection: "rebase" },
+  });
+
+  expect((await runWatchdog(h.deps)).map((x) => x.rule)).not.toContain("base_moved");
+  expect(await pending(h.db)).toHaveLength(1);
+  const [g] = await h.db.select({ b: grpTable.base_behind }).from(grpTable);
+  expect(g).toEqual({ b: 2 });
 });
 
 test("work that is finished but has no PR is sent back through the branch review", async () => {
@@ -832,13 +881,15 @@ test("a group already on the base is not nudged", async () => {
   await h.db.update(grpTable).set({ sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
   h.ctx.gh = gh(() => ({ commit: { sha: "def4560000000000000000000000000000000000" } }));
   const deps = h.deps;
-  // `merge-base --is-ancestor` succeeds in the group's own clone: already on it.
-  h.ctx.sandbox = fakeSandbox(() => ({ code: 0 }));
+  // Zero behind in the group's own clone: already on it, and two commits of its own.
+  h.ctx.sandbox = fakeSandbox((cmd) => (cmd.includes("rev-list") ? { out: "0\t2" } : { code: 0 }));
 
   const f = await runWatchdog(deps);
   expect(f.map((x) => x.rule)).not.toContain("base_moved");
   const jobs = await h.db.select({ p: jobTable.payload_json }).from(jobTable).where(eq(jobTable.kind, "agent_turn"));
   expect(jobs.map((j) => AgentTurnPayloadSchema.parse(j.p).role)).not.toContain("engineer");
+  const [g] = await h.db.select({ a: grpTable.base_ahead, b: grpTable.base_behind }).from(grpTable);
+  expect(g).toEqual({ a: 2, b: 0 });
 });
 
 test("turn logs are compressed after a day and dropped after two weeks", async () => {
@@ -1099,7 +1150,7 @@ test("the container sweep runs hourly, and the clock is not in this process", as
   const h = await harness();
   // The harness's own driver is typed as the interface, which does not carry the
   // recorder. Same behaviour, kept as the concrete fake so `commands` is typed.
-  const sandbox = fakeSandbox((cmd) => (cmd.includes("merge-base") ? { code: 1 } : { code: 0 }));
+  const sandbox = fakeSandbox((cmd) => (cmd.includes("rev-list") ? { out: "2\t3" } : { code: 0 }));
   h.ctx.sandbox = sandbox;
   await h.db.update(grpTable).set({ sandbox_id: "sb-1" }).where(eq(grpTable.id, 1));
   let clock = 1_000_000;
@@ -1292,7 +1343,7 @@ test("an idle project pays one cheap exec a tick, not the whole corpus", async (
   const h = await harness(EVERY_MAP_TICK);
   let head = "1111111111111111111111111111111111111111";
   const sandbox = fakeSandbox((cmd) => {
-    if (cmd.includes("merge-base")) return { code: 1 };
+    if (cmd.includes("rev-list")) return { out: "2\t3" };
     if (cmd.includes("rev-parse")) return { out: head };
     if (cmd.includes("ls-tree")) return { out: "src/a.ts\n" };
     return { code: 0 };
@@ -1597,7 +1648,7 @@ test("a merge queue held up behind the head interrupts, one PR waiting on its ow
 test("the repo map is not asked about on every tick, and the period is configurable", async () => {
   const h = await harness({ watchdog: { ...loadConfig().watchdog, repoMapEveryMs: 60_000 } });
   const sandbox = fakeSandbox((cmd) => {
-    if (cmd.includes("merge-base")) return { code: 1 };
+    if (cmd.includes("rev-list")) return { out: "2\t3" };
     if (cmd.includes("rev-parse")) return { out: "1111111111111111111111111111111111111111" };
     if (cmd.includes("ls-tree")) return { out: "src/a.ts\n" };
     return { code: 0 };

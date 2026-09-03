@@ -152,6 +152,11 @@ export const grp = pgTable(
     rebase_seen: text(),
     // When it was last told; the clock is what lets a burst of pushes coalesce.
     rebase_seen_at: bigint({ mode: "number" }),
+    // How far this branch is from the base, measured every watchdog tick in the
+    // group's own clone. Null until the first measurement. `rebase_seen` says a
+    // nudge was sent; these say whether it was acted on.
+    base_ahead: integer(),
+    base_behind: integer(),
     // Same durability and staleness rules as `project.sandbox_id`/`sandbox_at`.
     sandbox_id: text(),
     sandbox_at: bigint({ mode: "number" }),

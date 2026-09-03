@@ -12,6 +12,7 @@ import { validateDraftCard } from "../../mech/util/validate.ts";
 import { canStart, CLAIMING, parseOwns } from "../../mech/flow/ownership.ts";
 import { killSandbox } from "../../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
+import { conflictPending, queueRebase, recordDistance, remoteBaseHead } from "../../mech/flow/rebase.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema, IdParams } from "../../contracts/fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
@@ -328,16 +329,12 @@ export async function landGroup(ctx: Ctx, grpId: number, by: string): Promise<nu
     // Named from the project rather than written into the sentence: a group on
     // `develop` was being told to rebase onto a branch its repository has not got.
     const base = await baseBranchOf(ctx.db, id, ctx.config.baseBranchFallbacks);
-    await ctx.sched.enqueue("agent_turn", {
-      grp_id: id,
-      payload: {
-        role: roleFor(ctx, "write_code"),
-        rejection:
-          `${base} moved: \`git fetch origin ${base}\` and \`git rebase origin/${base}\` ` +
-          `before doing anything else.`,
-        rotate: true,
-      },
-    });
+    await queueRebase(
+      ctx,
+      id,
+      { baseRef: `origin/${base}` },
+      { rotate: true, why: `${base} moved: another group just merged` },
+    );
   }
   await ctx.sched.tick();
   return stale;
@@ -354,7 +351,7 @@ export async function landGroup(ctx: Ctx, grpId: number, by: string): Promise<nu
  * still open, and GitHub is the only source for that.
  */
 export const GroupAction = IdParams.extend({
-  action: z.enum(["pause", "resume", "park", "wake", "interrupt", "budget", "drop", "newpr", "rebuild"]),
+  action: z.enum(["pause", "resume", "park", "wake", "interrupt", "budget", "drop", "newpr", "rebuild", "sync"]),
 });
 
 /**
@@ -452,17 +449,30 @@ async function resumeGroup(ctx: Ctx, grpId: number): Promise<Response> {
   return message("ok");
 }
 
+/** The group beside the repository it belongs to, for the two actions that talk to GitHub about it. */
+async function groupWithRepo(db: DB, grpId: number) {
+  const [g] = await db
+    .select({
+      name: grps.name,
+      repo: project.repo_path,
+      pr_number: grps.pr_number,
+      status: grps.status,
+      sandbox_id: grps.sandbox_id,
+      project_id: grps.project_id,
+    })
+    .from(grps)
+    .innerJoin(project, eq(project.id, grps.project_id))
+    .where(eq(grps.id, grpId));
+  return g;
+}
+
 async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
   // A closed PR normally comes back by being reopened on GitHub, and the
   // watchdog picks that up. But a PR cannot be reopened once its branch has
   // been force-pushed or deleted, and sometimes the boss simply wants a clean
   // one — without this the group is stuck holding a pr_number that openPr
   // treats as "already done", so it could never get another.
-  const [g] = await ctx.db
-    .select({ name: grps.name, repo: project.repo_path, pr_number: grps.pr_number })
-    .from(grps)
-    .innerJoin(project, eq(project.id, grps.project_id))
-    .where(eq(grps.id, grpId));
+  const g = await groupWithRepo(ctx.db, grpId);
   if (!g) return message("no such group", 404);
   if (!ctx.gh) return noGithubClient();
   await ctx.db.update(grps).set({ pr_number: null }).where(eq(grps.id, grpId));
@@ -540,6 +550,42 @@ async function rebuildSandbox(ctx: Ctx, grpId: number): Promise<Response> {
   return message("ok");
 }
 
+/**
+ * The boss asks for the rebase now.
+ *
+ * Watchdog rule 15 sends the same nudge once per movement of the base and
+ * never again, so an Engineer that ignored it or failed at it left the branch
+ * behind with nothing saying so. The header shows the distance; this is the
+ * button beside it. Same helpers as the rule, so the two agree on "behind".
+ */
+async function syncBase(ctx: Ctx, grpId: number): Promise<Response> {
+  const g = await groupWithRepo(ctx.db, grpId);
+  if (!g) return message("no such group", 404);
+  const base = await baseBranchOf(ctx.db, grpId, ctx.config.baseBranchFallbacks);
+  if (!["RUNNING", "PR_OPEN"].includes(g.status))
+    return bad(
+      msg`${{ status: g.status }}: a rebase can only be asked for while the group is running or its PR is open`,
+    );
+  if (!g.sandbox_id) return bad(msg`no container right now; the next turn rebases onto ${{ base }} when it builds one`);
+  // Already told and not yet taken: the feed carries that line, so this is a no-op.
+  if (await conflictPending(ctx, grpId)) return json({ queued: false, pending: true });
+  if (!ctx.gh) return noGithubClient();
+  const head = await remoteBaseHead(ctx, g.repo, g.project_id);
+  if (!head) return bad(msg`GitHub did not say where ${{ base }} is`);
+  const d = await recordDistance(ctx, grpId, head);
+  if (!d) return bad(msg`the clone could not measure its distance from ${{ base }}; is a rebase in progress?`);
+  if (d.behind === 0) return json({ ...d, queued: false });
+  await queueRebase(ctx, grpId, head);
+  await ctx.bus.emit({
+    grpId,
+    author: "boss",
+    kind: "state_change",
+    say: msg`told to rebase onto ${{ base }}: ${{ behind: d.behind }} commits behind`,
+  });
+  await ctx.sched.tick();
+  return json({ ...d, queued: true });
+}
+
 export const postGroupControl = (async (ctx, req, params, b) => {
   const grpId = params.id;
   const action = params.action;
@@ -566,6 +612,8 @@ export const postGroupControl = (async (ctx, req, params, b) => {
       return message("ok");
     case "rebuild":
       return rebuildSandbox(ctx, grpId);
+    case "sync":
+      return syncBase(ctx, grpId);
     case "interrupt": {
       const mode = b.mode ?? "keep";
       const out = await interrupt(ctx, grpId, mode);

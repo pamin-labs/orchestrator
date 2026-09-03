@@ -41,6 +41,9 @@ msgstr "{a} 와 {b} 가 모두 {hit} 에 해당하는 경로를 갖고 있습니
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, 다만 App이 아직 어떤 계정에도 설치되지 않았습니다"
 
+msgid "{ahead} commits ahead of {base}, {behind} behind"
+msgstr "{base}보다 {ahead}개 커밋 앞서고 {behind}개 뒤처짐"
+
 msgid "{base} moved to {sha}; {name} is behind it and has been told to rebase first"
 msgstr "{base}이(가) {sha}로 옮겨져 {name}이(가) 뒤처졌고, 먼저 rebase하도록 지시했습니다"
 
@@ -260,6 +263,9 @@ msgstr "{name}이(가) 기다리던 일이 끝났습니다 — 깨웠습니다"
 msgid "{name} is over 25MB"
 msgstr "{name}이(가) 25MB를 넘습니다"
 
+msgid "{name} is still {behind} commits behind {base} after being told to rebase; told again"
+msgstr "{name}은(는) rebase 지시 후에도 {base}보다 {behind}개 커밋 뒤처져 있습니다. 다시 지시했습니다"
+
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
 msgstr "{name}이(가) 보드에서 빠지고 대기 중인 턴은 모두 취소됩니다. 코드와 기록은 남습니다."
 
@@ -392,6 +398,9 @@ msgstr "체크한 {staged}/{ticked}이 샌드박스에 전달됩니다, 저장�
 
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
 msgstr "체크한 {staged}/{ticked}이 샌드박스에 전달됩니다, 턴당 프리픽스 약 {tokens}k 토큰"
+
+msgid "{status}: a rebase can only be asked for while the group is running or its PR is open"
+msgstr "{status}: rebase는 그룹이 실행 중이거나 PR이 열려 있을 때만 요청할 수 있습니다"
 
 msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} 자동 수락, 세 관문 모두 통과"
@@ -1385,6 +1394,9 @@ msgstr "GitHub → 이 App → Install App"
 msgid "GitHub API call"
 msgstr "GitHub API 호출"
 
+msgid "GitHub did not say where {base} is"
+msgstr "GitHub가 {base}의 위치를 알려주지 않았습니다"
+
 msgid "GitHub is connected"
 msgstr "GitHub에 연결됐습니다"
 
@@ -1832,6 +1844,9 @@ msgstr "변경 없음"
 
 msgid "no code given"
 msgstr "코드가 없습니다"
+
+msgid "no container right now; the next turn rebases onto {base} when it builds one"
+msgstr "지금은 컨테이너가 없습니다. 다음 턴에서 컨테이너를 만들 때 {base}에 rebase합니다"
 
 msgid "No container yet"
 msgstr "아직 컨테이너 없음"
@@ -2364,6 +2379,9 @@ msgstr "구독 창이 얼마나 남았는지 읽습니다. 유틸리티 컨테�
 
 msgid "Real tokens don't enter the sandbox"
 msgstr "진짜 토큰은 샌드박스에 들어가지 않습니다"
+
+msgid "Rebase onto {base}"
+msgstr "{base}에 rebase"
 
 msgid "rebase onto the base branch failed while waking up:\n"
 "{out}"
@@ -3016,6 +3034,9 @@ msgstr "점검 자체를 실행하지 못했습니다: {error}"
 msgid "The chosen skill is sent with this turn; it only costs for this one turn."
 msgstr "고른 스킬은 이번 턴에만 실려 가고, 비용도 이 한 턴 분입니다."
 
+msgid "the clone could not measure its distance from {base}; is a rebase in progress?"
+msgstr "클론이 {base}와의 거리를 측정하지 못했습니다. rebase가 진행 중인가요?"
+
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "유틸리티 컨테이너에서 도는 codex 리프레시 토큰 교환. 사용량 조회보다 긴 이유는 프로세스를 띄우고 OAuth 왕복을 하기 때문입니다."
 
@@ -3254,6 +3275,9 @@ msgstr "토큰 · 비중"
 
 msgid "tokens must be a positive number, or null to lift the cap"
 msgstr "토큰은 양수여야 하며, 상한을 없애려면 null로 두세요"
+
+msgid "told to rebase onto {base}: {behind} commits behind"
+msgstr "{base}에 rebase하도록 지시했습니다. {behind}개 커밋 뒤처짐"
 
 msgid "triaged as {as}: {note}"
 msgstr "{as}(으)로 분류했습니다: {note}"

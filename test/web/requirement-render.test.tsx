@@ -20,6 +20,8 @@ const group = (status: Group["status"], over: Partial<Group> = {}): Group => ({
   spent_tokens: 120,
   pr_number: null,
   approved_at: null,
+  base_ahead: null,
+  base_behind: null,
   ...over,
 });
 

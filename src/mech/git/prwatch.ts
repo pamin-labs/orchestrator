@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { type Config, ROOT } from "../../platform/config/load.ts";
 import { gitTrailers } from "./ghlogin.ts";
 import { roleFor, type Ctx } from "../../mech/ctx.ts";
+import { queueRebase } from "../flow/rebase.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 
 import { squashWip } from "./gitops.ts";
@@ -1184,29 +1185,26 @@ export async function dispatchFeedback(ctx: Ctx, f: Feedback): Promise<void> {
   // the turn below runs from it unchanged.
   // A conflict is work, not a judgement call: the PM would only forward it. Reading
   // a review and deciding what to concede is the PM's; `git rebase` is not.
-  await ctx.sched.enqueue("agent_turn", {
-    grp_id: f.grpId,
-    payload: f.conflicting
-      ? {
-          role: roleFor(ctx, "write_code"),
-          rotate: true,
-          // The fork in the road, stated, because no check here can tell the two
-          // apart: a textual clash is this turn's work, and a premise that no
-          // longer holds is a design question the Architect owns.
-          conflict: true,
-          rejection:
-            `PR #${f.prNumber} no longer merges into ${base}. Rebase onto it before anything else:\n` +
-            `\`git fetch origin ${base}\` then \`git rebase origin/${base}\`, resolve every conflict, re-run the ` +
-            `gates, and stop there — the orchestrator takes the branch from your checkout and pushes it, ` +
-            `so do not look for a way to push. Keep both sides' intent — ${base} moved for a reason and so ` +
-            `did this branch.\n\n` +
-            `If ${base} removed or reshaped something this slice was built on, STOP — do not invent a way to ` +
-            `keep compiling. Say which premise is gone with \`orch ask-boss\`; that reaches the Architect, ` +
-            `who decides whether this slice still makes sense. Guessing produces code that builds and is ` +
-            `pointed the wrong way, which nothing downstream can catch.\n${lines}`,
-        }
-      : { role: roleFor(ctx, "lead_group"), rejection: `PR #${f.prNumber} feedback:\n${lines}` },
-  });
+  if (f.conflicting) {
+    await queueRebase(
+      ctx,
+      f.grpId,
+      { baseRef: `origin/${base}` },
+      {
+        rotate: true,
+        why: `PR #${f.prNumber} no longer merges into ${base}`,
+        tail:
+          `Resolve every conflict, re-run the gates, and stop there — the orchestrator takes the branch from ` +
+          `your checkout and pushes it, so do not look for a way to push. Keep both sides' intent — ${base} ` +
+          `moved for a reason and so did this branch.\n${lines}`,
+      },
+    );
+  } else {
+    await ctx.sched.enqueue("agent_turn", {
+      grp_id: f.grpId,
+      payload: { role: roleFor(ctx, "lead_group"), rejection: `PR #${f.prNumber} feedback:\n${lines}` },
+    });
+  }
   await ctx.sched.tick();
 }
 

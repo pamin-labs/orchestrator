@@ -147,7 +147,11 @@ function reply(sb: MailboxSandbox, id: string, answer: ProtocolResponse): Promis
   return writeInto(sb, [
     { path: `${MAILBOX_DIR}/res/${id}.json`, data: JSON.stringify(answer), mode: FILE_MODE },
   ]).catch((e: unknown) => {
-    consola.warn(`mailbox: could not answer ${id}, the agent waits out its turn clock: ${errText(e)}`);
+    // A container we discarded on purpose — rebuilt, reaped, swept — took the
+    // agent that asked with it, so nothing is waiting on this answer.
+    if (!liveSandboxes().some((live) => live === sb))
+      consola.info(`mailbox: ${id} was answered after its container was discarded; nothing waits for it`);
+    else consola.warn(`mailbox: could not answer ${id}, the agent waits out its turn clock: ${errText(e)}`);
   });
 }
 

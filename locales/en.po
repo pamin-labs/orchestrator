@@ -41,6 +41,9 @@ msgstr "{a} and {b} both hold paths matching {hit} — one of them widened its b
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, but the App is not installed on any account yet"
 
+msgid "{ahead} commits ahead of {base}, {behind} behind"
+msgstr "{ahead} commits ahead of {base}, {behind} behind"
+
 msgid "{base} moved to {sha}; {name} is behind it and has been told to rebase first"
 msgstr "{base} moved to {sha}; {name} is behind it and has been told to rebase first"
 
@@ -260,6 +263,9 @@ msgstr "{name} is no longer waiting on anything — woken up"
 msgid "{name} is over 25MB"
 msgstr "{name} is over 25MB"
 
+msgid "{name} is still {behind} commits behind {base} after being told to rebase; told again"
+msgstr "{name} is still {behind} commits behind {base} after being told to rebase; told again"
+
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
 msgstr "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
 
@@ -392,6 +398,9 @@ msgstr "{staged}/{ticked} ticked reach the sandbox, {fromRepo} from the reposito
 
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
 msgstr "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
+
+msgid "{status}: a rebase can only be asked for while the group is running or its PR is open"
+msgstr "{status}: a rebase can only be asked for while the group is running or its PR is open"
 
 msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} auto-accepted, all three gates passed"
@@ -1385,6 +1394,9 @@ msgstr "GitHub → this App → Install App"
 msgid "GitHub API call"
 msgstr "GitHub API call"
 
+msgid "GitHub did not say where {base} is"
+msgstr "GitHub did not say where {base} is"
+
 msgid "GitHub is connected"
 msgstr "GitHub is connected"
 
@@ -1832,6 +1844,9 @@ msgstr "No changes"
 
 msgid "no code given"
 msgstr "no code given"
+
+msgid "no container right now; the next turn rebases onto {base} when it builds one"
+msgstr "no container right now; the next turn rebases onto {base} when it builds one"
 
 msgid "No container yet"
 msgstr "No container yet"
@@ -2364,6 +2379,9 @@ msgstr "Reading how much of the subscription window is left, curl'd from the uti
 
 msgid "Real tokens don't enter the sandbox"
 msgstr "Real tokens don't enter the sandbox"
+
+msgid "Rebase onto {base}"
+msgstr "Rebase onto {base}"
 
 msgid "rebase onto the base branch failed while waking up:\n"
 "{out}"
@@ -3016,6 +3034,9 @@ msgstr "the checks could not run: {error}"
 msgid "The chosen skill is sent with this turn; it only costs for this one turn."
 msgstr "The chosen skill is sent with this turn; it only costs for this one turn."
 
+msgid "the clone could not measure its distance from {base}; is a rebase in progress?"
+msgstr "the clone could not measure its distance from {base}; is a rebase in progress?"
+
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 
@@ -3254,6 +3275,9 @@ msgstr "tokens · share"
 
 msgid "tokens must be a positive number, or null to lift the cap"
 msgstr "tokens must be a positive number, or null to lift the cap"
+
+msgid "told to rebase onto {base}: {behind} commits behind"
+msgstr "told to rebase onto {base}: {behind} commits behind"
 
 msgid "triaged as {as}: {note}"
 msgstr "triaged as {as}: {note}"
