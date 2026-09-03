@@ -124,6 +124,8 @@ export async function snapshot(ctx: Ctx): Promise<Snapshot> {
         spent_tokens: grp.spent_tokens,
         pr_number: grp.pr_number,
         approved_at: grp.approved_at,
+        base_ahead: grp.base_ahead,
+        base_behind: grp.base_behind,
       })
       .from(grp)
       .where(ne(grp.status, "DISSOLVED")),

@@ -38,6 +38,8 @@ const group = (prNumber: number | null): Group => ({
   spent_tokens: 0,
   pr_number: prNumber,
   approved_at: null,
+  base_ahead: null,
+  base_behind: null,
 });
 
 test("a pull request link is built from the remote, in every shape a remote is written", () => {

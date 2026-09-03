@@ -41,6 +41,9 @@ msgstr "{a} 和 {b} 都持有匹配 {hit} 的路径 —— 其中一个在开工
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}，但 App 还没装到任何账号上"
 
+msgid "{ahead} commits ahead of {base}, {behind} behind"
+msgstr "领先 {base} {ahead} 个提交，落后 {behind} 个"
+
 msgid "{base} moved to {sha}; {name} is behind it and has been told to rebase first"
 msgstr "{base} 动到了 {sha}，{name} 的基线落后了，已经让它先 rebase"
 
@@ -260,6 +263,9 @@ msgstr "{name} 等的那件事已经了结，自动唤醒"
 msgid "{name} is over 25MB"
 msgstr "{name} 超过 25MB"
 
+msgid "{name} is still {behind} commits behind {base} after being told to rebase; told again"
+msgstr "{name} 被要求 rebase 之后仍落后 {base} {behind} 个提交；已再次提醒"
+
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
 msgstr "{name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。"
 
@@ -392,6 +398,9 @@ msgstr "勾中的 {staged}/{ticked} 个进沙箱，仓库自带 {fromRepo} 个�
 
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
 msgstr "勾中的 {staged}/{ticked} 个进沙箱，每 turn 前缀约 {tokens}k tokens"
+
+msgid "{status}: a rebase can only be asked for while the group is running or its PR is open"
+msgstr "{status}：只有在小组运行中或其 PR 打开时才能要求 rebase"
 
 msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} 自动查收，三道闸全过"
@@ -1385,6 +1394,9 @@ msgstr "去 GitHub → 这个 App → Install App"
 msgid "GitHub API call"
 msgstr "GitHub API 调用"
 
+msgid "GitHub did not say where {base} is"
+msgstr "GitHub 没有告诉我们 {base} 在哪里"
+
 msgid "GitHub is connected"
 msgstr "GitHub 连上了"
 
@@ -1832,6 +1844,9 @@ msgstr "无改动"
 
 msgid "no code given"
 msgstr "没给码"
+
+msgid "no container right now; the next turn rebases onto {base} when it builds one"
+msgstr "当前没有容器；下一轮构建容器时会 rebase 到 {base}"
 
 msgid "No container yet"
 msgstr "还没有容器"
@@ -2364,6 +2379,9 @@ msgstr "读订阅窗口还剩多少，从工具容器里 curl。没有东西等�
 
 msgid "Real tokens don't enter the sandbox"
 msgstr "真令牌不进沙箱"
+
+msgid "Rebase onto {base}"
+msgstr "Rebase 到 {base}"
 
 msgid "rebase onto the base branch failed while waking up:\n"
 "{out}"
@@ -3016,6 +3034,9 @@ msgstr "自检没能跑起来：{error}"
 msgid "The chosen skill is sent with this turn; it only costs for this one turn."
 msgstr "选中的技能，正文随这一个 turn 发给 agent，只花这一次钱"
 
+msgid "the clone could not measure its distance from {base}; is a rebase in progress?"
+msgstr "克隆无法测量与 {base} 的距离；是不是有 rebase 正在进行？"
+
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "codex 换 refresh token 的调用，在工具容器里跑。比读用量慢：它要起一个进程，还要走一次 OAuth 往返。"
 
@@ -3254,6 +3275,9 @@ msgstr "tokens · 占比"
 
 msgid "tokens must be a positive number, or null to lift the cap"
 msgstr "token 必须是正数，或者填 null 取消上限"
+
+msgid "told to rebase onto {base}: {behind} commits behind"
+msgstr "已要求 rebase 到 {base}：落后 {behind} 个提交"
 
 msgid "triaged as {as}: {note}"
 msgstr "分诊为 {as}：{note}"

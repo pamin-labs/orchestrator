@@ -41,6 +41,9 @@ msgstr "{a} и {b} оба владеют путями, совпадающими 
 msgid "{accountName}, but the App is not installed on any account yet"
 msgstr "{accountName}, но App ещё не установлено ни в одном аккаунте"
 
+msgid "{ahead} commits ahead of {base}, {behind} behind"
+msgstr "на {ahead} коммитов впереди {base}, на {behind} позади"
+
 msgid "{base} moved to {sha}; {name} is behind it and has been told to rebase first"
 msgstr "{base} сдвинулась на {sha}; {name} отстала, ей велено сначала сделать rebase"
 
@@ -260,6 +263,9 @@ msgstr "{name} больше ничего не ждёт — разбужена"
 msgid "{name} is over 25MB"
 msgstr "{name} больше 25 МБ"
 
+msgid "{name} is still {behind} commits behind {base} after being told to rebase; told again"
+msgstr "{name} всё ещё отстаёт от {base} на {behind} коммитов после указания сделать rebase; указано снова"
+
 msgid "{name} leaves the board and every queued turn is cancelled. The code and the record are both kept."
 msgstr "{name} уходит с доски, все ходы в очереди отменяются. Код и запись сохраняются."
 
@@ -392,6 +398,9 @@ msgstr "{staged}/{ticked} отмеченных попадают в песочн�
 
 msgid "{staged}/{ticked} ticked reach the sandbox, about {tokens}k tokens of prefix per turn"
 msgstr "{staged}/{ticked} отмеченных попадают в песочницу, около {tokens}k токенов префикса за ход"
+
+msgid "{status}: a rebase can only be asked for while the group is running or its PR is open"
+msgstr "{status}: rebase можно запросить только пока группа работает или её PR открыт"
 
 msgid "{tier} auto-accepted, all three gates passed"
 msgstr "{tier} принята автоматически, все три гейта пройдены"
@@ -1385,6 +1394,9 @@ msgstr "GitHub → это App → Install App"
 msgid "GitHub API call"
 msgstr "Вызов GitHub API"
 
+msgid "GitHub did not say where {base} is"
+msgstr "GitHub не сообщил, где находится {base}"
+
 msgid "GitHub is connected"
 msgstr "GitHub подключён"
 
@@ -1832,6 +1844,9 @@ msgstr "Изменений нет"
 
 msgid "no code given"
 msgstr "код не указан"
+
+msgid "no container right now; the next turn rebases onto {base} when it builds one"
+msgstr "сейчас нет контейнера; следующий ход сделает rebase на {base}, когда его соберёт"
 
 msgid "No container yet"
 msgstr "Контейнера пока нет"
@@ -2364,6 +2379,9 @@ msgstr "Читает, сколько осталось от окна подпис
 
 msgid "Real tokens don't enter the sandbox"
 msgstr "Настоящие токены в песочницу не попадают"
+
+msgid "Rebase onto {base}"
+msgstr "Rebase на {base}"
 
 msgid "rebase onto the base branch failed while waking up:\n"
 "{out}"
@@ -3016,6 +3034,9 @@ msgstr "проверки не удалось запустить: {error}"
 msgid "The chosen skill is sent with this turn; it only costs for this one turn."
 msgstr "Выбранный навык уходит вместе с этим ходом и стоит только за него."
 
+msgid "the clone could not measure its distance from {base}; is a rebase in progress?"
+msgstr "клон не смог измерить расстояние до {base}; идёт rebase?"
+
 msgid "The codex refresh-token exchange, run in the utility container. Longer than a usage read: it starts a process and makes an OAuth round trip."
 msgstr "Обмен refresh-токена codex, выполняемый в служебном контейнере. Дольше чтения расхода: он поднимает процесс и делает OAuth-обход."
 
@@ -3254,6 +3275,9 @@ msgstr "токенов · доля"
 
 msgid "tokens must be a positive number, or null to lift the cap"
 msgstr "токены должны быть положительным числом или null, чтобы снять ограничение"
+
+msgid "told to rebase onto {base}: {behind} commits behind"
+msgstr "велено сделать rebase на {base}: отставание {behind} коммитов"
 
 msgid "triaged as {as}: {note}"
 msgstr "разобрано как {as}: {note}"

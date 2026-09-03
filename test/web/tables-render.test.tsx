@@ -41,6 +41,8 @@ test("Desk, ownership and cost surfaces render observable empty and populated st
     spent_tokens: 120,
     pr_number: null,
     approved_at: null,
+    base_ahead: null,
+    base_behind: null,
   });
   state.agents.push({
     id: 9,
@@ -91,6 +93,8 @@ const owning = (id: number, name: string, owns: string[]) => ({
   spent_tokens: 0,
   pr_number: null,
   approved_at: null,
+  base_ahead: null,
+  base_behind: null,
 });
 
 test("two requirements reaching the same files are named as the pair that cannot run together", () => {

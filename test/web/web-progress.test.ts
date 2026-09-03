@@ -63,6 +63,8 @@ test("progress exposes live work, slice evidence and the concurrency limit", () 
     spent_tokens: 20,
     pr_number: null,
     approved_at: null,
+    base_ahead: null,
+    base_behind: null,
   });
   state.slices.push({
     id: 3,

@@ -573,6 +573,10 @@ test("a branch that stopped merging wakes the Engineer, not the PM", async () =>
   // Reading a review and deciding what to concede is the PM's. `git rebase` is not.
   expect(p.role).toBe("engineer");
   expect(p.rejection).toContain("rebase");
+  // The same queued turn the watchdog sends, so its `conflictPending` sees this
+  // one and does not add a second when it notices main moved.
+  expect(p.conflict).toBe(true);
+  expect(p.rejection).toContain("do not look for a way to push");
 
   // Still conflicting on the next poll is not new news; the group is already on it.
   const again = await pollPrs(h.ctx, stale);

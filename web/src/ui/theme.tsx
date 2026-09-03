@@ -79,8 +79,17 @@ const followSystem = () => {
   if (read() === "system") apply("system");
 };
 
+/**
+ * One chord, one step, however many copies of this module are listening.
+ *
+ * `removeEventListener` above only knows this module's own function. A second
+ * copy — a built bundle booted beside the source in one test process — keeps
+ * its own, and one press then walked two steps: the nightly stress run of
+ * 2026-09-03 saw `dark` after a single press from a cleared store. The first
+ * handler to run claims the event; the rest see that and stand down.
+ */
 const onHotkey = (e: KeyboardEvent) => {
-  if (!isThemeHotkey(e)) return;
+  if (!isThemeHotkey(e) || e.defaultPrevented) return;
   e.preventDefault();
   set(NEXT[read()]);
 };

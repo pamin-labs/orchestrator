@@ -58,8 +58,9 @@ import {
   WORK,
   type Scope,
 } from "../sandbox/sandbox.ts";
-import { baseBranch, baseRefFor, listTree, sandboxGit, treeHeads } from "../git/checkout.ts";
+import { baseBranch, listTree, sandboxGit, treeHeads } from "../git/checkout.ts";
 import { serverLogPath } from "../sandbox/server.ts";
+import { type BaseHead, conflictPending, queueRebase, recordDistance, remoteBaseHead } from "../flow/rebase.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -711,118 +712,66 @@ interface BaseGroup {
   name: string;
   repo: string;
   seen: string | null;
+  seenAt: number | null;
   project_id: number;
 }
 
-async function nudgeMovedBases(ctx: Ctx, findings: Finding[], now: () => number): Promise<void> {
+async function nudgeMovedBases(ctx: Ctx, findings: Finding[], now: () => number, remindMs: number): Promise<void> {
   const groups = await ctx.db
-    .select({ id: grp.id, name: grp.name, repo: project.repo_path, seen: grp.rebase_seen, project_id: grp.project_id })
+    .select({
+      id: grp.id,
+      name: grp.name,
+      repo: project.repo_path,
+      seen: grp.rebase_seen,
+      seenAt: grp.rebase_seen_at,
+      project_id: grp.project_id,
+    })
     .from(grp)
     .innerJoin(project, eq(project.id, grp.project_id))
-    .where(
-      and(
-        inArray(grp.status, ["RUNNING", "PR_OPEN"]),
-        isNotNull(grp.sandbox_id),
-        // Containment rather than the old `LIKE '%"conflict":true%'`: the column is
-        // `jsonb`, so there is no text to match, and the LIKE was reading a
-        // serialisation it did not control.
-        notExists(
-          ctx.db
-            .select({ id: job.id })
-            .from(job)
-            .where(
-              and(
-                eq(job.grp_id, grp.id),
-                eq(job.state, "pending"),
-                eq(job.kind, "agent_turn"),
-                sql`${job.payload_json} @> '{"conflict":true}'::jsonb`,
-              ),
-            ),
-        ),
-      ),
-    );
+    .where(and(inArray(grp.status, ["RUNNING", "PR_OPEN"]), isNotNull(grp.sandbox_id)));
   // One request per *project*, not per group: ten groups on one project spent ten
   // identical calls of one rate limit every tick, fetching the same string.
   const heads = new Map<number, BaseHead | null>();
   for (const group of groups) {
-    if (!heads.has(group.project_id)) heads.set(group.project_id, await remoteBaseHead(ctx, group));
+    if (!heads.has(group.project_id))
+      heads.set(group.project_id, await remoteBaseHead(ctx, group.repo, group.project_id));
   }
-  for (const group of groups) await nudgeMovedBase(ctx, group, heads.get(group.project_id) ?? null, findings, now);
+  for (const group of groups)
+    await nudgeMovedBase(ctx, group, heads.get(group.project_id) ?? null, findings, now, remindMs);
 }
 
+/**
+ * Measured every tick, nudged once per base commit — and again after a while.
+ *
+ * The distance is recorded whether or not a nudge goes out: a group told to
+ * rebase and still behind three ticks later used to look identical to one that
+ * had done it. The nudge keeps its dedup — once per movement of the base, never
+ * while an earlier one is queued — but a group still behind `nudgeReemitMs`
+ * after it was told is told again, on the clock the standing findings repeat
+ * on. Every tick would teach the agent to skip the message; never was a day.
+ */
 async function nudgeMovedBase(
   ctx: Ctx,
   group: BaseGroup,
   head: BaseHead | null,
   findings: Finding[],
   now: () => number,
+  remindMs: number,
 ): Promise<void> {
-  // The comparison stays per group: the base is a fact about the project, and
-  // whether it *moved* is a fact about what this group last saw.
-  if (!head || head.sha === group.seen) return;
-  const movement = head;
-  const git = sandboxGit(ctx, { grp: group.id });
-  if (!(await knowsCommit(git, movement.sha))) return;
-  if ((await git(["merge-base", "--is-ancestor", movement.sha, "HEAD"], WORK)).code === 0) return;
-  // Enqueue first, record after: `rebase_seen` is the claim that this movement was
-  // handled, and a throw between the two left the claim standing with no nudge sent.
-  await queueRebase(ctx, group, movement, findings);
-  await ctx.db.update(grp).set({ rebase_seen: movement.sha, rebase_seen_at: now() }).where(eq(grp.id, group.id));
-}
-
-interface BaseHead {
-  baseRef: string;
-  sha: string;
-}
-
-/** Where a project's base branch points now. Nothing group-specific in it. */
-async function remoteBaseHead(ctx: Ctx, group: BaseGroup): Promise<BaseHead | null> {
-  const baseRef = await baseRefFor(ctx, group.project_id);
-  const branch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : baseRef;
-  const head = await ctx.gh?.request(
-    "GET",
-    `/repos/${group.repo}/branches/${branch}`,
-    z.object({ commit: z.object({ sha: z.string().optional() }).optional() }),
-  );
-  const sha = head?.ok ? (head.data?.commit?.sha ?? "") : "";
-  return sha ? { baseRef, sha } : null;
-}
-
-type GitIn = ReturnType<typeof sandboxGit>;
-
-async function knowsCommit(git: GitIn, sha: string): Promise<boolean> {
-  if ((await git(["cat-file", "-e", `${sha}^{commit}`], WORK)).code === 0) return true;
-  if ((await git(["fetch", "--quiet", "origin"], WORK)).code !== 0) return false;
-  return (await git(["cat-file", "-e", `${sha}^{commit}`], WORK)).code === 0;
-}
-
-async function queueRebase(
-  ctx: Ctx,
-  group: BaseGroup,
-  movement: { baseRef: string; sha: string },
-  findings: Finding[],
-): Promise<void> {
-  const { baseRef, sha } = movement;
-  const remoteBranch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : null;
-  const fetchStep = remoteBranch ? `\`git fetch origin ${remoteBranch}\` then ` : "";
-  await ctx.sched.enqueue("agent_turn", {
-    grp_id: group.id,
-    priority: 4,
-    payload: {
-      role: roleFor(ctx, "write_code"),
-      conflict: true,
-      rejection:
-        `${baseRef} moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
-        `${fetchStep}\`git rebase ${baseRef}\`, then carry on. ` +
-        `If ${baseRef} removed or reshaped something this slice was built on, STOP and say which premise is gone ` +
-        `with \`orch ask-boss\`; that reaches the Architect.`,
-    },
-  });
+  if (!head) return;
+  const d = await recordDistance(ctx, group.id, head);
+  if (!d || d.behind === 0) return;
+  const told = head.sha === group.seen;
+  if (told && now() - (group.seenAt ?? 0) < remindMs) return;
+  if (await conflictPending(ctx, group.id)) return;
+  await queueRebase(ctx, group.id, head, { now });
   findings.push({
     rule: "base_moved",
     grpId: group.id,
     severity: "advisory",
-    say: msg`${{ base: baseRef }} moved to ${{ sha: sha.slice(0, 8) }}; ${{ name: group.name }} is behind it and has been told to rebase first`,
+    say: told
+      ? msg`${{ name: group.name }} is still ${{ behind: d.behind }} commits behind ${{ base: head.baseRef }} after being told to rebase; told again`
+      : msg`${{ base: head.baseRef }} moved to ${{ sha: head.sha.slice(0, 8) }}; ${{ name: group.name }} is behind it and has been told to rebase first`,
   });
 }
 
@@ -1303,7 +1252,9 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   });
 
   // 15. A live branch is told once per remote base to rebase before PR time.
-  await step({ id: "15", name: "base_moved", every: EVERY_TICK }, () => nudgeMovedBases(ctx, findings, now));
+  await step({ id: "15", name: "base_moved", every: EVERY_TICK }, () =>
+    nudgeMovedBases(ctx, findings, now, cfg.watchdog.nudgeReemitMs),
+  );
 
   // 14. Parked and forgotten. It will not come back on its own and will not ask
   // again, so the one thing owed is a reminder that says how long.

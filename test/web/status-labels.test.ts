@@ -26,6 +26,8 @@ const group = (status: Group["status"], approvedAt: number | null = null): Group
   spent_tokens: 0,
   pr_number: null,
   approved_at: approvedAt,
+  base_ahead: null,
+  base_behind: null,
 });
 
 test("no group state is labelled with its own enum name", () => {

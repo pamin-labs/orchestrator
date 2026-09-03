@@ -14,7 +14,10 @@ const theme = () => document.documentElement.dataset.theme;
 
 // Dispatched on `window` itself, which is where the listener is: testing-library's
 // `fireEvent` targets an element, and the shortcut is deliberately global.
-const chord = (init: KeyboardEventInit) => window.dispatchEvent(new KeyboardEvent("keydown", init));
+// `cancelable`, as a browser's keydown is: the handler claims the chord with
+// `preventDefault`, and a non-cancelable event cannot be claimed.
+const chord = (init: KeyboardEventInit) =>
+  window.dispatchEvent(new KeyboardEvent("keydown", { cancelable: true, ...init }));
 
 let dark = false;
 const listeners: Array<() => void> = [];
@@ -57,6 +60,17 @@ test("the hotkey cycles system → light → dark → system and stores each ste
   press();
   expect(localStorage.getItem("orch.theme")).toBe("system");
   expect(theme()).toBe("light");
+});
+
+test("a chord another listener already claimed is not stepped again", () => {
+  // A second copy of the module on the same window — the built bundle booted
+  // beside the source — is one press walking two steps. The first handler to
+  // run takes the event; whoever runs after it sees that and stands down.
+  startTheme();
+  const claimed = new KeyboardEvent("keydown", { key: "L", metaKey: true, shiftKey: true, cancelable: true });
+  claimed.preventDefault();
+  window.dispatchEvent(claimed);
+  expect(localStorage.getItem("orch.theme")).toBeNull();
 });
 
 test("a chord that is not the hotkey changes nothing", () => {

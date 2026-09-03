@@ -1150,6 +1150,64 @@ test("an unreadable path is an error with the reason, not an empty list", async 
   expect(await r.text()).toContain("no such file");
 });
 
+test("the boss can ask for the rebase now, and asking twice queues one turn", async () => {
+  // The watchdog nudges once per movement of main. An Engineer that ignored it
+  // or failed at it left the branch behind with no way to say so again — the
+  // boss could see the branch was stale and had no button.
+  const { app, db, ctx } = await harness((cmd) => (cmd.includes("rev-list") ? { out: "2\t1" } : {}));
+  await db.update(grp).set({ sandbox_id: "sb-1" }).where(eq(grp.id, 1));
+  ctx.gh = githubAnswer({ commit: { sha: "abc1234567" } });
+  // The harness's scheduler runs a turn the moment it is ticked; the second press
+  // below is about a turn the Engineer has not taken yet.
+  ctx.sched.tick = async () => {};
+
+  const r = await post(app, "/api/v1/groups/1/sync");
+  expect(r.status).toBe(200);
+  expect(await r.json()).toEqual({ ahead: 1, behind: 2, queued: true });
+  const turns = await db
+    .select({ p: job.payload_json })
+    .from(job)
+    .where(and(eq(job.kind, "agent_turn"), eq(job.state, "pending")));
+  expect(turns).toHaveLength(1);
+  expect(AgentTurnPayloadSchema.parse(turns[0]!.p).rejection).toContain("git rebase origin/main");
+  const g = (await first(
+    db.select({ seen: grp.rebase_seen, a: grp.base_ahead, b: grp.base_behind }).from(grp).where(eq(grp.id, 1)),
+  ))!;
+  expect(g).toEqual({ seen: "abc1234567", a: 1, b: 2 });
+
+  // Pressed again before the Engineer took the first one: nothing to add.
+  expect(await (await post(app, "/api/v1/groups/1/sync")).json()).toEqual({ queued: false, pending: true });
+  expect(
+    (
+      await db
+        .select({ id: job.id })
+        .from(job)
+        .where(and(eq(job.kind, "agent_turn"), eq(job.state, "pending")))
+    ).length,
+  ).toBe(1);
+});
+
+test("a branch already on top of main is measured and left alone", async () => {
+  const { app, db, ctx } = await harness((cmd) => (cmd.includes("rev-list") ? { out: "0\t4" } : {}));
+  await db.update(grp).set({ sandbox_id: "sb-1" }).where(eq(grp.id, 1));
+  ctx.gh = githubAnswer({ commit: { sha: "abc1234567" } });
+
+  const r = await post(app, "/api/v1/groups/1/sync");
+  expect(r.status).toBe(200);
+  expect(await r.json()).toEqual({ ahead: 4, behind: 0, queued: false });
+  expect((await db.select({ id: job.id }).from(job).where(eq(job.kind, "agent_turn"))).length).toBe(0);
+});
+
+test("a rebase cannot be asked for on a group whose queued turn would not run", async () => {
+  const { app, db, ctx } = await harness();
+  await db.update(grp).set({ status: "PAUSED", sandbox_id: "sb-1" }).where(eq(grp.id, 1));
+  ctx.gh = githubAnswer({ commit: { sha: "abc1234567" } });
+
+  const r = await post(app, "/api/v1/groups/1/sync");
+  expect(r.status).toBe(422);
+  expect(await r.text()).toContain("PAUSED");
+});
+
 test("a closed PR whose branch cannot be reopened can still get a new one", async () => {
   const { app, db, ctx } = await harness();
   await db.update(grp).set({ status: "PAUSED", pr_number: 7, branch: "orch/g1" }).where(eq(grp.id, 1));
@@ -1210,6 +1268,28 @@ test("nobody confirms a merge by hand: GitHub is the only source, and it winds t
   const snap = await state(app);
   expect(snap.groups.filter((group) => group.id === 1)).toEqual([]);
   expect(snap.archived.map((group) => group.name)).toEqual(["g1"]);
+});
+
+test("a group landing tells the groups queued behind it to rebase, in the one sentence every nudge uses", async () => {
+  // This nudge was written by hand beside the watchdog's and the PR watcher's,
+  // and it was the one without `conflict: true` — so the watchdog could not see
+  // it as already queued and sent its own on the next tick, two rebase turns
+  // for one movement of main.
+  const { db, ctx, f } = await harness();
+  await db.update(grp).set({ status: "PR_OPEN", pr_number: 7, merge_seq: 1 }).where(eq(grp.id, 1));
+  const g2 = await f.grp.create({ project_id: 1, name: "g2", status: "PR_OPEN", merge_seq: 2 });
+  ctx.sched.tick = async () => {};
+
+  expect(await landGroup(ctx, 1, "github")).toEqual([g2.id]);
+  const turns = await db
+    .select({ p: job.payload_json })
+    .from(job)
+    .where(and(eq(job.grp_id, g2.id), eq(job.kind, "agent_turn"), eq(job.state, "pending")));
+  expect(turns).toHaveLength(1);
+  const p = AgentTurnPayloadSchema.parse(turns[0]!.p);
+  expect(p.conflict).toBe(true);
+  expect(p.rotate).toBe(true);
+  expect(p.rejection).toContain("git rebase origin/main");
 });
 
 test("raising a budget resumes the group and closes the question that asked", async () => {

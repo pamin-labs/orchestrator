@@ -51,6 +51,8 @@ test("timeline renders an empty state and filters to the selected requirement", 
     spent_tokens: 0,
     pr_number: null,
     approved_at: null,
+    base_ahead: null,
+    base_behind: null,
   });
   shown(render(createElement(Timeline, { st, frames: [], grpId: 1, projectId: 1 })), "无事件");
 

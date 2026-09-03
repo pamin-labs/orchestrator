@@ -44,6 +44,8 @@ const group = (id: number, projectId: number, over: Partial<State["groups"][numb
   spent_tokens: 0,
   pr_number: null,
   approved_at: null,
+  base_ahead: null,
+  base_behind: null,
   ...over,
 });
 

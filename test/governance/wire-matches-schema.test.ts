@@ -25,6 +25,8 @@ const sample = {
     spent_tokens: 0,
     pr_number: null,
     approved_at: null,
+    base_ahead: null,
+    base_behind: null,
   },
   slice: {
     id: 1,

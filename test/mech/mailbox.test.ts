@@ -190,6 +190,17 @@ test("an /orch route still goes through", async () => {
   expect(ProtocolResponse.parse(JSON.parse(writes[0]!.data)).status).toBe(502);
 });
 
+test("an answer that cannot be written is logged, and does not take the poll loop with it", async () => {
+  // `serve` is a floating promise off the poll timer. A container discarded
+  // between the request and the reply — rebuilt, reaped — makes the write throw,
+  // and a throw here would have been an unhandled rejection rather than a line.
+  const { sb } = fakeFiles({ id: "z", method: "POST", path: "/orch/v1/status", token: "tok-1" });
+  sb.files.writeFiles = async () => {
+    throw new Error("The socket connection was closed unexpectedly");
+  };
+  expect(await serve(sb, "http://127.0.0.1:1", "/var/orch/req/z.json")).toBeUndefined();
+});
+
 test("a non-200 answer is passed through as a failure, not swallowed", async () => {
   const mb = mailbox();
   const proc = runCli(mb, ["status", "x"]);

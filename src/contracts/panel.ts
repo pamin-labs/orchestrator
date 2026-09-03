@@ -44,6 +44,9 @@ export const Group = z.object({
   pr_number: z.number().nullable(),
   /** The boss approved, but a boundary is holding it. Cleared when it starts. */
   approved_at: z.number().nullable(),
+  /** Commits against the base, from the watchdog's last look. Null before the first. */
+  base_ahead: z.number().nullable(),
+  base_behind: z.number().nullable(),
 });
 
 export const Slice = z.object({

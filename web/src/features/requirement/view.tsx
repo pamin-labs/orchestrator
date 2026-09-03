@@ -55,6 +55,7 @@ import {
   bossFirst,
   canNewPr,
   canPark,
+  canSync,
   canResume,
   cardRows,
   cloneStep,
@@ -458,7 +459,8 @@ function Step({ label, state }: { label: string; state: StepState }) {
 function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }) {
   const inQueue = inMergeQueue(st, g.id);
   const url = prUrl(st, g);
-  const act = (a: "pause" | "resume" | "wake") => actThen(g, a, refresh);
+  const act = (a: "pause" | "resume" | "wake" | "sync") => actThen(g, a, refresh);
+  const base = st.projects.find((p) => p.id === g.project_id)?.base_branch ?? "main";
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-rule pb-3">
@@ -466,6 +468,7 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
       <Badge tone={groupTone(g)}>{statusLabel(g)}</Badge>
       <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {g.branch && <Meta>{g.branch}</Meta>}
+        <Distance g={g} base={base} />
         <Meta>{K(g.spent_tokens)} tokens</Meta>
         <Budget g={g} refresh={refresh} />
       </span>
@@ -476,6 +479,11 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
             up by itself. */}
         {url && <LinkButton href={url}>{prLabel(inQueue)}</LinkButton>}
         {canNewPr(g) && <NewPr grpId={g.id} refresh={refresh} />}
+        {canSync(g) && (
+          <Button onClick={() => act("sync")}>
+            <Trans>Rebase onto {base}</Trans>
+          </Button>
+        )}
         {showQueued(inQueue, g) && (
           <Badge>
             <Trans>Queued</Trans>
@@ -605,6 +613,19 @@ function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
         <Trans>Don't proceed</Trans>
       </MenuItem>
     </Menu>
+  );
+}
+
+/** How far the branch is from the base, as the watchdog last measured it. */
+function Distance({ g, base }: { g: Group; base: string }) {
+  const { t } = useLingui();
+  if (g.base_ahead == null || g.base_behind == null) return null;
+  const ahead = g.base_ahead;
+  const behind = g.base_behind;
+  return (
+    <Meta title={t`${ahead} commits ahead of ${base}, ${behind} behind`}>
+      ↑{ahead} ↓{behind} {base}
+    </Meta>
   );
 }
 
