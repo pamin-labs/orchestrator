@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { VERSION } from "../../src/platform/process/version.ts";
@@ -18,6 +19,8 @@ import {
   SKILL_SYNC,
   specFor,
   STAGED_SKILLS,
+  CLAUDE_TRUST_CONFIG,
+  WORK,
 } from "../../src/mech/sandbox/sandbox.ts";
 import { CODEX_HOME } from "../../src/mech/sandbox/auth.ts";
 import { setDefaultImage } from "../../src/mech/sandbox/images.ts";
@@ -251,6 +254,16 @@ test("the sync script links both CLIs' directories and lists what a repo ships",
   expect(SKILL_SYNC).toContain('[ "$base" = ".claude" ] ||');
   // It rides on the checkout probe, so it must not be able to fail that command.
   expect(SKILL_SYNC.trimEnd()).toEndWith("} 2>/dev/null");
+});
+
+/**
+ * A headless turn has nobody to answer claude's trust-of-directory prompt, so
+ * the checkout has to already be trusted before the first turn runs.
+ */
+test("the checkout is pre-trusted so a headless turn never hits the trust dialog", () => {
+  const Trust = z.object({ projects: z.record(z.string(), z.object({ hasTrustDialogAccepted: z.boolean() })) });
+  const parsed = Trust.parse(JSON.parse(CLAUDE_TRUST_CONFIG));
+  expect(parsed.projects[WORK]?.hasTrustDialogAccepted).toBe(true);
 });
 
 test("the inventory survives the trip back out of the container", async () => {

@@ -1123,6 +1123,21 @@ done
 } 2>/dev/null`;
 
 /**
+ * Pre-accepts claude's own trust-of-directory prompt for the checkout, so a
+ * headless turn never hits it.
+ *
+ * A container is a directory claude has never seen before, every single time —
+ * that is the isolation model, not an accident — so the interactive "do you
+ * trust this folder?" dialog can never be answered by anyone, and claude falls
+ * back to ignoring `.claude/settings.local.json` entirely: `permissions.allow`
+ * goes unread and the turn ends in `no_result`. `--dangerously-skip-permissions`
+ * does not cover this; it skips per-tool prompts, not this separate gate. The
+ * trust state lives in `~/.claude.json`, keyed by absolute path, so writing it
+ * once per container before the first turn is the whole fix.
+ */
+export const CLAUDE_TRUST_CONFIG = JSON.stringify({ projects: { [WORK]: { hasTrustDialogAccepted: true } } });
+
+/**
  * The one header opensandbox-server reads a key from.
  *
  * Not `Authorization: Bearer`. The server checks this header and nothing else
@@ -1227,6 +1242,7 @@ async function provision(sb: Sandbox, version?: string): Promise<void> {
   await writeInto(sb, [
     { path: "/opt/orch/cli.ts", data: cli, mode: FILE_MODE },
     { path: "/usr/local/bin/orch", data: '#!/bin/sh\nexec bun run /opt/orch/cli.ts "$@"\n', mode: EXEC_MODE },
+    { path: "/root/.claude.json", data: CLAUDE_TRUST_CONFIG, mode: FILE_MODE },
   ]);
   // The boss's own skills, before the first turn. Every container with a checkout
   // gets this again on that checkout's probe, which is where a repository's own
