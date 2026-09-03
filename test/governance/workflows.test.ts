@@ -175,24 +175,27 @@ describe("workflow governance", () => {
     expect(fallow).toContain('exit "$audit_status"');
   });
 
-  test("the suite's postgres is configured in one file, and CI reads that file", async () => {
+  test("no job that runs the suite starts a database container for it", async () => {
     // A `services:` block cannot take a `command`, so the copy in `ci.yml` ran on
     // PostgreSQL's default `max_connections=100` while the compose file set 600 —
     // and `sorry, too many clients already` is what four workers holding a pool of
     // 24 each got. Two descriptions of one server is one description too many.
     const ci = await load("ci");
     expect(ci.jobs["test"]?.services).toBeUndefined();
-    // Through the composite action's `postgres` input, not a step of its own.
-    // Three jobs start this server — `ci`'s test job and both nightly jobs that
-    // reach a database — and each carried the same step under the same six-line
-    // comment about why.
+    // And no job that runs tests starts one either. `bun run test` and
+    // `bun run test:stress` bring up PostgreSQL from `node_modules` when nothing
+    // answers, which is what makes the suite runnable inside a group's sandbox —
+    // it has no docker. A workflow that starts a container first would leave that
+    // path unrun on the only machine that runs `linux-x64`.
     const startsPostgres = (job: Job) =>
       job.steps.some((step) => step.uses?.includes("setup-bun") && step.with?.["postgres"] === "true");
-    expect(startsPostgres(ci.jobs["test"]!)).toBe(true);
+    expect(startsPostgres(ci.jobs["test"]!)).toBe(false);
     const nightly = await load("nightly");
-    expect(startsPostgres(nightly.jobs["test-stress"]!)).toBe(true);
-    expect(startsPostgres(nightly.jobs["sandbox-live"]!)).toBe(true);
-    expect(readFileSync(".github/actions/setup-bun/action.yml", "utf8")).toContain("bun run db:test:up");
+    expect(startsPostgres(nightly.jobs["test-stress"]!)).toBe(false);
+    expect(startsPostgres(nightly.jobs["sandbox-live"]!)).toBe(false);
+    // The one caller left runs the compiled server, not the suite.
+    const release = await load("release");
+    expect(startsPostgres(release.jobs["binaries"]!)).toBe(true);
 
     // And the setting that failure was about is stated where the server is
     // configured — the value moves as the pool and worker count do, so what is

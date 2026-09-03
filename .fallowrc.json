@@ -19,7 +19,16 @@
     "security-client-server-leak": "warn",
     "security-sink": "warn"
   },
-  "ignoreDependencies": ["@babel/core", "@lingui/babel-plugin-lingui-macro", "@lingui/format-po", "tailwindcss"],
+  "ignoreDependencies": [
+    "@babel/core",
+    "@lingui/babel-plugin-lingui-macro",
+    "@lingui/format-po",
+    "tailwindcss",
+    "@embedded-postgres/darwin-arm64",
+    "@embedded-postgres/darwin-x64",
+    "@embedded-postgres/linux-arm64",
+    "@embedded-postgres/linux-x64"
+  ],
   "boundaries": {
     "zones": [
       {

@@ -47,6 +47,10 @@
   "devDependencies": {
     "@babel/core": "^8",
     "@biomejs/biome": "^2.5.8",
+    "@embedded-postgres/darwin-arm64": "18.4.0-beta.17",
+    "@embedded-postgres/darwin-x64": "18.4.0-beta.17",
+    "@embedded-postgres/linux-arm64": "18.4.0-beta.17",
+    "@embedded-postgres/linux-x64": "18.4.0-beta.17",
     "@happy-dom/global-registrator": "^20.11.2",
     "@lingui/babel-plugin-lingui-macro": "6.6.0",
     "@lingui/cli": "6.6.0",
@@ -154,5 +158,11 @@
     "unified": "^11.0.5",
     "web-tree-sitter": "0.26.13",
     "zod": "^4.4.3"
-  }
+  },
+  "trustedDependencies": [
+    "@embedded-postgres/darwin-arm64",
+    "@embedded-postgres/darwin-x64",
+    "@embedded-postgres/linux-arm64",
+    "@embedded-postgres/linux-x64"
+  ]
 }
