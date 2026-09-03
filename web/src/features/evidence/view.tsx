@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useClamped } from "../../ui/clamped";
 import { api, type Evidence, EvidenceSchema, GateLogResponseSchema, readApi } from "../../shared/api";
-import { nl } from "../../shared/prose";
 import { cn } from "../../ui/cn";
+import { Markdown } from "../../ui/markdown";
 import { Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { DiffView } from "../diff/view";
@@ -231,15 +231,8 @@ function VerdictRow({ author, body }: { author: string; body: string }) {
           </Button>
         )}
       </div>
-      <div
-        ref={ref}
-        className={cn(
-          "mt-1 max-w-[72ch] whitespace-pre-wrap break-words text-body",
-          no ? "text-bad" : "text-ink-2",
-          !open && "line-clamp-3",
-        )}
-      >
-        {nl(body)}
+      <div ref={ref} className={cn("mt-1 max-w-[72ch]", !open && "line-clamp-3")}>
+        <Markdown source={body} className={cn("text-body", no ? "text-bad" : "text-ink-2")} />
       </div>
     </div>
   );

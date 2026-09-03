@@ -16,6 +16,12 @@
 <link rel="icon" href="/icon.png" sizes="1024x1024">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="/dist/app.css">
+<!-- What the bundler emits for CSS a module imports, which `app.css` is not:
+     tailwind writes that one from `web/style.css`, and this is the sheet
+     `Bun.build` produces for `import "./index.css"` inside a dependency. Missing
+     it is not a missing style here and there — the markdown editor rendered as a
+     column of unstyled toolbar labels. -->
+<link rel="stylesheet" href="/dist/main.css">
 <!-- Resolve the theme before first paint. The whole app is JS, so deriving the
      attribute here and letting CSS carry one dark block beats maintaining the
      dark palette three times (base, media query, explicit override). -->

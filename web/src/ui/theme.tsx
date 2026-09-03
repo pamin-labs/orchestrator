@@ -40,6 +40,10 @@ const read = (): Pref => {
 const apply = (p: Pref) => {
   const dark = p === "dark" || (p === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
+  // The markdown editor reads its own attribute, and it reads it here rather than
+  // deciding for itself: left alone it follows `prefers-color-scheme`, which is
+  // the one answer that is wrong whenever the boss has overridden the theme.
+  document.documentElement.dataset.colorMode = dark ? "dark" : "light";
 };
 
 function set(p: Pref) {
