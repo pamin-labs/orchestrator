@@ -37,6 +37,23 @@ Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
 
 ## Blockers and deviations
 
+- **The index was losing ground, not catching up.** Measured live: 822 nodes,
+  61 summarised down to 48, while the indexer's bill went 2.9M to 23.3M tokens.
+  A node the pass could not answer for was left blank on all three exits — budget
+  spent, model returning nothing, file unreadable — and a directory's content *is*
+  its children's summaries, so one blank leaf changed the parent's signature,
+  needed a call the budget had spent on files, and the emptiness climbed a level
+  per tick. A pass therefore always spent all twelve, and the tree is stamped
+  fresh only under the budget, so every tick rebuilt from a checkout, forever.
+  What counts as changed now comes from git — `ls-files -s` blob hashes, the whole
+  file — plus the note corpus, which changes without a commit. A pass reads only
+  what it will summarise, 1,159,899 bytes a tick down to ~95,000, and the model
+  sees the whole file up to 30,000 (93.5% of them) where an 1800-character head
+  covered 17%. A node also carries `points`, shown by `render` and never in the
+  walk's menu: the widest level here is 69 children, so a paragraph a row would be
+  ~14k tokens on every question. Both knobs are settings. Fixed 2026-09-03;
+  guards in `pageindex`, `checkout-spans`, `server-policy`.
+
 - **The panel never rendered the Markdown its agents write.** Cards, journal
   entries and escalations are Markdown by ADR 016 and all of it reached the boss
   as source: `## Goal` over a column of `-`, `| --- |` where a table was. The
@@ -122,23 +139,6 @@ Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
   together because either can be dropped without the other noticing — and nothing
   pinned the claude flag at all, where codex's twin was pinned.
 
-- **The login drove a terminal it had built out of a Python script.** A file in
-  `/opt/orch` imported itself through `sys.path[0]`, outlived the server that
-  wrote it, and ended each line with LF where Enter is CR — three defects in a
-  terminal the daemon already offers. `src/mech/sandbox/pty.ts` speaks execd's
-  pty-over-WebSocket instead, and is the only file that knows the wire format.
-  Fixed 2026-09-02; [ADR 053](../adr/053-a-terminal-in-the-container-is-a-websocket.md),
-  guards in `test/mech/codex-device-login.test.ts`.
-- **The stress job had never run a browser test.** Its document exclusion was
-  removed and its glob was not — `test/**/*.test.ts` does not match `*.test.tsx`,
-  so all 38 stayed out of the one job that hunts cross-file order dependence,
-  under a comment saying they no longer were. Correcting the glob reproduced CI's
-  `RangeError: Maximum call stack size exceeded` locally on the first run:
-  `bundle-boots` mounts the panel into a shared document and
-  `createRoot(...).render()` discarded the handle, so Radix's `document`-level
-  focus scopes outlived `body.innerHTML = ""`. `main.tsx` names its root and the
-  test unmounts it. Fixed 2026-09-03. **Not** proved: that the unmount is the
-  fix — it reproduced once and eight targeted attempts since have not.
 - **CI's `test` job has been killed three times** — SIGTERM during
   `test:coverage:ci`, no named failure, on #40, #41 and #42, each time green on a
   rerun. Unexplained. It is the memory-heaviest job in the pipeline and this

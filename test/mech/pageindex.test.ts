@@ -15,6 +15,8 @@ import {
   search,
   skeleton,
   summarise,
+  pendingFiles,
+  walkOrder,
   type Ask,
 } from "../../src/mech/knowledge/pageindex.ts";
 import { costReport } from "../../src/mech/ops/cost.ts";
@@ -79,6 +81,194 @@ test("nothing changed, nothing re-summarised", async () => {
   const again = await summarise(skeleton(FILES), dirRead(dir), ask, { previous: first.tree });
   expect(again.calls).toBe(0);
   expect(again.tree["src/mech/gate.ts"]!.summary).toBe("a summary");
+});
+
+test("a pass that runs out of budget keeps what the last one knew", async () => {
+  // The index went backwards: 822 nodes, 61 summarised down to 48, while the
+  // indexer's bill went 2.9M tokens to 23.3M. A directory's content *is* its
+  // children's summaries, so one child left blank changed the parent's signature
+  // — which needed a call the budget had already spent on files — and the
+  // emptiness climbed one level per tick instead of the tree converging.
+  const heads: Record<string, string> = { "src/a.ts": "first", "src/b.ts": "second" };
+  const files = Object.keys(heads);
+  const read = (id: string) => heads[id] ?? null;
+  // The file answers differ with the content, because a directory's signature is
+  // built out of them: a fake that answers the same string either way would make
+  // the parent look unchanged and test nothing.
+  const ask: Ask = async (p) =>
+    p.includes("what does")
+      ? "a directory of things"
+      : p.includes("rewritten")
+        ? "the rewritten file"
+        : "a file summary";
+
+  const full = await summarise(skeleton(files), read, ask);
+  expect(full.tree["src/"]!.summary).toBe("a directory of things");
+
+  // One file changes, and the pass can afford exactly one call — which the file
+  // takes, leaving `src/` needing one it cannot have.
+  heads["src/a.ts"] = "rewritten";
+  const starved = await summarise(skeleton(files), read, ask, { previous: full.tree, maxCalls: 1 });
+  expect(starved.calls).toBe(1);
+  expect(starved.tree["src/b.ts"]!.summary).toBe("a file summary");
+  expect(starved.tree["src/"]!.summary).toBe("a directory of things");
+
+  // And it is still queued rather than quietly accepted: the carried signature is
+  // the old content's, so the next pass with room re-summarises it.
+  const caught = await summarise(skeleton(files), read, ask, { previous: starved.tree, maxCalls: 1 });
+  expect(caught.calls).toBe(1);
+  expect(caught.tree["src/"]!.summary).toBe("a directory of things");
+});
+
+test("the specifics ride along on the same call and are shown only where they are free", async () => {
+  // Points are the reference method's second field, adapted: it returns a
+  // paragraph plus a list, and a paragraph in this menu is paid for on every
+  // level of every question. Measured on this tree: the widest level is 69
+  // children, so 160 characters a row is ~3.1k tokens and 800 is ~14k. So the
+  // one-liner stays the menu and the detail goes where a hit already is.
+  const heads: Record<string, string> = { "src/a.ts": "code" };
+  const ask: Ask = async () =>
+    "SUMMARY: owns the notification fan-out\nPOINT: escalationKey.auth\nPOINT: dedupes by credential stamp";
+  const { tree } = await summarise(skeleton(["src/a.ts"]), (id) => heads[id] ?? null, ask);
+
+  expect(tree["src/a.ts"]!.summary).toBe("owns the notification fan-out");
+  expect(tree["src/a.ts"]!.points).toEqual(["escalationKey.auth", "dedupes by credential stamp"]);
+
+  const shown = render(tree, ["src/a.ts"]);
+  expect(shown).toContain("owns the notification fan-out");
+  expect(shown).toContain("· escalationKey.auth");
+
+  // And the walk's menu carries the one-liner alone. This is the whole reason the
+  // detail is affordable, so it is asserted rather than assumed.
+  const asked: string[] = [];
+  await search(
+    tree,
+    "where do notifications go?",
+    async (p) => {
+      asked.push(p);
+      return "NONE";
+    },
+    { enabled: true, depth: 2, width: 3, budget: 12, fileChars: 30_000 },
+  );
+  expect(asked.join("\n")).toContain("owns the notification fan-out");
+  expect(asked.join("\n")).not.toContain("escalationKey.auth");
+});
+
+test("a model that ignores the reply shape still produces a menu row", async () => {
+  // The floor: a CLI prints its own preamble, and an answer with no `SUMMARY:`
+  // line falls back to the last non-empty line, which is what this did before
+  // points existed. Losing the summary to a parse is the cascade, not a downgrade.
+  const heads: Record<string, string> = { "src/a.ts": "code" };
+  const ask: Ask = async () => "thinking...\nowns the notification fan-out";
+  const { tree } = await summarise(skeleton(["src/a.ts"]), (id) => heads[id] ?? null, ask);
+  expect(tree["src/a.ts"]!.summary).toBe("owns the notification fan-out");
+  expect(tree["src/a.ts"]!.points).toEqual([]);
+});
+
+test("a change past the head is still a change", async () => {
+  // A file's identity was `sigOf(the first 1800 characters)`, so an edit in the
+  // middle or at the end of a file moved nothing and its summary stayed as it was
+  // — indefinitely, since nothing else would ever revisit it. Git already has a
+  // hash of the whole file, and `sigFor` is where the caller hands it over.
+  const heads: Record<string, string> = { "src/a.ts": "the same opening lines" };
+  const blobs: Record<string, string> = { "src/a.ts": "aaa1" };
+  const read = (id: string) => heads[id] ?? null;
+  const sigFor = (id: string) => blobs[id] ?? null;
+  const ask: Ask = async () => "a file summary";
+
+  const first = await summarise(skeleton(["src/a.ts"]), read, ask, { sigFor });
+  const quiet = await summarise(skeleton(["src/a.ts"]), read, ask, { previous: first.tree, sigFor });
+  expect(quiet.calls).toBe(0);
+
+  // The head is byte-for-byte what it was. The file is not.
+  blobs["src/a.ts"] = "bbb2";
+  const moved = await summarise(skeleton(["src/a.ts"]), read, ask, { previous: quiet.tree, sigFor });
+  expect(moved.calls).toBe(1);
+  expect(moved.tree["src/a.ts"]!.sig).toBe("bbb2");
+});
+
+test("a file the corpus will not hand over keeps its summary", async () => {
+  // The third way out of the same function, and it was the one that skipped the
+  // node entirely: a binary file, one too large to read, or one deleted between
+  // the listing and the read left a blank leaf — and a blank leaf changes its
+  // directory's signature, which is the cascade.
+  const present: Record<string, string> = { "src/a.ts": "text" };
+  const first = await summarise(
+    skeleton(["src/a.ts"]),
+    (id) => present[id] ?? null,
+    async () => "a summary",
+  );
+
+  const gone = await summarise(
+    skeleton(["src/a.ts"]),
+    () => null,
+    async () => "another",
+    { previous: first.tree },
+  );
+  expect(gone.calls).toBe(0);
+  expect(gone.tree["src/a.ts"]!.summary).toBe("a summary");
+  expect(gone.tree["src/"]!.summary).toBe("a summary");
+});
+
+test("a budget that runs out leaves whole directories described, not a field of leaves", async () => {
+  // Files used to be summarised before any directory anywhere, so with hundreds of
+  // files against a budget of twelve no directory was reached for fifty-eight
+  // ticks — and a directory nobody has described is a level the navigator cannot
+  // walk past. Per subtree instead: a directory is summarised on the tick its own
+  // children finish.
+  const files = ["a/one.ts", "a/two.ts", "b/three.ts", "b/four.ts"];
+  const read = (id: string) => `contents of ${id}`;
+  const ask: Ask = async (p) => (p.includes("what does") ? `a directory` : `a file`);
+
+  const partial = await summarise(skeleton(files), read, ask, { maxCalls: 3 });
+  expect(partial.calls).toBe(3);
+  // Two files and the directory over them: one complete subtree, rather than
+  // three files and nothing that says where they live.
+  expect(partial.tree["a/"]!.summary).toBe("a directory");
+  expect(partial.tree["b/"]!.summary).toBe("");
+
+  // The order itself, stated: everything under a directory, then the directory,
+  // deepest first, with the root's own files last since nothing waits on them.
+  expect(walkOrder(skeleton([...files, "top.md"])).map((n) => n.id)).toEqual([
+    "a/one.ts",
+    "a/two.ts",
+    "a/",
+    "b/three.ts",
+    "b/four.ts",
+    "b/",
+    "top.md",
+  ]);
+});
+
+test("a pass fetches the files it is about to summarise, and no others", () => {
+  // The read used to be every tracked file, once a tick, to discover that twelve
+  // had changed. Git answers "which ones" for nothing, so the read is the twelve.
+  const files = ["a/one.ts", "a/two.ts", "a/three.ts"];
+  const blobs: Record<string, string> = { "a/one.ts": "aaa1", "a/two.ts": "bbb2", "a/three.ts": "ccc3" };
+  const tree = skeleton([...files, "notes/project/decision/1"]);
+  const previous = {
+    "a/two.ts": { id: "a/two.ts", kind: "file" as const, summary: "s", points: [], sig: "bbb2", children: [] },
+  };
+
+  const want = pendingFiles(tree, previous, (id) => blobs[id] ?? null, 10);
+  // `a/two.ts` is unchanged, so it is not fetched. The note is not a repository
+  // file — the caller already holds its body — so it is not fetched either.
+  expect(want).toEqual(["a/one.ts", "a/three.ts"]);
+  expect(pendingFiles(tree, {}, (id) => blobs[id] ?? null, 2)).toEqual(["a/one.ts", "a/two.ts"]);
+});
+
+test("a model that answers nothing costs a call, not a summary", async () => {
+  // The other way out of the same function. A failed call left the node blank on
+  // a tree that already had an answer for it, which is the same cascade with a
+  // different trigger — and the model being briefly down is ordinary.
+  const heads: Record<string, string> = { "src/a.ts": "first" };
+  const read = (id: string) => heads[id] ?? null;
+  const full = await summarise(skeleton(Object.keys(heads)), read, async () => "a summary");
+
+  heads["src/a.ts"] = "rewritten";
+  const down = await summarise(skeleton(Object.keys(heads)), read, async () => "", { previous: full.tree });
+  expect(down.failed).toBeGreaterThan(0);
+  expect(down.tree["src/a.ts"]!.summary).toBe("a summary");
 });
 
 test("retrieval is the model walking the tree, not a similarity score", async () => {
@@ -314,17 +504,29 @@ test("how far and how wide the walk goes is config, not a literal inside it", as
   };
 
   // Three levels between the root and a file, so depth 3 is three serial calls.
-  await search(tree, "where is the notifier", ask, { enabled: true, depth: 3, width: 4 });
+  await search(tree, "where is the notifier", ask, {
+    enabled: true,
+    depth: 3,
+    width: 4,
+    budget: 12,
+    fileChars: 30_000,
+  });
   expect(asks).toHaveLength(3);
 
   asks.length = 0;
-  await search(tree, "where is the notifier", ask, { enabled: true, depth: 1, width: 2 });
+  await search(tree, "where is the notifier", ask, {
+    enabled: true,
+    depth: 1,
+    width: 2,
+    budget: 12,
+    fileChars: 30_000,
+  });
   expect(asks).toHaveLength(1);
   expect(asks[0]).toContain("at most 2 ids");
 
   // Moving the numbers was not the point; being able to is. These are the values
   // that shipped before the move, and this says so out of `config/default.yaml`.
-  expect(WALK).toEqual({ enabled: true, depth: 3, width: 4 });
+  expect(WALK).toEqual({ enabled: true, depth: 3, width: 4, budget: 12, fileChars: 30_000 });
 });
 
 test("a requirement's own retrieval counts against its budget", async () => {

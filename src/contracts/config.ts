@@ -389,7 +389,15 @@ export const ConfigSchema = z.object({
    * is loaded, so the query costs no model call and falls through to the lexical
    * half. Its own knob rather than `depth: 0`, which still walks, degenerately.
    */
-  pageindex: z.object({ enabled: z.boolean(), depth: count, width: count }).strict(),
+  /**
+   * `budget` and `fileChars` are the other half: what building the tree costs,
+   * where the three above are what reading it costs. `budget` is model calls per
+   * pass, and it is also the test for a finished pass — one that spends all of it
+   * is not recorded as fresh, so it runs again next tick. `fileChars` is how much
+   * of a file the summariser is given; it is not what decides *whether* to
+   * re-summarise, which is git's blob hash for the whole file.
+   */
+  pageindex: z.object({ enabled: z.boolean(), depth: count, width: count, budget: count, fileChars: count }).strict(),
   /**
    * Forward every notification to a URL, as JSON. Empty means nobody but the panel.
    *

@@ -1253,6 +1253,9 @@ msgstr "Feedbacks para virar regra"
 msgid "Fetching login code…"
 msgstr "Buscando o código de login…"
 
+msgid "File characters read"
+msgstr "Caracteres de ficheiro lidos"
+
 msgid "Files and folders OK; click a name to enter a folder."
 msgstr "Arquivos e pastas OK; clique num nome para entrar na pasta."
 
@@ -1521,6 +1524,9 @@ msgstr "Quantos nós o modelo pode citar em um nível. Largura custa tokens dent
 msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
 msgstr "Quantos pull requests abertos uma consulta pergunta ao GitHub. O custo de uma query GraphQL é a contagem de nós, então todo número deste grupo é um teto comprado com cota."
 
+msgid "How much of a file the indexer is given to describe it. Whether a file is re-read is git's answer about the whole file, so this only decides how much of it the model sees — 30,000 covers 93.5% of this repository's files whole."
+msgstr "Quanto de um ficheiro o indexador recebe para o descrever. Se um ficheiro é relido é o git que responde, sobre o ficheiro inteiro; isto decide apenas quanto o modelo vê — 30.000 cobrem inteiros 93,5% dos ficheiros deste repositório."
+
 msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
 msgstr "De quanto em quanto as regras determinísticas rodam. Também quanto o trabalho na fila espera, sem um tique explícito, até ser despachado."
 
@@ -1554,6 +1560,9 @@ msgstr "Incluindo o que vem depois"
 
 msgid "index call ({total} tokens)"
 msgstr "chamada de indexação ({total} tokens)"
+
+msgid "Index calls per pass"
+msgstr "Chamadas de índice por passagem"
 
 msgid "Index model"
 msgstr "Modelo de índice"
@@ -1952,6 +1961,9 @@ msgstr "não há uvx no PATH"
 
 msgid "No, keep going"
 msgstr "Não, continuar"
+
+msgid "Nodes the indexer may summarise every 30 seconds. It is also what a finished pass looks like: one that spends all of it runs again next tick, so the tree is never marked fresh until it is. Higher catches up sooner and costs more."
+msgstr "Nós que o indexador pode resumir a cada 30 segundos. É também o que define uma passagem terminada: a que gasta tudo corre outra vez no ciclo seguinte, e a árvore só é marcada como atual depois disso. Mais alto recupera mais depressa e custa mais."
 
 msgid "none recorded"
 msgstr "nenhum registado"

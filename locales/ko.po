@@ -1253,6 +1253,9 @@ msgstr "규칙이 되는 피드백 횟수"
 msgid "Fetching login code…"
 msgstr "로그인 코드를 받는 중…"
 
+msgid "File characters read"
+msgstr "읽는 파일 문자 수"
+
 msgid "Files and folders OK; click a name to enter a folder."
 msgstr "파일과 폴더는 잘 읽힙니다. 이름을 클릭하면 폴더로 들어갑니다."
 
@@ -1521,6 +1524,9 @@ msgstr "한 계층에서 모델이 댈 수 있는 노드 수. 폭은 한 번의 
 msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
 msgstr "폴링 한 번에 GitHub에 묻는 열린 PR 수. GraphQL 비용은 노드 수라서, 이 그룹의 모든 숫자는 쿼터로 산 상한입니다."
 
+msgid "How much of a file the indexer is given to describe it. Whether a file is re-read is git's answer about the whole file, so this only decides how much of it the model sees — 30,000 covers 93.5% of this repository's files whole."
+msgstr "인덱서가 파일을 설명하기 위해 받는 분량. 파일을 다시 읽을지는 파일 전체에 대한 git의 답이므로, 이 값은 모델이 보는 양만 결정합니다 — 30,000이면 이 저장소 파일의 93.5%를 통째로 담습니다."
+
 msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
 msgstr "결정론적 규칙을 도는 주기. 명시적 틱이 없을 때 대기 중인 작업이 발진까지 기다리는 시간이기도 합니다."
 
@@ -1554,6 +1560,9 @@ msgstr "하위 포함"
 
 msgid "index call ({total} tokens)"
 msgstr "인덱스 호출({total} 토큰)"
+
+msgid "Index calls per pass"
+msgstr "패스당 인덱스 호출 수"
 
 msgid "Index model"
 msgstr "인덱스 모델"
@@ -1952,6 +1961,9 @@ msgstr "PATH에 uvx가 없습니다"
 
 msgid "No, keep going"
 msgstr "아니요, 계속"
+
+msgid "Nodes the indexer may summarise every 30 seconds. It is also what a finished pass looks like: one that spends all of it runs again next tick, so the tree is never marked fresh until it is. Higher catches up sooner and costs more."
+msgstr "인덱서가 30초마다 요약할 수 있는 노드 수. 완료된 패스의 기준이기도 합니다 — 전부 소진한 패스는 다음 틱에 다시 실행되고, 그전까지 트리는 최신으로 기록되지 않습니다. 높이면 더 빨리 따라잡고 비용도 늘어납니다."
 
 msgid "none recorded"
 msgstr "기록 없음"

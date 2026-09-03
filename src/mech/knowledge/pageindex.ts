@@ -41,6 +41,12 @@ export interface Node {
   kind: "dir" | "file";
   /** LLM-written, one line. Empty until summarised. */
   summary: string;
+  /**
+   * Specifics the one-liner has no room for — a name it owns, a decision it
+   * settles. Written by the same call, and shown only by `render`: the walk's menu
+   * carries `summary` alone, so detail here costs nothing per question.
+   */
+  points: string[];
   /** Changes when the file does, so only what changed is re-summarised. */
   sig: string;
   children: string[];
@@ -52,6 +58,9 @@ const NodeSchema = z.object({
   id: z.string(),
   kind: z.enum(["dir", "file"]),
   summary: z.string(),
+  // Defaulted, so a tree stored before points existed still loads instead of
+  // failing the parse and reading as no tree at all.
+  points: z.array(z.string()).default([]),
   sig: z.string(),
   children: z.array(z.string()),
 });
@@ -71,12 +80,23 @@ export type Read = (id: string) => string | null;
 /** Notes live under this prefix, so a leaf's id says which corpus it came from. */
 export const NOTE_PREFIX = "notes/";
 
-/** How much of a file the signature and the summary are computed from. */
-export const HEAD_CHARS = 1800;
+/**
+ * How much of a file the summary is written from, when the caller does not say.
+ * `pageindex.fileChars` is the setting; this is the floor tests run on.
+ */
+/**
+ * PageIndex's own method summarises a **whole** node, not a slice of one — it
+ * chunks nothing and truncates nothing, because a description written from the
+ * opening of a section describes the opening of a section. This was 1800
+ * characters, which on this repository covered 17% of files whole against a
+ * median of 4382: four in five were described from a fragment. A ceiling is
+ * still needed for the tail — one vendored file here is 199,074 characters.
+ */
+const SUMMARY_CHARS = 30_000;
 
 /** Structure first, summaries second — the same order as the original. */
 export function skeleton(files: string[]): Tree {
-  const tree: Tree = { "/": { id: "/", kind: "dir", summary: "", sig: "", children: [] } };
+  const tree: Tree = { "/": { id: "/", kind: "dir", summary: "", points: [], sig: "", children: [] } };
   const link = (parent: string, child: string) => {
     if (!tree[parent]!.children.includes(child)) tree[parent]!.children.push(child);
   };
@@ -85,11 +105,11 @@ export function skeleton(files: string[]): Tree {
     let parent = "/";
     for (let i = 0; i < parts.length - 1; i++) {
       const dir = `${parts.slice(0, i + 1).join("/")}/`;
-      tree[dir] ??= { id: dir, kind: "dir", summary: "", sig: "", children: [] };
+      tree[dir] ??= { id: dir, kind: "dir", summary: "", points: [], sig: "", children: [] };
       link(parent, dir);
       parent = dir;
     }
-    tree[rel] = { id: rel, kind: "file", summary: "", sig: "", children: [] };
+    tree[rel] = { id: rel, kind: "file", summary: "", points: [], sig: "", children: [] };
     link(parent, rel);
   }
   return tree;
@@ -109,40 +129,111 @@ export async function summarise(
   tree: Tree,
   read: Read,
   ask: Ask,
-  opts: { maxCalls?: number; previous?: Tree } = {},
+  opts: { maxCalls?: number; previous?: Tree; sigFor?: (id: string) => string | null; chars?: number } = {},
 ): Promise<{ tree: Tree; calls: number; failed: number }> {
   const prev = opts.previous ?? {};
   const state = { calls: 0, failed: 0, budget: opts.maxCalls ?? 40 };
 
-  const files = Object.values(tree).filter((n) => n.kind === "file");
-  for (const node of files) {
-    const head = read(node.id)?.slice(0, HEAD_CHARS);
-    if (!head) continue;
-    await summariseNode(node, head, filePrompt(node.id, head), prev, ask, state);
+  for (const node of walkOrder(tree)) {
+    if (node.kind === "dir") {
+      const children = node.children.map((id) => `${id}: ${tree[id]?.summary ?? ""}`).join("\n");
+      const prompt = `One line in English, under 20 words: what does ${node.id} hold, as a whole?\n\n${children.slice(0, 4000)}`;
+      await summariseNode(node, children, prompt, prev, ask, state);
+      continue;
+    }
+    const head = read(node.id)?.slice(0, opts.chars ?? SUMMARY_CHARS);
+    // A file the corpus would not hand over — binary, unreadable, gone between the
+    // listing and the read, or simply not fetched because this pass has no budget
+    // left for it. Keep what the last pass knew rather than dropping it: a blank
+    // leaf changes its directory's signature, and that is the cascade above.
+    if (!head) {
+      carry(node, prev[node.id]);
+      continue;
+    }
+    await summariseNode(node, head, filePrompt(node.id, head), prev, ask, state, opts.sigFor?.(node.id) ?? null);
   }
+  return { tree, calls: state.calls, failed: state.failed };
+}
 
+/**
+ * The files the next pass would spend a call on, in the order it will reach them.
+ *
+ * With signatures coming from git, a pass no longer has to read a file to find
+ * out whether it changed — so it no longer has to read the ones that did not.
+ * Reading the head of every tracked file to summarise at most twelve of them was
+ * the largest fixed cost in the tick, and it scaled with the repository.
+ */
+/**
+ * An over-approximation on purpose: directories spend from the same budget, so
+ * the pass may reach fewer files than this names. Fetching a head that goes
+ * unused costs a few kilobytes; missing one costs a node its summary for a tick.
+ */
+export function pendingFiles(
+  tree: Tree,
+  previous: Tree,
+  sigFor: (id: string) => string | null,
+  limit: number,
+): string[] {
+  const out: string[] = [];
+  for (const node of walkOrder(tree)) {
+    if (out.length >= limit) break;
+    if (node.kind !== "file") continue;
+    const sig = sigFor(node.id);
+    // `null` is "the caller did not get this one from git" — a note, whose body it
+    // already holds. Only repository files are fetched.
+    if (sig === null || previous[node.id]?.sig === sig) continue;
+    out.push(node.id);
+  }
+  return out;
+}
+
+/** The order a pass walks the tree in: everything under a directory, then the
+ *  directory, deepest first. */
+/**
+ * A directory is summarised from its children's summaries, so it has to come
+ * after them — but "every file, then every directory" is more than that
+ * requires, and with hundreds of files against a budget of twelve no directory
+ * was reached for fifty-eight ticks. Per directory instead: each is summarised
+ * on the tick its own children finish, and a budget that runs out leaves whole
+ * subtrees described rather than a field of leaves under nothing.
+ */
+/**
+ * The root is walked but never summarised — search never shows it — so its own
+ * files come last, when no directory pass is waiting on them.
+ */
+export function walkOrder(tree: Tree): Node[] {
   const dirs = Object.values(tree)
     .filter((n) => n.kind === "dir" && n.id !== "/")
     .sort((a, b) => b.id.split("/").length - a.id.split("/").length);
-  for (const node of dirs) {
-    const children = node.children.map((id) => `${id}: ${tree[id]?.summary ?? ""}`).join("\n");
-    await summariseNode(
-      node,
-      children,
-      `One line in English, under 20 words: what does ${node.id} hold, as a whole?\n\n${children.slice(0, 4000)}`,
-      prev,
-      ask,
-      state,
-    );
+  const out: Node[] = [];
+  const filesIn = (dir: Node) => dir.children.map((id) => tree[id]).filter((n) => n?.kind === "file");
+  for (const dir of dirs) {
+    for (const file of filesIn(dir)) if (file) out.push(file);
+    out.push(dir);
   }
-  return { tree, calls: state.calls, failed: state.failed };
+  const root = tree["/"];
+  if (root) for (const file of filesIn(root)) if (file) out.push(file);
+  return out;
 }
 
 function filePrompt(id: string, head: string): string {
   const instruction = id.startsWith(NOTE_PREFIX)
     ? "One line in English, under 20 words: what does this note establish? Name the decision or fact, not the format."
     : `One line in English, under 20 words: what is ${id} for? Name the thing it owns, not its language.`;
-  return `${instruction}\n\n----\n${head}\n----`;
+  // Then the specifics, which cost nothing to ask for in the same call and are
+  // never shown in the walk's menu. `SUMMARY:`/`POINT:` are protocol keys.
+  const shape =
+    `Reply as:\nSUMMARY: <that line>\nPOINT: <a name, decision or fact somebody might search for>\n` +
+    `At most ${MAX_POINTS} POINT lines, each under 20 words. Nothing else.`;
+  return `${instruction}\n\n${shape}\n\n----\n${head}\n----`;
+}
+
+/** What the last pass knew, when this one cannot replace it. */
+function carry(node: Node, old: Node | undefined): void {
+  if (!old) return;
+  node.sig = old.sig;
+  node.summary = old.summary;
+  node.points = old.points;
 }
 
 async function summariseNode(
@@ -152,23 +243,63 @@ async function summariseNode(
   previous: Tree,
   ask: Ask,
   state: { calls: number; failed: number; budget: number },
+  /**
+   * The file's identity when the caller has a better one than the text being
+   * summarised. Git's blob hash covers the whole file; `sigOf(content)` covers
+   * only the head the prompt carries, so an edit past it moved nothing.
+   */
+  override: string | null = null,
 ): Promise<void> {
-  const sig = sigOf(content);
+  const sig = override ?? sigOf(content);
   const old = previous[node.id];
   if (old?.sig === sig) {
     node.sig = sig;
     node.summary = old.summary;
     return;
   }
+  // A node this pass cannot answer for keeps the last answer, under the signature
+  // that produced it. Both ways out below used to leave the node blank, and a
+  // directory's content *is* its children's summaries: one child blanked changed
+  // the parent's signature, which needed a call, which the budget had already
+  // gone on files — so the parent blanked too, and the emptiness climbed a level
+  // per tick. Measured live: 822 nodes, 61 summarised down to 48 while the
+  // indexer spent 2.9M tokens to 23.3M. Stale text still reads; a blank does not.
+  carry(node, old);
   if (state.calls >= state.budget) return;
   state.calls++;
-  const summary = oneLine(await ask(prompt));
-  if (!summary) {
+  const said = parseAnswer(await ask(prompt));
+  if (!said.summary) {
     state.failed++;
     return;
   }
   node.sig = sig;
-  node.summary = summary;
+  node.summary = said.summary;
+  node.points = said.points;
+}
+
+/** How many specifics a node may carry, and how long each may be. */
+const MAX_POINTS = 4;
+const POINT_CHARS = 120;
+
+/**
+ * The two halves of an answer, in a shape a CLI's own chatter cannot break.
+ *
+ * Labelled lines rather than JSON: this text comes back from a terminal that
+ * prints its own preamble, and a brace-matching parser over that is a second
+ * thing to get wrong. An answer with no `SUMMARY:` line at all falls back to what
+ * this function did before points existed — the last non-empty line — so a model
+ * that ignores the shape still produces a menu row.
+ */
+function parseAnswer(text: string): { summary: string; points: string[] } {
+  const lines = text.split("\n").map((line) => line.trim());
+  const points = lines
+    .filter((line) => line.startsWith("POINT:"))
+    .map((line) => line.slice("POINT:".length).trim().slice(0, POINT_CHARS))
+    .filter(Boolean)
+    .slice(0, MAX_POINTS);
+  const said = lines.findLast((line) => line.startsWith("SUMMARY:"));
+  if (said) return { summary: said.slice("SUMMARY:".length).trim().slice(0, 160), points };
+  return { summary: oneLine(lines.filter((line) => !line.startsWith("POINT:")).join("\n")), points };
 }
 
 const oneLine = (s: string) => s.trim().split("\n").findLast(Boolean)?.slice(0, 160) ?? "";
@@ -235,7 +366,16 @@ function openNodes(tree: Tree, picked: string[], opened: string[]): string[] {
 }
 
 export function render(tree: Tree, ids: string[]): string {
-  return ids.map((id) => `${id} — ${tree[id]?.summary ?? ""}`).join("\n");
+  return ids
+    .map((id) => {
+      const node = tree[id];
+      // The points land here and only here. The walk's menu is `menuLine`, which
+      // carries the one-liner alone: detail in the menu is paid for on every
+      // question at every level, and detail here is paid for once, on a hit.
+      const detail = (node?.points ?? []).map((point) => `\n  · ${point}`).join("");
+      return `${id} — ${node?.summary ?? ""}${detail}`;
+    })
+    .join("\n");
 }
 
 /**

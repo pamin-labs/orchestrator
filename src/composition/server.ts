@@ -29,7 +29,7 @@ import { localPostgres } from "../platform/persistence/local-postgres.ts";
 import { adoptServerKey, REAL, sandboxHeld, type Scope } from "../mech/sandbox/sandbox.ts";
 import type { DB } from "../platform/persistence/database.ts";
 import { startMailbox } from "../mech/sandbox/mailbox.ts";
-import { baseRefFor, createCheckout, treeHeads } from "../mech/git/checkout.ts";
+import { baseRefFor, createCheckout, fileHeads, treeBlobs } from "../mech/git/checkout.ts";
 import { makeCheck, preflight, type Check } from "../mech/ops/preflight.ts";
 import { restageSkills } from "../mech/skills.ts";
 import { ensureServer, type ServerState } from "../mech/sandbox/server.ts";
@@ -38,15 +38,15 @@ import { dispatchFeedback, type Feedback, openPr, pollPrs, prBody, prTitle } fro
 import { type Github, makeGithub } from "../mech/git/github.ts";
 import { repoHeld } from "../mech/git/repository.ts";
 import {
+  NOTE_PREFIX,
   chargeIndex,
-  HEAD_CHARS,
+  loadTree,
   modelAsk,
   noteLeaves,
-  NOTE_PREFIX,
+  pendingFiles,
   saveTree,
   skeleton,
   summarise,
-  loadTree,
 } from "../mech/knowledge/pageindex.ts";
 import { indexable, indexExcludes } from "../mech/knowledge/repomap.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "../application/executor.ts";
@@ -617,18 +617,39 @@ type AskIn = NonNullable<Ctx["askIn"]>;
 /** A project a pass can actually enter: it has somewhere to mirror from. */
 export type IndexProject = { id: number; remote: string };
 
+/** The blackboard half of the corpus, read once per pass and used twice. */
+export type Notes = Awaited<ReturnType<typeof noteLeaves>>;
+
 async function refreshProjectIndex(ctx: Ctx, project: IndexProject, askIn: AskIn): Promise<void> {
   const base = await baseRefFor(ctx, project.id);
-  const heads = await indexHeads(ctx, project, base);
-  if (!heads) return;
+  // Git's own answer for "has anything changed", before anything is read. A blob
+  // object name is a hash of the whole file, so an edit anywhere moves it — where
+  // the file heads this used to compare cover the first 1800 bytes and miss the
+  // rest. It is also the cheaper question: on a quiet repository the pass now
+  // ends here without reading a single file's contents.
+  const blobs = await indexBlobs(ctx, project, base);
+  if (!blobs) return;
   memory(ctx.db).warned.delete(project.id);
-  const at = indexStamp(heads);
+  // Notes are half the corpus and they change without a commit, so the stamp has
+  // to cover them: keyed on file heads alone, a pass that finally came in under
+  // budget would record itself fresh and then skip every tick until somebody
+  // pushed, leaving journals, retros and decisions out of the tree indefinitely.
+  // It never showed while a pass always spent its whole budget, because the stamp
+  // was then never recorded at all.
+  const notes = await noteLeaves(ctx.db, project.id);
+  const at = indexStamp(blobs, notes);
   if (at && memory(ctx.db).at.get(project.id) === at) return;
-  const result = await buildProjectIndex(ctx.db, project.id, heads, askIn);
+  // Only the files this pass is about to summarise, and only on a pass that is
+  // going to do work. A container that refuses answers with an empty map rather
+  // than throwing, and an empty map is a pass where every file keeps the summary
+  // it had — the safe answer.
+  const walk = ctx.config.pageindex;
+  const readHeads = (paths: string[]) => fileHeads(ctx, { project: project.id }, paths, walk.fileChars);
+  const result = await buildProjectIndex(ctx.db, project.id, blobs, notes, readHeads, askIn, walk);
   await recordIndexResult(ctx, project.id, at, result);
 }
 
-async function indexHeads(ctx: Ctx, project: IndexProject, base: string): Promise<Map<string, string> | null> {
+async function indexBlobs(ctx: Ctx, project: IndexProject, base: string): Promise<Map<string, string> | null> {
   const scope = { project: project.id } as const;
   try {
     await createCheckout(ctx, scope, {
@@ -637,7 +658,7 @@ async function indexHeads(ctx: Ctx, project: IndexProject, base: string): Promis
       base,
       projectId: project.id,
     });
-    return await treeHeads(ctx, scope, HEAD_CHARS);
+    return await treeBlobs(ctx, scope);
   } catch (error) {
     await warnIndexOnce(ctx, project.id, error);
     return null;
@@ -655,8 +676,11 @@ async function warnIndexOnce(ctx: Ctx, projectId: number, error: unknown): Promi
   });
 }
 
-function indexStamp(heads: Map<string, string>): string {
-  return heads.size ? Bun.hash([...heads].map(([file, head]) => `${file}${head}`).join("\n")).toString(16) : "";
+export function indexStamp(blobs: Map<string, string>, notes: Notes): string {
+  if (!blobs.size) return "";
+  const files = [...blobs].map(([file, blob]) => `${file}${blob}`);
+  const written = notes.ids.map((id) => `${id}${notes.read(id) ?? ""}`);
+  return Bun.hash([...files, ...written].join("\n")).toString(16);
 }
 
 /**
@@ -666,16 +690,28 @@ function indexStamp(heads: Map<string, string>): string {
  * would be a worse version of the grepping it replaces. Twelve a tick on the
  * cheapest tier catches up over a few minutes and then costs nothing.
  */
-async function buildProjectIndex(db: DB, projectId: number, heads: Map<string, string>, askIn: AskIn) {
+async function buildProjectIndex(
+  db: DB,
+  projectId: number,
+  blobs: Map<string, string>,
+  notes: Notes,
+  readHeads: (paths: string[]) => Promise<Map<string, string>>,
+  askIn: AskIn,
+  walk: Config["pageindex"],
+) {
   const excludes = await indexExcludes(db, projectId);
-  const files = [...heads.keys()].filter((file) => indexable(file, excludes));
-  const notes = await noteLeaves(db, projectId);
+  const files = [...blobs.keys()].filter((file) => indexable(file, excludes));
   const previous = (await loadTree(db, projectId)) ?? {};
+  const tree = skeleton([...files, ...notes.ids]);
+  // A note's identity is still its body: it is stored here, not in git, and it is
+  // short enough that the whole of it is what gets summarised.
+  const sigFor = (id: string) => blobs.get(id) ?? null;
+  const heads = await readHeads(pendingFiles(tree, previous, sigFor, walk.budget));
   const result = await summarise(
-    skeleton([...files, ...notes.ids]),
+    tree,
     (id) => (id.startsWith(NOTE_PREFIX) ? notes.read(id) : (heads.get(id) ?? null)),
     askIn({ project: projectId }),
-    { previous, maxCalls: 12 },
+    { previous, maxCalls: walk.budget, chars: walk.fileChars, sigFor },
   );
   await saveTree(db, projectId, result.tree);
   return { calls: result.calls, failed: result.failed, files: files.length };
@@ -695,7 +731,13 @@ export async function recordIndexResult(
   at: string,
   result: { calls: number; failed: number; files: number },
 ): Promise<void> {
-  if (at && result.calls < 12 && result.failed === 0) memory(ctx.db).at.set(projectId, at);
+  // `< budget`, not `<= `: a pass that spent all of it stopped early and has more
+  // to do, so it must not record the tree as finished. One number, read from one
+  // place — written twice, raising the budget in settings would silently stop the
+  // stamp ever being recorded, which is the runaway this file just had.
+  if (at && result.calls < ctx.config.pageindex.budget && result.failed === 0) {
+    memory(ctx.db).at.set(projectId, at);
+  }
   if (result.failed > 0 && result.failed === result.calls) return await warnModelDown(ctx, projectId, result.failed);
   if (!result.calls) return;
   memory(ctx.db).down.delete(projectId);

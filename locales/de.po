@@ -1253,6 +1253,9 @@ msgstr "Rückmeldungen bis zur Regel"
 msgid "Fetching login code…"
 msgstr "Anmeldecode wird geholt…"
 
+msgid "File characters read"
+msgstr "Gelesene Dateizeichen"
+
 msgid "Files and folders OK; click a name to enter a folder."
 msgstr "Dateien und Ordner sind lesbar; auf einen Namen klicken, um einen Ordner zu öffnen."
 
@@ -1521,6 +1524,9 @@ msgstr "Wie viele Knoten das Modell auf einer Ebene nennen darf. Breite kostet T
 msgid "How many open pull requests one poll asks GitHub about. Node counts are what a GraphQL query costs, so every number in this group is a ceiling bought with quota."
 msgstr "Wie viele offene Pull Requests eine Abfrage bei GitHub erfragt. Was eine GraphQL-Abfrage kostet, ist die Knotenzahl — jede Zahl in dieser Gruppe ist eine mit Kontingent bezahlte Obergrenze."
 
+msgid "How much of a file the indexer is given to describe it. Whether a file is re-read is git's answer about the whole file, so this only decides how much of it the model sees — 30,000 covers 93.5% of this repository's files whole."
+msgstr "Wie viel einer Datei der Indexer zu ihrer Beschreibung erhält. Ob eine Datei neu gelesen wird, beantwortet Git über die ganze Datei; dies bestimmt nur, wie viel davon das Modell sieht — 30.000 erfassen 93,5 % der Dateien dieses Repositorys vollständig."
+
 msgid "How often deterministic rules run. Also how long queued work waits without an explicit tick before dispatch."
 msgstr "Wie oft die deterministischen Regeln laufen. Zugleich, wie lange wartende Arbeit ohne expliziten Tick bis zur Zuteilung wartet."
 
@@ -1554,6 +1560,9 @@ msgstr "Einschließlich Nachgelagertem"
 
 msgid "index call ({total} tokens)"
 msgstr "Indexaufruf ({total} Tokens)"
+
+msgid "Index calls per pass"
+msgstr "Index-Aufrufe pro Durchlauf"
 
 msgid "Index model"
 msgstr "Index-Modell"
@@ -1952,6 +1961,9 @@ msgstr "kein uvx im PATH"
 
 msgid "No, keep going"
 msgstr "Nein, weiter"
+
+msgid "Nodes the indexer may summarise every 30 seconds. It is also what a finished pass looks like: one that spends all of it runs again next tick, so the tree is never marked fresh until it is. Higher catches up sooner and costs more."
+msgstr "Knoten, die der Indexer alle 30 Sekunden zusammenfassen darf. Es ist zugleich das Kennzeichen eines fertigen Durchlaufs: Wer alles verbraucht, läuft im nächsten Takt erneut, und der Baum gilt erst dann als aktuell. Höher heißt schneller aufgeholt und teurer."
 
 msgid "none recorded"
 msgstr "keine erfasst"
