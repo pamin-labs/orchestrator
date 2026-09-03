@@ -232,8 +232,8 @@ test("`orch ctx query` is timed, and its two halves are timed apart", async () =
   const agent = await f.agent.create({ project_id: 1, grp_id: 1, role: "engineer", token: "tok-eng" });
   await f.note.create({ project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
   await saveTree(db, 1, {
-    "/": { id: "/", kind: "dir", summary: "", sig: "", children: ["notes/"] },
-    "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", sig: "", children: [] },
+    "/": { id: "/", kind: "dir", summary: "", points: [], sig: "", children: ["notes/"] },
+    "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", points: [], sig: "", children: [] },
   });
   ctx.askIn = () => async () => "NONE";
 
@@ -270,8 +270,8 @@ test("pageindex off costs no model call, and the lexical half still answers", as
   const agent = await f.agent.create({ project_id: 1, grp_id: 1, role: "engineer", token: "tok-eng" });
   await f.note.create({ project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
   await saveTree(db, 1, {
-    "/": { id: "/", kind: "dir", summary: "", sig: "", children: ["notes/"] },
-    "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", sig: "", children: [] },
+    "/": { id: "/", kind: "dir", summary: "", points: [], sig: "", children: ["notes/"] },
+    "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", points: [], sig: "", children: [] },
   });
   let asked = 0;
   ctx.askIn = () => async () => {
@@ -311,8 +311,8 @@ test("a page-index walk that throws ends its span red, not green", async () => {
   const f = fx.on(db);
   const agent = await f.agent.create({ project_id: 1, grp_id: 1, role: "engineer", token: "tok-eng" });
   await saveTree(db, 1, {
-    "/": { id: "/", kind: "dir", summary: "", sig: "", children: ["notes/"] },
-    "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", sig: "", children: [] },
+    "/": { id: "/", kind: "dir", summary: "", points: [], sig: "", children: ["notes/"] },
+    "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", points: [], sig: "", children: [] },
   });
   ctx.askIn = () => async () => {
     throw new Error("the cheap model is unreachable");

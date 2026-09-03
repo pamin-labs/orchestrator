@@ -41,6 +41,12 @@ export interface Node {
   kind: "dir" | "file";
   /** LLM-written, one line. Empty until summarised. */
   summary: string;
+  /**
+   * Specifics the one-liner has no room for — a name it owns, a decision it
+   * settles. Written by the same call, and shown only by `render`: the walk's menu
+   * carries `summary` alone, so detail here costs nothing per question.
+   */
+  points: string[];
   /** Changes when the file does, so only what changed is re-summarised. */
   sig: string;
   children: string[];
@@ -52,6 +58,9 @@ const NodeSchema = z.object({
   id: z.string(),
   kind: z.enum(["dir", "file"]),
   summary: z.string(),
+  // Defaulted, so a tree stored before points existed still loads instead of
+  // failing the parse and reading as no tree at all.
+  points: z.array(z.string()).default([]),
   sig: z.string(),
   children: z.array(z.string()),
 });
@@ -87,7 +96,7 @@ const SUMMARY_CHARS = 30_000;
 
 /** Structure first, summaries second — the same order as the original. */
 export function skeleton(files: string[]): Tree {
-  const tree: Tree = { "/": { id: "/", kind: "dir", summary: "", sig: "", children: [] } };
+  const tree: Tree = { "/": { id: "/", kind: "dir", summary: "", points: [], sig: "", children: [] } };
   const link = (parent: string, child: string) => {
     if (!tree[parent]!.children.includes(child)) tree[parent]!.children.push(child);
   };
@@ -96,11 +105,11 @@ export function skeleton(files: string[]): Tree {
     let parent = "/";
     for (let i = 0; i < parts.length - 1; i++) {
       const dir = `${parts.slice(0, i + 1).join("/")}/`;
-      tree[dir] ??= { id: dir, kind: "dir", summary: "", sig: "", children: [] };
+      tree[dir] ??= { id: dir, kind: "dir", summary: "", points: [], sig: "", children: [] };
       link(parent, dir);
       parent = dir;
     }
-    tree[rel] = { id: rel, kind: "file", summary: "", sig: "", children: [] };
+    tree[rel] = { id: rel, kind: "file", summary: "", points: [], sig: "", children: [] };
     link(parent, rel);
   }
   return tree;
@@ -211,7 +220,12 @@ function filePrompt(id: string, head: string): string {
   const instruction = id.startsWith(NOTE_PREFIX)
     ? "One line in English, under 20 words: what does this note establish? Name the decision or fact, not the format."
     : `One line in English, under 20 words: what is ${id} for? Name the thing it owns, not its language.`;
-  return `${instruction}\n\n----\n${head}\n----`;
+  // Then the specifics, which cost nothing to ask for in the same call and are
+  // never shown in the walk's menu. `SUMMARY:`/`POINT:` are protocol keys.
+  const shape =
+    `Reply as:\nSUMMARY: <that line>\nPOINT: <a name, decision or fact somebody might search for>\n` +
+    `At most ${MAX_POINTS} POINT lines, each under 20 words. Nothing else.`;
+  return `${instruction}\n\n${shape}\n\n----\n${head}\n----`;
 }
 
 /** What the last pass knew, when this one cannot replace it. */
@@ -219,6 +233,7 @@ function carry(node: Node, old: Node | undefined): void {
   if (!old) return;
   node.sig = old.sig;
   node.summary = old.summary;
+  node.points = old.points;
 }
 
 async function summariseNode(
@@ -252,13 +267,39 @@ async function summariseNode(
   carry(node, old);
   if (state.calls >= state.budget) return;
   state.calls++;
-  const summary = oneLine(await ask(prompt));
-  if (!summary) {
+  const said = parseAnswer(await ask(prompt));
+  if (!said.summary) {
     state.failed++;
     return;
   }
   node.sig = sig;
-  node.summary = summary;
+  node.summary = said.summary;
+  node.points = said.points;
+}
+
+/** How many specifics a node may carry, and how long each may be. */
+const MAX_POINTS = 4;
+const POINT_CHARS = 120;
+
+/**
+ * The two halves of an answer, in a shape a CLI's own chatter cannot break.
+ *
+ * Labelled lines rather than JSON: this text comes back from a terminal that
+ * prints its own preamble, and a brace-matching parser over that is a second
+ * thing to get wrong. An answer with no `SUMMARY:` line at all falls back to what
+ * this function did before points existed — the last non-empty line — so a model
+ * that ignores the shape still produces a menu row.
+ */
+function parseAnswer(text: string): { summary: string; points: string[] } {
+  const lines = text.split("\n").map((line) => line.trim());
+  const points = lines
+    .filter((line) => line.startsWith("POINT:"))
+    .map((line) => line.slice("POINT:".length).trim().slice(0, POINT_CHARS))
+    .filter(Boolean)
+    .slice(0, MAX_POINTS);
+  const said = lines.findLast((line) => line.startsWith("SUMMARY:"));
+  if (said) return { summary: said.slice("SUMMARY:".length).trim().slice(0, 160), points };
+  return { summary: oneLine(lines.filter((line) => !line.startsWith("POINT:")).join("\n")), points };
 }
 
 const oneLine = (s: string) => s.trim().split("\n").findLast(Boolean)?.slice(0, 160) ?? "";
@@ -325,7 +366,16 @@ function openNodes(tree: Tree, picked: string[], opened: string[]): string[] {
 }
 
 export function render(tree: Tree, ids: string[]): string {
-  return ids.map((id) => `${id} — ${tree[id]?.summary ?? ""}`).join("\n");
+  return ids
+    .map((id) => {
+      const node = tree[id];
+      // The points land here and only here. The walk's menu is `menuLine`, which
+      // carries the one-liner alone: detail in the menu is paid for on every
+      // question at every level, and detail here is paid for once, on a hit.
+      const detail = (node?.points ?? []).map((point) => `\n  · ${point}`).join("");
+      return `${id} — ${node?.summary ?? ""}${detail}`;
+    })
+    .join("\n");
 }
 
 /**

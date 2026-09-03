@@ -38,7 +38,7 @@ Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
 ## Blockers and deviations
 
 - **The index was losing ground, not catching up.** Measured live: 822 nodes,
-  61 summarised down to 48, while the indexer's bill went 2.9M tokens to 23.3M.
+  61 summarised down to 48, while the indexer's bill went 2.9M to 23.3M tokens.
   A node the pass could not answer for was left blank on all three exits — budget
   spent, model returning nothing, file unreadable — and a directory's content *is*
   its children's summaries, so one blank leaf changed the parent's signature,
@@ -46,13 +46,13 @@ Measured on `feat/a-plan-card-you-can-read-while-you-edit`, 2026-09-03.
   per tick. A pass therefore always spent all twelve, and the tree is stamped
   fresh only under the budget, so every tick rebuilt from a checkout, forever.
   What counts as changed now comes from git — `ls-files -s` blob hashes, the whole
-  file — where the first 1800 bytes were a file's identity; the stamp is those
-  hashes plus the note corpus, which changes without a commit. A pass reads only
-  what it is about to summarise, so 1,159,899 bytes a tick became ~95,000 while
-  what the model sees went from a 1800-character head (17% of files whole) to the
-  whole file up to 30,000 (93.5%), which is PageIndex's own method. Directories
-  are walked per subtree. Both knobs are settings now. Fixed 2026-09-03; guards in
-  `pageindex`, `checkout-spans`, `server-policy`.
+  file — plus the note corpus, which changes without a commit. A pass reads only
+  what it will summarise, 1,159,899 bytes a tick down to ~95,000, and the model
+  sees the whole file up to 30,000 (93.5% of them) where an 1800-character head
+  covered 17%. A node also carries `points`, shown by `render` and never in the
+  walk's menu: the widest level here is 69 children, so a paragraph a row would be
+  ~14k tokens on every question. Both knobs are settings. Fixed 2026-09-03;
+  guards in `pageindex`, `checkout-spans`, `server-policy`.
 
 - **The panel never rendered the Markdown its agents write.** Cards, journal
   entries and escalations are Markdown by ADR 016 and all of it reached the boss

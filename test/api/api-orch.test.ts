@@ -287,11 +287,19 @@ test("gates are registered after the install, on the checkout every later gate s
 // ----------------------------------------------------------- orch/ctx/query
 
 const indexed = (): Tree => ({
-  "/": { id: "/", kind: "dir", summary: "", sig: "", children: ["notes/"] },
-  "notes/": { id: "notes/", kind: "dir", summary: "the blackboard", sig: "", children: ["notes/grp-1/decision/1"] },
+  "/": { id: "/", kind: "dir", summary: "", points: [], sig: "", children: ["notes/"] },
+  "notes/": {
+    id: "notes/",
+    kind: "dir",
+    summary: "the blackboard",
+    points: [],
+    sig: "",
+    children: ["notes/grp-1/decision/1"],
+  },
   "notes/grp-1/decision/1": {
     id: "notes/grp-1/decision/1",
     kind: "file",
+    points: [],
     summary: "the validation library this fleet uses",
     sig: "",
     children: [],

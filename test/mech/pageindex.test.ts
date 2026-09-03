@@ -120,6 +120,51 @@ test("a pass that runs out of budget keeps what the last one knew", async () => 
   expect(caught.tree["src/"]!.summary).toBe("a directory of things");
 });
 
+test("the specifics ride along on the same call and are shown only where they are free", async () => {
+  // Points are the reference method's second field, adapted: it returns a
+  // paragraph plus a list, and a paragraph in this menu is paid for on every
+  // level of every question. Measured on this tree: the widest level is 69
+  // children, so 160 characters a row is ~3.1k tokens and 800 is ~14k. So the
+  // one-liner stays the menu and the detail goes where a hit already is.
+  const heads: Record<string, string> = { "src/a.ts": "code" };
+  const ask: Ask = async () =>
+    "SUMMARY: owns the notification fan-out\nPOINT: escalationKey.auth\nPOINT: dedupes by credential stamp";
+  const { tree } = await summarise(skeleton(["src/a.ts"]), (id) => heads[id] ?? null, ask);
+
+  expect(tree["src/a.ts"]!.summary).toBe("owns the notification fan-out");
+  expect(tree["src/a.ts"]!.points).toEqual(["escalationKey.auth", "dedupes by credential stamp"]);
+
+  const shown = render(tree, ["src/a.ts"]);
+  expect(shown).toContain("owns the notification fan-out");
+  expect(shown).toContain("· escalationKey.auth");
+
+  // And the walk's menu carries the one-liner alone. This is the whole reason the
+  // detail is affordable, so it is asserted rather than assumed.
+  const asked: string[] = [];
+  await search(
+    tree,
+    "where do notifications go?",
+    async (p) => {
+      asked.push(p);
+      return "NONE";
+    },
+    { enabled: true, depth: 2, width: 3, budget: 12, fileChars: 30_000 },
+  );
+  expect(asked.join("\n")).toContain("owns the notification fan-out");
+  expect(asked.join("\n")).not.toContain("escalationKey.auth");
+});
+
+test("a model that ignores the reply shape still produces a menu row", async () => {
+  // The floor: a CLI prints its own preamble, and an answer with no `SUMMARY:`
+  // line falls back to the last non-empty line, which is what this did before
+  // points existed. Losing the summary to a parse is the cascade, not a downgrade.
+  const heads: Record<string, string> = { "src/a.ts": "code" };
+  const ask: Ask = async () => "thinking...\nowns the notification fan-out";
+  const { tree } = await summarise(skeleton(["src/a.ts"]), (id) => heads[id] ?? null, ask);
+  expect(tree["src/a.ts"]!.summary).toBe("owns the notification fan-out");
+  expect(tree["src/a.ts"]!.points).toEqual([]);
+});
+
 test("a change past the head is still a change", async () => {
   // A file's identity was `sigOf(the first 1800 characters)`, so an edit in the
   // middle or at the end of a file moved nothing and its summary stayed as it was
@@ -201,7 +246,9 @@ test("a pass fetches the files it is about to summarise, and no others", () => {
   const files = ["a/one.ts", "a/two.ts", "a/three.ts"];
   const blobs: Record<string, string> = { "a/one.ts": "aaa1", "a/two.ts": "bbb2", "a/three.ts": "ccc3" };
   const tree = skeleton([...files, "notes/project/decision/1"]);
-  const previous = { "a/two.ts": { id: "a/two.ts", kind: "file" as const, summary: "s", sig: "bbb2", children: [] } };
+  const previous = {
+    "a/two.ts": { id: "a/two.ts", kind: "file" as const, summary: "s", points: [], sig: "bbb2", children: [] },
+  };
 
   const want = pendingFiles(tree, previous, (id) => blobs[id] ?? null, 10);
   // `a/two.ts` is unchanged, so it is not fetched. The note is not a repository
