@@ -288,7 +288,7 @@ jobs:
           done
           cat "$smoke/server.log"; exit 1
       - run: bun run perf:budget
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-binaries
           path: |
@@ -313,7 +313,7 @@ jobs:
         with: { version: '${{ env.TRIVY_VERSION }}', scan-type: fs, scan-ref: ., format: spdx-json, output: orchestrator-source.spdx.json, exit-code: '0' }
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', scan-type: fs, scan-ref: ., format: cyclonedx, output: orchestrator-source.cdx.json, exit-code: '0' }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: source-sboms, path: 'orchestrator-source.*.json', if-no-files-found: error, retention-days: 1 }
 
   image-build:
@@ -328,9 +328,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: '${{ needs.checks.outputs.source-sha }}', persist-credentials: false }
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - id: image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: docker/agent.Dockerfile
@@ -433,7 +433,7 @@ jobs:
         env:
           PLATFORM: ${{ matrix.platform }}
         run: docker save "orch-agent:verify-$PLATFORM" | gzip -1 > "orch-agent-$PLATFORM.docker.tar.gz"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: image-evidence-${{ matrix.platform }}
           path: |
@@ -443,7 +443,7 @@ jobs:
             orchestrator-agent-${{ matrix.platform }}.cdx.json
           if-no-files-found: error
           retention-days: 1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: image-archive-${{ matrix.platform }}
           path: orch-agent-${{ matrix.platform }}.docker.tar.gz
@@ -464,11 +464,11 @@ jobs:
       fail-fast: true
       matrix: { platform: [amd64, arm64] }
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: 'image-archive-${{ matrix.platform }}', path: image }
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: 'image-evidence-${{ matrix.platform }}', path: image }
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
       - name: push only the image that passed verification
@@ -501,7 +501,7 @@ jobs:
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::staged image has no immutable digest"; exit 1; }
           mkdir -p /tmp/digests
           touch "/tmp/digests/$PLATFORM-${digest#sha256:}"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: 'image-digest-${{ matrix.platform }}', path: '/tmp/digests/*', if-no-files-found: error, retention-days: 1 }
 
   manifest:
@@ -520,9 +520,9 @@ jobs:
       attestations: write # Publish provenance and SBOM attestations for the image digest.
       artifact-metadata: write # Record the pushed image on the organisation's linked artifacts page.
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { path: /tmp/digests, pattern: 'image-digest-*', merge-multiple: true }
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
       - name: create multi-platform manifest
@@ -635,7 +635,7 @@ jobs:
       # `predicate-*` inputs, so there is nothing else to translate.
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with: { subject-name: '${{ env.REGISTRY }}/orch-agent', subject-digest: '${{ steps.manifest.outputs.digest }}', sbom-path: registry-image.spdx.json, push-to-registry: true }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: registry-image-evidence
           path: |
@@ -652,13 +652,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: release-binaries, path: dist }
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: source-sboms, path: dist }
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { path: dist, pattern: 'image-evidence-*', merge-multiple: true }
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: registry-image-evidence, path: dist }
       - name: checksum every release artifact
         run: |
@@ -671,7 +671,7 @@ jobs:
               | xargs -0 sha256sum > SHA256SUMS
             sha256sum --check SHA256SUMS
           )
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-evidence
           path: dist/*
@@ -690,7 +690,7 @@ jobs:
       id-token: write # Request the OIDC identity used to sign artifact attestations.
       attestations: write # Attest every file attached to the GitHub release.
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: release-evidence, path: dist }
       - name: verify checksums
         working-directory: dist
@@ -743,7 +743,7 @@ jobs:
       contents: read
       packages: write # Advance latest only after the immutable GitHub release exists.
     steps:
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
       - name: promote the published manifest to latest
